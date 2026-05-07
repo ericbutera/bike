@@ -1,0 +1,4 @@
+FROM rust:bookworm
+WORKDIR /app
+RUN cargo install --locked cargo-watch
+CMD ["cargo", "watch", "-w", "worker/src", "-w", "worker/Cargo.toml", "-w", "Cargo.toml", "-x", "run --bin worker"]

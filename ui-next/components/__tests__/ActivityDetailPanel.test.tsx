@@ -1,0 +1,411 @@
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import ActivityDetailPanel from "../ActivityDetailPanel";
+
+const mocks = vi.hoisted(() => ({
+  useCurrentUser: vi.fn(),
+  useActivity: vi.fn(),
+  useRegenerateActivity: vi.fn(),
+  useDeleteActivity: vi.fn(),
+  routerPush: vi.fn(),
+}));
+
+vi.mock("@ericbutera/kaleido", () => ({
+  auth: {
+    useAuthApi: () => ({
+      useCurrentUser: mocks.useCurrentUser,
+    }),
+  },
+}));
+
+vi.mock("../../lib/queries", () => ({
+  useActivity: mocks.useActivity,
+  useRegenerateActivity: mocks.useRegenerateActivity,
+  useDeleteActivity: mocks.useDeleteActivity,
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: mocks.routerPush,
+  }),
+}));
+
+vi.mock("next/link", () => ({
+  default: ({ href, children, ...props }: any) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
+}));
+
+function makeActivity(
+  overrides: Partial<{
+    id: number;
+    title: string;
+    sport: string;
+    source: string;
+    original_filename: string | null;
+    format: string | null;
+    started_at: string;
+    ended_at: string | null;
+    distance_meters: number | null;
+    moving_time_seconds: number | null;
+    total_time_seconds: number | null;
+    elevation_gain_meters: number | null;
+    elevation_loss_meters: number | null;
+    average_speed_mps: number | null;
+    max_speed_mps: number | null;
+    average_heart_rate_bpm: number | null;
+    max_heart_rate_bpm: number | null;
+    average_cadence_rpm: number | null;
+    max_cadence_rpm: number | null;
+    calories: number | null;
+    laps: Array<{
+      lap_index: number;
+      title: string;
+      duration_seconds: number | null;
+      distance_meters: number | null;
+      average_speed_mps: number | null;
+      average_heart_rate_bpm: number | null;
+      max_heart_rate_bpm: number | null;
+    }>;
+    chart_points: Array<{
+      elapsed_seconds: number;
+      distance_meters: number | null;
+      elevation_meters: number | null;
+      speed_mps: number | null;
+      heart_rate_bpm: number | null;
+      cadence_rpm: number | null;
+    }>;
+    route_points: Array<{
+      elapsed_seconds: number;
+      latitude: number;
+      longitude: number;
+      distance_meters: number | null;
+      elevation_meters: number | null;
+      speed_mps: number | null;
+      heart_rate_bpm: number | null;
+      cadence_rpm: number | null;
+    }>;
+    segment_efforts: Array<{
+      segment_id: number;
+      segment_title: string;
+      effort_index: number;
+      duration_seconds: number;
+      start_route_point_index: number;
+      end_route_point_index: number;
+      overall_rank?: number | null;
+    }>;
+    can_regenerate: boolean;
+  }> = {},
+) {
+  return {
+    id: 7,
+    title: "Lunch Ride",
+    sport: "ride",
+    source: "manual_upload",
+    original_filename: "lunch-ride.tcx",
+    format: "tcx",
+    started_at: "2026-05-06T12:00:00Z",
+    ended_at: "2026-05-06T13:00:00Z",
+    distance_meters: 28000,
+    moving_time_seconds: 3200,
+    total_time_seconds: 3600,
+    elevation_gain_meters: 310,
+    elevation_loss_meters: 305,
+    average_speed_mps: 8.7,
+    max_speed_mps: 14.8,
+    average_heart_rate_bpm: 144,
+    max_heart_rate_bpm: 168,
+    average_cadence_rpm: 84,
+    max_cadence_rpm: 102,
+    calories: 640,
+    laps: [
+      {
+        lap_index: 1,
+        title: "Lap 1",
+        duration_seconds: 1600,
+        distance_meters: 14000,
+        average_speed_mps: 8.7,
+        average_heart_rate_bpm: 142,
+        max_heart_rate_bpm: 162,
+      },
+    ],
+    chart_points: [
+      {
+        elapsed_seconds: 0,
+        distance_meters: 0,
+        elevation_meters: 100,
+        speed_mps: 0,
+        heart_rate_bpm: 128,
+        cadence_rpm: 80,
+      },
+      {
+        elapsed_seconds: 1600,
+        distance_meters: 14000,
+        elevation_meters: 180,
+        speed_mps: 8.7,
+        heart_rate_bpm: 150,
+        cadence_rpm: 88,
+      },
+      {
+        elapsed_seconds: 3200,
+        distance_meters: 28000,
+        elevation_meters: 140,
+        speed_mps: 14.8,
+        heart_rate_bpm: 168,
+        cadence_rpm: 102,
+      },
+    ],
+    route_points: [
+      {
+        elapsed_seconds: 0,
+        latitude: 45.0,
+        longitude: -122.0,
+        distance_meters: 0,
+        elevation_meters: 100,
+        speed_mps: 0,
+        heart_rate_bpm: 128,
+        cadence_rpm: 80,
+      },
+      {
+        elapsed_seconds: 1600,
+        latitude: 45.02,
+        longitude: -121.98,
+        distance_meters: 14000,
+        elevation_meters: 180,
+        speed_mps: 8.7,
+        heart_rate_bpm: 150,
+        cadence_rpm: 88,
+      },
+      {
+        elapsed_seconds: 3200,
+        latitude: 45.04,
+        longitude: -121.96,
+        distance_meters: 28000,
+        elevation_meters: 140,
+        speed_mps: 14.8,
+        heart_rate_bpm: 168,
+        cadence_rpm: 102,
+      },
+    ],
+    segment_efforts: [
+      {
+        segment_id: 11,
+        segment_title: "North Climb",
+        effort_index: 1,
+        duration_seconds: 312,
+        start_route_point_index: 1,
+        end_route_point_index: 2,
+        overall_rank: 1,
+      },
+      {
+        segment_id: 11,
+        segment_title: "North Climb",
+        effort_index: 2,
+        duration_seconds: 330,
+        start_route_point_index: 0,
+        end_route_point_index: 1,
+        overall_rank: 3,
+      },
+    ],
+    can_regenerate: true,
+    ...overrides,
+  };
+}
+
+describe("ActivityDetailPanel", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal(
+      "confirm",
+      vi.fn(() => true),
+    );
+    mocks.useCurrentUser.mockReturnValue({
+      user: { id: 1, email: "rider@example.com" },
+      isLoading: false,
+    });
+    mocks.useActivity.mockReturnValue({
+      data: makeActivity(),
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+    mocks.useRegenerateActivity.mockReturnValue({
+      regenerateAsync: vi.fn().mockResolvedValue(makeActivity()),
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+    mocks.useDeleteActivity.mockReturnValue({
+      deleteAsync: vi.fn().mockResolvedValue(undefined),
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("renders a sign-in prompt when the user is signed out", () => {
+    mocks.useCurrentUser.mockReturnValue({ user: null, isLoading: false });
+
+    render(<ActivityDetailPanel activityId={7} />);
+
+    expect(
+      screen.getByText("Sign in to view activity details"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
+      "href",
+      "/login",
+    );
+  });
+
+  it("renders the summary metrics, laps, and charts", () => {
+    render(<ActivityDetailPanel activityId={7} />);
+
+    expect(
+      screen.getByRole("heading", { name: "Lunch Ride" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("28.0 km")).toBeInTheDocument();
+    expect(screen.getByText("53m 20s")).toBeInTheDocument();
+    expect(screen.getAllByText("19.5 mph").length).toBeGreaterThan(0);
+    expect(screen.getByText("168 bpm")).toBeInTheDocument();
+    expect(screen.getByText("lunch-ride.tcx")).toBeInTheDocument();
+    expect(screen.getByText("Route map")).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: "Activity route map" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Matched segments")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Jump to North Climb matches" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /5m 12s/i })).toHaveAttribute(
+      "href",
+      "/segments/11",
+    );
+    expect(screen.getByRole("link", { name: /5m 30s/i })).toHaveAttribute(
+      "href",
+      "/segments/11",
+    );
+    const matchedSegmentTimes = screen.getAllByRole("link", {
+      name: /5m (12s|30s)/,
+    });
+    expect(matchedSegmentTimes[0]).toHaveTextContent("5m 30s");
+    expect(matchedSegmentTimes[1]).toHaveTextContent("5m 12s");
+    expect(screen.getByRole("link", { name: "North Climb" })).toHaveAttribute(
+      "href",
+      "/segments/11",
+    );
+    expect(
+      screen.queryByRole("link", { name: "Compare efforts" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Summary overview")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Fastest").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Trending faster").length).toBeGreaterThan(0);
+    expect(screen.getByText("High heart rate")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Regenerate derived data" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Delete activity" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Lap splits")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Lap 1" })).toBeInTheDocument();
+    expect(screen.getByText("Ride signals")).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: "Activity signals chart" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Heart rate" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Speed" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(
+      screen.getByRole("button", { name: "Elevation" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.queryByRole("link", { name: "Back to activities" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("lets the user toggle the merged signal layers", async () => {
+    const user = userEvent.setup();
+
+    render(<ActivityDetailPanel activityId={7} />);
+
+    const heartRateButton = screen.getByRole("button", { name: "Heart rate" });
+
+    await user.click(heartRateButton);
+
+    expect(heartRateButton).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("shows the regenerate action", async () => {
+    const user = userEvent.setup();
+    const regenerateAsync = vi.fn().mockResolvedValue(makeActivity());
+    mocks.useRegenerateActivity.mockReturnValue({
+      regenerateAsync,
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+
+    render(<ActivityDetailPanel activityId={7} />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Regenerate derived data" }),
+    );
+
+    expect(regenerateAsync).toHaveBeenCalledWith(7);
+  });
+
+  it("deletes the activity after confirmation", async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.fn(() => true);
+    const deleteAsync = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("confirm", confirmSpy);
+    mocks.useDeleteActivity.mockReturnValue({
+      deleteAsync,
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+
+    render(<ActivityDetailPanel activityId={7} />);
+
+    await user.click(screen.getByRole("button", { name: "Delete activity" }));
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      "Delete this activity? This removes the activity and clears any derived segment matches.",
+    );
+    expect(deleteAsync).toHaveBeenCalledWith(7);
+    expect(mocks.routerPush).toHaveBeenCalledWith("/");
+  });
+
+  it("renders the route map empty state with a regenerate action when route points are missing", () => {
+    mocks.useActivity.mockReturnValue({
+      data: makeActivity({ route_points: [], segment_efforts: [] }),
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+
+    render(<ActivityDetailPanel activityId={7} />);
+
+    expect(screen.getByText("Route map")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /does not have enough stored route points for the map yet/i,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Regenerate route data" }),
+    ).toBeInTheDocument();
+  });
+});

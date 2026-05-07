@@ -1,0 +1,177 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[derive(Iden)]
+enum Segments {
+    Table,
+    Id,
+    UserId,
+    Title,
+    Source,
+    OriginalFilename,
+    Format,
+    DistanceMeters,
+    RouteDataJson,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(Iden)]
+enum SegmentEfforts {
+    Table,
+    Id,
+    UserId,
+    SegmentId,
+    ActivityId,
+    EffortIndex,
+    StartRoutePointIndex,
+    EndRoutePointIndex,
+    StartElapsedSeconds,
+    EndElapsedSeconds,
+    DurationSeconds,
+    DistanceMeters,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(Segments::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(Segments::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(Segments::UserId).integer().not_null())
+                    .col(ColumnDef::new(Segments::Title).string().not_null())
+                    .col(ColumnDef::new(Segments::Source).string().not_null())
+                    .col(ColumnDef::new(Segments::OriginalFilename).string().null())
+                    .col(ColumnDef::new(Segments::Format).string().null())
+                    .col(ColumnDef::new(Segments::DistanceMeters).double().null())
+                    .col(ColumnDef::new(Segments::RouteDataJson).text().null())
+                    .col(
+                        ColumnDef::new(Segments::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::cust("CURRENT_TIMESTAMP")),
+                    )
+                    .col(
+                        ColumnDef::new(Segments::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::cust("CURRENT_TIMESTAMP")),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx-segments-user-id")
+                    .table(Segments::Table)
+                    .col(Segments::UserId)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(SegmentEfforts::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(SegmentEfforts::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(SegmentEfforts::UserId).integer().not_null())
+                    .col(ColumnDef::new(SegmentEfforts::SegmentId).integer().not_null())
+                    .col(ColumnDef::new(SegmentEfforts::ActivityId).integer().not_null())
+                    .col(ColumnDef::new(SegmentEfforts::EffortIndex).integer().not_null())
+                    .col(
+                        ColumnDef::new(SegmentEfforts::StartRoutePointIndex)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SegmentEfforts::EndRoutePointIndex)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SegmentEfforts::StartElapsedSeconds)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SegmentEfforts::EndElapsedSeconds)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SegmentEfforts::DurationSeconds)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(SegmentEfforts::DistanceMeters).double().null())
+                    .col(
+                        ColumnDef::new(SegmentEfforts::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::cust("CURRENT_TIMESTAMP")),
+                    )
+                    .col(
+                        ColumnDef::new(SegmentEfforts::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::cust("CURRENT_TIMESTAMP")),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx-segment-efforts-segment-id")
+                    .table(SegmentEfforts::Table)
+                    .col(SegmentEfforts::SegmentId)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx-segment-efforts-activity-id")
+                    .table(SegmentEfforts::Table)
+                    .col(SegmentEfforts::ActivityId)
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(SegmentEfforts::Table).to_owned())
+            .await?;
+
+        manager
+            .drop_table(Table::drop().table(Segments::Table).to_owned())
+            .await
+    }
+}

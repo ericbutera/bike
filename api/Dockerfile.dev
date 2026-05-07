@@ -1,0 +1,4 @@
+FROM rust:latest
+WORKDIR /app
+RUN cargo install --locked cargo-watch
+CMD ["cargo", "watch", "-w", "api/src", "-w", "migration/src", "-w", "api/Cargo.toml", "-w", "migration/Cargo.toml", "-w", "Cargo.toml", "-x", "run --bin api"]

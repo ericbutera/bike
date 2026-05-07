@@ -1,0 +1,16 @@
+FROM node:20-alpine
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+COPY package.json pnpm-lock.yaml* ./
+RUN pnpm install --frozen-lockfile || pnpm install
+
+COPY docker-entrypoint-dev.sh /usr/local/bin/docker-entrypoint-dev.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint-dev.sh
+
+COPY . .
+EXPOSE 3000
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint-dev.sh"]
+CMD ["pnpm", "run", "dev"]

@@ -1,0 +1,36 @@
+# Rust
+/target/
+**/target/
+**/*.rs.bk
+
+# TypeScript / Node
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+build/
+**/build/
+.next/
+**/.next/
+.turbo/
+.pnpm-store/
+coverage/
+*.tsbuildinfo
+
+# Env / local
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS/editor
+.DS_Store
+
+data/
+uploads/

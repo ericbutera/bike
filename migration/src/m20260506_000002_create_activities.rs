@@ -1,0 +1,148 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[derive(Iden)]
+enum Activities {
+    Table,
+    Id,
+    UserId,
+    ActivityImportId,
+    Title,
+    Sport,
+    Source,
+    OriginalFilename,
+    Format,
+    StartedAt,
+    EndedAt,
+    DistanceMeters,
+    MovingTimeSeconds,
+    TotalTimeSeconds,
+    ElevationGainMeters,
+    ElevationLossMeters,
+    AverageSpeedMps,
+    MaxSpeedMps,
+    AverageHeartRateBpm,
+    MaxHeartRateBpm,
+    AverageCadenceRpm,
+    MaxCadenceRpm,
+    Calories,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(Activities::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(Activities::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(Activities::UserId).integer().not_null())
+                    .col(ColumnDef::new(Activities::ActivityImportId).integer().null())
+                    .col(ColumnDef::new(Activities::Title).string().not_null())
+                    .col(ColumnDef::new(Activities::Sport).string().not_null())
+                    .col(ColumnDef::new(Activities::Source).string().not_null())
+                    .col(ColumnDef::new(Activities::OriginalFilename).string().null())
+                    .col(ColumnDef::new(Activities::Format).string().null())
+                    .col(
+                        ColumnDef::new(Activities::StartedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(Activities::EndedAt)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
+                    .col(ColumnDef::new(Activities::DistanceMeters).double().null())
+                    .col(ColumnDef::new(Activities::MovingTimeSeconds).integer().null())
+                    .col(ColumnDef::new(Activities::TotalTimeSeconds).integer().null())
+                    .col(
+                        ColumnDef::new(Activities::ElevationGainMeters)
+                            .double()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(Activities::ElevationLossMeters)
+                            .double()
+                            .null(),
+                    )
+                    .col(ColumnDef::new(Activities::AverageSpeedMps).double().null())
+                    .col(ColumnDef::new(Activities::MaxSpeedMps).double().null())
+                    .col(
+                        ColumnDef::new(Activities::AverageHeartRateBpm)
+                            .integer()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(Activities::MaxHeartRateBpm)
+                            .integer()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(Activities::AverageCadenceRpm)
+                            .integer()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(Activities::MaxCadenceRpm)
+                            .integer()
+                            .null(),
+                    )
+                    .col(ColumnDef::new(Activities::Calories).integer().null())
+                    .col(
+                        ColumnDef::new(Activities::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::cust("CURRENT_TIMESTAMP")),
+                    )
+                    .col(
+                        ColumnDef::new(Activities::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::cust("CURRENT_TIMESTAMP")),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx-activities-user-started-at")
+                    .table(Activities::Table)
+                    .col(Activities::UserId)
+                    .col(Activities::StartedAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx-activities-activity-import-id")
+                    .table(Activities::Table)
+                    .col(Activities::ActivityImportId)
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(Activities::Table).to_owned())
+            .await
+    }
+}

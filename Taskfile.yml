@@ -1,0 +1,59 @@
+version: "3"
+
+vars:
+  PROJECT_NAME: "bike"
+
+tasks:
+  ui-next:deps:
+    dir: ui-next
+    cmds:
+      - pnpm install
+    status:
+      - test -f ui-next/package.json
+
+  ui-next:dev:
+    dir: ui-next
+    deps: [ui-next:deps]
+    cmds:
+      - pnpm run dev
+    status:
+      - test -f ui-next/package.json
+
+  api:dev:
+    cmds:
+      - cargo run --bin api
+
+  api:build:
+    cmds:
+      - cargo build --release --bin api
+
+  worker:dev:
+    cmds:
+      - cargo run --bin worker
+
+  migration:up:
+    dir: migration
+    cmds:
+      - cargo run -- up
+
+  test:
+    cmds:
+      - cargo test
+
+  openapi:react-query:
+    desc: Generate OpenAPI TypeScript definitions from running API
+    cmds:
+      - echo "Waiting for API to be ready..."
+      - |
+        OPENAPI_URL="${OPENAPI_URL:-http://localhost:3000/openapi.json}"
+        for i in {1..30}; do
+          status=$(curl -s -o /tmp/openapi.json -w "%{http_code}" "$OPENAPI_URL" || echo "000")
+          if [ "$status" = "200" ]; then
+            if node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('/tmp/openapi.json','utf8')); if(!j.openapi) process.exit(2);" >/dev/null 2>&1; then
+              break
+            fi
+          fi
+          sleep 2
+        done
+      - npx openapi-typescript /tmp/openapi.json --output ui-next/lib/openapi/react-query/api.d.ts
+      - rm -f /tmp/openapi.json
