@@ -29,6 +29,8 @@ pub struct Model {
     pub average_cadence_rpm: Option<i32>,
     pub max_cadence_rpm: Option<i32>,
     pub calories: Option<i32>,
+    pub estimated_ftp_watts: Option<i32>,
+    pub heart_rate_zones_json: Option<String>,
     pub derived_data_json: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

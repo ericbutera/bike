@@ -1,7 +1,9 @@
 use crate::config::Config;
 pub mod activities;
 pub mod activity_imports;
+pub mod fitness;
 pub mod segments;
+pub mod user_preferences;
 
 use crate::storage::AppStorage;
 use kaleido::auth;
@@ -35,6 +37,7 @@ pub fn routes() -> Router<Arc<AppStorage>> {
             "/api/activities/:id/regenerate",
             axum::routing::post(activities::regenerate_activity),
         )
+        .route("/api/fitness", axum::routing::get(fitness::get_fitness_freshness))
         .route(
             "/api/segments",
             axum::routing::get(segments::list_segments)
@@ -44,6 +47,11 @@ pub fn routes() -> Router<Arc<AppStorage>> {
         .route(
             "/api/segments/:id",
             axum::routing::get(segments::get_segment),
+        )
+        .route(
+            "/api/preferences",
+            axum::routing::get(user_preferences::get_preferences)
+                .put(user_preferences::update_preferences),
         )
         .route(
             "/api/activity-imports",

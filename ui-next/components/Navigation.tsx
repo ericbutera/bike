@@ -85,6 +85,9 @@ export default function Navigation() {
             <Link href="/segments" className="btn btn-ghost btn-sm">
               Segments
             </Link>
+            <Link href="/fitness" className="btn btn-ghost btn-sm">
+              Fitness
+            </Link>
             <Link href="/account" className="btn btn-ghost btn-sm">
               Account
             </Link>

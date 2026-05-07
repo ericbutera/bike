@@ -58,6 +58,17 @@ export type ActivitySegmentEffort = {
   start_route_point_index: number;
   end_route_point_index: number;
   overall_rank?: number | null;
+  personal_rank?: number | null;
+  personal_best_duration_seconds?: number | null;
+};
+
+export type ActivityHeartRateZone = {
+  zone: number;
+  label: string;
+  min_bpm?: number | null;
+  max_bpm?: number | null;
+  duration_seconds: number;
+  share_percent: number;
 };
 
 export type Activity = {
@@ -82,6 +93,8 @@ export type Activity = {
   average_cadence_rpm?: number | null;
   max_cadence_rpm?: number | null;
   calories?: number | null;
+  estimated_ftp_watts?: number | null;
+  heart_rate_zones?: ActivityHeartRateZone[] | null;
   laps?: ActivityLap[] | null;
   chart_points?: ActivityChartPoint[] | null;
   route_points?: ActivityRoutePoint[] | null;
@@ -113,9 +126,32 @@ export type Segment = {
   distance_meters?: number | null;
   effort_count: number;
   best_duration_seconds?: number | null;
+  current_user_pr_duration_seconds?: number | null;
   created_at: string;
   route_points?: ActivityRoutePoint[] | null;
   efforts?: SegmentEffort[] | null;
+};
+
+export type UserPreferences = {
+  unit_system: string;
+  estimated_ftp_watts?: number | null;
+  heart_rate_zone_bounds_bpm?: number[] | null;
+};
+
+export type FitnessFreshnessPoint = {
+  date: string;
+  training_load: number;
+  fitness: number;
+  fatigue: number;
+  form: number;
+};
+
+export type FitnessFreshnessResponse = {
+  start_date: string;
+  end_date: string;
+  fitness_window_days: number;
+  fatigue_window_days: number;
+  points: FitnessFreshnessPoint[];
 };
 
 export type ActivityImport = {
@@ -316,6 +352,60 @@ export function useUploadActivityImport() {
       queryClient.invalidateQueries({ queryKey: ["get", "/activity-imports"] });
 
       return result as ActivityImport;
+    },
+  };
+}
+
+export function useUserPreferences(opts?: { enabled?: boolean }) {
+  const response = $api.useQuery("get", "/preferences", {
+    options: { enabled: opts?.enabled ?? true },
+  });
+
+  return {
+    ...response,
+    data: (response.data ?? {
+      unit_system: "mixed",
+      estimated_ftp_watts: null,
+      heart_rate_zone_bounds_bpm: null,
+    }) as UserPreferences,
+  };
+}
+
+export function useFitnessFreshness(opts?: {
+  enabled?: boolean;
+  startDate?: string;
+  endDate?: string;
+}) {
+  const response = $api.useQuery("get", "/fitness", {
+    params: {
+      query: {
+        start_date: opts?.startDate,
+        end_date: opts?.endDate,
+      },
+    },
+    options: { enabled: opts?.enabled ?? true },
+  });
+
+  return {
+    ...response,
+    data: (response.data ?? null) as FitnessFreshnessResponse | null,
+  };
+}
+
+export function useUpdateUserPreferences() {
+  const queryClient = useQueryClient();
+  const mutation = $api.useMutation("put", "/preferences");
+
+  return {
+    ...mutation,
+    updateAsync: async (preferences: UserPreferences) => {
+      const result = await mutation.mutateAsync({ body: preferences });
+
+      await queryClient.invalidateQueries({
+        queryKey: ["get", "/preferences"],
+      });
+
+      return result as UserPreferences;
     },
   };
 }

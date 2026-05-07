@@ -12,6 +12,7 @@ pub mod openapi;
 pub mod segment_support;
 pub mod storage;
 pub mod tasks;
+pub mod training_profile;
 
 use crate::config::Config;
 use crate::openapi::ApiDoc;

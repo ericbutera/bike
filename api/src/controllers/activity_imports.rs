@@ -8,6 +8,10 @@ use crate::app_error::{ApiErrorResponse, AppError};
 use crate::config::Config;
 use crate::entities::{activities, activity_imports};
 use crate::storage::AppStorage;
+use crate::training_profile::{
+    load_training_profile, serialize_activity_heart_rate_zones,
+    summarize_heart_rate_zones,
+};
 use axum::extract::{Multipart, State};
 use axum::http::StatusCode;
 use axum::Json;
@@ -150,6 +154,15 @@ pub async fn upload_activity_import(
         &upload.format,
         &upload.bytes,
     )?;
+    let training_profile = load_training_profile(&state.db, user.id).await?;
+    let heart_rate_zones = summarize_heart_rate_zones(
+        &derived_data.route_points,
+        &derived_data.chart_points,
+        activity_draft.moving_time_seconds.or(activity_draft.total_time_seconds),
+        activity_draft.average_heart_rate_bpm,
+        training_profile.heart_rate_zone_bounds_bpm.as_deref(),
+    );
+    let heart_rate_zones_json = serialize_activity_heart_rate_zones(&heart_rate_zones)?;
     let derived_data_json = serialize_derived_activity_data(&derived_data)?;
     let relative_path = format!(
         "activity-imports/{}/{}.{}",
@@ -206,6 +219,8 @@ pub async fn upload_activity_import(
         average_cadence_rpm: Set(activity_draft.average_cadence_rpm),
         max_cadence_rpm: Set(activity_draft.max_cadence_rpm),
         calories: Set(activity_draft.calories),
+        estimated_ftp_watts: Set(training_profile.estimated_ftp_watts),
+        heart_rate_zones_json: Set(heart_rate_zones_json),
         derived_data_json: Set(Some(derived_data_json)),
         ..Default::default()
     }
@@ -450,6 +465,8 @@ mod tests {
             average_cadence_rpm: Some(86),
             max_cadence_rpm: Some(102),
             calories: Some(650),
+            estimated_ftp_watts: None,
+            heart_rate_zones_json: None,
             derived_data_json: Some(
                 serialize_derived_activity_data(&crate::activity_details::ActivityDerivedData {
                     laps: Vec::new(),

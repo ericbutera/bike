@@ -1,10 +1,27 @@
 "use client";
 
 import { auth } from "@ericbutera/kaleido";
-import { faPause, faPlay } from "@fortawesome/free-solid-svg-icons";
+import {
+  faCrown,
+  faPause,
+  faPlay,
+  faTrophy,
+} from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Area,
+  CartesianGrid,
+  ComposedChart,
+  Line,
+  ReferenceDot,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import {
   extractApiMessage,
   formatActivityTimestamp,
@@ -13,12 +30,14 @@ import {
   formatElevation,
   formatHeartRate,
   formatSpeed,
+  type UnitSystem,
 } from "../lib/activityFormatting";
 import {
   type ActivityRoutePoint,
   type SegmentEffort,
   useSegment,
 } from "../lib/queries";
+import { useUnitPreferences } from "../lib/unitPreferences";
 import AuthRequiredCard from "./AuthRequiredCard";
 import LeafletRouteMap from "./LeafletRouteMap";
 
@@ -35,6 +54,7 @@ const EFFORT_COLORS = [
   "#c2410c",
 ];
 const MAX_SELECTED_EFFORTS = 10;
+const EFFORTS_PER_PAGE = 25;
 
 const EFFORT_TIME_FILTERS = [
   { key: "all", label: "All" },
@@ -46,6 +66,19 @@ const EFFORT_TIME_FILTERS = [
 
 type ChartMetric = "speed" | "heartRate" | "elevation";
 type EffortTimeFilter = (typeof EFFORT_TIME_FILTERS)[number]["key"];
+
+type ComparisonChartRow = {
+  elapsedSeconds: number;
+  elevation?: number | null;
+  [key: string]: number | null | undefined;
+};
+
+type ComparisonSeries = {
+  effort: SegmentEffort;
+  color: string;
+  dataKey: string;
+  points: Array<{ x: number; y: number }>;
+};
 
 function startOfDay(value: Date) {
   const next = new Date(value);
@@ -103,6 +136,15 @@ function fastestEffort(efforts: SegmentEffort[] | null | undefined) {
 
     return best;
   }, null);
+}
+
+function overallEffortRanks(efforts: SegmentEffort[] | null | undefined) {
+  const ranked = [...(efforts ?? [])].sort(
+    (left, right) =>
+      left.duration_seconds - right.duration_seconds || left.id - right.id,
+  );
+
+  return new Map(ranked.map((effort, index) => [effort.id, index + 1]));
 }
 
 function interpolateRoutePoint(
@@ -244,16 +286,20 @@ function comparisonMarkerPoint(
   return interpolateRoutePointByProgress(segmentRoutePoints, progress);
 }
 
-function formatMetricValue(metric: ChartMetric, value?: number | null) {
+function formatMetricValue(
+  metric: ChartMetric,
+  value: number | null | undefined,
+  unitSystem: UnitSystem,
+) {
   if (metric === "speed") {
-    return formatSpeed(value);
+    return formatSpeed(value, unitSystem);
   }
 
   if (metric === "heartRate") {
     return formatHeartRate(value);
   }
 
-  return formatElevation(value);
+  return formatElevation(value, unitSystem);
 }
 
 function getMetricValue(metric: ChartMetric, point: ActivityRoutePoint) {
@@ -326,33 +372,171 @@ function metricLabel(metric: ChartMetric) {
       : "Elevation";
 }
 
-function interpolateSeriesPoint(
+function effortSeriesDataKey(effortId: number) {
+  return `effort_${effortId}`;
+}
+
+function interpolateComparisonValue(
   points: Array<{ x: number; y: number }>,
   elapsedSeconds: number,
+  clampOutsideRange = false,
 ) {
   if (points.length === 0) {
     return null;
   }
 
-  if (elapsedSeconds <= points[0].x) {
-    return points[0];
+  if (elapsedSeconds < points[0].x) {
+    return clampOutsideRange ? points[0].y : null;
+  }
+
+  if (elapsedSeconds > points[points.length - 1].x) {
+    return clampOutsideRange ? points[points.length - 1].y : null;
+  }
+
+  if (elapsedSeconds === points[0].x) {
+    return points[0].y;
   }
 
   for (let index = 1; index < points.length; index += 1) {
     const previous = points[index - 1];
     const current = points[index];
 
-    if (elapsedSeconds <= current.x) {
-      const span = Math.max(current.x - previous.x, 1);
+    if (elapsedSeconds === current.x) {
+      return current.y;
+    }
+
+    if (elapsedSeconds < current.x) {
+      const span = Math.max(current.x - previous.x, Number.EPSILON);
       const progress = (elapsedSeconds - previous.x) / span;
-      return {
-        x: elapsedSeconds,
-        y: previous.y + (current.y - previous.y) * progress,
-      };
+
+      return previous.y + (current.y - previous.y) * progress;
     }
   }
 
-  return points.at(-1) ?? null;
+  return points.at(-1)?.y ?? null;
+}
+
+function buildComparisonChartRowAtX(
+  elapsedSeconds: number,
+  series: ComparisonSeries[],
+  elevationPoints: Array<{ x: number; y: number }>,
+  clampOutsideRange = false,
+) {
+  const row: ComparisonChartRow = {
+    elapsedSeconds,
+    elevation: interpolateComparisonValue(
+      elevationPoints,
+      elapsedSeconds,
+      clampOutsideRange,
+    ),
+  };
+
+  for (const entry of series) {
+    row[entry.dataKey] = interpolateComparisonValue(
+      entry.points,
+      elapsedSeconds,
+      clampOutsideRange,
+    );
+  }
+
+  return row;
+}
+
+function buildComparisonChartRows(
+  series: ComparisonSeries[],
+  elevationPoints: Array<{ x: number; y: number }>,
+) {
+  const xValues = new Set<number>();
+
+  for (const point of elevationPoints) {
+    xValues.add(point.x);
+  }
+
+  for (const entry of series) {
+    for (const point of entry.points) {
+      xValues.add(point.x);
+    }
+  }
+
+  return Array.from(xValues)
+    .sort((left, right) => left - right)
+    .map((elapsedSeconds) =>
+      buildComparisonChartRowAtX(elapsedSeconds, series, elevationPoints),
+    );
+}
+
+function ComparisonChartTooltip({
+  active,
+  label,
+  payload,
+  metric,
+  series,
+  unitSystem,
+}: {
+  active?: boolean;
+  label?: number;
+  payload?: Array<{
+    color?: string;
+    dataKey?: string;
+    value?: number | null;
+  }>;
+  metric: ChartMetric;
+  series: ComparisonSeries[];
+  unitSystem: UnitSystem;
+}) {
+  if (!active || typeof label !== "number") {
+    return null;
+  }
+
+  const elevationValue =
+    payload?.find((entry) => entry.dataKey === "elevation")?.value ?? null;
+
+  return (
+    <div className="rounded-box border border-base-300 bg-base-100 px-3 py-3 shadow-lg">
+      <p className="text-sm font-semibold text-base-content">
+        {formatDuration(Math.round(label))}
+      </p>
+      <p className="mt-1 text-sm text-base-content/70">
+        {`Elevation ${formatElevation(elevationValue, unitSystem)}`}
+      </p>
+      <div className="mt-2 space-y-1.5 text-sm text-base-content/75">
+        {series.map((entry) => {
+          const value =
+            payload?.find((item) => item.dataKey === entry.dataKey)?.value ??
+            null;
+
+          return (
+            <div
+              key={entry.effort.id}
+              className="rounded-box border border-base-300 bg-base-200/70 px-2 py-2"
+              style={{ borderLeftColor: entry.color, borderLeftWidth: 4 }}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span
+                      aria-hidden
+                      className="inline-block h-2.5 w-2.5 rounded-full"
+                      style={{ backgroundColor: entry.color }}
+                    />
+                    <span className="font-medium text-base-content">
+                      {entry.effort.rider_name}
+                    </span>
+                  </div>
+                  <div className="truncate pl-4 text-xs text-base-content/65">
+                    {entry.effort.activity_title}
+                  </div>
+                </div>
+                <span className="whitespace-nowrap">
+                  {formatMetricValue(metric, value, unitSystem)}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function RouteComparisonMap({
@@ -361,6 +545,10 @@ function RouteComparisonMap({
   playbackSeconds,
   maxDuration,
   isPlaying,
+  focusedEffortId,
+  pinnedEffortId,
+  onHoverEffort,
+  onTogglePinnedEffort,
   onTogglePlayback,
   onSeek,
 }: {
@@ -369,6 +557,10 @@ function RouteComparisonMap({
   playbackSeconds: number;
   maxDuration: number;
   isPlaying: boolean;
+  focusedEffortId: number | null;
+  pinnedEffortId: number | null;
+  onHoverEffort: (effortId: number | null) => void;
+  onTogglePinnedEffort: (effortId: number) => void;
   onTogglePlayback: () => void;
   onSeek: (value: number) => void;
 }) {
@@ -381,11 +573,14 @@ function RouteComparisonMap({
         return null;
       }
 
+      const isDimmed = focusedEffortId != null && effort.id !== focusedEffortId;
+
       return {
         id: effort.id,
         color: EFFORT_COLORS[index % EFFORT_COLORS.length],
         point,
-        label: effort.activity_title,
+        label: `${effort.rider_name} · ${formatDuration(effort.duration_seconds)}`,
+        isDimmed,
       };
     })
     .filter(
@@ -396,6 +591,7 @@ function RouteComparisonMap({
         color: string;
         point: ActivityRoutePoint;
         label: string;
+        isDimmed: boolean;
       } => marker !== null,
     );
 
@@ -422,6 +618,7 @@ function RouteComparisonMap({
                 id: String(marker.id),
                 point: marker.point,
                 color: marker.color,
+                opacity: marker.isDimmed ? 0.28 : 1,
               }))}
               ariaLabel="Segment comparison map"
               emptyMessage="Segment route geometry is not available yet."
@@ -475,9 +672,27 @@ function RouteComparisonMap({
 
         <div className="mt-4 flex flex-wrap gap-2">
           {selectedEfforts.map((effort, index) => (
-            <div
+            <button
               key={effort.id}
-              className="badge badge-outline gap-2 px-3 py-3"
+              type="button"
+              className={`badge badge-outline gap-2 px-3 py-3 transition-opacity ${focusedEffortId != null && focusedEffortId !== effort.id ? "opacity-35" : "opacity-100"}`}
+              aria-pressed={pinnedEffortId === effort.id}
+              title={`${effort.rider_name} · ${effort.activity_title}`}
+              onMouseEnter={() => {
+                onHoverEffort(effort.id);
+              }}
+              onMouseLeave={() => {
+                onHoverEffort(null);
+              }}
+              onFocus={() => {
+                onHoverEffort(effort.id);
+              }}
+              onBlur={() => {
+                onHoverEffort(null);
+              }}
+              onClick={() => {
+                onTogglePinnedEffort(effort.id);
+              }}
             >
               <span
                 className="inline-block h-2.5 w-2.5 rounded-full"
@@ -485,8 +700,8 @@ function RouteComparisonMap({
                   backgroundColor: EFFORT_COLORS[index % EFFORT_COLORS.length],
                 }}
               />
-              <span>{effort.activity_title}</span>
-            </div>
+              <span>{`${effort.rider_name} · ${formatDuration(effort.duration_seconds)}`}</span>
+            </button>
           ))}
         </div>
       </div>
@@ -499,20 +714,35 @@ function ComparisonChart({
   routePoints,
   selectedEfforts,
   playbackSeconds,
+  focusedEffortId,
+  pinnedEffortId,
+  unitSystem,
+  onHoverEffort,
+  onTogglePinnedEffort,
   onMetricChange,
 }: {
   metric: ChartMetric;
   routePoints: ActivityRoutePoint[] | null | undefined;
   selectedEfforts: SegmentEffort[];
   playbackSeconds: number;
+  focusedEffortId: number | null;
+  pinnedEffortId: number | null;
+  unitSystem: UnitSystem;
+  onHoverEffort: (effortId: number | null) => void;
+  onTogglePinnedEffort: (effortId: number) => void;
   onMetricChange: (value: ChartMetric) => void;
 }) {
-  const [hoveredSeconds, setHoveredSeconds] = useState<number | null>(null);
-  const series = selectedEfforts.map((effort, index) => ({
-    effort,
-    color: EFFORT_COLORS[index % EFFORT_COLORS.length],
-    points: buildChartSeries(metric, effort),
-  }));
+  const [hoveredRow, setHoveredRow] = useState<ComparisonChartRow | null>(null);
+  const series = useMemo<ComparisonSeries[]>(
+    () =>
+      selectedEfforts.map((effort, index) => ({
+        effort,
+        color: EFFORT_COLORS[index % EFFORT_COLORS.length],
+        dataKey: effortSeriesDataKey(effort.id),
+        points: buildChartSeries(metric, effort),
+      })),
+    [metric, selectedEfforts],
+  );
   const allPoints = series.flatMap((entry) => entry.points);
 
   if (allPoints.length < 2) {
@@ -524,38 +754,17 @@ function ComparisonChart({
     );
   }
 
-  const width = 680;
-  const height = 172;
-  const leftPadding = 44;
-  const rightPadding = 44;
-  const topPadding = 18;
-  const bottomPadding = 28;
-  const chartWidth = width - leftPadding - rightPadding;
-  const chartHeight = height - topPadding - bottomPadding;
   const maxX = Math.max(...allPoints.map((point) => point.x), 1);
   const elevationPoints = buildElevationBackdropSeries(routePoints, maxX);
-  const minY = Math.min(...allPoints.map((point) => point.y));
-  const maxY = Math.max(...allPoints.map((point) => point.y));
-  const yRange = Math.max(maxY - minY, 1);
-  const minElevation = elevationPoints.length > 0
-    ? Math.min(...elevationPoints.map((point) => point.y))
-    : 0;
-  const maxElevation = elevationPoints.length > 0
-    ? Math.max(...elevationPoints.map((point) => point.y))
-    : 0;
-  const elevationRange = Math.max(maxElevation - minElevation, 1);
-  const displaySeconds = hoveredSeconds ?? playbackSeconds;
-  const toSvgX = (value: number) =>
-    leftPadding + (value / maxX) * chartWidth;
-  const toSvgY = (value: number) =>
-    topPadding + (1 - (value - minY) / yRange) * chartHeight;
-  const toElevationSvgY = (value: number) =>
-    topPadding + (1 - (value - minElevation) / elevationRange) * chartHeight;
-  const hoveredElevationPoint = interpolateSeriesPoint(
+  const chartRows = buildComparisonChartRows(series, elevationPoints);
+  const playbackRow = buildComparisonChartRowAtX(
+    Math.min(playbackSeconds, maxX),
+    series,
     elevationPoints,
-    displaySeconds,
+    true,
   );
-
+  const displayRow = hoveredRow ?? playbackRow;
+  const displaySeconds = displayRow.elapsedSeconds;
   return (
     <div className="card bg-base-100 shadow-xl">
       <div className="card-body">
@@ -568,231 +777,271 @@ function ComparisonChart({
             </p>
           </div>
           <div className="join">
-            {(["speed", "heartRate"] as ChartMetric[]).map(
-              (nextMetric) => (
-                <button
-                  key={nextMetric}
-                  type="button"
-                  className={`join-item btn btn-sm ${metric === nextMetric ? "btn-primary" : "btn-ghost"}`}
-                  onClick={() => {
-                    onMetricChange(nextMetric);
-                  }}
-                >
-                  {nextMetric === "heartRate" ? "Heart rate" : nextMetric}
-                </button>
-              ),
-            )}
+            {(["speed", "heartRate"] as ChartMetric[]).map((nextMetric) => (
+              <button
+                key={nextMetric}
+                type="button"
+                className={`join-item btn btn-sm ${metric === nextMetric ? "btn-primary" : "btn-ghost"}`}
+                onClick={() => {
+                  onMetricChange(nextMetric);
+                }}
+              >
+                {nextMetric === "heartRate" ? "Heart rate" : nextMetric}
+              </button>
+            ))}
           </div>
         </div>
 
         <div className="mt-5 overflow-hidden rounded-box border border-base-300 bg-base-200 p-3">
-          <svg
-            viewBox={`0 0 ${width} ${height}`}
-            preserveAspectRatio="none"
-            className="block h-40 w-full"
-            role="img"
-            aria-label="Segment comparison chart"
-            onMouseLeave={() => {
-              setHoveredSeconds(null);
-            }}
-            onMouseMove={(event) => {
-              const rect = event.currentTarget.getBoundingClientRect();
-              const x = ((event.clientX - rect.left) / rect.width) * width;
-              const clampedX = Math.min(
-                Math.max(x, leftPadding),
-                width - rightPadding,
-              );
-              const progress = (clampedX - leftPadding) / chartWidth;
-              setHoveredSeconds(progress * maxX);
-            }}
-          >
-            {[0, 0.25, 0.5, 0.75, 1].map((fraction) => {
-              const y = topPadding + fraction * chartHeight;
-              return (
-                <line
-                  key={fraction}
-                  x1={leftPadding}
-                  y1={y}
-                  x2={width - rightPadding}
-                  y2={y}
-                  stroke="#d6d3d1"
-                  strokeDasharray="4 6"
-                />
-              );
-            })}
+          <div role="img" aria-label="Segment comparison chart">
+            <div className="h-[256px] w-full">
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+                minWidth={320}
+                minHeight={256}
+              >
+                <ComposedChart
+                  data={chartRows}
+                  margin={{ top: 12, right: 8, bottom: 12, left: 8 }}
+                  onMouseLeave={() => {
+                    setHoveredRow(null);
+                  }}
+                  onMouseMove={(state) => {
+                    const nextIndex = Number(state?.activeTooltipIndex);
 
-            {elevationPoints.length > 1 ? (
-              <g>
-                <polygon
-                  fill="currentColor"
-                  className="text-success/15"
-                  points={[
-                    `${leftPadding},${height - bottomPadding}`,
-                    ...elevationPoints.map(
-                      (point) =>
-                        `${toSvgX(point.x).toFixed(1)},${toElevationSvgY(point.y).toFixed(1)}`,
-                    ),
-                    `${width - rightPadding},${height - bottomPadding}`,
-                  ].join(" ")}
-                />
-                <polyline
-                  fill="none"
-                  stroke="currentColor"
-                  className="text-success/35"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  points={elevationPoints
-                    .map(
-                      (point) =>
-                        `${toSvgX(point.x).toFixed(1)},${toElevationSvgY(point.y).toFixed(1)}`,
-                    )
-                    .join(" ")}
-                />
-              </g>
-            ) : null}
-
-            <text
-              x={leftPadding}
-              y={12}
-              className="fill-current text-[10px] text-base-content/65"
-            >
-              {metricLabel(metric)}
-            </text>
-            <text
-              x={width - rightPadding}
-              y={12}
-              textAnchor="end"
-              className="fill-current text-[10px] text-base-content/65"
-            >
-              Elevation
-            </text>
-            <text
-              x={leftPadding}
-              y={topPadding - 4}
-              className="fill-current text-[10px] text-base-content/60"
-            >
-              {formatMetricValue(metric, maxY)}
-            </text>
-            <text
-              x={leftPadding}
-              y={height - bottomPadding + 14}
-              className="fill-current text-[10px] text-base-content/60"
-            >
-              {formatMetricValue(metric, minY)}
-            </text>
-            <text
-              x={width - rightPadding}
-              y={topPadding - 4}
-              textAnchor="end"
-              className="fill-current text-[10px] text-base-content/60"
-            >
-              {formatElevation(maxElevation)}
-            </text>
-            <text
-              x={width - rightPadding}
-              y={height - bottomPadding + 14}
-              textAnchor="end"
-              className="fill-current text-[10px] text-base-content/60"
-            >
-              {formatElevation(minElevation)}
-            </text>
-            <text
-              x={width / 2}
-              y={height - 6}
-              textAnchor="middle"
-              className="fill-current text-[10px] text-base-content/65"
-            >
-              Elapsed time
-            </text>
-
-            {series.map((entry) => {
-              const path = entry.points
-                .map(
-                  (point) =>
-                    `${toSvgX(point.x).toFixed(1)},${toSvgY(point.y).toFixed(1)}`,
-                )
-                .join(" ");
-              const currentPoint = interpolateSeriesPoint(
-                entry.points,
-                displaySeconds,
-              );
-
-              return (
-                <g key={entry.effort.id}>
-                  <polyline
-                    fill="none"
-                    stroke={entry.color}
-                    strokeWidth={metric === "speed" ? "2.5" : "3.5"}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    points={path}
+                    if (
+                      state?.isTooltipActive &&
+                      Number.isInteger(nextIndex) &&
+                      nextIndex >= 0 &&
+                      nextIndex < chartRows.length
+                    ) {
+                      setHoveredRow(chartRows[nextIndex]);
+                    } else {
+                      setHoveredRow(null);
+                    }
+                  }}
+                >
+                  <CartesianGrid
+                    vertical={false}
+                    stroke="var(--color-base-content)"
+                    strokeOpacity={0.12}
                   />
-                  {currentPoint ? (
-                    <circle
-                      cx={toSvgX(currentPoint.x)}
-                      cy={toSvgY(currentPoint.y)}
-                      r="6"
-                      fill={entry.color}
+                  <XAxis
+                    axisLine={false}
+                    dataKey="elapsedSeconds"
+                    domain={[0, maxX]}
+                    label={{
+                      value: "Elapsed time",
+                      position: "insideBottom",
+                      offset: -6,
+                    }}
+                    tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
+                    tickFormatter={(value: number) =>
+                      formatDuration(Math.round(value))
+                    }
+                    tickLine={false}
+                    type="number"
+                  />
+                  <YAxis
+                    axisLine={false}
+                    label={{
+                      angle: -90,
+                      fill: "var(--color-base-content)",
+                      fontSize: 10,
+                      position: "insideLeft",
+                      style: { opacity: 0.65 },
+                      value: metricLabel(metric),
+                    }}
+                    tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
+                    tickFormatter={(value: number) =>
+                      formatMetricValue(metric, value, unitSystem)
+                    }
+                    tickLine={false}
+                    tickMargin={10}
+                    width={74}
+                    yAxisId="metric"
+                  />
+                  <YAxis
+                    axisLine={false}
+                    label={{
+                      angle: 90,
+                      fill: "var(--color-base-content)",
+                      fontSize: 10,
+                      position: "insideRight",
+                      style: { opacity: 0.65 },
+                      value: "Elevation",
+                    }}
+                    orientation="right"
+                    tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
+                    tickFormatter={(value: number) =>
+                      formatElevation(value, unitSystem)
+                    }
+                    tickLine={false}
+                    tickMargin={10}
+                    width={74}
+                    yAxisId="elevation"
+                  />
+                  <Tooltip
+                    content={
+                      <ComparisonChartTooltip
+                        metric={metric}
+                        series={series}
+                        unitSystem={unitSystem}
+                      />
+                    }
+                    cursor={{
+                      stroke: "#78716c",
+                      strokeDasharray: "4 4",
+                      strokeOpacity: 0.9,
+                    }}
+                  />
+
+                  {elevationPoints.length > 1 ? (
+                    <Area
+                      type="linear"
+                      dataKey="elevation"
+                      yAxisId="elevation"
+                      stroke="var(--color-success)"
+                      fill="var(--color-success)"
+                      fillOpacity={0.15}
+                      strokeOpacity={0.35}
+                      strokeWidth={2}
+                      dot={false}
+                      connectNulls
                     />
                   ) : null}
-                </g>
-              );
-            })}
 
-            {displaySeconds > 0 ? (
-              <line
-                x1={toSvgX(displaySeconds)}
-                y1={topPadding}
-                x2={toSvgX(displaySeconds)}
-                y2={height - bottomPadding}
-                stroke="#78716c"
-                strokeDasharray="4 4"
-              />
-            ) : null}
+                  {series.map((entry) => (
+                    <Line
+                      key={entry.effort.id}
+                      type="linear"
+                      dataKey={entry.dataKey}
+                      yAxisId="metric"
+                      stroke={entry.color}
+                      strokeWidth={metric === "speed" ? 2.5 : 3.5}
+                      strokeOpacity={
+                        focusedEffortId != null &&
+                        focusedEffortId !== entry.effort.id
+                          ? 0.24
+                          : 1
+                      }
+                      dot={false}
+                      activeDot={{
+                        r: 6,
+                        fill: entry.color,
+                        fillOpacity:
+                          focusedEffortId != null &&
+                          focusedEffortId !== entry.effort.id
+                            ? 0.24
+                            : 1,
+                        stroke: "var(--color-base-100)",
+                        strokeOpacity:
+                          focusedEffortId != null &&
+                          focusedEffortId !== entry.effort.id
+                            ? 0.4
+                            : 1,
+                        strokeWidth: 1.25,
+                      }}
+                      connectNulls
+                    />
+                  ))}
 
-            {[0, 0.5, 1].map((fraction) => {
-              const value = maxX * fraction;
-              return (
-                <text
-                  key={`x-tick-${fraction}`}
-                  x={toSvgX(value)}
-                  y={height - bottomPadding + 14}
-                  textAnchor={fraction === 0 ? "start" : fraction === 1 ? "end" : "middle"}
-                  className="fill-current text-[10px] text-base-content/60"
-                >
-                  {formatDuration(Math.round(value))}
-                </text>
-              );
-            })}
-          </svg>
+                  {!hoveredRow && displaySeconds > 0 ? (
+                    <ReferenceLine
+                      x={displaySeconds}
+                      stroke="#78716c"
+                      strokeDasharray="4 4"
+                    />
+                  ) : null}
+
+                  {!hoveredRow
+                    ? series.map((entry) => {
+                        const value = displayRow[entry.dataKey];
+
+                        if (typeof value !== "number") {
+                          return null;
+                        }
+
+                        return (
+                          <ReferenceDot
+                            key={`${entry.effort.id}-marker`}
+                            x={displaySeconds}
+                            y={value}
+                            fill={entry.color}
+                            fillOpacity={
+                              focusedEffortId != null &&
+                              focusedEffortId !== entry.effort.id
+                                ? 0.24
+                                : 1
+                            }
+                            r={6}
+                            stroke="var(--color-base-100)"
+                            strokeOpacity={
+                              focusedEffortId != null &&
+                              focusedEffortId !== entry.effort.id
+                                ? 0.4
+                                : 1
+                            }
+                            strokeWidth={1.25}
+                            yAxisId="metric"
+                          />
+                        );
+                      })
+                    : null}
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         </div>
 
         <div className="mt-4 flex flex-wrap gap-3">
-          <div className="card bg-base-200 shadow-sm">
-            <div className="card-body p-3 text-sm">
-              <div className="font-semibold text-base-content">Hover point</div>
-              <div className="mt-1">
-                {formatDuration(Math.round(displaySeconds))}
-              </div>
-              <div className="mt-1 text-base-content/70">
-                Elevation {hoveredElevationPoint ? formatElevation(hoveredElevationPoint.y) : "--"}
-              </div>
-            </div>
-          </div>
           {series.map((entry) => {
-            const point = interpolateSeriesPoint(entry.points, displaySeconds);
+            const value = displayRow[entry.dataKey];
             return (
-              <div key={entry.effort.id} className="card bg-base-200 shadow-sm">
+              <button
+                key={entry.effort.id}
+                type="button"
+                className={`card border border-base-300 bg-base-200 text-left shadow-sm transition-opacity ${focusedEffortId != null && focusedEffortId !== entry.effort.id ? "opacity-35" : "opacity-100"}`}
+                aria-pressed={pinnedEffortId === entry.effort.id}
+                style={{ borderLeftColor: entry.color, borderLeftWidth: 4 }}
+                onMouseEnter={() => {
+                  onHoverEffort(entry.effort.id);
+                }}
+                onMouseLeave={() => {
+                  onHoverEffort(null);
+                }}
+                onFocus={() => {
+                  onHoverEffort(entry.effort.id);
+                }}
+                onBlur={() => {
+                  onHoverEffort(null);
+                }}
+                onClick={() => {
+                  onTogglePinnedEffort(entry.effort.id);
+                }}
+              >
                 <div className="card-body p-3 text-sm">
-                  <div className="font-semibold text-base-content">
+                  <div className="flex items-center gap-2">
+                    <span
+                      aria-hidden
+                      className="inline-block h-2.5 w-2.5 rounded-full"
+                      style={{ backgroundColor: entry.color }}
+                    />
+                    <div className="font-semibold text-base-content">
+                      {entry.effort.rider_name}
+                    </div>
+                  </div>
+                  <div className="mt-1 text-xs text-base-content/65">
                     {entry.effort.activity_title}
                   </div>
-                  <div className="mt-1">
-                    {point ? formatMetricValue(metric, point.y) : "--"}
+                  <div className="mt-2">
+                    {typeof value === "number"
+                      ? formatMetricValue(metric, value, unitSystem)
+                      : "--"}
                   </div>
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
@@ -808,11 +1057,15 @@ export default function SegmentDetailPanel({
 }) {
   const authApi = auth.useAuthApi();
   const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
+  const { unitSystem } = useUnitPreferences();
   const segmentQuery = useSegment(user ? segmentId : null);
   const [selectedEffortIds, setSelectedEffortIds] = useState<number[]>([]);
   const [playbackSeconds, setPlaybackSeconds] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [metric, setMetric] = useState<ChartMetric>("speed");
+  const [hoveredEffortId, setHoveredEffortId] = useState<number | null>(null);
+  const [pinnedEffortId, setPinnedEffortId] = useState<number | null>(null);
+  const [effortsPage, setEffortsPage] = useState(1);
   const [effortTimeFilter, setEffortTimeFilter] =
     useState<EffortTimeFilter>("all");
   const segment = segmentQuery.data;
@@ -823,21 +1076,34 @@ export default function SegmentDetailPanel({
   );
   const currentUserId = user?.id ?? null;
   const currentUserName = user?.name?.trim() || null;
+  const overallRankByEffortId = overallEffortRanks(allEfforts);
   const overallKom = fastestEffort(allEfforts);
-  const currentUserPr = currentUserId != null
-    ? fastestEffort(
-        allEfforts.filter((effort) => effort.rider_user_id === currentUserId),
-      )
-    : currentUserName
-    ? fastestEffort(
-        allEfforts.filter((effort) => effort.rider_name === currentUserName),
-      )
-    : allEfforts.length > 0 &&
-        new Set(allEfforts.map((effort) => effort.rider_name)).size === 1
-      ? fastestEffort(allEfforts)
-      : null;
+  const currentUserPr =
+    currentUserId != null
+      ? fastestEffort(
+          allEfforts.filter((effort) => effort.rider_user_id === currentUserId),
+        )
+      : currentUserName
+        ? fastestEffort(
+            allEfforts.filter(
+              (effort) => effort.rider_name === currentUserName,
+            ),
+          )
+        : allEfforts.length > 0 &&
+            new Set(allEfforts.map((effort) => effort.rider_name)).size === 1
+          ? fastestEffort(allEfforts)
+          : null;
   const selectedEfforts = visibleEfforts.filter((effort) =>
     selectedEffortIds.includes(effort.id),
+  );
+  const focusedEffortId = hoveredEffortId ?? pinnedEffortId;
+  const effortPageCount = Math.max(
+    1,
+    Math.ceil(visibleEfforts.length / EFFORTS_PER_PAGE),
+  );
+  const paginatedEfforts = visibleEfforts.slice(
+    (effortsPage - 1) * EFFORTS_PER_PAGE,
+    effortsPage * EFFORTS_PER_PAGE,
   );
   const maxDuration = selectedEfforts.reduce(
     (max, effort) => Math.max(max, effort.duration_seconds),
@@ -869,6 +1135,34 @@ export default function SegmentDetailPanel({
         .map((effort) => effort.id);
     });
   }, [segment?.id, segment?.efforts, effortTimeFilter]);
+
+  useEffect(() => {
+    if (
+      pinnedEffortId != null &&
+      !selectedEfforts.some((effort) => effort.id === pinnedEffortId)
+    ) {
+      setPinnedEffortId(null);
+    }
+
+    if (
+      hoveredEffortId != null &&
+      !selectedEfforts.some((effort) => effort.id === hoveredEffortId)
+    ) {
+      setHoveredEffortId(null);
+    }
+  }, [hoveredEffortId, pinnedEffortId, selectedEfforts]);
+
+  useEffect(() => {
+    setEffortsPage(1);
+  }, [effortTimeFilter, segment?.id]);
+
+  useEffect(() => {
+    setEffortsPage((current) => Math.min(current, effortPageCount));
+  }, [effortPageCount]);
+
+  function togglePinnedEffort(effortId: number) {
+    setPinnedEffortId((current) => (current === effortId ? null : effortId));
+  }
 
   useEffect(() => {
     if (maxDuration <= 0) {
@@ -961,11 +1255,17 @@ export default function SegmentDetailPanel({
             <div className="stat">
               <div className="stat-title">Distance</div>
               <div className="stat-value text-xl">
-                {formatDistance(segment.distance_meters)}
+                {formatDistance(segment.distance_meters, unitSystem)}
               </div>
             </div>
             <div className="stat">
-              <div className="stat-title">Overall KOM</div>
+              <div className="stat-title flex items-center gap-1">
+                <FontAwesomeIcon
+                  icon={faCrown}
+                  className="h-3.5 w-3.5 text-warning"
+                />
+                <span>Overall KOM</span>
+              </div>
               <div className="stat-value text-xl">
                 {formatDuration(overallKom?.duration_seconds ?? null)}
               </div>
@@ -998,34 +1298,6 @@ export default function SegmentDetailPanel({
         </div>
       </div>
 
-      <RouteComparisonMap
-        routePoints={segment.route_points}
-        selectedEfforts={selectedEfforts}
-        playbackSeconds={playbackSeconds}
-        maxDuration={maxDuration}
-        isPlaying={isPlaying}
-        onTogglePlayback={() => {
-          if (playbackSeconds >= maxDuration) {
-            setPlaybackSeconds(0);
-          }
-          setIsPlaying((current) => !current);
-        }}
-        onSeek={(value) => {
-          setPlaybackSeconds(value);
-          setIsPlaying(false);
-        }}
-      />
-
-      <ComparisonChart
-        metric={metric}
-        routePoints={segment.route_points}
-        selectedEfforts={selectedEfforts}
-        playbackSeconds={playbackSeconds}
-        onMetricChange={(value) => {
-          setMetric(value);
-        }}
-      />
-
       <div className="card bg-base-200 shadow-sm">
         <div className="card-body">
           <h2 className="card-title text-xl">Efforts</h2>
@@ -1036,7 +1308,8 @@ export default function SegmentDetailPanel({
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-box bg-base-100 p-3">
             <div className="text-sm text-base-content/70">
-              {visibleEfforts.length} of {(segment.efforts ?? []).length} efforts
+              {visibleEfforts.length} of {(segment.efforts ?? []).length}{" "}
+              efforts
             </div>
             <div className="join">
               {EFFORT_TIME_FILTERS.map((filter) => (
@@ -1055,87 +1328,138 @@ export default function SegmentDetailPanel({
           </div>
 
           {visibleEfforts.length > 0 ? (
-            <div className="mt-5 overflow-x-auto rounded-box bg-base-100">
-              <table className="table table-sm">
-                <thead>
-                  <tr>
-                    <th className="w-12"></th>
-                    <th>Time</th>
-                    <th>Rider</th>
-                    <th>Date</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleEfforts.map((effort) => {
-                    const checked = selectedEffortIds.includes(effort.id);
-                    const isOverallKom = overallKom?.id === effort.id;
-                    const isCurrentUserPr = currentUserPr?.id === effort.id;
-                    const rowClassName = isCurrentUserPr
-                      ? "bg-primary/10"
-                      : isOverallKom
-                        ? "bg-warning/10"
-                        : checked
-                          ? "bg-base-200/70"
-                          : undefined;
+            <>
+              <div className="mt-5 overflow-x-auto rounded-box bg-base-100">
+                <table className="table table-sm">
+                  <thead>
+                    <tr>
+                      <th className="w-12"></th>
+                      <th>Time</th>
+                      <th>Rider</th>
+                      <th>Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedEfforts.map((effort) => {
+                      const checked = selectedEffortIds.includes(effort.id);
+                      const overallRank =
+                        overallRankByEffortId.get(effort.id) ?? null;
+                      const isOverallKom = overallKom?.id === effort.id;
+                      const isCurrentUserPr = currentUserPr?.id === effort.id;
+                      const rowClassName = isCurrentUserPr
+                        ? "bg-primary/10"
+                        : isOverallKom
+                          ? "bg-warning/10"
+                          : checked
+                            ? "bg-base-200/70"
+                            : undefined;
 
-                    return (
-                      <tr key={effort.id} className={rowClassName}>
-                        <td>
-                          <input
-                            type="checkbox"
-                            className="checkbox checkbox-sm"
-                            checked={checked}
-                            aria-label={`Select ${effort.activity_title}`}
-                            onChange={(event) => {
-                              const isChecked = event.target.checked;
-                              setSelectedEffortIds((current) => {
-                                if (isChecked) {
-                                  if (current.includes(effort.id)) {
-                                    return current;
+                      return (
+                        <tr key={effort.id} className={rowClassName}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              className="checkbox checkbox-sm"
+                              checked={checked}
+                              aria-label={`Select ${effort.activity_title}`}
+                              onChange={(event) => {
+                                const isChecked = event.target.checked;
+                                setSelectedEffortIds((current) => {
+                                  if (isChecked) {
+                                    if (current.includes(effort.id)) {
+                                      return current;
+                                    }
+
+                                    return [...current, effort.id].slice(
+                                      0,
+                                      MAX_SELECTED_EFFORTS,
+                                    );
                                   }
 
-                                  return [...current, effort.id].slice(
-                                    0,
-                                    MAX_SELECTED_EFFORTS,
+                                  return current.filter(
+                                    (id) => id !== effort.id,
                                   );
-                                }
-
-                                return current.filter((id) => id !== effort.id);
-                              });
-                            }}
-                          />
-                        </td>
-                        <td className="font-semibold text-base-content">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Link
-                              href={`/activities/${effort.activity_id}`}
-                              className="transition hover:text-primary"
-                              title={effort.activity_title}
-                            >
-                              {formatDuration(effort.duration_seconds)}
-                            </Link>
-                            {isOverallKom ? (
-                              <span className="badge badge-warning badge-xs">
-                                KOM
-                              </span>
-                            ) : null}
-                            {isCurrentUserPr ? (
-                              <span className="badge badge-primary badge-xs">
-                                PR
-                              </span>
-                            ) : null}
-                          </div>
-                        </td>
-                        <td>{effort.rider_name}</td>
-                        <td className="whitespace-nowrap text-base-content/65">
-                          {formatActivityTimestamp(effort.activity_started_at)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                                });
+                              }}
+                            />
+                          </td>
+                          <td className="font-semibold text-base-content">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Link
+                                href={`/activities/${effort.activity_id}`}
+                                className="transition hover:text-primary"
+                                title={effort.activity_title}
+                              >
+                                {formatDuration(effort.duration_seconds)}
+                              </Link>
+                              {isOverallKom ? (
+                                <span className="badge badge-warning badge-xs gap-1">
+                                  <FontAwesomeIcon
+                                    icon={faCrown}
+                                    className="h-3 w-3"
+                                  />
+                                  KOM
+                                </span>
+                              ) : overallRank != null && overallRank <= 10 ? (
+                                <span className="badge badge-warning badge-outline badge-xs gap-1">
+                                  <FontAwesomeIcon
+                                    icon={faTrophy}
+                                    className="h-3 w-3"
+                                  />
+                                  #{overallRank}
+                                </span>
+                              ) : null}
+                              {isCurrentUserPr ? (
+                                <span className="badge badge-primary badge-xs">
+                                  PR
+                                </span>
+                              ) : null}
+                            </div>
+                          </td>
+                          <td>{effort.rider_name}</td>
+                          <td className="whitespace-nowrap text-base-content/65">
+                            {formatActivityTimestamp(
+                              effort.activity_started_at,
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {effortPageCount > 1 ? (
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-sm text-base-content/70">
+                    {`Page ${effortsPage} of ${effortPageCount} · ${EFFORTS_PER_PAGE} per page`}
+                  </div>
+                  <div className="join">
+                    <button
+                      type="button"
+                      className="join-item btn btn-sm btn-ghost"
+                      disabled={effortsPage === 1}
+                      onClick={() => {
+                        setEffortsPage((current) => Math.max(1, current - 1));
+                      }}
+                    >
+                      Previous
+                    </button>
+                    <button
+                      type="button"
+                      className="join-item btn btn-sm btn-ghost"
+                      disabled={effortsPage === effortPageCount}
+                      onClick={() => {
+                        setEffortsPage((current) =>
+                          Math.min(effortPageCount, current + 1),
+                        );
+                      }}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </>
           ) : (segment.efforts ?? []).length > 0 ? (
             <div className="alert mt-5">
               <span>No efforts match the selected time window.</span>
@@ -1151,6 +1475,43 @@ export default function SegmentDetailPanel({
           )}
         </div>
       </div>
+
+      <RouteComparisonMap
+        routePoints={segment.route_points}
+        selectedEfforts={selectedEfforts}
+        playbackSeconds={playbackSeconds}
+        maxDuration={maxDuration}
+        isPlaying={isPlaying}
+        focusedEffortId={focusedEffortId}
+        pinnedEffortId={pinnedEffortId}
+        onHoverEffort={setHoveredEffortId}
+        onTogglePinnedEffort={togglePinnedEffort}
+        onTogglePlayback={() => {
+          if (playbackSeconds >= maxDuration) {
+            setPlaybackSeconds(0);
+          }
+          setIsPlaying((current) => !current);
+        }}
+        onSeek={(value) => {
+          setPlaybackSeconds(value);
+          setIsPlaying(false);
+        }}
+      />
+
+      <ComparisonChart
+        metric={metric}
+        routePoints={segment.route_points}
+        selectedEfforts={selectedEfforts}
+        playbackSeconds={playbackSeconds}
+        focusedEffortId={focusedEffortId}
+        pinnedEffortId={pinnedEffortId}
+        unitSystem={unitSystem}
+        onHoverEffort={setHoveredEffortId}
+        onTogglePinnedEffort={togglePinnedEffort}
+        onMetricChange={(value) => {
+          setMetric(value);
+        }}
+      />
     </section>
   );
 }

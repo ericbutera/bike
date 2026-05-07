@@ -187,6 +187,7 @@ describe("SegmentDetailPanel", () => {
     expect(screen.getByText("Casey Fast · Hill Attack")).toBeInTheDocument();
     expect(screen.getByText("KOM")).toBeInTheDocument();
     expect(screen.getByText("PR")).toBeInTheDocument();
+    expect(screen.queryByText("Hover point")).not.toBeInTheDocument();
     expect(screen.queryByText("Back to home")).not.toBeInTheDocument();
   });
 
@@ -197,9 +198,9 @@ describe("SegmentDetailPanel", () => {
 
     await user.click(screen.getByRole("button", { name: "Heart rate" }));
 
-    expect(
-      screen.getByRole("button", { name: "Heart rate" }),
-    ).toHaveClass("btn-primary");
+    expect(screen.getByRole("button", { name: "Heart rate" })).toHaveClass(
+      "btn-primary",
+    );
   });
 
   it("projects playback markers onto the segment route geometry", () => {
@@ -254,6 +255,54 @@ describe("SegmentDetailPanel", () => {
     expect(screen.getByRole("link", { name: "5m 00s" })).toHaveAttribute(
       "href",
       "/activities/8",
+    );
+  });
+
+  it("paginates the efforts list at 25 per page", async () => {
+    const user = userEvent.setup();
+    const segment = makeSegment();
+
+    segment.efforts = Array.from({ length: 27 }, (_, index) => ({
+      ...segment.efforts[0],
+      id: index + 1,
+      activity_id: index + 101,
+      activity_title: `Ride ${index + 1}`,
+      rider_name: index % 2 === 0 ? "Eric Butera" : "Casey Fast",
+      rider_user_id: index % 2 === 0 ? 1 : 2,
+      activity_started_at: `2026-05-${String((index % 9) + 1).padStart(2, "0")}T12:00:00Z`,
+      effort_index: index + 1,
+      duration_seconds: 300 + index,
+    }));
+    segment.effort_count = segment.efforts.length;
+
+    mocks.useSegment.mockReturnValue({
+      data: segment,
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+
+    render(<SegmentDetailPanel segmentId={14} />);
+
+    expect(screen.getByText("Page 1 of 2 · 25 per page")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "5m 00s" })).toHaveAttribute(
+      "href",
+      "/activities/101",
+    );
+    expect(
+      screen.queryByRole("link", { name: "5m 26s" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Next" }));
+
+    expect(screen.getByText("Page 2 of 2 · 25 per page")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "5m 25s" })).toHaveAttribute(
+      "href",
+      "/activities/126",
+    );
+    expect(screen.getByRole("link", { name: "5m 26s" })).toHaveAttribute(
+      "href",
+      "/activities/127",
     );
   });
 });

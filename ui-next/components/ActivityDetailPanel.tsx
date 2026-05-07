@@ -1,9 +1,22 @@
 "use client";
 
 import { auth } from "@ericbutera/kaleido";
+import { faCrown, faMedal, faRocket } from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import {
+  Area,
+  CartesianGrid,
+  ComposedChart,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import {
   extractApiMessage,
   formatActivityTimestamp,
@@ -13,11 +26,14 @@ import {
   formatDuration,
   formatElevation,
   formatHeartRate,
+  formatPower,
   formatSpeed,
   formatSport,
+  type UnitSystem,
 } from "../lib/activityFormatting";
 import {
   type ActivityChartPoint,
+  type ActivityHeartRateZone,
   type ActivityLap,
   type ActivityRoutePoint,
   type ActivitySegmentEffort,
@@ -25,6 +41,7 @@ import {
   useDeleteActivity,
   useRegenerateActivity,
 } from "../lib/queries";
+import { useUnitPreferences } from "../lib/unitPreferences";
 import AuthRequiredCard from "./AuthRequiredCard";
 import LeafletRouteMap from "./LeafletRouteMap";
 
@@ -38,6 +55,7 @@ type SignalMetricKey = "heartRate" | "speed" | "elevation";
 type SegmentTone = {
   mapColor: string;
   dotClassName: string;
+  chartClassName: string;
   buttonClassName: string;
   outlineButtonClassName: string;
   highlightClassName: string;
@@ -63,17 +81,46 @@ type SignalSeries = {
   label: string;
   points: ChartSeriesPoint[];
   buttonClassName: string;
-  lineClassName: string;
   dotClassName: string;
+  strokeColor: string;
   strokeWidth?: number;
-  areaClassName?: string;
+  fillColor?: string;
   summary: string;
+};
+
+type SignalChartRow = {
+  elapsedSeconds: number;
+  heartRate?: number | null;
+  speed?: number | null;
+  elevation?: number | null;
+};
+
+type SegmentAttemptChartPoint = {
+  effort: ActivitySegmentEffort;
+  segmentTitle: string;
+  runNumber: number;
+  runLabel: string;
+  durationSeconds: number;
+  maxHeartRate: number | null;
+  overallRank: number | null | undefined;
+  personalRank: number | null | undefined;
+  personalBestDurationSeconds: number | null | undefined;
+  isKom: boolean;
+  isPersonalRecord: boolean;
+  isFastestOfDay: boolean;
+};
+
+type SegmentAttemptTooltipState = {
+  attempt: SegmentAttemptChartPoint;
+  x: number;
+  y: number;
 };
 
 const SEGMENT_TONES: SegmentTone[] = [
   {
     mapColor: "var(--color-primary)",
     dotClassName: "bg-primary",
+    chartClassName: "text-primary",
     buttonClassName: "btn-primary",
     outlineButtonClassName: "btn-outline btn-primary",
     highlightClassName: "ring-primary/25",
@@ -81,6 +128,7 @@ const SEGMENT_TONES: SegmentTone[] = [
   {
     mapColor: "var(--color-secondary)",
     dotClassName: "bg-secondary",
+    chartClassName: "text-secondary",
     buttonClassName: "btn-secondary",
     outlineButtonClassName: "btn-outline btn-secondary",
     highlightClassName: "ring-secondary/25",
@@ -88,6 +136,7 @@ const SEGMENT_TONES: SegmentTone[] = [
   {
     mapColor: "var(--color-accent)",
     dotClassName: "bg-accent",
+    chartClassName: "text-accent",
     buttonClassName: "btn-accent",
     outlineButtonClassName: "btn-outline btn-accent",
     highlightClassName: "ring-accent/25",
@@ -95,6 +144,7 @@ const SEGMENT_TONES: SegmentTone[] = [
   {
     mapColor: "var(--color-info)",
     dotClassName: "bg-info",
+    chartClassName: "text-info",
     buttonClassName: "btn-info",
     outlineButtonClassName: "btn-outline btn-info",
     highlightClassName: "ring-info/25",
@@ -102,6 +152,7 @@ const SEGMENT_TONES: SegmentTone[] = [
   {
     mapColor: "var(--color-warning)",
     dotClassName: "bg-warning",
+    chartClassName: "text-warning",
     buttonClassName: "btn-warning",
     outlineButtonClassName: "btn-outline btn-warning",
     highlightClassName: "ring-warning/25",
@@ -110,9 +161,10 @@ const SEGMENT_TONES: SegmentTone[] = [
 
 const DEFAULT_VISIBLE_SIGNAL_KEYS: SignalMetricKey[] = [
   "heartRate",
-  "speed",
   "elevation",
 ];
+
+const SIGNAL_KEY_ORDER: SignalMetricKey[] = ["heartRate", "speed", "elevation"];
 
 function formatElapsedAxisLabel(value: number) {
   if (value <= 0) {
@@ -219,16 +271,69 @@ function formatOverallRank(rank: number | null | undefined) {
   return rank != null ? `#${rank} overall` : "No global rank";
 }
 
-function achievementLabel(rank: number | null | undefined) {
-  if (rank === 1) {
-    return "Fastest";
+function formatPersonalRank(rank: number | null | undefined) {
+  return rank != null ? `#${rank} all-time` : "No PR history";
+}
+
+function formatPrDelta(
+  durationSeconds: number,
+  personalBestDurationSeconds: number | null | undefined,
+) {
+  if (personalBestDurationSeconds == null) {
+    return null;
   }
 
-  if (rank != null && rank <= 3) {
-    return "Top 3";
+  const deltaSeconds = durationSeconds - personalBestDurationSeconds;
+
+  if (deltaSeconds === 0) {
+    return "At PR";
   }
 
-  return null;
+  const magnitude = formatDuration(Math.abs(deltaSeconds));
+
+  if (deltaSeconds > 0) {
+    return `${magnitude} off PR`;
+  }
+
+  return `${magnitude} faster than prior PR`;
+}
+
+function historicalAchievementLabels(
+  effort: Pick<ActivitySegmentEffort, "overall_rank" | "personal_rank">,
+) {
+  const labels: string[] = [];
+
+  if (effort.overall_rank === 1) {
+    labels.push("KOM");
+  }
+
+  if (effort.personal_rank === 1) {
+    labels.push("PR");
+  }
+
+  return labels;
+}
+
+function segmentHistoricalAchievements(segmentGroup: SegmentMatchGroup) {
+  return Array.from(
+    new Set(
+      segmentGroup.efforts.flatMap((effort) =>
+        historicalAchievementLabels(effort),
+      ),
+    ),
+  );
+}
+
+function isSameSegmentEffort(
+  left: ActivitySegmentEffort,
+  right: ActivitySegmentEffort,
+) {
+  return (
+    left.segment_id === right.segment_id &&
+    left.effort_index === right.effort_index &&
+    left.start_route_point_index === right.start_route_point_index &&
+    left.end_route_point_index === right.end_route_point_index
+  );
 }
 
 function describeTrendState(
@@ -241,7 +346,10 @@ function describeTrendState(
   const firstEffort = efforts[0];
   const lastEffort = efforts[efforts.length - 1];
   const delta = lastEffort.duration_seconds - firstEffort.duration_seconds;
-  const threshold = Math.max(8, Math.round(firstEffort.duration_seconds * 0.03));
+  const threshold = Math.max(
+    8,
+    Math.round(firstEffort.duration_seconds * 0.03),
+  );
 
   if (delta <= -threshold) {
     return "faster";
@@ -254,24 +362,24 @@ function describeTrendState(
   return "steady";
 }
 
-function averageHeartRateForSegmentEffort(
+function maxHeartRateForSegmentEffort(
   routePoints: ActivityRoutePoint[] | null | undefined,
   segmentEffort: ActivitySegmentEffort,
 ) {
-  const heartRateValues = segmentOverlayPoints(routePoints, segmentEffort)
-    .flatMap((point) =>
-      point.heart_rate_bpm == null || Number.isNaN(point.heart_rate_bpm)
-        ? []
-        : [point.heart_rate_bpm],
-    );
+  const heartRateValues = segmentOverlayPoints(
+    routePoints,
+    segmentEffort,
+  ).flatMap((point) =>
+    point.heart_rate_bpm == null || Number.isNaN(point.heart_rate_bpm)
+      ? []
+      : [point.heart_rate_bpm],
+  );
 
   if (heartRateValues.length === 0) {
     return null;
   }
 
-  const sum = heartRateValues.reduce((total, value) => total + value, 0);
-
-  return Math.round(sum / heartRateValues.length);
+  return Math.round(Math.max(...heartRateValues));
 }
 
 function groupMatchedSegmentEfforts(
@@ -307,20 +415,18 @@ function groupMatchedSegmentEfforts(
       )
       .sort((left, right) => left - right);
     const peakHeartRate = efforts.reduce<number | null>((peak, effort) => {
-      const averageHeartRate = averageHeartRateForSegmentEffort(
-        routePoints,
-        effort,
-      );
+      const maxHeartRate = maxHeartRateForSegmentEffort(routePoints, effort);
 
-      if (averageHeartRate == null) {
+      if (maxHeartRate == null) {
         return peak;
       }
 
-      return peak == null || averageHeartRate > peak ? averageHeartRate : peak;
+      return peak == null || maxHeartRate > peak ? maxHeartRate : peak;
     }, null);
     const hasHighHeartRate =
       peakHeartRate != null &&
-      ((activityMaxHeartRate != null && peakHeartRate >= activityMaxHeartRate - 6) ||
+      ((activityMaxHeartRate != null &&
+        peakHeartRate >= activityMaxHeartRate - 6) ||
         (activityAverageHeartRate != null &&
           peakHeartRate >= activityAverageHeartRate + 10));
 
@@ -339,61 +445,505 @@ function groupMatchedSegmentEfforts(
   });
 }
 
-function scaleSeriesPoints(
-  points: ChartSeriesPoint[],
-  maxX: number,
-  width: number,
-  height: number,
-  padding: number,
-) {
-  const minY = minSeriesValue(points);
-  const maxY = maxSeriesValue(points);
-  const xRange = Math.max(1, maxX);
-  const yRange = Math.max(1, maxY - minY);
+function buildSignalChartRows(series: SignalSeries[]) {
+  const rowsByElapsedSeconds = new Map<number, SignalChartRow>();
 
-  return points.map((point) => ({
-    x: padding + (point.x / xRange) * (width - padding * 2),
-    y:
-      height - padding - ((point.y - minY) / yRange) * (height - padding * 2),
-  }));
-}
+  for (const entry of series) {
+    for (const point of entry.points) {
+      const existing = rowsByElapsedSeconds.get(point.x) ?? {
+        elapsedSeconds: point.x,
+      };
 
-function toPolylinePoints(points: Array<{ x: number; y: number }>) {
-  return points.map((point) => `${point.x},${point.y}`).join(" ");
-}
-
-function toAreaPoints(
-  points: Array<{ x: number; y: number }>,
-  height: number,
-  padding: number,
-) {
-  if (points.length === 0) {
-    return "";
+      rowsByElapsedSeconds.set(point.x, {
+        ...existing,
+        [entry.key]: point.y,
+      });
+    }
   }
 
-  const baseline = height - padding;
+  return Array.from(rowsByElapsedSeconds.values()).sort(
+    (left, right) => left.elapsedSeconds - right.elapsedSeconds,
+  );
+}
 
-  return [
-    `${points[0].x},${baseline}`,
-    ...points.map((point) => `${point.x},${point.y}`),
-    `${points[points.length - 1].x},${baseline}`,
-  ].join(" ");
+function formatSignalValue(
+  key: SignalMetricKey,
+  value: number | null | undefined,
+  unitSystem: UnitSystem,
+) {
+  if (key === "heartRate") {
+    return formatHeartRate(value);
+  }
+
+  if (key === "speed") {
+    return formatSpeed(value, unitSystem);
+  }
+
+  return formatElevation(value, unitSystem);
+}
+
+function SignalChartTooltip({
+  active,
+  label,
+  payload,
+  unitSystem,
+}: {
+  active?: boolean;
+  label?: number;
+  payload?: Array<{
+    color?: string;
+    dataKey?: string;
+    value?: number;
+  }>;
+  unitSystem: UnitSystem;
+}) {
+  if (!active || !payload?.length) {
+    return null;
+  }
+
+  const orderedItems = payload.flatMap((entry) => {
+    if (
+      entry.dataKey !== "heartRate" &&
+      entry.dataKey !== "speed" &&
+      entry.dataKey !== "elevation"
+    ) {
+      return [];
+    }
+
+    return [
+      entry as { color?: string; dataKey: SignalMetricKey; value?: number },
+    ];
+  });
+
+  return (
+    <div className="rounded-box border border-base-300 bg-base-100 px-3 py-3 shadow-lg">
+      <p className="text-sm font-semibold text-base-content">
+        {formatElapsedAxisLabel(label ?? 0)}
+      </p>
+      <div className="mt-2 space-y-1.5 text-sm text-base-content/75">
+        {orderedItems.map((entry) => (
+          <div key={entry.dataKey} className="flex items-center gap-2">
+            <span
+              aria-hidden
+              className="inline-block h-2.5 w-2.5 rounded-full"
+              style={{ backgroundColor: entry.color }}
+            />
+            <span className="font-medium text-base-content">
+              {entry.dataKey === "heartRate"
+                ? "Heart rate"
+                : entry.dataKey === "speed"
+                  ? "Speed"
+                  : "Elevation"}
+            </span>
+            <span>
+              {formatSignalValue(entry.dataKey, entry.value, unitSystem)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AttemptAchievementBadges({
+  attempt,
+}: {
+  attempt: SegmentAttemptChartPoint;
+}) {
+  return (
+    <>
+      {attempt.isKom ? (
+        <span className="badge badge-warning badge-outline gap-1">
+          <FontAwesomeIcon icon={faCrown} className="h-3 w-3" />
+          <span>KOM</span>
+        </span>
+      ) : null}
+      {attempt.isPersonalRecord ? (
+        <span className="badge badge-warning badge-outline gap-1">
+          <FontAwesomeIcon icon={faMedal} className="h-3 w-3" />
+          <span>PR</span>
+        </span>
+      ) : null}
+      {attempt.isFastestOfDay ? (
+        <span className="badge badge-success badge-outline gap-1">
+          <FontAwesomeIcon icon={faRocket} className="h-3 w-3" />
+          <span>Fastest run today</span>
+        </span>
+      ) : null}
+    </>
+  );
+}
+
+function iconPaths(icon: typeof faCrown | typeof faMedal | typeof faRocket) {
+  const pathData = icon.icon[4];
+  return Array.isArray(pathData) ? pathData : [pathData];
+}
+
+function ChartMarkerIcon({
+  icon,
+  cx,
+  cy,
+  fill,
+  size,
+  stroke,
+  strokeWidth = 0,
+  offsetX = 0,
+  offsetY = 0,
+}: {
+  icon: typeof faCrown | typeof faMedal | typeof faRocket;
+  cx: number;
+  cy: number;
+  fill: string;
+  size: number;
+  stroke?: string;
+  strokeWidth?: number;
+  offsetX?: number;
+  offsetY?: number;
+}) {
+  const [iconWidth, iconHeight] = icon.icon;
+  const paths = iconPaths(icon);
+
+  return (
+    <svg
+      x={cx - size / 2 + offsetX}
+      y={cy - size / 2 + offsetY}
+      width={size}
+      height={size}
+      viewBox={`0 0 ${iconWidth} ${iconHeight}`}
+      overflow="visible"
+      pointerEvents="none"
+    >
+      {paths.map((path, index) => (
+        <path
+          key={`${icon.iconName}-${index}`}
+          d={path}
+          fill={fill}
+          stroke={stroke}
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      ))}
+    </svg>
+  );
+}
+
+function SegmentAttemptTooltipContent({
+  attempt,
+}: {
+  attempt: SegmentAttemptChartPoint;
+}) {
+  const prDelta = formatPrDelta(
+    attempt.durationSeconds,
+    attempt.personalBestDurationSeconds,
+  );
+
+  return (
+    <div className="rounded-box border border-base-300 bg-base-100 px-3 py-3 shadow-lg">
+      <p className="text-sm font-semibold text-base-content">
+        {`Run ${attempt.runNumber} · ${formatDuration(attempt.durationSeconds)}`}
+      </p>
+      <p className="mt-1 text-sm text-base-content/70">
+        {`Leaderboard ${formatOverallRank(attempt.overallRank)} · Max heart rate ${formatHeartRate(attempt.maxHeartRate)}`}
+      </p>
+      <p className="mt-1 text-xs text-base-content/60">
+        {`Personal rank ${formatPersonalRank(attempt.personalRank)}`}
+      </p>
+      {prDelta ? (
+        <p className="mt-1 text-xs font-medium text-base-content/75">
+          {prDelta}
+        </p>
+      ) : null}
+      <div className="mt-2 flex flex-wrap gap-2">
+        <AttemptAchievementBadges attempt={attempt} />
+      </div>
+    </div>
+  );
+}
+
+function SegmentAttemptDot({
+  active = false,
+  cx,
+  cy,
+  payload,
+  toneColor,
+  isHighlighted,
+  onDismiss,
+  onSelect,
+  ...interactionProps
+}: {
+  active?: boolean;
+  cx?: number;
+  cy?: number;
+  payload?: SegmentAttemptChartPoint;
+  toneColor: string;
+  isHighlighted: boolean;
+  onDismiss: () => void;
+  onSelect: (state: SegmentAttemptTooltipState) => void;
+  [key: string]: unknown;
+}) {
+  if (cx == null || cy == null || !payload) {
+    return null;
+  }
+
+  const showKomMarker = payload.isKom;
+  const showPrMarker = !showKomMarker && payload.isPersonalRecord;
+  const showFastestMarker =
+    !showKomMarker && !showPrMarker && payload.isFastestOfDay;
+  const hitRadius =
+    showKomMarker || showPrMarker || showFastestMarker ? 14 : 11;
+
+  return (
+    <g
+      {...interactionProps}
+      role="button"
+      tabIndex={0}
+      aria-label={`${payload.segmentTitle} run ${payload.runNumber} point`}
+      className="cursor-pointer"
+      onBlur={() => {
+        onDismiss();
+      }}
+      onClick={() => {
+        onSelect({ attempt: payload, x: cx, y: cy });
+      }}
+      onFocus={() => {
+        onSelect({ attempt: payload, x: cx, y: cy });
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect({ attempt: payload, x: cx, y: cy });
+        }
+      }}
+      onMouseEnter={() => {
+        onSelect({ attempt: payload, x: cx, y: cy });
+      }}
+      onMouseLeave={() => {
+        onDismiss();
+      }}
+    >
+      <circle cx={cx} cy={cy} r={hitRadius} fill="transparent" />
+      {isHighlighted ? (
+        <circle
+          cx={cx}
+          cy={cy}
+          r={hitRadius - 1.5}
+          fill="none"
+          stroke="var(--color-base-content)"
+          strokeOpacity={0.35}
+          strokeWidth={1.5}
+        />
+      ) : null}
+
+      {showKomMarker ? (
+        <ChartMarkerIcon
+          icon={faCrown}
+          cx={cx}
+          cy={cy}
+          fill="var(--color-warning)"
+          size={active || isHighlighted ? 20 : 18}
+          stroke="var(--color-base-100)"
+          strokeWidth={24}
+        />
+      ) : null}
+
+      {showPrMarker ? (
+        <ChartMarkerIcon
+          icon={faMedal}
+          cx={cx}
+          cy={cy}
+          fill="var(--color-warning)"
+          size={active || isHighlighted ? 20 : 18}
+          stroke="var(--color-base-100)"
+          strokeWidth={24}
+        />
+      ) : null}
+
+      {showFastestMarker ? (
+        <ChartMarkerIcon
+          icon={faRocket}
+          cx={cx}
+          cy={cy}
+          fill="var(--color-success)"
+          size={active || isHighlighted ? 18 : 16}
+          stroke="var(--color-base-100)"
+          strokeWidth={26}
+        />
+      ) : null}
+
+      {!showKomMarker && !showPrMarker && !showFastestMarker ? (
+        <circle
+          cx={cx}
+          cy={cy}
+          r={active || isHighlighted ? 5.75 : 5}
+          fill={toneColor}
+          stroke="var(--color-base-100)"
+          strokeWidth={1.25}
+        />
+      ) : null}
+    </g>
+  );
+}
+
+function SegmentAttemptsChart({
+  segmentGroup,
+  routePoints,
+}: {
+  segmentGroup: SegmentMatchGroup;
+  routePoints: ActivityRoutePoint[] | null | undefined;
+}) {
+  const [tooltipState, setTooltipState] =
+    useState<SegmentAttemptTooltipState | null>(null);
+  const chartWidth = 520;
+  const chartHeight = 208;
+  const attempts: SegmentAttemptChartPoint[] = [...segmentGroup.efforts]
+    .sort(
+      (left, right) =>
+        left.effort_index - right.effort_index ||
+        left.start_route_point_index - right.start_route_point_index ||
+        left.end_route_point_index - right.end_route_point_index,
+    )
+    .map((effort) => ({
+      effort,
+      segmentTitle: segmentGroup.segmentTitle,
+      runNumber: effort.effort_index,
+      runLabel: `Run ${effort.effort_index}`,
+      durationSeconds: effort.duration_seconds,
+      maxHeartRate: maxHeartRateForSegmentEffort(routePoints, effort),
+      overallRank: effort.overall_rank,
+      personalRank: effort.personal_rank,
+      personalBestDurationSeconds: effort.personal_best_duration_seconds,
+      isKom: effort.overall_rank === 1,
+      isPersonalRecord: effort.personal_rank === 1,
+      isFastestOfDay: isSameSegmentEffort(effort, segmentGroup.bestEffort),
+    }));
+
+  if (attempts.length === 0) {
+    return null;
+  }
+
+  const minDuration = Math.min(
+    ...attempts.map((attempt) => attempt.durationSeconds),
+  );
+  const maxDuration = Math.max(
+    ...attempts.map((attempt) => attempt.durationSeconds),
+  );
+  const durationSpread = Math.max(maxDuration - minDuration, 1);
+  const chartPadding = Math.max(4, Math.round(durationSpread * 0.12));
+  const yAxisDomain: [number, number] = [
+    Math.max(0, minDuration - chartPadding),
+    maxDuration + chartPadding,
+  ];
+  const xAxisTicks = attempts.map((attempt) => attempt.runNumber);
+  const xAxisDomain: [number, number] = [
+    Math.min(...xAxisTicks),
+    Math.max(...xAxisTicks),
+  ];
+
+  return (
+    <div
+      role="img"
+      aria-label={`${segmentGroup.segmentTitle} attempts chart`}
+      className="relative overflow-visible rounded-box border border-base-300 bg-base-100 p-3"
+    >
+      {tooltipState ? (
+        <div
+          className="pointer-events-none absolute z-10 w-max max-w-64 -translate-x-1/2 -translate-y-[calc(100%+0.75rem)]"
+          style={{
+            left: `${(tooltipState.x / chartWidth) * 100}%`,
+            top: `${(tooltipState.y / chartHeight) * 100}%`,
+          }}
+        >
+          <SegmentAttemptTooltipContent attempt={tooltipState.attempt} />
+        </div>
+      ) : null}
+      <LineChart
+        width={chartWidth}
+        height={chartHeight}
+        data={attempts}
+        margin={{ top: 20, right: 20, bottom: 12, left: 10 }}
+        style={{ width: "100%", height: "auto" }}
+        onMouseLeave={() => {
+          setTooltipState(null);
+        }}
+      >
+        <CartesianGrid
+          vertical={false}
+          stroke="var(--color-base-content)"
+          strokeOpacity={0.12}
+        />
+        <XAxis
+          axisLine={false}
+          allowDecimals={false}
+          dataKey="runNumber"
+          domain={xAxisDomain}
+          tickFormatter={(value: number) => `Run ${value}`}
+          tick={{ fill: "var(--color-base-content)", fontSize: 9 }}
+          tickLine={false}
+          ticks={xAxisTicks}
+          type="number"
+        />
+        <YAxis
+          axisLine={false}
+          domain={yAxisDomain}
+          label={{
+            angle: -90,
+            fill: "var(--color-base-content)",
+            fontSize: 9,
+            position: "insideLeft",
+            style: { opacity: 0.65 },
+            value: "Time",
+          }}
+          tick={{ fill: "var(--color-base-content)", fontSize: 9 }}
+          tickFormatter={(value: number) => formatDuration(Math.round(value))}
+          tickLine={false}
+          tickMargin={10}
+          width={68}
+        />
+        <Line
+          type="linear"
+          dataKey="durationSeconds"
+          stroke={segmentGroup.tone.mapColor}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={3}
+          dot={(dotProps) => (
+            <SegmentAttemptDot
+              active={false}
+              cx={dotProps.cx}
+              cy={dotProps.cy}
+              isHighlighted={
+                tooltipState?.attempt.runNumber ===
+                (dotProps.payload as SegmentAttemptChartPoint).runNumber
+              }
+              onDismiss={() => {
+                setTooltipState(null);
+              }}
+              payload={dotProps.payload as SegmentAttemptChartPoint}
+              onSelect={setTooltipState}
+              toneColor={segmentGroup.tone.mapColor}
+            />
+          )}
+          activeDot={false}
+        />
+      </LineChart>
+    </div>
+  );
 }
 
 function SignalChartCard({
   sampleCount,
   series,
+  unitSystem,
   visibleKeys,
   onToggle,
 }: {
   sampleCount: number;
   series: SignalSeries[];
+  unitSystem: UnitSystem;
   visibleKeys: SignalMetricKey[];
   onToggle: (key: SignalMetricKey) => void;
 }) {
-  const width = 320;
-  const height = 176;
-  const padding = 16;
   const availableSeries = series.filter((entry) => entry.points.length > 1);
   const visibleSeries = availableSeries.filter((entry) =>
     visibleKeys.includes(entry.key),
@@ -403,11 +953,7 @@ function SignalChartCard({
       Math.max(maxValue, entry.points[entry.points.length - 1]?.x ?? 0),
     0,
   );
-  const endLabel = formatElapsedAxisLabel(maxX);
-  const scaledSeries = visibleSeries.map((entry) => ({
-    ...entry,
-    scaledPoints: scaleSeriesPoints(entry.points, maxX, width, height, padding),
-  }));
+  const rows = buildSignalChartRows(visibleSeries);
 
   return (
     <div className="card bg-base-100 shadow-xl">
@@ -420,7 +966,9 @@ function SignalChartCard({
               layers to focus on effort, terrain, or both at once.
             </p>
           </div>
-          <span className="badge badge-ghost uppercase">{sampleCount} samples</span>
+          <span className="badge badge-ghost uppercase">
+            {sampleCount} samples
+          </span>
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
@@ -445,61 +993,81 @@ function SignalChartCard({
 
         {visibleSeries.length > 0 ? (
           <>
-            <svg
-              viewBox={`0 0 ${width} ${height}`}
-              preserveAspectRatio="none"
-              className="mt-5 block h-56 w-full overflow-visible rounded-box border border-base-300 bg-base-200"
+            <div
               role="img"
               aria-label="Activity signals chart"
+              className="mt-5 overflow-hidden rounded-box border border-base-300 bg-base-200 p-3"
             >
-              <g className="text-base-content/10">
-                {Array.from({ length: 4 }).map((_, index) => {
-                  const y = padding + ((height - padding * 2) / 3) * index;
-
-                  return (
-                    <line
-                      key={`grid-${index}`}
-                      x1={padding}
-                      y1={y}
-                      x2={width - padding}
-                      y2={y}
-                      stroke="currentColor"
+              <div className="h-[208px] w-full">
+                <ResponsiveContainer
+                  width="100%"
+                  height="100%"
+                  minWidth={320}
+                  minHeight={208}
+                >
+                  <ComposedChart
+                    data={rows}
+                    margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
+                  >
+                    <CartesianGrid
+                      vertical={false}
+                      stroke="var(--color-base-content)"
+                      strokeOpacity={0.1}
                     />
-                  );
-                })}
-                <line
-                  x1={padding}
-                  y1={height - padding}
-                  x2={width - padding}
-                  y2={height - padding}
-                  stroke="currentColor"
-                />
-              </g>
-
-              {scaledSeries
-                .filter((entry) => entry.areaClassName)
-                .map((entry) => (
-                  <g key={`${entry.key}-area`} className={entry.areaClassName}>
-                    <polygon
-                      fill="currentColor"
-                      points={toAreaPoints(entry.scaledPoints, height, padding)}
+                    <XAxis
+                      axisLine={false}
+                      dataKey="elapsedSeconds"
+                      domain={[0, Math.max(maxX, 1)]}
+                      tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
+                      tickFormatter={(value: number) =>
+                        formatElapsedAxisLabel(value)
+                      }
+                      tickLine={false}
+                      type="number"
                     />
-                  </g>
-                ))}
-
-              {scaledSeries.map((entry) => (
-                <g key={entry.key} className={entry.lineClassName}>
-                  <polyline
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth={entry.strokeWidth ?? 3}
-                    strokeLinejoin="round"
-                    strokeLinecap="round"
-                    points={toPolylinePoints(entry.scaledPoints)}
-                  />
-                </g>
-              ))}
-            </svg>
+                    {visibleSeries.map((entry) => (
+                      <YAxis
+                        key={`${entry.key}-axis`}
+                        hide
+                        yAxisId={entry.key}
+                        domain={["dataMin", "dataMax"]}
+                      />
+                    ))}
+                    <Tooltip
+                      content={<SignalChartTooltip unitSystem={unitSystem} />}
+                    />
+                    {visibleSeries.map((entry) =>
+                      entry.key === "elevation" ? (
+                        <Area
+                          key={entry.key}
+                          type="linear"
+                          dataKey={entry.key}
+                          yAxisId={entry.key}
+                          stroke={entry.strokeColor}
+                          fill={entry.fillColor ?? entry.strokeColor}
+                          fillOpacity={0.08}
+                          strokeOpacity={0.35}
+                          strokeWidth={entry.strokeWidth ?? 2.5}
+                          dot={false}
+                          connectNulls
+                        />
+                      ) : (
+                        <Line
+                          key={entry.key}
+                          type="linear"
+                          dataKey={entry.key}
+                          yAxisId={entry.key}
+                          stroke={entry.strokeColor}
+                          strokeWidth={entry.strokeWidth ?? 3}
+                          dot={false}
+                          connectNulls
+                        />
+                      ),
+                    )}
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
               {visibleSeries.map((entry) => (
@@ -515,11 +1083,6 @@ function SignalChartCard({
                 </div>
               ))}
             </div>
-
-            <div className="mt-3 flex items-center justify-between text-sm text-base-content/60">
-              <span>0m</span>
-              <span>{endLabel}</span>
-            </div>
           </>
         ) : (
           <div className="alert mt-5">
@@ -531,7 +1094,13 @@ function SignalChartCard({
   );
 }
 
-function LapCard({ lap }: { lap: ActivityLap }) {
+function LapCard({
+  lap,
+  unitSystem,
+}: {
+  lap: ActivityLap;
+  unitSystem: UnitSystem;
+}) {
   return (
     <div className="card bg-base-200 shadow-sm">
       <div className="card-body p-5">
@@ -548,11 +1117,11 @@ function LapCard({ lap }: { lap: ActivityLap }) {
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <DetailMetric
             label="Distance"
-            value={formatDistance(lap.distance_meters)}
+            value={formatDistance(lap.distance_meters, unitSystem)}
           />
           <DetailMetric
             label="Average speed"
-            value={formatSpeed(lap.average_speed_mps)}
+            value={formatSpeed(lap.average_speed_mps, unitSystem)}
           />
           <DetailMetric
             label="Average heart rate"
@@ -577,6 +1146,28 @@ function DetailMetric({ label, value }: { label: string; value: string }) {
       </div>
     </div>
   );
+}
+
+function formatHeartRateZoneRange(zone: ActivityHeartRateZone) {
+  if (zone.min_bpm == null && zone.max_bpm == null) {
+    return "Range unavailable";
+  }
+
+  if (zone.min_bpm == null) {
+    return `Up to ${formatHeartRate(zone.max_bpm)}`;
+  }
+
+  if (zone.max_bpm == null) {
+    return `Above ${formatHeartRate(zone.min_bpm - 1)}`;
+  }
+
+  return `${formatHeartRate(zone.min_bpm)} to ${formatHeartRate(zone.max_bpm)}`;
+}
+
+function formatSharePercent(value: number) {
+  return Number.isInteger(value)
+    ? `${value.toFixed(0)}%`
+    : `${value.toFixed(1)}%`;
 }
 
 function ActivityRouteMap({
@@ -643,7 +1234,8 @@ function ActivityRouteMap({
             {segmentGroups.length > 0 ? (
               <div className="card-actions mt-4 gap-2">
                 {segmentGroups.map((segmentGroup) => {
-                  const isSelected = selectedSegmentId === segmentGroup.segmentId;
+                  const isSelected =
+                    selectedSegmentId === segmentGroup.segmentId;
 
                   return (
                     <button
@@ -713,6 +1305,7 @@ export default function ActivityDetailPanel({
   const authApi = auth.useAuthApi();
   const router = useRouter();
   const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
+  const { unitSystem } = useUnitPreferences();
   const activityQuery = useActivity(user ? activityId : null);
   const regenerateMutation = useRegenerateActivity();
   const deleteMutation = useDeleteActivity();
@@ -755,8 +1348,8 @@ export default function ActivityDetailPanel({
         label: "Heart rate",
         points: heartRateSeries,
         buttonClassName: "btn-error",
-        lineClassName: "text-error",
         dotClassName: "bg-error",
+        strokeColor: "var(--color-error)",
         strokeWidth: 3,
         summary: `Peak ${formatHeartRate(maxSeriesValue(heartRateSeries))}`,
       },
@@ -765,24 +1358,24 @@ export default function ActivityDetailPanel({
         label: "Speed",
         points: speedSeries,
         buttonClassName: "btn-info",
-        lineClassName: "text-info",
         dotClassName: "bg-info",
+        strokeColor: "var(--color-info)",
         strokeWidth: 2,
-        summary: `Top speed ${formatSpeed(maxSeriesValue(speedSeries))}`,
+        summary: `Top speed ${formatSpeed(maxSeriesValue(speedSeries), unitSystem)}`,
       },
       {
         key: "elevation",
         label: "Elevation",
         points: elevationSeries,
         buttonClassName: "btn-success",
-        lineClassName: "text-success/65",
         dotClassName: "bg-success",
+        strokeColor: "var(--color-success)",
         strokeWidth: 2.5,
-        areaClassName: "text-success/15",
-        summary: `${formatElevation(minSeriesValue(elevationSeries))} to ${formatElevation(maxSeriesValue(elevationSeries))}`,
+        fillColor: "var(--color-success)",
+        summary: `${formatElevation(minSeriesValue(elevationSeries), unitSystem)} to ${formatElevation(maxSeriesValue(elevationSeries), unitSystem)}`,
       },
     ],
-    [elevationSeries, heartRateSeries, speedSeries],
+    [elevationSeries, heartRateSeries, speedSeries, unitSystem],
   );
 
   function focusSegmentMatch(segmentId: number) {
@@ -813,7 +1406,7 @@ export default function ActivityDetailPanel({
         return current.filter((entry) => entry !== key);
       }
 
-      return DEFAULT_VISIBLE_SIGNAL_KEYS.filter(
+      return SIGNAL_KEY_ORDER.filter(
         (entry) => entry === key || current.includes(entry),
       );
     });
@@ -843,28 +1436,6 @@ export default function ActivityDetailPanel({
       default:
         return "badge-ghost";
     }
-  }
-
-  function renderMatchedSegmentInsights(segmentGroup: SegmentMatchGroup) {
-    const segmentTrendLabel = trendLabel(segmentGroup.trendState);
-
-    if (!segmentTrendLabel && !segmentGroup.hasHighHeartRate) {
-      return (
-        <div className="rounded-box border border-base-300 bg-base-100 px-4 py-3 text-sm text-base-content/70">
-          Steady pacing through this segment.
-        </div>
-      );
-    }
-
-    return (
-      <div className="rounded-box border border-base-300 bg-base-100 px-4 py-3 text-sm text-base-content/70">
-        {segmentTrendLabel ?? null}
-        {segmentTrendLabel && segmentGroup.hasHighHeartRate ? " · " : null}
-        {segmentGroup.hasHighHeartRate && segmentGroup.peakHeartRate != null
-          ? `High heart rate at ${formatHeartRate(segmentGroup.peakHeartRate)}`
-          : null}
-      </div>
-    );
   }
 
   async function handleRegenerate() {
@@ -962,7 +1533,7 @@ export default function ActivityDetailPanel({
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <DetailMetric
               label="Distance"
-              value={formatDistance(activity.distance_meters)}
+              value={formatDistance(activity.distance_meters, unitSystem)}
             />
             <DetailMetric
               label="Moving time"
@@ -972,19 +1543,25 @@ export default function ActivityDetailPanel({
             />
             <DetailMetric
               label="Average speed"
-              value={formatSpeed(activity.average_speed_mps)}
+              value={formatSpeed(activity.average_speed_mps, unitSystem)}
             />
             <DetailMetric
               label="Max speed"
-              value={formatSpeed(activity.max_speed_mps)}
+              value={formatSpeed(activity.max_speed_mps, unitSystem)}
             />
             <DetailMetric
               label="Elevation gain"
-              value={formatElevation(activity.elevation_gain_meters)}
+              value={formatElevation(
+                activity.elevation_gain_meters,
+                unitSystem,
+              )}
             />
             <DetailMetric
               label="Elevation loss"
-              value={formatElevation(activity.elevation_loss_meters)}
+              value={formatElevation(
+                activity.elevation_loss_meters,
+                unitSystem,
+              )}
             />
             <DetailMetric
               label="Average heart rate"
@@ -1011,6 +1588,62 @@ export default function ActivityDetailPanel({
               value={formatCalories(activity.calories)}
             />
           </div>
+
+          {activity.estimated_ftp_watts != null ||
+          (activity.heart_rate_zones?.length ?? 0) > 0 ? (
+            <div className="rounded-box border border-base-300 bg-base-200 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-base-content">
+                    Training profile snapshot
+                  </h2>
+                  <p className="text-sm text-base-content/70">
+                    Bike stores the heart rate zone time and FTP snapshot that
+                    were active when this ride was imported or regenerated.
+                  </p>
+                </div>
+                <span className="badge badge-outline">
+                  {activity.estimated_ftp_watts != null
+                    ? `FTP ${formatPower(activity.estimated_ftp_watts)}`
+                    : "Heart rate zones"}
+                </span>
+              </div>
+
+              {(activity.heart_rate_zones?.length ?? 0) > 0 ? (
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                  {(activity.heart_rate_zones ?? []).map((zone) => (
+                    <div
+                      key={zone.zone}
+                      className="rounded-lg border border-base-300 bg-base-100 px-3 py-3"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="badge badge-ghost">{zone.label}</span>
+                        <span className="text-sm font-medium text-base-content">
+                          {formatDuration(zone.duration_seconds)}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xs text-base-content/60">
+                        {formatHeartRateZoneRange(zone)}
+                      </p>
+                      <progress
+                        className="progress progress-primary mt-3 h-2 w-full"
+                        value={zone.share_percent}
+                        max={100}
+                      />
+                      <p className="mt-2 text-right text-xs text-base-content/60">
+                        {formatSharePercent(zone.share_percent)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="alert mt-4 bg-base-100 text-sm text-base-content/75">
+                  Heart rate zones were not stored on this ride yet. Save your
+                  account zones and regenerate the upload to persist them.
+                </div>
+              )}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -1032,9 +1665,8 @@ export default function ActivityDetailPanel({
             <div>
               <h2 className="card-title text-xl">Matched segments</h2>
               <p className="text-sm text-base-content/70">
-                Segment efforts are matched from imported segment routes
-                against the upload-time route geometry stored on this
-                activity.
+                Segment efforts are matched from imported segment routes against
+                the upload-time route geometry stored on this activity.
               </p>
             </div>
             <span className="badge badge-outline">
@@ -1047,9 +1679,8 @@ export default function ActivityDetailPanel({
             <div className="mt-5 grid gap-4">
               {matchedSegmentGroups.map((segmentGroup) => {
                 const segmentHref = `/segments/${segmentGroup.segmentId}`;
-                const segmentAchievement = achievementLabel(
-                  segmentGroup.bestOverallRank,
-                );
+                const segmentAchievements =
+                  segmentHistoricalAchievements(segmentGroup);
                 const isSelected = selectedSegmentId === segmentGroup.segmentId;
                 const segmentTrendLabel = trendLabel(segmentGroup.trendState);
 
@@ -1075,13 +1706,18 @@ export default function ActivityDetailPanel({
                             {segmentGroup.efforts.length} run
                             {segmentGroup.efforts.length === 1 ? "" : "s"}
                           </span>
-                          {segmentAchievement ? (
+                          {segmentAchievements.map((achievement) => (
                             <span
-                              className={`badge badge-outline ${segmentAchievement === "Fastest" ? "badge-success" : "badge-warning"}`}
+                              key={`${segmentGroup.segmentId}-${achievement}`}
+                              className="badge badge-warning badge-outline gap-1"
                             >
-                              {segmentAchievement}
+                              <FontAwesomeIcon
+                                icon={achievement === "KOM" ? faCrown : faMedal}
+                                className="h-3 w-3"
+                              />
+                              {achievement}
                             </span>
-                          ) : null}
+                          ))}
                           {segmentTrendLabel ? (
                             <span
                               className={`badge badge-outline ${trendBadgeClass(segmentGroup.trendState)}`}
@@ -1100,11 +1736,15 @@ export default function ActivityDetailPanel({
                       <div className="grid gap-3 md:grid-cols-3">
                         <DetailMetric
                           label="Best time"
-                          value={formatDuration(segmentGroup.bestEffort.duration_seconds)}
+                          value={formatDuration(
+                            segmentGroup.bestEffort.duration_seconds,
+                          )}
                         />
                         <DetailMetric
                           label="Leaderboard"
-                          value={formatOverallRank(segmentGroup.bestOverallRank)}
+                          value={formatOverallRank(
+                            segmentGroup.bestOverallRank,
+                          )}
                         />
                         <DetailMetric
                           label="Peak segment HR"
@@ -1112,45 +1752,10 @@ export default function ActivityDetailPanel({
                         />
                       </div>
 
-                      <ul className="menu rounded-box border border-base-300 bg-base-100 p-2">
-                        {segmentGroup.efforts.map((segmentEffort) => {
-                          const effortAchievement = achievementLabel(
-                            segmentEffort.overall_rank,
-                          );
-
-                          return (
-                            <li
-                              key={`${segmentEffort.segment_id}-${segmentEffort.effort_index}-${segmentEffort.start_route_point_index}-${segmentEffort.end_route_point_index}`}
-                            >
-                              <Link
-                                href={segmentHref}
-                                className="flex items-center justify-between gap-3"
-                                title={segmentGroup.segmentTitle}
-                              >
-                                <span className="font-semibold text-base-content">
-                                  {formatDuration(segmentEffort.duration_seconds)}
-                                </span>
-                                <span className="flex flex-wrap items-center justify-end gap-2 text-sm text-base-content/70">
-                                  {segmentEffort.overall_rank != null ? (
-                                    <span className="badge badge-ghost badge-xs">
-                                      #{segmentEffort.overall_rank}
-                                    </span>
-                                  ) : null}
-                                  {effortAchievement ? (
-                                    <span
-                                      className={`badge badge-xs ${effortAchievement === "Fastest" ? "badge-success" : "badge-warning"}`}
-                                    >
-                                      {effortAchievement}
-                                    </span>
-                                  ) : null}
-                                </span>
-                              </Link>
-                            </li>
-                          );
-                        })}
-                      </ul>
-
-                      {renderMatchedSegmentInsights(segmentGroup)}
+                      <SegmentAttemptsChart
+                        segmentGroup={segmentGroup}
+                        routePoints={activity.route_points}
+                      />
                     </div>
                   </article>
                 );
@@ -1160,8 +1765,8 @@ export default function ActivityDetailPanel({
             <div className="alert mt-5">
               <span>
                 No imported segment routes have matched this activity yet. If
-                this is an older upload, regenerate it once so the latest
-                route geometry and matcher run against the raw file.
+                this is an older upload, regenerate it once so the latest route
+                geometry and matcher run against the raw file.
               </span>
             </div>
           )}
@@ -1171,6 +1776,7 @@ export default function ActivityDetailPanel({
       <SignalChartCard
         sampleCount={(activity.chart_points ?? []).length}
         series={signalSeries}
+        unitSystem={unitSystem}
         visibleKeys={visibleSignalKeys}
         onToggle={toggleSignalLayer}
       />
@@ -1182,8 +1788,8 @@ export default function ActivityDetailPanel({
               <div>
                 <h2 className="card-title text-xl">Lap splits</h2>
                 <p className="text-sm text-base-content/70">
-                  These lap rollups come from the upload-time read side and
-                  can be regenerated when the development flag is enabled.
+                  These lap rollups come from the upload-time read side and can
+                  be regenerated when the development flag is enabled.
                 </p>
               </div>
               <span className="badge badge-outline">
@@ -1195,7 +1801,11 @@ export default function ActivityDetailPanel({
             {(activity.laps ?? []).length > 0 ? (
               <div className="mt-5 grid gap-4 xl:grid-cols-2">
                 {(activity.laps ?? []).map((lap) => (
-                  <LapCard key={`${lap.lap_index}-${lap.title}`} lap={lap} />
+                  <LapCard
+                    key={`${lap.lap_index}-${lap.title}`}
+                    lap={lap}
+                    unitSystem={unitSystem}
+                  />
                 ))}
               </div>
             ) : (
@@ -1248,8 +1858,8 @@ export default function ActivityDetailPanel({
                 </button>
                 <p className="mt-3 text-sm leading-6 text-base-content/65">
                   Re-runs the same upload-time derivation against the raw file
-                  so parser changes, route geometry, and segment matches show
-                  up without re-uploading.
+                  so parser changes, route geometry, and segment matches show up
+                  without re-uploading.
                 </p>
                 {regenerateMutation.isError ? (
                   <div className="alert alert-error mt-3">

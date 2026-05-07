@@ -50,6 +50,7 @@ function makeSegment(
     distance_meters: number | null;
     effort_count: number;
     best_duration_seconds: number | null;
+    current_user_pr_duration_seconds: number | null;
     created_at: string;
   }> = {},
 ) {
@@ -62,6 +63,7 @@ function makeSegment(
     distance_meters: 1800,
     effort_count: 3,
     best_duration_seconds: 312,
+    current_user_pr_duration_seconds: 320,
     created_at: "2026-05-07T07:00:00Z",
     ...overrides,
   };
@@ -138,11 +140,17 @@ describe("SegmentsPanel", () => {
 
     render(<SegmentsPanel />);
 
-    expect(screen.getByText("River Sprint")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "River Sprint" })).toHaveAttribute(
+      "href",
+      "/segments/12",
+    );
     expect(screen.getByText("Efforts")).toBeInTheDocument();
     expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getByText("KOM")).toBeInTheDocument();
+    expect(screen.getByText("Your PR")).toBeInTheDocument();
+    expect(screen.queryByText("north-climb.gpx")).not.toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "Compare efforts" }),
-    ).toHaveAttribute("href", "/segments/12");
+      screen.queryByRole("link", { name: "Compare efforts" }),
+    ).not.toBeInTheDocument();
   });
 });

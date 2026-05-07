@@ -31,11 +31,34 @@ pub struct SegmentResponse {
     pub distance_meters: Option<f64>,
     pub effort_count: i32,
     pub best_duration_seconds: Option<i32>,
+    pub current_user_pr_duration_seconds: Option<i32>,
     pub created_at: DateTime<Utc>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub route_points: Vec<ActivityRoutePoint>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub efforts: Vec<SegmentEffortResponse>,
+}
+
+fn current_user_pr_duration_from_models(
+    efforts: &[segment_efforts::Model],
+    user_id: i32,
+) -> Option<i32> {
+    efforts
+        .iter()
+        .filter(|effort| effort.user_id == user_id)
+        .map(|effort| effort.duration_seconds)
+        .min()
+}
+
+fn current_user_pr_duration_from_responses(
+    efforts: &[SegmentEffortResponse],
+    user_id: i32,
+) -> Option<i32> {
+    efforts
+        .iter()
+        .filter(|effort| effort.rider_user_id == user_id)
+        .map(|effort| effort.duration_seconds)
+        .min()
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -96,6 +119,10 @@ pub async fn list_segments(
                     distance_meters: segment.distance_meters,
                     effort_count: efforts.len() as i32,
                     best_duration_seconds: efforts.iter().map(|effort| effort.duration_seconds).min(),
+                    current_user_pr_duration_seconds: current_user_pr_duration_from_models(
+                        &efforts,
+                        user.id,
+                    ),
                     created_at: segment.created_at,
                     route_points: Vec::new(),
                     efforts: Vec::new(),
@@ -145,6 +172,10 @@ pub async fn get_segment(
         distance_meters: segment.distance_meters,
         effort_count: efforts.len() as i32,
         best_duration_seconds: efforts.iter().map(|effort| effort.duration_seconds).min(),
+        current_user_pr_duration_seconds: current_user_pr_duration_from_responses(
+            &efforts,
+            user.id,
+        ),
         created_at: segment.created_at,
         route_points,
         efforts,
@@ -222,6 +253,10 @@ pub async fn import_segment(
             distance_meters: segment.distance_meters,
             effort_count: efforts.len() as i32,
             best_duration_seconds: efforts.iter().map(|effort| effort.duration_seconds).min(),
+            current_user_pr_duration_seconds: current_user_pr_duration_from_responses(
+                &efforts,
+                user.id,
+            ),
             created_at: segment.created_at,
             route_points: deserialize_segment_route_points(segment.route_data_json.as_deref()),
             efforts,
@@ -398,5 +433,60 @@ mod tests {
             error.message,
             "Segments currently require a GPX or TCX export with route coordinates"
         );
+    }
+
+    #[test]
+    fn loads_current_user_pr_duration_from_models() {
+        let now = Utc::now();
+        let efforts = vec![
+            segment_efforts::Model {
+                id: 1,
+                segment_id: 10,
+                user_id: 7,
+                activity_id: 100,
+                effort_index: 1,
+                duration_seconds: 320,
+                start_elapsed_seconds: 0,
+                end_elapsed_seconds: 320,
+                start_route_point_index: 0,
+                end_route_point_index: 1,
+                distance_meters: Some(1800.0),
+                created_at: now,
+                updated_at: now,
+            },
+            segment_efforts::Model {
+                id: 2,
+                segment_id: 10,
+                user_id: 7,
+                activity_id: 101,
+                effort_index: 2,
+                duration_seconds: 305,
+                start_elapsed_seconds: 0,
+                end_elapsed_seconds: 305,
+                start_route_point_index: 0,
+                end_route_point_index: 1,
+                distance_meters: Some(1800.0),
+                created_at: now,
+                updated_at: now,
+            },
+            segment_efforts::Model {
+                id: 3,
+                segment_id: 10,
+                user_id: 9,
+                activity_id: 102,
+                effort_index: 1,
+                duration_seconds: 300,
+                start_elapsed_seconds: 0,
+                end_elapsed_seconds: 300,
+                start_route_point_index: 0,
+                end_route_point_index: 1,
+                distance_meters: Some(1800.0),
+                created_at: now,
+                updated_at: now,
+            },
+        ];
+
+        assert_eq!(current_user_pr_duration_from_models(&efforts, 7), Some(305));
+        assert_eq!(current_user_pr_duration_from_models(&efforts, 11), None);
     }
 }

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ActivityDetailPanel from "../ActivityDetailPanel";
@@ -61,6 +61,15 @@ function makeActivity(
     average_cadence_rpm: number | null;
     max_cadence_rpm: number | null;
     calories: number | null;
+    estimated_ftp_watts: number | null;
+    heart_rate_zones: Array<{
+      zone: number;
+      label: string;
+      min_bpm: number | null;
+      max_bpm: number | null;
+      duration_seconds: number;
+      share_percent: number;
+    }>;
     laps: Array<{
       lap_index: number;
       title: string;
@@ -96,6 +105,8 @@ function makeActivity(
       start_route_point_index: number;
       end_route_point_index: number;
       overall_rank?: number | null;
+      personal_rank?: number | null;
+      personal_best_duration_seconds?: number | null;
     }>;
     can_regenerate: boolean;
   }> = {},
@@ -121,6 +132,49 @@ function makeActivity(
     average_cadence_rpm: 84,
     max_cadence_rpm: 102,
     calories: 640,
+    estimated_ftp_watts: 265,
+    heart_rate_zones: [
+      {
+        zone: 1,
+        label: "Z1",
+        min_bpm: null,
+        max_bpm: 120,
+        duration_seconds: 600,
+        share_percent: 18.8,
+      },
+      {
+        zone: 2,
+        label: "Z2",
+        min_bpm: 121,
+        max_bpm: 140,
+        duration_seconds: 1200,
+        share_percent: 37.5,
+      },
+      {
+        zone: 3,
+        label: "Z3",
+        min_bpm: 141,
+        max_bpm: 155,
+        duration_seconds: 800,
+        share_percent: 25,
+      },
+      {
+        zone: 4,
+        label: "Z4",
+        min_bpm: 156,
+        max_bpm: 170,
+        duration_seconds: 500,
+        share_percent: 15.6,
+      },
+      {
+        zone: 5,
+        label: "Z5",
+        min_bpm: 171,
+        max_bpm: null,
+        duration_seconds: 100,
+        share_percent: 3.1,
+      },
+    ],
     laps: [
       {
         lap_index: 1,
@@ -199,6 +253,8 @@ function makeActivity(
         start_route_point_index: 1,
         end_route_point_index: 2,
         overall_rank: 1,
+        personal_rank: 1,
+        personal_best_duration_seconds: 312,
       },
       {
         segment_id: 11,
@@ -208,6 +264,8 @@ function makeActivity(
         start_route_point_index: 0,
         end_route_point_index: 1,
         overall_rank: 3,
+        personal_rank: 2,
+        personal_best_duration_seconds: 312,
       },
     ],
     can_regenerate: true,
@@ -273,8 +331,11 @@ describe("ActivityDetailPanel", () => {
     expect(screen.getByText("28.0 km")).toBeInTheDocument();
     expect(screen.getByText("53m 20s")).toBeInTheDocument();
     expect(screen.getAllByText("19.5 mph").length).toBeGreaterThan(0);
-    expect(screen.getByText("168 bpm")).toBeInTheDocument();
+    expect(screen.getAllByText("168 bpm").length).toBeGreaterThan(0);
     expect(screen.getByText("lunch-ride.tcx")).toBeInTheDocument();
+    expect(screen.getByText("Training profile snapshot")).toBeInTheDocument();
+    expect(screen.getByText("FTP 265 W")).toBeInTheDocument();
+    expect(screen.getByText("Above 170 bpm")).toBeInTheDocument();
     expect(screen.getByText("Route map")).toBeInTheDocument();
     expect(
       screen.getByRole("img", { name: "Activity route map" }),
@@ -283,30 +344,38 @@ describe("ActivityDetailPanel", () => {
     expect(
       screen.getByRole("button", { name: "Jump to North Climb matches" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /5m 12s/i })).toHaveAttribute(
-      "href",
-      "/segments/11",
-    );
-    expect(screen.getByRole("link", { name: /5m 30s/i })).toHaveAttribute(
-      "href",
-      "/segments/11",
-    );
-    const matchedSegmentTimes = screen.getAllByRole("link", {
-      name: /5m (12s|30s)/,
-    });
-    expect(matchedSegmentTimes[0]).toHaveTextContent("5m 30s");
-    expect(matchedSegmentTimes[1]).toHaveTextContent("5m 12s");
+    expect(
+      screen.getByRole("img", { name: "North Climb attempts chart" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Time")).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "Hover or tap a point to see leaderboard position and max heart rate.",
+      ),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /5m 12s/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /5m 30s/i }),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "North Climb" })).toHaveAttribute(
       "href",
       "/segments/11",
     );
+    expect(screen.queryByText("Attempt trend")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Open segment detail" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: "Compare efforts" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Summary overview")).not.toBeInTheDocument();
-    expect(screen.getAllByText("Fastest").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("KOM").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("PR").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Trending faster").length).toBeGreaterThan(0);
     expect(screen.getByText("High heart rate")).toBeInTheDocument();
+    expect(screen.queryByText(/High heart rate at/i)).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Regenerate derived data" }),
     ).toBeInTheDocument();
@@ -319,19 +388,47 @@ describe("ActivityDetailPanel", () => {
     expect(
       screen.getByRole("img", { name: "Activity signals chart" }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Heart rate" }),
-    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Heart rate" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     expect(screen.getByRole("button", { name: "Speed" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    expect(screen.getByRole("button", { name: "Elevation" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
     expect(
-      screen.getByRole("button", { name: "Elevation" }),
-    ).toHaveAttribute("aria-pressed", "true");
-    expect(
       screen.queryByRole("link", { name: "Back to activities" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows the correct run details when a chart point is hovered", () => {
+    render(<ActivityDetailPanel activityId={7} />);
+
+    fireEvent.mouseEnter(screen.getByLabelText("North Climb run 1 point"));
+
+    expect(screen.getByText("Run 1 · 5m 12s")).toBeInTheDocument();
+    expect(
+      screen.getByText("Leaderboard #1 overall · Max heart rate 168 bpm"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Personal rank #1 all-time")).toBeInTheDocument();
+    expect(screen.getByText("At PR")).toBeInTheDocument();
+    expect(screen.getAllByText("KOM").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("PR").length).toBeGreaterThan(0);
+    expect(screen.getByText("Fastest run today")).toBeInTheDocument();
+
+    fireEvent.mouseLeave(screen.getByLabelText("North Climb run 1 point"));
+    fireEvent.mouseEnter(screen.getByLabelText("North Climb run 2 point"));
+
+    expect(screen.getByText("Run 2 · 5m 30s")).toBeInTheDocument();
+    expect(
+      screen.getByText("Leaderboard #3 overall · Max heart rate 150 bpm"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Personal rank #2 all-time")).toBeInTheDocument();
+    expect(screen.getByText("18s off PR")).toBeInTheDocument();
   });
 
   it("lets the user toggle the merged signal layers", async () => {
@@ -340,10 +437,15 @@ describe("ActivityDetailPanel", () => {
     render(<ActivityDetailPanel activityId={7} />);
 
     const heartRateButton = screen.getByRole("button", { name: "Heart rate" });
+    const speedButton = screen.getByRole("button", { name: "Speed" });
 
     await user.click(heartRateButton);
 
     expect(heartRateButton).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(speedButton);
+
+    expect(speedButton).toHaveAttribute("aria-pressed", "true");
   });
 
   it("shows the regenerate action", async () => {

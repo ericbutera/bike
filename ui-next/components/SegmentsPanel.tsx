@@ -1,7 +1,10 @@
 "use client";
 
 import { auth } from "@ericbutera/kaleido";
+import { faCrown } from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { useRef, useState } from "react";
 import toast from "react-hot-toast";
 import {
@@ -10,26 +13,17 @@ import {
   formatDuration,
 } from "../lib/activityFormatting";
 import { useSegments, useUploadSegment } from "../lib/queries";
+import { useUnitPreferences } from "../lib/unitPreferences";
 import AuthRequiredCard from "./AuthRequiredCard";
 
 const ALLOWED_EXTENSIONS = new Set(["gpx", "tcx"]);
-
-function formatTimestamp(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? value
-    : date.toLocaleString(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      });
-}
 
 function getExtension(filename: string) {
   const parts = filename.toLowerCase().split(".");
   return parts.length > 1 ? (parts.at(-1) ?? "") : "";
 }
 
-function SegmentMetric({ label, value }: { label: string; value: string }) {
+function SegmentMetric({ label, value }: { label: ReactNode; value: string }) {
   return (
     <div className="stats bg-base-100 shadow sm:min-w-[8.5rem]">
       <div className="stat px-3 py-2">
@@ -43,6 +37,7 @@ function SegmentMetric({ label, value }: { label: string; value: string }) {
 export default function SegmentsPanel() {
   const authApi = auth.useAuthApi();
   const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
+  const { unitSystem } = useUnitPreferences();
   const segmentsQuery = useSegments({ enabled: !!user });
   const uploadMutation = useUploadSegment();
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -199,12 +194,12 @@ export default function SegmentsPanel() {
                 <div className="card-body p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="font-medium text-base-content">
+                      <Link
+                        href={`/segments/${segment.id}`}
+                        className="font-medium text-base-content transition hover:text-primary"
+                      >
                         {segment.title}
-                      </div>
-                      <div className="text-sm text-base-content/70">
-                        {formatTimestamp(segment.created_at)}
-                      </div>
+                      </Link>
                     </div>
                     {segment.format ? (
                       <span className="badge badge-outline uppercase">
@@ -213,33 +208,38 @@ export default function SegmentsPanel() {
                     ) : null}
                   </div>
 
-                  <div className="grid gap-2 sm:grid-cols-3">
+                  <div className="grid gap-2 sm:grid-cols-4">
                     <SegmentMetric
                       label="Efforts"
                       value={`${segment.effort_count}`}
                     />
                     <SegmentMetric
                       label="Distance"
-                      value={formatDistance(segment.distance_meters)}
+                      value={formatDistance(
+                        segment.distance_meters,
+                        unitSystem,
+                      )}
                     />
                     <SegmentMetric
-                      label="Best"
+                      label={
+                        <span className="inline-flex items-center gap-1">
+                          <FontAwesomeIcon
+                            icon={faCrown}
+                            className="h-3 w-3 text-warning"
+                          />
+                          <span>KOM</span>
+                        </span>
+                      }
                       value={formatDuration(
                         segment.best_duration_seconds ?? null,
                       )}
                     />
-                  </div>
-
-                  <div className="card-actions items-center justify-between text-sm text-base-content/70">
-                    <div>
-                      {segment.original_filename ?? "Manual segment import"}
-                    </div>
-                    <Link
-                      href={`/segments/${segment.id}`}
-                      className="btn btn-sm btn-outline"
-                    >
-                      Compare efforts
-                    </Link>
+                    <SegmentMetric
+                      label="Your PR"
+                      value={formatDuration(
+                        segment.current_user_pr_duration_seconds ?? null,
+                      )}
+                    />
                   </div>
                 </div>
               </article>

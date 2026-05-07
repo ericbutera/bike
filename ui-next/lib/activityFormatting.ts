@@ -1,3 +1,20 @@
+export const UNIT_SYSTEMS = ["metric", "imperial", "mixed"] as const;
+
+export type UnitSystem = (typeof UNIT_SYSTEMS)[number];
+
+export const DEFAULT_UNIT_SYSTEM: UnitSystem = "mixed";
+
+const METERS_PER_MILE = 1609.344;
+const FEET_PER_METER = 3.28084;
+const MPH_PER_MPS = 2.236936;
+const KPH_PER_MPS = 3.6;
+
+export function normalizeUnitSystem(value?: string | null): UnitSystem {
+  return value === "metric" || value === "imperial" || value === "mixed"
+    ? value
+    : DEFAULT_UNIT_SYSTEM;
+}
+
 export function formatActivityTimestamp(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
@@ -8,9 +25,17 @@ export function formatActivityTimestamp(value: string) {
       });
 }
 
-export function formatDistance(value?: number | null) {
+export function formatDistance(
+  value?: number | null,
+  unitSystem: UnitSystem = DEFAULT_UNIT_SYSTEM,
+) {
   if (value == null) {
     return "--";
+  }
+
+  if (unitSystem === "imperial") {
+    const miles = value / METERS_PER_MILE;
+    return `${miles >= 100 ? miles.toFixed(0) : miles.toFixed(1)} mi`;
   }
 
   const kilometers = value / 1000;
@@ -37,20 +62,34 @@ export function formatDuration(value?: number | null) {
   return `${seconds}s`;
 }
 
-export function formatElevation(value?: number | null) {
+export function formatElevation(
+  value?: number | null,
+  unitSystem: UnitSystem = DEFAULT_UNIT_SYSTEM,
+) {
   if (value == null) {
     return "--";
+  }
+
+  if (unitSystem === "imperial") {
+    return `${Math.round(value * FEET_PER_METER)} ft`;
   }
 
   return `${Math.round(value)} m`;
 }
 
-export function formatSpeed(value?: number | null) {
+export function formatSpeed(
+  value?: number | null,
+  unitSystem: UnitSystem = DEFAULT_UNIT_SYSTEM,
+) {
   if (value == null) {
     return "--";
   }
 
-  return `${(value * 2.236936).toFixed(1)} mph`;
+  if (unitSystem === "metric") {
+    return `${(value * KPH_PER_MPS).toFixed(1)} km/h`;
+  }
+
+  return `${(value * MPH_PER_MPS).toFixed(1)} mph`;
 }
 
 export function formatHeartRate(value?: number | null) {
@@ -59,6 +98,14 @@ export function formatHeartRate(value?: number | null) {
   }
 
   return `${Math.round(value)} bpm`;
+}
+
+export function formatPower(value?: number | null) {
+  if (value == null) {
+    return "--";
+  }
+
+  return `${Math.round(value)} W`;
 }
 
 export function formatCadence(value?: number | null) {

@@ -12,6 +12,7 @@ import {
   formatHeartRate,
 } from "../lib/activityFormatting";
 import { type ActivityRoutePoint, useActivities } from "../lib/queries";
+import { useUnitPreferences } from "../lib/unitPreferences";
 import AuthRequiredCard from "./AuthRequiredCard";
 
 function StreamMetric({ label, value }: { label: string; value: string }) {
@@ -100,6 +101,7 @@ function ActivityRouteThumbnail({
 export default function ActivityStream() {
   const authApi = auth.useAuthApi();
   const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
+  const { unitSystem } = useUnitPreferences();
   const [page, setPage] = useState(1);
   const perPage = 10;
   const activitiesQuery = useActivities({ enabled: !!user, page, perPage });
@@ -186,7 +188,7 @@ export default function ActivityStream() {
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                   <StreamMetric
                     label="Distance"
-                    value={formatDistance(activity.distance_meters)}
+                    value={formatDistance(activity.distance_meters, unitSystem)}
                   />
                   <StreamMetric
                     label="Moving time"
@@ -197,7 +199,10 @@ export default function ActivityStream() {
                   />
                   <StreamMetric
                     label="Elevation gain"
-                    value={formatElevation(activity.elevation_gain_meters)}
+                    value={formatElevation(
+                      activity.elevation_gain_meters,
+                      unitSystem,
+                    )}
                   />
                   <StreamMetric
                     label="Max heart rate"

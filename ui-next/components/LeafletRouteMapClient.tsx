@@ -19,6 +19,7 @@ export type LeafletRouteMapProps = {
     id: string;
     point: ActivityRoutePoint | null;
     color: string;
+    opacity?: number;
   }>;
   ariaLabel: string;
   className?: string;
@@ -258,12 +259,15 @@ export default function LeafletRouteMapClient({
         continue;
       }
 
+      const opacity = marker.opacity ?? 1;
+
       L.circleMarker([marker.point.latitude, marker.point.longitude], {
         radius: 7,
         color: marker.color,
         weight: 2,
+        opacity,
         fillColor: marker.color,
-        fillOpacity: 1,
+        fillOpacity: opacity,
       }).addTo(markerLayerGroup);
     }
   }, [movingMarkers]);
