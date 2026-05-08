@@ -1,9 +1,7 @@
 use crate::activity_details::{deserialize_derived_activity_data, ActivityRoutePoint};
 use crate::app_error::AppError;
 use crate::entities::{activities, segment_efforts, segments};
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set};
 
 const MIN_ENDPOINT_THRESHOLD_METERS: f64 = 50.0;
 const MAX_ENDPOINT_THRESHOLD_METERS: f64 = 140.0;
@@ -56,7 +54,10 @@ pub fn slice_effort_route_points(
         return Vec::new();
     };
 
-    if start_index >= route_points.len() || end_index >= route_points.len() || start_index > end_index {
+    if start_index >= route_points.len()
+        || end_index >= route_points.len()
+        || start_index > end_index
+    {
         return Vec::new();
     }
 
@@ -113,7 +114,8 @@ where
     let segments = segments::Entity::find().all(db).await?;
 
     for segment in segments {
-        let segment_route_points = deserialize_segment_route_points(segment.route_data_json.as_deref());
+        let segment_route_points =
+            deserialize_segment_route_points(segment.route_data_json.as_deref());
         if segment_route_points.len() < 2 {
             continue;
         }
@@ -145,7 +147,8 @@ where
     let activities = activities::Entity::find().all(db).await?;
 
     for activity in activities {
-        let route_points = deserialize_derived_activity_data(activity.derived_data_json.as_deref()).route_points;
+        let route_points =
+            deserialize_derived_activity_data(activity.derived_data_json.as_deref()).route_points;
         if route_points.len() < 2 {
             continue;
         }
@@ -199,10 +202,8 @@ fn match_segment_efforts(
     let segment_distance_meters = route_distance_meters(segment_route_points);
     let segment_start = &segment_route_points[0];
     let segment_end = &segment_route_points[segment_route_points.len() - 1];
-    let endpoint_threshold_meters = derive_endpoint_threshold_meters(
-        segment_route_points,
-        activity_route_points,
-    );
+    let endpoint_threshold_meters =
+        derive_endpoint_threshold_meters(segment_route_points, activity_route_points);
     let mut matches = Vec::new();
     let mut start_index = 0usize;
 
@@ -240,7 +241,8 @@ fn match_segment_efforts(
                 continue;
             }
 
-            let candidate_distance_meters = route_distance_between(activity_route_points, start_index, end_index);
+            let candidate_distance_meters =
+                route_distance_between(activity_route_points, start_index, end_index);
             if !distance_ratio_within_bounds(segment_distance_meters, candidate_distance_meters) {
                 continue;
             }
@@ -254,7 +256,8 @@ fn match_segment_efforts(
                 continue;
             }
 
-            let distance_penalty = distance_ratio_penalty(segment_distance_meters, candidate_distance_meters);
+            let distance_penalty =
+                distance_ratio_penalty(segment_distance_meters, candidate_distance_meters);
             let score = average_shape_error_meters
                 + max_shape_error_meters * 0.15
                 + start_error_meters * 0.35
@@ -292,12 +295,10 @@ fn derive_endpoint_threshold_meters(
 ) -> f64 {
     let segment_spacing_meters = average_point_spacing_meters(segment_route_points);
     let activity_spacing_meters = average_point_spacing_meters(activity_route_points);
-    let scaled_threshold_meters = segment_spacing_meters
-        .max(activity_spacing_meters)
-        * ENDPOINT_THRESHOLD_SPACING_MULTIPLIER;
+    let scaled_threshold_meters =
+        segment_spacing_meters.max(activity_spacing_meters) * ENDPOINT_THRESHOLD_SPACING_MULTIPLIER;
 
-    scaled_threshold_meters
-        .clamp(MIN_ENDPOINT_THRESHOLD_METERS, MAX_ENDPOINT_THRESHOLD_METERS)
+    scaled_threshold_meters.clamp(MIN_ENDPOINT_THRESHOLD_METERS, MAX_ENDPOINT_THRESHOLD_METERS)
 }
 
 fn average_point_spacing_meters(route_points: &[ActivityRoutePoint]) -> f64 {
@@ -326,7 +327,8 @@ fn shape_error_meters(
     let mut max_error_meters = 0.0_f64;
 
     for sample_index in 0..sample_count {
-        let segment_index = distribute_index(sample_index, sample_count, segment_route_points.len());
+        let segment_index =
+            distribute_index(sample_index, sample_count, segment_route_points.len());
         let activity_index = distribute_index(sample_index, sample_count, activity_slice.len());
         let segment_point = &segment_route_points[segment_index];
         let activity_point = &activity_slice[activity_index];
@@ -396,13 +398,19 @@ fn route_distance_between(
     start_index: usize,
     end_index: usize,
 ) -> Option<f64> {
-    if route_points.is_empty() || start_index >= route_points.len() || end_index >= route_points.len() || start_index >= end_index {
+    if route_points.is_empty()
+        || start_index >= route_points.len()
+        || end_index >= route_points.len()
+        || start_index >= end_index
+    {
         return None;
     }
 
     let start_distance_meters = route_points[start_index].distance_meters;
     let end_distance_meters = route_points[end_index].distance_meters;
-    if let (Some(start_distance_meters), Some(end_distance_meters)) = (start_distance_meters, end_distance_meters) {
+    if let (Some(start_distance_meters), Some(end_distance_meters)) =
+        (start_distance_meters, end_distance_meters)
+    {
         if end_distance_meters >= start_distance_meters {
             return Some(end_distance_meters - start_distance_meters);
         }
@@ -426,7 +434,9 @@ fn normalize_distance(
     start_distance_meters: Option<f64>,
 ) -> Option<f64> {
     match (distance_meters, start_distance_meters) {
-        (Some(distance_meters), Some(start_distance_meters)) if distance_meters >= start_distance_meters => {
+        (Some(distance_meters), Some(start_distance_meters))
+            if distance_meters >= start_distance_meters =>
+        {
             Some(distance_meters - start_distance_meters)
         }
         (Some(distance_meters), _) => Some(distance_meters),

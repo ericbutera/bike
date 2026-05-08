@@ -154,6 +154,15 @@ export type FitnessFreshnessResponse = {
   points: FitnessFreshnessPoint[];
 };
 
+export type AdminAnalyticsBackfillResponse = {
+  user_count: number;
+  segment_count: number;
+  fitness_task_count: number;
+  segment_task_count: number;
+  total_tasks_enqueued: number;
+  segment_chunk_size: number;
+};
+
 export type ActivityImport = {
   id: number;
   activity_id?: number | null;
@@ -174,6 +183,19 @@ export function useAdminMetrics() {
 
 export function useAdminAppMetrics() {
   return $api.useQuery("get", "/admin/metrics/app", {});
+}
+
+export function useAdminBackfillAnalytics() {
+  const mutation = $api.useMutation("post", "/admin/analytics/backfill");
+
+  return {
+    ...mutation,
+    backfillAsync: async () => {
+      const result = await mutation.mutateAsync({});
+
+      return result as AdminAnalyticsBackfillResponse;
+    },
+  };
 }
 
 export function useActivities(opts?: {

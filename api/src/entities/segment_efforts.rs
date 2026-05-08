@@ -18,6 +18,8 @@ pub struct Model {
     pub end_elapsed_seconds: i32,
     pub duration_seconds: i32,
     pub distance_meters: Option<f64>,
+    pub overall_rank: Option<i32>,
+    pub user_rank: Option<i32>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

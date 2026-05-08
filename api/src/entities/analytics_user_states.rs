@@ -4,17 +4,10 @@ use sea_orm::entity::prelude::*;
 use sea_orm::{ConnectionTrait, DbErr, Set};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
-#[sea_orm(table_name = "segments")]
+#[sea_orm(table_name = "analytics_user_states")]
 pub struct Model {
-    #[sea_orm(primary_key)]
-    pub id: i32,
+    #[sea_orm(primary_key, auto_increment = false)]
     pub user_id: i32,
-    pub title: String,
-    pub source: String,
-    pub original_filename: Option<String>,
-    pub format: Option<String>,
-    pub distance_meters: Option<f64>,
-    pub route_data_json: Option<String>,
     pub last_activity_change_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

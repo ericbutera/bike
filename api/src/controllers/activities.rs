@@ -1,30 +1,31 @@
 use crate::activity_details::{
-    deserialize_derived_activity_data, derive_activity_detail_data,
-    serialize_derived_activity_data, ActivityChartPoint, ActivityDerivedData,
-    ActivityLap, ActivityRoutePoint,
+    ActivityChartPoint, ActivityDerivedData, ActivityLap, ActivityRoutePoint,
+    derive_activity_detail_data, deserialize_derived_activity_data,
+    serialize_derived_activity_data,
 };
 use crate::activity_lifecycle::{
-    delete_activity_with_derived_state, refresh_activity_derived_state,
+    delete_activity_with_derived_state, load_segment_ids_for_activity,
+    refresh_activity_derived_state,
 };
 use crate::activity_location::location_from_derived_json;
-use crate::app_error::{ApiErrorResponse, AppError};
 use crate::activity_summary::summarize_activity_upload;
-use crate::entities::{activities, activity_imports, segment_efforts, segments};
+use crate::analytics::{mark_segment_activity_changes, mark_user_activity_change};
+use crate::app_error::{ApiErrorResponse, AppError};
+use crate::entities::{
+    activities, activity_imports, segment_efforts, segment_user_summaries, segments,
+};
 use crate::storage::AppStorage;
 use crate::training_profile::{
-    deserialize_activity_heart_rate_zones, load_training_profile,
+    ActivityHeartRateZoneSummary, deserialize_activity_heart_rate_zones, load_training_profile,
     serialize_activity_heart_rate_zones, summarize_heart_rate_zones,
-    ActivityHeartRateZoneSummary,
 };
+use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::Json;
 use chrono::{DateTime, Utc};
 use kaleido::auth::UserContext;
-use kaleido::glass::data::pagination::{PaginatedResponse, Paginatable, PaginationParams};
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set,
-};
+use kaleido::glass::data::pagination::{Paginatable, PaginatedResponse, PaginationParams};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path as FsPath;
@@ -93,13 +94,7 @@ impl ActivityResponse {
         let derived_data = summary_derived_data(model.derived_data_json.as_deref());
         let location = location_from_derived_json(model.derived_data_json.as_deref());
 
-        Self::from_model(
-            model,
-            derived_data,
-            location,
-            Vec::new(),
-            false,
-        )
+        Self::from_model(model, derived_data, location, Vec::new(), false)
     }
 
     fn from_detail(model: activities::Model, segment_efforts: Vec<ActivitySegmentEffort>) -> Self {
@@ -107,7 +102,13 @@ impl ActivityResponse {
         let derived_data = deserialize_derived_activity_data(model.derived_data_json.as_deref());
         let location = location_from_derived_json(model.derived_data_json.as_deref());
 
-        Self::from_model(model, derived_data, location, segment_efforts, can_regenerate)
+        Self::from_model(
+            model,
+            derived_data,
+            location,
+            segment_efforts,
+            can_regenerate,
+        )
     }
 
     fn from_model(
@@ -168,21 +169,16 @@ fn preview_route_points(route_points: &[ActivityRoutePoint]) -> Vec<ActivityRout
 
     (0..MAX_ACTIVITY_STREAM_ROUTE_POINTS)
         .map(|index| {
-            let point_index =
-                index * (route_points.len().saturating_sub(1))
-                    / (MAX_ACTIVITY_STREAM_ROUTE_POINTS.saturating_sub(1));
+            let point_index = index * (route_points.len().saturating_sub(1))
+                / (MAX_ACTIVITY_STREAM_ROUTE_POINTS.saturating_sub(1));
             route_points[point_index].clone()
         })
         .collect()
 }
 
-fn rank_efforts_by_segment(
-    efforts: Vec<segment_efforts::Model>,
-) -> HashMap<i32, i32> {
+fn rank_efforts_by_segment(efforts: Vec<segment_efforts::Model>) -> HashMap<i32, i32> {
     let mut sorted_efforts = efforts;
-    sorted_efforts.sort_by_key(|effort| {
-        (effort.segment_id, effort.duration_seconds, effort.id)
-    });
+    sorted_efforts.sort_by_key(|effort| (effort.segment_id, effort.duration_seconds, effort.id));
 
     let mut ranks = HashMap::<i32, i32>::new();
     let mut current_segment_id = None::<i32>;
@@ -203,9 +199,7 @@ fn rank_efforts_by_segment(
     ranks
 }
 
-fn overall_ranks_by_effort_id(
-    efforts: &[segment_efforts::Model],
-) -> HashMap<i32, i32> {
+fn overall_ranks_by_effort_id(efforts: &[segment_efforts::Model]) -> HashMap<i32, i32> {
     rank_efforts_by_segment(efforts.to_vec())
 }
 
@@ -268,27 +262,75 @@ async fn load_activity_segment_efforts(
     segment_ids.sort_unstable();
     segment_ids.dedup();
 
-    let all_segment_efforts = segment_efforts::Entity::find()
-        .filter(segment_efforts::Column::SegmentId.is_in(segment_ids.iter().copied()))
+    let user_summary_by_segment = segment_user_summaries::Entity::find()
+        .filter(segment_user_summaries::Column::UserId.eq(user_id))
+        .filter(segment_user_summaries::Column::SegmentId.is_in(segment_ids.iter().copied()))
         .all(db)
-        .await?;
-    let overall_ranks_by_effort_id = overall_ranks_by_effort_id(&all_segment_efforts);
-    let personal_ranks_by_effort_id =
-        personal_ranks_by_effort_id(&all_segment_efforts, user_id);
-    let personal_best_duration_by_segment =
-        personal_best_duration_by_segment(&all_segment_efforts, user_id);
-    let segment_titles_by_id = segments::Entity::find()
+        .await?
+        .into_iter()
+        .map(|summary| (summary.segment_id, summary))
+        .collect::<HashMap<_, _>>();
+    let segments_by_id = segments::Entity::find()
         .filter(segments::Column::Id.is_in(segment_ids.iter().copied()))
         .all(db)
         .await?
         .into_iter()
-        .map(|segment| (segment.id, segment.title))
+        .map(|segment| (segment.id, segment))
         .collect::<HashMap<_, _>>();
+    let can_use_cached_ranks = effort_models.iter().all(|effort| {
+        let Some(segment) = segments_by_id.get(&effort.segment_id) else {
+            return false;
+        };
+        let Some(user_summary) = user_summary_by_segment.get(&effort.segment_id) else {
+            return false;
+        };
+
+        effort.overall_rank.is_some()
+            && effort.user_rank.is_some()
+            && effort.updated_at >= segment.last_activity_change_at
+            && user_summary.updated_at >= segment.last_activity_change_at
+    });
+
+    let (
+        overall_ranks_by_effort_id,
+        personal_ranks_by_effort_id,
+        personal_best_duration_by_segment,
+    ) = if can_use_cached_ranks {
+        (
+            effort_models
+                .iter()
+                .filter_map(|effort| effort.overall_rank.map(|rank| (effort.id, rank)))
+                .collect::<HashMap<_, _>>(),
+            effort_models
+                .iter()
+                .filter_map(|effort| effort.user_rank.map(|rank| (effort.id, rank)))
+                .collect::<HashMap<_, _>>(),
+            user_summary_by_segment
+                .into_iter()
+                .filter_map(|(segment_id, summary)| {
+                    summary
+                        .personal_best_duration_seconds
+                        .map(|duration| (segment_id, duration))
+                })
+                .collect::<HashMap<_, _>>(),
+        )
+    } else {
+        let all_segment_efforts = segment_efforts::Entity::find()
+            .filter(segment_efforts::Column::SegmentId.is_in(segment_ids.iter().copied()))
+            .all(db)
+            .await?;
+
+        (
+            overall_ranks_by_effort_id(&all_segment_efforts),
+            personal_ranks_by_effort_id(&all_segment_efforts, user_id),
+            personal_best_duration_by_segment(&all_segment_efforts, user_id),
+        )
+    };
 
     Ok(effort_models
         .into_iter()
         .filter_map(|effort| {
-            let segment_title = segment_titles_by_id.get(&effort.segment_id)?.clone();
+            let segment_title = segments_by_id.get(&effort.segment_id)?.title.clone();
 
             Some(ActivitySegmentEffort {
                 segment_id: effort.segment_id,
@@ -366,7 +408,10 @@ pub async fn get_activity(
         .ok_or_else(|| AppError::not_found("Activity not found"))?;
     let segment_efforts = load_activity_segment_efforts(&state.db, user.id, activity.id).await?;
 
-    Ok(Json(ActivityResponse::from_detail(activity, segment_efforts)))
+    Ok(Json(ActivityResponse::from_detail(
+        activity,
+        segment_efforts,
+    )))
 }
 
 #[utoipa::path(
@@ -398,7 +443,17 @@ pub async fn delete_activity(
         .await?
         .ok_or_else(|| AppError::not_found("Activity not found"))?;
 
-    delete_activity_with_derived_state(&state.db, &state.uploads_dir, user.id, activity).await?;
+    let affected_segment_ids =
+        delete_activity_with_derived_state(&state.db, &state.uploads_dir, user.id, activity)
+            .await?;
+    let changed_at = Utc::now();
+    mark_user_activity_change(&state.db, user.id, changed_at).await?;
+    mark_segment_activity_changes(&state.db, &affected_segment_ids, changed_at).await?;
+    state.tasks.rebuild_fitness_freshness(user.id).await;
+    state
+        .tasks
+        .rebuild_segment_analytics(affected_segment_ids)
+        .await;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -441,6 +496,7 @@ pub async fn regenerate_activity(
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::not_found("Activity import not found"))?;
+    let previous_segment_ids = load_segment_ids_for_activity(&state.db, id).await?;
     let full_path = FsPath::new(&state.uploads_dir).join(&activity_import.storage_path);
     let bytes = tokio::fs::read(full_path).await?;
     let activity_draft = summarize_activity_upload(
@@ -457,7 +513,9 @@ pub async fn regenerate_activity(
     let heart_rate_zones = summarize_heart_rate_zones(
         &derived_data.route_points,
         &derived_data.chart_points,
-        activity_draft.moving_time_seconds.or(activity_draft.total_time_seconds),
+        activity_draft
+            .moving_time_seconds
+            .or(activity_draft.total_time_seconds),
         activity_draft.average_heart_rate_bpm,
         training_profile.heart_rate_zone_bounds_bpm.as_deref(),
     );
@@ -489,16 +547,27 @@ pub async fn regenerate_activity(
 
     let updated = active_model.update(&state.db).await?;
 
-    refresh_activity_derived_state(
-        &state.db,
-        user.id,
-        updated.id,
-        &derived_data.route_points,
-    )
-    .await?;
+    let refreshed_segment_ids =
+        refresh_activity_derived_state(&state.db, user.id, updated.id, &derived_data.route_points)
+            .await?;
+    let mut affected_segment_ids = previous_segment_ids;
+    affected_segment_ids.extend(refreshed_segment_ids);
+    affected_segment_ids.sort_unstable();
+    affected_segment_ids.dedup();
+    let changed_at = Utc::now();
+    mark_user_activity_change(&state.db, user.id, changed_at).await?;
+    mark_segment_activity_changes(&state.db, &affected_segment_ids, changed_at).await?;
+    state.tasks.rebuild_fitness_freshness(user.id).await;
+    state
+        .tasks
+        .rebuild_segment_analytics(affected_segment_ids)
+        .await;
     let segment_efforts = load_activity_segment_efforts(&state.db, user.id, updated.id).await?;
 
-    Ok(Json(ActivityResponse::from_detail(updated, segment_efforts)))
+    Ok(Json(ActivityResponse::from_detail(
+        updated,
+        segment_efforts,
+    )))
 }
 
 #[cfg(test)]
@@ -510,88 +579,94 @@ mod tests {
     #[test]
     fn activity_response_maps_model_fields() {
         let now = Utc::now();
-        let response = ActivityResponse::from_detail(activities::Model {
-            id: 42,
-            user_id: 8,
-            activity_import_id: Some(9),
-            title: "Evening Ride".to_string(),
-            sport: "ride".to_string(),
-            source: "manual_upload".to_string(),
-            original_filename: Some("evening-ride.gpx".to_string()),
-            format: Some("gpx".to_string()),
-            started_at: now,
-            ended_at: Some(now),
-            distance_meters: Some(32100.0),
-            moving_time_seconds: Some(3600),
-            total_time_seconds: Some(3650),
-            elevation_gain_meters: Some(420.0),
-            elevation_loss_meters: Some(415.0),
-            average_speed_mps: Some(8.91),
-            max_speed_mps: Some(16.2),
-            average_heart_rate_bpm: Some(138),
-            max_heart_rate_bpm: Some(172),
-            average_cadence_rpm: Some(86),
-            max_cadence_rpm: Some(108),
-            calories: Some(640),
-            estimated_ftp_watts: None,
-            heart_rate_zones_json: None,
-            derived_data_json: Some(
-                serialize_derived_activity_data(&ActivityDerivedData {
-                    laps: vec![ActivityLap {
-                        lap_index: 1,
-                        title: "Full activity".to_string(),
-                        start_offset_seconds: Some(0),
-                        duration_seconds: Some(3650),
-                        distance_meters: Some(32100.0),
-                        elevation_gain_meters: Some(420.0),
-                        elevation_loss_meters: Some(415.0),
-                        average_speed_mps: Some(8.91),
-                        max_speed_mps: Some(16.2),
-                        average_heart_rate_bpm: Some(138),
-                        max_heart_rate_bpm: Some(172),
-                        average_cadence_rpm: Some(86),
-                        max_cadence_rpm: Some(108),
-                        calories: Some(640),
-                    }],
-                    chart_points: vec![ActivityChartPoint {
-                        elapsed_seconds: 0,
-                        distance_meters: Some(0.0),
-                        elevation_meters: Some(100.0),
-                        speed_mps: None,
-                        heart_rate_bpm: Some(130),
-                        cadence_rpm: Some(82),
-                    }],
-                    route_points: vec![ActivityRoutePoint {
-                        elapsed_seconds: 0,
-                        latitude: 45.0,
-                        longitude: -122.0,
-                        distance_meters: Some(0.0),
-                        elevation_meters: Some(100.0),
-                        speed_mps: Some(0.0),
-                        heart_rate_bpm: Some(130),
-                        cadence_rpm: Some(82),
-                    }],
-                })
-                .expect("serialize derived activity data"),
-            ),
-            created_at: now,
-            updated_at: now,
-        }, vec![ActivitySegmentEffort {
-            segment_id: 5,
-            segment_title: "North Climb".to_string(),
-            effort_index: 1,
-            duration_seconds: 312,
-            start_route_point_index: 0,
-            end_route_point_index: 0,
-            overall_rank: Some(1),
-            personal_rank: Some(1),
-            personal_best_duration_seconds: Some(312),
-        }]);
+        let response = ActivityResponse::from_detail(
+            activities::Model {
+                id: 42,
+                user_id: 8,
+                activity_import_id: Some(9),
+                title: "Evening Ride".to_string(),
+                sport: "ride".to_string(),
+                source: "manual_upload".to_string(),
+                original_filename: Some("evening-ride.gpx".to_string()),
+                format: Some("gpx".to_string()),
+                started_at: now,
+                ended_at: Some(now),
+                distance_meters: Some(32100.0),
+                moving_time_seconds: Some(3600),
+                total_time_seconds: Some(3650),
+                elevation_gain_meters: Some(420.0),
+                elevation_loss_meters: Some(415.0),
+                average_speed_mps: Some(8.91),
+                max_speed_mps: Some(16.2),
+                average_heart_rate_bpm: Some(138),
+                max_heart_rate_bpm: Some(172),
+                average_cadence_rpm: Some(86),
+                max_cadence_rpm: Some(108),
+                calories: Some(640),
+                estimated_ftp_watts: None,
+                heart_rate_zones_json: None,
+                derived_data_json: Some(
+                    serialize_derived_activity_data(&ActivityDerivedData {
+                        laps: vec![ActivityLap {
+                            lap_index: 1,
+                            title: "Full activity".to_string(),
+                            start_offset_seconds: Some(0),
+                            duration_seconds: Some(3650),
+                            distance_meters: Some(32100.0),
+                            elevation_gain_meters: Some(420.0),
+                            elevation_loss_meters: Some(415.0),
+                            average_speed_mps: Some(8.91),
+                            max_speed_mps: Some(16.2),
+                            average_heart_rate_bpm: Some(138),
+                            max_heart_rate_bpm: Some(172),
+                            average_cadence_rpm: Some(86),
+                            max_cadence_rpm: Some(108),
+                            calories: Some(640),
+                        }],
+                        chart_points: vec![ActivityChartPoint {
+                            elapsed_seconds: 0,
+                            distance_meters: Some(0.0),
+                            elevation_meters: Some(100.0),
+                            speed_mps: None,
+                            heart_rate_bpm: Some(130),
+                            cadence_rpm: Some(82),
+                        }],
+                        route_points: vec![ActivityRoutePoint {
+                            elapsed_seconds: 0,
+                            latitude: 45.0,
+                            longitude: -122.0,
+                            distance_meters: Some(0.0),
+                            elevation_meters: Some(100.0),
+                            speed_mps: Some(0.0),
+                            heart_rate_bpm: Some(130),
+                            cadence_rpm: Some(82),
+                        }],
+                    })
+                    .expect("serialize derived activity data"),
+                ),
+                created_at: now,
+                updated_at: now,
+            },
+            vec![ActivitySegmentEffort {
+                segment_id: 5,
+                segment_title: "North Climb".to_string(),
+                effort_index: 1,
+                duration_seconds: 312,
+                start_route_point_index: 0,
+                end_route_point_index: 0,
+                overall_rank: Some(1),
+                personal_rank: Some(1),
+                personal_best_duration_seconds: Some(312),
+            }],
+        );
 
         assert_eq!(response.id, 42);
         assert_eq!(response.title, "Evening Ride");
         assert_eq!(response.sport, "ride");
-        assert_eq!(response.original_filename.as_deref(), Some("evening-ride.gpx"));
+        assert_eq!(
+            response.original_filename.as_deref(),
+            Some("evening-ride.gpx")
+        );
         assert_eq!(response.format.as_deref(), Some("gpx"));
         assert!(response.location.is_some());
         assert_eq!(response.max_heart_rate_bpm, Some(172));
@@ -602,7 +677,10 @@ mod tests {
         assert_eq!(response.segment_efforts[0].start_route_point_index, 0);
         assert_eq!(response.segment_efforts[0].overall_rank, Some(1));
         assert_eq!(response.segment_efforts[0].personal_rank, Some(1));
-        assert_eq!(response.segment_efforts[0].personal_best_duration_seconds, Some(312));
+        assert_eq!(
+            response.segment_efforts[0].personal_best_duration_seconds,
+            Some(312)
+        );
         assert!(response.can_regenerate);
     }
 
@@ -627,6 +705,8 @@ mod tests {
             end_elapsed_seconds: duration_seconds,
             duration_seconds,
             distance_meters: Some(1000.0),
+            overall_rank: None,
+            user_rank: None,
             created_at: now,
             updated_at: now,
         }
@@ -788,8 +868,23 @@ mod tests {
             updated_at: now,
         });
 
-        assert_eq!(response.route_points.len(), MAX_ACTIVITY_STREAM_ROUTE_POINTS);
-        assert_eq!(response.route_points.first().map(|point| point.elapsed_seconds), Some(0));
-        assert_eq!(response.route_points.last().map(|point| point.elapsed_seconds), Some(39));
+        assert_eq!(
+            response.route_points.len(),
+            MAX_ACTIVITY_STREAM_ROUTE_POINTS
+        );
+        assert_eq!(
+            response
+                .route_points
+                .first()
+                .map(|point| point.elapsed_seconds),
+            Some(0)
+        );
+        assert_eq!(
+            response
+                .route_points
+                .last()
+                .map(|point| point.elapsed_seconds),
+            Some(39)
+        );
     }
 }

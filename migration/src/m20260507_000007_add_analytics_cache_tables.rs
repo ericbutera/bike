@@ -1,0 +1,321 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[derive(Iden)]
+enum SegmentEfforts {
+    Table,
+    OverallRank,
+    UserRank,
+}
+
+#[derive(Iden)]
+enum FitnessFreshnessDaily {
+    Table,
+    Id,
+    UserId,
+    Day,
+    ActivityCount,
+    TrainingLoad,
+    Fitness,
+    Fatigue,
+    Form,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(Iden)]
+enum SegmentSummaries {
+    Table,
+    SegmentId,
+    EffortCount,
+    LeaderUserId,
+    LeaderEffortId,
+    BestDurationSeconds,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(Iden)]
+enum SegmentUserSummaries {
+    Table,
+    Id,
+    SegmentId,
+    UserId,
+    EffortCount,
+    PersonalBestEffortId,
+    PersonalBestDurationSeconds,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(SegmentEfforts::Table)
+                    .add_column(ColumnDef::new(SegmentEfforts::OverallRank).integer().null())
+                    .add_column(ColumnDef::new(SegmentEfforts::UserRank).integer().null())
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(FitnessFreshnessDaily::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(FitnessFreshnessDaily::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(FitnessFreshnessDaily::UserId)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(FitnessFreshnessDaily::Day).date().not_null())
+                    .col(
+                        ColumnDef::new(FitnessFreshnessDaily::ActivityCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(FitnessFreshnessDaily::TrainingLoad)
+                            .double()
+                            .not_null()
+                            .default(0.0),
+                    )
+                    .col(
+                        ColumnDef::new(FitnessFreshnessDaily::Fitness)
+                            .double()
+                            .not_null()
+                            .default(0.0),
+                    )
+                    .col(
+                        ColumnDef::new(FitnessFreshnessDaily::Fatigue)
+                            .double()
+                            .not_null()
+                            .default(0.0),
+                    )
+                    .col(
+                        ColumnDef::new(FitnessFreshnessDaily::Form)
+                            .double()
+                            .not_null()
+                            .default(0.0),
+                    )
+                    .col(
+                        ColumnDef::new(FitnessFreshnessDaily::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::cust("CURRENT_TIMESTAMP")),
+                    )
+                    .col(
+                        ColumnDef::new(FitnessFreshnessDaily::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::cust("CURRENT_TIMESTAMP")),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx-fitness-freshness-daily-user-day")
+                    .table(FitnessFreshnessDaily::Table)
+                    .col(FitnessFreshnessDaily::UserId)
+                    .col(FitnessFreshnessDaily::Day)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(SegmentSummaries::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(SegmentSummaries::SegmentId)
+                            .integer()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(SegmentSummaries::EffortCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(SegmentSummaries::LeaderUserId)
+                            .integer()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(SegmentSummaries::LeaderEffortId)
+                            .integer()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(SegmentSummaries::BestDurationSeconds)
+                            .integer()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(SegmentSummaries::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::cust("CURRENT_TIMESTAMP")),
+                    )
+                    .col(
+                        ColumnDef::new(SegmentSummaries::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::cust("CURRENT_TIMESTAMP")),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(SegmentUserSummaries::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(SegmentUserSummaries::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(SegmentUserSummaries::SegmentId)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SegmentUserSummaries::UserId)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SegmentUserSummaries::EffortCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(SegmentUserSummaries::PersonalBestEffortId)
+                            .integer()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(SegmentUserSummaries::PersonalBestDurationSeconds)
+                            .integer()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(SegmentUserSummaries::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::cust("CURRENT_TIMESTAMP")),
+                    )
+                    .col(
+                        ColumnDef::new(SegmentUserSummaries::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::cust("CURRENT_TIMESTAMP")),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx-segment-user-summaries-segment-user")
+                    .table(SegmentUserSummaries::Table)
+                    .col(SegmentUserSummaries::SegmentId)
+                    .col(SegmentUserSummaries::UserId)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx-segment-user-summaries-user-id")
+                    .table(SegmentUserSummaries::Table)
+                    .col(SegmentUserSummaries::UserId)
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx-segment-user-summaries-user-id")
+                    .table(SegmentUserSummaries::Table)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx-segment-user-summaries-segment-user")
+                    .table(SegmentUserSummaries::Table)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .drop_table(Table::drop().table(SegmentUserSummaries::Table).to_owned())
+            .await?;
+
+        manager
+            .drop_table(Table::drop().table(SegmentSummaries::Table).to_owned())
+            .await?;
+
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx-fitness-freshness-daily-user-day")
+                    .table(FitnessFreshnessDaily::Table)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .drop_table(Table::drop().table(FitnessFreshnessDaily::Table).to_owned())
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(SegmentEfforts::Table)
+                    .drop_column(SegmentEfforts::UserRank)
+                    .drop_column(SegmentEfforts::OverallRank)
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+}

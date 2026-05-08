@@ -102,12 +102,9 @@ pub fn deserialize_derived_activity_data(raw: Option<&str>) -> ActivityDerivedDa
     }
 }
 
-fn derive_gpx_activity_detail(
-    filename: &str,
-    bytes: &[u8],
-) -> Result<ActivityDerivedData, String> {
-    let summary = summarize_activity_upload(filename, "gpx", bytes)
-        .map_err(|error| error.message)?;
+fn derive_gpx_activity_detail(filename: &str, bytes: &[u8]) -> Result<ActivityDerivedData, String> {
+    let summary =
+        summarize_activity_upload(filename, "gpx", bytes).map_err(|error| error.message)?;
     let document = parse_xml_document(bytes, "GPX")?;
     let track = document
         .descendants()
@@ -129,12 +126,9 @@ fn derive_gpx_activity_detail(
     })
 }
 
-fn derive_tcx_activity_detail(
-    filename: &str,
-    bytes: &[u8],
-) -> Result<ActivityDerivedData, String> {
-    let summary = summarize_activity_upload(filename, "tcx", bytes)
-        .map_err(|error| error.message)?;
+fn derive_tcx_activity_detail(filename: &str, bytes: &[u8]) -> Result<ActivityDerivedData, String> {
+    let summary =
+        summarize_activity_upload(filename, "tcx", bytes).map_err(|error| error.message)?;
     let document = parse_xml_document(bytes, "TCX")?;
     let activity = document
         .descendants()
@@ -162,15 +156,16 @@ fn derive_tcx_activity_detail(
         let lap_duration_seconds = child_text(*lap, "TotalTimeSeconds")
             .and_then(parse_f64)
             .and_then(seconds_from_f64);
-        let lap_distance_meters = metric_from_f64(child_text(*lap, "DistanceMeters").and_then(parse_f64))
-            .or_else(|| {
+        let lap_distance_meters =
+            metric_from_f64(child_text(*lap, "DistanceMeters").and_then(parse_f64)).or_else(|| {
                 lap_points
                     .iter()
                     .filter_map(|point| point.distance_meters)
                     .reduce(f64::max)
                     .and_then(|distance| metric_from_f64(Some(distance)))
             });
-        let (lap_elevation_gain_meters, lap_elevation_loss_meters) = summarize_elevation(&lap_points);
+        let (lap_elevation_gain_meters, lap_elevation_loss_meters) =
+            summarize_elevation(&lap_points);
         let lap_heart_rates = lap_points
             .iter()
             .filter_map(|point| point.heart_rate_bpm)
@@ -226,8 +221,8 @@ fn derive_tcx_activity_detail(
             calories: child_text(*lap, "Calories").and_then(parse_i32),
         });
 
-        fallback_start_offset_seconds = fallback_start_offset_seconds
-            .saturating_add(lap_duration_seconds.unwrap_or_default());
+        fallback_start_offset_seconds =
+            fallback_start_offset_seconds.saturating_add(lap_duration_seconds.unwrap_or_default());
     }
 
     if detail_laps.is_empty() {
@@ -367,7 +362,12 @@ fn build_tcx_chart_points(
 
     for (index, point) in points.iter().enumerate() {
         let distance_meters = point.distance_meters.or(last_known_distance_meters);
-        let speed_mps = match (previous_distance_meters, distance_meters, previous_time, point.time) {
+        let speed_mps = match (
+            previous_distance_meters,
+            distance_meters,
+            previous_time,
+            point.time,
+        ) {
             (Some(prev_distance), Some(curr_distance), Some(start), Some(end))
                 if curr_distance >= prev_distance =>
             {
@@ -382,7 +382,8 @@ fn build_tcx_chart_points(
                 .time
                 .and_then(|time| elapsed_seconds_from(started_at, time))
                 .unwrap_or(index as i32),
-            distance_meters: distance_meters.and_then(|distance| sample_metric_from_f64(Some(distance))),
+            distance_meters: distance_meters
+                .and_then(|distance| sample_metric_from_f64(Some(distance))),
             elevation_meters: sample_metric_from_f64(point.elevation_meters),
             speed_mps: sample_metric_from_f64(speed_mps),
             heart_rate_bpm: point.heart_rate_bpm,
@@ -422,7 +423,12 @@ fn build_tcx_route_points(
         };
 
         let distance_meters = point.distance_meters.or(last_known_distance_meters);
-        let speed_mps = match (previous_distance_meters, distance_meters, previous_time, point.time) {
+        let speed_mps = match (
+            previous_distance_meters,
+            distance_meters,
+            previous_time,
+            point.time,
+        ) {
             (Some(prev_distance), Some(curr_distance), Some(start), Some(end))
                 if curr_distance >= prev_distance =>
             {
@@ -439,7 +445,8 @@ fn build_tcx_route_points(
                 .unwrap_or(index as i32),
             latitude,
             longitude,
-            distance_meters: distance_meters.and_then(|distance| sample_metric_from_f64(Some(distance))),
+            distance_meters: distance_meters
+                .and_then(|distance| sample_metric_from_f64(Some(distance))),
             elevation_meters: sample_metric_from_f64(point.elevation_meters),
             speed_mps: sample_metric_from_f64(speed_mps),
             heart_rate_bpm: point.heart_rate_bpm,
@@ -526,9 +533,11 @@ fn parse_tcx_track_point(node: Node<'_, '_>) -> Result<TrackPointSample, String>
         heart_rate_bpm: child_element(node, "HeartRateBpm")
             .and_then(|heart_rate| child_text(heart_rate, "Value"))
             .and_then(parse_i32),
-        cadence_rpm: child_text(node, "Cadence")
-            .and_then(parse_i32)
-            .or_else(|| descendant_text(node, "RunCadence").as_deref().and_then(parse_i32)),
+        cadence_rpm: child_text(node, "Cadence").and_then(parse_i32).or_else(|| {
+            descendant_text(node, "RunCadence")
+                .as_deref()
+                .and_then(parse_i32)
+        }),
     })
 }
 
@@ -576,7 +585,10 @@ fn summarize_elevation(points: &[TrackPointSample]) -> (Option<f64>, Option<f64>
         }
     }
 
-    (metric_from_f64(Some(gain_meters)), metric_from_f64(Some(loss_meters)))
+    (
+        metric_from_f64(Some(gain_meters)),
+        metric_from_f64(Some(loss_meters)),
+    )
 }
 
 fn average_metric(values: &[i32]) -> Option<i32> {
@@ -585,8 +597,8 @@ fn average_metric(values: &[i32]) -> Option<i32> {
     }
 
     Some(
-        (values.iter().copied().map(i64::from).sum::<i64>() as f64 / values.len() as f64)
-            .round() as i32,
+        (values.iter().copied().map(i64::from).sum::<i64>() as f64 / values.len() as f64).round()
+            as i32,
     )
 }
 
@@ -843,8 +855,8 @@ mod tests {
 
     #[test]
     fn fit_uploads_have_no_detail_data_yet() {
-        let detail = derive_activity_detail_data("trainer.fit", "fit", b"fit-binary")
-            .expect("fit detail");
+        let detail =
+            derive_activity_detail_data("trainer.fit", "fit", b"fit-binary").expect("fit detail");
 
         assert!(detail.laps.is_empty());
         assert!(detail.chart_points.is_empty());

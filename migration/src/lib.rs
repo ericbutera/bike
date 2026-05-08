@@ -5,6 +5,8 @@ mod m20260506_000003_add_activity_derived_data;
 mod m20260506_000004_create_segments;
 mod m20260507_000005_create_user_preferences;
 mod m20260507_000006_add_training_profile_fields;
+mod m20260507_000007_add_analytics_cache_tables;
+mod m20260507_000008_add_analytics_freshness_state;
 
 pub struct Migrator;
 
@@ -28,6 +30,12 @@ impl MigratorTrait for Migrator {
         ));
         locals.push(Box::new(
             m20260507_000006_add_training_profile_fields::Migration,
+        ));
+        locals.push(Box::new(
+            m20260507_000007_add_analytics_cache_tables::Migration,
+        ));
+        locals.push(Box::new(
+            m20260507_000008_add_analytics_freshness_state::Migration,
         ));
         locals.sort_by_key(|m| m.name().to_string());
 

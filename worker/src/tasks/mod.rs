@@ -6,6 +6,7 @@ use kaleido::auth::worker::{
     AuthWorkerSmtpConfig,
 };
 use kaleido::background_jobs::worker::{TaskWorker, WorkerError};
+use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 
 pub use processors::*;
@@ -31,6 +32,14 @@ pub fn register_auth_email_processors(
     Ok(worker.register_processor(email_notification))
 }
 
-pub async fn register_default_processors(worker: TaskWorker) -> Result<TaskWorker, WorkerError> {
-    Ok(worker)
+pub async fn register_default_processors(
+    worker: TaskWorker,
+    db: DatabaseConnection,
+) -> Result<TaskWorker, WorkerError> {
+    let rebuild_fitness_freshness = Arc::new(RebuildFitnessFreshness::new(db.clone()));
+    let rebuild_segment_analytics = Arc::new(RebuildSegmentAnalytics::new(db));
+
+    Ok(worker
+        .register_processor(rebuild_fitness_freshness)
+        .register_processor(rebuild_segment_analytics))
 }

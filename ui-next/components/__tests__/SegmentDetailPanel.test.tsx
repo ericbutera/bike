@@ -186,7 +186,8 @@ describe("SegmentDetailPanel", () => {
     );
     expect(screen.getByText("Casey Fast · Hill Attack")).toBeInTheDocument();
     expect(screen.getByText("KOM")).toBeInTheDocument();
-    expect(screen.getByText("PR")).toBeInTheDocument();
+    expect(screen.getByText("Top 2")).toBeInTheDocument();
+    expect(screen.queryByText("PR")).not.toBeInTheDocument();
     expect(screen.queryByText("Hover point")).not.toBeInTheDocument();
     expect(screen.queryByText("Back to home")).not.toBeInTheDocument();
   });
@@ -201,6 +202,47 @@ describe("SegmentDetailPanel", () => {
     expect(screen.getByRole("button", { name: "Heart rate" })).toHaveClass(
       "btn-primary",
     );
+  });
+
+  it("shows only KOM when the same effort is also the current user PR", () => {
+    const segment = makeSegment();
+
+    segment.efforts = [
+      {
+        ...segment.efforts[0],
+        duration_seconds: 300,
+        end_elapsed_seconds: 700,
+        route_points: [
+          makeRoutePoint(0, 45.0, -122.0),
+          makeRoutePoint(120, 45.004, -121.996),
+          makeRoutePoint(240, 45.008, -121.992),
+          makeRoutePoint(300, 45.012, -121.988),
+        ],
+      },
+      {
+        ...segment.efforts[1],
+        duration_seconds: 330,
+        end_elapsed_seconds: 830,
+        route_points: [
+          makeRoutePoint(0, 45.0, -122.0),
+          makeRoutePoint(120, 45.004, -121.996),
+          makeRoutePoint(240, 45.008, -121.992),
+          makeRoutePoint(330, 45.012, -121.988),
+        ],
+      },
+    ];
+
+    mocks.useSegment.mockReturnValue({
+      data: segment,
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+
+    render(<SegmentDetailPanel segmentId={14} />);
+
+    expect(screen.getByText("KOM")).toBeInTheDocument();
+    expect(screen.queryByText("PR")).not.toBeInTheDocument();
   });
 
   it("projects playback markers onto the segment route geometry", () => {
@@ -258,8 +300,7 @@ describe("SegmentDetailPanel", () => {
     );
   });
 
-  it("paginates the efforts list at 25 per page", async () => {
-    const user = userEvent.setup();
+  it("shows the efforts list in a scrollable 10-row viewport", () => {
     const segment = makeSegment();
 
     segment.efforts = Array.from({ length: 27 }, (_, index) => ({
@@ -284,25 +325,42 @@ describe("SegmentDetailPanel", () => {
 
     render(<SegmentDetailPanel segmentId={14} />);
 
-    expect(screen.getByText("Page 1 of 2 · 25 per page")).toBeInTheDocument();
+    const effortsTable = screen.getByLabelText("Segment efforts table");
+    const firstEffortRow = screen
+      .getByRole("link", { name: "5m 00s" })
+      .closest("tr");
+    const lastEffortRow = screen
+      .getByRole("link", { name: "5m 26s" })
+      .closest("tr");
+
+    expect(effortsTable).toHaveClass("overflow-y-auto");
+    expect(effortsTable).toHaveAttribute(
+      "style",
+      expect.stringContaining("max-height: 31rem"),
+    );
+    expect(
+      screen.getByRole("columnheader", { name: "Place" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Scroll to see more than 10 efforts"),
+    ).toBeInTheDocument();
+    expect(firstEffortRow?.querySelector("td")).toHaveTextContent("1");
     expect(screen.getByRole("link", { name: "5m 00s" })).toHaveAttribute(
       "href",
       "/activities/101",
     );
-    expect(
-      screen.queryByRole("link", { name: "5m 26s" }),
-    ).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Next" }));
-
-    expect(screen.getByText("Page 2 of 2 · 25 per page")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "5m 25s" })).toHaveAttribute(
       "href",
       "/activities/126",
     );
+    expect(lastEffortRow?.querySelector("td")).toHaveTextContent("27");
     expect(screen.getByRole("link", { name: "5m 26s" })).toHaveAttribute(
       "href",
       "/activities/127",
     );
+    expect(
+      screen.queryByRole("button", { name: "Next" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Page 1 of/i)).not.toBeInTheDocument();
   });
 });

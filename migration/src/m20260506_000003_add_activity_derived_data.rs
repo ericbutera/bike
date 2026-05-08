@@ -16,11 +16,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(Activities::Table)
-                    .add_column(
-                        ColumnDef::new(Activities::DerivedDataJson)
-                            .text()
-                            .null(),
-                    )
+                    .add_column(ColumnDef::new(Activities::DerivedDataJson).text().null())
                     .to_owned(),
             )
             .await

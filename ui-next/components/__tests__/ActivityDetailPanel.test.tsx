@@ -372,9 +372,13 @@ describe("ActivityDetailPanel", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Summary overview")).not.toBeInTheDocument();
     expect(screen.getAllByText("KOM").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("PR").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Trending faster").length).toBeGreaterThan(0);
-    expect(screen.getByText("High heart rate")).toBeInTheDocument();
+    expect(screen.queryByText("PR")).not.toBeInTheDocument();
+    expect(screen.getByText("Best 5m 12s")).toBeInTheDocument();
+    expect(screen.getByText("Leaderboard #1 overall")).toBeInTheDocument();
+    expect(screen.getByText("Peak HR 168 bpm")).toBeInTheDocument();
+    expect(screen.queryByText("Trending faster")).not.toBeInTheDocument();
+    expect(screen.queryByText("High heart rate")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^2 runs?$/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/High heart rate at/i)).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Regenerate derived data" }),
@@ -417,8 +421,8 @@ describe("ActivityDetailPanel", () => {
     expect(screen.getByText("Personal rank #1 all-time")).toBeInTheDocument();
     expect(screen.getByText("At PR")).toBeInTheDocument();
     expect(screen.getAllByText("KOM").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("PR").length).toBeGreaterThan(0);
-    expect(screen.getByText("Fastest run today")).toBeInTheDocument();
+    expect(screen.queryByText("PR")).not.toBeInTheDocument();
+    expect(screen.queryByText("Fastest run today")).not.toBeInTheDocument();
 
     fireEvent.mouseLeave(screen.getByLabelText("North Climb run 1 point"));
     fireEvent.mouseEnter(screen.getByLabelText("North Climb run 2 point"));
@@ -429,6 +433,41 @@ describe("ActivityDetailPanel", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Personal rank #2 all-time")).toBeInTheDocument();
     expect(screen.getByText("18s off PR")).toBeInTheDocument();
+    expect(screen.getByText("Top 3")).toBeInTheDocument();
+  });
+
+  it("prefers a top-10 finish over PR and fastest for the same attempt", () => {
+    mocks.useActivity.mockReturnValue({
+      data: makeActivity({
+        segment_efforts: [
+          {
+            segment_id: 11,
+            segment_title: "North Climb",
+            effort_index: 1,
+            duration_seconds: 312,
+            start_route_point_index: 1,
+            end_route_point_index: 2,
+            overall_rank: 3,
+            personal_rank: 1,
+            personal_best_duration_seconds: 312,
+          },
+        ],
+      }),
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+
+    render(<ActivityDetailPanel activityId={7} />);
+
+    expect(screen.getByText("Top 3")).toBeInTheDocument();
+    expect(screen.queryByText("PR")).not.toBeInTheDocument();
+
+    fireEvent.mouseEnter(screen.getByLabelText("North Climb run 1 point"));
+
+    expect(screen.getAllByText("Top 3").length).toBeGreaterThan(0);
+    expect(screen.queryByText("PR")).not.toBeInTheDocument();
+    expect(screen.queryByText("Fastest run today")).not.toBeInTheDocument();
   });
 
   it("lets the user toggle the merged signal layers", async () => {

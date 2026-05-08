@@ -3,8 +3,11 @@
 import { auth } from "@ericbutera/kaleido";
 import {
   faCrown,
+  faFileLines,
+  faMedal,
   faPause,
   faPlay,
+  faRoute,
   faTrophy,
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -37,6 +40,7 @@ import {
   type SegmentEffort,
   useSegment,
 } from "../lib/queries";
+import { primarySegmentAchievement } from "../lib/segmentAchievements";
 import { useUnitPreferences } from "../lib/unitPreferences";
 import AuthRequiredCard from "./AuthRequiredCard";
 import LeafletRouteMap from "./LeafletRouteMap";
@@ -54,7 +58,8 @@ const EFFORT_COLORS = [
   "#c2410c",
 ];
 const MAX_SELECTED_EFFORTS = 10;
-const EFFORTS_PER_PAGE = 25;
+const EFFORTS_VISIBLE_ROWS = 10;
+const EFFORTS_TABLE_MAX_HEIGHT_REM = 31;
 
 const EFFORT_TIME_FILTERS = [
   { key: "all", label: "All" },
@@ -1065,7 +1070,6 @@ export default function SegmentDetailPanel({
   const [metric, setMetric] = useState<ChartMetric>("speed");
   const [hoveredEffortId, setHoveredEffortId] = useState<number | null>(null);
   const [pinnedEffortId, setPinnedEffortId] = useState<number | null>(null);
-  const [effortsPage, setEffortsPage] = useState(1);
   const [effortTimeFilter, setEffortTimeFilter] =
     useState<EffortTimeFilter>("all");
   const segment = segmentQuery.data;
@@ -1097,14 +1101,6 @@ export default function SegmentDetailPanel({
     selectedEffortIds.includes(effort.id),
   );
   const focusedEffortId = hoveredEffortId ?? pinnedEffortId;
-  const effortPageCount = Math.max(
-    1,
-    Math.ceil(visibleEfforts.length / EFFORTS_PER_PAGE),
-  );
-  const paginatedEfforts = visibleEfforts.slice(
-    (effortsPage - 1) * EFFORTS_PER_PAGE,
-    effortsPage * EFFORTS_PER_PAGE,
-  );
   const maxDuration = selectedEfforts.reduce(
     (max, effort) => Math.max(max, effort.duration_seconds),
     0,
@@ -1151,14 +1147,6 @@ export default function SegmentDetailPanel({
       setHoveredEffortId(null);
     }
   }, [hoveredEffortId, pinnedEffortId, selectedEfforts]);
-
-  useEffect(() => {
-    setEffortsPage(1);
-  }, [effortTimeFilter, segment?.id]);
-
-  useEffect(() => {
-    setEffortsPage((current) => Math.min(current, effortPageCount));
-  }, [effortPageCount]);
 
   function togglePinnedEffort(effortId: number) {
     setPinnedEffortId((current) => (current === effortId ? null : effortId));
@@ -1251,14 +1239,21 @@ export default function SegmentDetailPanel({
             </div>
           </div>
 
-          <div className="stats stats-vertical bg-base-200 shadow lg:stats-horizontal">
+          <div className="stats stats-vertical border border-base-300 bg-base-200 shadow lg:stats-horizontal">
             <div className="stat">
+              <div className="stat-figure text-primary">
+                <FontAwesomeIcon icon={faRoute} className="h-8 w-8" />
+              </div>
               <div className="stat-title">Distance</div>
               <div className="stat-value text-xl">
                 {formatDistance(segment.distance_meters, unitSystem)}
               </div>
+              <div className="stat-desc">Saved route length</div>
             </div>
             <div className="stat">
+              <div className="stat-figure text-warning">
+                <FontAwesomeIcon icon={faCrown} className="h-8 w-8" />
+              </div>
               <div className="stat-title flex items-center gap-1">
                 <FontAwesomeIcon
                   icon={faCrown}
@@ -1276,6 +1271,9 @@ export default function SegmentDetailPanel({
               </div>
             </div>
             <div className="stat">
+              <div className="stat-figure text-primary">
+                <FontAwesomeIcon icon={faMedal} className="h-8 w-8" />
+              </div>
               <div className="stat-title">Your PR</div>
               <div className="stat-value text-xl">
                 {formatDuration(currentUserPr?.duration_seconds ?? null)}
@@ -1285,20 +1283,30 @@ export default function SegmentDetailPanel({
               </div>
             </div>
             <div className="stat">
+              <div className="stat-figure text-info">
+                <FontAwesomeIcon icon={faTrophy} className="h-8 w-8" />
+              </div>
               <div className="stat-title">Attempts</div>
               <div className="stat-value text-xl">{segment.effort_count}</div>
+              <div className="stat-desc">Stored matched efforts</div>
             </div>
             <div className="stat">
-              <div className="stat-title">Source file</div>
+              <div className="stat-figure text-secondary">
+                <FontAwesomeIcon icon={faFileLines} className="h-8 w-8" />
+              </div>
+              <div className="stat-title">Imported</div>
               <div className="stat-value text-xl">
-                {segment.original_filename ?? "--"}
+                {segment.format ? segment.format.toUpperCase() : segment.source}
+              </div>
+              <div className="stat-desc">
+                {segment.original_filename ?? "Route import details"}
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="card bg-base-200 shadow-sm">
+      <div className="card border border-base-300 bg-base-100 shadow-xl">
         <div className="card-body">
           <h2 className="card-title text-xl">Efforts</h2>
           <p className="text-sm text-base-content/70">
@@ -1311,6 +1319,11 @@ export default function SegmentDetailPanel({
               {visibleEfforts.length} of {(segment.efforts ?? []).length}{" "}
               efforts
             </div>
+            {visibleEfforts.length > EFFORTS_VISIBLE_ROWS ? (
+              <div className="text-xs text-base-content/55">
+                Scroll to see more than {EFFORTS_VISIBLE_ROWS} efforts
+              </div>
+            ) : null}
             <div className="join">
               {EFFORT_TIME_FILTERS.map((filter) => (
                 <button
@@ -1329,33 +1342,49 @@ export default function SegmentDetailPanel({
 
           {visibleEfforts.length > 0 ? (
             <>
-              <div className="mt-5 overflow-x-auto rounded-box bg-base-100">
-                <table className="table table-sm">
+              <div
+                aria-label="Segment efforts table"
+                className="mt-5 overflow-x-auto overflow-y-auto rounded-box border border-base-300 bg-base-100"
+                style={{ maxHeight: `${EFFORTS_TABLE_MAX_HEIGHT_REM}rem` }}
+              >
+                <table className="table table-pin-rows table-sm">
                   <thead>
                     <tr>
-                      <th className="w-12"></th>
+                      <th className="w-14">Place</th>
+                      <th className="w-12">
+                        <span className="sr-only">Select</span>
+                      </th>
                       <th>Time</th>
                       <th>Rider</th>
                       <th>Date</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {paginatedEfforts.map((effort) => {
+                    {visibleEfforts.map((effort) => {
                       const checked = selectedEffortIds.includes(effort.id);
                       const overallRank =
                         overallRankByEffortId.get(effort.id) ?? null;
-                      const isOverallKom = overallKom?.id === effort.id;
                       const isCurrentUserPr = currentUserPr?.id === effort.id;
-                      const rowClassName = isCurrentUserPr
-                        ? "bg-primary/10"
-                        : isOverallKom
-                          ? "bg-warning/10"
-                          : checked
-                            ? "bg-base-200/70"
-                            : undefined;
+                      const achievement = primarySegmentAchievement({
+                        overallRank,
+                        personalRank: isCurrentUserPr ? 1 : null,
+                      });
+                      const rowClassName =
+                        achievement?.kind === "pr"
+                          ? "bg-primary/10"
+                          : achievement?.kind === "kom"
+                            ? "bg-warning/10"
+                            : achievement?.kind === "top-10"
+                              ? "bg-info/10"
+                              : checked
+                                ? "bg-base-200/70"
+                                : undefined;
 
                       return (
                         <tr key={effort.id} className={rowClassName}>
+                          <td className="font-mono text-sm font-semibold tabular-nums text-base-content/70">
+                            {overallRank ?? "--"}
+                          </td>
                           <td>
                             <input
                               type="checkbox"
@@ -1392,7 +1421,7 @@ export default function SegmentDetailPanel({
                               >
                                 {formatDuration(effort.duration_seconds)}
                               </Link>
-                              {isOverallKom ? (
+                              {achievement?.kind === "kom" ? (
                                 <span className="badge badge-warning badge-xs gap-1">
                                   <FontAwesomeIcon
                                     icon={faCrown}
@@ -1400,16 +1429,15 @@ export default function SegmentDetailPanel({
                                   />
                                   KOM
                                 </span>
-                              ) : overallRank != null && overallRank <= 10 ? (
-                                <span className="badge badge-warning badge-outline badge-xs gap-1">
+                              ) : achievement?.kind === "top-10" ? (
+                                <span className="badge badge-info badge-outline badge-xs gap-1">
                                   <FontAwesomeIcon
                                     icon={faTrophy}
                                     className="h-3 w-3"
                                   />
-                                  #{overallRank}
+                                  {achievement.longLabel}
                                 </span>
-                              ) : null}
-                              {isCurrentUserPr ? (
+                              ) : achievement?.kind === "pr" ? (
                                 <span className="badge badge-primary badge-xs">
                                   PR
                                 </span>
@@ -1428,49 +1456,10 @@ export default function SegmentDetailPanel({
                   </tbody>
                 </table>
               </div>
-              {effortPageCount > 1 ? (
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                  <div className="text-sm text-base-content/70">
-                    {`Page ${effortsPage} of ${effortPageCount} · ${EFFORTS_PER_PAGE} per page`}
-                  </div>
-                  <div className="join">
-                    <button
-                      type="button"
-                      className="join-item btn btn-sm btn-ghost"
-                      disabled={effortsPage === 1}
-                      onClick={() => {
-                        setEffortsPage((current) => Math.max(1, current - 1));
-                      }}
-                    >
-                      Previous
-                    </button>
-                    <button
-                      type="button"
-                      className="join-item btn btn-sm btn-ghost"
-                      disabled={effortsPage === effortPageCount}
-                      onClick={() => {
-                        setEffortsPage((current) =>
-                          Math.min(effortPageCount, current + 1),
-                        );
-                      }}
-                    >
-                      Next
-                    </button>
-                  </div>
-                </div>
-              ) : null}
             </>
-          ) : (segment.efforts ?? []).length > 0 ? (
-            <div className="alert mt-5">
-              <span>No efforts match the selected time window.</span>
-            </div>
           ) : (
             <div className="alert mt-5">
-              <span>
-                No activities matched this segment yet. Import the route, then
-                regenerate older activities if they were uploaded before route
-                points were stored.
-              </span>
+              <span>No efforts match this time window.</span>
             </div>
           )}
         </div>

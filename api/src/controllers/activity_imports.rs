@@ -1,20 +1,18 @@
-use crate::activity_details::{
-    derive_activity_detail_data, serialize_derived_activity_data,
-};
+use crate::activity_details::{derive_activity_detail_data, serialize_derived_activity_data};
 use crate::activity_lifecycle::refresh_activity_derived_state;
 use crate::activity_location::location_from_derived_json;
 use crate::activity_summary::summarize_activity_upload;
+use crate::analytics::{mark_segment_activity_changes, mark_user_activity_change};
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::config::Config;
 use crate::entities::{activities, activity_imports};
 use crate::storage::AppStorage;
 use crate::training_profile::{
-    load_training_profile, serialize_activity_heart_rate_zones,
-    summarize_heart_rate_zones,
+    load_training_profile, serialize_activity_heart_rate_zones, summarize_heart_rate_zones,
 };
+use axum::Json;
 use axum::extract::{Multipart, State};
 use axum::http::StatusCode;
-use axum::Json;
 use chrono::{DateTime, Utc};
 use kaleido::auth::UserContext;
 use sea_orm::{
@@ -54,9 +52,8 @@ impl ActivityImportResponse {
             mime_type: model.mime_type,
             created_at: model.created_at,
             activity_started_at: activity.map(|value| value.started_at),
-            activity_duration_seconds: activity.and_then(|value| {
-                value.moving_time_seconds.or(value.total_time_seconds)
-            }),
+            activity_duration_seconds: activity
+                .and_then(|value| value.moving_time_seconds.or(value.total_time_seconds)),
             activity_location: activity
                 .and_then(|value| location_from_derived_json(value.derived_data_json.as_deref())),
         }
@@ -107,7 +104,11 @@ pub async fn list_activity_imports(
             .all(&state.db)
             .await?
             .into_iter()
-                .filter_map(|activity| activity.activity_import_id.map(|import_id| (import_id, activity)))
+            .filter_map(|activity| {
+                activity
+                    .activity_import_id
+                    .map(|import_id| (import_id, activity))
+            })
             .collect::<HashMap<_, _>>()
     };
 
@@ -144,21 +145,17 @@ pub async fn upload_activity_import(
     multipart: Multipart,
 ) -> Result<(StatusCode, Json<ActivityImportResponse>), AppError> {
     let upload = read_uploaded_activity_file(multipart).await?;
-    let activity_draft = summarize_activity_upload(
-        &upload.original_filename,
-        &upload.format,
-        &upload.bytes,
-    )?;
-    let derived_data = derive_activity_detail_data(
-        &upload.original_filename,
-        &upload.format,
-        &upload.bytes,
-    )?;
+    let activity_draft =
+        summarize_activity_upload(&upload.original_filename, &upload.format, &upload.bytes)?;
+    let derived_data =
+        derive_activity_detail_data(&upload.original_filename, &upload.format, &upload.bytes)?;
     let training_profile = load_training_profile(&state.db, user.id).await?;
     let heart_rate_zones = summarize_heart_rate_zones(
         &derived_data.route_points,
         &derived_data.chart_points,
-        activity_draft.moving_time_seconds.or(activity_draft.total_time_seconds),
+        activity_draft
+            .moving_time_seconds
+            .or(activity_draft.total_time_seconds),
         activity_draft.average_heart_rate_bpm,
         training_profile.heart_rate_zone_bounds_bpm.as_deref(),
     );
@@ -227,13 +224,21 @@ pub async fn upload_activity_import(
     .insert(&state.db)
     .await?;
 
-    refresh_activity_derived_state(
+    let affected_segment_ids = refresh_activity_derived_state(
         &state.db,
         user.id,
         activity_model.id,
         &derived_data.route_points,
     )
     .await?;
+    let changed_at = Utc::now();
+    mark_user_activity_change(&state.db, user.id, changed_at).await?;
+    mark_segment_activity_changes(&state.db, &affected_segment_ids, changed_at).await?;
+    state.tasks.rebuild_fitness_freshness(user.id).await;
+    state
+        .tasks
+        .rebuild_segment_analytics(affected_segment_ids)
+        .await;
 
     Ok((
         StatusCode::CREATED,
@@ -249,17 +254,13 @@ async fn read_uploaded_activity_file(
 ) -> Result<UploadedActivityFile, AppError> {
     let max_upload_bytes = Config::get().max_upload_bytes;
 
-    while let Some(mut field) = multipart
-        .next_field()
-        .await
-        .map_err(|err| {
-            map_multipart_error(
-                &err.to_string(),
-                max_upload_bytes,
-                "Malformed multipart payload",
-            )
-        })?
-    {
+    while let Some(mut field) = multipart.next_field().await.map_err(|err| {
+        map_multipart_error(
+            &err.to_string(),
+            max_upload_bytes,
+            "Malformed multipart payload",
+        )
+    })? {
         if field.name() != Some("file") && field.file_name().is_none() {
             continue;
         }
@@ -267,7 +268,9 @@ async fn read_uploaded_activity_file(
         let original_filename = field
             .file_name()
             .map(|value| value.to_string())
-            .ok_or_else(|| AppError::validation_field("file", "Uploaded file is missing a filename"))?;
+            .ok_or_else(|| {
+                AppError::validation_field("file", "Uploaded file is missing a filename")
+            })?;
         let format = validate_activity_format(&original_filename)?;
         let mime_type = field.content_type().map(|value| value.to_string());
         let mut bytes = Vec::new();
@@ -284,20 +287,14 @@ async fn read_uploaded_activity_file(
             if total_bytes > max_upload_bytes {
                 return Err(AppError::payload_too_large(
                     "file",
-                    format!(
-                        "File exceeds the {} byte upload limit",
-                        max_upload_bytes
-                    ),
+                    format!("File exceeds the {} byte upload limit", max_upload_bytes),
                 ));
             }
             bytes.extend_from_slice(&chunk);
         }
 
         if bytes.is_empty() {
-            return Err(AppError::validation_field(
-                "file",
-                "Uploaded file is empty",
-            ));
+            return Err(AppError::validation_field("file", "Uploaded file is empty"));
         }
 
         return Ok(UploadedActivityFile {
@@ -386,11 +383,7 @@ mod tests {
             "Uploaded file must include a .fit, .tcx, or .gpx extension"
         );
         assert_eq!(
-            error
-                .errors
-                .unwrap()
-                .get("file")
-                .unwrap(),
+            error.errors.unwrap().get("file").unwrap(),
             &vec!["Uploaded file must include a .fit, .tcx, or .gpx extension".to_string()]
         );
     }
@@ -428,14 +421,13 @@ mod tests {
 
     #[test]
     fn map_multipart_error_preserves_non_size_parse_failures() {
-        let error = map_multipart_error(
-            "missing boundary",
-            1024,
-            "Malformed multipart payload",
-        );
+        let error = map_multipart_error("missing boundary", 1024, "Malformed multipart payload");
 
         assert_eq!(error.status, StatusCode::BAD_REQUEST);
-        assert_eq!(error.message, "Malformed multipart payload: missing boundary");
+        assert_eq!(
+            error.message,
+            "Malformed multipart payload: missing boundary"
+        );
         assert!(error.errors.is_none());
     }
 
@@ -487,19 +479,22 @@ mod tests {
             created_at: now,
             updated_at: now,
         };
-        let response = ActivityImportResponse::from_model(activity_imports::Model {
-            id: 7,
-            user_id: 12,
-            source: "manual_upload".to_string(),
-            format: "gpx".to_string(),
-            status: "uploaded".to_string(),
-            original_filename: "ride.gpx".to_string(),
-            storage_path: "activity-imports/user/ride.gpx".to_string(),
-            size_bytes: 8192,
-            mime_type: Some("application/gpx+xml".to_string()),
-            created_at: now,
-            updated_at: now,
-        }, Some(&activity));
+        let response = ActivityImportResponse::from_model(
+            activity_imports::Model {
+                id: 7,
+                user_id: 12,
+                source: "manual_upload".to_string(),
+                format: "gpx".to_string(),
+                status: "uploaded".to_string(),
+                original_filename: "ride.gpx".to_string(),
+                storage_path: "activity-imports/user/ride.gpx".to_string(),
+                size_bytes: 8192,
+                mime_type: Some("application/gpx+xml".to_string()),
+                created_at: now,
+                updated_at: now,
+            },
+            Some(&activity),
+        );
 
         assert_eq!(response.id, 7);
         assert_eq!(response.activity_id, Some(21));

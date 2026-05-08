@@ -47,11 +47,7 @@ impl MigrationTrait for Migration {
                             .integer()
                             .null(),
                     )
-                    .add_column(
-                        ColumnDef::new(Activities::HeartRateZonesJson)
-                            .text()
-                            .null(),
-                    )
+                    .add_column(ColumnDef::new(Activities::HeartRateZonesJson).text().null())
                     .to_owned(),
             )
             .await?;

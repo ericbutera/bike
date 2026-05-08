@@ -1,22 +1,18 @@
-use crate::app_error::{ApiErrorResponse, AppError};
-use crate::entities::activities;
-use crate::storage::AppStorage;
-use crate::training_profile::{
-    deserialize_activity_heart_rate_zones, weighted_zone_intensity,
+use crate::analytics::{
+    FATIGUE_WINDOW_DAYS, FITNESS_WINDOW_DAYS, build_fitness_freshness_rows,
+    default_fitness_rebuild_start_date,
 };
-use axum::extract::{Query, State};
+use crate::app_error::{ApiErrorResponse, AppError};
+use crate::entities::{activities, analytics_user_states, fitness_freshness_daily};
+use crate::storage::AppStorage;
 use axum::Json;
+use axum::extract::{Query, State};
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use kaleido::auth::UserContext;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
-
-const FITNESS_WINDOW_DAYS: f64 = 42.0;
-const FATIGUE_WINDOW_DAYS: f64 = 7.0;
-const DEFAULT_HEART_RATE_RATIO: f64 = 0.6;
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct FitnessQuery {
@@ -62,46 +58,46 @@ pub async fn get_fitness_freshness(
     State(state): State<Arc<AppStorage>>,
     Query(query): Query<FitnessQuery>,
 ) -> Result<Json<FitnessFreshnessResponse>, AppError> {
+    let requested_start_date = query.start_date.as_deref().map(parse_date).transpose()?;
     let end_date = query
         .end_date
         .as_deref()
         .map(parse_date)
         .transpose()?
         .unwrap_or_else(|| Utc::now().date_naive());
-    let end_bound = end_of_day_utc(end_date)?;
 
-    let activity_models = activities::Entity::find()
-        .filter(activities::Column::UserId.eq(user.id))
-        .filter(activities::Column::StartedAt.lte(end_bound))
-        .order_by_asc(activities::Column::StartedAt)
-        .all(&state.db)
-        .await?;
-
-    let earliest_activity_date = activity_models
-        .first()
-        .map(|activity| activity.started_at.date_naive());
-    let requested_start_date = query
-        .start_date
-        .as_deref()
-        .map(parse_date)
-        .transpose()?
-        .unwrap_or_else(|| earliest_activity_date.unwrap_or(end_date));
-
-    if requested_start_date > end_date {
+    if requested_start_date.is_some_and(|start_date| start_date > end_date) {
         return Err(AppError::validation_field(
             "start_date",
             "Start date must be on or before end date",
         ));
     }
 
-    let points = build_fitness_freshness_points(
-        &activity_models,
-        requested_start_date,
-        end_date,
-    );
+    let cached_rows = fitness_freshness_daily::Entity::find()
+        .filter(fitness_freshness_daily::Column::UserId.eq(user.id))
+        .filter(fitness_freshness_daily::Column::Day.lte(end_date))
+        .order_by_asc(fitness_freshness_daily::Column::Day)
+        .all(&state.db)
+        .await?;
+    let freshness_state = analytics_user_states::Entity::find_by_id(user.id)
+        .one(&state.db)
+        .await?;
+
+    let (start_date, points) =
+        if cache_is_usable(&cached_rows, freshness_state.as_ref(), requested_start_date) {
+            let start_date = requested_start_date.unwrap_or(cached_rows[0].day);
+
+            (
+                start_date,
+                build_points_from_cached_rows(&cached_rows, start_date, end_date),
+            )
+        } else {
+            state.tasks.rebuild_fitness_freshness(user.id).await;
+            load_points_from_activities(&state.db, user.id, requested_start_date, end_date).await?
+        };
 
     Ok(Json(FitnessFreshnessResponse {
-        start_date: requested_start_date.format("%Y-%m-%d").to_string(),
+        start_date: start_date.format("%Y-%m-%d").to_string(),
         end_date: end_date.format("%Y-%m-%d").to_string(),
         fitness_window_days: FITNESS_WINDOW_DAYS as i32,
         fatigue_window_days: FATIGUE_WINDOW_DAYS as i32,
@@ -109,81 +105,116 @@ pub async fn get_fitness_freshness(
     }))
 }
 
-fn build_fitness_freshness_points(
-    activities: &[activities::Model],
+fn cache_is_usable(
+    rows: &[fitness_freshness_daily::Model],
+    freshness_state: Option<&analytics_user_states::Model>,
+    requested_start_date: Option<NaiveDate>,
+) -> bool {
+    if rows.is_empty() {
+        return false;
+    }
+
+    let Some(freshness_state) = freshness_state else {
+        return false;
+    };
+
+    if requested_start_date.is_some_and(|start_date| start_date < rows[0].day) {
+        return false;
+    }
+
+    if rows
+        .windows(2)
+        .any(|window| window[1].day != window[0].day + Duration::days(1))
+    {
+        return false;
+    }
+
+    rows.iter()
+        .map(|row| row.updated_at)
+        .min()
+        .is_some_and(|updated_at| updated_at >= freshness_state.last_activity_change_at)
+}
+
+fn build_points_from_cached_rows(
+    rows: &[fitness_freshness_daily::Model],
     requested_start_date: NaiveDate,
     end_date: NaiveDate,
 ) -> Vec<FitnessFreshnessPoint> {
-    let mut training_load_by_date = BTreeMap::<NaiveDate, f64>::new();
+    let mut points = rows
+        .iter()
+        .filter(|row| row.day >= requested_start_date)
+        .map(|row| FitnessFreshnessPoint {
+            date: row.day.format("%Y-%m-%d").to_string(),
+            training_load: round_metric(row.training_load),
+            fitness: round_metric(row.fitness),
+            fatigue: round_metric(row.fatigue),
+            form: round_metric(row.form),
+        })
+        .collect::<Vec<_>>();
 
-    for activity in activities {
-        if let Some(training_load) = estimated_training_load(activity) {
-            *training_load_by_date
-                .entry(activity.started_at.date_naive())
-                .or_insert(0.0) += training_load;
-        }
-    }
+    let Some(last_row) = rows.last() else {
+        return points;
+    };
 
-    let compute_start_date = activities
-        .first()
-        .map(|activity| activity.started_at.date_naive().min(requested_start_date))
-        .unwrap_or(requested_start_date);
+    let mut current_date = last_row.day;
+    let mut fitness = last_row.fitness;
+    let mut fatigue = last_row.fatigue;
 
-    let mut current_date = compute_start_date;
-    let mut fitness = 0.0;
-    let mut fatigue = 0.0;
-    let mut points = Vec::new();
-
-    while current_date <= end_date {
-        let training_load = *training_load_by_date.get(&current_date).unwrap_or(&0.0);
-        fitness += (training_load - fitness) / FITNESS_WINDOW_DAYS;
-        fatigue += (training_load - fatigue) / FATIGUE_WINDOW_DAYS;
-        let form = fitness - fatigue;
+    while current_date < end_date {
+        current_date += Duration::days(1);
+        fitness += (0.0 - fitness) / FITNESS_WINDOW_DAYS;
+        fatigue += (0.0 - fatigue) / FATIGUE_WINDOW_DAYS;
 
         if current_date >= requested_start_date {
             points.push(FitnessFreshnessPoint {
                 date: current_date.format("%Y-%m-%d").to_string(),
-                training_load: round_metric(training_load),
+                training_load: 0.0,
                 fitness: round_metric(fitness),
                 fatigue: round_metric(fatigue),
-                form: round_metric(form),
+                form: round_metric(fitness - fatigue),
             });
         }
-
-        current_date += Duration::days(1);
     }
 
     points
 }
 
-fn estimated_training_load(activity: &activities::Model) -> Option<f64> {
-    let duration_seconds = activity
-        .moving_time_seconds
-        .or(activity.total_time_seconds)
-        .filter(|value| *value > 0)?;
-    let duration_hours = f64::from(duration_seconds) / 3600.0;
-    let heart_rate_ratio = weighted_zone_intensity(
-        &deserialize_activity_heart_rate_zones(activity.heart_rate_zones_json.as_deref()),
-    )
-    .unwrap_or_else(|| estimated_heart_rate_ratio(activity));
+async fn load_points_from_activities(
+    db: &sea_orm::DatabaseConnection,
+    user_id: i32,
+    requested_start_date: Option<NaiveDate>,
+    end_date: NaiveDate,
+) -> Result<(NaiveDate, Vec<FitnessFreshnessPoint>), AppError> {
+    let end_bound = end_of_day_utc(end_date)?;
+    let activity_models = activities::Entity::find()
+        .filter(activities::Column::UserId.eq(user_id))
+        .filter(activities::Column::StartedAt.lte(end_bound))
+        .order_by_asc(activities::Column::StartedAt)
+        .all(db)
+        .await?;
+    let default_start_date = default_fitness_rebuild_start_date(&activity_models, end_date);
+    let start_date = requested_start_date.unwrap_or(default_start_date);
+    let compute_start_date = default_start_date.min(start_date);
+    let rows = build_fitness_freshness_rows(&activity_models, compute_start_date, end_date);
 
-    Some(duration_hours * 100.0 * heart_rate_ratio.powi(2))
-}
-
-fn estimated_heart_rate_ratio(activity: &activities::Model) -> f64 {
-    match (activity.average_heart_rate_bpm, activity.max_heart_rate_bpm) {
-        (Some(average), Some(maximum)) if maximum > 0 => {
-            (f64::from(average) / f64::from(maximum)).clamp(0.35, 1.0)
-        }
-        (Some(average), _) => (f64::from(average) / 190.0).clamp(0.35, 1.0),
-        _ => DEFAULT_HEART_RATE_RATIO,
-    }
+    Ok((
+        start_date,
+        rows.into_iter()
+            .filter(|row| row.day >= start_date)
+            .map(|row| FitnessFreshnessPoint {
+                date: row.day.format("%Y-%m-%d").to_string(),
+                training_load: round_metric(row.training_load),
+                fitness: round_metric(row.fitness),
+                fatigue: round_metric(row.fatigue),
+                form: round_metric(row.form),
+            })
+            .collect(),
+    ))
 }
 
 fn parse_date(value: &str) -> Result<NaiveDate, AppError> {
-    NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|_| {
-        AppError::validation_field("date", "Dates must use YYYY-MM-DD format")
-    })
+    NaiveDate::parse_from_str(value, "%Y-%m-%d")
+        .map_err(|_| AppError::validation_field("date", "Dates must use YYYY-MM-DD format"))
 }
 
 fn end_of_day_utc(date: NaiveDate) -> Result<DateTime<Utc>, AppError> {
@@ -202,108 +233,82 @@ fn round_metric(value: f64) -> f64 {
 mod tests {
     use super::*;
 
-    fn make_activity(
-        started_at: &str,
-        moving_time_seconds: Option<i32>,
-        average_heart_rate_bpm: Option<i32>,
-        max_heart_rate_bpm: Option<i32>,
-    ) -> activities::Model {
-        let timestamp = DateTime::parse_from_rfc3339(started_at)
-            .unwrap()
-            .with_timezone(&Utc);
-
-        activities::Model {
-            id: 1,
-            user_id: 1,
-            activity_import_id: None,
-            title: "Lunch Ride".to_string(),
-            sport: "Ride".to_string(),
-            source: "manual_upload".to_string(),
-            original_filename: None,
-            format: Some("fit".to_string()),
-            started_at: timestamp,
-            ended_at: None,
-            distance_meters: Some(40000.0),
-            moving_time_seconds,
-            total_time_seconds: moving_time_seconds,
-            elevation_gain_meters: Some(500.0),
-            elevation_loss_meters: Some(500.0),
-            average_speed_mps: Some(8.0),
-            max_speed_mps: Some(12.0),
-            average_heart_rate_bpm,
-            max_heart_rate_bpm,
-            average_cadence_rpm: Some(85),
-            max_cadence_rpm: Some(105),
-            calories: Some(850),
-            estimated_ftp_watts: None,
-            heart_rate_zones_json: None,
-            derived_data_json: None,
-            created_at: timestamp,
-            updated_at: timestamp,
-        }
-    }
-
-    #[test]
-    fn estimated_training_load_scales_with_duration_and_heart_rate() {
-        let easy = make_activity(
-            "2026-05-01T12:00:00Z",
-            Some(3600),
-            Some(120),
-            Some(170),
-        );
-        let hard = make_activity(
-            "2026-05-01T12:00:00Z",
-            Some(5400),
-            Some(155),
-            Some(170),
-        );
-
-        let easy_load = estimated_training_load(&easy).unwrap();
-        let hard_load = estimated_training_load(&hard).unwrap();
-
-        assert!(hard_load > easy_load);
-        assert_eq!(round_metric(easy_load), 49.8);
-        assert_eq!(round_metric(hard_load), 124.7);
-    }
-
-    #[test]
-    fn builds_daily_series_with_decay_and_history() {
-        let activities = vec![
-            make_activity(
-                "2026-05-01T12:00:00Z",
-                Some(3600),
-                Some(140),
-                Some(170),
-            ),
-            make_activity(
-                "2026-05-03T12:00:00Z",
-                Some(7200),
-                Some(145),
-                Some(170),
-            ),
-        ];
-
-        let points = build_fitness_freshness_points(
-            &activities,
-            NaiveDate::from_ymd_opt(2026, 5, 2).unwrap(),
-            NaiveDate::from_ymd_opt(2026, 5, 4).unwrap(),
-        );
-
-        assert_eq!(points.len(), 3);
-        assert_eq!(points[0].date, "2026-05-02");
-        assert_eq!(points[0].training_load, 0.0);
-        assert!(points[0].fitness > 0.0);
-        assert!(points[0].fatigue > points[0].fitness);
-        assert!(points[1].training_load > 0.0);
-        assert!(points[1].fatigue > points[0].fatigue);
-        assert!(points[2].form < 0.0);
-    }
-
     #[test]
     fn parse_date_requires_iso_format() {
         let error = parse_date("05/01/2026").unwrap_err();
 
         assert_eq!(error.status, axum::http::StatusCode::BAD_REQUEST);
         assert_eq!(error.message, "Dates must use YYYY-MM-DD format");
+    }
+
+    #[test]
+    fn cache_is_unusable_when_history_has_gaps() {
+        let now = Utc::now();
+        let rows = vec![
+            fitness_freshness_daily::Model {
+                id: 1,
+                user_id: 1,
+                day: NaiveDate::from_ymd_opt(2026, 5, 1).unwrap(),
+                activity_count: 1,
+                training_load: 10.0,
+                fitness: 1.0,
+                fatigue: 2.0,
+                form: -1.0,
+                created_at: now,
+                updated_at: now,
+            },
+            fitness_freshness_daily::Model {
+                id: 2,
+                user_id: 1,
+                day: NaiveDate::from_ymd_opt(2026, 5, 3).unwrap(),
+                activity_count: 0,
+                training_load: 0.0,
+                fitness: 0.8,
+                fatigue: 1.4,
+                form: -0.6,
+                created_at: now,
+                updated_at: now,
+            },
+        ];
+
+        assert!(!cache_is_usable(
+            &rows,
+            Some(&analytics_user_states::Model {
+                user_id: 1,
+                last_activity_change_at: now,
+                created_at: now,
+                updated_at: now,
+            }),
+            Some(NaiveDate::from_ymd_opt(2026, 5, 1).unwrap()),
+        ));
+    }
+
+    #[test]
+    fn cache_is_unusable_when_rows_are_older_than_latest_activity_change() {
+        let row_time = Utc::now();
+        let freshness_time = row_time + Duration::days(1);
+        let rows = vec![fitness_freshness_daily::Model {
+            id: 1,
+            user_id: 1,
+            day: NaiveDate::from_ymd_opt(2026, 5, 1).unwrap(),
+            activity_count: 1,
+            training_load: 10.0,
+            fitness: 1.0,
+            fatigue: 2.0,
+            form: -1.0,
+            created_at: row_time,
+            updated_at: row_time,
+        }];
+
+        assert!(!cache_is_usable(
+            &rows,
+            Some(&analytics_user_states::Model {
+                user_id: 1,
+                last_activity_change_at: freshness_time,
+                created_at: freshness_time,
+                updated_at: freshness_time,
+            }),
+            Some(NaiveDate::from_ymd_opt(2026, 5, 1).unwrap()),
+        ));
     }
 }

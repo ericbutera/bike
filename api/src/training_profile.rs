@@ -34,10 +34,7 @@ struct HeartRateSample {
     heart_rate_bpm: Option<i32>,
 }
 
-pub async fn load_training_profile<C>(
-    db: &C,
-    user_id: i32,
-) -> Result<TrainingProfile, AppError>
+pub async fn load_training_profile<C>(db: &C, user_id: i32) -> Result<TrainingProfile, AppError>
 where
     C: ConnectionTrait,
 {
@@ -55,9 +52,7 @@ pub fn training_profile_from_preferences(
     TrainingProfile {
         estimated_ftp_watts: model.and_then(|preferences| preferences.estimated_ftp_watts),
         heart_rate_zone_bounds_bpm: model.and_then(|preferences| {
-            deserialize_heart_rate_zone_bounds(
-                preferences.heart_rate_zone_bounds_json.as_deref(),
-            )
+            deserialize_heart_rate_zone_bounds(preferences.heart_rate_zone_bounds_json.as_deref())
         }),
     }
 }
@@ -120,12 +115,12 @@ pub fn serialize_heart_rate_zone_bounds(
     bounds: Option<&[i32]>,
 ) -> Result<Option<String>, AppError> {
     match bounds {
-        Some(values) if !values.is_empty() => serde_json::to_string(values)
-            .map(Some)
-            .map_err(|error| {
+        Some(values) if !values.is_empty() => {
+            serde_json::to_string(values).map(Some).map_err(|error| {
                 tracing::error!(error = ?error, "failed to serialize heart rate zone bounds");
                 AppError::internal("Failed to serialize heart rate zone bounds")
-            }),
+            })
+        }
         _ => Ok(None),
     }
 }
@@ -154,12 +149,12 @@ pub fn deserialize_activity_heart_rate_zones(
     raw: Option<&str>,
 ) -> Vec<ActivityHeartRateZoneSummary> {
     match raw {
-        Some(value) if !value.trim().is_empty() => serde_json::from_str(value).unwrap_or_else(
-            |error| {
+        Some(value) if !value.trim().is_empty() => {
+            serde_json::from_str(value).unwrap_or_else(|error| {
                 tracing::warn!(error = ?error, "failed to deserialize activity heart rate zones");
                 Vec::new()
-            },
-        ),
+            })
+        }
         _ => Vec::new(),
     }
 }
@@ -210,8 +205,16 @@ pub fn summarize_heart_rate_zones(
         .iter()
         .enumerate()
         .map(|(index, label)| {
-            let min_bpm = if index == 0 { None } else { Some(bounds[index - 1] + 1) };
-            let max_bpm = if index < bounds.len() { Some(bounds[index]) } else { None };
+            let min_bpm = if index == 0 {
+                None
+            } else {
+                Some(bounds[index - 1] + 1)
+            };
+            let max_bpm = if index < bounds.len() {
+                Some(bounds[index])
+            } else {
+                None
+            };
             let duration_seconds = durations[index];
 
             ActivityHeartRateZoneSummary {
@@ -230,13 +233,8 @@ pub fn summarize_heart_rate_zones(
         .collect()
 }
 
-pub fn weighted_zone_intensity(
-    zones: &[ActivityHeartRateZoneSummary],
-) -> Option<f64> {
-    let total_seconds: i32 = zones
-        .iter()
-        .map(|zone| zone.duration_seconds.max(0))
-        .sum();
+pub fn weighted_zone_intensity(zones: &[ActivityHeartRateZoneSummary]) -> Option<f64> {
+    let total_seconds: i32 = zones.iter().map(|zone| zone.duration_seconds.max(0)).sum();
 
     if total_seconds <= 0 {
         return None;
@@ -250,10 +248,7 @@ pub fn weighted_zone_intensity(
     Some(weighted_sum / f64::from(total_seconds))
 }
 
-fn summarize_zone_durations(
-    samples: &[HeartRateSample],
-    bounds: &[i32],
-) -> Option<Vec<i32>> {
+fn summarize_zone_durations(samples: &[HeartRateSample], bounds: &[i32]) -> Option<Vec<i32>> {
     if samples.len() < 2 {
         return None;
     }
@@ -320,8 +315,8 @@ mod tests {
 
     #[test]
     fn validate_heart_rate_zone_bounds_rejects_invalid_shape() {
-        let error = validate_heart_rate_zone_bounds_bpm(Some(vec![120, 120, 155, 170]))
-            .unwrap_err();
+        let error =
+            validate_heart_rate_zone_bounds_bpm(Some(vec![120, 120, 155, 170])).unwrap_err();
 
         assert_eq!(
             error.message,

@@ -1,8 +1,9 @@
-pub mod app_error;
 pub mod activity_details;
 pub mod activity_lifecycle;
 pub mod activity_location;
 pub mod activity_summary;
+pub mod analytics;
+pub mod app_error;
 pub mod config;
 pub mod controllers;
 pub mod entities;

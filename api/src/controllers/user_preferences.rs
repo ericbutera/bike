@@ -113,9 +113,7 @@ fn response_from_model(model: Option<&user_preferences::Model>) -> UserPreferenc
             .unwrap_or_else(|| DEFAULT_UNIT_SYSTEM.to_string()),
         estimated_ftp_watts: model.and_then(|preferences| preferences.estimated_ftp_watts),
         heart_rate_zone_bounds_bpm: model.and_then(|preferences| {
-            deserialize_heart_rate_zone_bounds(
-                preferences.heart_rate_zone_bounds_json.as_deref(),
-            )
+            deserialize_heart_rate_zone_bounds(preferences.heart_rate_zone_bounds_json.as_deref())
         }),
     }
 }

@@ -1,7 +1,12 @@
 "use client";
 
 import { auth } from "@ericbutera/kaleido";
-import { faCrown, faMedal, faRocket } from "@fortawesome/free-solid-svg-icons";
+import {
+  faCrown,
+  faMedal,
+  faRocket,
+  faTrophy,
+} from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -41,6 +46,11 @@ import {
   useDeleteActivity,
   useRegenerateActivity,
 } from "../lib/queries";
+import {
+  primarySegmentAchievement,
+  type SegmentAchievement,
+  type SegmentAchievementKind,
+} from "../lib/segmentAchievements";
 import { useUnitPreferences } from "../lib/unitPreferences";
 import AuthRequiredCard from "./AuthRequiredCard";
 import LeafletRouteMap from "./LeafletRouteMap";
@@ -298,29 +308,65 @@ function formatPrDelta(
   return `${magnitude} faster than prior PR`;
 }
 
-function historicalAchievementLabels(
-  effort: Pick<ActivitySegmentEffort, "overall_rank" | "personal_rank">,
-) {
-  const labels: string[] = [];
-
-  if (effort.overall_rank === 1) {
-    labels.push("KOM");
-  }
-
-  if (effort.personal_rank === 1) {
-    labels.push("PR");
-  }
-
-  return labels;
+function segmentHistoricalAchievements(segmentGroup: SegmentMatchGroup) {
+  return primarySegmentAchievement({
+    overallRank: segmentGroup.bestEffort.overall_rank,
+    personalRank: segmentGroup.bestEffort.personal_rank,
+  });
 }
 
-function segmentHistoricalAchievements(segmentGroup: SegmentMatchGroup) {
-  return Array.from(
-    new Set(
-      segmentGroup.efforts.flatMap((effort) =>
-        historicalAchievementLabels(effort),
-      ),
-    ),
+function achievementIcon(kind: SegmentAchievementKind) {
+  switch (kind) {
+    case "kom":
+      return faCrown;
+    case "top-10":
+      return faTrophy;
+    case "pr":
+      return faMedal;
+    case "fastest":
+      return faRocket;
+  }
+}
+
+function achievementBadgeClassName(kind: SegmentAchievementKind) {
+  switch (kind) {
+    case "kom":
+      return "badge badge-warning badge-outline gap-1";
+    case "top-10":
+      return "badge badge-info badge-outline gap-1";
+    case "pr":
+      return "badge badge-primary badge-outline gap-1";
+    case "fastest":
+      return "badge badge-success badge-outline gap-1";
+  }
+}
+
+function achievementMarkerFill(kind: SegmentAchievementKind) {
+  switch (kind) {
+    case "kom":
+      return "var(--color-warning)";
+    case "top-10":
+      return "var(--color-info)";
+    case "pr":
+      return "var(--color-primary)";
+    case "fastest":
+      return "var(--color-success)";
+  }
+}
+
+function SegmentAchievementBadge({
+  achievement,
+}: {
+  achievement: SegmentAchievement;
+}) {
+  return (
+    <span className={achievementBadgeClassName(achievement.kind)}>
+      <FontAwesomeIcon
+        icon={achievementIcon(achievement.kind)}
+        className="h-3 w-3"
+      />
+      <span>{achievement.longLabel}</span>
+    </span>
   );
 }
 
@@ -550,31 +596,20 @@ function AttemptAchievementBadges({
 }: {
   attempt: SegmentAttemptChartPoint;
 }) {
-  return (
-    <>
-      {attempt.isKom ? (
-        <span className="badge badge-warning badge-outline gap-1">
-          <FontAwesomeIcon icon={faCrown} className="h-3 w-3" />
-          <span>KOM</span>
-        </span>
-      ) : null}
-      {attempt.isPersonalRecord ? (
-        <span className="badge badge-warning badge-outline gap-1">
-          <FontAwesomeIcon icon={faMedal} className="h-3 w-3" />
-          <span>PR</span>
-        </span>
-      ) : null}
-      {attempt.isFastestOfDay ? (
-        <span className="badge badge-success badge-outline gap-1">
-          <FontAwesomeIcon icon={faRocket} className="h-3 w-3" />
-          <span>Fastest run today</span>
-        </span>
-      ) : null}
-    </>
-  );
+  const achievement = primarySegmentAchievement({
+    overallRank: attempt.overallRank,
+    personalRank: attempt.personalRank,
+    isFastestOfDay: attempt.isFastestOfDay,
+  });
+
+  return achievement ? (
+    <SegmentAchievementBadge achievement={achievement} />
+  ) : null;
 }
 
-function iconPaths(icon: typeof faCrown | typeof faMedal | typeof faRocket) {
+function iconPaths(
+  icon: typeof faCrown | typeof faMedal | typeof faRocket | typeof faTrophy,
+) {
   const pathData = icon.icon[4];
   return Array.isArray(pathData) ? pathData : [pathData];
 }
@@ -590,7 +625,7 @@ function ChartMarkerIcon({
   offsetX = 0,
   offsetY = 0,
 }: {
-  icon: typeof faCrown | typeof faMedal | typeof faRocket;
+  icon: typeof faCrown | typeof faMedal | typeof faRocket | typeof faTrophy;
   cx: number;
   cy: number;
   fill: string;
@@ -686,12 +721,25 @@ function SegmentAttemptDot({
     return null;
   }
 
-  const showKomMarker = payload.isKom;
-  const showPrMarker = !showKomMarker && payload.isPersonalRecord;
-  const showFastestMarker =
-    !showKomMarker && !showPrMarker && payload.isFastestOfDay;
+  const achievement = primarySegmentAchievement({
+    overallRank: payload.overallRank,
+    personalRank: payload.personalRank,
+    isFastestOfDay: payload.isFastestOfDay,
+  });
+  const showKomMarker = achievement?.kind === "kom";
+  const showTopMarker = achievement?.kind === "top-10";
+  const showPrMarker = achievement?.kind === "pr";
+  const showFastestMarker = achievement?.kind === "fastest";
   const hitRadius =
-    showKomMarker || showPrMarker || showFastestMarker ? 14 : 11;
+    showKomMarker || showTopMarker || showPrMarker || showFastestMarker
+      ? 14
+      : 11;
+  const highlightRadius =
+    showKomMarker || showTopMarker || showPrMarker
+      ? 8.5
+      : showFastestMarker
+        ? 7.5
+        : 5.25;
 
   return (
     <g
@@ -727,11 +775,11 @@ function SegmentAttemptDot({
         <circle
           cx={cx}
           cy={cy}
-          r={hitRadius - 1.5}
+          r={highlightRadius}
           fill="none"
           stroke="var(--color-base-content)"
           strokeOpacity={0.35}
-          strokeWidth={1.5}
+          strokeWidth={1.25}
         />
       ) : null}
 
@@ -740,8 +788,20 @@ function SegmentAttemptDot({
           icon={faCrown}
           cx={cx}
           cy={cy}
-          fill="var(--color-warning)"
+          fill={achievementMarkerFill("kom")}
           size={active || isHighlighted ? 20 : 18}
+          stroke="var(--color-base-100)"
+          strokeWidth={24}
+        />
+      ) : null}
+
+      {showTopMarker ? (
+        <ChartMarkerIcon
+          icon={faTrophy}
+          cx={cx}
+          cy={cy}
+          fill={achievementMarkerFill("top-10")}
+          size={active || isHighlighted ? 18 : 16}
           stroke="var(--color-base-100)"
           strokeWidth={24}
         />
@@ -752,7 +812,7 @@ function SegmentAttemptDot({
           icon={faMedal}
           cx={cx}
           cy={cy}
-          fill="var(--color-warning)"
+          fill={achievementMarkerFill("pr")}
           size={active || isHighlighted ? 20 : 18}
           stroke="var(--color-base-100)"
           strokeWidth={24}
@@ -775,10 +835,10 @@ function SegmentAttemptDot({
         <circle
           cx={cx}
           cy={cy}
-          r={active || isHighlighted ? 5.75 : 5}
+          r={active || isHighlighted ? 4.25 : 3.5}
           fill={toneColor}
           stroke="var(--color-base-100)"
-          strokeWidth={1.25}
+          strokeWidth={1}
         />
       ) : null}
     </g>
@@ -795,7 +855,7 @@ function SegmentAttemptsChart({
   const [tooltipState, setTooltipState] =
     useState<SegmentAttemptTooltipState | null>(null);
   const chartWidth = 520;
-  const chartHeight = 208;
+  const chartHeight = 120;
   const attempts: SegmentAttemptChartPoint[] = [...segmentGroup.efforts]
     .sort(
       (left, right) =>
@@ -844,7 +904,7 @@ function SegmentAttemptsChart({
     <div
       role="img"
       aria-label={`${segmentGroup.segmentTitle} attempts chart`}
-      className="relative overflow-visible rounded-box border border-base-300 bg-base-100 p-3"
+      className="relative overflow-visible rounded-box border border-base-300 bg-base-100 p-2"
     >
       {tooltipState ? (
         <div
@@ -861,7 +921,7 @@ function SegmentAttemptsChart({
         width={chartWidth}
         height={chartHeight}
         data={attempts}
-        margin={{ top: 20, right: 20, bottom: 12, left: 10 }}
+        margin={{ top: 10, right: 14, bottom: 4, left: 4 }}
         style={{ width: "100%", height: "auto" }}
         onMouseLeave={() => {
           setTooltipState(null);
@@ -878,7 +938,7 @@ function SegmentAttemptsChart({
           dataKey="runNumber"
           domain={xAxisDomain}
           tickFormatter={(value: number) => `Run ${value}`}
-          tick={{ fill: "var(--color-base-content)", fontSize: 9 }}
+          tick={{ fill: "var(--color-base-content)", fontSize: 8 }}
           tickLine={false}
           ticks={xAxisTicks}
           type="number"
@@ -889,16 +949,16 @@ function SegmentAttemptsChart({
           label={{
             angle: -90,
             fill: "var(--color-base-content)",
-            fontSize: 9,
+            fontSize: 8,
             position: "insideLeft",
             style: { opacity: 0.65 },
             value: "Time",
           }}
-          tick={{ fill: "var(--color-base-content)", fontSize: 9 }}
+          tick={{ fill: "var(--color-base-content)", fontSize: 8 }}
           tickFormatter={(value: number) => formatDuration(Math.round(value))}
           tickLine={false}
-          tickMargin={10}
-          width={68}
+          tickMargin={6}
+          width={56}
         />
         <Line
           type="linear"
@@ -906,7 +966,7 @@ function SegmentAttemptsChart({
           stroke={segmentGroup.tone.mapColor}
           strokeLinecap="round"
           strokeLinejoin="round"
-          strokeWidth={3}
+          strokeWidth={2}
           dot={(dotProps) => (
             <SegmentAttemptDot
               active={false}
@@ -1047,7 +1107,7 @@ function SignalChartCard({
                           fill={entry.fillColor ?? entry.strokeColor}
                           fillOpacity={0.08}
                           strokeOpacity={0.35}
-                          strokeWidth={entry.strokeWidth ?? 2.5}
+                          strokeWidth={entry.strokeWidth ?? 1.75}
                           dot={false}
                           connectNulls
                         />
@@ -1058,7 +1118,7 @@ function SignalChartCard({
                           dataKey={entry.key}
                           yAxisId={entry.key}
                           stroke={entry.strokeColor}
-                          strokeWidth={entry.strokeWidth ?? 3}
+                          strokeWidth={entry.strokeWidth ?? 2}
                           dot={false}
                           connectNulls
                         />
@@ -1350,7 +1410,7 @@ export default function ActivityDetailPanel({
         buttonClassName: "btn-error",
         dotClassName: "bg-error",
         strokeColor: "var(--color-error)",
-        strokeWidth: 3,
+        strokeWidth: 2,
         summary: `Peak ${formatHeartRate(maxSeriesValue(heartRateSeries))}`,
       },
       {
@@ -1360,7 +1420,7 @@ export default function ActivityDetailPanel({
         buttonClassName: "btn-info",
         dotClassName: "bg-info",
         strokeColor: "var(--color-info)",
-        strokeWidth: 2,
+        strokeWidth: 1.5,
         summary: `Top speed ${formatSpeed(maxSeriesValue(speedSeries), unitSystem)}`,
       },
       {
@@ -1370,7 +1430,7 @@ export default function ActivityDetailPanel({
         buttonClassName: "btn-success",
         dotClassName: "bg-success",
         strokeColor: "var(--color-success)",
-        strokeWidth: 2.5,
+        strokeWidth: 1.75,
         fillColor: "var(--color-success)",
         summary: `${formatElevation(minSeriesValue(elevationSeries), unitSystem)} to ${formatElevation(maxSeriesValue(elevationSeries), unitSystem)}`,
       },
@@ -1410,32 +1470,6 @@ export default function ActivityDetailPanel({
         (entry) => entry === key || current.includes(entry),
       );
     });
-  }
-
-  function trendLabel(state: SegmentTrendState | null) {
-    switch (state) {
-      case "faster":
-        return "Trending faster";
-      case "slower":
-        return "Trending slower";
-      case "steady":
-        return "Steady pacing";
-      default:
-        return null;
-    }
-  }
-
-  function trendBadgeClass(state: SegmentTrendState | null) {
-    switch (state) {
-      case "faster":
-        return "badge-success";
-      case "slower":
-        return "badge-warning";
-      case "steady":
-        return "badge-ghost";
-      default:
-        return "badge-ghost";
-    }
   }
 
   async function handleRegenerate() {
@@ -1659,119 +1693,90 @@ export default function ActivityDetailPanel({
         selectedSegmentId={selectedSegmentId}
       />
 
-      <div className="card bg-base-100 shadow-xl">
-        <div className="card-body">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h2 className="card-title text-xl">Matched segments</h2>
-              <p className="text-sm text-base-content/70">
-                Segment efforts are matched from imported segment routes against
-                the upload-time route geometry stored on this activity.
-              </p>
-            </div>
-            <span className="badge badge-outline">
-              {matchedSegmentGroups.length} matched segment
-              {matchedSegmentGroups.length === 1 ? "" : "s"}
-            </span>
+      <section
+        className="grid gap-4"
+        aria-labelledby="matched-segments-heading"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 id="matched-segments-heading" className="text-xl font-semibold">
+              Matched segments
+            </h2>
+            <p className="mt-1 text-sm text-base-content/70">
+              Segment efforts are matched from imported segment routes against
+              the upload-time route geometry stored on this activity.
+            </p>
           </div>
+          <span className="badge badge-outline">
+            {matchedSegmentGroups.length} matched segment
+            {matchedSegmentGroups.length === 1 ? "" : "s"}
+          </span>
+        </div>
 
-          {matchedSegmentGroups.length > 0 ? (
-            <div className="mt-5 grid gap-4">
-              {matchedSegmentGroups.map((segmentGroup) => {
-                const segmentHref = `/segments/${segmentGroup.segmentId}`;
-                const segmentAchievements =
-                  segmentHistoricalAchievements(segmentGroup);
-                const isSelected = selectedSegmentId === segmentGroup.segmentId;
-                const segmentTrendLabel = trendLabel(segmentGroup.trendState);
+        {matchedSegmentGroups.length > 0 ? (
+          <div className="grid gap-4">
+            {matchedSegmentGroups.map((segmentGroup) => {
+              const segmentHref = `/segments/${segmentGroup.segmentId}`;
+              const segmentAchievement =
+                segmentHistoricalAchievements(segmentGroup);
+              const isSelected = selectedSegmentId === segmentGroup.segmentId;
 
-                return (
-                  <article
-                    id={segmentGroup.anchorId}
-                    key={segmentGroup.segmentId}
-                    className={`card bg-base-200 shadow-sm ring-1 transition ${isSelected ? segmentGroup.tone.highlightClassName : "ring-base-300/0"}`}
-                  >
-                    <div className="card-body gap-4">
-                      <div className="flex flex-wrap items-start justify-between gap-4">
-                        <div>
-                          <Link
-                            href={segmentHref}
-                            className="card-title text-lg transition hover:text-primary"
-                          >
-                            {segmentGroup.segmentTitle}
-                          </Link>
-                        </div>
+              return (
+                <article
+                  id={segmentGroup.anchorId}
+                  key={segmentGroup.segmentId}
+                  className={`card border border-base-300 bg-base-100 shadow-sm ring-1 transition ${isSelected ? segmentGroup.tone.highlightClassName : "ring-base-300/0"}`}
+                >
+                  <div className="card-body gap-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <Link
+                        href={segmentHref}
+                        className="card-title text-lg transition hover:text-primary"
+                      >
+                        {segmentGroup.segmentTitle}
+                      </Link>
 
-                        <div className="flex flex-wrap gap-2">
-                          <span className="badge badge-outline">
-                            {segmentGroup.efforts.length} run
-                            {segmentGroup.efforts.length === 1 ? "" : "s"}
-                          </span>
-                          {segmentAchievements.map((achievement) => (
-                            <span
-                              key={`${segmentGroup.segmentId}-${achievement}`}
-                              className="badge badge-warning badge-outline gap-1"
-                            >
-                              <FontAwesomeIcon
-                                icon={achievement === "KOM" ? faCrown : faMedal}
-                                className="h-3 w-3"
-                              />
-                              {achievement}
-                            </span>
-                          ))}
-                          {segmentTrendLabel ? (
-                            <span
-                              className={`badge badge-outline ${trendBadgeClass(segmentGroup.trendState)}`}
-                            >
-                              {segmentTrendLabel}
-                            </span>
-                          ) : null}
-                          {segmentGroup.hasHighHeartRate ? (
-                            <span className="badge badge-error badge-outline">
-                              High heart rate
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <div className="grid gap-3 md:grid-cols-3">
-                        <DetailMetric
-                          label="Best time"
-                          value={formatDuration(
+                      <div className="flex flex-wrap gap-2">
+                        <span className="badge badge-outline">
+                          Best{" "}
+                          {formatDuration(
                             segmentGroup.bestEffort.duration_seconds,
                           )}
-                        />
-                        <DetailMetric
-                          label="Leaderboard"
-                          value={formatOverallRank(
-                            segmentGroup.bestOverallRank,
-                          )}
-                        />
-                        <DetailMetric
-                          label="Peak segment HR"
-                          value={formatHeartRate(segmentGroup.peakHeartRate)}
-                        />
+                        </span>
+                        <span className="badge badge-outline">
+                          Leaderboard{" "}
+                          {formatOverallRank(segmentGroup.bestOverallRank)}
+                        </span>
+                        <span className="badge badge-outline">
+                          Peak HR {formatHeartRate(segmentGroup.peakHeartRate)}
+                        </span>
+                        {segmentAchievement ? (
+                          <SegmentAchievementBadge
+                            achievement={segmentAchievement}
+                          />
+                        ) : null}
                       </div>
-
-                      <SegmentAttemptsChart
-                        segmentGroup={segmentGroup}
-                        routePoints={activity.route_points}
-                      />
                     </div>
-                  </article>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="alert mt-5">
-              <span>
-                No imported segment routes have matched this activity yet. If
-                this is an older upload, regenerate it once so the latest route
-                geometry and matcher run against the raw file.
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
+
+                    <SegmentAttemptsChart
+                      segmentGroup={segmentGroup}
+                      routePoints={activity.route_points}
+                    />
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="alert mt-5">
+            <span>
+              No imported segment routes have matched this activity yet. If this
+              is an older upload, regenerate it once so the latest route
+              geometry and matcher run against the raw file.
+            </span>
+          </div>
+        )}
+      </section>
 
       <SignalChartCard
         sampleCount={(activity.chart_points ?? []).length}
@@ -1833,7 +1838,13 @@ export default function ActivityDetailPanel({
                 </dd>
               </div>
               <div>
-                <dt className="font-semibold text-base-content">Ended at</dt>
+                <dt className="font-semibold text-base-content">Started</dt>
+                <dd className="mt-1 text-base-content/70">
+                  {formatActivityTimestamp(activity.started_at)}
+                </dd>
+              </div>
+              <div>
+                <dt className="font-semibold text-base-content">Ended</dt>
                 <dd className="mt-1 text-base-content/70">
                   {activity.ended_at
                     ? formatActivityTimestamp(activity.ended_at)

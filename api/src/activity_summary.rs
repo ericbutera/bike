@@ -74,8 +74,7 @@ fn parse_gpx_activity(filename: &str, bytes: &[u8]) -> Result<ActivityDraft, Str
     let first_time = points.iter().find_map(|point| point.time);
     let started_at = first_time.or(metadata_time).unwrap_or_else(Utc::now);
     let ended_at = points.iter().rev().find_map(|point| point.time);
-    let total_time_seconds = ended_at
-        .and_then(|end| seconds_between(started_at, end));
+    let total_time_seconds = ended_at.and_then(|end| seconds_between(started_at, end));
     let (distance_meters, max_speed_mps) = summarize_geospatial_distance(&points);
     let (elevation_gain_meters, elevation_loss_meters) = summarize_elevation(&points);
     let heart_rates = points
@@ -244,7 +243,11 @@ fn parse_tcx_activity(filename: &str, bytes: &[u8]) -> Result<ActivityDraft, Str
         }
         _ => None,
     };
-    let calories = if calories_found { Some(lap_calories) } else { None };
+    let calories = if calories_found {
+        Some(lap_calories)
+    } else {
+        None
+    };
 
     Ok(ActivityDraft {
         title: humanize_filename(filename),
@@ -324,9 +327,11 @@ fn parse_tcx_track_point(node: Node<'_, '_>) -> Result<TrackPointSample, String>
         heart_rate_bpm: child_element(node, "HeartRateBpm")
             .and_then(|heart_rate| child_text(heart_rate, "Value"))
             .and_then(parse_i32),
-        cadence_rpm: child_text(node, "Cadence")
-            .and_then(parse_i32)
-            .or_else(|| descendant_text(node, "RunCadence").as_deref().and_then(parse_i32)),
+        cadence_rpm: child_text(node, "Cadence").and_then(parse_i32).or_else(|| {
+            descendant_text(node, "RunCadence")
+                .as_deref()
+                .and_then(parse_i32)
+        }),
     })
 }
 
@@ -357,7 +362,10 @@ fn summarize_geospatial_distance(points: &[TrackPointSample]) -> (Option<f64>, O
         }
     }
 
-    (metric_from_f64(Some(distance_meters)), metric_from_f64(max_speed_mps))
+    (
+        metric_from_f64(Some(distance_meters)),
+        metric_from_f64(max_speed_mps),
+    )
 }
 
 fn summarize_distance_samples(points: &[TrackPointSample]) -> Option<f64> {
@@ -392,7 +400,9 @@ fn summarize_elevation(points: &[TrackPointSample]) -> (Option<f64>, Option<f64>
     let mut loss_meters = 0.0;
 
     for window in points.windows(2) {
-        if let (Some(previous), Some(current)) = (window[0].elevation_meters, window[1].elevation_meters) {
+        if let (Some(previous), Some(current)) =
+            (window[0].elevation_meters, window[1].elevation_meters)
+        {
             let delta = current - previous;
             if delta > 0.0 {
                 gain_meters += delta;
@@ -402,7 +412,10 @@ fn summarize_elevation(points: &[TrackPointSample]) -> (Option<f64>, Option<f64>
         }
     }
 
-    (metric_from_f64(Some(gain_meters)), metric_from_f64(Some(loss_meters)))
+    (
+        metric_from_f64(Some(gain_meters)),
+        metric_from_f64(Some(loss_meters)),
+    )
 }
 
 fn average_metric(values: &[i32]) -> Option<i32> {
@@ -410,7 +423,10 @@ fn average_metric(values: &[i32]) -> Option<i32> {
         return None;
     }
 
-    Some((values.iter().copied().map(i64::from).sum::<i64>() as f64 / values.len() as f64).round() as i32)
+    Some(
+        (values.iter().copied().map(i64::from).sum::<i64>() as f64 / values.len() as f64).round()
+            as i32,
+    )
 }
 
 fn max_metric(values: &[i32]) -> Option<i32> {
@@ -486,7 +502,12 @@ fn title_case_words(value: &str) -> String {
 }
 
 fn normalize_sport(value: Option<&str>) -> String {
-    match value.unwrap_or("activity").trim().to_ascii_lowercase().as_str() {
+    match value
+        .unwrap_or("activity")
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
         "bike" | "biking" | "cycling" | "ride" => "ride".to_string(),
         "run" | "running" => "run".to_string(),
         "swim" | "swimming" => "swim".to_string(),

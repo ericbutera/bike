@@ -1,20 +1,23 @@
 use crate::activity_details::{
-    deserialize_derived_activity_data, derive_activity_detail_data, ActivityRoutePoint,
+    ActivityRoutePoint, derive_activity_detail_data, deserialize_derived_activity_data,
 };
 use crate::activity_summary::summarize_activity_upload;
+use crate::analytics::mark_segment_activity_changes;
 use crate::app_error::{ApiErrorResponse, AppError};
-use crate::entities::{activities, segment_efforts, segments};
+use crate::entities::{
+    activities, segment_efforts, segment_summaries, segment_user_summaries, segments,
+};
 use crate::segment_support::{
     deserialize_segment_route_points, replace_segment_efforts_for_segment,
     serialize_segment_route_points, slice_effort_route_points,
 };
 use crate::storage::AppStorage;
+use axum::Json;
 use axum::extract::{Multipart, Path, State};
 use axum::http::StatusCode;
-use axum::Json;
 use chrono::{DateTime, Utc};
-use kaleido::auth::entities::users;
 use kaleido::auth::UserContext;
+use kaleido::auth::entities::users;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -101,14 +104,61 @@ pub async fn list_segments(
         .all(&state.db)
         .await?;
 
-    let segment_ids = segment_models.iter().map(|segment| segment.id).collect::<Vec<_>>();
-    let efforts_by_segment = load_efforts_by_segment(&state.db, &segment_ids).await?;
+    let segment_ids = segment_models
+        .iter()
+        .map(|segment| segment.id)
+        .collect::<Vec<_>>();
+    let summary_by_segment_id = load_segment_summaries(&state.db, &segment_ids).await?;
+    let user_summary_by_segment_id =
+        load_segment_user_summaries(&state.db, user.id, &segment_ids).await?;
+    let stale_segment_ids = segment_models
+        .iter()
+        .filter_map(|segment| {
+            let summary = summary_by_segment_id.get(&segment.id);
+            let user_summary = user_summary_by_segment_id.get(&segment.id);
+
+            match (summary, user_summary) {
+                (Some(summary), Some(user_summary))
+                    if summary.updated_at >= segment.last_activity_change_at
+                        && user_summary.updated_at >= segment.last_activity_change_at =>
+                {
+                    None
+                }
+                (Some(summary), None) if summary.updated_at >= segment.last_activity_change_at => {
+                    None
+                }
+                _ => Some(segment.id),
+            }
+        })
+        .collect::<Vec<_>>();
+    let efforts_by_segment = load_efforts_by_segment(&state.db, &stale_segment_ids).await?;
+
+    if !stale_segment_ids.is_empty() {
+        state
+            .tasks
+            .rebuild_segment_analytics(stale_segment_ids)
+            .await;
+    }
 
     Ok(Json(
         segment_models
             .into_iter()
             .map(|segment| {
-                let efforts = efforts_by_segment.get(&segment.id).cloned().unwrap_or_default();
+                let summary = summary_by_segment_id.get(&segment.id);
+                let user_summary = user_summary_by_segment_id.get(&segment.id);
+                let efforts = efforts_by_segment
+                    .get(&segment.id)
+                    .cloned()
+                    .unwrap_or_default();
+                let use_cached_summary = matches!(
+                    (summary, user_summary),
+                    (Some(summary), Some(user_summary))
+                        if summary.updated_at >= segment.last_activity_change_at
+                            && user_summary.updated_at >= segment.last_activity_change_at
+                ) || matches!(
+                    (summary, user_summary),
+                    (Some(summary), None) if summary.updated_at >= segment.last_activity_change_at
+                );
 
                 SegmentResponse {
                     id: segment.id,
@@ -117,12 +167,21 @@ pub async fn list_segments(
                     original_filename: segment.original_filename,
                     format: segment.format,
                     distance_meters: segment.distance_meters,
-                    effort_count: efforts.len() as i32,
-                    best_duration_seconds: efforts.iter().map(|effort| effort.duration_seconds).min(),
-                    current_user_pr_duration_seconds: current_user_pr_duration_from_models(
-                        &efforts,
-                        user.id,
-                    ),
+                    effort_count: if use_cached_summary {
+                        summary.map(|value| value.effort_count).unwrap_or_default()
+                    } else {
+                        efforts.len() as i32
+                    },
+                    best_duration_seconds: if use_cached_summary {
+                        summary.and_then(|value| value.best_duration_seconds)
+                    } else {
+                        efforts.iter().map(|effort| effort.duration_seconds).min()
+                    },
+                    current_user_pr_duration_seconds: if use_cached_summary {
+                        user_summary.and_then(|value| value.personal_best_duration_seconds)
+                    } else {
+                        current_user_pr_duration_from_models(&efforts, user.id)
+                    },
                     created_at: segment.created_at,
                     route_points: Vec::new(),
                     efforts: Vec::new(),
@@ -173,8 +232,7 @@ pub async fn get_segment(
         effort_count: efforts.len() as i32,
         best_duration_seconds: efforts.iter().map(|effort| effort.duration_seconds).min(),
         current_user_pr_duration_seconds: current_user_pr_duration_from_responses(
-            &efforts,
-            user.id,
+            &efforts, user.id,
         ),
         created_at: segment.created_at,
         route_points,
@@ -203,16 +261,10 @@ pub async fn import_segment(
     multipart: Multipart,
 ) -> Result<(StatusCode, Json<SegmentResponse>), AppError> {
     let upload = read_uploaded_segment_file(multipart).await?;
-    let segment_summary = summarize_activity_upload(
-        &upload.original_filename,
-        &upload.format,
-        &upload.bytes,
-    )?;
-    let segment_detail = derive_activity_detail_data(
-        &upload.original_filename,
-        &upload.format,
-        &upload.bytes,
-    )?;
+    let segment_summary =
+        summarize_activity_upload(&upload.original_filename, &upload.format, &upload.bytes)?;
+    let segment_detail =
+        derive_activity_detail_data(&upload.original_filename, &upload.format, &upload.bytes)?;
 
     if segment_detail.route_points.len() < 2 {
         return Err(AppError::validation_field(
@@ -228,18 +280,22 @@ pub async fn import_segment(
         original_filename: Set(Some(upload.original_filename)),
         format: Set(Some(upload.format)),
         distance_meters: Set(segment_summary.distance_meters),
-        route_data_json: Set(Some(serialize_segment_route_points(&segment_detail.route_points)?)),
+        route_data_json: Set(Some(serialize_segment_route_points(
+            &segment_detail.route_points,
+        )?)),
         ..Default::default()
     }
     .insert(&state.db)
     .await?;
 
-    replace_segment_efforts_for_segment(
-        &state.db,
-        segment.id,
-        &segment_detail.route_points,
-    )
-    .await?;
+    replace_segment_efforts_for_segment(&state.db, segment.id, &segment_detail.route_points)
+        .await?;
+    let changed_at = Utc::now();
+    mark_segment_activity_changes(&state.db, &[segment.id], changed_at).await?;
+    state
+        .tasks
+        .rebuild_segment_analytics(vec![segment.id])
+        .await;
     let efforts = load_effort_responses(&state.db, &[segment.id]).await?;
 
     Ok((
@@ -254,8 +310,7 @@ pub async fn import_segment(
             effort_count: efforts.len() as i32,
             best_duration_seconds: efforts.iter().map(|effort| effort.duration_seconds).min(),
             current_user_pr_duration_seconds: current_user_pr_duration_from_responses(
-                &efforts,
-                user.id,
+                &efforts, user.id,
             ),
             created_at: segment.created_at,
             route_points: deserialize_segment_route_points(segment.route_data_json.as_deref()),
@@ -270,10 +325,14 @@ struct UploadedSegmentFile {
     bytes: Vec<u8>,
 }
 
-async fn read_uploaded_segment_file(mut multipart: Multipart) -> Result<UploadedSegmentFile, AppError> {
-    while let Some(mut field) = multipart.next_field().await.map_err(|error| {
-        AppError::bad_request(format!("Malformed multipart payload: {error}"))
-    })? {
+async fn read_uploaded_segment_file(
+    mut multipart: Multipart,
+) -> Result<UploadedSegmentFile, AppError> {
+    while let Some(mut field) = multipart
+        .next_field()
+        .await
+        .map_err(|error| AppError::bad_request(format!("Malformed multipart payload: {error}")))?
+    {
         if field.name() != Some("file") && field.file_name().is_none() {
             continue;
         }
@@ -281,7 +340,9 @@ async fn read_uploaded_segment_file(mut multipart: Multipart) -> Result<Uploaded
         let original_filename = field
             .file_name()
             .map(|value| value.to_string())
-            .ok_or_else(|| AppError::validation_field("file", "Uploaded file is missing a filename"))?;
+            .ok_or_else(|| {
+                AppError::validation_field("file", "Uploaded file is missing a filename")
+            })?;
         let format = validate_segment_format(&original_filename)?;
         let mut bytes = Vec::new();
 
@@ -346,10 +407,49 @@ async fn load_efforts_by_segment(
     let mut efforts_by_segment = HashMap::<i32, Vec<segment_efforts::Model>>::new();
 
     for effort in efforts {
-        efforts_by_segment.entry(effort.segment_id).or_default().push(effort);
+        efforts_by_segment
+            .entry(effort.segment_id)
+            .or_default()
+            .push(effort);
     }
 
     Ok(efforts_by_segment)
+}
+
+async fn load_segment_summaries(
+    db: &sea_orm::DatabaseConnection,
+    segment_ids: &[i32],
+) -> Result<HashMap<i32, segment_summaries::Model>, AppError> {
+    if segment_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    Ok(segment_summaries::Entity::find()
+        .filter(segment_summaries::Column::SegmentId.is_in(segment_ids.iter().copied()))
+        .all(db)
+        .await?
+        .into_iter()
+        .map(|summary| (summary.segment_id, summary))
+        .collect())
+}
+
+async fn load_segment_user_summaries(
+    db: &sea_orm::DatabaseConnection,
+    user_id: i32,
+    segment_ids: &[i32],
+) -> Result<HashMap<i32, segment_user_summaries::Model>, AppError> {
+    if segment_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    Ok(segment_user_summaries::Entity::find()
+        .filter(segment_user_summaries::Column::UserId.eq(user_id))
+        .filter(segment_user_summaries::Column::SegmentId.is_in(segment_ids.iter().copied()))
+        .all(db)
+        .await?
+        .into_iter()
+        .map(|summary| (summary.segment_id, summary))
+        .collect())
 }
 
 async fn load_effort_responses(
@@ -366,8 +466,14 @@ async fn load_effort_responses(
         .order_by_asc(segment_efforts::Column::Id)
         .all(db)
         .await?;
-    let activity_ids = efforts.iter().map(|effort| effort.activity_id).collect::<Vec<_>>();
-    let rider_user_ids = efforts.iter().map(|effort| effort.user_id).collect::<Vec<_>>();
+    let activity_ids = efforts
+        .iter()
+        .map(|effort| effort.activity_id)
+        .collect::<Vec<_>>();
+    let rider_user_ids = efforts
+        .iter()
+        .map(|effort| effort.user_id)
+        .collect::<Vec<_>>();
     let activity_models = activities::Entity::find()
         .filter(activities::Column::Id.is_in(activity_ids.iter().copied()))
         .all(db)
@@ -390,7 +496,8 @@ async fn load_effort_responses(
         .filter_map(|effort| {
             let activity = activities_by_id.get(&effort.activity_id)?;
             let rider = riders_by_id.get(&effort.user_id)?;
-            let derived_data = deserialize_derived_activity_data(activity.derived_data_json.as_deref());
+            let derived_data =
+                deserialize_derived_activity_data(activity.derived_data_json.as_deref());
 
             Some(SegmentEffortResponse {
                 id: effort.id,
@@ -451,6 +558,8 @@ mod tests {
                 start_route_point_index: 0,
                 end_route_point_index: 1,
                 distance_meters: Some(1800.0),
+                overall_rank: None,
+                user_rank: None,
                 created_at: now,
                 updated_at: now,
             },
@@ -466,6 +575,8 @@ mod tests {
                 start_route_point_index: 0,
                 end_route_point_index: 1,
                 distance_meters: Some(1800.0),
+                overall_rank: None,
+                user_rank: None,
                 created_at: now,
                 updated_at: now,
             },
@@ -481,6 +592,8 @@ mod tests {
                 start_route_point_index: 0,
                 end_route_point_index: 1,
                 distance_meters: Some(1800.0),
+                overall_rank: None,
+                user_rank: None,
                 created_at: now,
                 updated_at: now,
             },

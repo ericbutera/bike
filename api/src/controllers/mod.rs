@@ -1,15 +1,16 @@
 use crate::config::Config;
 pub mod activities;
 pub mod activity_imports;
+pub mod admin;
 pub mod fitness;
 pub mod segments;
 pub mod user_preferences;
 
 use crate::storage::AppStorage;
+use axum::{extract::DefaultBodyLimit, routing::get, Json, Router};
 use kaleido::auth;
 use kaleido::auth::AdminUserContext;
 use kaleido::background_jobs;
-use axum::{extract::DefaultBodyLimit, routing::get, Json, Router};
 use kaleido::glass::feature_flags;
 use serde_json::json;
 use std::sync::Arc;
@@ -18,6 +19,7 @@ pub fn routes() -> Router<Arc<AppStorage>> {
     Router::new()
         .nest("/api", auth::routes())
         .nest("/api/oauth", auth::oauth_routes())
+        .nest("/api/admin", admin::routes())
         .nest("/api/admin/feature-flags", feature_flags::admin_routes())
         .nest("/api/feature-flags", feature_flags::public_routes())
         .nest(
@@ -37,7 +39,10 @@ pub fn routes() -> Router<Arc<AppStorage>> {
             "/api/activities/:id/regenerate",
             axum::routing::post(activities::regenerate_activity),
         )
-        .route("/api/fitness", axum::routing::get(fitness::get_fitness_freshness))
+        .route(
+            "/api/fitness",
+            axum::routing::get(fitness::get_fitness_freshness),
+        )
         .route(
             "/api/segments",
             axum::routing::get(segments::list_segments)

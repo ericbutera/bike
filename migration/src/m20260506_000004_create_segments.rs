@@ -97,9 +97,21 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(SegmentEfforts::UserId).integer().not_null())
-                    .col(ColumnDef::new(SegmentEfforts::SegmentId).integer().not_null())
-                    .col(ColumnDef::new(SegmentEfforts::ActivityId).integer().not_null())
-                    .col(ColumnDef::new(SegmentEfforts::EffortIndex).integer().not_null())
+                    .col(
+                        ColumnDef::new(SegmentEfforts::SegmentId)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SegmentEfforts::ActivityId)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SegmentEfforts::EffortIndex)
+                            .integer()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(SegmentEfforts::StartRoutePointIndex)
                             .integer()
@@ -125,7 +137,11 @@ impl MigrationTrait for Migration {
                             .integer()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(SegmentEfforts::DistanceMeters).double().null())
+                    .col(
+                        ColumnDef::new(SegmentEfforts::DistanceMeters)
+                            .double()
+                            .null(),
+                    )
                     .col(
                         ColumnDef::new(SegmentEfforts::CreatedAt)
                             .timestamp_with_time_zone()

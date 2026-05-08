@@ -1,6 +1,7 @@
 use crate::app_error;
 use crate::controllers::activities;
 use crate::controllers::activity_imports;
+use crate::controllers::admin;
 use crate::controllers::fitness;
 use crate::controllers::segments;
 use crate::controllers::user_preferences;
@@ -23,6 +24,7 @@ use utoipa::OpenApi;
         auth_openapi::paths::reset_password,
         auth_openapi::paths::oauth_authorize,
         auth_openapi::paths::oauth_callback,
+        admin::backfill_analytics,
         activities::list_activities,
         activities::get_activity,
         activities::delete_activity,
@@ -42,6 +44,7 @@ use utoipa::OpenApi;
     components(
         schemas(
             app_error::ApiErrorResponse,
+            admin::AnalyticsBackfillResponse,
             activities::ActivityResponse,
             activities::ActivitySegmentEffort,
             fitness::FitnessFreshnessPoint,
