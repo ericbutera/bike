@@ -196,6 +196,54 @@ pub fn normalize_archive_url(raw: &str) -> Result<String, AppError> {
     parse_archive_url(raw).map(|url| url.to_string())
 }
 
+pub fn resolve_local_archive_import_path(
+    uploads_dir: &str,
+    archive_path: &str,
+) -> Result<PathBuf, AppError> {
+    let trimmed = archive_path.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::validation_field(
+            "archive_path",
+            "Archive path is required",
+        ));
+    }
+
+    let requested = PathBuf::from(trimmed);
+    let resolved = if requested.is_absolute() {
+        requested
+    } else {
+        Path::new(uploads_dir).join(requested)
+    };
+
+    let extension = resolved
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase());
+
+    if extension.as_deref() != Some("zip") {
+        return Err(AppError::validation_field(
+            "archive_path",
+            "Archive path must point to a .zip file",
+        ));
+    }
+
+    if !resolved.exists() {
+        return Err(AppError::not_found(format!(
+            "Archive not found: {}",
+            resolved.display()
+        )));
+    }
+
+    if !resolved.is_file() {
+        return Err(AppError::validation_field(
+            "archive_path",
+            "Archive path must point to a file",
+        ));
+    }
+
+    Ok(resolved)
+}
+
 pub fn decode_error_samples(raw: Option<&str>) -> Vec<String> {
     raw.and_then(|value| serde_json::from_str::<Vec<String>>(value).ok())
         .unwrap_or_default()

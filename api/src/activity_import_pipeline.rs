@@ -28,6 +28,11 @@ pub struct PersistedActivityImport {
     pub affected_segment_ids: Vec<i32>,
 }
 
+pub struct ReprocessedActivityImport {
+    pub activity: activities::Model,
+    pub affected_segment_ids: Vec<i32>,
+}
+
 pub struct DeduplicatedActivityImport {
     pub activity: activities::Model,
     pub existing_import: Option<activity_imports::Model>,
@@ -170,6 +175,74 @@ pub async fn finalize_activity_import_batch(
     tasks.rebuild_fitness_freshness(user_id).await;
 
     Ok(())
+}
+
+pub async fn reprocess_activity_from_import(
+    db: &DatabaseConnection,
+    uploads_dir: &str,
+    user_id: i32,
+    activity: activities::Model,
+    activity_import: activity_imports::Model,
+    training_profile: Option<&TrainingProfile>,
+) -> Result<ReprocessedActivityImport, AppError> {
+    let bytes = tokio::fs::read(Path::new(uploads_dir).join(&activity_import.storage_path)).await?;
+    let activity_draft = crate::activity_summary::summarize_activity_upload(
+        &activity_import.original_filename,
+        &activity_import.format,
+        &bytes,
+    )?;
+    let derived_data = derive_activity_detail_data(
+        &activity_import.original_filename,
+        &activity_import.format,
+        &bytes,
+    )?;
+    let training_profile = match training_profile {
+        Some(profile) => profile.clone(),
+        None => load_training_profile(db, user_id).await?,
+    };
+    let heart_rate_zones = summarize_heart_rate_zones(
+        &derived_data.route_points,
+        &derived_data.chart_points,
+        activity_draft
+            .moving_time_seconds
+            .or(activity_draft.total_time_seconds),
+        activity_draft.average_heart_rate_bpm,
+        training_profile.heart_rate_zone_bounds_bpm.as_deref(),
+    );
+    let heart_rate_zones_json = serialize_activity_heart_rate_zones(&heart_rate_zones)?;
+    let derived_data_json = serialize_derived_activity_data(&derived_data)?;
+
+    let mut active_model: activities::ActiveModel = activity.into();
+    active_model.title = Set(activity_draft.title);
+    active_model.sport = Set(activity_draft.sport);
+    active_model.original_filename = Set(Some(activity_import.original_filename.clone()));
+    active_model.format = Set(Some(activity_import.format.clone()));
+    active_model.started_at = Set(activity_draft.started_at);
+    active_model.ended_at = Set(activity_draft.ended_at);
+    active_model.distance_meters = Set(activity_draft.distance_meters);
+    active_model.moving_time_seconds = Set(activity_draft.moving_time_seconds);
+    active_model.total_time_seconds = Set(activity_draft.total_time_seconds);
+    active_model.elevation_gain_meters = Set(activity_draft.elevation_gain_meters);
+    active_model.elevation_loss_meters = Set(activity_draft.elevation_loss_meters);
+    active_model.average_speed_mps = Set(activity_draft.average_speed_mps);
+    active_model.max_speed_mps = Set(activity_draft.max_speed_mps);
+    active_model.average_heart_rate_bpm = Set(activity_draft.average_heart_rate_bpm);
+    active_model.max_heart_rate_bpm = Set(activity_draft.max_heart_rate_bpm);
+    active_model.average_cadence_rpm = Set(activity_draft.average_cadence_rpm);
+    active_model.max_cadence_rpm = Set(activity_draft.max_cadence_rpm);
+    active_model.calories = Set(activity_draft.calories);
+    active_model.estimated_ftp_watts = Set(training_profile.estimated_ftp_watts);
+    active_model.heart_rate_zones_json = Set(heart_rate_zones_json);
+    active_model.derived_data_json = Set(Some(derived_data_json));
+
+    let updated = active_model.update(db).await?;
+    let affected_segment_ids =
+        refresh_activity_derived_state(db, user_id, updated.id, &derived_data.route_points).await?;
+
+    Ok(ReprocessedActivityImport {
+        activity: updated,
+        affected_segment_ids,
+    })
 }
 
 pub fn validate_activity_format(filename: &str) -> Result<String, AppError> {

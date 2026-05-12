@@ -181,6 +181,12 @@ export type AdminAnalyticsBackfillResponse = {
   segment_chunk_size: number;
 };
 
+export type ReprocessUserActivityImportsResponse = {
+  user_id: number;
+  status: string;
+  message: string;
+};
+
 export type ActivityArchiveImportJob = {
   id: number;
   archive_url: string;
@@ -231,6 +237,27 @@ export function useAdminBackfillAnalytics() {
       const result = await mutation.mutateAsync({});
 
       return result as AdminAnalyticsBackfillResponse;
+    },
+  };
+}
+
+export function useReprocessUserActivityImports() {
+  const mutation = $api.useMutation(
+    "post",
+    "/admin/activity-imports/reprocess",
+  );
+
+  return {
+    ...mutation,
+    reprocessAsync: async (userId: number | string) => {
+      const numericUserId = Number(userId);
+      const result = await mutation.mutateAsync({
+        body: {
+          user_id: numericUserId,
+        },
+      });
+
+      return result as ReprocessUserActivityImportsResponse;
     },
   };
 }

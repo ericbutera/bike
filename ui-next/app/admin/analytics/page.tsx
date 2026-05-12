@@ -5,8 +5,10 @@ import {
   useActivityArchiveImportJobs,
   useAdminBackfillAnalytics,
   useImportActivityArchiveUrl,
+  useReprocessUserActivityImports,
   type ActivityArchiveImportJob,
   type AdminAnalyticsBackfillResponse,
+  type ReprocessUserActivityImportsResponse,
 } from "@/lib/queries";
 import { admin } from "@ericbutera/kaleido";
 import Link from "next/link";
@@ -33,6 +35,8 @@ function AnalyticsContent() {
   });
   const { importAsync, isPending: isImportPending } =
     useImportActivityArchiveUrl();
+  const { reprocessAsync, isPending: isReprocessPending } =
+    useReprocessUserActivityImports();
   const [result, setResult] = useState<AdminAnalyticsBackfillResponse | null>(
     null,
   );
@@ -43,6 +47,12 @@ function AnalyticsContent() {
   const [archiveErrorMessage, setArchiveErrorMessage] = useState<string | null>(
     null,
   );
+  const [reprocessUserId, setReprocessUserId] = useState("");
+  const [reprocessResult, setReprocessResult] =
+    useState<ReprocessUserActivityImportsResponse | null>(null);
+  const [reprocessErrorMessage, setReprocessErrorMessage] = useState<
+    string | null
+  >(null);
 
   async function handleBackfill() {
     setErrorMessage(null);
@@ -67,6 +77,26 @@ function AnalyticsContent() {
       setArchiveResult(response);
     } catch (error) {
       setArchiveErrorMessage(extractApiMessage(error));
+    }
+  }
+
+  async function handleReprocessImports() {
+    const numericUserId = Number(reprocessUserId);
+
+    setReprocessErrorMessage(null);
+
+    if (!Number.isFinite(numericUserId) || numericUserId < 1) {
+      setReprocessResult(null);
+      setReprocessErrorMessage("Enter a valid user id.");
+      return;
+    }
+
+    try {
+      const response = await reprocessAsync(numericUserId);
+      setReprocessResult(response);
+    } catch (error) {
+      setReprocessResult(null);
+      setReprocessErrorMessage(extractApiMessage(error));
     }
   }
 
@@ -206,6 +236,79 @@ function AnalyticsContent() {
       </section>
 
       <section className="rounded-2xl border border-base-300 bg-base-100 p-6 shadow-sm">
+        <h2 className="text-lg font-semibold">
+          Reprocess imported activity files
+        </h2>
+        <p className="mt-2 max-w-3xl text-sm text-base-content/70">
+          Queue a stored-file reprocess for one rider. This reuses the same
+          per-activity import files created by archive imports and reruns the
+          normal import pipeline instead of taking a separate admin-only path.
+        </p>
+
+        <label className="form-control mt-5 max-w-sm">
+          <div className="label">
+            <span className="label-text font-medium">User id</span>
+            <span className="label-text-alt">Required</span>
+          </div>
+          <input
+            type="number"
+            min={1}
+            step={1}
+            inputMode="numeric"
+            className="input input-bordered"
+            placeholder="42"
+            value={reprocessUserId}
+            onChange={(event) => {
+              setReprocessUserId(event.target.value);
+            }}
+          />
+          <div className="label">
+            <span className="label-text-alt text-base-content/60">
+              Use the admin users page if you need to look up a rider id.
+            </span>
+          </div>
+        </label>
+
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button
+            className="btn btn-primary"
+            disabled={!reprocessUserId.trim() || isReprocessPending}
+            onClick={handleReprocessImports}
+          >
+            {isReprocessPending
+              ? "Queueing reprocess..."
+              : "Queue import reprocess"}
+          </button>
+          <Link href="/admin/users" className="btn btn-ghost">
+            Find user ids
+          </Link>
+          <Link href="/admin/tasks" className="btn btn-ghost">
+            View background tasks
+          </Link>
+        </div>
+
+        {reprocessErrorMessage ? (
+          <div className="alert alert-error mt-4">
+            <span>{reprocessErrorMessage}</span>
+          </div>
+        ) : null}
+
+        {reprocessResult ? (
+          <div className="mt-5 rounded-2xl bg-base-200 p-5">
+            <div className="text-sm text-base-content/60">Queued reprocess</div>
+            <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
+              <SummaryItem label="User id" value={reprocessResult.user_id} />
+              <SummaryTextItem label="Status" value={reprocessResult.status} />
+              <SummaryTextItem
+                label="Message"
+                value={reprocessResult.message}
+              />
+            </dl>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="rounded-2xl border border-base-300 bg-base-100 p-6 shadow-sm">
         <h2 className="text-lg font-semibold">Prewarm analytics caches</h2>
         <p className="mt-2 max-w-2xl text-sm text-base-content/70">
           Queue a one-off rebuild for every rider with activities and every
@@ -301,6 +404,15 @@ function SummaryItem({ label, value }: { label: string; value: number }) {
     <div className="rounded-xl bg-base-200 px-4 py-3">
       <dt className="text-base-content/60">{label}</dt>
       <dd className="mt-1 text-lg font-semibold">{value}</dd>
+    </div>
+  );
+}
+
+function SummaryTextItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-base-200 px-4 py-3">
+      <dt className="text-base-content/60">{label}</dt>
+      <dd className="mt-1 break-words text-lg font-semibold">{value}</dd>
     </div>
   );
 }

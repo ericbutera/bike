@@ -1,7 +1,11 @@
 use crate::activity_details::ActivityRoutePoint;
 use crate::activity_import_lock::{
     mark_user_activity_import_lock_stage, release_user_activity_import_lock,
+    ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING,
     ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
+};
+use crate::activity_import_pipeline::{
+    finalize_activity_import_batch, reprocess_activity_from_import,
 };
 use crate::analytics::mark_segment_activity_changes;
 use crate::analytics::rebuild_segment_analytics_cache;
@@ -10,11 +14,14 @@ use crate::entities::{activities, activity_imports, segment_efforts};
 use crate::segment_support::{
     clear_segment_efforts_for_activity, replace_segment_efforts_for_activity,
 };
+use crate::tasks::TaskQueue;
+use crate::training_profile::load_training_profile;
 use chrono::Utc;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     TransactionTrait,
 };
+use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
@@ -168,6 +175,126 @@ pub async fn process_user_segment_regeneration(
         (Err(error), _) => Err(error),
         (Ok(_), Err(error)) => Err(error),
         (Ok(_), Ok(())) => Ok(()),
+    }
+}
+
+pub async fn reprocess_imported_activities_for_user(
+    db: &DatabaseConnection,
+    uploads_dir: &str,
+    tasks: &TaskQueue,
+    user_id: i32,
+) -> Result<(usize, usize), AppError> {
+    let activities = activities::Entity::find()
+        .filter(activities::Column::UserId.eq(user_id))
+        .filter(activities::Column::ActivityImportId.is_not_null())
+        .all(db)
+        .await?;
+    let import_ids = activities
+        .iter()
+        .filter_map(|activity| activity.activity_import_id)
+        .collect::<Vec<_>>();
+
+    if import_ids.is_empty() {
+        return Ok((0, 0));
+    }
+
+    let imports_by_id = activity_imports::Entity::find()
+        .filter(activity_imports::Column::UserId.eq(user_id))
+        .filter(activity_imports::Column::Id.is_in(import_ids))
+        .all(db)
+        .await?
+        .into_iter()
+        .map(|activity_import| (activity_import.id, activity_import))
+        .collect::<HashMap<_, _>>();
+    let training_profile = load_training_profile(db, user_id).await?;
+    let mut reprocessed_count = 0usize;
+    let mut failed_count = 0usize;
+    let mut affected_segment_ids = Vec::new();
+
+    for activity in activities {
+        let Some(activity_import_id) = activity.activity_import_id else {
+            continue;
+        };
+        let activity_id = activity.id;
+        let Some(activity_import) = imports_by_id.get(&activity_import_id).cloned() else {
+            failed_count += 1;
+            tracing::warn!(
+                user_id,
+                activity_id,
+                activity_import_id,
+                "skipping activity reprocess because the linked import record is missing"
+            );
+            continue;
+        };
+
+        match reprocess_activity_from_import(
+            db,
+            uploads_dir,
+            user_id,
+            activity,
+            activity_import,
+            Some(&training_profile),
+        )
+        .await
+        {
+            Ok(reprocessed) => {
+                reprocessed_count += 1;
+                affected_segment_ids.extend(reprocessed.affected_segment_ids);
+            }
+            Err(error) => {
+                failed_count += 1;
+                tracing::warn!(
+                    user_id,
+                    activity_id,
+                    error = %error.message,
+                    "failed to reprocess imported activity from stored source file"
+                );
+            }
+        }
+    }
+
+    if reprocessed_count > 0 {
+        finalize_activity_import_batch(db, tasks, user_id, affected_segment_ids, Utc::now())
+            .await?;
+    }
+
+    Ok((reprocessed_count, failed_count))
+}
+
+pub async fn process_user_activity_import_reprocessing(
+    db: &DatabaseConnection,
+    uploads_dir: &str,
+    tasks: &TaskQueue,
+    user_id: i32,
+) -> Result<(), AppError> {
+    mark_user_activity_import_lock_stage(
+        db,
+        user_id,
+        ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING,
+        ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
+    )
+    .await?;
+
+    let result = reprocess_imported_activities_for_user(db, uploads_dir, tasks, user_id).await;
+    let release_result = release_user_activity_import_lock(
+        db,
+        user_id,
+        ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING,
+    )
+    .await;
+
+    match (result, release_result) {
+        (Err(error), _) => Err(error),
+        (Ok(_), Err(error)) => Err(error),
+        (Ok((reprocessed_count, failed_count)), Ok(())) => {
+            tracing::info!(
+                user_id,
+                reprocessed_count,
+                failed_count,
+                "completed user activity import reprocessing"
+            );
+            Ok(())
+        }
     }
 }
 

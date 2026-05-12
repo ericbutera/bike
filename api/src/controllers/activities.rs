@@ -1,13 +1,12 @@
 use crate::activity_details::{
-    derive_activity_detail_data, deserialize_derived_activity_data,
-    serialize_derived_activity_data, ActivityChartPoint, ActivityDerivedData, ActivityLap,
+    deserialize_derived_activity_data, ActivityChartPoint, ActivityDerivedData, ActivityLap,
     ActivityRoutePoint,
 };
-use crate::activity_lifecycle::{
-    delete_activity_with_derived_state, refresh_activity_derived_state,
+use crate::activity_import_pipeline::{
+    finalize_activity_import_batch, reprocess_activity_from_import,
 };
+use crate::activity_lifecycle::delete_activity_with_derived_state;
 use crate::activity_location::location_from_derived_json;
-use crate::activity_summary::summarize_activity_upload;
 use crate::analytics::{mark_segment_activity_changes, mark_user_activity_change};
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::entities::{
@@ -15,8 +14,7 @@ use crate::entities::{
 };
 use crate::storage::AppStorage;
 use crate::training_profile::{
-    deserialize_activity_heart_rate_zones, load_training_profile,
-    serialize_activity_heart_rate_zones, summarize_heart_rate_zones, ActivityHeartRateZoneSummary,
+    deserialize_activity_heart_rate_zones, ActivityHeartRateZoneSummary,
 };
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -24,10 +22,9 @@ use axum::Json;
 use chrono::{DateTime, Utc};
 use kaleido::auth::UserContext;
 use kaleido::glass::data::pagination::{Paginatable, PaginatedResponse, PaginationParams};
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde::Serialize;
 use std::collections::HashMap;
-use std::path::Path as FsPath;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
@@ -495,63 +492,24 @@ pub async fn regenerate_activity(
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::not_found("Activity import not found"))?;
-    let full_path = FsPath::new(&state.uploads_dir).join(&activity_import.storage_path);
-    let bytes = tokio::fs::read(full_path).await?;
-    let activity_draft = summarize_activity_upload(
-        &activity_import.original_filename,
-        &activity_import.format,
-        &bytes,
-    )?;
-    let derived_data = derive_activity_detail_data(
-        &activity_import.original_filename,
-        &activity_import.format,
-        &bytes,
-    )?;
-    let training_profile = load_training_profile(&state.db, user.id).await?;
-    let heart_rate_zones = summarize_heart_rate_zones(
-        &derived_data.route_points,
-        &derived_data.chart_points,
-        activity_draft
-            .moving_time_seconds
-            .or(activity_draft.total_time_seconds),
-        activity_draft.average_heart_rate_bpm,
-        training_profile.heart_rate_zone_bounds_bpm.as_deref(),
-    );
-    let heart_rate_zones_json = serialize_activity_heart_rate_zones(&heart_rate_zones)?;
-    let derived_data_json = serialize_derived_activity_data(&derived_data)?;
-
-    let mut active_model: activities::ActiveModel = activity.into();
-    active_model.title = Set(activity_draft.title);
-    active_model.sport = Set(activity_draft.sport);
-    active_model.original_filename = Set(Some(activity_import.original_filename));
-    active_model.format = Set(Some(activity_import.format));
-    active_model.started_at = Set(activity_draft.started_at);
-    active_model.ended_at = Set(activity_draft.ended_at);
-    active_model.distance_meters = Set(activity_draft.distance_meters);
-    active_model.moving_time_seconds = Set(activity_draft.moving_time_seconds);
-    active_model.total_time_seconds = Set(activity_draft.total_time_seconds);
-    active_model.elevation_gain_meters = Set(activity_draft.elevation_gain_meters);
-    active_model.elevation_loss_meters = Set(activity_draft.elevation_loss_meters);
-    active_model.average_speed_mps = Set(activity_draft.average_speed_mps);
-    active_model.max_speed_mps = Set(activity_draft.max_speed_mps);
-    active_model.average_heart_rate_bpm = Set(activity_draft.average_heart_rate_bpm);
-    active_model.max_heart_rate_bpm = Set(activity_draft.max_heart_rate_bpm);
-    active_model.average_cadence_rpm = Set(activity_draft.average_cadence_rpm);
-    active_model.max_cadence_rpm = Set(activity_draft.max_cadence_rpm);
-    active_model.calories = Set(activity_draft.calories);
-    active_model.estimated_ftp_watts = Set(training_profile.estimated_ftp_watts);
-    active_model.heart_rate_zones_json = Set(heart_rate_zones_json);
-    active_model.derived_data_json = Set(Some(derived_data_json));
-
-    let updated = active_model.update(&state.db).await?;
-
-    let affected_segment_ids =
-        refresh_activity_derived_state(&state.db, user.id, updated.id, &derived_data.route_points)
-            .await?;
-    let changed_at = Utc::now();
-    mark_user_activity_change(&state.db, user.id, changed_at).await?;
-    mark_segment_activity_changes(&state.db, &affected_segment_ids, changed_at).await?;
-    state.tasks.rebuild_fitness_freshness(user.id).await;
+    let reprocessed = reprocess_activity_from_import(
+        &state.db,
+        &state.uploads_dir,
+        user.id,
+        activity,
+        activity_import,
+        None,
+    )
+    .await?;
+    finalize_activity_import_batch(
+        &state.db,
+        &state.tasks,
+        user.id,
+        reprocessed.affected_segment_ids,
+        Utc::now(),
+    )
+    .await?;
+    let updated = reprocessed.activity;
     let segment_efforts = load_activity_segment_efforts(&state.db, user.id, updated.id).await?;
 
     Ok(Json(ActivityResponse::from_detail(

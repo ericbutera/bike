@@ -8,9 +8,7 @@ export default function FeatureFlagsPage() {
   return (
     <Suspense>
       <AuthRouter>
-        <admin.Layout title="Feature Flags">
-          <admin.FeatureFlags />
-        </admin.Layout>
+        <admin.FeatureFlags />
       </AuthRouter>
     </Suspense>
   );
