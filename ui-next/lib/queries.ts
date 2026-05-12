@@ -138,6 +138,24 @@ export type UserPreferences = {
   heart_rate_zone_bounds_bpm?: number[] | null;
 };
 
+export type StravaConnection = {
+  configured: boolean;
+  connected: boolean;
+  athlete_id?: number | null;
+  athlete_name?: string | null;
+  athlete_username?: string | null;
+  athlete_profile_medium_url?: string | null;
+  scopes: string[];
+  last_sync_status: string;
+  last_sync_message?: string | null;
+  last_sync_started_at?: string | null;
+  last_sync_finished_at?: string | null;
+  last_synced_activity_started_at?: string | null;
+  last_sync_imported_count: number;
+  last_sync_duplicate_count: number;
+  last_sync_failed_count: number;
+};
+
 export type FitnessFreshnessPoint = {
   date: string;
   training_load: number;
@@ -438,6 +456,100 @@ export function useUploadActivityImport() {
       queryClient.invalidateQueries({ queryKey: ["get", "/activity-imports"] });
 
       return result as ActivityImport;
+    },
+  };
+}
+
+export function useStravaConnection(opts?: {
+  enabled?: boolean;
+  refetchIntervalMs?: number | false;
+}) {
+  const response = $api.useQuery("get", "/strava/connection", {
+    options: {
+      enabled: opts?.enabled ?? true,
+      refetchInterval: opts?.refetchIntervalMs ?? false,
+    },
+  });
+
+  return {
+    ...response,
+    data: (response.data ?? {
+      configured: false,
+      connected: false,
+      athlete_id: null,
+      athlete_name: null,
+      athlete_username: null,
+      athlete_profile_medium_url: null,
+      scopes: [],
+      last_sync_status: "never",
+      last_sync_message: null,
+      last_sync_started_at: null,
+      last_sync_finished_at: null,
+      last_synced_activity_started_at: null,
+      last_sync_imported_count: 0,
+      last_sync_duplicate_count: 0,
+      last_sync_failed_count: 0,
+    }) as StravaConnection,
+  };
+}
+
+export function useStartStravaConnect() {
+  const mutation = $api.useMutation("post", "/strava/connect");
+
+  return {
+    ...mutation,
+    beginAsync: async () => {
+      const result = await mutation.mutateAsync({});
+
+      return result as { authorization_url: string };
+    },
+  };
+}
+
+export function useQueueStravaSync() {
+  const queryClient = useQueryClient();
+  const mutation = $api.useMutation("post", "/strava/sync");
+
+  return {
+    ...mutation,
+    queueAsync: async () => {
+      const result = await mutation.mutateAsync({});
+
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/strava/connection"],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["get", "/activities"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/activity-imports"],
+        }),
+      ]);
+
+      return result as StravaConnection;
+    },
+  };
+}
+
+export function useDisconnectStrava() {
+  const queryClient = useQueryClient();
+  const mutation = $api.useMutation("delete", "/strava/connection");
+
+  return {
+    ...mutation,
+    disconnectAsync: async () => {
+      const result = await mutation.mutateAsync({});
+
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/strava/connection"],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["get", "/activities"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/activity-imports"],
+        }),
+      ]);
+
+      return result as { message: string };
     },
   };
 }

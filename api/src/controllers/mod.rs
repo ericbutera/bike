@@ -4,6 +4,7 @@ pub mod activity_imports;
 pub mod admin;
 pub mod fitness;
 pub mod segments;
+pub mod strava;
 pub mod user_preferences;
 
 use crate::storage::AppStorage;
@@ -76,6 +77,7 @@ pub fn routes() -> Router<Arc<AppStorage>> {
             "/api/activity-imports/archive-jobs/:id",
             axum::routing::get(activity_imports::get_activity_archive_import_job),
         )
+        .nest("/api/strava", strava::routes())
         .route("/api/health", get(health))
         .route("/", get(root))
 }

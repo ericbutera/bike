@@ -8,6 +8,8 @@ mod m20260507_000006_add_training_profile_fields;
 mod m20260507_000007_add_analytics_cache_tables;
 mod m20260507_000008_add_analytics_freshness_state;
 mod m20260508_000009_create_activity_archive_import_jobs;
+mod m20260512_000010_create_strava_connections;
+mod m20260512_000011_create_activity_import_locks;
 
 pub struct Migrator;
 
@@ -40,6 +42,12 @@ impl MigratorTrait for Migrator {
         ));
         locals.push(Box::new(
             m20260508_000009_create_activity_archive_import_jobs::Migration,
+        ));
+        locals.push(Box::new(
+            m20260512_000010_create_strava_connections::Migration,
+        ));
+        locals.push(Box::new(
+            m20260512_000011_create_activity_import_locks::Migration,
         ));
         locals.sort_by_key(|m| m.name().to_string());
 

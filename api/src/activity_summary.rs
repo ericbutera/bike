@@ -73,9 +73,15 @@ fn parse_gpx_activity(filename: &str, bytes: &[u8]) -> Result<ActivityDraft, Str
         .and_then(|node| child_text(node, "time"))
         .and_then(parse_datetime);
     let first_time = points.iter().find_map(|point| point.time);
-    let started_at = first_time.or(metadata_time).unwrap_or_else(Utc::now);
-    let ended_at = points.iter().rev().find_map(|point| point.time);
-    let total_time_seconds = ended_at.and_then(|end| seconds_between(started_at, end));
+    let started_at = metadata_time.or(first_time).unwrap_or_else(Utc::now);
+    let last_time = points.iter().rev().find_map(|point| point.time);
+    let ended_at = metadata_time
+        .and_then(|metadata_time| anchor_time_to_metadata(metadata_time, first_time, last_time))
+        .or(last_time);
+    let total_time_seconds = match (first_time, last_time) {
+        (Some(first_time), Some(last_time)) => seconds_between(first_time, last_time),
+        _ => ended_at.and_then(|end| seconds_between(started_at, end)),
+    };
     let (distance_meters, max_speed_mps) = summarize_geospatial_distance(&points);
     let (elevation_gain_meters, elevation_loss_meters) = summarize_elevation(&points);
     let heart_rates = points
@@ -454,6 +460,18 @@ fn parse_datetime(value: &str) -> Option<DateTime<Utc>> {
         .map(|datetime| datetime.with_timezone(&Utc))
 }
 
+fn anchor_time_to_metadata(
+    metadata_time: DateTime<Utc>,
+    first_time: Option<DateTime<Utc>>,
+    last_time: Option<DateTime<Utc>>,
+) -> Option<DateTime<Utc>> {
+    match (first_time, last_time) {
+        (Some(first_time), Some(last_time)) => seconds_between(first_time, last_time)
+            .map(|seconds| metadata_time + Duration::seconds(i64::from(seconds))),
+        _ => None,
+    }
+}
+
 fn humanize_filename(filename: &str) -> String {
     let raw = Path::new(filename)
         .file_stem()
@@ -631,6 +649,53 @@ mod tests {
     }
 
     #[test]
+    fn summarizes_strava_gpx_using_metadata_time_and_track_name() {
+        let gpx = r#"
+                        <?xml version="1.0" encoding="UTF-8"?>
+                        <gpx creator="StravaGPX" version="1.1" xmlns="http://www.topografix.com/GPX/1/1">
+                            <metadata>
+                                <time>2018-10-29T21:25:52Z</time>
+                            </metadata>
+                            <trk>
+                                <name>Afternoon Ride</name>
+                                <type>cycling</type>
+                                <trkseg>
+                                    <trkpt lat="45.5230" lon="-122.6760">
+                                        <ele>12</ele>
+                                        <time>2026-05-12T21:25:52Z</time>
+                                    </trkpt>
+                                    <trkpt lat="45.5330" lon="-122.6860">
+                                        <ele>18</ele>
+                                        <time>2026-05-12T22:10:52Z</time>
+                                    </trkpt>
+                                </trkseg>
+                            </trk>
+                        </gpx>
+                "#;
+
+        let summary = summarize_activity_upload("123456789.gpx", "gpx", gpx.as_bytes())
+            .expect("strava gpx summary");
+
+        assert_eq!(summary.title, "Afternoon Ride");
+        assert_eq!(summary.sport, "ride");
+        assert_eq!(
+            summary.started_at,
+            DateTime::parse_from_rfc3339("2018-10-29T21:25:52Z")
+                .unwrap()
+                .with_timezone(&Utc)
+        );
+        assert_eq!(
+            summary.ended_at,
+            Some(
+                DateTime::parse_from_rfc3339("2018-10-29T22:10:52Z")
+                    .unwrap()
+                    .with_timezone(&Utc)
+            )
+        );
+        assert_eq!(summary.total_time_seconds, Some(2700));
+    }
+
+    #[test]
     fn summarizes_tcx_uploads_into_activity_metrics() {
         let tcx = r#"
             <TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2">
@@ -709,8 +774,7 @@ mod tests {
     #[test]
     fn summarizes_fit_uploads_into_activity_metrics() {
         let fit = include_bytes!("../tests/fixtures/activity.fit");
-        let summary = summarize_activity_upload("activity.fit", "fit", fit)
-            .expect("fit summary");
+        let summary = summarize_activity_upload("activity.fit", "fit", fit).expect("fit summary");
 
         assert_eq!(summary.title, "Activity");
         assert_eq!(summary.sport, "run");

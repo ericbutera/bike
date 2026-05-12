@@ -56,7 +56,10 @@ pub fn parse_fit_activity(filename: &str, bytes: &[u8]) -> Result<ParsedFitActiv
         .filter(|record| record.kind() == MesgNum::Lap)
         .map(parse_fit_lap)
         .collect::<Vec<_>>();
-    let session = records.iter().rev().find(|record| record.kind() == MesgNum::Session);
+    let session = records
+        .iter()
+        .rev()
+        .find(|record| record.kind() == MesgNum::Session);
 
     let started_at = field_datetime(session, "start_time")
         .or_else(|| track_points.first().map(|point| point.timestamp))
@@ -107,8 +110,7 @@ pub fn parse_fit_activity(filename: &str, bytes: &[u8]) -> Result<ParsedFitActiv
                 .or_else(|| max_metric(&heart_rates)),
             average_cadence_rpm: field_i32(session, "avg_cadence")
                 .or_else(|| average_metric(&cadences)),
-            max_cadence_rpm: field_i32(session, "max_cadence")
-                .or_else(|| max_metric(&cadences)),
+            max_cadence_rpm: field_i32(session, "max_cadence").or_else(|| max_metric(&cadences)),
             calories: field_i32(session, "total_calories"),
         },
         track_points,

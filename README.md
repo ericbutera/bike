@@ -53,6 +53,14 @@ Data:
 - The upload UI shows recent archive-import jobs so riders can track `queued`, `running`, `succeeded`, and `failed` states without holding the original HTTP request open.
 - Activity imports and manual segment uploads both deduplicate against existing user data before creating new rows.
 
+## Strava Live Sync
+
+- Bike now supports a Strava OAuth connection from the account page and queues an initial backfill as soon as the rider authorizes the app.
+- Set `STRAVA_CLIENT_ID` and `STRAVA_CLIENT_SECRET` on both `api` and `worker`.
+- `STRAVA_OAUTH_SCOPES` defaults to `activity:read`. Use `activity:read_all` if you need Bike to import activities whose Strava visibility is `Only You`.
+- Configure the Strava application callback URL to point at `API_URL/api/strava/callback`. In local dev with the default compose file that is `http://localhost:3000/api/strava/callback`.
+- Bike currently performs the initial backfill automatically when the account is connected and supports manual re-sync from the account page.
+
 ---
 
 ## Implementation Plan

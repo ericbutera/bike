@@ -6,7 +6,7 @@ use crate::training_profile::{deserialize_activity_heart_rate_zones, weighted_zo
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, Set, TransactionTrait,
+    QueryOrder, Set, TransactionSession, TransactionTrait,
 };
 use std::collections::{BTreeMap, HashMap};
 
@@ -225,10 +225,13 @@ pub async fn rebuild_fitness_freshness_cache(
     txn.commit().await
 }
 
-pub async fn rebuild_segment_analytics_cache(
-    db: &DatabaseConnection,
+pub async fn rebuild_segment_analytics_cache<C>(
+    db: &C,
     segment_ids: &[i32],
-) -> Result<(), sea_orm::DbErr> {
+) -> Result<(), sea_orm::DbErr>
+where
+    C: ConnectionTrait + TransactionTrait,
+{
     let mut segment_ids = segment_ids
         .iter()
         .copied()

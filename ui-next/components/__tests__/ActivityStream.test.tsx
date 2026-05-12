@@ -6,6 +6,8 @@ import ActivityStream from "../ActivityStream";
 const mocks = vi.hoisted(() => ({
   useCurrentUser: vi.fn(),
   useActivities: vi.fn(),
+  routerReplace: vi.fn(),
+  searchParams: "",
 }));
 
 vi.mock("@ericbutera/kaleido", () => ({
@@ -26,6 +28,14 @@ vi.mock("@ericbutera/kaleido", () => ({
 
 vi.mock("../../lib/queries", () => ({
   useActivities: mocks.useActivities,
+}));
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/",
+  useRouter: () => ({
+    replace: mocks.routerReplace,
+  }),
+  useSearchParams: () => new URLSearchParams(mocks.searchParams),
 }));
 
 vi.mock("next/link", () => ({
@@ -92,6 +102,7 @@ function makeActivity(
 describe("ActivityStream", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.searchParams = "";
     mocks.useCurrentUser.mockReturnValue({
       user: { id: 1, email: "rider@example.com" },
       isLoading: false,
@@ -158,6 +169,24 @@ describe("ActivityStream", () => {
     expect(screen.getByText("pagination:1:10:12")).toBeInTheDocument();
   });
 
+  it("initializes the current page from the url", () => {
+    mocks.searchParams = "page=3";
+    mocks.useActivities.mockReturnValue({
+      data: [makeActivity({ id: 3, title: "Page 3" })],
+      metadata: { page: 3, per_page: 10, total: 25, total_pages: 3 },
+      isError: false,
+      isFetching: false,
+      error: null,
+    });
+
+    render(<ActivityStream />);
+
+    expect(screen.getByText("pagination:3:10:25")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Page 3" }),
+    ).toBeInTheDocument();
+  });
+
   it("requests the next page when pagination changes", async () => {
     const user = userEvent.setup();
     const requestedPages: number[] = [];
@@ -186,6 +215,9 @@ describe("ActivityStream", () => {
 
     expect(requestedPages).toContain(1);
     expect(requestedPages).toContain(2);
+    expect(mocks.routerReplace).toHaveBeenCalledWith("/?page=2", {
+      scroll: false,
+    });
     expect(
       screen.getByRole("heading", { level: 3, name: "Page 2" }),
     ).toBeInTheDocument();

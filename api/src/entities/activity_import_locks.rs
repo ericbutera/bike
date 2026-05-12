@@ -3,27 +3,15 @@ use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{ConnectionTrait, DbErr, Set};
 
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
-#[sea_orm(table_name = "activity_archive_import_jobs")]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "activity_import_locks")]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
     pub user_id: i32,
-    pub user_storage_key: String,
-    pub archive_url: String,
-    pub resolved_url: Option<String>,
-    pub status: String,
-    pub failure_message: Option<String>,
-    pub error_samples_json: Option<String>,
-    pub total_entries: i32,
-    pub supported_entry_count: i32,
-    pub imported_count: i32,
-    pub duplicate_count: i32,
-    pub skipped_unsupported_count: i32,
-    pub failed_count: i32,
+    pub source: String,
+    pub stage: String,
     pub created_at: DateTime<Utc>,
-    pub started_at: Option<DateTime<Utc>>,
-    pub finished_at: Option<DateTime<Utc>>,
     pub updated_at: DateTime<Utc>,
 }
 

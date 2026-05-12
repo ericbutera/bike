@@ -1,5 +1,5 @@
 use crate::activity_details::{
-    ActivityRoutePoint, derive_activity_detail_data, deserialize_derived_activity_data,
+    derive_activity_detail_data, deserialize_derived_activity_data, ActivityRoutePoint,
 };
 use crate::activity_summary::summarize_activity_upload;
 use crate::analytics::mark_segment_activity_changes;
@@ -13,12 +13,12 @@ use crate::segment_support::{
     serialize_segment_route_points, slice_effort_route_points,
 };
 use crate::storage::AppStorage;
-use axum::Json;
 use axum::extract::{Multipart, Path, State};
 use axum::http::StatusCode;
+use axum::Json;
 use chrono::{DateTime, Utc};
-use kaleido::auth::UserContext;
 use kaleido::auth::entities::users;
+use kaleido::auth::UserContext;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -274,9 +274,13 @@ pub async fn import_segment(
         ));
     }
 
-    if let Some(existing_segment) =
-        find_duplicate_segment(&state.db, user.id, segment_summary.distance_meters, &segment_detail.route_points)
-            .await?
+    if let Some(existing_segment) = find_duplicate_segment(
+        &state.db,
+        user.id,
+        segment_summary.distance_meters,
+        &segment_detail.route_points,
+    )
+    .await?
     {
         let efforts = load_effort_responses(&state.db, &[existing_segment.id]).await?;
 
@@ -292,8 +296,7 @@ pub async fn import_segment(
                 effort_count: efforts.len() as i32,
                 best_duration_seconds: efforts.iter().map(|effort| effort.duration_seconds).min(),
                 current_user_pr_duration_seconds: current_user_pr_duration_from_responses(
-                    &efforts,
-                    user.id,
+                    &efforts, user.id,
                 ),
                 created_at: existing_segment.created_at,
                 route_points: deserialize_segment_route_points(

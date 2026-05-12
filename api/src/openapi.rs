@@ -4,6 +4,7 @@ use crate::controllers::activity_imports;
 use crate::controllers::admin;
 use crate::controllers::fitness;
 use crate::controllers::segments;
+use crate::controllers::strava;
 use crate::controllers::user_preferences;
 use kaleido::auth::openapi as auth_openapi;
 use kaleido::glass::openapi as glass_openapi;
@@ -25,6 +26,7 @@ use utoipa::OpenApi;
         auth_openapi::paths::oauth_authorize,
         auth_openapi::paths::oauth_callback,
         admin::backfill_analytics,
+        admin::regenerate_user_segments,
         activities::list_activities,
         activities::get_activity,
         activities::delete_activity,
@@ -35,6 +37,11 @@ use utoipa::OpenApi;
         activity_imports::get_activity_archive_import_job,
         activity_imports::upload_activity_import,
         activity_imports::import_activity_archive_from_url,
+        strava::begin_connect,
+        strava::get_connection,
+        strava::queue_sync,
+        strava::disconnect_connection,
+        strava::handle_callback,
         segments::list_segments,
         segments::get_segment,
         segments::import_segment,
@@ -48,6 +55,8 @@ use utoipa::OpenApi;
         schemas(
             app_error::ApiErrorResponse,
             admin::AnalyticsBackfillResponse,
+            admin::RegenerateUserSegmentsRequest,
+            admin::RegenerateUserSegmentsResponse,
             activities::ActivityResponse,
             activities::ActivitySegmentEffort,
             fitness::FitnessFreshnessPoint,
@@ -59,6 +68,8 @@ use utoipa::OpenApi;
             activity_imports::ActivityImportResponse,
             activity_imports::ArchiveUrlImportRequest,
             activity_imports::ActivityArchiveImportJobResponse,
+            strava::StravaAuthorizeResponse,
+            strava::StravaConnectionResponse,
             crate::archive_import::ActivityArchiveImportResponse,
             segments::SegmentResponse,
             segments::SegmentEffortResponse,
@@ -85,6 +96,7 @@ use utoipa::OpenApi;
         (name = "activities", description = "Normalized activity list and detail endpoints"),
         (name = "fitness", description = "Training load, fitness, fatigue, and form analytics"),
         (name = "activity-imports", description = "Manual activity upload endpoints"),
+        (name = "strava", description = "Strava OAuth connection and activity sync endpoints"),
         (name = "segments", description = "Manual segment import and effort comparison endpoints"),
         (name = "preferences", description = "Authenticated Bike user preferences"),
         (name = "admin", description = "Admin-only endpoints"),

@@ -1,29 +1,24 @@
-use api::archive_import::process_activity_archive_import_job;
-use api::config::Config;
-use api::tasks::ActivityArchiveImportTask;
+use api::activity_lifecycle::process_user_segment_regeneration;
+use api::tasks::RegenerateUserSegmentsTask;
 use async_trait::async_trait;
 use kaleido::background_jobs::worker::TaskProcessor;
 use sea_orm::DatabaseConnection;
 use std::error::Error;
 
-pub struct ActivityArchiveImport {
+pub struct RegenerateUserSegments {
     db: DatabaseConnection,
-    uploads_dir: String,
 }
 
-impl ActivityArchiveImport {
+impl RegenerateUserSegments {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self {
-            db,
-            uploads_dir: Config::get().uploads_dir.clone(),
-        }
+        Self { db }
     }
 }
 
 #[async_trait]
-impl TaskProcessor for ActivityArchiveImport {
+impl TaskProcessor for RegenerateUserSegments {
     fn task_type(&self) -> &str {
-        "activity_archive_import"
+        "regenerate_user_segments"
     }
 
     async fn process(
@@ -32,9 +27,9 @@ impl TaskProcessor for ActivityArchiveImport {
         payload: serde_json::Value,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let data = payload.get("data").unwrap_or(&payload);
-        let task: ActivityArchiveImportTask = serde_json::from_value(data.clone())?;
+        let task: RegenerateUserSegmentsTask = serde_json::from_value(data.clone())?;
 
-        process_activity_archive_import_job(&self.db, &self.uploads_dir, task.job_id)
+        process_user_segment_regeneration(&self.db, task.user_id)
             .await
             .map_err(|error| std::io::Error::other(error.message))?;
 

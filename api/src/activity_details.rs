@@ -954,8 +954,7 @@ mod tests {
     #[test]
     fn derives_fit_laps_and_chart_points() {
         let fit = include_bytes!("../tests/fixtures/activity.fit");
-        let detail =
-            derive_activity_detail_data("activity.fit", "fit", fit).expect("fit detail");
+        let detail = derive_activity_detail_data("activity.fit", "fit", fit).expect("fit detail");
 
         assert_eq!(detail.laps.len(), 1);
         assert!(!detail.chart_points.is_empty());

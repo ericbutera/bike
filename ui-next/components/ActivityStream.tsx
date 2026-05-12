@@ -2,7 +2,8 @@
 
 import { Pagination, auth } from "@ericbutera/kaleido";
 import Link from "next/link";
-import { useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   extractApiMessage,
   formatActivityTimestamp,
@@ -102,9 +103,34 @@ export default function ActivityStream() {
   const authApi = auth.useAuthApi();
   const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
   const { unitSystem } = useUnitPreferences();
-  const [page, setPage] = useState(1);
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const currentUrlPage = parsePageParam(searchParams.get("page"));
+  const [page, setPage] = useState(currentUrlPage);
   const perPage = 10;
   const activitiesQuery = useActivities({ enabled: !!user, page, perPage });
+
+  useEffect(() => {
+    setPage(currentUrlPage);
+  }, [currentUrlPage]);
+
+  const handlePageChange = (nextPage: number) => {
+    const normalizedPage = Math.max(1, nextPage);
+    const nextSearchParams = new URLSearchParams(searchParams.toString());
+
+    setPage(normalizedPage);
+    if (normalizedPage === 1) {
+      nextSearchParams.delete("page");
+    } else {
+      nextSearchParams.set("page", String(normalizedPage));
+    }
+
+    const query = nextSearchParams.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, {
+      scroll: false,
+    });
+  };
 
   if (isLoadingUser) {
     return (
@@ -220,9 +246,19 @@ export default function ActivityStream() {
           page={activitiesQuery.metadata.page}
           perPage={activitiesQuery.metadata.per_page}
           total={activitiesQuery.metadata.total}
-          onPageChange={setPage}
+          onPageChange={handlePageChange}
         />
       ) : null}
     </section>
   );
+}
+
+function parsePageParam(rawPage: string | null): number {
+  const parsedPage = Number(rawPage);
+
+  if (Number.isFinite(parsedPage) && parsedPage >= 1) {
+    return Math.floor(parsedPage);
+  }
+
+  return 1;
 }

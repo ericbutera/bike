@@ -1,0 +1,193 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[derive(Iden)]
+enum StravaConnections {
+    Table,
+    Id,
+    UserId,
+    AthleteId,
+    AthleteUsername,
+    AthleteFirstName,
+    AthleteLastName,
+    AthleteProfileMediumUrl,
+    Scopes,
+    AccessToken,
+    RefreshToken,
+    ExpiresAt,
+    LastSyncedActivityStartedAt,
+    LastSyncStatus,
+    LastSyncMessage,
+    LastSyncStartedAt,
+    LastSyncFinishedAt,
+    LastSyncImportedCount,
+    LastSyncDuplicateCount,
+    LastSyncFailedCount,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(StravaConnections::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(StravaConnections::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(StravaConnections::UserId)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(StravaConnections::AthleteId)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(StravaConnections::AthleteUsername)
+                            .string()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(StravaConnections::AthleteFirstName)
+                            .string()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(StravaConnections::AthleteLastName)
+                            .string()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(StravaConnections::AthleteProfileMediumUrl)
+                            .text()
+                            .null(),
+                    )
+                    .col(ColumnDef::new(StravaConnections::Scopes).text().not_null())
+                    .col(
+                        ColumnDef::new(StravaConnections::AccessToken)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(StravaConnections::RefreshToken)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(StravaConnections::ExpiresAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(StravaConnections::LastSyncedActivityStartedAt)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(StravaConnections::LastSyncStatus)
+                            .string()
+                            .not_null()
+                            .default("never"),
+                    )
+                    .col(
+                        ColumnDef::new(StravaConnections::LastSyncMessage)
+                            .text()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(StravaConnections::LastSyncStartedAt)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(StravaConnections::LastSyncFinishedAt)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(StravaConnections::LastSyncImportedCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(StravaConnections::LastSyncDuplicateCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(StravaConnections::LastSyncFailedCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(StravaConnections::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::cust("CURRENT_TIMESTAMP")),
+                    )
+                    .col(
+                        ColumnDef::new(StravaConnections::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::cust("CURRENT_TIMESTAMP")),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx-strava-connections-user-id")
+                    .table(StravaConnections::Table)
+                    .col(StravaConnections::UserId)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx-strava-connections-athlete-id")
+                    .table(StravaConnections::Table)
+                    .col(StravaConnections::AthleteId)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx-strava-connections-sync-status")
+                    .table(StravaConnections::Table)
+                    .col(StravaConnections::LastSyncStatus)
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(StravaConnections::Table).to_owned())
+            .await
+    }
+}

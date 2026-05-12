@@ -47,17 +47,13 @@ pub async fn persist_activity_upload(
     source: &str,
     training_profile: Option<&TrainingProfile>,
 ) -> Result<PersistActivityUploadOutcome, AppError> {
-    let activity_draft =
-        crate::activity_summary::summarize_activity_upload(
-            &upload.original_filename,
-            &upload.format,
-            &upload.bytes,
-        )?;
-    let derived_data = derive_activity_detail_data(
+    let activity_draft = crate::activity_summary::summarize_activity_upload(
         &upload.original_filename,
         &upload.format,
         &upload.bytes,
     )?;
+    let derived_data =
+        derive_activity_detail_data(&upload.original_filename, &upload.format, &upload.bytes)?;
 
     if let Some(duplicate) =
         find_duplicate_activity(db, user_id, &activity_draft, &derived_data).await?
@@ -143,19 +139,17 @@ pub async fn persist_activity_upload(
     .insert(db)
     .await?;
 
-    let affected_segment_ids = refresh_activity_derived_state(
-        db,
-        user_id,
-        activity_model.id,
-        &derived_data.route_points,
-    )
-    .await?;
+    let affected_segment_ids =
+        refresh_activity_derived_state(db, user_id, activity_model.id, &derived_data.route_points)
+            .await?;
 
-    Ok(PersistActivityUploadOutcome::Imported(PersistedActivityImport {
-        import: import_model,
-        activity: activity_model,
-        affected_segment_ids,
-    }))
+    Ok(PersistActivityUploadOutcome::Imported(
+        PersistedActivityImport {
+            import: import_model,
+            activity: activity_model,
+            affected_segment_ids,
+        },
+    ))
 }
 
 pub async fn finalize_activity_import_batch(
@@ -174,9 +168,6 @@ pub async fn finalize_activity_import_batch(
     }
 
     tasks.rebuild_fitness_freshness(user_id).await;
-    if !affected_segment_ids.is_empty() {
-        tasks.rebuild_segment_analytics(affected_segment_ids).await;
-    }
 
     Ok(())
 }
@@ -219,7 +210,11 @@ async fn find_duplicate_activity(
     for activity in candidates {
         if activity_dedupe_key_from_model(&activity) == target_key {
             let existing_import = match activity.activity_import_id {
-                Some(import_id) => activity_imports::Entity::find_by_id(import_id).one(db).await?,
+                Some(import_id) => {
+                    activity_imports::Entity::find_by_id(import_id)
+                        .one(db)
+                        .await?
+                }
                 None => None,
             };
 

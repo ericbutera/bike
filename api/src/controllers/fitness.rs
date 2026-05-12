@@ -1,12 +1,12 @@
 use crate::analytics::{
-    FATIGUE_WINDOW_DAYS, FITNESS_WINDOW_DAYS, build_fitness_freshness_rows,
-    default_fitness_rebuild_start_date,
+    build_fitness_freshness_rows, default_fitness_rebuild_start_date, FATIGUE_WINDOW_DAYS,
+    FITNESS_WINDOW_DAYS,
 };
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::entities::{activities, analytics_user_states, fitness_freshness_daily};
 use crate::storage::AppStorage;
-use axum::Json;
 use axum::extract::{Query, State};
+use axum::Json;
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use kaleido::auth::UserContext;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};

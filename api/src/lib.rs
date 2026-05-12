@@ -1,11 +1,12 @@
 pub mod activity_details;
+pub mod activity_import_lock;
 pub mod activity_import_pipeline;
 pub mod activity_lifecycle;
 pub mod activity_location;
 pub mod activity_summary;
 pub mod analytics;
-pub mod archive_import;
 pub mod app_error;
+pub mod archive_import;
 pub mod config;
 pub mod controllers;
 pub mod dedupe;
@@ -16,6 +17,7 @@ pub mod metrics;
 pub mod openapi;
 pub mod segment_support;
 pub mod storage;
+pub mod strava;
 pub mod tasks;
 pub mod training_profile;
 

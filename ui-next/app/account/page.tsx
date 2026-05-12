@@ -1,6 +1,7 @@
 "use client";
 
 import { auth } from "@ericbutera/kaleido";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import AuthRequiredCard from "../../components/AuthRequiredCard";
@@ -8,6 +9,7 @@ import Layout from "../../components/Layout";
 import {
   DEFAULT_UNIT_SYSTEM,
   extractApiMessage,
+  formatActivityTimestamp,
   formatDistance,
   formatElevation,
   formatHeartRate,
@@ -17,6 +19,10 @@ import {
   type UnitSystem,
 } from "../../lib/activityFormatting";
 import {
+  useDisconnectStrava,
+  useQueueStravaSync,
+  useStartStravaConnect,
+  useStravaConnection,
   useUpdateUserPreferences,
   useUserPreferences,
 } from "../../lib/queries";
@@ -134,15 +140,44 @@ function buildZonePreviewLabels(draft: string[]) {
   ];
 }
 
+function formatStravaSyncStatus(status: string) {
+  switch (status) {
+    case "queued":
+      return "Queued";
+    case "running":
+      return "Syncing";
+    case "succeeded":
+      return "Up to date";
+    case "failed":
+      return "Needs attention";
+    default:
+      return "Not synced yet";
+  }
+}
+
+function isStravaSyncActive(status: string) {
+  return status === "queued" || status === "running";
+}
+
 export default function AccountPage() {
   const authApi = auth.useAuthApi();
   const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const preferencesQuery = useUserPreferences({ enabled: !!user });
+  const stravaQuery = useStravaConnection({
+    enabled: !!user,
+    refetchIntervalMs: user ? 5000 : false,
+  });
   const updatePreferencesMutation = useUpdateUserPreferences();
+  const startStravaConnectMutation = useStartStravaConnect();
+  const queueStravaSyncMutation = useQueueStravaSync();
+  const disconnectStravaMutation = useDisconnectStrava();
   const unitSystem = normalizeUnitSystem(preferencesQuery.data?.unit_system);
   const estimatedFtpWatts = preferencesQuery.data?.estimated_ftp_watts ?? null;
   const heartRateZoneBounds =
     preferencesQuery.data?.heart_rate_zone_bounds_bpm ?? null;
+  const stravaConnection = stravaQuery.data;
   const [draftUnitSystem, setDraftUnitSystem] =
     useState<UnitSystem>(DEFAULT_UNIT_SYSTEM);
   const [draftEstimatedFtpWatts, setDraftEstimatedFtpWatts] = useState("");
@@ -158,6 +193,28 @@ export default function AccountPage() {
     setDraftEstimatedFtpWatts(estimatedFtpWatts?.toString() ?? "");
     setDraftHeartRateZoneBounds(storedHeartRateZoneDraft);
   }, [estimatedFtpWatts, storedHeartRateZoneSignature, unitSystem]);
+
+  useEffect(() => {
+    const status = searchParams.get("strava");
+
+    if (!status) {
+      return;
+    }
+
+    const message =
+      searchParams.get("strava_message") ??
+      (status === "connected"
+        ? "Strava connected. Initial sync queued."
+        : "Strava connection failed.");
+
+    if (status === "connected") {
+      toast.success(message);
+    } else {
+      toast.error(message);
+    }
+
+    router.replace("/account");
+  }, [router, searchParams]);
 
   async function handleSave() {
     try {
@@ -178,16 +235,47 @@ export default function AccountPage() {
     }
   }
 
+  async function handleStartStravaConnect() {
+    try {
+      const result = await startStravaConnectMutation.beginAsync();
+      window.location.assign(result.authorization_url);
+    } catch (error) {
+      toast.error(extractApiMessage(error));
+    }
+  }
+
+  async function handleQueueStravaSync() {
+    try {
+      await queueStravaSyncMutation.queueAsync();
+      toast.success("Strava sync queued.");
+    } catch (error) {
+      toast.error(extractApiMessage(error));
+    }
+  }
+
+  async function handleDisconnectStrava() {
+    try {
+      const result = await disconnectStravaMutation.disconnectAsync();
+      toast.success(result.message);
+    } catch (error) {
+      toast.error(extractApiMessage(error));
+    }
+  }
+
   const isDirty =
     draftUnitSystem !== unitSystem ||
     draftEstimatedFtpWatts !== (estimatedFtpWatts?.toString() ?? "") ||
     draftHeartRateZoneBounds.join("|") !== storedHeartRateZoneDraft.join("|");
   const zonePreviewLabels = buildZonePreviewLabels(draftHeartRateZoneBounds);
+  const isStravaSyncPending = isStravaSyncActive(
+    stravaConnection.last_sync_status,
+  );
 
   return (
     <Layout>
       <section className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
-        {isLoadingUser || (user && preferencesQuery.isLoading) ? (
+        {isLoadingUser ||
+        (user && (preferencesQuery.isLoading || stravaQuery.isLoading)) ? (
           <div className="card bg-base-100 shadow-xl">
             <div className="card-body items-center py-10">
               <span className="loading loading-spinner loading-md" />
@@ -210,6 +298,193 @@ export default function AccountPage() {
                 Choose how Bike formats units and define the training profile
                 Bike uses for ride-level zone summaries and future load models.
               </p>
+            </div>
+
+            <div className="card bg-base-100 shadow-xl">
+              <div className="card-body gap-6">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <h2 className="card-title text-xl">Strava integration</h2>
+                    <p className="text-sm text-base-content/70">
+                      Connect a Strava athlete so Bike can pull new activities
+                      in the background and feed them through the same import
+                      pipeline as manual uploads.
+                    </p>
+                  </div>
+                  <span
+                    className={`badge ${stravaConnection.connected ? "badge-primary" : "badge-outline"}`}
+                  >
+                    {stravaConnection.connected ? "Connected" : "Not connected"}
+                  </span>
+                </div>
+
+                {!stravaConnection.configured ? (
+                  <div className="rounded-box border border-warning/30 bg-warning/10 p-4 text-sm text-base-content/80">
+                    This Bike deployment does not have Strava OAuth credentials
+                    configured yet. Set <code>STRAVA_CLIENT_ID</code> and
+                    <code>STRAVA_CLIENT_SECRET</code> on the API and worker.
+                  </div>
+                ) : null}
+
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+                  <div className="rounded-box bg-base-200 p-4 text-sm text-base-content/75">
+                    {stravaConnection.connected ? (
+                      <div className="space-y-4">
+                        <div>
+                          <div className="font-medium text-base-content">
+                            {stravaConnection.athlete_name ??
+                              "Connected athlete"}
+                          </div>
+                          <div className="mt-1 text-sm text-base-content/70">
+                            {stravaConnection.athlete_username
+                              ? `@${stravaConnection.athlete_username}`
+                              : "Strava account linked to this Bike user."}
+                          </div>
+                        </div>
+
+                        {stravaConnection.scopes.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {stravaConnection.scopes.map((scope) => (
+                              <span
+                                key={scope}
+                                className="badge badge-ghost badge-sm"
+                              >
+                                {scope}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+
+                        <div className="rounded-box border border-base-300 bg-base-100 p-4">
+                          <div className="font-medium text-base-content">
+                            {formatStravaSyncStatus(
+                              stravaConnection.last_sync_status,
+                            )}
+                          </div>
+                          <div className="mt-2 space-y-2 text-sm text-base-content/70">
+                            <div>
+                              {stravaConnection.last_sync_message ??
+                                "Bike has the connection and is ready to sync."}
+                            </div>
+                            <div>
+                              Last finished:{" "}
+                              {formatActivityTimestamp(
+                                stravaConnection.last_sync_finished_at ?? "",
+                              )}
+                            </div>
+                            <div>
+                              Cursor:{" "}
+                              {formatActivityTimestamp(
+                                stravaConnection.last_synced_activity_started_at ??
+                                  "",
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3 leading-6">
+                        <p>
+                          Bike requests Strava activity access and stores the
+                          refresh token so new syncs can happen without asking
+                          you to reconnect each time.
+                        </p>
+                        <p>
+                          The first sync backfills your available activities and
+                          runs them through Bike&apos;s existing dedupe and
+                          import pipeline.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid gap-3">
+                    <div className="stats stats-vertical bg-base-200 shadow-sm lg:stats-horizontal">
+                      <div className="stat px-4 py-3">
+                        <div className="stat-title">Imported</div>
+                        <div className="stat-value text-2xl">
+                          {stravaConnection.last_sync_imported_count}
+                        </div>
+                      </div>
+                      <div className="stat px-4 py-3">
+                        <div className="stat-title">Duplicates</div>
+                        <div className="stat-value text-2xl">
+                          {stravaConnection.last_sync_duplicate_count}
+                        </div>
+                      </div>
+                      <div className="stat px-4 py-3">
+                        <div className="stat-title">Failed</div>
+                        <div className="stat-value text-2xl">
+                          {stravaConnection.last_sync_failed_count}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-box border border-base-300 bg-base-200 p-4 text-sm text-base-content/70">
+                      <div className="font-medium text-base-content">
+                        Sync behavior
+                      </div>
+                      <p className="mt-2 leading-6">
+                        Bike pulls activity summaries and streams from Strava,
+                        synthesizes a TCX payload, then reuses the existing
+                        upload pipeline so dedupe and derived metrics stay in
+                        one place.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="card-actions justify-end gap-3">
+                  {stravaConnection.connected ? (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        disabled={
+                          disconnectStravaMutation.isPending ||
+                          startStravaConnectMutation.isPending
+                        }
+                        onClick={handleDisconnectStrava}
+                      >
+                        {disconnectStravaMutation.isPending
+                          ? "Disconnecting..."
+                          : "Disconnect"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        disabled={
+                          isStravaSyncPending ||
+                          queueStravaSyncMutation.isPending ||
+                          disconnectStravaMutation.isPending
+                        }
+                        onClick={handleQueueStravaSync}
+                      >
+                        {isStravaSyncPending ||
+                        queueStravaSyncMutation.isPending
+                          ? "Sync queued..."
+                          : "Sync now"}
+                      </button>
+                    </>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={
+                      !stravaConnection.configured ||
+                      startStravaConnectMutation.isPending ||
+                      disconnectStravaMutation.isPending
+                    }
+                    onClick={handleStartStravaConnect}
+                  >
+                    {startStravaConnectMutation.isPending
+                      ? "Redirecting..."
+                      : stravaConnection.connected
+                        ? "Reconnect Strava"
+                        : "Connect Strava"}
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className="card bg-base-100 shadow-xl">

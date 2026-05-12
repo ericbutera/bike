@@ -1,18 +1,22 @@
+use crate::activity_import_lock::{
+    acquire_user_activity_import_lock, release_user_activity_import_lock,
+    ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
+};
 use crate::activity_import_pipeline::{
     finalize_activity_import_batch, persist_activity_upload, validate_activity_format,
     ActivityUploadPayload, PersistActivityUploadOutcome,
 };
+use crate::activity_location::location_from_derived_json;
+use crate::app_error::{ApiErrorResponse, AppError};
 use crate::archive_import::{
     decode_error_samples, enqueue_activity_archive_import_job, normalize_archive_url,
 };
-use crate::activity_location::location_from_derived_json;
-use crate::app_error::{ApiErrorResponse, AppError};
 use crate::config::Config;
 use crate::entities::{activities, activity_archive_import_jobs, activity_imports};
 use crate::storage::AppStorage;
-use axum::Json;
 use axum::extract::{Multipart, Path, State};
 use axum::http::StatusCode;
+use axum::Json;
 use chrono::{DateTime, Utc};
 use kaleido::auth::UserContext;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
@@ -229,6 +233,7 @@ pub async fn get_activity_archive_import_job(
         (status = 200, description = "Activity was already imported and the existing record was returned", body = ActivityImportResponse),
         (status = 201, description = "Activity import uploaded", body = ActivityImportResponse),
         (status = 400, description = "Invalid upload", body = ApiErrorResponse),
+        (status = 409, description = "Another activity import is already running or queued", body = ApiErrorResponse),
         (status = 401, description = "Not authenticated"),
         (status = 413, description = "Payload too large", body = ApiErrorResponse),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
@@ -246,44 +251,68 @@ pub async fn upload_activity_import(
     let upload = read_uploaded_activity_file(multipart).await?;
     let upload_for_duplicate = upload.clone();
     let user_storage_key = user.pid.to_string();
-    let outcome = persist_activity_upload(
+    acquire_user_activity_import_lock(
         &state.db,
-        &state.uploads_dir,
-        &user_storage_key,
         user.id,
-        upload,
-        "manual_upload",
-        None,
+        ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD,
+        ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
     )
     .await?;
 
-    match outcome {
-        PersistActivityUploadOutcome::Imported(persisted) => {
-            finalize_activity_import_batch(
-                &state.db,
-                &state.tasks,
-                user.id,
-                persisted.affected_segment_ids.clone(),
-                Utc::now(),
-            )
-            .await?;
+    let result = async {
+        let outcome = persist_activity_upload(
+            &state.db,
+            &state.uploads_dir,
+            &user_storage_key,
+            user.id,
+            upload,
+            "manual_upload",
+            None,
+        )
+        .await?;
 
-            Ok((
-                StatusCode::CREATED,
-                Json(ActivityImportResponse::from_model(
-                    persisted.import,
-                    Some(&persisted.activity),
+        match outcome {
+            PersistActivityUploadOutcome::Imported(persisted) => {
+                finalize_activity_import_batch(
+                    &state.db,
+                    &state.tasks,
+                    user.id,
+                    persisted.affected_segment_ids.clone(),
+                    Utc::now(),
+                )
+                .await?;
+
+                Ok((
+                    StatusCode::CREATED,
+                    Json(ActivityImportResponse::from_model(
+                        persisted.import,
+                        Some(&persisted.activity),
+                    )),
+                ))
+            }
+            PersistActivityUploadOutcome::Duplicate(duplicate) => Ok((
+                StatusCode::OK,
+                Json(build_duplicate_activity_import_response(
+                    &upload_for_duplicate,
+                    "manual_upload",
+                    duplicate,
                 )),
-            ))
-        }
-        PersistActivityUploadOutcome::Duplicate(duplicate) => Ok((
-            StatusCode::OK,
-            Json(build_duplicate_activity_import_response(
-                &upload_for_duplicate,
-                "manual_upload",
-                duplicate,
             )),
-        )),
+        }
+    }
+    .await;
+
+    let release_result = release_user_activity_import_lock(
+        &state.db,
+        user.id,
+        ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD,
+    )
+    .await;
+
+    match (result, release_result) {
+        (Err(error), _) => Err(error),
+        (Ok(_), Err(error)) => Err(error),
+        (Ok(response), Ok(())) => Ok(response),
     }
 }
 
@@ -294,6 +323,7 @@ pub async fn upload_activity_import(
     responses(
         (status = 202, description = "Archive import job queued", body = ActivityArchiveImportJobResponse),
         (status = 400, description = "Invalid archive URL", body = ApiErrorResponse),
+        (status = 409, description = "Another activity import is already running or queued", body = ApiErrorResponse),
         (status = 401, description = "Not authenticated"),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     ),
@@ -415,19 +445,21 @@ fn build_duplicate_activity_import_response(
     source: &str,
     duplicate: crate::activity_import_pipeline::DeduplicatedActivityImport,
 ) -> ActivityImportResponse {
-    let import_model = duplicate.existing_import.unwrap_or(activity_imports::Model {
-        id: 0,
-        user_id: duplicate.activity.user_id,
-        source: source.to_string(),
-        format: upload.format.clone(),
-        status: "duplicate".to_string(),
-        original_filename: upload.original_filename.clone(),
-        storage_path: String::new(),
-        size_bytes: upload.bytes.len() as i64,
-        mime_type: upload.mime_type.clone(),
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-    });
+    let import_model = duplicate
+        .existing_import
+        .unwrap_or(activity_imports::Model {
+            id: 0,
+            user_id: duplicate.activity.user_id,
+            source: source.to_string(),
+            format: upload.format.clone(),
+            status: "duplicate".to_string(),
+            original_filename: upload.original_filename.clone(),
+            storage_path: String::new(),
+            size_bytes: upload.bytes.len() as i64,
+            mime_type: upload.mime_type.clone(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        });
     let mut response = ActivityImportResponse::from_model(import_model, Some(&duplicate.activity));
     response.status = "duplicate".to_string();
     response
@@ -512,8 +544,8 @@ mod tests {
     #[test]
     fn activity_archive_import_job_response_maps_error_samples() {
         let now = Utc::now();
-        let response = ActivityArchiveImportJobResponse::from_model(
-            activity_archive_import_jobs::Model {
+        let response =
+            ActivityArchiveImportJobResponse::from_model(activity_archive_import_jobs::Model {
                 id: 5,
                 user_id: 12,
                 user_storage_key: "user-12".to_string(),
@@ -535,8 +567,7 @@ mod tests {
                 started_at: Some(now),
                 finished_at: Some(now),
                 updated_at: now,
-            },
-        );
+            });
 
         assert_eq!(response.id, 5);
         assert_eq!(response.archive_url, "https://example.com/export.zip");

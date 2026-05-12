@@ -41,7 +41,11 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(ActivityArchiveImportJobs::UserId).integer().not_null())
+                    .col(
+                        ColumnDef::new(ActivityArchiveImportJobs::UserId)
+                            .integer()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(ActivityArchiveImportJobs::UserStorageKey)
                             .string()
@@ -57,7 +61,11 @@ impl MigrationTrait for Migration {
                             .text()
                             .null(),
                     )
-                    .col(ColumnDef::new(ActivityArchiveImportJobs::Status).string().not_null())
+                    .col(
+                        ColumnDef::new(ActivityArchiveImportJobs::Status)
+                            .string()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(ActivityArchiveImportJobs::FailureMessage)
                             .text()

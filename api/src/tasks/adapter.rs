@@ -14,7 +14,9 @@ pub enum Task {
     EmailNotification(auth_tasks::EmailNotificationTask),
     RebuildFitnessFreshness(RebuildFitnessFreshnessTask),
     RebuildSegmentAnalytics(RebuildSegmentAnalyticsTask),
+    RegenerateUserSegments(RegenerateUserSegmentsTask),
     ActivityArchiveImport(ActivityArchiveImportTask),
+    StravaSync(StravaSyncTask),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,8 +30,18 @@ pub struct RebuildSegmentAnalyticsTask {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegenerateUserSegmentsTask {
+    pub user_id: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActivityArchiveImportTask {
     pub job_id: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StravaSyncTask {
+    pub connection_id: i32,
 }
 
 impl Task {
@@ -40,7 +52,9 @@ impl Task {
             Task::EmailNotification(_) => auth_tasks::EMAIL_NOTIFICATION_TASK_TYPE,
             Task::RebuildFitnessFreshness(_) => "rebuild_fitness_freshness",
             Task::RebuildSegmentAnalytics(_) => "rebuild_segment_analytics",
+            Task::RegenerateUserSegments(_) => "regenerate_user_segments",
             Task::ActivityArchiveImport(_) => "activity_archive_import",
+            Task::StravaSync(_) => "strava_sync",
         }
     }
 }
@@ -130,6 +144,18 @@ impl TaskQueue {
         .await;
     }
 
+    pub async fn regenerate_user_segments(&self, user_id: i32) -> Result<(), String> {
+        let task = Task::RegenerateUserSegments(RegenerateUserSegmentsTask { user_id });
+        let task_type = task.task_type().to_string();
+
+        self.auth
+            .inner()
+            .enqueue_with_options(task_type, task, None, 1)
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+
     pub async fn archive_activity_import(&self, job_id: i32) -> Result<(), String> {
         let task = Task::ActivityArchiveImport(ActivityArchiveImportTask { job_id });
         let task_type = task.task_type().to_string();
@@ -137,6 +163,18 @@ impl TaskQueue {
         self.auth
             .inner()
             .enqueue_with_options(task_type, task, None, 1)
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+
+    pub async fn sync_strava_connection(&self, connection_id: i32) -> Result<(), String> {
+        let task = Task::StravaSync(StravaSyncTask { connection_id });
+        let task_type = task.task_type().to_string();
+
+        self.auth
+            .inner()
+            .enqueue_with_options(task_type, task, None, 3)
             .await
             .map(|_| ())
             .map_err(|error| error.to_string())

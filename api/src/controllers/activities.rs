@@ -1,11 +1,10 @@
 use crate::activity_details::{
-    ActivityChartPoint, ActivityDerivedData, ActivityLap, ActivityRoutePoint,
     derive_activity_detail_data, deserialize_derived_activity_data,
-    serialize_derived_activity_data,
+    serialize_derived_activity_data, ActivityChartPoint, ActivityDerivedData, ActivityLap,
+    ActivityRoutePoint,
 };
 use crate::activity_lifecycle::{
-    delete_activity_with_derived_state, load_segment_ids_for_activity,
-    refresh_activity_derived_state,
+    delete_activity_with_derived_state, refresh_activity_derived_state,
 };
 use crate::activity_location::location_from_derived_json;
 use crate::activity_summary::summarize_activity_upload;
@@ -16,12 +15,12 @@ use crate::entities::{
 };
 use crate::storage::AppStorage;
 use crate::training_profile::{
-    ActivityHeartRateZoneSummary, deserialize_activity_heart_rate_zones, load_training_profile,
-    serialize_activity_heart_rate_zones, summarize_heart_rate_zones,
+    deserialize_activity_heart_rate_zones, load_training_profile,
+    serialize_activity_heart_rate_zones, summarize_heart_rate_zones, ActivityHeartRateZoneSummary,
 };
-use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
+use axum::Json;
 use chrono::{DateTime, Utc};
 use kaleido::auth::UserContext;
 use kaleido::glass::data::pagination::{Paginatable, PaginatedResponse, PaginationParams};
@@ -496,7 +495,6 @@ pub async fn regenerate_activity(
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::not_found("Activity import not found"))?;
-    let previous_segment_ids = load_segment_ids_for_activity(&state.db, id).await?;
     let full_path = FsPath::new(&state.uploads_dir).join(&activity_import.storage_path);
     let bytes = tokio::fs::read(full_path).await?;
     let activity_draft = summarize_activity_upload(
@@ -547,21 +545,13 @@ pub async fn regenerate_activity(
 
     let updated = active_model.update(&state.db).await?;
 
-    let refreshed_segment_ids =
+    let affected_segment_ids =
         refresh_activity_derived_state(&state.db, user.id, updated.id, &derived_data.route_points)
             .await?;
-    let mut affected_segment_ids = previous_segment_ids;
-    affected_segment_ids.extend(refreshed_segment_ids);
-    affected_segment_ids.sort_unstable();
-    affected_segment_ids.dedup();
     let changed_at = Utc::now();
     mark_user_activity_change(&state.db, user.id, changed_at).await?;
     mark_segment_activity_changes(&state.db, &affected_segment_ids, changed_at).await?;
     state.tasks.rebuild_fitness_freshness(user.id).await;
-    state
-        .tasks
-        .rebuild_segment_analytics(affected_segment_ids)
-        .await;
     let segment_efforts = load_activity_segment_efforts(&state.db, user.id, updated.id).await?;
 
     Ok(Json(ActivityResponse::from_detail(

@@ -7,6 +7,9 @@ pub struct Config {
     pub frontend_url: String,
     pub cors_allowed_origins: Vec<String>,
     pub api_url: String,
+    pub strava_client_id: String,
+    pub strava_client_secret: String,
+    pub strava_oauth_scopes: String,
     pub uploads_dir: String,
     pub max_upload_bytes: usize,
     pub max_archive_fetch_bytes: usize,
@@ -39,6 +42,10 @@ impl Config {
                 .filter(|s| !s.is_empty())
                 .collect(),
             api_url: env::var("API_URL").unwrap_or_else(|_| "http://localhost:3000".to_string()),
+            strava_client_id: env::var("STRAVA_CLIENT_ID").unwrap_or_default(),
+            strava_client_secret: env::var("STRAVA_CLIENT_SECRET").unwrap_or_default(),
+            strava_oauth_scopes: env::var("STRAVA_OAUTH_SCOPES")
+                .unwrap_or_else(|_| "activity:read".to_string()),
             uploads_dir: env::var("UPLOADS_DIR").unwrap_or_else(|_| "./uploads".to_string()),
             max_upload_bytes: env::var("MAX_UPLOAD_BYTES")
                 .ok()
@@ -71,5 +78,18 @@ impl Config {
 
     pub fn get() -> &'static Config {
         CONFIG.get_or_init(|| Self::init_from_env().clone())
+    }
+
+    pub fn strava_enabled(&self) -> bool {
+        !self.strava_client_id.trim().is_empty() && !self.strava_client_secret.trim().is_empty()
+    }
+
+    pub fn strava_oauth_scope_list(&self) -> Vec<String> {
+        self.strava_oauth_scopes
+            .split([',', ' '])
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .collect()
     }
 }

@@ -1,3 +1,8 @@
+use crate::activity_import_lock::{
+    acquire_user_activity_import_lock, release_user_activity_import_lock,
+    ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT, ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION,
+    ACTIVITY_IMPORT_LOCK_STAGE_QUEUED, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
+};
 use crate::activity_import_pipeline::{
     finalize_activity_import_batch, persist_activity_upload, ActivityUploadPayload,
     PersistActivityUploadOutcome,
@@ -6,8 +11,9 @@ use crate::analytics::mark_user_activity_changes;
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::entities::{activities, segments};
 use crate::storage::AppStorage;
-use axum::{Json, Router, extract::State, http::StatusCode, routing::post};
+use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
 use chrono::Utc;
+use kaleido::auth::entities::users;
 use kaleido::auth::AdminUserContext;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QuerySelect};
 use serde::{Deserialize, Serialize};
@@ -22,6 +28,7 @@ const SEGMENT_BACKFILL_CHUNK_SIZE: usize = 250;
 pub fn routes() -> Router<Arc<AppStorage>> {
     Router::new()
         .route("/analytics/backfill", post(backfill_analytics))
+        .route("/segments/regenerate", post(regenerate_user_segments))
         .route("/activity-imports/archive", post(import_activity_archive))
 }
 
@@ -40,6 +47,11 @@ pub struct ArchiveImportRequest {
     pub archive_path: String,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct RegenerateUserSegmentsRequest {
+    pub user_id: i32,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ArchiveImportResponse {
     pub archive_path: String,
@@ -51,6 +63,13 @@ pub struct ArchiveImportResponse {
     pub failed_count: i32,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub error_samples: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct RegenerateUserSegmentsResponse {
+    pub user_id: i32,
+    pub status: String,
+    pub message: String,
 }
 
 #[utoipa::path(
@@ -98,12 +117,69 @@ pub async fn backfill_analytics(
 
 #[utoipa::path(
     post,
+    path = "/admin/segments/regenerate",
+    operation_id = "admin_regenerate_user_segments",
+    request_body = RegenerateUserSegmentsRequest,
+    responses(
+        (status = 202, description = "Queued segment regeneration for one user", body = RegenerateUserSegmentsResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "User not found", body = ApiErrorResponse),
+        (status = 409, description = "Another activity import is already running or queued", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "admin",
+)]
+pub async fn regenerate_user_segments(
+    _admin: AdminUserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+    Json(request): Json<RegenerateUserSegmentsRequest>,
+) -> Result<(StatusCode, Json<RegenerateUserSegmentsResponse>), AppError> {
+    users::Entity::find_by_id(request.user_id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found(format!("User {} was not found", request.user_id)))?;
+
+    acquire_user_activity_import_lock(
+        &state.db,
+        request.user_id,
+        ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION,
+        ACTIVITY_IMPORT_LOCK_STAGE_QUEUED,
+    )
+    .await?;
+
+    if let Err(message) = state.tasks.regenerate_user_segments(request.user_id).await {
+        release_user_activity_import_lock(
+            &state.db,
+            request.user_id,
+            ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION,
+        )
+        .await?;
+        return Err(AppError::internal(format!(
+            "Failed to queue segment regeneration: {message}"
+        )));
+    }
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(RegenerateUserSegmentsResponse {
+            user_id: request.user_id,
+            status: "queued".to_string(),
+            message: "Segment regeneration queued.".to_string(),
+        }),
+    ))
+}
+
+#[utoipa::path(
+    post,
     path = "/admin/activity-imports/archive",
     operation_id = "admin_import_activity_archive",
     request_body = ArchiveImportRequest,
     responses(
         (status = 200, description = "Imported activities from an archive on the server", body = ArchiveImportResponse),
         (status = 400, description = "Invalid archive request", body = ApiErrorResponse),
+        (status = 409, description = "Another activity import is already running or queued", body = ApiErrorResponse),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "Archive not found", body = ApiErrorResponse),
@@ -119,102 +195,122 @@ pub async fn import_activity_archive(
 ) -> Result<(StatusCode, Json<ArchiveImportResponse>), AppError> {
     let archive_path = resolve_archive_import_path(&state.uploads_dir, &request.archive_path)?;
     let scan = scan_archive_entries(&archive_path)?;
-    let training_profile = crate::training_profile::load_training_profile(&state.db, admin.user.id)
-        .await?;
+    let training_profile =
+        crate::training_profile::load_training_profile(&state.db, admin.user.id).await?;
     let mut imported_count = 0i32;
     let mut duplicate_count = 0i32;
     let mut affected_segment_ids = Vec::new();
     let mut error_samples = Vec::new();
     let user_storage_key = admin.user.pid.to_string();
+    acquire_user_activity_import_lock(
+        &state.db,
+        admin.user.id,
+        ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT,
+        ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
+    )
+    .await?;
 
-    for indexed_entry in &scan.supported_entries {
-        let bytes = match read_archive_entry_bytes(&archive_path, indexed_entry.index) {
-            Ok(value) => value,
-            Err(error) => {
-                error_samples.push(format!(
-                    "{}: failed to read archive entry: {}",
-                    indexed_entry.entry_name, error.message
-                ));
-                continue;
-            }
-        };
+    let result = async {
+        for indexed_entry in &scan.supported_entries {
+            let bytes = match read_archive_entry_bytes(&archive_path, indexed_entry.index) {
+                Ok(value) => value,
+                Err(error) => {
+                    error_samples.push(format!(
+                        "{}: failed to read archive entry: {}",
+                        indexed_entry.entry_name, error.message
+                    ));
+                    continue;
+                }
+            };
 
-        let bytes = match maybe_decode_archive_entry(&indexed_entry.activity_entry, bytes) {
-            Ok(value) => value,
-            Err(message) => {
-                error_samples.push(format!("{}: {}", indexed_entry.entry_name, message));
-                continue;
-            }
-        };
+            let bytes = match maybe_decode_archive_entry(&indexed_entry.activity_entry, bytes) {
+                Ok(value) => value,
+                Err(message) => {
+                    error_samples.push(format!("{}: {}", indexed_entry.entry_name, message));
+                    continue;
+                }
+            };
 
-        let upload = ActivityUploadPayload {
-            original_filename: indexed_entry.activity_entry.original_filename.clone(),
-            format: indexed_entry.activity_entry.format.clone(),
-            mime_type: None,
-            bytes,
-        };
+            let upload = ActivityUploadPayload {
+                original_filename: indexed_entry.activity_entry.original_filename.clone(),
+                format: indexed_entry.activity_entry.format.clone(),
+                mime_type: None,
+                bytes,
+            };
 
-        match persist_activity_upload(
-            &state.db,
-            &state.uploads_dir,
-            &user_storage_key,
-            admin.user.id,
-            upload,
-            "archive_import",
-            Some(&training_profile),
-        )
-        .await
-        {
-            Ok(PersistActivityUploadOutcome::Imported(persisted)) => {
-                imported_count += 1;
-                affected_segment_ids.extend(persisted.affected_segment_ids);
-            }
-            Ok(PersistActivityUploadOutcome::Duplicate(_)) => {
-                duplicate_count += 1;
-            }
-            Err(error) => {
-                error_samples.push(format!(
-                    "{}: {}",
-                    indexed_entry.entry_name, error.message
-                ));
+            match persist_activity_upload(
+                &state.db,
+                &state.uploads_dir,
+                &user_storage_key,
+                admin.user.id,
+                upload,
+                "archive_import",
+                Some(&training_profile),
+            )
+            .await
+            {
+                Ok(PersistActivityUploadOutcome::Imported(persisted)) => {
+                    imported_count += 1;
+                    affected_segment_ids.extend(persisted.affected_segment_ids);
+                }
+                Ok(PersistActivityUploadOutcome::Duplicate(_)) => {
+                    duplicate_count += 1;
+                }
+                Err(error) => {
+                    error_samples.push(format!("{}: {}", indexed_entry.entry_name, error.message));
+                }
             }
         }
+
+        if scan.supported_entry_count == 0 {
+            return Err(AppError::validation_field(
+                "archive_path",
+                "Archive did not contain any supported .fit, .tcx, or .gpx files",
+            ));
+        }
+
+        if imported_count > 0 {
+            finalize_activity_import_batch(
+                &state.db,
+                &state.tasks,
+                admin.user.id,
+                affected_segment_ids,
+                Utc::now(),
+            )
+            .await?;
+        }
+
+        let failed_count = error_samples.len() as i32;
+        let error_samples = error_samples.into_iter().take(10).collect::<Vec<_>>();
+
+        Ok((
+            StatusCode::OK,
+            Json(ArchiveImportResponse {
+                archive_path: archive_path.display().to_string(),
+                total_entries: scan.total_entries,
+                supported_entry_count: scan.supported_entry_count,
+                imported_count,
+                duplicate_count,
+                skipped_unsupported_count: scan.skipped_unsupported_count,
+                failed_count,
+                error_samples,
+            }),
+        ))
     }
+    .await;
 
-    if scan.supported_entry_count == 0 {
-        return Err(AppError::validation_field(
-            "archive_path",
-            "Archive did not contain any supported .fit, .tcx, or .gpx files",
-        ));
+    let release_result = release_user_activity_import_lock(
+        &state.db,
+        admin.user.id,
+        ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT,
+    )
+    .await;
+
+    match (result, release_result) {
+        (Err(error), _) => Err(error),
+        (Ok(_), Err(error)) => Err(error),
+        (Ok(response), Ok(())) => Ok(response),
     }
-
-    if imported_count > 0 {
-        finalize_activity_import_batch(
-            &state.db,
-            &state.tasks,
-            admin.user.id,
-            affected_segment_ids,
-            Utc::now(),
-        )
-        .await?;
-    }
-
-    let failed_count = error_samples.len() as i32;
-    let error_samples = error_samples.into_iter().take(10).collect::<Vec<_>>();
-
-    Ok((
-        StatusCode::OK,
-        Json(ArchiveImportResponse {
-            archive_path: archive_path.display().to_string(),
-            total_entries: scan.total_entries,
-            supported_entry_count: scan.supported_entry_count,
-            imported_count,
-            duplicate_count,
-            skipped_unsupported_count: scan.skipped_unsupported_count,
-            failed_count,
-            error_samples,
-        }),
-    ))
 }
 
 async fn load_user_ids_with_activities(state: &Arc<AppStorage>) -> Result<Vec<i32>, AppError> {

@@ -1,17 +1,17 @@
-use api::archive_import::process_activity_archive_import_job;
 use api::config::Config;
-use api::tasks::ActivityArchiveImportTask;
+use api::strava::process_strava_sync;
+use api::tasks::StravaSyncTask;
 use async_trait::async_trait;
 use kaleido::background_jobs::worker::TaskProcessor;
 use sea_orm::DatabaseConnection;
 use std::error::Error;
 
-pub struct ActivityArchiveImport {
+pub struct StravaSync {
     db: DatabaseConnection,
     uploads_dir: String,
 }
 
-impl ActivityArchiveImport {
+impl StravaSync {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
             db,
@@ -21,9 +21,9 @@ impl ActivityArchiveImport {
 }
 
 #[async_trait]
-impl TaskProcessor for ActivityArchiveImport {
+impl TaskProcessor for StravaSync {
     fn task_type(&self) -> &str {
-        "activity_archive_import"
+        "strava_sync"
     }
 
     async fn process(
@@ -32,9 +32,9 @@ impl TaskProcessor for ActivityArchiveImport {
         payload: serde_json::Value,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let data = payload.get("data").unwrap_or(&payload);
-        let task: ActivityArchiveImportTask = serde_json::from_value(data.clone())?;
+        let task: StravaSyncTask = serde_json::from_value(data.clone())?;
 
-        process_activity_archive_import_job(&self.db, &self.uploads_dir, task.job_id)
+        process_strava_sync(&self.db, &self.uploads_dir, task.connection_id)
             .await
             .map_err(|error| std::io::Error::other(error.message))?;
 

@@ -1,3 +1,8 @@
+use crate::activity_import_lock::{
+    acquire_user_activity_import_lock, mark_user_activity_import_lock_stage,
+    release_user_activity_import_lock, ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT,
+    ACTIVITY_IMPORT_LOCK_STAGE_QUEUED, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
+};
 use crate::activity_import_pipeline::{
     finalize_activity_import_batch, persist_activity_upload, ActivityUploadPayload,
     PersistActivityUploadOutcome,
@@ -53,6 +58,14 @@ pub async fn enqueue_activity_archive_import_job(
     user_storage_key: &str,
     archive_url: String,
 ) -> Result<activity_archive_import_jobs::Model, AppError> {
+    acquire_user_activity_import_lock(
+        db,
+        user_id,
+        ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT,
+        ACTIVITY_IMPORT_LOCK_STAGE_QUEUED,
+    )
+    .await?;
+
     let job = activity_archive_import_jobs::ActiveModel {
         user_id: Set(user_id),
         user_storage_key: Set(user_storage_key.to_string()),
@@ -67,9 +80,24 @@ pub async fn enqueue_activity_archive_import_job(
         ..Default::default()
     }
     .insert(db)
-    .await?;
+    .await;
+
+    let job = match job {
+        Ok(job) => job,
+        Err(error) => {
+            release_user_activity_import_lock(
+                db,
+                user_id,
+                ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT,
+            )
+            .await?;
+            return Err(AppError::from(error));
+        }
+    };
 
     if let Err(message) = tasks.archive_activity_import(job.id).await {
+        release_user_activity_import_lock(db, user_id, ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT)
+            .await?;
         let failed_job = mark_activity_archive_import_job_failed(
             db,
             &job,
@@ -96,12 +124,26 @@ pub async fn process_activity_archive_import_job(
         .await?
         .ok_or_else(|| AppError::internal(format!("Archive import job {job_id} was not found")))?;
 
+    mark_user_activity_import_lock_stage(
+        db,
+        job.user_id,
+        ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT,
+        ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
+    )
+    .await?;
+
     let running_job = mark_activity_archive_import_job_running(db, &job).await?;
     let downloaded = match download_archive_from_url(uploads_dir, &running_job.archive_url).await {
         Ok(downloaded) => downloaded,
         Err(error) => {
             mark_activity_archive_import_job_failed(db, &running_job, None, error.message.clone())
                 .await?;
+            release_user_activity_import_lock(
+                db,
+                running_job.user_id,
+                ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT,
+            )
+            .await?;
             return Err(error);
         }
     };
@@ -123,6 +165,12 @@ pub async fn process_activity_archive_import_job(
     match result {
         Ok(summary) => {
             mark_activity_archive_import_job_succeeded(db, &running_job, &summary).await?;
+            release_user_activity_import_lock(
+                db,
+                running_job.user_id,
+                ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT,
+            )
+            .await?;
             Ok(())
         }
         Err(error) => {
@@ -131,6 +179,12 @@ pub async fn process_activity_archive_import_job(
                 &running_job,
                 Some(downloaded.final_url),
                 error.message.clone(),
+            )
+            .await?;
+            release_user_activity_import_lock(
+                db,
+                running_job.user_id,
+                ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT,
             )
             .await?;
             Err(error)
@@ -787,6 +841,14 @@ mod tests {
             Some(ArchiveActivityEntry {
                 original_filename: "ride.fit".to_string(),
                 format: "fit".to_string(),
+                gzip_wrapped: true,
+            })
+        );
+        assert_eq!(
+            resolve_archive_activity_entry("strava/2018-ride.gpx.gz"),
+            Some(ArchiveActivityEntry {
+                original_filename: "2018-ride.gpx".to_string(),
+                format: "gpx".to_string(),
                 gzip_wrapped: true,
             })
         );
