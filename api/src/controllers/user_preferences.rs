@@ -113,7 +113,7 @@ fn response_from_model(model: Option<&user_preferences::Model>) -> UserPreferenc
             .unwrap_or_else(|| DEFAULT_UNIT_SYSTEM.to_string()),
         estimated_ftp_watts: model.and_then(|preferences| preferences.estimated_ftp_watts),
         heart_rate_zone_bounds_bpm: model.and_then(|preferences| {
-            deserialize_heart_rate_zone_bounds(preferences.heart_rate_zone_bounds_json.as_deref())
+            deserialize_heart_rate_zone_bounds(preferences.heart_rate_zone_bounds_json.as_ref())
         }),
     }
 }
@@ -162,7 +162,9 @@ mod tests {
             user_id: 3,
             unit_system: "mixed".to_string(),
             estimated_ftp_watts: Some(265),
-            heart_rate_zone_bounds_json: Some("[120,140,155,170]".to_string()),
+            heart_rate_zone_bounds_json: Some(
+                crate::training_profile::StoredHeartRateZoneBounds(vec![120, 140, 155, 170]),
+            ),
             created_at: now,
             updated_at: now,
         }));

@@ -291,6 +291,12 @@ struct ArchiveScanResult {
     supported_entries: Vec<IndexedArchiveActivityEntry>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ArchiveScanMode {
+    Generic,
+    StravaExport,
+}
+
 pub async fn import_activity_archive_from_path(
     db: &sea_orm::DatabaseConnection,
     tasks: &TaskQueue,
@@ -629,6 +635,8 @@ fn scan_zip_archive<R>(
 where
     R: Read + Seek,
 {
+    let scan_mode = detect_archive_scan_mode(archive)?;
+
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index).map_err(|error| {
             AppError::bad_request(format!("Failed to read zip archive entry: {error}"))
@@ -639,30 +647,35 @@ where
         }
 
         let entry_name = entry.name().to_string();
-        if let Some(activity_entry) = resolve_archive_activity_entry(&entry_name) {
-            scan.total_entries += 1;
-            let (source, display_name) = match outer {
-                Some((outer_index, outer_name)) => (
-                    ArchiveEntrySource::NestedZip {
-                        outer_index,
-                        outer_name: outer_name.to_string(),
-                        inner_index: index,
-                        inner_name: entry_name.clone(),
-                    },
-                    format!("{outer_name}::{entry_name}"),
-                ),
-                None => (ArchiveEntrySource::Root { index }, entry_name.clone()),
-            };
+        if archive_entry_can_be_activity(&entry_name, scan_mode) {
+            if let Some(activity_entry) = resolve_archive_activity_entry(&entry_name) {
+                scan.total_entries += 1;
+                let (source, display_name) = match outer {
+                    Some((outer_index, outer_name)) => (
+                        ArchiveEntrySource::NestedZip {
+                            outer_index,
+                            outer_name: outer_name.to_string(),
+                            inner_index: index,
+                            inner_name: entry_name.clone(),
+                        },
+                        format!("{outer_name}::{entry_name}"),
+                    ),
+                    None => (ArchiveEntrySource::Root { index }, entry_name.clone()),
+                };
 
-            scan.supported_entries.push(IndexedArchiveActivityEntry {
-                source,
-                entry_name: display_name,
-                activity_entry,
-            });
-            continue;
+                scan.supported_entries.push(IndexedArchiveActivityEntry {
+                    source,
+                    entry_name: display_name,
+                    activity_entry,
+                });
+                continue;
+            }
         }
 
-        if outer.is_none() && is_nested_zip_entry(&entry_name) {
+        if outer.is_none()
+            && scan_mode == ArchiveScanMode::Generic
+            && is_nested_zip_entry(&entry_name)
+        {
             let mut nested_bytes = Vec::new();
             entry.read_to_end(&mut nested_bytes)?;
             let mut nested_archive =
@@ -682,6 +695,55 @@ where
     }
 
     Ok(())
+}
+
+fn detect_archive_scan_mode<R>(archive: &mut ZipArchive<R>) -> Result<ArchiveScanMode, AppError>
+where
+    R: Read + Seek,
+{
+    let mut has_activities_csv = false;
+    let mut has_activities_directory = false;
+
+    for index in 0..archive.len() {
+        let entry = archive.by_index(index).map_err(|error| {
+            AppError::bad_request(format!("Failed to read zip archive entry: {error}"))
+        })?;
+
+        if entry.is_dir() {
+            continue;
+        }
+
+        let entry_name = entry.name();
+        if is_root_archive_file(entry_name, "activities.csv") {
+            has_activities_csv = true;
+        }
+        if has_top_level_archive_directory(entry_name, "activities") {
+            has_activities_directory = true;
+        }
+
+        if has_activities_csv && has_activities_directory {
+            return Ok(ArchiveScanMode::StravaExport);
+        }
+    }
+
+    Ok(ArchiveScanMode::Generic)
+}
+
+fn archive_entry_can_be_activity(name: &str, scan_mode: ArchiveScanMode) -> bool {
+    match scan_mode {
+        ArchiveScanMode::Generic => true,
+        ArchiveScanMode::StravaExport => has_top_level_archive_directory(name, "activities"),
+    }
+}
+
+fn is_root_archive_file(name: &str, file_name: &str) -> bool {
+    let mut components = name.split('/').filter(|value| !value.is_empty());
+    matches!((components.next(), components.next()), (Some(component), None) if component.eq_ignore_ascii_case(file_name))
+}
+
+fn has_top_level_archive_directory(name: &str, directory: &str) -> bool {
+    let mut components = name.split('/').filter(|value| !value.is_empty());
+    matches!((components.next(), components.next()), (Some(component), Some(_)) if component.eq_ignore_ascii_case(directory))
 }
 
 fn read_archive_entry_bytes(
@@ -867,12 +929,32 @@ async fn mark_activity_archive_import_job_failed(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
 
     fn repo_data_archive_path(file_name: &str) -> std::path::PathBuf {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("data")
             .join(file_name)
+    }
+
+    fn write_test_archive(entries: &[(&str, &[u8])]) -> std::path::PathBuf {
+        let archive_path =
+            std::env::temp_dir().join(format!("bike-archive-import-{}.zip", uuid::Uuid::new_v4()));
+        let file = std::fs::File::create(&archive_path).expect("create archive file");
+        let mut writer = zip::ZipWriter::new(file);
+        let options = SimpleFileOptions::default();
+
+        for (name, bytes) in entries {
+            writer
+                .start_file(name, options)
+                .expect("start archive file");
+            writer.write_all(bytes).expect("write archive bytes");
+        }
+
+        writer.finish().expect("finish archive");
+        archive_path
     }
 
     #[test]
@@ -908,6 +990,45 @@ mod tests {
                 gzip_wrapped: false,
             })
         );
+    }
+
+    #[test]
+    fn scan_archive_entries_skips_strava_routes_directory() {
+        let archive_path = write_test_archive(&[
+            ("activities.csv", b"id,name\n1062,Afternoon Ride\n"),
+            ("activities/1062.gpx", b"gpx"),
+            ("routes.csv", b"name,path\nOh God Why,routes/18.gpx\n"),
+            ("routes/18.gpx", b"gpx"),
+        ]);
+
+        let scan = scan_archive_entries(&archive_path).expect("scan archive");
+        let _ = std::fs::remove_file(&archive_path);
+
+        assert_eq!(scan.total_entries, 4);
+        assert_eq!(scan.supported_entry_count, 1);
+        assert_eq!(scan.skipped_unsupported_count, 3);
+        assert_eq!(scan.supported_entries.len(), 1);
+        assert_eq!(scan.supported_entries[0].entry_name, "activities/1062.gpx");
+        assert_eq!(
+            scan.supported_entries[0].activity_entry.original_filename,
+            "1062.gpx"
+        );
+    }
+
+    #[test]
+    fn scan_archive_entries_keeps_generic_archives_path_agnostic() {
+        let archive_path = write_test_archive(&[
+            ("rides/18.gpx", b"gpx"),
+            ("metadata/readme.txt", b"ignored"),
+        ]);
+
+        let scan = scan_archive_entries(&archive_path).expect("scan archive");
+        let _ = std::fs::remove_file(&archive_path);
+
+        assert_eq!(scan.total_entries, 2);
+        assert_eq!(scan.supported_entry_count, 1);
+        assert_eq!(scan.skipped_unsupported_count, 1);
+        assert_eq!(scan.supported_entries[0].entry_name, "rides/18.gpx");
     }
 
     #[test]

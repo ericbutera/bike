@@ -133,7 +133,7 @@ pub async fn regenerate_segments_for_user(
 
     for activity in activities {
         let route_points = crate::activity_details::deserialize_derived_activity_data(
-            activity.derived_data_json.as_deref(),
+            activity.derived_data_json.as_ref(),
         )
         .route_points;
 

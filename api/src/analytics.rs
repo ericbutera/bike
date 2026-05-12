@@ -102,7 +102,7 @@ pub fn estimated_training_load(activity: &activities::Model) -> Option<f64> {
         .filter(|value| *value > 0)?;
     let duration_hours = f64::from(duration_seconds) / 3600.0;
     let heart_rate_ratio = weighted_zone_intensity(&deserialize_activity_heart_rate_zones(
-        activity.heart_rate_zones_json.as_deref(),
+        activity.heart_rate_zones_json.as_ref(),
     ))
     .unwrap_or_else(|| estimated_heart_rate_ratio(activity));
 

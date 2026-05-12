@@ -1,4 +1,7 @@
-use crate::activity_details::{deserialize_derived_activity_data, ActivityRoutePoint};
+use crate::activity_details::{
+    deserialize_derived_activity_data, deserialize_route_point_series,
+    serialize_route_point_series, ActivityRoutePoint, StoredRoutePointSeries,
+};
 use crate::app_error::AppError;
 use crate::entities::{activities, segment_efforts, segments};
 use sea_orm::{ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set};
@@ -24,23 +27,12 @@ struct MatchedSegmentEffort {
 
 pub fn serialize_segment_route_points(
     route_points: &[ActivityRoutePoint],
-) -> Result<String, AppError> {
-    serde_json::to_string(route_points).map_err(|error| {
-        tracing::error!(error = ?error, "failed to serialize segment route points");
-        AppError::internal("Failed to serialize segment route data")
-    })
+) -> Result<StoredRoutePointSeries, AppError> {
+    serialize_route_point_series(route_points)
 }
 
-pub fn deserialize_segment_route_points(raw: Option<&str>) -> Vec<ActivityRoutePoint> {
-    match raw {
-        Some(value) if !value.trim().is_empty() => {
-            serde_json::from_str(value).unwrap_or_else(|error| {
-                tracing::warn!(error = ?error, "failed to deserialize segment route points");
-                Vec::new()
-            })
-        }
-        _ => Vec::new(),
-    }
+pub fn deserialize_segment_route_points(raw: Option<&StoredRoutePointSeries>) -> Vec<ActivityRoutePoint> {
+    deserialize_route_point_series(raw)
 }
 
 pub fn slice_effort_route_points(
@@ -115,7 +107,7 @@ where
 
     for segment in segments {
         let segment_route_points =
-            deserialize_segment_route_points(segment.route_data_json.as_deref());
+            deserialize_segment_route_points(segment.route_data_json.as_ref());
         if segment_route_points.len() < 2 {
             continue;
         }
@@ -148,7 +140,7 @@ where
 
     for activity in activities {
         let route_points =
-            deserialize_derived_activity_data(activity.derived_data_json.as_deref()).route_points;
+            deserialize_derived_activity_data(activity.derived_data_json.as_ref()).route_points;
         if route_points.len() < 2 {
             continue;
         }

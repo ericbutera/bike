@@ -1,6 +1,7 @@
 use crate::activity_details::{ActivityChartPoint, ActivityRoutePoint};
 use crate::app_error::AppError;
 use crate::entities::user_preferences;
+use sea_orm::FromJsonQueryResult;
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -11,6 +12,7 @@ const MIN_HEART_RATE_BPM: i32 = 40;
 const MAX_HEART_RATE_BPM: i32 = 240;
 const MIN_ESTIMATED_FTP_WATTS: i32 = 80;
 const MAX_ESTIMATED_FTP_WATTS: i32 = 600;
+const HEART_RATE_ZONE_SHARE_PERCENT_SCALE: f64 = 1000.0;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TrainingProfile {
@@ -27,6 +29,21 @@ pub struct ActivityHeartRateZoneSummary {
     pub duration_seconds: i32,
     pub share_percent: f64,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, FromJsonQueryResult)]
+pub struct StoredHeartRateZoneBounds(pub Vec<i32>);
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, FromJsonQueryResult)]
+pub struct StoredActivityHeartRateZones(pub Vec<StoredActivityHeartRateZoneSummary>);
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoredActivityHeartRateZoneSummary(
+    pub i32,
+    pub Option<i32>,
+    pub Option<i32>,
+    pub i32,
+    pub i32,
+);
 
 #[derive(Debug, Clone, Copy)]
 struct HeartRateSample {
@@ -52,7 +69,7 @@ pub fn training_profile_from_preferences(
     TrainingProfile {
         estimated_ftp_watts: model.and_then(|preferences| preferences.estimated_ftp_watts),
         heart_rate_zone_bounds_bpm: model.and_then(|preferences| {
-            deserialize_heart_rate_zone_bounds(preferences.heart_rate_zone_bounds_json.as_deref())
+            deserialize_heart_rate_zone_bounds(preferences.heart_rate_zone_bounds_json.as_ref())
         }),
     }
 }
@@ -113,50 +130,84 @@ pub fn validate_heart_rate_zone_bounds_bpm(
 
 pub fn serialize_heart_rate_zone_bounds(
     bounds: Option<&[i32]>,
-) -> Result<Option<String>, AppError> {
+) -> Result<Option<StoredHeartRateZoneBounds>, AppError> {
     match bounds {
-        Some(values) if !values.is_empty() => {
-            serde_json::to_string(values).map(Some).map_err(|error| {
-                tracing::error!(error = ?error, "failed to serialize heart rate zone bounds");
-                AppError::internal("Failed to serialize heart rate zone bounds")
-            })
-        }
+        Some(values) if !values.is_empty() => Ok(Some(StoredHeartRateZoneBounds(values.to_vec()))),
         _ => Ok(None),
     }
 }
 
-pub fn deserialize_heart_rate_zone_bounds(raw: Option<&str>) -> Option<Vec<i32>> {
-    match raw {
-        Some(value) if !value.trim().is_empty() => serde_json::from_str(value).ok(),
-        _ => None,
-    }
+pub fn deserialize_heart_rate_zone_bounds(raw: Option<&StoredHeartRateZoneBounds>) -> Option<Vec<i32>> {
+    raw.map(|value| value.0.clone()).filter(|value| !value.is_empty())
 }
 
 pub fn serialize_activity_heart_rate_zones(
     zones: &[ActivityHeartRateZoneSummary],
-) -> Result<Option<String>, AppError> {
+) -> Result<Option<StoredActivityHeartRateZones>, AppError> {
     if zones.is_empty() {
         return Ok(None);
     }
 
-    serde_json::to_string(zones).map(Some).map_err(|error| {
-        tracing::error!(error = ?error, "failed to serialize activity heart rate zones");
-        AppError::internal("Failed to serialize activity heart rate zones")
-    })
+    Ok(Some(StoredActivityHeartRateZones(
+        zones
+            .iter()
+            .map(StoredActivityHeartRateZoneSummary::from)
+            .collect(),
+    )))
 }
 
 pub fn deserialize_activity_heart_rate_zones(
-    raw: Option<&str>,
+    raw: Option<&StoredActivityHeartRateZones>,
 ) -> Vec<ActivityHeartRateZoneSummary> {
-    match raw {
-        Some(value) if !value.trim().is_empty() => {
-            serde_json::from_str(value).unwrap_or_else(|error| {
-                tracing::warn!(error = ?error, "failed to deserialize activity heart rate zones");
-                Vec::new()
-            })
-        }
-        _ => Vec::new(),
+    raw.map(|value| {
+        value
+            .0
+            .iter()
+            .cloned()
+            .map(ActivityHeartRateZoneSummary::from)
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
+impl From<&ActivityHeartRateZoneSummary> for StoredActivityHeartRateZoneSummary {
+    fn from(value: &ActivityHeartRateZoneSummary) -> Self {
+        Self(
+            value.zone,
+            value.min_bpm,
+            value.max_bpm,
+            value.duration_seconds,
+            encode_share_percent(value.share_percent),
+        )
     }
+}
+
+impl From<StoredActivityHeartRateZoneSummary> for ActivityHeartRateZoneSummary {
+    fn from(value: StoredActivityHeartRateZoneSummary) -> Self {
+        Self {
+            zone: value.0,
+            label: heart_rate_zone_label(value.0),
+            min_bpm: value.1,
+            max_bpm: value.2,
+            duration_seconds: value.3,
+            share_percent: decode_share_percent(value.4),
+        }
+    }
+}
+
+fn heart_rate_zone_label(zone: i32) -> String {
+    HEART_RATE_ZONE_LABELS
+        .get(zone.saturating_sub(1) as usize)
+        .map(|value| (*value).to_string())
+        .unwrap_or_else(|| format!("Z{zone}"))
+}
+
+fn encode_share_percent(value: f64) -> i32 {
+    (value * HEART_RATE_ZONE_SHARE_PERCENT_SCALE).round() as i32
+}
+
+fn decode_share_percent(value: i32) -> f64 {
+    f64::from(value) / HEART_RATE_ZONE_SHARE_PERCENT_SCALE
 }
 
 pub fn summarize_heart_rate_zones(
@@ -304,6 +355,7 @@ fn round_metric(value: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn validate_heart_rate_zone_bounds_accepts_four_ascending_values() {
@@ -395,5 +447,30 @@ mod tests {
         .unwrap();
 
         assert_eq!(round_metric(intensity), 0.8);
+    }
+
+    #[test]
+    fn serializes_activity_heart_rate_zones_to_compact_arrays() {
+        let stored = serialize_activity_heart_rate_zones(&[ActivityHeartRateZoneSummary {
+            zone: 3,
+            label: "Z3".to_string(),
+            min_bpm: Some(141),
+            max_bpm: Some(155),
+            duration_seconds: 840,
+            share_percent: 33.3,
+        }])
+        .expect("stored zones")
+        .expect("zones payload");
+
+        assert_eq!(serde_json::to_value(stored).unwrap(), json!([[3, 141, 155, 840, 33300]]));
+    }
+
+    #[test]
+    fn serializes_heart_rate_zone_bounds_to_json_array() {
+        let stored = serialize_heart_rate_zone_bounds(Some(&[120, 140, 155, 170]))
+            .expect("stored bounds")
+            .expect("bounds payload");
+
+        assert_eq!(serde_json::to_value(stored).unwrap(), json!([120, 140, 155, 170]));
     }
 }

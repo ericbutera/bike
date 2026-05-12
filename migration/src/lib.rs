@@ -10,6 +10,8 @@ mod m20260507_000008_add_analytics_freshness_state;
 mod m20260508_000009_create_activity_archive_import_jobs;
 mod m20260512_000010_create_strava_connections;
 mod m20260512_000011_create_activity_import_locks;
+mod m20260512_000012_compact_activity_derived_data_json;
+mod m20260512_000013_compact_segment_and_heart_rate_json;
 
 pub struct Migrator;
 
@@ -48,6 +50,12 @@ impl MigratorTrait for Migrator {
         ));
         locals.push(Box::new(
             m20260512_000011_create_activity_import_locks::Migration,
+        ));
+        locals.push(Box::new(
+            m20260512_000012_compact_activity_derived_data_json::Migration,
+        ));
+        locals.push(Box::new(
+            m20260512_000013_compact_segment_and_heart_rate_json::Migration,
         ));
         locals.sort_by_key(|m| m.name().to_string());
 

@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use crate::activity_details::StoredRoutePointSeries;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{ConnectionTrait, DbErr, Set};
@@ -14,7 +15,7 @@ pub struct Model {
     pub original_filename: Option<String>,
     pub format: Option<String>,
     pub distance_meters: Option<f64>,
-    pub route_data_json: Option<String>,
+    pub route_data_json: Option<StoredRoutePointSeries>,
     pub last_activity_change_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

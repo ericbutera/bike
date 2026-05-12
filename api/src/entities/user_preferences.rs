@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use crate::training_profile::StoredHeartRateZoneBounds;
 use sea_orm::entity::prelude::*;
 use sea_orm::{ConnectionTrait, DbErr, Set};
 
@@ -11,7 +12,7 @@ pub struct Model {
     pub user_id: i32,
     pub unit_system: String,
     pub estimated_ftp_watts: Option<i32>,
-    pub heart_rate_zone_bounds_json: Option<String>,
+    pub heart_rate_zone_bounds_json: Option<StoredHeartRateZoneBounds>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

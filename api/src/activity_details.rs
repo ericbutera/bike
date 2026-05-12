@@ -3,10 +3,16 @@ use crate::app_error::AppError;
 use crate::fit_support::parse_fit_activity;
 use chrono::{DateTime, Utc};
 use roxmltree::{Document, Node};
+use sea_orm::FromJsonQueryResult;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 const MAX_CHART_POINTS: usize = 180;
+const STORAGE_FORMAT_VERSION: u8 = 1;
+const STORAGE_COORDINATE_SCALE: f64 = 10_000_000.0;
+const STORAGE_DISTANCE_SCALE: f64 = 10.0;
+const STORAGE_ELEVATION_SCALE: f64 = 10.0;
+const STORAGE_SPEED_SCALE: f64 = 100.0;
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ActivityDerivedData {
@@ -58,6 +64,71 @@ pub struct ActivityRoutePoint {
     pub cadence_rpm: Option<i32>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, FromJsonQueryResult)]
+pub struct StoredActivityDerivedData {
+    v: u8,
+    #[serde(default, skip_serializing_if = "Vec::is_empty", rename = "l")]
+    laps: Vec<StoredActivityLap>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty", rename = "c")]
+    chart_points: Vec<StoredActivityChartPoint>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty", rename = "r")]
+    route_points: Vec<StoredActivityRoutePoint>,
+}
+
+impl Default for StoredActivityDerivedData {
+    fn default() -> Self {
+        Self {
+            v: STORAGE_FORMAT_VERSION,
+            laps: Vec::new(),
+            chart_points: Vec::new(),
+            route_points: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct StoredActivityLap(
+    i32,
+    String,
+    Option<i32>,
+    Option<i32>,
+    Option<i32>,
+    Option<i32>,
+    Option<i32>,
+    Option<i32>,
+    Option<i32>,
+    Option<i32>,
+    Option<i32>,
+    Option<i32>,
+    Option<i32>,
+    Option<i32>,
+);
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct StoredActivityChartPoint(
+    i32,
+    Option<i32>,
+    Option<i32>,
+    Option<i32>,
+    Option<i32>,
+    Option<i32>,
+);
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct StoredActivityRoutePoint(
+    i32,
+    i32,
+    i32,
+    Option<i32>,
+    Option<i32>,
+    Option<i32>,
+    Option<i32>,
+    Option<i32>,
+);
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, FromJsonQueryResult)]
+pub struct StoredRoutePointSeries(Vec<StoredActivityRoutePoint>);
+
 #[derive(Debug, Clone)]
 struct TrackPointSample {
     lat: Option<f64>,
@@ -84,23 +155,210 @@ pub fn derive_activity_detail_data(
     result.map_err(|message| AppError::validation_field("file", message))
 }
 
-pub fn serialize_derived_activity_data(data: &ActivityDerivedData) -> Result<String, AppError> {
-    serde_json::to_string(data).map_err(|error| {
-        tracing::error!(error = ?error, "failed to serialize activity derived data");
-        AppError::internal("Failed to serialize activity derived data")
+pub fn serialize_derived_activity_data(
+    data: &ActivityDerivedData,
+) -> Result<StoredActivityDerivedData, AppError> {
+    Ok(StoredActivityDerivedData::from(data))
+}
+
+pub fn deserialize_derived_activity_data(raw: Option<&StoredActivityDerivedData>) -> ActivityDerivedData {
+    match raw {
+        Some(value) => ActivityDerivedData::from(value.clone()),
+        _ => ActivityDerivedData::default(),
+    }
+}
+
+pub fn serialize_route_point_series(
+    route_points: &[ActivityRoutePoint],
+) -> Result<StoredRoutePointSeries, AppError> {
+    Ok(StoredRoutePointSeries(
+        route_points
+            .iter()
+            .cloned()
+            .map(StoredActivityRoutePoint::from)
+            .collect(),
+    ))
+}
+
+pub fn deserialize_route_point_series(raw: Option<&StoredRoutePointSeries>) -> Vec<ActivityRoutePoint> {
+    raw.map(|series| {
+        series
+            .0
+            .clone()
+            .into_iter()
+            .map(ActivityRoutePoint::from)
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
+impl From<&ActivityDerivedData> for StoredActivityDerivedData {
+    fn from(value: &ActivityDerivedData) -> Self {
+        Self {
+            v: STORAGE_FORMAT_VERSION,
+            laps: value.laps.iter().cloned().map(StoredActivityLap::from).collect(),
+            chart_points: value
+                .chart_points
+                .iter()
+                .cloned()
+                .map(StoredActivityChartPoint::from)
+                .collect(),
+            route_points: value
+                .route_points
+                .iter()
+                .cloned()
+                .map(StoredActivityRoutePoint::from)
+                .collect(),
+        }
+    }
+}
+
+impl From<StoredActivityDerivedData> for ActivityDerivedData {
+    fn from(value: StoredActivityDerivedData) -> Self {
+        if value.v != STORAGE_FORMAT_VERSION {
+            tracing::warn!(version = value.v, "unsupported activity derived data format version");
+            return ActivityDerivedData::default();
+        }
+
+        Self {
+            laps: value.laps.into_iter().map(ActivityLap::from).collect(),
+            chart_points: value
+                .chart_points
+                .into_iter()
+                .map(ActivityChartPoint::from)
+                .collect(),
+            route_points: value
+                .route_points
+                .into_iter()
+                .map(ActivityRoutePoint::from)
+                .collect(),
+        }
+    }
+}
+
+impl From<ActivityLap> for StoredActivityLap {
+    fn from(value: ActivityLap) -> Self {
+        Self(
+            value.lap_index,
+            value.title,
+            value.start_offset_seconds,
+            value.duration_seconds,
+            encode_scaled_metric(value.distance_meters, STORAGE_DISTANCE_SCALE),
+            encode_scaled_metric(value.elevation_gain_meters, STORAGE_ELEVATION_SCALE),
+            encode_scaled_metric(value.elevation_loss_meters, STORAGE_ELEVATION_SCALE),
+            encode_scaled_metric(value.average_speed_mps, STORAGE_SPEED_SCALE),
+            encode_scaled_metric(value.max_speed_mps, STORAGE_SPEED_SCALE),
+            value.average_heart_rate_bpm,
+            value.max_heart_rate_bpm,
+            value.average_cadence_rpm,
+            value.max_cadence_rpm,
+            value.calories,
+        )
+    }
+}
+
+impl From<StoredActivityLap> for ActivityLap {
+    fn from(value: StoredActivityLap) -> Self {
+        Self {
+            lap_index: value.0,
+            title: value.1,
+            start_offset_seconds: value.2,
+            duration_seconds: value.3,
+            distance_meters: decode_scaled_metric(value.4, STORAGE_DISTANCE_SCALE),
+            elevation_gain_meters: decode_scaled_metric(value.5, STORAGE_ELEVATION_SCALE),
+            elevation_loss_meters: decode_scaled_metric(value.6, STORAGE_ELEVATION_SCALE),
+            average_speed_mps: decode_scaled_metric(value.7, STORAGE_SPEED_SCALE),
+            max_speed_mps: decode_scaled_metric(value.8, STORAGE_SPEED_SCALE),
+            average_heart_rate_bpm: value.9,
+            max_heart_rate_bpm: value.10,
+            average_cadence_rpm: value.11,
+            max_cadence_rpm: value.12,
+            calories: value.13,
+        }
+    }
+}
+
+impl From<ActivityChartPoint> for StoredActivityChartPoint {
+    fn from(value: ActivityChartPoint) -> Self {
+        Self(
+            value.elapsed_seconds,
+            encode_scaled_metric(value.distance_meters, STORAGE_DISTANCE_SCALE),
+            encode_scaled_metric(value.elevation_meters, STORAGE_ELEVATION_SCALE),
+            encode_scaled_metric(value.speed_mps, STORAGE_SPEED_SCALE),
+            value.heart_rate_bpm,
+            value.cadence_rpm,
+        )
+    }
+}
+
+impl From<StoredActivityChartPoint> for ActivityChartPoint {
+    fn from(value: StoredActivityChartPoint) -> Self {
+        Self {
+            elapsed_seconds: value.0,
+            distance_meters: decode_scaled_metric(value.1, STORAGE_DISTANCE_SCALE),
+            elevation_meters: decode_scaled_metric(value.2, STORAGE_ELEVATION_SCALE),
+            speed_mps: decode_scaled_metric(value.3, STORAGE_SPEED_SCALE),
+            heart_rate_bpm: value.4,
+            cadence_rpm: value.5,
+        }
+    }
+}
+
+impl From<ActivityRoutePoint> for StoredActivityRoutePoint {
+    fn from(value: ActivityRoutePoint) -> Self {
+        Self(
+            value.elapsed_seconds,
+            encode_coordinate(value.latitude),
+            encode_coordinate(value.longitude),
+            encode_scaled_metric(value.distance_meters, STORAGE_DISTANCE_SCALE),
+            encode_scaled_metric(value.elevation_meters, STORAGE_ELEVATION_SCALE),
+            encode_scaled_metric(value.speed_mps, STORAGE_SPEED_SCALE),
+            value.heart_rate_bpm,
+            value.cadence_rpm,
+        )
+    }
+}
+
+impl From<StoredActivityRoutePoint> for ActivityRoutePoint {
+    fn from(value: StoredActivityRoutePoint) -> Self {
+        Self {
+            elapsed_seconds: value.0,
+            latitude: decode_coordinate(value.1),
+            longitude: decode_coordinate(value.2),
+            distance_meters: decode_scaled_metric(value.3, STORAGE_DISTANCE_SCALE),
+            elevation_meters: decode_scaled_metric(value.4, STORAGE_ELEVATION_SCALE),
+            speed_mps: decode_scaled_metric(value.5, STORAGE_SPEED_SCALE),
+            heart_rate_bpm: value.6,
+            cadence_rpm: value.7,
+        }
+    }
+}
+
+fn encode_coordinate(value: f64) -> i32 {
+    (value * STORAGE_COORDINATE_SCALE).round() as i32
+}
+
+fn decode_coordinate(value: i32) -> f64 {
+    f64::from(value) / STORAGE_COORDINATE_SCALE
+}
+
+fn encode_scaled_metric(value: Option<f64>, scale: f64) -> Option<i32> {
+    value.and_then(|metric| {
+        if !metric.is_finite() {
+            return None;
+        }
+
+        let scaled = (metric * scale).round();
+        if scaled < f64::from(i32::MIN) || scaled > f64::from(i32::MAX) {
+            None
+        } else {
+            Some(scaled as i32)
+        }
     })
 }
 
-pub fn deserialize_derived_activity_data(raw: Option<&str>) -> ActivityDerivedData {
-    match raw {
-        Some(value) if !value.trim().is_empty() => {
-            serde_json::from_str(value).unwrap_or_else(|error| {
-                tracing::warn!(error = ?error, "failed to deserialize activity derived data");
-                ActivityDerivedData::default()
-            })
-        }
-        _ => ActivityDerivedData::default(),
-    }
+fn decode_scaled_metric(value: Option<i32>, scale: f64) -> Option<f64> {
+    value.map(|metric| f64::from(metric) / scale)
 }
 
 fn derive_gpx_activity_detail(filename: &str, bytes: &[u8]) -> Result<ActivityDerivedData, String> {
@@ -811,6 +1069,7 @@ fn is_element_named(node: Node<'_, '_>, name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn derives_gpx_lap_and_chart_points() {
@@ -961,5 +1220,96 @@ mod tests {
         assert!(!detail.route_points.is_empty());
         assert_eq!(detail.laps[0].distance_meters, Some(5.73));
         assert_eq!(detail.laps[0].duration_seconds, Some(14));
+    }
+
+    #[test]
+    fn serializes_activity_derived_data_to_compact_shape() {
+        let stored = serialize_derived_activity_data(&ActivityDerivedData {
+            laps: vec![ActivityLap {
+                lap_index: 0,
+                title: "Lap 1".to_string(),
+                start_offset_seconds: Some(5),
+                duration_seconds: Some(90),
+                distance_meters: Some(1234.5),
+                elevation_gain_meters: Some(12.3),
+                elevation_loss_meters: Some(4.5),
+                average_speed_mps: Some(6.78),
+                max_speed_mps: Some(9.01),
+                average_heart_rate_bpm: Some(140),
+                max_heart_rate_bpm: Some(171),
+                average_cadence_rpm: Some(88),
+                max_cadence_rpm: Some(102),
+                calories: Some(77),
+            }],
+            chart_points: vec![ActivityChartPoint {
+                elapsed_seconds: 15,
+                distance_meters: Some(25.4),
+                elevation_meters: Some(8.2),
+                speed_mps: Some(7.65),
+                heart_rate_bpm: Some(145),
+                cadence_rpm: Some(91),
+            }],
+            route_points: vec![ActivityRoutePoint {
+                elapsed_seconds: 15,
+                latitude: 45.1234567,
+                longitude: -122.7654321,
+                distance_meters: Some(25.4),
+                elevation_meters: Some(8.2),
+                speed_mps: Some(7.65),
+                heart_rate_bpm: Some(145),
+                cadence_rpm: Some(91),
+            }],
+        })
+        .expect("serialized activity derived data");
+
+        let value = serde_json::to_value(stored).expect("json value");
+
+        assert_eq!(
+            value,
+            json!({
+                "v": 1,
+                "l": [[0, "Lap 1", 5, 90, 12345, 123, 45, 678, 901, 140, 171, 88, 102, 77]],
+                "c": [[15, 254, 82, 765, 145, 91]],
+                "r": [[15, 451234567, -1227654321, 254, 82, 765, 145, 91]],
+            })
+        );
+    }
+
+    #[test]
+    fn deserializes_compact_activity_derived_data() {
+        let stored = serde_json::from_value::<StoredActivityDerivedData>(json!({
+            "v": 1,
+            "l": [[0, "Lap 1", 5, 90, 12345, 123, 45, 678, 901, 140, 171, 88, 102, 77]],
+            "c": [[15, 254, 82, 765, 145, 91]],
+            "r": [[15, 451234567, -1227654321, 254, 82, 765, 145, 91]],
+        }))
+        .expect("stored data");
+        let derived = deserialize_derived_activity_data(Some(&stored));
+
+        assert_eq!(derived.laps.len(), 1);
+        assert_eq!(derived.chart_points.len(), 1);
+        assert_eq!(derived.route_points.len(), 1);
+        assert_eq!(derived.laps[0].distance_meters, Some(1234.5));
+        assert_eq!(derived.route_points[0].latitude, 45.1234567);
+        assert_eq!(derived.route_points[0].longitude, -122.7654321);
+        assert_eq!(derived.route_points[0].speed_mps, Some(7.65));
+    }
+
+    #[test]
+    fn serializes_route_point_series_to_compact_arrays() {
+        let stored = serialize_route_point_series(&[ActivityRoutePoint {
+            elapsed_seconds: 15,
+            latitude: 45.1234567,
+            longitude: -122.7654321,
+            distance_meters: Some(25.4),
+            elevation_meters: Some(8.2),
+            speed_mps: Some(7.65),
+            heart_rate_bpm: Some(145),
+            cadence_rpm: Some(91),
+        }])
+        .expect("stored route series");
+
+        let value = serde_json::to_value(stored).expect("json value");
+        assert_eq!(value, json!([[15, 451234567, -1227654321, 254, 82, 765, 145, 91]]));
     }
 }

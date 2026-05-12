@@ -87,16 +87,16 @@ fn is_false(value: &bool) -> bool {
 
 impl ActivityResponse {
     fn from_summary(model: activities::Model) -> Self {
-        let derived_data = summary_derived_data(model.derived_data_json.as_deref());
-        let location = location_from_derived_json(model.derived_data_json.as_deref());
+        let derived_data = summary_derived_data(model.derived_data_json.as_ref());
+        let location = location_from_derived_json(model.derived_data_json.as_ref());
 
         Self::from_model(model, derived_data, location, Vec::new(), false)
     }
 
     fn from_detail(model: activities::Model, segment_efforts: Vec<ActivitySegmentEffort>) -> Self {
         let can_regenerate = model.activity_import_id.is_some();
-        let derived_data = deserialize_derived_activity_data(model.derived_data_json.as_deref());
-        let location = location_from_derived_json(model.derived_data_json.as_deref());
+        let derived_data = deserialize_derived_activity_data(model.derived_data_json.as_ref());
+        let location = location_from_derived_json(model.derived_data_json.as_ref());
 
         Self::from_model(
             model,
@@ -138,7 +138,7 @@ impl ActivityResponse {
             calories: model.calories,
             estimated_ftp_watts: model.estimated_ftp_watts,
             heart_rate_zones: deserialize_activity_heart_rate_zones(
-                model.heart_rate_zones_json.as_deref(),
+                model.heart_rate_zones_json.as_ref(),
             ),
             laps: derived_data.laps,
             chart_points: derived_data.chart_points,
@@ -149,7 +149,9 @@ impl ActivityResponse {
     }
 }
 
-fn summary_derived_data(raw: Option<&str>) -> ActivityDerivedData {
+fn summary_derived_data(
+    raw: Option<&crate::activity_details::StoredActivityDerivedData>,
+) -> ActivityDerivedData {
     let derived_data = deserialize_derived_activity_data(raw);
 
     ActivityDerivedData {

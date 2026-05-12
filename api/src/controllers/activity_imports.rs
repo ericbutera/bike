@@ -81,7 +81,7 @@ impl ActivityImportResponse {
             activity_duration_seconds: activity
                 .and_then(|value| value.moving_time_seconds.or(value.total_time_seconds)),
             activity_location: activity
-                .and_then(|value| location_from_derived_json(value.derived_data_json.as_deref())),
+                .and_then(|value| location_from_derived_json(value.derived_data_json.as_ref())),
         }
     }
 }

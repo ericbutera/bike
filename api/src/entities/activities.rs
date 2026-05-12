@@ -1,3 +1,5 @@
+use crate::activity_details::StoredActivityDerivedData;
+use crate::training_profile::StoredActivityHeartRateZones;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
@@ -30,8 +32,8 @@ pub struct Model {
     pub max_cadence_rpm: Option<i32>,
     pub calories: Option<i32>,
     pub estimated_ftp_watts: Option<i32>,
-    pub heart_rate_zones_json: Option<String>,
-    pub derived_data_json: Option<String>,
+    pub heart_rate_zones_json: Option<StoredActivityHeartRateZones>,
+    pub derived_data_json: Option<StoredActivityDerivedData>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

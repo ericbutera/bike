@@ -21,7 +21,7 @@ pub fn activity_dedupe_key(draft: &ActivityDraft, route_points: &[ActivityRouteP
 }
 
 pub fn activity_dedupe_key_from_model(activity: &activities::Model) -> String {
-    let derived = deserialize_derived_activity_data(activity.derived_data_json.as_deref());
+    let derived = deserialize_derived_activity_data(activity.derived_data_json.as_ref());
 
     activity_dedupe_key_from_fields(
         activity.started_at,
@@ -48,7 +48,7 @@ pub fn segment_dedupe_key(
 }
 
 pub fn segment_dedupe_key_from_model(segment: &segments::Model) -> Option<String> {
-    let route_points = deserialize_segment_route_points(segment.route_data_json.as_deref());
+    let route_points = deserialize_segment_route_points(segment.route_data_json.as_ref());
     segment_dedupe_key(segment.distance_meters, &route_points)
 }
 

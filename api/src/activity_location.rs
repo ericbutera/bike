@@ -1,10 +1,14 @@
-use crate::activity_details::{deserialize_derived_activity_data, ActivityRoutePoint};
+use crate::activity_details::{
+    deserialize_derived_activity_data, ActivityRoutePoint, StoredActivityDerivedData,
+};
 use once_cell::sync::Lazy;
 use reverse_geocoder::{Record, ReverseGeocoder};
 
 static REVERSE_GEOCODER: Lazy<ReverseGeocoder> = Lazy::new(ReverseGeocoder::new);
 
-pub fn location_from_derived_json(derived_data_json: Option<&str>) -> Option<String> {
+pub fn location_from_derived_json(
+    derived_data_json: Option<&StoredActivityDerivedData>,
+) -> Option<String> {
     let derived_data = deserialize_derived_activity_data(derived_data_json);
     location_from_route_points(&derived_data.route_points)
 }

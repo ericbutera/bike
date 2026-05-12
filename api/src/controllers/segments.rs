@@ -220,7 +220,7 @@ pub async fn get_segment(
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::not_found("Segment not found"))?;
-    let route_points = deserialize_segment_route_points(segment.route_data_json.as_deref());
+    let route_points = deserialize_segment_route_points(segment.route_data_json.as_ref());
     let efforts = load_effort_responses(&state.db, &[segment.id]).await?;
 
     Ok(Json(SegmentResponse {
@@ -300,7 +300,7 @@ pub async fn import_segment(
                 ),
                 created_at: existing_segment.created_at,
                 route_points: deserialize_segment_route_points(
-                    existing_segment.route_data_json.as_deref(),
+                    existing_segment.route_data_json.as_ref(),
                 ),
                 efforts,
             }),
@@ -347,7 +347,7 @@ pub async fn import_segment(
                 &efforts, user.id,
             ),
             created_at: segment.created_at,
-            route_points: deserialize_segment_route_points(segment.route_data_json.as_deref()),
+            route_points: deserialize_segment_route_points(segment.route_data_json.as_ref()),
             efforts,
         }),
     ))
@@ -555,7 +555,7 @@ async fn load_effort_responses(
             let activity = activities_by_id.get(&effort.activity_id)?;
             let rider = riders_by_id.get(&effort.user_id)?;
             let derived_data =
-                deserialize_derived_activity_data(activity.derived_data_json.as_deref());
+                deserialize_derived_activity_data(activity.derived_data_json.as_ref());
 
             Some(SegmentEffortResponse {
                 id: effort.id,
