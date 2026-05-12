@@ -3,6 +3,8 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import type { ReactNode } from "react";
 import Providers from "../components/Providers";
+import RuntimeConfigScript from "../components/RuntimeConfigScript";
+import { getServerConfig } from "../lib/config";
 import "./globals.css";
 
 const themeScript = `
@@ -26,12 +28,16 @@ const themeScript = `
 })();
 `;
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "bike",
   description: "Next.js frontend scaffold",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
+  const config = getServerConfig();
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -40,7 +46,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         </Script>
       </head>
       <body className="bg-base-200 text-base-content antialiased">
-        <Providers>{children}</Providers>
+        <RuntimeConfigScript config={config} />
+        <Providers config={config}>{children}</Providers>
       </body>
     </html>
   );
