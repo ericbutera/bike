@@ -1,0 +1,82 @@
+when:
+  - event: push
+    branch: main
+  - event: manual
+
+steps:
+  - name: clone-kaleido
+    image: alpine/git
+    commands:
+      - sh .woodpecker/clone-kaleido.sh
+
+  - name: test-rust
+    image: rust:1-bookworm
+    depends_on: [clone-kaleido]
+    environment:
+      TEST_MODE: "1"
+    commands:
+      - sh .woodpecker/test-rust.sh
+
+  - name: test-ui
+    image: node:25-alpine
+    commands:
+      - sh .woodpecker/test-ui.sh
+
+  - name: build-api
+    image: woodpeckerci/plugin-kaniko
+    depends_on: [test-rust, test-ui]
+    settings:
+      registry: registry.registry:5000
+      repo: bike-api
+      tags: ${CI_COMMIT_SHA},latest
+      insecure: true
+      skip_tls_verify: true
+      insecure-pull: true
+      insecure-registry: true
+      context: .
+      dockerfile: api/Dockerfile
+      cache: true
+      cache_repo: bike-api-cache
+
+  - name: build-worker
+    image: woodpeckerci/plugin-kaniko
+    depends_on: [build-api]
+    settings:
+      registry: registry.registry:5000
+      repo: bike-worker
+      tags: ${CI_COMMIT_SHA},latest
+      insecure: true
+      skip_tls_verify: true
+      insecure-pull: true
+      insecure-registry: true
+      context: .
+      dockerfile: worker/Dockerfile
+      cache: true
+      cache_repo: bike-worker-cache
+
+  - name: build-ui
+    image: woodpeckerci/plugin-kaniko
+    depends_on: [build-worker]
+    settings:
+      registry: registry.registry:5000
+      repo: bike-ui
+      tags: ${CI_COMMIT_SHA},latest
+      insecure: true
+      skip_tls_verify: true
+      insecure-pull: true
+      insecure-registry: true
+      context: ui-next
+      dockerfile: ui-next/Dockerfile
+
+  - name: deploy
+    image: pulumi/pulumi-go:latest
+    depends_on: [build-api, build-worker, build-ui]
+    environment:
+      PULUMI_ACCESS_TOKEN:
+        from_secret: PULUMI_ACCESS_TOKEN
+      GITHUB_TOKEN:
+        from_secret: GITHUB_TOKEN
+      PULUMI_IAC_REPO:
+        from_secret: PULUMI_IAC_REPO
+    commands:
+      - sh .woodpecker/deploy.sh

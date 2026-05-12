@@ -10,7 +10,14 @@ import {
   formatActivityTimestamp,
   formatDuration,
 } from "../lib/activityFormatting";
-import { useActivityImports, useUploadActivityImport } from "../lib/queries";
+import {
+  useActivityArchiveImportJobs,
+  useActivityImports,
+  useImportActivityArchiveUrl,
+  useUploadActivityImport,
+  type ActivityArchiveImportJob,
+  type ActivityImport,
+} from "../lib/queries";
 import AuthRequiredCard from "./AuthRequiredCard";
 
 const ALLOWED_EXTENSIONS = new Set(["fit", "tcx", "gpx"]);
@@ -36,10 +43,23 @@ export default function ActivityImportsPanel() {
   const authApi = auth.useAuthApi();
   const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
   const router = useRouter();
-  const importsQuery = useActivityImports({ enabled: !!user });
+  const archiveJobsQuery = useActivityArchiveImportJobs({
+    enabled: !!user,
+    refetchIntervalMs: 5000,
+  });
+  const importsQuery = useActivityImports({
+    enabled: !!user,
+    refetchIntervalMs: archiveJobsQuery.data.some(
+      (job) => !isArchiveJobTerminal(job.status),
+    )
+      ? 5000
+      : false,
+  });
   const uploadMutation = useUploadActivityImport();
+  const archiveImportMutation = useImportActivityArchiveUrl();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [archiveUrl, setArchiveUrl] = useState("");
 
   const onUpload = async () => {
     if (selectedFiles.length === 0) {
@@ -58,11 +78,11 @@ export default function ActivityImportsPanel() {
     }
 
     try {
-      const results = [] as Array<{ original_filename: string }>;
+      const results: ActivityImport[] = [];
 
       for (const file of selectedFiles) {
         const result = await uploadMutation.uploadAsync(file);
-        results.push({ original_filename: result.original_filename });
+        results.push(result);
       }
 
       setSelectedFiles([]);
@@ -70,15 +90,24 @@ export default function ActivityImportsPanel() {
         inputRef.current.value = "";
       }
 
-      if (results.length === 1) {
-        toast.success(
-          `Imported ${results[0].original_filename} into your activity feed.`,
-        );
-      } else {
-        toast.success(
-          `Imported ${results.length} activities into your activity feed.`,
-        );
-      }
+      toast.success(buildUploadSuccessMessage(results));
+    } catch (error) {
+      toast.error(extractApiMessage(error));
+    }
+  };
+
+  const onImportArchive = async () => {
+    if (!archiveUrl.trim()) {
+      toast.error("Paste a Garmin or Strava export URL first.");
+      return;
+    }
+
+    try {
+      await archiveImportMutation.importAsync(archiveUrl.trim());
+      setArchiveUrl("");
+      toast.success(
+        "Queued archive import. Bike will fetch and process it in the background.",
+      );
     } catch (error) {
       toast.error(extractApiMessage(error));
     }
@@ -97,8 +126,8 @@ export default function ActivityImportsPanel() {
   if (!user) {
     return (
       <AuthRequiredCard
-        title="Manual Activity Uploads"
-        description="Sign in to upload a raw activity file. GPX is the fastest way to test the pipeline right now, and FIT and TCX are accepted too."
+        title="Activity Imports"
+        description="Sign in to upload raw activity files or fetch a Garmin or Strava export ZIP by URL. GPX is still the fastest way to test the single-file pipeline, and FIT and TCX are accepted too."
         showSignup
       />
     );
@@ -210,6 +239,150 @@ export default function ActivityImportsPanel() {
 
       <div className="card bg-base-100 shadow-xl">
         <div className="card-body">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm text-base-content/60">Provider exports</p>
+              <h2 className="card-title text-3xl">
+                Fetch an export ZIP by URL
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm text-base-content/70">
+                Paste a shareable Garmin Connect or Strava export URL and Bike
+                will fetch the archive server-side, unpack supported activity
+                files, and deduplicate anything already in your feed.
+              </p>
+            </div>
+          </div>
+
+          <fieldset className="fieldset rounded-box border border-base-300 bg-base-200 p-4">
+            <legend className="fieldset-legend">Archive URL</legend>
+            <input
+              type="url"
+              aria-label="Archive URL"
+              className="input input-bordered w-full"
+              placeholder="https://.../export.zip"
+              value={archiveUrl}
+              onChange={(event) => {
+                setArchiveUrl(event.target.value);
+              }}
+            />
+
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={!archiveUrl.trim() || archiveImportMutation.isPending}
+                onClick={onImportArchive}
+              >
+                {archiveImportMutation.isPending
+                  ? "Queueing import..."
+                  : "Queue archive import"}
+              </button>
+              <div className="badge badge-ghost">
+                Bike queues a worker task, so large exports do not need to
+                finish inside the request timeout window.
+              </div>
+            </div>
+          </fieldset>
+
+          <div className="mt-6 rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm text-base-content/60">
+                  Recent archive imports
+                </div>
+                <div className="mt-1 text-base font-semibold">
+                  Worker-backed status updates
+                </div>
+              </div>
+              {archiveJobsQuery.isFetching ? (
+                <span className="loading loading-spinner loading-xs" />
+              ) : null}
+            </div>
+
+            {archiveJobsQuery.isError ? (
+              <div className="alert alert-error mt-4">
+                {extractApiMessage(archiveJobsQuery.error)}
+              </div>
+            ) : null}
+
+            {!archiveJobsQuery.isError && archiveJobsQuery.data.length === 0 ? (
+              <div className="mt-4 rounded-xl border border-dashed border-base-300 bg-base-200 px-4 py-3 text-sm text-base-content/70">
+                No archive imports queued yet.
+              </div>
+            ) : null}
+
+            {archiveJobsQuery.data.length > 0 ? (
+              <div className="mt-4 space-y-3">
+                {archiveJobsQuery.data.map((job) => (
+                  <div
+                    key={job.id}
+                    className="rounded-2xl border border-base-300 bg-base-200 p-4"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm text-base-content/60">
+                          Queued {formatActivityTimestamp(job.created_at)}
+                        </div>
+                        <div className="mt-1 break-all font-medium text-base-content">
+                          {job.resolved_url ?? job.archive_url}
+                        </div>
+                      </div>
+                      <span className={archiveJobStatusBadgeClass(job.status)}>
+                        {job.status}
+                      </span>
+                    </div>
+
+                    <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-5">
+                      <ArchiveSummaryItem
+                        label="Entries"
+                        value={job.total_entries}
+                      />
+                      <ArchiveSummaryItem
+                        label="Supported"
+                        value={job.supported_entry_count}
+                      />
+                      <ArchiveSummaryItem
+                        label="Imported"
+                        value={job.imported_count}
+                      />
+                      <ArchiveSummaryItem
+                        label="Duplicates"
+                        value={job.duplicate_count}
+                      />
+                      <ArchiveSummaryItem
+                        label="Failed"
+                        value={job.failed_count}
+                      />
+                    </dl>
+
+                    {job.failure_message ? (
+                      <div className="alert alert-error mt-4 text-sm">
+                        <span>{job.failure_message}</span>
+                      </div>
+                    ) : null}
+
+                    {job.error_samples && job.error_samples.length > 0 ? (
+                      <div className="mt-4 space-y-2 text-sm text-base-content/80">
+                        {job.error_samples.map((sample) => (
+                          <div
+                            key={`${job.id}-${sample}`}
+                            className="rounded-xl border border-base-300 bg-base-100 px-3 py-2"
+                          >
+                            {sample}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      <div className="card bg-base-100 shadow-xl">
+        <div className="card-body">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-sm text-base-content/60">Recent imports</p>
@@ -300,4 +473,67 @@ export default function ActivityImportsPanel() {
       </div>
     </section>
   );
+}
+
+function buildUploadSuccessMessage(results: ActivityImport[]) {
+  const importedCount = results.filter(
+    (result) => result.status !== "duplicate",
+  ).length;
+  const duplicateCount = results.filter(
+    (result) => result.status === "duplicate",
+  ).length;
+
+  if (results.length === 1) {
+    const [result] = results;
+
+    return result.status === "duplicate"
+      ? `Already had ${result.original_filename} in your activity feed.`
+      : `Imported ${result.original_filename} into your activity feed.`;
+  }
+
+  if (importedCount > 0 && duplicateCount > 0) {
+    return `Imported ${importedCount} activities and skipped ${duplicateCount} duplicates.`;
+  }
+
+  if (duplicateCount > 0) {
+    return `Skipped ${duplicateCount} duplicate activities.`;
+  }
+
+  return `Imported ${importedCount} activities into your activity feed.`;
+}
+
+function ArchiveSummaryItem({
+  label,
+  value,
+}: {
+  label: string;
+  value: number;
+}) {
+  return (
+    <div className="rounded-xl bg-base-200 px-4 py-3">
+      <dt className="text-base-content/60">{label}</dt>
+      <dd className="mt-1 text-lg font-semibold">{value}</dd>
+    </div>
+  );
+}
+
+function isArchiveJobTerminal(status: string) {
+  return status === "succeeded" || status === "failed";
+}
+
+function archiveJobStatusBadgeClass(
+  status: ActivityArchiveImportJob["status"],
+) {
+  switch (status) {
+    case "queued":
+      return "badge badge-warning badge-outline uppercase";
+    case "running":
+      return "badge badge-info badge-outline uppercase";
+    case "succeeded":
+      return "badge badge-success badge-outline uppercase";
+    case "failed":
+      return "badge badge-error badge-outline uppercase";
+    default:
+      return "badge badge-ghost uppercase";
+  }
 }

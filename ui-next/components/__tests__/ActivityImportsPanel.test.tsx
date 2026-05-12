@@ -5,8 +5,11 @@ import ActivityImportsPanel from "../ActivityImportsPanel";
 
 const mocks = vi.hoisted(() => ({
   useCurrentUser: vi.fn(),
+  useActivityArchiveImportJobs: vi.fn(),
   useActivityImports: vi.fn(),
+  useImportActivityArchiveUrl: vi.fn(),
   useUploadActivityImport: vi.fn(),
+  importArchiveAsync: vi.fn(),
   uploadAsync: vi.fn(),
   routerPush: vi.fn(),
   toastError: vi.fn(),
@@ -22,7 +25,9 @@ vi.mock("@ericbutera/kaleido", () => ({
 }));
 
 vi.mock("../../lib/queries", () => ({
+  useActivityArchiveImportJobs: mocks.useActivityArchiveImportJobs,
   useActivityImports: mocks.useActivityImports,
+  useImportActivityArchiveUrl: mocks.useImportActivityArchiveUrl,
   useUploadActivityImport: mocks.useUploadActivityImport,
 }));
 
@@ -78,6 +83,47 @@ function makeActivityImport(
   };
 }
 
+function makeArchiveImportJob(
+  overrides: Partial<{
+    id: number;
+    archive_url: string;
+    resolved_url: string | null;
+    status: string;
+    failure_message: string | null;
+    total_entries: number;
+    supported_entry_count: number;
+    imported_count: number;
+    duplicate_count: number;
+    skipped_unsupported_count: number;
+    failed_count: number;
+    error_samples: string[];
+    created_at: string;
+    started_at: string | null;
+    finished_at: string | null;
+    updated_at: string;
+  }> = {},
+) {
+  return {
+    id: 51,
+    archive_url: "https://downloads.example.com/export.zip",
+    resolved_url: null,
+    status: "queued",
+    failure_message: null,
+    total_entries: 12,
+    supported_entry_count: 10,
+    imported_count: 8,
+    duplicate_count: 2,
+    skipped_unsupported_count: 2,
+    failed_count: 0,
+    error_samples: [],
+    created_at: "2026-05-06T12:00:00Z",
+    started_at: null,
+    finished_at: null,
+    updated_at: "2026-05-06T12:00:00Z",
+    ...overrides,
+  };
+}
+
 describe("ActivityImportsPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -92,11 +138,22 @@ describe("ActivityImportsPanel", () => {
       isFetching: false,
       error: null,
     });
+    mocks.useActivityArchiveImportJobs.mockReturnValue({
+      data: [],
+      isError: false,
+      isFetching: false,
+      error: null,
+    });
     mocks.useUploadActivityImport.mockReturnValue({
       uploadAsync: mocks.uploadAsync,
       isPending: false,
     });
+    mocks.useImportActivityArchiveUrl.mockReturnValue({
+      importAsync: mocks.importArchiveAsync,
+      isPending: false,
+    });
     mocks.uploadAsync.mockResolvedValue(makeActivityImport());
+    mocks.importArchiveAsync.mockResolvedValue(makeArchiveImportJob());
   });
 
   it("renders sign-in actions when the user is signed out", () => {
@@ -104,7 +161,7 @@ describe("ActivityImportsPanel", () => {
 
     render(<ActivityImportsPanel />);
 
-    expect(screen.getByText("Manual Activity Uploads")).toBeInTheDocument();
+    expect(screen.getByText("Activity Imports")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
       "href",
       "/login",
@@ -180,6 +237,32 @@ describe("ActivityImportsPanel", () => {
     expect(input.value).toBe("");
   });
 
+  it("surfaces duplicate single uploads without creating a second activity", async () => {
+    const user = userEvent.setup();
+
+    mocks.uploadAsync.mockResolvedValue(
+      makeActivityImport({ status: "duplicate" }),
+    );
+
+    render(<ActivityImportsPanel />);
+
+    const input = screen.getByLabelText("Activity file") as HTMLInputElement;
+    const file = new File(["gpx-data"], "ride.gpx", {
+      type: "application/gpx+xml",
+    });
+
+    await user.upload(input, file);
+    await user.click(screen.getByRole("button", { name: "Upload activity" }));
+
+    await waitFor(() => {
+      expect(mocks.uploadAsync).toHaveBeenCalledWith(file);
+    });
+
+    expect(mocks.toastSuccess).toHaveBeenCalledWith(
+      "Already had ride.gpx in your activity feed.",
+    );
+  });
+
   it("uploads multiple selected activities in sequence", async () => {
     const user = userEvent.setup();
 
@@ -225,6 +308,57 @@ describe("ActivityImportsPanel", () => {
       ),
     ).toBeInTheDocument();
     expect(input.value).toBe("");
+  });
+
+  it("fetches an archive import by URL", async () => {
+    const user = userEvent.setup();
+
+    render(<ActivityImportsPanel />);
+
+    await user.type(
+      screen.getByLabelText("Archive URL"),
+      "https://downloads.example.com/export.zip",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Queue archive import" }),
+    );
+
+    await waitFor(() => {
+      expect(mocks.importArchiveAsync).toHaveBeenCalledWith(
+        "https://downloads.example.com/export.zip",
+      );
+    });
+
+    expect(mocks.toastSuccess).toHaveBeenCalledWith(
+      "Queued archive import. Bike will fetch and process it in the background.",
+    );
+    expect(
+      screen.getByText("Worker-backed status updates"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders recent archive import job status", () => {
+    mocks.useActivityArchiveImportJobs.mockReturnValue({
+      data: [
+        makeArchiveImportJob({
+          status: "running",
+          resolved_url: "https://cdn.example.com/export.zip",
+        }),
+      ],
+      isError: false,
+      isFetching: false,
+      error: null,
+    });
+
+    render(<ActivityImportsPanel />);
+
+    expect(screen.getByText("running")).toBeInTheDocument();
+    expect(
+      screen.getByText("https://cdn.example.com/export.zip"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Worker-backed status updates"),
+    ).toBeInTheDocument();
   });
 
   it("renders recent uploads from the query response", () => {

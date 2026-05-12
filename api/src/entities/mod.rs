@@ -1,4 +1,5 @@
 pub mod activities;
+pub mod activity_archive_import_jobs;
 pub mod activity_imports;
 pub mod analytics_user_states;
 pub mod fitness_freshness_daily;

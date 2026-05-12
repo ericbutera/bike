@@ -37,9 +37,11 @@ pub async fn register_default_processors(
     db: DatabaseConnection,
 ) -> Result<TaskWorker, WorkerError> {
     let rebuild_fitness_freshness = Arc::new(RebuildFitnessFreshness::new(db.clone()));
-    let rebuild_segment_analytics = Arc::new(RebuildSegmentAnalytics::new(db));
+    let rebuild_segment_analytics = Arc::new(RebuildSegmentAnalytics::new(db.clone()));
+    let activity_archive_import = Arc::new(ActivityArchiveImport::new(db));
 
     Ok(worker
         .register_processor(rebuild_fitness_freshness)
-        .register_processor(rebuild_segment_analytics))
+        .register_processor(rebuild_segment_analytics)
+        .register_processor(activity_archive_import))
 }

@@ -14,6 +14,7 @@ pub enum Task {
     EmailNotification(auth_tasks::EmailNotificationTask),
     RebuildFitnessFreshness(RebuildFitnessFreshnessTask),
     RebuildSegmentAnalytics(RebuildSegmentAnalyticsTask),
+    ActivityArchiveImport(ActivityArchiveImportTask),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,6 +27,11 @@ pub struct RebuildSegmentAnalyticsTask {
     pub segment_ids: Vec<i32>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActivityArchiveImportTask {
+    pub job_id: i32,
+}
+
 impl Task {
     pub fn task_type(&self) -> &'static str {
         match self {
@@ -34,6 +40,7 @@ impl Task {
             Task::EmailNotification(_) => auth_tasks::EMAIL_NOTIFICATION_TASK_TYPE,
             Task::RebuildFitnessFreshness(_) => "rebuild_fitness_freshness",
             Task::RebuildSegmentAnalytics(_) => "rebuild_segment_analytics",
+            Task::ActivityArchiveImport(_) => "activity_archive_import",
         }
     }
 }
@@ -121,6 +128,18 @@ impl TaskQueue {
             segment_ids,
         }))
         .await;
+    }
+
+    pub async fn archive_activity_import(&self, job_id: i32) -> Result<(), String> {
+        let task = Task::ActivityArchiveImport(ActivityArchiveImportTask { job_id });
+        let task_type = task.task_type().to_string();
+
+        self.auth
+            .inner()
+            .enqueue_with_options(task_type, task, None, 1)
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string())
     }
 
     pub async fn enqueue(&self, task: Task) {

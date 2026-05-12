@@ -4,6 +4,7 @@ use crate::activity_details::{
 use crate::activity_summary::summarize_activity_upload;
 use crate::analytics::mark_segment_activity_changes;
 use crate::app_error::{ApiErrorResponse, AppError};
+use crate::dedupe::{segment_dedupe_key, segment_dedupe_key_from_model};
 use crate::entities::{
     activities, segment_efforts, segment_summaries, segment_user_summaries, segments,
 };
@@ -273,6 +274,36 @@ pub async fn import_segment(
         ));
     }
 
+    if let Some(existing_segment) =
+        find_duplicate_segment(&state.db, user.id, segment_summary.distance_meters, &segment_detail.route_points)
+            .await?
+    {
+        let efforts = load_effort_responses(&state.db, &[existing_segment.id]).await?;
+
+        return Ok((
+            StatusCode::OK,
+            Json(SegmentResponse {
+                id: existing_segment.id,
+                title: existing_segment.title,
+                source: existing_segment.source,
+                original_filename: existing_segment.original_filename,
+                format: existing_segment.format,
+                distance_meters: existing_segment.distance_meters,
+                effort_count: efforts.len() as i32,
+                best_duration_seconds: efforts.iter().map(|effort| effort.duration_seconds).min(),
+                current_user_pr_duration_seconds: current_user_pr_duration_from_responses(
+                    &efforts,
+                    user.id,
+                ),
+                created_at: existing_segment.created_at,
+                route_points: deserialize_segment_route_points(
+                    existing_segment.route_data_json.as_deref(),
+                ),
+                efforts,
+            }),
+        ));
+    }
+
     let segment = segments::ActiveModel {
         user_id: Set(user.id),
         title: Set(segment_summary.title),
@@ -388,6 +419,30 @@ fn validate_segment_format(filename: &str) -> Result<String, AppError> {
             "Segments currently require a GPX or TCX export with route coordinates",
         )),
     }
+}
+
+async fn find_duplicate_segment(
+    db: &sea_orm::DatabaseConnection,
+    user_id: i32,
+    distance_meters: Option<f64>,
+    route_points: &[ActivityRoutePoint],
+) -> Result<Option<segments::Model>, AppError> {
+    let Some(target_key) = segment_dedupe_key(distance_meters, route_points) else {
+        return Ok(None);
+    };
+
+    let candidates = segments::Entity::find()
+        .filter(segments::Column::UserId.eq(user_id))
+        .all(db)
+        .await?;
+
+    for segment in candidates {
+        if segment_dedupe_key_from_model(&segment).as_deref() == Some(target_key.as_str()) {
+            return Ok(Some(segment));
+        }
+    }
+
+    Ok(None)
 }
 
 async fn load_efforts_by_segment(

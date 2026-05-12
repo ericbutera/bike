@@ -64,6 +64,18 @@ pub fn routes() -> Router<Arc<AppStorage>> {
                 .post(activity_imports::upload_activity_import)
                 .layer(DefaultBodyLimit::max(Config::get().max_upload_bytes)),
         )
+        .route(
+            "/api/activity-imports/archive-url",
+            axum::routing::post(activity_imports::import_activity_archive_from_url),
+        )
+        .route(
+            "/api/activity-imports/archive-jobs",
+            axum::routing::get(activity_imports::list_activity_archive_import_jobs),
+        )
+        .route(
+            "/api/activity-imports/archive-jobs/:id",
+            axum::routing::get(activity_imports::get_activity_archive_import_job),
+        )
         .route("/api/health", get(health))
         .route("/", get(root))
 }

@@ -1,6 +1,6 @@
 pub mod adapter;
 
 pub use adapter::{
-    create_auth_service, AppAuthService, RebuildFitnessFreshnessTask, RebuildSegmentAnalyticsTask,
-    Task, TaskQueue,
+    create_auth_service, ActivityArchiveImportTask, AppAuthService, RebuildFitnessFreshnessTask,
+    RebuildSegmentAnalyticsTask, Task, TaskQueue,
 };

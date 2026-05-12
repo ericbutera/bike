@@ -9,6 +9,8 @@ pub struct Config {
     pub api_url: String,
     pub uploads_dir: String,
     pub max_upload_bytes: usize,
+    pub max_archive_fetch_bytes: usize,
+    pub archive_fetch_timeout_seconds: u64,
     pub jwt_secret: String,
     pub app_name: String,
     pub smtp_host: String,
@@ -42,6 +44,14 @@ impl Config {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(25 * 1024 * 1024),
+            max_archive_fetch_bytes: env::var("MAX_ARCHIVE_FETCH_BYTES")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(512 * 1024 * 1024),
+            archive_fetch_timeout_seconds: env::var("ARCHIVE_FETCH_TIMEOUT_SECONDS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(600),
             jwt_secret: env::var("JWT_SECRET").unwrap_or_else(|_| "change_me_in_dev".to_string()),
             app_name: env::var("APP_NAME").unwrap_or_else(|_| "App".to_string()),
             smtp_host: env::var("SMTP_HOST").unwrap_or_else(|_| "localhost".to_string()),

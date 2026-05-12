@@ -1,4 +1,5 @@
 use crate::app_error::AppError;
+use crate::fit_support::parse_fit_activity;
 use chrono::{DateTime, Duration, Utc};
 use roxmltree::{Document, Node};
 use std::path::Path;
@@ -42,7 +43,7 @@ pub fn summarize_activity_upload(
     let result = match format {
         "gpx" => parse_gpx_activity(filename, bytes),
         "tcx" => parse_tcx_activity(filename, bytes),
-        "fit" => Ok(fit_placeholder_activity(filename)),
+        "fit" => parse_fit_activity(filename, bytes).map(|parsed| parsed.draft),
         _ => Err("Only .fit, .tcx, and .gpx uploads are supported".to_string()),
     };
 
@@ -269,30 +270,13 @@ fn parse_tcx_activity(filename: &str, bytes: &[u8]) -> Result<ActivityDraft, Str
     })
 }
 
-fn fit_placeholder_activity(filename: &str) -> ActivityDraft {
-    ActivityDraft {
-        title: humanize_filename(filename),
-        sport: "activity".to_string(),
-        started_at: Utc::now(),
-        ended_at: None,
-        distance_meters: None,
-        moving_time_seconds: None,
-        total_time_seconds: None,
-        elevation_gain_meters: None,
-        elevation_loss_meters: None,
-        average_speed_mps: None,
-        max_speed_mps: None,
-        average_heart_rate_bpm: None,
-        max_heart_rate_bpm: None,
-        average_cadence_rpm: None,
-        max_cadence_rpm: None,
-        calories: None,
-    }
-}
-
 fn parse_xml_document<'a>(bytes: &'a [u8], format_name: &str) -> Result<Document<'a>, String> {
     let xml = std::str::from_utf8(bytes)
         .map_err(|_| format!("{format_name} uploads must be UTF-8 XML files"))?;
+    let xml = xml
+        .strip_prefix('\u{feff}')
+        .unwrap_or(xml)
+        .trim_start_matches(|character: char| character.is_whitespace());
     Document::parse(xml).map_err(|err| format!("Failed to parse {format_name} file: {err}"))
 }
 
@@ -712,13 +696,28 @@ mod tests {
     }
 
     #[test]
-    fn fit_uploads_fall_back_to_placeholder_summary() {
-        let summary = summarize_activity_upload("trainer.fit", "fit", b"fit-binary")
-            .expect("fit placeholder summary");
+    fn summarizes_tcx_uploads_with_leading_whitespace_before_xml_declaration() {
+        let tcx = "        <?xml version=\"1.0\" encoding=\"utf-8\"?>\n        <TrainingCenterDatabase xmlns=\"http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2\">\n          <Activities>\n            <Activity Sport=\"Biking\">\n              <Id>2026-05-01T10:00:00Z</Id>\n              <Lap StartTime=\"2026-05-01T10:00:00Z\">\n                <TotalTimeSeconds>300</TotalTimeSeconds>\n                <DistanceMeters>1200</DistanceMeters>\n                <Track>\n                  <Trackpoint>\n                    <Time>2026-05-01T10:00:00Z</Time>\n                    <Position>\n                      <LatitudeDegrees>45.0</LatitudeDegrees>\n                      <LongitudeDegrees>-122.0</LongitudeDegrees>\n                    </Position>\n                    <AltitudeMeters>10</AltitudeMeters>\n                    <DistanceMeters>0</DistanceMeters>\n                  </Trackpoint>\n                  <Trackpoint>\n                    <Time>2026-05-01T10:05:00Z</Time>\n                    <Position>\n                      <LatitudeDegrees>45.01</LatitudeDegrees>\n                      <LongitudeDegrees>-122.01</LongitudeDegrees>\n                    </Position>\n                    <AltitudeMeters>15</AltitudeMeters>\n                    <DistanceMeters>1200</DistanceMeters>\n                  </Trackpoint>\n                </Track>\n              </Lap>\n            </Activity>\n          </Activities>\n        </TrainingCenterDatabase>\n";
 
-        assert_eq!(summary.title, "Trainer");
-        assert_eq!(summary.sport, "activity");
-        assert!(summary.distance_meters.is_none());
-        assert!(summary.max_heart_rate_bpm.is_none());
+        let summary = summarize_activity_upload("whitespace.tcx", "tcx", tcx.as_bytes())
+            .expect("tcx summary with leading whitespace");
+
+        assert_eq!(summary.distance_meters, Some(1200.0));
+        assert_eq!(summary.total_time_seconds, Some(300));
+    }
+
+    #[test]
+    fn summarizes_fit_uploads_into_activity_metrics() {
+        let fit = include_bytes!("../tests/fixtures/activity.fit");
+        let summary = summarize_activity_upload("activity.fit", "fit", fit)
+            .expect("fit summary");
+
+        assert_eq!(summary.title, "Activity");
+        assert_eq!(summary.sport, "run");
+        assert_eq!(summary.total_time_seconds, Some(14));
+        assert_eq!(summary.moving_time_seconds, Some(14));
+        assert_eq!(summary.distance_meters, Some(5.73));
+        assert_eq!(summary.elevation_gain_meters, Some(0.0));
+        assert_eq!(summary.elevation_loss_meters, Some(0.0));
     }
 }

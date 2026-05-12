@@ -1,0 +1,23 @@
+when:
+  - event: push
+    branch:
+      exclude: main
+
+steps:
+  - name: clone-kaleido
+    image: alpine/git
+    commands:
+      - sh .woodpecker/clone-kaleido.sh
+
+  - name: test-rust
+    image: rust:1-bookworm
+    depends_on: [clone-kaleido]
+    environment:
+      TEST_MODE: "1"
+    commands:
+      - sh .woodpecker/test-rust.sh
+
+  - name: test-ui
+    image: node:25-alpine
+    commands:
+      - sh .woodpecker/test-ui.sh

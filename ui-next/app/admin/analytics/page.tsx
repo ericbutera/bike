@@ -1,7 +1,11 @@
 "use client";
 
+import { extractApiMessage } from "@/lib/activityFormatting";
 import {
+  useActivityArchiveImportJobs,
   useAdminBackfillAnalytics,
+  useImportActivityArchiveUrl,
+  type ActivityArchiveImportJob,
   type AdminAnalyticsBackfillResponse,
 } from "@/lib/queries";
 import { admin } from "@ericbutera/kaleido";
@@ -23,10 +27,22 @@ export default function AdminAnalyticsPage() {
 
 function AnalyticsContent() {
   const { backfillAsync, isPending } = useAdminBackfillAnalytics();
+  const archiveJobsQuery = useActivityArchiveImportJobs({
+    enabled: true,
+    refetchIntervalMs: 5000,
+  });
+  const { importAsync, isPending: isImportPending } =
+    useImportActivityArchiveUrl();
   const [result, setResult] = useState<AdminAnalyticsBackfillResponse | null>(
     null,
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [archiveUrl, setArchiveUrl] = useState("");
+  const [archiveResult, setArchiveResult] =
+    useState<ActivityArchiveImportJob | null>(null);
+  const [archiveErrorMessage, setArchiveErrorMessage] = useState<string | null>(
+    null,
+  );
 
   async function handleBackfill() {
     setErrorMessage(null);
@@ -43,8 +59,152 @@ function AnalyticsContent() {
     }
   }
 
+  async function handleArchiveImport() {
+    setArchiveErrorMessage(null);
+
+    try {
+      const response = await importAsync(archiveUrl.trim());
+      setArchiveResult(response);
+    } catch (error) {
+      setArchiveErrorMessage(extractApiMessage(error));
+    }
+  }
+
   return (
     <div className="grid gap-6 p-6">
+      <section className="rounded-2xl border border-base-300 bg-base-100 p-6 shadow-sm">
+        <h2 className="text-lg font-semibold">
+          Fetch provider export archives
+        </h2>
+        <p className="mt-2 max-w-3xl text-sm text-base-content/70">
+          Paste a shareable Garmin Connect or Strava export URL and Bike will
+          queue a worker task that fetches the archive server-side, imports
+          supported activity files, and deduplicates anything already stored for
+          that rider.
+        </p>
+
+        <label className="form-control mt-5">
+          <div className="label">
+            <span className="label-text font-medium">Archive URL</span>
+            <span className="label-text-alt">HTTPS export link</span>
+          </div>
+          <input
+            type="url"
+            className="input input-bordered"
+            placeholder="https://.../export.zip"
+            value={archiveUrl}
+            onChange={(event) => {
+              setArchiveUrl(event.target.value);
+            }}
+          />
+          <div className="label">
+            <span className="label-text-alt text-base-content/60">
+              Bike fetches the archive directly, so large exports do not go
+              through the browser upload path.
+            </span>
+          </div>
+        </label>
+
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button
+            className="btn btn-primary"
+            disabled={!archiveUrl.trim() || isImportPending}
+            onClick={handleArchiveImport}
+          >
+            {isImportPending ? "Queueing import..." : "Queue archive import"}
+          </button>
+          <Link href="/admin/tasks" className="btn btn-ghost">
+            View background tasks
+          </Link>
+        </div>
+
+        {archiveErrorMessage ? (
+          <div className="alert alert-error mt-4">
+            <span>{archiveErrorMessage}</span>
+          </div>
+        ) : null}
+
+        {archiveResult ? (
+          <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+            <div className="rounded-2xl bg-base-200 p-5">
+              <div className="text-sm text-base-content/60">
+                Queued archive job
+              </div>
+              <div className="mt-2 break-all text-base font-medium">
+                {archiveResult.archive_url}
+              </div>
+              <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                <SummaryItem label="Job id" value={archiveResult.id} />
+                <SummaryItem
+                  label="Imported activities"
+                  value={archiveResult.imported_count}
+                />
+                <SummaryItem
+                  label="Duplicates skipped"
+                  value={archiveResult.duplicate_count}
+                />
+                <SummaryItem
+                  label="Failed entries"
+                  value={archiveResult.failed_count}
+                />
+              </dl>
+            </div>
+
+            <div className="rounded-2xl bg-base-200 p-5">
+              <div className="text-sm text-base-content/60">Job status</div>
+              <div className="mt-2 text-3xl font-semibold uppercase">
+                {archiveResult.status}
+              </div>
+              <p className="mt-2 text-sm text-base-content/70">
+                Refreshes automatically while the worker is running. The request
+                only queues the import now.
+              </p>
+              {archiveResult.failure_message ? (
+                <div className="mt-4 rounded-xl border border-base-300 bg-base-100 px-3 py-2 text-sm text-base-content/70">
+                  {archiveResult.failure_message}
+                </div>
+              ) : archiveResult.error_samples.length > 0 ? (
+                <div className="mt-4 space-y-2 text-sm text-base-content/80">
+                  {archiveResult.error_samples.map((sample) => (
+                    <div
+                      key={sample}
+                      className="rounded-xl border border-base-300 bg-base-100 px-3 py-2"
+                    >
+                      {sample}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-4 rounded-xl border border-base-300 bg-base-100 px-3 py-2 text-sm text-base-content/70">
+                  No failure details yet.
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
+
+        {archiveJobsQuery.data.length > 0 ? (
+          <div className="mt-5 rounded-2xl bg-base-200 p-5">
+            <div className="text-sm text-base-content/60">
+              Recent archive jobs
+            </div>
+            <div className="mt-4 space-y-2 text-sm">
+              {archiveJobsQuery.data.map((job) => (
+                <div
+                  key={job.id}
+                  className="rounded-xl border border-base-300 bg-base-100 px-3 py-2"
+                >
+                  <div className="font-medium uppercase">{job.status}</div>
+                  <div className="break-all text-base-content/70">
+                    {job.resolved_url ?? job.archive_url}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </section>
+
       <section className="rounded-2xl border border-base-300 bg-base-100 p-6 shadow-sm">
         <h2 className="text-lg font-semibold">Prewarm analytics caches</h2>
         <p className="mt-2 max-w-2xl text-sm text-base-content/70">

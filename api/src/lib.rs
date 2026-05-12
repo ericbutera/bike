@@ -1,13 +1,17 @@
 pub mod activity_details;
+pub mod activity_import_pipeline;
 pub mod activity_lifecycle;
 pub mod activity_location;
 pub mod activity_summary;
 pub mod analytics;
+pub mod archive_import;
 pub mod app_error;
 pub mod config;
 pub mod controllers;
+pub mod dedupe;
 pub mod entities;
 pub mod feature_flags_keys;
+pub mod fit_support;
 pub mod metrics;
 pub mod openapi;
 pub mod segment_support;

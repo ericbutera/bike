@@ -1,0 +1,165 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[derive(Iden)]
+enum ActivityArchiveImportJobs {
+    Table,
+    Id,
+    UserId,
+    UserStorageKey,
+    ArchiveUrl,
+    ResolvedUrl,
+    Status,
+    FailureMessage,
+    ErrorSamplesJson,
+    TotalEntries,
+    SupportedEntryCount,
+    ImportedCount,
+    DuplicateCount,
+    SkippedUnsupportedCount,
+    FailedCount,
+    CreatedAt,
+    StartedAt,
+    FinishedAt,
+    UpdatedAt,
+}
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(ActivityArchiveImportJobs::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(ActivityArchiveImportJobs::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(ActivityArchiveImportJobs::UserId).integer().not_null())
+                    .col(
+                        ColumnDef::new(ActivityArchiveImportJobs::UserStorageKey)
+                            .string()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ActivityArchiveImportJobs::ArchiveUrl)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ActivityArchiveImportJobs::ResolvedUrl)
+                            .text()
+                            .null(),
+                    )
+                    .col(ColumnDef::new(ActivityArchiveImportJobs::Status).string().not_null())
+                    .col(
+                        ColumnDef::new(ActivityArchiveImportJobs::FailureMessage)
+                            .text()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(ActivityArchiveImportJobs::ErrorSamplesJson)
+                            .text()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(ActivityArchiveImportJobs::TotalEntries)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(ActivityArchiveImportJobs::SupportedEntryCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(ActivityArchiveImportJobs::ImportedCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(ActivityArchiveImportJobs::DuplicateCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(ActivityArchiveImportJobs::SkippedUnsupportedCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(ActivityArchiveImportJobs::FailedCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(ActivityArchiveImportJobs::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::cust("CURRENT_TIMESTAMP")),
+                    )
+                    .col(
+                        ColumnDef::new(ActivityArchiveImportJobs::StartedAt)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(ActivityArchiveImportJobs::FinishedAt)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(ActivityArchiveImportJobs::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::cust("CURRENT_TIMESTAMP")),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx-activity-archive-import-jobs-user-id")
+                    .table(ActivityArchiveImportJobs::Table)
+                    .col(ActivityArchiveImportJobs::UserId)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx-activity-archive-import-jobs-status")
+                    .table(ActivityArchiveImportJobs::Table)
+                    .col(ActivityArchiveImportJobs::Status)
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(ActivityArchiveImportJobs::Table)
+                    .to_owned(),
+            )
+            .await
+    }
+}

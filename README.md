@@ -45,6 +45,14 @@ Data:
 - Older activities uploaded before route-point persistence or before a parser fix may need the regenerate action on the activity detail page before they can match newly imported segments.
 - FIT remains supported for activity uploads, but segment imports currently require GPX or TCX because the manual segment flow needs explicit route coordinates.
 
+## Bulk Archive Import
+
+- Large Garmin Connect and Strava exports should not go through the browser upload form.
+- Paste a shareable HTTPS export URL into the upload UI and Bike queues a worker task that fetches the ZIP server-side.
+- The server-side archive importer scans `.zip` files for `.fit`, `.tcx`, `.gpx`, and gzip-wrapped activity entries like `.fit.gz`, including nested ZIP parts such as Garmin Connect `DI-Connect-Uploaded-Files/*.zip`, then runs the normal per-activity normalization flow.
+- The upload UI shows recent archive-import jobs so riders can track `queued`, `running`, `succeeded`, and `failed` states without holding the original HTTP request open.
+- Activity imports and manual segment uploads both deduplicate against existing user data before creating new rows.
+
 ---
 
 ## Implementation Plan

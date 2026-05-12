@@ -1,5 +1,6 @@
 use crate::activity_summary::{summarize_activity_upload, ActivityDraft};
 use crate::app_error::AppError;
+use crate::fit_support::parse_fit_activity;
 use chrono::{DateTime, Utc};
 use roxmltree::{Document, Node};
 use serde::{Deserialize, Serialize};
@@ -76,7 +77,7 @@ pub fn derive_activity_detail_data(
     let result = match format {
         "gpx" => derive_gpx_activity_detail(filename, bytes),
         "tcx" => derive_tcx_activity_detail(filename, bytes),
-        "fit" => Ok(ActivityDerivedData::default()),
+        "fit" => derive_fit_activity_detail(filename, bytes),
         _ => Err("Only .fit, .tcx, and .gpx uploads are supported".to_string()),
     };
 
@@ -236,6 +237,88 @@ fn derive_tcx_activity_detail(filename: &str, bytes: &[u8]) -> Result<ActivityDe
             MAX_CHART_POINTS,
         ),
         route_points: build_tcx_route_points(&points, summary.started_at),
+    })
+}
+
+fn derive_fit_activity_detail(filename: &str, bytes: &[u8]) -> Result<ActivityDerivedData, String> {
+    let parsed = parse_fit_activity(filename, bytes)?;
+    let chart_points = downsample_chart_points(
+        parsed
+            .track_points
+            .iter()
+            .map(|point| ActivityChartPoint {
+                elapsed_seconds: elapsed_seconds_from(parsed.draft.started_at, point.timestamp)
+                    .unwrap_or(0),
+                distance_meters: point.distance_meters,
+                elevation_meters: point.elevation_meters,
+                speed_mps: point.speed_mps,
+                heart_rate_bpm: point.heart_rate_bpm,
+                cadence_rpm: point.cadence_rpm,
+            })
+            .collect(),
+        MAX_CHART_POINTS,
+    );
+    let route_points = parsed
+        .track_points
+        .iter()
+        .filter_map(|point| {
+            Some(ActivityRoutePoint {
+                elapsed_seconds: elapsed_seconds_from(parsed.draft.started_at, point.timestamp)
+                    .unwrap_or(0),
+                latitude: point.latitude?,
+                longitude: point.longitude?,
+                distance_meters: point.distance_meters,
+                elevation_meters: point.elevation_meters,
+                speed_mps: point.speed_mps,
+                heart_rate_bpm: point.heart_rate_bpm,
+                cadence_rpm: point.cadence_rpm,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let laps = if parsed.laps.is_empty() {
+        vec![full_activity_lap(&parsed.draft)]
+    } else {
+        let mut fallback_start_offset_seconds = 0;
+
+        parsed
+            .laps
+            .iter()
+            .enumerate()
+            .map(|(index, lap)| {
+                let start_offset_seconds = lap
+                    .start_time
+                    .and_then(|start| elapsed_seconds_from(parsed.draft.started_at, start))
+                    .or(Some(fallback_start_offset_seconds));
+
+                if let Some(duration_seconds) = lap.duration_seconds {
+                    fallback_start_offset_seconds += duration_seconds;
+                }
+
+                ActivityLap {
+                    lap_index: (index + 1) as i32,
+                    title: format!("Lap {}", index + 1),
+                    start_offset_seconds,
+                    duration_seconds: lap.duration_seconds,
+                    distance_meters: lap.distance_meters,
+                    elevation_gain_meters: lap.elevation_gain_meters,
+                    elevation_loss_meters: lap.elevation_loss_meters,
+                    average_speed_mps: lap.average_speed_mps,
+                    max_speed_mps: lap.max_speed_mps,
+                    average_heart_rate_bpm: lap.average_heart_rate_bpm,
+                    max_heart_rate_bpm: lap.max_heart_rate_bpm,
+                    average_cadence_rpm: lap.average_cadence_rpm,
+                    max_cadence_rpm: lap.max_cadence_rpm,
+                    calories: lap.calories,
+                }
+            })
+            .collect()
+    };
+
+    Ok(ActivityDerivedData {
+        laps,
+        chart_points,
+        route_points,
     })
 }
 
@@ -495,6 +578,10 @@ fn downsample_chart_points(
 fn parse_xml_document<'a>(bytes: &'a [u8], format_name: &str) -> Result<Document<'a>, String> {
     let xml = std::str::from_utf8(bytes)
         .map_err(|_| format!("{format_name} uploads must be UTF-8 XML files"))?;
+    let xml = xml
+        .strip_prefix('\u{feff}')
+        .unwrap_or(xml)
+        .trim_start_matches(|character: char| character.is_whitespace());
     Document::parse(xml).map_err(|error| format!("Failed to parse {format_name} file: {error}"))
 }
 
@@ -854,12 +941,26 @@ mod tests {
     }
 
     #[test]
-    fn fit_uploads_have_no_detail_data_yet() {
-        let detail =
-            derive_activity_detail_data("trainer.fit", "fit", b"fit-binary").expect("fit detail");
+    fn derives_tcx_details_with_leading_whitespace_before_xml_declaration() {
+        let tcx = "        <?xml version=\"1.0\" encoding=\"utf-8\"?>\n        <TrainingCenterDatabase xmlns=\"http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2\">\n          <Activities>\n            <Activity Sport=\"Biking\">\n              <Id>2026-05-01T10:00:00Z</Id>\n              <Lap StartTime=\"2026-05-01T10:00:00Z\">\n                <TotalTimeSeconds>300</TotalTimeSeconds>\n                <DistanceMeters>1200</DistanceMeters>\n                <Track>\n                  <Trackpoint>\n                    <Time>2026-05-01T10:00:00Z</Time>\n                    <Position>\n                      <LatitudeDegrees>45.0</LatitudeDegrees>\n                      <LongitudeDegrees>-122.0</LongitudeDegrees>\n                    </Position>\n                    <AltitudeMeters>10</AltitudeMeters>\n                    <DistanceMeters>0</DistanceMeters>\n                  </Trackpoint>\n                  <Trackpoint>\n                    <Time>2026-05-01T10:05:00Z</Time>\n                    <Position>\n                      <LatitudeDegrees>45.01</LatitudeDegrees>\n                      <LongitudeDegrees>-122.01</LongitudeDegrees>\n                    </Position>\n                    <AltitudeMeters>15</AltitudeMeters>\n                    <DistanceMeters>1200</DistanceMeters>\n                  </Trackpoint>\n                </Track>\n              </Lap>\n            </Activity>\n          </Activities>\n        </TrainingCenterDatabase>\n";
 
-        assert!(detail.laps.is_empty());
-        assert!(detail.chart_points.is_empty());
-        assert!(detail.route_points.is_empty());
+        let detail = derive_activity_detail_data("whitespace.tcx", "tcx", tcx.as_bytes())
+            .expect("tcx detail with leading whitespace");
+
+        assert_eq!(detail.chart_points.len(), 2);
+        assert_eq!(detail.route_points.len(), 2);
+    }
+
+    #[test]
+    fn derives_fit_laps_and_chart_points() {
+        let fit = include_bytes!("../tests/fixtures/activity.fit");
+        let detail =
+            derive_activity_detail_data("activity.fit", "fit", fit).expect("fit detail");
+
+        assert_eq!(detail.laps.len(), 1);
+        assert!(!detail.chart_points.is_empty());
+        assert!(!detail.route_points.is_empty());
+        assert_eq!(detail.laps[0].distance_meters, Some(5.73));
+        assert_eq!(detail.laps[0].duration_seconds, Some(14));
     }
 }

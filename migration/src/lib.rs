@@ -7,6 +7,7 @@ mod m20260507_000005_create_user_preferences;
 mod m20260507_000006_add_training_profile_fields;
 mod m20260507_000007_add_analytics_cache_tables;
 mod m20260507_000008_add_analytics_freshness_state;
+mod m20260508_000009_create_activity_archive_import_jobs;
 
 pub struct Migrator;
 
@@ -36,6 +37,9 @@ impl MigratorTrait for Migrator {
         ));
         locals.push(Box::new(
             m20260507_000008_add_analytics_freshness_state::Migration,
+        ));
+        locals.push(Box::new(
+            m20260508_000009_create_activity_archive_import_jobs::Migration,
         ));
         locals.sort_by_key(|m| m.name().to_string());
 

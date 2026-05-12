@@ -15,4 +15,4 @@ path = "src/main.rs"
 tokio = { workspace = true }
 sea-orm-migration = { workspace = true }
 async-trait = "0.1"
-kaleido_migrations = { path = "../../kaleido/rust/kaleido_migrations" }
+kaleido_migrations = { git = "https://github.com/ericbutera/kaleido", branch = "main" }

@@ -163,6 +163,25 @@ export type AdminAnalyticsBackfillResponse = {
   segment_chunk_size: number;
 };
 
+export type ActivityArchiveImportJob = {
+  id: number;
+  archive_url: string;
+  resolved_url?: string | null;
+  status: string;
+  failure_message?: string | null;
+  total_entries: number;
+  supported_entry_count: number;
+  imported_count: number;
+  duplicate_count: number;
+  skipped_unsupported_count: number;
+  failed_count: number;
+  error_samples: string[];
+  created_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  updated_at: string;
+};
+
 export type ActivityImport = {
   id: number;
   activity_id?: number | null;
@@ -194,6 +213,28 @@ export function useAdminBackfillAnalytics() {
       const result = await mutation.mutateAsync({});
 
       return result as AdminAnalyticsBackfillResponse;
+    },
+  };
+}
+
+export function useImportActivityArchiveUrl() {
+  const queryClient = useQueryClient();
+  const mutation = $api.useMutation("post", "/activity-imports/archive-url");
+
+  return {
+    ...mutation,
+    importAsync: async (archiveUrl: string) => {
+      const result = await mutation.mutateAsync({
+        body: {
+          archive_url: archiveUrl,
+        },
+      });
+
+      await queryClient.invalidateQueries({
+        queryKey: ["get", "/activity-imports/archive-jobs"],
+      });
+
+      return result as ActivityArchiveImportJob;
     },
   };
 }
@@ -347,14 +388,37 @@ export function useUploadSegment() {
   };
 }
 
-export function useActivityImports(opts?: { enabled?: boolean }) {
+export function useActivityImports(opts?: {
+  enabled?: boolean;
+  refetchIntervalMs?: number | false;
+}) {
   const response = $api.useQuery("get", "/activity-imports", {
-    options: { enabled: opts?.enabled ?? true },
+    options: {
+      enabled: opts?.enabled ?? true,
+      refetchInterval: opts?.refetchIntervalMs ?? false,
+    },
   });
 
   return {
     ...response,
     data: (response.data ?? []) as ActivityImport[],
+  };
+}
+
+export function useActivityArchiveImportJobs(opts?: {
+  enabled?: boolean;
+  refetchIntervalMs?: number | false;
+}) {
+  const response = $api.useQuery("get", "/activity-imports/archive-jobs", {
+    options: {
+      enabled: opts?.enabled ?? true,
+      refetchInterval: opts?.refetchIntervalMs ?? false,
+    },
+  });
+
+  return {
+    ...response,
+    data: (response.data ?? []) as ActivityArchiveImportJob[],
   };
 }
 

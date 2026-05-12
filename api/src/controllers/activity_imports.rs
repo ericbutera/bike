@@ -1,29 +1,25 @@
-use crate::activity_details::{derive_activity_detail_data, serialize_derived_activity_data};
-use crate::activity_lifecycle::refresh_activity_derived_state;
+use crate::activity_import_pipeline::{
+    finalize_activity_import_batch, persist_activity_upload, validate_activity_format,
+    ActivityUploadPayload, PersistActivityUploadOutcome,
+};
+use crate::archive_import::{
+    decode_error_samples, enqueue_activity_archive_import_job, normalize_archive_url,
+};
 use crate::activity_location::location_from_derived_json;
-use crate::activity_summary::summarize_activity_upload;
-use crate::analytics::{mark_segment_activity_changes, mark_user_activity_change};
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::config::Config;
-use crate::entities::{activities, activity_imports};
+use crate::entities::{activities, activity_archive_import_jobs, activity_imports};
 use crate::storage::AppStorage;
-use crate::training_profile::{
-    load_training_profile, serialize_activity_heart_rate_zones, summarize_heart_rate_zones,
-};
 use axum::Json;
-use axum::extract::{Multipart, State};
+use axum::extract::{Multipart, Path, State};
 use axum::http::StatusCode;
 use chrono::{DateTime, Utc};
 use kaleido::auth::UserContext;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set,
-};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::Serialize;
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::Arc;
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ActivityImportResponse {
@@ -38,6 +34,32 @@ pub struct ActivityImportResponse {
     pub activity_started_at: Option<DateTime<Utc>>,
     pub activity_duration_seconds: Option<i32>,
     pub activity_location: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, ToSchema)]
+pub struct ArchiveUrlImportRequest {
+    pub archive_url: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ActivityArchiveImportJobResponse {
+    pub id: i32,
+    pub archive_url: String,
+    pub resolved_url: Option<String>,
+    pub status: String,
+    pub failure_message: Option<String>,
+    pub total_entries: i32,
+    pub supported_entry_count: i32,
+    pub imported_count: i32,
+    pub duplicate_count: i32,
+    pub skipped_unsupported_count: i32,
+    pub failed_count: i32,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub error_samples: Vec<String>,
+    pub created_at: DateTime<Utc>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub finished_at: Option<DateTime<Utc>>,
+    pub updated_at: DateTime<Utc>,
 }
 
 impl ActivityImportResponse {
@@ -60,11 +82,27 @@ impl ActivityImportResponse {
     }
 }
 
-struct UploadedActivityFile {
-    original_filename: String,
-    format: String,
-    mime_type: Option<String>,
-    bytes: Vec<u8>,
+impl ActivityArchiveImportJobResponse {
+    fn from_model(model: activity_archive_import_jobs::Model) -> Self {
+        Self {
+            id: model.id,
+            archive_url: model.archive_url,
+            resolved_url: model.resolved_url,
+            status: model.status,
+            failure_message: model.failure_message,
+            total_entries: model.total_entries,
+            supported_entry_count: model.supported_entry_count,
+            imported_count: model.imported_count,
+            duplicate_count: model.duplicate_count,
+            skipped_unsupported_count: model.skipped_unsupported_count,
+            failed_count: model.failed_count,
+            error_samples: decode_error_samples(model.error_samples_json.as_deref()),
+            created_at: model.created_at,
+            started_at: model.started_at,
+            finished_at: model.finished_at,
+            updated_at: model.updated_at,
+        }
+    }
 }
 
 #[utoipa::path(
@@ -124,10 +162,71 @@ pub async fn list_activity_imports(
 }
 
 #[utoipa::path(
+    get,
+    path = "/api/activity-imports/archive-jobs",
+    responses(
+        (status = 200, description = "Recent archive import jobs for the authenticated user", body = [ActivityArchiveImportJobResponse]),
+        (status = 401, description = "Not authenticated"),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    tag = "activity-imports",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn list_activity_archive_import_jobs(
+    UserContext { user, .. }: UserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+) -> Result<Json<Vec<ActivityArchiveImportJobResponse>>, AppError> {
+    let jobs = activity_archive_import_jobs::Entity::find()
+        .filter(activity_archive_import_jobs::Column::UserId.eq(user.id))
+        .order_by_desc(activity_archive_import_jobs::Column::CreatedAt)
+        .limit(10)
+        .all(&state.db)
+        .await?;
+
+    Ok(Json(
+        jobs.into_iter()
+            .map(ActivityArchiveImportJobResponse::from_model)
+            .collect(),
+    ))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/activity-imports/archive-jobs/{id}",
+    params(("id" = i32, Path, description = "Archive import job id")),
+    responses(
+        (status = 200, description = "Archive import job status", body = ActivityArchiveImportJobResponse),
+        (status = 401, description = "Not authenticated"),
+        (status = 404, description = "Archive import job not found", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    tag = "activity-imports",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn get_activity_archive_import_job(
+    UserContext { user, .. }: UserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+    Path(id): Path<i32>,
+) -> Result<Json<ActivityArchiveImportJobResponse>, AppError> {
+    let job = activity_archive_import_jobs::Entity::find_by_id(id)
+        .filter(activity_archive_import_jobs::Column::UserId.eq(user.id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found("Archive import job not found"))?;
+
+    Ok(Json(ActivityArchiveImportJobResponse::from_model(job)))
+}
+
+#[utoipa::path(
     post,
     path = "/api/activity-imports",
     request_body(content_type = "multipart/form-data"),
     responses(
+        (status = 200, description = "Activity was already imported and the existing record was returned", body = ActivityImportResponse),
         (status = 201, description = "Activity import uploaded", body = ActivityImportResponse),
         (status = 400, description = "Invalid upload", body = ApiErrorResponse),
         (status = 401, description = "Not authenticated"),
@@ -145,113 +244,89 @@ pub async fn upload_activity_import(
     multipart: Multipart,
 ) -> Result<(StatusCode, Json<ActivityImportResponse>), AppError> {
     let upload = read_uploaded_activity_file(multipart).await?;
-    let activity_draft =
-        summarize_activity_upload(&upload.original_filename, &upload.format, &upload.bytes)?;
-    let derived_data =
-        derive_activity_detail_data(&upload.original_filename, &upload.format, &upload.bytes)?;
-    let training_profile = load_training_profile(&state.db, user.id).await?;
-    let heart_rate_zones = summarize_heart_rate_zones(
-        &derived_data.route_points,
-        &derived_data.chart_points,
-        activity_draft
-            .moving_time_seconds
-            .or(activity_draft.total_time_seconds),
-        activity_draft.average_heart_rate_bpm,
-        training_profile.heart_rate_zone_bounds_bpm.as_deref(),
-    );
-    let heart_rate_zones_json = serialize_activity_heart_rate_zones(&heart_rate_zones)?;
-    let derived_data_json = serialize_derived_activity_data(&derived_data)?;
-    let relative_path = format!(
-        "activity-imports/{}/{}.{}",
-        user.pid,
-        Uuid::new_v4(),
-        upload.format
-    );
-    let full_path = Path::new(&state.uploads_dir).join(&relative_path);
-
-    if let Some(parent) = full_path.parent() {
-        tokio::fs::create_dir_all(parent).await?;
-    }
-
-    tokio::fs::write(&full_path, &upload.bytes).await?;
-
-    let original_filename = upload.original_filename.clone();
-    let format = upload.format.clone();
-    let mime_type = upload.mime_type.clone();
-    let size_bytes = upload.bytes.len() as i64;
-
-    let model = activity_imports::ActiveModel {
-        user_id: Set(user.id),
-        source: Set("manual_upload".to_string()),
-        format: Set(format.clone()),
-        status: Set("uploaded".to_string()),
-        original_filename: Set(original_filename.clone()),
-        storage_path: Set(relative_path),
-        size_bytes: Set(size_bytes),
-        mime_type: Set(mime_type.clone()),
-        ..Default::default()
-    }
-    .insert(&state.db)
-    .await?;
-
-    let activity_model = activities::ActiveModel {
-        user_id: Set(user.id),
-        activity_import_id: Set(Some(model.id)),
-        title: Set(activity_draft.title),
-        sport: Set(activity_draft.sport),
-        source: Set("manual_upload".to_string()),
-        original_filename: Set(Some(original_filename)),
-        format: Set(Some(format)),
-        started_at: Set(activity_draft.started_at),
-        ended_at: Set(activity_draft.ended_at),
-        distance_meters: Set(activity_draft.distance_meters),
-        moving_time_seconds: Set(activity_draft.moving_time_seconds),
-        total_time_seconds: Set(activity_draft.total_time_seconds),
-        elevation_gain_meters: Set(activity_draft.elevation_gain_meters),
-        elevation_loss_meters: Set(activity_draft.elevation_loss_meters),
-        average_speed_mps: Set(activity_draft.average_speed_mps),
-        max_speed_mps: Set(activity_draft.max_speed_mps),
-        average_heart_rate_bpm: Set(activity_draft.average_heart_rate_bpm),
-        max_heart_rate_bpm: Set(activity_draft.max_heart_rate_bpm),
-        average_cadence_rpm: Set(activity_draft.average_cadence_rpm),
-        max_cadence_rpm: Set(activity_draft.max_cadence_rpm),
-        calories: Set(activity_draft.calories),
-        estimated_ftp_watts: Set(training_profile.estimated_ftp_watts),
-        heart_rate_zones_json: Set(heart_rate_zones_json),
-        derived_data_json: Set(Some(derived_data_json)),
-        ..Default::default()
-    }
-    .insert(&state.db)
-    .await?;
-
-    let affected_segment_ids = refresh_activity_derived_state(
+    let upload_for_duplicate = upload.clone();
+    let user_storage_key = user.pid.to_string();
+    let outcome = persist_activity_upload(
         &state.db,
+        &state.uploads_dir,
+        &user_storage_key,
         user.id,
-        activity_model.id,
-        &derived_data.route_points,
+        upload,
+        "manual_upload",
+        None,
     )
     .await?;
-    let changed_at = Utc::now();
-    mark_user_activity_change(&state.db, user.id, changed_at).await?;
-    mark_segment_activity_changes(&state.db, &affected_segment_ids, changed_at).await?;
-    state.tasks.rebuild_fitness_freshness(user.id).await;
-    state
-        .tasks
-        .rebuild_segment_analytics(affected_segment_ids)
-        .await;
+
+    match outcome {
+        PersistActivityUploadOutcome::Imported(persisted) => {
+            finalize_activity_import_batch(
+                &state.db,
+                &state.tasks,
+                user.id,
+                persisted.affected_segment_ids.clone(),
+                Utc::now(),
+            )
+            .await?;
+
+            Ok((
+                StatusCode::CREATED,
+                Json(ActivityImportResponse::from_model(
+                    persisted.import,
+                    Some(&persisted.activity),
+                )),
+            ))
+        }
+        PersistActivityUploadOutcome::Duplicate(duplicate) => Ok((
+            StatusCode::OK,
+            Json(build_duplicate_activity_import_response(
+                &upload_for_duplicate,
+                "manual_upload",
+                duplicate,
+            )),
+        )),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/activity-imports/archive-url",
+    request_body = ArchiveUrlImportRequest,
+    responses(
+        (status = 202, description = "Archive import job queued", body = ActivityArchiveImportJobResponse),
+        (status = 400, description = "Invalid archive URL", body = ApiErrorResponse),
+        (status = 401, description = "Not authenticated"),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    tag = "activity-imports",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn import_activity_archive_from_url(
+    UserContext { user, .. }: UserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+    Json(request): Json<ArchiveUrlImportRequest>,
+) -> Result<(StatusCode, Json<ActivityArchiveImportJobResponse>), AppError> {
+    let archive_url = normalize_archive_url(&request.archive_url)?;
+    let user_storage_key = user.pid.to_string();
+    let job = enqueue_activity_archive_import_job(
+        &state.db,
+        &state.tasks,
+        user.id,
+        &user_storage_key,
+        archive_url,
+    )
+    .await?;
 
     Ok((
-        StatusCode::CREATED,
-        Json(ActivityImportResponse::from_model(
-            model,
-            Some(&activity_model),
-        )),
+        StatusCode::ACCEPTED,
+        Json(ActivityArchiveImportJobResponse::from_model(job)),
     ))
 }
 
 async fn read_uploaded_activity_file(
     mut multipart: Multipart,
-) -> Result<UploadedActivityFile, AppError> {
+) -> Result<ActivityUploadPayload, AppError> {
     let max_upload_bytes = Config::get().max_upload_bytes;
 
     while let Some(mut field) = multipart.next_field().await.map_err(|err| {
@@ -297,7 +372,7 @@ async fn read_uploaded_activity_file(
             return Err(AppError::validation_field("file", "Uploaded file is empty"));
         }
 
-        return Ok(UploadedActivityFile {
+        return Ok(ActivityUploadPayload {
             original_filename,
             format,
             mime_type,
@@ -335,30 +410,33 @@ fn map_multipart_error(
     AppError::bad_request(format!("{default_message}: {error_text}"))
 }
 
-fn validate_activity_format(filename: &str) -> Result<String, AppError> {
-    let extension = Path::new(filename)
-        .extension()
-        .and_then(|value| value.to_str())
-        .map(|value| value.to_ascii_lowercase())
-        .ok_or_else(|| {
-            AppError::validation_field(
-                "file",
-                "Uploaded file must include a .fit, .tcx, or .gpx extension",
-            )
-        })?;
-
-    match extension.as_str() {
-        "fit" | "tcx" | "gpx" => Ok(extension),
-        _ => Err(AppError::validation_field(
-            "file",
-            "Only .fit, .tcx, and .gpx uploads are supported",
-        )),
-    }
+fn build_duplicate_activity_import_response(
+    upload: &ActivityUploadPayload,
+    source: &str,
+    duplicate: crate::activity_import_pipeline::DeduplicatedActivityImport,
+) -> ActivityImportResponse {
+    let import_model = duplicate.existing_import.unwrap_or(activity_imports::Model {
+        id: 0,
+        user_id: duplicate.activity.user_id,
+        source: source.to_string(),
+        format: upload.format.clone(),
+        status: "duplicate".to_string(),
+        original_filename: upload.original_filename.clone(),
+        storage_path: String::new(),
+        size_bytes: upload.bytes.len() as i64,
+        mime_type: upload.mime_type.clone(),
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    });
+    let mut response = ActivityImportResponse::from_model(import_model, Some(&duplicate.activity));
+    response.status = "duplicate".to_string();
+    response
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::activity_details::serialize_derived_activity_data;
 
     #[test]
     fn validate_activity_format_accepts_supported_extensions() {
@@ -429,6 +507,42 @@ mod tests {
             "Malformed multipart payload: missing boundary"
         );
         assert!(error.errors.is_none());
+    }
+
+    #[test]
+    fn activity_archive_import_job_response_maps_error_samples() {
+        let now = Utc::now();
+        let response = ActivityArchiveImportJobResponse::from_model(
+            activity_archive_import_jobs::Model {
+                id: 5,
+                user_id: 12,
+                user_storage_key: "user-12".to_string(),
+                archive_url: "https://example.com/export.zip".to_string(),
+                resolved_url: Some("https://cdn.example.com/export.zip".to_string()),
+                status: "succeeded".to_string(),
+                failure_message: None,
+                error_samples_json: Some(
+                    serde_json::to_string(&vec!["bad.fit: parse failed".to_string()])
+                        .expect("serialize error samples"),
+                ),
+                total_entries: 10,
+                supported_entry_count: 8,
+                imported_count: 7,
+                duplicate_count: 1,
+                skipped_unsupported_count: 2,
+                failed_count: 0,
+                created_at: now,
+                started_at: Some(now),
+                finished_at: Some(now),
+                updated_at: now,
+            },
+        );
+
+        assert_eq!(response.id, 5);
+        assert_eq!(response.archive_url, "https://example.com/export.zip");
+        assert_eq!(response.status, "succeeded");
+        assert_eq!(response.imported_count, 7);
+        assert_eq!(response.error_samples, vec!["bad.fit: parse failed"]);
     }
 
     #[test]
