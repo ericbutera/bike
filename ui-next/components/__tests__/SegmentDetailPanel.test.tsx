@@ -300,6 +300,37 @@ describe("SegmentDetailPanel", () => {
     );
   });
 
+  it("keeps compared efforts selected across time filters until removed", async () => {
+    const user = userEvent.setup();
+
+    render(<SegmentDetailPanel segmentId={14} />);
+
+    expect(screen.getAllByText("2 selected")).toHaveLength(2);
+
+    await user.click(screen.getByRole("button", { name: "Day" }));
+
+    expect(screen.getByText("1 of 2 efforts")).toBeInTheDocument();
+    expect(screen.getAllByText("2 selected")).toHaveLength(2);
+    expect(
+      screen.getByRole("button", {
+        name: "Remove Lunch Ride from comparison",
+      }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Remove Lunch Ride from comparison",
+      }),
+    );
+
+    expect(screen.getAllByText("1 selected")).toHaveLength(2);
+    expect(
+      screen.queryByRole("button", {
+        name: "Remove Lunch Ride from comparison",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows the efforts list in a scrollable 10-row viewport", () => {
     const segment = makeSegment();
 

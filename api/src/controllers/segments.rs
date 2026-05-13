@@ -99,9 +99,8 @@ pub async fn list_segments(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<Vec<SegmentResponse>>, AppError> {
-    let segment_models = segments::Entity::find()
+    let mut segment_models = segments::Entity::find()
         .filter(segments::Column::UserId.eq(user.id))
-        .order_by_desc(segments::Column::CreatedAt)
         .all(&state.db)
         .await?;
 
@@ -109,6 +108,12 @@ pub async fn list_segments(
         .iter()
         .map(|segment| segment.id)
         .collect::<Vec<_>>();
+    let latest_effort_started_at_by_segment =
+        load_latest_effort_started_at_by_segment(&state.db, &segment_ids).await?;
+    sort_segments_by_latest_effort_started_at(
+        &mut segment_models,
+        &latest_effort_started_at_by_segment,
+    );
     let summary_by_segment_id = load_segment_summaries(&state.db, &segment_ids).await?;
     let user_summary_by_segment_id =
         load_segment_user_summaries(&state.db, user.id, &segment_ids).await?;
@@ -448,6 +453,69 @@ async fn find_duplicate_segment(
     Ok(None)
 }
 
+fn sort_segments_by_latest_effort_started_at(
+    segment_models: &mut [segments::Model],
+    latest_effort_started_at_by_segment: &HashMap<i32, DateTime<Utc>>,
+) {
+    segment_models.sort_by(|left, right| {
+        let left_latest = latest_effort_started_at_by_segment.get(&left.id);
+        let right_latest = latest_effort_started_at_by_segment.get(&right.id);
+
+        right_latest
+            .cmp(&left_latest)
+            .then_with(|| right.created_at.cmp(&left.created_at))
+            .then_with(|| right.id.cmp(&left.id))
+    });
+}
+
+async fn load_latest_effort_started_at_by_segment(
+    db: &sea_orm::DatabaseConnection,
+    segment_ids: &[i32],
+) -> Result<HashMap<i32, DateTime<Utc>>, AppError> {
+    if segment_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let efforts = segment_efforts::Entity::find()
+        .filter(segment_efforts::Column::SegmentId.is_in(segment_ids.iter().copied()))
+        .all(db)
+        .await?;
+    let activity_ids = efforts
+        .iter()
+        .map(|effort| effort.activity_id)
+        .collect::<Vec<_>>();
+
+    if activity_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let started_at_by_activity_id = activities::Entity::find()
+        .filter(activities::Column::Id.is_in(activity_ids.iter().copied()))
+        .all(db)
+        .await?
+        .into_iter()
+        .map(|activity| (activity.id, activity.started_at))
+        .collect::<HashMap<_, _>>();
+    let mut latest_effort_started_at_by_segment = HashMap::<i32, DateTime<Utc>>::new();
+
+    for effort in efforts {
+        let Some(started_at) = started_at_by_activity_id.get(&effort.activity_id).copied() else {
+            continue;
+        };
+
+        latest_effort_started_at_by_segment
+            .entry(effort.segment_id)
+            .and_modify(|current| {
+                if started_at > *current {
+                    *current = started_at;
+                }
+            })
+            .or_insert(started_at);
+    }
+
+    Ok(latest_effort_started_at_by_segment)
+}
+
 async fn load_efforts_by_segment(
     db: &sea_orm::DatabaseConnection,
     segment_ids: &[i32],
@@ -582,6 +650,23 @@ async fn load_effort_responses(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Duration;
+
+    fn build_segment_model(id: i32, created_at: DateTime<Utc>) -> segments::Model {
+        segments::Model {
+            id,
+            user_id: 1,
+            title: format!("Segment {id}"),
+            source: "manual_segment_import".to_string(),
+            original_filename: None,
+            format: Some("gpx".to_string()),
+            distance_meters: Some(1800.0),
+            route_data_json: None,
+            last_activity_change_at: created_at,
+            created_at,
+            updated_at: created_at,
+        }
+    }
 
     #[test]
     fn validate_segment_format_accepts_route_files() {
@@ -659,5 +744,34 @@ mod tests {
 
         assert_eq!(current_user_pr_duration_from_models(&efforts, 7), Some(305));
         assert_eq!(current_user_pr_duration_from_models(&efforts, 11), None);
+    }
+
+    #[test]
+    fn sorts_segments_by_latest_effort_started_at_then_created_at() {
+        let base_time = Utc::now();
+        let mut segment_models = vec![
+            build_segment_model(1, base_time + Duration::minutes(1)),
+            build_segment_model(2, base_time + Duration::minutes(2)),
+            build_segment_model(3, base_time + Duration::minutes(3)),
+            build_segment_model(4, base_time + Duration::minutes(4)),
+        ];
+        let latest_effort_started_at_by_segment = HashMap::from([
+            (1, base_time + Duration::days(1)),
+            (2, base_time + Duration::days(2)),
+            (3, base_time + Duration::days(2)),
+        ]);
+
+        sort_segments_by_latest_effort_started_at(
+            &mut segment_models,
+            &latest_effort_started_at_by_segment,
+        );
+
+        assert_eq!(
+            segment_models
+                .into_iter()
+                .map(|segment| segment.id)
+                .collect::<Vec<_>>(),
+            vec![3, 2, 1, 4]
+        );
     }
 }

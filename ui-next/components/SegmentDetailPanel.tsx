@@ -12,7 +12,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Area,
   CartesianGrid,
@@ -1065,6 +1065,7 @@ export default function SegmentDetailPanel({
   const { unitSystem } = useUnitPreferences();
   const segmentQuery = useSegment(user ? segmentId : null);
   const [selectedEffortIds, setSelectedEffortIds] = useState<number[]>([]);
+  const initializedSelectionSegmentIdRef = useRef<number | null>(null);
   const [playbackSeconds, setPlaybackSeconds] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [metric, setMetric] = useState<ChartMetric>("speed");
@@ -1097,9 +1098,13 @@ export default function SegmentDetailPanel({
             new Set(allEfforts.map((effort) => effort.rider_name)).size === 1
           ? fastestEffort(allEfforts)
           : null;
-  const selectedEfforts = visibleEfforts.filter((effort) =>
-    selectedEffortIds.includes(effort.id),
-  );
+  const selectedEfforts = useMemo(() => {
+    const effortById = new Map(allEfforts.map((effort) => [effort.id, effort]));
+
+    return selectedEffortIds
+      .map((id) => effortById.get(id))
+      .filter((effort): effort is SegmentEffort => Boolean(effort));
+  }, [allEfforts, selectedEffortIds]);
   const focusedEffortId = hoveredEffortId ?? pinnedEffortId;
   const maxDuration = selectedEfforts.reduce(
     (max, effort) => Math.max(max, effort.duration_seconds),
@@ -1107,30 +1112,35 @@ export default function SegmentDetailPanel({
   );
 
   useEffect(() => {
-    const efforts = filterEffortsByTimeWindow(
-      segment?.efforts,
-      effortTimeFilter,
-    );
-    if (efforts.length === 0) {
+    if (!segment || allEfforts.length === 0) {
+      initializedSelectionSegmentIdRef.current = null;
       setSelectedEffortIds([]);
       setPlaybackSeconds(0);
       setIsPlaying(false);
       return;
     }
 
+    const shouldSeedSelection =
+      initializedSelectionSegmentIdRef.current !== segment.id;
+    initializedSelectionSegmentIdRef.current = segment.id;
+
     setSelectedEffortIds((current) => {
       const valid = current.filter((id) =>
-        efforts.some((effort) => effort.id === id),
+        allEfforts.some((effort) => effort.id === id),
       );
       if (valid.length > 0) {
         return valid.slice(0, MAX_SELECTED_EFFORTS);
       }
 
-      return efforts
-        .slice(0, Math.min(3, efforts.length))
+      if (!shouldSeedSelection) {
+        return [];
+      }
+
+      return allEfforts
+        .slice(0, Math.min(3, allEfforts.length))
         .map((effort) => effort.id);
     });
-  }, [segment?.id, segment?.efforts, effortTimeFilter]);
+  }, [allEfforts, segment?.id]);
 
   useEffect(() => {
     if (
@@ -1150,6 +1160,23 @@ export default function SegmentDetailPanel({
 
   function togglePinnedEffort(effortId: number) {
     setPinnedEffortId((current) => (current === effortId ? null : effortId));
+  }
+
+  function addEffortToComparison(effortId: number) {
+    setSelectedEffortIds((current) => {
+      if (
+        current.includes(effortId) ||
+        current.length >= MAX_SELECTED_EFFORTS
+      ) {
+        return current;
+      }
+
+      return [...current, effortId];
+    });
+  }
+
+  function removeEffortFromComparison(effortId: number) {
+    setSelectedEffortIds((current) => current.filter((id) => id !== effortId));
   }
 
   useEffect(() => {
@@ -1314,6 +1341,70 @@ export default function SegmentDetailPanel({
             detail.
           </p>
 
+          <div className="mt-4 space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-base-content/55">
+                  On the map
+                </div>
+                <div className="text-xs text-base-content/60">
+                  Compared efforts stay selected until you remove them here.
+                </div>
+              </div>
+              <span className="badge badge-outline">
+                {selectedEfforts.length} selected
+              </span>
+            </div>
+
+            {selectedEfforts.length > 0 ? (
+              <div className="space-y-2">
+                {selectedEfforts.map((effort, index) => (
+                  <div
+                    key={effort.id}
+                    className="flex items-center justify-between gap-3 rounded-box border border-base-300 bg-base-200 px-3 py-2"
+                  >
+                    <div className="min-w-0 flex items-center gap-3">
+                      <span
+                        aria-hidden
+                        className="inline-block h-2.5 w-2.5 rounded-full"
+                        style={{
+                          backgroundColor:
+                            EFFORT_COLORS[index % EFFORT_COLORS.length],
+                        }}
+                      />
+                      <div className="min-w-0">
+                        <div className="truncate font-medium text-base-content">
+                          {effort.rider_name} ·{" "}
+                          {formatDuration(effort.duration_seconds)}
+                        </div>
+                        <div className="truncate text-xs text-base-content/65">
+                          {effort.activity_title} ·{" "}
+                          {formatActivityTimestamp(effort.activity_started_at)}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-xs btn-circle shrink-0"
+                      aria-label={`Remove ${effort.activity_title} from comparison`}
+                      onClick={() => {
+                        removeEffortFromComparison(effort.id);
+                      }}
+                    >
+                      X
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="alert bg-base-200 text-sm text-base-content/70">
+                <span>
+                  Add efforts from the table below to compare them on the map.
+                </span>
+              </div>
+            )}
+          </div>
+
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-box bg-base-100 p-3">
             <div className="text-sm text-base-content/70">
               {visibleEfforts.length} of {(segment.efforts ?? []).length}{" "}
@@ -1351,9 +1442,7 @@ export default function SegmentDetailPanel({
                   <thead>
                     <tr>
                       <th className="w-14">Place</th>
-                      <th className="w-12">
-                        <span className="sr-only">Select</span>
-                      </th>
+                      <th className="w-20">Map</th>
                       <th>Time</th>
                       <th>Rider</th>
                       <th>Date</th>
@@ -1386,31 +1475,29 @@ export default function SegmentDetailPanel({
                             {overallRank ?? "--"}
                           </td>
                           <td>
-                            <input
-                              type="checkbox"
-                              className="checkbox checkbox-sm"
-                              checked={checked}
-                              aria-label={`Select ${effort.activity_title}`}
-                              onChange={(event) => {
-                                const isChecked = event.target.checked;
-                                setSelectedEffortIds((current) => {
-                                  if (isChecked) {
-                                    if (current.includes(effort.id)) {
-                                      return current;
-                                    }
-
-                                    return [...current, effort.id].slice(
-                                      0,
-                                      MAX_SELECTED_EFFORTS,
-                                    );
-                                  }
-
-                                  return current.filter(
-                                    (id) => id !== effort.id,
-                                  );
-                                });
-                              }}
-                            />
+                            {checked ? (
+                              <span className="badge badge-neutral badge-outline">
+                                On map
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-xs"
+                                disabled={
+                                  selectedEffortIds.length >=
+                                  MAX_SELECTED_EFFORTS
+                                }
+                                aria-label={`Add ${effort.activity_title} to comparison`}
+                                onClick={() => {
+                                  addEffortToComparison(effort.id);
+                                }}
+                              >
+                                {selectedEffortIds.length >=
+                                MAX_SELECTED_EFFORTS
+                                  ? "Full"
+                                  : "Add"}
+                              </button>
+                            )}
                           </td>
                           <td className="font-semibold text-base-content">
                             <div className="flex flex-wrap items-center gap-2">
