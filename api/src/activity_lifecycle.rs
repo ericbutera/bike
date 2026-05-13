@@ -10,7 +10,7 @@ use crate::activity_import_pipeline::{
 use crate::analytics::rebuild_segment_analytics_cache;
 use crate::analytics::{mark_segment_activity_changes, mark_user_activity_change};
 use crate::app_error::AppError;
-use crate::dedupe::{activity_dedupe_key_from_model, activity_models_match_for_dedupe};
+use crate::dedupe::{activity_duplicate_candidate_key, activity_models_match_for_dedupe};
 use crate::entities::{activities, activity_imports, segment_efforts};
 use crate::segment_support::{
     clear_segment_efforts_for_activity, replace_segment_efforts_for_activity,
@@ -212,7 +212,7 @@ fn plan_duplicate_activity_cleanup(
         )
         .route_points
         .len();
-        let key = activity_dedupe_key_from_model(&activity);
+        let key = activity_duplicate_candidate_key(activity.started_at, &activity.sport);
 
         activities_by_key
             .entry(key)
@@ -611,5 +611,48 @@ mod tests {
         assert_eq!(plan.duplicate_group_count, 0);
         assert!(plan.retained_activity_ids.is_empty());
         assert!(plan.duplicate_activity_ids.is_empty());
+    }
+
+    #[test]
+    fn plans_duplicate_cleanup_for_trimmed_tcx_variant() {
+        let created_at = Utc::now();
+        let full_route = vec![
+            make_route_point(0, 44.7539, -85.6290),
+            make_route_point(1800, 44.7600, -85.6000),
+            make_route_point(3600, 44.7420, -85.5109),
+        ];
+        let trimmed_route = vec![
+            make_route_point(295, 44.7552, -85.6176),
+            make_route_point(1800, 44.7600, -85.6000),
+            make_route_point(3300, 44.7414, -85.5091),
+        ];
+
+        let mut fit_activity = make_activity(
+            1039,
+            created_at + Duration::minutes(5),
+            Some("fit"),
+            Some("22742351729_ACTIVITY.fit"),
+            full_route,
+        );
+        fit_activity.distance_meters = Some(28_396.91);
+        fit_activity.moving_time_seconds = Some(11_107);
+        fit_activity.total_time_seconds = Some(12_923);
+
+        let mut tcx_activity = make_activity(
+            1129,
+            created_at,
+            Some("tcx"),
+            Some("MSB_cleanup_18351119858.tcx"),
+            trimmed_route,
+        );
+        tcx_activity.distance_meters = Some(28_396.90);
+        tcx_activity.moving_time_seconds = Some(12_925);
+        tcx_activity.total_time_seconds = Some(12_925);
+
+        let plan = plan_duplicate_activity_cleanup(vec![fit_activity, tcx_activity]);
+
+        assert_eq!(plan.duplicate_group_count, 1);
+        assert_eq!(plan.retained_activity_ids, vec![1039]);
+        assert_eq!(plan.duplicate_activity_ids, vec![1129]);
     }
 }

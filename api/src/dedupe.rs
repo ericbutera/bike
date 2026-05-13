@@ -7,6 +7,9 @@ use chrono::{DateTime, SecondsFormat, Utc};
 const ACTIVITY_DISTANCE_BUCKET_METERS: f64 = 25.0;
 const SEGMENT_DISTANCE_BUCKET_METERS: f64 = 5.0;
 const DURATION_BUCKET_SECONDS: i32 = 5;
+const ACTIVITY_DISTANCE_MATCH_TOLERANCE_METERS: f64 = 250.0;
+const ACTIVITY_DURATION_MATCH_TOLERANCE_SECONDS: i32 = 300;
+const ACTIVITY_START_LOCATION_MATCH_TOLERANCE_METERS: f64 = 2_500.0;
 const COORDINATE_DECIMALS: usize = 4;
 const MAX_ROUTE_SAMPLE_POINTS: usize = 16;
 const ACTIVITY_ROUTE_EDGE_FRACTION: f64 = 0.20;
@@ -36,25 +39,71 @@ pub fn activity_dedupe_key_from_model(activity: &activities::Model) -> String {
     )
 }
 
+pub fn activity_duplicate_candidate_key(started_at: DateTime<Utc>, sport: &str) -> String {
+    format!(
+        "start:{}|sport:{}",
+        started_at.to_rfc3339_opts(SecondsFormat::Secs, true),
+        normalize_sport_token(sport),
+    )
+}
+
 pub fn activity_dedupe_matches_model(
     activity: &activities::Model,
     draft: &ActivityDraft,
     route_points: &[ActivityRoutePoint],
 ) -> bool {
-    if activity_dedupe_key_from_model(activity) != activity_dedupe_key(draft, route_points) {
+    if !activity_started_at_and_sport_match(
+        activity.started_at,
+        &activity.sport,
+        draft.started_at,
+        &draft.sport,
+    ) {
+        return false;
+    }
+
+    if !activity_metrics_match(
+        activity.total_time_seconds,
+        activity.moving_time_seconds,
+        activity.distance_meters,
+        draft.total_time_seconds,
+        draft.moving_time_seconds,
+        draft.distance_meters,
+    ) {
         return false;
     }
 
     let existing_route_points =
         deserialize_derived_activity_data(activity.derived_data_json.as_ref()).route_points;
     activity_routes_match(&existing_route_points, route_points)
+        || activity_location_and_distance_match(
+            &existing_route_points,
+            route_points,
+            activity.distance_meters,
+            draft.distance_meters,
+        )
 }
 
 pub fn activity_models_match_for_dedupe(
     left: &activities::Model,
     right: &activities::Model,
 ) -> bool {
-    if activity_dedupe_key_from_model(left) != activity_dedupe_key_from_model(right) {
+    if !activity_started_at_and_sport_match(
+        left.started_at,
+        &left.sport,
+        right.started_at,
+        &right.sport,
+    ) {
+        return false;
+    }
+
+    if !activity_metrics_match(
+        left.total_time_seconds,
+        left.moving_time_seconds,
+        left.distance_meters,
+        right.total_time_seconds,
+        right.moving_time_seconds,
+        right.distance_meters,
+    ) {
         return false;
     }
 
@@ -63,6 +112,12 @@ pub fn activity_models_match_for_dedupe(
     let right_route_points =
         deserialize_derived_activity_data(right.derived_data_json.as_ref()).route_points;
     activity_routes_match(&left_route_points, &right_route_points)
+        || activity_location_and_distance_match(
+            &left_route_points,
+            &right_route_points,
+            left.distance_meters,
+            right.distance_meters,
+        )
 }
 
 fn dedupe_duration_seconds(
@@ -70,6 +125,75 @@ fn dedupe_duration_seconds(
     moving_time_seconds: Option<i32>,
 ) -> Option<i32> {
     total_time_seconds.or(moving_time_seconds)
+}
+
+fn activity_started_at_and_sport_match(
+    left_started_at: DateTime<Utc>,
+    left_sport: &str,
+    right_started_at: DateTime<Utc>,
+    right_sport: &str,
+) -> bool {
+    left_started_at == right_started_at
+        && normalize_sport_token(left_sport) == normalize_sport_token(right_sport)
+}
+
+fn activity_metrics_match(
+    left_total_time_seconds: Option<i32>,
+    left_moving_time_seconds: Option<i32>,
+    left_distance_meters: Option<f64>,
+    right_total_time_seconds: Option<i32>,
+    right_moving_time_seconds: Option<i32>,
+    right_distance_meters: Option<f64>,
+) -> bool {
+    duration_difference_seconds(
+        left_total_time_seconds,
+        left_moving_time_seconds,
+        right_total_time_seconds,
+        right_moving_time_seconds,
+    )
+    .is_none_or(|difference| difference <= ACTIVITY_DURATION_MATCH_TOLERANCE_SECONDS)
+        && distance_difference_meters(left_distance_meters, right_distance_meters)
+            .is_none_or(|difference| difference <= ACTIVITY_DISTANCE_MATCH_TOLERANCE_METERS)
+}
+
+fn duration_difference_seconds(
+    left_total_time_seconds: Option<i32>,
+    left_moving_time_seconds: Option<i32>,
+    right_total_time_seconds: Option<i32>,
+    right_moving_time_seconds: Option<i32>,
+) -> Option<i32> {
+    let mut differences = [
+        option_difference_i32(left_total_time_seconds, right_total_time_seconds),
+        option_difference_i32(left_total_time_seconds, right_moving_time_seconds),
+        option_difference_i32(left_moving_time_seconds, right_total_time_seconds),
+        option_difference_i32(left_moving_time_seconds, right_moving_time_seconds),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
+
+    differences.sort_unstable();
+    differences.into_iter().next()
+}
+
+fn distance_difference_meters(
+    left_distance_meters: Option<f64>,
+    right_distance_meters: Option<f64>,
+) -> Option<f64> {
+    match (
+        left_distance_meters.filter(|value| value.is_finite()),
+        right_distance_meters.filter(|value| value.is_finite()),
+    ) {
+        (Some(left_distance), Some(right_distance)) => Some((left_distance - right_distance).abs()),
+        _ => None,
+    }
+}
+
+fn option_difference_i32(left: Option<i32>, right: Option<i32>) -> Option<i32> {
+    match (left, right) {
+        (Some(left_value), Some(right_value)) => Some((left_value - right_value).abs()),
+        _ => None,
+    }
 }
 
 pub fn segment_dedupe_key(
@@ -139,6 +263,61 @@ fn activity_routes_match(left: &[ActivityRoutePoint], right: &[ActivityRoutePoin
 
     matching_samples * ACTIVITY_ROUTE_MATCH_MIN_RATIO_DENOMINATOR
         >= sample_count * ACTIVITY_ROUTE_MATCH_MIN_RATIO_NUMERATOR
+        || sampled_routes_overlap(&left_samples, &right_samples)
+}
+
+fn activity_location_and_distance_match(
+    left_route_points: &[ActivityRoutePoint],
+    right_route_points: &[ActivityRoutePoint],
+    left_distance_meters: Option<f64>,
+    right_distance_meters: Option<f64>,
+) -> bool {
+    let Some(left_start) = left_route_points.first() else {
+        return false;
+    };
+    let Some(right_start) = right_route_points.first() else {
+        return false;
+    };
+
+    haversine_distance_meters(
+        left_start.latitude,
+        left_start.longitude,
+        right_start.latitude,
+        right_start.longitude,
+    ) <= ACTIVITY_START_LOCATION_MATCH_TOLERANCE_METERS
+        && distance_difference_meters(left_distance_meters, right_distance_meters)
+            .is_none_or(|difference| difference <= ACTIVITY_DISTANCE_MATCH_TOLERANCE_METERS)
+}
+
+fn sampled_routes_overlap(left_samples: &[(f64, f64)], right_samples: &[(f64, f64)]) -> bool {
+    let (smaller_samples, larger_samples) = if left_samples.len() <= right_samples.len() {
+        (left_samples, right_samples)
+    } else {
+        (right_samples, left_samples)
+    };
+
+    if smaller_samples.is_empty() || larger_samples.is_empty() {
+        return false;
+    }
+
+    let matching_samples = smaller_samples
+        .iter()
+        .filter(|(sample_latitude, sample_longitude)| {
+            larger_samples
+                .iter()
+                .any(|(candidate_latitude, candidate_longitude)| {
+                    haversine_distance_meters(
+                        *sample_latitude,
+                        *sample_longitude,
+                        *candidate_latitude,
+                        *candidate_longitude,
+                    ) <= ACTIVITY_ROUTE_MATCH_TOLERANCE_METERS
+                })
+        })
+        .count();
+
+    matching_samples * ACTIVITY_ROUTE_MATCH_MIN_RATIO_DENOMINATOR
+        >= smaller_samples.len() * ACTIVITY_ROUTE_MATCH_MIN_RATIO_NUMERATOR
 }
 
 fn normalize_sport_token(value: &str) -> String {
@@ -465,6 +644,46 @@ mod tests {
         );
 
         assert!(activity_routes_match(&dense_route, &sparse_route));
+    }
+
+    #[test]
+    fn activity_routes_match_when_one_source_trims_start_and_end() {
+        let anchors = [
+            (44.7539, -85.6290),
+            (44.7600, -85.6000),
+            (44.7420, -85.5109),
+        ];
+
+        let full_route = build_route(&anchors, 240, None, None);
+        let trimmed_route = build_route(
+            &anchors,
+            180,
+            Some((44.7552, -85.6176)),
+            Some((44.7414, -85.5091)),
+        );
+
+        assert!(activity_routes_match(&full_route, &trimmed_route));
+    }
+
+    #[test]
+    fn activity_matches_same_start_location_and_near_distance() {
+        let left_route = vec![
+            make_route_point(0, 44.7552, -85.6176),
+            make_route_point(1800, 44.7600, -85.6000),
+            make_route_point(3300, 44.7414, -85.5091),
+        ];
+        let right_route = vec![
+            make_route_point(295, 44.7553, -85.6177),
+            make_route_point(1800, 44.7598, -85.5999),
+            make_route_point(3600, 44.7421, -85.5108),
+        ];
+
+        assert!(activity_location_and_distance_match(
+            &left_route,
+            &right_route,
+            Some(28_396.9),
+            Some(28_396.91),
+        ));
     }
 
     #[test]
