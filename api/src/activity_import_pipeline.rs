@@ -2,7 +2,7 @@ use crate::activity_details::{derive_activity_detail_data, serialize_derived_act
 use crate::activity_lifecycle::refresh_activity_derived_state;
 use crate::analytics::{mark_segment_activity_changes, mark_user_activity_change};
 use crate::app_error::AppError;
-use crate::dedupe::{activity_dedupe_key, activity_dedupe_key_from_model};
+use crate::dedupe::activity_dedupe_matches_model;
 use crate::entities::{activities, activity_imports};
 use crate::tasks::TaskQueue;
 use crate::training_profile::{
@@ -272,7 +272,6 @@ async fn find_duplicate_activity(
     activity_draft: &crate::activity_summary::ActivityDraft,
     derived_data: &crate::activity_details::ActivityDerivedData,
 ) -> Result<Option<DeduplicatedActivityImport>, AppError> {
-    let target_key = activity_dedupe_key(activity_draft, &derived_data.route_points);
     let candidates = activities::Entity::find()
         .filter(activities::Column::UserId.eq(user_id))
         .filter(activities::Column::StartedAt.eq(activity_draft.started_at))
@@ -281,7 +280,7 @@ async fn find_duplicate_activity(
         .await?;
 
     for activity in candidates {
-        if activity_dedupe_key_from_model(&activity) == target_key {
+        if activity_dedupe_matches_model(&activity, activity_draft, &derived_data.route_points) {
             let existing_import = match activity.activity_import_id {
                 Some(import_id) => {
                     activity_imports::Entity::find_by_id(import_id)

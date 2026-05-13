@@ -1,12 +1,14 @@
-use crate::archive_import::{import_activity_archive_from_path, resolve_local_archive_import_path};
 use crate::activity_import_lock::{
     acquire_user_activity_import_lock, release_user_activity_import_lock,
-    ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING,
-    ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT, ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION,
-    ACTIVITY_IMPORT_LOCK_STAGE_QUEUED, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
+    ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING, ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT,
+    ACTIVITY_IMPORT_LOCK_SOURCE_DUPLICATE_CLEANUP,
+    ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION, ACTIVITY_IMPORT_LOCK_STAGE_QUEUED,
+    ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
 };
+use crate::activity_lifecycle::cleanup_duplicate_activities_for_user;
 use crate::analytics::mark_user_activity_changes;
 use crate::app_error::{ApiErrorResponse, AppError};
+use crate::archive_import::{import_activity_archive_from_path, resolve_local_archive_import_path};
 use crate::entities::{activities, segments};
 use crate::storage::AppStorage;
 use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
@@ -24,7 +26,14 @@ pub fn routes() -> Router<Arc<AppStorage>> {
     Router::new()
         .route("/analytics/backfill", post(backfill_analytics))
         .route("/segments/regenerate", post(regenerate_user_segments))
-        .route("/activity-imports/reprocess", post(reprocess_user_activity_imports))
+        .route(
+            "/activity-imports/reprocess",
+            post(reprocess_user_activity_imports),
+        )
+        .route(
+            "/activity-imports/cleanup-duplicates",
+            post(cleanup_user_duplicate_activities),
+        )
         .route("/activity-imports/archive", post(import_activity_archive))
 }
 
@@ -78,6 +87,21 @@ pub struct ReprocessUserActivityImportsResponse {
     pub user_id: i32,
     pub status: String,
     pub message: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CleanupUserDuplicateActivitiesRequest {
+    pub user_id: i32,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CleanupUserDuplicateActivitiesResponse {
+    pub user_id: i32,
+    pub status: String,
+    pub message: String,
+    pub duplicate_group_count: i32,
+    pub deleted_activity_count: i32,
+    pub retained_activity_count: i32,
 }
 
 #[utoipa::path(
@@ -241,6 +265,84 @@ pub async fn reprocess_user_activity_imports(
 
 #[utoipa::path(
     post,
+    path = "/admin/activity-imports/cleanup-duplicates",
+    operation_id = "admin_cleanup_user_duplicate_activities",
+    request_body = CleanupUserDuplicateActivitiesRequest,
+    responses(
+        (status = 200, description = "Removed duplicate activities for one user", body = CleanupUserDuplicateActivitiesResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "User not found", body = ApiErrorResponse),
+        (status = 409, description = "Another activity import is already running or queued", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "admin",
+)]
+pub async fn cleanup_user_duplicate_activities(
+    _admin: AdminUserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+    Json(request): Json<CleanupUserDuplicateActivitiesRequest>,
+) -> Result<(StatusCode, Json<CleanupUserDuplicateActivitiesResponse>), AppError> {
+    users::Entity::find_by_id(request.user_id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found(format!("User {} was not found", request.user_id)))?;
+
+    acquire_user_activity_import_lock(
+        &state.db,
+        request.user_id,
+        ACTIVITY_IMPORT_LOCK_SOURCE_DUPLICATE_CLEANUP,
+        ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
+    )
+    .await?;
+
+    let result = cleanup_duplicate_activities_for_user(
+        &state.db,
+        &state.uploads_dir,
+        &state.tasks,
+        request.user_id,
+    )
+    .await
+    .map(|summary| {
+        let message = if summary.deleted_activity_count == 0 {
+            "No duplicate activities matched the current dedupe rules.".to_string()
+        } else {
+            format!(
+                "Removed {} duplicate activities across {} duplicate groups.",
+                summary.deleted_activity_count, summary.duplicate_group_count
+            )
+        };
+
+        (
+            StatusCode::OK,
+            Json(CleanupUserDuplicateActivitiesResponse {
+                user_id: request.user_id,
+                status: "completed".to_string(),
+                message,
+                duplicate_group_count: summary.duplicate_group_count as i32,
+                deleted_activity_count: summary.deleted_activity_count as i32,
+                retained_activity_count: summary.retained_activity_count as i32,
+            }),
+        )
+    });
+
+    let release_result = release_user_activity_import_lock(
+        &state.db,
+        request.user_id,
+        ACTIVITY_IMPORT_LOCK_SOURCE_DUPLICATE_CLEANUP,
+    )
+    .await;
+
+    match (result, release_result) {
+        (Err(error), _) => Err(error),
+        (Ok(_), Err(error)) => Err(error),
+        (Ok(response), Ok(())) => Ok(response),
+    }
+}
+
+#[utoipa::path(
+    post,
     path = "/admin/activity-imports/archive",
     operation_id = "admin_import_activity_archive",
     request_body = ArchiveImportRequest,
@@ -261,7 +363,8 @@ pub async fn import_activity_archive(
     State(state): State<Arc<AppStorage>>,
     Json(request): Json<ArchiveImportRequest>,
 ) -> Result<(StatusCode, Json<ArchiveImportResponse>), AppError> {
-    let archive_path = resolve_local_archive_import_path(&state.uploads_dir, &request.archive_path)?;
+    let archive_path =
+        resolve_local_archive_import_path(&state.uploads_dir, &request.archive_path)?;
     let user_storage_key = admin.user.pid.to_string();
     acquire_user_activity_import_lock(
         &state.db,

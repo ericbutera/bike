@@ -187,6 +187,15 @@ export type ReprocessUserActivityImportsResponse = {
   message: string;
 };
 
+export type CleanupUserDuplicateActivitiesResponse = {
+  user_id: number;
+  status: string;
+  message: string;
+  duplicate_group_count: number;
+  deleted_activity_count: number;
+  retained_activity_count: number;
+};
+
 export type ActivityArchiveImportJob = {
   id: number;
   archive_url: string;
@@ -258,6 +267,27 @@ export function useReprocessUserActivityImports() {
       });
 
       return result as ReprocessUserActivityImportsResponse;
+    },
+  };
+}
+
+export function useCleanupUserDuplicateActivities() {
+  const mutation = $api.useMutation(
+    "post",
+    "/admin/activity-imports/cleanup-duplicates",
+  );
+
+  return {
+    ...mutation,
+    cleanupAsync: async (userId: number | string) => {
+      const numericUserId = Number(userId);
+      const result = await mutation.mutateAsync({
+        body: {
+          user_id: numericUserId,
+        },
+      });
+
+      return result as CleanupUserDuplicateActivitiesResponse;
     },
   };
 }

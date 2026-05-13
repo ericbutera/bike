@@ -4,10 +4,12 @@ import { extractApiMessage } from "@/lib/activityFormatting";
 import {
   useActivityArchiveImportJobs,
   useAdminBackfillAnalytics,
+  useCleanupUserDuplicateActivities,
   useImportActivityArchiveUrl,
   useReprocessUserActivityImports,
   type ActivityArchiveImportJob,
   type AdminAnalyticsBackfillResponse,
+  type CleanupUserDuplicateActivitiesResponse,
   type ReprocessUserActivityImportsResponse,
 } from "@/lib/queries";
 import { admin } from "@ericbutera/kaleido";
@@ -35,6 +37,8 @@ function AnalyticsContent() {
   });
   const { importAsync, isPending: isImportPending } =
     useImportActivityArchiveUrl();
+  const { cleanupAsync, isPending: isCleanupPending } =
+    useCleanupUserDuplicateActivities();
   const { reprocessAsync, isPending: isReprocessPending } =
     useReprocessUserActivityImports();
   const [result, setResult] = useState<AdminAnalyticsBackfillResponse | null>(
@@ -53,6 +57,12 @@ function AnalyticsContent() {
   const [reprocessErrorMessage, setReprocessErrorMessage] = useState<
     string | null
   >(null);
+  const [cleanupUserId, setCleanupUserId] = useState("");
+  const [cleanupResult, setCleanupResult] =
+    useState<CleanupUserDuplicateActivitiesResponse | null>(null);
+  const [cleanupErrorMessage, setCleanupErrorMessage] = useState<string | null>(
+    null,
+  );
 
   async function handleBackfill() {
     setErrorMessage(null);
@@ -97,6 +107,26 @@ function AnalyticsContent() {
     } catch (error) {
       setReprocessResult(null);
       setReprocessErrorMessage(extractApiMessage(error));
+    }
+  }
+
+  async function handleCleanupDuplicates() {
+    const numericUserId = Number(cleanupUserId);
+
+    setCleanupErrorMessage(null);
+
+    if (!Number.isFinite(numericUserId) || numericUserId < 1) {
+      setCleanupResult(null);
+      setCleanupErrorMessage("Enter a valid user id.");
+      return;
+    }
+
+    try {
+      const response = await cleanupAsync(numericUserId);
+      setCleanupResult(response);
+    } catch (error) {
+      setCleanupResult(null);
+      setCleanupErrorMessage(extractApiMessage(error));
     }
   }
 
@@ -230,6 +260,85 @@ function AnalyticsContent() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="rounded-2xl border border-base-300 bg-base-100 p-6 shadow-sm">
+        <h2 className="text-lg font-semibold">Clean up duplicate activities</h2>
+        <p className="mt-2 max-w-3xl text-sm text-base-content/70">
+          Scan one rider&apos;s stored activities using the current duplicate
+          matcher, keep the preferred copy for each duplicate cluster, delete
+          the extra activities, and queue cache rebuilds for any affected
+          segments and fitness history.
+        </p>
+
+        <label className="form-control mt-5 max-w-sm">
+          <div className="label">
+            <span className="label-text font-medium">User id</span>
+            <span className="label-text-alt">Required</span>
+          </div>
+          <input
+            type="number"
+            min={1}
+            step={1}
+            inputMode="numeric"
+            className="input input-bordered"
+            placeholder="42"
+            value={cleanupUserId}
+            onChange={(event) => {
+              setCleanupUserId(event.target.value);
+            }}
+          />
+          <div className="label">
+            <span className="label-text-alt text-base-content/60">
+              Cleanup prefers richer source files like FIT, then denser route
+              detail, then older records when choosing which copy to keep.
+            </span>
+          </div>
+        </label>
+
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button
+            className="btn btn-primary"
+            disabled={!cleanupUserId.trim() || isCleanupPending}
+            onClick={handleCleanupDuplicates}
+          >
+            {isCleanupPending ? "Cleaning duplicates..." : "Clean duplicates"}
+          </button>
+          <Link href="/admin/users" className="btn btn-ghost">
+            Find user ids
+          </Link>
+        </div>
+
+        {cleanupErrorMessage ? (
+          <div className="alert alert-error mt-4">
+            <span>{cleanupErrorMessage}</span>
+          </div>
+        ) : null}
+
+        {cleanupResult ? (
+          <div className="mt-5 rounded-2xl bg-base-200 p-5">
+            <div className="text-sm text-base-content/60">Cleanup result</div>
+            <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
+              <SummaryItem label="User id" value={cleanupResult.user_id} />
+              <SummaryTextItem label="Status" value={cleanupResult.status} />
+              <SummaryItem
+                label="Duplicate groups"
+                value={cleanupResult.duplicate_group_count}
+              />
+              <SummaryItem
+                label="Deleted activities"
+                value={cleanupResult.deleted_activity_count}
+              />
+              <SummaryItem
+                label="Retained activities"
+                value={cleanupResult.retained_activity_count}
+              />
+            </dl>
+            <div className="mt-4 rounded-xl border border-base-300 bg-base-100 px-4 py-3 text-sm text-base-content/80">
+              {cleanupResult.message}
             </div>
           </div>
         ) : null}

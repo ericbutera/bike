@@ -4,6 +4,7 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, Qu
 
 pub const ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT: &str = "archive_import";
 pub const ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING: &str = "activity_reprocessing";
+pub const ACTIVITY_IMPORT_LOCK_SOURCE_DUPLICATE_CLEANUP: &str = "duplicate_cleanup";
 pub const ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD: &str = "manual_upload";
 pub const ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION: &str = "segment_regeneration";
 pub const ACTIVITY_IMPORT_LOCK_SOURCE_STRAVA_SYNC: &str = "strava_sync";
@@ -113,6 +114,7 @@ fn describe_source(source: &str) -> &'static str {
     match source {
         ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT => "archive import",
         ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING => "activity reprocessing",
+        ACTIVITY_IMPORT_LOCK_SOURCE_DUPLICATE_CLEANUP => "duplicate cleanup",
         ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD => "manual upload",
         ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION => "segment regeneration",
         ACTIVITY_IMPORT_LOCK_SOURCE_STRAVA_SYNC => "Strava sync",
