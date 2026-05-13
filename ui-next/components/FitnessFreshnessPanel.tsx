@@ -3,12 +3,10 @@
 import { auth } from "@ericbutera/kaleido";
 import { useMemo, useState } from "react";
 import {
-  Area,
   Bar,
   CartesianGrid,
   ComposedChart,
   Line,
-  LineChart,
   ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
@@ -35,6 +33,11 @@ const RANGE_PRESETS = [
   { key: "1y", label: "Year", months: 12 },
   { key: "2y", label: "2 years", months: 24 },
 ] as const;
+
+const ACTIVE_TOGGLE_CLASS =
+  "badge-outline border-current bg-base-100 text-base-content";
+const INACTIVE_TOGGLE_CLASS =
+  "border-transparent bg-base-300/80 text-base-content/55 opacity-70";
 
 type RangePresetKey = (typeof RANGE_PRESETS)[number]["key"];
 
@@ -246,6 +249,8 @@ export default function FitnessFreshnessPanel() {
   const authApi = auth.useAuthApi();
   const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
   const [selectedRange, setSelectedRange] = useState<RangePresetKey>("6m");
+  const [showFitness, setShowFitness] = useState(true);
+  const [showFatigue, setShowFatigue] = useState(true);
   const endDate = useMemo(() => new Date(), []);
   const endDateParam = useMemo(() => toDateParam(endDate), [endDate]);
   const startDateParam = useMemo(() => {
@@ -389,20 +394,34 @@ export default function FitnessFreshnessPanel() {
                     />
                     Load
                   </span>
-                  <span className="badge badge-outline gap-2 px-3 py-3">
+                  <button
+                    type="button"
+                    className={`badge gap-2 px-3 py-3 transition ${showFitness ? ACTIVE_TOGGLE_CLASS : INACTIVE_TOGGLE_CLASS}`}
+                    aria-pressed={showFitness}
+                    onClick={() => {
+                      setShowFitness((value) => !value);
+                    }}
+                  >
                     <span
                       className="inline-block h-2.5 w-2.5 rounded-full"
                       style={{ backgroundColor: FITNESS_COLOR }}
                     />
                     Fitness
-                  </span>
-                  <span className="badge badge-outline gap-2 px-3 py-3">
+                  </button>
+                  <button
+                    type="button"
+                    className={`badge gap-2 px-3 py-3 transition ${showFatigue ? ACTIVE_TOGGLE_CLASS : INACTIVE_TOGGLE_CLASS}`}
+                    aria-pressed={showFatigue}
+                    onClick={() => {
+                      setShowFatigue((value) => !value);
+                    }}
+                  >
                     <span
                       className="inline-block h-2.5 w-2.5 rounded-full"
                       style={{ backgroundColor: FATIGUE_COLOR }}
                     />
                     Fatigue
-                  </span>
+                  </button>
                 </div>
 
                 <div
@@ -460,6 +479,7 @@ export default function FitnessFreshnessPanel() {
                       <Line
                         type="monotone"
                         dataKey="fitness"
+                        hide={!showFitness}
                         stroke={FITNESS_COLOR}
                         strokeWidth={3}
                         dot={false}
@@ -473,6 +493,7 @@ export default function FitnessFreshnessPanel() {
                       <Line
                         type="monotone"
                         dataKey="fatigue"
+                        hide={!showFatigue}
                         stroke={FATIGUE_COLOR}
                         strokeWidth={3}
                         dot={false}
@@ -527,7 +548,7 @@ export default function FitnessFreshnessPanel() {
                     minWidth={320}
                     minHeight={220}
                   >
-                    <LineChart
+                    <ComposedChart
                       data={points}
                       margin={{ top: 8, right: 12, bottom: 12, left: 0 }}
                     >
@@ -595,12 +616,10 @@ export default function FitnessFreshnessPanel() {
                         strokeDasharray="4 4"
                       />
                       <Tooltip content={<FormTooltip />} />
-                      <Area
+                      <Line
                         type="monotone"
                         dataKey="form"
                         stroke={FORM_COLOR}
-                        fill={FORM_COLOR}
-                        fillOpacity={0.12}
                         strokeWidth={3}
                         dot={false}
                         activeDot={{
@@ -610,7 +629,7 @@ export default function FitnessFreshnessPanel() {
                           strokeWidth: 1.25,
                         }}
                       />
-                    </LineChart>
+                    </ComposedChart>
                   </ResponsiveContainer>
                 </div>
               </div>

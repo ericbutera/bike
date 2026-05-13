@@ -107,6 +107,33 @@ describe("FitnessFreshnessPanel", () => {
       screen.getByRole("img", { name: "Fitness and fatigue chart" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Form chart" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Fitness" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Fatigue" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("toggles fitness and fatigue series independently", () => {
+    render(<FitnessFreshnessPanel />);
+
+    const fitnessToggle = screen.getByRole("button", { name: "Fitness" });
+    const fatigueToggle = screen.getByRole("button", { name: "Fatigue" });
+
+    fireEvent.click(fitnessToggle);
+    expect(fitnessToggle).toHaveAttribute("aria-pressed", "false");
+    expect(fatigueToggle).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(fatigueToggle);
+    expect(fitnessToggle).toHaveAttribute("aria-pressed", "false");
+    expect(fatigueToggle).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(fitnessToggle);
+    expect(fitnessToggle).toHaveAttribute("aria-pressed", "true");
+    expect(fatigueToggle).toHaveAttribute("aria-pressed", "false");
   });
 
   it("requests the selected preset range", () => {
