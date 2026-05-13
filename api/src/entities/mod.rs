@@ -4,6 +4,7 @@ pub mod activity_import_locks;
 pub mod activity_imports;
 pub mod analytics_user_states;
 pub mod fitness_freshness_daily;
+pub mod integration_events;
 pub mod segment_efforts;
 pub mod segment_summaries;
 pub mod segment_user_summaries;

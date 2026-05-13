@@ -4,9 +4,9 @@ import { auth } from "@ericbutera/kaleido";
 import {
   faCrown,
   faFileLines,
-  faLocationDot,
   faMagnifyingGlass,
   faMedal,
+  faMinus,
   faPause,
   faPlay,
   faPlus,
@@ -623,7 +623,7 @@ function RouteComparisonMap({
     );
 
   return (
-    <>
+    <div className="flex h-full flex-col">
       <div>
         <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-base-content/55">
           Route playback
@@ -634,7 +634,7 @@ function RouteComparisonMap({
         </p>
       </div>
 
-      <div className="mt-4 overflow-hidden rounded-box border border-base-300 bg-base-200">
+      <div className="mt-4 min-h-[20rem] flex-1 overflow-hidden rounded-box border border-base-300 bg-base-200">
         {hasRouteMap ? (
           <LeafletRouteMap
             routePoints={routePoints}
@@ -646,11 +646,13 @@ function RouteComparisonMap({
             }))}
             ariaLabel="Segment comparison map"
             emptyMessage="Segment route geometry is not available yet."
-            className="h-96 w-full"
+            className="h-full min-h-[20rem] w-full"
           />
         ) : (
-          <div className="alert">
-            Segment route geometry is not available yet.
+          <div className="flex h-full min-h-[20rem] items-center justify-center p-4">
+            <div className="alert">
+              Segment route geometry is not available yet.
+            </div>
           </div>
         )}
       </div>
@@ -693,7 +695,7 @@ function RouteComparisonMap({
           {formatDuration(maxDuration)}
         </span>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -726,29 +728,29 @@ function ComparisonChart({
     [metric, selectedEfforts],
   );
   const allPoints = series.flatMap((entry) => entry.points);
-
-  if (allPoints.length < 2) {
-    return (
-      <div className="alert">
-        The selected efforts do not have enough point-level data for a shared
-        chart.
-      </div>
-    );
-  }
-
-  const maxX = Math.max(...allPoints.map((point) => point.x), 1);
-  const elevationPoints = buildElevationBackdropSeries(routePoints, maxX);
-  const chartRows = buildComparisonChartRows(series, elevationPoints);
-  const playbackRow = buildComparisonChartRowAtX(
-    Math.min(playbackSeconds, maxX),
-    series,
-    elevationPoints,
-    true,
-  );
+  const hasComparisonData = allPoints.length >= 2;
+  const maxX = hasComparisonData
+    ? Math.max(...allPoints.map((point) => point.x), 1)
+    : 1;
+  const elevationPoints = hasComparisonData
+    ? buildElevationBackdropSeries(routePoints, maxX)
+    : [];
+  const chartRows = hasComparisonData
+    ? buildComparisonChartRows(series, elevationPoints)
+    : [];
+  const playbackRow = hasComparisonData
+    ? buildComparisonChartRowAtX(
+        Math.min(playbackSeconds, maxX),
+        series,
+        elevationPoints,
+        true,
+      )
+    : null;
   const displayRow = hoveredRow ?? playbackRow;
-  const displaySeconds = displayRow.elapsedSeconds;
+  const displaySeconds = displayRow?.elapsedSeconds ?? 0;
+
   return (
-    <>
+    <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-base-content/55">
@@ -775,209 +777,222 @@ function ComparisonChart({
         </div>
       </div>
 
-      <div className="mt-4 overflow-hidden rounded-box border border-base-300 bg-base-200 p-3">
-        <div role="img" aria-label="Segment comparison chart">
-          <div className="h-[256px] w-full">
-            <ResponsiveContainer
-              width="100%"
-              height="100%"
-              minWidth={320}
-              minHeight={256}
-            >
-              <ComposedChart
-                data={chartRows}
-                margin={{ top: 12, right: 8, bottom: 12, left: 8 }}
-                onMouseLeave={() => {
-                  setHoveredRow(null);
-                }}
-                onMouseMove={(state) => {
-                  const nextIndex = Number(state?.activeTooltipIndex);
-
-                  if (
-                    state?.isTooltipActive &&
-                    Number.isInteger(nextIndex) &&
-                    nextIndex >= 0 &&
-                    nextIndex < chartRows.length
-                  ) {
-                    setHoveredRow(chartRows[nextIndex]);
-                  } else {
-                    setHoveredRow(null);
-                  }
-                }}
+      <div className="mt-4 flex min-h-[20rem] flex-1 overflow-hidden rounded-box border border-base-300 bg-base-200 p-3">
+        {hasComparisonData ? (
+          <div
+            role="img"
+            aria-label="Segment comparison chart"
+            className="flex flex-1"
+          >
+            <div className="h-full min-h-[20rem] w-full">
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+                minWidth={320}
+                minHeight={320}
               >
-                <CartesianGrid
-                  vertical={false}
-                  stroke="var(--color-base-content)"
-                  strokeOpacity={0.12}
-                />
-                <XAxis
-                  axisLine={false}
-                  dataKey="elapsedSeconds"
-                  domain={[0, maxX]}
-                  label={{
-                    value: "Elapsed time",
-                    position: "insideBottom",
-                    offset: -6,
+                <ComposedChart
+                  data={chartRows}
+                  margin={{ top: 12, right: 8, bottom: 12, left: 8 }}
+                  onMouseLeave={() => {
+                    setHoveredRow(null);
                   }}
-                  tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
-                  tickFormatter={(value: number) =>
-                    formatDuration(Math.round(value))
-                  }
-                  tickLine={false}
-                  type="number"
-                />
-                <YAxis
-                  axisLine={false}
-                  label={{
-                    angle: -90,
-                    fill: "var(--color-base-content)",
-                    fontSize: 10,
-                    position: "insideLeft",
-                    style: { opacity: 0.65 },
-                    value: metricLabel(metric),
-                  }}
-                  tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
-                  tickFormatter={(value: number) =>
-                    formatMetricValue(metric, value, unitSystem)
-                  }
-                  tickLine={false}
-                  tickMargin={10}
-                  width={74}
-                  yAxisId="metric"
-                />
-                <YAxis
-                  axisLine={false}
-                  label={{
-                    angle: 90,
-                    fill: "var(--color-base-content)",
-                    fontSize: 10,
-                    position: "insideRight",
-                    style: { opacity: 0.65 },
-                    value: "Elevation",
-                  }}
-                  orientation="right"
-                  tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
-                  tickFormatter={(value: number) =>
-                    formatElevation(value, unitSystem)
-                  }
-                  tickLine={false}
-                  tickMargin={10}
-                  width={74}
-                  yAxisId="elevation"
-                />
-                <Tooltip
-                  content={
-                    <ComparisonChartTooltip
-                      metric={metric}
-                      series={series}
-                      unitSystem={unitSystem}
-                    />
-                  }
-                  cursor={{
-                    stroke: "#78716c",
-                    strokeDasharray: "4 4",
-                    strokeOpacity: 0.9,
-                  }}
-                />
+                  onMouseMove={(state) => {
+                    const nextIndex = Number(state?.activeTooltipIndex);
 
-                {elevationPoints.length > 1 ? (
-                  <Area
-                    type="linear"
-                    dataKey="elevation"
-                    yAxisId="elevation"
-                    stroke="var(--color-success)"
-                    fill="var(--color-success)"
-                    fillOpacity={0.15}
-                    strokeOpacity={0.35}
-                    strokeWidth={2}
-                    dot={false}
-                    connectNulls
-                  />
-                ) : null}
-
-                {series.map((entry) => (
-                  <Line
-                    key={entry.effort.id}
-                    type="linear"
-                    dataKey={entry.dataKey}
-                    yAxisId="metric"
-                    stroke={entry.color}
-                    strokeWidth={metric === "speed" ? 2.5 : 3.5}
-                    strokeOpacity={
-                      focusedEffortId != null &&
-                      focusedEffortId !== entry.effort.id
-                        ? 0.24
-                        : 1
+                    if (
+                      state?.isTooltipActive &&
+                      Number.isInteger(nextIndex) &&
+                      nextIndex >= 0 &&
+                      nextIndex < chartRows.length
+                    ) {
+                      setHoveredRow(chartRows[nextIndex]);
+                    } else {
+                      setHoveredRow(null);
                     }
-                    dot={false}
-                    activeDot={{
-                      r: 6,
-                      fill: entry.color,
-                      fillOpacity:
+                  }}
+                >
+                  <CartesianGrid
+                    vertical={false}
+                    stroke="var(--color-base-content)"
+                    strokeOpacity={0.12}
+                  />
+                  <XAxis
+                    axisLine={false}
+                    dataKey="elapsedSeconds"
+                    domain={[0, maxX]}
+                    label={{
+                      value: "Elapsed time",
+                      position: "insideBottom",
+                      offset: -6,
+                    }}
+                    tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
+                    tickFormatter={(value: number) =>
+                      formatDuration(Math.round(value))
+                    }
+                    tickLine={false}
+                    type="number"
+                  />
+                  <YAxis
+                    axisLine={false}
+                    label={{
+                      angle: -90,
+                      fill: "var(--color-base-content)",
+                      fontSize: 10,
+                      position: "insideLeft",
+                      style: { opacity: 0.65 },
+                      value: metricLabel(metric),
+                    }}
+                    tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
+                    tickFormatter={(value: number) =>
+                      formatMetricValue(metric, value, unitSystem)
+                    }
+                    tickLine={false}
+                    tickMargin={10}
+                    width={74}
+                    yAxisId="metric"
+                  />
+                  <YAxis
+                    axisLine={false}
+                    label={{
+                      angle: 90,
+                      fill: "var(--color-base-content)",
+                      fontSize: 10,
+                      position: "insideRight",
+                      style: { opacity: 0.65 },
+                      value: "Elevation",
+                    }}
+                    orientation="right"
+                    tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
+                    tickFormatter={(value: number) =>
+                      formatElevation(value, unitSystem)
+                    }
+                    tickLine={false}
+                    tickMargin={10}
+                    width={74}
+                    yAxisId="elevation"
+                  />
+                  <Tooltip
+                    content={
+                      <ComparisonChartTooltip
+                        metric={metric}
+                        series={series}
+                        unitSystem={unitSystem}
+                      />
+                    }
+                    cursor={{
+                      stroke: "#78716c",
+                      strokeDasharray: "4 4",
+                      strokeOpacity: 0.9,
+                    }}
+                  />
+
+                  {elevationPoints.length > 1 ? (
+                    <Area
+                      type="linear"
+                      dataKey="elevation"
+                      yAxisId="elevation"
+                      stroke="var(--color-success)"
+                      fill="var(--color-success)"
+                      fillOpacity={0.15}
+                      strokeOpacity={0.35}
+                      strokeWidth={2}
+                      dot={false}
+                      connectNulls
+                    />
+                  ) : null}
+
+                  {series.map((entry) => (
+                    <Line
+                      key={entry.effort.id}
+                      type="linear"
+                      dataKey={entry.dataKey}
+                      yAxisId="metric"
+                      stroke={entry.color}
+                      strokeWidth={metric === "speed" ? 2.5 : 3.5}
+                      strokeOpacity={
                         focusedEffortId != null &&
                         focusedEffortId !== entry.effort.id
                           ? 0.24
-                          : 1,
-                      stroke: "var(--color-base-100)",
-                      strokeOpacity:
-                        focusedEffortId != null &&
-                        focusedEffortId !== entry.effort.id
-                          ? 0.4
-                          : 1,
-                      strokeWidth: 1.25,
-                    }}
-                    connectNulls
-                  />
-                ))}
-
-                {!hoveredRow && displaySeconds > 0 ? (
-                  <ReferenceLine
-                    x={displaySeconds}
-                    stroke="#78716c"
-                    strokeDasharray="4 4"
-                  />
-                ) : null}
-
-                {!hoveredRow
-                  ? series.map((entry) => {
-                      const value = displayRow[entry.dataKey];
-
-                      if (typeof value !== "number") {
-                        return null;
+                          : 1
                       }
+                      dot={false}
+                      activeDot={{
+                        r: 6,
+                        fill: entry.color,
+                        fillOpacity:
+                          focusedEffortId != null &&
+                          focusedEffortId !== entry.effort.id
+                            ? 0.24
+                            : 1,
+                        stroke: "var(--color-base-100)",
+                        strokeOpacity:
+                          focusedEffortId != null &&
+                          focusedEffortId !== entry.effort.id
+                            ? 0.4
+                            : 1,
+                        strokeWidth: 1.25,
+                      }}
+                      connectNulls
+                    />
+                  ))}
 
-                      return (
-                        <ReferenceDot
-                          key={`${entry.effort.id}-marker`}
-                          x={displaySeconds}
-                          y={value}
-                          fill={entry.color}
-                          fillOpacity={
-                            focusedEffortId != null &&
-                            focusedEffortId !== entry.effort.id
-                              ? 0.24
-                              : 1
-                          }
-                          r={6}
-                          stroke="var(--color-base-100)"
-                          strokeOpacity={
-                            focusedEffortId != null &&
-                            focusedEffortId !== entry.effort.id
-                              ? 0.4
-                              : 1
-                          }
-                          strokeWidth={1.25}
-                          yAxisId="metric"
-                        />
-                      );
-                    })
-                  : null}
-              </ComposedChart>
-            </ResponsiveContainer>
+                  {!hoveredRow && displayRow && displaySeconds > 0 ? (
+                    <ReferenceLine
+                      x={displaySeconds}
+                      stroke="#78716c"
+                      strokeDasharray="4 4"
+                    />
+                  ) : null}
+
+                  {!hoveredRow && displayRow
+                    ? series.map((entry) => {
+                        const value = displayRow[entry.dataKey];
+
+                        if (typeof value !== "number") {
+                          return null;
+                        }
+
+                        return (
+                          <ReferenceDot
+                            key={`${entry.effort.id}-marker`}
+                            x={displaySeconds}
+                            y={value}
+                            fill={entry.color}
+                            fillOpacity={
+                              focusedEffortId != null &&
+                              focusedEffortId !== entry.effort.id
+                                ? 0.24
+                                : 1
+                            }
+                            r={6}
+                            stroke="var(--color-base-100)"
+                            strokeOpacity={
+                              focusedEffortId != null &&
+                              focusedEffortId !== entry.effort.id
+                                ? 0.4
+                                : 1
+                            }
+                            strokeWidth={1.25}
+                            yAxisId="metric"
+                          />
+                        );
+                      })
+                    : null}
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex flex-1 items-center justify-center">
+            <div className="alert">
+              The selected efforts do not have enough point-level data for a
+              shared chart.
+            </div>
+          </div>
+        )}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -998,18 +1013,13 @@ function SelectedEffortsPanel({
 }) {
   return (
     <div className="rounded-box border border-base-300 bg-base-200 p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-base-content/55">
-            Selected rides
-          </h3>
-          <p className="mt-1 text-sm text-base-content/60">
-            Hover or pin a ride here to focus the shared map and chart.
-          </p>
-        </div>
-        <span className="badge badge-outline">
-          {selectedRows.length} selected
-        </span>
+      <div>
+        <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-base-content/55">
+          Selected rides
+        </h3>
+        <p className="mt-1 text-sm text-base-content/60">
+          Hover or pin a ride here to focus the shared map and chart.
+        </p>
       </div>
 
       {selectedRows.length > 0 ? (
@@ -1469,11 +1479,9 @@ export default function SegmentDetailPanel({
                             ? "bg-primary/10"
                             : achievement?.kind === "kom"
                               ? "bg-warning/10"
-                              : achievement?.kind === "top-10"
-                                ? "bg-info/10"
-                                : checked
-                                  ? "bg-base-200/70"
-                                  : undefined;
+                              : checked
+                                ? "bg-base-200/70"
+                                : undefined;
 
                         return (
                           <tr key={effort.id} className={rowClassName}>
@@ -1482,18 +1490,22 @@ export default function SegmentDetailPanel({
                             </td>
                             <td>
                               {checked ? (
-                                <span
-                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-neutral/10 text-neutral"
-                                  title="Selected for comparison"
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-xs btn-circle"
+                                  aria-label={`Remove ${effort.activity_title} from comparison`}
+                                  onClick={() => {
+                                    removeEffortFromComparison(effort.id);
+                                  }}
                                 >
                                   <FontAwesomeIcon
-                                    icon={faLocationDot}
+                                    icon={faMinus}
                                     className="h-3.5 w-3.5"
                                   />
                                   <span className="sr-only">
-                                    Selected for comparison
+                                    Remove from comparison
                                   </span>
-                                </span>
+                                </button>
                               ) : (
                                 <button
                                   type="button"
@@ -1538,7 +1550,7 @@ export default function SegmentDetailPanel({
                                     KOM
                                   </span>
                                 ) : achievement?.kind === "top-10" ? (
-                                  <span className="badge badge-info badge-outline badge-xs gap-1">
+                                  <span className="badge badge-warning badge-xs gap-1">
                                     <FontAwesomeIcon
                                       icon={faTrophy}
                                       className="h-3 w-3"
@@ -1597,8 +1609,8 @@ export default function SegmentDetailPanel({
             </p>
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.02fr)_minmax(0,1fr)]">
-            <div>
+          <div className="grid items-stretch gap-6 xl:grid-cols-[minmax(0,1.02fr)_minmax(0,1fr)]">
+            <div className="h-full">
               <RouteComparisonMap
                 routePoints={segment.route_points}
                 selectedEfforts={selectedEfforts}
@@ -1619,7 +1631,7 @@ export default function SegmentDetailPanel({
               />
             </div>
 
-            <div>
+            <div className="h-full">
               <ComparisonChart
                 metric={metric}
                 routePoints={segment.route_points}

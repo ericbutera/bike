@@ -156,6 +156,18 @@ export type StravaConnection = {
   last_sync_failed_count: number;
 };
 
+export type IntegrationEvent = {
+  id: number;
+  user_id?: number | null;
+  provider: string;
+  event_type: string;
+  level: string;
+  message: string;
+  connection_id?: number | null;
+  payload?: Record<string, unknown> | null;
+  created_at: string;
+};
+
 export type FitnessFreshnessPoint = {
   date: string;
   training_load: number;
@@ -550,6 +562,50 @@ export function useStravaConnection(opts?: {
   };
 }
 
+export function useStravaIntegrationEvents(opts?: {
+  enabled?: boolean;
+  refetchIntervalMs?: number | false;
+}) {
+  const response = $api.useQuery("get", "/integration-events/strava", {
+    options: {
+      enabled: opts?.enabled ?? true,
+      refetchInterval: opts?.refetchIntervalMs ?? false,
+    },
+  });
+
+  return {
+    ...response,
+    data: (response.data ?? []) as IntegrationEvent[],
+  };
+}
+
+export function useAdminIntegrationEvents(opts?: {
+  enabled?: boolean;
+  provider?: string;
+  userId?: number | null;
+  limit?: number;
+  refetchIntervalMs?: number | false;
+}) {
+  const response = $api.useQuery("get", "/admin/integration-events", {
+    params: {
+      query: {
+        provider: opts?.provider,
+        user_id: opts?.userId ?? undefined,
+        limit: opts?.limit,
+      },
+    },
+    options: {
+      enabled: opts?.enabled ?? true,
+      refetchInterval: opts?.refetchIntervalMs ?? false,
+    },
+  });
+
+  return {
+    ...response,
+    data: (response.data ?? []) as IntegrationEvent[],
+  };
+}
+
 export function useStartStravaConnect() {
   const mutation = $api.useMutation("post", "/strava/connect");
 
@@ -576,6 +632,9 @@ export function useQueueStravaSync() {
         queryClient.invalidateQueries({
           queryKey: ["get", "/strava/connection"],
         }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/integration-events/strava"],
+        }),
         queryClient.invalidateQueries({ queryKey: ["get", "/activities"] }),
         queryClient.invalidateQueries({
           queryKey: ["get", "/activity-imports"],
@@ -599,6 +658,9 @@ export function useDisconnectStrava() {
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: ["get", "/strava/connection"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/integration-events/strava"],
         }),
         queryClient.invalidateQueries({ queryKey: ["get", "/activities"] }),
         queryClient.invalidateQueries({

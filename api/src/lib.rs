@@ -13,6 +13,7 @@ pub mod dedupe;
 pub mod entities;
 pub mod feature_flags_keys;
 pub mod fit_support;
+pub mod integration_events;
 pub mod metrics;
 pub mod openapi;
 pub mod segment_support;
@@ -37,7 +38,7 @@ use utoipa_swagger_ui::SwaggerUi;
 pub async fn app(app_state: Arc<AppStorage>) -> Router {
     let cfg = Config::get();
 
-    if let Err(error) = crate::strava::ensure_webhook_subscription_registered().await {
+    if let Err(error) = crate::strava::ensure_webhook_subscription_registered(&app_state.db).await {
         tracing::warn!(
             message = %error.message,
             "failed to ensure Strava webhook subscription during API startup"

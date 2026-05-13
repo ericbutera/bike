@@ -13,6 +13,7 @@ mod m20260512_000011_create_activity_import_locks;
 mod m20260512_000012_compact_activity_derived_data_json;
 mod m20260512_000013_compact_segment_and_heart_rate_json;
 mod m20260512_000014_add_activity_source_correlation_id;
+mod m20260513_000015_create_integration_events;
 
 pub struct Migrator;
 
@@ -60,6 +61,9 @@ impl MigratorTrait for Migrator {
         ));
         locals.push(Box::new(
             m20260512_000014_add_activity_source_correlation_id::Migration,
+        ));
+        locals.push(Box::new(
+            m20260513_000015_create_integration_events::Migration,
         ));
         locals.sort_by_key(|m| m.name().to_string());
 

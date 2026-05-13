@@ -1,5 +1,9 @@
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::entities::strava_connections;
+use crate::integration_events::{
+    self, NewIntegrationEvent, INTEGRATION_LEVEL_ERROR, INTEGRATION_LEVEL_INFO,
+    INTEGRATION_PROVIDER_STRAVA,
+};
 use crate::storage::AppStorage;
 use crate::strava;
 use axum::extract::{Query, State};
@@ -76,8 +80,37 @@ pub fn routes() -> Router<Arc<AppStorage>> {
 )]
 pub async fn begin_connect(
     UserContext { user, .. }: UserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<StravaAuthorizeResponse>, AppError> {
-    let url = strava::create_authorization_url_for_user(crate::config::Config::get(), user.id)?;
+    let url = match strava::create_authorization_url_for_user(crate::config::Config::get(), user.id)
+    {
+        Ok(url) => {
+            record_strava_event_best_effort(
+                &state.db,
+                Some(user.id),
+                "oauth.connect_started",
+                INTEGRATION_LEVEL_INFO,
+                "Started Strava OAuth connect flow.",
+                None,
+            )
+            .await;
+            url
+        }
+        Err(error) => {
+            record_strava_event_best_effort(
+                &state.db,
+                Some(user.id),
+                "oauth.connect_failed",
+                INTEGRATION_LEVEL_ERROR,
+                error.message.clone(),
+                Some(serde_json::json!({
+                    "stage": "begin_connect",
+                })),
+            )
+            .await;
+            return Err(error);
+        }
+    };
 
     Ok(Json(StravaAuthorizeResponse {
         authorization_url: url.to_string(),
@@ -198,11 +231,30 @@ pub async fn handle_callback(
             "connected",
             connection.last_sync_message.as_deref(),
         )),
-        Err(error) => Redirect::to(&strava::build_frontend_account_redirect(
-            crate::config::Config::get(),
-            "error",
-            Some(&error.message),
-        )),
+        Err(error) => {
+            if query.error.is_some() || query.code.is_none() || query.state.is_none() {
+                record_strava_event_best_effort(
+                    &state.db,
+                    None,
+                    "oauth.connect_failed",
+                    INTEGRATION_LEVEL_ERROR,
+                    error.message.clone(),
+                    Some(serde_json::json!({
+                        "stage": "callback_prevalidation",
+                        "query_error": query.error,
+                        "has_code": query.code.is_some(),
+                        "has_state": query.state.is_some(),
+                    })),
+                )
+                .await;
+            }
+
+            Redirect::to(&strava::build_frontend_account_redirect(
+                crate::config::Config::get(),
+                "error",
+                Some(&error.message),
+            ))
+        }
     }
 }
 
@@ -216,12 +268,44 @@ pub async fn handle_callback(
     tag = "strava"
 )]
 pub async fn handle_webhook_verification(
+    State(state): State<Arc<AppStorage>>,
     Query(query): Query<strava::StravaWebhookSubscriptionQuery>,
 ) -> Result<Json<strava::StravaWebhookChallengeResponse>, AppError> {
-    Ok(Json(strava::verify_webhook_subscription(
-        crate::config::Config::get(),
-        &query,
-    )?))
+    match strava::verify_webhook_subscription(crate::config::Config::get(), &query) {
+        Ok(response) => {
+            record_strava_event_best_effort(
+                &state.db,
+                None,
+                "webhook.verification_succeeded",
+                INTEGRATION_LEVEL_INFO,
+                "Verified Strava webhook handshake.",
+                Some(serde_json::json!({
+                    "mode": query.mode,
+                    "has_challenge": query.challenge.is_some(),
+                })),
+            )
+            .await;
+
+            Ok(Json(response))
+        }
+        Err(error) => {
+            record_strava_event_best_effort(
+                &state.db,
+                None,
+                "webhook.verification_failed",
+                INTEGRATION_LEVEL_ERROR,
+                error.message.clone(),
+                Some(serde_json::json!({
+                    "mode": query.mode,
+                    "has_challenge": query.challenge.is_some(),
+                    "has_verify_token": query.verify_token.is_some(),
+                })),
+            )
+            .await;
+
+            Err(error)
+        }
+    }
 }
 
 #[utoipa::path(
@@ -245,38 +329,77 @@ pub async fn handle_webhook_event(
 }
 
 async fn response_from_model(
-    _db: &DatabaseConnection,
+    db: &DatabaseConnection,
     model: Option<&strava_connections::Model>,
 ) -> Result<StravaConnectionResponse, AppError> {
     let config = crate::config::Config::get();
+    let resolved = match model {
+        Some(connection) => Some(strava::resolve_connection_sync_state(db, connection).await?),
+        None => None,
+    };
+    let connection = resolved.as_ref().map(|state| &state.connection);
 
     Ok(StravaConnectionResponse {
         configured: config.strava_enabled(),
-        connected: model.is_some(),
-        athlete_id: model.map(|connection| connection.athlete_id),
-        athlete_name: model.and_then(strava::athlete_display_name),
-        athlete_username: model.and_then(|connection| connection.athlete_username.clone()),
-        athlete_profile_medium_url: model
+        connected: connection.is_some(),
+        athlete_id: connection.map(|connection| connection.athlete_id),
+        athlete_name: connection.and_then(strava::athlete_display_name),
+        athlete_username: connection.and_then(|connection| connection.athlete_username.clone()),
+        athlete_profile_medium_url: connection
             .and_then(|connection| connection.athlete_profile_medium_url.clone()),
-        scopes: model
+        scopes: connection
             .map(|connection| strava::parse_scope_list(&connection.scopes))
             .unwrap_or_default(),
-        last_sync_status: model
+        last_sync_status: connection
             .map(|connection| connection.last_sync_status.clone())
             .unwrap_or_else(|| strava::STRAVA_SYNC_STATUS_NEVER.to_string()),
-        last_sync_message: model.and_then(|connection| connection.last_sync_message.clone()),
-        last_sync_started_at: model.and_then(|connection| connection.last_sync_started_at),
-        last_sync_finished_at: model.and_then(|connection| connection.last_sync_finished_at),
-        last_synced_activity_started_at: model
+        last_sync_message: connection.and_then(|connection| connection.last_sync_message.clone()),
+        last_sync_started_at: connection.and_then(|connection| connection.last_sync_started_at),
+        last_sync_finished_at: connection.and_then(|connection| connection.last_sync_finished_at),
+        last_synced_activity_started_at: connection
             .and_then(|connection| connection.last_synced_activity_started_at),
-        last_sync_imported_count: model
+        last_sync_imported_count: connection
             .map(|connection| connection.last_sync_imported_count)
             .unwrap_or_default(),
-        last_sync_duplicate_count: model
+        last_sync_duplicate_count: connection
             .map(|connection| connection.last_sync_duplicate_count)
             .unwrap_or_default(),
-        last_sync_failed_count: model
+        last_sync_failed_count: connection
             .map(|connection| connection.last_sync_failed_count)
             .unwrap_or_default(),
     })
+}
+
+async fn record_strava_event_best_effort(
+    db: &DatabaseConnection,
+    user_id: Option<i32>,
+    event_type: &str,
+    level: &str,
+    message: impl Into<String>,
+    payload: Option<serde_json::Value>,
+) {
+    let message = message.into();
+
+    if let Err(error) = integration_events::record_event(
+        db,
+        NewIntegrationEvent {
+            user_id,
+            provider: INTEGRATION_PROVIDER_STRAVA.to_string(),
+            event_type: event_type.to_string(),
+            level: level.to_string(),
+            message: message.clone(),
+            connection_id: None,
+            payload,
+        },
+    )
+    .await
+    {
+        tracing::warn!(
+            event_type,
+            user_id,
+            message = %error.message,
+            log_message = %message,
+            "failed to persist controller-level Strava integration event"
+        );
+    }
 }

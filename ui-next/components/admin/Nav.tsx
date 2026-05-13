@@ -24,6 +24,14 @@ export default function Nav() {
         </Link>
       </li>
       <li>
+        <Link
+          href="/admin/integrations"
+          className={linkClass("/admin/integrations")}
+        >
+          Integrations
+        </Link>
+      </li>
+      <li>
         <Link href="/admin/analytics" className={linkClass("/admin/analytics")}>
           Analytics
         </Link>

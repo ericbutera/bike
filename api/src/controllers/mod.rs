@@ -3,6 +3,7 @@ pub mod activities;
 pub mod activity_imports;
 pub mod admin;
 pub mod fitness;
+pub mod integration_events;
 pub mod segments;
 pub mod strava;
 pub mod user_preferences;
@@ -21,6 +22,10 @@ pub fn routes() -> Router<Arc<AppStorage>> {
         .nest("/api", auth::routes())
         .nest("/api/oauth", auth::oauth_routes())
         .nest("/api/admin", admin::routes())
+        .nest(
+            "/api/admin/integration-events",
+            integration_events::admin_routes(),
+        )
         .nest("/api/admin/feature-flags", feature_flags::admin_routes())
         .nest("/api/feature-flags", feature_flags::public_routes())
         .nest(
@@ -77,6 +82,7 @@ pub fn routes() -> Router<Arc<AppStorage>> {
             "/api/activity-imports/archive-jobs/:id",
             axum::routing::get(activity_imports::get_activity_archive_import_job),
         )
+        .nest("/api/integration-events", integration_events::routes())
         .nest("/api/strava", strava::routes())
         .route("/api/health", get(health))
         .route("/", get(root))

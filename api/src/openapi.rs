@@ -3,6 +3,7 @@ use crate::controllers::activities;
 use crate::controllers::activity_imports;
 use crate::controllers::admin;
 use crate::controllers::fitness;
+use crate::controllers::integration_events;
 use crate::controllers::segments;
 use crate::controllers::strava;
 use crate::controllers::user_preferences;
@@ -38,6 +39,8 @@ use utoipa::OpenApi;
         activity_imports::get_activity_archive_import_job,
         activity_imports::upload_activity_import,
         activity_imports::import_activity_archive_from_url,
+        integration_events::list_strava_history,
+        integration_events::list_admin_integration_events,
         strava::begin_connect,
         strava::get_connection,
         strava::queue_sync,
@@ -73,6 +76,7 @@ use utoipa::OpenApi;
             activity_imports::ActivityImportResponse,
             activity_imports::ArchiveUrlImportRequest,
             activity_imports::ActivityArchiveImportJobResponse,
+            integration_events::IntegrationEventResponse,
             strava::StravaAuthorizeResponse,
             strava::StravaConnectionResponse,
             crate::strava::StravaWebhookChallengeResponse,

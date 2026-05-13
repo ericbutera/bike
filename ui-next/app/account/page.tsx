@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import AuthRequiredCard from "../../components/AuthRequiredCard";
+import IntegrationEventFeed from "../../components/IntegrationEventFeed";
 import Layout from "../../components/Layout";
 import {
   DEFAULT_UNIT_SYSTEM,
@@ -23,6 +24,7 @@ import {
   useQueueStravaSync,
   useStartStravaConnect,
   useStravaConnection,
+  useStravaIntegrationEvents,
   useUpdateUserPreferences,
   useUserPreferences,
 } from "../../lib/queries";
@@ -178,6 +180,13 @@ export default function AccountPage() {
   const heartRateZoneBounds =
     preferencesQuery.data?.heart_rate_zone_bounds_bpm ?? null;
   const stravaConnection = stravaQuery.data;
+  const stravaEventsQuery = useStravaIntegrationEvents({
+    enabled: !!user,
+    refetchIntervalMs:
+      user && isStravaSyncActive(stravaConnection.last_sync_status)
+        ? 5000
+        : false,
+  });
   const [draftUnitSystem, setDraftUnitSystem] =
     useState<UnitSystem>(DEFAULT_UNIT_SYSTEM);
   const [draftEstimatedFtpWatts, setDraftEstimatedFtpWatts] = useState("");
@@ -484,6 +493,25 @@ export default function AccountPage() {
                         : "Connect Strava"}
                   </button>
                 </div>
+              </div>
+            </div>
+
+            <div className="card bg-base-100 shadow-xl">
+              <div className="card-body gap-6">
+                <div>
+                  <h2 className="card-title text-xl">Strava sync history</h2>
+                  <p className="text-sm text-base-content/70">
+                    Recent OAuth, webhook, sync, and disconnect events for this
+                    account.
+                  </p>
+                </div>
+
+                <IntegrationEventFeed
+                  events={stravaEventsQuery.data}
+                  isLoading={stravaEventsQuery.isLoading}
+                  error={stravaEventsQuery.error}
+                  emptyMessage="No Strava history yet. Connect Strava or queue a sync to start recording events."
+                />
               </div>
             </div>
 

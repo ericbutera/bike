@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SegmentDetailPanel from "../SegmentDetailPanel";
@@ -161,6 +161,23 @@ describe("SegmentDetailPanel", () => {
   it("renders the comparison UI for a segment", () => {
     render(<SegmentDetailPanel segmentId={14} />);
 
+    const hillAttackRow = screen
+      .getByRole("link", { name: "5m 00s" })
+      .closest("tr");
+    const lunchRideRow = screen
+      .getByRole("link", { name: "5m 12s" })
+      .closest("tr");
+
+    if (!hillAttackRow) {
+      throw new Error("Hill Attack row not found");
+    }
+
+    if (!lunchRideRow) {
+      throw new Error("Lunch Ride row not found");
+    }
+
+    const topTwoBadge = within(lunchRideRow).getByText("Top 2");
+
     expect(
       screen.getByRole("heading", { name: "North Climb" }),
     ).toBeInTheDocument();
@@ -168,6 +185,7 @@ describe("SegmentDetailPanel", () => {
       screen.getByRole("searchbox", { name: "Search efforts" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Selected rides")).toBeInTheDocument();
+    expect(screen.queryByText(/^\d+ selected$/)).not.toBeInTheDocument();
     expect(screen.getByText("Overall KOM")).toBeInTheDocument();
     expect(screen.getByText("Your PR")).toBeInTheDocument();
     expect(screen.getAllByText("Lunch Ride").length).toBeGreaterThan(0);
@@ -188,12 +206,14 @@ describe("SegmentDetailPanel", () => {
       "/activities/8",
     );
     expect(
-      screen.getByRole("button", {
+      within(hillAttackRow).getByRole("button", {
         name: "Remove Hill Attack from comparison",
       }),
     ).toBeInTheDocument();
     expect(screen.getByText("KOM")).toBeInTheDocument();
     expect(screen.getByText("Top 2")).toBeInTheDocument();
+    expect(topTwoBadge).toHaveClass("badge-warning");
+    expect(lunchRideRow).not.toHaveClass("bg-info/10");
     expect(screen.queryByText("PR")).not.toBeInTheDocument();
     expect(screen.queryByText("Hover point")).not.toBeInTheDocument();
     expect(screen.queryByText("Back to home")).not.toBeInTheDocument();
@@ -312,12 +332,11 @@ describe("SegmentDetailPanel", () => {
 
     render(<SegmentDetailPanel segmentId={14} />);
 
-    expect(screen.getByText("2 selected")).toBeInTheDocument();
+    expect(screen.queryByText(/^\d+ selected$/)).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Day" }));
 
     expect(screen.getByText("1 of 2 efforts")).toBeInTheDocument();
-    expect(screen.getByText("2 selected")).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
         name: "Remove Lunch Ride from comparison",
@@ -330,12 +349,16 @@ describe("SegmentDetailPanel", () => {
       }),
     );
 
-    expect(screen.getByText("1 selected")).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", {
+      screen.queryAllByRole("button", {
         name: "Remove Lunch Ride from comparison",
       }),
-    ).not.toBeInTheDocument();
+    ).toHaveLength(0);
+    expect(
+      screen.getAllByRole("button", {
+        name: "Remove Hill Attack from comparison",
+      }).length,
+    ).toBeGreaterThan(0);
   });
 
   it("filters the effort table by the search query", async () => {
