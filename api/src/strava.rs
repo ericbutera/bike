@@ -9,7 +9,7 @@ use crate::activity_import_pipeline::{
 };
 use crate::app_error::AppError;
 use crate::config::Config;
-use crate::entities::strava_connections;
+use crate::entities::{activities, strava_connections};
 use crate::tasks::TaskQueue;
 use crate::training_profile::load_training_profile;
 use axum::http::StatusCode;
@@ -18,7 +18,9 @@ use hmac::{Hmac, Mac};
 use kaleido::auth::entities::users;
 use reqwest::Client;
 use reqwest::Url;
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
+};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use sha2::Sha256;
@@ -378,9 +380,12 @@ pub async fn process_strava_sync(
         let user_storage_key = user.pid.to_string();
         let tasks = TaskQueue::new(db.clone());
         let training_profile = load_training_profile(db, connection.user_id).await?;
-        let after_epoch = connection
-            .last_synced_activity_started_at
-            .map(|timestamp| (timestamp - Duration::minutes(5)).timestamp());
+        let latest_user_activity_started_at =
+            load_latest_user_activity_started_at(db, connection.user_id).await?;
+        let after_epoch = strava_sync_after_epoch(
+            connection.last_synced_activity_started_at,
+            latest_user_activity_started_at,
+        );
 
         let mut page = 1usize;
         let mut imported_count = 0i32;
@@ -676,6 +681,47 @@ impl StravaApiClient {
             ))
         })
     }
+}
+
+async fn load_latest_user_activity_started_at(
+    db: &DatabaseConnection,
+    user_id: i32,
+) -> Result<Option<DateTime<Utc>>, AppError> {
+    activities::Entity::find()
+        .filter(activities::Column::UserId.eq(user_id))
+        .order_by_desc(activities::Column::StartedAt)
+        .one(db)
+        .await
+        .map(|activity| activity.map(|activity| activity.started_at))
+        .map_err(AppError::from)
+}
+
+fn strava_sync_after_started_at(
+    last_synced_activity_started_at: Option<DateTime<Utc>>,
+    latest_user_activity_started_at: Option<DateTime<Utc>>,
+) -> Option<DateTime<Utc>> {
+    match (
+        last_synced_activity_started_at,
+        latest_user_activity_started_at,
+    ) {
+        (Some(last_synced), Some(latest_user_activity)) => {
+            Some(last_synced.max(latest_user_activity))
+        }
+        (Some(last_synced), None) => Some(last_synced),
+        (None, Some(latest_user_activity)) => Some(latest_user_activity),
+        (None, None) => None,
+    }
+}
+
+fn strava_sync_after_epoch(
+    last_synced_activity_started_at: Option<DateTime<Utc>>,
+    latest_user_activity_started_at: Option<DateTime<Utc>>,
+) -> Option<i64> {
+    strava_sync_after_started_at(
+        last_synced_activity_started_at,
+        latest_user_activity_started_at,
+    )
+    .map(|timestamp| (timestamp - Duration::minutes(5)).timestamp())
 }
 
 fn ensure_strava_configured(config: &Config) -> Result<(), AppError> {
@@ -1301,6 +1347,42 @@ mod tests {
         assert!(scopes_allow_activity_read("activity:read"));
         assert!(scopes_allow_activity_read("read activity:read_all"));
         assert!(!scopes_allow_activity_read("read profile:read_all"));
+    }
+
+    #[test]
+    fn strava_sync_after_started_at_prefers_latest_existing_activity() {
+        let last_synced_activity_started_at = DateTime::parse_from_rfc3339("2024-05-01T10:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let latest_user_activity_started_at = DateTime::parse_from_rfc3339("2026-05-11T13:23:17Z")
+            .unwrap()
+            .with_timezone(&Utc);
+
+        assert_eq!(
+            strava_sync_after_started_at(
+                Some(last_synced_activity_started_at),
+                Some(latest_user_activity_started_at),
+            ),
+            Some(latest_user_activity_started_at),
+        );
+    }
+
+    #[test]
+    fn strava_sync_after_started_at_keeps_newer_strava_cursor() {
+        let last_synced_activity_started_at = DateTime::parse_from_rfc3339("2026-05-12T10:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let latest_user_activity_started_at = DateTime::parse_from_rfc3339("2026-05-11T13:23:17Z")
+            .unwrap()
+            .with_timezone(&Utc);
+
+        assert_eq!(
+            strava_sync_after_started_at(
+                Some(last_synced_activity_started_at),
+                Some(latest_user_activity_started_at),
+            ),
+            Some(last_synced_activity_started_at),
+        );
     }
 
     #[test]
