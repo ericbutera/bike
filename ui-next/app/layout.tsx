@@ -41,6 +41,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <link rel="icon" href="/favicon.ico" />
+        <link rel="alternate icon" href="/favicon-512.png" />
         <Script id="bike-theme-init" strategy="beforeInteractive">
           {themeScript}
         </Script>
