@@ -1,5 +1,5 @@
 use crate::activity_import_lock::{
-    acquire_user_activity_import_lock, mark_user_activity_import_lock_stage,
+    acquire_user_activity_import_lock, ensure_user_activity_import_lock_stage,
     release_user_activity_import_lock, ACTIVITY_IMPORT_LOCK_SOURCE_STRAVA_SYNC,
     ACTIVITY_IMPORT_LOCK_STAGE_QUEUED, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
 };
@@ -481,7 +481,7 @@ pub async fn process_strava_sync(
         .ok_or_else(|| {
             AppError::not_found(format!("Strava connection {connection_id} was not found"))
         })?;
-    mark_user_activity_import_lock_stage(
+    ensure_user_activity_import_lock_stage(
         db,
         connection.user_id,
         ACTIVITY_IMPORT_LOCK_SOURCE_STRAVA_SYNC,

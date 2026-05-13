@@ -73,6 +73,36 @@ pub async fn mark_user_activity_import_lock_stage(
     active_model.update(db).await.map_err(AppError::from)
 }
 
+pub async fn ensure_user_activity_import_lock_stage(
+    db: &DatabaseConnection,
+    user_id: i32,
+    source: &str,
+    stage: &str,
+) -> Result<activity_import_locks::Model, AppError> {
+    let Some(lock) = load_user_activity_import_lock(db, user_id).await? else {
+        tracing::warn!(
+            user_id,
+            source,
+            stage,
+            "activity import lock was missing; reacquiring lock for queued work"
+        );
+        return acquire_user_activity_import_lock(db, user_id, source, stage).await;
+    };
+
+    if lock.source != source {
+        return Err(AppError::internal(format!(
+            "Activity import lock for user {} is owned by {} instead of {}",
+            user_id,
+            describe_source(&lock.source),
+            describe_source(source),
+        )));
+    }
+
+    let mut active_model: activity_import_locks::ActiveModel = lock.into();
+    active_model.stage = Set(stage.to_string());
+    active_model.update(db).await.map_err(AppError::from)
+}
+
 pub async fn release_user_activity_import_lock(
     db: &DatabaseConnection,
     user_id: i32,
