@@ -15,6 +15,7 @@ pub struct Model {
     pub title: String,
     pub sport: String,
     pub source: String,
+    pub source_correlation_id: Option<String>,
     pub original_filename: Option<String>,
     pub format: Option<String>,
     pub started_at: DateTime<Utc>,

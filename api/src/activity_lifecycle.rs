@@ -520,6 +520,7 @@ mod tests {
             title: format!("Activity {id}"),
             sport: "ride".to_string(),
             source: "manual_upload".to_string(),
+            source_correlation_id: None,
             original_filename: original_filename.map(str::to_string),
             format: format.map(str::to_string),
             started_at: DateTime::parse_from_rfc3339("2026-05-11T13:23:17Z")

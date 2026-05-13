@@ -19,6 +19,7 @@ pub struct ActivityUploadPayload {
     pub original_filename: String,
     pub format: String,
     pub mime_type: Option<String>,
+    pub source_correlation_id: Option<String>,
     pub bytes: Vec<u8>,
 }
 
@@ -52,6 +53,19 @@ pub async fn persist_activity_upload(
     source: &str,
     training_profile: Option<&TrainingProfile>,
 ) -> Result<PersistActivityUploadOutcome, AppError> {
+    let source_correlation_id = upload.source_correlation_id.clone();
+
+    if let Some(existing) = find_existing_activity_by_source_correlation(
+        db,
+        user_id,
+        source,
+        source_correlation_id.as_deref(),
+    )
+    .await?
+    {
+        return Ok(PersistActivityUploadOutcome::Duplicate(existing));
+    }
+
     let activity_draft = crate::activity_summary::summarize_activity_upload(
         &upload.original_filename,
         &upload.format,
@@ -120,6 +134,7 @@ pub async fn persist_activity_upload(
         title: Set(activity_draft.title),
         sport: Set(activity_draft.sport),
         source: Set(source.to_string()),
+        source_correlation_id: Set(source_correlation_id),
         original_filename: Set(Some(original_filename)),
         format: Set(Some(format)),
         started_at: Set(activity_draft.started_at),
@@ -281,21 +296,54 @@ async fn find_duplicate_activity(
 
     for activity in candidates {
         if activity_dedupe_matches_model(&activity, activity_draft, &derived_data.route_points) {
-            let existing_import = match activity.activity_import_id {
-                Some(import_id) => {
-                    activity_imports::Entity::find_by_id(import_id)
-                        .one(db)
-                        .await?
-                }
-                None => None,
-            };
-
-            return Ok(Some(DeduplicatedActivityImport {
-                activity,
-                existing_import,
-            }));
+            return deduplicated_activity_import_for_model(db, activity)
+                .await
+                .map(Some);
         }
     }
 
     Ok(None)
+}
+
+async fn find_existing_activity_by_source_correlation(
+    db: &DatabaseConnection,
+    user_id: i32,
+    source: &str,
+    source_correlation_id: Option<&str>,
+) -> Result<Option<DeduplicatedActivityImport>, AppError> {
+    let Some(source_correlation_id) = source_correlation_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(None);
+    };
+
+    let activity = activities::Entity::find()
+        .filter(activities::Column::UserId.eq(user_id))
+        .filter(activities::Column::Source.eq(source.to_string()))
+        .filter(activities::Column::SourceCorrelationId.eq(source_correlation_id.to_string()))
+        .one(db)
+        .await?;
+
+    match activity {
+        Some(activity) => deduplicated_activity_import_for_model(db, activity)
+            .await
+            .map(Some),
+        None => Ok(None),
+    }
+}
+
+async fn deduplicated_activity_import_for_model(
+    db: &DatabaseConnection,
+    activity: activities::Model,
+) -> Result<DeduplicatedActivityImport, AppError> {
+    let existing_import = match activity.activity_import_id {
+        Some(import_id) => activity_imports::Entity::find_by_id(import_id).one(db).await?,
+        None => None,
+    };
+
+    Ok(DeduplicatedActivityImport {
+        activity,
+        existing_import,
+    })
 }

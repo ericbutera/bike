@@ -338,6 +338,7 @@ pub async fn import_activity_archive_from_path(
             original_filename: indexed_entry.activity_entry.original_filename.clone(),
             format: indexed_entry.activity_entry.format.clone(),
             mime_type: None,
+            source_correlation_id: None,
             bytes,
         };
 

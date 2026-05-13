@@ -406,6 +406,7 @@ async fn read_uploaded_activity_file(
             original_filename,
             format,
             mime_type,
+            source_correlation_id: None,
             bytes,
         });
     }
@@ -586,6 +587,7 @@ mod tests {
             title: "Ride".to_string(),
             sport: "ride".to_string(),
             source: "manual_upload".to_string(),
+            source_correlation_id: None,
             original_filename: Some("ride.gpx".to_string()),
             format: Some("gpx".to_string()),
             started_at: now,

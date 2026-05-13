@@ -7,6 +7,8 @@ use crate::activity_import_pipeline::{
     finalize_activity_import_batch, persist_activity_upload, ActivityUploadPayload,
     PersistActivityUploadOutcome,
 };
+use crate::activity_lifecycle::delete_activity_with_derived_state;
+use crate::analytics::{mark_segment_activity_changes, mark_user_activity_change};
 use crate::app_error::AppError;
 use crate::config::Config;
 use crate::entities::{activities, strava_connections};
@@ -22,8 +24,9 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
 };
 use serde::de::DeserializeOwned;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::Sha256;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 type HmacSha256 = Hmac<Sha256>;
@@ -32,6 +35,7 @@ pub const STRAVA_AUTHORIZE_URL: &str = "https://www.strava.com/oauth/authorize";
 pub const STRAVA_TOKEN_URL: &str = "https://www.strava.com/api/v3/oauth/token";
 pub const STRAVA_DEAUTHORIZE_URL: &str = "https://www.strava.com/oauth/deauthorize";
 pub const STRAVA_API_BASE_URL: &str = "https://www.strava.com/api/v3";
+pub const STRAVA_PUSH_SUBSCRIPTIONS_URL: &str = "https://www.strava.com/api/v3/push_subscriptions";
 pub const STRAVA_SYNC_STATUS_NEVER: &str = "never";
 pub const STRAVA_SYNC_STATUS_QUEUED: &str = "queued";
 pub const STRAVA_SYNC_STATUS_RUNNING: &str = "running";
@@ -106,6 +110,39 @@ struct StravaLatLngStream {
 #[derive(Debug, Deserialize)]
 struct StravaFault {
     message: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct StravaWebhookSubscriptionQuery {
+    #[serde(rename = "hub.mode")]
+    pub mode: Option<String>,
+    #[serde(rename = "hub.challenge")]
+    pub challenge: Option<String>,
+    #[serde(rename = "hub.verify_token")]
+    pub verify_token: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct StravaWebhookChallengeResponse {
+    #[serde(rename = "hub.challenge")]
+    pub challenge: String,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct StravaWebhookEvent {
+    pub aspect_type: String,
+    pub event_time: i64,
+    pub object_id: i64,
+    pub object_type: String,
+    pub owner_id: i64,
+    pub subscription_id: i64,
+    pub updates: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StravaPushSubscription {
+    id: i64,
+    callback_url: String,
 }
 
 struct StravaApiClient {
@@ -286,6 +323,7 @@ pub async fn exchange_code_for_connection(
 
     let connection =
         upsert_connection_from_token(db, verified_state.user_id, token_response).await?;
+    ensure_webhook_subscription(config).await?;
 
     match queue_sync_task_for_connection(db, tasks, &connection, "Initial Strava sync queued.")
         .await
@@ -301,6 +339,76 @@ pub async fn exchange_code_for_connection(
         }
         Err(error) => Err(error),
     }
+}
+
+pub fn verify_webhook_subscription(
+    config: &Config,
+    query: &StravaWebhookSubscriptionQuery,
+) -> Result<StravaWebhookChallengeResponse, AppError> {
+    ensure_strava_webhook_configured(config)?;
+
+    if query.mode.as_deref() != Some("subscribe") {
+        return Err(AppError::bad_request("Invalid Strava webhook mode"));
+    }
+
+    let challenge = query
+        .challenge
+        .as_deref()
+        .ok_or_else(|| AppError::bad_request("Missing Strava webhook challenge"))?;
+    let verify_token = query
+        .verify_token
+        .as_deref()
+        .ok_or_else(|| AppError::bad_request("Missing Strava webhook verify token"))?;
+
+    if verify_token != config.strava_webhook_verify_token {
+        return Err(AppError::bad_request("Invalid Strava webhook verify token"));
+    }
+
+    Ok(StravaWebhookChallengeResponse {
+        challenge: challenge.to_string(),
+    })
+}
+
+pub async fn handle_webhook_event(
+    db: &DatabaseConnection,
+    tasks: &TaskQueue,
+    event: &StravaWebhookEvent,
+) -> Result<(), AppError> {
+    match event.object_type.as_str() {
+        "athlete" => {
+            if event.aspect_type == "update" && athlete_update_revokes_access(event) {
+                disconnect_connection_by_athlete_id(db, event.owner_id).await?;
+            }
+        }
+        "activity" => {
+            if let Some(connection) = load_connection_by_athlete_id(db, event.owner_id).await? {
+                if event.aspect_type == "delete" {
+                    let _ = delete_strava_activity_by_correlation_id(
+                        db,
+                        &Config::get().uploads_dir,
+                        tasks,
+                        connection.user_id,
+                        event.object_id,
+                    )
+                    .await?;
+                } else if !matches!(
+                    connection.last_sync_status.as_str(),
+                    STRAVA_SYNC_STATUS_QUEUED | STRAVA_SYNC_STATUS_RUNNING
+                ) {
+                    let _ = queue_sync_task_for_connection(
+                        db,
+                        tasks,
+                        &connection,
+                        "Strava webhook update queued a sync.",
+                    )
+                    .await;
+                }
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
 }
 
 pub async fn queue_connection_sync(
@@ -645,6 +753,42 @@ impl StravaApiClient {
         .map(|_| ())
     }
 
+    async fn list_push_subscriptions(&self) -> Result<Vec<StravaPushSubscription>, AppError> {
+        self.parse_json_response(
+            self.client
+                .get(STRAVA_PUSH_SUBSCRIPTIONS_URL)
+                .query(&[
+                    ("client_id", self.config.strava_client_id.as_str()),
+                    ("client_secret", self.config.strava_client_secret.as_str()),
+                ])
+                .send()
+                .await,
+            "list Strava webhook subscriptions",
+        )
+        .await
+    }
+
+    async fn create_push_subscription(&self) -> Result<StravaPushSubscription, AppError> {
+        let callback_url = self.config.strava_webhook_callback_url();
+        self.parse_json_response(
+            self.client
+                .post(STRAVA_PUSH_SUBSCRIPTIONS_URL)
+                .form(&[
+                    ("client_id", self.config.strava_client_id.as_str()),
+                    ("client_secret", self.config.strava_client_secret.as_str()),
+                    ("callback_url", callback_url.as_str()),
+                    (
+                        "verify_token",
+                        self.config.strava_webhook_verify_token.as_str(),
+                    ),
+                ])
+                .send()
+                .await,
+            "create a Strava webhook subscription",
+        )
+        .await
+    }
+
     async fn parse_json_response<T>(
         &self,
         response: Result<reqwest::Response, reqwest::Error>,
@@ -683,6 +827,31 @@ impl StravaApiClient {
     }
 }
 
+async fn ensure_webhook_subscription(config: &Config) -> Result<(), AppError> {
+    if !config.strava_webhook_enabled() {
+        return Ok(());
+    }
+
+    let client = StravaApiClient::new(Config::get())?;
+    let callback_url = config.strava_webhook_callback_url();
+    let subscriptions = client.list_push_subscriptions().await?;
+
+    if subscriptions
+        .iter()
+        .any(|subscription| subscription.callback_url == callback_url)
+    {
+        return Ok(());
+    }
+
+    let subscription = client.create_push_subscription().await?;
+    tracing::info!(
+        subscription_id = subscription.id,
+        callback_url,
+        "created Strava webhook subscription"
+    );
+    Ok(())
+}
+
 async fn load_latest_user_activity_started_at(
     db: &DatabaseConnection,
     user_id: i32,
@@ -694,6 +863,48 @@ async fn load_latest_user_activity_started_at(
         .await
         .map(|activity| activity.map(|activity| activity.started_at))
         .map_err(AppError::from)
+}
+
+async fn load_connection_by_athlete_id(
+    db: &DatabaseConnection,
+    athlete_id: i64,
+) -> Result<Option<strava_connections::Model>, AppError> {
+    strava_connections::Entity::find()
+        .filter(strava_connections::Column::AthleteId.eq(athlete_id))
+        .one(db)
+        .await
+        .map_err(AppError::from)
+}
+
+async fn disconnect_connection_by_athlete_id(
+    db: &DatabaseConnection,
+    athlete_id: i64,
+) -> Result<(), AppError> {
+    let Some(connection) = load_connection_by_athlete_id(db, athlete_id).await? else {
+        return Ok(());
+    };
+
+    strava_connections::Entity::delete_by_id(connection.id)
+        .exec(db)
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(())
+}
+
+fn athlete_update_revokes_access(event: &StravaWebhookEvent) -> bool {
+    event
+        .updates
+        .as_ref()
+        .and_then(|updates| updates.get("authorized"))
+        .and_then(|value| {
+            value.as_str().or_else(|| {
+                value
+                    .as_bool()
+                    .map(|flag| if flag { "true" } else { "false" })
+            })
+        })
+        == Some("false")
 }
 
 fn strava_sync_after_started_at(
@@ -730,6 +941,16 @@ fn ensure_strava_configured(config: &Config) -> Result<(), AppError> {
     } else {
         Err(AppError::bad_request(
             "Strava integration is not configured on this Bike deployment",
+        ))
+    }
+}
+
+fn ensure_strava_webhook_configured(config: &Config) -> Result<(), AppError> {
+    if config.strava_webhook_enabled() {
+        Ok(())
+    } else {
+        Err(AppError::bad_request(
+            "Strava webhook integration is not configured on this Bike deployment",
         ))
     }
 }
@@ -948,8 +1169,37 @@ fn build_activity_upload(
         original_filename,
         format: "tcx".to_string(),
         mime_type: Some("application/vnd.garmin.tcx+xml".to_string()),
+        source_correlation_id: Some(activity.id.to_string()),
         bytes,
     })
+}
+
+async fn delete_strava_activity_by_correlation_id(
+    db: &DatabaseConnection,
+    uploads_dir: &str,
+    tasks: &TaskQueue,
+    user_id: i32,
+    source_correlation_id: i64,
+) -> Result<bool, AppError> {
+    let Some(activity) = activities::Entity::find()
+        .filter(activities::Column::UserId.eq(user_id))
+        .filter(activities::Column::Source.eq("strava_sync"))
+        .filter(activities::Column::SourceCorrelationId.eq(source_correlation_id.to_string()))
+        .one(db)
+        .await?
+    else {
+        return Ok(false);
+    };
+
+    let affected_segment_ids =
+        delete_activity_with_derived_state(db, uploads_dir, user_id, activity).await?;
+    let changed_at = Utc::now();
+    mark_user_activity_change(db, user_id, changed_at).await?;
+    mark_segment_activity_changes(db, &affected_segment_ids, changed_at).await?;
+    tasks.rebuild_fitness_freshness(user_id).await;
+    tasks.rebuild_segment_analytics(affected_segment_ids).await;
+
+    Ok(true)
 }
 
 fn build_tcx_document(activity: &StravaActivitySummary, streams: &StravaActivityStreams) -> String {
@@ -1291,6 +1541,8 @@ mod tests {
             strava_client_id: "12345".to_string(),
             strava_client_secret: "secret".to_string(),
             strava_oauth_scopes: "activity:read profile:read_all".to_string(),
+            strava_webhook_verify_token: "verify-token".to_string(),
+            strava_webhook_callback_url: None,
             uploads_dir: "./uploads".to_string(),
             max_upload_bytes: 1024,
             max_archive_fetch_bytes: 1024,
@@ -1383,6 +1635,38 @@ mod tests {
             ),
             Some(last_synced_activity_started_at),
         );
+    }
+
+    #[test]
+    fn verifies_strava_webhook_subscription_query() {
+        let config = test_config();
+        let response = verify_webhook_subscription(
+            &config,
+            &StravaWebhookSubscriptionQuery {
+                mode: Some("subscribe".to_string()),
+                challenge: Some("challenge-value".to_string()),
+                verify_token: Some("verify-token".to_string()),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(response.challenge, "challenge-value");
+    }
+
+    #[test]
+    fn rejects_invalid_strava_webhook_verify_token() {
+        let config = test_config();
+        let error = verify_webhook_subscription(
+            &config,
+            &StravaWebhookSubscriptionQuery {
+                mode: Some("subscribe".to_string()),
+                challenge: Some("challenge-value".to_string()),
+                verify_token: Some("wrong-token".to_string()),
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
     }
 
     #[test]

@@ -54,6 +54,10 @@ pub fn routes() -> Router<Arc<AppStorage>> {
         )
         .route("/sync", post(queue_sync))
         .route("/callback", get(handle_callback))
+        .route(
+            "/webhook",
+            get(handle_webhook_verification).post(handle_webhook_event),
+        )
 }
 
 #[utoipa::path(
@@ -200,6 +204,44 @@ pub async fn handle_callback(
             Some(&error.message),
         )),
     }
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/strava/webhook",
+    responses(
+        (status = 200, description = "Verifies the Strava webhook subscription handshake", body = strava::StravaWebhookChallengeResponse),
+        (status = 400, description = "Invalid handshake query", body = ApiErrorResponse),
+    ),
+    tag = "strava"
+)]
+pub async fn handle_webhook_verification(
+    Query(query): Query<strava::StravaWebhookSubscriptionQuery>,
+) -> Result<Json<strava::StravaWebhookChallengeResponse>, AppError> {
+    Ok(Json(strava::verify_webhook_subscription(
+        crate::config::Config::get(),
+        &query,
+    )?))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/strava/webhook",
+    request_body = strava::StravaWebhookEvent,
+    responses(
+        (status = 200, description = "Accepted a Strava webhook event"),
+    ),
+    tag = "strava"
+)]
+pub async fn handle_webhook_event(
+    State(state): State<Arc<AppStorage>>,
+    Json(event): Json<strava::StravaWebhookEvent>,
+) -> Result<Json<auth_openapi::schemas::MessageResponse>, AppError> {
+    strava::handle_webhook_event(&state.db, &state.tasks, &event).await?;
+
+    Ok(Json(auth_openapi::schemas::MessageResponse {
+        message: "ok".to_string(),
+    }))
 }
 
 async fn response_from_model(

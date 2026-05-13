@@ -10,6 +10,8 @@ pub struct Config {
     pub strava_client_id: String,
     pub strava_client_secret: String,
     pub strava_oauth_scopes: String,
+    pub strava_webhook_verify_token: String,
+    pub strava_webhook_callback_url: Option<String>,
     pub uploads_dir: String,
     pub max_upload_bytes: usize,
     pub max_archive_fetch_bytes: usize,
@@ -46,6 +48,12 @@ impl Config {
             strava_client_secret: env::var("STRAVA_CLIENT_SECRET").unwrap_or_default(),
             strava_oauth_scopes: env::var("STRAVA_OAUTH_SCOPES")
                 .unwrap_or_else(|_| "activity:read".to_string()),
+            strava_webhook_verify_token: env::var("STRAVA_WEBHOOK_VERIFY_TOKEN")
+                .unwrap_or_default(),
+            strava_webhook_callback_url: env::var("STRAVA_WEBHOOK_CALLBACK_URL")
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty()),
             uploads_dir: env::var("UPLOADS_DIR").unwrap_or_else(|_| "./uploads".to_string()),
             max_upload_bytes: env::var("MAX_UPLOAD_BYTES")
                 .ok()
@@ -82,6 +90,16 @@ impl Config {
 
     pub fn strava_enabled(&self) -> bool {
         !self.strava_client_id.trim().is_empty() && !self.strava_client_secret.trim().is_empty()
+    }
+
+    pub fn strava_webhook_enabled(&self) -> bool {
+        self.strava_enabled() && !self.strava_webhook_verify_token.trim().is_empty()
+    }
+
+    pub fn strava_webhook_callback_url(&self) -> String {
+        self.strava_webhook_callback_url
+            .clone()
+            .unwrap_or_else(|| format!("{}/api/strava/webhook", self.api_url.trim_end_matches('/')))
     }
 
     pub fn strava_oauth_scope_list(&self) -> Vec<String> {

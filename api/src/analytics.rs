@@ -377,6 +377,7 @@ mod tests {
             title: "Lunch Ride".to_string(),
             sport: "Ride".to_string(),
             source: "manual_upload".to_string(),
+            source_correlation_id: None,
             original_filename: None,
             format: Some("fit".to_string()),
             started_at: timestamp,
