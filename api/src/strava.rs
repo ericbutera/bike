@@ -341,6 +341,10 @@ pub async fn exchange_code_for_connection(
     }
 }
 
+pub async fn ensure_webhook_subscription_registered() -> Result<(), AppError> {
+    ensure_webhook_subscription(Config::get()).await
+}
+
 pub fn verify_webhook_subscription(
     config: &Config,
     query: &StravaWebhookSubscriptionQuery,
@@ -417,6 +421,14 @@ pub async fn queue_connection_sync(
     user_id: i32,
 ) -> Result<strava_connections::Model, AppError> {
     ensure_strava_configured(Config::get())?;
+
+    if let Err(error) = ensure_webhook_subscription(Config::get()).await {
+        tracing::warn!(
+            message = %error.message,
+            "failed to ensure Strava webhook subscription before queueing sync"
+        );
+    }
+
     let connection = load_connection(db, user_id)
         .await?
         .ok_or_else(|| AppError::not_found("Connect Strava before starting a sync"))?;

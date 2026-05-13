@@ -36,6 +36,14 @@ use utoipa_swagger_ui::SwaggerUi;
 
 pub async fn app(app_state: Arc<AppStorage>) -> Router {
     let cfg = Config::get();
+
+    if let Err(error) = crate::strava::ensure_webhook_subscription_registered().await {
+        tracing::warn!(
+            message = %error.message,
+            "failed to ensure Strava webhook subscription during API startup"
+        );
+    }
+
     let origins: Vec<HeaderValue> = cfg
         .cors_allowed_origins
         .iter()
