@@ -4,11 +4,15 @@ import { auth } from "@ericbutera/kaleido";
 import {
   faCrown,
   faFileLines,
+  faLocationDot,
+  faMagnifyingGlass,
   faMedal,
   faPause,
   faPlay,
+  faPlus,
   faRoute,
   faTrophy,
+  faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
@@ -85,6 +89,11 @@ type ComparisonSeries = {
   points: Array<{ x: number; y: number }>;
 };
 
+type SelectedEffortRow = {
+  effort: SegmentEffort;
+  color: string;
+};
+
 function startOfDay(value: Date) {
   const next = new Date(value);
   next.setHours(0, 0, 0, 0);
@@ -150,6 +159,27 @@ function overallEffortRanks(efforts: SegmentEffort[] | null | undefined) {
   );
 
   return new Map(ranked.map((effort, index) => [effort.id, index + 1]));
+}
+
+function filterEffortsBySearchQuery(
+  efforts: SegmentEffort[],
+  rawQuery: string,
+) {
+  const query = rawQuery.trim().toLowerCase();
+
+  if (!query) {
+    return efforts;
+  }
+
+  return efforts.filter((effort) => {
+    const haystacks = [
+      effort.rider_name,
+      effort.activity_title,
+      effort.activity_started_at,
+    ];
+
+    return haystacks.some((value) => value.toLowerCase().includes(query));
+  });
 }
 
 function interpolateRoutePoint(
@@ -551,9 +581,6 @@ function RouteComparisonMap({
   maxDuration,
   isPlaying,
   focusedEffortId,
-  pinnedEffortId,
-  onHoverEffort,
-  onTogglePinnedEffort,
   onTogglePlayback,
   onSeek,
 }: {
@@ -563,9 +590,6 @@ function RouteComparisonMap({
   maxDuration: number;
   isPlaying: boolean;
   focusedEffortId: number | null;
-  pinnedEffortId: number | null;
-  onHoverEffort: (effortId: number | null) => void;
-  onTogglePinnedEffort: (effortId: number) => void;
   onTogglePlayback: () => void;
   onSeek: (value: number) => void;
 }) {
@@ -584,7 +608,6 @@ function RouteComparisonMap({
         id: effort.id,
         color: EFFORT_COLORS[index % EFFORT_COLORS.length],
         point,
-        label: `${effort.rider_name} · ${formatDuration(effort.duration_seconds)}`,
         isDimmed,
       };
     })
@@ -595,122 +618,82 @@ function RouteComparisonMap({
         id: number;
         color: string;
         point: ActivityRoutePoint;
-        label: string;
         isDimmed: boolean;
       } => marker !== null,
     );
 
   return (
-    <div className="card bg-base-100 shadow-xl">
-      <div className="card-body">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h2 className="card-title text-xl">Effort comparison map</h2>
-            <p className="text-sm text-base-content/70">
-              Play the selected attempts against the same route to see where
-              each ride is gaining or losing time.
-            </p>
-          </div>
-          <span className="badge badge-outline">
-            {selectedEfforts.length} selected
-          </span>
-        </div>
-        <div className="mt-5 overflow-hidden rounded-box border border-base-300 bg-base-200">
-          {hasRouteMap ? (
-            <LeafletRouteMap
-              routePoints={routePoints}
-              movingMarkers={markers.map((marker) => ({
-                id: String(marker.id),
-                point: marker.point,
-                color: marker.color,
-                opacity: marker.isDimmed ? 0.28 : 1,
-              }))}
-              ariaLabel="Segment comparison map"
-              emptyMessage="Segment route geometry is not available yet."
-              className="h-96 w-full"
-            />
-          ) : (
-            <div className="alert">
-              Segment route geometry is not available yet.
-            </div>
-          )}
-        </div>
-
-        <div className="mt-5 flex items-center gap-3">
-          <button
-            type="button"
-            className="btn btn-outline btn-sm btn-square shrink-0"
-            disabled={selectedEfforts.length === 0 || maxDuration <= 0}
-            aria-label={
-              isPlaying
-                ? "Pause comparison playback"
-                : playbackSeconds >= maxDuration
-                  ? "Replay comparison playback"
-                  : "Play comparison playback"
-            }
-            onClick={onTogglePlayback}
-          >
-            <FontAwesomeIcon
-              icon={isPlaying ? faPause : faPlay}
-              className="h-4 w-4"
-            />
-          </button>
-
-          <input
-            type="range"
-            min={0}
-            max={Math.max(maxDuration, 1)}
-            step={1}
-            value={Math.min(playbackSeconds, Math.max(maxDuration, 1))}
-            className="range range-primary flex-1"
-            disabled={selectedEfforts.length === 0 || maxDuration <= 0}
-            aria-label="Playback timeline"
-            onChange={(event) => {
-              onSeek(Number(event.target.value));
-            }}
-          />
-          <span className="badge badge-outline whitespace-nowrap">
-            {formatDuration(Math.round(playbackSeconds))} /{" "}
-            {formatDuration(maxDuration)}
-          </span>
-        </div>
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          {selectedEfforts.map((effort, index) => (
-            <button
-              key={effort.id}
-              type="button"
-              className={`badge badge-outline gap-2 px-3 py-3 transition-opacity ${focusedEffortId != null && focusedEffortId !== effort.id ? "opacity-35" : "opacity-100"}`}
-              aria-pressed={pinnedEffortId === effort.id}
-              title={`${effort.rider_name} · ${effort.activity_title}`}
-              onMouseEnter={() => {
-                onHoverEffort(effort.id);
-              }}
-              onMouseLeave={() => {
-                onHoverEffort(null);
-              }}
-              onFocus={() => {
-                onHoverEffort(effort.id);
-              }}
-              onBlur={() => {
-                onHoverEffort(null);
-              }}
-              onClick={() => {
-                onTogglePinnedEffort(effort.id);
-              }}
-            >
-              <span
-                className="inline-block h-2.5 w-2.5 rounded-full"
-                style={{
-                  backgroundColor: EFFORT_COLORS[index % EFFORT_COLORS.length],
-                }}
-              />
-              <span>{`${effort.rider_name} · ${formatDuration(effort.duration_seconds)}`}</span>
-            </button>
-          ))}
-        </div>
+    <>
+      <div>
+        <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-base-content/55">
+          Route playback
+        </h3>
+        <p className="mt-1 text-sm text-base-content/70">
+          Play the selected attempts against the same route to see where each
+          ride is gaining or losing time.
+        </p>
       </div>
-    </div>
+
+      <div className="mt-4 overflow-hidden rounded-box border border-base-300 bg-base-200">
+        {hasRouteMap ? (
+          <LeafletRouteMap
+            routePoints={routePoints}
+            movingMarkers={markers.map((marker) => ({
+              id: String(marker.id),
+              point: marker.point,
+              color: marker.color,
+              opacity: marker.isDimmed ? 0.28 : 1,
+            }))}
+            ariaLabel="Segment comparison map"
+            emptyMessage="Segment route geometry is not available yet."
+            className="h-96 w-full"
+          />
+        ) : (
+          <div className="alert">
+            Segment route geometry is not available yet.
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 flex items-center gap-3">
+        <button
+          type="button"
+          className="btn btn-outline btn-sm btn-square shrink-0"
+          disabled={selectedEfforts.length === 0 || maxDuration <= 0}
+          aria-label={
+            isPlaying
+              ? "Pause comparison playback"
+              : playbackSeconds >= maxDuration
+                ? "Replay comparison playback"
+                : "Play comparison playback"
+          }
+          onClick={onTogglePlayback}
+        >
+          <FontAwesomeIcon
+            icon={isPlaying ? faPause : faPlay}
+            className="h-4 w-4"
+          />
+        </button>
+
+        <input
+          type="range"
+          min={0}
+          max={Math.max(maxDuration, 1)}
+          step={1}
+          value={Math.min(playbackSeconds, Math.max(maxDuration, 1))}
+          className="range range-primary flex-1"
+          disabled={selectedEfforts.length === 0 || maxDuration <= 0}
+          aria-label="Playback timeline"
+          onChange={(event) => {
+            onSeek(Number(event.target.value));
+          }}
+        />
+        <span className="badge badge-outline whitespace-nowrap">
+          {formatDuration(Math.round(playbackSeconds))} /{" "}
+          {formatDuration(maxDuration)}
+        </span>
+      </div>
+    </>
   );
 }
 
@@ -720,10 +703,7 @@ function ComparisonChart({
   selectedEfforts,
   playbackSeconds,
   focusedEffortId,
-  pinnedEffortId,
   unitSystem,
-  onHoverEffort,
-  onTogglePinnedEffort,
   onMetricChange,
 }: {
   metric: ChartMetric;
@@ -731,10 +711,7 @@ function ComparisonChart({
   selectedEfforts: SegmentEffort[];
   playbackSeconds: number;
   focusedEffortId: number | null;
-  pinnedEffortId: number | null;
   unitSystem: UnitSystem;
-  onHoverEffort: (effortId: number | null) => void;
-  onTogglePinnedEffort: (effortId: number) => void;
   onMetricChange: (value: ChartMetric) => void;
 }) {
   const [hoveredRow, setHoveredRow] = useState<ComparisonChartRow | null>(null);
@@ -771,286 +748,340 @@ function ComparisonChart({
   const displayRow = hoveredRow ?? playbackRow;
   const displaySeconds = displayRow.elapsedSeconds;
   return (
-    <div className="card bg-base-100 shadow-xl">
-      <div className="card-body">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h2 className="card-title text-xl">Chart comparison</h2>
-            <p className="text-sm text-base-content/70">
-              Compare the selected attempts across elapsed time while the map
-              dots advance.
-            </p>
-          </div>
-          <div className="join">
-            {(["speed", "heartRate"] as ChartMetric[]).map((nextMetric) => (
-              <button
-                key={nextMetric}
-                type="button"
-                className={`join-item btn btn-sm ${metric === nextMetric ? "btn-primary" : "btn-ghost"}`}
-                onClick={() => {
-                  onMetricChange(nextMetric);
+    <>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-base-content/55">
+            Chart comparison
+          </h3>
+          <p className="mt-1 text-sm text-base-content/70">
+            Compare the selected attempts across elapsed time while the map dots
+            advance.
+          </p>
+        </div>
+        <div className="join">
+          {(["speed", "heartRate"] as ChartMetric[]).map((nextMetric) => (
+            <button
+              key={nextMetric}
+              type="button"
+              className={`join-item btn btn-sm ${metric === nextMetric ? "btn-primary" : "btn-ghost"}`}
+              onClick={() => {
+                onMetricChange(nextMetric);
+              }}
+            >
+              {nextMetric === "heartRate" ? "Heart rate" : nextMetric}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-4 overflow-hidden rounded-box border border-base-300 bg-base-200 p-3">
+        <div role="img" aria-label="Segment comparison chart">
+          <div className="h-[256px] w-full">
+            <ResponsiveContainer
+              width="100%"
+              height="100%"
+              minWidth={320}
+              minHeight={256}
+            >
+              <ComposedChart
+                data={chartRows}
+                margin={{ top: 12, right: 8, bottom: 12, left: 8 }}
+                onMouseLeave={() => {
+                  setHoveredRow(null);
+                }}
+                onMouseMove={(state) => {
+                  const nextIndex = Number(state?.activeTooltipIndex);
+
+                  if (
+                    state?.isTooltipActive &&
+                    Number.isInteger(nextIndex) &&
+                    nextIndex >= 0 &&
+                    nextIndex < chartRows.length
+                  ) {
+                    setHoveredRow(chartRows[nextIndex]);
+                  } else {
+                    setHoveredRow(null);
+                  }
                 }}
               >
-                {nextMetric === "heartRate" ? "Heart rate" : nextMetric}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-5 overflow-hidden rounded-box border border-base-300 bg-base-200 p-3">
-          <div role="img" aria-label="Segment comparison chart">
-            <div className="h-[256px] w-full">
-              <ResponsiveContainer
-                width="100%"
-                height="100%"
-                minWidth={320}
-                minHeight={256}
-              >
-                <ComposedChart
-                  data={chartRows}
-                  margin={{ top: 12, right: 8, bottom: 12, left: 8 }}
-                  onMouseLeave={() => {
-                    setHoveredRow(null);
+                <CartesianGrid
+                  vertical={false}
+                  stroke="var(--color-base-content)"
+                  strokeOpacity={0.12}
+                />
+                <XAxis
+                  axisLine={false}
+                  dataKey="elapsedSeconds"
+                  domain={[0, maxX]}
+                  label={{
+                    value: "Elapsed time",
+                    position: "insideBottom",
+                    offset: -6,
                   }}
-                  onMouseMove={(state) => {
-                    const nextIndex = Number(state?.activeTooltipIndex);
-
-                    if (
-                      state?.isTooltipActive &&
-                      Number.isInteger(nextIndex) &&
-                      nextIndex >= 0 &&
-                      nextIndex < chartRows.length
-                    ) {
-                      setHoveredRow(chartRows[nextIndex]);
-                    } else {
-                      setHoveredRow(null);
-                    }
+                  tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
+                  tickFormatter={(value: number) =>
+                    formatDuration(Math.round(value))
+                  }
+                  tickLine={false}
+                  type="number"
+                />
+                <YAxis
+                  axisLine={false}
+                  label={{
+                    angle: -90,
+                    fill: "var(--color-base-content)",
+                    fontSize: 10,
+                    position: "insideLeft",
+                    style: { opacity: 0.65 },
+                    value: metricLabel(metric),
                   }}
-                >
-                  <CartesianGrid
-                    vertical={false}
-                    stroke="var(--color-base-content)"
-                    strokeOpacity={0.12}
-                  />
-                  <XAxis
-                    axisLine={false}
-                    dataKey="elapsedSeconds"
-                    domain={[0, maxX]}
-                    label={{
-                      value: "Elapsed time",
-                      position: "insideBottom",
-                      offset: -6,
-                    }}
-                    tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
-                    tickFormatter={(value: number) =>
-                      formatDuration(Math.round(value))
-                    }
-                    tickLine={false}
-                    type="number"
-                  />
-                  <YAxis
-                    axisLine={false}
-                    label={{
-                      angle: -90,
-                      fill: "var(--color-base-content)",
-                      fontSize: 10,
-                      position: "insideLeft",
-                      style: { opacity: 0.65 },
-                      value: metricLabel(metric),
-                    }}
-                    tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
-                    tickFormatter={(value: number) =>
-                      formatMetricValue(metric, value, unitSystem)
-                    }
-                    tickLine={false}
-                    tickMargin={10}
-                    width={74}
-                    yAxisId="metric"
-                  />
-                  <YAxis
-                    axisLine={false}
-                    label={{
-                      angle: 90,
-                      fill: "var(--color-base-content)",
-                      fontSize: 10,
-                      position: "insideRight",
-                      style: { opacity: 0.65 },
-                      value: "Elevation",
-                    }}
-                    orientation="right"
-                    tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
-                    tickFormatter={(value: number) =>
-                      formatElevation(value, unitSystem)
-                    }
-                    tickLine={false}
-                    tickMargin={10}
-                    width={74}
-                    yAxisId="elevation"
-                  />
-                  <Tooltip
-                    content={
-                      <ComparisonChartTooltip
-                        metric={metric}
-                        series={series}
-                        unitSystem={unitSystem}
-                      />
-                    }
-                    cursor={{
-                      stroke: "#78716c",
-                      strokeDasharray: "4 4",
-                      strokeOpacity: 0.9,
-                    }}
-                  />
-
-                  {elevationPoints.length > 1 ? (
-                    <Area
-                      type="linear"
-                      dataKey="elevation"
-                      yAxisId="elevation"
-                      stroke="var(--color-success)"
-                      fill="var(--color-success)"
-                      fillOpacity={0.15}
-                      strokeOpacity={0.35}
-                      strokeWidth={2}
-                      dot={false}
-                      connectNulls
+                  tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
+                  tickFormatter={(value: number) =>
+                    formatMetricValue(metric, value, unitSystem)
+                  }
+                  tickLine={false}
+                  tickMargin={10}
+                  width={74}
+                  yAxisId="metric"
+                />
+                <YAxis
+                  axisLine={false}
+                  label={{
+                    angle: 90,
+                    fill: "var(--color-base-content)",
+                    fontSize: 10,
+                    position: "insideRight",
+                    style: { opacity: 0.65 },
+                    value: "Elevation",
+                  }}
+                  orientation="right"
+                  tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
+                  tickFormatter={(value: number) =>
+                    formatElevation(value, unitSystem)
+                  }
+                  tickLine={false}
+                  tickMargin={10}
+                  width={74}
+                  yAxisId="elevation"
+                />
+                <Tooltip
+                  content={
+                    <ComparisonChartTooltip
+                      metric={metric}
+                      series={series}
+                      unitSystem={unitSystem}
                     />
-                  ) : null}
+                  }
+                  cursor={{
+                    stroke: "#78716c",
+                    strokeDasharray: "4 4",
+                    strokeOpacity: 0.9,
+                  }}
+                />
 
-                  {series.map((entry) => (
-                    <Line
-                      key={entry.effort.id}
-                      type="linear"
-                      dataKey={entry.dataKey}
-                      yAxisId="metric"
-                      stroke={entry.color}
-                      strokeWidth={metric === "speed" ? 2.5 : 3.5}
-                      strokeOpacity={
+                {elevationPoints.length > 1 ? (
+                  <Area
+                    type="linear"
+                    dataKey="elevation"
+                    yAxisId="elevation"
+                    stroke="var(--color-success)"
+                    fill="var(--color-success)"
+                    fillOpacity={0.15}
+                    strokeOpacity={0.35}
+                    strokeWidth={2}
+                    dot={false}
+                    connectNulls
+                  />
+                ) : null}
+
+                {series.map((entry) => (
+                  <Line
+                    key={entry.effort.id}
+                    type="linear"
+                    dataKey={entry.dataKey}
+                    yAxisId="metric"
+                    stroke={entry.color}
+                    strokeWidth={metric === "speed" ? 2.5 : 3.5}
+                    strokeOpacity={
+                      focusedEffortId != null &&
+                      focusedEffortId !== entry.effort.id
+                        ? 0.24
+                        : 1
+                    }
+                    dot={false}
+                    activeDot={{
+                      r: 6,
+                      fill: entry.color,
+                      fillOpacity:
                         focusedEffortId != null &&
                         focusedEffortId !== entry.effort.id
                           ? 0.24
-                          : 1
+                          : 1,
+                      stroke: "var(--color-base-100)",
+                      strokeOpacity:
+                        focusedEffortId != null &&
+                        focusedEffortId !== entry.effort.id
+                          ? 0.4
+                          : 1,
+                      strokeWidth: 1.25,
+                    }}
+                    connectNulls
+                  />
+                ))}
+
+                {!hoveredRow && displaySeconds > 0 ? (
+                  <ReferenceLine
+                    x={displaySeconds}
+                    stroke="#78716c"
+                    strokeDasharray="4 4"
+                  />
+                ) : null}
+
+                {!hoveredRow
+                  ? series.map((entry) => {
+                      const value = displayRow[entry.dataKey];
+
+                      if (typeof value !== "number") {
+                        return null;
                       }
-                      dot={false}
-                      activeDot={{
-                        r: 6,
-                        fill: entry.color,
-                        fillOpacity:
-                          focusedEffortId != null &&
-                          focusedEffortId !== entry.effort.id
-                            ? 0.24
-                            : 1,
-                        stroke: "var(--color-base-100)",
-                        strokeOpacity:
-                          focusedEffortId != null &&
-                          focusedEffortId !== entry.effort.id
-                            ? 0.4
-                            : 1,
-                        strokeWidth: 1.25,
-                      }}
-                      connectNulls
-                    />
-                  ))}
 
-                  {!hoveredRow && displaySeconds > 0 ? (
-                    <ReferenceLine
-                      x={displaySeconds}
-                      stroke="#78716c"
-                      strokeDasharray="4 4"
-                    />
-                  ) : null}
-
-                  {!hoveredRow
-                    ? series.map((entry) => {
-                        const value = displayRow[entry.dataKey];
-
-                        if (typeof value !== "number") {
-                          return null;
-                        }
-
-                        return (
-                          <ReferenceDot
-                            key={`${entry.effort.id}-marker`}
-                            x={displaySeconds}
-                            y={value}
-                            fill={entry.color}
-                            fillOpacity={
-                              focusedEffortId != null &&
-                              focusedEffortId !== entry.effort.id
-                                ? 0.24
-                                : 1
-                            }
-                            r={6}
-                            stroke="var(--color-base-100)"
-                            strokeOpacity={
-                              focusedEffortId != null &&
-                              focusedEffortId !== entry.effort.id
-                                ? 0.4
-                                : 1
-                            }
-                            strokeWidth={1.25}
-                            yAxisId="metric"
-                          />
-                        );
-                      })
-                    : null}
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
+                      return (
+                        <ReferenceDot
+                          key={`${entry.effort.id}-marker`}
+                          x={displaySeconds}
+                          y={value}
+                          fill={entry.color}
+                          fillOpacity={
+                            focusedEffortId != null &&
+                            focusedEffortId !== entry.effort.id
+                              ? 0.24
+                              : 1
+                          }
+                          r={6}
+                          stroke="var(--color-base-100)"
+                          strokeOpacity={
+                            focusedEffortId != null &&
+                            focusedEffortId !== entry.effort.id
+                              ? 0.4
+                              : 1
+                          }
+                          strokeWidth={1.25}
+                          yAxisId="metric"
+                        />
+                      );
+                    })
+                  : null}
+              </ComposedChart>
+            </ResponsiveContainer>
           </div>
         </div>
+      </div>
+    </>
+  );
+}
 
-        <div className="mt-4 flex flex-wrap gap-3">
-          {series.map((entry) => {
-            const value = displayRow[entry.dataKey];
+function SelectedEffortsPanel({
+  selectedRows,
+  focusedEffortId,
+  pinnedEffortId,
+  onHoverEffort,
+  onTogglePinnedEffort,
+  onRemoveEffort,
+}: {
+  selectedRows: SelectedEffortRow[];
+  focusedEffortId: number | null;
+  pinnedEffortId: number | null;
+  onHoverEffort: (effortId: number | null) => void;
+  onTogglePinnedEffort: (effortId: number) => void;
+  onRemoveEffort: (effortId: number) => void;
+}) {
+  return (
+    <div className="rounded-box border border-base-300 bg-base-200 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-base-content/55">
+            Selected rides
+          </h3>
+          <p className="mt-1 text-sm text-base-content/60">
+            Hover or pin a ride here to focus the shared map and chart.
+          </p>
+        </div>
+        <span className="badge badge-outline">
+          {selectedRows.length} selected
+        </span>
+      </div>
+
+      {selectedRows.length > 0 ? (
+        <div className="mt-4 space-y-2">
+          {selectedRows.map(({ effort, color }) => {
+            const isFocused = focusedEffortId === effort.id;
+            const isPinned = pinnedEffortId === effort.id;
+
             return (
-              <button
-                key={entry.effort.id}
-                type="button"
-                className={`card border border-base-300 bg-base-200 text-left shadow-sm transition-opacity ${focusedEffortId != null && focusedEffortId !== entry.effort.id ? "opacity-35" : "opacity-100"}`}
-                aria-pressed={pinnedEffortId === entry.effort.id}
-                style={{ borderLeftColor: entry.color, borderLeftWidth: 4 }}
-                onMouseEnter={() => {
-                  onHoverEffort(entry.effort.id);
-                }}
-                onMouseLeave={() => {
-                  onHoverEffort(null);
-                }}
-                onFocus={() => {
-                  onHoverEffort(entry.effort.id);
-                }}
-                onBlur={() => {
-                  onHoverEffort(null);
-                }}
-                onClick={() => {
-                  onTogglePinnedEffort(entry.effort.id);
-                }}
+              <div
+                key={effort.id}
+                className={`flex items-center gap-3 rounded-box border border-base-300 bg-base-100 p-2 transition-opacity ${focusedEffortId != null && focusedEffortId !== effort.id ? "opacity-45" : "opacity-100"}`}
+                style={{ borderLeftColor: color, borderLeftWidth: 4 }}
               >
-                <div className="card-body p-3 text-sm">
-                  <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className={`min-w-0 flex-1 rounded-box px-2 py-1 text-left ${isFocused ? "bg-base-200/80" : "bg-transparent"}`}
+                  aria-pressed={isPinned}
+                  onMouseEnter={() => {
+                    onHoverEffort(effort.id);
+                  }}
+                  onMouseLeave={() => {
+                    onHoverEffort(null);
+                  }}
+                  onFocus={() => {
+                    onHoverEffort(effort.id);
+                  }}
+                  onBlur={() => {
+                    onHoverEffort(null);
+                  }}
+                  onClick={() => {
+                    onTogglePinnedEffort(effort.id);
+                  }}
+                >
+                  <div className="min-w-0 flex items-center gap-3">
                     <span
                       aria-hidden
-                      className="inline-block h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: entry.color }}
+                      className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: color }}
                     />
-                    <div className="font-semibold text-base-content">
-                      {entry.effort.rider_name}
+                    <div className="min-w-0">
+                      <div className="truncate font-medium text-base-content">
+                        {effort.rider_name} ·{" "}
+                        {formatDuration(effort.duration_seconds)}
+                      </div>
+                      <div className="truncate text-xs text-base-content/65">
+                        {effort.activity_title} ·{" "}
+                        {formatActivityTimestamp(effort.activity_started_at)}
+                      </div>
                     </div>
                   </div>
-                  <div className="mt-1 text-xs text-base-content/65">
-                    {entry.effort.activity_title}
-                  </div>
-                  <div className="mt-2">
-                    {typeof value === "number"
-                      ? formatMetricValue(metric, value, unitSystem)
-                      : "--"}
-                  </div>
-                </div>
-              </button>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs btn-circle shrink-0"
+                  aria-label={`Remove ${effort.activity_title} from comparison`}
+                  onClick={() => {
+                    onRemoveEffort(effort.id);
+                  }}
+                >
+                  <FontAwesomeIcon icon={faXmark} className="h-3.5 w-3.5" />
+                </button>
+              </div>
             );
           })}
         </div>
-      </div>
+      ) : (
+        <div className="alert mt-4 bg-base-100 text-sm text-base-content/70">
+          <span>Add rides from the left column to start the comparison.</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -1073,11 +1104,16 @@ export default function SegmentDetailPanel({
   const [pinnedEffortId, setPinnedEffortId] = useState<number | null>(null);
   const [effortTimeFilter, setEffortTimeFilter] =
     useState<EffortTimeFilter>("all");
+  const [effortSearchQuery, setEffortSearchQuery] = useState("");
   const segment = segmentQuery.data;
   const allEfforts = segment?.efforts ?? [];
   const visibleEfforts = filterEffortsByTimeWindow(
     segment?.efforts,
     effortTimeFilter,
+  );
+  const filteredVisibleEfforts = useMemo(
+    () => filterEffortsBySearchQuery(visibleEfforts, effortSearchQuery),
+    [effortSearchQuery, visibleEfforts],
   );
   const currentUserId = user?.id ?? null;
   const currentUserName = user?.name?.trim() || null;
@@ -1105,11 +1141,23 @@ export default function SegmentDetailPanel({
       .map((id) => effortById.get(id))
       .filter((effort): effort is SegmentEffort => Boolean(effort));
   }, [allEfforts, selectedEffortIds]);
+  const selectedRows = useMemo(
+    () =>
+      selectedEfforts.map((effort, index) => ({
+        effort,
+        color: EFFORT_COLORS[index % EFFORT_COLORS.length],
+      })),
+    [selectedEfforts],
+  );
   const focusedEffortId = hoveredEffortId ?? pinnedEffortId;
   const maxDuration = selectedEfforts.reduce(
     (max, effort) => Math.max(max, effort.duration_seconds),
     0,
   );
+
+  useEffect(() => {
+    setEffortSearchQuery("");
+  }, [segment?.id]);
 
   useEffect(() => {
     if (!segment || allEfforts.length === 0) {
@@ -1340,254 +1388,253 @@ export default function SegmentDetailPanel({
             Select up to ten attempts, then use time to open the full activity
             detail.
           </p>
-
-          <div className="mt-4 space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-base-content/55">
-                  On the map
-                </div>
-                <div className="text-xs text-base-content/60">
-                  Compared efforts stay selected until you remove them here.
-                </div>
-              </div>
-              <span className="badge badge-outline">
-                {selectedEfforts.length} selected
-              </span>
-            </div>
-
-            {selectedEfforts.length > 0 ? (
-              <div className="space-y-2">
-                {selectedEfforts.map((effort, index) => (
-                  <div
-                    key={effort.id}
-                    className="flex items-center justify-between gap-3 rounded-box border border-base-300 bg-base-200 px-3 py-2"
-                  >
-                    <div className="min-w-0 flex items-center gap-3">
-                      <span
-                        aria-hidden
-                        className="inline-block h-2.5 w-2.5 rounded-full"
-                        style={{
-                          backgroundColor:
-                            EFFORT_COLORS[index % EFFORT_COLORS.length],
-                        }}
-                      />
-                      <div className="min-w-0">
-                        <div className="truncate font-medium text-base-content">
-                          {effort.rider_name} ·{" "}
-                          {formatDuration(effort.duration_seconds)}
-                        </div>
-                        <div className="truncate text-xs text-base-content/65">
-                          {effort.activity_title} ·{" "}
-                          {formatActivityTimestamp(effort.activity_started_at)}
-                        </div>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-xs btn-circle shrink-0"
-                      aria-label={`Remove ${effort.activity_title} from comparison`}
-                      onClick={() => {
-                        removeEffortFromComparison(effort.id);
-                      }}
-                    >
-                      X
-                    </button>
+          <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(20rem,0.95fr)]">
+            <div className="min-w-0 rounded-box border border-base-300 bg-base-200 p-4">
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-sm text-base-content/70">
+                    {filteredVisibleEfforts.length} of{" "}
+                    {(segment.efforts ?? []).length} efforts
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="alert bg-base-200 text-sm text-base-content/70">
-                <span>
-                  Add efforts from the table below to compare them on the map.
-                </span>
-              </div>
-            )}
-          </div>
+                  <div className="join">
+                    {EFFORT_TIME_FILTERS.map((filter) => (
+                      <button
+                        key={filter.key}
+                        type="button"
+                        className={`join-item btn btn-sm ${effortTimeFilter === filter.key ? "btn-neutral" : "btn-ghost"}`}
+                        onClick={() => {
+                          setEffortTimeFilter(filter.key);
+                        }}
+                      >
+                        {filter.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-box bg-base-100 p-3">
-            <div className="text-sm text-base-content/70">
-              {visibleEfforts.length} of {(segment.efforts ?? []).length}{" "}
-              efforts
-            </div>
-            {visibleEfforts.length > EFFORTS_VISIBLE_ROWS ? (
-              <div className="text-xs text-base-content/55">
-                Scroll to see more than {EFFORTS_VISIBLE_ROWS} efforts
+                <label className="input input-bordered flex items-center gap-2 bg-base-100">
+                  <FontAwesomeIcon
+                    icon={faMagnifyingGlass}
+                    className="h-4 w-4 text-base-content/50"
+                  />
+                  <input
+                    type="search"
+                    value={effortSearchQuery}
+                    onChange={(event) => {
+                      setEffortSearchQuery(event.target.value);
+                    }}
+                    className="grow"
+                    placeholder="Search rides or riders"
+                    aria-label="Search efforts"
+                  />
+                </label>
+
+                {visibleEfforts.length > EFFORTS_VISIBLE_ROWS ? (
+                  <div className="text-xs text-base-content/55">
+                    Scroll to see more than {EFFORTS_VISIBLE_ROWS} efforts
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-            <div className="join">
-              {EFFORT_TIME_FILTERS.map((filter) => (
-                <button
-                  key={filter.key}
-                  type="button"
-                  className={`join-item btn btn-sm ${effortTimeFilter === filter.key ? "btn-neutral" : "btn-ghost"}`}
-                  onClick={() => {
-                    setEffortTimeFilter(filter.key);
-                  }}
+
+              {filteredVisibleEfforts.length > 0 ? (
+                <div
+                  aria-label="Segment efforts table"
+                  className="mt-5 overflow-x-auto overflow-y-auto rounded-box border border-base-300 bg-base-100"
+                  style={{ maxHeight: `${EFFORTS_TABLE_MAX_HEIGHT_REM}rem` }}
                 >
-                  {filter.label}
-                </button>
-              ))}
+                  <table className="table table-pin-rows table-sm">
+                    <thead>
+                      <tr>
+                        <th className="w-14">Place</th>
+                        <th className="w-16">
+                          <span className="sr-only">Compare</span>
+                        </th>
+                        <th>Time</th>
+                        <th>Rider</th>
+                        <th>Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredVisibleEfforts.map((effort) => {
+                        const checked = selectedEffortIds.includes(effort.id);
+                        const overallRank =
+                          overallRankByEffortId.get(effort.id) ?? null;
+                        const isCurrentUserPr = currentUserPr?.id === effort.id;
+                        const achievement = primarySegmentAchievement({
+                          overallRank,
+                          personalRank: isCurrentUserPr ? 1 : null,
+                        });
+                        const rowClassName =
+                          achievement?.kind === "pr"
+                            ? "bg-primary/10"
+                            : achievement?.kind === "kom"
+                              ? "bg-warning/10"
+                              : achievement?.kind === "top-10"
+                                ? "bg-info/10"
+                                : checked
+                                  ? "bg-base-200/70"
+                                  : undefined;
+
+                        return (
+                          <tr key={effort.id} className={rowClassName}>
+                            <td className="font-mono text-sm font-semibold tabular-nums text-base-content/70">
+                              {overallRank ?? "--"}
+                            </td>
+                            <td>
+                              {checked ? (
+                                <span
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-neutral/10 text-neutral"
+                                  title="Selected for comparison"
+                                >
+                                  <FontAwesomeIcon
+                                    icon={faLocationDot}
+                                    className="h-3.5 w-3.5"
+                                  />
+                                  <span className="sr-only">
+                                    Selected for comparison
+                                  </span>
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-xs btn-circle"
+                                  disabled={
+                                    selectedEffortIds.length >=
+                                    MAX_SELECTED_EFFORTS
+                                  }
+                                  aria-label={`Add ${effort.activity_title} to comparison`}
+                                  onClick={() => {
+                                    addEffortToComparison(effort.id);
+                                  }}
+                                >
+                                  <FontAwesomeIcon
+                                    icon={faPlus}
+                                    className="h-3.5 w-3.5"
+                                  />
+                                  <span className="sr-only">
+                                    {selectedEffortIds.length >=
+                                    MAX_SELECTED_EFFORTS
+                                      ? "Comparison full"
+                                      : "Add to comparison"}
+                                  </span>
+                                </button>
+                              )}
+                            </td>
+                            <td className="font-semibold text-base-content">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Link
+                                  href={`/activities/${effort.activity_id}`}
+                                  className="transition hover:text-primary"
+                                  title={effort.activity_title}
+                                >
+                                  {formatDuration(effort.duration_seconds)}
+                                </Link>
+                                {achievement?.kind === "kom" ? (
+                                  <span className="badge badge-warning badge-xs gap-1">
+                                    <FontAwesomeIcon
+                                      icon={faCrown}
+                                      className="h-3 w-3"
+                                    />
+                                    KOM
+                                  </span>
+                                ) : achievement?.kind === "top-10" ? (
+                                  <span className="badge badge-info badge-outline badge-xs gap-1">
+                                    <FontAwesomeIcon
+                                      icon={faTrophy}
+                                      className="h-3 w-3"
+                                    />
+                                    {achievement.longLabel}
+                                  </span>
+                                ) : achievement?.kind === "pr" ? (
+                                  <span className="badge badge-primary badge-xs">
+                                    PR
+                                  </span>
+                                ) : null}
+                              </div>
+                            </td>
+                            <td>{effort.rider_name}</td>
+                            <td className="whitespace-nowrap text-base-content/65">
+                              {formatActivityTimestamp(
+                                effort.activity_started_at,
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="alert mt-5">
+                  <span>
+                    {effortSearchQuery.trim().length > 0
+                      ? "No efforts match this search."
+                      : "No efforts match this time window."}
+                  </span>
+                </div>
+              )}
             </div>
+
+            <SelectedEffortsPanel
+              selectedRows={selectedRows}
+              focusedEffortId={focusedEffortId}
+              pinnedEffortId={pinnedEffortId}
+              onHoverEffort={setHoveredEffortId}
+              onTogglePinnedEffort={togglePinnedEffort}
+              onRemoveEffort={removeEffortFromComparison}
+            />
           </div>
-
-          {visibleEfforts.length > 0 ? (
-            <>
-              <div
-                aria-label="Segment efforts table"
-                className="mt-5 overflow-x-auto overflow-y-auto rounded-box border border-base-300 bg-base-100"
-                style={{ maxHeight: `${EFFORTS_TABLE_MAX_HEIGHT_REM}rem` }}
-              >
-                <table className="table table-pin-rows table-sm">
-                  <thead>
-                    <tr>
-                      <th className="w-14">Place</th>
-                      <th className="w-20">Map</th>
-                      <th>Time</th>
-                      <th>Rider</th>
-                      <th>Date</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleEfforts.map((effort) => {
-                      const checked = selectedEffortIds.includes(effort.id);
-                      const overallRank =
-                        overallRankByEffortId.get(effort.id) ?? null;
-                      const isCurrentUserPr = currentUserPr?.id === effort.id;
-                      const achievement = primarySegmentAchievement({
-                        overallRank,
-                        personalRank: isCurrentUserPr ? 1 : null,
-                      });
-                      const rowClassName =
-                        achievement?.kind === "pr"
-                          ? "bg-primary/10"
-                          : achievement?.kind === "kom"
-                            ? "bg-warning/10"
-                            : achievement?.kind === "top-10"
-                              ? "bg-info/10"
-                              : checked
-                                ? "bg-base-200/70"
-                                : undefined;
-
-                      return (
-                        <tr key={effort.id} className={rowClassName}>
-                          <td className="font-mono text-sm font-semibold tabular-nums text-base-content/70">
-                            {overallRank ?? "--"}
-                          </td>
-                          <td>
-                            {checked ? (
-                              <span className="badge badge-neutral badge-outline">
-                                On map
-                              </span>
-                            ) : (
-                              <button
-                                type="button"
-                                className="btn btn-ghost btn-xs"
-                                disabled={
-                                  selectedEffortIds.length >=
-                                  MAX_SELECTED_EFFORTS
-                                }
-                                aria-label={`Add ${effort.activity_title} to comparison`}
-                                onClick={() => {
-                                  addEffortToComparison(effort.id);
-                                }}
-                              >
-                                {selectedEffortIds.length >=
-                                MAX_SELECTED_EFFORTS
-                                  ? "Full"
-                                  : "Add"}
-                              </button>
-                            )}
-                          </td>
-                          <td className="font-semibold text-base-content">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Link
-                                href={`/activities/${effort.activity_id}`}
-                                className="transition hover:text-primary"
-                                title={effort.activity_title}
-                              >
-                                {formatDuration(effort.duration_seconds)}
-                              </Link>
-                              {achievement?.kind === "kom" ? (
-                                <span className="badge badge-warning badge-xs gap-1">
-                                  <FontAwesomeIcon
-                                    icon={faCrown}
-                                    className="h-3 w-3"
-                                  />
-                                  KOM
-                                </span>
-                              ) : achievement?.kind === "top-10" ? (
-                                <span className="badge badge-info badge-outline badge-xs gap-1">
-                                  <FontAwesomeIcon
-                                    icon={faTrophy}
-                                    className="h-3 w-3"
-                                  />
-                                  {achievement.longLabel}
-                                </span>
-                              ) : achievement?.kind === "pr" ? (
-                                <span className="badge badge-primary badge-xs">
-                                  PR
-                                </span>
-                              ) : null}
-                            </div>
-                          </td>
-                          <td>{effort.rider_name}</td>
-                          <td className="whitespace-nowrap text-base-content/65">
-                            {formatActivityTimestamp(
-                              effort.activity_started_at,
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          ) : (
-            <div className="alert mt-5">
-              <span>No efforts match this time window.</span>
-            </div>
-          )}
         </div>
       </div>
 
-      <RouteComparisonMap
-        routePoints={segment.route_points}
-        selectedEfforts={selectedEfforts}
-        playbackSeconds={playbackSeconds}
-        maxDuration={maxDuration}
-        isPlaying={isPlaying}
-        focusedEffortId={focusedEffortId}
-        pinnedEffortId={pinnedEffortId}
-        onHoverEffort={setHoveredEffortId}
-        onTogglePinnedEffort={togglePinnedEffort}
-        onTogglePlayback={() => {
-          if (playbackSeconds >= maxDuration) {
-            setPlaybackSeconds(0);
-          }
-          setIsPlaying((current) => !current);
-        }}
-        onSeek={(value) => {
-          setPlaybackSeconds(value);
-          setIsPlaying(false);
-        }}
-      />
+      <div className="card bg-base-100 shadow-xl">
+        <div className="card-body gap-6">
+          <div>
+            <h2 className="card-title text-xl">Comparison workspace</h2>
+            <p className="text-sm text-base-content/70">
+              The selected rides drive both the route playback and the shared
+              chart, so each ride only needs to be identified once.
+            </p>
+          </div>
 
-      <ComparisonChart
-        metric={metric}
-        routePoints={segment.route_points}
-        selectedEfforts={selectedEfforts}
-        playbackSeconds={playbackSeconds}
-        focusedEffortId={focusedEffortId}
-        pinnedEffortId={pinnedEffortId}
-        unitSystem={unitSystem}
-        onHoverEffort={setHoveredEffortId}
-        onTogglePinnedEffort={togglePinnedEffort}
-        onMetricChange={(value) => {
-          setMetric(value);
-        }}
-      />
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.02fr)_minmax(0,1fr)]">
+            <div>
+              <RouteComparisonMap
+                routePoints={segment.route_points}
+                selectedEfforts={selectedEfforts}
+                playbackSeconds={playbackSeconds}
+                maxDuration={maxDuration}
+                isPlaying={isPlaying}
+                focusedEffortId={focusedEffortId}
+                onTogglePlayback={() => {
+                  if (playbackSeconds >= maxDuration) {
+                    setPlaybackSeconds(0);
+                  }
+                  setIsPlaying((current) => !current);
+                }}
+                onSeek={(value) => {
+                  setPlaybackSeconds(value);
+                  setIsPlaying(false);
+                }}
+              />
+            </div>
+
+            <div>
+              <ComparisonChart
+                metric={metric}
+                routePoints={segment.route_points}
+                selectedEfforts={selectedEfforts}
+                playbackSeconds={playbackSeconds}
+                focusedEffortId={focusedEffortId}
+                unitSystem={unitSystem}
+                onMetricChange={(value) => {
+                  setMetric(value);
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
   );
 }

@@ -164,10 +164,13 @@ describe("SegmentDetailPanel", () => {
     expect(
       screen.getByRole("heading", { name: "North Climb" }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("searchbox", { name: "Search efforts" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Selected rides")).toBeInTheDocument();
     expect(screen.getByText("Overall KOM")).toBeInTheDocument();
     expect(screen.getByText("Your PR")).toBeInTheDocument();
     expect(screen.getAllByText("Lunch Ride").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Hill Attack").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Eric Butera").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Casey Fast").length).toBeGreaterThan(0);
     expect(
@@ -184,7 +187,11 @@ describe("SegmentDetailPanel", () => {
       "href",
       "/activities/8",
     );
-    expect(screen.getByText("Casey Fast · Hill Attack")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Remove Hill Attack from comparison",
+      }),
+    ).toBeInTheDocument();
     expect(screen.getByText("KOM")).toBeInTheDocument();
     expect(screen.getByText("Top 2")).toBeInTheDocument();
     expect(screen.queryByText("PR")).not.toBeInTheDocument();
@@ -305,12 +312,12 @@ describe("SegmentDetailPanel", () => {
 
     render(<SegmentDetailPanel segmentId={14} />);
 
-    expect(screen.getAllByText("2 selected")).toHaveLength(2);
+    expect(screen.getByText("2 selected")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Day" }));
 
     expect(screen.getByText("1 of 2 efforts")).toBeInTheDocument();
-    expect(screen.getAllByText("2 selected")).toHaveLength(2);
+    expect(screen.getByText("2 selected")).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
         name: "Remove Lunch Ride from comparison",
@@ -323,12 +330,32 @@ describe("SegmentDetailPanel", () => {
       }),
     );
 
-    expect(screen.getAllByText("1 selected")).toHaveLength(2);
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
     expect(
       screen.queryByRole("button", {
         name: "Remove Lunch Ride from comparison",
       }),
     ).not.toBeInTheDocument();
+  });
+
+  it("filters the effort table by the search query", async () => {
+    const user = userEvent.setup();
+
+    render(<SegmentDetailPanel segmentId={14} />);
+
+    await user.type(
+      screen.getByRole("searchbox", { name: "Search efforts" }),
+      "Casey",
+    );
+
+    expect(screen.getByText("1 of 2 efforts")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "5m 12s" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "5m 00s" })).toHaveAttribute(
+      "href",
+      "/activities/8",
+    );
   });
 
   it("shows the efforts list in a scrollable 10-row viewport", () => {
