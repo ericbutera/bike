@@ -762,6 +762,7 @@ function ComparisonChart({
           </p>
         </div>
         <div className="join">
+          {/* TODO: move under chart, convert chart to RECHART */}
           {(["speed", "heartRate"] as ChartMetric[]).map((nextMetric) => (
             <button
               key={nextMetric}

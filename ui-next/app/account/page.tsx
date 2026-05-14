@@ -475,23 +475,22 @@ export default function AccountPage() {
                           : "Sync now"}
                       </button>
                     </>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    disabled={
-                      !stravaConnection.configured ||
-                      startStravaConnectMutation.isPending ||
-                      disconnectStravaMutation.isPending
-                    }
-                    onClick={handleStartStravaConnect}
-                  >
-                    {startStravaConnectMutation.isPending
-                      ? "Redirecting..."
-                      : stravaConnection.connected
-                        ? "Reconnect Strava"
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={
+                        !stravaConnection.configured ||
+                        startStravaConnectMutation.isPending ||
+                        disconnectStravaMutation.isPending
+                      }
+                      onClick={handleStartStravaConnect}
+                    >
+                      {startStravaConnectMutation.isPending
+                        ? "Redirecting..."
                         : "Connect Strava"}
-                  </button>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

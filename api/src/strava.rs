@@ -64,12 +64,21 @@ pub struct VerifiedStravaState {
 }
 
 #[derive(Debug, Deserialize)]
-struct StravaTokenResponse {
+struct StravaAuthorizationTokenResponse {
     access_token: String,
     refresh_token: String,
     expires_at: i64,
     scope: String,
     athlete: StravaAthleteSummary,
+}
+
+#[derive(Debug, Deserialize)]
+struct StravaRefreshTokenResponse {
+    access_token: String,
+    refresh_token: String,
+    expires_at: i64,
+    scope: Option<String>,
+    athlete: Option<StravaAthleteSummary>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -782,6 +791,10 @@ pub async fn process_strava_sync(
     }
     .await;
 
+    if let Err(error) = &result {
+        let _ = mark_sync_failed_if_running(db, connection.id, &error.message).await;
+    }
+
     let release_result = release_user_activity_import_lock(
         db,
         connection.user_id,
@@ -813,7 +826,7 @@ impl StravaApiClient {
     async fn exchange_authorization_code(
         &self,
         code: &str,
-    ) -> Result<StravaTokenResponse, AppError> {
+    ) -> Result<StravaAuthorizationTokenResponse, AppError> {
         self.parse_json_response(
             self.client
                 .post(STRAVA_TOKEN_URL)
@@ -833,7 +846,7 @@ impl StravaApiClient {
     async fn refresh_access_token(
         &self,
         refresh_token: &str,
-    ) -> Result<StravaTokenResponse, AppError> {
+    ) -> Result<StravaRefreshTokenResponse, AppError> {
         self.parse_json_response(
             self.client
                 .post(STRAVA_TOKEN_URL)
@@ -1185,7 +1198,7 @@ fn ensure_strava_webhook_configured(config: &Config) -> Result<(), AppError> {
 async fn upsert_connection_from_token(
     db: &DatabaseConnection,
     user_id: i32,
-    token_response: StravaTokenResponse,
+    token_response: StravaAuthorizationTokenResponse,
 ) -> Result<strava_connections::Model, AppError> {
     if let Some(existing_for_athlete) = strava_connections::Entity::find()
         .filter(strava_connections::Column::AthleteId.eq(token_response.athlete.id))
@@ -1252,15 +1265,21 @@ async fn ensure_fresh_access_token(
         .await?;
     let expires_at = DateTime::<Utc>::from_timestamp(token_response.expires_at, 0)
         .ok_or_else(|| AppError::internal("Strava returned an invalid token expiration"))?;
-    let mut active_model: strava_connections::ActiveModel = connection.into();
-    active_model.scopes = Set(token_response.scope);
+    let mut active_model: strava_connections::ActiveModel = connection.clone().into();
+    active_model.scopes = Set(token_response
+        .scope
+        .unwrap_or_else(|| connection.scopes.clone()));
     active_model.access_token = Set(token_response.access_token);
     active_model.refresh_token = Set(token_response.refresh_token);
     active_model.expires_at = Set(expires_at);
-    active_model.athlete_username = Set(token_response.athlete.username);
-    active_model.athlete_first_name = Set(token_response.athlete.firstname);
-    active_model.athlete_last_name = Set(token_response.athlete.lastname);
-    active_model.athlete_profile_medium_url = Set(token_response.athlete.profile_medium);
+
+    if let Some(athlete) = token_response.athlete {
+        active_model.athlete_id = Set(athlete.id);
+        active_model.athlete_username = Set(athlete.username);
+        active_model.athlete_first_name = Set(athlete.firstname);
+        active_model.athlete_last_name = Set(athlete.lastname);
+        active_model.athlete_profile_medium_url = Set(athlete.profile_medium);
+    }
 
     active_model.update(db).await.map_err(AppError::from)
 }
@@ -1376,6 +1395,27 @@ async fn mark_sync_failed(
     )
     .await;
     Ok(connection)
+}
+
+async fn mark_sync_failed_if_running(
+    db: &DatabaseConnection,
+    connection_id: i32,
+    message: &str,
+) -> Result<(), AppError> {
+    let Some(connection) = strava_connections::Entity::find_by_id(connection_id)
+        .one(db)
+        .await?
+    else {
+        return Ok(());
+    };
+
+    if connection.last_sync_status != STRAVA_SYNC_STATUS_RUNNING {
+        return Ok(());
+    }
+
+    mark_sync_failed(db, &connection, message, 0, 0, 0)
+        .await
+        .map(|_| ())
 }
 
 async fn set_sync_message(
@@ -1525,18 +1565,22 @@ pub async fn resolve_connection_sync_state(
         connection.last_sync_status.as_str(),
         STRAVA_SYNC_STATUS_QUEUED | STRAVA_SYNC_STATUS_RUNNING
     ) {
-        let fallback_status = if connection.last_sync_started_at.is_some()
-            || connection.last_sync_finished_at.is_some()
+        let (fallback_status, fallback_message) = if connection.last_sync_status
+            == STRAVA_SYNC_STATUS_RUNNING
         {
-            STRAVA_SYNC_STATUS_SUCCEEDED
+            (
+                STRAVA_SYNC_STATUS_FAILED,
+                "The previous Strava sync stopped before it completed. Start another sync when ready.",
+            )
         } else {
-            STRAVA_SYNC_STATUS_NEVER
+            (
+                STRAVA_SYNC_STATUS_NEVER,
+                "Strava sync is not currently active. Start another sync when ready.",
+            )
         };
         let mut active_model: strava_connections::ActiveModel = connection.clone().into();
         active_model.last_sync_status = Set(fallback_status.to_string());
-        active_model.last_sync_message = Set(Some(
-            "Strava sync is not currently active. Start another sync when ready.".to_string(),
-        ));
+        active_model.last_sync_message = Set(Some(fallback_message.to_string()));
         next_connection = active_model.update(db).await.map_err(AppError::from)?;
     }
 
@@ -2298,6 +2342,25 @@ mod tests {
     }
 
     #[test]
+    fn parses_refresh_token_response_without_scope_or_athlete() {
+        let response = serde_json::from_str::<StravaRefreshTokenResponse>(
+            r#"{
+                "access_token": "refreshed-access",
+                "expires_at": 1760000000,
+                "expires_in": 21600,
+                "refresh_token": "refreshed-refresh"
+            }"#,
+        )
+        .expect("parse refresh response");
+
+        assert_eq!(response.access_token, "refreshed-access");
+        assert_eq!(response.refresh_token, "refreshed-refresh");
+        assert_eq!(response.expires_at, 1_760_000_000);
+        assert_eq!(response.scope, None);
+        assert!(response.athlete.is_none());
+    }
+
+    #[test]
     fn verifies_strava_webhook_subscription_query() {
         let config = test_config();
         let response = verify_webhook_subscription(
@@ -2396,6 +2459,34 @@ mod tests {
         assert_eq!(
             resolved.connection.last_sync_message.as_deref(),
             Some("Strava sync is not currently active. Start another sync when ready."),
+        );
+    }
+
+    #[tokio::test]
+    async fn resolves_stale_running_sync_state_when_no_task_exists() {
+        let db = test_db().await;
+        let connection = insert_connection(&db, 12, STRAVA_SYNC_STATUS_RUNNING).await;
+        let mut active_model: strava_connections::ActiveModel = connection.clone().into();
+        active_model.last_sync_started_at = Set(Some(Utc::now()));
+        let running_connection = active_model
+            .update(&db)
+            .await
+            .expect("mark running connection started");
+
+        let resolved = resolve_connection_sync_state(&db, &running_connection)
+            .await
+            .expect("resolve sync state");
+
+        assert_eq!(resolved.active_sync_status, None);
+        assert_eq!(
+            resolved.connection.last_sync_status,
+            STRAVA_SYNC_STATUS_FAILED
+        );
+        assert_eq!(
+            resolved.connection.last_sync_message.as_deref(),
+            Some(
+                "The previous Strava sync stopped before it completed. Start another sync when ready.",
+            ),
         );
     }
 
