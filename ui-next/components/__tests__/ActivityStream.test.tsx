@@ -159,6 +159,11 @@ describe("ActivityStream", () => {
     expect(
       screen.getByRole("img", { name: "Route thumbnail for Latest Effort" }),
     ).toBeInTheDocument();
+    const routeThumbnail = screen.getByRole("img", {
+      name: "Route thumbnail for Latest Effort",
+    });
+    expect(routeThumbnail.querySelector("path")).not.toBeNull();
+    expect(routeThumbnail.querySelector("polyline")).toBeNull();
     expect(screen.queryByText("morning-ride.gpx")).not.toBeInTheDocument();
     expect(screen.queryByText("earlier-effort.gpx")).not.toBeInTheDocument();
     expect(screen.queryByText("Mountain biking")).not.toBeInTheDocument();

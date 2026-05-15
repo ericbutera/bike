@@ -54,6 +54,19 @@ fn current_user_pr_duration_from_models(
         .min()
 }
 
+fn current_user_pr_duration_from_cached_or_models(
+    cached_duration_seconds: Option<i32>,
+    efforts: &[segment_efforts::Model],
+    user_id: i32,
+    can_use_cached_duration: bool,
+) -> Option<i32> {
+    if can_use_cached_duration {
+        cached_duration_seconds.or_else(|| current_user_pr_duration_from_models(efforts, user_id))
+    } else {
+        current_user_pr_duration_from_models(efforts, user_id)
+    }
+}
+
 fn current_user_pr_duration_from_responses(
     efforts: &[SegmentEffortResponse],
     user_id: i32,
@@ -157,13 +170,13 @@ pub async fn list_segments(
                     .cloned()
                     .unwrap_or_default();
                 let use_cached_summary = matches!(
-                    (summary, user_summary),
-                    (Some(summary), Some(user_summary))
-                        if summary.updated_at >= segment.last_activity_change_at
-                            && user_summary.updated_at >= segment.last_activity_change_at
-                ) || matches!(
-                    (summary, user_summary),
-                    (Some(summary), None) if summary.updated_at >= segment.last_activity_change_at
+                    summary,
+                    Some(summary) if summary.updated_at >= segment.last_activity_change_at
+                );
+                let use_cached_user_summary = matches!(
+                    user_summary,
+                    Some(user_summary)
+                        if user_summary.updated_at >= segment.last_activity_change_at
                 );
 
                 SegmentResponse {
@@ -184,7 +197,12 @@ pub async fn list_segments(
                         efforts.iter().map(|effort| effort.duration_seconds).min()
                     },
                     current_user_pr_duration_seconds: if use_cached_summary {
-                        user_summary.and_then(|value| value.personal_best_duration_seconds)
+                        current_user_pr_duration_from_cached_or_models(
+                            user_summary.and_then(|value| value.personal_best_duration_seconds),
+                            &efforts,
+                            user.id,
+                            use_cached_user_summary,
+                        )
                     } else {
                         current_user_pr_duration_from_models(&efforts, user.id)
                     },
@@ -744,6 +762,52 @@ mod tests {
 
         assert_eq!(current_user_pr_duration_from_models(&efforts, 7), Some(305));
         assert_eq!(current_user_pr_duration_from_models(&efforts, 11), None);
+    }
+
+    #[test]
+    fn falls_back_to_efforts_when_cached_user_pr_is_missing() {
+        let now = Utc::now();
+        let efforts = vec![
+            segment_efforts::Model {
+                id: 1,
+                segment_id: 10,
+                user_id: 7,
+                activity_id: 100,
+                effort_index: 1,
+                duration_seconds: 320,
+                start_elapsed_seconds: 0,
+                end_elapsed_seconds: 320,
+                start_route_point_index: 0,
+                end_route_point_index: 1,
+                distance_meters: Some(1800.0),
+                overall_rank: None,
+                user_rank: None,
+                created_at: now,
+                updated_at: now,
+            },
+            segment_efforts::Model {
+                id: 2,
+                segment_id: 10,
+                user_id: 7,
+                activity_id: 101,
+                effort_index: 2,
+                duration_seconds: 305,
+                start_elapsed_seconds: 0,
+                end_elapsed_seconds: 305,
+                start_route_point_index: 0,
+                end_route_point_index: 1,
+                distance_meters: Some(1800.0),
+                overall_rank: None,
+                user_rank: None,
+                created_at: now,
+                updated_at: now,
+            },
+        ];
+
+        assert_eq!(
+            current_user_pr_duration_from_cached_or_models(None, &efforts, 7, true),
+            Some(305)
+        );
     }
 
     #[test]

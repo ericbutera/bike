@@ -2,6 +2,7 @@
 
 import { auth } from "@ericbutera/kaleido";
 import {
+  faCircleInfo,
   faCrown,
   faFileLines,
   faMagnifyingGlass,
@@ -88,6 +89,33 @@ type ComparisonSeries = {
   dataKey: string;
   points: Array<{ x: number; y: number }>;
 };
+
+function SectionTitleWithTooltip({
+  as,
+  title,
+  tooltip,
+  className,
+}: {
+  as: "h2" | "h3";
+  title: string;
+  tooltip: string;
+  className: string;
+}) {
+  const HeadingTag = as;
+
+  return (
+    <div className="flex items-center gap-2">
+      <HeadingTag className={className}>{title}</HeadingTag>
+      <span
+        className="inline-flex h-5 w-5 items-center justify-center text-base-content/45"
+        title={tooltip}
+        aria-label={tooltip}
+      >
+        <FontAwesomeIcon icon={faCircleInfo} className="h-3.5 w-3.5" />
+      </span>
+    </div>
+  );
+}
 
 type SelectedEffortRow = {
   effort: SegmentEffort;
@@ -625,13 +653,12 @@ function RouteComparisonMap({
   return (
     <div className="flex h-full flex-col">
       <div>
-        <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-base-content/55">
-          Route playback
-        </h3>
-        <p className="mt-1 text-sm text-base-content/70">
-          Play the selected attempts against the same route to see where each
-          ride is gaining or losing time.
-        </p>
+        <SectionTitleWithTooltip
+          as="h3"
+          title="Route playback"
+          tooltip="Play the selected attempts against the same route to see where each ride is gaining or losing time."
+          className="text-sm font-semibold uppercase tracking-[0.16em] text-base-content/55"
+        />
       </div>
 
       <div className="mt-4 min-h-[20rem] flex-1 overflow-hidden rounded-box border border-base-300 bg-base-200">
@@ -753,28 +780,12 @@ function ComparisonChart({
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-base-content/55">
-            Chart comparison
-          </h3>
-          <p className="mt-1 text-sm text-base-content/70">
-            Compare the selected attempts across elapsed time while the map dots
-            advance.
-          </p>
-        </div>
-        <div className="join">
-          {/* TODO: move under chart, convert chart to RECHART */}
-          {(["speed", "heartRate"] as ChartMetric[]).map((nextMetric) => (
-            <button
-              key={nextMetric}
-              type="button"
-              className={`join-item btn btn-sm ${metric === nextMetric ? "btn-primary" : "btn-ghost"}`}
-              onClick={() => {
-                onMetricChange(nextMetric);
-              }}
-            >
-              {nextMetric === "heartRate" ? "Heart rate" : nextMetric}
-            </button>
-          ))}
+          <SectionTitleWithTooltip
+            as="h3"
+            title="Chart comparison"
+            tooltip="Compare the selected attempts across elapsed time while the map dots advance."
+            className="text-sm font-semibold uppercase tracking-[0.16em] text-base-content/55"
+          />
         </div>
       </div>
 
@@ -993,6 +1004,23 @@ function ComparisonChart({
           </div>
         )}
       </div>
+
+      <div className="mt-4 flex justify-end">
+        <div className="join">
+          {(["speed", "heartRate"] as ChartMetric[]).map((nextMetric) => (
+            <button
+              key={nextMetric}
+              type="button"
+              className={`join-item btn btn-sm ${metric === nextMetric ? "btn-primary" : "btn-ghost"}`}
+              onClick={() => {
+                onMetricChange(nextMetric);
+              }}
+            >
+              {nextMetric === "heartRate" ? "Heart rate" : nextMetric}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1145,6 +1173,15 @@ export default function SegmentDetailPanel({
             new Set(allEfforts.map((effort) => effort.rider_name)).size === 1
           ? fastestEffort(allEfforts)
           : null;
+  const currentUserPrDurationSeconds =
+    currentUserPr?.duration_seconds ??
+    segment?.current_user_pr_duration_seconds ??
+    null;
+  const currentUserPrLabel = currentUserPr
+    ? currentUserPr.activity_title
+    : segment?.current_user_pr_duration_seconds != null
+      ? "Personal best across matched efforts"
+      : "No PR yet";
   const selectedEfforts = useMemo(() => {
     const effortById = new Map(allEfforts.map((effort) => [effort.id, effort]));
 
@@ -1362,11 +1399,9 @@ export default function SegmentDetailPanel({
               </div>
               <div className="stat-title">Your PR</div>
               <div className="stat-value text-xl">
-                {formatDuration(currentUserPr?.duration_seconds ?? null)}
+                {formatDuration(currentUserPrDurationSeconds)}
               </div>
-              <div className="stat-desc">
-                {currentUserPr ? currentUserPr.activity_title : "No PR yet"}
-              </div>
+              <div className="stat-desc">{currentUserPrLabel}</div>
             </div>
             <div className="stat">
               <div className="stat-figure text-info">
@@ -1603,11 +1638,12 @@ export default function SegmentDetailPanel({
       <div className="card bg-base-100 shadow-xl">
         <div className="card-body gap-6">
           <div>
-            <h2 className="card-title text-xl">Comparison workspace</h2>
-            <p className="text-sm text-base-content/70">
-              The selected rides drive both the route playback and the shared
-              chart, so each ride only needs to be identified once.
-            </p>
+            <SectionTitleWithTooltip
+              as="h2"
+              title="Comparison workspace"
+              tooltip="The selected rides drive both the route playback and the shared chart, so each ride only needs to be identified once."
+              className="card-title text-xl"
+            />
           </div>
 
           <div className="grid items-stretch gap-6 xl:grid-cols-[minmax(0,1.02fr)_minmax(0,1fr)]">

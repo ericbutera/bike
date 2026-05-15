@@ -72,6 +72,7 @@ function makeSegment() {
     distance_meters: 1800,
     effort_count: 2,
     best_duration_seconds: 312,
+    current_user_pr_duration_seconds: 312,
     created_at: "2026-05-07T07:00:00Z",
     route_points: [
       makeRoutePoint(0, 45.0, -122.0),
@@ -192,6 +193,21 @@ describe("SegmentDetailPanel", () => {
     expect(screen.getAllByText("Eric Butera").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Casey Fast").length).toBeGreaterThan(0);
     expect(
+      screen.queryByText(
+        /The selected rides drive both the route playback and the shared chart/i,
+      ),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        /Play the selected attempts against the same route to see where each ride is gaining or losing time/i,
+      ),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        /Compare the selected attempts across elapsed time while the map dots advance/i,
+      ),
+    ).not.toBeInTheDocument();
+    expect(
       screen.getByRole("img", { name: "Segment comparison map" }),
     ).toBeInTheDocument();
     expect(
@@ -270,6 +286,36 @@ describe("SegmentDetailPanel", () => {
 
     expect(screen.getByText("KOM")).toBeInTheDocument();
     expect(screen.queryByText("PR")).not.toBeInTheDocument();
+  });
+
+  it("uses the segment PR duration when the current user effort is not matched locally", () => {
+    const segment = makeSegment();
+
+    segment.efforts = segment.efforts.map((effort) => ({
+      ...effort,
+      rider_user_id: effort.rider_user_id + 50,
+    }));
+
+    mocks.useSegment.mockReturnValue({
+      data: segment,
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+
+    render(<SegmentDetailPanel segmentId={14} />);
+
+    const personalRecordStat = screen
+      .getByText("Your PR")
+      .closest(".stat") as HTMLElement | null;
+
+    expect(personalRecordStat).not.toBeNull();
+    expect(within(personalRecordStat!).getByText("5m 12s")).toBeInTheDocument();
+    expect(
+      within(personalRecordStat!).getByText(
+        "Personal best across matched efforts",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("projects playback markers onto the segment route geometry", () => {
