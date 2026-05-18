@@ -15,10 +15,13 @@ import {
   formatHeartRate,
 } from "../lib/activityFormatting";
 import { FLAG_ACTIVITY_LIST_FULL_MAPS } from "../lib/featureFlags";
+import {
+  buildActivityRoutePreviewUrl,
+  type RoutePreviewVariant,
+} from "../lib/routePreview";
 import { type ActivityRoutePoint, useActivities } from "../lib/queries";
 import { useUnitPreferences } from "../lib/unitPreferences";
 import AuthRequiredCard from "./AuthRequiredCard";
-import LeafletRouteMap from "./LeafletRouteMap";
 
 function StreamMetric({ label, value }: { label: string; value: string }) {
   return (
@@ -31,267 +34,89 @@ function StreamMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-type ThumbnailPoint = {
-  x: number;
-  y: number;
-};
-
-const ROUTE_THUMBNAIL_MAX_POINTS = 72;
-const ROUTE_THUMBNAIL_SIMPLIFY_TOLERANCE_PX = 1.5;
-
-function projectRouteThumbnailPoints(
-  routePoints: ActivityRoutePoint[],
-  width: number,
-  height: number,
-  padding: number,
-): ThumbnailPoint[] {
-  const latitudes = routePoints.map((point) => point.latitude);
-  const longitudes = routePoints.map((point) => point.longitude);
-  const minLatitude = Math.min(...latitudes);
-  const maxLatitude = Math.max(...latitudes);
-  const minLongitude = Math.min(...longitudes);
-  const maxLongitude = Math.max(...longitudes);
-  const latitudeRange = Math.max(maxLatitude - minLatitude, 0.000001);
-  const longitudeRange = Math.max(maxLongitude - minLongitude, 0.000001);
-  const usableWidth = width - padding * 2;
-  const usableHeight = height - padding * 2;
-  const scale = Math.min(
-    usableWidth / longitudeRange,
-    usableHeight / latitudeRange,
-  );
-  const projectedWidth = longitudeRange * scale;
-  const projectedHeight = latitudeRange * scale;
-  const xOffset = (width - projectedWidth) / 2;
-  const yOffset = (height - projectedHeight) / 2;
-
-  return routePoints.map((point) => ({
-    x:
-      xOffset +
-      ((point.longitude - minLongitude) / longitudeRange) * projectedWidth,
-    y:
-      height -
-      yOffset -
-      ((point.latitude - minLatitude) / latitudeRange) * projectedHeight,
-  }));
-}
-
-function distanceBetweenPoints(a: ThumbnailPoint, b: ThumbnailPoint) {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-function perpendicularDistanceToSegment(
-  point: ThumbnailPoint,
-  start: ThumbnailPoint,
-  end: ThumbnailPoint,
-) {
-  const segmentLength = distanceBetweenPoints(start, end);
-
-  if (segmentLength === 0) {
-    return distanceBetweenPoints(point, start);
-  }
-
-  return (
-    Math.abs(
-      (end.y - start.y) * point.x -
-        (end.x - start.x) * point.y +
-        end.x * start.y -
-        end.y * start.x,
-    ) / segmentLength
-  );
-}
-
-function limitRouteThumbnailPoints(
-  points: ThumbnailPoint[],
-  maxPoints: number,
-) {
-  if (points.length <= maxPoints) {
-    return points;
-  }
-
-  const selectedIndexes = new Set<number>();
-
-  for (let index = 0; index < maxPoints; index += 1) {
-    selectedIndexes.add(
-      Math.round((index * (points.length - 1)) / Math.max(maxPoints - 1, 1)),
-    );
-  }
-
-  return Array.from(selectedIndexes)
-    .sort((left, right) => left - right)
-    .map((index) => points[index]);
-}
-
-function simplifyRouteThumbnailPoints(
-  points: ThumbnailPoint[],
-  tolerance: number,
-  maxPoints: number,
-) {
-  if (points.length <= 2) {
-    return points;
-  }
-
-  const keep = Array.from({ length: points.length }, () => false);
-  keep[0] = true;
-  keep[points.length - 1] = true;
-
-  const stack: Array<[number, number]> = [[0, points.length - 1]];
-
-  while (stack.length > 0) {
-    const [startIndex, endIndex] = stack.pop()!;
-
-    if (endIndex - startIndex <= 1) {
-      continue;
-    }
-
-    let maxDistance = 0;
-    let indexToKeep = -1;
-
-    for (let index = startIndex + 1; index < endIndex; index += 1) {
-      const distance = perpendicularDistanceToSegment(
-        points[index],
-        points[startIndex],
-        points[endIndex],
-      );
-
-      if (distance > maxDistance) {
-        maxDistance = distance;
-        indexToKeep = index;
-      }
-    }
-
-    if (indexToKeep !== -1 && maxDistance >= tolerance) {
-      keep[indexToKeep] = true;
-      stack.push([startIndex, indexToKeep], [indexToKeep, endIndex]);
-    }
-  }
-
-  return limitRouteThumbnailPoints(
-    points.filter((_, index) => keep[index]),
-    maxPoints,
-  );
-}
-
-function buildSmoothRouteThumbnailPath(points: ThumbnailPoint[]) {
-  if (points.length === 0) {
-    return "";
-  }
-
-  if (points.length === 1) {
-    return `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
-  }
-
-  if (points.length === 2) {
-    return `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)} L ${points[1].x.toFixed(1)} ${points[1].y.toFixed(1)}`;
-  }
-
-  const commands = [`M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`];
-
-  for (let index = 0; index < points.length - 1; index += 1) {
-    const previous = points[index - 1] ?? points[index];
-    const current = points[index];
-    const next = points[index + 1];
-    const following = points[index + 2] ?? next;
-    const control1 = {
-      x: current.x + (next.x - previous.x) / 6,
-      y: current.y + (next.y - previous.y) / 6,
-    };
-    const control2 = {
-      x: next.x - (following.x - current.x) / 6,
-      y: next.y - (following.y - current.y) / 6,
-    };
-
-    commands.push(
-      `C ${control1.x.toFixed(1)} ${control1.y.toFixed(1)}, ${control2.x.toFixed(1)} ${control2.y.toFixed(1)}, ${next.x.toFixed(1)} ${next.y.toFixed(1)}`,
-    );
-  }
-
-  return commands.join(" ");
-}
-
-function ActivityRouteThumbnail({
+function ActivityRouteImage({
+  activityId,
   title,
   routePoints,
+  variant,
 }: {
+  activityId: number;
   title: string;
   routePoints: ActivityRoutePoint[] | null | undefined;
+  variant: RoutePreviewVariant;
 }) {
-  const points = routePoints ?? [];
+  const src = buildActivityRoutePreviewUrl({
+    activityId,
+    routePoints,
+    variant,
+  });
+  const alt =
+    variant === "full"
+      ? `Route map for ${title}`
+      : `Route thumbnail for ${title}`;
+  const wrapperClassName =
+    variant === "full"
+      ? "grid h-[300px] w-full place-items-center overflow-hidden rounded-box border border-base-300 bg-base-200"
+      : "grid place-items-center overflow-hidden rounded-box border border-base-300 bg-base-200 p-1.5";
+  const imageClassName =
+    variant === "full"
+      ? "h-full w-full object-contain"
+      : "h-24 w-full object-contain";
 
-  if (points.length < 2) {
-    return (
-      <div className="flex h-24 items-center justify-center rounded-box border border-base-300 bg-base-200 text-sm text-base-content/60">
-        No route
-      </div>
-    );
+  if (!src) {
+    return null;
   }
 
-  const width = 144;
-  const height = 96;
-  const padding = 10;
-  const thumbnailPoints = simplifyRouteThumbnailPoints(
-    projectRouteThumbnailPoints(points, width, height, padding),
-    ROUTE_THUMBNAIL_SIMPLIFY_TOLERANCE_PX,
-    ROUTE_THUMBNAIL_MAX_POINTS,
-  );
-  const pathData = buildSmoothRouteThumbnailPath(thumbnailPoints);
-  const startPoint = thumbnailPoints[0];
-  const endPoint = thumbnailPoints.at(-1) ?? thumbnailPoints[0];
-
   return (
-    <div className="overflow-hidden rounded-box border border-base-300 bg-base-200">
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="h-24 w-full"
-        role="img"
-        aria-label={`Route thumbnail for ${title}`}
-      >
-        <rect width={width} height={height} fill="transparent" />
-        <path
-          d={pathData}
-          fill="none"
-          stroke="#0f766e"
-          strokeWidth="4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <circle cx={startPoint.x} cy={startPoint.y} r="4" fill="#1d4ed8" />
-        <circle cx={endPoint.x} cy={endPoint.y} r="4.5" fill="#dc2626" />
-      </svg>
+    <div className={wrapperClassName}>
+      <img
+        src={src}
+        alt={alt}
+        className={imageClassName}
+        loading="lazy"
+        decoding="async"
+      />
     </div>
   );
 }
 
 function ActivityRoutePreview({
+  activityId,
   title,
   routePoints,
   showFullMap,
 }: {
+  activityId: number;
   title: string;
   routePoints: ActivityRoutePoint[] | null | undefined;
   showFullMap: boolean;
 }) {
   const points = routePoints ?? [];
-
-  if (!showFullMap) {
-    return <ActivityRouteThumbnail title={title} routePoints={routePoints} />;
-  }
+  const emptyStateClassName = showFullMap
+    ? "flex h-[300px] items-center justify-center rounded-box border border-base-300 bg-base-200 text-sm text-base-content/60"
+    : "flex h-24 items-center justify-center rounded-box border border-base-300 bg-base-200 text-sm text-base-content/60";
 
   if (points.length < 2) {
+    return <div className={emptyStateClassName}>No route</div>;
+  }
+
+  if (!showFullMap) {
     return (
-      <div className="flex h-24 items-center justify-center rounded-box border border-base-300 bg-base-200 text-sm text-base-content/60">
-        No route
-      </div>
+      <ActivityRouteImage
+        activityId={activityId}
+        title={title}
+        routePoints={routePoints}
+        variant="thumbnail"
+      />
     );
   }
 
   return (
-    <LeafletRouteMap
+    <ActivityRouteImage
+      activityId={activityId}
+      title={title}
       routePoints={points}
-      ariaLabel={`Route map for ${title}`}
-      emptyMessage="No route"
-      className="h-24 w-full overflow-hidden rounded-box border border-base-300 bg-base-200"
-      showBaseTiles={false}
-      interactive={false}
+      variant="full"
     />
   );
 }
@@ -395,6 +220,7 @@ export default function ActivityStream() {
           >
             <div className={activityCardLayoutClassName}>
               <ActivityRoutePreview
+                activityId={activity.id}
                 title={activity.title}
                 routePoints={activity.route_points}
                 showFullMap={showFullRouteMaps}

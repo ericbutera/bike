@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   useActivity: vi.fn(),
   useRegenerateActivity: vi.fn(),
   useDeleteActivity: vi.fn(),
+  renderMapLibreRouteMap: vi.fn(),
   routerPush: vi.fn(),
 }));
 
@@ -37,6 +38,13 @@ vi.mock("next/link", () => ({
       {children}
     </a>
   ),
+}));
+
+vi.mock("../MapLibreRouteMap", () => ({
+  default: (props: any) => {
+    mocks.renderMapLibreRouteMap(props);
+    return <div role="img" aria-label={props.ariaLabel} />;
+  },
 }));
 
 function makeActivity(
@@ -340,6 +348,11 @@ describe("ActivityDetailPanel", () => {
     expect(
       screen.getByRole("img", { name: "Activity route map" }),
     ).toBeInTheDocument();
+    expect(mocks.renderMapLibreRouteMap).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ariaLabel: "Activity route map",
+      }),
+    );
     expect(screen.getByText("Matched segments")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Jump to North Climb matches" }),

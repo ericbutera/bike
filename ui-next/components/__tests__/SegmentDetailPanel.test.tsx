@@ -6,7 +6,7 @@ import SegmentDetailPanel from "../SegmentDetailPanel";
 const mocks = vi.hoisted(() => ({
   useCurrentUser: vi.fn(),
   useSegment: vi.fn(),
-  renderLeafletRouteMap: vi.fn(),
+  renderMapLibreRouteMap: vi.fn(),
 }));
 
 vi.mock("@ericbutera/kaleido", () => ({
@@ -21,9 +21,9 @@ vi.mock("../../lib/queries", () => ({
   useSegment: mocks.useSegment,
 }));
 
-vi.mock("../LeafletRouteMap", () => ({
+vi.mock("../MapLibreRouteMap", () => ({
   default: (props: any) => {
-    mocks.renderLeafletRouteMap(props);
+    mocks.renderMapLibreRouteMap(props);
 
     return <div role="img" aria-label={props.ariaLabel} />;
   },
@@ -349,7 +349,7 @@ describe("SegmentDetailPanel", () => {
       },
     );
 
-    const props = mocks.renderLeafletRouteMap.mock.lastCall?.[0];
+    const props = mocks.renderMapLibreRouteMap.mock.lastCall?.[0];
 
     expect(props?.movingMarkers).toHaveLength(1);
     expect(props?.movingMarkers[0].point.latitude).toBeCloseTo(45.004, 3);

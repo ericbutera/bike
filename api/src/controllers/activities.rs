@@ -24,7 +24,7 @@ use kaleido::auth::UserContext;
 use kaleido::glass::data::pagination::{Paginatable, PaginatedResponse, PaginationParams};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
@@ -165,12 +165,60 @@ fn preview_route_points(route_points: &[ActivityRoutePoint]) -> Vec<ActivityRout
         return route_points.to_vec();
     }
 
-    (0..MAX_ACTIVITY_STREAM_ROUTE_POINTS)
-        .map(|index| {
-            let point_index = index * (route_points.len().saturating_sub(1))
-                / (MAX_ACTIVITY_STREAM_ROUTE_POINTS.saturating_sub(1));
-            route_points[point_index].clone()
-        })
+    let last_index = route_points.len().saturating_sub(1);
+    let mut selected_indexes = BTreeSet::from([
+        0,
+        last_index,
+        route_points
+            .iter()
+            .enumerate()
+            .min_by(|(_, left), (_, right)| left.latitude.total_cmp(&right.latitude))
+            .map(|(index, _)| index)
+            .unwrap_or(0),
+        route_points
+            .iter()
+            .enumerate()
+            .max_by(|(_, left), (_, right)| left.latitude.total_cmp(&right.latitude))
+            .map(|(index, _)| index)
+            .unwrap_or(last_index),
+        route_points
+            .iter()
+            .enumerate()
+            .min_by(|(_, left), (_, right)| left.longitude.total_cmp(&right.longitude))
+            .map(|(index, _)| index)
+            .unwrap_or(0),
+        route_points
+            .iter()
+            .enumerate()
+            .max_by(|(_, left), (_, right)| left.longitude.total_cmp(&right.longitude))
+            .map(|(index, _)| index)
+            .unwrap_or(last_index),
+    ]);
+
+    for sample_index in 0..MAX_ACTIVITY_STREAM_ROUTE_POINTS {
+        if selected_indexes.len() >= MAX_ACTIVITY_STREAM_ROUTE_POINTS {
+            break;
+        }
+
+        let point_index =
+            sample_index * last_index / (MAX_ACTIVITY_STREAM_ROUTE_POINTS.saturating_sub(1));
+        selected_indexes.insert(point_index);
+    }
+
+    if selected_indexes.len() < MAX_ACTIVITY_STREAM_ROUTE_POINTS {
+        for point_index in 0..route_points.len() {
+            if selected_indexes.len() >= MAX_ACTIVITY_STREAM_ROUTE_POINTS {
+                break;
+            }
+
+            selected_indexes.insert(point_index);
+        }
+    }
+
+    selected_indexes
+        .into_iter()
+        .take(MAX_ACTIVITY_STREAM_ROUTE_POINTS)
+        .map(|index| route_points[index].clone())
         .collect()
 }
 
@@ -839,5 +887,76 @@ mod tests {
                 .map(|point| point.elapsed_seconds),
             Some(39)
         );
+    }
+
+    #[test]
+    fn summary_response_preserves_route_extrema_for_stream_preview() {
+        let now = Utc::now();
+        let mut route_points = (0..40)
+            .map(|index| ActivityRoutePoint {
+                elapsed_seconds: index,
+                latitude: 45.0 + (index as f64 * 0.001),
+                longitude: -122.0 + (index as f64 * 0.001),
+                distance_meters: Some(index as f64 * 100.0),
+                elevation_meters: Some(100.0 + index as f64),
+                speed_mps: Some(5.0 + index as f64 * 0.1),
+                heart_rate_bpm: Some(120 + index),
+                cadence_rpm: Some(80),
+            })
+            .collect::<Vec<_>>();
+
+        route_points[7].latitude = 46.5;
+        route_points[11].latitude = 44.2;
+        route_points[13].longitude = -123.4;
+        route_points[29].longitude = -120.8;
+
+        let response = ActivityResponse::from_summary(activities::Model {
+            id: 7,
+            user_id: 8,
+            activity_import_id: Some(9),
+            title: "Morning Ride".to_string(),
+            sport: "ride".to_string(),
+            source: "manual_upload".to_string(),
+            source_correlation_id: None,
+            original_filename: Some("morning-ride.gpx".to_string()),
+            format: Some("gpx".to_string()),
+            started_at: now,
+            ended_at: Some(now),
+            distance_meters: Some(40200.0),
+            moving_time_seconds: Some(3600),
+            total_time_seconds: Some(3900),
+            elevation_gain_meters: Some(520.0),
+            elevation_loss_meters: Some(515.0),
+            average_speed_mps: Some(9.5),
+            max_speed_mps: Some(16.2),
+            average_heart_rate_bpm: Some(142),
+            max_heart_rate_bpm: Some(171),
+            average_cadence_rpm: Some(86),
+            max_cadence_rpm: Some(104),
+            calories: Some(860),
+            estimated_ftp_watts: None,
+            heart_rate_zones_json: None,
+            derived_data_json: Some(
+                serialize_derived_activity_data(&ActivityDerivedData {
+                    laps: Vec::new(),
+                    chart_points: Vec::new(),
+                    route_points,
+                })
+                .expect("serialize derived activity data"),
+            ),
+            created_at: now,
+            updated_at: now,
+        });
+
+        let sampled_elapsed_seconds = response
+            .route_points
+            .iter()
+            .map(|point| point.elapsed_seconds)
+            .collect::<Vec<_>>();
+
+        assert!(sampled_elapsed_seconds.contains(&7));
+        assert!(sampled_elapsed_seconds.contains(&11));
+        assert!(sampled_elapsed_seconds.contains(&13));
+        assert!(sampled_elapsed_seconds.contains(&29));
     }
 }

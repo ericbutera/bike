@@ -7,7 +7,6 @@ const mocks = vi.hoisted(() => ({
   useCurrentUser: vi.fn(),
   useFeatureFlag: vi.fn(),
   useActivities: vi.fn(),
-  renderLeafletRouteMap: vi.fn(),
   routerReplace: vi.fn(),
   searchParams: "",
 }));
@@ -49,13 +48,6 @@ vi.mock("next/link", () => ({
       {children}
     </a>
   ),
-}));
-
-vi.mock("../LeafletRouteMap", () => ({
-  default: (props: any) => {
-    mocks.renderLeafletRouteMap(props);
-    return <div role="img" aria-label={props.ariaLabel} />;
-  },
 }));
 
 function makeActivity(
@@ -175,8 +167,14 @@ describe("ActivityStream", () => {
     const routeThumbnail = screen.getByRole("img", {
       name: "Route thumbnail for Latest Effort",
     });
-    expect(routeThumbnail.querySelector("path")).not.toBeNull();
-    expect(routeThumbnail.querySelector("polyline")).toBeNull();
+    expect(routeThumbnail).toHaveAttribute("src");
+    expect(routeThumbnail.getAttribute("src")).toContain(
+      "/activity-previews/thumbnail?",
+    );
+    expect(routeThumbnail.getAttribute("src")).toContain("activityId=2");
+    expect(routeThumbnail.getAttribute("src")).not.toContain("points=");
+    expect(routeThumbnail.getAttribute("src")).not.toContain("variant=");
+    expect(routeThumbnail.getAttribute("src")).not.toContain("v=");
     const latestEffortArticle = screen
       .getByRole("heading", { level: 3, name: "Latest Effort" })
       .closest("article");
@@ -194,7 +192,7 @@ describe("ActivityStream", () => {
     expect(screen.getByText("pagination:1:10:12")).toBeInTheDocument();
   });
 
-  it("renders a route-only full map preview when the feature flag is enabled", () => {
+  it("renders a full-width static route preview when the feature flag is enabled", () => {
     mocks.useFeatureFlag.mockReturnValue(true);
     mocks.useActivities.mockReturnValue({
       data: [makeActivity({ id: 2, title: "Latest Effort" })],
@@ -209,12 +207,16 @@ describe("ActivityStream", () => {
     expect(
       screen.getByRole("img", { name: "Route map for Latest Effort" }),
     ).toBeInTheDocument();
-    expect(mocks.renderLeafletRouteMap).toHaveBeenCalledWith(
-      expect.objectContaining({
-        showBaseTiles: false,
-        interactive: false,
-      }),
+    const fullPreview = screen.getByRole("img", {
+      name: "Route map for Latest Effort",
+    });
+    expect(fullPreview.getAttribute("src")).toContain(
+      "/activity-previews/full?",
     );
+    expect(fullPreview.getAttribute("src")).toContain("activityId=2");
+    expect(fullPreview.getAttribute("src")).not.toContain("points=");
+    expect(fullPreview.getAttribute("src")).not.toContain("variant=");
+    expect(fullPreview.getAttribute("src")).not.toContain("v=");
     expect(
       screen.queryByRole("img", {
         name: "Route thumbnail for Latest Effort",

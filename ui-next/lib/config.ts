@@ -1,5 +1,6 @@
 export type AppConfig = {
   API_URL: string;
+  MAP_STYLE_URL: string;
 };
 
 declare global {
@@ -10,6 +11,7 @@ declare global {
 
 const DEFAULT_CONFIG: AppConfig = {
   API_URL: "http://localhost:3000/api",
+  MAP_STYLE_URL: "opentopomap",
 };
 
 let clientConfig: AppConfig | null = null;
@@ -22,12 +24,20 @@ function normalizeUrl(value: string | undefined, fallback: string): string {
 export function parseAppConfig(raw?: Partial<AppConfig>): AppConfig {
   return {
     API_URL: normalizeUrl(raw?.API_URL, DEFAULT_CONFIG.API_URL),
+    MAP_STYLE_URL: normalizeUrl(
+      raw?.MAP_STYLE_URL,
+      DEFAULT_CONFIG.MAP_STYLE_URL,
+    ),
   };
 }
 
 export function getServerConfig(): AppConfig {
   return {
     API_URL: normalizeUrl(process.env.API_URL, DEFAULT_CONFIG.API_URL),
+    MAP_STYLE_URL: normalizeUrl(
+      process.env.MAP_STYLE_URL,
+      DEFAULT_CONFIG.MAP_STYLE_URL,
+    ),
   };
 }
 

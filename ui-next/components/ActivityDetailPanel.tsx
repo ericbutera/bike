@@ -53,7 +53,7 @@ import {
 } from "../lib/segmentAchievements";
 import { useUnitPreferences } from "../lib/unitPreferences";
 import AuthRequiredCard from "./AuthRequiredCard";
-import LeafletRouteMap from "./LeafletRouteMap";
+import MapLibreRouteMap from "./MapLibreRouteMap";
 
 type ChartSeriesPoint = {
   x: number;
@@ -1282,7 +1282,7 @@ function ActivityRouteMap({
         {hasRouteMap ? (
           <>
             <div className="mt-5 overflow-hidden rounded-box border border-base-300 bg-base-200">
-              <LeafletRouteMap
+              <MapLibreRouteMap
                 routePoints={routePoints}
                 overlays={overlays}
                 ariaLabel="Activity route map"

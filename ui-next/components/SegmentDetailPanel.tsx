@@ -48,7 +48,7 @@ import {
 import { primarySegmentAchievement } from "../lib/segmentAchievements";
 import { useUnitPreferences } from "../lib/unitPreferences";
 import AuthRequiredCard from "./AuthRequiredCard";
-import LeafletRouteMap from "./LeafletRouteMap";
+import MapLibreRouteMap from "./MapLibreRouteMap";
 
 const EFFORT_COLORS = [
   "#0f766e",
@@ -663,7 +663,7 @@ function RouteComparisonMap({
 
       <div className="mt-4 min-h-[20rem] flex-1 overflow-hidden rounded-box border border-base-300 bg-base-200">
         {hasRouteMap ? (
-          <LeafletRouteMap
+          <MapLibreRouteMap
             routePoints={routePoints}
             movingMarkers={markers.map((marker) => ({
               id: String(marker.id),

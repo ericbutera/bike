@@ -1,4 +1,4 @@
-import "leaflet/dist/leaflet.css";
+import "../node_modules/maplibre-gl/dist/maplibre-gl.css";
 import type { Metadata } from "next";
 import Script from "next/script";
 import type { ReactNode } from "react";
