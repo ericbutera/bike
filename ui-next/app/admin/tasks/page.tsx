@@ -8,7 +8,9 @@ export default function AdminTasksPage() {
   return (
     <Suspense>
       <AuthRouter>
-        <admin.Tasks />
+        <admin.Layout title="Dashboard">
+          <admin.Tasks />
+        </admin.Layout>
       </AuthRouter>
     </Suspense>
   );

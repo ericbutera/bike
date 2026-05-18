@@ -1,6 +1,6 @@
 "use client";
 
-import { Pagination, auth } from "@ericbutera/kaleido";
+import { Pagination, auth, featureFlags } from "@ericbutera/kaleido";
 import { faUpload } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
@@ -14,9 +14,11 @@ import {
   formatElevation,
   formatHeartRate,
 } from "../lib/activityFormatting";
+import { FLAG_ACTIVITY_LIST_FULL_MAPS } from "../lib/featureFlags";
 import { type ActivityRoutePoint, useActivities } from "../lib/queries";
 import { useUnitPreferences } from "../lib/unitPreferences";
 import AuthRequiredCard from "./AuthRequiredCard";
+import LeafletRouteMap from "./LeafletRouteMap";
 
 function StreamMetric({ label, value }: { label: string; value: string }) {
   return (
@@ -259,10 +261,51 @@ function ActivityRouteThumbnail({
   );
 }
 
+function ActivityRoutePreview({
+  title,
+  routePoints,
+  showFullMap,
+}: {
+  title: string;
+  routePoints: ActivityRoutePoint[] | null | undefined;
+  showFullMap: boolean;
+}) {
+  const points = routePoints ?? [];
+
+  if (!showFullMap) {
+    return <ActivityRouteThumbnail title={title} routePoints={routePoints} />;
+  }
+
+  if (points.length < 2) {
+    return (
+      <div className="flex h-24 items-center justify-center rounded-box border border-base-300 bg-base-200 text-sm text-base-content/60">
+        No route
+      </div>
+    );
+  }
+
+  return (
+    <LeafletRouteMap
+      routePoints={points}
+      ariaLabel={`Route map for ${title}`}
+      emptyMessage="No route"
+      className="h-24 w-full overflow-hidden rounded-box border border-base-300 bg-base-200"
+      showBaseTiles={false}
+      interactive={false}
+    />
+  );
+}
+
 export default function ActivityStream() {
   const authApi = auth.useAuthApi();
   const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
   const { unitSystem } = useUnitPreferences();
+  const showFullRouteMaps = featureFlags.useFeatureFlag(
+    FLAG_ACTIVITY_LIST_FULL_MAPS,
+  );
+  const activityCardLayoutClassName = showFullRouteMaps
+    ? "grid gap-3"
+    : "grid gap-3 sm:grid-cols-[8.5rem_minmax(0,1fr)] sm:items-start";
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -350,10 +393,11 @@ export default function ActivityStream() {
             key={activity.id}
             className="rounded-box border border-base-300 bg-base-100 p-4 shadow-sm sm:p-5"
           >
-            <div className="grid gap-3 sm:grid-cols-[8.5rem_minmax(0,1fr)] sm:items-start">
-              <ActivityRouteThumbnail
+            <div className={activityCardLayoutClassName}>
+              <ActivityRoutePreview
                 title={activity.title}
                 routePoints={activity.route_points}
+                showFullMap={showFullRouteMaps}
               />
 
               <div>

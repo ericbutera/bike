@@ -24,6 +24,8 @@ export type LeafletRouteMapProps = {
   ariaLabel: string;
   className?: string;
   emptyMessage: string;
+  showBaseTiles?: boolean;
+  interactive?: boolean;
 };
 
 function toLatLngs(points: ActivityRoutePoint[]) {
@@ -36,6 +38,8 @@ export default function LeafletRouteMapClient({
   routePoints,
   overlays = [],
   movingMarkers = [],
+  showBaseTiles = true,
+  interactive = true,
   ariaLabel: _ariaLabel,
   className: _className,
   emptyMessage: _emptyMessage,
@@ -89,16 +93,23 @@ export default function LeafletRouteMapClient({
     }
 
     const map = L.map(containerRef.current, {
-      zoomControl: true,
-      attributionControl: true,
-      scrollWheelZoom: false,
+      zoomControl: interactive,
+      attributionControl: showBaseTiles,
+      scrollWheelZoom: interactive,
+      dragging: interactive,
+      doubleClickZoom: interactive,
+      boxZoom: interactive,
+      keyboard: interactive,
+      touchZoom: interactive,
       zoomSnap: 0.1,
     });
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "&copy; OpenStreetMap contributors",
-      maxZoom: 19,
-    }).addTo(map);
+    if (showBaseTiles) {
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap contributors",
+        maxZoom: 19,
+      }).addTo(map);
+    }
 
     const routeLayerGroup = L.layerGroup().addTo(map);
     const markerLayerGroup = L.layerGroup().addTo(map);
@@ -150,7 +161,7 @@ export default function LeafletRouteMapClient({
       markerLayerGroupRef.current = null;
       lastFittedGeometryKeyRef.current = null;
     };
-  }, [routeLatLngs.length]);
+  }, [interactive, routeLatLngs.length, showBaseTiles]);
 
   useEffect(() => {
     const map = mapRef.current;

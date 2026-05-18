@@ -14,6 +14,7 @@ use kaleido::auth;
 use kaleido::auth::AdminUserContext;
 use kaleido::background_jobs;
 use kaleido::glass::feature_flags;
+use kaleido::glass::metrics_controller;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -84,6 +85,10 @@ pub fn routes() -> Router<Arc<AppStorage>> {
         )
         .nest("/api/integration-events", integration_events::routes())
         .nest("/api/strava", strava::routes())
+        .nest(
+            "/api/admin/metrics",
+            metrics_controller::admin_routes::<AppStorage>(),
+        )
         .route("/api/health", get(health))
         .route("/", get(root))
 }

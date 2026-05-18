@@ -241,12 +241,32 @@ export type ActivityImport = {
   activity_location?: string | null;
 };
 
+export type NamedStat = {
+  key: string;
+  label: string;
+  desc: string;
+  value: number;
+  error?: string | null;
+};
+
+export type SystemMetrics = Record<string, NamedStat[]>;
+
 export function useAdminMetrics() {
-  return $api.useQuery("get", "/admin/metrics", {});
+  const response = $api.useQuery("get", "/admin/metrics", {});
+
+  return {
+    ...response,
+    data: (response.data ?? null) as SystemMetrics | null,
+  };
 }
 
 export function useAdminAppMetrics() {
-  return $api.useQuery("get", "/admin/metrics/app", {});
+  const response = $api.useQuery("get", "/admin/metrics/app", {});
+
+  return {
+    ...response,
+    data: (response.data ?? []) as NamedStat[],
+  };
 }
 
 export function useAdminBackfillAnalytics() {

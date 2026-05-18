@@ -14,6 +14,7 @@ mod m20260512_000012_compact_activity_derived_data_json;
 mod m20260512_000013_compact_segment_and_heart_rate_json;
 mod m20260512_000014_add_activity_source_correlation_id;
 mod m20260513_000015_create_integration_events;
+mod m20260515_000001_map_feature_flag;
 
 pub struct Migrator;
 
@@ -65,6 +66,7 @@ impl MigratorTrait for Migrator {
         locals.push(Box::new(
             m20260513_000015_create_integration_events::Migration,
         ));
+        locals.push(Box::new(m20260515_000001_map_feature_flag::Migration));
         locals.sort_by_key(|m| m.name().to_string());
 
         migrations.extend(locals);

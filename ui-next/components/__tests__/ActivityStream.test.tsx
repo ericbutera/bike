@@ -5,7 +5,9 @@ import ActivityStream from "../ActivityStream";
 
 const mocks = vi.hoisted(() => ({
   useCurrentUser: vi.fn(),
+  useFeatureFlag: vi.fn(),
   useActivities: vi.fn(),
+  renderLeafletRouteMap: vi.fn(),
   routerReplace: vi.fn(),
   searchParams: "",
 }));
@@ -15,6 +17,9 @@ vi.mock("@ericbutera/kaleido", () => ({
     useAuthApi: () => ({
       useCurrentUser: mocks.useCurrentUser,
     }),
+  },
+  featureFlags: {
+    useFeatureFlag: mocks.useFeatureFlag,
   },
   Pagination: ({ page, perPage, total, onPageChange }: any) => (
     <div>
@@ -44,6 +49,13 @@ vi.mock("next/link", () => ({
       {children}
     </a>
   ),
+}));
+
+vi.mock("../LeafletRouteMap", () => ({
+  default: (props: any) => {
+    mocks.renderLeafletRouteMap(props);
+    return <div role="img" aria-label={props.ariaLabel} />;
+  },
 }));
 
 function makeActivity(
@@ -103,6 +115,7 @@ describe("ActivityStream", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.searchParams = "";
+    mocks.useFeatureFlag.mockReturnValue(false);
     mocks.useCurrentUser.mockReturnValue({
       user: { id: 1, email: "rider@example.com" },
       isLoading: false,
@@ -164,6 +177,13 @@ describe("ActivityStream", () => {
     });
     expect(routeThumbnail.querySelector("path")).not.toBeNull();
     expect(routeThumbnail.querySelector("polyline")).toBeNull();
+    const latestEffortArticle = screen
+      .getByRole("heading", { level: 3, name: "Latest Effort" })
+      .closest("article");
+    expect(latestEffortArticle).not.toBeNull();
+    expect(
+      (latestEffortArticle?.firstElementChild as HTMLElement).className,
+    ).toContain("sm:grid-cols-[8.5rem_minmax(0,1fr)]");
     expect(screen.queryByText("morning-ride.gpx")).not.toBeInTheDocument();
     expect(screen.queryByText("earlier-effort.gpx")).not.toBeInTheDocument();
     expect(screen.queryByText("Mountain biking")).not.toBeInTheDocument();
@@ -172,6 +192,43 @@ describe("ActivityStream", () => {
       screen.queryByRole("link", { name: "View details" }),
     ).not.toBeInTheDocument();
     expect(screen.getByText("pagination:1:10:12")).toBeInTheDocument();
+  });
+
+  it("renders a route-only full map preview when the feature flag is enabled", () => {
+    mocks.useFeatureFlag.mockReturnValue(true);
+    mocks.useActivities.mockReturnValue({
+      data: [makeActivity({ id: 2, title: "Latest Effort" })],
+      metadata: { page: 1, per_page: 10, total: 1, total_pages: 1 },
+      isError: false,
+      isFetching: false,
+      error: null,
+    });
+
+    render(<ActivityStream />);
+
+    expect(
+      screen.getByRole("img", { name: "Route map for Latest Effort" }),
+    ).toBeInTheDocument();
+    expect(mocks.renderLeafletRouteMap).toHaveBeenCalledWith(
+      expect.objectContaining({
+        showBaseTiles: false,
+        interactive: false,
+      }),
+    );
+    expect(
+      screen.queryByRole("img", {
+        name: "Route thumbnail for Latest Effort",
+      }),
+    ).not.toBeInTheDocument();
+
+    const article = screen
+      .getByRole("heading", { level: 3, name: "Latest Effort" })
+      .closest("article");
+
+    expect(article).not.toBeNull();
+    expect((article?.firstElementChild as HTMLElement).className).toBe(
+      "grid gap-3",
+    );
   });
 
   it("initializes the current page from the url", () => {

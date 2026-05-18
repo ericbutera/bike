@@ -8,7 +8,9 @@ export default function FeatureFlagsPage() {
   return (
     <Suspense>
       <AuthRouter>
-        <admin.FeatureFlags />
+        <admin.Layout title="Dashboard">
+          <admin.FeatureFlags />
+        </admin.Layout>
       </AuthRouter>
     </Suspense>
   );

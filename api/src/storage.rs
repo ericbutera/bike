@@ -5,6 +5,7 @@ use kaleido::auth::controllers::oauth::OAuthRouteStorage;
 use kaleido::auth::{AuthRouteStorage, AuthStorage};
 use kaleido::background_jobs::admin::BackgroundTasksStorage;
 use kaleido::glass::feature_flags::{FeatureFlagService, FeatureFlagStorage};
+use kaleido::glass::metrics_controller::MetricsStorage;
 use migration::MigratorTrait;
 use sea_orm::DatabaseConnection;
 
@@ -102,5 +103,11 @@ impl OAuthRouteStorage for AppStorage {
 
     fn oauth_enabled(&self) -> bool {
         false
+    }
+}
+
+impl MetricsStorage for AppStorage {
+    fn db(&self) -> &DatabaseConnection {
+        &self.db
     }
 }
