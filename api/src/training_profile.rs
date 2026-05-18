@@ -389,6 +389,7 @@ mod tests {
                     speed_mps: None,
                     heart_rate_bpm: Some(118),
                     cadence_rpm: None,
+                    power_watts: None,
                 },
                 ActivityRoutePoint {
                     elapsed_seconds: 300,
@@ -399,6 +400,7 @@ mod tests {
                     speed_mps: None,
                     heart_rate_bpm: Some(148),
                     cadence_rpm: None,
+                    power_watts: None,
                 },
                 ActivityRoutePoint {
                     elapsed_seconds: 600,
@@ -409,6 +411,7 @@ mod tests {
                     speed_mps: None,
                     heart_rate_bpm: Some(176),
                     cadence_rpm: None,
+                    power_watts: None,
                 },
             ],
             &[],

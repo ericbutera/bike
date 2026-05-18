@@ -60,7 +60,7 @@ type ChartSeriesPoint = {
   y: number;
 };
 
-type SignalMetricKey = "heartRate" | "speed" | "elevation";
+type SignalMetricKey = "heartRate" | "power" | "speed" | "elevation";
 
 type SegmentTone = {
   mapColor: string;
@@ -101,6 +101,7 @@ type SignalSeries = {
 type SignalChartRow = {
   elapsedSeconds: number;
   heartRate?: number | null;
+  power?: number | null;
   speed?: number | null;
   elevation?: number | null;
 };
@@ -174,7 +175,12 @@ const DEFAULT_VISIBLE_SIGNAL_KEYS: SignalMetricKey[] = [
   "elevation",
 ];
 
-const SIGNAL_KEY_ORDER: SignalMetricKey[] = ["heartRate", "speed", "elevation"];
+const SIGNAL_KEY_ORDER: SignalMetricKey[] = [
+  "heartRate",
+  "power",
+  "speed",
+  "elevation",
+];
 
 function formatElapsedAxisLabel(value: number) {
   if (value <= 0) {
@@ -512,20 +518,34 @@ function buildSignalChartRows(series: SignalSeries[]) {
   );
 }
 
+function signalMetricLabel(key: SignalMetricKey) {
+  switch (key) {
+    case "heartRate":
+      return "Heart rate";
+    case "power":
+      return "Power";
+    case "speed":
+      return "Speed";
+    case "elevation":
+      return "Elevation";
+  }
+}
+
 function formatSignalValue(
   key: SignalMetricKey,
   value: number | null | undefined,
   unitSystem: UnitSystem,
 ) {
-  if (key === "heartRate") {
-    return formatHeartRate(value);
+  switch (key) {
+    case "heartRate":
+      return formatHeartRate(value);
+    case "power":
+      return formatPower(value);
+    case "speed":
+      return formatSpeed(value, unitSystem);
+    case "elevation":
+      return formatElevation(value, unitSystem);
   }
-
-  if (key === "speed") {
-    return formatSpeed(value, unitSystem);
-  }
-
-  return formatElevation(value, unitSystem);
 }
 
 function SignalChartTooltip({
@@ -550,6 +570,7 @@ function SignalChartTooltip({
   const orderedItems = payload.flatMap((entry) => {
     if (
       entry.dataKey !== "heartRate" &&
+      entry.dataKey !== "power" &&
       entry.dataKey !== "speed" &&
       entry.dataKey !== "elevation"
     ) {
@@ -575,11 +596,7 @@ function SignalChartTooltip({
               style={{ backgroundColor: entry.color }}
             />
             <span className="font-medium text-base-content">
-              {entry.dataKey === "heartRate"
-                ? "Heart rate"
-                : entry.dataKey === "speed"
-                  ? "Speed"
-                  : "Elevation"}
+              {signalMetricLabel(entry.dataKey)}
             </span>
             <span>
               {formatSignalValue(entry.dataKey, entry.value, unitSystem)}
@@ -1022,8 +1039,8 @@ function SignalChartCard({
           <div>
             <h2 className="card-title text-xl">Ride signals</h2>
             <p className="text-sm leading-6 text-base-content/70">
-              Heart rate, speed, and elevation share the same time axis. Toggle
-              layers to focus on effort, terrain, or both at once.
+              Heart rate, power, speed, and elevation share the same time axis.
+              Toggle layers to focus on effort, terrain, or both at once.
             </p>
           </div>
           <span className="badge badge-ghost uppercase">
@@ -1397,6 +1414,10 @@ export default function ActivityDetailPanel({
     activity?.chart_points,
     (point) => point.heart_rate_bpm,
   );
+  const powerSeries = buildSeries(
+    activity?.chart_points,
+    (point) => point.power_watts,
+  );
   const speedSeries = buildSeries(
     activity?.chart_points,
     (point) => point.speed_mps,
@@ -1416,6 +1437,16 @@ export default function ActivityDetailPanel({
         strokeColor: "var(--color-error)",
         strokeWidth: 2,
         summary: `Peak ${formatHeartRate(maxSeriesValue(heartRateSeries))}`,
+      },
+      {
+        key: "power",
+        label: "Power",
+        points: powerSeries,
+        buttonClassName: "btn-warning",
+        dotClassName: "bg-warning",
+        strokeColor: "var(--color-warning)",
+        strokeWidth: 1.75,
+        summary: `Peak ${formatPower(maxSeriesValue(powerSeries))}`,
       },
       {
         key: "speed",
@@ -1439,7 +1470,7 @@ export default function ActivityDetailPanel({
         summary: `${formatElevation(minSeriesValue(elevationSeries), unitSystem)} to ${formatElevation(maxSeriesValue(elevationSeries), unitSystem)}`,
       },
     ],
-    [elevationSeries, heartRateSeries, speedSeries, unitSystem],
+    [elevationSeries, heartRateSeries, powerSeries, speedSeries, unitSystem],
   );
 
   function focusSegmentMatch(segmentId: number) {

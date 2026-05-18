@@ -153,3 +153,7 @@ Data:
 8. Add achievements and leaderboards.
 9. Add training plans.
 10. Add official Garmin Connect sync if access is approved.
+
+TODO:
+
+- [3d terrain](https://maplibre.org/maplibre-gl-js/docs/examples/3d-terrain/)

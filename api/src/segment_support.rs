@@ -67,6 +67,7 @@ pub fn slice_effort_route_points(
             speed_mps: point.speed_mps,
             heart_rate_bpm: point.heart_rate_bpm,
             cadence_rpm: point.cadence_rpm,
+            power_watts: point.power_watts,
         })
         .collect()
 }
@@ -475,6 +476,7 @@ mod tests {
             speed_mps: Some(5.0),
             heart_rate_bpm: Some(140),
             cadence_rpm: Some(88),
+            power_watts: None,
         }
     }
 

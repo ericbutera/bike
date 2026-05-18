@@ -37,6 +37,7 @@ export type ActivityChartPoint = {
   speed_mps?: number | null;
   heart_rate_bpm?: number | null;
   cadence_rpm?: number | null;
+  power_watts?: number | null;
 };
 
 export type ActivityRoutePoint = {
@@ -48,6 +49,7 @@ export type ActivityRoutePoint = {
   speed_mps?: number | null;
   heart_rate_bpm?: number | null;
   cadence_rpm?: number | null;
+  power_watts?: number | null;
 };
 
 export type ActivitySegmentEffort = {

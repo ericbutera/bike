@@ -88,6 +88,7 @@ mod tests {
             speed_mps: None,
             heart_rate_bpm: None,
             cadence_rpm: None,
+            power_watts: None,
         }]);
 
         assert!(result.is_some());

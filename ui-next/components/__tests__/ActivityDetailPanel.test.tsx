@@ -94,6 +94,7 @@ function makeActivity(
       speed_mps: number | null;
       heart_rate_bpm: number | null;
       cadence_rpm: number | null;
+      power_watts: number | null;
     }>;
     route_points: Array<{
       elapsed_seconds: number;
@@ -104,6 +105,7 @@ function makeActivity(
       speed_mps: number | null;
       heart_rate_bpm: number | null;
       cadence_rpm: number | null;
+      power_watts: number | null;
     }>;
     segment_efforts: Array<{
       segment_id: number;
@@ -202,6 +204,7 @@ function makeActivity(
         speed_mps: 0,
         heart_rate_bpm: 128,
         cadence_rpm: 80,
+        power_watts: 142,
       },
       {
         elapsed_seconds: 1600,
@@ -210,6 +213,7 @@ function makeActivity(
         speed_mps: 8.7,
         heart_rate_bpm: 150,
         cadence_rpm: 88,
+        power_watts: 248,
       },
       {
         elapsed_seconds: 3200,
@@ -218,6 +222,7 @@ function makeActivity(
         speed_mps: 14.8,
         heart_rate_bpm: 168,
         cadence_rpm: 102,
+        power_watts: 314,
       },
     ],
     route_points: [
@@ -230,6 +235,7 @@ function makeActivity(
         speed_mps: 0,
         heart_rate_bpm: 128,
         cadence_rpm: 80,
+        power_watts: 142,
       },
       {
         elapsed_seconds: 1600,
@@ -240,6 +246,7 @@ function makeActivity(
         speed_mps: 8.7,
         heart_rate_bpm: 150,
         cadence_rpm: 88,
+        power_watts: 248,
       },
       {
         elapsed_seconds: 3200,
@@ -250,6 +257,7 @@ function makeActivity(
         speed_mps: 14.8,
         heart_rate_bpm: 168,
         cadence_rpm: 102,
+        power_watts: 314,
       },
     ],
     segment_efforts: [
@@ -412,6 +420,10 @@ describe("ActivityDetailPanel", () => {
       "aria-pressed",
       "true",
     );
+    expect(screen.getByRole("button", { name: "Power" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
     expect(screen.getByRole("button", { name: "Speed" })).toHaveAttribute(
       "aria-pressed",
       "false",
@@ -492,11 +504,16 @@ describe("ActivityDetailPanel", () => {
     render(<ActivityDetailPanel activityId={7} />);
 
     const heartRateButton = screen.getByRole("button", { name: "Heart rate" });
+    const powerButton = screen.getByRole("button", { name: "Power" });
     const speedButton = screen.getByRole("button", { name: "Speed" });
 
     await user.click(heartRateButton);
 
     expect(heartRateButton).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(powerButton);
+
+    expect(powerButton).toHaveAttribute("aria-pressed", "true");
 
     await user.click(speedButton);
 

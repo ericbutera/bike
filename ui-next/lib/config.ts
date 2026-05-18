@@ -44,21 +44,30 @@ export function getServerConfig(): AppConfig {
 export function initializeClientConfig(
   initialConfig?: Partial<AppConfig>,
 ): AppConfig {
-  if (clientConfig) {
-    return clientConfig;
-  }
-
   if (initialConfig) {
     clientConfig = parseAppConfig(initialConfig);
     return clientConfig;
   }
 
   if (typeof window !== "undefined") {
-    clientConfig = parseAppConfig(window.__APP_CONFIG__);
+    const windowConfig = parseAppConfig(window.__APP_CONFIG__);
+
+    if (
+      !clientConfig ||
+      (window.__APP_CONFIG__ &&
+        (clientConfig.API_URL !== windowConfig.API_URL ||
+          clientConfig.MAP_STYLE_URL !== windowConfig.MAP_STYLE_URL))
+    ) {
+      clientConfig = windowConfig;
+    }
+
     return clientConfig;
   }
 
-  clientConfig = getServerConfig();
+  if (!clientConfig) {
+    clientConfig = getServerConfig();
+  }
+
   return clientConfig;
 }
 

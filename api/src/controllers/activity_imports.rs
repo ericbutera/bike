@@ -620,6 +620,7 @@ mod tests {
                         speed_mps: Some(0.0),
                         heart_rate_bpm: Some(130),
                         cadence_rpm: Some(82),
+                        power_watts: None,
                     }],
                 })
                 .expect("serialize derived activity data"),

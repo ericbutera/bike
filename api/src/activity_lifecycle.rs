@@ -503,6 +503,7 @@ mod tests {
             speed_mps: Some(8.0),
             heart_rate_bpm: Some(140),
             cadence_rpm: Some(88),
+            power_watts: None,
         }
     }
 

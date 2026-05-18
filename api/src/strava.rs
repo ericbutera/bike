@@ -118,6 +118,7 @@ struct StravaActivityStreams {
     velocity_smooth: Option<StravaStream<f64>>,
     heartrate: Option<StravaStream<i32>>,
     cadence: Option<StravaStream<f64>>,
+    watts: Option<StravaStream<i32>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -917,7 +918,7 @@ impl StravaApiClient {
                 .query(&[
                     (
                         "keys",
-                        "time,distance,latlng,altitude,velocity_smooth,heartrate,cadence",
+                        "time,distance,latlng,altitude,velocity_smooth,heartrate,cadence,watts",
                     ),
                     ("key_by_type", "true"),
                 ])
@@ -1883,7 +1884,7 @@ fn build_tcx_document(activity: &StravaActivitySummary, streams: &StravaActivity
     let start_date = activity.start_date.to_rfc3339();
     let sport = tcx_sport(activity);
     let mut xml = String::from(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<TrainingCenterDatabase xmlns=\"http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2\">\n  <Activities>\n",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<TrainingCenterDatabase xmlns=\"http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2\" xmlns:ns3=\"http://www.garmin.com/xmlschemas/ActivityExtension/v2\">\n  <Activities>\n",
     );
 
     xml.push_str(&format!(
@@ -1972,6 +1973,16 @@ fn build_tcx_document(activity: &StravaActivitySummary, streams: &StravaActivity
                     "            <Cadence>{}</Cadence>\n",
                     cadence.round() as i32
                 ));
+            }
+            if let Some(watts) = stream_i32_value(streams.watts.as_ref(), index) {
+                xml.push_str("            <Extensions>\n");
+                xml.push_str("              <ns3:TPX>\n");
+                xml.push_str(&format!(
+                    "                <ns3:Watts>{}</ns3:Watts>\n",
+                    watts
+                ));
+                xml.push_str("              </ns3:TPX>\n");
+                xml.push_str("            </Extensions>\n");
             }
             xml.push_str("          </Trackpoint>\n");
         }
@@ -2076,6 +2087,11 @@ fn max_trackpoint_count(streams: &StravaActivityStreams) -> usize {
             .unwrap_or(0),
         streams
             .cadence
+            .as_ref()
+            .map(|stream| stream.data.len())
+            .unwrap_or(0),
+        streams
+            .watts
             .as_ref()
             .map(|stream| stream.data.len())
             .unwrap_or(0),
@@ -2498,6 +2514,9 @@ mod tests {
             cadence: Some(StravaStream {
                 data: vec![86.0, 88.0, 90.0],
             }),
+            watts: Some(StravaStream {
+                data: vec![205, 220, 235],
+            }),
         };
 
         let tcx = build_tcx_document(&activity, &streams);
@@ -2507,6 +2526,7 @@ mod tests {
         assert!(tcx.contains("<LatitudeDegrees>35.0000000</LatitudeDegrees>"));
         assert!(tcx.contains("<HeartRateBpm><Value>140</Value></HeartRateBpm>"));
         assert!(tcx.contains("<Cadence>86</Cadence>"));
+        assert!(tcx.contains("<ns3:Watts>205</ns3:Watts>"));
     }
 
     #[tokio::test]

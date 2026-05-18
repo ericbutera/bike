@@ -16,6 +16,7 @@ pub struct FitTrackPoint {
     pub speed_mps: Option<f64>,
     pub heart_rate_bpm: Option<i32>,
     pub cadence_rpm: Option<i32>,
+    pub power_watts: Option<i32>,
 }
 
 #[derive(Debug, Clone)]
@@ -132,6 +133,7 @@ fn parse_fit_track_point(record: &FitDataRecord) -> Option<FitTrackPoint> {
             .or_else(|| field_f64(Some(record), "speed")),
         heart_rate_bpm: field_i32(Some(record), "heart_rate"),
         cadence_rpm: field_i32(Some(record), "cadence"),
+        power_watts: field_i32(Some(record), "power"),
     })
 }
 

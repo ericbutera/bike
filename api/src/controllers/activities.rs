@@ -629,6 +629,7 @@ mod tests {
                             speed_mps: None,
                             heart_rate_bpm: Some(130),
                             cadence_rpm: Some(82),
+                            power_watts: None,
                         }],
                         route_points: vec![ActivityRoutePoint {
                             elapsed_seconds: 0,
@@ -639,6 +640,7 @@ mod tests {
                             speed_mps: Some(0.0),
                             heart_rate_bpm: Some(130),
                             cadence_rpm: Some(82),
+                            power_watts: None,
                         }],
                     })
                     .expect("serialize derived activity data"),
@@ -794,6 +796,7 @@ mod tests {
                             speed_mps: Some(0.0),
                             heart_rate_bpm: Some(130),
                             cadence_rpm: Some(82),
+                            power_watts: None,
                         }],
                     })
                     .expect("serialize derived activity data"),
@@ -829,6 +832,7 @@ mod tests {
                 speed_mps: Some(5.0 + index as f64 * 0.1),
                 heart_rate_bpm: Some(120 + index),
                 cadence_rpm: Some(80),
+                power_watts: None,
             })
             .collect::<Vec<_>>();
         let response = ActivityResponse::from_summary(activities::Model {
@@ -902,6 +906,7 @@ mod tests {
                 speed_mps: Some(5.0 + index as f64 * 0.1),
                 heart_rate_bpm: Some(120 + index),
                 cadence_rpm: Some(80),
+                power_watts: None,
             })
             .collect::<Vec<_>>();
 
