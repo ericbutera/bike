@@ -5,8 +5,8 @@ use crate::activity_import_lock::{
     ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
 };
 use crate::activity_import_pipeline::{
-    finalize_activity_import_batch, persist_activity_upload, ActivityUploadPayload,
-    PersistActivityUploadOutcome,
+    finalize_activity_import_batch, persist_activity_upload, ActivityUploadDeduplication,
+    ActivityUploadPayload, PersistActivityUploadOutcome,
 };
 use crate::activity_lifecycle::delete_activity_with_derived_state;
 use crate::analytics::{mark_segment_activity_changes, mark_user_activity_change};
@@ -47,6 +47,7 @@ pub const STRAVA_SYNC_STATUS_QUEUED: &str = "queued";
 pub const STRAVA_SYNC_STATUS_RUNNING: &str = "running";
 pub const STRAVA_SYNC_STATUS_SUCCEEDED: &str = "succeeded";
 pub const STRAVA_SYNC_STATUS_FAILED: &str = "failed";
+const STRAVA_REQUIRED_ACTIVITY_SCOPE: &str = "activity:read_all";
 const STRAVA_STATE_MAX_AGE_MINUTES: i64 = 10;
 const STRAVA_SYNC_TASK_TYPE: &str = "strava_sync";
 
@@ -182,13 +183,14 @@ pub fn build_redirect_uri(config: &Config) -> String {
 pub fn build_authorization_url(config: &Config, state: &str) -> Result<Url, String> {
     let mut url = Url::parse(STRAVA_AUTHORIZE_URL)
         .map_err(|error| format!("Invalid Strava authorize URL: {error}"))?;
+    let scopes = requested_oauth_scopes(config);
 
     url.query_pairs_mut()
         .append_pair("client_id", config.strava_client_id.trim())
         .append_pair("redirect_uri", &build_redirect_uri(config))
         .append_pair("response_type", "code")
         .append_pair("approval_prompt", "auto")
-        .append_pair("scope", &config.strava_oauth_scope_list().join(","))
+        .append_pair("scope", &scopes.join(","))
         .append_pair("state", state);
 
     Ok(url)
@@ -260,11 +262,10 @@ pub fn verify_state_token(config: &Config, token: &str) -> Result<VerifiedStrava
     })
 }
 
-pub fn scopes_allow_activity_read(scopes: &str) -> bool {
-    scopes
-        .split([' ', ','])
-        .map(str::trim)
-        .any(|scope| matches!(scope, "activity:read" | "activity:read_all"))
+pub fn scopes_allow_activity_import(scopes: &str) -> bool {
+    parse_scope_list(scopes)
+        .iter()
+        .any(|scope| scope == STRAVA_REQUIRED_ACTIVITY_SCOPE)
 }
 
 pub fn parse_scope_list(raw: &str) -> Vec<String> {
@@ -356,10 +357,8 @@ pub async fn exchange_code_for_connection(
         let client = StravaApiClient::new(config)?;
         let token_response = client.exchange_authorization_code(code).await?;
 
-        if !scopes_allow_activity_read(&token_response.scope) {
-            return Err(AppError::bad_request(
-                "Strava did not grant activity access. Reconnect and approve activity:read.",
-            ));
+        if !scopes_allow_activity_import(&token_response.scope) {
+            return Err(AppError::bad_request(missing_activity_scope_message()));
         }
 
         let connection =
@@ -515,13 +514,29 @@ pub async fn handle_webhook_event(
                     )
                     .await;
                 } else if resolved.active_sync_status.is_none() {
-                    let _ = queue_sync_task_for_connection(
-                        db,
-                        tasks,
-                        &resolved.connection,
-                        "Strava webhook update queued a sync.",
-                    )
-                    .await;
+                    if !scopes_allow_activity_import(&resolved.connection.scopes) {
+                        record_connection_strava_event_best_effort(
+                            db,
+                            &resolved.connection,
+                            "webhook.activity_ignored",
+                            INTEGRATION_LEVEL_WARNING,
+                            &missing_activity_scope_message(),
+                            Some(serde_json::json!({
+                                "activity_id": event.object_id,
+                                "aspect_type": event.aspect_type,
+                                "granted_scopes": parse_scope_list(&resolved.connection.scopes),
+                            })),
+                        )
+                        .await;
+                    } else {
+                        let _ = queue_sync_task_for_connection(
+                            db,
+                            tasks,
+                            &resolved.connection,
+                            "Strava webhook update queued a sync.",
+                        )
+                        .await;
+                    }
                 } else {
                     record_connection_strava_event_best_effort(
                         db,
@@ -583,6 +598,8 @@ pub async fn queue_connection_sync(
         return Ok(resolved.connection);
     }
 
+    ensure_connection_scopes_allow_activity_import(&resolved.connection)?;
+
     queue_sync_task_for_connection(db, tasks, &resolved.connection, "Strava sync queued.").await
 }
 
@@ -630,6 +647,7 @@ pub async fn process_strava_sync(
         let connection = mark_sync_running(db, &connection).await?;
         let client = StravaApiClient::new(Config::get())?;
         let connection = ensure_fresh_access_token(db, &client, connection).await?;
+        ensure_connection_scopes_allow_activity_import(&connection)?;
         let user = users::Entity::find_by_id(connection.user_id)
             .one(db)
             .await?
@@ -717,6 +735,7 @@ pub async fn process_strava_sync(
                     connection.user_id,
                     upload,
                     "strava_sync",
+                    ActivityUploadDeduplication::Disabled,
                     Some(&training_profile),
                 )
                 .await
@@ -2141,6 +2160,33 @@ fn escape_xml_text(value: &str) -> String {
         .replace('\'', "&apos;")
 }
 
+fn requested_oauth_scopes(config: &Config) -> Vec<String> {
+    let mut scopes = config.strava_oauth_scope_list();
+    if !scopes
+        .iter()
+        .any(|scope| scope == STRAVA_REQUIRED_ACTIVITY_SCOPE)
+    {
+        scopes.push(STRAVA_REQUIRED_ACTIVITY_SCOPE.to_string());
+    }
+    scopes
+}
+
+fn missing_activity_scope_message() -> String {
+    format!(
+        "Strava must grant {STRAVA_REQUIRED_ACTIVITY_SCOPE} so Bike can import private and Only Me activities. Reconnect Strava and approve {STRAVA_REQUIRED_ACTIVITY_SCOPE}."
+    )
+}
+
+fn ensure_connection_scopes_allow_activity_import(
+    connection: &strava_connections::Model,
+) -> Result<(), AppError> {
+    if scopes_allow_activity_import(&connection.scopes) {
+        Ok(())
+    } else {
+        Err(AppError::bad_request(missing_activity_scope_message()))
+    }
+}
+
 fn sign_state(config: &Config, payload: &str) -> Result<String, String> {
     let mut mac = HmacSha256::new_from_slice(config.jwt_secret.as_bytes())
         .map_err(|_| "Invalid JWT secret for Strava state signing".to_string())?;
@@ -2195,10 +2241,11 @@ mod tests {
         db
     }
 
-    async fn insert_connection(
+    async fn insert_connection_with_scopes(
         db: &DatabaseConnection,
         user_id: i32,
         last_sync_status: &str,
+        scopes: &str,
     ) -> strava_connections::Model {
         strava_connections::ActiveModel {
             user_id: Set(user_id),
@@ -2207,7 +2254,7 @@ mod tests {
             athlete_first_name: Set(Some("Test".to_string())),
             athlete_last_name: Set(Some("Rider".to_string())),
             athlete_profile_medium_url: Set(None),
-            scopes: Set("activity:read".to_string()),
+            scopes: Set(scopes.to_string()),
             access_token: Set("access-token".to_string()),
             refresh_token: Set("refresh-token".to_string()),
             expires_at: Set(Utc::now() + ChronoDuration::hours(1)),
@@ -2223,6 +2270,14 @@ mod tests {
         .insert(db)
         .await
         .expect("insert Strava connection")
+    }
+
+    async fn insert_connection(
+        db: &DatabaseConnection,
+        user_id: i32,
+        last_sync_status: &str,
+    ) -> strava_connections::Model {
+        insert_connection_with_scopes(db, user_id, last_sync_status, "activity:read_all").await
     }
 
     async fn load_event_types(db: &DatabaseConnection) -> Vec<String> {
@@ -2244,7 +2299,7 @@ mod tests {
             api_url: "http://localhost:3000".to_string(),
             strava_client_id: "12345".to_string(),
             strava_client_secret: "secret".to_string(),
-            strava_oauth_scopes: "activity:read profile:read_all".to_string(),
+            strava_oauth_scopes: "activity:read_all profile:read_all".to_string(),
             strava_webhook_verify_token: "verify-token".to_string(),
             strava_webhook_callback_url: None,
             uploads_dir: "./uploads".to_string(),
@@ -2294,15 +2349,27 @@ mod tests {
         assert!(url.as_str().contains("client_id=12345"));
         assert!(url
             .as_str()
-            .contains("scope=activity%3Aread%2Cprofile%3Aread_all"));
+            .contains("scope=activity%3Aread_all%2Cprofile%3Aread_all"));
         assert!(url.as_str().contains("state=signed-state"));
     }
 
     #[test]
-    fn recognizes_activity_read_scope_variants() {
-        assert!(scopes_allow_activity_read("activity:read"));
-        assert!(scopes_allow_activity_read("read activity:read_all"));
-        assert!(!scopes_allow_activity_read("read profile:read_all"));
+    fn requires_activity_read_all_scope() {
+        assert!(!scopes_allow_activity_import("activity:read"));
+        assert!(scopes_allow_activity_import("read activity:read_all"));
+        assert!(!scopes_allow_activity_import("read profile:read_all"));
+    }
+
+    #[test]
+    fn authorization_url_always_requests_activity_read_all() {
+        let mut config = test_config();
+        config.strava_oauth_scopes = "read profile:read_all activity:read".to_string();
+
+        let url = build_authorization_url(&config, "signed-state").unwrap();
+
+        assert!(url
+            .as_str()
+            .contains("scope=read%2Cprofile%3Aread_all%2Cactivity%3Aread%2Cactivity%3Aread_all"));
     }
 
     #[test]
@@ -2547,6 +2614,18 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn weak_connection_scope_returns_activity_scope_error() {
+        let db = test_db().await;
+        let connection =
+            insert_connection_with_scopes(&db, 42, STRAVA_SYNC_STATUS_NEVER, "activity:read").await;
+
+        let error = ensure_connection_scopes_allow_activity_import(&connection).unwrap_err();
+
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.message, missing_activity_scope_message());
+    }
+
+    #[tokio::test]
     async fn webhook_athlete_deauthorization_disconnects_connection_and_logs_events() {
         let db = test_db().await;
         let connection = insert_connection(&db, 9, STRAVA_SYNC_STATUS_NEVER).await;
@@ -2623,6 +2702,47 @@ mod tests {
         let event_types = load_event_types(&db).await;
         assert!(event_types.contains(&"webhook.received".to_string()));
         assert!(event_types.contains(&"sync.queued".to_string()));
+    }
+
+    #[tokio::test]
+    async fn webhook_activity_update_without_required_scope_is_ignored() {
+        let db = test_db().await;
+        let connection =
+            insert_connection_with_scopes(&db, 11, STRAVA_SYNC_STATUS_NEVER, "activity:read").await;
+        let tasks = TaskQueue::new(db.clone());
+
+        handle_webhook_event(
+            &db,
+            &tasks,
+            &StravaWebhookEvent {
+                aspect_type: "create".to_string(),
+                event_time: Utc::now().timestamp(),
+                object_id: 8_484,
+                object_type: "activity".to_string(),
+                owner_id: connection.athlete_id,
+                subscription_id: 1,
+                updates: None,
+            },
+        )
+        .await
+        .expect("handle activity update webhook with missing scope");
+
+        assert!(background_tasks::Entity::find()
+            .all(&db)
+            .await
+            .expect("load background tasks")
+            .is_empty());
+
+        let events = integration_events_entity::Entity::find()
+            .order_by_asc(integration_events_entity::Column::Id)
+            .all(&db)
+            .await
+            .expect("load integration events");
+        assert!(events
+            .iter()
+            .any(|event| event.event_type == "webhook.activity_ignored"
+                && event.message == missing_activity_scope_message()));
+        assert!(!events.iter().any(|event| event.event_type == "sync.queued"));
     }
 
     #[tokio::test]

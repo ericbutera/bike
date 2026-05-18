@@ -44,6 +44,12 @@ pub enum PersistActivityUploadOutcome {
     Duplicate(DeduplicatedActivityImport),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActivityUploadDeduplication {
+    Enabled,
+    Disabled,
+}
+
 pub async fn persist_activity_upload(
     db: &DatabaseConnection,
     uploads_dir: &str,
@@ -51,19 +57,22 @@ pub async fn persist_activity_upload(
     user_id: i32,
     upload: ActivityUploadPayload,
     source: &str,
+    deduplication: ActivityUploadDeduplication,
     training_profile: Option<&TrainingProfile>,
 ) -> Result<PersistActivityUploadOutcome, AppError> {
     let source_correlation_id = upload.source_correlation_id.clone();
 
-    if let Some(existing) = find_existing_activity_by_source_correlation(
-        db,
-        user_id,
-        source,
-        source_correlation_id.as_deref(),
-    )
-    .await?
-    {
-        return Ok(PersistActivityUploadOutcome::Duplicate(existing));
+    if deduplication == ActivityUploadDeduplication::Enabled {
+        if let Some(existing) = find_existing_activity_by_source_correlation(
+            db,
+            user_id,
+            source,
+            source_correlation_id.as_deref(),
+        )
+        .await?
+        {
+            return Ok(PersistActivityUploadOutcome::Duplicate(existing));
+        }
     }
 
     let activity_draft = crate::activity_summary::summarize_activity_upload(
@@ -74,10 +83,12 @@ pub async fn persist_activity_upload(
     let derived_data =
         derive_activity_detail_data(&upload.original_filename, &upload.format, &upload.bytes)?;
 
-    if let Some(duplicate) =
-        find_duplicate_activity(db, user_id, &activity_draft, &derived_data).await?
-    {
-        return Ok(PersistActivityUploadOutcome::Duplicate(duplicate));
+    if deduplication == ActivityUploadDeduplication::Enabled {
+        if let Some(duplicate) =
+            find_duplicate_activity(db, user_id, &activity_draft, &derived_data).await?
+        {
+            return Ok(PersistActivityUploadOutcome::Duplicate(duplicate));
+        }
     }
 
     let training_profile = match training_profile {
@@ -338,7 +349,11 @@ async fn deduplicated_activity_import_for_model(
     activity: activities::Model,
 ) -> Result<DeduplicatedActivityImport, AppError> {
     let existing_import = match activity.activity_import_id {
-        Some(import_id) => activity_imports::Entity::find_by_id(import_id).one(db).await?,
+        Some(import_id) => {
+            activity_imports::Entity::find_by_id(import_id)
+                .one(db)
+                .await?
+        }
         None => None,
     };
 
@@ -346,4 +361,137 @@ async fn deduplicated_activity_import_for_model(
         activity,
         existing_import,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entities::{activities, activity_imports, segment_efforts, segments};
+    use crate::training_profile::TrainingProfile;
+    use sea_orm::{ConnectionTrait, Database, EntityTrait, PaginatorTrait, Schema};
+
+    async fn test_db() -> DatabaseConnection {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory db");
+
+        let schema = Schema::new(db.get_database_backend());
+        db.execute(&schema.create_table_from_entity(activities::Entity))
+            .await
+            .expect("create activities table");
+        db.execute(&schema.create_table_from_entity(activity_imports::Entity))
+            .await
+            .expect("create activity imports table");
+        db.execute(&schema.create_table_from_entity(segments::Entity))
+            .await
+            .expect("create segments table");
+        db.execute(&schema.create_table_from_entity(segment_efforts::Entity))
+            .await
+            .expect("create segment efforts table");
+
+        db
+    }
+
+    fn test_uploads_dir() -> String {
+        let uploads_dir =
+            std::env::temp_dir().join(format!("bike-activity-import-pipeline-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&uploads_dir).expect("create uploads dir");
+        uploads_dir.display().to_string()
+    }
+
+    fn fit_upload(source_correlation_id: Option<&str>) -> ActivityUploadPayload {
+        ActivityUploadPayload {
+            original_filename: "activity.fit".to_string(),
+            format: "fit".to_string(),
+            mime_type: Some("application/octet-stream".to_string()),
+            source_correlation_id: source_correlation_id.map(str::to_string),
+            bytes: include_bytes!("../tests/fixtures/activity.fit").to_vec(),
+        }
+    }
+
+    #[tokio::test]
+    async fn manual_uploads_still_deduplicate_existing_activity() {
+        let db = test_db().await;
+        let uploads_dir = test_uploads_dir();
+        let training_profile = TrainingProfile::default();
+
+        let first = persist_activity_upload(
+            &db,
+            &uploads_dir,
+            "test-user",
+            1,
+            fit_upload(None),
+            "manual_upload",
+            ActivityUploadDeduplication::Enabled,
+            Some(&training_profile),
+        )
+        .await
+        .expect("import first manual upload");
+        assert!(matches!(first, PersistActivityUploadOutcome::Imported(_)));
+
+        let second = persist_activity_upload(
+            &db,
+            &uploads_dir,
+            "test-user",
+            1,
+            fit_upload(None),
+            "manual_upload",
+            ActivityUploadDeduplication::Enabled,
+            Some(&training_profile),
+        )
+        .await
+        .expect("import second manual upload");
+        assert!(matches!(second, PersistActivityUploadOutcome::Duplicate(_)));
+
+        assert_eq!(activities::Entity::find().count(&db).await.unwrap(), 1);
+        assert_eq!(
+            activity_imports::Entity::find().count(&db).await.unwrap(),
+            1
+        );
+
+        let _ = std::fs::remove_dir_all(&uploads_dir);
+    }
+
+    #[tokio::test]
+    async fn strava_uploads_skip_duplicate_detection() {
+        let db = test_db().await;
+        let uploads_dir = test_uploads_dir();
+        let training_profile = TrainingProfile::default();
+
+        let first = persist_activity_upload(
+            &db,
+            &uploads_dir,
+            "test-user",
+            1,
+            fit_upload(Some("strava-123")),
+            "strava_sync",
+            ActivityUploadDeduplication::Disabled,
+            Some(&training_profile),
+        )
+        .await
+        .expect("import first Strava upload");
+        assert!(matches!(first, PersistActivityUploadOutcome::Imported(_)));
+
+        let second = persist_activity_upload(
+            &db,
+            &uploads_dir,
+            "test-user",
+            1,
+            fit_upload(Some("strava-123")),
+            "strava_sync",
+            ActivityUploadDeduplication::Disabled,
+            Some(&training_profile),
+        )
+        .await
+        .expect("import second Strava upload");
+        assert!(matches!(second, PersistActivityUploadOutcome::Imported(_)));
+
+        assert_eq!(activities::Entity::find().count(&db).await.unwrap(), 2);
+        assert_eq!(
+            activity_imports::Entity::find().count(&db).await.unwrap(),
+            2
+        );
+
+        let _ = std::fs::remove_dir_all(&uploads_dir);
+    }
 }

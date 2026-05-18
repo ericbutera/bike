@@ -4,8 +4,8 @@ use crate::activity_import_lock::{
     ACTIVITY_IMPORT_LOCK_STAGE_QUEUED, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
 };
 use crate::activity_import_pipeline::{
-    finalize_activity_import_batch, persist_activity_upload, ActivityUploadPayload,
-    PersistActivityUploadOutcome,
+    finalize_activity_import_batch, persist_activity_upload, ActivityUploadDeduplication,
+    ActivityUploadPayload, PersistActivityUploadOutcome,
 };
 use crate::app_error::AppError;
 use crate::config::Config;
@@ -349,6 +349,7 @@ pub async fn import_activity_archive_from_path(
             user_id,
             upload,
             activity_source,
+            ActivityUploadDeduplication::Enabled,
             Some(&training_profile),
         )
         .await
@@ -930,6 +931,12 @@ async fn mark_activity_archive_import_job_failed(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::entities::{
+        activities, activity_imports, analytics_user_states, segment_efforts, segments,
+        user_preferences,
+    };
+    use kaleido::background_jobs::background_tasks;
+    use sea_orm::{ConnectionTrait, Database, EntityTrait, PaginatorTrait, Schema};
     use std::io::Write;
     use zip::write::SimpleFileOptions;
 
@@ -956,6 +963,46 @@ mod tests {
 
         writer.finish().expect("finish archive");
         archive_path
+    }
+
+    async fn test_db() -> DatabaseConnection {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory db");
+
+        let schema = Schema::new(db.get_database_backend());
+        db.execute(&schema.create_table_from_entity(activities::Entity))
+            .await
+            .expect("create activities table");
+        db.execute(&schema.create_table_from_entity(activity_imports::Entity))
+            .await
+            .expect("create activity imports table");
+        db.execute(&schema.create_table_from_entity(segments::Entity))
+            .await
+            .expect("create segments table");
+        db.execute(&schema.create_table_from_entity(segment_efforts::Entity))
+            .await
+            .expect("create segment efforts table");
+        db.execute(&schema.create_table_from_entity(user_preferences::Entity))
+            .await
+            .expect("create user preferences table");
+        db.execute(&schema.create_table_from_entity(analytics_user_states::Entity))
+            .await
+            .expect("create analytics user states table");
+        db.execute(&schema.create_table_from_entity(background_tasks::Entity))
+            .await
+            .expect("create background tasks table");
+
+        db
+    }
+
+    fn test_uploads_dir() -> String {
+        let uploads_dir = std::env::temp_dir().join(format!(
+            "bike-archive-import-uploads-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&uploads_dir).expect("create uploads dir");
+        uploads_dir.display().to_string()
     }
 
     #[test]
@@ -1030,6 +1077,56 @@ mod tests {
         assert_eq!(scan.supported_entry_count, 1);
         assert_eq!(scan.skipped_unsupported_count, 1);
         assert_eq!(scan.supported_entries[0].entry_name, "rides/18.gpx");
+    }
+
+    #[tokio::test]
+    async fn archive_imports_keep_duplicate_detection_enabled() {
+        let db = test_db().await;
+        let tasks = TaskQueue::new(db.clone());
+        let uploads_dir = test_uploads_dir();
+        let archive_path = write_test_archive(&[(
+            "activities/activity.fit",
+            include_bytes!("../tests/fixtures/activity.fit").as_slice(),
+        )]);
+
+        let first = import_activity_archive_from_path(
+            &db,
+            &tasks,
+            &uploads_dir,
+            "test-user",
+            1,
+            "archive_import",
+            archive_path.display().to_string(),
+            &archive_path,
+        )
+        .await
+        .expect("import first archive");
+        assert_eq!(first.imported_count, 1);
+        assert_eq!(first.duplicate_count, 0);
+
+        let second = import_activity_archive_from_path(
+            &db,
+            &tasks,
+            &uploads_dir,
+            "test-user",
+            1,
+            "archive_import",
+            archive_path.display().to_string(),
+            &archive_path,
+        )
+        .await
+        .expect("import second archive");
+        assert_eq!(second.imported_count, 0);
+        assert_eq!(second.duplicate_count, 1);
+
+        assert_eq!(activities::Entity::find().count(&db).await.unwrap(), 1);
+        assert_eq!(
+            activity_imports::Entity::find().count(&db).await.unwrap(),
+            1
+        );
+
+        let _ = std::fs::remove_file(&archive_path);
+        let _ = std::fs::remove_dir_all(&uploads_dir);
     }
 
     #[test]

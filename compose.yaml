@@ -22,7 +22,7 @@ services:
       API_URL: http://localhost:3000
       STRAVA_CLIENT_ID: ''
       STRAVA_CLIENT_SECRET: ''
-      STRAVA_OAUTH_SCOPES: activity:read
+      STRAVA_OAUTH_SCOPES: activity:read_all
       JWT_SECRET: change_me_in_dev
       APP_NAME: 'Bike'
       SMTP_HOST: localhost
@@ -46,7 +46,7 @@ services:
       RUST_LOG: info
       STRAVA_CLIENT_ID: ''
       STRAVA_CLIENT_SECRET: ''
-      STRAVA_OAUTH_SCOPES: activity:read
+      STRAVA_OAUTH_SCOPES: activity:read_all
       APP_NAME: 'Bike'
       SMTP_HOST: localhost
       SMTP_PORT: 1025

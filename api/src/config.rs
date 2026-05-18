@@ -47,7 +47,7 @@ impl Config {
             strava_client_id: env::var("STRAVA_CLIENT_ID").unwrap_or_default(),
             strava_client_secret: env::var("STRAVA_CLIENT_SECRET").unwrap_or_default(),
             strava_oauth_scopes: env::var("STRAVA_OAUTH_SCOPES")
-                .unwrap_or_else(|_| "activity:read".to_string()),
+                .unwrap_or_else(|_| "activity:read_all".to_string()),
             strava_webhook_verify_token: env::var("STRAVA_WEBHOOK_VERIFY_TOKEN")
                 .unwrap_or_default(),
             strava_webhook_callback_url: env::var("STRAVA_WEBHOOK_CALLBACK_URL")

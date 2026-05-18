@@ -4,7 +4,7 @@ use crate::activity_import_lock::{
 };
 use crate::activity_import_pipeline::{
     finalize_activity_import_batch, persist_activity_upload, validate_activity_format,
-    ActivityUploadPayload, PersistActivityUploadOutcome,
+    ActivityUploadDeduplication, ActivityUploadPayload, PersistActivityUploadOutcome,
 };
 use crate::activity_location::location_from_derived_json;
 use crate::app_error::{ApiErrorResponse, AppError};
@@ -267,6 +267,7 @@ pub async fn upload_activity_import(
             user.id,
             upload,
             "manual_upload",
+            ActivityUploadDeduplication::Enabled,
             None,
         )
         .await?;
