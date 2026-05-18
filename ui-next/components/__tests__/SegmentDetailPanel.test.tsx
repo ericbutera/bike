@@ -354,6 +354,8 @@ describe("SegmentDetailPanel", () => {
     expect(props?.movingMarkers).toHaveLength(1);
     expect(props?.movingMarkers[0].point.latitude).toBeCloseTo(45.004, 3);
     expect(props?.movingMarkers[0].point.longitude).toBeCloseTo(-121.996, 3);
+    expect(props?.fitBoundsPadding).toBe(24);
+    expect(props?.fitBoundsMaxZoom).toBe(18);
   });
 
   it("filters efforts by the selected time window", async () => {

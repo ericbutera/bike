@@ -14,7 +14,12 @@ import maplibregl, {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { config } from "../lib/config";
 import { type ActivityRoutePoint } from "../lib/queries";
-import { type RouteMapBasemap, type RouteMapProps } from "./RouteMapTypes";
+import {
+  type RouteMapBasemap,
+  type RouteMapProps,
+  type RouteMovingMarker,
+  type RouteOverlay,
+} from "./RouteMapTypes";
 
 const DEFAULT_TOPO_STYLE_ID = "opentopomap";
 const DEFAULT_STREET_STYLE_ID = "street";
@@ -182,7 +187,10 @@ const OVERLAY_SOURCE_ID = "activity-route-overlays";
 const OVERLAY_LAYER_ID = "activity-route-overlays-line";
 const MARKER_SOURCE_ID = "activity-route-markers";
 const MARKER_LAYER_ID = "activity-route-markers-circle";
-const FIT_BOUNDS_PADDING = 56;
+const DEFAULT_FIT_BOUNDS_PADDING = 56;
+const DEFAULT_FIT_BOUNDS_MAX_ZOOM = 14;
+const EMPTY_OVERLAYS: RouteOverlay[] = [];
+const EMPTY_MOVING_MARKERS: RouteMovingMarker[] = [];
 
 type OverlayLayerEvent = {
   features?: Array<{
@@ -258,6 +266,8 @@ function fitMapToGeometry(
   map: maplibregl.Map,
   routePoints: ActivityRoutePoint[],
   overlayPoints: ActivityRoutePoint[][],
+  fitBoundsPadding: number,
+  fitBoundsMaxZoom: number,
 ) {
   const allPoints = routePoints.concat(...overlayPoints);
   if (allPoints.length < 2) {
@@ -274,8 +284,8 @@ function fitMapToGeometry(
   );
 
   map.fitBounds(bounds, {
-    padding: FIT_BOUNDS_PADDING,
-    maxZoom: 14,
+    padding: fitBoundsPadding,
+    maxZoom: fitBoundsMaxZoom,
     duration: 0,
   });
 }
@@ -449,14 +459,16 @@ function ensureMapSourcesAndLayers(
 export default function MapLibreRouteMapClient({
   ariaLabel,
   routePoints,
-  overlays = [],
-  movingMarkers = [],
+  overlays: overlaysProp,
+  movingMarkers: movingMarkersProp,
   showBaseTiles = true,
   interactive = true,
   showZoomControls = false,
   showLayerPicker = false,
   basemapOptions,
   defaultBasemap = "topo",
+  fitBoundsPadding = DEFAULT_FIT_BOUNDS_PADDING,
+  fitBoundsMaxZoom = DEFAULT_FIT_BOUNDS_MAX_ZOOM,
 }: RouteMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -478,6 +490,8 @@ export default function MapLibreRouteMapClient({
   const overlayMouseLeaveHandlerRef = useRef<
     ((event: OverlayLayerEvent) => void) | null
   >(null);
+  const overlays = overlaysProp ?? EMPTY_OVERLAYS;
+  const movingMarkers = movingMarkersProp ?? EMPTY_MOVING_MARKERS;
   const styleUrl = config.MAP_STYLE_URL;
   const availableBasemaps = useMemo(
     () =>
@@ -731,9 +745,6 @@ export default function MapLibreRouteMapClient({
       (map.getSource(OVERLAY_SOURCE_ID) as GeoJSONSource).setData(
         overlaySourceData,
       );
-      (map.getSource(MARKER_SOURCE_ID) as GeoJSONSource).setData(
-        markerSourceData,
-      );
 
       if (overlayClickHandlerRef.current) {
         map.off("click", OVERLAY_LAYER_ID, overlayClickHandlerRef.current);
@@ -794,6 +805,8 @@ export default function MapLibreRouteMapClient({
         map,
         routePoints ?? [],
         overlays.map((overlay) => overlay.points),
+        fitBoundsPadding,
+        fitBoundsMaxZoom,
       );
     };
 
@@ -809,15 +822,45 @@ export default function MapLibreRouteMapClient({
     };
   }, [
     endpointSourceData,
-    markerSourceData,
     overlayHandlers,
     overlaySourceData,
     overlays,
     routePoints,
     routeSourceData,
+    fitBoundsMaxZoom,
+    fitBoundsPadding,
     mapStyleKey,
     showBaseTiles,
   ]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) {
+      return undefined;
+    }
+
+    const syncMarkers = () => {
+      if (mapRef.current !== map) {
+        return;
+      }
+
+      ensureMapSourcesAndLayers(map, showBaseTiles);
+      (map.getSource(MARKER_SOURCE_ID) as GeoJSONSource).setData(
+        markerSourceData,
+      );
+    };
+
+    if (map.isStyleLoaded()) {
+      syncMarkers();
+      return undefined;
+    }
+
+    map.once("load", syncMarkers);
+
+    return () => {
+      map.off("load", syncMarkers);
+    };
+  }, [markerSourceData, mapStyleKey, showBaseTiles]);
 
   return (
     <div className="relative h-full w-full">

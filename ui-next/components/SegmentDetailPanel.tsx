@@ -65,6 +65,8 @@ const EFFORT_COLORS = [
 const MAX_SELECTED_EFFORTS = 10;
 const EFFORTS_VISIBLE_ROWS = 10;
 const EFFORTS_TABLE_MAX_HEIGHT_REM = 31;
+const EMPTY_EFFORTS: SegmentEffort[] = [];
+const EMPTY_EFFORT_IDS: number[] = [];
 
 const EFFORT_TIME_FILTERS = [
   { key: "all", label: "All" },
@@ -187,6 +189,20 @@ function overallEffortRanks(efforts: SegmentEffort[] | null | undefined) {
   );
 
   return new Map(ranked.map((effort, index) => [effort.id, index + 1]));
+}
+
+function areEffortIdListsEqual(left: number[], right: number[]) {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function filterEffortsBySearchQuery(
@@ -673,6 +689,8 @@ function RouteComparisonMap({
             }))}
             ariaLabel="Segment comparison map"
             emptyMessage="Segment route geometry is not available yet."
+            fitBoundsPadding={24}
+            fitBoundsMaxZoom={18}
             className="h-full min-h-[20rem] w-full"
           />
         ) : (
@@ -1145,7 +1163,7 @@ export default function SegmentDetailPanel({
     useState<EffortTimeFilter>("all");
   const [effortSearchQuery, setEffortSearchQuery] = useState("");
   const segment = segmentQuery.data;
-  const allEfforts = segment?.efforts ?? [];
+  const allEfforts = segment?.efforts ?? EMPTY_EFFORTS;
   const visibleEfforts = filterEffortsByTimeWindow(
     segment?.efforts,
     effortTimeFilter,
@@ -1210,9 +1228,11 @@ export default function SegmentDetailPanel({
   useEffect(() => {
     if (!segment || allEfforts.length === 0) {
       initializedSelectionSegmentIdRef.current = null;
-      setSelectedEffortIds([]);
-      setPlaybackSeconds(0);
-      setIsPlaying(false);
+      setSelectedEffortIds((current) =>
+        current.length === 0 ? current : EMPTY_EFFORT_IDS,
+      );
+      setPlaybackSeconds((current) => (current === 0 ? current : 0));
+      setIsPlaying((current) => (current ? false : current));
       return;
     }
 
@@ -1221,20 +1241,23 @@ export default function SegmentDetailPanel({
     initializedSelectionSegmentIdRef.current = segment.id;
 
     setSelectedEffortIds((current) => {
-      const valid = current.filter((id) =>
-        allEfforts.some((effort) => effort.id === id),
-      );
+      const valid = current
+        .filter((id) => allEfforts.some((effort) => effort.id === id))
+        .slice(0, MAX_SELECTED_EFFORTS);
+
       if (valid.length > 0) {
-        return valid.slice(0, MAX_SELECTED_EFFORTS);
+        return areEffortIdListsEqual(current, valid) ? current : valid;
       }
 
       if (!shouldSeedSelection) {
-        return [];
+        return current.length === 0 ? current : EMPTY_EFFORT_IDS;
       }
 
-      return allEfforts
+      const seeded = allEfforts
         .slice(0, Math.min(3, allEfforts.length))
         .map((effort) => effort.id);
+
+      return areEffortIdListsEqual(current, seeded) ? current : seeded;
     });
   }, [allEfforts, segment?.id]);
 
