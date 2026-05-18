@@ -27,7 +27,9 @@ describe("handlePreviewRequest", () => {
     );
 
     const response = await handlePreviewRequest(
-      new Request("http://localhost:3001/activity-previews/full?activityId=7"),
+      new Request(
+        "http://localhost:3001/activity-previews/full/6?activityId=7",
+      ),
       "full",
     );
 
@@ -43,6 +45,7 @@ describe("handlePreviewRequest", () => {
     const body = await response.text();
 
     expect(body).toContain('stroke="#16b8a5"');
+    expect(body).toContain('transform="translate(');
     expect(body).not.toContain('fill-opacity="0.75"');
     expect(body).toContain('viewBox="0 0 1000 300"');
   });

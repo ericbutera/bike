@@ -1287,6 +1287,10 @@ function ActivityRouteMap({
                 overlays={overlays}
                 ariaLabel="Activity route map"
                 emptyMessage="This activity does not have enough stored route points for the map yet."
+                showZoomControls
+                showLayerPicker
+                defaultBasemap="topo"
+                basemapOptions={["topo", "street", "satellite"]}
                 className="h-96 w-full"
               />
             </div>

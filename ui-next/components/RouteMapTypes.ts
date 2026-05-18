@@ -1,5 +1,7 @@
 import { type ActivityRoutePoint } from "../lib/queries";
 
+export type RouteMapBasemap = "topo" | "street" | "satellite";
+
 export type RouteOverlay = {
   id: string;
   points: ActivityRoutePoint[];
@@ -24,4 +26,8 @@ export type RouteMapProps = {
   emptyMessage: string;
   showBaseTiles?: boolean;
   interactive?: boolean;
+  showZoomControls?: boolean;
+  showLayerPicker?: boolean;
+  basemapOptions?: RouteMapBasemap[];
+  defaultBasemap?: RouteMapBasemap;
 };

@@ -18,7 +18,7 @@ type RoutePreviewDimensions = {
   padding: number;
 };
 
-export const ROUTE_PREVIEW_STYLE_VERSION = "4";
+export const ROUTE_PREVIEW_STYLE_VERSION = "6";
 
 const ROUTE_PREVIEW_DIMENSIONS: Record<
   RoutePreviewVariant,
@@ -40,6 +40,7 @@ export type RoutePreviewGeometry = {
   width: number;
   height: number;
   pathData: string;
+  directionGuidePoints: string;
   startPoint: ThumbnailPoint;
   endPoint: ThumbnailPoint;
 };
@@ -99,7 +100,7 @@ export function buildActivityRoutePreviewUrl(options: {
       activityId: String(options.activityId),
     });
 
-    return `/activity-previews/${options.variant}?${query.toString()}`;
+    return `/activity-previews/${options.variant}/${ROUTE_PREVIEW_STYLE_VERSION}?${query.toString()}`;
   }
 
   const query = new URLSearchParams({
@@ -143,6 +144,7 @@ export function buildRoutePreviewGeometry(
     width: dimensions.width,
     height: dimensions.height,
     pathData: buildBoundedRouteThumbnailPath(thumbnailPoints),
+    directionGuidePoints: buildDirectionGuidePoints(thumbnailPoints, variant),
     startPoint: thumbnailPoints[0],
     endPoint: thumbnailPoints.at(-1) ?? thumbnailPoints[0],
   };
@@ -206,4 +208,85 @@ function buildBoundedRouteThumbnailPath(points: ThumbnailPoint[]) {
   }
 
   return commands.join(" ");
+}
+
+function buildDirectionGuidePoints(
+  points: ThumbnailPoint[],
+  variant: RoutePreviewVariant,
+): string {
+  if (variant !== "full" || points.length < 3) {
+    return "";
+  }
+
+  const spacing = 132;
+  const edgePadding = 84;
+  const totalLength = measurePolylineLength(points);
+
+  if (totalLength <= edgePadding * 2) {
+    return "";
+  }
+
+  const guidePoints: ThumbnailPoint[] = [points[0]];
+  let traversed = 0;
+  let targetDistance = edgePadding;
+  const lastTargetDistance = totalLength - edgePadding;
+
+  for (let index = 1; index < points.length; index += 1) {
+    const start = points[index - 1];
+    const end = points[index];
+    const segmentLength = measurePointDistance(start, end);
+
+    if (segmentLength === 0) {
+      continue;
+    }
+
+    while (
+      targetDistance < lastTargetDistance &&
+      traversed + segmentLength >= targetDistance
+    ) {
+      const progress = (targetDistance - traversed) / segmentLength;
+      guidePoints.push(interpolatePoint(start, end, progress));
+      targetDistance += spacing;
+    }
+
+    traversed += segmentLength;
+  }
+
+  guidePoints.push(points.at(-1) ?? points[0]);
+
+  if (guidePoints.length < 3) {
+    return "";
+  }
+
+  return guidePoints
+    .map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`)
+    .join(" ");
+}
+
+function measurePolylineLength(points: ThumbnailPoint[]): number {
+  let totalLength = 0;
+
+  for (let index = 1; index < points.length; index += 1) {
+    totalLength += measurePointDistance(points[index - 1], points[index]);
+  }
+
+  return totalLength;
+}
+
+function measurePointDistance(
+  start: ThumbnailPoint,
+  end: ThumbnailPoint,
+): number {
+  return Math.hypot(end.x - start.x, end.y - start.y);
+}
+
+function interpolatePoint(
+  start: ThumbnailPoint,
+  end: ThumbnailPoint,
+  progress: number,
+): ThumbnailPoint {
+  return {
+    x: start.x + (end.x - start.x) * progress,
+    y: start.y + (end.y - start.y) * progress,
+  };
 }

@@ -169,7 +169,7 @@ describe("ActivityStream", () => {
     });
     expect(routeThumbnail).toHaveAttribute("src");
     expect(routeThumbnail.getAttribute("src")).toContain(
-      "/activity-previews/thumbnail?",
+      "/activity-previews/thumbnail/6?",
     );
     expect(routeThumbnail.getAttribute("src")).toContain("activityId=2");
     expect(routeThumbnail.getAttribute("src")).not.toContain("points=");
@@ -211,7 +211,7 @@ describe("ActivityStream", () => {
       name: "Route map for Latest Effort",
     });
     expect(fullPreview.getAttribute("src")).toContain(
-      "/activity-previews/full?",
+      "/activity-previews/full/6?",
     );
     expect(fullPreview.getAttribute("src")).toContain("activityId=2");
     expect(fullPreview.getAttribute("src")).not.toContain("points=");

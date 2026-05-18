@@ -351,6 +351,9 @@ describe("ActivityDetailPanel", () => {
     expect(mocks.renderMapLibreRouteMap).toHaveBeenCalledWith(
       expect.objectContaining({
         ariaLabel: "Activity route map",
+        showZoomControls: true,
+        showLayerPicker: true,
+        defaultBasemap: "topo",
       }),
     );
     expect(screen.getByText("Matched segments")).toBeInTheDocument();

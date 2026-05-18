@@ -18,8 +18,6 @@ export default function MapLibreRouteMap(props: RouteMapProps) {
 
   return (
     <div
-      role="img"
-      aria-label={props.ariaLabel}
       className={
         props.className ??
         "h-96 w-full overflow-hidden rounded-box border border-base-300 bg-base-300"

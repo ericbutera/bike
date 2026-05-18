@@ -13,6 +13,11 @@ type RoutePreviewCoordinate = {
   longitude: number;
 };
 
+type PreviewPoint = {
+  x: number;
+  y: number;
+};
+
 function resolveActivityApiBaseUrls() {
   const explicitInternalApiUrl = process.env.INTERNAL_API_URL?.trim();
   const publicApiUrl = getServerConfig().API_URL.replace(/\/$/, "");
@@ -57,6 +62,53 @@ function buildContourPath(
   ].join(" ");
 }
 
+function parseDirectionGuidePoints(raw: string): PreviewPoint[] {
+  if (!raw) {
+    return [];
+  }
+
+  return raw
+    .trim()
+    .split(/\s+/)
+    .map((entry) => {
+      const [x, y] = entry.split(",");
+      const parsedX = Number(x);
+      const parsedY = Number(y);
+
+      if (!Number.isFinite(parsedX) || !Number.isFinite(parsedY)) {
+        return null;
+      }
+
+      return { x: parsedX, y: parsedY } satisfies PreviewPoint;
+    })
+    .filter((point): point is PreviewPoint => point !== null);
+}
+
+function buildDirectionArrowMarkup(rawGuidePoints: string): string {
+  const guidePoints = parseDirectionGuidePoints(rawGuidePoints);
+
+  if (guidePoints.length < 3) {
+    return "";
+  }
+
+  return guidePoints
+    .slice(1, -1)
+    .map((point, index) => {
+      const previousPoint = guidePoints[index];
+      const nextPoint = guidePoints[index + 2];
+      const angle =
+        (Math.atan2(
+          nextPoint.y - previousPoint.y,
+          nextPoint.x - previousPoint.x,
+        ) *
+          180) /
+        Math.PI;
+
+      return `<path d="M -7.8 -5.1 L 7.8 0 L -7.8 5.1 L -3.0 0 Z" fill="#e8fffb" stroke="#0b5a53" stroke-width="1.1" stroke-linejoin="round" transform="translate(${point.x.toFixed(1)} ${point.y.toFixed(1)}) rotate(${angle.toFixed(1)})" />`;
+    })
+    .join("");
+}
+
 function buildPreviewSvg(
   routePoints: RoutePreviewCoordinate[],
   variant: ReturnType<typeof resolveRoutePreviewVariant>,
@@ -73,6 +125,7 @@ function buildPreviewSvg(
   const startStrokeWidth = variant === "thumbnail" ? 3 : 4;
   const endRadius = variant === "thumbnail" ? 8.5 : 10.5;
   const endStrokeWidth = variant === "thumbnail" ? 3.5 : 4.5;
+  const hasDirectionGuide = geometry?.directionGuidePoints.length;
 
   const contourPaths = contourOffsets
     .map((offset, index) => {
@@ -87,11 +140,16 @@ function buildPreviewSvg(
       return `<path d="${path}" fill="none" stroke="#10212d" stroke-opacity="${0.045 + index * 0.012}" stroke-width="${1.4 + index * 0.2}" stroke-linecap="round" />`;
     })
     .join("");
+  const directionArrows =
+    variant === "full" && hasDirectionGuide
+      ? buildDirectionArrowMarkup(geometry.directionGuidePoints)
+      : "";
 
   const routeMarkup = geometry
     ? `
       <path d="${geometry.pathData}" fill="none" stroke="#0f2631" stroke-width="${routeCasingWidth}" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.78" />
       <path d="${geometry.pathData}" fill="none" stroke="#16b8a5" stroke-width="${routeCoreWidth}" stroke-linecap="round" stroke-linejoin="round" />
+      ${directionArrows}
       <circle cx="${geometry.startPoint.x.toFixed(1)}" cy="${geometry.startPoint.y.toFixed(1)}" r="${startRadius}" fill="#0f172a" stroke="#f8fafc" stroke-width="${startStrokeWidth}" />
       <circle cx="${geometry.endPoint.x.toFixed(1)}" cy="${geometry.endPoint.y.toFixed(1)}" r="${endRadius}" fill="#f8fafc" stroke="#0f172a" stroke-width="${endStrokeWidth}" />
     `

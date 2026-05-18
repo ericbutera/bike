@@ -21,5 +21,20 @@ describe("buildRoutePreviewGeometry", () => {
     expect(geometry?.pathData.match(/ L /g) ?? []).toHaveLength(
       routePoints.length - 1,
     );
+    expect(geometry?.directionGuidePoints).not.toBe("");
+    expect(geometry?.directionGuidePoints.split(" ").length).toBeGreaterThan(2);
+  });
+
+  it("does not add directional guide points to thumbnail previews", () => {
+    const geometry = buildRoutePreviewGeometry(
+      [
+        { latitude: 45.0, longitude: -122.0 },
+        { latitude: 45.01, longitude: -121.99 },
+        { latitude: 45.02, longitude: -121.97 },
+      ],
+      "thumbnail",
+    );
+
+    expect(geometry?.directionGuidePoints).toBe("");
   });
 });
