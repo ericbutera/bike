@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ActivityStream from "../ActivityStream";
@@ -70,6 +70,17 @@ function makeActivity(
     total_time_seconds: number | null;
     elevation_gain_meters: number | null;
     max_heart_rate_bpm: number | null;
+    segment_efforts: Array<{
+      segment_id: number;
+      segment_title: string;
+      effort_index: number;
+      duration_seconds: number;
+      start_route_point_index: number;
+      end_route_point_index: number;
+      overall_rank?: number | null;
+      personal_rank?: number | null;
+      personal_best_duration_seconds?: number | null;
+    }>;
   }> = {},
 ) {
   return {
@@ -99,6 +110,7 @@ function makeActivity(
     average_cadence_rpm: 86,
     max_cadence_rpm: 104,
     calories: 860,
+    segment_efforts: [],
     ...overrides,
   };
 }
@@ -159,8 +171,6 @@ describe("ActivityStream", () => {
       "href",
       "/activities/2",
     );
-    expect(screen.getByText("Portland, OR")).toBeInTheDocument();
-    expect(screen.getByText("Traverse City, MI")).toBeInTheDocument();
     expect(
       screen.getByRole("img", { name: "Route thumbnail for Latest Effort" }),
     ).toBeInTheDocument();
@@ -179,9 +189,24 @@ describe("ActivityStream", () => {
       .getByRole("heading", { level: 3, name: "Latest Effort" })
       .closest("article");
     expect(latestEffortArticle).not.toBeNull();
+    const latestEffortLocations = within(
+      latestEffortArticle as HTMLElement,
+    ).getAllByText("Portland, OR");
+    expect(latestEffortLocations).toHaveLength(2);
+    expect(latestEffortLocations[0]).toHaveClass("hidden");
+    expect(latestEffortLocations[1]).toHaveClass("sm:hidden");
     expect(
       (latestEffortArticle?.firstElementChild as HTMLElement).className,
     ).toContain("sm:grid-cols-[8.5rem_minmax(0,1fr)]");
+    const earlierEffortArticle = screen
+      .getByRole("heading", { level: 3, name: "Earlier Effort" })
+      .closest("article");
+    expect(earlierEffortArticle).not.toBeNull();
+    expect(
+      within(earlierEffortArticle as HTMLElement).getAllByText(
+        "Traverse City, MI",
+      ),
+    ).toHaveLength(2);
     expect(screen.queryByText("morning-ride.gpx")).not.toBeInTheDocument();
     expect(screen.queryByText("earlier-effort.gpx")).not.toBeInTheDocument();
     expect(screen.queryByText("Mountain biking")).not.toBeInTheDocument();
@@ -190,6 +215,64 @@ describe("ActivityStream", () => {
       screen.queryByRole("link", { name: "View details" }),
     ).not.toBeInTheDocument();
     expect(screen.getByText("pagination:1:10:12")).toBeInTheDocument();
+  });
+
+  it("shows segment achievements on the activity list", () => {
+    mocks.useActivities.mockReturnValue({
+      data: [
+        makeActivity({
+          id: 2,
+          title: "Latest Effort",
+          segment_efforts: [
+            {
+              segment_id: 11,
+              segment_title: "North Climb",
+              effort_index: 1,
+              duration_seconds: 312,
+              start_route_point_index: 0,
+              end_route_point_index: 1,
+              overall_rank: 1,
+              personal_rank: 1,
+              personal_best_duration_seconds: 312,
+            },
+            {
+              segment_id: 12,
+              segment_title: "Bridge Sprint",
+              effort_index: 1,
+              duration_seconds: 48,
+              start_route_point_index: 1,
+              end_route_point_index: 2,
+              overall_rank: 7,
+              personal_rank: 1,
+              personal_best_duration_seconds: 48,
+            },
+            {
+              segment_id: 13,
+              segment_title: "Park Loop",
+              effort_index: 1,
+              duration_seconds: 138,
+              start_route_point_index: 2,
+              end_route_point_index: 3,
+              personal_rank: 2,
+              personal_best_duration_seconds: 134,
+            },
+          ],
+        }),
+      ],
+      metadata: { page: 1, per_page: 10, total: 1, total_pages: 1 },
+      isError: false,
+      isFetching: false,
+      error: null,
+    });
+
+    render(<ActivityStream />);
+
+    expect(screen.getByText("KOM")).toBeInTheDocument();
+    expect(screen.getByText("North Climb")).toBeInTheDocument();
+    expect(screen.getByText("Top 7")).toBeInTheDocument();
+    expect(screen.getByText("Bridge Sprint")).toBeInTheDocument();
+    expect(screen.getByText("2nd best")).toBeInTheDocument();
+    expect(screen.getByText("Park Loop")).toBeInTheDocument();
   });
 
   it("renders a full-width static route preview when the feature flag is enabled", () => {

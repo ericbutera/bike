@@ -69,6 +69,7 @@ function makeActivity(
     average_cadence_rpm: number | null;
     max_cadence_rpm: number | null;
     calories: number | null;
+    relative_effort: number | null;
     estimated_ftp_watts: number | null;
     heart_rate_zones: Array<{
       zone: number;
@@ -142,6 +143,7 @@ function makeActivity(
     average_cadence_rpm: 84,
     max_cadence_rpm: 102,
     calories: 640,
+    relative_effort: 106,
     estimated_ftp_watts: 265,
     heart_rate_zones: [
       {
@@ -344,6 +346,11 @@ describe("ActivityDetailPanel", () => {
     expect(
       screen.getByRole("heading", { name: "Lunch Ride" }),
     ).toBeInTheDocument();
+    expect(screen.getByText("Relative effort")).toBeInTheDocument();
+    expect(screen.getByText("106")).toBeInTheDocument();
+    expect(screen.getByText("Activity data")).toBeInTheDocument();
+    expect(screen.getByText("Avg")).toBeInTheDocument();
+    expect(screen.getByText("Max")).toBeInTheDocument();
     expect(screen.getByText("28.0 km")).toBeInTheDocument();
     expect(screen.getByText("53m 20s")).toBeInTheDocument();
     expect(screen.getAllByText("19.5 mph").length).toBeGreaterThan(0);

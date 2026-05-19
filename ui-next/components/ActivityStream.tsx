@@ -1,7 +1,12 @@
 "use client";
 
 import { Pagination, auth, featureFlags } from "@ericbutera/kaleido";
-import { faUpload } from "@fortawesome/free-solid-svg-icons";
+import {
+  faCrown,
+  faMedal,
+  faTrophy,
+  faUpload,
+} from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -19,7 +24,13 @@ import {
   buildActivityRoutePreviewUrl,
   type RoutePreviewVariant,
 } from "../lib/routePreview";
-import { type ActivityRoutePoint, useActivities } from "../lib/queries";
+import {
+  type Activity,
+  type ActivityRoutePoint,
+  type ActivitySegmentEffort,
+  useActivities,
+} from "../lib/queries";
+import { primarySegmentAchievement } from "../lib/segmentAchievements";
 import { useUnitPreferences } from "../lib/unitPreferences";
 import AuthRequiredCard from "./AuthRequiredCard";
 
@@ -31,6 +42,135 @@ function StreamMetric({ label, value }: { label: string; value: string }) {
         <div className="stat-value text-base">{value}</div>
       </div>
     </div>
+  );
+}
+
+type StreamAchievement = {
+  key: string;
+  label: string;
+  segmentTitle: string;
+  tone: "kom" | "top-10" | "pr";
+  priority: number;
+};
+
+function streamAchievementBadgeClassName(tone: StreamAchievement["tone"]) {
+  switch (tone) {
+    case "kom":
+      return "border-warning/40 bg-warning/10 text-warning-content";
+    case "top-10":
+      return "border-info/40 bg-info/10 text-info-content";
+    case "pr":
+      return "border-primary/40 bg-primary/10 text-primary-content";
+  }
+}
+
+function streamAchievementIcon(tone: StreamAchievement["tone"]) {
+  switch (tone) {
+    case "kom":
+      return faCrown;
+    case "top-10":
+      return faTrophy;
+    case "pr":
+      return faMedal;
+  }
+}
+
+function personalBestLabel(rank: number) {
+  if (rank === 1) {
+    return "PR";
+  }
+
+  if (rank === 2) {
+    return "2nd best";
+  }
+
+  return "3rd best";
+}
+
+function streamAchievementPriority(achievement: StreamAchievement) {
+  switch (achievement.tone) {
+    case "kom":
+      return 0;
+    case "top-10":
+      return 10 + achievement.priority;
+    case "pr":
+      return 20 + achievement.priority;
+  }
+}
+
+function streamAchievement(effort: ActivitySegmentEffort): StreamAchievement[] {
+  const primary = primarySegmentAchievement({
+    overallRank: effort.overall_rank,
+    personalRank: effort.personal_rank,
+  });
+
+  if (primary) {
+    if (primary.kind === "fastest") {
+      return [];
+    }
+
+    return [
+      {
+        key: `${effort.segment_id}-${effort.effort_index}-${primary.shortLabel}`,
+        label: primary.longLabel,
+        segmentTitle: effort.segment_title,
+        tone: primary.kind,
+        priority: primary.overallRank ?? effort.personal_rank ?? 0,
+      },
+    ];
+  }
+
+  if (
+    effort.personal_rank != null &&
+    effort.personal_rank >= 2 &&
+    effort.personal_rank <= 3
+  ) {
+    return [
+      {
+        key: `${effort.segment_id}-${effort.effort_index}-personal-${effort.personal_rank}`,
+        label: personalBestLabel(effort.personal_rank),
+        segmentTitle: effort.segment_title,
+        tone: "pr",
+        priority: effort.personal_rank,
+      },
+    ];
+  }
+
+  return [];
+}
+
+function activityAchievements(activity: Activity) {
+  return (activity.segment_efforts ?? [])
+    .flatMap((effort) => streamAchievement(effort))
+    .sort((left, right) => {
+      const leftPriority = streamAchievementPriority(left);
+      const rightPriority = streamAchievementPriority(right);
+
+      if (leftPriority !== rightPriority) {
+        return leftPriority - rightPriority;
+      }
+
+      return left.segmentTitle.localeCompare(right.segmentTitle);
+    });
+}
+
+function ActivityAchievementChip({
+  achievement,
+}: {
+  achievement: StreamAchievement;
+}) {
+  return (
+    <span
+      className={`inline-flex max-w-full items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${streamAchievementBadgeClassName(achievement.tone)}`}
+      title={`${achievement.segmentTitle} · ${achievement.label}`}
+    >
+      <FontAwesomeIcon
+        icon={streamAchievementIcon(achievement.tone)}
+        className="h-3 w-3 shrink-0"
+      />
+      <span className="shrink-0">{achievement.label}</span>
+      <span className="truncate">{achievement.segmentTitle}</span>
+    </span>
   );
 }
 
@@ -213,67 +353,95 @@ export default function ActivityStream() {
       ) : null}
 
       <div className="space-y-3">
-        {activitiesQuery.data.map((activity) => (
-          <article
-            key={activity.id}
-            className="rounded-box border border-base-300 bg-base-100 p-4 shadow-sm sm:p-5"
-          >
-            <div className={activityCardLayoutClassName}>
-              <ActivityRoutePreview
-                activityId={activity.id}
-                title={activity.title}
-                routePoints={activity.route_points}
-                showFullMap={showFullRouteMaps}
-              />
+        {activitiesQuery.data.map((activity) => {
+          const achievements = activityAchievements(activity);
 
-              <div>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                  <h3 className="min-w-0 flex-1 text-base font-semibold text-base-content">
-                    <Link
-                      href={`/activities/${activity.id}`}
-                      className="link link-hover link-primary no-underline"
-                    >
-                      {activity.title}
-                    </Link>
-                  </h3>
-                  {activity.location ? (
-                    <span className="text-sm text-base-content/60">
-                      {activity.location}
+          return (
+            <article
+              key={activity.id}
+              className="rounded-box border border-base-300 bg-base-100 p-4 shadow-sm sm:p-5"
+            >
+              <div className={activityCardLayoutClassName}>
+                <ActivityRoutePreview
+                  activityId={activity.id}
+                  title={activity.title}
+                  routePoints={activity.route_points}
+                  showFullMap={showFullRouteMaps}
+                />
+
+                <div>
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-x-4">
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                        <h3 className="min-w-0 flex-1 text-base font-semibold text-base-content">
+                          <Link
+                            href={`/activities/${activity.id}`}
+                            className="link link-hover link-primary no-underline"
+                          >
+                            {activity.title}
+                          </Link>
+                        </h3>
+                        {activity.location ? (
+                          <span className="hidden text-sm text-base-content/60 sm:inline">
+                            {activity.location}
+                          </span>
+                        ) : null}
+                      </div>
+                      {activity.location ? (
+                        <p className="mt-1 text-sm text-base-content/60 sm:hidden">
+                          {activity.location}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <span className="text-sm text-base-content/70 sm:text-right">
+                      {formatActivityTimestamp(activity.started_at)}
                     </span>
-                  ) : null}
-                  <span className="text-sm text-base-content/70">
-                    {formatActivityTimestamp(activity.started_at)}
-                  </span>
-                </div>
+                  </div>
 
-                <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                  <StreamMetric
-                    label="Distance"
-                    value={formatDistance(activity.distance_meters, unitSystem)}
-                  />
-                  <StreamMetric
-                    label="Moving time"
-                    value={formatDuration(
-                      activity.moving_time_seconds ??
-                        activity.total_time_seconds,
-                    )}
-                  />
-                  <StreamMetric
-                    label="Elevation gain"
-                    value={formatElevation(
-                      activity.elevation_gain_meters,
-                      unitSystem,
-                    )}
-                  />
-                  <StreamMetric
-                    label="Max heart rate"
-                    value={formatHeartRate(activity.max_heart_rate_bpm)}
-                  />
+                  {achievements.length > 0 ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {achievements.map((achievement) => (
+                        <ActivityAchievementChip
+                          key={achievement.key}
+                          achievement={achievement}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                    <StreamMetric
+                      label="Distance"
+                      value={formatDistance(
+                        activity.distance_meters,
+                        unitSystem,
+                      )}
+                    />
+                    <StreamMetric
+                      label="Moving time"
+                      value={formatDuration(
+                        activity.moving_time_seconds ??
+                          activity.total_time_seconds,
+                      )}
+                    />
+                    <StreamMetric
+                      label="Elevation gain"
+                      value={formatElevation(
+                        activity.elevation_gain_meters,
+                        unitSystem,
+                      )}
+                    />
+                    <StreamMetric
+                      label="Max heart rate"
+                      value={formatHeartRate(activity.max_heart_rate_bpm)}
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
-          </article>
-        ))}
+            </article>
+          );
+        })}
       </div>
 
       {(activitiesQuery.metadata?.total ?? 0) > perPage ? (

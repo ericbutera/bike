@@ -32,6 +32,7 @@ import {
   formatElevation,
   formatHeartRate,
   formatPower,
+  formatRelativeEffort,
   formatSpeed,
   formatSport,
   type UnitSystem,
@@ -1225,6 +1226,54 @@ function DetailMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
+function PrimaryActivityStat({
+  label,
+  value,
+  valueClassName,
+}: {
+  label: string;
+  value: string;
+  valueClassName?: string;
+}) {
+  return (
+    <div className="min-w-0">
+      <div
+        className={`truncate text-3xl font-semibold text-base-content sm:text-4xl ${valueClassName ?? ""}`.trim()}
+      >
+        {value}
+      </div>
+      <div className="mt-1 text-sm text-base-content/60">{label}</div>
+    </div>
+  );
+}
+
+function SecondaryMetricRow({
+  label,
+  average,
+  maximum,
+}: {
+  label: string;
+  average: string;
+  maximum: string;
+}) {
+  return (
+    <tr>
+      <th className="font-medium text-base-content">{label}</th>
+      <td>{average}</td>
+      <td>{maximum}</td>
+    </tr>
+  );
+}
+
+function DenseDetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <>
+      <dt className="text-base-content/55">{label}</dt>
+      <dd className="font-medium text-base-content">{value}</dd>
+    </>
+  );
+}
+
 function formatHeartRateZoneRange(zone: ActivityHeartRateZone) {
   if (zone.min_bpm == null && zone.max_bpm == null) {
     return "Range unavailable";
@@ -1586,6 +1635,11 @@ export default function ActivityDetailPanel({
               <p className="mt-3 text-sm text-base-content/70">
                 {formatActivityTimestamp(activity.started_at)}
               </p>
+              {activity.location ? (
+                <p className="mt-2 text-sm text-base-content/60">
+                  {activity.location}
+                </p>
+              ) : null}
             </div>
             <div className="flex flex-wrap gap-2">
               <span className="badge badge-outline">
@@ -1599,63 +1653,122 @@ export default function ActivityDetailPanel({
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <DetailMetric
+          <div className="grid gap-x-6 gap-y-4 border-b border-base-300 pb-5 sm:grid-cols-2 xl:grid-cols-4">
+            <PrimaryActivityStat
               label="Distance"
               value={formatDistance(activity.distance_meters, unitSystem)}
             />
-            <DetailMetric
+            <PrimaryActivityStat
               label="Moving time"
               value={formatDuration(
                 activity.moving_time_seconds ?? activity.total_time_seconds,
               )}
             />
-            <DetailMetric
-              label="Average speed"
-              value={formatSpeed(activity.average_speed_mps, unitSystem)}
-            />
-            <DetailMetric
-              label="Max speed"
-              value={formatSpeed(activity.max_speed_mps, unitSystem)}
-            />
-            <DetailMetric
-              label="Elevation gain"
+            <PrimaryActivityStat
+              label="Elevation"
               value={formatElevation(
                 activity.elevation_gain_meters,
                 unitSystem,
               )}
             />
-            <DetailMetric
-              label="Elevation loss"
-              value={formatElevation(
-                activity.elevation_loss_meters,
-                unitSystem,
-              )}
+            <PrimaryActivityStat
+              label="Relative effort"
+              value={formatRelativeEffort(activity.relative_effort)}
+              valueClassName="text-error"
             />
-            <DetailMetric
-              label="Average heart rate"
-              value={formatHeartRate(activity.average_heart_rate_bpm)}
-            />
-            <DetailMetric
-              label="Max heart rate"
-              value={formatHeartRate(activity.max_heart_rate_bpm)}
-            />
-            <DetailMetric
-              label="Average cadence"
-              value={formatCadence(activity.average_cadence_rpm)}
-            />
-            <DetailMetric
-              label="Max cadence"
-              value={formatCadence(activity.max_cadence_rpm)}
-            />
-            <DetailMetric
-              label="Total time"
-              value={formatDuration(activity.total_time_seconds)}
-            />
-            <DetailMetric
-              label="Calories"
-              value={formatCalories(activity.calories)}
-            />
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <h2 className="text-lg font-semibold text-base-content">
+                Activity data
+              </h2>
+              <p className="text-sm text-base-content/70">
+                Secondary fields are grouped into a tighter stats list so the
+                summary stays readable.
+              </p>
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:items-start">
+              <div className="overflow-x-auto rounded-box border border-base-300 bg-base-100">
+                <table className="table table-sm">
+                  <thead>
+                    <tr>
+                      <th>Metric</th>
+                      <th>Avg</th>
+                      <th>Max</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <SecondaryMetricRow
+                      label="Speed"
+                      average={formatSpeed(
+                        activity.average_speed_mps,
+                        unitSystem,
+                      )}
+                      maximum={formatSpeed(activity.max_speed_mps, unitSystem)}
+                    />
+                    <SecondaryMetricRow
+                      label="Heart rate"
+                      average={formatHeartRate(activity.average_heart_rate_bpm)}
+                      maximum={formatHeartRate(activity.max_heart_rate_bpm)}
+                    />
+                    <SecondaryMetricRow
+                      label="Cadence"
+                      average={formatCadence(activity.average_cadence_rpm)}
+                      maximum={formatCadence(activity.max_cadence_rpm)}
+                    />
+                  </tbody>
+                </table>
+              </div>
+
+              <dl className="grid gap-x-4 gap-y-2 rounded-box border border-base-300 bg-base-100 px-4 py-3 text-sm sm:grid-cols-[auto_1fr]">
+                <DenseDetailRow
+                  label="Sport"
+                  value={formatSport(activity.sport)}
+                />
+                <DenseDetailRow
+                  label="Format"
+                  value={activity.format?.toUpperCase() ?? "--"}
+                />
+                <DenseDetailRow label="Source" value={activity.source} />
+                <DenseDetailRow
+                  label="Uploaded file"
+                  value={activity.original_filename ?? "--"}
+                />
+                <DenseDetailRow
+                  label="Started"
+                  value={formatActivityTimestamp(activity.started_at)}
+                />
+                <DenseDetailRow
+                  label="Ended"
+                  value={
+                    activity.ended_at
+                      ? formatActivityTimestamp(activity.ended_at)
+                      : "--"
+                  }
+                />
+                <DenseDetailRow
+                  label="Location"
+                  value={activity.location ?? "--"}
+                />
+                <DenseDetailRow
+                  label="Total time"
+                  value={formatDuration(activity.total_time_seconds)}
+                />
+                <DenseDetailRow
+                  label="Elevation loss"
+                  value={formatElevation(
+                    activity.elevation_loss_meters,
+                    unitSystem,
+                  )}
+                />
+                <DenseDetailRow
+                  label="Calories"
+                  value={formatCalories(activity.calories)}
+                />
+              </dl>
+            </div>
           </div>
 
           {activity.estimated_ftp_watts != null ||
@@ -1858,35 +1971,11 @@ export default function ActivityDetailPanel({
 
         <aside className="card bg-base-100 shadow-xl">
           <div className="card-body">
-            <h2 className="card-title text-xl">Source metadata</h2>
-            <dl className="space-y-4 text-sm">
-              <div>
-                <dt className="font-semibold text-base-content">Source</dt>
-                <dd className="mt-1 text-base-content/70">{activity.source}</dd>
-              </div>
-              <div>
-                <dt className="font-semibold text-base-content">
-                  Uploaded file
-                </dt>
-                <dd className="mt-1 text-base-content/70">
-                  {activity.original_filename ?? "--"}
-                </dd>
-              </div>
-              <div>
-                <dt className="font-semibold text-base-content">Started</dt>
-                <dd className="mt-1 text-base-content/70">
-                  {formatActivityTimestamp(activity.started_at)}
-                </dd>
-              </div>
-              <div>
-                <dt className="font-semibold text-base-content">Ended</dt>
-                <dd className="mt-1 text-base-content/70">
-                  {activity.ended_at
-                    ? formatActivityTimestamp(activity.ended_at)
-                    : "--"}
-                </dd>
-              </div>
-            </dl>
+            <h2 className="card-title text-xl">Actions</h2>
+            <p className="text-sm text-base-content/70">
+              Re-run derived activity processing or remove this upload from the
+              account.
+            </p>
 
             {activity.can_regenerate ? (
               <div className="mt-6 border-t border-base-300 pt-5">

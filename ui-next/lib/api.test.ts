@@ -38,7 +38,10 @@ describe("api runtime client", () => {
 
     expect(mocks.createFetchClient).not.toHaveBeenCalled();
 
-    ($api as { useQuery: () => unknown }).useQuery();
+    const useQuery = Reflect.get($api as object, "useQuery");
+
+    expect(typeof useQuery).toBe("function");
+    (useQuery as (...args: unknown[]) => unknown)();
 
     expect(mocks.createFetchClient).toHaveBeenCalledWith({
       baseUrl: "https://bike.nibelheim.dev/api",

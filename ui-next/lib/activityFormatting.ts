@@ -124,6 +124,14 @@ export function formatCalories(value?: number | null) {
   return `${Math.round(value)} kcal`;
 }
 
+export function formatRelativeEffort(value?: number | null) {
+  if (value == null) {
+    return "--";
+  }
+
+  return `${Math.round(value)}`;
+}
+
 export function formatSport(value: string) {
   if (!value) {
     return "Activity";

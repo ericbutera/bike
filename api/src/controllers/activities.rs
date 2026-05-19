@@ -7,7 +7,9 @@ use crate::activity_import_pipeline::{
 };
 use crate::activity_lifecycle::delete_activity_with_derived_state;
 use crate::activity_location::location_from_derived_json;
-use crate::analytics::{mark_segment_activity_changes, mark_user_activity_change};
+use crate::analytics::{
+    estimated_training_load, mark_segment_activity_changes, mark_user_activity_change,
+};
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::entities::{
     activities, activity_imports, segment_efforts, segment_user_summaries, segments,
@@ -53,6 +55,7 @@ pub struct ActivityResponse {
     pub average_cadence_rpm: Option<i32>,
     pub max_cadence_rpm: Option<i32>,
     pub calories: Option<i32>,
+    pub relative_effort: Option<i32>,
     pub estimated_ftp_watts: Option<i32>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub heart_rate_zones: Vec<ActivityHeartRateZoneSummary>,
@@ -86,11 +89,14 @@ fn is_false(value: &bool) -> bool {
 }
 
 impl ActivityResponse {
-    fn from_summary(model: activities::Model) -> Self {
+    fn from_summary_with_segment_efforts(
+        model: activities::Model,
+        segment_efforts: Vec<ActivitySegmentEffort>,
+    ) -> Self {
         let derived_data = summary_derived_data(model.derived_data_json.as_ref());
         let location = location_from_derived_json(model.derived_data_json.as_ref());
 
-        Self::from_model(model, derived_data, location, Vec::new(), false)
+        Self::from_model(model, derived_data, location, segment_efforts, false)
     }
 
     fn from_detail(model: activities::Model, segment_efforts: Vec<ActivitySegmentEffort>) -> Self {
@@ -114,6 +120,8 @@ impl ActivityResponse {
         segment_efforts: Vec<ActivitySegmentEffort>,
         can_regenerate: bool,
     ) -> Self {
+        let relative_effort = relative_effort(&model);
+
         Self {
             id: model.id,
             title: model.title,
@@ -136,6 +144,7 @@ impl ActivityResponse {
             average_cadence_rpm: model.average_cadence_rpm,
             max_cadence_rpm: model.max_cadence_rpm,
             calories: model.calories,
+            relative_effort,
             estimated_ftp_watts: model.estimated_ftp_watts,
             heart_rate_zones: deserialize_activity_heart_rate_zones(
                 model.heart_rate_zones_json.as_ref(),
@@ -222,6 +231,10 @@ fn preview_route_points(route_points: &[ActivityRoutePoint]) -> Vec<ActivityRout
         .collect()
 }
 
+fn relative_effort(model: &activities::Model) -> Option<i32> {
+    estimated_training_load(model).map(|value| value.round() as i32)
+}
+
 fn rank_efforts_by_segment(efforts: Vec<segment_efforts::Model>) -> HashMap<i32, i32> {
     let mut sorted_efforts = efforts;
     sorted_efforts.sort_by_key(|effort| (effort.segment_id, effort.duration_seconds, effort.id));
@@ -288,9 +301,25 @@ async fn load_activity_segment_efforts(
     user_id: i32,
     activity_id: i32,
 ) -> Result<Vec<ActivitySegmentEffort>, AppError> {
+    let mut efforts_by_activity =
+        load_activity_segment_efforts_by_activity_ids(db, user_id, &[activity_id]).await?;
+
+    Ok(efforts_by_activity.remove(&activity_id).unwrap_or_default())
+}
+
+async fn load_activity_segment_efforts_by_activity_ids(
+    db: &sea_orm::DatabaseConnection,
+    user_id: i32,
+    activity_ids: &[i32],
+) -> Result<HashMap<i32, Vec<ActivitySegmentEffort>>, AppError> {
+    if activity_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
     let effort_models = segment_efforts::Entity::find()
         .filter(segment_efforts::Column::UserId.eq(user_id))
-        .filter(segment_efforts::Column::ActivityId.eq(activity_id))
+        .filter(segment_efforts::Column::ActivityId.is_in(activity_ids.iter().copied()))
+        .order_by_asc(segment_efforts::Column::ActivityId)
         .order_by_asc(segment_efforts::Column::StartRoutePointIndex)
         .order_by_asc(segment_efforts::Column::EndRoutePointIndex)
         .order_by_asc(segment_efforts::Column::DurationSeconds)
@@ -298,7 +327,7 @@ async fn load_activity_segment_efforts(
         .all(db)
         .await?;
     if effort_models.is_empty() {
-        return Ok(Vec::new());
+        return Ok(HashMap::new());
     }
 
     let mut segment_ids = effort_models
@@ -373,12 +402,20 @@ async fn load_activity_segment_efforts(
         )
     };
 
-    Ok(effort_models
-        .into_iter()
-        .filter_map(|effort| {
-            let segment_title = segments_by_id.get(&effort.segment_id)?.title.clone();
+    let mut efforts_by_activity = HashMap::<i32, Vec<ActivitySegmentEffort>>::new();
 
-            Some(ActivitySegmentEffort {
+    for effort in effort_models {
+        let Some(segment_title) = segments_by_id
+            .get(&effort.segment_id)
+            .map(|segment| segment.title.clone())
+        else {
+            continue;
+        };
+
+        efforts_by_activity
+            .entry(effort.activity_id)
+            .or_default()
+            .push(ActivitySegmentEffort {
                 segment_id: effort.segment_id,
                 segment_title,
                 effort_index: effort.effort_index,
@@ -390,9 +427,10 @@ async fn load_activity_segment_efforts(
                 personal_best_duration_seconds: personal_best_duration_by_segment
                     .get(&effort.segment_id)
                     .copied(),
-            })
-        })
-        .collect())
+            });
+    }
+
+    Ok(efforts_by_activity)
 }
 
 #[utoipa::path(
@@ -421,7 +459,19 @@ pub async fn list_activities(
         .fetch_paginated(&state.db, &params)
         .await?;
 
-    Ok(Json(activities.map(ActivityResponse::from_summary)))
+    let activity_ids = activities
+        .data
+        .iter()
+        .map(|activity| activity.id)
+        .collect::<Vec<_>>();
+    let mut efforts_by_activity =
+        load_activity_segment_efforts_by_activity_ids(&state.db, user.id, &activity_ids).await?;
+
+    Ok(Json(activities.map(|activity| {
+        let segment_efforts = efforts_by_activity.remove(&activity.id).unwrap_or_default();
+
+        ActivityResponse::from_summary_with_segment_efforts(activity, segment_efforts)
+    })))
 }
 
 #[utoipa::path(
@@ -808,7 +858,7 @@ mod tests {
             10,
             24,
         )
-        .map(ActivityResponse::from_summary);
+        .map(|model| ActivityResponse::from_summary_with_segment_efforts(model, Vec::new()));
 
         assert_eq!(response.data.len(), 1);
         assert_eq!(response.data[0].title, "Morning Ride");
@@ -835,43 +885,46 @@ mod tests {
                 power_watts: None,
             })
             .collect::<Vec<_>>();
-        let response = ActivityResponse::from_summary(activities::Model {
-            id: 7,
-            user_id: 8,
-            activity_import_id: Some(9),
-            title: "Morning Ride".to_string(),
-            sport: "ride".to_string(),
-            source: "manual_upload".to_string(),
-            source_correlation_id: None,
-            original_filename: Some("morning-ride.gpx".to_string()),
-            format: Some("gpx".to_string()),
-            started_at: now,
-            ended_at: Some(now),
-            distance_meters: Some(40200.0),
-            moving_time_seconds: Some(3600),
-            total_time_seconds: Some(3900),
-            elevation_gain_meters: Some(520.0),
-            elevation_loss_meters: Some(515.0),
-            average_speed_mps: Some(9.5),
-            max_speed_mps: Some(16.2),
-            average_heart_rate_bpm: Some(142),
-            max_heart_rate_bpm: Some(171),
-            average_cadence_rpm: Some(86),
-            max_cadence_rpm: Some(104),
-            calories: Some(860),
-            estimated_ftp_watts: None,
-            heart_rate_zones_json: None,
-            derived_data_json: Some(
-                serialize_derived_activity_data(&ActivityDerivedData {
-                    laps: Vec::new(),
-                    chart_points: Vec::new(),
-                    route_points,
-                })
-                .expect("serialize derived activity data"),
-            ),
-            created_at: now,
-            updated_at: now,
-        });
+        let response = ActivityResponse::from_summary_with_segment_efforts(
+            activities::Model {
+                id: 7,
+                user_id: 8,
+                activity_import_id: Some(9),
+                title: "Morning Ride".to_string(),
+                sport: "ride".to_string(),
+                source: "manual_upload".to_string(),
+                source_correlation_id: None,
+                original_filename: Some("morning-ride.gpx".to_string()),
+                format: Some("gpx".to_string()),
+                started_at: now,
+                ended_at: Some(now),
+                distance_meters: Some(40200.0),
+                moving_time_seconds: Some(3600),
+                total_time_seconds: Some(3900),
+                elevation_gain_meters: Some(520.0),
+                elevation_loss_meters: Some(515.0),
+                average_speed_mps: Some(9.5),
+                max_speed_mps: Some(16.2),
+                average_heart_rate_bpm: Some(142),
+                max_heart_rate_bpm: Some(171),
+                average_cadence_rpm: Some(86),
+                max_cadence_rpm: Some(104),
+                calories: Some(860),
+                estimated_ftp_watts: None,
+                heart_rate_zones_json: None,
+                derived_data_json: Some(
+                    serialize_derived_activity_data(&ActivityDerivedData {
+                        laps: Vec::new(),
+                        chart_points: Vec::new(),
+                        route_points,
+                    })
+                    .expect("serialize derived activity data"),
+                ),
+                created_at: now,
+                updated_at: now,
+            },
+            Vec::new(),
+        );
 
         assert_eq!(
             response.route_points.len(),
@@ -915,43 +968,46 @@ mod tests {
         route_points[13].longitude = -123.4;
         route_points[29].longitude = -120.8;
 
-        let response = ActivityResponse::from_summary(activities::Model {
-            id: 7,
-            user_id: 8,
-            activity_import_id: Some(9),
-            title: "Morning Ride".to_string(),
-            sport: "ride".to_string(),
-            source: "manual_upload".to_string(),
-            source_correlation_id: None,
-            original_filename: Some("morning-ride.gpx".to_string()),
-            format: Some("gpx".to_string()),
-            started_at: now,
-            ended_at: Some(now),
-            distance_meters: Some(40200.0),
-            moving_time_seconds: Some(3600),
-            total_time_seconds: Some(3900),
-            elevation_gain_meters: Some(520.0),
-            elevation_loss_meters: Some(515.0),
-            average_speed_mps: Some(9.5),
-            max_speed_mps: Some(16.2),
-            average_heart_rate_bpm: Some(142),
-            max_heart_rate_bpm: Some(171),
-            average_cadence_rpm: Some(86),
-            max_cadence_rpm: Some(104),
-            calories: Some(860),
-            estimated_ftp_watts: None,
-            heart_rate_zones_json: None,
-            derived_data_json: Some(
-                serialize_derived_activity_data(&ActivityDerivedData {
-                    laps: Vec::new(),
-                    chart_points: Vec::new(),
-                    route_points,
-                })
-                .expect("serialize derived activity data"),
-            ),
-            created_at: now,
-            updated_at: now,
-        });
+        let response = ActivityResponse::from_summary_with_segment_efforts(
+            activities::Model {
+                id: 7,
+                user_id: 8,
+                activity_import_id: Some(9),
+                title: "Morning Ride".to_string(),
+                sport: "ride".to_string(),
+                source: "manual_upload".to_string(),
+                source_correlation_id: None,
+                original_filename: Some("morning-ride.gpx".to_string()),
+                format: Some("gpx".to_string()),
+                started_at: now,
+                ended_at: Some(now),
+                distance_meters: Some(40200.0),
+                moving_time_seconds: Some(3600),
+                total_time_seconds: Some(3900),
+                elevation_gain_meters: Some(520.0),
+                elevation_loss_meters: Some(515.0),
+                average_speed_mps: Some(9.5),
+                max_speed_mps: Some(16.2),
+                average_heart_rate_bpm: Some(142),
+                max_heart_rate_bpm: Some(171),
+                average_cadence_rpm: Some(86),
+                max_cadence_rpm: Some(104),
+                calories: Some(860),
+                estimated_ftp_watts: None,
+                heart_rate_zones_json: None,
+                derived_data_json: Some(
+                    serialize_derived_activity_data(&ActivityDerivedData {
+                        laps: Vec::new(),
+                        chart_points: Vec::new(),
+                        route_points,
+                    })
+                    .expect("serialize derived activity data"),
+                ),
+                created_at: now,
+                updated_at: now,
+            },
+            Vec::new(),
+        );
 
         let sampled_elapsed_seconds = response
             .route_points

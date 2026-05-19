@@ -95,6 +95,7 @@ export type Activity = {
   average_cadence_rpm?: number | null;
   max_cadence_rpm?: number | null;
   calories?: number | null;
+  relative_effort?: number | null;
   estimated_ftp_watts?: number | null;
   heart_rate_zones?: ActivityHeartRateZone[] | null;
   laps?: ActivityLap[] | null;
