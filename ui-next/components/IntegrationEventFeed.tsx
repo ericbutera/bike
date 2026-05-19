@@ -48,76 +48,101 @@ export default function IntegrationEventFeed({
   }
 
   return (
-    <div className="space-y-3">
-      {events.map((event) => {
-        const payload = event.payload ?? null;
-        const payloadMetrics = buildPayloadMetrics(payload);
+    <div className="overflow-x-auto">
+      <table className="table table-zebra w-full">
+        <thead>
+          <tr>
+            <th className="w-40">When</th>
+            <th className="w-28">Level</th>
+            <th className="w-40">Event</th>
+            {showProvider ? <th className="w-28">Provider</th> : null}
+            {showUserId ? <th className="w-28">User</th> : null}
+            <th className="w-36">Connection</th>
+            <th className="min-w-[24rem]">Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          {events.map((event) => {
+            const payload = event.payload ?? null;
+            const payloadMetrics = buildPayloadMetrics(payload);
+            const hasPayload = payload != null && Object.keys(payload).length > 0;
 
-        return (
-          <article
-            key={event.id}
-            className="rounded-box border border-base-300 bg-base-100 px-4 py-4 shadow-sm"
-          >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="space-y-2">
-                <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.18em] text-base-content/45">
+            return (
+              <tr key={event.id} className="align-top">
+                <td className="whitespace-nowrap text-sm text-base-content/60">
+                  {formatActivityTimestamp(event.created_at)}
+                </td>
+                <td className="align-top">
                   <span className={levelBadgeClassName(event.level)}>
                     {event.level}
                   </span>
+                </td>
+                <td className="align-top">
                   <span className="badge badge-ghost badge-sm uppercase">
                     {formatEventType(event.event_type)}
                   </span>
-                  {showProvider ? (
+                </td>
+                {showProvider ? (
+                  <td className="align-top whitespace-nowrap">
                     <span className="badge badge-outline badge-sm uppercase">
                       {event.provider}
                     </span>
-                  ) : null}
-                  {showUserId && event.user_id ? (
-                    <span className="badge badge-outline badge-sm">
-                      User {event.user_id}
-                    </span>
-                  ) : null}
-                  {event.connection_id ? (
+                  </td>
+                ) : null}
+                {showUserId ? (
+                  <td className="align-top whitespace-nowrap text-sm">
+                    {event.user_id != null ? (
+                      <span className="badge badge-outline badge-sm">
+                        User {event.user_id}
+                      </span>
+                    ) : (
+                      <span className="text-base-content/40">-</span>
+                    )}
+                  </td>
+                ) : null}
+                <td className="align-top whitespace-nowrap text-sm">
+                  {event.connection_id != null ? (
                     <span className="badge badge-outline badge-sm">
                       Connection {event.connection_id}
                     </span>
-                  ) : null}
-                </div>
-                <p className="text-sm leading-6 text-base-content/80">
-                  {event.message}
-                </p>
-                {payloadMetrics.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {payloadMetrics.map((metric) => (
-                      <span
-                        key={`${event.id}-${metric.label}`}
-                        className="badge badge-ghost badge-sm"
-                      >
-                        {metric.label}: {metric.value}
-                      </span>
-                    ))}
+                  ) : (
+                    <span className="text-base-content/40">-</span>
+                  )}
+                </td>
+                <td className="align-top">
+                  <div className="min-w-[20rem] space-y-3">
+                    <p className="text-sm leading-6 text-base-content/80">
+                      {event.message}
+                    </p>
+                    {payloadMetrics.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {payloadMetrics.map((metric) => (
+                          <span
+                            key={`${event.id}-${metric.label}`}
+                            className="badge badge-ghost badge-sm"
+                          >
+                            {metric.label}: {metric.value}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                    {hasPayload ? (
+                      <details>
+                        <summary className="cursor-pointer text-xs uppercase tracking-[0.18em] text-base-content/50">
+                          Payload
+                        </summary>
+                        <pre className="mt-2 overflow-x-auto rounded-xl bg-base-200 p-3 text-xs text-base-content/70">
+                          {JSON.stringify(payload, null, 2)}
+                        </pre>
+                      </details>
+                    ) : null}
                   </div>
-                ) : null}
-              </div>
-
-              <div className="text-sm text-base-content/60">
-                {formatActivityTimestamp(event.created_at)}
-              </div>
-            </div>
-
-            {payload && Object.keys(payload).length > 0 ? (
-              <details className="mt-3">
-                <summary className="cursor-pointer text-xs uppercase tracking-[0.18em] text-base-content/50">
-                  Payload
-                </summary>
-                <pre className="mt-2 overflow-x-auto rounded-xl bg-base-200 p-3 text-xs text-base-content/70">
-                  {JSON.stringify(payload, null, 2)}
-                </pre>
-              </details>
-            ) : null}
-          </article>
-        );
-      })}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
