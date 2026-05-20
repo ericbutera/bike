@@ -64,6 +64,15 @@ export type ActivitySegmentEffort = {
   personal_best_duration_seconds?: number | null;
 };
 
+export type ActivityAchievementHighlight = {
+  segment_id: number;
+  segment_title: string;
+  effort_index: number;
+  overall_rank?: number | null;
+  personal_rank?: number | null;
+  personal_best_duration_seconds?: number | null;
+};
+
 export type ActivityHeartRateZone = {
   zone: number;
   label: string;
@@ -101,6 +110,7 @@ export type Activity = {
   laps?: ActivityLap[] | null;
   chart_points?: ActivityChartPoint[] | null;
   route_points?: ActivityRoutePoint[] | null;
+  achievement_highlights?: ActivityAchievementHighlight[] | null;
   segment_efforts?: ActivitySegmentEffort[] | null;
   can_regenerate?: boolean;
 };

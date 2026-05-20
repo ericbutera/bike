@@ -12,6 +12,9 @@ pub struct Model {
     pub leader_user_id: Option<i32>,
     pub leader_effort_id: Option<i32>,
     pub best_duration_seconds: Option<i32>,
+    pub latest_activity_started_at: Option<DateTime<Utc>>,
+    pub latest_activity_id: Option<i32>,
+    pub latest_effort_id: Option<i32>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

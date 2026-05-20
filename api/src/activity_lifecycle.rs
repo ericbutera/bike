@@ -7,11 +7,13 @@ use crate::activity_import_lock::{
 use crate::activity_import_pipeline::{
     finalize_activity_import_batch, reprocess_activity_from_import,
 };
-use crate::analytics::rebuild_segment_analytics_cache;
-use crate::analytics::{mark_segment_activity_changes, mark_user_activity_change};
+use crate::analytics::{rebuild_activity_analytics_cache, rebuild_segment_analytics_cache};
+use crate::analytics::{
+    mark_segment_activity_changes, mark_user_activity_change, mark_user_fitness_dirty,
+};
 use crate::app_error::AppError;
 use crate::dedupe::{activity_duplicate_candidate_key, activity_models_match_for_dedupe};
-use crate::entities::{activities, activity_imports, segment_efforts};
+use crate::entities::{activities, activity_analytics, activity_imports, segment_efforts};
 use crate::segment_support::{
     clear_segment_efforts_for_activity, replace_segment_efforts_for_activity,
 };
@@ -66,6 +68,7 @@ where
     affected_segment_ids.dedup();
 
     rebuild_segment_analytics_cache(db, &affected_segment_ids).await?;
+    rebuild_activity_analytics_cache(db, &[activity_id]).await?;
 
     Ok(affected_segment_ids)
 }
@@ -81,6 +84,11 @@ pub async fn delete_activity_with_derived_state(
     let affected_segment_ids = load_segment_ids_for_activity(&txn, activity.id).await?;
 
     clear_segment_efforts_for_activity(&txn, user_id, activity.id).await?;
+
+    activity_analytics::Entity::delete_many()
+        .filter(activity_analytics::Column::ActivityId.eq(activity.id))
+        .exec(&txn)
+        .await?;
 
     activities::Entity::delete_many()
         .filter(activities::Column::UserId.eq(user_id))
@@ -153,6 +161,7 @@ pub async fn cleanup_duplicate_activities_for_user(
         .map(|activity| (activity.id, activity))
         .collect::<HashMap<_, _>>();
     let mut affected_segment_ids = Vec::new();
+    let mut fitness_dirty_from_day: Option<chrono::NaiveDate> = None;
 
     for activity_id in &cleanup_plan.duplicate_activity_ids {
         let Some(activity) = activities_by_id.get(activity_id).cloned() else {
@@ -164,12 +173,20 @@ pub async fn cleanup_duplicate_activities_for_user(
             continue;
         };
 
+        fitness_dirty_from_day = Some(match fitness_dirty_from_day {
+            Some(current) => current.min(activity.started_at.date_naive()),
+            None => activity.started_at.date_naive(),
+        });
         affected_segment_ids
             .extend(delete_activity_with_derived_state(db, uploads_dir, user_id, activity).await?);
     }
 
     let changed_at = Utc::now();
-    mark_user_activity_change(db, user_id, changed_at).await?;
+    if let Some(dirty_from_day) = fitness_dirty_from_day {
+        mark_user_fitness_dirty(db, user_id, dirty_from_day, changed_at).await?;
+    } else {
+        mark_user_activity_change(db, user_id, changed_at).await?;
+    }
     mark_segment_activity_changes(db, &affected_segment_ids, changed_at).await?;
     tasks.rebuild_fitness_freshness(user_id).await;
     tasks.rebuild_segment_analytics(affected_segment_ids).await;
@@ -387,6 +404,7 @@ pub async fn reprocess_imported_activities_for_user(
     let mut reprocessed_count = 0usize;
     let mut failed_count = 0usize;
     let mut affected_segment_ids = Vec::new();
+    let mut fitness_dirty_from_day: Option<chrono::NaiveDate> = None;
 
     for activity in activities {
         let Some(activity_import_id) = activity.activity_import_id else {
@@ -417,6 +435,10 @@ pub async fn reprocess_imported_activities_for_user(
             Ok(reprocessed) => {
                 reprocessed_count += 1;
                 affected_segment_ids.extend(reprocessed.affected_segment_ids);
+                fitness_dirty_from_day = Some(match fitness_dirty_from_day {
+                    Some(current) => current.min(reprocessed.fitness_dirty_from_day),
+                    None => reprocessed.fitness_dirty_from_day,
+                });
             }
             Err(error) => {
                 failed_count += 1;
@@ -431,8 +453,15 @@ pub async fn reprocess_imported_activities_for_user(
     }
 
     if reprocessed_count > 0 {
-        finalize_activity_import_batch(db, tasks, user_id, affected_segment_ids, Utc::now())
-            .await?;
+        finalize_activity_import_batch(
+            db,
+            tasks,
+            user_id,
+            affected_segment_ids,
+            fitness_dirty_from_day,
+            Utc::now(),
+        )
+        .await?;
     }
 
     Ok((reprocessed_count, failed_count))

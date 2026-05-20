@@ -1,3 +1,4 @@
+use crate::activity_analytics::ActivityAchievementHighlight;
 use crate::activity_details::{
     deserialize_derived_activity_data, ActivityChartPoint, ActivityDerivedData, ActivityLap,
     ActivityRoutePoint,
@@ -8,11 +9,12 @@ use crate::activity_import_pipeline::{
 use crate::activity_lifecycle::delete_activity_with_derived_state;
 use crate::activity_location::location_from_derived_json;
 use crate::analytics::{
-    estimated_training_load, mark_segment_activity_changes, mark_user_activity_change,
+    estimated_training_load, mark_segment_activity_changes, mark_user_fitness_dirty,
 };
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::entities::{
-    activities, activity_imports, segment_efforts, segment_user_summaries, segments,
+    activities, activity_analytics, activity_imports, segment_efforts, segment_user_summaries,
+    segments,
 };
 use crate::storage::AppStorage;
 use crate::training_profile::{
@@ -66,6 +68,8 @@ pub struct ActivityResponse {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub route_points: Vec<ActivityRoutePoint>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub achievement_highlights: Vec<ActivityAchievementHighlight>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub segment_efforts: Vec<ActivitySegmentEffort>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub can_regenerate: bool,
@@ -89,14 +93,21 @@ fn is_false(value: &bool) -> bool {
 }
 
 impl ActivityResponse {
-    fn from_summary_with_segment_efforts(
+    fn from_summary_with_achievement_highlights(
         model: activities::Model,
-        segment_efforts: Vec<ActivitySegmentEffort>,
+        achievement_highlights: Vec<ActivityAchievementHighlight>,
     ) -> Self {
         let derived_data = summary_derived_data(model.derived_data_json.as_ref());
         let location = location_from_derived_json(model.derived_data_json.as_ref());
 
-        Self::from_model(model, derived_data, location, segment_efforts, false)
+        Self::from_model(
+            model,
+            derived_data,
+            location,
+            achievement_highlights,
+            Vec::new(),
+            false,
+        )
     }
 
     fn from_detail(model: activities::Model, segment_efforts: Vec<ActivitySegmentEffort>) -> Self {
@@ -108,6 +119,7 @@ impl ActivityResponse {
             model,
             derived_data,
             location,
+            Vec::new(),
             segment_efforts,
             can_regenerate,
         )
@@ -117,6 +129,7 @@ impl ActivityResponse {
         model: activities::Model,
         derived_data: ActivityDerivedData,
         location: Option<String>,
+        achievement_highlights: Vec<ActivityAchievementHighlight>,
         segment_efforts: Vec<ActivitySegmentEffort>,
         can_regenerate: bool,
     ) -> Self {
@@ -152,6 +165,7 @@ impl ActivityResponse {
             laps: derived_data.laps,
             chart_points: derived_data.chart_points,
             route_points: derived_data.route_points,
+            achievement_highlights,
             segment_efforts,
             can_regenerate,
         }
@@ -433,6 +447,33 @@ async fn load_activity_segment_efforts_by_activity_ids(
     Ok(efforts_by_activity)
 }
 
+async fn load_activity_achievement_highlights_by_activity_ids(
+    db: &sea_orm::DatabaseConnection,
+    user_id: i32,
+    activity_ids: &[i32],
+) -> Result<HashMap<i32, Vec<ActivityAchievementHighlight>>, AppError> {
+    if activity_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    Ok(activity_analytics::Entity::find()
+        .filter(activity_analytics::Column::UserId.eq(user_id))
+        .filter(activity_analytics::Column::ActivityId.is_in(activity_ids.iter().copied()))
+        .all(db)
+        .await?
+        .into_iter()
+        .map(|analytics| {
+            (
+                analytics.activity_id,
+                analytics
+                    .achievement_highlights_json
+                    .map(|stored| stored.items)
+                    .unwrap_or_default(),
+            )
+        })
+        .collect())
+}
+
 #[utoipa::path(
     get,
     path = "/api/activities",
@@ -464,13 +505,19 @@ pub async fn list_activities(
         .iter()
         .map(|activity| activity.id)
         .collect::<Vec<_>>();
-    let mut efforts_by_activity =
-        load_activity_segment_efforts_by_activity_ids(&state.db, user.id, &activity_ids).await?;
+    let mut achievement_highlights_by_activity =
+        load_activity_achievement_highlights_by_activity_ids(&state.db, user.id, &activity_ids)
+            .await?;
 
     Ok(Json(activities.map(|activity| {
-        let segment_efforts = efforts_by_activity.remove(&activity.id).unwrap_or_default();
+        let achievement_highlights = achievement_highlights_by_activity
+            .remove(&activity.id)
+            .unwrap_or_default();
 
-        ActivityResponse::from_summary_with_segment_efforts(activity, segment_efforts)
+        ActivityResponse::from_summary_with_achievement_highlights(
+            activity,
+            achievement_highlights,
+        )
     })))
 }
 
@@ -539,11 +586,12 @@ pub async fn delete_activity(
         .await?
         .ok_or_else(|| AppError::not_found("Activity not found"))?;
 
+    let fitness_dirty_from_day = activity.started_at.date_naive();
     let affected_segment_ids =
         delete_activity_with_derived_state(&state.db, &state.uploads_dir, user.id, activity)
             .await?;
     let changed_at = Utc::now();
-    mark_user_activity_change(&state.db, user.id, changed_at).await?;
+    mark_user_fitness_dirty(&state.db, user.id, fitness_dirty_from_day, changed_at).await?;
     mark_segment_activity_changes(&state.db, &affected_segment_ids, changed_at).await?;
     state.tasks.rebuild_fitness_freshness(user.id).await;
     state
@@ -606,6 +654,7 @@ pub async fn regenerate_activity(
         &state.tasks,
         user.id,
         reprocessed.affected_segment_ids,
+        Some(reprocessed.fitness_dirty_from_day),
         Utc::now(),
     )
     .await?;
@@ -858,7 +907,9 @@ mod tests {
             10,
             24,
         )
-        .map(|model| ActivityResponse::from_summary_with_segment_efforts(model, Vec::new()));
+        .map(|model| {
+            ActivityResponse::from_summary_with_achievement_highlights(model, Vec::new())
+        });
 
         assert_eq!(response.data.len(), 1);
         assert_eq!(response.data[0].title, "Morning Ride");
@@ -885,7 +936,7 @@ mod tests {
                 power_watts: None,
             })
             .collect::<Vec<_>>();
-        let response = ActivityResponse::from_summary_with_segment_efforts(
+        let response = ActivityResponse::from_summary_with_achievement_highlights(
             activities::Model {
                 id: 7,
                 user_id: 8,
@@ -968,7 +1019,7 @@ mod tests {
         route_points[13].longitude = -123.4;
         route_points[29].longitude = -120.8;
 
-        let response = ActivityResponse::from_summary_with_segment_efforts(
+        let response = ActivityResponse::from_summary_with_achievement_highlights(
             activities::Model {
                 id: 7,
                 user_id: 8,

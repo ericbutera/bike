@@ -9,7 +9,7 @@ use crate::activity_import_pipeline::{
     ActivityUploadPayload, PersistActivityUploadOutcome,
 };
 use crate::activity_lifecycle::delete_activity_with_derived_state;
-use crate::analytics::{mark_segment_activity_changes, mark_user_activity_change};
+use crate::analytics::{mark_segment_activity_changes, mark_user_fitness_dirty};
 use crate::app_error::AppError;
 use crate::config::Config;
 use crate::entities::{activities, strava_connections};
@@ -668,6 +668,7 @@ pub async fn process_strava_sync(
         let mut duplicate_count = 0i32;
         let mut failed_count = 0i32;
         let mut affected_segment_ids = Vec::new();
+        let mut fitness_dirty_from_day: Option<chrono::NaiveDate> = None;
         let mut latest_started_at = connection.last_synced_activity_started_at;
 
         loop {
@@ -744,6 +745,10 @@ pub async fn process_strava_sync(
                     Ok(PersistActivityUploadOutcome::Imported(persisted)) => {
                         imported_count += 1;
                         affected_segment_ids.extend(persisted.affected_segment_ids);
+                        fitness_dirty_from_day = Some(match fitness_dirty_from_day {
+                            Some(current) => current.min(persisted.fitness_dirty_from_day),
+                            None => persisted.fitness_dirty_from_day,
+                        });
                     }
                     Ok(PersistActivityUploadOutcome::Duplicate(_)) => {
                         duplicate_count += 1;
@@ -776,6 +781,7 @@ pub async fn process_strava_sync(
                 &tasks,
                 connection.user_id,
                 affected_segment_ids,
+                fitness_dirty_from_day,
                 Utc::now(),
             )
             .await?;
@@ -1527,10 +1533,11 @@ async fn delete_strava_activity_by_correlation_id(
         return Ok(false);
     };
 
+    let fitness_dirty_from_day = activity.started_at.date_naive();
     let affected_segment_ids =
         delete_activity_with_derived_state(db, uploads_dir, user_id, activity).await?;
     let changed_at = Utc::now();
-    mark_user_activity_change(db, user_id, changed_at).await?;
+    mark_user_fitness_dirty(db, user_id, fitness_dirty_from_day, changed_at).await?;
     mark_segment_activity_changes(db, &affected_segment_ids, changed_at).await?;
     tasks.rebuild_fitness_freshness(user_id).await;
     tasks.rebuild_segment_analytics(affected_segment_ids).await;

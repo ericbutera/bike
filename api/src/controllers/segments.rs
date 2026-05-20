@@ -43,30 +43,6 @@ pub struct SegmentResponse {
     pub efforts: Vec<SegmentEffortResponse>,
 }
 
-fn current_user_pr_duration_from_models(
-    efforts: &[segment_efforts::Model],
-    user_id: i32,
-) -> Option<i32> {
-    efforts
-        .iter()
-        .filter(|effort| effort.user_id == user_id)
-        .map(|effort| effort.duration_seconds)
-        .min()
-}
-
-fn current_user_pr_duration_from_cached_or_models(
-    cached_duration_seconds: Option<i32>,
-    efforts: &[segment_efforts::Model],
-    user_id: i32,
-    can_use_cached_duration: bool,
-) -> Option<i32> {
-    if can_use_cached_duration {
-        cached_duration_seconds.or_else(|| current_user_pr_duration_from_models(efforts, user_id))
-    } else {
-        current_user_pr_duration_from_models(efforts, user_id)
-    }
-}
-
 fn current_user_pr_duration_from_responses(
     efforts: &[SegmentEffortResponse],
     user_id: i32,
@@ -121,13 +97,8 @@ pub async fn list_segments(
         .iter()
         .map(|segment| segment.id)
         .collect::<Vec<_>>();
-    let latest_effort_started_at_by_segment =
-        load_latest_effort_started_at_by_segment(&state.db, &segment_ids).await?;
-    sort_segments_by_latest_effort_started_at(
-        &mut segment_models,
-        &latest_effort_started_at_by_segment,
-    );
     let summary_by_segment_id = load_segment_summaries(&state.db, &segment_ids).await?;
+    sort_segments_by_latest_activity_started_at(&mut segment_models, &summary_by_segment_id);
     let user_summary_by_segment_id =
         load_segment_user_summaries(&state.db, user.id, &segment_ids).await?;
     let stale_segment_ids = segment_models
@@ -150,7 +121,6 @@ pub async fn list_segments(
             }
         })
         .collect::<Vec<_>>();
-    let efforts_by_segment = load_efforts_by_segment(&state.db, &stale_segment_ids).await?;
 
     if !stale_segment_ids.is_empty() {
         state
@@ -165,19 +135,6 @@ pub async fn list_segments(
             .map(|segment| {
                 let summary = summary_by_segment_id.get(&segment.id);
                 let user_summary = user_summary_by_segment_id.get(&segment.id);
-                let efforts = efforts_by_segment
-                    .get(&segment.id)
-                    .cloned()
-                    .unwrap_or_default();
-                let use_cached_summary = matches!(
-                    summary,
-                    Some(summary) if summary.updated_at >= segment.last_activity_change_at
-                );
-                let use_cached_user_summary = matches!(
-                    user_summary,
-                    Some(user_summary)
-                        if user_summary.updated_at >= segment.last_activity_change_at
-                );
 
                 SegmentResponse {
                     id: segment.id,
@@ -186,26 +143,10 @@ pub async fn list_segments(
                     original_filename: segment.original_filename,
                     format: segment.format,
                     distance_meters: segment.distance_meters,
-                    effort_count: if use_cached_summary {
-                        summary.map(|value| value.effort_count).unwrap_or_default()
-                    } else {
-                        efforts.len() as i32
-                    },
-                    best_duration_seconds: if use_cached_summary {
-                        summary.and_then(|value| value.best_duration_seconds)
-                    } else {
-                        efforts.iter().map(|effort| effort.duration_seconds).min()
-                    },
-                    current_user_pr_duration_seconds: if use_cached_summary {
-                        current_user_pr_duration_from_cached_or_models(
-                            user_summary.and_then(|value| value.personal_best_duration_seconds),
-                            &efforts,
-                            user.id,
-                            use_cached_user_summary,
-                        )
-                    } else {
-                        current_user_pr_duration_from_models(&efforts, user.id)
-                    },
+                    effort_count: summary.map(|value| value.effort_count).unwrap_or_default(),
+                    best_duration_seconds: summary.and_then(|value| value.best_duration_seconds),
+                    current_user_pr_duration_seconds: user_summary
+                        .and_then(|value| value.personal_best_duration_seconds),
                     created_at: segment.created_at,
                     route_points: Vec::new(),
                     efforts: Vec::new(),
@@ -471,93 +412,23 @@ async fn find_duplicate_segment(
     Ok(None)
 }
 
-fn sort_segments_by_latest_effort_started_at(
+fn sort_segments_by_latest_activity_started_at(
     segment_models: &mut [segments::Model],
-    latest_effort_started_at_by_segment: &HashMap<i32, DateTime<Utc>>,
+    summary_by_segment_id: &HashMap<i32, segment_summaries::Model>,
 ) {
     segment_models.sort_by(|left, right| {
-        let left_latest = latest_effort_started_at_by_segment.get(&left.id);
-        let right_latest = latest_effort_started_at_by_segment.get(&right.id);
+        let left_latest = summary_by_segment_id
+            .get(&left.id)
+            .and_then(|summary| summary.latest_activity_started_at);
+        let right_latest = summary_by_segment_id
+            .get(&right.id)
+            .and_then(|summary| summary.latest_activity_started_at);
 
         right_latest
             .cmp(&left_latest)
             .then_with(|| right.created_at.cmp(&left.created_at))
             .then_with(|| right.id.cmp(&left.id))
     });
-}
-
-async fn load_latest_effort_started_at_by_segment(
-    db: &sea_orm::DatabaseConnection,
-    segment_ids: &[i32],
-) -> Result<HashMap<i32, DateTime<Utc>>, AppError> {
-    if segment_ids.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let efforts = segment_efforts::Entity::find()
-        .filter(segment_efforts::Column::SegmentId.is_in(segment_ids.iter().copied()))
-        .all(db)
-        .await?;
-    let activity_ids = efforts
-        .iter()
-        .map(|effort| effort.activity_id)
-        .collect::<Vec<_>>();
-
-    if activity_ids.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let started_at_by_activity_id = activities::Entity::find()
-        .filter(activities::Column::Id.is_in(activity_ids.iter().copied()))
-        .all(db)
-        .await?
-        .into_iter()
-        .map(|activity| (activity.id, activity.started_at))
-        .collect::<HashMap<_, _>>();
-    let mut latest_effort_started_at_by_segment = HashMap::<i32, DateTime<Utc>>::new();
-
-    for effort in efforts {
-        let Some(started_at) = started_at_by_activity_id.get(&effort.activity_id).copied() else {
-            continue;
-        };
-
-        latest_effort_started_at_by_segment
-            .entry(effort.segment_id)
-            .and_modify(|current| {
-                if started_at > *current {
-                    *current = started_at;
-                }
-            })
-            .or_insert(started_at);
-    }
-
-    Ok(latest_effort_started_at_by_segment)
-}
-
-async fn load_efforts_by_segment(
-    db: &sea_orm::DatabaseConnection,
-    segment_ids: &[i32],
-) -> Result<HashMap<i32, Vec<segment_efforts::Model>>, AppError> {
-    if segment_ids.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let efforts = segment_efforts::Entity::find()
-        .filter(segment_efforts::Column::SegmentId.is_in(segment_ids.iter().copied()))
-        .order_by_asc(segment_efforts::Column::DurationSeconds)
-        .order_by_asc(segment_efforts::Column::Id)
-        .all(db)
-        .await?;
-    let mut efforts_by_segment = HashMap::<i32, Vec<segment_efforts::Model>>::new();
-
-    for effort in efforts {
-        efforts_by_segment
-            .entry(effort.segment_id)
-            .or_default()
-            .push(effort);
-    }
-
-    Ok(efforts_by_segment)
 }
 
 async fn load_segment_summaries(
@@ -670,6 +541,17 @@ mod tests {
     use super::*;
     use chrono::Duration;
 
+    fn current_user_pr_duration_from_models(
+        efforts: &[segment_efforts::Model],
+        user_id: i32,
+    ) -> Option<i32> {
+        efforts
+            .iter()
+            .filter(|effort| effort.user_id == user_id)
+            .map(|effort| effort.duration_seconds)
+            .min()
+    }
+
     fn build_segment_model(id: i32, created_at: DateTime<Utc>) -> segments::Model {
         segments::Model {
             id,
@@ -765,53 +647,7 @@ mod tests {
     }
 
     #[test]
-    fn falls_back_to_efforts_when_cached_user_pr_is_missing() {
-        let now = Utc::now();
-        let efforts = vec![
-            segment_efforts::Model {
-                id: 1,
-                segment_id: 10,
-                user_id: 7,
-                activity_id: 100,
-                effort_index: 1,
-                duration_seconds: 320,
-                start_elapsed_seconds: 0,
-                end_elapsed_seconds: 320,
-                start_route_point_index: 0,
-                end_route_point_index: 1,
-                distance_meters: Some(1800.0),
-                overall_rank: None,
-                user_rank: None,
-                created_at: now,
-                updated_at: now,
-            },
-            segment_efforts::Model {
-                id: 2,
-                segment_id: 10,
-                user_id: 7,
-                activity_id: 101,
-                effort_index: 2,
-                duration_seconds: 305,
-                start_elapsed_seconds: 0,
-                end_elapsed_seconds: 305,
-                start_route_point_index: 0,
-                end_route_point_index: 1,
-                distance_meters: Some(1800.0),
-                overall_rank: None,
-                user_rank: None,
-                created_at: now,
-                updated_at: now,
-            },
-        ];
-
-        assert_eq!(
-            current_user_pr_duration_from_cached_or_models(None, &efforts, 7, true),
-            Some(305)
-        );
-    }
-
-    #[test]
-    fn sorts_segments_by_latest_effort_started_at_then_created_at() {
+    fn sorts_segments_by_latest_activity_started_at_then_created_at() {
         let base_time = Utc::now();
         let mut segment_models = vec![
             build_segment_model(1, base_time + Duration::minutes(1)),
@@ -819,16 +655,55 @@ mod tests {
             build_segment_model(3, base_time + Duration::minutes(3)),
             build_segment_model(4, base_time + Duration::minutes(4)),
         ];
-        let latest_effort_started_at_by_segment = HashMap::from([
-            (1, base_time + Duration::days(1)),
-            (2, base_time + Duration::days(2)),
-            (3, base_time + Duration::days(2)),
+        let summary_by_segment_id = HashMap::from([
+            (
+                1,
+                segment_summaries::Model {
+                    segment_id: 1,
+                    effort_count: 3,
+                    leader_user_id: Some(9),
+                    leader_effort_id: Some(11),
+                    best_duration_seconds: Some(300),
+                    latest_activity_started_at: Some(base_time + Duration::days(1)),
+                    latest_activity_id: Some(101),
+                    latest_effort_id: Some(201),
+                    created_at: base_time,
+                    updated_at: base_time,
+                },
+            ),
+            (
+                2,
+                segment_summaries::Model {
+                    segment_id: 2,
+                    effort_count: 5,
+                    leader_user_id: Some(9),
+                    leader_effort_id: Some(12),
+                    best_duration_seconds: Some(290),
+                    latest_activity_started_at: Some(base_time + Duration::days(2)),
+                    latest_activity_id: Some(102),
+                    latest_effort_id: Some(202),
+                    created_at: base_time,
+                    updated_at: base_time,
+                },
+            ),
+            (
+                3,
+                segment_summaries::Model {
+                    segment_id: 3,
+                    effort_count: 4,
+                    leader_user_id: Some(8),
+                    leader_effort_id: Some(13),
+                    best_duration_seconds: Some(295),
+                    latest_activity_started_at: Some(base_time + Duration::days(2)),
+                    latest_activity_id: Some(103),
+                    latest_effort_id: Some(203),
+                    created_at: base_time,
+                    updated_at: base_time,
+                },
+            ),
         ]);
 
-        sort_segments_by_latest_effort_started_at(
-            &mut segment_models,
-            &latest_effort_started_at_by_segment,
-        );
+        sort_segments_by_latest_activity_started_at(&mut segment_models, &summary_by_segment_id);
 
         assert_eq!(
             segment_models

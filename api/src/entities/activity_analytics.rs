@@ -1,16 +1,21 @@
+use crate::activity_analytics::StoredActivityAchievementHighlights;
 use async_trait::async_trait;
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{ConnectionTrait, DbErr, Set};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
-#[sea_orm(table_name = "analytics_user_states")]
+#[sea_orm(table_name = "activity_analytics")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
+    pub activity_id: i32,
     pub user_id: i32,
-    pub last_activity_change_at: DateTime<Utc>,
-    pub fitness_dirty_from_day: Option<NaiveDate>,
-    pub last_fitness_rebuild_at: Option<DateTime<Utc>>,
+    pub segment_effort_count: i32,
+    pub achievement_count: i32,
+    pub kom_count: i32,
+    pub top_10_count: i32,
+    pub pr_count: i32,
+    pub achievement_highlights_json: Option<StoredActivityAchievementHighlights>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

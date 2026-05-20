@@ -70,6 +70,14 @@ function makeActivity(
     total_time_seconds: number | null;
     elevation_gain_meters: number | null;
     max_heart_rate_bpm: number | null;
+    achievement_highlights: Array<{
+      segment_id: number;
+      segment_title: string;
+      effort_index: number;
+      overall_rank?: number | null;
+      personal_rank?: number | null;
+      personal_best_duration_seconds?: number | null;
+    }>;
     segment_efforts: Array<{
       segment_id: number;
       segment_title: string;
@@ -110,6 +118,7 @@ function makeActivity(
     average_cadence_rpm: 86,
     max_cadence_rpm: 104,
     calories: 860,
+    achievement_highlights: [],
     segment_efforts: [],
     ...overrides,
   };
@@ -223,14 +232,11 @@ describe("ActivityStream", () => {
         makeActivity({
           id: 2,
           title: "Latest Effort",
-          segment_efforts: [
+          achievement_highlights: [
             {
               segment_id: 11,
               segment_title: "North Climb",
               effort_index: 1,
-              duration_seconds: 312,
-              start_route_point_index: 0,
-              end_route_point_index: 1,
               overall_rank: 1,
               personal_rank: 1,
               personal_best_duration_seconds: 312,
@@ -239,9 +245,6 @@ describe("ActivityStream", () => {
               segment_id: 12,
               segment_title: "Bridge Sprint",
               effort_index: 1,
-              duration_seconds: 48,
-              start_route_point_index: 1,
-              end_route_point_index: 2,
               overall_rank: 7,
               personal_rank: 1,
               personal_best_duration_seconds: 48,
@@ -250,9 +253,6 @@ describe("ActivityStream", () => {
               segment_id: 13,
               segment_title: "Park Loop",
               effort_index: 1,
-              duration_seconds: 138,
-              start_route_point_index: 2,
-              end_route_point_index: 3,
               personal_rank: 2,
               personal_best_duration_seconds: 134,
             },

@@ -1,3 +1,4 @@
+pub mod activity_analytics;
 pub mod activity_details;
 pub mod activity_import_lock;
 pub mod activity_import_pipeline;

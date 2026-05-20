@@ -312,6 +312,7 @@ pub async fn import_activity_archive_from_path(
     let mut imported_count = 0i32;
     let mut duplicate_count = 0i32;
     let mut affected_segment_ids = Vec::new();
+    let mut fitness_dirty_from_day: Option<chrono::NaiveDate> = None;
     let mut error_samples = Vec::new();
 
     for indexed_entry in &scan.supported_entries {
@@ -357,6 +358,10 @@ pub async fn import_activity_archive_from_path(
             Ok(PersistActivityUploadOutcome::Imported(persisted)) => {
                 imported_count += 1;
                 affected_segment_ids.extend(persisted.affected_segment_ids);
+                fitness_dirty_from_day = Some(match fitness_dirty_from_day {
+                    Some(current) => current.min(persisted.fitness_dirty_from_day),
+                    None => persisted.fitness_dirty_from_day,
+                });
             }
             Ok(PersistActivityUploadOutcome::Duplicate(_)) => {
                 duplicate_count += 1;
@@ -375,8 +380,15 @@ pub async fn import_activity_archive_from_path(
     }
 
     if imported_count > 0 {
-        finalize_activity_import_batch(db, tasks, user_id, affected_segment_ids, Utc::now())
-            .await?;
+        finalize_activity_import_batch(
+            db,
+            tasks,
+            user_id,
+            affected_segment_ids,
+            fitness_dirty_from_day,
+            Utc::now(),
+        )
+        .await?;
     }
 
     let failed_count = error_samples.len() as i32;

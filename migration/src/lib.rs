@@ -15,6 +15,9 @@ mod m20260512_000013_compact_segment_and_heart_rate_json;
 mod m20260512_000014_add_activity_source_correlation_id;
 mod m20260513_000015_create_integration_events;
 mod m20260515_000001_map_feature_flag;
+mod m20260520_000001_segment_summary_latest_activity;
+mod m20260520_000002_activity_analytics_and_fitness_dirty_days;
+mod m20260520_000003_rename_activity_analytics_top_10_count;
 
 pub struct Migrator;
 
@@ -67,6 +70,15 @@ impl MigratorTrait for Migrator {
             m20260513_000015_create_integration_events::Migration,
         ));
         locals.push(Box::new(m20260515_000001_map_feature_flag::Migration));
+        locals.push(Box::new(
+            m20260520_000001_segment_summary_latest_activity::Migration,
+        ));
+        locals.push(Box::new(
+            m20260520_000002_activity_analytics_and_fitness_dirty_days::Migration,
+        ));
+        locals.push(Box::new(
+            m20260520_000003_rename_activity_analytics_top_10_count::Migration,
+        ));
         locals.sort_by_key(|m| m.name().to_string());
 
         migrations.extend(locals);

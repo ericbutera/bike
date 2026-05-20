@@ -279,6 +279,7 @@ pub async fn upload_activity_import(
                     &state.tasks,
                     user.id,
                     persisted.affected_segment_ids.clone(),
+                    Some(persisted.fitness_dirty_from_day),
                     Utc::now(),
                 )
                 .await?;

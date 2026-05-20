@@ -1,6 +1,8 @@
 use crate::activity_details::{derive_activity_detail_data, serialize_derived_activity_data};
 use crate::activity_lifecycle::refresh_activity_derived_state;
-use crate::analytics::{mark_segment_activity_changes, mark_user_activity_change};
+use crate::analytics::{
+    mark_segment_activity_changes, mark_user_activity_change, mark_user_fitness_dirty,
+};
 use crate::app_error::AppError;
 use crate::dedupe::activity_dedupe_matches_model;
 use crate::entities::{activities, activity_imports};
@@ -9,7 +11,7 @@ use crate::training_profile::{
     load_training_profile, serialize_activity_heart_rate_zones, summarize_heart_rate_zones,
     TrainingProfile,
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use std::path::Path;
 use uuid::Uuid;
@@ -27,11 +29,13 @@ pub struct PersistedActivityImport {
     pub import: activity_imports::Model,
     pub activity: activities::Model,
     pub affected_segment_ids: Vec<i32>,
+    pub fitness_dirty_from_day: NaiveDate,
 }
 
 pub struct ReprocessedActivityImport {
     pub activity: activities::Model,
     pub affected_segment_ids: Vec<i32>,
+    pub fitness_dirty_from_day: NaiveDate,
 }
 
 pub struct DeduplicatedActivityImport {
@@ -179,6 +183,7 @@ pub async fn persist_activity_upload(
             import: import_model,
             activity: activity_model,
             affected_segment_ids,
+            fitness_dirty_from_day: activity_draft.started_at.date_naive(),
         },
     ))
 }
@@ -188,12 +193,17 @@ pub async fn finalize_activity_import_batch(
     tasks: &TaskQueue,
     user_id: i32,
     mut affected_segment_ids: Vec<i32>,
+    fitness_dirty_from_day: Option<NaiveDate>,
     changed_at: DateTime<Utc>,
 ) -> Result<(), AppError> {
     affected_segment_ids.sort_unstable();
     affected_segment_ids.dedup();
 
-    mark_user_activity_change(db, user_id, changed_at).await?;
+    if let Some(dirty_from_day) = fitness_dirty_from_day {
+        mark_user_fitness_dirty(db, user_id, dirty_from_day, changed_at).await?;
+    } else {
+        mark_user_activity_change(db, user_id, changed_at).await?;
+    }
     if !affected_segment_ids.is_empty() {
         mark_segment_activity_changes(db, &affected_segment_ids, changed_at).await?;
     }
@@ -268,6 +278,7 @@ pub async fn reprocess_activity_from_import(
     Ok(ReprocessedActivityImport {
         activity: updated,
         affected_segment_ids,
+        fitness_dirty_from_day: activity_draft.started_at.date_naive(),
     })
 }
 

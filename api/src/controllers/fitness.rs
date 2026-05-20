@@ -1,13 +1,10 @@
-use crate::analytics::{
-    build_fitness_freshness_rows, default_fitness_rebuild_start_date, FATIGUE_WINDOW_DAYS,
-    FITNESS_WINDOW_DAYS,
-};
+use crate::analytics::{FATIGUE_WINDOW_DAYS, FITNESS_WINDOW_DAYS};
 use crate::app_error::{ApiErrorResponse, AppError};
-use crate::entities::{activities, analytics_user_states, fitness_freshness_daily};
+use crate::entities::{analytics_user_states, fitness_freshness_daily};
 use crate::storage::AppStorage;
 use axum::extract::{Query, State};
 use axum::Json;
-use chrono::{DateTime, Duration, NaiveDate, Utc};
+use chrono::{Duration, NaiveDate, Utc};
 use kaleido::auth::UserContext;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde::{Deserialize, Serialize};
@@ -73,28 +70,40 @@ pub async fn get_fitness_freshness(
         ));
     }
 
-    let cached_rows = fitness_freshness_daily::Entity::find()
+    let mut cached_rows_query = fitness_freshness_daily::Entity::find()
         .filter(fitness_freshness_daily::Column::UserId.eq(user.id))
         .filter(fitness_freshness_daily::Column::Day.lte(end_date))
-        .order_by_asc(fitness_freshness_daily::Column::Day)
-        .all(&state.db)
-        .await?;
+        .order_by_asc(fitness_freshness_daily::Column::Day);
+
+    if let Some(start_date) = cached_row_query_start_date(requested_start_date) {
+        cached_rows_query = cached_rows_query
+            .filter(fitness_freshness_daily::Column::Day.gte(start_date));
+    }
+
+    let cached_rows = cached_rows_query.all(&state.db).await?;
     let freshness_state = analytics_user_states::Entity::find_by_id(user.id)
         .one(&state.db)
         .await?;
 
-    let (start_date, points) =
-        if cache_is_usable(&cached_rows, freshness_state.as_ref(), requested_start_date) {
-            let start_date = requested_start_date.unwrap_or(cached_rows[0].day);
+    let start_date = requested_start_date
+        .or_else(|| cached_rows.first().map(|row| row.day))
+        .unwrap_or(end_date);
+    let points = if cache_is_usable(
+        &cached_rows,
+        freshness_state.as_ref(),
+        requested_start_date,
+        end_date,
+    ) {
+        build_points_from_cached_rows(&cached_rows, start_date, end_date)
+    } else {
+        state.tasks.rebuild_fitness_freshness(user.id).await;
 
-            (
-                start_date,
-                build_points_from_cached_rows(&cached_rows, start_date, end_date),
-            )
+        if cached_rows.is_empty() {
+            Vec::new()
         } else {
-            state.tasks.rebuild_fitness_freshness(user.id).await;
-            load_points_from_activities(&state.db, user.id, requested_start_date, end_date).await?
-        };
+            build_points_from_cached_rows(&cached_rows, start_date, end_date)
+        }
+    };
 
     Ok(Json(FitnessFreshnessResponse {
         start_date: start_date.format("%Y-%m-%d").to_string(),
@@ -109,14 +118,11 @@ fn cache_is_usable(
     rows: &[fitness_freshness_daily::Model],
     freshness_state: Option<&analytics_user_states::Model>,
     requested_start_date: Option<NaiveDate>,
+    end_date: NaiveDate,
 ) -> bool {
     if rows.is_empty() {
         return false;
     }
-
-    let Some(freshness_state) = freshness_state else {
-        return false;
-    };
 
     if requested_start_date.is_some_and(|start_date| start_date < rows[0].day) {
         return false;
@@ -129,10 +135,9 @@ fn cache_is_usable(
         return false;
     }
 
-    rows.iter()
-        .map(|row| row.updated_at)
-        .min()
-        .is_some_and(|updated_at| updated_at >= freshness_state.last_activity_change_at)
+    !freshness_state
+        .and_then(|state| state.fitness_dirty_from_day)
+        .is_some_and(|dirty_from_day| dirty_from_day <= end_date)
 }
 
 fn build_points_from_cached_rows(
@@ -179,50 +184,13 @@ fn build_points_from_cached_rows(
     points
 }
 
-async fn load_points_from_activities(
-    db: &sea_orm::DatabaseConnection,
-    user_id: i32,
-    requested_start_date: Option<NaiveDate>,
-    end_date: NaiveDate,
-) -> Result<(NaiveDate, Vec<FitnessFreshnessPoint>), AppError> {
-    let end_bound = end_of_day_utc(end_date)?;
-    let activity_models = activities::Entity::find()
-        .filter(activities::Column::UserId.eq(user_id))
-        .filter(activities::Column::StartedAt.lte(end_bound))
-        .order_by_asc(activities::Column::StartedAt)
-        .all(db)
-        .await?;
-    let default_start_date = default_fitness_rebuild_start_date(&activity_models, end_date);
-    let start_date = requested_start_date.unwrap_or(default_start_date);
-    let compute_start_date = default_start_date.min(start_date);
-    let rows = build_fitness_freshness_rows(&activity_models, compute_start_date, end_date);
-
-    Ok((
-        start_date,
-        rows.into_iter()
-            .filter(|row| row.day >= start_date)
-            .map(|row| FitnessFreshnessPoint {
-                date: row.day.format("%Y-%m-%d").to_string(),
-                training_load: round_metric(row.training_load),
-                fitness: round_metric(row.fitness),
-                fatigue: round_metric(row.fatigue),
-                form: round_metric(row.form),
-            })
-            .collect(),
-    ))
+fn cached_row_query_start_date(requested_start_date: Option<NaiveDate>) -> Option<NaiveDate> {
+    requested_start_date
 }
 
 fn parse_date(value: &str) -> Result<NaiveDate, AppError> {
     NaiveDate::parse_from_str(value, "%Y-%m-%d")
         .map_err(|_| AppError::validation_field("date", "Dates must use YYYY-MM-DD format"))
-}
-
-fn end_of_day_utc(date: NaiveDate) -> Result<DateTime<Utc>, AppError> {
-    let naive = date
-        .and_hms_opt(23, 59, 59)
-        .ok_or_else(|| AppError::validation_field("end_date", "Invalid end date"))?;
-
-    Ok(DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc))
 }
 
 fn round_metric(value: f64) -> f64 {
@@ -276,17 +244,19 @@ mod tests {
             Some(&analytics_user_states::Model {
                 user_id: 1,
                 last_activity_change_at: now,
+                fitness_dirty_from_day: None,
+                last_fitness_rebuild_at: None,
                 created_at: now,
                 updated_at: now,
             }),
             Some(NaiveDate::from_ymd_opt(2026, 5, 1).unwrap()),
+            NaiveDate::from_ymd_opt(2026, 5, 3).unwrap(),
         ));
     }
 
     #[test]
-    fn cache_is_unusable_when_rows_are_older_than_latest_activity_change() {
-        let row_time = Utc::now();
-        let freshness_time = row_time + Duration::days(1);
+    fn cache_is_unusable_when_dirty_window_reaches_request_end() {
+        let now = Utc::now();
         let rows = vec![fitness_freshness_daily::Model {
             id: 1,
             user_id: 1,
@@ -296,19 +266,62 @@ mod tests {
             fitness: 1.0,
             fatigue: 2.0,
             form: -1.0,
-            created_at: row_time,
-            updated_at: row_time,
+            created_at: now,
+            updated_at: now,
         }];
 
         assert!(!cache_is_usable(
             &rows,
             Some(&analytics_user_states::Model {
                 user_id: 1,
-                last_activity_change_at: freshness_time,
-                created_at: freshness_time,
-                updated_at: freshness_time,
+                last_activity_change_at: now,
+                fitness_dirty_from_day: Some(NaiveDate::from_ymd_opt(2026, 5, 1).unwrap()),
+                last_fitness_rebuild_at: None,
+                created_at: now,
+                updated_at: now,
             }),
             Some(NaiveDate::from_ymd_opt(2026, 5, 1).unwrap()),
+            NaiveDate::from_ymd_opt(2026, 5, 2).unwrap(),
         ));
+    }
+
+    #[test]
+    fn cache_is_usable_when_dirty_window_is_after_requested_end() {
+        let now = Utc::now();
+        let rows = vec![fitness_freshness_daily::Model {
+            id: 1,
+            user_id: 1,
+            day: NaiveDate::from_ymd_opt(2026, 5, 1).unwrap(),
+            activity_count: 1,
+            training_load: 10.0,
+            fitness: 1.0,
+            fatigue: 2.0,
+            form: -1.0,
+            created_at: now,
+            updated_at: now,
+        }];
+
+        assert!(cache_is_usable(
+            &rows,
+            Some(&analytics_user_states::Model {
+                user_id: 1,
+                last_activity_change_at: now,
+                fitness_dirty_from_day: Some(NaiveDate::from_ymd_opt(2026, 5, 5).unwrap()),
+                last_fitness_rebuild_at: Some(now),
+                created_at: now,
+                updated_at: now,
+            }),
+            Some(NaiveDate::from_ymd_opt(2026, 5, 1).unwrap()),
+            NaiveDate::from_ymd_opt(2026, 5, 2).unwrap(),
+        ));
+    }
+
+    #[test]
+    fn cached_row_query_starts_at_requested_start_date() {
+        assert_eq!(
+            cached_row_query_start_date(Some(NaiveDate::from_ymd_opt(2026, 1, 15).unwrap())),
+            Some(NaiveDate::from_ymd_opt(2026, 1, 15).unwrap())
+        );
+        assert_eq!(cached_row_query_start_date(None), None);
     }
 }

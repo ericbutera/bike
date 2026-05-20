@@ -26,8 +26,8 @@ import {
 } from "../lib/routePreview";
 import {
   type Activity,
+  type ActivityAchievementHighlight,
   type ActivityRoutePoint,
-  type ActivitySegmentEffort,
   useActivities,
 } from "../lib/queries";
 import { primarySegmentAchievement } from "../lib/segmentAchievements";
@@ -98,7 +98,9 @@ function streamAchievementPriority(achievement: StreamAchievement) {
   }
 }
 
-function streamAchievement(effort: ActivitySegmentEffort): StreamAchievement[] {
+function streamAchievement(
+  effort: ActivityAchievementHighlight,
+): StreamAchievement[] {
   const primary = primarySegmentAchievement({
     overallRank: effort.overall_rank,
     personalRank: effort.personal_rank,
@@ -140,7 +142,7 @@ function streamAchievement(effort: ActivitySegmentEffort): StreamAchievement[] {
 }
 
 function activityAchievements(activity: Activity) {
-  return (activity.segment_efforts ?? [])
+  return (activity.achievement_highlights ?? activity.segment_efforts ?? [])
     .flatMap((effort) => streamAchievement(effort))
     .sort((left, right) => {
       const leftPriority = streamAchievementPriority(left);
