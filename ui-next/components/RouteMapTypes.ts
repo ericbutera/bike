@@ -15,6 +15,7 @@ export type RouteMovingMarker = {
   point: ActivityRoutePoint | null;
   color: string;
   opacity?: number;
+  label?: string;
 };
 
 export type RouteMapProps = {

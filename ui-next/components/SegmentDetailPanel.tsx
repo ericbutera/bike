@@ -17,7 +17,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Area,
   CartesianGrid,
@@ -62,11 +62,20 @@ const EFFORT_COLORS = [
   "#4338ca",
   "#c2410c",
 ];
-const MAX_SELECTED_EFFORTS = 10;
 const EFFORTS_VISIBLE_ROWS = 10;
 const EFFORTS_TABLE_MAX_HEIGHT_REM = 31;
 const EMPTY_EFFORTS: SegmentEffort[] = [];
 const EMPTY_EFFORT_IDS: number[] = [];
+const AUTO_PLAYBACK_MIN_SECONDS = 25;
+const PLAYBACK_TARGET_MAX_SECONDS = 120;
+const PLAYBACK_TARGET_MIN_SECONDS = 15;
+const PLAYBACK_END_EPSILON = 0.0001;
+const ATHLETE_PANEL_ROW_ANIMATION_MS = 220;
+const PLAYBACK_PACE_OPTIONS = [
+  { key: "detail", label: "Detail", multiplier: 1.5 },
+  { key: "auto", label: "Auto", multiplier: 1 },
+  { key: "fast", label: "Fast", multiplier: 0.65 },
+] as const;
 
 const EFFORT_TIME_FILTERS = [
   { key: "all", label: "All" },
@@ -78,6 +87,7 @@ const EFFORT_TIME_FILTERS = [
 
 type ChartMetric = "speed" | "heartRate" | "elevation";
 type EffortTimeFilter = (typeof EFFORT_TIME_FILTERS)[number]["key"];
+type PlaybackPace = (typeof PLAYBACK_PACE_OPTIONS)[number]["key"];
 
 type ComparisonChartRow = {
   elapsedSeconds: number;
@@ -122,6 +132,16 @@ function SectionTitleWithTooltip({
 type SelectedEffortRow = {
   effort: SegmentEffort;
   color: string;
+  markerLabel: string;
+};
+
+type LiveComparisonRow = SelectedEffortRow & {
+  currentPoint: ActivityRoutePoint | null;
+  gapSeconds: number | null;
+  speedDeltaMps: number | null;
+  isReference: boolean;
+  progress: number | null;
+  isFinished: boolean;
 };
 
 function startOfDay(value: Date) {
@@ -226,6 +246,50 @@ function filterEffortsBySearchQuery(
   });
 }
 
+function interpolateOptionalNumber(
+  previousValue: number | null | undefined,
+  currentValue: number | null | undefined,
+  progress: number,
+) {
+  if (previousValue == null && currentValue == null) {
+    return null;
+  }
+
+  if (previousValue == null) {
+    return currentValue ?? null;
+  }
+
+  if (currentValue == null) {
+    return previousValue;
+  }
+
+  return previousValue + (currentValue - previousValue) * progress;
+}
+
+function distanceRange(points: ActivityRoutePoint[] | null | undefined) {
+  if (!points || points.length < 2) {
+    return null;
+  }
+
+  const firstDistance = points[0]?.distance_meters;
+  const lastDistance = points.at(-1)?.distance_meters;
+  const hasDistanceRange =
+    typeof firstDistance === "number" &&
+    typeof lastDistance === "number" &&
+    lastDistance > firstDistance &&
+    points.every((point) => typeof point.distance_meters === "number");
+
+  if (!hasDistanceRange) {
+    return null;
+  }
+
+  return {
+    firstDistance,
+    lastDistance,
+    totalDistance: lastDistance - firstDistance,
+  };
+}
+
 function interpolateRoutePoint(
   points: ActivityRoutePoint[] | null | undefined,
   elapsedSeconds: number,
@@ -248,13 +312,47 @@ function interpolateRoutePoint(
         1,
       );
       const progress = (elapsedSeconds - previous.elapsed_seconds) / span;
+
       return {
         ...current,
+        elapsed_seconds:
+          previous.elapsed_seconds +
+          (current.elapsed_seconds - previous.elapsed_seconds) * progress,
         latitude:
           previous.latitude + (current.latitude - previous.latitude) * progress,
         longitude:
           previous.longitude +
           (current.longitude - previous.longitude) * progress,
+        distance_meters: interpolateOptionalNumber(
+          previous.distance_meters,
+          current.distance_meters,
+          progress,
+        ),
+        elevation_meters: interpolateOptionalNumber(
+          previous.elevation_meters,
+          current.elevation_meters,
+          progress,
+        ),
+        speed_mps: interpolateOptionalNumber(
+          previous.speed_mps,
+          current.speed_mps,
+          progress,
+        ),
+        heart_rate_bpm: interpolateOptionalNumber(
+          previous.heart_rate_bpm,
+          current.heart_rate_bpm,
+          progress,
+        ),
+        cadence_rpm: interpolateOptionalNumber(
+          previous.cadence_rpm,
+          current.cadence_rpm,
+          progress,
+        ),
+        power_watts: interpolateOptionalNumber(
+          previous.power_watts,
+          current.power_watts,
+          progress,
+        ),
       };
     }
   }
@@ -284,15 +382,13 @@ function interpolateRoutePointByProgress(
     return points[0];
   }
 
-  const firstDistance = points[0].distance_meters;
-  const lastDistance = points.at(-1)?.distance_meters;
-  const hasDistanceRange =
-    typeof firstDistance === "number" &&
-    typeof lastDistance === "number" &&
-    lastDistance > firstDistance &&
-    points.every((point) => typeof point.distance_meters === "number");
+  const range = distanceRange(points);
+  const firstDistance = range?.firstDistance;
+  const lastDistance = range?.lastDistance;
+  const hasDistanceRange = Boolean(range);
   const targetMeasure = hasDistanceRange
-    ? firstDistance + clampedProgress * (lastDistance - firstDistance)
+    ? (firstDistance as number) +
+      clampedProgress * ((lastDistance as number) - (firstDistance as number))
     : clampedProgress * (points.length - 1);
 
   for (let index = 1; index < points.length; index += 1) {
@@ -311,11 +407,9 @@ function interpolateRoutePointByProgress(
 
       return {
         ...current,
-        elapsed_seconds: Math.round(
+        elapsed_seconds:
           previous.elapsed_seconds +
-            (current.elapsed_seconds - previous.elapsed_seconds) *
-              localProgress,
-        ),
+          (current.elapsed_seconds - previous.elapsed_seconds) * localProgress,
         latitude:
           previous.latitude +
           (current.latitude - previous.latitude) * localProgress,
@@ -323,8 +417,37 @@ function interpolateRoutePointByProgress(
           previous.longitude +
           (current.longitude - previous.longitude) * localProgress,
         distance_meters: hasDistanceRange
-          ? targetMeasure - firstDistance
-          : current.distance_meters,
+          ? targetMeasure - (firstDistance as number)
+          : interpolateOptionalNumber(
+              previous.distance_meters,
+              current.distance_meters,
+              localProgress,
+            ),
+        elevation_meters: interpolateOptionalNumber(
+          previous.elevation_meters,
+          current.elevation_meters,
+          localProgress,
+        ),
+        speed_mps: interpolateOptionalNumber(
+          previous.speed_mps,
+          current.speed_mps,
+          localProgress,
+        ),
+        heart_rate_bpm: interpolateOptionalNumber(
+          previous.heart_rate_bpm,
+          current.heart_rate_bpm,
+          localProgress,
+        ),
+        cadence_rpm: interpolateOptionalNumber(
+          previous.cadence_rpm,
+          current.cadence_rpm,
+          localProgress,
+        ),
+        power_watts: interpolateOptionalNumber(
+          previous.power_watts,
+          current.power_watts,
+          localProgress,
+        ),
       };
     }
   }
@@ -332,37 +455,189 @@ function interpolateRoutePointByProgress(
   return points.at(-1) ?? null;
 }
 
-function comparisonMarkerPoint(
-  segmentRoutePoints: ActivityRoutePoint[] | null | undefined,
+function effortProgressAtElapsed(
   effort: SegmentEffort,
-  playbackSeconds: number,
+  elapsedSeconds: number,
 ) {
   const effortPoint = interpolateRoutePoint(
     effort.route_points,
-    playbackSeconds,
+    elapsedSeconds,
   );
 
   if (!effortPoint) {
     return null;
   }
 
-  const effortPoints = effort.route_points ?? [];
-  const firstDistance = effortPoints[0]?.distance_meters;
-  const lastDistance = effortPoints.at(-1)?.distance_meters;
-  const progress =
-    typeof effortPoint.distance_meters === "number" &&
-    typeof firstDistance === "number" &&
-    typeof lastDistance === "number" &&
-    lastDistance > firstDistance
-      ? clampProgress(
-          (effortPoint.distance_meters - firstDistance) /
-            (lastDistance - firstDistance),
-        )
-      : effort.duration_seconds > 0
-        ? clampProgress(playbackSeconds / effort.duration_seconds)
-        : 0;
+  const effortRange = distanceRange(effort.route_points);
+
+  if (effortRange && typeof effortPoint.distance_meters === "number") {
+    return clampProgress(
+      effortPoint.distance_meters / effortRange.totalDistance,
+    );
+  }
+
+  return effort.duration_seconds > 0
+    ? clampProgress(elapsedSeconds / effort.duration_seconds)
+    : 0;
+}
+
+function comparisonMarkerPoint(
+  segmentRoutePoints: ActivityRoutePoint[] | null | undefined,
+  effort: SegmentEffort,
+  playbackSeconds: number,
+) {
+  const progress = effortProgressAtElapsed(effort, playbackSeconds);
+
+  if (progress == null) {
+    return null;
+  }
 
   return interpolateRoutePointByProgress(segmentRoutePoints, progress);
+}
+
+function resolveRouteDistanceMeters(
+  routePoints: ActivityRoutePoint[] | null | undefined,
+  fallbackDistanceMeters: number | null | undefined,
+) {
+  return (
+    distanceRange(routePoints)?.totalDistance ?? fallbackDistanceMeters ?? null
+  );
+}
+
+function resolveRouteNetElevationMeters(
+  routePoints: ActivityRoutePoint[] | null | undefined,
+) {
+  if (!routePoints || routePoints.length < 2) {
+    return null;
+  }
+
+  const start = routePoints[0]?.elevation_meters;
+  const end = routePoints.at(-1)?.elevation_meters;
+
+  if (start == null || end == null) {
+    return null;
+  }
+
+  return end - start;
+}
+
+function formatGradePercent(value: number | null | undefined) {
+  if (value == null || Number.isNaN(value)) {
+    return "-- grade";
+  }
+
+  const rounded =
+    Math.abs(value) >= 10 ? Math.round(value) : Number(value.toFixed(1));
+
+  return `${rounded > 0 ? "+" : ""}${rounded}% grade`;
+}
+
+function formatSignedSecondsDelta(value: number | null | undefined) {
+  if (value == null || Number.isNaN(value)) {
+    return "--";
+  }
+
+  const rounded = Math.round(value);
+
+  if (rounded === 0) {
+    return "0s";
+  }
+
+  return `${rounded > 0 ? "+" : ""}${rounded}s`;
+}
+
+function formatSignedSpeedDelta(
+  value: number | null | undefined,
+  unitSystem: UnitSystem,
+) {
+  if (value == null || Number.isNaN(value)) {
+    return "--";
+  }
+
+  const rounded = Math.abs(value) < 0.01 ? 0 : value;
+  const sign = rounded > 0 ? "+" : rounded < 0 ? "-" : "";
+
+  return `${sign}${formatSpeed(Math.abs(rounded), unitSystem)}`;
+}
+
+function routeDistanceAtProgress(
+  routePoints: ActivityRoutePoint[] | null | undefined,
+  progress: number,
+  fallbackDistanceMeters: number | null | undefined,
+) {
+  const point = interpolateRoutePointByProgress(routePoints, progress);
+
+  if (typeof point?.distance_meters === "number") {
+    return point.distance_meters;
+  }
+
+  return fallbackDistanceMeters != null
+    ? clampProgress(progress) * fallbackDistanceMeters
+    : progress;
+}
+
+function playbackSecondsForEffort(
+  effort: SegmentEffort,
+  playbackSeconds: number,
+) {
+  return Math.min(playbackSeconds, effort.duration_seconds);
+}
+
+function autoPlaybackTargetSeconds(durationSeconds: number) {
+  if (durationSeconds <= 0) {
+    return 0;
+  }
+
+  if (durationSeconds <= AUTO_PLAYBACK_MIN_SECONDS) {
+    return durationSeconds;
+  }
+
+  if (durationSeconds <= 10 * 60) {
+    return AUTO_PLAYBACK_MIN_SECONDS;
+  }
+
+  if (durationSeconds <= 30 * 60) {
+    return 35;
+  }
+
+  if (durationSeconds <= 60 * 60) {
+    return 45;
+  }
+
+  return 60;
+}
+
+function playbackTargetSeconds(
+  durationSeconds: number,
+  playbackPace: PlaybackPace,
+) {
+  const option = PLAYBACK_PACE_OPTIONS.find(
+    (entry) => entry.key === playbackPace,
+  );
+  const multiplier = option?.multiplier ?? 1;
+  const autoTarget = autoPlaybackTargetSeconds(durationSeconds);
+
+  if (autoTarget <= 0) {
+    return 0;
+  }
+
+  return Math.min(
+    Math.max(
+      autoTarget * multiplier,
+      Math.min(
+        durationSeconds,
+        Math.max(AUTO_PLAYBACK_MIN_SECONDS, PLAYBACK_TARGET_MIN_SECONDS),
+      ),
+    ),
+    PLAYBACK_TARGET_MAX_SECONDS,
+  );
+}
+
+function isEffortFinishedAtPlayback(
+  effort: SegmentEffort,
+  playbackSeconds: number,
+) {
+  return playbackSeconds > effort.duration_seconds + PLAYBACK_END_EPSILON;
 }
 
 function formatMetricValue(
@@ -618,41 +893,313 @@ function ComparisonChartTooltip({
   );
 }
 
+type GapChartRow = {
+  progress: number;
+  distanceMeters: number;
+  elevation?: number | null;
+  [key: string]: number | null | undefined;
+};
+
+function buildGapChartRowAtProgress(
+  progress: number,
+  routePoints: ActivityRoutePoint[] | null | undefined,
+  selectedRows: SelectedEffortRow[],
+  referenceEffort: SegmentEffort | null,
+  fallbackDistanceMeters: number | null | undefined,
+) {
+  if (!referenceEffort) {
+    return null;
+  }
+
+  const referencePoint = interpolateRoutePointByProgress(
+    referenceEffort.route_points,
+    progress,
+  );
+
+  if (!referencePoint) {
+    return null;
+  }
+
+  const routePoint = interpolateRoutePointByProgress(routePoints, progress);
+  const row: GapChartRow = {
+    progress,
+    distanceMeters: routeDistanceAtProgress(
+      routePoints,
+      progress,
+      fallbackDistanceMeters,
+    ),
+    elevation: routePoint?.elevation_meters ?? null,
+  };
+
+  for (const selectedRow of selectedRows) {
+    const comparisonPoint = interpolateRoutePointByProgress(
+      selectedRow.effort.route_points,
+      progress,
+    );
+
+    row[effortSeriesDataKey(selectedRow.effort.id)] = comparisonPoint
+      ? referencePoint.elapsed_seconds - comparisonPoint.elapsed_seconds
+      : null;
+  }
+
+  return row;
+}
+
+function buildGapChartRows(
+  routePoints: ActivityRoutePoint[] | null | undefined,
+  selectedRows: SelectedEffortRow[],
+  referenceEffort: SegmentEffort | null,
+  fallbackDistanceMeters: number | null | undefined,
+) {
+  if (!routePoints || routePoints.length < 2 || !referenceEffort) {
+    return [] as GapChartRow[];
+  }
+
+  const range = distanceRange(routePoints);
+
+  return routePoints
+    .map((point, index) => {
+      const progress = range
+        ? ((point.distance_meters as number) - range.firstDistance) /
+          range.totalDistance
+        : index / Math.max(routePoints.length - 1, 1);
+
+      return buildGapChartRowAtProgress(
+        progress,
+        routePoints,
+        selectedRows,
+        referenceEffort,
+        fallbackDistanceMeters,
+      );
+    })
+    .filter((row): row is GapChartRow => row !== null);
+}
+
+function buildPlaybackGapMarker(
+  selectedRow: SelectedEffortRow,
+  routePoints: ActivityRoutePoint[] | null | undefined,
+  selectedRows: SelectedEffortRow[],
+  referenceEffort: SegmentEffort | null,
+  fallbackDistanceMeters: number | null | undefined,
+  playbackSeconds: number,
+) {
+  if (!referenceEffort) {
+    return null;
+  }
+
+  const progress = effortProgressAtElapsed(
+    selectedRow.effort,
+    playbackSecondsForEffort(selectedRow.effort, playbackSeconds),
+  );
+
+  if (progress == null) {
+    return null;
+  }
+
+  const row = buildGapChartRowAtProgress(
+    progress,
+    routePoints,
+    selectedRows,
+    referenceEffort,
+    fallbackDistanceMeters,
+  );
+
+  if (!row) {
+    return null;
+  }
+
+  const value = row[effortSeriesDataKey(selectedRow.effort.id)];
+
+  if (typeof value !== "number") {
+    return null;
+  }
+
+  return {
+    distanceMeters: row.distanceMeters,
+    value,
+    isFinished: isEffortFinishedAtPlayback(selectedRow.effort, playbackSeconds),
+  };
+}
+
+function buildLiveComparisonRows(
+  selectedRows: SelectedEffortRow[],
+  referenceEffort: SegmentEffort | null,
+  playbackSeconds: number,
+) {
+  if (!referenceEffort) {
+    return [] as LiveComparisonRow[];
+  }
+
+  const referenceCurrentPoint = interpolateRoutePoint(
+    referenceEffort.route_points,
+    playbackSeconds,
+  );
+  const referenceProgress = effortProgressAtElapsed(
+    referenceEffort,
+    playbackSeconds,
+  );
+  const referenceProgressPoint =
+    referenceProgress != null
+      ? interpolateRoutePointByProgress(
+          referenceEffort.route_points,
+          referenceProgress,
+        )
+      : null;
+
+  return [...selectedRows].map((selectedRow) => {
+    const activePlaybackSeconds = playbackSecondsForEffort(
+      selectedRow.effort,
+      playbackSeconds,
+    );
+    const progress = effortProgressAtElapsed(
+      selectedRow.effort,
+      activePlaybackSeconds,
+    );
+    const isFinished = isEffortFinishedAtPlayback(
+      selectedRow.effort,
+      playbackSeconds,
+    );
+    const currentPoint = isFinished
+      ? null
+      : interpolateRoutePoint(
+          selectedRow.effort.route_points,
+          activePlaybackSeconds,
+        );
+    const progressPoint =
+      referenceProgress != null
+        ? interpolateRoutePointByProgress(
+            selectedRow.effort.route_points,
+            referenceProgress,
+          )
+        : null;
+
+    return {
+      ...selectedRow,
+      currentPoint,
+      gapSeconds:
+        referenceProgressPoint && progressPoint
+          ? referenceProgressPoint.elapsed_seconds -
+            progressPoint.elapsed_seconds
+          : null,
+      speedDeltaMps:
+        !isFinished &&
+        currentPoint?.speed_mps != null &&
+        referenceCurrentPoint?.speed_mps != null
+          ? currentPoint.speed_mps - referenceCurrentPoint.speed_mps
+          : null,
+      isReference: selectedRow.effort.id === referenceEffort.id,
+      progress,
+      isFinished,
+    };
+  });
+}
+
+function ComparisonGapChartTooltip({
+  active,
+  label,
+  payload,
+  selectedRows,
+  unitSystem,
+}: {
+  active?: boolean;
+  label?: number;
+  payload?: Array<{
+    color?: string;
+    dataKey?: string;
+    value?: number | string | null;
+  }>;
+  selectedRows: SelectedEffortRow[];
+  unitSystem: UnitSystem;
+}) {
+  if (!active || typeof label !== "number") {
+    return null;
+  }
+
+  const elevationValue = payload?.find(
+    (entry) => entry.dataKey === "elevation",
+  )?.value;
+
+  return (
+    <div className="rounded-box border border-base-300 bg-base-100 px-3 py-3 shadow-lg">
+      <p className="text-sm font-semibold text-base-content">
+        {formatDistance(label, unitSystem)}
+      </p>
+      <p className="mt-1 text-sm text-base-content/70">
+        Elevation {formatElevation(Number(elevationValue ?? null), unitSystem)}
+      </p>
+      <div className="mt-2 space-y-1.5 text-sm text-base-content/75">
+        {selectedRows.map((selectedRow) => {
+          const value = payload?.find(
+            (entry) =>
+              entry.dataKey === effortSeriesDataKey(selectedRow.effort.id),
+          )?.value;
+
+          return (
+            <div
+              key={selectedRow.effort.id}
+              className="rounded-box border border-base-300 bg-base-200/70 px-2 py-2"
+              style={{ borderLeftColor: selectedRow.color, borderLeftWidth: 4 }}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span
+                      aria-hidden
+                      className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[0.65rem] font-semibold text-white"
+                      style={{ backgroundColor: selectedRow.color }}
+                    >
+                      {selectedRow.markerLabel}
+                    </span>
+                    <span className="truncate font-medium text-base-content">
+                      {selectedRow.effort.rider_name}
+                    </span>
+                  </div>
+                  <div className="truncate pl-7 text-xs text-base-content/65">
+                    {selectedRow.effort.activity_title}
+                  </div>
+                </div>
+                <span className="whitespace-nowrap font-medium text-base-content">
+                  {formatSignedSecondsDelta(
+                    typeof value === "number" ? value : null,
+                  )}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function RouteComparisonMap({
   routePoints,
-  selectedEfforts,
+  selectedRows,
   playbackSeconds,
-  maxDuration,
-  isPlaying,
-  focusedEffortId,
-  onTogglePlayback,
-  onSeek,
 }: {
   routePoints: ActivityRoutePoint[] | null | undefined;
-  selectedEfforts: SegmentEffort[];
+  selectedRows: SelectedEffortRow[];
   playbackSeconds: number;
-  maxDuration: number;
-  isPlaying: boolean;
-  focusedEffortId: number | null;
-  onTogglePlayback: () => void;
-  onSeek: (value: number) => void;
 }) {
   const hasRouteMap = (routePoints?.length ?? 0) >= 2;
 
-  const markers = selectedEfforts
-    .map((effort, index) => {
-      const point = comparisonMarkerPoint(routePoints, effort, playbackSeconds);
+  const markers = selectedRows
+    .map((selectedRow) => {
+      const point = comparisonMarkerPoint(
+        routePoints,
+        selectedRow.effort,
+        playbackSeconds,
+      );
+
       if (!point) {
         return null;
       }
 
-      const isDimmed = focusedEffortId != null && effort.id !== focusedEffortId;
-
       return {
-        id: effort.id,
-        color: EFFORT_COLORS[index % EFFORT_COLORS.length],
+        id: selectedRow.effort.id,
+        color: selectedRow.color,
         point,
-        isDimmed,
+        label: selectedRow.markerLabel,
       };
     })
     .filter(
@@ -662,483 +1209,505 @@ function RouteComparisonMap({
         id: number;
         color: string;
         point: ActivityRoutePoint;
-        isDimmed: boolean;
+        label: string;
       } => marker !== null,
     );
 
-  return (
-    <div className="flex h-full flex-col">
-      <div>
-        <SectionTitleWithTooltip
-          as="h3"
-          title="Route playback"
-          tooltip="Play the selected attempts against the same route to see where each ride is gaining or losing time."
-          className="text-sm font-semibold uppercase tracking-[0.16em] text-base-content/55"
-        />
-      </div>
-
-      <div className="mt-4 min-h-[20rem] flex-1 overflow-hidden rounded-box border border-base-300 bg-base-200">
-        {hasRouteMap ? (
-          <MapLibreRouteMap
-            routePoints={routePoints}
-            movingMarkers={markers.map((marker) => ({
-              id: String(marker.id),
-              point: marker.point,
-              color: marker.color,
-              opacity: marker.isDimmed ? 0.28 : 1,
-            }))}
-            ariaLabel="Segment comparison map"
-            emptyMessage="Segment route geometry is not available yet."
-            fitBoundsPadding={24}
-            fitBoundsMaxZoom={18}
-            className="h-full min-h-[20rem] w-full"
-          />
-        ) : (
-          <div className="flex h-full min-h-[20rem] items-center justify-center p-4">
-            <div className="alert">
-              Segment route geometry is not available yet.
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="mt-4 flex items-center gap-3">
-        <button
-          type="button"
-          className="btn btn-outline btn-sm btn-square shrink-0"
-          disabled={selectedEfforts.length === 0 || maxDuration <= 0}
-          aria-label={
-            isPlaying
-              ? "Pause comparison playback"
-              : playbackSeconds >= maxDuration
-                ? "Replay comparison playback"
-                : "Play comparison playback"
-          }
-          onClick={onTogglePlayback}
-        >
-          <FontAwesomeIcon
-            icon={isPlaying ? faPause : faPlay}
-            className="h-4 w-4"
-          />
-        </button>
-
-        <input
-          type="range"
-          min={0}
-          max={Math.max(maxDuration, 1)}
-          step={1}
-          value={Math.min(playbackSeconds, Math.max(maxDuration, 1))}
-          className="range range-primary flex-1"
-          disabled={selectedEfforts.length === 0 || maxDuration <= 0}
-          aria-label="Playback timeline"
-          onChange={(event) => {
-            onSeek(Number(event.target.value));
-          }}
-        />
-        <span className="badge badge-outline whitespace-nowrap">
-          {formatDuration(Math.round(playbackSeconds))} /{" "}
-          {formatDuration(maxDuration)}
-        </span>
-      </div>
+  return hasRouteMap ? (
+    <MapLibreRouteMap
+      routePoints={routePoints}
+      movingMarkers={markers.map((marker) => ({
+        id: String(marker.id),
+        point: marker.point,
+        color: marker.color,
+        opacity: 1,
+        label: marker.label,
+      }))}
+      ariaLabel="Segment comparison map"
+      emptyMessage="Segment route geometry is not available yet."
+      fitBoundsPadding={40}
+      fitBoundsMaxZoom={18}
+      className="h-full min-h-[24rem] w-full rounded-none border-0"
+    />
+  ) : (
+    <div className="flex h-full min-h-[24rem] items-center justify-center p-4">
+      <div className="alert">Segment route geometry is not available yet.</div>
     </div>
   );
 }
 
 function ComparisonChart({
-  metric,
   routePoints,
-  selectedEfforts,
+  routeDistanceMeters,
+  selectedRows,
+  referenceEffortId,
   playbackSeconds,
-  focusedEffortId,
   unitSystem,
-  onMetricChange,
 }: {
-  metric: ChartMetric;
   routePoints: ActivityRoutePoint[] | null | undefined;
-  selectedEfforts: SegmentEffort[];
+  routeDistanceMeters: number | null | undefined;
+  selectedRows: SelectedEffortRow[];
+  referenceEffortId: number | null;
   playbackSeconds: number;
-  focusedEffortId: number | null;
   unitSystem: UnitSystem;
-  onMetricChange: (value: ChartMetric) => void;
 }) {
-  const [hoveredRow, setHoveredRow] = useState<ComparisonChartRow | null>(null);
-  const series = useMemo<ComparisonSeries[]>(
+  const [hoveredRow, setHoveredRow] = useState<GapChartRow | null>(null);
+  const referenceEffort =
+    selectedRows.find(
+      (selectedRow) => selectedRow.effort.id === referenceEffortId,
+    )?.effort ?? null;
+  const chartRows = useMemo(
     () =>
-      selectedEfforts.map((effort, index) => ({
-        effort,
-        color: EFFORT_COLORS[index % EFFORT_COLORS.length],
-        dataKey: effortSeriesDataKey(effort.id),
-        points: buildChartSeries(metric, effort),
-      })),
-    [metric, selectedEfforts],
+      buildGapChartRows(
+        routePoints,
+        selectedRows,
+        referenceEffort,
+        routeDistanceMeters,
+      ),
+    [referenceEffort, routeDistanceMeters, routePoints, selectedRows],
   );
-  const allPoints = series.flatMap((entry) => entry.points);
-  const hasComparisonData = allPoints.length >= 2;
-  const maxX = hasComparisonData
-    ? Math.max(...allPoints.map((point) => point.x), 1)
-    : 1;
-  const elevationPoints = hasComparisonData
-    ? buildElevationBackdropSeries(routePoints, maxX)
-    : [];
-  const chartRows = hasComparisonData
-    ? buildComparisonChartRows(series, elevationPoints)
-    : [];
-  const playbackRow = hasComparisonData
-    ? buildComparisonChartRowAtX(
-        Math.min(playbackSeconds, maxX),
-        series,
-        elevationPoints,
-        true,
-      )
+  const maxDistance =
+    chartRows.at(-1)?.distanceMeters ?? routeDistanceMeters ?? 1;
+  const playbackProgress = referenceEffort
+    ? effortProgressAtElapsed(referenceEffort, playbackSeconds)
     : null;
+  const playbackRow =
+    referenceEffort && playbackProgress != null
+      ? buildGapChartRowAtProgress(
+          playbackProgress,
+          routePoints,
+          selectedRows,
+          referenceEffort,
+          routeDistanceMeters,
+        )
+      : null;
   const displayRow = hoveredRow ?? playbackRow;
-  const displaySeconds = displayRow?.elapsedSeconds ?? 0;
+  const displayDistance = displayRow?.distanceMeters ?? 0;
 
-  return (
-    <div className="flex h-full flex-col">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <SectionTitleWithTooltip
-            as="h3"
-            title="Chart comparison"
-            tooltip="Compare the selected attempts across elapsed time while the map dots advance."
-            className="text-sm font-semibold uppercase tracking-[0.16em] text-base-content/55"
+  return chartRows.length >= 2 ? (
+    <div
+      role="img"
+      aria-label="Segment comparison chart"
+      className="h-[18rem] p-3"
+    >
+      <ResponsiveContainer
+        width="100%"
+        height="100%"
+        minWidth={320}
+        minHeight={240}
+      >
+        <ComposedChart
+          data={chartRows}
+          margin={{ top: 12, right: 12, bottom: 4, left: 8 }}
+          onMouseLeave={() => {
+            setHoveredRow(null);
+          }}
+          onMouseMove={(state) => {
+            const nextIndex = Number(state?.activeTooltipIndex);
+
+            if (
+              state?.isTooltipActive &&
+              Number.isInteger(nextIndex) &&
+              nextIndex >= 0 &&
+              nextIndex < chartRows.length
+            ) {
+              setHoveredRow(chartRows[nextIndex]);
+            } else {
+              setHoveredRow(null);
+            }
+          }}
+        >
+          <CartesianGrid
+            vertical={false}
+            stroke="var(--color-base-content)"
+            strokeOpacity={0.1}
           />
-        </div>
-      </div>
+          <XAxis
+            axisLine={false}
+            dataKey="distanceMeters"
+            domain={[0, maxDistance]}
+            tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
+            tickFormatter={(value: number) => formatDistance(value, unitSystem)}
+            tickLine={false}
+            type="number"
+          />
+          <YAxis
+            axisLine={false}
+            tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
+            tickFormatter={(value: number) =>
+              formatElevation(value, unitSystem)
+            }
+            tickLine={false}
+            tickMargin={10}
+            width={68}
+            yAxisId="elevation"
+          />
+          <YAxis
+            axisLine={false}
+            orientation="right"
+            tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
+            tickFormatter={(value: number) => formatSignedSecondsDelta(value)}
+            tickLine={false}
+            tickMargin={10}
+            width={72}
+            yAxisId="gap"
+          />
+          <Tooltip
+            content={
+              <ComparisonGapChartTooltip
+                selectedRows={selectedRows}
+                unitSystem={unitSystem}
+              />
+            }
+            cursor={{
+              stroke: "#71717a",
+              strokeDasharray: "4 4",
+              strokeOpacity: 0.95,
+            }}
+          />
 
-      <div className="mt-4 flex min-h-[20rem] flex-1 overflow-hidden rounded-box border border-base-300 bg-base-200 p-3">
-        {hasComparisonData ? (
-          <div
-            role="img"
-            aria-label="Segment comparison chart"
-            className="flex flex-1"
-          >
-            <div className="h-full min-h-[20rem] w-full">
-              <ResponsiveContainer
-                width="100%"
-                height="100%"
-                minWidth={320}
-                minHeight={320}
-              >
-                <ComposedChart
-                  data={chartRows}
-                  margin={{ top: 12, right: 8, bottom: 12, left: 8 }}
-                  onMouseLeave={() => {
-                    setHoveredRow(null);
-                  }}
-                  onMouseMove={(state) => {
-                    const nextIndex = Number(state?.activeTooltipIndex);
+          <Area
+            type="linear"
+            dataKey="elevation"
+            yAxisId="elevation"
+            stroke="#9ca3af"
+            fill="#d1d5db"
+            fillOpacity={0.45}
+            strokeOpacity={0.7}
+            strokeWidth={1.5}
+            dot={false}
+            connectNulls
+          />
+          <ReferenceLine
+            y={0}
+            yAxisId="gap"
+            stroke="#52525b"
+            strokeOpacity={0.8}
+          />
 
-                    if (
-                      state?.isTooltipActive &&
-                      Number.isInteger(nextIndex) &&
-                      nextIndex >= 0 &&
-                      nextIndex < chartRows.length
-                    ) {
-                      setHoveredRow(chartRows[nextIndex]);
-                    } else {
-                      setHoveredRow(null);
-                    }
-                  }}
-                >
-                  <CartesianGrid
-                    vertical={false}
-                    stroke="var(--color-base-content)"
-                    strokeOpacity={0.12}
+          {selectedRows.map((selectedRow) => {
+            const isReference = selectedRow.effort.id === referenceEffortId;
+
+            return (
+              <Line
+                key={selectedRow.effort.id}
+                type="linear"
+                dataKey={effortSeriesDataKey(selectedRow.effort.id)}
+                yAxisId="gap"
+                stroke={selectedRow.color}
+                strokeWidth={isReference ? 3.2 : 2.4}
+                strokeOpacity={1}
+                dot={false}
+                activeDot={false}
+                connectNulls
+              />
+            );
+          })}
+
+          {!hoveredRow && displayRow && displayDistance > 0 ? (
+            <ReferenceLine
+              x={displayDistance}
+              stroke="#52525b"
+              strokeDasharray="4 4"
+            />
+          ) : null}
+
+          {!hoveredRow && displayRow
+            ? selectedRows.map((selectedRow) => {
+                const playbackMarker = buildPlaybackGapMarker(
+                  selectedRow,
+                  routePoints,
+                  selectedRows,
+                  referenceEffort,
+                  routeDistanceMeters,
+                  playbackSeconds,
+                );
+
+                if (!playbackMarker) {
+                  return null;
+                }
+
+                return (
+                  <ReferenceDot
+                    key={`${selectedRow.effort.id}-marker`}
+                    x={playbackMarker.distanceMeters}
+                    y={playbackMarker.value}
+                    fill={selectedRow.color}
+                    fillOpacity={1}
+                    r={playbackMarker.isFinished ? 4.75 : 5.5}
+                    stroke="var(--color-base-100)"
+                    strokeOpacity={1}
+                    strokeWidth={1.2}
+                    yAxisId="gap"
                   />
-                  <XAxis
-                    axisLine={false}
-                    dataKey="elapsedSeconds"
-                    domain={[0, maxX]}
-                    label={{
-                      value: "Elapsed time",
-                      position: "insideBottom",
-                      offset: -6,
-                    }}
-                    tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
-                    tickFormatter={(value: number) =>
-                      formatDuration(Math.round(value))
-                    }
-                    tickLine={false}
-                    type="number"
-                  />
-                  <YAxis
-                    axisLine={false}
-                    label={{
-                      angle: -90,
-                      fill: "var(--color-base-content)",
-                      fontSize: 10,
-                      position: "insideLeft",
-                      style: { opacity: 0.65 },
-                      value: metricLabel(metric),
-                    }}
-                    tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
-                    tickFormatter={(value: number) =>
-                      formatMetricValue(metric, value, unitSystem)
-                    }
-                    tickLine={false}
-                    tickMargin={10}
-                    width={74}
-                    yAxisId="metric"
-                  />
-                  <YAxis
-                    axisLine={false}
-                    label={{
-                      angle: 90,
-                      fill: "var(--color-base-content)",
-                      fontSize: 10,
-                      position: "insideRight",
-                      style: { opacity: 0.65 },
-                      value: "Elevation",
-                    }}
-                    orientation="right"
-                    tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
-                    tickFormatter={(value: number) =>
-                      formatElevation(value, unitSystem)
-                    }
-                    tickLine={false}
-                    tickMargin={10}
-                    width={74}
-                    yAxisId="elevation"
-                  />
-                  <Tooltip
-                    content={
-                      <ComparisonChartTooltip
-                        metric={metric}
-                        series={series}
-                        unitSystem={unitSystem}
-                      />
-                    }
-                    cursor={{
-                      stroke: "#78716c",
-                      strokeDasharray: "4 4",
-                      strokeOpacity: 0.9,
-                    }}
-                  />
-
-                  {elevationPoints.length > 1 ? (
-                    <Area
-                      type="linear"
-                      dataKey="elevation"
-                      yAxisId="elevation"
-                      stroke="var(--color-success)"
-                      fill="var(--color-success)"
-                      fillOpacity={0.15}
-                      strokeOpacity={0.35}
-                      strokeWidth={2}
-                      dot={false}
-                      connectNulls
-                    />
-                  ) : null}
-
-                  {series.map((entry) => (
-                    <Line
-                      key={entry.effort.id}
-                      type="linear"
-                      dataKey={entry.dataKey}
-                      yAxisId="metric"
-                      stroke={entry.color}
-                      strokeWidth={metric === "speed" ? 2.5 : 3.5}
-                      strokeOpacity={
-                        focusedEffortId != null &&
-                        focusedEffortId !== entry.effort.id
-                          ? 0.24
-                          : 1
-                      }
-                      dot={false}
-                      activeDot={{
-                        r: 6,
-                        fill: entry.color,
-                        fillOpacity:
-                          focusedEffortId != null &&
-                          focusedEffortId !== entry.effort.id
-                            ? 0.24
-                            : 1,
-                        stroke: "var(--color-base-100)",
-                        strokeOpacity:
-                          focusedEffortId != null &&
-                          focusedEffortId !== entry.effort.id
-                            ? 0.4
-                            : 1,
-                        strokeWidth: 1.25,
-                      }}
-                      connectNulls
-                    />
-                  ))}
-
-                  {!hoveredRow && displayRow && displaySeconds > 0 ? (
-                    <ReferenceLine
-                      x={displaySeconds}
-                      stroke="#78716c"
-                      strokeDasharray="4 4"
-                    />
-                  ) : null}
-
-                  {!hoveredRow && displayRow
-                    ? series.map((entry) => {
-                        const value = displayRow[entry.dataKey];
-
-                        if (typeof value !== "number") {
-                          return null;
-                        }
-
-                        return (
-                          <ReferenceDot
-                            key={`${entry.effort.id}-marker`}
-                            x={displaySeconds}
-                            y={value}
-                            fill={entry.color}
-                            fillOpacity={
-                              focusedEffortId != null &&
-                              focusedEffortId !== entry.effort.id
-                                ? 0.24
-                                : 1
-                            }
-                            r={6}
-                            stroke="var(--color-base-100)"
-                            strokeOpacity={
-                              focusedEffortId != null &&
-                              focusedEffortId !== entry.effort.id
-                                ? 0.4
-                                : 1
-                            }
-                            strokeWidth={1.25}
-                            yAxisId="metric"
-                          />
-                        );
-                      })
-                    : null}
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-1 items-center justify-center">
-            <div className="alert">
-              The selected efforts do not have enough point-level data for a
-              shared chart.
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="mt-4 flex justify-end">
-        <div className="join">
-          {(["speed", "heartRate"] as ChartMetric[]).map((nextMetric) => (
-            <button
-              key={nextMetric}
-              type="button"
-              className={`join-item btn btn-sm ${metric === nextMetric ? "btn-primary" : "btn-ghost"}`}
-              onClick={() => {
-                onMetricChange(nextMetric);
-              }}
-            >
-              {nextMetric === "heartRate" ? "Heart rate" : nextMetric}
-            </button>
-          ))}
-        </div>
+                );
+              })
+            : null}
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  ) : (
+    <div className="flex h-[18rem] items-center justify-center p-4">
+      <div className="alert">
+        The selected efforts do not have enough point-level data for a shared
+        chart.
       </div>
     </div>
   );
 }
 
 function SelectedEffortsPanel({
-  selectedRows,
+  comparisonRows,
   focusedEffortId,
-  pinnedEffortId,
+  referenceEffortId,
+  playbackSeconds,
+  unitSystem,
   onHoverEffort,
   onTogglePinnedEffort,
   onRemoveEffort,
 }: {
-  selectedRows: SelectedEffortRow[];
+  comparisonRows: LiveComparisonRow[];
   focusedEffortId: number | null;
-  pinnedEffortId: number | null;
+  referenceEffortId: number | null;
+  playbackSeconds: number;
+  unitSystem: UnitSystem;
   onHoverEffort: (effortId: number | null) => void;
   onTogglePinnedEffort: (effortId: number) => void;
   onRemoveEffort: (effortId: number) => void;
 }) {
-  return (
-    <div className="rounded-box border border-base-300 bg-base-200 p-4">
-      <div>
-        <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-base-content/55">
-          Selected rides
-        </h3>
-        <p className="mt-1 text-sm text-base-content/60">
-          Hover or pin a ride here to focus the shared map and chart.
-        </p>
-      </div>
+  const rowRefs = useRef(new Map<number, HTMLDivElement>());
+  const previousRowTopByEffortIdRef = useRef(new Map<number, number>());
+  const animationFrameRef = useRef<number | null>(null);
+  const gridTemplateColumns = "minmax(0,1fr) 5.25rem 6.5rem 4.5rem 1.25rem";
+  const sortedComparisonRows = useMemo(() => {
+    const fallbackIndexByEffortId = new Map(
+      comparisonRows.map((comparisonRow, index) => [
+        comparisonRow.effort.id,
+        index,
+      ]),
+    );
 
-      {selectedRows.length > 0 ? (
-        <div className="mt-4 space-y-2">
-          {selectedRows.map(({ effort, color }) => {
-            const isFocused = focusedEffortId === effort.id;
-            const isPinned = pinnedEffortId === effort.id;
+    return [...comparisonRows].sort((left, right) => {
+      const progressDelta = (right.progress ?? -1) - (left.progress ?? -1);
+
+      if (Math.abs(progressDelta) > Number.EPSILON) {
+        return progressDelta;
+      }
+
+      const gapDelta = (right.gapSeconds ?? 0) - (left.gapSeconds ?? 0);
+
+      if (Math.abs(gapDelta) > Number.EPSILON) {
+        return gapDelta;
+      }
+
+      return (
+        (fallbackIndexByEffortId.get(left.effort.id) ?? 0) -
+        (fallbackIndexByEffortId.get(right.effort.id) ?? 0)
+      );
+    });
+  }, [comparisonRows]);
+  const sortedComparisonRowOrder = useMemo(
+    () =>
+      sortedComparisonRows
+        .map((comparisonRow) => comparisonRow.effort.id)
+        .join(","),
+    [sortedComparisonRows],
+  );
+
+  useLayoutEffect(() => {
+    if (animationFrameRef.current != null) {
+      window.cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+
+    const nextRowTopByEffortId = new Map<number, number>();
+
+    for (const comparisonRow of sortedComparisonRows) {
+      const row = rowRefs.current.get(comparisonRow.effort.id);
+
+      if (!row) {
+        continue;
+      }
+
+      const nextTop = row.getBoundingClientRect().top;
+      nextRowTopByEffortId.set(comparisonRow.effort.id, nextTop);
+
+      const previousTop = previousRowTopByEffortIdRef.current.get(
+        comparisonRow.effort.id,
+      );
+
+      if (previousTop == null) {
+        continue;
+      }
+
+      const deltaY = previousTop - nextTop;
+
+      if (Math.abs(deltaY) < 1) {
+        continue;
+      }
+
+      row.style.transition = "none";
+      row.style.transform = `translateY(${deltaY}px)`;
+    }
+
+    animationFrameRef.current = window.requestAnimationFrame(() => {
+      for (const comparisonRow of sortedComparisonRows) {
+        const row = rowRefs.current.get(comparisonRow.effort.id);
+
+        if (!row || !row.style.transform) {
+          continue;
+        }
+
+        row.style.transition = `transform ${ATHLETE_PANEL_ROW_ANIMATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`;
+        row.style.transform = "translateY(0)";
+      }
+
+      animationFrameRef.current = null;
+    });
+
+    previousRowTopByEffortIdRef.current = nextRowTopByEffortId;
+
+    return () => {
+      if (animationFrameRef.current != null) {
+        window.cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+    };
+  }, [sortedComparisonRowOrder]);
+
+  return sortedComparisonRows.length > 0 ? (
+    <div className="flex h-full min-h-[24rem] flex-col bg-base-100">
+      <div className="flex-1 overflow-hidden">
+        <div
+          className="h-full overflow-y-auto overflow-x-hidden"
+          style={{ scrollbarGutter: "stable" }}
+        >
+          <div className="sticky top-0 z-10 border-b border-base-300 bg-base-100 px-4 py-3">
+            <div
+              className="grid items-center gap-4 text-xs font-semibold uppercase tracking-[0.14em] text-base-content/55"
+              style={{ gridTemplateColumns }}
+            >
+              <span>Athletes</span>
+              <span className="justify-self-end text-right">Time</span>
+              <span className="justify-self-end text-right">Speed</span>
+              <span className="justify-self-end text-right">HR</span>
+              <span aria-hidden="true" className="block" />
+            </div>
+          </div>
+
+          {sortedComparisonRows.map((comparisonRow) => {
+            const isFocused = focusedEffortId === comparisonRow.effort.id;
+            const speedValue = comparisonRow.isReference
+              ? formatSpeed(
+                  comparisonRow.currentPoint?.speed_mps ?? null,
+                  unitSystem,
+                )
+              : formatSignedSpeedDelta(comparisonRow.speedDeltaMps, unitSystem);
+            const heartRateValue = comparisonRow.isFinished
+              ? "--"
+              : formatHeartRate(
+                  comparisonRow.currentPoint?.heart_rate_bpm ?? null,
+                );
+            const timeValue = comparisonRow.isReference
+              ? formatDuration(
+                  Math.round(
+                    Math.min(
+                      playbackSeconds,
+                      comparisonRow.effort.duration_seconds,
+                    ),
+                  ),
+                )
+              : formatSignedSecondsDelta(comparisonRow.gapSeconds);
+            const isPositiveGap = (comparisonRow.gapSeconds ?? 0) > 0;
+            const isNegativeGap = (comparisonRow.gapSeconds ?? 0) < 0;
+            const isPositiveSpeed = (comparisonRow.speedDeltaMps ?? 0) > 0;
+            const isNegativeSpeed = (comparisonRow.speedDeltaMps ?? 0) < 0;
 
             return (
               <div
-                key={effort.id}
-                className={`flex items-center gap-3 rounded-box border border-base-300 bg-base-100 p-2 transition-opacity ${focusedEffortId != null && focusedEffortId !== effort.id ? "opacity-45" : "opacity-100"}`}
-                style={{ borderLeftColor: color, borderLeftWidth: 4 }}
+                key={comparisonRow.effort.id}
+                ref={(element) => {
+                  if (element) {
+                    rowRefs.current.set(comparisonRow.effort.id, element);
+                  } else {
+                    rowRefs.current.delete(comparisonRow.effort.id);
+                  }
+                }}
+                className={`grid min-w-0 items-center gap-4 border-b border-base-300 px-4 py-3 transition-colors ${isFocused ? "bg-base-200/80" : "bg-transparent"}`}
+                style={{ gridTemplateColumns, willChange: "transform" }}
+                onMouseEnter={() => {
+                  onHoverEffort(comparisonRow.effort.id);
+                }}
+                onMouseLeave={() => {
+                  onHoverEffort(null);
+                }}
               >
                 <button
                   type="button"
-                  className={`min-w-0 flex-1 rounded-box px-2 py-1 text-left ${isFocused ? "bg-base-200/80" : "bg-transparent"}`}
-                  aria-pressed={isPinned}
-                  onMouseEnter={() => {
-                    onHoverEffort(effort.id);
-                  }}
-                  onMouseLeave={() => {
-                    onHoverEffort(null);
-                  }}
+                  className="min-w-0 text-left"
+                  aria-pressed={comparisonRow.effort.id === referenceEffortId}
+                  aria-label={`Make ${comparisonRow.effort.activity_title} the reference ride`}
                   onFocus={() => {
-                    onHoverEffort(effort.id);
+                    onHoverEffort(comparisonRow.effort.id);
                   }}
                   onBlur={() => {
                     onHoverEffort(null);
                   }}
                   onClick={() => {
-                    onTogglePinnedEffort(effort.id);
+                    onTogglePinnedEffort(comparisonRow.effort.id);
                   }}
                 >
-                  <div className="min-w-0 flex items-center gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
                     <span
                       aria-hidden
-                      className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: color }}
-                    />
-                    <div className="min-w-0">
-                      <div className="truncate font-medium text-base-content">
-                        {effort.rider_name} ·{" "}
-                        {formatDuration(effort.duration_seconds)}
-                      </div>
-                      <div className="truncate text-xs text-base-content/65">
-                        {effort.activity_title} ·{" "}
-                        {formatActivityTimestamp(effort.activity_started_at)}
-                      </div>
-                    </div>
+                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white"
+                      style={{ backgroundColor: comparisonRow.color }}
+                    >
+                      {comparisonRow.markerLabel}
+                    </span>
+                    <span className="min-w-0 whitespace-normal break-words font-semibold leading-tight text-base-content">
+                      {comparisonRow.effort.rider_name}
+                    </span>
                   </div>
                 </button>
 
+                <div
+                  className={`justify-self-end text-right font-semibold ${comparisonRow.isReference ? "text-base-content" : isPositiveGap ? "text-success" : isNegativeGap ? "text-error" : "text-base-content"}`}
+                >
+                  {timeValue}
+                </div>
+
+                <div
+                  className={`justify-self-end text-right font-semibold ${comparisonRow.isReference ? "text-base-content" : isPositiveSpeed ? "text-success" : isNegativeSpeed ? "text-error" : "text-base-content"}`}
+                >
+                  {speedValue}
+                </div>
+
+                <div className="justify-self-end text-right text-sm font-medium text-base-content">
+                  {heartRateValue}
+                </div>
+
                 <button
                   type="button"
-                  className="btn btn-ghost btn-xs btn-circle shrink-0"
-                  aria-label={`Remove ${effort.activity_title} from comparison`}
+                  className="inline-flex h-4 w-4 justify-self-end items-center justify-center text-base-content/50 transition hover:text-base-content"
+                  aria-label={`Remove ${comparisonRow.effort.activity_title} from comparison`}
                   onClick={() => {
-                    onRemoveEffort(effort.id);
+                    onRemoveEffort(comparisonRow.effort.id);
                   }}
                 >
-                  <FontAwesomeIcon icon={faXmark} className="h-3.5 w-3.5" />
+                  <FontAwesomeIcon icon={faXmark} className="h-3 w-3" />
                 </button>
               </div>
             );
           })}
         </div>
-      ) : (
-        <div className="alert mt-4 bg-base-100 text-sm text-base-content/70">
-          <span>Add rides from the left column to start the comparison.</span>
-        </div>
-      )}
+      </div>
+    </div>
+  ) : (
+    <div className="flex h-full min-h-[24rem] items-center justify-center p-4">
+      <div className="alert bg-base-100 text-sm text-base-content/70">
+        <span>Add rides from the effort list to start the comparison.</span>
+      </div>
     </div>
   );
 }
@@ -1154,9 +1723,11 @@ export default function SegmentDetailPanel({
   const segmentQuery = useSegment(user ? segmentId : null);
   const [selectedEffortIds, setSelectedEffortIds] = useState<number[]>([]);
   const initializedSelectionSegmentIdRef = useRef<number | null>(null);
+  const playbackAnimationFrameRef = useRef<number | null>(null);
+  const playbackLastTimestampRef = useRef<number | null>(null);
   const [playbackSeconds, setPlaybackSeconds] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [metric, setMetric] = useState<ChartMetric>("speed");
+  const [playbackPace, setPlaybackPace] = useState<PlaybackPace>("auto");
   const [hoveredEffortId, setHoveredEffortId] = useState<number | null>(null);
   const [pinnedEffortId, setPinnedEffortId] = useState<number | null>(null);
   const [effortTimeFilter, setEffortTimeFilter] =
@@ -1212,14 +1783,52 @@ export default function SegmentDetailPanel({
       selectedEfforts.map((effort, index) => ({
         effort,
         color: EFFORT_COLORS[index % EFFORT_COLORS.length],
+        markerLabel: String(index + 1),
       })),
     [selectedEfforts],
   );
   const focusedEffortId = hoveredEffortId ?? pinnedEffortId;
-  const maxDuration = selectedEfforts.reduce(
-    (max, effort) => Math.max(max, effort.duration_seconds),
-    0,
+  const referenceEffortId =
+    selectedEfforts.find((effort) => effort.id === pinnedEffortId)?.id ??
+    selectedEfforts.find((effort) => {
+      if (currentUserId != null) {
+        return effort.rider_user_id === currentUserId;
+      }
+
+      return currentUserName ? effort.rider_name === currentUserName : false;
+    })?.id ??
+    selectedEfforts[0]?.id ??
+    null;
+  const referenceEffort =
+    selectedEfforts.find((effort) => effort.id === referenceEffortId) ?? null;
+  const playbackLimitSeconds = referenceEffort?.duration_seconds ?? 0;
+  const targetPlaybackDurationSeconds = playbackTargetSeconds(
+    playbackLimitSeconds,
+    playbackPace,
   );
+  const liveComparisonRows = useMemo(
+    () =>
+      buildLiveComparisonRows(selectedRows, referenceEffort, playbackSeconds),
+    [playbackSeconds, referenceEffort, selectedRows],
+  );
+  const routeDistanceMeters = resolveRouteDistanceMeters(
+    segment?.route_points,
+    segment?.distance_meters,
+  );
+  const routeNetElevationMeters = resolveRouteNetElevationMeters(
+    segment?.route_points,
+  );
+  const routeGradePercent =
+    routeDistanceMeters && routeNetElevationMeters != null
+      ? (routeNetElevationMeters / routeDistanceMeters) * 100
+      : null;
+  const comparisonSelectionLabel =
+    selectedRows.length === 1
+      ? "1 ride selected"
+      : `${selectedRows.length} rides selected`;
+  const referenceSummaryLabel = referenceEffort
+    ? `${referenceEffort.rider_name} · ${formatDuration(referenceEffort.duration_seconds)}`
+    : "No reference ride";
 
   useEffect(() => {
     setEffortSearchQuery("");
@@ -1241,9 +1850,9 @@ export default function SegmentDetailPanel({
     initializedSelectionSegmentIdRef.current = segment.id;
 
     setSelectedEffortIds((current) => {
-      const valid = current
-        .filter((id) => allEfforts.some((effort) => effort.id === id))
-        .slice(0, MAX_SELECTED_EFFORTS);
+      const valid = current.filter((id) =>
+        allEfforts.some((effort) => effort.id === id),
+      );
 
       if (valid.length > 0) {
         return areEffortIdListsEqual(current, valid) ? current : valid;
@@ -1283,10 +1892,7 @@ export default function SegmentDetailPanel({
 
   function addEffortToComparison(effortId: number) {
     setSelectedEffortIds((current) => {
-      if (
-        current.includes(effortId) ||
-        current.length >= MAX_SELECTED_EFFORTS
-      ) {
+      if (current.includes(effortId)) {
         return current;
       }
 
@@ -1299,34 +1905,64 @@ export default function SegmentDetailPanel({
   }
 
   useEffect(() => {
-    if (maxDuration <= 0) {
+    if (playbackLimitSeconds <= 0) {
       setPlaybackSeconds(0);
       setIsPlaying(false);
       return;
     }
 
-    setPlaybackSeconds((current) => Math.min(current, maxDuration));
-  }, [maxDuration]);
+    setPlaybackSeconds((current) => Math.min(current, playbackLimitSeconds));
+  }, [playbackLimitSeconds]);
 
   useEffect(() => {
-    if (!isPlaying || maxDuration <= 0) {
+    if (!isPlaying || playbackLimitSeconds <= 0) {
+      playbackLastTimestampRef.current = null;
       return undefined;
     }
 
-    const interval = window.setInterval(() => {
+    const tick = (timestamp: number) => {
+      const previousTimestamp = playbackLastTimestampRef.current ?? timestamp;
+      const deltaSeconds =
+        targetPlaybackDurationSeconds > 0
+          ? ((timestamp - previousTimestamp) / 1000) *
+            (playbackLimitSeconds / targetPlaybackDurationSeconds)
+          : 0;
+
+      playbackLastTimestampRef.current = timestamp;
+
+      let reachedEnd = false;
+
       setPlaybackSeconds((current) => {
-        const next = Math.min(current + 1, maxDuration);
-        if (next >= maxDuration) {
-          setIsPlaying(false);
+        const next = Math.min(current + deltaSeconds, playbackLimitSeconds);
+
+        if (next >= playbackLimitSeconds - PLAYBACK_END_EPSILON) {
+          reachedEnd = true;
+          return playbackLimitSeconds;
         }
+
         return next;
       });
-    }, 220);
+
+      if (reachedEnd) {
+        playbackLastTimestampRef.current = null;
+        playbackAnimationFrameRef.current = null;
+        setIsPlaying(false);
+        return;
+      }
+
+      playbackAnimationFrameRef.current = window.requestAnimationFrame(tick);
+    };
+
+    playbackAnimationFrameRef.current = window.requestAnimationFrame(tick);
 
     return () => {
-      window.clearInterval(interval);
+      if (playbackAnimationFrameRef.current != null) {
+        window.cancelAnimationFrame(playbackAnimationFrameRef.current);
+        playbackAnimationFrameRef.current = null;
+      }
+      playbackLastTimestampRef.current = null;
     };
-  }, [isPlaying, maxDuration]);
+  }, [isPlaying, playbackLimitSeconds, targetPlaybackDurationSeconds]);
 
   if (isLoadingUser || segmentQuery.isLoading) {
     return (
@@ -1343,7 +1979,7 @@ export default function SegmentDetailPanel({
       <AuthRequiredCard
         eyebrow="Segment comparison"
         title="Sign in to compare segment efforts"
-        description="Select up to ten attempts, then use time to open the full activity detail."
+        description="Select attempts, then use time to open the full activity detail."
       />
     );
   }
@@ -1361,89 +1997,91 @@ export default function SegmentDetailPanel({
   }
 
   return (
-    <section className="space-y-8">
+    <section className="space-y-6">
       <div className="card bg-base-100 shadow-xl">
         <div className="card-body gap-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-6">
             <div>
-              <p className="text-sm text-base-content/60">Segment comparison</p>
-              <h1 className="mt-2 text-4xl font-semibold">{segment.title}</h1>
-              <p className="mt-3 text-sm text-base-content/70">
-                Imported {formatActivityTimestamp(segment.created_at)} from{" "}
-                {segment.source}
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-base-content/45">
+                FMR / Effort Comparison
               </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {segment.format ? (
-                <span className="badge badge-outline uppercase">
-                  {segment.format}
+              <h1 className="mt-2 text-4xl font-semibold tracking-tight">
+                {segment.title}
+              </h1>
+              <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-base-content/70">
+                <span className="inline-flex items-center gap-2">
+                  <FontAwesomeIcon
+                    icon={faRoute}
+                    className="h-3.5 w-3.5 text-base-content/40"
+                  />
+                  {formatDistance(
+                    routeDistanceMeters ?? segment.distance_meters,
+                    unitSystem,
+                  )}
                 </span>
-              ) : null}
-              <span className="badge badge-ghost">
-                {segment.effort_count} efforts
-              </span>
+                <span>{formatGradePercent(routeGradePercent)}</span>
+                <span>
+                  {formatElevation(
+                    routeNetElevationMeters != null
+                      ? Math.abs(routeNetElevationMeters)
+                      : null,
+                    unitSystem,
+                  )}{" "}
+                  elev
+                </span>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-base-content/60">
+                <span>
+                  Imported {formatActivityTimestamp(segment.created_at)} from{" "}
+                  {segment.source}
+                </span>
+                {segment.format ? (
+                  <span className="badge badge-outline uppercase">
+                    {segment.format}
+                  </span>
+                ) : null}
+                <span className="badge badge-ghost">
+                  {segment.effort_count} efforts
+                </span>
+              </div>
             </div>
-          </div>
 
-          <div className="stats stats-vertical border border-base-300 bg-base-200 shadow lg:stats-horizontal">
-            <div className="stat">
-              <div className="stat-figure text-primary">
-                <FontAwesomeIcon icon={faRoute} className="h-8 w-8" />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="min-w-[14rem] rounded-[1.25rem] border border-base-300 bg-base-200 px-4 py-4">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-base-content/55">
+                  <FontAwesomeIcon
+                    icon={faMedal}
+                    className="h-3.5 w-3.5 text-primary"
+                  />
+                  <span>
+                    Your PR {formatDuration(currentUserPrDurationSeconds)}
+                  </span>
+                </div>
+                <div className="mt-2 font-semibold text-base-content">
+                  {currentUserPr?.rider_name ?? currentUserName ?? "You"}
+                </div>
+                <div className="mt-1 text-sm text-base-content/65">
+                  {currentUserPrLabel}
+                </div>
               </div>
-              <div className="stat-title">Distance</div>
-              <div className="stat-value text-xl">
-                {formatDistance(segment.distance_meters, unitSystem)}
-              </div>
-              <div className="stat-desc">Saved route length</div>
-            </div>
-            <div className="stat">
-              <div className="stat-figure text-warning">
-                <FontAwesomeIcon icon={faCrown} className="h-8 w-8" />
-              </div>
-              <div className="stat-title flex items-center gap-1">
-                <FontAwesomeIcon
-                  icon={faCrown}
-                  className="h-3.5 w-3.5 text-warning"
-                />
-                <span>Overall KOM</span>
-              </div>
-              <div className="stat-value text-xl">
-                {formatDuration(overallKom?.duration_seconds ?? null)}
-              </div>
-              <div className="stat-desc">
-                {overallKom
-                  ? `${overallKom.rider_name} · ${overallKom.activity_title}`
-                  : "No efforts yet"}
-              </div>
-            </div>
-            <div className="stat">
-              <div className="stat-figure text-primary">
-                <FontAwesomeIcon icon={faMedal} className="h-8 w-8" />
-              </div>
-              <div className="stat-title">Your PR</div>
-              <div className="stat-value text-xl">
-                {formatDuration(currentUserPrDurationSeconds)}
-              </div>
-              <div className="stat-desc">{currentUserPrLabel}</div>
-            </div>
-            <div className="stat">
-              <div className="stat-figure text-info">
-                <FontAwesomeIcon icon={faTrophy} className="h-8 w-8" />
-              </div>
-              <div className="stat-title">Attempts</div>
-              <div className="stat-value text-xl">{segment.effort_count}</div>
-              <div className="stat-desc">Stored matched efforts</div>
-            </div>
-            <div className="stat">
-              <div className="stat-figure text-secondary">
-                <FontAwesomeIcon icon={faFileLines} className="h-8 w-8" />
-              </div>
-              <div className="stat-title">Imported</div>
-              <div className="stat-value text-xl">
-                {segment.format ? segment.format.toUpperCase() : segment.source}
-              </div>
-              <div className="stat-desc">
-                {segment.original_filename ?? "Route import details"}
+
+              <div className="min-w-[14rem] rounded-[1.25rem] border border-base-300 bg-base-200 px-4 py-4">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-base-content/55">
+                  <FontAwesomeIcon
+                    icon={faCrown}
+                    className="h-3.5 w-3.5 text-warning"
+                  />
+                  <span>
+                    KOM {formatDuration(overallKom?.duration_seconds ?? null)}
+                  </span>
+                </div>
+                <div className="mt-2 font-semibold text-base-content">
+                  {overallKom?.rider_name ?? "No efforts yet"}
+                </div>
+                <div className="mt-1 text-sm text-base-content/65">
+                  {overallKom?.activity_title ??
+                    "Waiting for the first matched effort"}
+                </div>
               </div>
             </div>
           </div>
@@ -1452,103 +2090,125 @@ export default function SegmentDetailPanel({
 
       <div className="card border border-base-300 bg-base-100 shadow-xl">
         <div className="card-body">
-          <h2 className="card-title text-xl">Efforts</h2>
-          <p className="text-sm text-base-content/70">
-            Select up to ten attempts, then use time to open the full activity
-            detail.
-          </p>
-          <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(20rem,0.95fr)]">
-            <div className="min-w-0 rounded-box border border-base-300 bg-base-200 p-4">
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="text-sm text-base-content/70">
-                    {filteredVisibleEfforts.length} of{" "}
-                    {(segment.efforts ?? []).length} efforts
-                  </div>
-                  <div className="join">
-                    {EFFORT_TIME_FILTERS.map((filter) => (
-                      <button
-                        key={filter.key}
-                        type="button"
-                        className={`join-item btn btn-sm ${effortTimeFilter === filter.key ? "btn-neutral" : "btn-ghost"}`}
-                        onClick={() => {
-                          setEffortTimeFilter(filter.key);
-                        }}
-                      >
-                        {filter.label}
-                      </button>
-                    ))}
-                  </div>
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h2 className="card-title text-xl">Efforts</h2>
+              <p className="text-sm text-base-content/70">
+                Select as many attempts as you want, then use time to open the
+                full activity detail.
+              </p>
+            </div>
+            <span className="badge badge-outline whitespace-nowrap">
+              {comparisonSelectionLabel}
+            </span>
+          </div>
+
+          <div className="mt-5 min-w-0 rounded-box border border-base-300 bg-base-200 p-4">
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-sm text-base-content/70">
+                  {filteredVisibleEfforts.length} of{" "}
+                  {(segment.efforts ?? []).length} efforts
                 </div>
-
-                <label className="input input-bordered flex items-center gap-2 bg-base-100">
-                  <FontAwesomeIcon
-                    icon={faMagnifyingGlass}
-                    className="h-4 w-4 text-base-content/50"
-                  />
-                  <input
-                    type="search"
-                    value={effortSearchQuery}
-                    onChange={(event) => {
-                      setEffortSearchQuery(event.target.value);
-                    }}
-                    className="grow"
-                    placeholder="Search rides or riders"
-                    aria-label="Search efforts"
-                  />
-                </label>
-
-                {visibleEfforts.length > EFFORTS_VISIBLE_ROWS ? (
-                  <div className="text-xs text-base-content/55">
-                    Scroll to see more than {EFFORTS_VISIBLE_ROWS} efforts
-                  </div>
-                ) : null}
+                <div className="join">
+                  {EFFORT_TIME_FILTERS.map((filter) => (
+                    <button
+                      key={filter.key}
+                      type="button"
+                      className={`join-item btn btn-sm ${effortTimeFilter === filter.key ? "btn-neutral" : "btn-ghost"}`}
+                      onClick={() => {
+                        setEffortTimeFilter(filter.key);
+                      }}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              {filteredVisibleEfforts.length > 0 ? (
-                <div
-                  aria-label="Segment efforts table"
-                  className="mt-5 overflow-x-auto overflow-y-auto rounded-box border border-base-300 bg-base-100"
-                  style={{ maxHeight: `${EFFORTS_TABLE_MAX_HEIGHT_REM}rem` }}
-                >
-                  <table className="table table-pin-rows table-sm">
-                    <thead>
-                      <tr>
-                        <th className="w-14">Place</th>
-                        <th className="w-16">
-                          <span className="sr-only">Compare</span>
-                        </th>
-                        <th>Time</th>
-                        <th>Rider</th>
-                        <th>Date</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredVisibleEfforts.map((effort) => {
-                        const checked = selectedEffortIds.includes(effort.id);
-                        const overallRank =
-                          overallRankByEffortId.get(effort.id) ?? null;
-                        const isCurrentUserPr = currentUserPr?.id === effort.id;
-                        const achievement = primarySegmentAchievement({
-                          overallRank,
-                          personalRank: isCurrentUserPr ? 1 : null,
-                        });
-                        const rowClassName =
-                          achievement?.kind === "pr"
-                            ? "bg-primary/10"
-                            : achievement?.kind === "kom"
-                              ? "bg-warning/10"
-                              : checked
-                                ? "bg-base-200/70"
-                                : undefined;
+              <label className="input input-bordered flex items-center gap-2 bg-base-100">
+                <FontAwesomeIcon
+                  icon={faMagnifyingGlass}
+                  className="h-4 w-4 text-base-content/50"
+                />
+                <input
+                  type="search"
+                  value={effortSearchQuery}
+                  onChange={(event) => {
+                    setEffortSearchQuery(event.target.value);
+                  }}
+                  className="grow"
+                  placeholder="Search rides or riders"
+                  aria-label="Search efforts"
+                />
+              </label>
 
-                        return (
-                          <tr key={effort.id} className={rowClassName}>
-                            <td className="font-mono text-sm font-semibold tabular-nums text-base-content/70">
-                              {overallRank ?? "--"}
-                            </td>
-                            <td>
-                              {checked ? (
+              {visibleEfforts.length > EFFORTS_VISIBLE_ROWS ? (
+                <div className="text-xs text-base-content/55">
+                  Scroll to see more than {EFFORTS_VISIBLE_ROWS} efforts
+                </div>
+              ) : null}
+            </div>
+
+            {filteredVisibleEfforts.length > 0 ? (
+              <div
+                aria-label="Segment efforts table"
+                className="mt-5 overflow-x-auto overflow-y-auto rounded-box border border-base-300 bg-base-100"
+                style={{ maxHeight: `${EFFORTS_TABLE_MAX_HEIGHT_REM}rem` }}
+              >
+                <table className="table table-pin-rows table-sm">
+                  <thead>
+                    <tr>
+                      <th className="w-14">Place</th>
+                      <th className="w-20">
+                        <span className="sr-only">Compare</span>
+                      </th>
+                      <th>Time</th>
+                      <th>Rider</th>
+                      <th>Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredVisibleEfforts.map((effort) => {
+                      const checked = selectedEffortIds.includes(effort.id);
+                      const selectedRow = selectedRows.find(
+                        (row) => row.effort.id === effort.id,
+                      );
+                      const overallRank =
+                        overallRankByEffortId.get(effort.id) ?? null;
+                      const isCurrentUserPr = currentUserPr?.id === effort.id;
+                      const achievement = primarySegmentAchievement({
+                        overallRank,
+                        personalRank: isCurrentUserPr ? 1 : null,
+                      });
+                      const rowClassName =
+                        achievement?.kind === "pr"
+                          ? "bg-primary/10"
+                          : achievement?.kind === "kom"
+                            ? "bg-warning/10"
+                            : checked
+                              ? "bg-base-200/70"
+                              : undefined;
+
+                      return (
+                        <tr key={effort.id} className={rowClassName}>
+                          <td className="font-mono text-sm font-semibold tabular-nums text-base-content/70">
+                            {overallRank ?? "--"}
+                          </td>
+                          <td>
+                            {checked ? (
+                              <div className="flex items-center gap-1.5">
+                                {selectedRow ? (
+                                  <span
+                                    aria-hidden
+                                    className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[0.65rem] font-semibold text-white"
+                                    style={{
+                                      backgroundColor: selectedRow.color,
+                                    }}
+                                  >
+                                    {selectedRow.markerLabel}
+                                  </span>
+                                ) : null}
                                 <button
                                   type="button"
                                   className="btn btn-ghost btn-xs btn-circle"
@@ -1565,144 +2225,208 @@ export default function SegmentDetailPanel({
                                     Remove from comparison
                                   </span>
                                 </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  className="btn btn-ghost btn-xs btn-circle"
-                                  disabled={
-                                    selectedEffortIds.length >=
-                                    MAX_SELECTED_EFFORTS
-                                  }
-                                  aria-label={`Add ${effort.activity_title} to comparison`}
-                                  onClick={() => {
-                                    addEffortToComparison(effort.id);
-                                  }}
-                                >
-                                  <FontAwesomeIcon
-                                    icon={faPlus}
-                                    className="h-3.5 w-3.5"
-                                  />
-                                  <span className="sr-only">
-                                    {selectedEffortIds.length >=
-                                    MAX_SELECTED_EFFORTS
-                                      ? "Comparison full"
-                                      : "Add to comparison"}
-                                  </span>
-                                </button>
-                              )}
-                            </td>
-                            <td className="font-semibold text-base-content">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <Link
-                                  href={`/activities/${effort.activity_id}`}
-                                  className="transition hover:text-primary"
-                                  title={effort.activity_title}
-                                >
-                                  {formatDuration(effort.duration_seconds)}
-                                </Link>
-                                {achievement?.kind === "kom" ? (
-                                  <span className="badge badge-warning badge-xs gap-1">
-                                    <FontAwesomeIcon
-                                      icon={faCrown}
-                                      className="h-3 w-3"
-                                    />
-                                    KOM
-                                  </span>
-                                ) : achievement?.kind === "top-10" ? (
-                                  <span className="badge badge-warning badge-xs gap-1">
-                                    <FontAwesomeIcon
-                                      icon={faTrophy}
-                                      className="h-3 w-3"
-                                    />
-                                    {achievement.longLabel}
-                                  </span>
-                                ) : achievement?.kind === "pr" ? (
-                                  <span className="badge badge-primary badge-xs">
-                                    PR
-                                  </span>
-                                ) : null}
                               </div>
-                            </td>
-                            <td>{effort.rider_name}</td>
-                            <td className="whitespace-nowrap text-base-content/65">
-                              {formatActivityTimestamp(
-                                effort.activity_started_at,
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="alert mt-5">
-                  <span>
-                    {effortSearchQuery.trim().length > 0
-                      ? "No efforts match this search."
-                      : "No efforts match this time window."}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <SelectedEffortsPanel
-              selectedRows={selectedRows}
-              focusedEffortId={focusedEffortId}
-              pinnedEffortId={pinnedEffortId}
-              onHoverEffort={setHoveredEffortId}
-              onTogglePinnedEffort={togglePinnedEffort}
-              onRemoveEffort={removeEffortFromComparison}
-            />
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-xs btn-circle"
+                                aria-label={`Add ${effort.activity_title} to comparison`}
+                                onClick={() => {
+                                  addEffortToComparison(effort.id);
+                                }}
+                              >
+                                <FontAwesomeIcon
+                                  icon={faPlus}
+                                  className="h-3.5 w-3.5"
+                                />
+                                <span className="sr-only">
+                                  Add to comparison
+                                </span>
+                              </button>
+                            )}
+                          </td>
+                          <td className="font-semibold text-base-content">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Link
+                                href={`/activities/${effort.activity_id}`}
+                                className="transition hover:text-primary"
+                                title={effort.activity_title}
+                              >
+                                {formatDuration(effort.duration_seconds)}
+                              </Link>
+                              {achievement?.kind === "kom" ? (
+                                <span className="badge badge-warning badge-xs gap-1">
+                                  <FontAwesomeIcon
+                                    icon={faCrown}
+                                    className="h-3 w-3"
+                                  />
+                                  KOM
+                                </span>
+                              ) : achievement?.kind === "top-10" ? (
+                                <span className="badge badge-warning badge-xs gap-1">
+                                  <FontAwesomeIcon
+                                    icon={faTrophy}
+                                    className="h-3 w-3"
+                                  />
+                                  {achievement.longLabel}
+                                </span>
+                              ) : achievement?.kind === "pr" ? (
+                                <span className="badge badge-primary badge-xs">
+                                  PR
+                                </span>
+                              ) : null}
+                            </div>
+                          </td>
+                          <td>{effort.rider_name}</td>
+                          <td className="whitespace-nowrap text-base-content/65">
+                            {formatActivityTimestamp(
+                              effort.activity_started_at,
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="alert mt-5">
+                <span>
+                  {effortSearchQuery.trim().length > 0
+                    ? "No efforts match this search."
+                    : "No efforts match this time window."}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       <div className="card bg-base-100 shadow-xl">
-        <div className="card-body gap-6">
-          <div>
-            <SectionTitleWithTooltip
-              as="h2"
-              title="Comparison workspace"
-              tooltip="The selected rides drive both the route playback and the shared chart, so each ride only needs to be identified once."
-              className="card-title text-xl"
-            />
+        <div className="card-body gap-4">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-base-content">
+                Comparison workspace
+              </h2>
+              <p className="text-sm text-base-content/70">
+                Playback follows the reference ride so time gaps, speed, and
+                heart rate update on every frame.
+              </p>
+            </div>
+            <span className="badge badge-outline whitespace-nowrap">
+              Ref: {referenceSummaryLabel}
+            </span>
           </div>
 
-          <div className="grid items-stretch gap-6 xl:grid-cols-[minmax(0,1.02fr)_minmax(0,1fr)]">
-            <div className="h-full">
-              <RouteComparisonMap
-                routePoints={segment.route_points}
-                selectedEfforts={selectedEfforts}
-                playbackSeconds={playbackSeconds}
-                maxDuration={maxDuration}
-                isPlaying={isPlaying}
+          <div className="overflow-hidden border border-base-300 bg-base-200">
+            <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.78fr)]">
+              <div className="min-h-[24rem] border-b border-base-300 xl:border-b-0 xl:border-r">
+                <RouteComparisonMap
+                  routePoints={segment.route_points}
+                  selectedRows={selectedRows}
+                  playbackSeconds={playbackSeconds}
+                />
+              </div>
+
+              <SelectedEffortsPanel
+                comparisonRows={liveComparisonRows}
                 focusedEffortId={focusedEffortId}
-                onTogglePlayback={() => {
-                  if (playbackSeconds >= maxDuration) {
+                referenceEffortId={referenceEffortId}
+                playbackSeconds={playbackSeconds}
+                unitSystem={unitSystem}
+                onHoverEffort={setHoveredEffortId}
+                onTogglePinnedEffort={togglePinnedEffort}
+                onRemoveEffort={removeEffortFromComparison}
+              />
+            </div>
+
+            <div className="border-t border-base-300 bg-base-100/95">
+              <ComparisonChart
+                routePoints={segment.route_points}
+                routeDistanceMeters={routeDistanceMeters}
+                selectedRows={selectedRows}
+                referenceEffortId={referenceEffortId}
+                playbackSeconds={playbackSeconds}
+                unitSystem={unitSystem}
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 border-t border-base-300 bg-base-100 px-4 py-3">
+              <button
+                type="button"
+                className="btn btn-sm btn-circle shrink-0 border-0 bg-orange-500 text-white hover:bg-orange-600"
+                disabled={
+                  selectedRows.length === 0 || playbackLimitSeconds <= 0
+                }
+                aria-label={
+                  isPlaying
+                    ? "Pause comparison playback"
+                    : playbackSeconds >= playbackLimitSeconds
+                      ? "Replay comparison playback"
+                      : "Play comparison playback"
+                }
+                onClick={() => {
+                  if (playbackSeconds >= playbackLimitSeconds) {
                     setPlaybackSeconds(0);
                   }
                   setIsPlaying((current) => !current);
                 }}
-                onSeek={(value) => {
-                  setPlaybackSeconds(value);
+              >
+                <FontAwesomeIcon
+                  icon={isPlaying ? faPause : faPlay}
+                  className="h-4 w-4"
+                />
+              </button>
+
+              <input
+                type="range"
+                min={0}
+                max={Math.max(playbackLimitSeconds, 1)}
+                step={0.1}
+                value={Math.min(
+                  playbackSeconds,
+                  Math.max(playbackLimitSeconds, 1),
+                )}
+                className="range range-primary min-w-[14rem] flex-1"
+                disabled={
+                  selectedRows.length === 0 || playbackLimitSeconds <= 0
+                }
+                aria-label="Playback timeline"
+                onChange={(event) => {
+                  setPlaybackSeconds(Number(event.target.value));
                   setIsPlaying(false);
                 }}
               />
-            </div>
 
-            <div className="h-full">
-              <ComparisonChart
-                metric={metric}
-                routePoints={segment.route_points}
-                selectedEfforts={selectedEfforts}
-                playbackSeconds={playbackSeconds}
-                focusedEffortId={focusedEffortId}
-                unitSystem={unitSystem}
-                onMetricChange={(value) => {
-                  setMetric(value);
-                }}
-              />
+              <div className="join">
+                {PLAYBACK_PACE_OPTIONS.map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    className={`join-item btn btn-sm ${playbackPace === option.key ? "btn-neutral" : "btn-ghost"}`}
+                    aria-pressed={playbackPace === option.key}
+                    onClick={() => {
+                      setPlaybackPace(option.key);
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+
+              <span className="badge badge-outline min-w-[11.5rem] justify-center whitespace-nowrap text-center">
+                {formatDuration(Math.round(playbackSeconds))} /{" "}
+                {formatDuration(playbackLimitSeconds)}
+              </span>
+
+              <span className="badge badge-ghost whitespace-nowrap">
+                {PLAYBACK_PACE_OPTIONS.find(
+                  (option) => option.key === playbackPace,
+                )?.label ?? "Auto"}{" "}
+                {formatDuration(Math.round(targetPlaybackDurationSeconds))}{" "}
+                target
+              </span>
             </div>
           </div>
         </div>

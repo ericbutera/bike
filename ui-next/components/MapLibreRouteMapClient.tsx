@@ -187,6 +187,7 @@ const OVERLAY_SOURCE_ID = "activity-route-overlays";
 const OVERLAY_LAYER_ID = "activity-route-overlays-line";
 const MARKER_SOURCE_ID = "activity-route-markers";
 const MARKER_LAYER_ID = "activity-route-markers-circle";
+const MARKER_LABEL_LAYER_ID = "activity-route-markers-label";
 const DEFAULT_FIT_BOUNDS_PADDING = 56;
 const DEFAULT_FIT_BOUNDS_MAX_ZOOM = 14;
 const EMPTY_OVERLAYS: RouteOverlay[] = [];
@@ -241,11 +242,12 @@ function buildMarkerFeature(
   point: ActivityRoutePoint,
   color: string,
   opacity: number,
+  label: string | null,
 ): Feature<Point> {
   return {
     type: "Feature",
     id,
-    properties: { color, opacity },
+    properties: { color, opacity, label },
     geometry: {
       type: "Point",
       coordinates: [point.longitude, point.latitude],
@@ -446,11 +448,29 @@ function ensureMapSourcesAndLayers(
       type: "circle",
       source: MARKER_SOURCE_ID,
       paint: {
-        "circle-radius": 6,
+        "circle-radius": 10,
         "circle-color": ["get", "color"],
         "circle-opacity": ["get", "opacity"],
         "circle-stroke-color": "#ffffff",
-        "circle-stroke-width": 2,
+        "circle-stroke-width": 2.5,
+      },
+    });
+
+    map.addLayer({
+      id: MARKER_LABEL_LAYER_ID,
+      type: "symbol",
+      source: MARKER_SOURCE_ID,
+      layout: {
+        "text-field": ["coalesce", ["get", "label"], ""],
+        "text-size": 11,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true,
+      },
+      paint: {
+        "text-color": "#ffffff",
+        "text-opacity": ["get", "opacity"],
+        "text-halo-color": "#0f172a",
+        "text-halo-width": 1.2,
       },
     });
   }
@@ -617,6 +637,7 @@ export default function MapLibreRouteMapClient({
             marker.point as ActivityRoutePoint,
             marker.color,
             marker.opacity ?? 1,
+            marker.label ?? null,
           ),
         ),
     }),
@@ -641,7 +662,7 @@ export default function MapLibreRouteMapClient({
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: mapStyle,
-      attributionControl: showBaseTiles ? { compact: true } : false,
+      attributionControl: false,
       dragRotate: false,
       pitchWithRotate: false,
       interactive,
@@ -650,6 +671,13 @@ export default function MapLibreRouteMapClient({
     });
 
     appliedStyleKeyRef.current = mapStyleKey;
+
+    if (showBaseTiles) {
+      map.addControl(
+        new maplibregl.AttributionControl({ compact: true }),
+        "bottom-right",
+      );
+    }
 
     if (interactive && showZoomControls) {
       map.addControl(

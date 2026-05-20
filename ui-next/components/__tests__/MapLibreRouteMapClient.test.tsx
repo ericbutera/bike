@@ -69,11 +69,13 @@ vi.mock("maplibre-gl", () => {
   }
 
   class MockNavigationControl {}
+  class MockAttributionControl {}
 
   return {
     default: {
       Map: MockMap,
       NavigationControl: MockNavigationControl,
+      AttributionControl: MockAttributionControl,
       LngLatBounds: MockLngLatBounds,
     },
   };
@@ -146,5 +148,6 @@ describe("MapLibreRouteMapClient", () => {
     });
 
     expect(mapMocks.fitBounds).toHaveBeenCalledTimes(1);
+    expect(mapMocks.addControl).toHaveBeenCalledTimes(1);
   });
 });

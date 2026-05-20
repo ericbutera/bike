@@ -3,6 +3,29 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SegmentDetailPanel from "../SegmentDetailPanel";
 
+vi.mock("recharts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("recharts")>();
+  const React = await import("react");
+
+  return {
+    ...actual,
+    ResponsiveContainer: ({ children }: { children: React.ReactNode }) => {
+      if (React.isValidElement(children)) {
+        return React.cloneElement(children, {
+          width: 640,
+          height: 240,
+        });
+      }
+
+      return React.createElement(
+        "div",
+        { style: { width: 640, height: 240 } },
+        children,
+      );
+    },
+  };
+});
+
 const mocks = vi.hoisted(() => ({
   useCurrentUser: vi.fn(),
   useSegment: vi.fn(),
@@ -182,13 +205,17 @@ describe("SegmentDetailPanel", () => {
     expect(
       screen.getByRole("heading", { name: "North Climb" }),
     ).toBeInTheDocument();
+    expect(screen.getByText("FMR / Effort Comparison")).toBeInTheDocument();
     expect(
       screen.getByRole("searchbox", { name: "Search efforts" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Selected rides")).toBeInTheDocument();
-    expect(screen.queryByText(/^\d+ selected$/)).not.toBeInTheDocument();
-    expect(screen.getByText("Overall KOM")).toBeInTheDocument();
-    expect(screen.getByText("Your PR")).toBeInTheDocument();
+    expect(screen.getByText("2 rides selected")).toBeInTheDocument();
+    expect(screen.getByText("Comparison workspace")).toBeInTheDocument();
+    expect(screen.getByText("Athletes")).toBeInTheDocument();
+    expect(screen.getAllByText("Speed").length).toBeGreaterThan(0);
+    expect(screen.getByText("HR")).toBeInTheDocument();
+    expect(screen.getByText("KOM 5m 00s")).toBeInTheDocument();
+    expect(screen.getByText("Your PR 5m 12s")).toBeInTheDocument();
     expect(screen.getAllByText("Lunch Ride").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Eric Butera").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Casey Fast").length).toBeGreaterThan(0);
@@ -207,6 +234,7 @@ describe("SegmentDetailPanel", () => {
         /Compare the selected attempts across elapsed time while the map dots advance/i,
       ),
     ).not.toBeInTheDocument();
+    expect(screen.queryByText("Chart comparison")).not.toBeInTheDocument();
     expect(
       screen.getByRole("img", { name: "Segment comparison map" }),
     ).toBeInTheDocument();
@@ -231,19 +259,138 @@ describe("SegmentDetailPanel", () => {
     expect(topTwoBadge).toHaveClass("badge-warning");
     expect(lunchRideRow).not.toHaveClass("bg-info/10");
     expect(screen.queryByText("PR")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Heart rate" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "Click a ride to make it the reference line while playback runs.",
+      ),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("Hover point")).not.toBeInTheDocument();
     expect(screen.queryByText("Back to home")).not.toBeInTheDocument();
   });
 
-  it("lets the user change the chart metric", async () => {
-    const user = userEvent.setup();
+  it("updates live comparison metrics when playback moves", async () => {
+    render(<SegmentDetailPanel segmentId={14} />);
+
+    fireEvent.change(
+      screen.getByRole("slider", { name: "Playback timeline" }),
+      {
+        target: { value: "120" },
+      },
+    );
+
+    expect(screen.getByText("2m 00s")).toBeInTheDocument();
+    expect(screen.queryByText("elapsed")).not.toBeInTheDocument();
+    expect(screen.queryByText("vs ref")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Detail" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Auto" })).toHaveClass(
+      "btn-neutral",
+    );
+    expect(screen.getByText("Auto 25s target")).toBeInTheDocument();
+  });
+
+  it("caps auto playback target for long reference rides", () => {
+    const segment = makeSegment();
+
+    segment.efforts = [
+      {
+        ...segment.efforts[0],
+        duration_seconds: 3600,
+        route_points: [
+          makeRoutePoint(0, 45.0, -122.0),
+          makeRoutePoint(1800, 45.006, -121.994),
+          makeRoutePoint(3600, 45.012, -121.988),
+        ],
+      },
+      segment.efforts[1],
+    ];
+
+    mocks.useSegment.mockReturnValue({
+      data: segment,
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
 
     render(<SegmentDetailPanel segmentId={14} />);
 
-    await user.click(screen.getByRole("button", { name: "Heart rate" }));
+    expect(screen.getByText("Auto 45s target")).toBeInTheDocument();
+  });
 
-    expect(screen.getByRole("button", { name: "Heart rate" })).toHaveClass(
-      "btn-primary",
+  it("keeps non-reference rides from showing live metrics after they finish", () => {
+    const segment = makeSegment();
+
+    segment.efforts = [
+      {
+        ...segment.efforts[0],
+        duration_seconds: 110,
+        route_points: [
+          makeRoutePoint(0, 45.0, -122.0),
+          makeRoutePoint(55, 45.006, -121.994),
+          makeRoutePoint(110, 45.012, -121.988),
+        ],
+      },
+      {
+        ...segment.efforts[1],
+        duration_seconds: 25,
+        route_points: [
+          makeRoutePoint(0, 45.0, -122.0, { speed_mps: 10.2 }),
+          makeRoutePoint(12.5, 45.006, -121.994, { speed_mps: 10.8 }),
+          makeRoutePoint(25, 45.012, -121.988, { speed_mps: 11.1 }),
+        ],
+      },
+    ];
+
+    mocks.useSegment.mockReturnValue({
+      data: segment,
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+
+    render(<SegmentDetailPanel segmentId={14} />);
+
+    fireEvent.change(
+      screen.getByRole("slider", { name: "Playback timeline" }),
+      {
+        target: { value: "50" },
+      },
+    );
+
+    const hillAttackReferenceButton = screen.getByRole("button", {
+      name: "Make Hill Attack the reference ride",
+    });
+    const hillAttackRow = hillAttackReferenceButton.closest("div.grid");
+
+    expect(hillAttackRow).not.toBeNull();
+    expect(
+      within(hillAttackRow as HTMLElement).getAllByText("--"),
+    ).toHaveLength(2);
+  });
+
+  it("sorts the athlete pane by the current leader as playback advances", () => {
+    render(<SegmentDetailPanel segmentId={14} />);
+
+    fireEvent.change(
+      screen.getByRole("slider", { name: "Playback timeline" }),
+      {
+        target: { value: "120" },
+      },
+    );
+
+    const referenceButtons = screen.getAllByRole("button", {
+      name: /Make .* the reference ride/,
+    });
+
+    expect(referenceButtons[0]).toHaveAttribute(
+      "aria-label",
+      "Make Hill Attack the reference ride",
+    );
+    expect(referenceButtons[1]).toHaveAttribute(
+      "aria-label",
+      "Make Lunch Ride the reference ride",
     );
   });
 
@@ -305,16 +452,9 @@ describe("SegmentDetailPanel", () => {
 
     render(<SegmentDetailPanel segmentId={14} />);
 
-    const personalRecordStat = screen
-      .getByText("Your PR")
-      .closest(".stat") as HTMLElement | null;
-
-    expect(personalRecordStat).not.toBeNull();
-    expect(within(personalRecordStat!).getByText("5m 12s")).toBeInTheDocument();
+    expect(screen.getByText("Your PR 5m 12s")).toBeInTheDocument();
     expect(
-      within(personalRecordStat!).getByText(
-        "Personal best across matched efforts",
-      ),
+      screen.getByText("Personal best across matched efforts"),
     ).toBeInTheDocument();
   });
 
@@ -352,10 +492,34 @@ describe("SegmentDetailPanel", () => {
     const props = mocks.renderMapLibreRouteMap.mock.lastCall?.[0];
 
     expect(props?.movingMarkers).toHaveLength(1);
+    expect(props?.movingMarkers[0].label).toBe("1");
     expect(props?.movingMarkers[0].point.latitude).toBeCloseTo(45.004, 3);
     expect(props?.movingMarkers[0].point.longitude).toBeCloseTo(-121.996, 3);
-    expect(props?.fitBoundsPadding).toBe(24);
+    expect(props?.fitBoundsPadding).toBe(40);
     expect(props?.fitBoundsMaxZoom).toBe(18);
+  });
+
+  it("does not dim other comparison rows when a reference ride is selected", async () => {
+    const user = userEvent.setup();
+
+    render(<SegmentDetailPanel segmentId={14} />);
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Make Hill Attack the reference ride",
+      }),
+    );
+
+    expect(document.querySelector(".opacity-40")).toBeNull();
+  });
+
+  it("renders the athlete pane without drag and drop affordances", () => {
+    render(<SegmentDetailPanel segmentId={14} />);
+
+    expect(document.querySelector("[draggable='true']")).toBeNull();
+    expect(
+      screen.queryByTitle("Drag to reorder selected efforts"),
+    ).not.toBeInTheDocument();
   });
 
   it("filters efforts by the selected time window", async () => {
