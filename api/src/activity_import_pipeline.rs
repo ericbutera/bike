@@ -377,7 +377,9 @@ async fn deduplicated_activity_import_for_model(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::{activities, activity_imports, segment_efforts, segments};
+    use crate::entities::{
+        activities, activity_analytics, activity_imports, segment_efforts, segments,
+    };
     use crate::training_profile::TrainingProfile;
     use sea_orm::{ConnectionTrait, Database, EntityTrait, PaginatorTrait, Schema};
 
@@ -393,6 +395,9 @@ mod tests {
         db.execute(&schema.create_table_from_entity(activity_imports::Entity))
             .await
             .expect("create activity imports table");
+        db.execute(&schema.create_table_from_entity(activity_analytics::Entity))
+            .await
+            .expect("create activity analytics table");
         db.execute(&schema.create_table_from_entity(segments::Entity))
             .await
             .expect("create segments table");

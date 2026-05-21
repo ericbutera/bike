@@ -944,8 +944,8 @@ async fn mark_activity_archive_import_job_failed(
 mod tests {
     use super::*;
     use crate::entities::{
-        activities, activity_imports, analytics_user_states, segment_efforts, segments,
-        user_preferences,
+        activities, activity_analytics, activity_imports, analytics_user_states, segment_efforts,
+        segments, user_preferences,
     };
     use kaleido::background_jobs::background_tasks;
     use sea_orm::{ConnectionTrait, Database, EntityTrait, PaginatorTrait, Schema};
@@ -989,6 +989,9 @@ mod tests {
         db.execute(&schema.create_table_from_entity(activity_imports::Entity))
             .await
             .expect("create activity imports table");
+        db.execute(&schema.create_table_from_entity(activity_analytics::Entity))
+            .await
+            .expect("create activity analytics table");
         db.execute(&schema.create_table_from_entity(segments::Entity))
             .await
             .expect("create segments table");
