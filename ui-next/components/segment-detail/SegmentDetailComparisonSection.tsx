@@ -35,6 +35,7 @@ import {
   effortSeriesDataKey,
   formatSignedSecondsDelta,
   formatSignedSpeedDelta,
+  interpolateRoutePointByProgress,
   type GapChartRow,
   type LiveComparisonRow,
   type PlaybackPace,
@@ -42,11 +43,12 @@ import {
 } from "../../lib/segmentDetail";
 import MapLibreRouteMap from "../MapLibreRouteMap";
 
-function ComparisonGapChartTooltip({
+export function ComparisonGapChartTooltip({
   active,
   label,
   payload,
   selectedRows,
+  referenceEffort,
   unitSystem,
 }: {
   active?: boolean;
@@ -54,64 +56,87 @@ function ComparisonGapChartTooltip({
   payload?: Array<{
     color?: string;
     dataKey?: string;
+    payload?: GapChartRow;
     value?: number | string | null;
   }>;
   selectedRows: SelectedEffortRow[];
+  referenceEffort: SelectedEffortRow["effort"] | null;
   unitSystem: UnitSystem;
 }) {
   if (!active || typeof label !== "number") {
     return null;
   }
 
-  const elevationValue = payload?.find(
-    (entry) => entry.dataKey === "elevation",
-  )?.value;
+  const tooltipRow = payload?.find((entry) => entry.payload != null)?.payload;
+  const progress =
+    typeof tooltipRow?.progress === "number" ? tooltipRow.progress : null;
+  const distanceValue =
+    typeof tooltipRow?.distanceMeters === "number"
+      ? tooltipRow.distanceMeters
+      : label;
+  const elevationValue =
+    typeof tooltipRow?.elevation === "number"
+      ? tooltipRow.elevation
+      : typeof payload?.find((entry) => entry.dataKey === "elevation")
+            ?.value === "number"
+        ? Number(payload?.find((entry) => entry.dataKey === "elevation")?.value)
+        : null;
+  const referencePoint =
+    progress != null
+      ? interpolateRoutePointByProgress(referenceEffort?.route_points, progress)
+      : null;
 
   return (
-    <div className="border border-base-300 bg-base-100 px-3 py-3 shadow-lg">
-      <p className="text-sm font-semibold text-base-content">
-        {formatDistance(label, unitSystem)}
-      </p>
-      <p className="mt-1 text-sm text-base-content/70">
-        Elevation {formatElevation(Number(elevationValue ?? null), unitSystem)}
-      </p>
-      <div className="mt-2 space-y-1.5 text-sm text-base-content/75">
+    <div className="max-w-[26rem] border border-base-300 bg-base-100 px-3 py-3 shadow-lg">
+      <div className="flex flex-wrap gap-2 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-base-content/60">
+        <span className="border border-base-300 bg-base-200/70 px-2 py-1">
+          Time {formatDuration(referencePoint?.elapsed_seconds ?? null)}
+        </span>
+        <span className="border border-base-300 bg-base-200/70 px-2 py-1">
+          Elev {formatElevation(elevationValue, unitSystem)}
+        </span>
+        <span className="border border-base-300 bg-base-200/70 px-2 py-1">
+          Dist {formatDistance(distanceValue, unitSystem)}
+        </span>
+      </div>
+
+      <div className="mt-2 space-y-1 text-[0.78rem] text-base-content/80 tabular-nums">
         {selectedRows.map((selectedRow) => {
-          const value = payload?.find(
-            (entry) =>
-              entry.dataKey === effortSeriesDataKey(selectedRow.effort.id),
-          )?.value;
+          const comparisonPoint =
+            progress != null
+              ? interpolateRoutePointByProgress(
+                  selectedRow.effort.route_points,
+                  progress,
+                )
+              : null;
 
           return (
             <div
               key={selectedRow.effort.id}
-              className="border border-base-300 bg-base-200/70 px-2 py-2"
-              style={{ borderLeftColor: selectedRow.color, borderLeftWidth: 4 }}
+              aria-label={`Ride ${selectedRow.markerLabel} tooltip row`}
+              className="flex items-center gap-2 overflow-hidden whitespace-nowrap border border-base-300 bg-base-200/70 px-2 py-1.5"
             >
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span
-                      aria-hidden
-                      className="inline-flex h-5 w-5 items-center justify-center text-[0.65rem] font-semibold text-white"
-                      style={{ backgroundColor: selectedRow.color }}
-                    >
-                      {selectedRow.markerLabel}
-                    </span>
-                    <span className="truncate font-medium text-base-content">
-                      {selectedRow.effort.rider_name}
-                    </span>
-                  </div>
-                  <div className="truncate pl-7 text-xs text-base-content/65">
-                    {selectedRow.effort.activity_title}
-                  </div>
-                </div>
-                <span className="whitespace-nowrap font-medium text-base-content">
-                  {formatSignedSecondsDelta(
-                    typeof value === "number" ? value : null,
-                  )}
-                </span>
-              </div>
+              <span
+                className="inline-flex min-w-[2.25rem] items-center justify-center px-1.5 py-0.5 text-[0.65rem] font-semibold text-white"
+                style={{ backgroundColor: selectedRow.color }}
+              >
+                #{selectedRow.markerLabel}
+              </span>
+              <span>
+                {formatDuration(comparisonPoint?.elapsed_seconds ?? null)}
+              </span>
+              <span aria-hidden className="text-base-content/35">
+                /
+              </span>
+              <span>
+                {formatSpeed(comparisonPoint?.speed_mps ?? null, unitSystem)}
+              </span>
+              <span aria-hidden className="text-base-content/35">
+                /
+              </span>
+              <span>
+                {formatHeartRate(comparisonPoint?.heart_rate_bpm ?? null)}
+              </span>
             </div>
           );
         })}
@@ -303,6 +328,7 @@ function ComparisonChart({
           <Tooltip
             content={
               <ComparisonGapChartTooltip
+                referenceEffort={referenceEffort}
                 selectedRows={selectedRows}
                 unitSystem={unitSystem}
               />

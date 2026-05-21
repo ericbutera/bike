@@ -30,21 +30,10 @@ function SegmentBuilderPageShell({
         <div className="card-body gap-4">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-sm text-base-content/60">Segments</p>
               <h1 className="text-4xl font-semibold tracking-tight text-base-content">
                 Segment builder
               </h1>
-              <p className="mt-3 max-w-3xl text-sm text-base-content/70">
-                {isEditingExistingSegment
-                  ? "Reopen the saved ride crop, fine-tune the start and end, then save the updated slice back into Bike's comparison view."
-                  : "Crop the loaded ride, fine-tune the start and end, then save the slice straight into Bike's comparison view."}
-              </p>
             </div>
-            <span className="badge badge-outline whitespace-nowrap">
-              {isEditingExistingSegment
-                ? "Recrop -&gt; compare"
-                : "Activity crop -&gt; compare"}
-            </span>
           </div>
         </div>
       </div>

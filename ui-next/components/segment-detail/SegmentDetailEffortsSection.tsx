@@ -65,13 +65,7 @@ export default function SegmentDetailEffortsSection({
     <div className="card border border-base-300 bg-base-100 shadow-xl">
       <div className="card-body">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h2 className="card-title text-xl">Efforts</h2>
-            <p className="text-sm text-base-content/70">
-              Select as many attempts as you want, then use time to open the
-              full activity detail.
-            </p>
-          </div>
+          <h2 className="card-title text-xl">Efforts</h2>
           <span className="badge badge-outline whitespace-nowrap">
             {comparisonSelectionLabel}
           </span>

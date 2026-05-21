@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SegmentDetailPanel from "../SegmentDetailPanel";
+import { ComparisonGapChartTooltip } from "../segment-detail/SegmentDetailComparisonSection";
 
 vi.mock("recharts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("recharts")>();
@@ -678,5 +679,120 @@ describe("SegmentDetailPanel", () => {
       screen.queryByRole("button", { name: "Next" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/Page 1 of/i)).not.toBeInTheDocument();
+  });
+
+  it("renders the comparison tooltip in a condensed single-line-per-ride format", () => {
+    const selectedRows = [
+      {
+        color: "#2563eb",
+        markerLabel: "1",
+        effort: {
+          id: 101,
+          rider_user_id: 1,
+          activity_id: 71,
+          activity_title: "Lunch Ride",
+          rider_name: "Eric Butera",
+          activity_started_at: "2026-05-06T12:00:00Z",
+          effort_index: 1,
+          duration_seconds: 120,
+          start_elapsed_seconds: 0,
+          end_elapsed_seconds: 120,
+          distance_meters: 1000,
+          route_points: [
+            makeRoutePoint(0, 45.0, -122.0, {
+              distance_meters: 0,
+              elevation_meters: 10,
+              speed_mps: 5,
+              heart_rate_bpm: 100,
+            }),
+            makeRoutePoint(120, 45.01, -121.99, {
+              distance_meters: 1000,
+              elevation_meters: 30,
+              speed_mps: 6,
+              heart_rate_bpm: 120,
+            }),
+          ],
+        },
+      },
+      {
+        color: "#dc2626",
+        markerLabel: "2",
+        effort: {
+          id: 102,
+          rider_user_id: 2,
+          activity_id: 72,
+          activity_title: "Hill Attack",
+          rider_name: "Casey Fast",
+          activity_started_at: "2026-05-08T08:00:00Z",
+          effort_index: 1,
+          duration_seconds: 110,
+          start_elapsed_seconds: 0,
+          end_elapsed_seconds: 110,
+          distance_meters: 1000,
+          route_points: [
+            makeRoutePoint(0, 45.0, -122.0, {
+              distance_meters: 0,
+              elevation_meters: 12,
+              speed_mps: 5.4,
+              heart_rate_bpm: 104,
+            }),
+            makeRoutePoint(110, 45.01, -121.99, {
+              distance_meters: 1000,
+              elevation_meters: 28,
+              speed_mps: 6.2,
+              heart_rate_bpm: 132,
+            }),
+          ],
+        },
+      },
+    ];
+    const tooltipRow = {
+      progress: 0.5,
+      distanceMeters: 500,
+      elevation: 20,
+    };
+
+    render(
+      <ComparisonGapChartTooltip
+        active
+        label={500}
+        payload={[
+          {
+            dataKey: "elevation",
+            value: 20,
+            payload: tooltipRow,
+          },
+          {
+            dataKey: "effort_101",
+            value: 0,
+            payload: tooltipRow,
+          },
+          {
+            dataKey: "effort_102",
+            value: 5,
+            payload: tooltipRow,
+          },
+        ]}
+        referenceEffort={selectedRows[0].effort}
+        selectedRows={selectedRows}
+        unitSystem="metric"
+      />,
+    );
+
+    expect(screen.getByText("Time 1m 00s")).toBeInTheDocument();
+    expect(screen.getByText("Elev 20 m")).toBeInTheDocument();
+    expect(screen.getByText("Dist 0.5 km")).toBeInTheDocument();
+
+    const rideOneRow = screen.getByLabelText("Ride 1 tooltip row");
+    expect(within(rideOneRow).getByText("#1")).toBeInTheDocument();
+    expect(within(rideOneRow).getByText("1m 00s")).toBeInTheDocument();
+    expect(within(rideOneRow).getByText("19.8 km/h")).toBeInTheDocument();
+    expect(within(rideOneRow).getByText("110 bpm")).toBeInTheDocument();
+
+    const rideTwoRow = screen.getByLabelText("Ride 2 tooltip row");
+    expect(within(rideTwoRow).getByText("#2")).toBeInTheDocument();
+    expect(within(rideTwoRow).getByText("55s")).toBeInTheDocument();
+    expect(within(rideTwoRow).getByText("20.9 km/h")).toBeInTheDocument();
+    expect(within(rideTwoRow).getByText("118 bpm")).toBeInTheDocument();
   });
 });
