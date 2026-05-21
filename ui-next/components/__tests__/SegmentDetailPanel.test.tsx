@@ -29,7 +29,10 @@ vi.mock("recharts", async (importOriginal) => {
 const mocks = vi.hoisted(() => ({
   useCurrentUser: vi.fn(),
   useSegment: vi.fn(),
+  useUpdateSegment: vi.fn(),
+  useDeleteSegment: vi.fn(),
   renderMapLibreRouteMap: vi.fn(),
+  routerPush: vi.fn(),
 }));
 
 vi.mock("@ericbutera/kaleido", () => ({
@@ -42,6 +45,14 @@ vi.mock("@ericbutera/kaleido", () => ({
 
 vi.mock("../../lib/queries", () => ({
   useSegment: mocks.useSegment,
+  useUpdateSegment: mocks.useUpdateSegment,
+  useDeleteSegment: mocks.useDeleteSegment,
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: mocks.routerPush,
+  }),
 }));
 
 vi.mock("../MapLibreRouteMap", () => ({
@@ -159,6 +170,18 @@ describe("SegmentDetailPanel", () => {
     mocks.useSegment.mockReturnValue({
       data: makeSegment(),
       isLoading: false,
+      isError: false,
+      error: null,
+    });
+    mocks.useUpdateSegment.mockReturnValue({
+      updateAsync: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+    mocks.useDeleteSegment.mockReturnValue({
+      deleteAsync: vi.fn(),
+      isPending: false,
       isError: false,
       error: null,
     });

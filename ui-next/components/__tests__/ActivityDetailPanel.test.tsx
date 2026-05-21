@@ -3,6 +3,29 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ActivityDetailPanel from "../ActivityDetailPanel";
 
+vi.mock("recharts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("recharts")>();
+  const React = await import("react");
+
+  return {
+    ...actual,
+    ResponsiveContainer: ({ children }: { children: React.ReactNode }) => {
+      if (React.isValidElement<{ width?: number; height?: number }>(children)) {
+        return React.cloneElement(children, {
+          width: 960,
+          height: 240,
+        });
+      }
+
+      return React.createElement(
+        "div",
+        { style: { width: 960, height: 240 } },
+        children,
+      );
+    },
+  };
+});
+
 const mocks = vi.hoisted(() => ({
   useCurrentUser: vi.fn(),
   useActivity: vi.fn(),
