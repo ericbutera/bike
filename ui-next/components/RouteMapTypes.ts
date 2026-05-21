@@ -33,4 +33,5 @@ export type RouteMapProps = {
   defaultBasemap?: RouteMapBasemap;
   fitBoundsPadding?: number;
   fitBoundsMaxZoom?: number;
+  showRouteEndpoints?: boolean;
 };

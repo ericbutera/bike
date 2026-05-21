@@ -18,6 +18,7 @@ mod m20260515_000001_map_feature_flag;
 mod m20260520_000001_segment_summary_latest_activity;
 mod m20260520_000002_activity_analytics_and_fitness_dirty_days;
 mod m20260520_000003_rename_activity_analytics_top_10_count;
+mod m20260520_000004_segment_builder_source;
 
 pub struct Migrator;
 
@@ -78,6 +79,9 @@ impl MigratorTrait for Migrator {
         ));
         locals.push(Box::new(
             m20260520_000003_rename_activity_analytics_top_10_count::Migration,
+        ));
+        locals.push(Box::new(
+            m20260520_000004_segment_builder_source::Migration,
         ));
         locals.sort_by_key(|m| m.name().to_string());
 

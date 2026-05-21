@@ -2,6 +2,7 @@
 
 import { auth } from "@ericbutera/kaleido";
 import {
+  faBars,
   faCrown,
   faMedal,
   faRocket,
@@ -52,6 +53,7 @@ import {
   type SegmentAchievement,
   type SegmentAchievementKind,
 } from "../lib/segmentAchievements";
+import { hasSegmentBuilderRoute } from "../lib/segmentBuilder";
 import { useUnitPreferences } from "../lib/unitPreferences";
 import AuthRequiredCard from "./AuthRequiredCard";
 import MapLibreRouteMap from "./MapLibreRouteMap";
@@ -1440,6 +1442,10 @@ export default function ActivityDetailPanel({
   const regenerateMutation = useRegenerateActivity();
   const deleteMutation = useDeleteActivity();
   const activity = activityQuery.data;
+  const canBuildSegment = hasSegmentBuilderRoute(activity?.route_points);
+  const segmentBuilderHref = activity
+    ? `/segments/builder?activityId=${activity.id}`
+    : "/segments/builder";
   const matchedSegmentEfforts = sortMatchedSegmentEfforts(
     activity?.segment_efforts,
   );
@@ -1630,7 +1636,6 @@ export default function ActivityDetailPanel({
         <div className="card-body gap-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-sm text-base-content/60">Activity detail</p>
               <h1 className="mt-2 text-4xl font-semibold">{activity.title}</h1>
               <p className="mt-3 text-sm text-base-content/70">
                 {formatActivityTimestamp(activity.started_at)}
@@ -1641,17 +1646,84 @@ export default function ActivityDetailPanel({
                 </p>
               ) : null}
             </div>
-            <div className="flex flex-wrap gap-2">
-              <span className="badge badge-outline">
-                {formatSport(activity.sport)}
-              </span>
-              {activity.format ? (
-                <span className="badge badge-ghost uppercase">
-                  {activity.format}
+            <div className="flex flex-col items-start gap-3 sm:items-end">
+              <div className="flex flex-wrap gap-2">
+                <span className="badge badge-outline">
+                  {formatSport(activity.sport)}
                 </span>
+
+                <div className="dropdown dropdown-end">
+                  <button
+                    type="button"
+                    tabIndex={0}
+                    className="btn btn-ghost btn-square btn-sm"
+                    aria-label="Open activity actions"
+                  >
+                    <FontAwesomeIcon icon={faBars} className="h-4 w-4" />
+                  </button>
+                  <ul
+                    tabIndex={0}
+                    className="dropdown-content menu z-20 mt-2 w-56 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
+                  >
+                    <li>
+                      {canBuildSegment && (
+                        <Link href={segmentBuilderHref}>Build segment</Link>
+                      )}
+                    </li>
+
+                    {activity.can_regenerate ? (
+                      <li>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void handleRegenerate();
+                          }}
+                          disabled={regenerateMutation.isPending}
+                        >
+                          {regenerateMutation.isPending
+                            ? "Regenerating..."
+                            : "Regenerate derived data"}
+                        </button>
+                      </li>
+                    ) : null}
+                    <li>
+                      <button
+                        type="button"
+                        className="text-error"
+                        onClick={() => {
+                          void handleDelete();
+                        }}
+                        disabled={deleteMutation.isPending}
+                      >
+                        {deleteMutation.isPending
+                          ? "Deleting..."
+                          : "Delete activity"}
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              {!canBuildSegment ? (
+                <p className="text-sm text-base-content/60 sm:text-right">
+                  This ride needs stored route points before Bike can build a
+                  segment from it.
+                </p>
               ) : null}
             </div>
           </div>
+
+          {regenerateMutation.isError ? (
+            <div className="alert alert-error">
+              {extractApiMessage(regenerateMutation.error)}
+            </div>
+          ) : null}
+
+          {deleteMutation.isError ? (
+            <div className="alert alert-error">
+              {extractApiMessage(deleteMutation.error)}
+            </div>
+          ) : null}
 
           <div className="grid gap-x-6 gap-y-4 border-b border-base-300 pb-5 sm:grid-cols-2 xl:grid-cols-4">
             <PrimaryActivityStat
@@ -1934,99 +2006,38 @@ export default function ActivityDetailPanel({
         onToggle={toggleSignalLayer}
       />
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(18rem,0.7fr)] lg:items-start">
-        <div className="card bg-base-100 shadow-xl">
-          <div className="card-body">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <h2 className="card-title text-xl">Lap splits</h2>
-                <p className="text-sm text-base-content/70">
-                  These lap rollups come from the upload-time read side and can
-                  be regenerated when the development flag is enabled.
-                </p>
-              </div>
-              <span className="badge badge-outline">
-                {(activity.laps ?? []).length} lap
-                {(activity.laps ?? []).length === 1 ? "" : "s"}
-              </span>
-            </div>
-
-            {(activity.laps ?? []).length > 0 ? (
-              <div className="mt-5 grid gap-4 xl:grid-cols-2">
-                {(activity.laps ?? []).map((lap) => (
-                  <LapCard
-                    key={`${lap.lap_index}-${lap.title}`}
-                    lap={lap}
-                    unitSystem={unitSystem}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="alert mt-5">
-                <span>This upload did not contain explicit lap data.</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <aside className="card bg-base-100 shadow-xl">
-          <div className="card-body">
-            <h2 className="card-title text-xl">Actions</h2>
-            <p className="text-sm text-base-content/70">
-              Re-run derived activity processing or remove this upload from the
-              account.
-            </p>
-
-            {activity.can_regenerate ? (
-              <div className="mt-6 border-t border-base-300 pt-5">
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  onClick={() => {
-                    void handleRegenerate();
-                  }}
-                  disabled={regenerateMutation.isPending}
-                >
-                  {regenerateMutation.isPending
-                    ? "Regenerating..."
-                    : "Regenerate derived data"}
-                </button>
-                <p className="mt-3 text-sm leading-6 text-base-content/65">
-                  Re-runs the same upload-time derivation against the raw file
-                  so parser changes, route geometry, and segment matches show up
-                  without re-uploading.
-                </p>
-                {regenerateMutation.isError ? (
-                  <div className="alert alert-error mt-3">
-                    {extractApiMessage(regenerateMutation.error)}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-
-            <div className="mt-6 border-t border-base-300 pt-5">
-              <button
-                type="button"
-                className="btn btn-outline btn-error btn-sm"
-                onClick={() => {
-                  void handleDelete();
-                }}
-                disabled={deleteMutation.isPending}
-              >
-                {deleteMutation.isPending ? "Deleting..." : "Delete activity"}
-              </button>
-              <p className="mt-3 text-sm leading-6 text-base-content/65">
-                Removes this activity and clears any derived segment matches
-                that depend on it.
+      <div className="card bg-base-100 shadow-xl">
+        <div className="card-body">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="card-title text-xl">Lap splits</h2>
+              <p className="text-sm text-base-content/70">
+                These lap rollups come from the upload-time read side and can be
+                regenerated when the development flag is enabled.
               </p>
-              {deleteMutation.isError ? (
-                <div className="alert alert-error mt-3">
-                  {extractApiMessage(deleteMutation.error)}
-                </div>
-              ) : null}
             </div>
+            <span className="badge badge-outline">
+              {(activity.laps ?? []).length} lap
+              {(activity.laps ?? []).length === 1 ? "" : "s"}
+            </span>
           </div>
-        </aside>
+
+          {(activity.laps ?? []).length > 0 ? (
+            <div className="mt-5 grid gap-4 xl:grid-cols-2">
+              {(activity.laps ?? []).map((lap) => (
+                <LapCard
+                  key={`${lap.lap_index}-${lap.title}`}
+                  lap={lap}
+                  unitSystem={unitSystem}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="alert mt-5">
+              <span>This upload did not contain explicit lap data.</span>
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );

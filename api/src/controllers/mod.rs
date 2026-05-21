@@ -57,8 +57,18 @@ pub fn routes() -> Router<Arc<AppStorage>> {
                 .layer(DefaultBodyLimit::max(Config::get().max_upload_bytes)),
         )
         .route(
+            "/api/segments/from-activity",
+            axum::routing::post(segments::create_segment_from_activity),
+        )
+        .route(
+            "/api/segments/:id/from-activity",
+            axum::routing::put(segments::update_segment_from_activity),
+        )
+        .route(
             "/api/segments/:id",
-            axum::routing::get(segments::get_segment),
+            axum::routing::get(segments::get_segment)
+                .put(segments::update_segment)
+                .delete(segments::delete_segment),
         )
         .route(
             "/api/preferences",

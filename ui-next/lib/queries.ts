@@ -130,6 +130,12 @@ export type SegmentEffort = {
   route_points?: ActivityRoutePoint[] | null;
 };
 
+export type SegmentBuilderSource = {
+  activity_id: number;
+  start_route_point_index: number;
+  end_route_point_index: number;
+};
+
 export type Segment = {
   id: number;
   title: string;
@@ -141,6 +147,7 @@ export type Segment = {
   best_duration_seconds?: number | null;
   current_user_pr_duration_seconds?: number | null;
   created_at: string;
+  builder_source?: SegmentBuilderSource | null;
   route_points?: ActivityRoutePoint[] | null;
   efforts?: SegmentEffort[] | null;
 };
@@ -504,6 +511,134 @@ export function useUploadSegment() {
       ]);
 
       return result as Segment;
+    },
+  };
+}
+
+export function useCreateSegmentFromActivity() {
+  const queryClient = useQueryClient();
+  const mutation = $api.useMutation("post", "/segments/from-activity");
+
+  return {
+    ...mutation,
+    createAsync: async (payload: {
+      activityId: number | string;
+      title: string;
+      startRoutePointIndex: number;
+      endRoutePointIndex: number;
+    }) => {
+      const result = await mutation.mutateAsync({
+        body: {
+          activity_id: Number(payload.activityId),
+          title: payload.title,
+          start_route_point_index: payload.startRoutePointIndex,
+          end_route_point_index: payload.endRoutePointIndex,
+        },
+      });
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["get", "/segments"] }),
+        queryClient.invalidateQueries({ queryKey: ["get", "/segments/{id}"] }),
+        queryClient.invalidateQueries({ queryKey: ["get", "/activities"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/activities/{id}"],
+        }),
+      ]);
+
+      return result as Segment;
+    },
+  };
+}
+
+export function useUpdateSegmentFromActivity() {
+  const queryClient = useQueryClient();
+  const mutation = $api.useMutation("put", "/segments/{id}/from-activity");
+
+  return {
+    ...mutation,
+    updateAsync: async (payload: {
+      id: number | string;
+      activityId: number | string;
+      title: string;
+      startRoutePointIndex: number;
+      endRoutePointIndex: number;
+    }) => {
+      const numericId = Number(payload.id);
+      const result = await mutation.mutateAsync({
+        params: { path: { id: numericId } },
+        body: {
+          activity_id: Number(payload.activityId),
+          title: payload.title,
+          start_route_point_index: payload.startRoutePointIndex,
+          end_route_point_index: payload.endRoutePointIndex,
+        },
+      });
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["get", "/segments"] }),
+        queryClient.invalidateQueries({ queryKey: ["get", "/segments/{id}"] }),
+        queryClient.invalidateQueries({ queryKey: ["get", "/activities"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/activities/{id}"],
+        }),
+      ]);
+
+      return result as Segment;
+    },
+  };
+}
+
+export function useUpdateSegment() {
+  const queryClient = useQueryClient();
+  const mutation = $api.useMutation("put", "/segments/{id}");
+
+  return {
+    ...mutation,
+    updateAsync: async (payload: { id: number | string; title: string }) => {
+      const numericId = Number(payload.id);
+      const result = await mutation.mutateAsync({
+        params: { path: { id: numericId } },
+        body: {
+          title: payload.title,
+        },
+      });
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["get", "/segments"] }),
+        queryClient.invalidateQueries({ queryKey: ["get", "/segments/{id}"] }),
+        queryClient.invalidateQueries({ queryKey: ["get", "/activities"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/activities/{id}"],
+        }),
+      ]);
+
+      return result as Segment;
+    },
+  };
+}
+
+export function useDeleteSegment() {
+  const queryClient = useQueryClient();
+  const mutation = $api.useMutation("delete", "/segments/{id}");
+
+  return {
+    ...mutation,
+    deleteAsync: async (id: number | string) => {
+      const numericId = Number(id);
+      const result = await mutation.mutateAsync({
+        params: { path: { id: numericId } },
+      });
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["get", "/segments"] }),
+        queryClient.invalidateQueries({ queryKey: ["get", "/segments/{id}"] }),
+        queryClient.invalidateQueries({ queryKey: ["get", "/activities"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/activities/{id}"],
+        }),
+      ]);
+
+      return result;
     },
   };
 }

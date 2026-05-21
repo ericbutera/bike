@@ -98,9 +98,11 @@ export default function SegmentsPanel() {
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-sm text-base-content/60">Segments</p>
-              <h2 className="card-title text-3xl">
-                Import segment routes manually
-              </h2>
+              <h2 className="card-title text-3xl">Build or import segments</h2>
+              <p className="mt-2 max-w-2xl text-sm text-base-content/70">
+                Crop a segment directly from one of your rides, or import a GPX
+                or TCX route file when you already have the trace.
+              </p>
             </div>
           </div>
 

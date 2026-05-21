@@ -423,10 +423,11 @@ function SelectedEffortsPanel({
   onTogglePinnedEffort: (effortId: number) => void;
   onRemoveEffort: (effortId: number) => void;
 }) {
-  const rowRefs = useRef(new Map<number, HTMLDivElement>());
+  const rowRefs = useRef(new Map<number, HTMLLIElement>());
   const previousRowTopByEffortIdRef = useRef(new Map<number, number>());
   const animationFrameRef = useRef<number | null>(null);
-  const gridTemplateColumns = "minmax(0,1fr) 5.25rem 6.5rem 4.5rem 1.25rem";
+  const gridTemplateColumns =
+    "auto minmax(0,1fr) 5.25rem 6.5rem 4.5rem 1.25rem";
   const sortedComparisonRows = useMemo(() => {
     const fallbackIndexByEffortId = new Map(
       comparisonRows.map((comparisonRow, index) => [
@@ -462,10 +463,29 @@ function SelectedEffortsPanel({
     [sortedComparisonRows],
   );
 
+  function formatRideDateLabel(value: string) {
+    const date = new Date(value);
+
+    return Number.isNaN(date.getTime())
+      ? value
+      : date.toLocaleDateString(undefined, { dateStyle: "medium" });
+  }
+
   useLayoutEffect(() => {
     if (animationFrameRef.current != null) {
       window.cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
+    }
+
+    for (const comparisonRow of sortedComparisonRows) {
+      const row = rowRefs.current.get(comparisonRow.effort.id);
+
+      if (!row) {
+        continue;
+      }
+
+      row.style.transition = "none";
+      row.style.transform = "translateY(0)";
     }
 
     const nextRowTopByEffortId = new Map<number, number>();
@@ -521,7 +541,7 @@ function SelectedEffortsPanel({
         animationFrameRef.current = null;
       }
     };
-  }, [sortedComparisonRowOrder, sortedComparisonRows]);
+  }, [sortedComparisonRowOrder]);
 
   return sortedComparisonRows.length > 0 ? (
     <div className="flex h-full min-h-[24rem] flex-col bg-base-100">
@@ -535,7 +555,7 @@ function SelectedEffortsPanel({
               className="grid items-center gap-4 text-xs font-semibold uppercase tracking-[0.14em] text-base-content/55"
               style={{ gridTemplateColumns }}
             >
-              <span>Athletes</span>
+              <span className="col-span-2">Athletes</span>
               <span className="justify-self-end text-right">Time</span>
               <span className="justify-self-end text-right">Speed</span>
               <span className="justify-self-end text-right">HR</span>
@@ -543,111 +563,122 @@ function SelectedEffortsPanel({
             </div>
           </div>
 
-          {sortedComparisonRows.map((comparisonRow) => {
-            const isFocused = focusedEffortId === comparisonRow.effort.id;
-            const speedValue = comparisonRow.isReference
-              ? formatSpeed(
-                  comparisonRow.currentPoint?.speed_mps ?? null,
-                  unitSystem,
-                )
-              : formatSignedSpeedDelta(comparisonRow.speedDeltaMps, unitSystem);
-            const heartRateValue = comparisonRow.isFinished
-              ? "--"
-              : formatHeartRate(
-                  comparisonRow.currentPoint?.heart_rate_bpm ?? null,
-                );
-            const timeValue = comparisonRow.isReference
-              ? formatDuration(
-                  Math.round(
-                    Math.min(
-                      playbackSeconds,
-                      comparisonRow.effort.duration_seconds,
+          <ul className="list bg-base-100 p-0">
+            {sortedComparisonRows.map((comparisonRow) => {
+              const isFocused = focusedEffortId === comparisonRow.effort.id;
+              const speedValue = comparisonRow.isReference
+                ? formatSpeed(
+                    comparisonRow.currentPoint?.speed_mps ?? null,
+                    unitSystem,
+                  )
+                : formatSignedSpeedDelta(
+                    comparisonRow.speedDeltaMps,
+                    unitSystem,
+                  );
+              const heartRateValue = comparisonRow.isFinished
+                ? "--"
+                : formatHeartRate(
+                    comparisonRow.currentPoint?.heart_rate_bpm ?? null,
+                  );
+              const timeValue = comparisonRow.isReference
+                ? formatDuration(
+                    Math.round(
+                      Math.min(
+                        playbackSeconds,
+                        comparisonRow.effort.duration_seconds,
+                      ),
                     ),
-                  ),
-                )
-              : formatSignedSecondsDelta(comparisonRow.gapSeconds);
-            const isPositiveGap = (comparisonRow.gapSeconds ?? 0) > 0;
-            const isNegativeGap = (comparisonRow.gapSeconds ?? 0) < 0;
-            const isPositiveSpeed = (comparisonRow.speedDeltaMps ?? 0) > 0;
-            const isNegativeSpeed = (comparisonRow.speedDeltaMps ?? 0) < 0;
+                  )
+                : formatSignedSecondsDelta(comparisonRow.gapSeconds);
+              const isPositiveGap = (comparisonRow.gapSeconds ?? 0) > 0;
+              const isNegativeGap = (comparisonRow.gapSeconds ?? 0) < 0;
+              const isPositiveSpeed = (comparisonRow.speedDeltaMps ?? 0) > 0;
+              const isNegativeSpeed = (comparisonRow.speedDeltaMps ?? 0) < 0;
 
-            return (
-              <div
-                key={comparisonRow.effort.id}
-                ref={(element) => {
-                  if (element) {
-                    rowRefs.current.set(comparisonRow.effort.id, element);
-                  } else {
-                    rowRefs.current.delete(comparisonRow.effort.id);
-                  }
-                }}
-                className={`grid min-w-0 items-center gap-4 border-b border-base-300 px-4 py-3 transition-colors ${isFocused ? "bg-base-200/80" : "bg-transparent"}`}
-                style={{ gridTemplateColumns, willChange: "transform" }}
-                onMouseEnter={() => {
-                  onHoverEffort(comparisonRow.effort.id);
-                }}
-                onMouseLeave={() => {
-                  onHoverEffort(null);
-                }}
-              >
-                <button
-                  type="button"
-                  className="min-w-0 text-left"
-                  aria-pressed={comparisonRow.effort.id === referenceEffortId}
-                  aria-label={`Make ${comparisonRow.effort.activity_title} the reference ride`}
-                  onFocus={() => {
+              return (
+                <li
+                  key={comparisonRow.effort.id}
+                  ref={(element) => {
+                    if (element) {
+                      rowRefs.current.set(comparisonRow.effort.id, element);
+                    } else {
+                      rowRefs.current.delete(comparisonRow.effort.id);
+                    }
+                  }}
+                  className={`list-row grid min-w-0 items-center gap-4 rounded-none border-b border-base-300 px-4 py-3 transition-colors last:border-b-0 ${isFocused ? "bg-base-200/80" : "bg-transparent"}`}
+                  style={{ gridTemplateColumns, willChange: "transform" }}
+                  onMouseEnter={() => {
                     onHoverEffort(comparisonRow.effort.id);
                   }}
-                  onBlur={() => {
+                  onMouseLeave={() => {
                     onHoverEffort(null);
                   }}
-                  onClick={() => {
-                    onTogglePinnedEffort(comparisonRow.effort.id);
-                  }}
                 >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span
-                      aria-hidden
-                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center text-sm font-semibold text-white"
-                      style={{ backgroundColor: comparisonRow.color }}
-                    >
-                      {comparisonRow.markerLabel}
-                    </span>
-                    <span className="min-w-0 whitespace-normal break-words font-semibold leading-tight text-base-content">
-                      {comparisonRow.effort.rider_name}
-                    </span>
+                  <span
+                    aria-hidden
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center text-sm font-semibold text-white"
+                    style={{ backgroundColor: comparisonRow.color }}
+                  >
+                    {comparisonRow.markerLabel}
+                  </span>
+
+                  <button
+                    type="button"
+                    className="min-w-0 text-left"
+                    aria-pressed={comparisonRow.effort.id === referenceEffortId}
+                    aria-label={`Make ${comparisonRow.effort.activity_title} the reference ride`}
+                    onFocus={() => {
+                      onHoverEffort(comparisonRow.effort.id);
+                    }}
+                    onBlur={() => {
+                      onHoverEffort(null);
+                    }}
+                    onClick={() => {
+                      onTogglePinnedEffort(comparisonRow.effort.id);
+                    }}
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold leading-tight text-base-content">
+                        {comparisonRow.effort.rider_name}
+                      </div>
+                      <div className="mt-1 truncate text-xs font-medium text-base-content/55">
+                        {formatRideDateLabel(
+                          comparisonRow.effort.activity_started_at,
+                        )}
+                      </div>
+                    </div>
+                  </button>
+
+                  <div
+                    className={`justify-self-end text-right font-semibold ${comparisonRow.isReference ? "text-base-content" : isPositiveGap ? "text-success" : isNegativeGap ? "text-error" : "text-base-content"}`}
+                  >
+                    {timeValue}
                   </div>
-                </button>
 
-                <div
-                  className={`justify-self-end text-right font-semibold ${comparisonRow.isReference ? "text-base-content" : isPositiveGap ? "text-success" : isNegativeGap ? "text-error" : "text-base-content"}`}
-                >
-                  {timeValue}
-                </div>
+                  <div
+                    className={`justify-self-end text-right font-semibold ${comparisonRow.isReference ? "text-base-content" : isPositiveSpeed ? "text-success" : isNegativeSpeed ? "text-error" : "text-base-content"}`}
+                  >
+                    {speedValue}
+                  </div>
 
-                <div
-                  className={`justify-self-end text-right font-semibold ${comparisonRow.isReference ? "text-base-content" : isPositiveSpeed ? "text-success" : isNegativeSpeed ? "text-error" : "text-base-content"}`}
-                >
-                  {speedValue}
-                </div>
+                  <div className="justify-self-end text-right text-sm font-medium text-base-content">
+                    {heartRateValue}
+                  </div>
 
-                <div className="justify-self-end text-right text-sm font-medium text-base-content">
-                  {heartRateValue}
-                </div>
-
-                <button
-                  type="button"
-                  className="inline-flex h-4 w-4 justify-self-end items-center justify-center text-base-content/50 transition hover:text-base-content"
-                  aria-label={`Remove ${comparisonRow.effort.activity_title} from comparison`}
-                  onClick={() => {
-                    onRemoveEffort(comparisonRow.effort.id);
-                  }}
-                >
-                  <FontAwesomeIcon icon={faXmark} className="h-3 w-3" />
-                </button>
-              </div>
-            );
-          })}
+                  <button
+                    type="button"
+                    className="inline-flex h-4 w-4 justify-self-end items-center justify-center text-base-content/50 transition hover:text-base-content"
+                    aria-label={`Remove ${comparisonRow.effort.activity_title} from comparison`}
+                    onClick={() => {
+                      onRemoveEffort(comparisonRow.effort.id);
+                    }}
+                  >
+                    <FontAwesomeIcon icon={faXmark} className="h-3 w-3" />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       </div>
     </div>

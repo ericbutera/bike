@@ -489,10 +489,15 @@ export default function MapLibreRouteMapClient({
   defaultBasemap = "topo",
   fitBoundsPadding = DEFAULT_FIT_BOUNDS_PADDING,
   fitBoundsMaxZoom = DEFAULT_FIT_BOUNDS_MAX_ZOOM,
+  showRouteEndpoints = true,
 }: RouteMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const resizeFrameRef = useRef<number | null>(null);
+  const lastFittedRoutePointsRef = useRef<
+    ActivityRoutePoint[] | null | undefined
+  >(null);
+  const hasFittedInitialViewRef = useRef(false);
   const appliedStyleKeyRef = useRef<string | null>(null);
   const preservedViewStateRef = useRef<{
     center: [number, number];
@@ -595,7 +600,7 @@ export default function MapLibreRouteMapClient({
   );
 
   const endpointSourceData = useMemo<FeatureCollection<Point>>(() => {
-    if ((routePoints?.length ?? 0) < 2) {
+    if (!showRouteEndpoints || (routePoints?.length ?? 0) < 2) {
       return emptyFeatureCollection<Point>();
     }
 
@@ -608,7 +613,7 @@ export default function MapLibreRouteMapClient({
         buildEndpointFeature("end", points.at(-1) ?? points[0], "end"),
       ],
     };
-  }, [routePoints]);
+  }, [routePoints, showRouteEndpoints]);
 
   const overlaySourceData = useMemo<FeatureCollection<LineString>>(
     () => ({
@@ -731,6 +736,8 @@ export default function MapLibreRouteMapClient({
       appliedStyleKeyRef.current = null;
       preservedViewStateRef.current = null;
       shouldRestoreViewRef.current = false;
+      lastFittedRoutePointsRef.current = null;
+      hasFittedInitialViewRef.current = false;
     };
   }, [interactive, mapStyle, mapStyleKey, showBaseTiles, showZoomControls]);
 
@@ -761,6 +768,10 @@ export default function MapLibreRouteMapClient({
       if (mapRef.current !== map) {
         return;
       }
+
+      const shouldFitToGeometry =
+        !hasFittedInitialViewRef.current ||
+        lastFittedRoutePointsRef.current !== routePoints;
 
       ensureMapSourcesAndLayers(map, showBaseTiles);
 
@@ -829,6 +840,10 @@ export default function MapLibreRouteMapClient({
         return;
       }
 
+      if (!shouldFitToGeometry) {
+        return;
+      }
+
       fitMapToGeometry(
         map,
         routePoints ?? [],
@@ -836,6 +851,8 @@ export default function MapLibreRouteMapClient({
         fitBoundsPadding,
         fitBoundsMaxZoom,
       );
+      hasFittedInitialViewRef.current = true;
+      lastFittedRoutePointsRef.current = routePoints;
     };
 
     if (map.isStyleLoaded()) {

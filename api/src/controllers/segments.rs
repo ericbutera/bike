@@ -2,7 +2,7 @@ use crate::activity_details::{
     derive_activity_detail_data, deserialize_derived_activity_data, ActivityRoutePoint,
 };
 use crate::activity_summary::summarize_activity_upload;
-use crate::analytics::mark_segment_activity_changes;
+use crate::analytics::{mark_segment_activity_changes, rebuild_activity_analytics_cache};
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::dedupe::{segment_dedupe_key, segment_dedupe_key_from_model};
 use crate::entities::{
@@ -19,8 +19,11 @@ use axum::Json;
 use chrono::{DateTime, Utc};
 use kaleido::auth::entities::users;
 use kaleido::auth::UserContext;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
-use serde::Serialize;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, IntoActiveModel, QueryFilter,
+    QueryOrder, Set, TransactionTrait,
+};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -37,10 +40,38 @@ pub struct SegmentResponse {
     pub best_duration_seconds: Option<i32>,
     pub current_user_pr_duration_seconds: Option<i32>,
     pub created_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub builder_source: Option<SegmentBuilderSourceResponse>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub route_points: Vec<ActivityRoutePoint>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub efforts: Vec<SegmentEffortResponse>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, ToSchema)]
+pub struct SegmentBuilderSourceResponse {
+    pub activity_id: i32,
+    pub start_route_point_index: i32,
+    pub end_route_point_index: i32,
+}
+
+fn segment_builder_source_from_model(
+    segment: &segments::Model,
+) -> Option<SegmentBuilderSourceResponse> {
+    match (
+        segment.source_activity_id,
+        segment.source_start_route_point_index,
+        segment.source_end_route_point_index,
+    ) {
+        (Some(activity_id), Some(start_route_point_index), Some(end_route_point_index)) => {
+            Some(SegmentBuilderSourceResponse {
+                activity_id,
+                start_route_point_index,
+                end_route_point_index,
+            })
+        }
+        _ => None,
+    }
 }
 
 fn current_user_pr_duration_from_responses(
@@ -69,6 +100,19 @@ pub struct SegmentEffortResponse {
     pub distance_meters: Option<f64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub route_points: Vec<ActivityRoutePoint>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateSegmentFromActivityRequest {
+    pub activity_id: i32,
+    pub title: String,
+    pub start_route_point_index: i32,
+    pub end_route_point_index: i32,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateSegmentRequest {
+    pub title: String,
 }
 
 #[utoipa::path(
@@ -135,6 +179,7 @@ pub async fn list_segments(
             .map(|segment| {
                 let summary = summary_by_segment_id.get(&segment.id);
                 let user_summary = user_summary_by_segment_id.get(&segment.id);
+                let builder_source = segment_builder_source_from_model(&segment);
 
                 SegmentResponse {
                     id: segment.id,
@@ -148,6 +193,7 @@ pub async fn list_segments(
                     current_user_pr_duration_seconds: user_summary
                         .and_then(|value| value.personal_best_duration_seconds),
                     created_at: segment.created_at,
+                    builder_source,
                     route_points: Vec::new(),
                     efforts: Vec::new(),
                 }
@@ -184,25 +230,319 @@ pub async fn get_segment(
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::not_found("Segment not found"))?;
-    let route_points = deserialize_segment_route_points(segment.route_data_json.as_ref());
-    let efforts = load_effort_responses(&state.db, &[segment.id]).await?;
+    Ok(Json(
+        load_segment_response(&state.db, &segment, user.id).await?,
+    ))
+}
 
-    Ok(Json(SegmentResponse {
-        id: segment.id,
-        title: segment.title,
-        source: segment.source,
-        original_filename: segment.original_filename,
-        format: segment.format,
-        distance_meters: segment.distance_meters,
-        effort_count: efforts.len() as i32,
-        best_duration_seconds: efforts.iter().map(|effort| effort.duration_seconds).min(),
-        current_user_pr_duration_seconds: current_user_pr_duration_from_responses(
-            &efforts, user.id,
-        ),
-        created_at: segment.created_at,
-        route_points,
-        efforts,
-    }))
+#[utoipa::path(
+    put,
+    path = "/api/segments/{id}",
+    params(
+        ("id" = i32, Path, description = "Segment ID")
+    ),
+    request_body = UpdateSegmentRequest,
+    responses(
+        (status = 200, description = "Updated segment", body = SegmentResponse),
+        (status = 400, description = "Invalid segment update", body = ApiErrorResponse),
+        (status = 401, description = "Not authenticated"),
+        (status = 404, description = "Segment not found", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    tag = "segments",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn update_segment(
+    Path(id): Path<i32>,
+    UserContext { user, .. }: UserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+    Json(payload): Json<UpdateSegmentRequest>,
+) -> Result<Json<SegmentResponse>, AppError> {
+    let segment = segments::Entity::find()
+        .filter(segments::Column::Id.eq(id))
+        .filter(segments::Column::UserId.eq(user.id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found("Segment not found"))?;
+    let title = normalize_segment_title(&payload.title)?;
+
+    if segment.title == title {
+        return Ok(Json(
+            load_segment_response(&state.db, &segment, user.id).await?,
+        ));
+    }
+
+    let activity_ids = load_activity_ids_for_segments(&state.db, &[segment.id]).await?;
+    let txn = state.db.begin().await?;
+    let mut active_segment = segment.into_active_model();
+    active_segment.title = Set(title);
+    let updated_segment = active_segment.update(&txn).await?;
+
+    if !activity_ids.is_empty() {
+        rebuild_activity_analytics_cache(&txn, &activity_ids).await?;
+    }
+
+    txn.commit().await?;
+
+    Ok(Json(
+        load_segment_response(&state.db, &updated_segment, user.id).await?,
+    ))
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/segments/{id}/from-activity",
+    params(
+        ("id" = i32, Path, description = "Segment ID")
+    ),
+    request_body = CreateSegmentFromActivityRequest,
+    responses(
+        (status = 200, description = "Updated segment route from an activity slice", body = SegmentResponse),
+        (status = 400, description = "Invalid activity slice", body = ApiErrorResponse),
+        (status = 401, description = "Not authenticated"),
+        (status = 404, description = "Segment or activity not found", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    tag = "segments",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn update_segment_from_activity(
+    Path(id): Path<i32>,
+    UserContext { user, .. }: UserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+    Json(payload): Json<CreateSegmentFromActivityRequest>,
+) -> Result<Json<SegmentResponse>, AppError> {
+    let segment = segments::Entity::find()
+        .filter(segments::Column::Id.eq(id))
+        .filter(segments::Column::UserId.eq(user.id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found("Segment not found"))?;
+    let activity = activities::Entity::find()
+        .filter(activities::Column::Id.eq(payload.activity_id))
+        .filter(activities::Column::UserId.eq(user.id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found("Activity not found"))?;
+    let title = normalize_segment_title(&payload.title)?;
+    let activity_route_points =
+        deserialize_derived_activity_data(activity.derived_data_json.as_ref()).route_points;
+    let segment_route_points = slice_builder_route_points(
+        &activity_route_points,
+        payload.start_route_point_index,
+        payload.end_route_point_index,
+    )?;
+    let distance_meters = segment_route_points
+        .last()
+        .and_then(|point| point.distance_meters);
+
+    if let Some(existing_segment) =
+        find_duplicate_segment(&state.db, user.id, distance_meters, &segment_route_points).await?
+    {
+        if existing_segment.id != segment.id {
+            return Err(AppError::validation_field(
+                "activity_id",
+                "Another segment already uses this route",
+            ));
+        }
+    }
+
+    let previous_activity_ids = load_activity_ids_for_segments(&state.db, &[segment.id]).await?;
+    let txn = state.db.begin().await?;
+    let mut active_segment = segment.into_active_model();
+    active_segment.title = Set(title);
+    active_segment.source = Set("activity_segment_builder".to_string());
+    active_segment.original_filename = Set(None);
+    active_segment.format = Set(activity.format.clone());
+    active_segment.distance_meters = Set(distance_meters);
+    active_segment.route_data_json =
+        Set(Some(serialize_segment_route_points(&segment_route_points)?));
+    active_segment.source_activity_id = Set(Some(activity.id));
+    active_segment.source_start_route_point_index = Set(Some(payload.start_route_point_index));
+    active_segment.source_end_route_point_index = Set(Some(payload.end_route_point_index));
+    let updated_segment = active_segment.update(&txn).await?;
+
+    replace_segment_efforts_for_segment(&txn, updated_segment.id, &segment_route_points).await?;
+
+    let mut affected_activity_ids = previous_activity_ids;
+    affected_activity_ids
+        .extend(load_activity_ids_for_segments(&txn, &[updated_segment.id]).await?);
+    let changed_at = Utc::now();
+    mark_segment_activity_changes(&txn, &[updated_segment.id], changed_at).await?;
+
+    if !affected_activity_ids.is_empty() {
+        rebuild_activity_analytics_cache(&txn, &affected_activity_ids).await?;
+    }
+
+    txn.commit().await?;
+
+    state
+        .tasks
+        .rebuild_segment_analytics(vec![updated_segment.id])
+        .await;
+
+    Ok(Json(
+        load_segment_response(&state.db, &updated_segment, user.id).await?,
+    ))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/segments/{id}",
+    params(
+        ("id" = i32, Path, description = "Segment ID")
+    ),
+    responses(
+        (status = 204, description = "Segment deleted"),
+        (status = 401, description = "Not authenticated"),
+        (status = 404, description = "Segment not found", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    tag = "segments",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn delete_segment(
+    Path(id): Path<i32>,
+    UserContext { user, .. }: UserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+) -> Result<StatusCode, AppError> {
+    let segment = segments::Entity::find()
+        .filter(segments::Column::Id.eq(id))
+        .filter(segments::Column::UserId.eq(user.id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found("Segment not found"))?;
+
+    delete_segment_with_related_state(&state.db, segment.id).await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/segments/from-activity",
+    request_body = CreateSegmentFromActivityRequest,
+    responses(
+        (status = 201, description = "Segment created from an activity route slice", body = SegmentResponse),
+        (status = 200, description = "Matching segment already exists", body = SegmentResponse),
+        (status = 400, description = "Invalid activity slice", body = ApiErrorResponse),
+        (status = 401, description = "Not authenticated"),
+        (status = 404, description = "Activity not found", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    tag = "segments",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn create_segment_from_activity(
+    UserContext { user, .. }: UserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+    Json(payload): Json<CreateSegmentFromActivityRequest>,
+) -> Result<(StatusCode, Json<SegmentResponse>), AppError> {
+    let activity = activities::Entity::find()
+        .filter(activities::Column::Id.eq(payload.activity_id))
+        .filter(activities::Column::UserId.eq(user.id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found("Activity not found"))?;
+    let title = normalize_segment_title(&payload.title)?;
+    let activity_route_points =
+        deserialize_derived_activity_data(activity.derived_data_json.as_ref()).route_points;
+    let segment_route_points = slice_builder_route_points(
+        &activity_route_points,
+        payload.start_route_point_index,
+        payload.end_route_point_index,
+    )?;
+    let distance_meters = segment_route_points
+        .last()
+        .and_then(|point| point.distance_meters);
+
+    if let Some(existing_segment) =
+        find_duplicate_segment(&state.db, user.id, distance_meters, &segment_route_points).await?
+    {
+        let should_update_title = existing_segment.title != title;
+        let should_update_builder_source = existing_segment.source_activity_id != Some(activity.id)
+            || existing_segment.source_start_route_point_index
+                != Some(payload.start_route_point_index)
+            || existing_segment.source_end_route_point_index != Some(payload.end_route_point_index);
+        let existing_segment = if should_update_title || should_update_builder_source {
+            let activity_ids = if should_update_title {
+                load_activity_ids_for_segments(&state.db, &[existing_segment.id]).await?
+            } else {
+                Vec::new()
+            };
+            let txn = state.db.begin().await?;
+            let mut active_segment = existing_segment.into_active_model();
+
+            if should_update_title {
+                active_segment.title = Set(title.clone());
+            }
+
+            active_segment.source_activity_id = Set(Some(activity.id));
+            active_segment.source_start_route_point_index =
+                Set(Some(payload.start_route_point_index));
+            active_segment.source_end_route_point_index = Set(Some(payload.end_route_point_index));
+
+            let updated_segment = active_segment.update(&txn).await?;
+
+            if !activity_ids.is_empty() {
+                rebuild_activity_analytics_cache(&txn, &activity_ids).await?;
+            }
+
+            txn.commit().await?;
+
+            updated_segment
+        } else {
+            existing_segment
+        };
+
+        return Ok((
+            StatusCode::OK,
+            Json(load_segment_response(&state.db, &existing_segment, user.id).await?),
+        ));
+    }
+
+    let segment = segments::ActiveModel {
+        user_id: Set(user.id),
+        title: Set(title),
+        source: Set("activity_segment_builder".to_string()),
+        original_filename: Set(None),
+        format: Set(activity.format.clone()),
+        distance_meters: Set(distance_meters),
+        route_data_json: Set(Some(serialize_segment_route_points(&segment_route_points)?)),
+        source_activity_id: Set(Some(activity.id)),
+        source_start_route_point_index: Set(Some(payload.start_route_point_index)),
+        source_end_route_point_index: Set(Some(payload.end_route_point_index)),
+        ..Default::default()
+    }
+    .insert(&state.db)
+    .await?;
+
+    replace_segment_efforts_for_segment(&state.db, segment.id, &segment_route_points).await?;
+    let activity_ids = load_activity_ids_for_segments(&state.db, &[segment.id]).await?;
+    let changed_at = Utc::now();
+    mark_segment_activity_changes(&state.db, &[segment.id], changed_at).await?;
+
+    if !activity_ids.is_empty() {
+        rebuild_activity_analytics_cache(&state.db, &activity_ids).await?;
+    }
+
+    state
+        .tasks
+        .rebuild_segment_analytics(vec![segment.id])
+        .await;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(load_segment_response(&state.db, &segment, user.id).await?),
+    ))
 }
 
 #[utoipa::path(
@@ -246,28 +586,9 @@ pub async fn import_segment(
     )
     .await?
     {
-        let efforts = load_effort_responses(&state.db, &[existing_segment.id]).await?;
-
         return Ok((
             StatusCode::OK,
-            Json(SegmentResponse {
-                id: existing_segment.id,
-                title: existing_segment.title,
-                source: existing_segment.source,
-                original_filename: existing_segment.original_filename,
-                format: existing_segment.format,
-                distance_meters: existing_segment.distance_meters,
-                effort_count: efforts.len() as i32,
-                best_duration_seconds: efforts.iter().map(|effort| effort.duration_seconds).min(),
-                current_user_pr_duration_seconds: current_user_pr_duration_from_responses(
-                    &efforts, user.id,
-                ),
-                created_at: existing_segment.created_at,
-                route_points: deserialize_segment_route_points(
-                    existing_segment.route_data_json.as_ref(),
-                ),
-                efforts,
-            }),
+            Json(load_segment_response(&state.db, &existing_segment, user.id).await?),
         ));
     }
 
@@ -294,26 +615,10 @@ pub async fn import_segment(
         .tasks
         .rebuild_segment_analytics(vec![segment.id])
         .await;
-    let efforts = load_effort_responses(&state.db, &[segment.id]).await?;
 
     Ok((
         StatusCode::CREATED,
-        Json(SegmentResponse {
-            id: segment.id,
-            title: segment.title,
-            source: segment.source,
-            original_filename: segment.original_filename,
-            format: segment.format,
-            distance_meters: segment.distance_meters,
-            effort_count: efforts.len() as i32,
-            best_duration_seconds: efforts.iter().map(|effort| effort.duration_seconds).min(),
-            current_user_pr_duration_seconds: current_user_pr_duration_from_responses(
-                &efforts, user.id,
-            ),
-            created_at: segment.created_at,
-            route_points: deserialize_segment_route_points(segment.route_data_json.as_ref()),
-            efforts,
-        }),
+        Json(load_segment_response(&state.db, &segment, user.id).await?),
     ))
 }
 
@@ -388,6 +693,72 @@ fn validate_segment_format(filename: &str) -> Result<String, AppError> {
     }
 }
 
+fn normalize_segment_title(raw_title: &str) -> Result<String, AppError> {
+    let title = raw_title.trim();
+
+    if title.is_empty() {
+        return Err(AppError::validation_field(
+            "title",
+            "Segment name is required",
+        ));
+    }
+
+    Ok(title.to_string())
+}
+
+fn slice_builder_route_points(
+    route_points: &[ActivityRoutePoint],
+    start_route_point_index: i32,
+    end_route_point_index: i32,
+) -> Result<Vec<ActivityRoutePoint>, AppError> {
+    if route_points.len() < 2 {
+        return Err(AppError::validation_field(
+            "activity_id",
+            "Selected activity does not have enough route data to build a segment",
+        ));
+    }
+
+    let start_index = usize::try_from(start_route_point_index).map_err(|_| {
+        AppError::validation_field(
+            "start_route_point_index",
+            "Segment start must be within the selected activity route",
+        )
+    })?;
+    let end_index = usize::try_from(end_route_point_index).map_err(|_| {
+        AppError::validation_field(
+            "end_route_point_index",
+            "Segment end must be within the selected activity route",
+        )
+    })?;
+
+    if start_index >= route_points.len() {
+        return Err(AppError::validation_field(
+            "start_route_point_index",
+            "Segment start must be within the selected activity route",
+        ));
+    }
+
+    if end_index >= route_points.len() {
+        return Err(AppError::validation_field(
+            "end_route_point_index",
+            "Segment end must be within the selected activity route",
+        ));
+    }
+
+    if start_index >= end_index {
+        return Err(AppError::validation_field(
+            "start_route_point_index",
+            "Segment start must come before the end",
+        ));
+    }
+
+    Ok(slice_effort_route_points(
+        route_points,
+        start_route_point_index,
+        end_route_point_index,
+    ))
+}
+
 async fn find_duplicate_segment(
     db: &sea_orm::DatabaseConnection,
     user_id: i32,
@@ -410,6 +781,94 @@ async fn find_duplicate_segment(
     }
 
     Ok(None)
+}
+
+async fn load_activity_ids_for_segments<C>(
+    db: &C,
+    segment_ids: &[i32],
+) -> Result<Vec<i32>, AppError>
+where
+    C: ConnectionTrait,
+{
+    if segment_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut activity_ids = segment_efforts::Entity::find()
+        .filter(segment_efforts::Column::SegmentId.is_in(segment_ids.iter().copied()))
+        .all(db)
+        .await?
+        .into_iter()
+        .map(|effort| effort.activity_id)
+        .collect::<Vec<_>>();
+
+    activity_ids.sort_unstable();
+    activity_ids.dedup();
+
+    Ok(activity_ids)
+}
+
+async fn delete_segment_with_related_state(
+    db: &sea_orm::DatabaseConnection,
+    segment_id: i32,
+) -> Result<(), AppError> {
+    let activity_ids = load_activity_ids_for_segments(db, &[segment_id]).await?;
+    let txn = db.begin().await?;
+
+    segment_user_summaries::Entity::delete_many()
+        .filter(segment_user_summaries::Column::SegmentId.eq(segment_id))
+        .exec(&txn)
+        .await?;
+
+    segment_summaries::Entity::delete_many()
+        .filter(segment_summaries::Column::SegmentId.eq(segment_id))
+        .exec(&txn)
+        .await?;
+
+    segment_efforts::Entity::delete_many()
+        .filter(segment_efforts::Column::SegmentId.eq(segment_id))
+        .exec(&txn)
+        .await?;
+
+    segments::Entity::delete_many()
+        .filter(segments::Column::Id.eq(segment_id))
+        .exec(&txn)
+        .await?;
+
+    if !activity_ids.is_empty() {
+        rebuild_activity_analytics_cache(&txn, &activity_ids).await?;
+    }
+
+    txn.commit().await?;
+
+    Ok(())
+}
+
+async fn load_segment_response(
+    db: &sea_orm::DatabaseConnection,
+    segment: &segments::Model,
+    user_id: i32,
+) -> Result<SegmentResponse, AppError> {
+    let route_points = deserialize_segment_route_points(segment.route_data_json.as_ref());
+    let efforts = load_effort_responses(db, &[segment.id]).await?;
+
+    Ok(SegmentResponse {
+        id: segment.id,
+        title: segment.title.clone(),
+        source: segment.source.clone(),
+        original_filename: segment.original_filename.clone(),
+        format: segment.format.clone(),
+        distance_meters: segment.distance_meters,
+        effort_count: efforts.len() as i32,
+        best_duration_seconds: efforts.iter().map(|effort| effort.duration_seconds).min(),
+        current_user_pr_duration_seconds: current_user_pr_duration_from_responses(
+            &efforts, user_id,
+        ),
+        created_at: segment.created_at,
+        builder_source: segment_builder_source_from_model(segment),
+        route_points,
+        efforts,
+    })
 }
 
 fn sort_segments_by_latest_activity_started_at(
@@ -541,6 +1000,25 @@ mod tests {
     use super::*;
     use chrono::Duration;
 
+    fn build_route_point(
+        elapsed_seconds: i32,
+        distance_meters: Option<f64>,
+        latitude: f64,
+        longitude: f64,
+    ) -> ActivityRoutePoint {
+        ActivityRoutePoint {
+            elapsed_seconds,
+            latitude,
+            longitude,
+            distance_meters,
+            elevation_meters: None,
+            speed_mps: None,
+            heart_rate_bpm: None,
+            cadence_rpm: None,
+            power_watts: None,
+        }
+    }
+
     fn current_user_pr_duration_from_models(
         efforts: &[segment_efforts::Model],
         user_id: i32,
@@ -562,6 +1040,9 @@ mod tests {
             format: Some("gpx".to_string()),
             distance_meters: Some(1800.0),
             route_data_json: None,
+            source_activity_id: None,
+            source_start_route_point_index: None,
+            source_end_route_point_index: None,
             last_activity_change_at: created_at,
             created_at,
             updated_at: created_at,
@@ -583,6 +1064,85 @@ mod tests {
             error.message,
             "Segments currently require a GPX or TCX export with route coordinates"
         );
+    }
+
+    #[test]
+    fn normalize_segment_title_trims_whitespace() {
+        assert_eq!(
+            normalize_segment_title("  Main Street Rise  ").unwrap(),
+            "Main Street Rise"
+        );
+    }
+
+    #[test]
+    fn normalize_segment_title_rejects_blank_titles() {
+        let error = normalize_segment_title("   ").unwrap_err();
+
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.message, "Segment name is required");
+    }
+
+    #[test]
+    fn load_activity_ids_for_segments_dedupes_activity_ids() {
+        let mut activity_ids = vec![44, 12, 44, 19, 12];
+
+        activity_ids.sort_unstable();
+        activity_ids.dedup();
+
+        assert_eq!(activity_ids, vec![12, 19, 44]);
+    }
+
+    #[test]
+    fn segment_builder_source_from_model_requires_complete_metadata() {
+        let created_at = Utc::now();
+        let mut partial = build_segment_model(1, created_at);
+        partial.source_activity_id = Some(99);
+        partial.source_start_route_point_index = Some(12);
+
+        assert_eq!(segment_builder_source_from_model(&partial), None);
+
+        let mut complete = build_segment_model(2, created_at);
+        complete.source_activity_id = Some(42);
+        complete.source_start_route_point_index = Some(8);
+        complete.source_end_route_point_index = Some(24);
+
+        assert_eq!(
+            segment_builder_source_from_model(&complete),
+            Some(SegmentBuilderSourceResponse {
+                activity_id: 42,
+                start_route_point_index: 8,
+                end_route_point_index: 24,
+            })
+        );
+    }
+
+    #[test]
+    fn slice_builder_route_points_normalizes_selected_route_window() {
+        let route_points = vec![
+            build_route_point(0, Some(0.0), 44.0, -93.0),
+            build_route_point(12, Some(150.0), 44.001, -93.001),
+            build_route_point(28, Some(410.0), 44.002, -93.002),
+        ];
+        let sliced = slice_builder_route_points(&route_points, 1, 2).unwrap();
+
+        assert_eq!(sliced.len(), 2);
+        assert_eq!(sliced[0].elapsed_seconds, 0);
+        assert_eq!(sliced[0].distance_meters, Some(0.0));
+        assert_eq!(sliced[1].elapsed_seconds, 16);
+        assert_eq!(sliced[1].distance_meters, Some(260.0));
+    }
+
+    #[test]
+    fn slice_builder_route_points_rejects_reversed_indexes() {
+        let route_points = vec![
+            build_route_point(0, Some(0.0), 44.0, -93.0),
+            build_route_point(12, Some(150.0), 44.001, -93.001),
+            build_route_point(28, Some(410.0), 44.002, -93.002),
+        ];
+        let error = slice_builder_route_points(&route_points, 2, 1).unwrap_err();
+
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.message, "Segment start must come before the end");
     }
 
     #[test]

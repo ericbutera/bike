@@ -1,9 +1,16 @@
 "use client";
 
 import { auth } from "@ericbutera/kaleido";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import toast from "react-hot-toast";
 import { extractApiMessage, formatDuration } from "../lib/activityFormatting";
-import { useSegment, type SegmentEffort } from "../lib/queries";
+import {
+  useDeleteSegment,
+  useSegment,
+  useUpdateSegment,
+  type SegmentEffort,
+} from "../lib/queries";
 import {
   EFFORT_COLORS,
   EMPTY_EFFORTS,
@@ -34,9 +41,12 @@ export default function SegmentDetailPanel({
   segmentId: number | string;
 }) {
   const authApi = auth.useAuthApi();
+  const router = useRouter();
   const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
   const { unitSystem } = useUnitPreferences();
   const segmentQuery = useSegment(user ? segmentId : null);
+  const updateSegmentMutation = useUpdateSegment();
+  const deleteSegmentMutation = useDeleteSegment();
   const [selectedEffortIds, setSelectedEffortIds] = useState<number[]>([]);
   const initializedSelectionSegmentIdRef = useRef<number | null>(null);
   const playbackAnimationFrameRef = useRef<number | null>(null);
@@ -49,6 +59,8 @@ export default function SegmentDetailPanel({
   const [effortTimeFilter, setEffortTimeFilter] =
     useState<EffortTimeFilter>("all");
   const [effortSearchQuery, setEffortSearchQuery] = useState("");
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [draftTitle, setDraftTitle] = useState("");
   const segment = segmentQuery.data;
   const allEfforts = segment?.efforts ?? EMPTY_EFFORTS;
   const visibleEfforts = filterEffortsByTimeWindow(
@@ -138,6 +150,9 @@ export default function SegmentDetailPanel({
     routeDistanceMeters && routeNetElevationMeters != null
       ? (routeNetElevationMeters / routeDistanceMeters) * 100
       : null;
+  const builderEditHref = segment?.builder_source
+    ? `/segments/builder?segmentId=${segment.id}`
+    : null;
   const comparisonSelectionLabel =
     selectedRows.length === 1
       ? "1 ride selected"
@@ -149,6 +164,11 @@ export default function SegmentDetailPanel({
   useEffect(() => {
     setEffortSearchQuery("");
   }, [segment?.id]);
+
+  useEffect(() => {
+    setIsEditingTitle(false);
+    setDraftTitle(segment?.title ?? "");
+  }, [segment?.id, segment?.title]);
 
   useEffect(() => {
     if (!segment || allEfforts.length === 0) {
@@ -218,6 +238,63 @@ export default function SegmentDetailPanel({
 
   function removeEffortFromComparison(effortId: number) {
     setSelectedEffortIds((current) => current.filter((id) => id !== effortId));
+  }
+
+  async function handleUpdateSegmentTitle() {
+    if (!segment) {
+      return;
+    }
+
+    const title = draftTitle.trim();
+
+    if (!title) {
+      toast.error("Segment name is required.");
+      return;
+    }
+
+    if (title === segment.title) {
+      setIsEditingTitle(false);
+      setDraftTitle(segment.title);
+      return;
+    }
+
+    try {
+      const updatedSegment = await updateSegmentMutation.updateAsync({
+        id: segment.id,
+        title,
+      });
+
+      setDraftTitle(updatedSegment.title);
+      setIsEditingTitle(false);
+      toast.success(`Saved ${updatedSegment.title}.`);
+    } catch {
+      // The mutation exposes the API error state used below.
+    }
+  }
+
+  async function handleDeleteSegment() {
+    if (!segment) {
+      return;
+    }
+
+    const confirmed =
+      typeof globalThis.confirm === "function"
+        ? globalThis.confirm(
+            "Delete this segment? This removes the segment and clears matched efforts tied to it.",
+          )
+        : true;
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await deleteSegmentMutation.deleteAsync(segment.id);
+      toast.success("Segment deleted.");
+      router.push("/segments");
+    } catch {
+      // The mutation exposes the API error state used below.
+    }
   }
 
   useEffect(() => {
@@ -325,6 +402,33 @@ export default function SegmentDetailPanel({
         currentUserPrDurationSeconds={currentUserPrDurationSeconds}
         currentUserPrLabel={currentUserPrLabel}
         overallKom={overallKom}
+        isEditingTitle={isEditingTitle}
+        draftTitle={draftTitle}
+        isSavingTitle={updateSegmentMutation.isPending}
+        isDeletingSegment={deleteSegmentMutation.isPending}
+        builderEditHref={builderEditHref}
+        actionErrorMessage={
+          updateSegmentMutation.isError
+            ? extractApiMessage(updateSegmentMutation.error)
+            : deleteSegmentMutation.isError
+              ? extractApiMessage(deleteSegmentMutation.error)
+              : null
+        }
+        onStartEditingTitle={() => {
+          setDraftTitle(segment.title);
+          setIsEditingTitle(true);
+        }}
+        onCancelEditingTitle={() => {
+          setDraftTitle(segment.title);
+          setIsEditingTitle(false);
+        }}
+        onDraftTitleChange={setDraftTitle}
+        onSaveTitle={() => {
+          void handleUpdateSegmentTitle();
+        }}
+        onDeleteSegment={() => {
+          void handleDeleteSegment();
+        }}
       />
 
       <SegmentDetailEffortsSection
