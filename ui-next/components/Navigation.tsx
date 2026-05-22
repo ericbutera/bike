@@ -30,6 +30,22 @@ export default function Navigation() {
             <ul className="menu menu-horizontal px-1">
               <li>
                 <details>
+                  <summary className="btn btn-ghost btn-sm">Training</summary>
+                  <ul className="z-50 mt-2 w-56 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
+                    <li>
+                      <Link href="/xc">XC goals &amp; progress</Link>
+                    </li>
+                    <li>
+                      <Link href="/dh">DH goals &amp; progress</Link>
+                    </li>
+                  </ul>
+                </details>
+              </li>
+            </ul>
+
+            <ul className="menu menu-horizontal px-1">
+              <li>
+                <details>
                   <summary className="btn btn-ghost btn-sm">Account</summary>
                   <ul className="z-50 mt-2 w-56 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
                     <li>

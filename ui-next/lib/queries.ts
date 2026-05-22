@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { extractApiMessage } from "./activityFormatting";
 import { $api } from "./api";
 
 export type PaginationMetadata = {
@@ -82,6 +83,26 @@ export type ActivityHeartRateZone = {
   share_percent: number;
 };
 
+export type ActivityRideFocus =
+  | "xc_endurance"
+  | "mixed_xc"
+  | "dh_session"
+  | "other";
+
+export type ActivityTrainingAnalysis = {
+  ride_focus: ActivityRideFocus;
+  route_family_key?: string | null;
+  comparable_distance_bucket_meters?: number | null;
+  comparable_elevation_gain_bucket_meters?: number | null;
+  aerobic_decoupling_percent?: number | null;
+  z2_time_seconds: number;
+  z2_distance_meters?: number | null;
+  z2_average_speed_mps?: number | null;
+  climbing_time_seconds: number;
+  climbing_elevation_gain_meters?: number | null;
+  sustained_climb_count: number;
+};
+
 export type Activity = {
   id: number;
   title: string;
@@ -112,6 +133,7 @@ export type Activity = {
   route_points?: ActivityRoutePoint[] | null;
   achievement_highlights?: ActivityAchievementHighlight[] | null;
   segment_efforts?: ActivitySegmentEffort[] | null;
+  training_analysis?: ActivityTrainingAnalysis | null;
   can_regenerate?: boolean;
 };
 
@@ -136,10 +158,13 @@ export type SegmentBuilderSource = {
   end_route_point_index: number;
 };
 
+export type SegmentMode = "xc" | "dh";
+
 export type Segment = {
   id: number;
   title: string;
   source: string;
+  mode: SegmentMode;
   original_filename?: string | null;
   format?: string | null;
   distance_meters?: number | null;
@@ -156,6 +181,18 @@ export type UserPreferences = {
   unit_system: string;
   estimated_ftp_watts?: number | null;
   heart_rate_zone_bounds_bpm?: number[] | null;
+  xc_goal_target_date?: string | null;
+  xc_goal_target_distance_meters?: number | null;
+  xc_goal_target_elevation_gain_meters?: number | null;
+};
+
+export type ActivityProcessingState = {
+  is_active: boolean;
+  source?: string | null;
+  source_label?: string | null;
+  stage?: string | null;
+  stage_label?: string | null;
+  message?: string | null;
 };
 
 export type StravaConnection = {
@@ -202,6 +239,158 @@ export type FitnessFreshnessResponse = {
   fitness_window_days: number;
   fatigue_window_days: number;
   points: FitnessFreshnessPoint[];
+};
+
+export type TrainingGoalKey =
+  | "weekly_z2_average"
+  | "weekly_climbing_average"
+  | "aerobic_decoupling"
+  | "dh_laps_per_session"
+  | "dh_repeat_fade"
+  | "dh_rolling_top3_gap";
+
+export type TrainingMetricUnit = "seconds" | "meters" | "percent" | "count";
+
+export type TrainingGoalDirection = "at_least" | "at_most";
+
+export type TrainingRecommendationKey =
+  | "build_xc_baseline"
+  | "repeat_comparable_endurance_ride"
+  | "increase_endurance_volume"
+  | "add_climbing_endurance"
+  | "hold_steady_endurance"
+  | "maintain_endurance_rhythm"
+  | "recover_before_next_xc_ride"
+  | "use_positive_form_for_xc_benchmark"
+  | "mark_dh_segments"
+  | "add_dh_repeats"
+  | "reduce_dh_fade"
+  | "chase_dh_consistency"
+  | "maintain_dh_momentum"
+  | "recover_before_next_dh_session"
+  | "use_positive_form_for_dh_benchmark";
+
+export type TrainingRecommendationPriority = "high" | "medium" | "low";
+
+export type TrainingGoalMetric = {
+  key: TrainingGoalKey;
+  label: string;
+  unit: TrainingMetricUnit;
+  direction: TrainingGoalDirection;
+  current_value?: number | null;
+  target_value: number;
+  progress_percent?: number | null;
+};
+
+export type TrainingRecommendation = {
+  key: TrainingRecommendationKey;
+  priority: TrainingRecommendationPriority;
+  title: string;
+  detail: string;
+};
+
+export type XcProgressSummary = {
+  recent_window_days: number;
+  recent_ride_count: number;
+  comparable_ride_count: number;
+  total_z2_time_seconds: number;
+  total_climbing_time_seconds: number;
+  total_climbing_elevation_gain_meters: number;
+  average_aerobic_decoupling_percent?: number | null;
+};
+
+export type XcRideProgress = {
+  activity_id: number;
+  activity_title: string;
+  started_at: string;
+  ride_focus: ActivityRideFocus;
+  route_family_key?: string | null;
+  distance_meters?: number | null;
+  elevation_gain_meters?: number | null;
+  z2_time_seconds: number;
+  climbing_time_seconds: number;
+  climbing_elevation_gain_meters?: number | null;
+  aerobic_decoupling_percent?: number | null;
+};
+
+export type XcWeeklyProgressPoint = {
+  week_start: string;
+  ride_count: number;
+  comparable_ride_count: number;
+  z2_time_seconds: number;
+  climbing_elevation_gain_meters: number;
+  average_aerobic_decoupling_percent?: number | null;
+};
+
+export type XcGoalActivityReference = {
+  activity_id: number;
+  activity_title: string;
+  started_at: string;
+};
+
+export type XcEventGoal = {
+  target_date: string;
+  days_remaining: number;
+  target_distance_meters: number;
+  target_elevation_gain_meters: number;
+  best_distance_meters?: number | null;
+  best_distance_progress_percent?: number | null;
+  best_distance_activity?: XcGoalActivityReference | null;
+  best_elevation_gain_meters?: number | null;
+  best_elevation_gain_progress_percent?: number | null;
+  best_elevation_activity?: XcGoalActivityReference | null;
+};
+
+export type XcGoalProgress = {
+  generated_at: string;
+  event_goal?: XcEventGoal | null;
+  summary: XcProgressSummary;
+  goals: TrainingGoalMetric[];
+  recommendations: TrainingRecommendation[];
+  weekly_progress: XcWeeklyProgressPoint[];
+  recent_rides: XcRideProgress[];
+};
+
+export type DhProgressSummary = {
+  segment_count: number;
+  session_count: number;
+  effort_count: number;
+  average_efforts_per_session?: number | null;
+  average_repeat_fade_percent?: number | null;
+  average_top_3_gap_percent?: number | null;
+};
+
+export type DhSegmentProgress = {
+  segment_id: number;
+  segment_title: string;
+  effort_count: number;
+  personal_record_duration_seconds?: number | null;
+  recent_best_duration_seconds?: number | null;
+  rolling_top_3_average_duration_seconds?: number | null;
+  top_3_pr_gap_percent?: number | null;
+  repeat_fade_percent?: number | null;
+  latest_activity_id?: number | null;
+  latest_activity_title?: string | null;
+  latest_activity_started_at?: string | null;
+};
+
+export type DhSessionSummary = {
+  activity_id: number;
+  activity_title: string;
+  started_at: string;
+  segment_count: number;
+  effort_count: number;
+  fastest_effort_duration_seconds?: number | null;
+  average_repeat_fade_percent?: number | null;
+};
+
+export type DhGoalProgress = {
+  generated_at: string;
+  summary: DhProgressSummary;
+  goals: TrainingGoalMetric[];
+  recommendations: TrainingRecommendation[];
+  segments: DhSegmentProgress[];
+  recent_sessions: DhSessionSummary[];
 };
 
 export type AdminAnalyticsBackfillResponse = {
@@ -594,12 +783,17 @@ export function useUpdateSegment() {
 
   return {
     ...mutation,
-    updateAsync: async (payload: { id: number | string; title: string }) => {
+    updateAsync: async (payload: {
+      id: number | string;
+      title?: string;
+      mode?: SegmentMode;
+    }) => {
       const numericId = Number(payload.id);
       const result = await mutation.mutateAsync({
         params: { path: { id: numericId } },
         body: {
           title: payload.title,
+          mode: payload.mode,
         },
       });
 
@@ -677,6 +871,30 @@ export function useActivityArchiveImportJobs(opts?: {
   };
 }
 
+export function useActivityProcessingState(opts?: {
+  enabled?: boolean;
+  refetchIntervalMs?: number | false;
+}) {
+  const response = $api.useQuery("get", "/activity-imports/processing-state", {
+    options: {
+      enabled: opts?.enabled ?? true,
+      refetchInterval: opts?.refetchIntervalMs ?? false,
+    },
+  });
+
+  return {
+    ...response,
+    data: (response.data ?? {
+      is_active: false,
+      source: null,
+      source_label: null,
+      stage: null,
+      stage_label: null,
+      message: null,
+    }) as ActivityProcessingState,
+  };
+}
+
 export function useUploadActivityImport() {
   const queryClient = useQueryClient();
   const mutation = $api.useMutation("post", "/activity-imports");
@@ -687,12 +905,36 @@ export function useUploadActivityImport() {
       const form = new FormData();
       form.append("file", file);
 
-      const result = await mutation.mutateAsync({ body: form });
+      try {
+        const result = await mutation.mutateAsync({ body: form });
 
-      queryClient.invalidateQueries({ queryKey: ["get", "/activities"] });
-      queryClient.invalidateQueries({ queryKey: ["get", "/activity-imports"] });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["get", "/activities"] }),
+          queryClient.invalidateQueries({
+            queryKey: ["get", "/activity-imports"],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["get", "/activity-imports/processing-state"],
+          }),
+        ]);
 
-      return result as ActivityImport;
+        return result as ActivityImport;
+      } catch (error) {
+        await queryClient.invalidateQueries({
+          queryKey: ["get", "/activity-imports/processing-state"],
+        });
+
+        const message = extractApiMessage(error);
+        if (
+          message.includes("Another activity processing operation is already")
+        ) {
+          throw new Error(
+            "Another activity processing job is running. Wait for it to finish before uploading more rides.",
+          );
+        }
+
+        throw error;
+      }
     },
   };
 }
@@ -852,6 +1094,9 @@ export function useUserPreferences(opts?: { enabled?: boolean }) {
       unit_system: "mixed",
       estimated_ftp_watts: null,
       heart_rate_zone_bounds_bpm: null,
+      xc_goal_target_date: null,
+      xc_goal_target_distance_meters: null,
+      xc_goal_target_elevation_gain_meters: null,
     }) as UserPreferences,
   };
 }
@@ -877,6 +1122,28 @@ export function useFitnessFreshness(opts?: {
   };
 }
 
+export function useXcGoalProgress(opts?: { enabled?: boolean }) {
+  const response = $api.useQuery("get", "/training/xc-progress", {
+    options: { enabled: opts?.enabled ?? true },
+  });
+
+  return {
+    ...response,
+    data: (response.data ?? null) as XcGoalProgress | null,
+  };
+}
+
+export function useDhGoalProgress(opts?: { enabled?: boolean }) {
+  const response = $api.useQuery("get", "/training/dh-progress", {
+    options: { enabled: opts?.enabled ?? true },
+  });
+
+  return {
+    ...response,
+    data: (response.data ?? null) as DhGoalProgress | null,
+  };
+}
+
 export function useUpdateUserPreferences() {
   const queryClient = useQueryClient();
   const mutation = $api.useMutation("put", "/preferences");
@@ -888,6 +1155,9 @@ export function useUpdateUserPreferences() {
 
       await queryClient.invalidateQueries({
         queryKey: ["get", "/preferences"],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["get", "/training/xc-progress"],
       });
 
       return result as UserPreferences;

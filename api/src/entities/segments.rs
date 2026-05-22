@@ -12,6 +12,7 @@ pub struct Model {
     pub user_id: i32,
     pub title: String,
     pub source: String,
+    pub mode: String,
     pub original_filename: Option<String>,
     pub format: Option<String>,
     pub distance_meters: Option<f64>,

@@ -14,8 +14,7 @@ export const EFFORT_COLORS = [
   "#c2410c",
 ];
 
-export const EFFORTS_VISIBLE_ROWS = 10;
-export const EFFORTS_TABLE_MAX_HEIGHT_REM = 31;
+export const EFFORTS_PER_PAGE = 25;
 export const EMPTY_EFFORTS: SegmentEffort[] = [];
 export const EMPTY_EFFORT_IDS: number[] = [];
 export const AUTO_PLAYBACK_MIN_SECONDS = 25;
@@ -144,27 +143,6 @@ export function areEffortIdListsEqual(left: number[], right: number[]) {
   }
 
   return true;
-}
-
-export function filterEffortsBySearchQuery(
-  efforts: SegmentEffort[],
-  rawQuery: string,
-) {
-  const query = rawQuery.trim().toLowerCase();
-
-  if (!query) {
-    return efforts;
-  }
-
-  return efforts.filter((effort) => {
-    const haystacks = [
-      effort.rider_name,
-      effort.activity_title,
-      effort.activity_started_at,
-    ];
-
-    return haystacks.some((value) => value.toLowerCase().includes(query));
-  });
 }
 
 function interpolateOptionalNumber(

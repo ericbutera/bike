@@ -1,5 +1,6 @@
 use crate::activity_import_lock::{
-    acquire_user_activity_import_lock, release_user_activity_import_lock,
+    acquire_user_activity_import_lock, describe_source, describe_stage,
+    load_user_activity_import_lock, release_user_activity_import_lock,
     ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
 };
 use crate::activity_import_pipeline::{
@@ -66,6 +67,16 @@ pub struct ActivityArchiveImportJobResponse {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ActivityProcessingStateResponse {
+    pub is_active: bool,
+    pub source: Option<String>,
+    pub source_label: Option<String>,
+    pub stage: Option<String>,
+    pub stage_label: Option<String>,
+    pub message: Option<String>,
+}
+
 impl ActivityImportResponse {
     fn from_model(model: activity_imports::Model, activity: Option<&activities::Model>) -> Self {
         Self {
@@ -105,6 +116,19 @@ impl ActivityArchiveImportJobResponse {
             started_at: model.started_at,
             finished_at: model.finished_at,
             updated_at: model.updated_at,
+        }
+    }
+}
+
+impl ActivityProcessingStateResponse {
+    fn inactive() -> Self {
+        Self {
+            is_active: false,
+            source: None,
+            source_label: None,
+            stage: None,
+            stage_label: None,
+            message: None,
         }
     }
 }
@@ -194,6 +218,41 @@ pub async fn list_activity_archive_import_jobs(
             .map(ActivityArchiveImportJobResponse::from_model)
             .collect(),
     ))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/activity-imports/processing-state",
+    responses(
+        (status = 200, description = "Current activity processing state for the authenticated user", body = ActivityProcessingStateResponse),
+        (status = 401, description = "Not authenticated"),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    tag = "activity-imports",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn get_activity_processing_state(
+    UserContext { user, .. }: UserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+) -> Result<Json<ActivityProcessingStateResponse>, AppError> {
+    let Some(lock) = load_user_activity_import_lock(&state.db, user.id).await? else {
+        return Ok(Json(ActivityProcessingStateResponse::inactive()));
+    };
+
+    Ok(Json(ActivityProcessingStateResponse {
+        is_active: true,
+        source: Some(lock.source.clone()),
+        source_label: Some(describe_source(&lock.source).to_string()),
+        stage: Some(lock.stage.clone()),
+        stage_label: Some(describe_stage(&lock.stage).to_string()),
+        message: Some(format!(
+            "{} is currently {}.",
+            describe_source(&lock.source),
+            describe_stage(&lock.stage)
+        )),
+    }))
 }
 
 #[utoipa::path(

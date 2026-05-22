@@ -10,6 +10,7 @@ import {
   useSegment,
   useUpdateSegment,
   type SegmentEffort,
+  type SegmentMode,
 } from "../lib/queries";
 import {
   EFFORT_COLORS,
@@ -19,7 +20,6 @@ import {
   areEffortIdListsEqual,
   buildLiveComparisonRows,
   fastestEffort,
-  filterEffortsBySearchQuery,
   filterEffortsByTimeWindow,
   overallEffortRanks,
   playbackTargetSeconds,
@@ -58,7 +58,6 @@ export default function SegmentDetailPanel({
   const [pinnedEffortId, setPinnedEffortId] = useState<number | null>(null);
   const [effortTimeFilter, setEffortTimeFilter] =
     useState<EffortTimeFilter>("all");
-  const [effortSearchQuery, setEffortSearchQuery] = useState("");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
   const segment = segmentQuery.data;
@@ -66,10 +65,6 @@ export default function SegmentDetailPanel({
   const visibleEfforts = filterEffortsByTimeWindow(
     segment?.efforts,
     effortTimeFilter,
-  );
-  const filteredVisibleEfforts = useMemo(
-    () => filterEffortsBySearchQuery(visibleEfforts, effortSearchQuery),
-    [effortSearchQuery, visibleEfforts],
   );
   const currentUserId = user?.id ?? null;
   const currentUserName = user?.name?.trim() || null;
@@ -153,17 +148,9 @@ export default function SegmentDetailPanel({
   const builderEditHref = segment?.builder_source
     ? `/segments/builder?segmentId=${segment.id}`
     : null;
-  const comparisonSelectionLabel =
-    selectedRows.length === 1
-      ? "1 ride selected"
-      : `${selectedRows.length} rides selected`;
   const referenceSummaryLabel = referenceEffort
     ? `${referenceEffort.rider_name} · ${formatDuration(referenceEffort.duration_seconds)}`
     : "No reference ride";
-
-  useEffect(() => {
-    setEffortSearchQuery("");
-  }, [segment?.id]);
 
   useEffect(() => {
     setIsEditingTitle(false);
@@ -267,6 +254,25 @@ export default function SegmentDetailPanel({
       setDraftTitle(updatedSegment.title);
       setIsEditingTitle(false);
       toast.success(`Saved ${updatedSegment.title}.`);
+    } catch {
+      // The mutation exposes the API error state used below.
+    }
+  }
+
+  async function handleUpdateSegmentMode(mode: SegmentMode) {
+    if (!segment || segment.mode === mode) {
+      return;
+    }
+
+    try {
+      const updatedSegment = await updateSegmentMutation.updateAsync({
+        id: segment.id,
+        mode,
+      });
+
+      toast.success(
+        `Segment mode set to ${updatedSegment.mode.toUpperCase()}.`,
+      );
     } catch {
       // The mutation exposes the API error state used below.
     }
@@ -404,7 +410,7 @@ export default function SegmentDetailPanel({
         overallKom={overallKom}
         isEditingTitle={isEditingTitle}
         draftTitle={draftTitle}
-        isSavingTitle={updateSegmentMutation.isPending}
+        isSavingSegment={updateSegmentMutation.isPending}
         isDeletingSegment={deleteSegmentMutation.isPending}
         builderEditHref={builderEditHref}
         actionErrorMessage={
@@ -426,6 +432,9 @@ export default function SegmentDetailPanel({
         onSaveTitle={() => {
           void handleUpdateSegmentTitle();
         }}
+        onSegmentModeChange={(mode) => {
+          void handleUpdateSegmentMode(mode);
+        }}
         onDeleteSegment={() => {
           void handleDeleteSegment();
         }}
@@ -433,17 +442,13 @@ export default function SegmentDetailPanel({
 
       <SegmentDetailEffortsSection
         segment={segment}
-        filteredVisibleEfforts={filteredVisibleEfforts}
         visibleEfforts={visibleEfforts}
         selectedEffortIds={selectedEffortIds}
         selectedRows={selectedRows}
         overallRankByEffortId={overallRankByEffortId}
         currentUserPr={currentUserPr}
         effortTimeFilter={effortTimeFilter}
-        effortSearchQuery={effortSearchQuery}
-        comparisonSelectionLabel={comparisonSelectionLabel}
         onEffortTimeFilterChange={setEffortTimeFilter}
-        onEffortSearchQueryChange={setEffortSearchQuery}
         onAddEffort={addEffortToComparison}
         onRemoveEffort={removeEffortFromComparison}
       />

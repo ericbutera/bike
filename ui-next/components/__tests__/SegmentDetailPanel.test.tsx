@@ -36,13 +36,53 @@ const mocks = vi.hoisted(() => ({
   routerPush: vi.fn(),
 }));
 
-vi.mock("@ericbutera/kaleido", () => ({
-  auth: {
-    useAuthApi: () => ({
-      useCurrentUser: mocks.useCurrentUser,
-    }),
-  },
-}));
+vi.mock("@ericbutera/kaleido", async () => {
+  const React = await import("react");
+
+  return {
+    auth: {
+      useAuthApi: () => ({
+        useCurrentUser: mocks.useCurrentUser,
+      }),
+    },
+    Pagination: ({
+      page,
+      perPage,
+      total,
+      onPageChange,
+    }: {
+      page: number;
+      perPage: number;
+      total: number;
+      onPageChange: (page: number) => void;
+    }) => {
+      const totalPages = Math.max(1, Math.ceil(total / perPage));
+
+      if (totalPages <= 1) {
+        return null;
+      }
+
+      return (
+        <div>
+          {Array.from({ length: totalPages }, (_, index) => index + 1).map(
+            (pageNumber) => (
+              <button
+                key={pageNumber}
+                type="button"
+                aria-current={pageNumber === page ? "page" : undefined}
+                onClick={() => {
+                  onPageChange(pageNumber);
+                }}
+              >
+                {pageNumber}
+              </button>
+            ),
+          )}
+        </div>
+      );
+    },
+  };
+});
 
 vi.mock("../../lib/queries", () => ({
   useSegment: mocks.useSegment,
@@ -102,6 +142,7 @@ function makeSegment() {
     id: 14,
     title: "North Climb",
     source: "manual_upload",
+    mode: "xc",
     original_filename: "north-climb.gpx",
     format: "gpx",
     distance_meters: 1800,
@@ -156,6 +197,28 @@ function makeSegment() {
       },
     ],
   };
+}
+
+function makeManyEfforts(count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    id: index + 1,
+    rider_user_id: (index % 4) + 1,
+    activity_id: 100 + index,
+    activity_title: `Ride ${index + 1}`,
+    rider_name: `Rider ${index + 1}`,
+    activity_started_at: `2026-05-${String((index % 28) + 1).padStart(2, "0")}T08:00:00Z`,
+    effort_index: index + 1,
+    duration_seconds: 280 + index,
+    start_elapsed_seconds: 300 + index,
+    end_elapsed_seconds: 580 + index,
+    distance_meters: 1800,
+    route_points: [
+      makeRoutePoint(0, 45.0, -122.0),
+      makeRoutePoint(120, 45.004, -121.996),
+      makeRoutePoint(240, 45.008, -121.992),
+      makeRoutePoint(280 + index, 45.012, -121.988),
+    ],
+  }));
 }
 
 describe("SegmentDetailPanel", () => {
@@ -231,9 +294,9 @@ describe("SegmentDetailPanel", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("FMR / Effort Comparison")).toBeInTheDocument();
     expect(
-      screen.getByRole("searchbox", { name: "Search efforts" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("2 rides selected")).toBeInTheDocument();
+      screen.queryByRole("searchbox", { name: "Search efforts" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("2 rides selected")).not.toBeInTheDocument();
     expect(screen.getByText("Comparison workspace")).toBeInTheDocument();
     expect(screen.getByText("Athletes")).toBeInTheDocument();
     expect(screen.getAllByText("Speed").length).toBeGreaterThan(0);
@@ -293,6 +356,69 @@ describe("SegmentDetailPanel", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Hover point")).not.toBeInTheDocument();
     expect(screen.queryByText("Back to home")).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Segment mode" })).toHaveValue(
+      "xc",
+    );
+    expect(
+      screen.getByRole("button", { name: "Open segment actions" }),
+    ).toBeInTheDocument();
+  });
+
+  it("paginates efforts 25 per page", async () => {
+    const user = userEvent.setup();
+    const segment = makeSegment();
+
+    segment.efforts = makeManyEfforts(30);
+    segment.effort_count = 30;
+    segment.best_duration_seconds = 280;
+    segment.current_user_pr_duration_seconds = 280;
+
+    mocks.useSegment.mockReturnValue({
+      data: segment,
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+
+    render(<SegmentDetailPanel segmentId={14} />);
+
+    const table = screen.getByLabelText("Segment efforts table");
+
+    expect(within(table).getAllByRole("row")).toHaveLength(26);
+    expect(screen.getByText("Showing 1-25 of 30 efforts")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "2" }));
+
+    expect(within(table).getAllByRole("row")).toHaveLength(6);
+    expect(screen.getByText("Showing 26-30 of 30 efforts")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /5m 09s/i })).toBeInTheDocument();
+  });
+
+  it("updates the segment mode", async () => {
+    const user = userEvent.setup();
+    const updateAsync = vi.fn().mockResolvedValue({
+      ...makeSegment(),
+      mode: "dh",
+    });
+
+    mocks.useUpdateSegment.mockReturnValue({
+      updateAsync,
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+
+    render(<SegmentDetailPanel segmentId={14} />);
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Segment mode" }),
+      "dh",
+    );
+
+    expect(updateAsync).toHaveBeenCalledWith({
+      id: 14,
+      mode: "dh",
+    });
   });
 
   it("updates live comparison metrics when playback moves", async () => {
@@ -553,7 +679,7 @@ describe("SegmentDetailPanel", () => {
 
     await user.click(screen.getByRole("button", { name: "Day" }));
 
-    expect(screen.getByText("1 of 2 efforts")).toBeInTheDocument();
+    expect(screen.getByText("Showing 1-1 of 1 efforts")).toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: "5m 12s" }),
     ).not.toBeInTheDocument();
@@ -572,7 +698,7 @@ describe("SegmentDetailPanel", () => {
 
     await user.click(screen.getByRole("button", { name: "Day" }));
 
-    expect(screen.getByText("1 of 2 efforts")).toBeInTheDocument();
+    expect(screen.getByText("Showing 1-1 of 1 efforts")).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
         name: "Remove Lunch Ride from comparison",
@@ -595,90 +721,6 @@ describe("SegmentDetailPanel", () => {
         name: "Remove Hill Attack from comparison",
       }).length,
     ).toBeGreaterThan(0);
-  });
-
-  it("filters the effort table by the search query", async () => {
-    const user = userEvent.setup();
-
-    render(<SegmentDetailPanel segmentId={14} />);
-
-    await user.type(
-      screen.getByRole("searchbox", { name: "Search efforts" }),
-      "Casey",
-    );
-
-    expect(screen.getByText("1 of 2 efforts")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("link", { name: "5m 12s" }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "5m 00s" })).toHaveAttribute(
-      "href",
-      "/activities/8",
-    );
-  });
-
-  it("shows the efforts list in a scrollable 10-row viewport", () => {
-    const segment = makeSegment();
-
-    segment.efforts = Array.from({ length: 27 }, (_, index) => ({
-      ...segment.efforts[0],
-      id: index + 1,
-      activity_id: index + 101,
-      activity_title: `Ride ${index + 1}`,
-      rider_name: index % 2 === 0 ? "Eric Butera" : "Casey Fast",
-      rider_user_id: index % 2 === 0 ? 1 : 2,
-      activity_started_at: `2026-05-${String((index % 9) + 1).padStart(2, "0")}T12:00:00Z`,
-      effort_index: index + 1,
-      duration_seconds: 300 + index,
-    }));
-    segment.effort_count = segment.efforts.length;
-
-    mocks.useSegment.mockReturnValue({
-      data: segment,
-      isLoading: false,
-      isError: false,
-      error: null,
-    });
-
-    render(<SegmentDetailPanel segmentId={14} />);
-
-    const effortsTable = screen.getByLabelText("Segment efforts table");
-    const firstEffortRow = screen
-      .getByRole("link", { name: "5m 00s" })
-      .closest("tr");
-    const lastEffortRow = screen
-      .getByRole("link", { name: "5m 26s" })
-      .closest("tr");
-
-    expect(effortsTable).toHaveClass("overflow-y-auto");
-    expect(effortsTable).toHaveAttribute(
-      "style",
-      expect.stringContaining("max-height: 31rem"),
-    );
-    expect(
-      screen.getByRole("columnheader", { name: "Place" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Scroll to see more than 10 efforts"),
-    ).toBeInTheDocument();
-    expect(firstEffortRow?.querySelector("td")).toHaveTextContent("1");
-    expect(screen.getByRole("link", { name: "5m 00s" })).toHaveAttribute(
-      "href",
-      "/activities/101",
-    );
-    expect(screen.getByRole("link", { name: "5m 25s" })).toHaveAttribute(
-      "href",
-      "/activities/126",
-    );
-    expect(lastEffortRow?.querySelector("td")).toHaveTextContent("27");
-    expect(screen.getByRole("link", { name: "5m 26s" })).toHaveAttribute(
-      "href",
-      "/activities/127",
-    );
-    expect(
-      screen.queryByRole("button", { name: "Next" }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText(/Page 1 of/i)).not.toBeInTheDocument();
   });
 
   it("renders the comparison tooltip in a condensed single-line-per-ride format", () => {

@@ -31,8 +31,14 @@ const localKaleidoEntry = path.resolve(
   "../../kaleido/typescript/packages/kaleido/src/index.ts",
 );
 
+const enableLocalKaleidoSource = /^(1|true|yes)$/i.test(
+  process.env.USE_LOCAL_KALEIDO ?? "",
+);
+
 const useLocalKaleido =
-  process.env.NODE_ENV !== "production" && fs.existsSync(localKaleidoEntry);
+  process.env.NODE_ENV !== "production" &&
+  enableLocalKaleidoSource &&
+  fs.existsSync(localKaleidoEntry);
 
 const turbopackAlias = (() => {
   if (!useLocalKaleido) return null;
@@ -48,7 +54,7 @@ const nextConfig: NextConfig = {
   output: "standalone",
   transpilePackages: ["@ericbutera/kaleido"],
   experimental: {
-    externalDir: true,
+    externalDir: useLocalKaleido,
   },
   turbopack: {
     resolveAlias:

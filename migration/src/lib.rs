@@ -19,6 +19,11 @@ mod m20260520_000001_segment_summary_latest_activity;
 mod m20260520_000002_activity_analytics_and_fitness_dirty_days;
 mod m20260520_000003_rename_activity_analytics_top_10_count;
 mod m20260520_000004_segment_builder_source;
+mod m20260521_000001_segment_mode;
+mod m20260521_000002_create_activity_training_analyses;
+mod m20260521_000003_activity_training_analysis_focus_fields;
+mod m20260521_000004_activity_training_analysis_decoupling;
+mod m20260521_000005_user_preferences_xc_goal;
 
 pub struct Migrator;
 
@@ -80,8 +85,19 @@ impl MigratorTrait for Migrator {
         locals.push(Box::new(
             m20260520_000003_rename_activity_analytics_top_10_count::Migration,
         ));
+        locals.push(Box::new(m20260520_000004_segment_builder_source::Migration));
+        locals.push(Box::new(m20260521_000001_segment_mode::Migration));
         locals.push(Box::new(
-            m20260520_000004_segment_builder_source::Migration,
+            m20260521_000002_create_activity_training_analyses::Migration,
+        ));
+        locals.push(Box::new(
+            m20260521_000003_activity_training_analysis_focus_fields::Migration,
+        ));
+        locals.push(Box::new(
+            m20260521_000004_activity_training_analysis_decoupling::Migration,
+        ));
+        locals.push(Box::new(
+            m20260521_000005_user_preferences_xc_goal::Migration,
         ));
         locals.sort_by_key(|m| m.name().to_string());
 

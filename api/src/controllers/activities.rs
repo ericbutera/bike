@@ -8,6 +8,10 @@ use crate::activity_import_pipeline::{
 };
 use crate::activity_lifecycle::delete_activity_with_derived_state;
 use crate::activity_location::location_from_derived_json;
+use crate::activity_training_analysis::{
+    load_activity_training_analysis_by_activity_id, ActivityRideFocus,
+    ActivityTrainingAnalysisResponse,
+};
 use crate::analytics::{
     estimated_training_load, mark_segment_activity_changes, mark_user_fitness_dirty,
 };
@@ -71,6 +75,8 @@ pub struct ActivityResponse {
     pub achievement_highlights: Vec<ActivityAchievementHighlight>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub segment_efforts: Vec<ActivitySegmentEffort>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub training_analysis: Option<ActivityTrainingAnalysisResponse>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub can_regenerate: bool,
 }
@@ -167,6 +173,7 @@ impl ActivityResponse {
             route_points: derived_data.route_points,
             achievement_highlights,
             segment_efforts,
+            training_analysis: None,
             can_regenerate,
         }
     }
@@ -514,10 +521,7 @@ pub async fn list_activities(
             .remove(&activity.id)
             .unwrap_or_default();
 
-        ActivityResponse::from_summary_with_achievement_highlights(
-            activity,
-            achievement_highlights,
-        )
+        ActivityResponse::from_summary_with_achievement_highlights(activity, achievement_highlights)
     })))
 }
 
@@ -550,11 +554,12 @@ pub async fn get_activity(
         .await?
         .ok_or_else(|| AppError::not_found("Activity not found"))?;
     let segment_efforts = load_activity_segment_efforts(&state.db, user.id, activity.id).await?;
+    let training_analysis =
+        load_activity_training_analysis_by_activity_id(&state.db, activity.id).await?;
+    let mut response = ActivityResponse::from_detail(activity, segment_efforts);
+    response.training_analysis = training_analysis;
 
-    Ok(Json(ActivityResponse::from_detail(
-        activity,
-        segment_efforts,
-    )))
+    Ok(Json(response))
 }
 
 #[utoipa::path(
@@ -671,6 +676,7 @@ pub async fn regenerate_activity(
 mod tests {
     use super::*;
     use crate::activity_details::serialize_derived_activity_data;
+    use crate::activity_training_analysis::ActivityTrainingAnalysisResponse;
     use kaleido::glass::data::pagination::PaginatedResponse;
 
     #[test]
@@ -781,7 +787,75 @@ mod tests {
             response.segment_efforts[0].personal_best_duration_seconds,
             Some(312)
         );
+        assert_eq!(response.training_analysis, None);
         assert!(response.can_regenerate);
+    }
+
+    #[test]
+    fn activity_response_can_hold_training_analysis() {
+        let now = Utc::now();
+        let mut response = ActivityResponse::from_detail(
+            activities::Model {
+                id: 42,
+                user_id: 8,
+                activity_import_id: None,
+                title: "Evening Ride".to_string(),
+                sport: "ride".to_string(),
+                source: "manual_upload".to_string(),
+                source_correlation_id: None,
+                original_filename: Some("evening-ride.gpx".to_string()),
+                format: Some("gpx".to_string()),
+                started_at: now,
+                ended_at: Some(now),
+                distance_meters: Some(32100.0),
+                moving_time_seconds: Some(3600),
+                total_time_seconds: Some(3650),
+                elevation_gain_meters: Some(420.0),
+                elevation_loss_meters: Some(415.0),
+                average_speed_mps: Some(8.91),
+                max_speed_mps: Some(16.2),
+                average_heart_rate_bpm: Some(138),
+                max_heart_rate_bpm: Some(172),
+                average_cadence_rpm: Some(86),
+                max_cadence_rpm: Some(108),
+                calories: Some(640),
+                estimated_ftp_watts: None,
+                heart_rate_zones_json: None,
+                derived_data_json: None,
+                created_at: now,
+                updated_at: now,
+            },
+            Vec::new(),
+        );
+
+        response.training_analysis = Some(ActivityTrainingAnalysisResponse {
+            ride_focus: ActivityRideFocus::MixedXc,
+            route_family_key: Some("post-canyon".to_string()),
+            comparable_distance_bucket_meters: Some(30_000),
+            comparable_elevation_gain_bucket_meters: Some(400),
+            aerobic_decoupling_percent: Some(4.8),
+            z2_time_seconds: 120,
+            z2_distance_meters: Some(1000.0),
+            z2_average_speed_mps: Some(8.33),
+            climbing_time_seconds: 300,
+            climbing_elevation_gain_meters: Some(84.0),
+            sustained_climb_count: 2,
+        });
+
+        assert_eq!(
+            response
+                .training_analysis
+                .as_ref()
+                .map(|value| value.z2_time_seconds),
+            Some(120)
+        );
+        assert_eq!(
+            response
+                .training_analysis
+                .as_ref()
+                .map(|value| value.sustained_climb_count),
+            Some(2)
+        );
     }
 
     fn make_segment_effort_model(
@@ -907,9 +981,7 @@ mod tests {
             10,
             24,
         )
-        .map(|model| {
-            ActivityResponse::from_summary_with_achievement_highlights(model, Vec::new())
-        });
+        .map(|model| ActivityResponse::from_summary_with_achievement_highlights(model, Vec::new()));
 
         assert_eq!(response.data.len(), 1);
         assert_eq!(response.data[0].title, "Morning Ride");

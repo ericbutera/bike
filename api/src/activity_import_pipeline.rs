@@ -1,5 +1,6 @@
 use crate::activity_details::{derive_activity_detail_data, serialize_derived_activity_data};
 use crate::activity_lifecycle::refresh_activity_derived_state;
+use crate::activity_training_analysis::rebuild_activity_training_analysis_cache;
 use crate::analytics::{
     mark_segment_activity_changes, mark_user_activity_change, mark_user_fitness_dirty,
 };
@@ -177,6 +178,7 @@ pub async fn persist_activity_upload(
     let affected_segment_ids =
         refresh_activity_derived_state(db, user_id, activity_model.id, &derived_data.route_points)
             .await?;
+    rebuild_activity_training_analysis_cache(db, &[activity_model.id]).await?;
 
     Ok(PersistActivityUploadOutcome::Imported(
         PersistedActivityImport {
@@ -274,6 +276,7 @@ pub async fn reprocess_activity_from_import(
     let updated = active_model.update(db).await?;
     let affected_segment_ids =
         refresh_activity_derived_state(db, user_id, updated.id, &derived_data.route_points).await?;
+    rebuild_activity_training_analysis_cache(db, &[updated.id]).await?;
 
     Ok(ReprocessedActivityImport {
         activity: updated,
@@ -378,7 +381,8 @@ async fn deduplicated_activity_import_for_model(
 mod tests {
     use super::*;
     use crate::entities::{
-        activities, activity_analytics, activity_imports, segment_efforts, segments,
+        activities, activity_analytics, activity_imports, activity_training_analyses,
+        segment_efforts, segments,
     };
     use crate::training_profile::TrainingProfile;
     use sea_orm::{ConnectionTrait, Database, EntityTrait, PaginatorTrait, Schema};
@@ -398,6 +402,9 @@ mod tests {
         db.execute(&schema.create_table_from_entity(activity_analytics::Entity))
             .await
             .expect("create activity analytics table");
+        db.execute(&schema.create_table_from_entity(activity_training_analyses::Entity))
+            .await
+            .expect("create activity training analyses table");
         db.execute(&schema.create_table_from_entity(segments::Entity))
             .await
             .expect("create segments table");

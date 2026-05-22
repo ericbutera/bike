@@ -28,11 +28,35 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SegmentMode {
+    Xc,
+    Dh,
+}
+
+impl SegmentMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Xc => "xc",
+            Self::Dh => "dh",
+        }
+    }
+
+    fn from_stored(value: &str) -> Self {
+        match value {
+            "dh" => Self::Dh,
+            _ => Self::Xc,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct SegmentResponse {
     pub id: i32,
     pub title: String,
     pub source: String,
+    pub mode: SegmentMode,
     pub original_filename: Option<String>,
     pub format: Option<String>,
     pub distance_meters: Option<f64>,
@@ -112,7 +136,8 @@ pub struct CreateSegmentFromActivityRequest {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateSegmentRequest {
-    pub title: String,
+    pub title: Option<String>,
+    pub mode: Option<SegmentMode>,
 }
 
 #[utoipa::path(
@@ -185,6 +210,7 @@ pub async fn list_segments(
                     id: segment.id,
                     title: segment.title,
                     source: segment.source,
+                    mode: SegmentMode::from_stored(&segment.mode),
                     original_filename: segment.original_filename,
                     format: segment.format,
                     distance_meters: segment.distance_meters,
@@ -266,21 +292,34 @@ pub async fn update_segment(
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::not_found("Segment not found"))?;
-    let title = normalize_segment_title(&payload.title)?;
+    let title = match payload.title.as_ref() {
+        Some(value) => normalize_segment_title(value)?,
+        None => segment.title.clone(),
+    };
+    let mode = payload
+        .mode
+        .unwrap_or_else(|| SegmentMode::from_stored(&segment.mode));
+    let title_changed = segment.title != title;
+    let mode_changed = SegmentMode::from_stored(&segment.mode) != mode;
 
-    if segment.title == title {
+    if !title_changed && !mode_changed {
         return Ok(Json(
             load_segment_response(&state.db, &segment, user.id).await?,
         ));
     }
 
-    let activity_ids = load_activity_ids_for_segments(&state.db, &[segment.id]).await?;
+    let activity_ids = if title_changed {
+        load_activity_ids_for_segments(&state.db, &[segment.id]).await?
+    } else {
+        Vec::new()
+    };
     let txn = state.db.begin().await?;
     let mut active_segment = segment.into_active_model();
     active_segment.title = Set(title);
+    active_segment.mode = Set(mode.as_str().to_string());
     let updated_segment = active_segment.update(&txn).await?;
 
-    if !activity_ids.is_empty() {
+    if title_changed && !activity_ids.is_empty() {
         rebuild_activity_analytics_cache(&txn, &activity_ids).await?;
     }
 
@@ -513,6 +552,7 @@ pub async fn create_segment_from_activity(
         user_id: Set(user.id),
         title: Set(title),
         source: Set("activity_segment_builder".to_string()),
+        mode: Set(SegmentMode::Xc.as_str().to_string()),
         original_filename: Set(None),
         format: Set(activity.format.clone()),
         distance_meters: Set(distance_meters),
@@ -596,6 +636,7 @@ pub async fn import_segment(
         user_id: Set(user.id),
         title: Set(segment_summary.title),
         source: Set("manual_segment_import".to_string()),
+        mode: Set(SegmentMode::Xc.as_str().to_string()),
         original_filename: Set(Some(upload.original_filename)),
         format: Set(Some(upload.format)),
         distance_meters: Set(segment_summary.distance_meters),
@@ -856,6 +897,7 @@ async fn load_segment_response(
         id: segment.id,
         title: segment.title.clone(),
         source: segment.source.clone(),
+        mode: SegmentMode::from_stored(&segment.mode),
         original_filename: segment.original_filename.clone(),
         format: segment.format.clone(),
         distance_meters: segment.distance_meters,
@@ -1036,6 +1078,7 @@ mod tests {
             user_id: 1,
             title: format!("Segment {id}"),
             source: "manual_segment_import".to_string(),
+            mode: SegmentMode::Xc.as_str().to_string(),
             original_filename: None,
             format: Some("gpx".to_string()),
             distance_meters: Some(1800.0),
@@ -1080,6 +1123,13 @@ mod tests {
 
         assert_eq!(error.status, StatusCode::BAD_REQUEST);
         assert_eq!(error.message, "Segment name is required");
+    }
+
+    #[test]
+    fn segment_mode_from_stored_defaults_to_xc() {
+        assert_eq!(SegmentMode::from_stored("xc"), SegmentMode::Xc);
+        assert_eq!(SegmentMode::from_stored("dh"), SegmentMode::Dh);
+        assert_eq!(SegmentMode::from_stored("unknown"), SegmentMode::Xc);
     }
 
     #[test]

@@ -7,13 +7,15 @@ use crate::activity_import_lock::{
 use crate::activity_import_pipeline::{
     finalize_activity_import_batch, reprocess_activity_from_import,
 };
-use crate::analytics::{rebuild_activity_analytics_cache, rebuild_segment_analytics_cache};
 use crate::analytics::{
     mark_segment_activity_changes, mark_user_activity_change, mark_user_fitness_dirty,
 };
+use crate::analytics::{rebuild_activity_analytics_cache, rebuild_segment_analytics_cache};
 use crate::app_error::AppError;
 use crate::dedupe::{activity_duplicate_candidate_key, activity_models_match_for_dedupe};
-use crate::entities::{activities, activity_analytics, activity_imports, segment_efforts};
+use crate::entities::{
+    activities, activity_analytics, activity_imports, activity_training_analyses, segment_efforts,
+};
 use crate::segment_support::{
     clear_segment_efforts_for_activity, replace_segment_efforts_for_activity,
 };
@@ -87,6 +89,11 @@ pub async fn delete_activity_with_derived_state(
 
     activity_analytics::Entity::delete_many()
         .filter(activity_analytics::Column::ActivityId.eq(activity.id))
+        .exec(&txn)
+        .await?;
+
+    activity_training_analyses::Entity::delete_many()
+        .filter(activity_training_analyses::Column::ActivityId.eq(activity.id))
         .exec(&txn)
         .await?;
 

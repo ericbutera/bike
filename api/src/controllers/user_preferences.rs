@@ -7,6 +7,7 @@ use crate::training_profile::{
 };
 use axum::extract::State;
 use axum::Json;
+use chrono::NaiveDate;
 use kaleido::auth::UserContext;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
@@ -20,6 +21,9 @@ pub struct UserPreferencesResponse {
     pub unit_system: String,
     pub estimated_ftp_watts: Option<i32>,
     pub heart_rate_zone_bounds_bpm: Option<Vec<i32>>,
+    pub xc_goal_target_date: Option<String>,
+    pub xc_goal_target_distance_meters: Option<f64>,
+    pub xc_goal_target_elevation_gain_meters: Option<f64>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -27,6 +31,9 @@ pub struct UpdateUserPreferencesRequest {
     pub unit_system: String,
     pub estimated_ftp_watts: Option<i32>,
     pub heart_rate_zone_bounds_bpm: Option<Vec<i32>>,
+    pub xc_goal_target_date: Option<String>,
+    pub xc_goal_target_distance_meters: Option<f64>,
+    pub xc_goal_target_elevation_gain_meters: Option<f64>,
 }
 
 #[utoipa::path(
@@ -78,6 +85,11 @@ pub async fn update_preferences(
     let estimated_ftp_watts = validate_estimated_ftp_watts(payload.estimated_ftp_watts)?;
     let heart_rate_zone_bounds_bpm =
         validate_heart_rate_zone_bounds_bpm(payload.heart_rate_zone_bounds_bpm)?;
+    let xc_goal = validate_xc_goal(
+        payload.xc_goal_target_date.as_deref(),
+        payload.xc_goal_target_distance_meters,
+        payload.xc_goal_target_elevation_gain_meters,
+    )?;
     let heart_rate_zone_bounds_json =
         serialize_heart_rate_zone_bounds(heart_rate_zone_bounds_bpm.as_deref())?;
 
@@ -90,6 +102,10 @@ pub async fn update_preferences(
         active_model.unit_system = Set(unit_system.clone());
         active_model.estimated_ftp_watts = Set(estimated_ftp_watts);
         active_model.heart_rate_zone_bounds_json = Set(heart_rate_zone_bounds_json.clone());
+        active_model.xc_goal_target_date = Set(xc_goal.target_date);
+        active_model.xc_goal_target_distance_meters = Set(xc_goal.target_distance_meters);
+        active_model.xc_goal_target_elevation_gain_meters =
+            Set(xc_goal.target_elevation_gain_meters);
         active_model.update(&state.db).await?
     } else {
         user_preferences::ActiveModel {
@@ -97,6 +113,9 @@ pub async fn update_preferences(
             unit_system: Set(unit_system.clone()),
             estimated_ftp_watts: Set(estimated_ftp_watts),
             heart_rate_zone_bounds_json: Set(heart_rate_zone_bounds_json),
+            xc_goal_target_date: Set(xc_goal.target_date),
+            xc_goal_target_distance_meters: Set(xc_goal.target_distance_meters),
+            xc_goal_target_elevation_gain_meters: Set(xc_goal.target_elevation_gain_meters),
             ..Default::default()
         }
         .insert(&state.db)
@@ -115,7 +134,22 @@ fn response_from_model(model: Option<&user_preferences::Model>) -> UserPreferenc
         heart_rate_zone_bounds_bpm: model.and_then(|preferences| {
             deserialize_heart_rate_zone_bounds(preferences.heart_rate_zone_bounds_json.as_ref())
         }),
+        xc_goal_target_date: model
+            .map(|preferences| preferences.xc_goal_target_date)
+            .flatten()
+            .map(|value| value.format("%Y-%m-%d").to_string()),
+        xc_goal_target_distance_meters: model
+            .and_then(|preferences| preferences.xc_goal_target_distance_meters),
+        xc_goal_target_elevation_gain_meters: model
+            .and_then(|preferences| preferences.xc_goal_target_elevation_gain_meters),
     }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct XcGoalFields {
+    target_date: Option<NaiveDate>,
+    target_distance_meters: Option<f64>,
+    target_elevation_gain_meters: Option<f64>,
 }
 
 fn validate_unit_system(value: &str) -> Result<String, AppError> {
@@ -128,6 +162,69 @@ fn validate_unit_system(value: &str) -> Result<String, AppError> {
             "Unit system must be metric, imperial, or mixed",
         )),
     }
+}
+
+fn validate_xc_goal(
+    target_date: Option<&str>,
+    target_distance_meters: Option<f64>,
+    target_elevation_gain_meters: Option<f64>,
+) -> Result<XcGoalFields, AppError> {
+    let parsed_target_date = target_date
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(parse_goal_date)
+        .transpose()?;
+    let target_distance_meters =
+        validate_positive_metric("xc_goal_target_distance_meters", target_distance_meters)?;
+    let target_elevation_gain_meters = validate_positive_metric(
+        "xc_goal_target_elevation_gain_meters",
+        target_elevation_gain_meters,
+    )?;
+
+    let field_count = [
+        parsed_target_date.is_some(),
+        target_distance_meters.is_some(),
+        target_elevation_gain_meters.is_some(),
+    ]
+    .into_iter()
+    .filter(|value| *value)
+    .count();
+
+    if field_count == 0 {
+        return Ok(XcGoalFields::default());
+    }
+
+    if field_count != 3 {
+        return Err(AppError::validation_field(
+            "xc_goal_target_date",
+            "XC goal requires a target date, target distance, and target climbing gain",
+        ));
+    }
+
+    Ok(XcGoalFields {
+        target_date: parsed_target_date,
+        target_distance_meters,
+        target_elevation_gain_meters,
+    })
+}
+
+fn validate_positive_metric(field: &str, value: Option<f64>) -> Result<Option<f64>, AppError> {
+    match value {
+        Some(next) if !next.is_finite() || next <= 0.0 => Err(AppError::validation_field(
+            field,
+            "Value must be greater than zero",
+        )),
+        _ => Ok(value),
+    }
+}
+
+fn parse_goal_date(value: &str) -> Result<NaiveDate, AppError> {
+    NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|_| {
+        AppError::validation_field(
+            "xc_goal_target_date",
+            "XC goal date must use YYYY-MM-DD format",
+        )
+    })
 }
 
 #[cfg(test)]
@@ -162,9 +259,12 @@ mod tests {
             user_id: 3,
             unit_system: "mixed".to_string(),
             estimated_ftp_watts: Some(265),
-            heart_rate_zone_bounds_json: Some(
-                crate::training_profile::StoredHeartRateZoneBounds(vec![120, 140, 155, 170]),
-            ),
+            heart_rate_zone_bounds_json: Some(crate::training_profile::StoredHeartRateZoneBounds(
+                vec![120, 140, 155, 170],
+            )),
+            xc_goal_target_date: Some(NaiveDate::from_ymd_opt(2026, 9, 20).unwrap()),
+            xc_goal_target_distance_meters: Some(160_934.4),
+            xc_goal_target_elevation_gain_meters: Some(3_962.4),
             created_at: now,
             updated_at: now,
         }));
@@ -174,5 +274,28 @@ mod tests {
             response.heart_rate_zone_bounds_bpm,
             Some(vec![120, 140, 155, 170])
         );
+        assert_eq!(response.xc_goal_target_date.as_deref(), Some("2026-09-20"));
+        assert_eq!(response.xc_goal_target_distance_meters, Some(160_934.4));
+        assert_eq!(response.xc_goal_target_elevation_gain_meters, Some(3_962.4));
+    }
+
+    #[test]
+    fn validate_xc_goal_requires_complete_payload() {
+        let error = validate_xc_goal(Some("2026-09-20"), Some(100_000.0), None).unwrap_err();
+
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            error.message,
+            "XC goal requires a target date, target distance, and target climbing gain"
+        );
+    }
+
+    #[test]
+    fn validate_xc_goal_rejects_invalid_date_format() {
+        let error =
+            validate_xc_goal(Some("09/20/2026"), Some(100_000.0), Some(1_000.0)).unwrap_err();
+
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.message, "XC goal date must use YYYY-MM-DD format");
     }
 }

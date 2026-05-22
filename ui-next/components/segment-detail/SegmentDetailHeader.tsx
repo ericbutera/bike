@@ -1,6 +1,11 @@
 "use client";
 
-import { faCrown, faMedal, faRoute } from "@fortawesome/free-solid-svg-icons";
+import {
+  faBars,
+  faCrown,
+  faMedal,
+  faRoute,
+} from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
 import {
@@ -10,7 +15,7 @@ import {
   formatElevation,
   type UnitSystem,
 } from "../../lib/activityFormatting";
-import type { Segment, SegmentEffort } from "../../lib/queries";
+import type { Segment, SegmentEffort, SegmentMode } from "../../lib/queries";
 import { formatGradePercent } from "../../lib/segmentDetail";
 
 type SegmentDetailHeaderProps = {
@@ -26,7 +31,7 @@ type SegmentDetailHeaderProps = {
   overallKom: SegmentEffort | null;
   isEditingTitle: boolean;
   draftTitle: string;
-  isSavingTitle: boolean;
+  isSavingSegment: boolean;
   isDeletingSegment: boolean;
   builderEditHref: string | null;
   actionErrorMessage: string | null;
@@ -34,6 +39,7 @@ type SegmentDetailHeaderProps = {
   onCancelEditingTitle: () => void;
   onDraftTitleChange: (value: string) => void;
   onSaveTitle: () => void;
+  onSegmentModeChange: (mode: SegmentMode) => void;
   onDeleteSegment: () => void;
 };
 
@@ -50,7 +56,7 @@ export default function SegmentDetailHeader({
   overallKom,
   isEditingTitle,
   draftTitle,
-  isSavingTitle,
+  isSavingSegment,
   isDeletingSegment,
   builderEditHref,
   actionErrorMessage,
@@ -58,6 +64,7 @@ export default function SegmentDetailHeader({
   onCancelEditingTitle,
   onDraftTitleChange,
   onSaveTitle,
+  onSegmentModeChange,
   onDeleteSegment,
 }: SegmentDetailHeaderProps) {
   return (
@@ -98,15 +105,15 @@ export default function SegmentDetailHeader({
                   <button
                     type="submit"
                     className="btn btn-primary btn-sm"
-                    disabled={isSavingTitle}
+                    disabled={isSavingSegment}
                   >
-                    {isSavingTitle ? "Saving..." : "Save"}
+                    {isSavingSegment ? "Saving..." : "Save"}
                   </button>
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"
                     onClick={onCancelEditingTitle}
-                    disabled={isSavingTitle}
+                    disabled={isSavingSegment}
                   >
                     Cancel
                   </button>
@@ -118,7 +125,7 @@ export default function SegmentDetailHeader({
               </h1>
             )}
 
-            <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-base-content/70">
+            <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-base-content/70">
               <span className="inline-flex items-center gap-2">
                 <FontAwesomeIcon
                   icon={faRoute}
@@ -139,49 +146,80 @@ export default function SegmentDetailHeader({
                 )}{" "}
                 elev
               </span>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-base-content/60">
-              <span>
-                Imported {formatActivityTimestamp(segment.created_at)} from{" "}
-                {segment.source}
-              </span>
               {segment.format ? (
                 <span className="badge badge-outline uppercase">
                   {segment.format}
                 </span>
               ) : null}
+              <span
+                className={`badge ${segment.mode === "dh" ? "badge-warning" : "badge-outline"}`}
+              >
+                {segment.mode.toUpperCase()} mode
+              </span>
               <span className="badge badge-ghost">
                 {segment.effort_count} efforts
               </span>
             </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-base-content/60">
+              <span>
+                Imported {formatActivityTimestamp(segment.created_at)} from{" "}
+                {segment.source}
+              </span>
+            </div>
           </div>
 
-          <div className="flex min-w-[18rem] flex-col gap-3">
-            <div className="flex flex-wrap justify-end gap-2">
-              {!isEditingTitle && builderEditHref ? (
-                <Link href={builderEditHref} className="btn btn-outline btn-sm">
-                  Edit in builder
-                </Link>
-              ) : null}
+          <div className="flex min-w-[16rem] flex-col gap-3 sm:items-end">
+            <div className="join self-start sm:self-end">
+              <select
+                aria-label="Segment mode"
+                className="select select-bordered select-sm join-item min-w-[6rem] bg-base-100"
+                value={segment.mode}
+                disabled={isSavingSegment || isDeletingSegment}
+                onChange={(event) => {
+                  onSegmentModeChange(event.target.value as SegmentMode);
+                }}
+              >
+                <option value="xc">XC</option>
+                <option value="dh">DH</option>
+              </select>
 
-              {!isEditingTitle ? (
+              <div className="dropdown dropdown-end">
                 <button
                   type="button"
-                  className="btn btn-outline btn-sm"
-                  onClick={onStartEditingTitle}
+                  tabIndex={0}
+                  className="btn btn-ghost btn-square btn-sm join-item border border-base-300 bg-base-100"
+                  aria-label="Open segment actions"
                 >
-                  Rename
+                  <FontAwesomeIcon icon={faBars} className="h-4 w-4" />
                 </button>
-              ) : null}
-
-              <button
-                type="button"
-                className="btn btn-outline btn-error btn-sm"
-                onClick={onDeleteSegment}
-                disabled={isDeletingSegment}
-              >
-                {isDeletingSegment ? "Deleting..." : "Delete segment"}
-              </button>
+                <ul
+                  tabIndex={0}
+                  className="dropdown-content menu z-20 mt-2 w-56 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
+                >
+                  {builderEditHref ? (
+                    <li>
+                      <Link href={builderEditHref}>Edit in builder</Link>
+                    </li>
+                  ) : null}
+                  {!isEditingTitle ? (
+                    <li>
+                      <button type="button" onClick={onStartEditingTitle}>
+                        Rename
+                      </button>
+                    </li>
+                  ) : null}
+                  <li>
+                    <button
+                      type="button"
+                      className="text-error"
+                      onClick={onDeleteSegment}
+                      disabled={isDeletingSegment}
+                    >
+                      {isDeletingSegment ? "Deleting..." : "Delete segment"}
+                    </button>
+                  </li>
+                </ul>
+              </div>
             </div>
 
             {actionErrorMessage ? (

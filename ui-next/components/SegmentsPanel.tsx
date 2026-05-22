@@ -1,37 +1,74 @@
 "use client";
 
-import { auth } from "@ericbutera/kaleido";
-import { faCrown } from "@fortawesome/free-solid-svg-icons";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { auth, GenericList, type Column } from "@ericbutera/kaleido";
 import Link from "next/link";
-import type { ReactNode } from "react";
 import { useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { MemoryRouter } from "react-router-dom";
 import {
   extractApiMessage,
   formatDistance,
   formatDuration,
 } from "../lib/activityFormatting";
-import { useSegments, useUploadSegment } from "../lib/queries";
+import { useSegments, useUploadSegment, type Segment } from "../lib/queries";
 import { useUnitPreferences } from "../lib/unitPreferences";
 import AuthRequiredCard from "./AuthRequiredCard";
 
 const ALLOWED_EXTENSIONS = new Set(["gpx", "tcx"]);
+
+type SegmentsGridParams = {
+  q?: string;
+  mode?: Segment["mode"] | "";
+  page?: number | string;
+  per_page?: number | string;
+};
+
+const SegmentsGridSchema = {} as never;
 
 function getExtension(filename: string) {
   const parts = filename.toLowerCase().split(".");
   return parts.length > 1 ? (parts.at(-1) ?? "") : "";
 }
 
-function SegmentMetric({ label, value }: { label: ReactNode; value: string }) {
-  return (
-    <div className="stats bg-base-100 shadow sm:min-w-[8.5rem]">
-      <div className="stat px-3 py-2">
-        <div className="stat-title">{label}</div>
-        <div className="stat-value text-base">{value}</div>
-      </div>
-    </div>
-  );
+function segmentModeBadgeClass(mode: Segment["mode"]) {
+  return mode === "dh"
+    ? "badge badge-warning badge-outline font-semibold uppercase"
+    : "badge badge-info badge-outline font-semibold uppercase";
+}
+
+function filterSegments(segments: Segment[], params: SegmentsGridParams) {
+  const query = params.q?.trim().toLowerCase() ?? "";
+
+  return segments.filter((segment) => {
+    if (params.mode && segment.mode !== params.mode) {
+      return false;
+    }
+
+    if (!query) {
+      return true;
+    }
+
+    const haystacks = [
+      segment.title,
+      segment.source,
+      segment.original_filename ?? "",
+      segment.format ?? "",
+      segment.mode,
+    ];
+
+    return haystacks.some((value) => value.toLowerCase().includes(query));
+  });
+}
+
+function normalizeSegmentsGridParams(params: SegmentsGridParams) {
+  const page = Number(params.page);
+  const perPage = Number(params.per_page);
+
+  return {
+    ...params,
+    page: Number.isFinite(page) && page > 0 ? page : 1,
+    per_page: Number.isFinite(perPage) && perPage > 0 ? perPage : 20,
+  };
 }
 
 export default function SegmentsPanel() {
@@ -42,6 +79,87 @@ export default function SegmentsPanel() {
   const uploadMutation = useUploadSegment();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  const segmentColumns: Column<Segment, SegmentsGridParams>[] = [
+    {
+      key: "title",
+      header: "Segment",
+      render: (segment) => (
+        <div className="min-w-0">
+          <Link
+            href={`/segments/${segment.id}`}
+            className="font-medium text-base-content transition hover:text-primary"
+          >
+            {segment.title}
+          </Link>
+          <div className="mt-1 text-xs text-base-content/60">
+            Imported from {segment.source}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "mode",
+      header: "Type",
+      className: "whitespace-nowrap",
+      render: (segment) => (
+        <span className={segmentModeBadgeClass(segment.mode)}>
+          {segment.mode}
+        </span>
+      ),
+    },
+    {
+      key: "format",
+      header: "Format",
+      className: "whitespace-nowrap",
+      render: (segment) =>
+        segment.format ? (
+          <span className="badge badge-outline uppercase">
+            {segment.format}
+          </span>
+        ) : (
+          <span className="text-base-content/45">--</span>
+        ),
+    },
+    {
+      key: "effort_count",
+      header: "Efforts",
+      className: "whitespace-nowrap font-semibold",
+      render: (segment) => segment.effort_count,
+    },
+    {
+      key: "distance_meters",
+      header: "Distance",
+      className: "whitespace-nowrap",
+      render: (segment) => formatDistance(segment.distance_meters, unitSystem),
+    },
+    {
+      key: "best_duration_seconds",
+      header: "KOM",
+      className: "whitespace-nowrap",
+      render: (segment) =>
+        formatDuration(segment.best_duration_seconds ?? null),
+    },
+    {
+      key: "current_user_pr_duration_seconds",
+      header: "Your PR",
+      className: "whitespace-nowrap",
+      render: (segment) =>
+        formatDuration(segment.current_user_pr_duration_seconds ?? null),
+    },
+  ];
+
+  const useSegmentsGridQuery = (params: SegmentsGridParams) => {
+    const normalizedParams = normalizeSegmentsGridParams(params);
+    const filtered = filterSegments(segmentsQuery.data, normalizedParams);
+    const startIndex = (normalizedParams.page - 1) * normalizedParams.per_page;
+
+    return {
+      data: filtered.slice(startIndex, startIndex + normalizedParams.per_page),
+      isLoading: segmentsQuery.isLoading,
+      raw: { metadata: { total: filtered.length } },
+    };
+  };
 
   const onUpload = async () => {
     if (!selectedFile) {
@@ -165,88 +283,50 @@ export default function SegmentsPanel() {
 
       <div className="card bg-base-100 shadow-xl">
         <div className="card-body">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm text-base-content/60">Recent segments</p>
-              <h3 className="card-title text-xl">Comparison-ready routes</h3>
-            </div>
-            {segmentsQuery.isFetching ? (
-              <span className="loading loading-spinner loading-xs" />
-            ) : null}
-          </div>
-
           {segmentsQuery.isError ? (
             <div className="alert alert-error">
               {extractApiMessage(segmentsQuery.error)}
             </div>
-          ) : null}
-
-          {!segmentsQuery.isError && segmentsQuery.data.length === 0 ? (
-            <div className="alert">
-              <span>
-                No imported segments yet. Start with one GPX or TCX segment
-                export, then Bike will match attempts from your existing rides.
-              </span>
-            </div>
-          ) : null}
-
-          <div className="space-y-3">
-            {segmentsQuery.data.map((segment) => (
-              <article key={segment.id} className="card bg-base-200 shadow-sm">
-                <div className="card-body p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <Link
-                        href={`/segments/${segment.id}`}
-                        className="font-medium text-base-content transition hover:text-primary"
-                      >
-                        {segment.title}
-                      </Link>
-                    </div>
-                    {segment.format ? (
-                      <span className="badge badge-outline uppercase">
-                        {segment.format}
-                      </span>
-                    ) : null}
-                  </div>
-
-                  <div className="grid gap-2 sm:grid-cols-4">
-                    <SegmentMetric
-                      label="Efforts"
-                      value={`${segment.effort_count}`}
+          ) : (
+            <MemoryRouter>
+              <GenericList
+                title="Comparison-ready routes"
+                actions={
+                  segmentsQuery.isFetching ? (
+                    <span className="loading loading-spinner loading-xs" />
+                  ) : undefined
+                }
+                paramsSchema={SegmentsGridSchema}
+                useQuery={useSegmentsGridQuery}
+                columns={segmentColumns}
+                renderFilters={(params, setFilter) => (
+                  <>
+                    <input
+                      type="search"
+                      placeholder="Search segments"
+                      className="input input-sm input-bordered w-52"
+                      value={params.q ?? ""}
+                      onChange={(event) => {
+                        setFilter("q", event.target.value);
+                      }}
                     />
-                    <SegmentMetric
-                      label="Distance"
-                      value={formatDistance(
-                        segment.distance_meters,
-                        unitSystem,
-                      )}
-                    />
-                    <SegmentMetric
-                      label={
-                        <span className="inline-flex items-center gap-1">
-                          <FontAwesomeIcon
-                            icon={faCrown}
-                            className="h-3 w-3 text-warning"
-                          />
-                          <span>KOM</span>
-                        </span>
-                      }
-                      value={formatDuration(
-                        segment.best_duration_seconds ?? null,
-                      )}
-                    />
-                    <SegmentMetric
-                      label="Your PR"
-                      value={formatDuration(
-                        segment.current_user_pr_duration_seconds ?? null,
-                      )}
-                    />
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
+                    <select
+                      className="select select-sm select-bordered w-36"
+                      value={params.mode ?? ""}
+                      onChange={(event) => {
+                        setFilter("mode", event.target.value);
+                      }}
+                    >
+                      <option value="">All types</option>
+                      <option value="xc">XC</option>
+                      <option value="dh">DH</option>
+                    </select>
+                  </>
+                )}
+                emptyMessage="No segments found matching the current filters."
+              />
+            </MemoryRouter>
+          )}
         </div>
       </div>
     </section>

@@ -13,6 +13,7 @@ import {
 import {
   useActivityArchiveImportJobs,
   useActivityImports,
+  useActivityProcessingState,
   useImportActivityArchiveUrl,
   useUploadActivityImport,
   type ActivityArchiveImportJob,
@@ -47,6 +48,10 @@ export default function ActivityImportsPanel() {
     enabled: !!user,
     refetchIntervalMs: 5000,
   });
+  const processingStateQuery = useActivityProcessingState({
+    enabled: !!user,
+    refetchIntervalMs: user ? 5000 : false,
+  });
   const importsQuery = useActivityImports({
     enabled: !!user,
     refetchIntervalMs: archiveJobsQuery.data.some(
@@ -60,8 +65,17 @@ export default function ActivityImportsPanel() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [archiveUrl, setArchiveUrl] = useState("");
+  const isProcessingLocked = processingStateQuery.data.is_active;
+  const processingMessage =
+    processingStateQuery.data.message ??
+    "Another activity processing job is already running. Wait for it to finish before uploading more rides.";
 
   const onUpload = async () => {
+    if (isProcessingLocked) {
+      toast.error(processingMessage);
+      return;
+    }
+
     if (selectedFiles.length === 0) {
       toast.error("Choose one or more .fit, .tcx, or .gpx files first.");
       return;
@@ -97,6 +111,11 @@ export default function ActivityImportsPanel() {
   };
 
   const onImportArchive = async () => {
+    if (isProcessingLocked) {
+      toast.error(processingMessage);
+      return;
+    }
+
     if (!archiveUrl.trim()) {
       toast.error("Paste a Garmin or Strava export URL first.");
       return;
@@ -146,6 +165,14 @@ export default function ActivityImportsPanel() {
 
           <fieldset className="fieldset rounded-box border border-base-300 bg-base-200 p-4">
             <legend className="fieldset-legend">Activity file</legend>
+            {isProcessingLocked ? (
+              <div className="alert alert-warning mb-4 text-sm">
+                <span>
+                  {processingMessage} Uploads will re-enable automatically when
+                  the current job finishes.
+                </span>
+              </div>
+            ) : null}
             <input
               ref={inputRef}
               type="file"
@@ -217,7 +244,9 @@ export default function ActivityImportsPanel() {
                 type="button"
                 className="btn btn-primary"
                 disabled={
-                  selectedFiles.length === 0 || uploadMutation.isPending
+                  selectedFiles.length === 0 ||
+                  uploadMutation.isPending ||
+                  isProcessingLocked
                 }
                 onClick={onUpload}
               >
@@ -270,7 +299,11 @@ export default function ActivityImportsPanel() {
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={!archiveUrl.trim() || archiveImportMutation.isPending}
+                disabled={
+                  !archiveUrl.trim() ||
+                  archiveImportMutation.isPending ||
+                  isProcessingLocked
+                }
                 onClick={onImportArchive}
               >
                 {archiveImportMutation.isPending

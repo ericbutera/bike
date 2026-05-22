@@ -3,6 +3,7 @@ pub mod activity_analytics;
 pub mod activity_archive_import_jobs;
 pub mod activity_import_locks;
 pub mod activity_imports;
+pub mod activity_training_analyses;
 pub mod analytics_user_states;
 pub mod fitness_freshness_daily;
 pub mod integration_events;

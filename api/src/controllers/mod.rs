@@ -6,6 +6,7 @@ pub mod fitness;
 pub mod integration_events;
 pub mod segments;
 pub mod strava;
+pub mod training_goals;
 pub mod user_preferences;
 
 use crate::storage::AppStorage;
@@ -51,6 +52,14 @@ pub fn routes() -> Router<Arc<AppStorage>> {
             axum::routing::get(fitness::get_fitness_freshness),
         )
         .route(
+            "/api/training/xc-progress",
+            axum::routing::get(training_goals::get_xc_goal_progress),
+        )
+        .route(
+            "/api/training/dh-progress",
+            axum::routing::get(training_goals::get_dh_goal_progress),
+        )
+        .route(
             "/api/segments",
             axum::routing::get(segments::list_segments)
                 .post(segments::import_segment)
@@ -88,6 +97,10 @@ pub fn routes() -> Router<Arc<AppStorage>> {
         .route(
             "/api/activity-imports/archive-jobs",
             axum::routing::get(activity_imports::list_activity_archive_import_jobs),
+        )
+        .route(
+            "/api/activity-imports/processing-state",
+            axum::routing::get(activity_imports::get_activity_processing_state),
         )
         .route(
             "/api/activity-imports/archive-jobs/:id",

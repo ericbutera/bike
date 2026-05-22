@@ -6,6 +6,7 @@ import ActivityImportsPanel from "../ActivityImportsPanel";
 const mocks = vi.hoisted(() => ({
   useCurrentUser: vi.fn(),
   useActivityArchiveImportJobs: vi.fn(),
+  useActivityProcessingState: vi.fn(),
   useActivityImports: vi.fn(),
   useImportActivityArchiveUrl: vi.fn(),
   useUploadActivityImport: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock("@ericbutera/kaleido", () => ({
 
 vi.mock("../../lib/queries", () => ({
   useActivityArchiveImportJobs: mocks.useActivityArchiveImportJobs,
+  useActivityProcessingState: mocks.useActivityProcessingState,
   useActivityImports: mocks.useActivityImports,
   useImportActivityArchiveUrl: mocks.useImportActivityArchiveUrl,
   useUploadActivityImport: mocks.useUploadActivityImport,
@@ -140,6 +142,19 @@ describe("ActivityImportsPanel", () => {
     });
     mocks.useActivityArchiveImportJobs.mockReturnValue({
       data: [],
+      isError: false,
+      isFetching: false,
+      error: null,
+    });
+    mocks.useActivityProcessingState.mockReturnValue({
+      data: {
+        is_active: false,
+        source: null,
+        source_label: null,
+        stage: null,
+        stage_label: null,
+        message: null,
+      },
       isError: false,
       isFetching: false,
       error: null,
@@ -335,6 +350,31 @@ describe("ActivityImportsPanel", () => {
     expect(
       screen.getByText("Worker-backed status updates"),
     ).toBeInTheDocument();
+  });
+
+  it("disables new uploads while another activity processing job is active", () => {
+    mocks.useActivityProcessingState.mockReturnValue({
+      data: {
+        is_active: true,
+        source: "activity_reprocessing",
+        source_label: "activity reprocessing",
+        stage: "running",
+        stage_label: "running",
+        message: "activity reprocessing is currently running.",
+      },
+      isError: false,
+      isFetching: false,
+      error: null,
+    });
+
+    render(<ActivityImportsPanel />);
+
+    expect(
+      screen.getByText(/activity reprocessing is currently running/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Upload activity" }),
+    ).toBeDisabled();
   });
 
   it("renders recent archive import job status", () => {

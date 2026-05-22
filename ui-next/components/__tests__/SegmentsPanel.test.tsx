@@ -12,13 +12,20 @@ const mocks = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
 }));
 
-vi.mock("@ericbutera/kaleido", () => ({
-  auth: {
-    useAuthApi: () => ({
-      useCurrentUser: mocks.useCurrentUser,
-    }),
-  },
-}));
+vi.mock("@ericbutera/kaleido", async () => {
+  const actual = await vi.importActual<typeof import("@ericbutera/kaleido")>(
+    "@ericbutera/kaleido",
+  );
+
+  return {
+    ...actual,
+    auth: {
+      useAuthApi: () => ({
+        useCurrentUser: mocks.useCurrentUser,
+      }),
+    },
+  };
+});
 
 vi.mock("../../lib/queries", () => ({
   useSegments: mocks.useSegments,
@@ -45,6 +52,7 @@ function makeSegment(
     id: number;
     title: string;
     source: string;
+    mode: "xc" | "dh";
     original_filename: string | null;
     format: string | null;
     distance_meters: number | null;
@@ -58,6 +66,7 @@ function makeSegment(
     id: 9,
     title: "North Climb",
     source: "manual_upload",
+    mode: "xc",
     original_filename: "north-climb.gpx",
     format: "gpx",
     distance_meters: 1800,
@@ -132,8 +141,18 @@ describe("SegmentsPanel", () => {
 
   it("renders recent imported segments", () => {
     mocks.useSegments.mockReturnValue({
-      data: [makeSegment({ id: 12, title: "River Sprint", effort_count: 2 })],
+      data: [
+        makeSegment({ id: 12, title: "River Sprint", effort_count: 2 }),
+        makeSegment({
+          id: 13,
+          title: "FMR Lower",
+          mode: "dh",
+          best_duration_seconds: 280,
+          current_user_pr_duration_seconds: 295,
+        }),
+      ],
       isError: false,
+      isLoading: false,
       isFetching: false,
       error: null,
     });
@@ -144,13 +163,51 @@ describe("SegmentsPanel", () => {
       "href",
       "/segments/12",
     );
+    expect(screen.getByRole("link", { name: "FMR Lower" })).toHaveAttribute(
+      "href",
+      "/segments/13",
+    );
+    expect(screen.getByText("Comparison-ready routes")).toBeInTheDocument();
+    expect(screen.getByText("Type")).toBeInTheDocument();
     expect(screen.getByText("Efforts")).toBeInTheDocument();
     expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getByText("KOM")).toBeInTheDocument();
     expect(screen.getByText("Your PR")).toBeInTheDocument();
-    expect(screen.queryByText("north-climb.gpx")).not.toBeInTheDocument();
+    expect(screen.getByText("xc")).toBeInTheDocument();
+    expect(screen.getByText("dh")).toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: "Compare efforts" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("filters the segments grid by mode", async () => {
+    const user = userEvent.setup();
+
+    mocks.useSegments.mockReturnValue({
+      data: [
+        makeSegment({ id: 12, title: "River Sprint", effort_count: 2 }),
+        makeSegment({
+          id: 13,
+          title: "FMR Lower",
+          mode: "dh",
+          best_duration_seconds: 280,
+          current_user_pr_duration_seconds: 295,
+        }),
+      ],
+      isError: false,
+      isLoading: false,
+      isFetching: false,
+      error: null,
+    });
+
+    render(<SegmentsPanel />);
+
+    await user.selectOptions(screen.getByRole("combobox"), "dh");
+    await user.click(screen.getByRole("button", { name: "Search" }));
+
+    expect(
+      screen.queryByRole("link", { name: "River Sprint" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "FMR Lower" })).toBeInTheDocument();
   });
 });

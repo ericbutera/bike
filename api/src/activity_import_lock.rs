@@ -140,7 +140,7 @@ pub async fn load_user_activity_import_lock(
         .map_err(AppError::from)
 }
 
-fn describe_source(source: &str) -> &'static str {
+pub(crate) fn describe_source(source: &str) -> &'static str {
     match source {
         ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT => "archive import",
         ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING => "activity reprocessing",
@@ -152,7 +152,7 @@ fn describe_source(source: &str) -> &'static str {
     }
 }
 
-fn describe_stage(stage: &str) -> &'static str {
+pub(crate) fn describe_stage(stage: &str) -> &'static str {
     match stage {
         ACTIVITY_IMPORT_LOCK_STAGE_QUEUED => "queued",
         ACTIVITY_IMPORT_LOCK_STAGE_RUNNING => "running",
