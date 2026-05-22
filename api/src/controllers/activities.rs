@@ -9,8 +9,7 @@ use crate::activity_import_pipeline::{
 use crate::activity_lifecycle::delete_activity_with_derived_state;
 use crate::activity_location::location_from_derived_json;
 use crate::activity_training_analysis::{
-    load_activity_training_analysis_by_activity_id, ActivityRideFocus,
-    ActivityTrainingAnalysisResponse,
+    load_activity_training_analysis_by_activity_id, ActivityTrainingAnalysisResponse,
 };
 use crate::analytics::{
     estimated_training_load, mark_segment_activity_changes, mark_user_fitness_dirty,
@@ -829,7 +828,7 @@ mod tests {
         );
 
         response.training_analysis = Some(ActivityTrainingAnalysisResponse {
-            ride_focus: ActivityRideFocus::MixedXc,
+            ride_focus: crate::activity_training_analysis::ActivityRideFocus::MixedXc,
             route_family_key: Some("post-canyon".to_string()),
             comparable_distance_bucket_meters: Some(30_000),
             comparable_elevation_gain_bucket_meters: Some(400),

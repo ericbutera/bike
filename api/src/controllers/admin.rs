@@ -673,6 +673,7 @@ mod tests {
             user_id: Set(1),
             title: Set("North Climb".to_string()),
             source: Set("manual_segment_import".to_string()),
+            mode: Set("xc".to_string()),
             original_filename: Set(Some("north-climb.gpx".to_string())),
             format: Set(Some("gpx".to_string())),
             distance_meters: Set(Some(1800.0)),
