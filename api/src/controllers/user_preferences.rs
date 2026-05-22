@@ -21,6 +21,7 @@ pub struct UserPreferencesResponse {
     pub unit_system: String,
     pub estimated_ftp_watts: Option<i32>,
     pub heart_rate_zone_bounds_bpm: Option<Vec<i32>>,
+    pub xc_goal_start_date: Option<String>,
     pub xc_goal_target_date: Option<String>,
     pub xc_goal_target_distance_meters: Option<f64>,
     pub xc_goal_target_elevation_gain_meters: Option<f64>,
@@ -31,6 +32,7 @@ pub struct UpdateUserPreferencesRequest {
     pub unit_system: String,
     pub estimated_ftp_watts: Option<i32>,
     pub heart_rate_zone_bounds_bpm: Option<Vec<i32>>,
+    pub xc_goal_start_date: Option<String>,
     pub xc_goal_target_date: Option<String>,
     pub xc_goal_target_distance_meters: Option<f64>,
     pub xc_goal_target_elevation_gain_meters: Option<f64>,
@@ -86,6 +88,7 @@ pub async fn update_preferences(
     let heart_rate_zone_bounds_bpm =
         validate_heart_rate_zone_bounds_bpm(payload.heart_rate_zone_bounds_bpm)?;
     let xc_goal = validate_xc_goal(
+        payload.xc_goal_start_date.as_deref(),
         payload.xc_goal_target_date.as_deref(),
         payload.xc_goal_target_distance_meters,
         payload.xc_goal_target_elevation_gain_meters,
@@ -102,6 +105,7 @@ pub async fn update_preferences(
         active_model.unit_system = Set(unit_system.clone());
         active_model.estimated_ftp_watts = Set(estimated_ftp_watts);
         active_model.heart_rate_zone_bounds_json = Set(heart_rate_zone_bounds_json.clone());
+        active_model.xc_goal_start_date = Set(xc_goal.start_date);
         active_model.xc_goal_target_date = Set(xc_goal.target_date);
         active_model.xc_goal_target_distance_meters = Set(xc_goal.target_distance_meters);
         active_model.xc_goal_target_elevation_gain_meters =
@@ -113,6 +117,7 @@ pub async fn update_preferences(
             unit_system: Set(unit_system.clone()),
             estimated_ftp_watts: Set(estimated_ftp_watts),
             heart_rate_zone_bounds_json: Set(heart_rate_zone_bounds_json),
+            xc_goal_start_date: Set(xc_goal.start_date),
             xc_goal_target_date: Set(xc_goal.target_date),
             xc_goal_target_distance_meters: Set(xc_goal.target_distance_meters),
             xc_goal_target_elevation_gain_meters: Set(xc_goal.target_elevation_gain_meters),
@@ -134,6 +139,10 @@ fn response_from_model(model: Option<&user_preferences::Model>) -> UserPreferenc
         heart_rate_zone_bounds_bpm: model.and_then(|preferences| {
             deserialize_heart_rate_zone_bounds(preferences.heart_rate_zone_bounds_json.as_ref())
         }),
+        xc_goal_start_date: model
+            .map(|preferences| preferences.xc_goal_start_date)
+            .flatten()
+            .map(|value| value.format("%Y-%m-%d").to_string()),
         xc_goal_target_date: model
             .map(|preferences| preferences.xc_goal_target_date)
             .flatten()
@@ -147,6 +156,7 @@ fn response_from_model(model: Option<&user_preferences::Model>) -> UserPreferenc
 
 #[derive(Debug, Clone, Copy, Default)]
 struct XcGoalFields {
+    start_date: Option<NaiveDate>,
     target_date: Option<NaiveDate>,
     target_distance_meters: Option<f64>,
     target_elevation_gain_meters: Option<f64>,
@@ -165,14 +175,20 @@ fn validate_unit_system(value: &str) -> Result<String, AppError> {
 }
 
 fn validate_xc_goal(
+    start_date: Option<&str>,
     target_date: Option<&str>,
     target_distance_meters: Option<f64>,
     target_elevation_gain_meters: Option<f64>,
 ) -> Result<XcGoalFields, AppError> {
+    let parsed_start_date = start_date
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| parse_goal_date("xc_goal_start_date", "XC goal start date", value))
+        .transpose()?;
     let parsed_target_date = target_date
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .map(parse_goal_date)
+        .map(|value| parse_goal_date("xc_goal_target_date", "XC goal target date", value))
         .transpose()?;
     let target_distance_meters =
         validate_positive_metric("xc_goal_target_distance_meters", target_distance_meters)?;
@@ -182,6 +198,7 @@ fn validate_xc_goal(
     )?;
 
     let field_count = [
+        parsed_start_date.is_some(),
         parsed_target_date.is_some(),
         target_distance_meters.is_some(),
         target_elevation_gain_meters.is_some(),
@@ -194,14 +211,22 @@ fn validate_xc_goal(
         return Ok(XcGoalFields::default());
     }
 
-    if field_count != 3 {
+    if field_count != 4 {
         return Err(AppError::validation_field(
-            "xc_goal_target_date",
-            "XC goal requires a target date, target distance, and target climbing gain",
+            "xc_goal_start_date",
+            "XC goal requires a training start date, target date, target distance, and target climbing gain",
+        ));
+    }
+
+    if parsed_start_date > parsed_target_date {
+        return Err(AppError::validation_field(
+            "xc_goal_start_date",
+            "XC goal start date must be on or before the target date",
         ));
     }
 
     Ok(XcGoalFields {
+        start_date: parsed_start_date,
         target_date: parsed_target_date,
         target_distance_meters,
         target_elevation_gain_meters,
@@ -218,12 +243,9 @@ fn validate_positive_metric(field: &str, value: Option<f64>) -> Result<Option<f6
     }
 }
 
-fn parse_goal_date(value: &str) -> Result<NaiveDate, AppError> {
+fn parse_goal_date(field: &str, label: &str, value: &str) -> Result<NaiveDate, AppError> {
     NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|_| {
-        AppError::validation_field(
-            "xc_goal_target_date",
-            "XC goal date must use YYYY-MM-DD format",
-        )
+        AppError::validation_field(field, &format!("{label} must use YYYY-MM-DD format"))
     })
 }
 
@@ -262,6 +284,7 @@ mod tests {
             heart_rate_zone_bounds_json: Some(crate::training_profile::StoredHeartRateZoneBounds(
                 vec![120, 140, 155, 170],
             )),
+            xc_goal_start_date: Some(NaiveDate::from_ymd_opt(2026, 6, 1).unwrap()),
             xc_goal_target_date: Some(NaiveDate::from_ymd_opt(2026, 9, 20).unwrap()),
             xc_goal_target_distance_meters: Some(160_934.4),
             xc_goal_target_elevation_gain_meters: Some(3_962.4),
@@ -274,6 +297,7 @@ mod tests {
             response.heart_rate_zone_bounds_bpm,
             Some(vec![120, 140, 155, 170])
         );
+        assert_eq!(response.xc_goal_start_date.as_deref(), Some("2026-06-01"));
         assert_eq!(response.xc_goal_target_date.as_deref(), Some("2026-09-20"));
         assert_eq!(response.xc_goal_target_distance_meters, Some(160_934.4));
         assert_eq!(response.xc_goal_target_elevation_gain_meters, Some(3_962.4));
@@ -281,21 +305,48 @@ mod tests {
 
     #[test]
     fn validate_xc_goal_requires_complete_payload() {
-        let error = validate_xc_goal(Some("2026-09-20"), Some(100_000.0), None).unwrap_err();
+        let error =
+            validate_xc_goal(Some("2026-06-01"), Some("2026-09-20"), Some(100_000.0), None)
+                .unwrap_err();
 
         assert_eq!(error.status, StatusCode::BAD_REQUEST);
         assert_eq!(
             error.message,
-            "XC goal requires a target date, target distance, and target climbing gain"
+            "XC goal requires a training start date, target date, target distance, and target climbing gain"
         );
     }
 
     #[test]
     fn validate_xc_goal_rejects_invalid_date_format() {
-        let error =
-            validate_xc_goal(Some("09/20/2026"), Some(100_000.0), Some(1_000.0)).unwrap_err();
+        let error = validate_xc_goal(
+            Some("2026-06-01"),
+            Some("09/20/2026"),
+            Some(100_000.0),
+            Some(1_000.0),
+        )
+        .unwrap_err();
 
         assert_eq!(error.status, StatusCode::BAD_REQUEST);
-        assert_eq!(error.message, "XC goal date must use YYYY-MM-DD format");
+        assert_eq!(
+            error.message,
+            "XC goal target date must use YYYY-MM-DD format"
+        );
+    }
+
+    #[test]
+    fn validate_xc_goal_rejects_start_date_after_target_date() {
+        let error = validate_xc_goal(
+            Some("2026-09-21"),
+            Some("2026-09-20"),
+            Some(100_000.0),
+            Some(1_000.0),
+        )
+        .unwrap_err();
+
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            error.message,
+            "XC goal start date must be on or before the target date"
+        );
     }
 }

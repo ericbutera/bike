@@ -125,6 +125,7 @@ It is the persistent implementation plan and progress log for this feature area.
 - [x] DH goals/progress screen is now available in `ui-next` with session trend and segment benchmark views.
 - [x] Deterministic next-ride guidance now uses fitness, fatigue, and form alongside XC/DH-specific metrics.
 - [x] Reference report-script review narrowed the next credible training-page signals to climb density, temperature context, and optional HRV readiness; a separate reporting page is not needed for v1.
+- [x] XC event targets now use a saved training start date through the target date so qualifying XC rides in that block count toward the current distance and climbing target, and the XC page now reflects that block in its visible ride count and weekly history.
 
 ## Landed In This Slice
 
@@ -157,6 +158,7 @@ It is the persistent implementation plan and progress log for this feature area.
 - Added fitness/fatigue/form-aware recommendation rules to `/api/training/xc-progress` and `/api/training/dh-progress`, including recovery-vs-ready guidance based on the latest usable freshness snapshot.
 - Added focused backend validation for the new XC and DH recommendation cases.
 - Reviewed ad hoc FIT, GPX, and HRV scripts under `data/scripts` and scoped the stable next signals to climb density, temperature context, and optional HRV readiness instead of adding a separate reports surface.
+- Updated the XC event target response and `/xc` screen so the current goal counts qualifying XC rides from the saved training start date through the target date, expands weekly history to that saved block, and keeps best single-ride benchmarks for context.
 
 ## Next Recommended Slice
 

@@ -161,10 +161,17 @@ pub struct XcGoalProgressResponse {
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct XcEventGoalResponse {
+    pub start_date: String,
     pub target_date: String,
     pub days_remaining: i64,
     pub target_distance_meters: f64,
     pub target_elevation_gain_meters: f64,
+    pub training_window_days: i32,
+    pub counted_ride_count: i32,
+    pub counted_distance_meters: f64,
+    pub counted_distance_progress_percent: f64,
+    pub counted_elevation_gain_meters: f64,
+    pub counted_elevation_gain_progress_percent: f64,
     pub best_distance_meters: Option<f64>,
     pub best_distance_progress_percent: Option<f64>,
     pub best_distance_activity: Option<XcGoalActivityReferenceResponse>,
@@ -182,6 +189,7 @@ pub struct XcGoalActivityReferenceResponse {
 
 #[derive(Debug, Clone, Copy)]
 struct XcEventGoal {
+    start_date: NaiveDate,
     target_date: NaiveDate,
     target_distance_meters: f64,
     target_elevation_gain_meters: f64,
@@ -419,14 +427,22 @@ async fn load_xc_event_goal(
     };
 
     match (
+        preferences.xc_goal_start_date,
         preferences.xc_goal_target_date,
         preferences.xc_goal_target_distance_meters,
         preferences.xc_goal_target_elevation_gain_meters,
     ) {
-        (Some(target_date), Some(target_distance_meters), Some(target_elevation_gain_meters))
-            if target_distance_meters > 0.0 && target_elevation_gain_meters > 0.0 =>
+        (
+            Some(start_date),
+            Some(target_date),
+            Some(target_distance_meters),
+            Some(target_elevation_gain_meters),
+        ) if start_date <= target_date
+            && target_distance_meters > 0.0
+            && target_elevation_gain_meters > 0.0 =>
         {
             Ok(Some(XcEventGoal {
+                start_date,
                 target_date,
                 target_distance_meters,
                 target_elevation_gain_meters,
@@ -496,6 +512,7 @@ fn build_xc_goal_progress_response(
     rides.sort_by(|left, right| right.started_at.cmp(&left.started_at));
 
     let event_goal = goal.and_then(|goal| build_xc_event_goal_response(&rides, goal, now));
+    let history_end = goal.map(|goal| std::cmp::min(now.date_naive(), goal.target_date));
 
     let recent_window_start = now - Duration::days(XC_RECENT_WINDOW_DAYS);
     let decoupling_window_start = now - Duration::days(XC_DECOUPLING_WINDOW_DAYS);
@@ -574,8 +591,18 @@ fn build_xc_goal_progress_response(
         recent_decoupling_average,
         freshness,
     );
-    let weekly_progress = build_xc_weekly_progress(&rides, now);
-    let recent_rides = rides.into_iter().take(XC_RECENT_RIDES_LIMIT).collect();
+    let weekly_progress = build_xc_weekly_progress(&rides, now, goal);
+    let recent_rides = rides
+        .into_iter()
+        .filter(|ride| match (goal, history_end) {
+            (Some(goal), Some(history_end)) => {
+                let ride_day = ride.started_at.date_naive();
+                ride_day >= goal.start_date && ride_day <= history_end
+            }
+            _ => true,
+        })
+        .take(XC_RECENT_RIDES_LIMIT)
+        .collect();
 
     XcGoalProgressResponse {
         generated_at: now,
@@ -593,21 +620,37 @@ fn build_xc_event_goal_response(
     goal: XcEventGoal,
     now: DateTime<Utc>,
 ) -> Option<XcEventGoalResponse> {
-    let season_start = NaiveDate::from_ymd_opt(goal.target_date.year(), 1, 1)?;
-    let season_rides = rides
+    if goal.start_date > goal.target_date {
+        return None;
+    }
+
+    let progress_end = std::cmp::min(now.date_naive(), goal.target_date);
+    let counted_rides = rides
         .iter()
         .filter(|ride| {
             let ride_day = ride.started_at.date_naive();
-            ride_day >= season_start && ride_day <= now.date_naive()
+            ride_day >= goal.start_date && ride_day <= progress_end
         })
         .collect::<Vec<_>>();
-    let best_distance_ride = season_rides.iter().copied().max_by(|left, right| {
+    let counted_distance_meters = counted_rides
+        .iter()
+        .map(|ride| ride.distance_meters.unwrap_or_default())
+        .sum::<f64>();
+    let counted_elevation_gain_meters = counted_rides
+        .iter()
+        .map(|ride| {
+            ride.climbing_elevation_gain_meters
+                .or(ride.elevation_gain_meters)
+                .unwrap_or_default()
+        })
+        .sum::<f64>();
+    let best_distance_ride = counted_rides.iter().copied().max_by(|left, right| {
         left.distance_meters
             .unwrap_or_default()
             .partial_cmp(&right.distance_meters.unwrap_or_default())
             .unwrap_or(std::cmp::Ordering::Equal)
     });
-    let best_elevation_ride = season_rides.iter().copied().max_by(|left, right| {
+    let best_elevation_ride = counted_rides.iter().copied().max_by(|left, right| {
         left.climbing_elevation_gain_meters
             .or(left.elevation_gain_meters)
             .unwrap_or_default()
@@ -626,6 +669,7 @@ fn build_xc_event_goal_response(
     });
 
     Some(XcEventGoalResponse {
+        start_date: goal.start_date.format("%Y-%m-%d").to_string(),
         target_date: goal.target_date.format("%Y-%m-%d").to_string(),
         days_remaining: goal
             .target_date
@@ -633,6 +677,30 @@ fn build_xc_event_goal_response(
             .num_days(),
         target_distance_meters: round_metric(goal.target_distance_meters),
         target_elevation_gain_meters: round_metric(goal.target_elevation_gain_meters),
+        training_window_days: (goal
+            .target_date
+            .signed_duration_since(goal.start_date)
+            .num_days()
+            + 1) as i32,
+        counted_ride_count: counted_rides.len() as i32,
+        counted_distance_meters: round_metric(counted_distance_meters),
+        counted_distance_progress_percent: round_metric(
+            goal_progress_percent(
+                Some(counted_distance_meters),
+                goal.target_distance_meters,
+                TrainingGoalDirection::AtLeast,
+            )
+            .unwrap_or_default(),
+        ),
+        counted_elevation_gain_meters: round_metric(counted_elevation_gain_meters),
+        counted_elevation_gain_progress_percent: round_metric(
+            goal_progress_percent(
+                Some(counted_elevation_gain_meters),
+                goal.target_elevation_gain_meters,
+                TrainingGoalDirection::AtLeast,
+            )
+            .unwrap_or_default(),
+        ),
         best_distance_meters: best_distance_meters.map(round_metric),
         best_distance_progress_percent: goal_progress_percent(
             best_distance_meters,
@@ -913,14 +981,24 @@ fn session_repeat_fade_percent(efforts: &[DhEffortSource]) -> Option<f64> {
 fn build_xc_weekly_progress(
     rides: &[XcRideProgressResponse],
     now: DateTime<Utc>,
+    goal: Option<XcEventGoal>,
 ) -> Vec<XcWeeklyProgressPointResponse> {
-    let current_week_start = start_of_week(now.date_naive());
-    let first_week_start = current_week_start - Duration::days((XC_WEEKLY_PROGRESS_WEEKS - 1) * 7);
+    let history_end = goal.map_or(now.date_naive(), |goal| {
+        std::cmp::min(now.date_naive(), goal.target_date)
+    });
+    let current_week_start = start_of_week(history_end);
+    let first_week_start = goal.map_or_else(
+        || current_week_start - Duration::days((XC_WEEKLY_PROGRESS_WEEKS - 1) * 7),
+        |goal| start_of_week(goal.start_date),
+    );
     let mut rides_by_week_start = BTreeMap::<NaiveDate, Vec<&XcRideProgressResponse>>::new();
 
     for ride in rides
         .iter()
-        .filter(|ride| ride.started_at.date_naive() >= first_week_start)
+        .filter(|ride| {
+            let ride_day = ride.started_at.date_naive();
+            ride_day >= first_week_start && ride_day <= history_end
+        })
     {
         rides_by_week_start
             .entry(start_of_week(ride.started_at.date_naive()))
@@ -1372,7 +1450,7 @@ mod tests {
     }
 
     #[test]
-    fn xc_event_goal_uses_best_current_season_distance_and_climbing_rides() {
+    fn xc_event_goal_counts_only_rides_within_saved_training_window() {
         let now = chrono::DateTime::parse_from_rfc3339("2026-05-21T12:00:00Z")
             .unwrap()
             .with_timezone(&Utc);
@@ -1407,7 +1485,7 @@ mod tests {
                     elevation_gain_meters: Some(5_000.0),
                     ..build_xc_ride(
                         3,
-                        chrono::DateTime::parse_from_rfc3339("2025-08-10T12:00:00Z")
+                        chrono::DateTime::parse_from_rfc3339("2026-03-20T12:00:00Z")
                             .unwrap()
                             .with_timezone(&Utc),
                         ActivityRideFocus::XcEndurance,
@@ -1418,6 +1496,7 @@ mod tests {
                 },
             ],
             Some(XcEventGoal {
+                start_date: NaiveDate::from_ymd_opt(2026, 4, 1).unwrap(),
                 target_date: NaiveDate::from_ymd_opt(2026, 9, 20).unwrap(),
                 target_distance_meters: 160_934.4,
                 target_elevation_gain_meters: 3_962.4,
@@ -1427,8 +1506,15 @@ mod tests {
         );
 
         let event_goal = response.event_goal.expect("event goal present");
+        assert_eq!(event_goal.start_date, "2026-04-01");
         assert_eq!(event_goal.target_date, "2026-09-20");
         assert_eq!(event_goal.days_remaining, 122);
+        assert_eq!(event_goal.training_window_days, 173);
+        assert_eq!(event_goal.counted_ride_count, 2);
+        assert_eq!(event_goal.counted_distance_meters, 152_000.0);
+        assert_eq!(event_goal.counted_distance_progress_percent, 94.4);
+        assert_eq!(event_goal.counted_elevation_gain_meters, 4_600.0);
+        assert_eq!(event_goal.counted_elevation_gain_progress_percent, 100.0);
         assert_eq!(event_goal.best_distance_meters, Some(120_000.0));
         assert_eq!(event_goal.best_distance_progress_percent, Some(74.6));
         assert_eq!(event_goal.best_elevation_gain_meters, Some(2_700.0));
@@ -1440,6 +1526,79 @@ mod tests {
                 .map(|activity| activity.activity_id),
             Some(2)
         );
+    }
+
+    #[test]
+    fn xc_event_goal_expands_visible_history_to_the_saved_training_block() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-05-21T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let response = build_xc_goal_progress_response(
+            vec![
+                build_xc_ride(
+                    1,
+                    chrono::DateTime::parse_from_rfc3339("2026-05-18T12:00:00Z")
+                        .unwrap()
+                        .with_timezone(&Utc),
+                    ActivityRideFocus::XcEndurance,
+                    7_200,
+                    Some(900.0),
+                    Some(4.2),
+                ),
+                build_xc_ride(
+                    2,
+                    chrono::DateTime::parse_from_rfc3339("2026-04-10T12:00:00Z")
+                        .unwrap()
+                        .with_timezone(&Utc),
+                    ActivityRideFocus::MixedXc,
+                    6_000,
+                    Some(700.0),
+                    None,
+                ),
+                build_xc_ride(
+                    3,
+                    chrono::DateTime::parse_from_rfc3339("2026-02-20T12:00:00Z")
+                        .unwrap()
+                        .with_timezone(&Utc),
+                    ActivityRideFocus::XcEndurance,
+                    8_100,
+                    Some(1_100.0),
+                    Some(4.8),
+                ),
+                build_xc_ride(
+                    4,
+                    chrono::DateTime::parse_from_rfc3339("2026-01-10T12:00:00Z")
+                        .unwrap()
+                        .with_timezone(&Utc),
+                    ActivityRideFocus::XcEndurance,
+                    9_000,
+                    Some(1_250.0),
+                    Some(5.1),
+                ),
+            ],
+            Some(XcEventGoal {
+                start_date: NaiveDate::from_ymd_opt(2026, 2, 1).unwrap(),
+                target_date: NaiveDate::from_ymd_opt(2026, 9, 20).unwrap(),
+                target_distance_meters: 160_934.4,
+                target_elevation_gain_meters: 3_962.4,
+            }),
+            None,
+            now,
+        );
+
+        assert_eq!(
+            response
+                .recent_rides
+                .iter()
+                .map(|ride| ride.activity_id)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+        assert_eq!(
+            response.weekly_progress.first().map(|point| point.week_start.as_str()),
+            Some("2026-01-26")
+        );
+        assert!(response.weekly_progress.len() > XC_WEEKLY_PROGRESS_WEEKS as usize);
     }
 
     #[test]

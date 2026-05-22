@@ -181,6 +181,7 @@ export type UserPreferences = {
   unit_system: string;
   estimated_ftp_watts?: number | null;
   heart_rate_zone_bounds_bpm?: number[] | null;
+  xc_goal_start_date?: string | null;
   xc_goal_target_date?: string | null;
   xc_goal_target_distance_meters?: number | null;
   xc_goal_target_elevation_gain_meters?: number | null;
@@ -329,10 +330,17 @@ export type XcGoalActivityReference = {
 };
 
 export type XcEventGoal = {
+  start_date: string;
   target_date: string;
   days_remaining: number;
   target_distance_meters: number;
   target_elevation_gain_meters: number;
+  training_window_days: number;
+  counted_ride_count: number;
+  counted_distance_meters: number;
+  counted_distance_progress_percent: number;
+  counted_elevation_gain_meters: number;
+  counted_elevation_gain_progress_percent: number;
   best_distance_meters?: number | null;
   best_distance_progress_percent?: number | null;
   best_distance_activity?: XcGoalActivityReference | null;

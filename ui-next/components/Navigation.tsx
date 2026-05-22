@@ -20,12 +20,6 @@ export default function Navigation() {
             <Link href="/" className="btn btn-ghost btn-sm">
               Activities
             </Link>
-            <Link href="/segments" className="btn btn-ghost btn-sm">
-              Segments
-            </Link>
-            <Link href="/fitness" className="btn btn-ghost btn-sm">
-              Fitness
-            </Link>
 
             <ul className="menu menu-horizontal px-1">
               <li>
@@ -33,10 +27,16 @@ export default function Navigation() {
                   <summary className="btn btn-ghost btn-sm">Training</summary>
                   <ul className="z-50 mt-2 w-56 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
                     <li>
-                      <Link href="/xc">XC goals &amp; progress</Link>
+                      <Link href="/xc">Cross Country (XC)</Link>
                     </li>
                     <li>
-                      <Link href="/dh">DH goals &amp; progress</Link>
+                      <Link href="/dh">Downhill (DH)</Link>
+                    </li>
+                    <li>
+                      <Link href="/segments">Segments</Link>
+                    </li>
+                    <li>
+                      <Link href="/fitness">Fitness</Link>
                     </li>
                   </ul>
                 </details>

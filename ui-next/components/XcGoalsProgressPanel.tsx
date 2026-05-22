@@ -302,6 +302,7 @@ function formatDaysRemaining(daysRemaining: number) {
 function buildPreferencesPayload(
   currentPreferences: UserPreferences | null,
   overrides: {
+    xcGoalStartDate: string | null;
     xcGoalTargetDate: string | null;
     xcGoalTargetDistanceMeters: number | null;
     xcGoalTargetElevationGainMeters: number | null;
@@ -312,6 +313,7 @@ function buildPreferencesPayload(
     estimated_ftp_watts: currentPreferences?.estimated_ftp_watts ?? null,
     heart_rate_zone_bounds_bpm:
       currentPreferences?.heart_rate_zone_bounds_bpm ?? null,
+    xc_goal_start_date: overrides.xcGoalStartDate,
     xc_goal_target_date: overrides.xcGoalTargetDate,
     xc_goal_target_distance_meters: overrides.xcGoalTargetDistanceMeters,
     xc_goal_target_elevation_gain_meters:
@@ -518,6 +520,7 @@ export default function XcGoalsProgressPanel() {
   const progressQuery = useXcGoalProgress({ enabled: !!user });
   const updatePreferencesMutation = useUpdateUserPreferences();
   const unitSystem = normalizeUnitSystem(preferencesQuery.data?.unit_system);
+  const [goalStartDateDraft, setGoalStartDateDraft] = useState("");
   const [goalDateDraft, setGoalDateDraft] = useState("");
   const [goalDistanceDraft, setGoalDistanceDraft] = useState("");
   const [goalDistanceUnit, setGoalDistanceUnit] =
@@ -527,6 +530,7 @@ export default function XcGoalsProgressPanel() {
     useState<GoalElevationUnit>("ft");
 
   useEffect(() => {
+    setGoalStartDateDraft(preferencesQuery.data?.xc_goal_start_date ?? "");
     setGoalDateDraft(preferencesQuery.data?.xc_goal_target_date ?? "");
     setGoalDistanceDraft(
       metersToDistanceInput(
@@ -543,6 +547,7 @@ export default function XcGoalsProgressPanel() {
   }, [
     goalDistanceUnit,
     goalElevationUnit,
+    preferencesQuery.data?.xc_goal_start_date,
     preferencesQuery.data?.xc_goal_target_date,
     preferencesQuery.data?.xc_goal_target_distance_meters,
     preferencesQuery.data?.xc_goal_target_elevation_gain_meters,
@@ -638,6 +643,7 @@ export default function XcGoalsProgressPanel() {
     const parsedElevation = parseOptionalNumberInput(goalElevationDraft);
 
     if (
+      !goalStartDateDraft.trim() &&
       !goalDateDraft.trim() &&
       parsedDistance == null &&
       parsedElevation == null
@@ -647,11 +653,19 @@ export default function XcGoalsProgressPanel() {
     }
 
     if (
+      !goalStartDateDraft.trim() ||
       !goalDateDraft.trim() ||
       parsedDistance == null ||
       parsedElevation == null
     ) {
-      toast.error("Enter a goal date, distance target, and climbing target.");
+      toast.error(
+        "Enter a training start date, target date, distance target, and climbing target.",
+      );
+      return;
+    }
+
+    if (goalStartDateDraft.trim() > goalDateDraft.trim()) {
+      toast.error("Training start date must be on or before the target date.");
       return;
     }
 
@@ -665,6 +679,7 @@ export default function XcGoalsProgressPanel() {
     try {
       await updatePreferencesMutation.updateAsync(
         buildPreferencesPayload(preferencesQuery.data ?? null, {
+          xcGoalStartDate: goalStartDateDraft.trim(),
           xcGoalTargetDate: goalDateDraft.trim(),
           xcGoalTargetDistanceMeters: distanceToMeters(
             parsedDistance,
@@ -686,11 +701,13 @@ export default function XcGoalsProgressPanel() {
     try {
       await updatePreferencesMutation.updateAsync(
         buildPreferencesPayload(preferencesQuery.data ?? null, {
+          xcGoalStartDate: null,
           xcGoalTargetDate: null,
           xcGoalTargetDistanceMeters: null,
           xcGoalTargetElevationGainMeters: null,
         }),
       );
+      setGoalStartDateDraft("");
       setGoalDateDraft("");
       setGoalDistanceDraft("");
       setGoalElevationDraft("");
@@ -714,13 +731,16 @@ export default function XcGoalsProgressPanel() {
             </h1>
             <p className="mt-4 max-w-2xl text-base leading-7 text-base-content/70 sm:text-lg">
               Track aerobic durability, weekly endurance load, climbing work,
-              and season bests against your target event demands.
+              and training-block progress against your target event demands.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-sm text-base-content/65">
             {eventGoal ? (
               <>
+                <span className="badge badge-outline gap-2 px-3 py-3">
+                  Started {formatLongDate(eventGoal.start_date)}
+                </span>
                 <span className="badge badge-outline gap-2 px-3 py-3">
                   Target {formatLongDate(eventGoal.target_date)}
                 </span>
@@ -746,27 +766,19 @@ export default function XcGoalsProgressPanel() {
           {eventGoal ? (
             <>
               <SummaryStat
-                label="Best distance"
-                value={`${formatGoalDistance(eventGoal.best_distance_meters, goalDistanceUnit)} / ${formatGoalDistance(eventGoal.target_distance_meters, goalDistanceUnit)}`}
-                detail={
-                  eventGoal.best_distance_activity
-                    ? `Season-best ride: ${eventGoal.best_distance_activity.activity_title}`
-                    : "No current-season distance benchmark yet"
-                }
+                label="Block distance"
+                value={`${formatGoalDistance(eventGoal.counted_distance_meters, goalDistanceUnit)} / ${formatGoalDistance(eventGoal.target_distance_meters, goalDistanceUnit)}`}
+                detail={`${eventGoal.counted_ride_count} XC rides counted since ${formatLongDate(eventGoal.start_date)}`}
               />
               <SummaryStat
-                label="Best climbing"
-                value={`${formatGoalElevation(eventGoal.best_elevation_gain_meters, goalElevationUnit)} / ${formatGoalElevation(eventGoal.target_elevation_gain_meters, goalElevationUnit)}`}
-                detail={
-                  eventGoal.best_elevation_activity
-                    ? `Best climbing ride: ${eventGoal.best_elevation_activity.activity_title}`
-                    : "No current-season climbing benchmark yet"
-                }
+                label="Block climbing"
+                value={`${formatGoalElevation(eventGoal.counted_elevation_gain_meters, goalElevationUnit)} / ${formatGoalElevation(eventGoal.target_elevation_gain_meters, goalElevationUnit)}`}
+                detail={`Training block through ${formatLongDate(eventGoal.target_date)}`}
               />
               <SummaryStat
-                label="Recent rides"
-                value={`${progress.summary.recent_ride_count}`}
-                detail={`XC snapshot over the last ${progress.summary.recent_window_days} days`}
+                label="Block rides"
+                value={`${eventGoal.counted_ride_count}`}
+                detail={`XC rides counted from ${formatLongDate(eventGoal.start_date)}`}
               />
               <SummaryStat
                 label="Avg decoupling"
@@ -818,9 +830,10 @@ export default function XcGoalsProgressPanel() {
                   Event target
                 </h2>
                 <p className="mt-1 text-sm text-base-content/70">
-                  Store your XC target date, distance, and climbing demand so
-                  this screen can track season bests against the race
-                  requirements.
+                  Store your XC training start date, target date, distance, and
+                  climbing demand so this screen can count every qualifying XC
+                  ride in that training block while keeping best-ride benchmarks
+                  in view.
                 </p>
               </div>
               {eventGoal ? (
@@ -838,7 +851,19 @@ export default function XcGoalsProgressPanel() {
               ) : null}
             </div>
 
-            <div className="mt-5 grid gap-4 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,1fr)]">
+              <label className="form-control gap-2">
+                <span className="label-text font-medium">Training start</span>
+                <input
+                  type="date"
+                  className="input input-bordered"
+                  value={goalStartDateDraft}
+                  onChange={(event) =>
+                    setGoalStartDateDraft(event.target.value)
+                  }
+                />
+              </label>
+
               <label className="form-control gap-2">
                 <span className="label-text font-medium">Target date</span>
                 <input
@@ -936,25 +961,31 @@ export default function XcGoalsProgressPanel() {
             </p>
             {eventGoal ? (
               <div className="mt-3 space-y-4">
+                <p className="text-sm leading-6 text-base-content/70">
+                  Counted {eventGoal.counted_ride_count} XC rides from{" "}
+                  {formatLongDate(eventGoal.start_date)} through this current
+                  snapshot of the training block.
+                </p>
+                <p className="text-sm leading-6 text-base-content/60">
+                  Planned block length: {eventGoal.training_window_days} days.
+                </p>
                 <div>
                   <div className="flex items-center justify-between gap-3 text-sm text-base-content/65">
                     <span>Distance progress</span>
                     <span>
-                      {eventGoal.best_distance_progress_percent != null
-                        ? `${eventGoal.best_distance_progress_percent.toFixed(0)}%`
-                        : "--"}
+                      {`${eventGoal.counted_distance_progress_percent.toFixed(0)}%`}
                     </span>
                   </div>
                   <progress
                     className={goalProgressClass(
-                      eventGoal.best_distance_progress_percent,
+                      eventGoal.counted_distance_progress_percent,
                     )}
-                    value={eventGoal.best_distance_progress_percent ?? 0}
+                    value={eventGoal.counted_distance_progress_percent}
                     max={100}
                   />
                   {eventGoal.best_distance_activity ? (
                     <p className="mt-2 text-sm text-base-content/70">
-                      Best distance ride:{" "}
+                      Best single distance ride in block:{" "}
                       <Link
                         href={`/activities/${eventGoal.best_distance_activity.activity_id}`}
                         className="link link-primary link-hover no-underline"
@@ -969,21 +1000,19 @@ export default function XcGoalsProgressPanel() {
                   <div className="flex items-center justify-between gap-3 text-sm text-base-content/65">
                     <span>Climbing progress</span>
                     <span>
-                      {eventGoal.best_elevation_gain_progress_percent != null
-                        ? `${eventGoal.best_elevation_gain_progress_percent.toFixed(0)}%`
-                        : "--"}
+                      {`${eventGoal.counted_elevation_gain_progress_percent.toFixed(0)}%`}
                     </span>
                   </div>
                   <progress
                     className={goalProgressClass(
-                      eventGoal.best_elevation_gain_progress_percent,
+                      eventGoal.counted_elevation_gain_progress_percent,
                     )}
-                    value={eventGoal.best_elevation_gain_progress_percent ?? 0}
+                    value={eventGoal.counted_elevation_gain_progress_percent}
                     max={100}
                   />
                   {eventGoal.best_elevation_activity ? (
                     <p className="mt-2 text-sm text-base-content/70">
-                      Best climbing ride:{" "}
+                      Best single climbing ride in block:{" "}
                       <Link
                         href={`/activities/${eventGoal.best_elevation_activity.activity_id}`}
                         className="link link-primary link-hover no-underline"
@@ -996,8 +1025,9 @@ export default function XcGoalsProgressPanel() {
               </div>
             ) : (
               <p className="mt-3 text-sm leading-6 text-base-content/70">
-                Add a goal date plus distance and climbing targets. For Marji,
-                that could be Sept 20 with 100 miles and 13,000 feet.
+                Add a training start date plus target date, distance, and
+                climbing. For Marji, that could be a June start with Sept 20,
+                100 miles, and 13,000 feet.
               </p>
             )}
           </div>
@@ -1018,9 +1048,9 @@ export default function XcGoalsProgressPanel() {
                 Weekly endurance load
               </h2>
               <p className="mt-1 text-sm text-base-content/70">
-                Z2 hours and climbing gain over the last eight weeks. The
-                summary cards above use a {progress.summary.recent_window_days}
-                -day XC snapshot.
+                {eventGoal
+                  ? `Z2 hours and climbing gain across the current training block, starting ${formatLongDate(eventGoal.start_date)}.`
+                  : `Z2 hours and climbing gain over the last eight weeks. The summary cards above use a ${progress.summary.recent_window_days}-day XC snapshot.`}
               </p>
             </div>
             <div className="flex flex-wrap gap-2 text-xs text-base-content/70">
@@ -1219,14 +1249,18 @@ export default function XcGoalsProgressPanel() {
           <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-xl font-semibold text-base-content">
-                Recent ride benchmarks
+                {eventGoal
+                  ? "Training-block ride benchmarks"
+                  : "Recent ride benchmarks"}
               </h2>
               <p className="mt-1 text-sm text-base-content/70">
-                Recent endurance rides and the metrics that feed the XC screen.
+                {eventGoal
+                  ? "Latest qualifying endurance rides inside the saved training block."
+                  : "Recent endurance rides and the metrics that feed the XC screen."}
               </p>
             </div>
             <span className="badge badge-outline gap-2 px-3 py-2">
-              {progress.recent_rides.length} rides
+              {progress.recent_rides.length} rides shown
             </span>
           </div>
 

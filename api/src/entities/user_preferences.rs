@@ -13,6 +13,7 @@ pub struct Model {
     pub unit_system: String,
     pub estimated_ftp_watts: Option<i32>,
     pub heart_rate_zone_bounds_json: Option<StoredHeartRateZoneBounds>,
+    pub xc_goal_start_date: Option<NaiveDate>,
     pub xc_goal_target_date: Option<NaiveDate>,
     pub xc_goal_target_distance_meters: Option<f64>,
     pub xc_goal_target_elevation_gain_meters: Option<f64>,
