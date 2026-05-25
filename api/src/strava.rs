@@ -737,7 +737,7 @@ pub async fn process_strava_sync(
                     connection.user_id,
                     upload,
                     "strava_sync",
-                    ActivityUploadDeduplication::Disabled,
+                    ActivityUploadDeduplication::Enabled,
                     Some(&training_profile),
                 )
                 .await

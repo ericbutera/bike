@@ -543,7 +543,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn strava_uploads_skip_duplicate_detection() {
+    async fn strava_uploads_deduplicate_by_source_correlation_id() {
         let db = test_db().await;
         let uploads_dir = test_uploads_dir();
         let training_profile = TrainingProfile::default();
@@ -555,7 +555,7 @@ mod tests {
             1,
             fit_upload(Some("strava-123")),
             "strava_sync",
-            ActivityUploadDeduplication::Disabled,
+            ActivityUploadDeduplication::Enabled,
             Some(&training_profile),
         )
         .await
@@ -569,17 +569,17 @@ mod tests {
             1,
             fit_upload(Some("strava-123")),
             "strava_sync",
-            ActivityUploadDeduplication::Disabled,
+            ActivityUploadDeduplication::Enabled,
             Some(&training_profile),
         )
         .await
         .expect("import second Strava upload");
-        assert!(matches!(second, PersistActivityUploadOutcome::Imported(_)));
+        assert!(matches!(second, PersistActivityUploadOutcome::Duplicate(_)));
 
-        assert_eq!(activities::Entity::find().count(&db).await.unwrap(), 2);
+        assert_eq!(activities::Entity::find().count(&db).await.unwrap(), 1);
         assert_eq!(
             activity_imports::Entity::find().count(&db).await.unwrap(),
-            2
+            1
         );
 
         let _ = std::fs::remove_dir_all(&uploads_dir);
