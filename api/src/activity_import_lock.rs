@@ -8,6 +8,7 @@ pub const ACTIVITY_IMPORT_LOCK_SOURCE_DUPLICATE_CLEANUP: &str = "duplicate_clean
 pub const ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD: &str = "manual_upload";
 pub const ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION: &str = "segment_regeneration";
 pub const ACTIVITY_IMPORT_LOCK_SOURCE_STRAVA_SYNC: &str = "strava_sync";
+pub const ACTIVITY_IMPORT_LOCK_SOURCE_XC_TRAINING_BACKFILL: &str = "xc_training_backfill";
 
 pub const ACTIVITY_IMPORT_LOCK_STAGE_QUEUED: &str = "queued";
 pub const ACTIVITY_IMPORT_LOCK_STAGE_RUNNING: &str = "running";
@@ -148,6 +149,7 @@ pub(crate) fn describe_source(source: &str) -> &'static str {
         ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD => "manual upload",
         ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION => "segment regeneration",
         ACTIVITY_IMPORT_LOCK_SOURCE_STRAVA_SYNC => "Strava sync",
+        ACTIVITY_IMPORT_LOCK_SOURCE_XC_TRAINING_BACKFILL => "XC training backfill",
         _ => "activity processing",
     }
 }

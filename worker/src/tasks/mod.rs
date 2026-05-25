@@ -36,6 +36,7 @@ pub async fn register_default_processors(
     worker: TaskWorker,
     db: DatabaseConnection,
 ) -> Result<TaskWorker, WorkerError> {
+    let backfill_user_xc_training = Arc::new(BackfillUserXcTraining::new(db.clone()));
     let rebuild_fitness_freshness = Arc::new(RebuildFitnessFreshness::new(db.clone()));
     let rebuild_segment_analytics = Arc::new(RebuildSegmentAnalytics::new(db.clone()));
     let reprocess_user_activity_imports = Arc::new(ReprocessUserActivityImports::new(db.clone()));
@@ -44,6 +45,7 @@ pub async fn register_default_processors(
     let strava_sync = Arc::new(StravaSync::new(db));
 
     Ok(worker
+        .register_processor(backfill_user_xc_training)
         .register_processor(rebuild_fitness_freshness)
         .register_processor(rebuild_segment_analytics)
         .register_processor(reprocess_user_activity_imports)

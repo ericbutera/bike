@@ -28,6 +28,12 @@ import {
   useUpdateUserPreferences,
   useUserPreferences,
 } from "../../lib/queries";
+import {
+  calculateHeartRateZoneBoundsFromMaxHeartRate,
+  hasConfiguredHeartRateZoneBounds,
+  MAX_MAX_HEART_RATE_BPM,
+  MIN_MAX_HEART_RATE_BPM,
+} from "../../lib/trainingProfile";
 
 const UNIT_SYSTEM_OPTIONS: Array<{
   value: UnitSystem;
@@ -190,9 +196,12 @@ export default function AccountPage() {
   const [draftUnitSystem, setDraftUnitSystem] =
     useState<UnitSystem>(DEFAULT_UNIT_SYSTEM);
   const [draftEstimatedFtpWatts, setDraftEstimatedFtpWatts] = useState("");
+  const [draftMaxHeartRate, setDraftMaxHeartRate] = useState("");
   const [draftHeartRateZoneBounds, setDraftHeartRateZoneBounds] = useState(
     zoneBoundsToDraft(null),
   );
+  const heartRateZonesConfigured =
+    hasConfiguredHeartRateZoneBounds(heartRateZoneBounds);
 
   const storedHeartRateZoneDraft = zoneBoundsToDraft(heartRateZoneBounds);
   const storedHeartRateZoneSignature = storedHeartRateZoneDraft.join("|");
@@ -200,6 +209,7 @@ export default function AccountPage() {
   useEffect(() => {
     setDraftUnitSystem(unitSystem);
     setDraftEstimatedFtpWatts(estimatedFtpWatts?.toString() ?? "");
+    setDraftMaxHeartRate("");
     setDraftHeartRateZoneBounds(storedHeartRateZoneDraft);
   }, [estimatedFtpWatts, storedHeartRateZoneSignature, unitSystem]);
 
@@ -235,6 +245,7 @@ export default function AccountPage() {
         unit_system: draftUnitSystem,
         estimated_ftp_watts: parseOptionalIntegerInput(draftEstimatedFtpWatts),
         heart_rate_zone_bounds_bpm: nextHeartRateZoneBounds,
+        xc_goal_start_date: preferencesQuery.data?.xc_goal_start_date ?? null,
         xc_goal_target_date: preferencesQuery.data?.xc_goal_target_date ?? null,
         xc_goal_target_distance_meters:
           preferencesQuery.data?.xc_goal_target_distance_meters ?? null,
@@ -245,6 +256,30 @@ export default function AccountPage() {
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : extractApiMessage(error),
+      );
+    }
+  }
+
+  function handleCalculateHeartRateZones() {
+    try {
+      const parsedMaxHeartRate = parseOptionalIntegerInput(draftMaxHeartRate);
+
+      if (parsedMaxHeartRate == null) {
+        throw new Error(
+          `Enter a max heart rate between ${MIN_MAX_HEART_RATE_BPM} and ${MAX_MAX_HEART_RATE_BPM} bpm.`,
+        );
+      }
+
+      setDraftHeartRateZoneBounds(
+        zoneBoundsToDraft(
+          calculateHeartRateZoneBoundsFromMaxHeartRate(parsedMaxHeartRate),
+        ),
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to calculate heart rate zones.",
       );
     }
   }
@@ -586,7 +621,17 @@ export default function AccountPage() {
                   </p>
                 </div>
 
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
+                {!heartRateZonesConfigured ? (
+                  <div className="alert alert-warning text-sm">
+                    <span>
+                      XC training needs heart rate zones for Z2 speed,
+                      decoupling, and weekly endurance load. Calculate them from
+                      max heart rate below or enter the zone ceilings manually.
+                    </span>
+                  </div>
+                ) : null}
+
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,1.3fr)]">
                   <label className="form-control">
                     <div className="label">
                       <span className="label-text font-medium">
@@ -612,6 +657,58 @@ export default function AccountPage() {
                       </span>
                     </div>
                   </label>
+
+                  <div className="rounded-box border border-base-300 bg-base-200/70 p-4 text-sm text-base-content/75">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-medium text-base-content">
+                          Calculate from max heart rate
+                        </div>
+                        <p className="mt-1 leading-6">
+                          Bike can seed Z1 through Z4 ceilings from a simple
+                          HRmax model, then you can edit the numbers manually
+                          before saving.
+                        </p>
+                      </div>
+                      <span className="badge badge-outline">Calculator</span>
+                    </div>
+
+                    <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+                      <label className="form-control flex-1">
+                        <div className="label">
+                          <span className="label-text font-medium">
+                            Max heart rate
+                          </span>
+                          <span className="label-text-alt">Optional</span>
+                        </div>
+                        <input
+                          type="number"
+                          min={MIN_MAX_HEART_RATE_BPM}
+                          max={MAX_MAX_HEART_RATE_BPM}
+                          className="input input-bordered"
+                          placeholder="182"
+                          value={draftMaxHeartRate}
+                          onChange={(event) => {
+                            setDraftMaxHeartRate(event.target.value);
+                          }}
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        className="btn btn-outline sm:mb-1"
+                        onClick={handleCalculateHeartRateZones}
+                      >
+                        Calculate zones
+                      </button>
+                    </div>
+
+                    <p className="mt-3 text-xs leading-6 text-base-content/60">
+                      Uses simple zone ceilings at 60%, 70%, 80%, and 90% of max
+                      heart rate. Adjust them manually if you use a more
+                      specific threshold-based setup.
+                    </p>
+                  </div>
 
                   <div className="rounded-box bg-base-200 p-4 text-sm text-base-content/75">
                     <div className="font-medium text-base-content">
@@ -686,6 +783,7 @@ export default function AccountPage() {
                       setDraftEstimatedFtpWatts(
                         estimatedFtpWatts?.toString() ?? "",
                       );
+                      setDraftMaxHeartRate("");
                       setDraftHeartRateZoneBounds(storedHeartRateZoneDraft);
                     }}
                   >

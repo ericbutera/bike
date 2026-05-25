@@ -125,7 +125,8 @@ It is the persistent implementation plan and progress log for this feature area.
 - [x] DH goals/progress screen is now available in `ui-next` with session trend and segment benchmark views.
 - [x] Deterministic next-ride guidance now uses fitness, fatigue, and form alongside XC/DH-specific metrics.
 - [x] Reference report-script review narrowed the next credible training-page signals to climb density, temperature context, and optional HRV readiness; a separate reporting page is not needed for v1.
-- [x] XC event targets now use a saved training start date through the target date so qualifying XC rides in that block count toward the current distance and climbing target, and the XC page now reflects that block in its visible ride count and weekly history.
+- [x] XC event targets now use a saved training start date through the target date so qualifying XC rides in that block count toward the current distance and climbing target, and the XC page now reflects that block in its visible ride count, weekly history, on-track weekly pace, Z2 speed trend, and climbing pace readouts.
+- [x] Saving an XC training start date now queues a historical backfill job that only rebuilds `activity_training_analyses` in batches, persists queued/running/completed status on user preferences, surfaces pending/done state on `/xc`, and exposes a dedicated admin user-id XC backfill action.
 
 ## Landed In This Slice
 

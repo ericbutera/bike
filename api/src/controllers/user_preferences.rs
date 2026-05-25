@@ -5,9 +5,10 @@ use crate::training_profile::{
     deserialize_heart_rate_zone_bounds, serialize_heart_rate_zone_bounds,
     validate_estimated_ftp_watts, validate_heart_rate_zone_bounds_bpm,
 };
+use crate::xc_goal_backfill::{clear_user_xc_goal_backfill_state, queue_user_xc_goal_backfill};
 use axum::extract::State;
 use axum::Json;
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, Utc};
 use kaleido::auth::UserContext;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
@@ -25,6 +26,8 @@ pub struct UserPreferencesResponse {
     pub xc_goal_target_date: Option<String>,
     pub xc_goal_target_distance_meters: Option<f64>,
     pub xc_goal_target_elevation_gain_meters: Option<f64>,
+    pub xc_goal_backfill_status: Option<String>,
+    pub xc_goal_backfill_completed_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -96,11 +99,17 @@ pub async fn update_preferences(
     let heart_rate_zone_bounds_json =
         serialize_heart_rate_zone_bounds(heart_rate_zone_bounds_bpm.as_deref())?;
 
-    let model = if let Some(existing) = user_preferences::Entity::find()
+    let existing_model = user_preferences::Entity::find()
         .filter(user_preferences::Column::UserId.eq(user.id))
         .one(&state.db)
-        .await?
-    {
+        .await?;
+    let previous_start_date = existing_model
+        .as_ref()
+        .and_then(|model| model.xc_goal_start_date);
+    let should_request_xc_goal_backfill =
+        xc_goal.start_date.is_some() && previous_start_date != xc_goal.start_date;
+
+    let model = if let Some(existing) = existing_model {
         let mut active_model: user_preferences::ActiveModel = existing.into();
         active_model.unit_system = Set(unit_system.clone());
         active_model.estimated_ftp_watts = Set(estimated_ftp_watts);
@@ -110,6 +119,10 @@ pub async fn update_preferences(
         active_model.xc_goal_target_distance_meters = Set(xc_goal.target_distance_meters);
         active_model.xc_goal_target_elevation_gain_meters =
             Set(xc_goal.target_elevation_gain_meters);
+        if xc_goal.start_date.is_none() {
+            active_model.xc_goal_backfill_status = Set(None);
+            active_model.xc_goal_backfill_completed_at = Set(None);
+        }
         active_model.update(&state.db).await?
     } else {
         user_preferences::ActiveModel {
@@ -121,13 +134,27 @@ pub async fn update_preferences(
             xc_goal_target_date: Set(xc_goal.target_date),
             xc_goal_target_distance_meters: Set(xc_goal.target_distance_meters),
             xc_goal_target_elevation_gain_meters: Set(xc_goal.target_elevation_gain_meters),
+            xc_goal_backfill_status: Set(None),
+            xc_goal_backfill_completed_at: Set(None),
             ..Default::default()
         }
         .insert(&state.db)
         .await?
     };
 
-    Ok(Json(response_from_model(Some(&model))))
+    if should_request_xc_goal_backfill {
+        queue_user_xc_goal_backfill(&state.db, &state.tasks, user.id).await?;
+    } else if xc_goal.start_date.is_none() {
+        clear_user_xc_goal_backfill_state(&state.db, user.id).await?;
+    }
+
+    let latest_model = user_preferences::Entity::find()
+        .filter(user_preferences::Column::UserId.eq(user.id))
+        .one(&state.db)
+        .await?
+        .unwrap_or(model);
+
+    Ok(Json(response_from_model(Some(&latest_model))))
 }
 
 fn response_from_model(model: Option<&user_preferences::Model>) -> UserPreferencesResponse {
@@ -151,6 +178,10 @@ fn response_from_model(model: Option<&user_preferences::Model>) -> UserPreferenc
             .and_then(|preferences| preferences.xc_goal_target_distance_meters),
         xc_goal_target_elevation_gain_meters: model
             .and_then(|preferences| preferences.xc_goal_target_elevation_gain_meters),
+        xc_goal_backfill_status: model
+            .and_then(|preferences| preferences.xc_goal_backfill_status.clone()),
+        xc_goal_backfill_completed_at: model
+            .and_then(|preferences| preferences.xc_goal_backfill_completed_at),
     }
 }
 
@@ -288,6 +319,8 @@ mod tests {
             xc_goal_target_date: Some(NaiveDate::from_ymd_opt(2026, 9, 20).unwrap()),
             xc_goal_target_distance_meters: Some(160_934.4),
             xc_goal_target_elevation_gain_meters: Some(3_962.4),
+            xc_goal_backfill_status: Some("completed".to_string()),
+            xc_goal_backfill_completed_at: Some(now),
             created_at: now,
             updated_at: now,
         }));
@@ -301,13 +334,22 @@ mod tests {
         assert_eq!(response.xc_goal_target_date.as_deref(), Some("2026-09-20"));
         assert_eq!(response.xc_goal_target_distance_meters, Some(160_934.4));
         assert_eq!(response.xc_goal_target_elevation_gain_meters, Some(3_962.4));
+        assert_eq!(
+            response.xc_goal_backfill_status.as_deref(),
+            Some("completed")
+        );
+        assert_eq!(response.xc_goal_backfill_completed_at, Some(now));
     }
 
     #[test]
     fn validate_xc_goal_requires_complete_payload() {
-        let error =
-            validate_xc_goal(Some("2026-06-01"), Some("2026-09-20"), Some(100_000.0), None)
-                .unwrap_err();
+        let error = validate_xc_goal(
+            Some("2026-06-01"),
+            Some("2026-09-20"),
+            Some(100_000.0),
+            None,
+        )
+        .unwrap_err();
 
         assert_eq!(error.status, StatusCode::BAD_REQUEST);
         assert_eq!(

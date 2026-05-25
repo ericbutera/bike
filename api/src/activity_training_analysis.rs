@@ -2,8 +2,12 @@ use crate::activity_details::{
     deserialize_derived_activity_data, ActivityChartPoint, ActivityRoutePoint,
 };
 use crate::entities::{activities, activity_training_analyses, segment_efforts, segments};
+use crate::app_error::AppError;
 use crate::training_profile::deserialize_activity_heart_rate_zones;
-use sea_orm::{ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
+    QueryFilter, Set,
+};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use utoipa::ToSchema;
@@ -27,6 +31,7 @@ const DISTANCE_COMPARISON_BUCKET_METERS: f64 = 5_000.0;
 const ELEVATION_COMPARISON_BUCKET_METERS: f64 = 100.0;
 const DECOUPLING_MIN_QUALIFYING_TIME_SECONDS: f64 = 1_800.0;
 const ROUTE_FAMILY_MAX_TOKENS: usize = 4;
+const TRAINING_ANALYSIS_BACKFILL_BATCH_SIZE: usize = 128;
 const ROUTE_FAMILY_STOP_WORDS: &[&str] = &[
     "ride",
     "rides",
@@ -223,15 +228,17 @@ where
     let contexts_by_activity_id =
         load_activity_training_analysis_contexts(db, &activity_ids).await?;
 
-    activity_training_analyses::Entity::delete_many()
-        .filter(activity_training_analyses::Column::ActivityId.is_in(activity_ids.iter().copied()))
-        .exec(db)
-        .await?;
-
     let activity_models = activities::Entity::find()
         .filter(activities::Column::Id.is_in(activity_ids.iter().copied()))
         .all(db)
         .await?;
+    let existing_models_by_activity_id = activity_training_analyses::Entity::find()
+        .filter(activity_training_analyses::Column::ActivityId.is_in(activity_ids.iter().copied()))
+        .all(db)
+        .await?
+        .into_iter()
+        .map(|model| (model.activity_id, model))
+        .collect::<HashMap<_, _>>();
 
     for activity in activity_models {
         let analysis = build_activity_training_analysis_with_context(
@@ -242,29 +249,68 @@ where
                 .unwrap_or_default(),
         );
 
-        activity_training_analyses::ActiveModel {
-            activity_id: Set(activity.id),
-            user_id: Set(activity.user_id),
-            ride_focus: Set(analysis.ride_focus.as_str().to_string()),
-            route_family_key: Set(analysis.route_family_key.clone()),
-            comparable_distance_bucket_meters: Set(analysis.comparable_distance_bucket_meters),
-            comparable_elevation_gain_bucket_meters: Set(
-                analysis.comparable_elevation_gain_bucket_meters
-            ),
-            aerobic_decoupling_percent: Set(analysis.aerobic_decoupling_percent),
-            z2_time_seconds: Set(analysis.z2_time_seconds),
-            z2_distance_meters: Set(analysis.z2_distance_meters),
-            z2_average_speed_mps: Set(analysis.z2_average_speed_mps),
-            climbing_time_seconds: Set(analysis.climbing_time_seconds),
-            climbing_elevation_gain_meters: Set(analysis.climbing_elevation_gain_meters),
-            sustained_climb_count: Set(analysis.sustained_climb_count),
-            ..Default::default()
+        if let Some(existing_model) = existing_models_by_activity_id.get(&activity.id).cloned() {
+            let mut active_model: activity_training_analyses::ActiveModel = existing_model.into();
+            active_model.user_id = Set(activity.user_id);
+            active_model.ride_focus = Set(analysis.ride_focus.as_str().to_string());
+            active_model.route_family_key = Set(analysis.route_family_key.clone());
+            active_model.comparable_distance_bucket_meters =
+                Set(analysis.comparable_distance_bucket_meters);
+            active_model.comparable_elevation_gain_bucket_meters =
+                Set(analysis.comparable_elevation_gain_bucket_meters);
+            active_model.aerobic_decoupling_percent = Set(analysis.aerobic_decoupling_percent);
+            active_model.z2_time_seconds = Set(analysis.z2_time_seconds);
+            active_model.z2_distance_meters = Set(analysis.z2_distance_meters);
+            active_model.z2_average_speed_mps = Set(analysis.z2_average_speed_mps);
+            active_model.climbing_time_seconds = Set(analysis.climbing_time_seconds);
+            active_model.climbing_elevation_gain_meters =
+                Set(analysis.climbing_elevation_gain_meters);
+            active_model.sustained_climb_count = Set(analysis.sustained_climb_count);
+            active_model.update(db).await?;
+        } else {
+            activity_training_analyses::ActiveModel {
+                activity_id: Set(activity.id),
+                user_id: Set(activity.user_id),
+                ride_focus: Set(analysis.ride_focus.as_str().to_string()),
+                route_family_key: Set(analysis.route_family_key.clone()),
+                comparable_distance_bucket_meters: Set(analysis.comparable_distance_bucket_meters),
+                comparable_elevation_gain_bucket_meters: Set(
+                    analysis.comparable_elevation_gain_bucket_meters
+                ),
+                aerobic_decoupling_percent: Set(analysis.aerobic_decoupling_percent),
+                z2_time_seconds: Set(analysis.z2_time_seconds),
+                z2_distance_meters: Set(analysis.z2_distance_meters),
+                z2_average_speed_mps: Set(analysis.z2_average_speed_mps),
+                climbing_time_seconds: Set(analysis.climbing_time_seconds),
+                climbing_elevation_gain_meters: Set(analysis.climbing_elevation_gain_meters),
+                sustained_climb_count: Set(analysis.sustained_climb_count),
+                ..Default::default()
+            }
+            .insert(db)
+            .await?;
         }
-        .insert(db)
-        .await?;
     }
 
     Ok(())
+}
+
+pub async fn backfill_user_activity_training_analysis_cache(
+    db: &DatabaseConnection,
+    user_id: i32,
+) -> Result<usize, AppError> {
+    let activity_ids = activities::Entity::find()
+        .filter(activities::Column::UserId.eq(user_id))
+        .all(db)
+        .await?
+        .into_iter()
+        .map(|activity| activity.id)
+        .collect::<Vec<_>>();
+
+    for activity_id_batch in activity_ids.chunks(TRAINING_ANALYSIS_BACKFILL_BATCH_SIZE) {
+        rebuild_activity_training_analysis_cache(db, activity_id_batch).await?;
+    }
+
+    Ok(activity_ids.len())
 }
 
 pub async fn load_activity_training_analysis_by_activity_id<C>(

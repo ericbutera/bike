@@ -28,6 +28,7 @@ use utoipa::OpenApi;
         auth_openapi::paths::oauth_authorize,
         auth_openapi::paths::oauth_callback,
         admin::backfill_analytics,
+        admin::backfill_user_xc_training,
         admin::regenerate_user_segments,
         admin::reprocess_user_activity_imports,
         activities::list_activities,

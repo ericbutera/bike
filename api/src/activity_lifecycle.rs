@@ -1,12 +1,14 @@
 use crate::activity_details::ActivityRoutePoint;
 use crate::activity_import_lock::{
-    mark_user_activity_import_lock_stage, release_user_activity_import_lock,
+    ensure_user_activity_import_lock_stage, mark_user_activity_import_lock_stage,
+    release_user_activity_import_lock,
     ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING,
     ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
 };
 use crate::activity_import_pipeline::{
-    finalize_activity_import_batch, reprocess_activity_from_import,
+    finalize_activity_import_batch, reprocess_activity_from_import_deferred_caches,
 };
+use crate::activity_training_analysis::rebuild_activity_training_analysis_cache;
 use crate::analytics::{
     mark_segment_activity_changes, mark_user_activity_change, mark_user_fitness_dirty,
 };
@@ -61,6 +63,25 @@ pub async fn refresh_activity_derived_state<C>(
 where
     C: ConnectionTrait + TransactionTrait,
 {
+    let affected_segment_ids =
+        refresh_activity_derived_state_without_cache_rebuilds(db, user_id, activity_id, route_points)
+            .await?;
+
+    rebuild_segment_analytics_cache(db, &affected_segment_ids).await?;
+    rebuild_activity_analytics_cache(db, &[activity_id]).await?;
+
+    Ok(affected_segment_ids)
+}
+
+pub async fn refresh_activity_derived_state_without_cache_rebuilds<C>(
+    db: &C,
+    user_id: i32,
+    activity_id: i32,
+    route_points: &[ActivityRoutePoint],
+) -> Result<Vec<i32>, AppError>
+where
+    C: ConnectionTrait + TransactionTrait,
+{
     let mut affected_segment_ids = load_segment_ids_for_activity(db, activity_id).await?;
 
     replace_segment_efforts_for_activity(db, user_id, activity_id, route_points).await?;
@@ -68,9 +89,6 @@ where
     affected_segment_ids.extend(load_segment_ids_for_activity(db, activity_id).await?);
     affected_segment_ids.sort_unstable();
     affected_segment_ids.dedup();
-
-    rebuild_segment_analytics_cache(db, &affected_segment_ids).await?;
-    rebuild_activity_analytics_cache(db, &[activity_id]).await?;
 
     Ok(affected_segment_ids)
 }
@@ -390,6 +408,7 @@ pub async fn reprocess_imported_activities_for_user(
         .filter(activities::Column::ActivityImportId.is_not_null())
         .all(db)
         .await?;
+    let total_activity_count = activities.len();
     let import_ids = activities
         .iter()
         .filter_map(|activity| activity.activity_import_id)
@@ -398,6 +417,12 @@ pub async fn reprocess_imported_activities_for_user(
     if import_ids.is_empty() {
         return Ok((0, 0));
     }
+
+    tracing::info!(
+        user_id,
+        total_activity_count,
+        "starting user activity import reprocessing"
+    );
 
     let imports_by_id = activity_imports::Entity::find()
         .filter(activity_imports::Column::UserId.eq(user_id))
@@ -411,6 +436,7 @@ pub async fn reprocess_imported_activities_for_user(
     let mut reprocessed_count = 0usize;
     let mut failed_count = 0usize;
     let mut affected_segment_ids = Vec::new();
+    let mut reprocessed_activity_ids = Vec::new();
     let mut fitness_dirty_from_day: Option<chrono::NaiveDate> = None;
 
     for activity in activities {
@@ -429,7 +455,7 @@ pub async fn reprocess_imported_activities_for_user(
             continue;
         };
 
-        match reprocess_activity_from_import(
+        match reprocess_activity_from_import_deferred_caches(
             db,
             uploads_dir,
             user_id,
@@ -441,6 +467,7 @@ pub async fn reprocess_imported_activities_for_user(
         {
             Ok(reprocessed) => {
                 reprocessed_count += 1;
+                reprocessed_activity_ids.push(reprocessed.activity.id);
                 affected_segment_ids.extend(reprocessed.affected_segment_ids);
                 fitness_dirty_from_day = Some(match fitness_dirty_from_day {
                     Some(current) => current.min(reprocessed.fitness_dirty_from_day),
@@ -457,9 +484,28 @@ pub async fn reprocess_imported_activities_for_user(
                 );
             }
         }
+
+        let processed_count = reprocessed_count + failed_count;
+        if processed_count % 25 == 0 || processed_count == total_activity_count {
+            tracing::info!(
+                user_id,
+                processed_count,
+                total_activity_count,
+                reprocessed_count,
+                failed_count,
+                "user activity import reprocessing progress"
+            );
+        }
     }
 
     if reprocessed_count > 0 {
+        reprocessed_activity_ids.sort_unstable();
+        reprocessed_activity_ids.dedup();
+
+        rebuild_segment_analytics_cache(db, &affected_segment_ids).await?;
+        rebuild_activity_analytics_cache(db, &reprocessed_activity_ids).await?;
+        rebuild_activity_training_analysis_cache(db, &reprocessed_activity_ids).await?;
+
         finalize_activity_import_batch(
             db,
             tasks,
@@ -480,7 +526,7 @@ pub async fn process_user_activity_import_reprocessing(
     tasks: &TaskQueue,
     user_id: i32,
 ) -> Result<(), AppError> {
-    mark_user_activity_import_lock_stage(
+    ensure_user_activity_import_lock_stage(
         db,
         user_id,
         ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING,

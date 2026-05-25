@@ -10,7 +10,7 @@ use axum::extract::State;
 use axum::Json;
 use chrono::{DateTime, Datelike, Duration, NaiveDate, Utc};
 use kaleido::auth::UserContext;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{ColumnTrait, EntityTrait, FromQueryResult, QueryFilter, QueryOrder, QuerySelect};
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
@@ -132,7 +132,10 @@ pub struct XcRideProgressResponse {
     pub route_family_key: Option<String>,
     pub distance_meters: Option<f64>,
     pub elevation_gain_meters: Option<f64>,
+    pub moving_time_seconds: Option<i32>,
     pub z2_time_seconds: i32,
+    pub z2_distance_meters: Option<f64>,
+    pub z2_average_speed_mps: Option<f64>,
     pub climbing_time_seconds: i32,
     pub climbing_elevation_gain_meters: Option<f64>,
     pub aerobic_decoupling_percent: Option<f64>,
@@ -144,7 +147,11 @@ pub struct XcWeeklyProgressPointResponse {
     pub ride_count: i32,
     pub comparable_ride_count: i32,
     pub z2_time_seconds: i32,
+    pub z2_distance_meters: f64,
+    pub average_z2_speed_mps: Option<f64>,
+    pub climbing_time_seconds: i32,
     pub climbing_elevation_gain_meters: f64,
+    pub climbing_vertical_rate_meters_per_hour: Option<f64>,
     pub average_aerobic_decoupling_percent: Option<f64>,
 }
 
@@ -259,6 +266,17 @@ struct DhEffortSource {
     duration_seconds: i32,
 }
 
+#[derive(Clone, Debug, FromQueryResult)]
+struct ActivitySummaryRow {
+    id: i32,
+    title: String,
+    started_at: DateTime<Utc>,
+    distance_meters: Option<f64>,
+    elevation_gain_meters: Option<f64>,
+    moving_time_seconds: Option<i32>,
+    total_time_seconds: Option<i32>,
+}
+
 #[utoipa::path(
     get,
     path = "/api/training/xc-progress",
@@ -281,26 +299,20 @@ pub async fn get_xc_goal_progress(
         load_latest_fitness_freshness_snapshot(&state.db, user.id, Utc::now().date_naive()).await?;
     let analysis_models = activity_training_analyses::Entity::find()
         .filter(activity_training_analyses::Column::UserId.eq(user.id))
+        .filter(activity_training_analyses::Column::RideFocus.is_in(["xc_endurance", "mixed_xc"]))
         .all(&state.db)
         .await?;
     let activity_ids = analysis_models
         .iter()
         .map(|analysis| analysis.activity_id)
         .collect::<Vec<_>>();
-    let activity_by_id = load_activities_by_ids(&state.db, user.id, &activity_ids).await?;
+    let activity_by_id = load_activity_summaries_by_ids(&state.db, user.id, &activity_ids).await?;
 
     let mut rides = analysis_models
         .into_iter()
         .filter_map(|analysis| {
             let activity = activity_by_id.get(&analysis.activity_id)?;
             let ride_focus = ActivityRideFocus::from_stored(&analysis.ride_focus);
-
-            if !matches!(
-                ride_focus,
-                ActivityRideFocus::XcEndurance | ActivityRideFocus::MixedXc
-            ) {
-                return None;
-            }
 
             Some(XcRideProgressResponse {
                 activity_id: activity.id,
@@ -310,9 +322,14 @@ pub async fn get_xc_goal_progress(
                 route_family_key: analysis.route_family_key,
                 distance_meters: activity.distance_meters,
                 elevation_gain_meters: activity.elevation_gain_meters,
+                moving_time_seconds: activity.moving_time_seconds.or(activity.total_time_seconds),
                 z2_time_seconds: analysis.z2_time_seconds,
+                z2_distance_meters: analysis.z2_distance_meters,
+                z2_average_speed_mps: analysis.z2_average_speed_mps,
                 climbing_time_seconds: analysis.climbing_time_seconds,
-                climbing_elevation_gain_meters: analysis.climbing_elevation_gain_meters,
+                climbing_elevation_gain_meters: analysis
+                    .climbing_elevation_gain_meters
+                    .or(activity.elevation_gain_meters),
                 aerobic_decoupling_percent: analysis.aerobic_decoupling_percent,
             })
         })
@@ -370,7 +387,7 @@ pub async fn get_dh_goal_progress(
         .iter()
         .map(|effort| effort.activity_id)
         .collect::<Vec<_>>();
-    let activity_by_id = load_activities_by_ids(&state.db, user.id, &activity_ids).await?;
+    let activity_by_id = load_activity_summaries_by_ids(&state.db, user.id, &activity_ids).await?;
     let efforts = effort_models
         .into_iter()
         .filter_map(|effort| {
@@ -395,18 +412,27 @@ pub async fn get_dh_goal_progress(
     )))
 }
 
-async fn load_activities_by_ids(
+async fn load_activity_summaries_by_ids(
     db: &sea_orm::DatabaseConnection,
     user_id: i32,
     activity_ids: &[i32],
-) -> Result<HashMap<i32, activities::Model>, AppError> {
+) -> Result<HashMap<i32, ActivitySummaryRow>, AppError> {
     if activity_ids.is_empty() {
         return Ok(HashMap::new());
     }
 
     Ok(activities::Entity::find()
+        .select_only()
+        .column(activities::Column::Id)
+        .column(activities::Column::Title)
+        .column(activities::Column::StartedAt)
+        .column(activities::Column::DistanceMeters)
+        .column(activities::Column::ElevationGainMeters)
+        .column(activities::Column::MovingTimeSeconds)
+        .column(activities::Column::TotalTimeSeconds)
         .filter(activities::Column::UserId.eq(user_id))
         .filter(activities::Column::Id.is_in(activity_ids.iter().copied()))
+        .into_model::<ActivitySummaryRow>()
         .all(db)
         .await?
         .into_iter()
@@ -993,13 +1019,10 @@ fn build_xc_weekly_progress(
     );
     let mut rides_by_week_start = BTreeMap::<NaiveDate, Vec<&XcRideProgressResponse>>::new();
 
-    for ride in rides
-        .iter()
-        .filter(|ride| {
-            let ride_day = ride.started_at.date_naive();
-            ride_day >= first_week_start && ride_day <= history_end
-        })
-    {
+    for ride in rides.iter().filter(|ride| {
+        let ride_day = ride.started_at.date_naive();
+        ride_day >= first_week_start && ride_day <= history_end
+    }) {
         rides_by_week_start
             .entry(start_of_week(ride.started_at.date_naive()))
             .or_default()
@@ -1014,21 +1037,40 @@ fn build_xc_weekly_progress(
             .iter()
             .filter(|ride| ride.aerobic_decoupling_percent.is_some())
             .count() as i32;
+        let z2_time_seconds = week_rides
+            .iter()
+            .map(|ride| ride.z2_time_seconds)
+            .sum::<i32>();
+        let z2_distance_meters = week_rides
+            .iter()
+            .filter_map(|ride| ride.z2_distance_meters)
+            .sum::<f64>();
+        let climbing_time_seconds = week_rides
+            .iter()
+            .filter_map(|ride| effective_vertical_rate_time_seconds(ride))
+            .sum::<i32>();
+        let climbing_elevation_gain_meters = week_rides
+            .iter()
+            .filter_map(|ride| effective_climbing_elevation_gain_meters(ride))
+            .sum::<f64>();
 
         points.push(XcWeeklyProgressPointResponse {
             week_start: week_start.format("%Y-%m-%d").to_string(),
             ride_count: week_rides.len() as i32,
             comparable_ride_count,
-            z2_time_seconds: week_rides
-                .iter()
-                .map(|ride| ride.z2_time_seconds)
-                .sum::<i32>(),
-            climbing_elevation_gain_meters: round_metric(
-                week_rides
-                    .iter()
-                    .filter_map(|ride| ride.climbing_elevation_gain_meters)
-                    .sum::<f64>(),
-            ),
+            z2_time_seconds,
+            z2_distance_meters: round_metric(z2_distance_meters),
+            average_z2_speed_mps: (z2_time_seconds > 0 && z2_distance_meters > 0.0)
+                .then_some(z2_distance_meters / f64::from(z2_time_seconds))
+                .map(round_metric),
+            climbing_time_seconds,
+            climbing_elevation_gain_meters: round_metric(climbing_elevation_gain_meters),
+            climbing_vertical_rate_meters_per_hour: (climbing_time_seconds > 0
+                && climbing_elevation_gain_meters > 0.0)
+                .then_some(
+                    (climbing_elevation_gain_meters / f64::from(climbing_time_seconds)) * 3600.0,
+                )
+                .map(round_metric),
             average_aerobic_decoupling_percent: average_f64(
                 week_rides
                     .iter()
@@ -1041,6 +1083,19 @@ fn build_xc_weekly_progress(
     }
 
     points
+}
+
+fn effective_climbing_elevation_gain_meters(ride: &XcRideProgressResponse) -> Option<f64> {
+    ride.climbing_elevation_gain_meters
+        .or(ride.elevation_gain_meters)
+}
+
+fn effective_vertical_rate_time_seconds(ride: &XcRideProgressResponse) -> Option<i32> {
+    if ride.climbing_time_seconds > 0 {
+        return Some(ride.climbing_time_seconds);
+    }
+
+    ride.moving_time_seconds.filter(|seconds| *seconds > 0)
 }
 
 fn build_xc_recommendations(
@@ -1311,6 +1366,7 @@ mod tests {
         climbing_elevation_gain_meters: Option<f64>,
         aerobic_decoupling_percent: Option<f64>,
     ) -> XcRideProgressResponse {
+        let z2_average_speed_mps = (z2_time_seconds > 0).then_some(3.2);
         XcRideProgressResponse {
             activity_id,
             activity_title: format!("Ride {activity_id}"),
@@ -1319,7 +1375,11 @@ mod tests {
             route_family_key: Some("post-canyon".to_string()),
             distance_meters: Some(32_000.0),
             elevation_gain_meters: Some(750.0),
+            moving_time_seconds: Some(5_400),
             z2_time_seconds,
+            z2_distance_meters: z2_average_speed_mps
+                .map(|speed| speed * f64::from(z2_time_seconds)),
+            z2_average_speed_mps,
             climbing_time_seconds: 1_200,
             climbing_elevation_gain_meters,
             aerobic_decoupling_percent,
@@ -1414,6 +1474,15 @@ mod tests {
         assert_eq!(
             response.weekly_progress.len(),
             XC_WEEKLY_PROGRESS_WEEKS as usize
+        );
+        let latest_week = response
+            .weekly_progress
+            .last()
+            .expect("weekly point present");
+        assert_eq!(latest_week.average_z2_speed_mps, Some(3.2));
+        assert_eq!(
+            latest_week.climbing_vertical_rate_meters_per_hour,
+            Some(2700.0)
         );
         assert_eq!(response.goals[0].key, TrainingGoalKey::WeeklyZ2Average);
         assert_eq!(
@@ -1595,7 +1664,10 @@ mod tests {
             vec![1, 2, 3]
         );
         assert_eq!(
-            response.weekly_progress.first().map(|point| point.week_start.as_str()),
+            response
+                .weekly_progress
+                .first()
+                .map(|point| point.week_start.as_str()),
             Some("2026-01-26")
         );
         assert!(response.weekly_progress.len() > XC_WEEKLY_PROGRESS_WEEKS as usize);

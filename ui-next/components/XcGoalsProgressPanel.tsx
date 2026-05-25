@@ -1,8 +1,9 @@
 "use client";
 
 import { auth } from "@ericbutera/kaleido";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import {
   Bar,
@@ -21,18 +22,21 @@ import {
   formatDistance,
   formatDuration,
   formatElevation,
+  formatSpeed,
   normalizeUnitSystem,
   type UnitSystem,
 } from "../lib/activityFormatting";
 import {
+  useActivityProcessingState,
+  useUpdateUserPreferences,
+  useUserPreferences,
+  useXcGoalProgress,
   type ActivityRideFocus,
   type TrainingGoalMetric,
   type TrainingRecommendation,
   type UserPreferences,
-  useUpdateUserPreferences,
-  useUserPreferences,
-  useXcGoalProgress,
 } from "../lib/queries";
+import { hasConfiguredHeartRateZoneBounds } from "../lib/trainingProfile";
 import AuthRequiredCard from "./AuthRequiredCard";
 
 const Z2_COLOR = "#0f766e";
@@ -50,11 +54,14 @@ type WeeklyChartPoint = {
   z2Hours: number;
   climbingGain: number;
   comparableRideCount: number;
+  averageZ2SpeedMps?: number | null;
+  climbingVerticalRateMetersPerHour?: number | null;
+  averageAerobicDecouplingPercent?: number | null;
 };
 
 type DecouplingChartPoint = {
   label: string;
-  activityTitle: string;
+  title: string;
   aerobicDecouplingPercent: number;
 };
 
@@ -299,6 +306,148 @@ function formatDaysRemaining(daysRemaining: number) {
   return `${daysRemaining} days left`;
 }
 
+function isXcBackfillPendingStatus(status: string | null | undefined) {
+  return status === "queued" || status === "waiting" || status === "running";
+}
+
+function describeXcBackfillMessage(
+  status: string | null | undefined,
+  processingMessage: string | null | undefined,
+  processingSource: string | null | undefined,
+  processingSourceLabel: string | null | undefined,
+) {
+  switch (status) {
+    case "queued":
+      return "Historical XC rides are queued for backfill now. Charts will populate as soon as the training analysis rebuild runs.";
+    case "waiting":
+      return processingMessage
+        ? `Historical XC backfill is waiting for the current activity processing job to finish. ${processingMessage}`
+        : "Historical XC backfill is waiting for the current activity processing job to finish.";
+    case "running":
+      return processingSource && processingSource !== "xc_training_backfill"
+        ? `Historical XC backfill is still marked running, but the active processing lock belongs to ${processingSourceLabel ?? "another activity job"}. This usually means the earlier processing state needs to clear before XC status will settle.`
+        : "Historical XC backfill is rebuilding historical training metrics.";
+    case "failed":
+      return "Historical XC backfill failed. Save the goal again or queue the user-id XC backfill from admin analytics.";
+    default:
+      return null;
+  }
+}
+
+function formatWeeklyDistancePace(
+  value: number | null | undefined,
+  unit: GoalDistanceUnit,
+) {
+  const formatted = formatGoalDistance(value, unit);
+  return formatted === "--" ? formatted : `${formatted}/wk`;
+}
+
+function formatWeeklyElevationPace(
+  value: number | null | undefined,
+  unit: GoalElevationUnit,
+) {
+  const formatted = formatGoalElevation(value, unit);
+  return formatted === "--" ? formatted : `${formatted}/wk`;
+}
+
+function calculateInclusiveDaySpan(startValue: string, endValue: string) {
+  const start = parseDisplayDate(startValue);
+  const end = parseDisplayDate(endValue);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return null;
+  }
+
+  const diffDays = Math.floor((end.getTime() - start.getTime()) / 86_400_000);
+  if (diffDays < 0) {
+    return null;
+  }
+
+  return diffDays + 1;
+}
+
+function averageNumberArray(values: number[]) {
+  if (values.length === 0) {
+    return null;
+  }
+
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function buildTrend(values: number[]) {
+  if (values.length < 2) {
+    return null;
+  }
+
+  const sampleSize = Math.min(3, values.length);
+  const baseline = averageNumberArray(values.slice(0, sampleSize));
+  const recent = averageNumberArray(values.slice(-sampleSize));
+  if (baseline == null || recent == null) {
+    return null;
+  }
+
+  return {
+    baseline,
+    recent,
+    delta: recent - baseline,
+    deltaPercent: baseline > 0 ? ((recent - baseline) / baseline) * 100 : null,
+  };
+}
+
+function calculateVerticalRate(
+  elevationGainMeters: number | null | undefined,
+  climbingTimeSeconds: number | null | undefined,
+) {
+  if (
+    elevationGainMeters == null ||
+    climbingTimeSeconds == null ||
+    climbingTimeSeconds <= 0 ||
+    elevationGainMeters <= 0
+  ) {
+    return null;
+  }
+
+  return (elevationGainMeters / climbingTimeSeconds) * 3600;
+}
+
+function formatClimbRate(
+  valueMetersPerHour: number | null | undefined,
+  unit: GoalElevationUnit,
+) {
+  if (valueMetersPerHour == null || !Number.isFinite(valueMetersPerHour)) {
+    return "--";
+  }
+
+  if (unit === "ft") {
+    return `${Math.round(valueMetersPerHour * FEET_PER_METER)} ft/h`;
+  }
+
+  return `${Math.round(valueMetersPerHour)} m/h`;
+}
+
+function formatClimbDensity(
+  elevationGainMeters: number | null | undefined,
+  distanceMeters: number | null | undefined,
+  distanceUnit: GoalDistanceUnit,
+  elevationUnit: GoalElevationUnit,
+) {
+  if (
+    elevationGainMeters == null ||
+    distanceMeters == null ||
+    !Number.isFinite(elevationGainMeters) ||
+    !Number.isFinite(distanceMeters) ||
+    distanceMeters <= 0
+  ) {
+    return "--";
+  }
+
+  if (distanceUnit === "mi" || elevationUnit === "ft") {
+    return `${Math.round((elevationGainMeters * FEET_PER_METER) / (distanceMeters / METERS_PER_MILE))} ft/mi`;
+  }
+
+  return `${Math.round(elevationGainMeters / (distanceMeters / 1000))} m/km`;
+}
+
 function buildPreferencesPayload(
   currentPreferences: UserPreferences | null,
   overrides: {
@@ -433,9 +582,13 @@ function RecommendationCard({
 function WeeklyTrendTooltip({
   active,
   payload,
+  unitSystem,
+  goalElevationUnit,
 }: {
   active?: boolean;
   payload?: Array<{ payload?: WeeklyChartPoint }>;
+  unitSystem: UnitSystem;
+  goalElevationUnit: GoalElevationUnit;
 }) {
   if (!active || !payload?.length) {
     return null;
@@ -468,6 +621,25 @@ function WeeklyTrendTooltip({
             {point.comparableRideCount}
           </span>
         </div>
+        {point.averageZ2SpeedMps != null ? (
+          <div className="flex items-center justify-between gap-4">
+            <span>Z2 speed</span>
+            <span className="font-medium text-base-content">
+              {formatSpeed(point.averageZ2SpeedMps, unitSystem)}
+            </span>
+          </div>
+        ) : null}
+        {point.climbingVerticalRateMetersPerHour != null ? (
+          <div className="flex items-center justify-between gap-4">
+            <span>Climb pace</span>
+            <span className="font-medium text-base-content">
+              {formatClimbRate(
+                point.climbingVerticalRateMetersPerHour,
+                goalElevationUnit,
+              )}
+            </span>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -491,9 +663,7 @@ function DecouplingTooltip({
 
   return (
     <div className="rounded-box border border-base-300 bg-base-100 px-3 py-3 shadow-lg">
-      <p className="text-sm font-semibold text-base-content">
-        {point.activityTitle}
-      </p>
+      <p className="text-sm font-semibold text-base-content">{point.title}</p>
       <div className="mt-2 flex items-center justify-between gap-4 text-sm text-base-content/75">
         <span>Decoupling</span>
         <span className="font-medium text-base-content">
@@ -516,10 +686,25 @@ function EmptyComparableState() {
 export default function XcGoalsProgressPanel() {
   const authApi = auth.useAuthApi();
   const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
-  const preferencesQuery = useUserPreferences({ enabled: !!user });
+  const queryClient = useQueryClient();
+  const preferencesQuery = useUserPreferences({
+    enabled: !!user,
+    refetchIntervalMs: user ? 5000 : false,
+  });
   const progressQuery = useXcGoalProgress({ enabled: !!user });
+  const processingStateQuery = useActivityProcessingState({
+    enabled: !!user,
+    refetchIntervalMs: user ? 5000 : false,
+  });
   const updatePreferencesMutation = useUpdateUserPreferences();
   const unitSystem = normalizeUnitSystem(preferencesQuery.data?.unit_system);
+  const heartRateZonesConfigured = hasConfiguredHeartRateZoneBounds(
+    preferencesQuery.data?.heart_rate_zone_bounds_bpm,
+  );
+  const backfillStatus = preferencesQuery.data?.xc_goal_backfill_status ?? null;
+  const backfillCompletedAt =
+    preferencesQuery.data?.xc_goal_backfill_completed_at ?? null;
+  const previousBackfillStatusRef = useRef<string | null>(null);
   const [goalStartDateDraft, setGoalStartDateDraft] = useState("");
   const [goalDateDraft, setGoalDateDraft] = useState("");
   const [goalDistanceDraft, setGoalDistanceDraft] = useState("");
@@ -530,19 +715,35 @@ export default function XcGoalsProgressPanel() {
     useState<GoalElevationUnit>("ft");
 
   useEffect(() => {
-    setGoalStartDateDraft(preferencesQuery.data?.xc_goal_start_date ?? "");
-    setGoalDateDraft(preferencesQuery.data?.xc_goal_target_date ?? "");
-    setGoalDistanceDraft(
-      metersToDistanceInput(
-        preferencesQuery.data?.xc_goal_target_distance_meters,
-        goalDistanceUnit,
-      ),
+    const nextGoalStartDateDraft =
+      preferencesQuery.data?.xc_goal_start_date ?? "";
+    const nextGoalDateDraft = preferencesQuery.data?.xc_goal_target_date ?? "";
+    const nextGoalDistanceDraft = metersToDistanceInput(
+      preferencesQuery.data?.xc_goal_target_distance_meters,
+      goalDistanceUnit,
     );
-    setGoalElevationDraft(
-      metersToElevationInput(
-        preferencesQuery.data?.xc_goal_target_elevation_gain_meters,
-        goalElevationUnit,
-      ),
+    const nextGoalElevationDraft = metersToElevationInput(
+      preferencesQuery.data?.xc_goal_target_elevation_gain_meters,
+      goalElevationUnit,
+    );
+
+    setGoalStartDateDraft((currentValue) =>
+      currentValue === nextGoalStartDateDraft
+        ? currentValue
+        : nextGoalStartDateDraft,
+    );
+    setGoalDateDraft((currentValue) =>
+      currentValue === nextGoalDateDraft ? currentValue : nextGoalDateDraft,
+    );
+    setGoalDistanceDraft((currentValue) =>
+      currentValue === nextGoalDistanceDraft
+        ? currentValue
+        : nextGoalDistanceDraft,
+    );
+    setGoalElevationDraft((currentValue) =>
+      currentValue === nextGoalElevationDraft
+        ? currentValue
+        : nextGoalElevationDraft,
     );
   }, [
     goalDistanceUnit,
@@ -553,26 +754,185 @@ export default function XcGoalsProgressPanel() {
     preferencesQuery.data?.xc_goal_target_elevation_gain_meters,
   ]);
 
+  useEffect(() => {
+    const previousStatus = previousBackfillStatusRef.current;
+
+    if (
+      previousStatus &&
+      previousStatus !== "completed" &&
+      backfillStatus === "completed"
+    ) {
+      toast.success(
+        "Historical XC backfill finished. Refreshing training charts.",
+      );
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["get", "/preferences"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/training/xc-progress"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/activity-imports/processing-state"],
+        }),
+      ]);
+    }
+
+    previousBackfillStatusRef.current = backfillStatus;
+  }, [backfillStatus, queryClient]);
+
   const weeklyChartData = useMemo<WeeklyChartPoint[]>(() => {
     return (progressQuery.data?.weekly_progress ?? []).map((point) => ({
       label: formatShortDate(point.week_start),
       z2Hours: point.z2_time_seconds / 3600,
       climbingGain: point.climbing_elevation_gain_meters,
       comparableRideCount: point.comparable_ride_count,
+      averageZ2SpeedMps: point.average_z2_speed_mps,
+      climbingVerticalRateMetersPerHour:
+        point.climbing_vertical_rate_meters_per_hour,
+      averageAerobicDecouplingPercent: point.average_aerobic_decoupling_percent,
     }));
   }, [progressQuery.data?.weekly_progress]);
 
   const decouplingChartData = useMemo<DecouplingChartPoint[]>(() => {
+    const eventGoal = progressQuery.data?.event_goal ?? null;
+
+    if (eventGoal) {
+      return (progressQuery.data?.weekly_progress ?? [])
+        .filter((point) => point.average_aerobic_decoupling_percent != null)
+        .map((point) => ({
+          label: formatShortDate(point.week_start),
+          title: `Week of ${formatLongDate(point.week_start)}`,
+          aerobicDecouplingPercent:
+            point.average_aerobic_decoupling_percent ?? 0,
+        }));
+    }
+
     return (progressQuery.data?.recent_rides ?? [])
       .filter((ride) => ride.aerobic_decoupling_percent != null)
       .slice()
       .reverse()
       .map((ride) => ({
         label: formatShortDate(ride.started_at),
-        activityTitle: ride.activity_title,
+        title: ride.activity_title,
         aerobicDecouplingPercent: ride.aerobic_decoupling_percent ?? 0,
       }));
-  }, [progressQuery.data?.recent_rides]);
+  }, [
+    progressQuery.data?.event_goal,
+    progressQuery.data?.recent_rides,
+    progressQuery.data?.weekly_progress,
+  ]);
+
+  const onTrackMetrics = useMemo(() => {
+    const progress = progressQuery.data;
+    const eventGoal = progress?.event_goal ?? null;
+
+    if (!progress || !eventGoal) {
+      return null;
+    }
+
+    const progressEndValue =
+      eventGoal.days_remaining < 0
+        ? eventGoal.target_date
+        : progress.generated_at;
+    const elapsedDays =
+      calculateInclusiveDaySpan(eventGoal.start_date, progressEndValue) ?? 1;
+    const totalWeeks = Math.max(eventGoal.training_window_days / 7, 1 / 7);
+    const elapsedWeeks = Math.max(elapsedDays / 7, 1 / 7);
+    const remainingDays = Math.max(eventGoal.days_remaining + 1, 0);
+    const remainingWeeks =
+      remainingDays > 0 ? Math.max(remainingDays / 7, 1 / 7) : 0;
+    const remainingDistanceMeters = Math.max(
+      eventGoal.target_distance_meters - eventGoal.counted_distance_meters,
+      0,
+    );
+    const remainingElevationGainMeters = Math.max(
+      eventGoal.target_elevation_gain_meters -
+        eventGoal.counted_elevation_gain_meters,
+      0,
+    );
+    const currentWeeklyDistanceMeters =
+      eventGoal.counted_distance_meters / elapsedWeeks;
+    const currentWeeklyElevationGainMeters =
+      eventGoal.counted_elevation_gain_meters / elapsedWeeks;
+    const targetWeeklyDistanceMeters =
+      eventGoal.target_distance_meters / totalWeeks;
+    const targetWeeklyElevationGainMeters =
+      eventGoal.target_elevation_gain_meters / totalWeeks;
+    const neededWeeklyDistanceMeters =
+      remainingWeeks > 0 ? remainingDistanceMeters / remainingWeeks : 0;
+    const neededWeeklyElevationGainMeters =
+      remainingWeeks > 0 ? remainingElevationGainMeters / remainingWeeks : 0;
+    const speedTrend = buildTrend(
+      (progress.weekly_progress ?? [])
+        .map((point) => point.average_z2_speed_mps)
+        .filter(
+          (value): value is number => value != null && Number.isFinite(value),
+        ),
+    );
+    const decouplingTrend = buildTrend(
+      (progress.weekly_progress ?? [])
+        .map((point) => point.average_aerobic_decoupling_percent)
+        .filter(
+          (value): value is number => value != null && Number.isFinite(value),
+        ),
+    );
+    const currentClimbDensity = formatClimbDensity(
+      eventGoal.counted_elevation_gain_meters,
+      eventGoal.counted_distance_meters,
+      goalDistanceUnit,
+      goalElevationUnit,
+    );
+    const targetClimbDensity = formatClimbDensity(
+      eventGoal.target_elevation_gain_meters,
+      eventGoal.target_distance_meters,
+      goalDistanceUnit,
+      goalElevationUnit,
+    );
+
+    return {
+      distancePace: {
+        label: "Distance pace",
+        value: `${formatWeeklyDistancePace(currentWeeklyDistanceMeters, goalDistanceUnit)} / ${formatWeeklyDistancePace(targetWeeklyDistanceMeters, goalDistanceUnit)}`,
+        detail:
+          remainingDistanceMeters > 0 && remainingWeeks > 0
+            ? `Current avg/week vs ${formatWeeklyDistancePace(neededWeeklyDistanceMeters, goalDistanceUnit)} needed from today`
+            : "Distance target is already covered inside this block",
+      },
+      climbingPace: {
+        label: "Climbing pace",
+        value: `${formatWeeklyElevationPace(currentWeeklyElevationGainMeters, goalElevationUnit)} / ${formatWeeklyElevationPace(targetWeeklyElevationGainMeters, goalElevationUnit)}`,
+        detail:
+          remainingElevationGainMeters > 0 && remainingWeeks > 0
+            ? `${currentClimbDensity} now vs ${targetClimbDensity} goal density; ${formatWeeklyElevationPace(neededWeeklyElevationGainMeters, goalElevationUnit)} needed from today`
+            : `Current density ${currentClimbDensity} vs ${targetClimbDensity} goal density`,
+      },
+      z2Speed: {
+        label: "Z2 speed trend",
+        value: speedTrend ? formatSpeed(speedTrend.recent, unitSystem) : "--",
+        detail: speedTrend
+          ? `${speedTrend.delta >= 0 ? "+" : ""}${speedTrend.deltaPercent?.toFixed(1) ?? speedTrend.delta.toFixed(1)}${speedTrend.deltaPercent != null ? "%" : ""} vs opening block weeks`
+          : heartRateZonesConfigured
+            ? "Need at least two Z2 weeks with qualifying heart-rate samples in the block"
+            : "Set heart rate zones on Account, then regenerate older rides to persist Z2 snapshots",
+      },
+      decoupling: {
+        label: "Decoupling trend",
+        value: decouplingTrend ? `${decouplingTrend.recent.toFixed(1)}%` : "--",
+        detail: decouplingTrend
+          ? `${decouplingTrend.delta <= 0 ? "Down" : "Up"} ${Math.abs(decouplingTrend.delta).toFixed(1)} pts vs opening block weeks`
+          : heartRateZonesConfigured
+            ? "Need comparable endurance repeats with enough Z2 time in the same route family"
+            : "Set heart rate zones on Account, then regenerate older rides to compute decoupling",
+      },
+      currentClimbDensity,
+      targetClimbDensity,
+    };
+  }, [
+    goalDistanceUnit,
+    goalElevationUnit,
+    heartRateZonesConfigured,
+    progressQuery.data,
+    unitSystem,
+  ]);
 
   if (isLoadingUser) {
     return (
@@ -637,6 +997,12 @@ export default function XcGoalsProgressPanel() {
 
   const progress = progressQuery.data;
   const eventGoal = progress.event_goal ?? null;
+  const backfillMessage = describeXcBackfillMessage(
+    backfillStatus,
+    processingStateQuery.data?.message,
+    processingStateQuery.data?.source,
+    processingStateQuery.data?.source_label,
+  );
 
   async function handleSaveGoal() {
     const parsedDistance = parseOptionalNumberInput(goalDistanceDraft);
@@ -677,7 +1043,7 @@ export default function XcGoalsProgressPanel() {
     }
 
     try {
-      await updatePreferencesMutation.updateAsync(
+      const updatedPreferences = await updatePreferencesMutation.updateAsync(
         buildPreferencesPayload(preferencesQuery.data ?? null, {
           xcGoalStartDate: goalStartDateDraft.trim(),
           xcGoalTargetDate: goalDateDraft.trim(),
@@ -691,7 +1057,17 @@ export default function XcGoalsProgressPanel() {
           ),
         }),
       );
-      toast.success("XC event goal saved.");
+      if (
+        isXcBackfillPendingStatus(updatedPreferences.xc_goal_backfill_status)
+      ) {
+        toast.success(
+          updatedPreferences.xc_goal_backfill_status === "waiting"
+            ? "XC event goal saved. Historical XC backfill will start after the current processing job finishes."
+            : "XC event goal saved. Historical XC backfill queued.",
+        );
+      } else {
+        toast.success("XC event goal saved.");
+      }
     } catch (error) {
       toast.error(extractApiMessage(error));
     }
@@ -762,32 +1138,40 @@ export default function XcGoalsProgressPanel() {
           </div>
         </div>
 
+        {!heartRateZonesConfigured ? (
+          <div className="relative mt-6 rounded-box border border-warning/30 bg-warning/10 p-4 text-sm leading-6 text-base-content/85">
+            Heart rate zones are required for Z2 speed, aerobic decoupling, and
+            Z2-based weekly endurance load. Save them on{" "}
+            <Link href="/account" className="link link-primary link-hover">
+              Account
+            </Link>
+            , then regenerate older rides so Bike can persist the per-ride zone
+            snapshots those XC metrics need.
+          </div>
+        ) : null}
+
         <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {eventGoal ? (
             <>
               <SummaryStat
-                label="Block distance"
-                value={`${formatGoalDistance(eventGoal.counted_distance_meters, goalDistanceUnit)} / ${formatGoalDistance(eventGoal.target_distance_meters, goalDistanceUnit)}`}
-                detail={`${eventGoal.counted_ride_count} XC rides counted since ${formatLongDate(eventGoal.start_date)}`}
+                label={onTrackMetrics?.distancePace.label ?? "Distance pace"}
+                value={onTrackMetrics?.distancePace.value ?? "--"}
+                detail={onTrackMetrics?.distancePace.detail ?? "--"}
               />
               <SummaryStat
-                label="Block climbing"
-                value={`${formatGoalElevation(eventGoal.counted_elevation_gain_meters, goalElevationUnit)} / ${formatGoalElevation(eventGoal.target_elevation_gain_meters, goalElevationUnit)}`}
-                detail={`Training block through ${formatLongDate(eventGoal.target_date)}`}
+                label={onTrackMetrics?.climbingPace.label ?? "Climbing pace"}
+                value={onTrackMetrics?.climbingPace.value ?? "--"}
+                detail={onTrackMetrics?.climbingPace.detail ?? "--"}
               />
               <SummaryStat
-                label="Block rides"
-                value={`${eventGoal.counted_ride_count}`}
-                detail={`XC rides counted from ${formatLongDate(eventGoal.start_date)}`}
+                label={onTrackMetrics?.z2Speed.label ?? "Z2 speed trend"}
+                value={onTrackMetrics?.z2Speed.value ?? "--"}
+                detail={onTrackMetrics?.z2Speed.detail ?? "--"}
               />
               <SummaryStat
-                label="Avg decoupling"
-                value={
-                  progress.summary.average_aerobic_decoupling_percent != null
-                    ? `${progress.summary.average_aerobic_decoupling_percent.toFixed(1)}%`
-                    : "--"
-                }
-                detail="Comparable-ride durability drift"
+                label={onTrackMetrics?.decoupling.label ?? "Decoupling trend"}
+                value={onTrackMetrics?.decoupling.value ?? "--"}
+                detail={onTrackMetrics?.decoupling.detail ?? "--"}
               />
             </>
           ) : (
@@ -850,6 +1234,29 @@ export default function XcGoalsProgressPanel() {
                 </span>
               ) : null}
             </div>
+
+            {backfillMessage ? (
+              <div
+                className={`alert mt-4 text-sm ${
+                  backfillStatus === "failed"
+                    ? "alert-error"
+                    : backfillStatus === "completed"
+                      ? "alert-success"
+                      : "alert-info"
+                }`}
+              >
+                <span>{backfillMessage}</span>
+              </div>
+            ) : null}
+
+            {backfillStatus === "completed" && backfillCompletedAt ? (
+              <div className="alert alert-success mt-4 text-sm">
+                <span>
+                  Historical XC backfill completed{" "}
+                  {formatActivityTimestamp(backfillCompletedAt)}.
+                </span>
+              </div>
+            ) : null}
 
             <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,1fr)]">
               <label className="form-control gap-2">
@@ -969,6 +1376,12 @@ export default function XcGoalsProgressPanel() {
                 <p className="text-sm leading-6 text-base-content/60">
                   Planned block length: {eventGoal.training_window_days} days.
                 </p>
+                {onTrackMetrics ? (
+                  <p className="text-sm leading-6 text-base-content/60">
+                    Current climb density {onTrackMetrics.currentClimbDensity}{" "}
+                    vs {onTrackMetrics.targetClimbDensity} goal density.
+                  </p>
+                ) : null}
                 <div>
                   <div className="flex items-center justify-between gap-3 text-sm text-base-content/65">
                     <span>Distance progress</span>
@@ -1034,11 +1447,13 @@ export default function XcGoalsProgressPanel() {
         </div>
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-3">
-        {progress.goals.map((goal) => (
-          <GoalCard key={goal.key} goal={goal} unitSystem={unitSystem} />
-        ))}
-      </div>
+      {!eventGoal ? (
+        <div className="grid gap-4 xl:grid-cols-3">
+          {progress.goals.map((goal) => (
+            <GoalCard key={goal.key} goal={goal} unitSystem={unitSystem} />
+          ))}
+        </div>
+      ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,0.9fr)]">
         <section className="rounded-box border border-base-300 bg-base-100 p-5 shadow-sm sm:p-6">
@@ -1049,7 +1464,7 @@ export default function XcGoalsProgressPanel() {
               </h2>
               <p className="mt-1 text-sm text-base-content/70">
                 {eventGoal
-                  ? `Z2 hours and climbing gain across the current training block, starting ${formatLongDate(eventGoal.start_date)}.`
+                  ? `Z2 hours and climbing gain across the current training block, starting ${formatLongDate(eventGoal.start_date)}. Hover to inspect Z2 speed and vertical rate week by week.`
                   : `Z2 hours and climbing gain over the last eight weeks. The summary cards above use a ${progress.summary.recent_window_days}-day XC snapshot.`}
               </p>
             </div>
@@ -1116,7 +1531,14 @@ export default function XcGoalsProgressPanel() {
                     formatElevation(value, unitSystem)
                   }
                 />
-                <Tooltip content={<WeeklyTrendTooltip />} />
+                <Tooltip
+                  content={
+                    <WeeklyTrendTooltip
+                      unitSystem={unitSystem}
+                      goalElevationUnit={goalElevationUnit}
+                    />
+                  }
+                />
                 <Bar
                   dataKey="z2Hours"
                   fill={Z2_COLOR}
@@ -1180,7 +1602,9 @@ export default function XcGoalsProgressPanel() {
                 Comparable ride decoupling
               </h2>
               <p className="mt-1 text-sm text-base-content/70">
-                Lower is better. The red line marks the current v1 target.
+                {eventGoal
+                  ? "Lower is better. This chart now follows the full training block so you can see whether durability is improving week over week."
+                  : "Lower is better. The red line marks the current v1 target."}
               </p>
             </div>
             <span className="badge badge-outline gap-2 px-3 py-2">
@@ -1255,7 +1679,7 @@ export default function XcGoalsProgressPanel() {
               </h2>
               <p className="mt-1 text-sm text-base-content/70">
                 {eventGoal
-                  ? "Latest qualifying endurance rides inside the saved training block."
+                  ? "Latest qualifying endurance rides inside the saved training block, including Z2 speed, climb totals, and ride vertical rate."
                   : "Recent endurance rides and the metrics that feed the XC screen."}
               </p>
             </div>
@@ -1272,7 +1696,9 @@ export default function XcGoalsProgressPanel() {
                   <th>Focus</th>
                   <th>Date</th>
                   <th>Z2</th>
+                  <th>Z2 speed</th>
                   <th>Climb</th>
+                  <th>Vertical rate</th>
                   <th>Distance</th>
                   <th>Decoupling</th>
                 </tr>
@@ -1305,9 +1731,22 @@ export default function XcGoalsProgressPanel() {
                       {formatDuration(ride.z2_time_seconds)}
                     </td>
                     <td className="whitespace-nowrap">
+                      {formatSpeed(ride.z2_average_speed_mps, unitSystem)}
+                    </td>
+                    <td className="whitespace-nowrap">
                       {formatElevation(
-                        ride.climbing_elevation_gain_meters,
+                        ride.climbing_elevation_gain_meters ??
+                          ride.elevation_gain_meters,
                         unitSystem,
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap">
+                      {formatClimbRate(
+                        calculateVerticalRate(
+                          ride.climbing_elevation_gain_meters,
+                          ride.climbing_time_seconds,
+                        ),
+                        goalElevationUnit,
                       )}
                     </td>
                     <td className="whitespace-nowrap">

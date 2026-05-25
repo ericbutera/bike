@@ -23,6 +23,7 @@ pub mod storage;
 pub mod strava;
 pub mod tasks;
 pub mod training_profile;
+pub mod xc_goal_backfill;
 
 use crate::config::Config;
 use crate::openapi::ApiDoc;

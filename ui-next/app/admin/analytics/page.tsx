@@ -4,6 +4,7 @@ import { extractApiMessage } from "@/lib/activityFormatting";
 import {
   useActivityArchiveImportJobs,
   useAdminBackfillAnalytics,
+  useAdminBackfillUserXcTraining,
   useCleanupUserDuplicateActivities,
   useImportActivityArchiveUrl,
   useReprocessUserActivityImports,
@@ -41,6 +42,10 @@ function AnalyticsContent() {
     useCleanupUserDuplicateActivities();
   const { reprocessAsync, isPending: isReprocessPending } =
     useReprocessUserActivityImports();
+  const {
+    backfillAsync: backfillXcTrainingAsync,
+    isPending: isXcBackfillPending,
+  } = useAdminBackfillUserXcTraining();
   const [result, setResult] = useState<AdminAnalyticsBackfillResponse | null>(
     null,
   );
@@ -55,6 +60,12 @@ function AnalyticsContent() {
   const [reprocessResult, setReprocessResult] =
     useState<ReprocessUserActivityImportsResponse | null>(null);
   const [reprocessErrorMessage, setReprocessErrorMessage] = useState<
+    string | null
+  >(null);
+  const [xcBackfillUserId, setXcBackfillUserId] = useState("");
+  const [xcBackfillResult, setXcBackfillResult] =
+    useState<ReprocessUserActivityImportsResponse | null>(null);
+  const [xcBackfillErrorMessage, setXcBackfillErrorMessage] = useState<
     string | null
   >(null);
   const [cleanupUserId, setCleanupUserId] = useState("");
@@ -127,6 +138,26 @@ function AnalyticsContent() {
     } catch (error) {
       setCleanupResult(null);
       setCleanupErrorMessage(extractApiMessage(error));
+    }
+  }
+
+  async function handleXcTrainingBackfill() {
+    const numericUserId = Number(xcBackfillUserId);
+
+    setXcBackfillErrorMessage(null);
+
+    if (!Number.isFinite(numericUserId) || numericUserId < 1) {
+      setXcBackfillResult(null);
+      setXcBackfillErrorMessage("Enter a valid user id.");
+      return;
+    }
+
+    try {
+      const response = await backfillXcTrainingAsync(numericUserId);
+      setXcBackfillResult(response);
+    } catch (error) {
+      setXcBackfillResult(null);
+      setXcBackfillErrorMessage(extractApiMessage(error));
     }
   }
 
@@ -340,6 +371,81 @@ function AnalyticsContent() {
             <div className="mt-4 rounded-xl border border-base-300 bg-base-100 px-4 py-3 text-sm text-base-content/80">
               {cleanupResult.message}
             </div>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="rounded-2xl border border-base-300 bg-base-100 p-6 shadow-sm">
+        <h2 className="text-lg font-semibold">Backfill XC training history</h2>
+        <p className="mt-2 max-w-3xl text-sm text-base-content/70">
+          Queue the XC training-history backfill for one rider. This rebuilds
+          cached historical training metrics from the stored activity records
+          without rerunning full activity import reprocessing, and is the same
+          workflow the XC page now requests automatically when a start date
+          changes.
+        </p>
+
+        <label className="form-control mt-5 max-w-sm">
+          <div className="label">
+            <span className="label-text font-medium">User id</span>
+            <span className="label-text-alt">Required</span>
+          </div>
+          <input
+            type="number"
+            min={1}
+            step={1}
+            inputMode="numeric"
+            className="input input-bordered"
+            placeholder="42"
+            value={xcBackfillUserId}
+            onChange={(event) => {
+              setXcBackfillUserId(event.target.value);
+            }}
+          />
+          <div className="label">
+            <span className="label-text-alt text-base-content/60">
+              Use this when one rider needs historical XC trend data rebuilt.
+            </span>
+          </div>
+        </label>
+
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button
+            className="btn btn-primary"
+            disabled={!xcBackfillUserId.trim() || isXcBackfillPending}
+            onClick={handleXcTrainingBackfill}
+          >
+            {isXcBackfillPending
+              ? "Queueing XC backfill..."
+              : "Queue XC backfill"}
+          </button>
+          <Link href="/admin/users" className="btn btn-ghost">
+            Find user ids
+          </Link>
+          <Link href="/admin/tasks" className="btn btn-ghost">
+            View background tasks
+          </Link>
+        </div>
+
+        {xcBackfillErrorMessage ? (
+          <div className="alert alert-error mt-4">
+            <span>{xcBackfillErrorMessage}</span>
+          </div>
+        ) : null}
+
+        {xcBackfillResult ? (
+          <div className="mt-5 rounded-2xl bg-base-200 p-5">
+            <div className="text-sm text-base-content/60">
+              XC backfill request
+            </div>
+            <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
+              <SummaryItem label="User id" value={xcBackfillResult.user_id} />
+              <SummaryTextItem label="Status" value={xcBackfillResult.status} />
+              <SummaryTextItem
+                label="Message"
+                value={xcBackfillResult.message}
+              />
+            </dl>
           </div>
         ) : null}
       </section>

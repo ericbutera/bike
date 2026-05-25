@@ -11,6 +11,7 @@ use crate::app_error::{ApiErrorResponse, AppError};
 use crate::archive_import::{import_activity_archive_from_path, resolve_local_archive_import_path};
 use crate::entities::{activities, activity_imports, segments, strava_connections};
 use crate::storage::AppStorage;
+use crate::xc_goal_backfill::queue_user_xc_goal_backfill;
 use axum::{
     extract::State,
     http::StatusCode,
@@ -32,6 +33,7 @@ pub fn routes() -> Router<Arc<AppStorage>> {
     Router::new()
         .route("/metrics/app", get(app_metrics))
         .route("/analytics/backfill", post(backfill_analytics))
+        .route("/training/xc-backfill", post(backfill_user_xc_training))
         .route("/segments/regenerate", post(regenerate_user_segments))
         .route(
             "/activity-imports/reprocess",
@@ -250,6 +252,44 @@ pub async fn backfill_analytics(
             segment_task_count,
             total_tasks_enqueued: fitness_task_count + segment_task_count,
             segment_chunk_size: SEGMENT_BACKFILL_CHUNK_SIZE as i32,
+        }),
+    ))
+}
+
+#[utoipa::path(
+    post,
+    path = "/admin/training/xc-backfill",
+    operation_id = "admin_backfill_user_xc_training",
+    request_body = ReprocessUserActivityImportsRequest,
+    responses(
+        (status = 202, description = "Queued XC training backfill for one user", body = ReprocessUserActivityImportsResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "User not found", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "admin",
+)]
+pub async fn backfill_user_xc_training(
+    _admin: AdminUserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+    Json(request): Json<ReprocessUserActivityImportsRequest>,
+) -> Result<(StatusCode, Json<ReprocessUserActivityImportsResponse>), AppError> {
+    users::Entity::find_by_id(request.user_id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found(format!("User {} was not found", request.user_id)))?;
+
+    let (status, message) =
+        queue_user_xc_goal_backfill(&state.db, &state.tasks, request.user_id).await?;
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(ReprocessUserActivityImportsResponse {
+            user_id: request.user_id,
+            status,
+            message,
         }),
     ))
 }

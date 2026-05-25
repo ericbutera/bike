@@ -185,6 +185,8 @@ export type UserPreferences = {
   xc_goal_target_date?: string | null;
   xc_goal_target_distance_meters?: number | null;
   xc_goal_target_elevation_gain_meters?: number | null;
+  xc_goal_backfill_status?: string | null;
+  xc_goal_backfill_completed_at?: string | null;
 };
 
 export type ActivityProcessingState = {
@@ -308,7 +310,10 @@ export type XcRideProgress = {
   route_family_key?: string | null;
   distance_meters?: number | null;
   elevation_gain_meters?: number | null;
+  moving_time_seconds?: number | null;
   z2_time_seconds: number;
+  z2_distance_meters?: number | null;
+  z2_average_speed_mps?: number | null;
   climbing_time_seconds: number;
   climbing_elevation_gain_meters?: number | null;
   aerobic_decoupling_percent?: number | null;
@@ -319,7 +324,11 @@ export type XcWeeklyProgressPoint = {
   ride_count: number;
   comparable_ride_count: number;
   z2_time_seconds: number;
+  z2_distance_meters: number;
+  average_z2_speed_mps?: number | null;
+  climbing_time_seconds: number;
   climbing_elevation_gain_meters: number;
+  climbing_vertical_rate_meters_per_hour?: number | null;
   average_aerobic_decoupling_percent?: number | null;
 };
 
@@ -495,6 +504,24 @@ export function useAdminBackfillAnalytics() {
       const result = await mutation.mutateAsync({});
 
       return result as AdminAnalyticsBackfillResponse;
+    },
+  };
+}
+
+export function useAdminBackfillUserXcTraining() {
+  const mutation = $api.useMutation("post", "/admin/training/xc-backfill");
+
+  return {
+    ...mutation,
+    backfillAsync: async (userId: number | string) => {
+      const numericUserId = Number(userId);
+      const result = await mutation.mutateAsync({
+        body: {
+          user_id: numericUserId,
+        },
+      });
+
+      return result as ReprocessUserActivityImportsResponse;
     },
   };
 }
@@ -1091,9 +1118,15 @@ export function useDisconnectStrava() {
   };
 }
 
-export function useUserPreferences(opts?: { enabled?: boolean }) {
+export function useUserPreferences(opts?: {
+  enabled?: boolean;
+  refetchIntervalMs?: number | false;
+}) {
   const response = $api.useQuery("get", "/preferences", {
-    options: { enabled: opts?.enabled ?? true },
+    options: {
+      enabled: opts?.enabled ?? true,
+      refetchInterval: opts?.refetchIntervalMs ?? false,
+    },
   });
 
   return {
@@ -1102,9 +1135,12 @@ export function useUserPreferences(opts?: { enabled?: boolean }) {
       unit_system: "mixed",
       estimated_ftp_watts: null,
       heart_rate_zone_bounds_bpm: null,
+      xc_goal_start_date: null,
       xc_goal_target_date: null,
       xc_goal_target_distance_meters: null,
       xc_goal_target_elevation_gain_meters: null,
+      xc_goal_backfill_status: null,
+      xc_goal_backfill_completed_at: null,
     }) as UserPreferences,
   };
 }
@@ -1166,6 +1202,9 @@ export function useUpdateUserPreferences() {
       });
       await queryClient.invalidateQueries({
         queryKey: ["get", "/training/xc-progress"],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["get", "/activity-imports/processing-state"],
       });
 
       return result as UserPreferences;

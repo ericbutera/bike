@@ -1,8 +1,10 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import XcGoalsProgressPanel from "../XcGoalsProgressPanel";
 
 const mocks = vi.hoisted(() => ({
+  useActivityProcessingState: vi.fn(),
   useCurrentUser: vi.fn(),
   useUpdateUserPreferences: vi.fn(),
   useUserPreferences: vi.fn(),
@@ -19,6 +21,7 @@ vi.mock("@ericbutera/kaleido", () => ({
 }));
 
 vi.mock("../../lib/queries", () => ({
+  useActivityProcessingState: mocks.useActivityProcessingState,
   useUpdateUserPreferences: mocks.useUpdateUserPreferences,
   useUserPreferences: mocks.useUserPreferences,
   useXcGoalProgress: mocks.useXcGoalProgress,
@@ -50,10 +53,31 @@ vi.mock("recharts", async () => {
   };
 });
 
+function renderPanel() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <XcGoalsProgressPanel />
+    </QueryClientProvider>,
+  );
+}
+
 describe("XcGoalsProgressPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
+    mocks.useActivityProcessingState.mockReturnValue({
+      data: null,
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
     mocks.useCurrentUser.mockReturnValue({
       user: { id: 1, email: "rider@example.com" },
       isLoading: false,
@@ -77,10 +101,17 @@ describe("XcGoalsProgressPanel", () => {
       data: {
         generated_at: "2026-05-21T12:00:00Z",
         event_goal: {
+          start_date: "2026-03-01",
           target_date: "2026-09-20",
           days_remaining: 122,
           target_distance_meters: 160934.4,
           target_elevation_gain_meters: 3962.4,
+          training_window_days: 204,
+          counted_ride_count: 12,
+          counted_distance_meters: 76800,
+          counted_distance_progress_percent: 47.7,
+          counted_elevation_gain_meters: 1860,
+          counted_elevation_gain_progress_percent: 46.9,
           best_distance_meters: 120000,
           best_distance_progress_percent: 74.6,
           best_distance_activity: {
@@ -200,7 +231,7 @@ describe("XcGoalsProgressPanel", () => {
   it("renders a sign-in prompt when the user is signed out", () => {
     mocks.useCurrentUser.mockReturnValue({ user: null, isLoading: false });
 
-    render(<XcGoalsProgressPanel />);
+    renderPanel();
 
     expect(screen.getByText("XC goals & progress")).toBeInTheDocument();
     expect(
@@ -209,7 +240,7 @@ describe("XcGoalsProgressPanel", () => {
   });
 
   it("renders XC goals, charts, recommendations, and recent rides", () => {
-    render(<XcGoalsProgressPanel />);
+    renderPanel();
 
     expect(screen.getByText("Event target")).toBeInTheDocument();
     expect(screen.getByDisplayValue("2026-09-20")).toBeInTheDocument();

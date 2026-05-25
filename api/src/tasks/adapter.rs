@@ -15,6 +15,7 @@ pub enum Task {
     RebuildFitnessFreshness(RebuildFitnessFreshnessTask),
     RebuildSegmentAnalytics(RebuildSegmentAnalyticsTask),
     ReprocessUserActivityImports(ReprocessUserActivityImportsTask),
+    BackfillUserXcTraining(BackfillUserXcTrainingTask),
     RegenerateUserSegments(RegenerateUserSegmentsTask),
     ActivityArchiveImport(ActivityArchiveImportTask),
     StravaSync(StravaSyncTask),
@@ -32,6 +33,11 @@ pub struct RebuildSegmentAnalyticsTask {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReprocessUserActivityImportsTask {
+    pub user_id: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackfillUserXcTrainingTask {
     pub user_id: i32,
 }
 
@@ -59,6 +65,7 @@ impl Task {
             Task::RebuildFitnessFreshness(_) => "rebuild_fitness_freshness",
             Task::RebuildSegmentAnalytics(_) => "rebuild_segment_analytics",
             Task::ReprocessUserActivityImports(_) => "reprocess_user_activity_imports",
+            Task::BackfillUserXcTraining(_) => "backfill_user_xc_training",
             Task::RegenerateUserSegments(_) => "regenerate_user_segments",
             Task::ActivityArchiveImport(_) => "activity_archive_import",
             Task::StravaSync(_) => "strava_sync",
@@ -172,6 +179,28 @@ impl TaskQueue {
         self.auth
             .inner()
             .enqueue_with_options(task_type, task, None, 1)
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+
+    pub async fn backfill_user_xc_training(&self, user_id: i32) -> Result<(), String> {
+        self.backfill_user_xc_training_with_options(user_id, None, 3)
+            .await
+    }
+
+    pub async fn backfill_user_xc_training_with_options(
+        &self,
+        user_id: i32,
+        scheduled_for: Option<chrono::DateTime<Utc>>,
+        max_attempts: i32,
+    ) -> Result<(), String> {
+        let task = Task::BackfillUserXcTraining(BackfillUserXcTrainingTask { user_id });
+        let task_type = task.task_type().to_string();
+
+        self.auth
+            .inner()
+            .enqueue_with_options(task_type, task, scheduled_for, max_attempts)
             .await
             .map(|_| ())
             .map_err(|error| error.to_string())

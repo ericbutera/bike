@@ -17,6 +17,8 @@ pub struct Model {
     pub xc_goal_target_date: Option<NaiveDate>,
     pub xc_goal_target_distance_meters: Option<f64>,
     pub xc_goal_target_elevation_gain_meters: Option<f64>,
+    pub xc_goal_backfill_status: Option<String>,
+    pub xc_goal_backfill_completed_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

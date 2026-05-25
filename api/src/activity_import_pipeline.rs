@@ -1,5 +1,7 @@
 use crate::activity_details::{derive_activity_detail_data, serialize_derived_activity_data};
-use crate::activity_lifecycle::refresh_activity_derived_state;
+use crate::activity_lifecycle::{
+    refresh_activity_derived_state, refresh_activity_derived_state_without_cache_rebuilds,
+};
 use crate::activity_training_analysis::rebuild_activity_training_analysis_cache;
 use crate::analytics::{
     mark_segment_activity_changes, mark_user_activity_change, mark_user_fitness_dirty,
@@ -53,6 +55,12 @@ pub enum PersistActivityUploadOutcome {
 pub enum ActivityUploadDeduplication {
     Enabled,
     Disabled,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReprocessCacheRefresh {
+    Immediate,
+    Deferred,
 }
 
 pub async fn persist_activity_upload(
@@ -215,13 +223,14 @@ pub async fn finalize_activity_import_batch(
     Ok(())
 }
 
-pub async fn reprocess_activity_from_import(
+async fn reprocess_activity_from_import_with_cache_refresh(
     db: &DatabaseConnection,
     uploads_dir: &str,
     user_id: i32,
     activity: activities::Model,
     activity_import: activity_imports::Model,
     training_profile: Option<&TrainingProfile>,
+    cache_refresh: ReprocessCacheRefresh,
 ) -> Result<ReprocessedActivityImport, AppError> {
     let bytes = tokio::fs::read(Path::new(uploads_dir).join(&activity_import.storage_path)).await?;
     let activity_draft = crate::activity_summary::summarize_activity_upload(
@@ -274,15 +283,71 @@ pub async fn reprocess_activity_from_import(
     active_model.derived_data_json = Set(Some(derived_data_json));
 
     let updated = active_model.update(db).await?;
-    let affected_segment_ids =
-        refresh_activity_derived_state(db, user_id, updated.id, &derived_data.route_points).await?;
-    rebuild_activity_training_analysis_cache(db, &[updated.id]).await?;
+    let affected_segment_ids = match cache_refresh {
+        ReprocessCacheRefresh::Immediate => {
+            refresh_activity_derived_state(db, user_id, updated.id, &derived_data.route_points)
+                .await?
+        }
+        ReprocessCacheRefresh::Deferred => {
+            refresh_activity_derived_state_without_cache_rebuilds(
+                db,
+                user_id,
+                updated.id,
+                &derived_data.route_points,
+            )
+            .await?
+        }
+    };
+
+    if cache_refresh == ReprocessCacheRefresh::Immediate {
+        rebuild_activity_training_analysis_cache(db, &[updated.id]).await?;
+    }
 
     Ok(ReprocessedActivityImport {
         activity: updated,
         affected_segment_ids,
         fitness_dirty_from_day: activity_draft.started_at.date_naive(),
     })
+}
+
+pub async fn reprocess_activity_from_import(
+    db: &DatabaseConnection,
+    uploads_dir: &str,
+    user_id: i32,
+    activity: activities::Model,
+    activity_import: activity_imports::Model,
+    training_profile: Option<&TrainingProfile>,
+) -> Result<ReprocessedActivityImport, AppError> {
+    reprocess_activity_from_import_with_cache_refresh(
+        db,
+        uploads_dir,
+        user_id,
+        activity,
+        activity_import,
+        training_profile,
+        ReprocessCacheRefresh::Immediate,
+    )
+    .await
+}
+
+pub async fn reprocess_activity_from_import_deferred_caches(
+    db: &DatabaseConnection,
+    uploads_dir: &str,
+    user_id: i32,
+    activity: activities::Model,
+    activity_import: activity_imports::Model,
+    training_profile: Option<&TrainingProfile>,
+) -> Result<ReprocessedActivityImport, AppError> {
+    reprocess_activity_from_import_with_cache_refresh(
+        db,
+        uploads_dir,
+        user_id,
+        activity,
+        activity_import,
+        training_profile,
+        ReprocessCacheRefresh::Deferred,
+    )
+    .await
 }
 
 pub fn validate_activity_format(filename: &str) -> Result<String, AppError> {
@@ -385,7 +450,9 @@ mod tests {
         segment_efforts, segments,
     };
     use crate::training_profile::TrainingProfile;
-    use sea_orm::{ConnectionTrait, Database, EntityTrait, PaginatorTrait, Schema};
+    use sea_orm::{
+        ColumnTrait, ConnectionTrait, Database, EntityTrait, PaginatorTrait, QueryFilter, Schema,
+    };
 
     async fn test_db() -> DatabaseConnection {
         let db = Database::connect("sqlite::memory:")
@@ -513,6 +580,110 @@ mod tests {
         assert_eq!(
             activity_imports::Entity::find().count(&db).await.unwrap(),
             2
+        );
+
+        let _ = std::fs::remove_dir_all(&uploads_dir);
+    }
+
+    #[tokio::test]
+    async fn immediate_reprocess_rebuilds_training_analysis() {
+        let db = test_db().await;
+        let uploads_dir = test_uploads_dir();
+        let training_profile = TrainingProfile::default();
+
+        let imported = match persist_activity_upload(
+            &db,
+            &uploads_dir,
+            "test-user",
+            1,
+            fit_upload(None),
+            "manual_upload",
+            ActivityUploadDeduplication::Enabled,
+            Some(&training_profile),
+        )
+        .await
+        .expect("import activity")
+        {
+            PersistActivityUploadOutcome::Imported(imported) => imported,
+            PersistActivityUploadOutcome::Duplicate(_) => panic!("expected imported activity"),
+        };
+
+        activity_training_analyses::Entity::delete_many()
+            .filter(activity_training_analyses::Column::ActivityId.eq(imported.activity.id))
+            .exec(&db)
+            .await
+            .expect("clear activity training analysis");
+
+        reprocess_activity_from_import(
+            &db,
+            &uploads_dir,
+            1,
+            imported.activity.clone(),
+            imported.import.clone(),
+            Some(&training_profile),
+        )
+        .await
+        .expect("reprocess activity with immediate cache refresh");
+
+        assert_eq!(
+            activity_training_analyses::Entity::find()
+                .filter(activity_training_analyses::Column::ActivityId.eq(imported.activity.id))
+                .count(&db)
+                .await
+                .expect("count activity training analyses"),
+            1,
+        );
+
+        let _ = std::fs::remove_dir_all(&uploads_dir);
+    }
+
+    #[tokio::test]
+    async fn deferred_reprocess_skips_immediate_training_analysis_rebuild() {
+        let db = test_db().await;
+        let uploads_dir = test_uploads_dir();
+        let training_profile = TrainingProfile::default();
+
+        let imported = match persist_activity_upload(
+            &db,
+            &uploads_dir,
+            "test-user",
+            1,
+            fit_upload(None),
+            "manual_upload",
+            ActivityUploadDeduplication::Enabled,
+            Some(&training_profile),
+        )
+        .await
+        .expect("import activity")
+        {
+            PersistActivityUploadOutcome::Imported(imported) => imported,
+            PersistActivityUploadOutcome::Duplicate(_) => panic!("expected imported activity"),
+        };
+
+        activity_training_analyses::Entity::delete_many()
+            .filter(activity_training_analyses::Column::ActivityId.eq(imported.activity.id))
+            .exec(&db)
+            .await
+            .expect("clear activity training analysis");
+
+        reprocess_activity_from_import_deferred_caches(
+            &db,
+            &uploads_dir,
+            1,
+            imported.activity.clone(),
+            imported.import.clone(),
+            Some(&training_profile),
+        )
+        .await
+        .expect("reprocess activity with deferred cache refresh");
+
+        assert_eq!(
+            activity_training_analyses::Entity::find()
+                .filter(activity_training_analyses::Column::ActivityId.eq(imported.activity.id))
+                .count(&db)
+                .await
+                .expect("count activity training analyses"),
+            0,
         );
 
         let _ = std::fs::remove_dir_all(&uploads_dir);
