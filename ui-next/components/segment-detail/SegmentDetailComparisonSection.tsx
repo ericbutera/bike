@@ -2,6 +2,7 @@
 
 import { faPause, faPlay, faXmark } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import Link from "next/link";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Area,
@@ -81,6 +82,34 @@ function formatTooltipDuration(value?: number | null) {
   }
 
   return formatTooltipSeconds(wholeSeconds, fractionalMilliseconds, false);
+}
+
+function sortComparisonRowsByLeader(comparisonRows: LiveComparisonRow[]) {
+  const fallbackIndexByEffortId = new Map(
+    comparisonRows.map((comparisonRow, index) => [
+      comparisonRow.effort.id,
+      index,
+    ]),
+  );
+
+  return [...comparisonRows].sort((left, right) => {
+    const progressDelta = (right.progress ?? -1) - (left.progress ?? -1);
+
+    if (Math.abs(progressDelta) > Number.EPSILON) {
+      return progressDelta;
+    }
+
+    const gapDelta = (right.gapSeconds ?? 0) - (left.gapSeconds ?? 0);
+
+    if (Math.abs(gapDelta) > Number.EPSILON) {
+      return gapDelta;
+    }
+
+    return (
+      (fallbackIndexByEffortId.get(left.effort.id) ?? 0) -
+      (fallbackIndexByEffortId.get(right.effort.id) ?? 0)
+    );
+  });
 }
 
 export function ComparisonGapChartTooltip({
@@ -497,31 +526,7 @@ function SelectedEffortsPanel({
   const athleteGridTemplateClassName =
     "[grid-template-columns:auto_minmax(0,1fr)_4.5rem_5rem_3.75rem_1rem] xl:[grid-template-columns:auto_minmax(0,1fr)_5.25rem_6.5rem_4.5rem_1.25rem]";
   const sortedComparisonRows = useMemo(() => {
-    const fallbackIndexByEffortId = new Map(
-      comparisonRows.map((comparisonRow, index) => [
-        comparisonRow.effort.id,
-        index,
-      ]),
-    );
-
-    return [...comparisonRows].sort((left, right) => {
-      const progressDelta = (right.progress ?? -1) - (left.progress ?? -1);
-
-      if (Math.abs(progressDelta) > Number.EPSILON) {
-        return progressDelta;
-      }
-
-      const gapDelta = (right.gapSeconds ?? 0) - (left.gapSeconds ?? 0);
-
-      if (Math.abs(gapDelta) > Number.EPSILON) {
-        return gapDelta;
-      }
-
-      return (
-        (fallbackIndexByEffortId.get(left.effort.id) ?? 0) -
-        (fallbackIndexByEffortId.get(right.effort.id) ?? 0)
-      );
-    });
+    return sortComparisonRowsByLeader(comparisonRows);
   }, [comparisonRows]);
   const sortedComparisonRowOrder = useMemo(
     () =>
@@ -766,6 +771,7 @@ type SegmentDetailComparisonSectionProps = {
   focusedEffortId: number | null;
   referenceEffortId: number | null;
   referenceSummaryLabel: string;
+  raceViewerHref: string | null;
   playbackLimitSeconds: number;
   playbackSeconds: number;
   isPlaying: boolean;
@@ -787,6 +793,7 @@ export default function SegmentDetailComparisonSection({
   focusedEffortId,
   referenceEffortId,
   referenceSummaryLabel,
+  raceViewerHref,
   playbackLimitSeconds,
   playbackSeconds,
   isPlaying,
@@ -812,9 +819,17 @@ export default function SegmentDetailComparisonSection({
               rate update on every frame.
             </p>
           </div>
-          <span className="badge badge-outline whitespace-nowrap">
-            Ref: {referenceSummaryLabel}
-          </span>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <span className="badge badge-outline whitespace-nowrap">
+              Ref: {referenceSummaryLabel}
+            </span>
+
+            {raceViewerHref ? (
+              <Link href={raceViewerHref} className="btn btn-sm btn-outline">
+                Open race viewer
+              </Link>
+            ) : null}
+          </div>
         </div>
 
         <div className="overflow-hidden border border-base-300 bg-base-200">
@@ -842,7 +857,7 @@ export default function SegmentDetailComparisonSection({
           </div>
 
           <div className="flex flex-wrap items-center gap-3 border-t border-base-300 bg-base-100 px-3 py-3 sm:px-4">
-            <div className="flex min-w-0 flex-[999] items-center gap-3">
+            <div className="flex min-w-0 flex-1 items-center gap-3 max-[420px]:gap-2">
               <button
                 type="button"
                 className="btn btn-sm btn-circle shrink-0 border-0 bg-orange-500 text-white hover:bg-orange-600"
@@ -889,13 +904,13 @@ export default function SegmentDetailComparisonSection({
                 }}
               />
 
-              <span className="shrink-0 rounded-full border border-base-300 px-2.5 py-1 text-xs font-semibold tabular-nums text-base-content/80">
+              <span className="shrink-0 rounded-full border border-base-300 px-2.5 py-1 text-xs font-semibold tabular-nums text-base-content/80 max-[420px]:hidden">
                 {formatDuration(Math.round(playbackSeconds))} /{" "}
                 {formatDuration(playbackLimitSeconds)}
               </span>
             </div>
 
-            <div className="join shrink-0">
+            <div className="join shrink-0 max-[420px]:hidden">
               {PLAYBACK_PACE_OPTIONS.map((option) => (
                 <button
                   key={option.key}

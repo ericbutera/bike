@@ -148,6 +148,29 @@ export default function SegmentDetailPanel({
   const builderEditHref = segment?.builder_source
     ? `/segments/builder?segmentId=${segment.id}`
     : null;
+  const raceViewerHref = useMemo(() => {
+    if (!segment?.id) {
+      return null;
+    }
+
+    const searchParams = new URLSearchParams();
+
+    if (selectedEffortIds.length > 0) {
+      searchParams.set("efforts", selectedEffortIds.join(","));
+    }
+
+    if (referenceEffortId != null) {
+      searchParams.set("ref", String(referenceEffortId));
+    }
+
+    if (playbackPace !== "auto") {
+      searchParams.set("pace", playbackPace);
+    }
+
+    const queryString = searchParams.toString();
+
+    return `/segments/${segment.id}/race${queryString ? `?${queryString}` : ""}`;
+  }, [playbackPace, referenceEffortId, segment?.id, selectedEffortIds]);
   const referenceSummaryLabel = referenceEffort
     ? `${referenceEffort.rider_name} · ${formatDuration(referenceEffort.duration_seconds)}`
     : "No reference ride";
@@ -461,6 +484,7 @@ export default function SegmentDetailPanel({
         focusedEffortId={focusedEffortId}
         referenceEffortId={referenceEffortId}
         referenceSummaryLabel={referenceSummaryLabel}
+        raceViewerHref={raceViewerHref}
         playbackLimitSeconds={playbackLimitSeconds}
         playbackSeconds={playbackSeconds}
         isPlaying={isPlaying}

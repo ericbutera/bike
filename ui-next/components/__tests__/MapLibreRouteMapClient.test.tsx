@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import MapLibreRouteMapClient from "../MapLibreRouteMapClient";
 
 const mapMocks = vi.hoisted(() => ({
+  easeTo: vi.fn(),
   fitBounds: vi.fn(),
   jumpTo: vi.fn(),
   setStyle: vi.fn(),
@@ -51,6 +52,7 @@ vi.mock("maplibre-gl", () => {
         off: vi.fn(),
         on: vi.fn(),
         getCanvas: vi.fn(() => canvas),
+        easeTo: mapMocks.easeTo,
         fitBounds: mapMocks.fitBounds,
         getCenter: vi.fn(() => ({ lng: -122, lat: 45 })),
         getZoom: vi.fn(() => 13),
@@ -149,5 +151,193 @@ describe("MapLibreRouteMapClient", () => {
 
     expect(mapMocks.fitBounds).toHaveBeenCalledTimes(1);
     expect(mapMocks.addControl).toHaveBeenCalledTimes(1);
+  });
+
+  it("jumps to follow mode initially, then eases leader tracking without refitting bounds", async () => {
+    const routePoints = [
+      { elapsed_seconds: 0, latitude: 45.0, longitude: -122.0 },
+      { elapsed_seconds: 120, latitude: 45.004, longitude: -121.996 },
+      { elapsed_seconds: 240, latitude: 45.008, longitude: -121.992 },
+    ];
+
+    const { rerender } = render(
+      <MapLibreRouteMapClient
+        routePoints={routePoints}
+        movingMarkers={[
+          {
+            id: "1",
+            point: routePoints[0],
+            color: "#0f766e",
+          },
+        ]}
+        followViewport={{ point: routePoints[0], zoom: 19 }}
+        ariaLabel="Segment comparison map"
+        emptyMessage="Segment route geometry is not available yet."
+        fitBoundsPadding={24}
+        fitBoundsMaxZoom={18}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mapMocks.jumpTo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          center: [-122.0, 45.0],
+          zoom: 19,
+        }),
+      );
+    });
+
+    expect(mapMocks.fitBounds).toHaveBeenCalledTimes(1);
+    expect(mapMocks.easeTo).not.toHaveBeenCalled();
+
+    rerender(
+      <MapLibreRouteMapClient
+        routePoints={routePoints}
+        movingMarkers={[
+          {
+            id: "1",
+            point: routePoints[1],
+            color: "#0f766e",
+          },
+        ]}
+        followViewport={{ point: routePoints[1], zoom: 19 }}
+        ariaLabel="Segment comparison map"
+        emptyMessage="Segment route geometry is not available yet."
+        fitBoundsPadding={24}
+        fitBoundsMaxZoom={18}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mapMocks.easeTo).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          center: [-121.996, 45.004],
+          zoom: 19,
+          duration: 160,
+          easing: expect.any(Function),
+        }),
+      );
+    });
+
+    expect(mapMocks.fitBounds).toHaveBeenCalledTimes(1);
+  });
+
+  it("animates markers along route progress instead of cutting across the path", async () => {
+    const animationCallbacks: FrameRequestCallback[] = [];
+    const performanceNowSpy = vi.spyOn(performance, "now");
+    let nowMs = 0;
+
+    performanceNowSpy.mockImplementation(() => nowMs);
+    vi.stubGlobal("requestAnimationFrame", ((
+      callback: FrameRequestCallback,
+    ) => {
+      animationCallbacks.push(callback);
+      return animationCallbacks.length;
+    }) as typeof requestAnimationFrame);
+    vi.stubGlobal(
+      "cancelAnimationFrame",
+      vi.fn() as typeof cancelAnimationFrame,
+    );
+
+    try {
+      const routePoints = [
+        {
+          elapsed_seconds: 0,
+          latitude: 0,
+          longitude: 0,
+          distance_meters: 0,
+        },
+        {
+          elapsed_seconds: 60,
+          latitude: 1,
+          longitude: 0,
+          distance_meters: 100,
+        },
+        {
+          elapsed_seconds: 120,
+          latitude: 1,
+          longitude: 1,
+          distance_meters: 200,
+        },
+      ];
+
+      const { rerender } = render(
+        <MapLibreRouteMapClient
+          routePoints={routePoints}
+          movingMarkers={[
+            {
+              id: "1",
+              point: {
+                elapsed_seconds: 30,
+                latitude: 0.5,
+                longitude: 0,
+                distance_meters: 50,
+              },
+              progress: 0.25,
+              color: "#0f766e",
+            },
+          ]}
+          movingMarkerTransitionMs={160}
+          ariaLabel="Segment comparison map"
+          emptyMessage="Segment route geometry is not available yet."
+          fitBoundsPadding={24}
+          fitBoundsMaxZoom={18}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(
+          mapMocks.sources.get("activity-route-markers")?.setData,
+        ).toHaveBeenCalledTimes(1);
+      });
+
+      animationCallbacks.length = 0;
+
+      nowMs = 100;
+
+      rerender(
+        <MapLibreRouteMapClient
+          routePoints={routePoints}
+          movingMarkers={[
+            {
+              id: "1",
+              point: {
+                elapsed_seconds: 90,
+                latitude: 1,
+                longitude: 0.5,
+                distance_meters: 150,
+              },
+              progress: 0.75,
+              color: "#0f766e",
+            },
+          ]}
+          movingMarkerTransitionMs={160}
+          ariaLabel="Segment comparison map"
+          emptyMessage="Segment route geometry is not available yet."
+          fitBoundsPadding={24}
+          fitBoundsMaxZoom={18}
+        />,
+      );
+
+      expect(animationCallbacks.length).toBe(1);
+
+      const nextAnimation = animationCallbacks[0];
+
+      expect(nextAnimation).toBeDefined();
+
+      nextAnimation?.(150);
+
+      const markerSetDataCalls = mapMocks.sources.get("activity-route-markers")
+        ?.setData.mock.calls;
+      const intermediateSourceData = markerSetDataCalls?.at(-1)?.[0];
+      const coordinates = intermediateSourceData?.features?.[0]?.geometry
+        ?.coordinates as [number, number];
+
+      expect(coordinates[0]).toBeCloseTo(0, 5);
+      expect(coordinates[1]).toBeCloseTo(1, 5);
+    } finally {
+      performanceNowSpy.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 });

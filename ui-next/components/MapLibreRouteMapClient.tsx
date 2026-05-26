@@ -16,6 +16,7 @@ import { config } from "../lib/config";
 import { type ActivityRoutePoint } from "../lib/queries";
 import {
   type RouteMapBasemap,
+  type RouteMapFollowViewportBehavior,
   type RouteMapProps,
   type RouteMovingMarker,
   type RouteOverlay,
@@ -190,6 +191,9 @@ const MARKER_LAYER_ID = "activity-route-markers-circle";
 const MARKER_LABEL_LAYER_ID = "activity-route-markers-label";
 const DEFAULT_FIT_BOUNDS_PADDING = 56;
 const DEFAULT_FIT_BOUNDS_MAX_ZOOM = 14;
+const FOLLOW_VIEWPORT_EASE_DURATION_MS = 160;
+const DEFAULT_MOVING_MARKER_TRANSITION_MS = 0;
+const MIN_MARKER_ANIMATION_FRAME_MS = 1000 / 30;
 const EMPTY_OVERLAYS: RouteOverlay[] = [];
 const EMPTY_MOVING_MARKERS: RouteMovingMarker[] = [];
 
@@ -252,6 +256,198 @@ function buildMarkerFeature(
       type: "Point",
       coordinates: [point.longitude, point.latitude],
     },
+  };
+}
+
+function interpolateOptionalNumber(
+  previousValue: number | null | undefined,
+  currentValue: number | null | undefined,
+  progress: number,
+) {
+  if (previousValue == null && currentValue == null) {
+    return null;
+  }
+
+  if (previousValue == null) {
+    return currentValue ?? null;
+  }
+
+  if (currentValue == null) {
+    return previousValue;
+  }
+
+  return previousValue + (currentValue - previousValue) * progress;
+}
+
+function distanceRange(points: ActivityRoutePoint[] | null | undefined) {
+  if (!points || points.length < 2) {
+    return null;
+  }
+
+  const firstDistance = points[0]?.distance_meters;
+  const lastDistance = points.at(-1)?.distance_meters;
+  const hasDistanceRange =
+    typeof firstDistance === "number" &&
+    typeof lastDistance === "number" &&
+    lastDistance > firstDistance &&
+    points.every((point) => typeof point.distance_meters === "number");
+
+  if (!hasDistanceRange) {
+    return null;
+  }
+
+  return {
+    firstDistance,
+    lastDistance,
+    totalDistance: lastDistance - firstDistance,
+  };
+}
+
+function clampProgress(value: number) {
+  return Math.min(Math.max(value, 0), 1);
+}
+
+function interpolateRoutePointByProgress(
+  points: ActivityRoutePoint[] | null | undefined,
+  progress: number,
+) {
+  if (!points || points.length === 0) {
+    return null;
+  }
+
+  if (points.length === 1) {
+    return points[0];
+  }
+
+  const clampedProgress = clampProgress(progress);
+
+  if (clampedProgress <= 0) {
+    return points[0];
+  }
+
+  const range = distanceRange(points);
+  const firstDistance = range?.firstDistance;
+  const lastDistance = range?.lastDistance;
+  const hasDistanceRange = Boolean(range);
+  const targetMeasure = hasDistanceRange
+    ? (firstDistance as number) +
+      clampedProgress * ((lastDistance as number) - (firstDistance as number))
+    : clampedProgress * (points.length - 1);
+
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    const previousMeasure = hasDistanceRange
+      ? (previous.distance_meters as number)
+      : index - 1;
+    const currentMeasure = hasDistanceRange
+      ? (current.distance_meters as number)
+      : index;
+
+    if (targetMeasure <= currentMeasure) {
+      const span = Math.max(currentMeasure - previousMeasure, Number.EPSILON);
+      const localProgress = (targetMeasure - previousMeasure) / span;
+
+      return {
+        ...current,
+        elapsed_seconds:
+          previous.elapsed_seconds +
+          (current.elapsed_seconds - previous.elapsed_seconds) * localProgress,
+        latitude:
+          previous.latitude +
+          (current.latitude - previous.latitude) * localProgress,
+        longitude:
+          previous.longitude +
+          (current.longitude - previous.longitude) * localProgress,
+        distance_meters: hasDistanceRange
+          ? targetMeasure - (firstDistance as number)
+          : interpolateOptionalNumber(
+              previous.distance_meters,
+              current.distance_meters,
+              localProgress,
+            ),
+        elevation_meters: interpolateOptionalNumber(
+          previous.elevation_meters,
+          current.elevation_meters,
+          localProgress,
+        ),
+        speed_mps: interpolateOptionalNumber(
+          previous.speed_mps,
+          current.speed_mps,
+          localProgress,
+        ),
+        heart_rate_bpm: interpolateOptionalNumber(
+          previous.heart_rate_bpm,
+          current.heart_rate_bpm,
+          localProgress,
+        ),
+        cadence_rpm: interpolateOptionalNumber(
+          previous.cadence_rpm,
+          current.cadence_rpm,
+          localProgress,
+        ),
+        power_watts: interpolateOptionalNumber(
+          previous.power_watts,
+          current.power_watts,
+          localProgress,
+        ),
+      };
+    }
+  }
+
+  return points.at(-1) ?? null;
+}
+
+function buildMarkerSourceData(
+  movingMarkers: RouteMovingMarker[],
+): FeatureCollection<Point> {
+  return {
+    type: "FeatureCollection",
+    features: movingMarkers
+      .filter((marker) => marker.point)
+      .map((marker) =>
+        buildMarkerFeature(
+          marker.id,
+          marker.point as ActivityRoutePoint,
+          marker.color,
+          marker.opacity ?? 1,
+          marker.label ?? null,
+        ),
+      ),
+  };
+}
+
+function interpolateMovingMarker(
+  routePoints: ActivityRoutePoint[] | null | undefined,
+  previousMarker: RouteMovingMarker,
+  nextMarker: RouteMovingMarker,
+  animationProgress: number,
+): RouteMovingMarker {
+  if (
+    !previousMarker.point ||
+    !nextMarker.point ||
+    typeof previousMarker.progress !== "number" ||
+    typeof nextMarker.progress !== "number"
+  ) {
+    return nextMarker;
+  }
+
+  const interpolatedProgress =
+    previousMarker.progress +
+    (nextMarker.progress - previousMarker.progress) * animationProgress;
+  const interpolatedPoint = interpolateRoutePointByProgress(
+    routePoints,
+    interpolatedProgress,
+  );
+
+  if (!interpolatedPoint) {
+    return nextMarker;
+  }
+
+  return {
+    ...nextMarker,
+    progress: interpolatedProgress,
+    point: interpolatedPoint,
   };
 }
 
@@ -481,6 +677,10 @@ export default function MapLibreRouteMapClient({
   routePoints,
   overlays: overlaysProp,
   movingMarkers: movingMarkersProp,
+  movingMarkerTransitionMs = DEFAULT_MOVING_MARKER_TRANSITION_MS,
+  followViewport = null,
+  followViewportBehavior = "ease",
+  layerPickerClassName,
   showBaseTiles = true,
   interactive = true,
   showZoomControls = false,
@@ -494,6 +694,10 @@ export default function MapLibreRouteMapClient({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const resizeFrameRef = useRef<number | null>(null);
+  const markerAnimationFrameRef = useRef<number | null>(null);
+  const lastMovingMarkerUpdateAtRef = useRef<number | null>(null);
+  const renderedMovingMarkersRef = useRef<RouteMovingMarker[]>([]);
+  const lastFollowViewportKeyRef = useRef<string | null>(null);
   const lastFittedRoutePointsRef = useRef<
     ActivityRoutePoint[] | null | undefined
   >(null);
@@ -632,20 +836,7 @@ export default function MapLibreRouteMapClient({
   );
 
   const markerSourceData = useMemo<FeatureCollection<Point>>(
-    () => ({
-      type: "FeatureCollection",
-      features: movingMarkers
-        .filter((marker) => marker.point)
-        .map((marker) =>
-          buildMarkerFeature(
-            marker.id,
-            marker.point as ActivityRoutePoint,
-            marker.color,
-            marker.opacity ?? 1,
-            marker.label ?? null,
-          ),
-        ),
-    }),
+    () => buildMarkerSourceData(movingMarkers),
     [movingMarkers],
   );
 
@@ -728,6 +919,10 @@ export default function MapLibreRouteMapClient({
         cancelAnimationFrame(resizeFrameRef.current);
         resizeFrameRef.current = null;
       }
+      if (markerAnimationFrameRef.current != null) {
+        cancelAnimationFrame(markerAnimationFrameRef.current);
+        markerAnimationFrameRef.current = null;
+      }
       map.remove();
       mapRef.current = null;
       overlayClickHandlerRef.current = null;
@@ -735,7 +930,10 @@ export default function MapLibreRouteMapClient({
       overlayMouseLeaveHandlerRef.current = null;
       appliedStyleKeyRef.current = null;
       preservedViewStateRef.current = null;
+      lastMovingMarkerUpdateAtRef.current = null;
+      renderedMovingMarkersRef.current = [];
       shouldRestoreViewRef.current = false;
+      lastFollowViewportKeyRef.current = null;
       lastFittedRoutePointsRef.current = null;
       hasFittedInitialViewRef.current = false;
     };
@@ -890,9 +1088,125 @@ export default function MapLibreRouteMapClient({
       }
 
       ensureMapSourcesAndLayers(map, showBaseTiles);
-      (map.getSource(MARKER_SOURCE_ID) as GeoJSONSource).setData(
-        markerSourceData,
+      const markerSource = map.getSource(MARKER_SOURCE_ID) as GeoJSONSource;
+
+      if (markerAnimationFrameRef.current != null) {
+        cancelAnimationFrame(markerAnimationFrameRef.current);
+        markerAnimationFrameRef.current = null;
+      }
+
+      const now = performance.now();
+      const previousMarkersById = new Map(
+        renderedMovingMarkersRef.current
+          .filter((marker) => marker.point)
+          .map((marker) => [marker.id, marker]),
       );
+      const previousMarkerUpdateAt = lastMovingMarkerUpdateAtRef.current;
+      const keyframeIntervalMs =
+        previousMarkerUpdateAt == null
+          ? 0
+          : Math.max(now - previousMarkerUpdateAt, 0);
+      const transitionMs = Math.min(
+        keyframeIntervalMs,
+        Math.max(movingMarkerTransitionMs, 0),
+      );
+      const canAnimateMarkers =
+        transitionMs > 0 &&
+        (routePoints?.length ?? 0) >= 2 &&
+        movingMarkers.some((marker) => {
+          const previousMarker = previousMarkersById.get(marker.id);
+
+          return (
+            previousMarker?.point != null &&
+            marker.point != null &&
+            typeof previousMarker.progress === "number" &&
+            typeof marker.progress === "number"
+          );
+        });
+
+      lastMovingMarkerUpdateAtRef.current = now;
+
+      if (!canAnimateMarkers) {
+        markerSource.setData(markerSourceData);
+        renderedMovingMarkersRef.current = movingMarkers;
+      } else if (transitionMs < MIN_MARKER_ANIMATION_FRAME_MS) {
+        markerSource.setData(markerSourceData);
+        renderedMovingMarkersRef.current = movingMarkers;
+      } else {
+        const animationStartedAt = now;
+
+        const step = (timestamp: number) => {
+          const progress = Math.min(
+            Math.max((timestamp - animationStartedAt) / transitionMs, 0),
+            1,
+          );
+          const interpolatedMarkers = movingMarkers.map((marker) => {
+            const previousMarker = previousMarkersById.get(marker.id);
+
+            if (!previousMarker) {
+              return marker;
+            }
+
+            return interpolateMovingMarker(
+              routePoints,
+              previousMarker,
+              marker,
+              progress,
+            );
+          });
+
+          markerSource.setData(buildMarkerSourceData(interpolatedMarkers));
+          renderedMovingMarkersRef.current = interpolatedMarkers;
+
+          if (progress >= 1) {
+            renderedMovingMarkersRef.current = movingMarkers;
+            markerAnimationFrameRef.current = null;
+            return;
+          }
+
+          markerAnimationFrameRef.current = requestAnimationFrame(step);
+        };
+
+        markerAnimationFrameRef.current = requestAnimationFrame(step);
+      }
+
+      if (!followViewport?.point) {
+        lastFollowViewportKeyRef.current = null;
+        return;
+      }
+
+      const nextFollowViewportKey = [
+        followViewport.point.longitude,
+        followViewport.point.latitude,
+        followViewport.zoom,
+      ].join(":");
+
+      if (lastFollowViewportKeyRef.current === nextFollowViewportKey) {
+        return;
+      }
+
+      const nextView = {
+        center: [
+          followViewport.point.longitude,
+          followViewport.point.latitude,
+        ] as [number, number],
+        zoom: followViewport.zoom,
+      };
+
+      if (
+        followViewportBehavior === "jump" ||
+        lastFollowViewportKeyRef.current == null
+      ) {
+        map.jumpTo(nextView);
+      } else {
+        map.easeTo({
+          ...nextView,
+          duration: FOLLOW_VIEWPORT_EASE_DURATION_MS,
+          easing: (value) => 1 - (1 - value) * (1 - value),
+        });
+      }
+
+      lastFollowViewportKeyRef.current = nextFollowViewportKey;
     };
 
     if (map.isStyleLoaded()) {
@@ -903,14 +1217,32 @@ export default function MapLibreRouteMapClient({
     map.once("load", syncMarkers);
 
     return () => {
+      if (markerAnimationFrameRef.current != null) {
+        cancelAnimationFrame(markerAnimationFrameRef.current);
+        markerAnimationFrameRef.current = null;
+      }
       map.off("load", syncMarkers);
     };
-  }, [markerSourceData, mapStyleKey, showBaseTiles]);
+  }, [
+    followViewport,
+    followViewportBehavior,
+    markerSourceData,
+    mapStyleKey,
+    movingMarkerTransitionMs,
+    movingMarkers,
+    routePoints,
+    showBaseTiles,
+  ]);
 
   return (
     <div className="relative h-full w-full">
       {canShowLayerPicker ? (
-        <div className="absolute left-3 top-3 z-10 flex flex-wrap gap-2 rounded-box border border-base-300/80 bg-base-100/90 p-1 shadow-sm backdrop-blur">
+        <div
+          className={
+            layerPickerClassName ??
+            "absolute left-3 top-3 z-10 flex flex-wrap gap-2 rounded-box border border-base-300/80 bg-base-100/90 p-1 shadow-sm backdrop-blur"
+          }
+        >
           {availableBasemaps.map((basemap) => {
             const isActive = basemap === selectedBasemap;
 

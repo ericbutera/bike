@@ -657,6 +657,37 @@ describe("SegmentDetailPanel", () => {
     expect(props?.fitBoundsMaxZoom).toBe(18);
   });
 
+  it("keeps the embedded map in overview mode and links to the race viewer", () => {
+    render(<SegmentDetailPanel segmentId={14} />);
+
+    expect(
+      screen.queryByRole("button", { name: "Overview" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Leader follow" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Open race viewer" }),
+    ).toHaveAttribute("href", "/segments/14/race?efforts=1%2C2&ref=1");
+    expect(
+      mocks.renderMapLibreRouteMap.mock.lastCall?.[0]?.followViewport,
+    ).toBeUndefined();
+  });
+
+  it("hides timer and pace controls on very narrow screens", () => {
+    render(<SegmentDetailPanel segmentId={14} />);
+
+    const timeline = screen.getByRole("slider", { name: "Playback timeline" });
+    const timerChip =
+      timeline.parentElement?.querySelector("span.rounded-full");
+    const paceControls = screen.getByRole("button", {
+      name: "Slow",
+    }).parentElement;
+
+    expect(timerChip).toHaveClass("max-[420px]:hidden");
+    expect(paceControls).toHaveClass("max-[420px]:hidden");
+  });
+
   it("does not dim other comparison rows when a reference ride is selected", async () => {
     const user = userEvent.setup();
 
