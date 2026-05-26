@@ -328,6 +328,11 @@ describe("SegmentDetailPanel", () => {
     expect(
       screen.getByRole("img", { name: "Segment comparison chart" }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Slow" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Detail" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/\btarget\b/i)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "5m 12s" })).toHaveAttribute(
       "href",
       "/activities/7",
@@ -434,14 +439,14 @@ describe("SegmentDetailPanel", () => {
     expect(screen.getByText("2m 00s")).toBeInTheDocument();
     expect(screen.queryByText("elapsed")).not.toBeInTheDocument();
     expect(screen.queryByText("vs ref")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Detail" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Slow" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Auto" })).toHaveClass(
       "btn-neutral",
     );
-    expect(screen.getByText("Auto 25s target")).toBeInTheDocument();
+    expect(screen.queryByText(/\btarget\b/i)).not.toBeInTheDocument();
   });
 
-  it("caps auto playback target for long reference rides", () => {
+  it("hides the playback target helper badge for long reference rides", () => {
     const segment = makeSegment();
 
     segment.efforts = [
@@ -466,7 +471,10 @@ describe("SegmentDetailPanel", () => {
 
     render(<SegmentDetailPanel segmentId={14} />);
 
-    expect(screen.getByText("Auto 45s target")).toBeInTheDocument();
+    expect(screen.queryByText(/\btarget\b/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Auto" })).toHaveClass(
+      "btn-neutral",
+    );
   });
 
   it("keeps non-reference rides from showing live metrics after they finish", () => {
@@ -836,5 +844,111 @@ describe("SegmentDetailPanel", () => {
     expect(within(rideTwoRow).getByText("55s")).toBeInTheDocument();
     expect(within(rideTwoRow).getByText("20.9 km/h")).toBeInTheDocument();
     expect(within(rideTwoRow).getByText("118 bpm")).toBeInTheDocument();
+  });
+
+  it("truncates tooltip times to three decimal places", () => {
+    const selectedRows = [
+      {
+        color: "#2563eb",
+        markerLabel: "1",
+        effort: {
+          id: 201,
+          rider_user_id: 1,
+          activity_id: 81,
+          activity_title: "Reference Ride",
+          rider_name: "Eric Butera",
+          activity_started_at: "2026-05-10T12:00:00Z",
+          effort_index: 1,
+          duration_seconds: 42,
+          start_elapsed_seconds: 0,
+          end_elapsed_seconds: 42,
+          distance_meters: 1000,
+          route_points: [
+            makeRoutePoint(0, 45.0, -122.0, {
+              distance_meters: 0,
+              elevation_meters: 10,
+              speed_mps: 9.476,
+              heart_rate_bpm: 138,
+            }),
+            makeRoutePoint(41.688658415029664, 45.01, -121.99, {
+              distance_meters: 1000,
+              elevation_meters: 30,
+              speed_mps: 9.476,
+              heart_rate_bpm: 144,
+            }),
+          ],
+        },
+      },
+      {
+        color: "#dc2626",
+        markerLabel: "2",
+        effort: {
+          id: 202,
+          rider_user_id: 2,
+          activity_id: 82,
+          activity_title: "Hill Attack",
+          rider_name: "Casey Fast",
+          activity_started_at: "2026-05-12T08:00:00Z",
+          effort_index: 1,
+          duration_seconds: 39,
+          start_elapsed_seconds: 0,
+          end_elapsed_seconds: 39,
+          distance_meters: 1000,
+          route_points: [
+            makeRoutePoint(0, 45.0, -122.0, {
+              distance_meters: 0,
+              elevation_meters: 12,
+              speed_mps: 9.476,
+              heart_rate_bpm: 140,
+            }),
+            makeRoutePoint(39.000408945136748, 45.01, -121.99, {
+              distance_meters: 1000,
+              elevation_meters: 28,
+              speed_mps: 9.476,
+              heart_rate_bpm: 142,
+            }),
+          ],
+        },
+      },
+    ];
+    const tooltipRow = {
+      progress: 0.5,
+      distanceMeters: 500,
+      elevation: 20,
+    };
+
+    render(
+      <ComparisonGapChartTooltip
+        active
+        label={500}
+        payload={[
+          {
+            dataKey: "elevation",
+            value: 20,
+            payload: tooltipRow,
+          },
+          {
+            dataKey: "effort_201",
+            value: 0,
+            payload: tooltipRow,
+          },
+          {
+            dataKey: "effort_202",
+            value: 5,
+            payload: tooltipRow,
+          },
+        ]}
+        referenceEffort={selectedRows[0].effort}
+        selectedRows={selectedRows}
+        unitSystem="imperial"
+      />,
+    );
+
+    expect(screen.getByText("Time 20.844s")).toBeInTheDocument();
+
+    const rideTwoRow = screen.getByLabelText("Ride 2 tooltip row");
+    expect(within(rideTwoRow).getByText("19.500s")).toBeInTheDocument();
+    expect(within(rideTwoRow).getByText("21.2 mph")).toBeInTheDocument();
+    expect(within(rideTwoRow).getByText("141 bpm")).toBeInTheDocument();
   });
 });

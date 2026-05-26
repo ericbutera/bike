@@ -465,7 +465,6 @@ export default function SegmentDetailPanel({
         playbackSeconds={playbackSeconds}
         isPlaying={isPlaying}
         playbackPace={playbackPace}
-        targetPlaybackDurationSeconds={targetPlaybackDurationSeconds}
         unitSystem={unitSystem}
         onHoverEffort={setHoveredEffortId}
         onTogglePinnedEffort={togglePinnedEffort}

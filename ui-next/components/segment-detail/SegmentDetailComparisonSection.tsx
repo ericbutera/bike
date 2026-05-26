@@ -43,6 +43,46 @@ import {
 } from "../../lib/segmentDetail";
 import MapLibreRouteMap from "../MapLibreRouteMap";
 
+function formatTooltipSeconds(
+  wholeSeconds: number,
+  fractionalMilliseconds: number,
+  padToTwoDigits: boolean,
+) {
+  const secondsText = padToTwoDigits
+    ? String(wholeSeconds).padStart(2, "0")
+    : String(wholeSeconds);
+
+  if (fractionalMilliseconds <= 0) {
+    return `${secondsText}s`;
+  }
+
+  return `${secondsText}.${String(fractionalMilliseconds).padStart(3, "0")}s`;
+}
+
+function formatTooltipDuration(value?: number | null) {
+  if (value == null || value <= 0) {
+    return "--";
+  }
+
+  const truncatedMilliseconds = Math.trunc(value * 1000 + Number.EPSILON);
+  const hours = Math.floor(truncatedMilliseconds / 3_600_000);
+  const minutes = Math.floor((truncatedMilliseconds % 3_600_000) / 60_000);
+
+  if (hours > 0) {
+    return `${hours}h ${String(minutes).padStart(2, "0")}m`;
+  }
+
+  const secondMilliseconds = truncatedMilliseconds % 60_000;
+  const wholeSeconds = Math.floor(secondMilliseconds / 1000);
+  const fractionalMilliseconds = secondMilliseconds % 1000;
+
+  if (minutes > 0) {
+    return `${minutes}m ${formatTooltipSeconds(wholeSeconds, fractionalMilliseconds, true)}`;
+  }
+
+  return formatTooltipSeconds(wholeSeconds, fractionalMilliseconds, false);
+}
+
 export function ComparisonGapChartTooltip({
   active,
   label,
@@ -90,7 +130,7 @@ export function ComparisonGapChartTooltip({
     <div className="max-w-[26rem] border border-base-300 bg-base-100 px-3 py-3 shadow-lg">
       <div className="flex flex-wrap gap-2 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-base-content/60">
         <span className="border border-base-300 bg-base-200/70 px-2 py-1">
-          Time {formatDuration(referencePoint?.elapsed_seconds ?? null)}
+          Time {formatTooltipDuration(referencePoint?.elapsed_seconds ?? null)}
         </span>
         <span className="border border-base-300 bg-base-200/70 px-2 py-1">
           Elev {formatElevation(elevationValue, unitSystem)}
@@ -123,7 +163,9 @@ export function ComparisonGapChartTooltip({
                 #{selectedRow.markerLabel}
               </span>
               <span>
-                {formatDuration(comparisonPoint?.elapsed_seconds ?? null)}
+                {formatTooltipDuration(
+                  comparisonPoint?.elapsed_seconds ?? null,
+                )}
               </span>
               <span aria-hidden className="text-base-content/35">
                 /
@@ -452,8 +494,8 @@ function SelectedEffortsPanel({
   const rowRefs = useRef(new Map<number, HTMLLIElement>());
   const previousRowTopByEffortIdRef = useRef(new Map<number, number>());
   const animationFrameRef = useRef<number | null>(null);
-  const gridTemplateColumns =
-    "auto minmax(0,1fr) 5.25rem 6.5rem 4.5rem 1.25rem";
+  const athleteGridTemplateClassName =
+    "[grid-template-columns:auto_minmax(0,1fr)_4.5rem_5rem_3.75rem_1rem] xl:[grid-template-columns:auto_minmax(0,1fr)_5.25rem_6.5rem_4.5rem_1.25rem]";
   const sortedComparisonRows = useMemo(() => {
     const fallbackIndexByEffortId = new Map(
       comparisonRows.map((comparisonRow, index) => [
@@ -570,16 +612,15 @@ function SelectedEffortsPanel({
   }, [sortedComparisonRowOrder]);
 
   return sortedComparisonRows.length > 0 ? (
-    <div className="flex h-full min-h-[24rem] flex-col bg-base-100">
-      <div className="flex-1 overflow-hidden">
+    <div className="flex bg-base-100 xl:h-full xl:min-h-[24rem] xl:flex-col">
+      <div className="w-full xl:flex-1 xl:overflow-hidden">
         <div
-          className="h-full overflow-y-auto overflow-x-hidden"
+          className="overflow-x-hidden overflow-y-visible xl:h-full xl:overflow-y-auto"
           style={{ scrollbarGutter: "stable" }}
         >
-          <div className="sticky top-0 z-10 border-b border-base-300 bg-base-100 px-4 py-3">
+          <div className="border-b border-base-300 bg-base-100 px-3 py-3 sm:px-4 xl:sticky xl:top-0 xl:z-10">
             <div
-              className="grid items-center gap-4 text-xs font-semibold uppercase tracking-[0.14em] text-base-content/55"
-              style={{ gridTemplateColumns }}
+              className={`grid items-center gap-3 text-xs font-semibold uppercase tracking-[0.14em] text-base-content/55 xl:gap-4 ${athleteGridTemplateClassName}`}
             >
               <span className="col-span-2">Athletes</span>
               <span className="justify-self-end text-right">Time</span>
@@ -631,8 +672,8 @@ function SelectedEffortsPanel({
                       rowRefs.current.delete(comparisonRow.effort.id);
                     }
                   }}
-                  className={`list-row grid min-w-0 items-center gap-4 rounded-none border-b border-base-300 px-4 py-3 transition-colors last:border-b-0 ${isFocused ? "bg-base-200/80" : "bg-transparent"}`}
-                  style={{ gridTemplateColumns, willChange: "transform" }}
+                  className={`list-row grid min-w-0 items-center gap-3 rounded-none border-b border-base-300 px-3 py-3 transition-colors last:border-b-0 sm:px-4 xl:gap-4 ${athleteGridTemplateClassName} ${isFocused ? "bg-base-200/80" : "bg-transparent"}`}
+                  style={{ willChange: "transform" }}
                   onMouseEnter={() => {
                     onHoverEffort(comparisonRow.effort.id);
                   }}
@@ -642,7 +683,7 @@ function SelectedEffortsPanel({
                 >
                   <span
                     aria-hidden
-                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center text-sm font-semibold text-white"
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-xs font-semibold text-white xl:h-9 xl:w-9 xl:text-sm"
                     style={{ backgroundColor: comparisonRow.color }}
                   >
                     {comparisonRow.markerLabel}
@@ -729,7 +770,6 @@ type SegmentDetailComparisonSectionProps = {
   playbackSeconds: number;
   isPlaying: boolean;
   playbackPace: PlaybackPace;
-  targetPlaybackDurationSeconds: number;
   unitSystem: UnitSystem;
   onHoverEffort: (effortId: number | null) => void;
   onTogglePinnedEffort: (effortId: number) => void;
@@ -751,7 +791,6 @@ export default function SegmentDetailComparisonSection({
   playbackSeconds,
   isPlaying,
   playbackPace,
-  targetPlaybackDurationSeconds,
   unitSystem,
   onHoverEffort,
   onTogglePinnedEffort,
@@ -780,81 +819,83 @@ export default function SegmentDetailComparisonSection({
 
         <div className="overflow-hidden border border-base-300 bg-base-200">
           <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.78fr)]">
-            <div className="min-h-[24rem] border-b border-base-300 xl:border-b-0 xl:border-r">
+            <div className="border-b border-base-300 xl:order-2 xl:border-b-0 xl:border-l">
+              <SelectedEffortsPanel
+                comparisonRows={liveComparisonRows}
+                focusedEffortId={focusedEffortId}
+                referenceEffortId={referenceEffortId}
+                playbackSeconds={playbackSeconds}
+                unitSystem={unitSystem}
+                onHoverEffort={onHoverEffort}
+                onTogglePinnedEffort={onTogglePinnedEffort}
+                onRemoveEffort={onRemoveEffort}
+              />
+            </div>
+
+            <div className="min-h-[24rem] xl:order-1">
               <RouteComparisonMap
                 routePoints={routePoints}
                 selectedRows={selectedRows}
                 playbackSeconds={playbackSeconds}
               />
             </div>
-
-            <SelectedEffortsPanel
-              comparisonRows={liveComparisonRows}
-              focusedEffortId={focusedEffortId}
-              referenceEffortId={referenceEffortId}
-              playbackSeconds={playbackSeconds}
-              unitSystem={unitSystem}
-              onHoverEffort={onHoverEffort}
-              onTogglePinnedEffort={onTogglePinnedEffort}
-              onRemoveEffort={onRemoveEffort}
-            />
           </div>
 
-          <div className="border-t border-base-300 bg-base-100/95">
-            <ComparisonChart
-              routePoints={routePoints}
-              routeDistanceMeters={routeDistanceMeters}
-              selectedRows={selectedRows}
-              referenceEffortId={referenceEffortId}
-              playbackSeconds={playbackSeconds}
-              unitSystem={unitSystem}
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3 border-t border-base-300 bg-base-100 px-4 py-3">
-            <button
-              type="button"
-              className="btn btn-sm btn-circle shrink-0 border-0 bg-orange-500 text-white hover:bg-orange-600"
-              disabled={selectedRows.length === 0 || playbackLimitSeconds <= 0}
-              aria-label={
-                isPlaying
-                  ? "Pause comparison playback"
-                  : playbackSeconds >= playbackLimitSeconds
-                    ? "Replay comparison playback"
-                    : "Play comparison playback"
-              }
-              onClick={() => {
-                if (playbackSeconds >= playbackLimitSeconds) {
-                  onPlaybackSecondsChange(0);
+          <div className="flex flex-wrap items-center gap-3 border-t border-base-300 bg-base-100 px-3 py-3 sm:px-4">
+            <div className="flex min-w-0 flex-[999] items-center gap-3">
+              <button
+                type="button"
+                className="btn btn-sm btn-circle shrink-0 border-0 bg-orange-500 text-white hover:bg-orange-600"
+                disabled={
+                  selectedRows.length === 0 || playbackLimitSeconds <= 0
                 }
-                onPlayingChange(!isPlaying);
-              }}
-            >
-              <FontAwesomeIcon
-                icon={isPlaying ? faPause : faPlay}
-                className="h-4 w-4"
+                aria-label={
+                  isPlaying
+                    ? "Pause comparison playback"
+                    : playbackSeconds >= playbackLimitSeconds
+                      ? "Replay comparison playback"
+                      : "Play comparison playback"
+                }
+                onClick={() => {
+                  if (playbackSeconds >= playbackLimitSeconds) {
+                    onPlaybackSecondsChange(0);
+                  }
+                  onPlayingChange(!isPlaying);
+                }}
+              >
+                <FontAwesomeIcon
+                  icon={isPlaying ? faPause : faPlay}
+                  className="h-4 w-4"
+                />
+              </button>
+
+              <input
+                type="range"
+                min={0}
+                max={Math.max(playbackLimitSeconds, 1)}
+                step={0.1}
+                value={Math.min(
+                  playbackSeconds,
+                  Math.max(playbackLimitSeconds, 1),
+                )}
+                className="range range-primary min-w-0 flex-1"
+                disabled={
+                  selectedRows.length === 0 || playbackLimitSeconds <= 0
+                }
+                aria-label="Playback timeline"
+                onChange={(event) => {
+                  onPlaybackSecondsChange(Number(event.target.value));
+                  onPlayingChange(false);
+                }}
               />
-            </button>
 
-            <input
-              type="range"
-              min={0}
-              max={Math.max(playbackLimitSeconds, 1)}
-              step={0.1}
-              value={Math.min(
-                playbackSeconds,
-                Math.max(playbackLimitSeconds, 1),
-              )}
-              className="range range-primary min-w-[14rem] flex-1"
-              disabled={selectedRows.length === 0 || playbackLimitSeconds <= 0}
-              aria-label="Playback timeline"
-              onChange={(event) => {
-                onPlaybackSecondsChange(Number(event.target.value));
-                onPlayingChange(false);
-              }}
-            />
+              <span className="shrink-0 rounded-full border border-base-300 px-2.5 py-1 text-xs font-semibold tabular-nums text-base-content/80">
+                {formatDuration(Math.round(playbackSeconds))} /{" "}
+                {formatDuration(playbackLimitSeconds)}
+              </span>
+            </div>
 
-            <div className="join">
+            <div className="join shrink-0">
               {PLAYBACK_PACE_OPTIONS.map((option) => (
                 <button
                   key={option.key}
@@ -869,18 +910,17 @@ export default function SegmentDetailComparisonSection({
                 </button>
               ))}
             </div>
+          </div>
 
-            <span className="badge badge-outline min-w-[11.5rem] justify-center whitespace-nowrap text-center">
-              {formatDuration(Math.round(playbackSeconds))} /{" "}
-              {formatDuration(playbackLimitSeconds)}
-            </span>
-
-            <span className="badge badge-ghost whitespace-nowrap">
-              {PLAYBACK_PACE_OPTIONS.find(
-                (option) => option.key === playbackPace,
-              )?.label ?? "Auto"}{" "}
-              {formatDuration(Math.round(targetPlaybackDurationSeconds))} target
-            </span>
+          <div className="border-t border-base-300 bg-base-100/95">
+            <ComparisonChart
+              routePoints={routePoints}
+              routeDistanceMeters={routeDistanceMeters}
+              selectedRows={selectedRows}
+              referenceEffortId={referenceEffortId}
+              playbackSeconds={playbackSeconds}
+              unitSystem={unitSystem}
+            />
           </div>
         </div>
       </div>

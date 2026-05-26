@@ -24,7 +24,7 @@ export const PLAYBACK_END_EPSILON = 0.0001;
 export const ATHLETE_PANEL_ROW_ANIMATION_MS = 220;
 
 export const PLAYBACK_PACE_OPTIONS = [
-  { key: "detail", label: "Detail", multiplier: 1.5 },
+  { key: "detail", label: "Slow", multiplier: 1.5 },
   { key: "auto", label: "Auto", multiplier: 1 },
   { key: "fast", label: "Fast", multiplier: 0.65 },
 ] as const;
