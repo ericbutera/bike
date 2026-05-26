@@ -548,6 +548,7 @@ export function useReprocessUserActivityImports() {
 }
 
 export function useCleanupUserDuplicateActivities() {
+  const queryClient = useQueryClient();
   const mutation = $api.useMutation(
     "post",
     "/admin/activity-imports/cleanup-duplicates",
@@ -562,6 +563,18 @@ export function useCleanupUserDuplicateActivities() {
           user_id: numericUserId,
         },
       });
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["get", "/activities"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/activity-imports"],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["get", "/segments"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/segments/{id}"],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["get", "/fitness"] }),
+      ]);
 
       return result as CleanupUserDuplicateActivitiesResponse;
     },
@@ -681,6 +694,7 @@ export function useDeleteActivity() {
         }),
         queryClient.invalidateQueries({ queryKey: ["get", "/segments"] }),
         queryClient.invalidateQueries({ queryKey: ["get", "/segments/{id}"] }),
+        queryClient.invalidateQueries({ queryKey: ["get", "/fitness"] }),
       ]);
 
       return result;
