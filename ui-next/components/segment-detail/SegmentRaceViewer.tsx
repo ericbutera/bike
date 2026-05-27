@@ -25,6 +25,7 @@ import {
   PLAYBACK_END_EPSILON,
   PLAYBACK_PACE_OPTIONS,
   areEffortIdListsEqual,
+  buildLeaderPairFollowViewport,
   buildLiveComparisonRows,
   comparisonMarkerPoint,
   fastestEffort,
@@ -138,13 +139,31 @@ function RaceViewerMap({
     );
   const sortedComparisonRows = sortComparisonRowsByLeader(comparisonRows);
   const markerById = new Map(markers.map((marker) => [marker.id, marker]));
-  const leaderMarker =
+  const rankedMarkers =
     mapMode === "leader-follow"
-      ? (sortedComparisonRows
+      ? sortedComparisonRows
           .map(
             (comparisonRow) => markerById.get(comparisonRow.effort.id) ?? null,
           )
-          .find((marker) => marker !== null) ?? null)
+          .filter(
+            (
+              marker,
+            ): marker is {
+              id: number;
+              color: string;
+              point: ActivityRoutePoint;
+              progress: number | null;
+              label: string;
+            } => marker !== null,
+          )
+      : [];
+  const followViewport =
+    mapMode === "leader-follow"
+      ? buildLeaderPairFollowViewport(
+          rankedMarkers[0]?.point ?? null,
+          rankedMarkers[1]?.point ?? null,
+          FOLLOW_LEADER_MAP_ZOOM,
+        )
       : null;
 
   return hasRouteMap ? (
@@ -159,14 +178,7 @@ function RaceViewerMap({
         opacity: 1,
         label: marker.label,
       }))}
-      followViewport={
-        leaderMarker
-          ? {
-              point: leaderMarker.point,
-              zoom: FOLLOW_LEADER_MAP_ZOOM,
-            }
-          : null
-      }
+      followViewport={followViewport}
       followViewportBehavior="jump"
       ariaLabel="Segment race viewer map"
       emptyMessage="Segment route geometry is not available yet."

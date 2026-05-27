@@ -23,6 +23,11 @@ export const PLAYBACK_TARGET_MIN_SECONDS = 15;
 export const PLAYBACK_END_EPSILON = 0.0001;
 export const ATHLETE_PANEL_ROW_ANIMATION_MS = 220;
 
+const WEB_MERCATOR_METERS_PER_PIXEL_AT_ZOOM_0 = 156543.03392;
+const FOLLOW_PAIR_VIEWPORT_PADDING_FACTOR = 1.8;
+const FOLLOW_PAIR_VIEWPORT_TARGET_SPAN_PX = 220;
+const FOLLOW_PAIR_MIN_ZOOM = 12;
+
 export const PLAYBACK_PACE_OPTIONS = [
   { key: "detail", label: "Slow", multiplier: 1.5 },
   { key: "auto", label: "Auto", multiplier: 1 },
@@ -392,6 +397,62 @@ export function comparisonMarkerPoint(
   }
 
   return interpolateRoutePointByProgress(segmentRoutePoints, progress);
+}
+
+export function buildLeaderPairFollowViewport(
+  leaderPoint: ActivityRoutePoint | null,
+  runnerUpPoint: ActivityRoutePoint | null,
+  maxZoom: number,
+) {
+  if (!leaderPoint) {
+    return null;
+  }
+
+  if (!runnerUpPoint) {
+    return {
+      point: leaderPoint,
+      zoom: maxZoom,
+    };
+  }
+
+  const centerLatitude = (leaderPoint.latitude + runnerUpPoint.latitude) / 2;
+  const centerLongitude = (leaderPoint.longitude + runnerUpPoint.longitude) / 2;
+  const latitudeRadians = (centerLatitude * Math.PI) / 180;
+  const longitudeScale = Math.max(Math.cos(latitudeRadians), 0.01);
+  const latitudeSpreadMeters =
+    Math.abs(leaderPoint.latitude - runnerUpPoint.latitude) * 111_320;
+  const longitudeSpreadMeters =
+    Math.abs(leaderPoint.longitude - runnerUpPoint.longitude) *
+    111_320 *
+    longitudeScale;
+  const spreadMeters = Math.max(latitudeSpreadMeters, longitudeSpreadMeters);
+
+  if (spreadMeters <= 1) {
+    return {
+      point: leaderPoint,
+      zoom: maxZoom,
+    };
+  }
+
+  const paddedSpreadMeters = spreadMeters * FOLLOW_PAIR_VIEWPORT_PADDING_FACTOR;
+  const metersPerPixelAtZoom0 =
+    WEB_MERCATOR_METERS_PER_PIXEL_AT_ZOOM_0 * longitudeScale;
+  const computedZoom = Math.log2(
+    (metersPerPixelAtZoom0 * FOLLOW_PAIR_VIEWPORT_TARGET_SPAN_PX) /
+      paddedSpreadMeters,
+  );
+  const zoom = Number.isFinite(computedZoom)
+    ? Math.min(maxZoom, Math.max(FOLLOW_PAIR_MIN_ZOOM, computedZoom))
+    : maxZoom;
+
+  return {
+    point: {
+      ...leaderPoint,
+      latitude: centerLatitude,
+      longitude: centerLongitude,
+    },
+    zoom,
+  };
 }
 
 export function resolveRouteDistanceMeters(
