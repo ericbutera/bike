@@ -221,6 +221,16 @@ export default function SegmentsPanel() {
                 Crop a segment directly from one of your rides, or import a GPX
                 or TCX route file when you already have the trace.
               </p>
+              <p className="mt-2 max-w-2xl text-sm text-base-content/70">
+                You can download Strava segment GPX files from
+                <a
+                  href="https://www.doogal.co.uk/SegmentExplorer"
+                  target="_blank"
+                >
+                  Doogal Segment explorer
+                </a>
+                .
+              </p>
             </div>
           </div>
 
