@@ -1395,6 +1395,7 @@ mod tests {
             title: title.to_string(),
             source: "manual".to_string(),
             mode: "dh".to_string(),
+            starred: false,
             original_filename: None,
             format: Some("gpx".to_string()),
             distance_meters: Some(1_200.0),

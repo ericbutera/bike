@@ -26,6 +26,7 @@ mod m20260521_000004_activity_training_analysis_decoupling;
 mod m20260521_000005_user_preferences_xc_goal;
 mod m20260522_000001_user_preferences_xc_goal_start_date;
 mod m20260524_000001_user_preferences_xc_goal_backfill_status;
+mod m20260527_000001_segment_starred;
 
 pub struct Migrator;
 
@@ -107,6 +108,7 @@ impl MigratorTrait for Migrator {
         locals.push(Box::new(
             m20260524_000001_user_preferences_xc_goal_backfill_status::Migration,
         ));
+        locals.push(Box::new(m20260527_000001_segment_starred::Migration));
         locals.sort_by_key(|m| m.name().to_string());
 
         migrations.extend(locals);

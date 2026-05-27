@@ -57,6 +57,7 @@ pub struct SegmentResponse {
     pub title: String,
     pub source: String,
     pub mode: SegmentMode,
+    pub starred: bool,
     pub original_filename: Option<String>,
     pub format: Option<String>,
     pub distance_meters: Option<f64>,
@@ -138,6 +139,7 @@ pub struct CreateSegmentFromActivityRequest {
 pub struct UpdateSegmentRequest {
     pub title: Option<String>,
     pub mode: Option<SegmentMode>,
+    pub starred: Option<bool>,
 }
 
 #[utoipa::path(
@@ -211,6 +213,7 @@ pub async fn list_segments(
                     title: segment.title,
                     source: segment.source,
                     mode: SegmentMode::from_stored(&segment.mode),
+                    starred: segment.starred,
                     original_filename: segment.original_filename,
                     format: segment.format,
                     distance_meters: segment.distance_meters,
@@ -299,10 +302,12 @@ pub async fn update_segment(
     let mode = payload
         .mode
         .unwrap_or_else(|| SegmentMode::from_stored(&segment.mode));
+    let starred = payload.starred.unwrap_or(segment.starred);
     let title_changed = segment.title != title;
     let mode_changed = SegmentMode::from_stored(&segment.mode) != mode;
+    let starred_changed = segment.starred != starred;
 
-    if !title_changed && !mode_changed {
+    if !title_changed && !mode_changed && !starred_changed {
         return Ok(Json(
             load_segment_response(&state.db, &segment, user.id).await?,
         ));
@@ -317,6 +322,7 @@ pub async fn update_segment(
     let mut active_segment = segment.into_active_model();
     active_segment.title = Set(title);
     active_segment.mode = Set(mode.as_str().to_string());
+    active_segment.starred = Set(starred);
     let updated_segment = active_segment.update(&txn).await?;
 
     if title_changed && !activity_ids.is_empty() {
@@ -553,6 +559,7 @@ pub async fn create_segment_from_activity(
         title: Set(title),
         source: Set("activity_segment_builder".to_string()),
         mode: Set(SegmentMode::Xc.as_str().to_string()),
+        starred: Set(false),
         original_filename: Set(None),
         format: Set(activity.format.clone()),
         distance_meters: Set(distance_meters),
@@ -637,6 +644,7 @@ pub async fn import_segment(
         title: Set(segment_summary.title),
         source: Set("manual_segment_import".to_string()),
         mode: Set(SegmentMode::Xc.as_str().to_string()),
+        starred: Set(false),
         original_filename: Set(Some(upload.original_filename)),
         format: Set(Some(upload.format)),
         distance_meters: Set(segment_summary.distance_meters),
@@ -898,6 +906,7 @@ async fn load_segment_response(
         title: segment.title.clone(),
         source: segment.source.clone(),
         mode: SegmentMode::from_stored(&segment.mode),
+        starred: segment.starred,
         original_filename: segment.original_filename.clone(),
         format: segment.format.clone(),
         distance_meters: segment.distance_meters,
@@ -1079,6 +1088,7 @@ mod tests {
             title: format!("Segment {id}"),
             source: "manual_segment_import".to_string(),
             mode: SegmentMode::Xc.as_str().to_string(),
+            starred: false,
             original_filename: None,
             format: Some("gpx".to_string()),
             distance_meters: Some(1800.0),

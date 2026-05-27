@@ -714,6 +714,7 @@ mod tests {
             title: Set("North Climb".to_string()),
             source: Set("manual_segment_import".to_string()),
             mode: Set("xc".to_string()),
+            starred: Set(false),
             original_filename: Set(Some("north-climb.gpx".to_string())),
             format: Set(Some("gpx".to_string())),
             distance_meters: Set(Some(1800.0)),

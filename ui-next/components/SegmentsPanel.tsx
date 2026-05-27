@@ -1,6 +1,8 @@
 "use client";
 
 import { auth, GenericList, type Column } from "@ericbutera/kaleido";
+import { faStar } from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import toast from "react-hot-toast";
@@ -10,7 +12,12 @@ import {
   formatDistance,
   formatDuration,
 } from "../lib/activityFormatting";
-import { useSegments, useUploadSegment, type Segment } from "../lib/queries";
+import {
+  useSegments,
+  useUpdateSegment,
+  useUploadSegment,
+  type Segment,
+} from "../lib/queries";
 import { useUnitPreferences } from "../lib/unitPreferences";
 import AuthRequiredCard from "./AuthRequiredCard";
 
@@ -39,25 +46,32 @@ function segmentModeBadgeClass(mode: Segment["mode"]) {
 function filterSegments(segments: Segment[], params: SegmentsGridParams) {
   const query = params.q?.trim().toLowerCase() ?? "";
 
-  return segments.filter((segment) => {
-    if (params.mode && segment.mode !== params.mode) {
-      return false;
-    }
+  return segments
+    .filter((segment) => {
+      if (params.mode && segment.mode !== params.mode) {
+        return false;
+      }
 
-    if (!query) {
-      return true;
-    }
+      if (!query) {
+        return true;
+      }
 
-    const haystacks = [
-      segment.title,
-      segment.source,
-      segment.original_filename ?? "",
-      segment.format ?? "",
-      segment.mode,
-    ];
+      const haystacks = [
+        segment.title,
+        segment.source,
+        segment.original_filename ?? "",
+        segment.format ?? "",
+        segment.mode,
+      ];
 
-    return haystacks.some((value) => value.toLowerCase().includes(query));
-  });
+      return haystacks.some((value) => value.toLowerCase().includes(query));
+    })
+    .sort(
+      (left, right) =>
+        left.title.localeCompare(right.title, undefined, {
+          sensitivity: "base",
+        }) || left.id - right.id,
+    );
 }
 
 function normalizeSegmentsGridParams(params: SegmentsGridParams) {
@@ -76,6 +90,7 @@ export default function SegmentsPanel() {
   const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
   const { unitSystem } = useUnitPreferences();
   const segmentsQuery = useSegments({ enabled: !!user });
+  const updateSegmentMutation = useUpdateSegment();
   const uploadMutation = useUploadSegment();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -86,12 +101,29 @@ export default function SegmentsPanel() {
       header: "Segment",
       render: (segment) => (
         <div className="min-w-0">
-          <Link
-            href={`/segments/${segment.id}`}
-            className="font-medium text-base-content transition hover:text-primary"
-          >
-            {segment.title}
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className={`btn btn-ghost btn-xs btn-square ${segment.starred ? "text-warning" : "text-base-content/45"}`}
+              aria-label={`${segment.starred ? "Unstar" : "Star"} ${segment.title}`}
+              aria-pressed={!!segment.starred}
+              disabled={updateSegmentMutation.isPending}
+              onClick={() => {
+                void updateSegmentMutation.updateAsync({
+                  id: segment.id,
+                  starred: !segment.starred,
+                });
+              }}
+            >
+              <FontAwesomeIcon icon={faStar} className="h-3.5 w-3.5" />
+            </button>
+            <Link
+              href={`/segments/${segment.id}`}
+              className="font-medium text-base-content transition hover:text-primary"
+            >
+              {segment.title}
+            </Link>
+          </div>
           <div className="mt-1 text-xs text-base-content/60">
             Imported from {segment.source}
           </div>

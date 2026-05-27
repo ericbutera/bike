@@ -16,6 +16,7 @@ pub struct Model {
     pub original_filename: Option<String>,
     pub format: Option<String>,
     pub distance_meters: Option<f64>,
+    pub starred: bool,
     pub route_data_json: Option<StoredRoutePointSeries>,
     pub source_activity_id: Option<i32>,
     pub source_start_route_point_index: Option<i32>,

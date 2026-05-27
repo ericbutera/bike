@@ -165,6 +165,7 @@ export type Segment = {
   title: string;
   source: string;
   mode: SegmentMode;
+  starred?: boolean;
   original_filename?: string | null;
   format?: string | null;
   distance_meters?: number | null;
@@ -836,6 +837,7 @@ export function useUpdateSegment() {
       id: number | string;
       title?: string;
       mode?: SegmentMode;
+      starred?: boolean;
     }) => {
       const numericId = Number(payload.id);
       const result = await mutation.mutateAsync({
@@ -843,6 +845,7 @@ export function useUpdateSegment() {
         body: {
           title: payload.title,
           mode: payload.mode,
+          starred: payload.starred,
         },
       });
 

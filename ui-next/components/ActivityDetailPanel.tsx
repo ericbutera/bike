@@ -3,9 +3,12 @@
 import { auth } from "@ericbutera/kaleido";
 import {
   faBars,
+  faChevronDown,
+  faChevronUp,
   faCrown,
   faMedal,
   faRocket,
+  faStar,
   faTrophy,
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -47,6 +50,8 @@ import {
   useActivity,
   useDeleteActivity,
   useRegenerateActivity,
+  useSegments,
+  useUpdateSegment,
 } from "../lib/queries";
 import {
   primarySegmentAchievement,
@@ -456,48 +461,59 @@ function groupMatchedSegmentEfforts(
     effortsBySegmentId.set(effort.segment_id, [effort]);
   }
 
-  return Array.from(effortsBySegmentId.values()).map((efforts, index) => {
-    const bestEffort = [...efforts].sort(
+  return Array.from(effortsBySegmentId.values())
+    .map((efforts) => {
+      const bestEffort = [...efforts].sort(
+        (left, right) =>
+          left.duration_seconds - right.duration_seconds ||
+          (left.overall_rank ?? Number.MAX_SAFE_INTEGER) -
+            (right.overall_rank ?? Number.MAX_SAFE_INTEGER) ||
+          left.effort_index - right.effort_index,
+      )[0];
+      const ranks = efforts
+        .flatMap((effort) =>
+          effort.overall_rank != null ? [effort.overall_rank] : [],
+        )
+        .sort((left, right) => left - right);
+      const peakHeartRate = efforts.reduce<number | null>((peak, effort) => {
+        const maxHeartRate = maxHeartRateForSegmentEffort(routePoints, effort);
+
+        if (maxHeartRate == null) {
+          return peak;
+        }
+
+        return peak == null || maxHeartRate > peak ? maxHeartRate : peak;
+      }, null);
+      const hasHighHeartRate =
+        peakHeartRate != null &&
+        ((activityMaxHeartRate != null &&
+          peakHeartRate >= activityMaxHeartRate - 6) ||
+          (activityAverageHeartRate != null &&
+            peakHeartRate >= activityAverageHeartRate + 10));
+
+      return {
+        segmentId: efforts[0].segment_id,
+        segmentTitle: efforts[0].segment_title,
+        efforts,
+        tone: SEGMENT_TONES[0],
+        bestEffort,
+        bestOverallRank: ranks[0] ?? null,
+        peakHeartRate,
+        hasHighHeartRate,
+        trendState: describeTrendState(efforts),
+        anchorId: buildSegmentAnchorId(efforts[0].segment_id),
+      };
+    })
+    .sort(
       (left, right) =>
-        left.duration_seconds - right.duration_seconds ||
-        (left.overall_rank ?? Number.MAX_SAFE_INTEGER) -
-          (right.overall_rank ?? Number.MAX_SAFE_INTEGER) ||
-        left.effort_index - right.effort_index,
-    )[0];
-    const ranks = efforts
-      .flatMap((effort) =>
-        effort.overall_rank != null ? [effort.overall_rank] : [],
-      )
-      .sort((left, right) => left - right);
-    const peakHeartRate = efforts.reduce<number | null>((peak, effort) => {
-      const maxHeartRate = maxHeartRateForSegmentEffort(routePoints, effort);
-
-      if (maxHeartRate == null) {
-        return peak;
-      }
-
-      return peak == null || maxHeartRate > peak ? maxHeartRate : peak;
-    }, null);
-    const hasHighHeartRate =
-      peakHeartRate != null &&
-      ((activityMaxHeartRate != null &&
-        peakHeartRate >= activityMaxHeartRate - 6) ||
-        (activityAverageHeartRate != null &&
-          peakHeartRate >= activityAverageHeartRate + 10));
-
-    return {
-      segmentId: efforts[0].segment_id,
-      segmentTitle: efforts[0].segment_title,
-      efforts,
+        left.segmentTitle.localeCompare(right.segmentTitle, undefined, {
+          sensitivity: "base",
+        }) || left.segmentId - right.segmentId,
+    )
+    .map((segmentGroup, index) => ({
+      ...segmentGroup,
       tone: SEGMENT_TONES[index % SEGMENT_TONES.length],
-      bestEffort,
-      bestOverallRank: ranks[0] ?? null,
-      peakHeartRate,
-      hasHighHeartRate,
-      trendState: describeTrendState(efforts),
-      anchorId: buildSegmentAnchorId(efforts[0].segment_id),
-    };
-  });
+    }));
 }
 
 function buildSignalChartRows(series: SignalSeries[]) {
@@ -1431,6 +1447,7 @@ export default function ActivityDetailPanel({
   const [selectedSegmentId, setSelectedSegmentId] = useState<number | null>(
     null,
   );
+  const [expandedSegmentIds, setExpandedSegmentIds] = useState<number[]>([]);
   const [visibleSignalKeys, setVisibleSignalKeys] = useState<SignalMetricKey[]>(
     DEFAULT_VISIBLE_SIGNAL_KEYS,
   );
@@ -1439,8 +1456,10 @@ export default function ActivityDetailPanel({
   const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
   const { unitSystem } = useUnitPreferences();
   const activityQuery = useActivity(user ? activityId : null);
+  const segmentsQuery = useSegments({ enabled: !!user });
   const regenerateMutation = useRegenerateActivity();
   const deleteMutation = useDeleteActivity();
+  const updateSegmentMutation = useUpdateSegment();
   const activity = activityQuery.data;
   const canBuildSegment = hasSegmentBuilderRoute(activity?.route_points);
   const segmentBuilderHref = activity
@@ -1463,6 +1482,15 @@ export default function ActivityDetailPanel({
       activity?.route_points,
       matchedSegmentEfforts,
     ],
+  );
+  const starredSegmentIds = useMemo(
+    () =>
+      new Set(
+        segmentsQuery.data
+          .filter((segment) => segment.starred)
+          .map((segment) => segment.id),
+      ),
+    [segmentsQuery.data],
   );
 
   const heartRateSeries = buildSeries(
@@ -1530,6 +1558,9 @@ export default function ActivityDetailPanel({
 
   function focusSegmentMatch(segmentId: number) {
     setSelectedSegmentId(segmentId);
+    setExpandedSegmentIds((current) =>
+      current.includes(segmentId) ? current : [...current, segmentId],
+    );
 
     if (typeof document === "undefined") {
       return;
@@ -1560,6 +1591,22 @@ export default function ActivityDetailPanel({
         (entry) => entry === key || current.includes(entry),
       );
     });
+  }
+
+  function toggleSegmentMatch(segmentId: number) {
+    setExpandedSegmentIds((current) =>
+      current.includes(segmentId)
+        ? current.filter((entry) => entry !== segmentId)
+        : [...current, segmentId],
+    );
+  }
+
+  async function toggleSegmentStar(segmentId: number, starred: boolean) {
+    try {
+      await updateSegmentMutation.updateAsync({ id: segmentId, starred });
+    } catch {
+      // The mutation exposes error state where segment controls are rendered.
+    }
   }
 
   async function handleRegenerate() {
@@ -1940,6 +1987,11 @@ export default function ActivityDetailPanel({
               const segmentAchievement =
                 segmentHistoricalAchievements(segmentGroup);
               const isSelected = selectedSegmentId === segmentGroup.segmentId;
+              const isStarred = starredSegmentIds.has(segmentGroup.segmentId);
+              const isExpanded =
+                isSelected ||
+                isStarred ||
+                expandedSegmentIds.includes(segmentGroup.segmentId);
 
               return (
                 <article
@@ -1949,39 +2001,96 @@ export default function ActivityDetailPanel({
                 >
                   <div className="card-body gap-3">
                     <div className="flex flex-wrap items-start justify-between gap-3">
-                      <Link
-                        href={segmentHref}
-                        className="card-title text-lg transition hover:text-primary"
-                      >
-                        {segmentGroup.segmentTitle}
-                      </Link>
-
-                      <div className="flex flex-wrap gap-2">
-                        <span className="badge badge-outline">
-                          Best{" "}
-                          {formatDuration(
-                            segmentGroup.bestEffort.duration_seconds,
-                          )}
-                        </span>
-                        <span className="badge badge-outline">
-                          Leaderboard{" "}
-                          {formatOverallRank(segmentGroup.bestOverallRank)}
-                        </span>
-                        <span className="badge badge-outline">
-                          Peak HR {formatHeartRate(segmentGroup.peakHeartRate)}
-                        </span>
-                        {segmentAchievement ? (
-                          <SegmentAchievementBadge
-                            achievement={segmentAchievement}
-                          />
-                        ) : null}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            className={`btn btn-ghost btn-xs btn-square ${isStarred ? "text-warning" : "text-base-content/45"}`}
+                            aria-label={`${isStarred ? "Unstar" : "Star"} ${segmentGroup.segmentTitle}`}
+                            aria-pressed={isStarred}
+                            disabled={updateSegmentMutation.isPending}
+                            onClick={() => {
+                              void toggleSegmentStar(
+                                segmentGroup.segmentId,
+                                !isStarred,
+                              );
+                            }}
+                          >
+                            <FontAwesomeIcon
+                              icon={faStar}
+                              className="h-3.5 w-3.5"
+                            />
+                          </button>
+                          <Link
+                            href={segmentHref}
+                            className="card-title text-lg transition hover:text-primary"
+                          >
+                            {segmentGroup.segmentTitle}
+                          </Link>
+                          <span className="badge badge-ghost badge-sm">
+                            {segmentGroup.efforts.length} run
+                            {segmentGroup.efforts.length === 1 ? "" : "s"}
+                          </span>
+                        </div>
                       </div>
+
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm gap-2"
+                        aria-expanded={isExpanded}
+                        aria-controls={`${segmentGroup.anchorId}-details`}
+                        disabled={isStarred}
+                        onClick={() => {
+                          toggleSegmentMatch(segmentGroup.segmentId);
+                        }}
+                      >
+                        <span>
+                          {isStarred
+                            ? "Starred stays open"
+                            : isExpanded
+                              ? "Hide time & runs"
+                              : "Show time & runs"}
+                        </span>
+                        <FontAwesomeIcon
+                          icon={isExpanded ? faChevronUp : faChevronDown}
+                          className="h-3.5 w-3.5"
+                        />
+                      </button>
                     </div>
 
-                    <SegmentAttemptsChart
-                      segmentGroup={segmentGroup}
-                      routePoints={activity.route_points}
-                    />
+                    {isExpanded ? (
+                      <div
+                        id={`${segmentGroup.anchorId}-details`}
+                        className="grid gap-3"
+                      >
+                        <div className="flex flex-wrap gap-2">
+                          <span className="badge badge-outline">
+                            Best{" "}
+                            {formatDuration(
+                              segmentGroup.bestEffort.duration_seconds,
+                            )}
+                          </span>
+                          <span className="badge badge-outline">
+                            Leaderboard{" "}
+                            {formatOverallRank(segmentGroup.bestOverallRank)}
+                          </span>
+                          <span className="badge badge-outline">
+                            Peak HR{" "}
+                            {formatHeartRate(segmentGroup.peakHeartRate)}
+                          </span>
+                          {segmentAchievement ? (
+                            <SegmentAchievementBadge
+                              achievement={segmentAchievement}
+                            />
+                          ) : null}
+                        </div>
+
+                        <SegmentAttemptsChart
+                          segmentGroup={segmentGroup}
+                          routePoints={activity.route_points}
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 </article>
               );

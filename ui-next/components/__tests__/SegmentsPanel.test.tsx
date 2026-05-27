@@ -6,8 +6,10 @@ import SegmentsPanel from "../SegmentsPanel";
 const mocks = vi.hoisted(() => ({
   useCurrentUser: vi.fn(),
   useSegments: vi.fn(),
+  useUpdateSegment: vi.fn(),
   useUploadSegment: vi.fn(),
   uploadAsync: vi.fn(),
+  updateSegmentAsync: vi.fn(),
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
 }));
@@ -29,6 +31,7 @@ vi.mock("@ericbutera/kaleido", async () => {
 
 vi.mock("../../lib/queries", () => ({
   useSegments: mocks.useSegments,
+  useUpdateSegment: mocks.useUpdateSegment,
   useUploadSegment: mocks.useUploadSegment,
 }));
 
@@ -60,6 +63,7 @@ function makeSegment(
     best_duration_seconds: number | null;
     current_user_pr_duration_seconds: number | null;
     created_at: string;
+    starred: boolean;
   }> = {},
 ) {
   return {
@@ -74,6 +78,7 @@ function makeSegment(
     best_duration_seconds: 312,
     current_user_pr_duration_seconds: 320,
     created_at: "2026-05-07T07:00:00Z",
+    starred: false,
     ...overrides,
   };
 }
@@ -95,6 +100,12 @@ describe("SegmentsPanel", () => {
     mocks.useUploadSegment.mockReturnValue({
       uploadAsync: mocks.uploadAsync,
       isPending: false,
+    });
+    mocks.useUpdateSegment.mockReturnValue({
+      updateAsync: mocks.updateSegmentAsync,
+      isPending: false,
+      isError: false,
+      error: null,
     });
     mocks.uploadAsync.mockResolvedValue(makeSegment());
   });
@@ -142,7 +153,6 @@ describe("SegmentsPanel", () => {
   it("renders recent imported segments", () => {
     mocks.useSegments.mockReturnValue({
       data: [
-        makeSegment({ id: 12, title: "River Sprint", effort_count: 2 }),
         makeSegment({
           id: 13,
           title: "FMR Lower",
@@ -150,6 +160,7 @@ describe("SegmentsPanel", () => {
           best_duration_seconds: 280,
           current_user_pr_duration_seconds: 295,
         }),
+        makeSegment({ id: 12, title: "River Sprint", effort_count: 2 }),
       ],
       isError: false,
       isLoading: false,
@@ -175,6 +186,15 @@ describe("SegmentsPanel", () => {
     expect(screen.getByText("Your PR")).toBeInTheDocument();
     expect(screen.getByText("xc")).toBeInTheDocument();
     expect(screen.getByText("dh")).toBeInTheDocument();
+    const segmentLinks = screen
+      .getAllByRole("link")
+      .filter((link) =>
+        ["FMR Lower", "River Sprint"].includes(link.textContent ?? ""),
+      );
+    expect(segmentLinks.map((link) => link.textContent)).toEqual([
+      "FMR Lower",
+      "River Sprint",
+    ]);
     expect(
       screen.queryByRole("link", { name: "Compare efforts" }),
     ).not.toBeInTheDocument();
@@ -209,5 +229,26 @@ describe("SegmentsPanel", () => {
       screen.queryByRole("link", { name: "River Sprint" }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "FMR Lower" })).toBeInTheDocument();
+  });
+
+  it("toggles a segment star from the library grid", async () => {
+    const user = userEvent.setup();
+
+    mocks.useSegments.mockReturnValue({
+      data: [makeSegment({ id: 12, title: "River Sprint", starred: false })],
+      isError: false,
+      isLoading: false,
+      isFetching: false,
+      error: null,
+    });
+
+    render(<SegmentsPanel />);
+
+    await user.click(screen.getByRole("button", { name: "Star River Sprint" }));
+
+    expect(mocks.updateSegmentAsync).toHaveBeenCalledWith({
+      id: 12,
+      starred: true,
+    });
   });
 });

@@ -31,6 +31,9 @@ const mocks = vi.hoisted(() => ({
   useActivity: vi.fn(),
   useRegenerateActivity: vi.fn(),
   useDeleteActivity: vi.fn(),
+  useSegments: vi.fn(),
+  useUpdateSegment: vi.fn(),
+  updateSegmentAsync: vi.fn(),
   renderMapLibreRouteMap: vi.fn(),
   routerPush: vi.fn(),
 }));
@@ -47,6 +50,8 @@ vi.mock("../../lib/queries", () => ({
   useActivity: mocks.useActivity,
   useRegenerateActivity: mocks.useRegenerateActivity,
   useDeleteActivity: mocks.useDeleteActivity,
+  useSegments: mocks.useSegments,
+  useUpdateSegment: mocks.useUpdateSegment,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -343,6 +348,18 @@ describe("ActivityDetailPanel", () => {
       isError: false,
       error: null,
     });
+    mocks.useSegments.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+    mocks.useUpdateSegment.mockReturnValue({
+      updateAsync: mocks.updateSegmentAsync,
+      isPending: false,
+      isError: false,
+      error: null,
+    });
   });
 
   afterEach(() => {
@@ -399,9 +416,12 @@ describe("ActivityDetailPanel", () => {
       screen.getByRole("button", { name: "Jump to North Climb matches" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("img", { name: "North Climb attempts chart" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Time")).toBeInTheDocument();
+      screen.getByRole("button", { name: "Show time & runs" }),
+    ).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByRole("img", { name: "North Climb attempts chart" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Time")).not.toBeInTheDocument();
     expect(
       screen.queryByText(
         "Hover or tap a point to see leaderboard position and max heart rate.",
@@ -425,14 +445,16 @@ describe("ActivityDetailPanel", () => {
       screen.queryByRole("link", { name: "Compare efforts" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Summary overview")).not.toBeInTheDocument();
-    expect(screen.getAllByText("KOM").length).toBeGreaterThan(0);
+    expect(screen.queryByText("KOM")).not.toBeInTheDocument();
     expect(screen.queryByText("PR")).not.toBeInTheDocument();
-    expect(screen.getByText("Best 5m 12s")).toBeInTheDocument();
-    expect(screen.getByText("Leaderboard #1 overall")).toBeInTheDocument();
-    expect(screen.getByText("Peak HR 168 bpm")).toBeInTheDocument();
+    expect(screen.queryByText("Best 5m 12s")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Leaderboard #1 overall"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Peak HR 168 bpm")).not.toBeInTheDocument();
     expect(screen.queryByText("Trending faster")).not.toBeInTheDocument();
     expect(screen.queryByText("High heart rate")).not.toBeInTheDocument();
-    expect(screen.queryByText(/^2 runs?$/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/^2 runs?$/i)).toBeInTheDocument();
     expect(screen.queryByText(/High heart rate at/i)).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Regenerate derived data" }),
@@ -469,6 +491,8 @@ describe("ActivityDetailPanel", () => {
 
   it("shows the correct run details when a chart point is hovered", () => {
     render(<ActivityDetailPanel activityId={7} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show time & runs" }));
 
     fireEvent.mouseEnter(screen.getByLabelText("North Climb run 1 point"));
 
@@ -518,6 +542,8 @@ describe("ActivityDetailPanel", () => {
 
     render(<ActivityDetailPanel activityId={7} />);
 
+    fireEvent.click(screen.getByRole("button", { name: "Show time & runs" }));
+
     expect(screen.getByText("Top 3")).toBeInTheDocument();
     expect(screen.queryByText("PR")).not.toBeInTheDocument();
 
@@ -548,6 +574,81 @@ describe("ActivityDetailPanel", () => {
     await user.click(speedButton);
 
     expect(speedButton).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("orders matched segments alphabetically and expands a card on demand", async () => {
+    const user = userEvent.setup();
+
+    mocks.useActivity.mockReturnValue({
+      data: makeActivity({
+        segment_efforts: [
+          {
+            segment_id: 22,
+            segment_title: "Zulu Ridge",
+            effort_index: 1,
+            duration_seconds: 410,
+            start_route_point_index: 2,
+            end_route_point_index: 3,
+            overall_rank: 7,
+            personal_rank: 2,
+            personal_best_duration_seconds: 390,
+          },
+          {
+            segment_id: 11,
+            segment_title: "Alpha Climb",
+            effort_index: 1,
+            duration_seconds: 312,
+            start_route_point_index: 1,
+            end_route_point_index: 2,
+            overall_rank: 1,
+            personal_rank: 1,
+            personal_best_duration_seconds: 312,
+          },
+        ],
+      }),
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+
+    render(<ActivityDetailPanel activityId={7} />);
+
+    const segmentLinks = screen
+      .getAllByRole("link")
+      .filter((link) =>
+        ["Alpha Climb", "Zulu Ridge"].includes(link.textContent ?? ""),
+      );
+
+    expect(segmentLinks.map((link) => link.textContent)).toEqual([
+      "Alpha Climb",
+      "Zulu Ridge",
+    ]);
+
+    await user.click(
+      screen.getAllByRole("button", { name: "Show time & runs" })[0],
+    );
+
+    expect(
+      screen.getByRole("img", { name: "Alpha Climb attempts chart" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps starred matched segments open", () => {
+    mocks.useSegments.mockReturnValue({
+      data: [{ id: 11, starred: true }],
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+
+    render(<ActivityDetailPanel activityId={7} />);
+
+    expect(
+      screen.getByRole("img", { name: "North Climb attempts chart" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Starred stays open" }),
+    ).toBeDisabled();
   });
 
   it("shows the regenerate action", async () => {
