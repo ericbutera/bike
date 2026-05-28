@@ -198,9 +198,14 @@ const EMPTY_OVERLAYS: RouteOverlay[] = [];
 const EMPTY_MOVING_MARKERS: RouteMovingMarker[] = [];
 
 type OverlayLayerEvent = {
+  point?: {
+    x: number;
+    y: number;
+  };
   features?: Array<{
     properties?: {
       overlayId?: string;
+      label?: string;
     };
   }>;
 };
@@ -716,6 +721,9 @@ export default function MapLibreRouteMapClient({
   const overlayMouseEnterHandlerRef = useRef<
     ((event: OverlayLayerEvent) => void) | null
   >(null);
+  const overlayMouseMoveHandlerRef = useRef<
+    ((event: OverlayLayerEvent) => void) | null
+  >(null);
   const overlayMouseLeaveHandlerRef = useRef<
     ((event: OverlayLayerEvent) => void) | null
   >(null);
@@ -744,6 +752,11 @@ export default function MapLibreRouteMapClient({
     availableBasemaps.length > 1;
   const [selectedBasemap, setSelectedBasemap] =
     useState<RouteMapBasemap>(configuredBasemap);
+  const [overlayTooltip, setOverlayTooltip] = useState<{
+    label: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
   useEffect(() => {
     setSelectedBasemap(configuredBasemap);
@@ -828,6 +841,7 @@ export default function MapLibreRouteMapClient({
           buildLineFeature(overlay.id, overlay.points, {
             overlayId: overlay.id,
             color: overlay.color,
+            label: overlay.label ?? "",
             weight: overlay.weight ?? 6,
           }),
         ),
@@ -927,6 +941,7 @@ export default function MapLibreRouteMapClient({
       mapRef.current = null;
       overlayClickHandlerRef.current = null;
       overlayMouseEnterHandlerRef.current = null;
+      overlayMouseMoveHandlerRef.current = null;
       overlayMouseLeaveHandlerRef.current = null;
       appliedStyleKeyRef.current = null;
       preservedViewStateRef.current = null;
@@ -995,6 +1010,14 @@ export default function MapLibreRouteMapClient({
         );
         overlayMouseEnterHandlerRef.current = null;
       }
+      if (overlayMouseMoveHandlerRef.current) {
+        map.off(
+          "mousemove",
+          OVERLAY_LAYER_ID,
+          overlayMouseMoveHandlerRef.current,
+        );
+        overlayMouseMoveHandlerRef.current = null;
+      }
       if (overlayMouseLeaveHandlerRef.current) {
         map.off(
           "mouseleave",
@@ -1004,7 +1027,7 @@ export default function MapLibreRouteMapClient({
         overlayMouseLeaveHandlerRef.current = null;
       }
 
-      if (overlayHandlers.size > 0) {
+      if (overlays.length > 0) {
         const handleOverlayClick = (event: OverlayLayerEvent) => {
           const overlayId = event.features?.[0]?.properties?.overlayId;
           if (!overlayId) {
@@ -1014,21 +1037,40 @@ export default function MapLibreRouteMapClient({
           overlayHandlers.get(overlayId)?.();
         };
         const handleOverlayMouseEnter = (_event: OverlayLayerEvent) => {
-          map.getCanvas().style.cursor = "pointer";
+          map.getCanvas().style.cursor =
+            overlayHandlers.size > 0 ? "pointer" : "";
+        };
+        const handleOverlayMouseMove = (event: OverlayLayerEvent) => {
+          const label = event.features?.[0]?.properties?.label;
+
+          if (!label || !event.point) {
+            setOverlayTooltip(null);
+            return;
+          }
+
+          setOverlayTooltip({
+            label,
+            x: event.point.x,
+            y: event.point.y,
+          });
         };
         const handleOverlayMouseLeave = (_event: OverlayLayerEvent) => {
           map.getCanvas().style.cursor = "";
+          setOverlayTooltip(null);
         };
 
         map.on("click", OVERLAY_LAYER_ID, handleOverlayClick);
         map.on("mouseenter", OVERLAY_LAYER_ID, handleOverlayMouseEnter);
+        map.on("mousemove", OVERLAY_LAYER_ID, handleOverlayMouseMove);
         map.on("mouseleave", OVERLAY_LAYER_ID, handleOverlayMouseLeave);
 
         overlayClickHandlerRef.current = handleOverlayClick;
         overlayMouseEnterHandlerRef.current = handleOverlayMouseEnter;
+        overlayMouseMoveHandlerRef.current = handleOverlayMouseMove;
         overlayMouseLeaveHandlerRef.current = handleOverlayMouseLeave;
       } else {
         map.getCanvas().style.cursor = "";
+        setOverlayTooltip(null);
       }
 
       if (shouldRestoreViewRef.current && preservedViewStateRef.current) {
@@ -1062,6 +1104,7 @@ export default function MapLibreRouteMapClient({
 
     return () => {
       map.off("load", syncMap);
+      setOverlayTooltip(null);
     };
   }, [
     endpointSourceData,
@@ -1269,6 +1312,15 @@ export default function MapLibreRouteMapClient({
         aria-label={ariaLabel}
         className="h-full w-full"
       />
+
+      {overlayTooltip ? (
+        <div
+          className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-[calc(100%+0.75rem)] rounded-box border border-base-300 bg-base-100 px-3 py-2 text-xs font-medium text-base-content shadow-lg"
+          style={{ left: overlayTooltip.x, top: overlayTooltip.y }}
+        >
+          {overlayTooltip.label}
+        </div>
+      ) : null}
     </div>
   );
 }

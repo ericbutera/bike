@@ -849,6 +849,25 @@ export function useUpdateSegment() {
         },
       });
 
+      const updatedSegment = result as Segment;
+
+      queryClient.setQueriesData<Segment[] | undefined>(
+        { queryKey: ["get", "/segments"] },
+        (current) =>
+          current?.map((segment) =>
+            segment.id === numericId
+              ? { ...segment, ...updatedSegment }
+              : segment,
+          ) ?? current,
+      );
+      queryClient.setQueriesData<Segment | null | undefined>(
+        { queryKey: ["get", "/segments/{id}"] },
+        (current) =>
+          current && current.id === numericId
+            ? { ...current, ...updatedSegment }
+            : current,
+      );
+
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["get", "/segments"] }),
         queryClient.invalidateQueries({ queryKey: ["get", "/segments/{id}"] }),
@@ -858,7 +877,7 @@ export function useUpdateSegment() {
         }),
       ]);
 
-      return result as Segment;
+      return updatedSegment;
     },
   };
 }

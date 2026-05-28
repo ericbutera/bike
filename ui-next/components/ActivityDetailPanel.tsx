@@ -1,26 +1,16 @@
 "use client";
 
 import { auth } from "@ericbutera/kaleido";
-import {
-  faBars,
-  faChevronDown,
-  faChevronUp,
-  faCrown,
-  faMedal,
-  faRocket,
-  faStar,
-  faTrophy,
-} from "@fortawesome/free-solid-svg-icons";
+import { faBars } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Area,
   CartesianGrid,
   ComposedChart,
   Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -43,7 +33,6 @@ import {
 } from "../lib/activityFormatting";
 import {
   type ActivityChartPoint,
-  type ActivityHeartRateZone,
   type ActivityLap,
   type ActivityRoutePoint,
   type ActivitySegmentEffort,
@@ -53,15 +42,12 @@ import {
   useSegments,
   useUpdateSegment,
 } from "../lib/queries";
-import {
-  primarySegmentAchievement,
-  type SegmentAchievement,
-  type SegmentAchievementKind,
-} from "../lib/segmentAchievements";
 import { hasSegmentBuilderRoute } from "../lib/segmentBuilder";
 import { useUnitPreferences } from "../lib/unitPreferences";
 import AuthRequiredCard from "./AuthRequiredCard";
 import MapLibreRouteMap from "./MapLibreRouteMap";
+import MatchedSegmentsSection from "./MatchedSegmentsSection";
+import TrainingProfileSnapshot from "./TrainingProfileSnapshot";
 
 type ChartSeriesPoint = {
   x: number;
@@ -114,30 +100,9 @@ type SignalChartRow = {
   elevation?: number | null;
 };
 
-type SegmentAttemptChartPoint = {
-  effort: ActivitySegmentEffort;
-  segmentTitle: string;
-  runNumber: number;
-  runLabel: string;
-  durationSeconds: number;
-  maxHeartRate: number | null;
-  overallRank: number | null | undefined;
-  personalRank: number | null | undefined;
-  personalBestDurationSeconds: number | null | undefined;
-  isKom: boolean;
-  isPersonalRecord: boolean;
-  isFastestOfDay: boolean;
-};
-
-type SegmentAttemptTooltipState = {
-  attempt: SegmentAttemptChartPoint;
-  x: number;
-  y: number;
-};
-
 const SEGMENT_TONES: SegmentTone[] = [
   {
-    mapColor: "var(--color-primary)",
+    mapColor: "#3b82f6",
     dotClassName: "bg-primary",
     chartClassName: "text-primary",
     buttonClassName: "btn-primary",
@@ -145,7 +110,7 @@ const SEGMENT_TONES: SegmentTone[] = [
     highlightClassName: "ring-primary/25",
   },
   {
-    mapColor: "var(--color-secondary)",
+    mapColor: "#8b5cf6",
     dotClassName: "bg-secondary",
     chartClassName: "text-secondary",
     buttonClassName: "btn-secondary",
@@ -153,7 +118,7 @@ const SEGMENT_TONES: SegmentTone[] = [
     highlightClassName: "ring-secondary/25",
   },
   {
-    mapColor: "var(--color-accent)",
+    mapColor: "#14b8a6",
     dotClassName: "bg-accent",
     chartClassName: "text-accent",
     buttonClassName: "btn-accent",
@@ -161,7 +126,7 @@ const SEGMENT_TONES: SegmentTone[] = [
     highlightClassName: "ring-accent/25",
   },
   {
-    mapColor: "var(--color-info)",
+    mapColor: "#0ea5e9",
     dotClassName: "bg-info",
     chartClassName: "text-info",
     buttonClassName: "btn-info",
@@ -169,7 +134,7 @@ const SEGMENT_TONES: SegmentTone[] = [
     highlightClassName: "ring-info/25",
   },
   {
-    mapColor: "var(--color-warning)",
+    mapColor: "#f59e0b",
     dotClassName: "bg-warning",
     chartClassName: "text-warning",
     buttonClassName: "btn-warning",
@@ -291,111 +256,6 @@ function buildSegmentAnchorId(segmentId: number) {
   return `activity-segment-${segmentId}`;
 }
 
-function formatOverallRank(rank: number | null | undefined) {
-  return rank != null ? `#${rank} overall` : "No global rank";
-}
-
-function formatPersonalRank(rank: number | null | undefined) {
-  return rank != null ? `#${rank} all-time` : "No PR history";
-}
-
-function formatPrDelta(
-  durationSeconds: number,
-  personalBestDurationSeconds: number | null | undefined,
-) {
-  if (personalBestDurationSeconds == null) {
-    return null;
-  }
-
-  const deltaSeconds = durationSeconds - personalBestDurationSeconds;
-
-  if (deltaSeconds === 0) {
-    return "At PR";
-  }
-
-  const magnitude = formatDuration(Math.abs(deltaSeconds));
-
-  if (deltaSeconds > 0) {
-    return `${magnitude} off PR`;
-  }
-
-  return `${magnitude} faster than prior PR`;
-}
-
-function segmentHistoricalAchievements(segmentGroup: SegmentMatchGroup) {
-  return primarySegmentAchievement({
-    overallRank: segmentGroup.bestEffort.overall_rank,
-    personalRank: segmentGroup.bestEffort.personal_rank,
-  });
-}
-
-function achievementIcon(kind: SegmentAchievementKind) {
-  switch (kind) {
-    case "kom":
-      return faCrown;
-    case "top-10":
-      return faTrophy;
-    case "pr":
-      return faMedal;
-    case "fastest":
-      return faRocket;
-  }
-}
-
-function achievementBadgeClassName(kind: SegmentAchievementKind) {
-  switch (kind) {
-    case "kom":
-      return "badge badge-warning badge-outline gap-1";
-    case "top-10":
-      return "badge badge-info badge-outline gap-1";
-    case "pr":
-      return "badge badge-primary badge-outline gap-1";
-    case "fastest":
-      return "badge badge-success badge-outline gap-1";
-  }
-}
-
-function achievementMarkerFill(kind: SegmentAchievementKind) {
-  switch (kind) {
-    case "kom":
-      return "var(--color-warning)";
-    case "top-10":
-      return "var(--color-info)";
-    case "pr":
-      return "var(--color-primary)";
-    case "fastest":
-      return "var(--color-success)";
-  }
-}
-
-function SegmentAchievementBadge({
-  achievement,
-}: {
-  achievement: SegmentAchievement;
-}) {
-  return (
-    <span className={achievementBadgeClassName(achievement.kind)}>
-      <FontAwesomeIcon
-        icon={achievementIcon(achievement.kind)}
-        className="h-3 w-3"
-      />
-      <span>{achievement.longLabel}</span>
-    </span>
-  );
-}
-
-function isSameSegmentEffort(
-  left: ActivitySegmentEffort,
-  right: ActivitySegmentEffort,
-) {
-  return (
-    left.segment_id === right.segment_id &&
-    left.effort_index === right.effort_index &&
-    left.start_route_point_index === right.start_route_point_index &&
-    left.end_route_point_index === right.end_route_point_index
-  );
-}
-
 function describeTrendState(
   efforts: ActivitySegmentEffort[],
 ): SegmentTrendState | null {
@@ -420,26 +280,6 @@ function describeTrendState(
   }
 
   return "steady";
-}
-
-function maxHeartRateForSegmentEffort(
-  routePoints: ActivityRoutePoint[] | null | undefined,
-  segmentEffort: ActivitySegmentEffort,
-) {
-  const heartRateValues = segmentOverlayPoints(
-    routePoints,
-    segmentEffort,
-  ).flatMap((point) =>
-    point.heart_rate_bpm == null || Number.isNaN(point.heart_rate_bpm)
-      ? []
-      : [point.heart_rate_bpm],
-  );
-
-  if (heartRateValues.length === 0) {
-    return null;
-  }
-
-  return Math.round(Math.max(...heartRateValues));
 }
 
 function groupMatchedSegmentEfforts(
@@ -476,7 +316,20 @@ function groupMatchedSegmentEfforts(
         )
         .sort((left, right) => left - right);
       const peakHeartRate = efforts.reduce<number | null>((peak, effort) => {
-        const maxHeartRate = maxHeartRateForSegmentEffort(routePoints, effort);
+        const maxHeartRate = segmentOverlayPoints(routePoints, effort).reduce<
+          number | null
+        >((segmentPeak, point) => {
+          if (
+            point.heart_rate_bpm == null ||
+            Number.isNaN(point.heart_rate_bpm)
+          ) {
+            return segmentPeak;
+          }
+
+          return segmentPeak == null || point.heart_rate_bpm > segmentPeak
+            ? Math.round(point.heart_rate_bpm)
+            : segmentPeak;
+        }, null);
 
         if (maxHeartRate == null) {
           return peak;
@@ -623,406 +476,6 @@ function SignalChartTooltip({
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-function AttemptAchievementBadges({
-  attempt,
-}: {
-  attempt: SegmentAttemptChartPoint;
-}) {
-  const achievement = primarySegmentAchievement({
-    overallRank: attempt.overallRank,
-    personalRank: attempt.personalRank,
-    isFastestOfDay: attempt.isFastestOfDay,
-  });
-
-  return achievement ? (
-    <SegmentAchievementBadge achievement={achievement} />
-  ) : null;
-}
-
-function iconPaths(
-  icon: typeof faCrown | typeof faMedal | typeof faRocket | typeof faTrophy,
-) {
-  const pathData = icon.icon[4];
-  return Array.isArray(pathData) ? pathData : [pathData];
-}
-
-function ChartMarkerIcon({
-  icon,
-  cx,
-  cy,
-  fill,
-  size,
-  stroke,
-  strokeWidth = 0,
-  offsetX = 0,
-  offsetY = 0,
-}: {
-  icon: typeof faCrown | typeof faMedal | typeof faRocket | typeof faTrophy;
-  cx: number;
-  cy: number;
-  fill: string;
-  size: number;
-  stroke?: string;
-  strokeWidth?: number;
-  offsetX?: number;
-  offsetY?: number;
-}) {
-  const [iconWidth, iconHeight] = icon.icon;
-  const paths = iconPaths(icon);
-
-  return (
-    <svg
-      x={cx - size / 2 + offsetX}
-      y={cy - size / 2 + offsetY}
-      width={size}
-      height={size}
-      viewBox={`0 0 ${iconWidth} ${iconHeight}`}
-      overflow="visible"
-      pointerEvents="none"
-    >
-      {paths.map((path, index) => (
-        <path
-          key={`${icon.iconName}-${index}`}
-          d={path}
-          fill={fill}
-          stroke={stroke}
-          strokeWidth={strokeWidth}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      ))}
-    </svg>
-  );
-}
-
-function SegmentAttemptTooltipContent({
-  attempt,
-}: {
-  attempt: SegmentAttemptChartPoint;
-}) {
-  const prDelta = formatPrDelta(
-    attempt.durationSeconds,
-    attempt.personalBestDurationSeconds,
-  );
-
-  return (
-    <div className="rounded-box border border-base-300 bg-base-100 px-3 py-3 shadow-lg">
-      <p className="text-sm font-semibold text-base-content">
-        {`Run ${attempt.runNumber} · ${formatDuration(attempt.durationSeconds)}`}
-      </p>
-      <p className="mt-1 text-sm text-base-content/70">
-        {`Leaderboard ${formatOverallRank(attempt.overallRank)} · Max heart rate ${formatHeartRate(attempt.maxHeartRate)}`}
-      </p>
-      <p className="mt-1 text-xs text-base-content/60">
-        {`Personal rank ${formatPersonalRank(attempt.personalRank)}`}
-      </p>
-      {prDelta ? (
-        <p className="mt-1 text-xs font-medium text-base-content/75">
-          {prDelta}
-        </p>
-      ) : null}
-      <div className="mt-2 flex flex-wrap gap-2">
-        <AttemptAchievementBadges attempt={attempt} />
-      </div>
-    </div>
-  );
-}
-
-function SegmentAttemptDot({
-  active = false,
-  cx,
-  cy,
-  payload,
-  toneColor,
-  isHighlighted,
-  onDismiss,
-  onSelect,
-  ...interactionProps
-}: {
-  active?: boolean;
-  cx?: number;
-  cy?: number;
-  payload?: SegmentAttemptChartPoint;
-  toneColor: string;
-  isHighlighted: boolean;
-  onDismiss: () => void;
-  onSelect: (state: SegmentAttemptTooltipState) => void;
-  [key: string]: unknown;
-}) {
-  if (cx == null || cy == null || !payload) {
-    return null;
-  }
-
-  const achievement = primarySegmentAchievement({
-    overallRank: payload.overallRank,
-    personalRank: payload.personalRank,
-    isFastestOfDay: payload.isFastestOfDay,
-  });
-  const showKomMarker = achievement?.kind === "kom";
-  const showTopMarker = achievement?.kind === "top-10";
-  const showPrMarker = achievement?.kind === "pr";
-  const showFastestMarker = achievement?.kind === "fastest";
-  const hitRadius =
-    showKomMarker || showTopMarker || showPrMarker || showFastestMarker
-      ? 14
-      : 11;
-  const highlightRadius =
-    showKomMarker || showTopMarker || showPrMarker
-      ? 8.5
-      : showFastestMarker
-        ? 7.5
-        : 5.25;
-
-  return (
-    <g
-      {...interactionProps}
-      role="button"
-      tabIndex={0}
-      aria-label={`${payload.segmentTitle} run ${payload.runNumber} point`}
-      className="cursor-pointer"
-      onBlur={() => {
-        onDismiss();
-      }}
-      onClick={() => {
-        onSelect({ attempt: payload, x: cx, y: cy });
-      }}
-      onFocus={() => {
-        onSelect({ attempt: payload, x: cx, y: cy });
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onSelect({ attempt: payload, x: cx, y: cy });
-        }
-      }}
-      onMouseEnter={() => {
-        onSelect({ attempt: payload, x: cx, y: cy });
-      }}
-      onMouseLeave={() => {
-        onDismiss();
-      }}
-    >
-      <circle cx={cx} cy={cy} r={hitRadius} fill="transparent" />
-      {isHighlighted ? (
-        <circle
-          cx={cx}
-          cy={cy}
-          r={highlightRadius}
-          fill="none"
-          stroke="var(--color-base-content)"
-          strokeOpacity={0.35}
-          strokeWidth={1.25}
-        />
-      ) : null}
-
-      {showKomMarker ? (
-        <ChartMarkerIcon
-          icon={faCrown}
-          cx={cx}
-          cy={cy}
-          fill={achievementMarkerFill("kom")}
-          size={active || isHighlighted ? 20 : 18}
-          stroke="var(--color-base-100)"
-          strokeWidth={24}
-        />
-      ) : null}
-
-      {showTopMarker ? (
-        <ChartMarkerIcon
-          icon={faTrophy}
-          cx={cx}
-          cy={cy}
-          fill={achievementMarkerFill("top-10")}
-          size={active || isHighlighted ? 18 : 16}
-          stroke="var(--color-base-100)"
-          strokeWidth={24}
-        />
-      ) : null}
-
-      {showPrMarker ? (
-        <ChartMarkerIcon
-          icon={faMedal}
-          cx={cx}
-          cy={cy}
-          fill={achievementMarkerFill("pr")}
-          size={active || isHighlighted ? 20 : 18}
-          stroke="var(--color-base-100)"
-          strokeWidth={24}
-        />
-      ) : null}
-
-      {showFastestMarker ? (
-        <ChartMarkerIcon
-          icon={faRocket}
-          cx={cx}
-          cy={cy}
-          fill="var(--color-success)"
-          size={active || isHighlighted ? 18 : 16}
-          stroke="var(--color-base-100)"
-          strokeWidth={26}
-        />
-      ) : null}
-
-      {!showKomMarker && !showPrMarker && !showFastestMarker ? (
-        <circle
-          cx={cx}
-          cy={cy}
-          r={active || isHighlighted ? 4.25 : 3.5}
-          fill={toneColor}
-          stroke="var(--color-base-100)"
-          strokeWidth={1}
-        />
-      ) : null}
-    </g>
-  );
-}
-
-function SegmentAttemptsChart({
-  segmentGroup,
-  routePoints,
-}: {
-  segmentGroup: SegmentMatchGroup;
-  routePoints: ActivityRoutePoint[] | null | undefined;
-}) {
-  const [tooltipState, setTooltipState] =
-    useState<SegmentAttemptTooltipState | null>(null);
-  const chartWidth = 520;
-  const chartHeight = 120;
-  const attempts: SegmentAttemptChartPoint[] = [...segmentGroup.efforts]
-    .sort(
-      (left, right) =>
-        left.effort_index - right.effort_index ||
-        left.start_route_point_index - right.start_route_point_index ||
-        left.end_route_point_index - right.end_route_point_index,
-    )
-    .map((effort) => ({
-      effort,
-      segmentTitle: segmentGroup.segmentTitle,
-      runNumber: effort.effort_index,
-      runLabel: `Run ${effort.effort_index}`,
-      durationSeconds: effort.duration_seconds,
-      maxHeartRate: maxHeartRateForSegmentEffort(routePoints, effort),
-      overallRank: effort.overall_rank,
-      personalRank: effort.personal_rank,
-      personalBestDurationSeconds: effort.personal_best_duration_seconds,
-      isKom: effort.overall_rank === 1,
-      isPersonalRecord: effort.personal_rank === 1,
-      isFastestOfDay: isSameSegmentEffort(effort, segmentGroup.bestEffort),
-    }));
-
-  if (attempts.length === 0) {
-    return null;
-  }
-
-  const minDuration = Math.min(
-    ...attempts.map((attempt) => attempt.durationSeconds),
-  );
-  const maxDuration = Math.max(
-    ...attempts.map((attempt) => attempt.durationSeconds),
-  );
-  const durationSpread = Math.max(maxDuration - minDuration, 1);
-  const chartPadding = Math.max(4, Math.round(durationSpread * 0.12));
-  const yAxisDomain: [number, number] = [
-    Math.max(0, minDuration - chartPadding),
-    maxDuration + chartPadding,
-  ];
-  const xAxisTicks = attempts.map((attempt) => attempt.runNumber);
-  const xAxisDomain: [number, number] = [
-    Math.min(...xAxisTicks),
-    Math.max(...xAxisTicks),
-  ];
-
-  return (
-    <div
-      role="img"
-      aria-label={`${segmentGroup.segmentTitle} attempts chart`}
-      className="relative overflow-visible rounded-box border border-base-300 bg-base-100 p-2"
-    >
-      {tooltipState ? (
-        <div
-          className="pointer-events-none absolute z-10 w-max max-w-64 -translate-x-1/2 -translate-y-[calc(100%+0.75rem)]"
-          style={{
-            left: `${(tooltipState.x / chartWidth) * 100}%`,
-            top: `${(tooltipState.y / chartHeight) * 100}%`,
-          }}
-        >
-          <SegmentAttemptTooltipContent attempt={tooltipState.attempt} />
-        </div>
-      ) : null}
-      <LineChart
-        width={chartWidth}
-        height={chartHeight}
-        data={attempts}
-        margin={{ top: 10, right: 14, bottom: 4, left: 4 }}
-        style={{ width: "100%", height: "auto" }}
-        onMouseLeave={() => {
-          setTooltipState(null);
-        }}
-      >
-        <CartesianGrid
-          vertical={false}
-          stroke="var(--color-base-content)"
-          strokeOpacity={0.12}
-        />
-        <XAxis
-          axisLine={false}
-          allowDecimals={false}
-          dataKey="runNumber"
-          domain={xAxisDomain}
-          tickFormatter={(value: number) => `Run ${value}`}
-          tick={{ fill: "var(--color-base-content)", fontSize: 8 }}
-          tickLine={false}
-          ticks={xAxisTicks}
-          type="number"
-        />
-        <YAxis
-          axisLine={false}
-          domain={yAxisDomain}
-          label={{
-            angle: -90,
-            fill: "var(--color-base-content)",
-            fontSize: 8,
-            position: "insideLeft",
-            style: { opacity: 0.65 },
-            value: "Time",
-          }}
-          tick={{ fill: "var(--color-base-content)", fontSize: 8 }}
-          tickFormatter={(value: number) => formatDuration(Math.round(value))}
-          tickLine={false}
-          tickMargin={6}
-          width={56}
-        />
-        <Line
-          type="linear"
-          dataKey="durationSeconds"
-          stroke={segmentGroup.tone.mapColor}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          dot={(dotProps) => (
-            <SegmentAttemptDot
-              active={false}
-              cx={dotProps.cx}
-              cy={dotProps.cy}
-              isHighlighted={
-                tooltipState?.attempt.runNumber ===
-                (dotProps.payload as SegmentAttemptChartPoint).runNumber
-              }
-              onDismiss={() => {
-                setTooltipState(null);
-              }}
-              payload={dotProps.payload as SegmentAttemptChartPoint}
-              onSelect={setTooltipState}
-              toneColor={segmentGroup.tone.mapColor}
-            />
-          )}
-          activeDot={false}
-        />
-      </LineChart>
     </div>
   );
 }
@@ -1292,28 +745,6 @@ function DenseDetailRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function formatHeartRateZoneRange(zone: ActivityHeartRateZone) {
-  if (zone.min_bpm == null && zone.max_bpm == null) {
-    return "Range unavailable";
-  }
-
-  if (zone.min_bpm == null) {
-    return `Up to ${formatHeartRate(zone.max_bpm)}`;
-  }
-
-  if (zone.max_bpm == null) {
-    return `Above ${formatHeartRate(zone.min_bpm - 1)}`;
-  }
-
-  return `${formatHeartRate(zone.min_bpm)} to ${formatHeartRate(zone.max_bpm)}`;
-}
-
-function formatSharePercent(value: number) {
-  return Number.isInteger(value)
-    ? `${value.toFixed(0)}%`
-    : `${value.toFixed(1)}%`;
-}
-
 function ActivityRouteMap({
   routePoints,
   segmentGroups,
@@ -1337,6 +768,7 @@ function ActivityRouteMap({
       segmentGroup.efforts.map((segmentEffort) => ({
         id: `${segmentEffort.segment_id}-${segmentEffort.effort_index}`,
         color: segmentGroup.tone.mapColor,
+        label: segmentGroup.segmentTitle,
         points: segmentOverlayPoints(routePoints, segmentEffort),
         weight: selectedSegmentId === segmentGroup.segmentId ? 8 : 6,
         onClick: () => {
@@ -1492,6 +924,29 @@ export default function ActivityDetailPanel({
       ),
     [segmentsQuery.data],
   );
+  const starredSegmentIdsKey = useMemo(
+    () =>
+      Array.from(starredSegmentIds)
+        .sort((left, right) => left - right)
+        .join(","),
+    [starredSegmentIds],
+  );
+
+  useEffect(() => {
+    if (starredSegmentIds.size === 0) {
+      return;
+    }
+
+    setExpandedSegmentIds((current) => {
+      const next = new Set(current);
+
+      for (const segmentId of starredSegmentIds) {
+        next.add(segmentId);
+      }
+
+      return next.size === current.length ? current : Array.from(next);
+    });
+  }, [starredSegmentIds, starredSegmentIdsKey]);
 
   const heartRateSeries = buildSeries(
     activity?.chart_points,
@@ -1594,6 +1049,7 @@ export default function ActivityDetailPanel({
   }
 
   function toggleSegmentMatch(segmentId: number) {
+    setSelectedSegmentId((current) => (current === segmentId ? null : current));
     setExpandedSegmentIds((current) =>
       current.includes(segmentId)
         ? current.filter((entry) => entry !== segmentId)
@@ -1604,6 +1060,11 @@ export default function ActivityDetailPanel({
   async function toggleSegmentStar(segmentId: number, starred: boolean) {
     try {
       await updateSegmentMutation.updateAsync({ id: segmentId, starred });
+      if (starred) {
+        setExpandedSegmentIds((current) =>
+          current.includes(segmentId) ? current : [...current, segmentId],
+        );
+      }
     } catch {
       // The mutation exposes error state where segment controls are rendered.
     }
@@ -1889,62 +1350,6 @@ export default function ActivityDetailPanel({
               </dl>
             </div>
           </div>
-
-          {activity.estimated_ftp_watts != null ||
-          (activity.heart_rate_zones?.length ?? 0) > 0 ? (
-            <div className="rounded-box border border-base-300 bg-base-200 p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold text-base-content">
-                    Training profile snapshot
-                  </h2>
-                  <p className="text-sm text-base-content/70">
-                    Bike stores the heart rate zone time and FTP snapshot that
-                    were active when this ride was imported or regenerated.
-                  </p>
-                </div>
-                <span className="badge badge-outline">
-                  {activity.estimated_ftp_watts != null
-                    ? `FTP ${formatPower(activity.estimated_ftp_watts)}`
-                    : "Heart rate zones"}
-                </span>
-              </div>
-
-              {(activity.heart_rate_zones?.length ?? 0) > 0 ? (
-                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                  {(activity.heart_rate_zones ?? []).map((zone) => (
-                    <div
-                      key={zone.zone}
-                      className="rounded-lg border border-base-300 bg-base-100 px-3 py-3"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="badge badge-ghost">{zone.label}</span>
-                        <span className="text-sm font-medium text-base-content">
-                          {formatDuration(zone.duration_seconds)}
-                        </span>
-                      </div>
-                      <p className="mt-2 text-xs text-base-content/60">
-                        {formatHeartRateZoneRange(zone)}
-                      </p>
-                      <progress
-                        className="progress progress-primary mt-3 h-2 w-full"
-                        value={zone.share_percent}
-                        max={100}
-                      />
-                      <p className="mt-2 text-right text-xs text-base-content/60">
-                        {formatSharePercent(zone.share_percent)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="alert mt-4 bg-base-100 text-sm text-base-content/75">
-                  Heart rate zones were not stored on this ride yet. Save your
-                  account zones and regenerate the upload to persist them.
-                </div>
-              )}
-            </div>
-          ) : null}
         </div>
       </div>
 
@@ -1960,152 +1365,23 @@ export default function ActivityDetailPanel({
         selectedSegmentId={selectedSegmentId}
       />
 
-      <section
-        className="grid gap-4"
-        aria-labelledby="matched-segments-heading"
-      >
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h2 id="matched-segments-heading" className="text-xl font-semibold">
-              Matched segments
-            </h2>
-            <p className="mt-1 text-sm text-base-content/70">
-              Segment efforts are matched from imported segment routes against
-              the upload-time route geometry stored on this activity.
-            </p>
-          </div>
-          <span className="badge badge-outline">
-            {matchedSegmentGroups.length} matched segment
-            {matchedSegmentGroups.length === 1 ? "" : "s"}
-          </span>
-        </div>
+      <MatchedSegmentsSection
+        segmentGroups={matchedSegmentGroups}
+        routePoints={activity.route_points}
+        selectedSegmentId={selectedSegmentId}
+        expandedSegmentIds={expandedSegmentIds}
+        starredSegmentIds={starredSegmentIds}
+        updateSegmentPending={updateSegmentMutation.isPending}
+        onToggleSegmentMatch={toggleSegmentMatch}
+        onToggleSegmentStar={(segmentId, starred) => {
+          void toggleSegmentStar(segmentId, starred);
+        }}
+      />
 
-        {matchedSegmentGroups.length > 0 ? (
-          <div className="grid gap-4">
-            {matchedSegmentGroups.map((segmentGroup) => {
-              const segmentHref = `/segments/${segmentGroup.segmentId}`;
-              const segmentAchievement =
-                segmentHistoricalAchievements(segmentGroup);
-              const isSelected = selectedSegmentId === segmentGroup.segmentId;
-              const isStarred = starredSegmentIds.has(segmentGroup.segmentId);
-              const isExpanded =
-                isSelected ||
-                isStarred ||
-                expandedSegmentIds.includes(segmentGroup.segmentId);
-
-              return (
-                <article
-                  id={segmentGroup.anchorId}
-                  key={segmentGroup.segmentId}
-                  className={`card border border-base-300 bg-base-100 shadow-sm ring-1 transition ${isSelected ? segmentGroup.tone.highlightClassName : "ring-base-300/0"}`}
-                >
-                  <div className="card-body gap-3">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            className={`btn btn-ghost btn-xs btn-square ${isStarred ? "text-warning" : "text-base-content/45"}`}
-                            aria-label={`${isStarred ? "Unstar" : "Star"} ${segmentGroup.segmentTitle}`}
-                            aria-pressed={isStarred}
-                            disabled={updateSegmentMutation.isPending}
-                            onClick={() => {
-                              void toggleSegmentStar(
-                                segmentGroup.segmentId,
-                                !isStarred,
-                              );
-                            }}
-                          >
-                            <FontAwesomeIcon
-                              icon={faStar}
-                              className="h-3.5 w-3.5"
-                            />
-                          </button>
-                          <Link
-                            href={segmentHref}
-                            className="card-title text-lg transition hover:text-primary"
-                          >
-                            {segmentGroup.segmentTitle}
-                          </Link>
-                          <span className="badge badge-ghost badge-sm">
-                            {segmentGroup.efforts.length} run
-                            {segmentGroup.efforts.length === 1 ? "" : "s"}
-                          </span>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm gap-2"
-                        aria-expanded={isExpanded}
-                        aria-controls={`${segmentGroup.anchorId}-details`}
-                        disabled={isStarred}
-                        onClick={() => {
-                          toggleSegmentMatch(segmentGroup.segmentId);
-                        }}
-                      >
-                        <span>
-                          {isStarred
-                            ? "Starred stays open"
-                            : isExpanded
-                              ? "Hide time & runs"
-                              : "Show time & runs"}
-                        </span>
-                        <FontAwesomeIcon
-                          icon={isExpanded ? faChevronUp : faChevronDown}
-                          className="h-3.5 w-3.5"
-                        />
-                      </button>
-                    </div>
-
-                    {isExpanded ? (
-                      <div
-                        id={`${segmentGroup.anchorId}-details`}
-                        className="grid gap-3"
-                      >
-                        <div className="flex flex-wrap gap-2">
-                          <span className="badge badge-outline">
-                            Best{" "}
-                            {formatDuration(
-                              segmentGroup.bestEffort.duration_seconds,
-                            )}
-                          </span>
-                          <span className="badge badge-outline">
-                            Leaderboard{" "}
-                            {formatOverallRank(segmentGroup.bestOverallRank)}
-                          </span>
-                          <span className="badge badge-outline">
-                            Peak HR{" "}
-                            {formatHeartRate(segmentGroup.peakHeartRate)}
-                          </span>
-                          {segmentAchievement ? (
-                            <SegmentAchievementBadge
-                              achievement={segmentAchievement}
-                            />
-                          ) : null}
-                        </div>
-
-                        <SegmentAttemptsChart
-                          segmentGroup={segmentGroup}
-                          routePoints={activity.route_points}
-                        />
-                      </div>
-                    ) : null}
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="alert mt-5">
-            <span>
-              No imported segment routes have matched this activity yet. If this
-              is an older upload, regenerate it once so the latest route
-              geometry and matcher run against the raw file.
-            </span>
-          </div>
-        )}
-      </section>
+      <TrainingProfileSnapshot
+        estimatedFtpWatts={activity.estimated_ftp_watts}
+        heartRateZones={activity.heart_rate_zones}
+      />
 
       <SignalChartCard
         sampleCount={(activity.chart_points ?? []).length}

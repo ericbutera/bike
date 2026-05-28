@@ -13,6 +13,7 @@ export type RouteOverlay = {
   id: string;
   points: ActivityRoutePoint[];
   color: string;
+  label?: string;
   weight?: number;
   onClick?: () => void;
 };
