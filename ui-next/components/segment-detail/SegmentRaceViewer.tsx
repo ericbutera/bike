@@ -13,6 +13,7 @@ import {
   extractApiMessage,
   formatDuration,
 } from "../../lib/activityFormatting";
+import { config } from "../../lib/config";
 import {
   useSegment,
   type ActivityRoutePoint,
@@ -29,6 +30,8 @@ import {
   buildLiveComparisonRows,
   comparisonMarkerPoint,
   fastestEffort,
+  formatSignedSecondsDelta,
+  interpolateRoutePointByProgress,
   playbackTargetSeconds,
   type LiveComparisonRow,
   type PlaybackPace,
@@ -36,10 +39,30 @@ import {
 } from "../../lib/segmentDetail";
 import AuthRequiredCard from "../AuthRequiredCard";
 import MapLibreRouteMap from "../MapLibreRouteMap";
+import { type RouteMapBasemap } from "../RouteMapTypes";
 
 type RaceMapMode = "overview" | "leader-follow";
 
 const FOLLOW_LEADER_MAP_ZOOM = 19;
+
+function resolveRaceViewerBasemap(styleUrl: string): RouteMapBasemap {
+  switch (styleUrl.trim().toLowerCase()) {
+    case "":
+    case "topo":
+    case "opentopomap":
+    case "outdoors":
+      return "topo";
+    case "street":
+    case "streets":
+    case "carto-voyager":
+      return "street";
+    case "satellite":
+    case "imagery":
+      return "satellite";
+    default:
+      return "topo";
+  }
+}
 
 function sortComparisonRowsByLeader(comparisonRows: LiveComparisonRow[]) {
   const fallbackIndexByEffortId = new Map(
@@ -98,11 +121,15 @@ function RaceViewerMap({
   comparisonRows,
   playbackSeconds,
   mapMode,
+  selectedBasemap,
+  onSelectedBasemapChange,
 }: {
   routePoints: ActivityRoutePoint[] | null | undefined;
   comparisonRows: LiveComparisonRow[];
   playbackSeconds: number;
   mapMode: RaceMapMode;
+  selectedBasemap: RouteMapBasemap;
+  onSelectedBasemapChange: (basemap: RouteMapBasemap) => void;
 }) {
   const hasRouteMap = (routePoints?.length ?? 0) >= 2;
 
@@ -183,11 +210,13 @@ function RaceViewerMap({
       ariaLabel="Segment race viewer map"
       emptyMessage="Segment route geometry is not available yet."
       className="absolute inset-0 border-0"
-      layerPickerClassName="absolute left-[5.5rem] top-4 z-20 flex flex-wrap gap-2 rounded-box border border-base-100/15 bg-base-950/78 p-1 shadow-lg backdrop-blur sm:left-[6rem] sm:top-6"
+      basemapOptions={["topo", "street", "satellite"]}
+      defaultBasemap="topo"
+      selectedBasemap={selectedBasemap}
+      onSelectedBasemapChange={onSelectedBasemapChange}
       fitBoundsPadding={40}
       fitBoundsMaxZoom={18}
       showZoomControls
-      showLayerPicker
     />
   ) : (
     <div className="flex h-full items-center justify-center p-6">
@@ -233,6 +262,9 @@ export default function SegmentRaceViewer({
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackPace, setPlaybackPace] =
     useState<PlaybackPace>(initialPlaybackPace);
+  const [selectedBasemap, setSelectedBasemap] = useState<RouteMapBasemap>(() =>
+    resolveRaceViewerBasemap(config.MAP_STYLE_URL),
+  );
   const mapMode: RaceMapMode = "leader-follow";
   const segment = segmentQuery.data;
   const allEfforts = segment?.efforts ?? EMPTY_EFFORTS;
@@ -275,6 +307,39 @@ export default function SegmentRaceViewer({
     () => sortComparisonRowsByLeader(comparisonRows),
     [comparisonRows],
   );
+  const leaderGapByEffortId = useMemo(() => {
+    const leaderRow = sortedComparisonRows[0];
+
+    if (!leaderRow || leaderRow.progress == null) {
+      return new Map<number, number | null>();
+    }
+
+    const leaderProgressPoint = interpolateRoutePointByProgress(
+      leaderRow.effort.route_points,
+      leaderRow.progress,
+    );
+
+    if (!leaderProgressPoint) {
+      return new Map<number, number | null>();
+    }
+
+    return new Map(
+      sortedComparisonRows.map((comparisonRow) => {
+        const progressPoint = interpolateRoutePointByProgress(
+          comparisonRow.effort.route_points,
+          leaderRow.progress ?? 0,
+        );
+
+        return [
+          comparisonRow.effort.id,
+          progressPoint
+            ? progressPoint.elapsed_seconds -
+              leaderProgressPoint.elapsed_seconds
+            : null,
+        ];
+      }),
+    );
+  }, [sortedComparisonRows]);
   const backHref = `/segments/${segmentId}`;
 
   useEffect(() => {
@@ -454,26 +519,54 @@ export default function SegmentRaceViewer({
           comparisonRows={comparisonRows}
           playbackSeconds={playbackSeconds}
           mapMode={mapMode}
+          selectedBasemap={selectedBasemap}
+          onSelectedBasemapChange={setSelectedBasemap}
         />
 
         <div className="pointer-events-none absolute inset-0">
           <div className="pointer-events-auto flex flex-wrap items-start justify-between gap-3 p-4 sm:p-6">
-            <div className="flex min-w-0 flex-wrap items-center gap-3">
+            <div className="flex min-w-0 items-center gap-3 overflow-x-auto pb-1">
               <Link
                 href={backHref}
-                className="btn btn-sm border-0 bg-base-100/90 text-base-content shadow-sm backdrop-blur hover:bg-base-100"
+                className="btn btn-sm bg-base-100 text-base-content border border-base-300 shadow-sm hover:bg-base-200"
               >
                 <FontAwesomeIcon icon={faArrowLeft} className="h-3.5 w-3.5" />
                 Back
               </Link>
+
+              <div className="rounded-box border border-base-300/80 bg-base-100/90 p-1 shadow-sm backdrop-blur">
+                <div className="join join-horizontal shrink-0">
+                  {(
+                    [
+                      ["topo", "Topo"],
+                      ["street", "Street"],
+                      ["satellite", "Satellite"],
+                    ] as const
+                  ).map(([basemap, label]) => (
+                    <button
+                      key={basemap}
+                      type="button"
+                      className={`join-item btn btn-sm ${selectedBasemap === basemap ? "btn-primary" : "bg-base-100 text-base-content border border-base-300 shadow-sm hover:bg-base-200"}`}
+                      aria-pressed={selectedBasemap === basemap}
+                      onClick={() => {
+                        setSelectedBasemap(basemap);
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
-            <div className="mr-14 max-w-[12rem] rounded-box border border-base-100/15 bg-base-950/70 px-3 py-2 text-right shadow-lg backdrop-blur sm:mr-16 sm:max-w-[18rem]">
-              <div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-base-100/55">
-                Race viewer
-              </div>
-              <div className="truncate text-lg font-semibold text-base-100">
-                {segment.title}
+            <div className="card mr-14 w-full max-w-xs bg-base-100 text-base-content shadow-xl sm:mr-16 sm:w-auto sm:max-w-sm">
+              <div className="card-body gap-1 px-4 py-3 text-right sm:px-5">
+                <div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-base-content/55">
+                  Race viewer
+                </div>
+                <div className="text-lg font-semibold leading-tight">
+                  {segment.title}
+                </div>
               </div>
             </div>
           </div>
@@ -482,51 +575,64 @@ export default function SegmentRaceViewer({
             <div className="mx-auto flex w-full max-w-7xl flex-col gap-3">
               {sortedComparisonRows.length > 0 ? (
                 <div className="overflow-x-auto">
-                  <div className="flex min-w-max gap-2 pb-1">
-                    {sortedComparisonRows.map((comparisonRow) => (
-                      <button
-                        key={comparisonRow.effort.id}
-                        type="button"
-                        className={`rounded-box border px-3 py-2 text-left shadow-lg backdrop-blur transition ${comparisonRow.effort.id === referenceEffortId ? "border-base-100/20 bg-base-100 text-base-content" : "border-base-100/15 bg-base-950/75 text-base-100 hover:bg-base-950/85"}`}
-                        onClick={() => {
-                          setReferenceEffortId(comparisonRow.effort.id);
-                          setPlaybackSeconds(0);
-                          setIsPlaying(false);
-                        }}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="inline-flex h-6 w-6 items-center justify-center text-xs font-semibold text-white"
-                            style={{ backgroundColor: comparisonRow.color }}
-                          >
-                            {comparisonRow.markerLabel}
-                          </span>
-                          <span className="font-semibold">
-                            {comparisonRow.effort.rider_name}
-                          </span>
-                          {comparisonRow.effort.id === referenceEffortId ? (
-                            <span className="badge badge-sm border-0 bg-base-content text-base-100">
-                              Ref
+                  <div className="flex min-w-max items-start gap-3 pb-1">
+                    {sortedComparisonRows.map((comparisonRow, index) => {
+                      const leaderGapSeconds =
+                        leaderGapByEffortId.get(comparisonRow.effort.id) ??
+                        null;
+                      const gapValue =
+                        index === 0
+                          ? null
+                          : formatSignedSecondsDelta(leaderGapSeconds);
+                      const isTrailing = (leaderGapSeconds ?? 0) > 0;
+
+                      return (
+                        <div
+                          key={comparisonRow.effort.id}
+                          className="w-44 rounded-box bg-base-100 text-base-content shadow-lg p-3"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold text-white"
+                              style={{ backgroundColor: comparisonRow.color }}
+                            >
+                              {comparisonRow.markerLabel}
                             </span>
-                          ) : null}
+                            <span className="truncate font-semibold">
+                              {comparisonRow.effort.rider_name}
+                            </span>
+                          </div>
+                          <div className="mt-1 flex items-center justify-between gap-2 text-xs">
+                            <span className="text-base-content/70">
+                              {formatDuration(
+                                comparisonRow.effort.duration_seconds,
+                              )}
+                            </span>
+                            {gapValue ? (
+                              <span
+                                className={`font-semibold ${isTrailing ? "text-error" : "text-base-content/70"}`}
+                              >
+                                {gapValue}
+                              </span>
+                            ) : index === 0 ? (
+                              <span className="font-semibold text-success">
+                                Lead
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
-                        <div className="mt-1 text-xs text-current/70">
-                          {formatDuration(
-                            comparisonRow.effort.duration_seconds,
-                          )}
-                        </div>
-                      </button>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ) : null}
 
-              <div className="rounded-box border border-base-100/15 bg-base-950/78 px-3 py-3 shadow-2xl backdrop-blur sm:px-4">
+              <div className="rounded-box border border-base-300 bg-base-100 px-3 py-3 text-base-content shadow-2xl sm:px-4">
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="flex min-w-0 flex-1 items-center gap-3 max-[420px]:gap-2">
                     <button
                       type="button"
-                      className="btn btn-sm btn-circle shrink-0 border-0 bg-orange-500 text-white hover:bg-orange-600"
+                      className="btn btn-sm btn-circle btn-primary shrink-0"
                       disabled={
                         selectedRows.length === 0 || playbackLimitSeconds <= 0
                       }
@@ -570,7 +676,7 @@ export default function SegmentRaceViewer({
                       }}
                     />
 
-                    <span className="shrink-0 rounded-full border border-base-100/15 px-2.5 py-1 text-xs font-semibold tabular-nums text-base-100/85 max-[420px]:hidden">
+                    <span className="shrink-0 rounded-full border border-base-300 bg-base-200 px-2.5 py-1 text-xs font-semibold tabular-nums text-base-content/80 max-[420px]:hidden">
                       {formatDuration(Math.round(playbackSeconds))} /{" "}
                       {formatDuration(playbackLimitSeconds)}
                     </span>
@@ -581,7 +687,7 @@ export default function SegmentRaceViewer({
                       <button
                         key={option.key}
                         type="button"
-                        className={`join-item btn btn-sm border-0 ${playbackPace === option.key ? "bg-base-100 text-base-content hover:bg-base-100" : "bg-transparent text-base-100/80 hover:bg-base-100/10"}`}
+                        className={`join-item btn btn-sm ${playbackPace === option.key ? "btn-primary" : "btn-outline"}`}
                         aria-pressed={playbackPace === option.key}
                         onClick={() => {
                           setPlaybackPace(option.key);

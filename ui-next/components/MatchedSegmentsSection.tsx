@@ -639,8 +639,13 @@ export default function MatchedSegmentsSection({
 }) {
   function handleToggleRow(
     segmentId: number,
+    isStarred: boolean,
     event?: KeyboardEvent<HTMLDivElement>,
   ) {
+    if (isStarred) {
+      return;
+    }
+
     if (event && event.key !== "Enter" && event.key !== " ") {
       return;
     }
@@ -654,7 +659,7 @@ export default function MatchedSegmentsSection({
       {segmentGroups.length > 0 && (
         <ul className="list overflow-hidden rounded-box border border-base-300 bg-base-100 p-0">
           <li className="p-4 pb-2 text-xs opacity-60 tracking-wide">
-            Matched Segments
+            Matched segments
           </li>
 
           {segmentGroups.map((segmentGroup) => {
@@ -664,7 +669,9 @@ export default function MatchedSegmentsSection({
             const isSelected = selectedSegmentId === segmentGroup.segmentId;
             const isStarred = starredSegmentIds.has(segmentGroup.segmentId);
             const isExpanded =
-              isSelected || expandedSegmentIds.includes(segmentGroup.segmentId);
+              isStarred ||
+              isSelected ||
+              expandedSegmentIds.includes(segmentGroup.segmentId);
 
             return (
               <li
@@ -682,10 +689,14 @@ export default function MatchedSegmentsSection({
                     aria-expanded={isExpanded}
                     aria-controls={`${segmentGroup.anchorId}-details`}
                     onClick={() => {
+                      if (isStarred) {
+                        return;
+                      }
+
                       onToggleSegmentMatch(segmentGroup.segmentId);
                     }}
                     onKeyDown={(event) => {
-                      handleToggleRow(segmentGroup.segmentId, event);
+                      handleToggleRow(segmentGroup.segmentId, isStarred, event);
                     }}
                   >
                     <button
@@ -729,9 +740,6 @@ export default function MatchedSegmentsSection({
                         <span>
                           {formatOverallRank(segmentGroup.bestOverallRank)}
                         </span>
-                        <span>
-                          Peak HR {formatHeartRate(segmentGroup.peakHeartRate)}
-                        </span>
                       </p>
                     </div>
 
@@ -739,11 +747,23 @@ export default function MatchedSegmentsSection({
                       <button
                         type="button"
                         className="btn btn-ghost btn-sm btn-square"
-                        aria-label={`${isExpanded ? "Collapse" : "Expand"} ${segmentGroup.segmentTitle}`}
+                        aria-label={
+                          isStarred
+                            ? "Starred stays open"
+                            : isExpanded
+                              ? "Hide time & runs"
+                              : "Show time & runs"
+                        }
                         aria-expanded={isExpanded}
                         aria-controls={`${segmentGroup.anchorId}-details`}
+                        disabled={isStarred}
                         onClick={(event) => {
                           event.stopPropagation();
+
+                          if (isStarred) {
+                            return;
+                          }
+
                           onToggleSegmentMatch(segmentGroup.segmentId);
                         }}
                       >
@@ -755,38 +775,41 @@ export default function MatchedSegmentsSection({
                     </div>
                   </div>
 
-                  <div
-                    id={`${segmentGroup.anchorId}-details`}
-                    className="collapse-content list-col-wrap px-3 pb-4 sm:px-4"
-                  >
-                    <div className="grid gap-3">
-                      <div className="flex flex-wrap gap-2">
-                        <span className="badge badge-outline">
-                          Best{" "}
-                          {formatDuration(
-                            segmentGroup.bestEffort.duration_seconds,
-                          )}
-                        </span>
-                        <span className="badge badge-outline">
-                          Leaderboard{" "}
-                          {formatOverallRank(segmentGroup.bestOverallRank)}
-                        </span>
-                        <span className="badge badge-outline">
-                          Peak HR {formatHeartRate(segmentGroup.peakHeartRate)}
-                        </span>
-                        {segmentAchievement ? (
-                          <SegmentAchievementBadge
-                            achievement={segmentAchievement}
-                          />
-                        ) : null}
-                      </div>
+                  {isExpanded ? (
+                    <div
+                      id={`${segmentGroup.anchorId}-details`}
+                      className="collapse-content list-col-wrap px-3 pb-4 sm:px-4"
+                    >
+                      <div className="grid gap-3">
+                        <div className="flex flex-wrap gap-2">
+                          <span className="badge badge-outline">
+                            Best{" "}
+                            {formatDuration(
+                              segmentGroup.bestEffort.duration_seconds,
+                            )}
+                          </span>
+                          <span className="badge badge-outline">
+                            Leaderboard{" "}
+                            {formatOverallRank(segmentGroup.bestOverallRank)}
+                          </span>
+                          <span className="badge badge-outline">
+                            Peak HR{" "}
+                            {formatHeartRate(segmentGroup.peakHeartRate)}
+                          </span>
+                          {segmentAchievement ? (
+                            <SegmentAchievementBadge
+                              achievement={segmentAchievement}
+                            />
+                          ) : null}
+                        </div>
 
-                      <SegmentAttemptsChart
-                        segmentGroup={segmentGroup}
-                        routePoints={routePoints}
-                      />
+                        <SegmentAttemptsChart
+                          segmentGroup={segmentGroup}
+                          routePoints={routePoints}
+                        />
+                      </div>
                     </div>
-                  </div>
+                  ) : null}
                 </div>
               </li>
             );

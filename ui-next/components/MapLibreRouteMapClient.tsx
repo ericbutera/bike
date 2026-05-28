@@ -692,6 +692,8 @@ export default function MapLibreRouteMapClient({
   showLayerPicker = false,
   basemapOptions,
   defaultBasemap = "topo",
+  selectedBasemap: selectedBasemapProp,
+  onSelectedBasemapChange,
   fitBoundsPadding = DEFAULT_FIT_BOUNDS_PADDING,
   fitBoundsMaxZoom = DEFAULT_FIT_BOUNDS_MAX_ZOOM,
   showRouteEndpoints = true,
@@ -750,8 +752,10 @@ export default function MapLibreRouteMapClient({
     showBaseTiles &&
     showLayerPicker &&
     availableBasemaps.length > 1;
-  const [selectedBasemap, setSelectedBasemap] =
+  const [uncontrolledSelectedBasemap, setUncontrolledSelectedBasemap] =
     useState<RouteMapBasemap>(configuredBasemap);
+  const isBasemapControlled = selectedBasemapProp != null;
+  const selectedBasemap = selectedBasemapProp ?? uncontrolledSelectedBasemap;
   const [overlayTooltip, setOverlayTooltip] = useState<{
     label: string;
     x: number;
@@ -759,12 +763,29 @@ export default function MapLibreRouteMapClient({
   } | null>(null);
 
   useEffect(() => {
-    setSelectedBasemap(configuredBasemap);
-  }, [configuredBasemap]);
+    if (!isBasemapControlled) {
+      setUncontrolledSelectedBasemap(configuredBasemap);
+    }
+  }, [configuredBasemap, isBasemapControlled]);
+
+  const handleBasemapChange = (basemap: RouteMapBasemap) => {
+    if (!isBasemapControlled) {
+      setUncontrolledSelectedBasemap(basemap);
+    }
+
+    onSelectedBasemapChange?.(basemap);
+  };
 
   const mapStyle = useMemo(() => {
     if (!showBaseTiles) {
       return EMPTY_STYLE;
+    }
+
+    // If the basemap is controlled by the parent component, prefer it
+    // even if the internal layer picker UI is not shown. This allows
+    // external controls (like a top-level join) to change the map style.
+    if (isBasemapControlled) {
+      return buildBasemapStyle(selectedBasemap);
     }
 
     if (canShowLayerPicker) {
@@ -782,10 +803,15 @@ export default function MapLibreRouteMapClient({
     customMapStyle,
     selectedBasemap,
     showBaseTiles,
+    isBasemapControlled,
   ]);
   const mapStyleKey = useMemo(() => {
     if (!showBaseTiles) {
       return "empty";
+    }
+
+    if (isBasemapControlled) {
+      return `basemap:${selectedBasemap}`;
     }
 
     if (canShowLayerPicker) {
@@ -803,6 +829,7 @@ export default function MapLibreRouteMapClient({
     customMapStyle,
     selectedBasemap,
     showBaseTiles,
+    isBasemapControlled,
   ]);
 
   const routeSourceData = useMemo<FeatureCollection<LineString>>(
@@ -1296,7 +1323,7 @@ export default function MapLibreRouteMapClient({
                 className={`btn btn-xs ${isActive ? "btn-primary" : "btn-ghost"}`}
                 aria-pressed={isActive}
                 onClick={() => {
-                  setSelectedBasemap(basemap);
+                  handleBasemapChange(basemap);
                 }}
               >
                 {BASEMAP_LABELS[basemap]}

@@ -44,6 +44,8 @@ export type RouteMapProps = {
   showLayerPicker?: boolean;
   basemapOptions?: RouteMapBasemap[];
   defaultBasemap?: RouteMapBasemap;
+  selectedBasemap?: RouteMapBasemap;
+  onSelectedBasemapChange?: (basemap: RouteMapBasemap) => void;
   fitBoundsPadding?: number;
   fitBoundsMaxZoom?: number;
   showRouteEndpoints?: boolean;
