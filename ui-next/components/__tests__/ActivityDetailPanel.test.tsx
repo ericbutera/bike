@@ -396,10 +396,7 @@ describe("ActivityDetailPanel", () => {
     expect(screen.getAllByText("19.5 mph").length).toBeGreaterThan(0);
     expect(screen.getAllByText("168 bpm").length).toBeGreaterThan(0);
     expect(screen.getByText("lunch-ride.tcx")).toBeInTheDocument();
-    expect(screen.getByText("Training profile snapshot")).toBeInTheDocument();
-    expect(screen.getByText("FTP 265 W")).toBeInTheDocument();
     expect(screen.getByText("Above 170 bpm")).toBeInTheDocument();
-    expect(screen.getByText("Route map")).toBeInTheDocument();
     expect(
       screen.getByRole("img", { name: "Activity route map" }),
     ).toBeInTheDocument();
@@ -703,14 +700,10 @@ describe("ActivityDetailPanel", () => {
 
     render(<ActivityDetailPanel activityId={7} />);
 
-    expect(screen.getByText("Route map")).toBeInTheDocument();
     expect(
       screen.getByText(
         /does not have enough stored route points for the map yet/i,
       ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Regenerate route data" }),
     ).toBeInTheDocument();
   });
 });

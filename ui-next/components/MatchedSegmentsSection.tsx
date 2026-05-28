@@ -655,167 +655,174 @@ export default function MatchedSegmentsSection({
   }
 
   return (
-    <section className="grid gap-4" aria-labelledby="matched-segments-heading">
-      {segmentGroups.length > 0 && (
-        <ul className="list overflow-hidden rounded-box border border-base-300 bg-base-100 p-0">
-          <li className="p-4 pb-2 text-xs opacity-60 tracking-wide">
-            Matched segments
-          </li>
+    <div className="card bg-base-100 shadow-xl">
+      <div className="card-body">
+        {segmentGroups.length > 0 && (
+          <ul className="list overflow-hidden bg-base-100">
+            <li className="text-xs opacity-60 uppercase">Matched segments</li>
 
-          {segmentGroups.map((segmentGroup) => {
-            const segmentHref = `/segments/${segmentGroup.segmentId}`;
-            const segmentAchievement =
-              segmentHistoricalAchievements(segmentGroup);
-            const isSelected = selectedSegmentId === segmentGroup.segmentId;
-            const isStarred = starredSegmentIds.has(segmentGroup.segmentId);
-            const isExpanded =
-              isStarred ||
-              isSelected ||
-              expandedSegmentIds.includes(segmentGroup.segmentId);
+            {segmentGroups.map((segmentGroup) => {
+              const segmentHref = `/segments/${segmentGroup.segmentId}`;
+              const segmentAchievement =
+                segmentHistoricalAchievements(segmentGroup);
+              const isSelected = selectedSegmentId === segmentGroup.segmentId;
+              const isStarred = starredSegmentIds.has(segmentGroup.segmentId);
+              const isExpanded =
+                isStarred ||
+                isSelected ||
+                expandedSegmentIds.includes(segmentGroup.segmentId);
 
-            return (
-              <li
-                id={segmentGroup.anchorId}
-                key={segmentGroup.segmentId}
-                className={`list-row grid-cols-1 w-full p-0 transition ${isSelected ? `${segmentGroup.tone.highlightClassName} bg-base-200/60` : "bg-base-100"} border-b border-base-300 last:border-b-0`}
-              >
-                <div
-                  className={`collapse min-w-0 w-full rounded-none ring-1 ring-inset transition ${isSelected ? segmentGroup.tone.highlightClassName : "ring-transparent"} ${isExpanded ? "collapse-open" : "collapse-close"}`}
+              return (
+                <li
+                  id={segmentGroup.anchorId}
+                  key={segmentGroup.segmentId}
+                  className={`list-row grid-cols-1 w-full p-0 transition ${isSelected ? `${segmentGroup.tone.highlightClassName} bg-base-200/60` : "bg-base-100"} border-b border-base-300 last:border-b-0`}
                 >
                   <div
-                    role="button"
-                    tabIndex={0}
-                    className="collapse-title grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 px-3 py-3 pr-3 sm:px-4 sm:pr-4"
-                    aria-expanded={isExpanded}
-                    aria-controls={`${segmentGroup.anchorId}-details`}
-                    onClick={() => {
-                      if (isStarred) {
-                        return;
-                      }
-
-                      onToggleSegmentMatch(segmentGroup.segmentId);
-                    }}
-                    onKeyDown={(event) => {
-                      handleToggleRow(segmentGroup.segmentId, isStarred, event);
-                    }}
+                    className={`collapse min-w-0 w-full rounded-none ring-1 ring-inset transition ${isSelected ? segmentGroup.tone.highlightClassName : "ring-transparent"} ${isExpanded ? "collapse-open" : "collapse-close"}`}
                   >
-                    <button
-                      type="button"
-                      className={`btn btn-ghost btn-sm btn-square self-center ${isStarred ? "text-warning" : "text-base-content/45"}`}
-                      aria-label={`${isStarred ? "Unstar" : "Star"} ${segmentGroup.segmentTitle}`}
-                      aria-pressed={isStarred}
-                      disabled={updateSegmentPending}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void onToggleSegmentStar(
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      className="collapse-title grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 px-3 py-3 pr-3 sm:px-4 sm:pr-4"
+                      aria-expanded={isExpanded}
+                      aria-controls={`${segmentGroup.anchorId}-details`}
+                      onClick={() => {
+                        if (isStarred) {
+                          return;
+                        }
+
+                        onToggleSegmentMatch(segmentGroup.segmentId);
+                      }}
+                      onKeyDown={(event) => {
+                        handleToggleRow(
                           segmentGroup.segmentId,
-                          !isStarred,
+                          isStarred,
+                          event,
                         );
                       }}
                     >
-                      <FontAwesomeIcon icon={faStar} className="h-3.5 w-3.5" />
-                    </button>
-
-                    <div className="min-w-0">
-                      <div className="min-w-0">
-                        <Link
-                          href={segmentHref}
-                          className="truncate text-base font-semibold text-base-content transition hover:text-primary"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                          }}
-                        >
-                          {segmentGroup.segmentTitle}
-                        </Link>
-                      </div>
-                      <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-base-content/60">
-                        <span
-                          aria-hidden
-                          className={`inline-block h-2 w-2 rounded-full ${segmentGroup.tone.dotClassName}`}
-                        />
-                        <span>
-                          {segmentGroup.efforts.length} run
-                          {segmentGroup.efforts.length === 1 ? "" : "s"}
-                        </span>
-                        <span>
-                          {formatOverallRank(segmentGroup.bestOverallRank)}
-                        </span>
-                      </p>
-                    </div>
-
-                    <div className="flex items-center self-center justify-end">
                       <button
                         type="button"
-                        className="btn btn-ghost btn-sm btn-square"
-                        aria-label={
-                          isStarred
-                            ? "Starred stays open"
-                            : isExpanded
-                              ? "Hide time & runs"
-                              : "Show time & runs"
-                        }
-                        aria-expanded={isExpanded}
-                        aria-controls={`${segmentGroup.anchorId}-details`}
-                        disabled={isStarred}
+                        className={`btn btn-ghost btn-sm btn-square self-center ${isStarred ? "text-warning" : "text-base-content/45"}`}
+                        aria-label={`${isStarred ? "Unstar" : "Star"} ${segmentGroup.segmentTitle}`}
+                        aria-pressed={isStarred}
+                        disabled={updateSegmentPending}
                         onClick={(event) => {
                           event.stopPropagation();
-
-                          if (isStarred) {
-                            return;
-                          }
-
-                          onToggleSegmentMatch(segmentGroup.segmentId);
+                          void onToggleSegmentStar(
+                            segmentGroup.segmentId,
+                            !isStarred,
+                          );
                         }}
                       >
                         <FontAwesomeIcon
-                          icon={isExpanded ? faChevronUp : faChevronDown}
+                          icon={faStar}
                           className="h-3.5 w-3.5"
                         />
                       </button>
-                    </div>
-                  </div>
 
-                  {isExpanded ? (
-                    <div
-                      id={`${segmentGroup.anchorId}-details`}
-                      className="collapse-content list-col-wrap px-3 pb-4 sm:px-4"
-                    >
-                      <div className="grid gap-3">
-                        <div className="flex flex-wrap gap-2">
-                          <span className="badge badge-outline">
-                            Best{" "}
-                            {formatDuration(
-                              segmentGroup.bestEffort.duration_seconds,
-                            )}
+                      <div className="min-w-0">
+                        <div className="min-w-0">
+                          <Link
+                            href={segmentHref}
+                            className="truncate text-base font-semibold text-base-content transition hover:text-primary"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                            }}
+                          >
+                            {segmentGroup.segmentTitle}
+                          </Link>
+                        </div>
+                        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-base-content/60">
+                          <span
+                            aria-hidden
+                            className={`inline-block h-2 w-2 rounded-full ${segmentGroup.tone.dotClassName}`}
+                          />
+                          <span>
+                            {segmentGroup.efforts.length} run
+                            {segmentGroup.efforts.length === 1 ? "" : "s"}
                           </span>
-                          <span className="badge badge-outline">
-                            Leaderboard{" "}
+                          <span>
                             {formatOverallRank(segmentGroup.bestOverallRank)}
                           </span>
-                          <span className="badge badge-outline">
-                            Peak HR{" "}
-                            {formatHeartRate(segmentGroup.peakHeartRate)}
-                          </span>
-                          {segmentAchievement ? (
-                            <SegmentAchievementBadge
-                              achievement={segmentAchievement}
-                            />
-                          ) : null}
-                        </div>
+                        </p>
+                      </div>
 
-                        <SegmentAttemptsChart
-                          segmentGroup={segmentGroup}
-                          routePoints={routePoints}
-                        />
+                      <div className="flex items-center self-center justify-end">
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm btn-square"
+                          aria-label={
+                            isStarred
+                              ? "Starred stays open"
+                              : isExpanded
+                                ? "Hide time & runs"
+                                : "Show time & runs"
+                          }
+                          aria-expanded={isExpanded}
+                          aria-controls={`${segmentGroup.anchorId}-details`}
+                          disabled={isStarred}
+                          onClick={(event) => {
+                            event.stopPropagation();
+
+                            if (isStarred) {
+                              return;
+                            }
+
+                            onToggleSegmentMatch(segmentGroup.segmentId);
+                          }}
+                        >
+                          <FontAwesomeIcon
+                            icon={isExpanded ? faChevronUp : faChevronDown}
+                            className="h-3.5 w-3.5"
+                          />
+                        </button>
                       </div>
                     </div>
-                  ) : null}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
+
+                    {isExpanded ? (
+                      <div
+                        id={`${segmentGroup.anchorId}-details`}
+                        className="collapse-content list-col-wrap px-3 pb-4 sm:px-4"
+                      >
+                        <div className="grid gap-3">
+                          <div className="flex flex-wrap gap-2">
+                            <span className="badge badge-outline">
+                              Best{" "}
+                              {formatDuration(
+                                segmentGroup.bestEffort.duration_seconds,
+                              )}
+                            </span>
+                            <span className="badge badge-outline">
+                              Leaderboard{" "}
+                              {formatOverallRank(segmentGroup.bestOverallRank)}
+                            </span>
+                            <span className="badge badge-outline">
+                              Peak HR{" "}
+                              {formatHeartRate(segmentGroup.peakHeartRate)}
+                            </span>
+                            {segmentAchievement ? (
+                              <SegmentAchievementBadge
+                                achievement={segmentAchievement}
+                              />
+                            ) : null}
+                          </div>
+
+                          <SegmentAttemptsChart
+                            segmentGroup={segmentGroup}
+                            routePoints={routePoints}
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
   );
 }

@@ -507,18 +507,9 @@ function SignalChartCard({
   return (
     <div className="card bg-base-100 shadow-xl">
       <div className="card-body">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h2 className="card-title text-xl">Ride signals</h2>
-            <p className="text-sm leading-6 text-base-content/70">
-              Heart rate, power, speed, and elevation share the same time axis.
-              Toggle layers to focus on effort, terrain, or both at once.
-            </p>
-          </div>
-          <span className="badge badge-ghost uppercase">
-            {sampleCount} samples
-          </span>
-        </div>
+        <h2 className="card-title text-xs opacity-60 uppercase">
+          Ride signals
+        </h2>
 
         <div className="mt-4 flex flex-wrap gap-2">
           {availableSeries.map((entry) => {
@@ -781,23 +772,9 @@ function ActivityRouteMap({
   return (
     <div className="card bg-base-100 shadow-xl">
       <div className="card-body">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h2 className="card-title text-xl">Route map</h2>
-            <p className="text-sm text-base-content/70">
-              The full activity route is drawn from persisted upload-time route
-              points. Imported segment matches are highlighted on top of it.
-            </p>
-          </div>
-          <span className="badge badge-outline">
-            {segmentGroups.length} matched segment
-            {segmentGroups.length === 1 ? "" : "s"}
-          </span>
-        </div>
-
         {hasRouteMap ? (
           <>
-            <div className="mt-5 overflow-hidden rounded-box border border-base-300 bg-base-200">
+            <div className="mt-5 overflow-hidden border border-base-300 bg-base-200">
               <MapLibreRouteMap
                 routePoints={routePoints}
                 overlays={overlays}
@@ -849,20 +826,6 @@ function ActivityRouteMap({
                 map yet. Regenerate it once to rebuild the full route geometry
                 and re-run segment matching.
               </p>
-              {canRegenerate ? (
-                <div className="mt-4">
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-sm"
-                    onClick={onRegenerate}
-                    disabled={isRegenerating}
-                  >
-                    {isRegenerating
-                      ? "Regenerating..."
-                      : "Regenerate route data"}
-                  </button>
-                </div>
-              ) : null}
             </div>
           </div>
         )}

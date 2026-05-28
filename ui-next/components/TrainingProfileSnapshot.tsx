@@ -53,30 +53,12 @@ export default function TrainingProfileSnapshot({
   }
 
   return (
-    <section className="card bg-base-100 shadow-xl">
-      <div className="card-body gap-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="card-title text-xl">Training profile snapshot</h2>
-            <p className="text-sm text-base-content/70">
-              Bike stores the ride-time FTP estimate and heart rate zone split
-              alongside the upload so the activity keeps its original training
-              context.
-            </p>
-          </div>
-
-          {estimatedFtpWatts != null ? (
-            <span className="badge badge-outline badge-lg font-medium">
-              {`FTP ${formatPower(estimatedFtpWatts)}`}
-            </span>
-          ) : null}
-        </div>
-
-        {zones.length > 0 ? (
-          <div className="rounded-box border border-base-300 bg-base-100 px-4 py-4">
+    <>
+      {zones.length > 0 && (
+        <section className="card bg-base-100 shadow-xl">
+          <div className="card-body gap-4">
             <div className="mb-3 flex items-center justify-between gap-3 text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
               <span>Zone distribution</span>
-              <span>{zones.length} stored zones</span>
             </div>
             <div className="space-y-3">
               {zones.map((zone, index) => (
@@ -116,13 +98,8 @@ export default function TrainingProfileSnapshot({
               ))}
             </div>
           </div>
-        ) : (
-          <div className="alert bg-base-100 text-sm text-base-content/75">
-            Heart rate zones were not stored on this ride yet. Save your account
-            zones and regenerate the upload to persist them.
-          </div>
-        )}
-      </div>
-    </section>
+        </section>
+      )}
+    </>
   );
 }
