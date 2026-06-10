@@ -38,6 +38,9 @@ export default function Navigation() {
                     <li>
                       <Link href="/fitness">Fitness</Link>
                     </li>
+                    <li>
+                      <Link href="/training/reports">Reports</Link>
+                    </li>
                   </ul>
                 </details>
               </li>

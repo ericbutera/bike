@@ -3,7 +3,9 @@ pub mod activities;
 pub mod activity_imports;
 pub mod admin;
 pub mod fitness;
+pub mod garmin_iq;
 pub mod integration_events;
+pub mod reports;
 pub mod segments;
 pub mod strava;
 pub mod training_goals;
@@ -60,6 +62,10 @@ pub fn routes() -> Router<Arc<AppStorage>> {
             axum::routing::get(training_goals::get_dh_goal_progress),
         )
         .route(
+            "/api/training/reports",
+            axum::routing::get(reports::get_training_reports),
+        )
+        .route(
             "/api/segments",
             axum::routing::get(segments::list_segments)
                 .post(segments::import_segment)
@@ -107,6 +113,7 @@ pub fn routes() -> Router<Arc<AppStorage>> {
             axum::routing::get(activity_imports::get_activity_archive_import_job),
         )
         .nest("/api/integration-events", integration_events::routes())
+        .nest("/api/garmin-iq", garmin_iq::routes())
         .nest("/api/strava", strava::routes())
         .nest(
             "/api/admin/metrics",

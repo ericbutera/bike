@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bike.local/schemas/garmin-iq-segment-sync.json",
+  "title": "Bike Garmin IQ Segment Sync",
+  "type": "object",
+  "required": ["synced_at", "segments"],
+  "properties": {
+    "synced_at": {
+      "type": "string",
+      "description": "ISO-8601 UTC timestamp of sync generation"
+    },
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "distance_meters",
+          "approach_meters",
+          "route_points"
+        ],
+        "properties": {
+          "id": { "type": "integer" },
+          "title": { "type": "string" },
+          "distance_meters": { "type": "number" },
+          "approach_meters": {
+            "type": "number",
+            "description": "Distance threshold that triggers APPROACHING state"
+          },
+          "goal_seconds": {
+            "type": ["integer", "null"],
+            "description": "Preferred target split time"
+          },
+          "pr_seconds": {
+            "type": ["integer", "null"],
+            "description": "Fallback target if goal_seconds is null"
+          },
+          "route_points": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "type": "object",
+              "required": ["lat", "lon", "distance_meters"],
+              "properties": {
+                "lat": { "type": "number" },
+                "lon": { "type": "number" },
+                "distance_meters": { "type": "number" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

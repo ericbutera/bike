@@ -217,6 +217,20 @@ export type StravaConnection = {
   last_sync_failed_count: number;
 };
 
+export type GarminIqCompleteLinkResponse = {
+  message: string;
+  install_id: string;
+  device_name?: string | null;
+};
+
+export type GarminIqLinkedDevice = {
+  id: number;
+  install_id: string;
+  device_name?: string | null;
+  linked_at?: string | null;
+  last_seen_at?: string | null;
+};
+
 export type IntegrationEvent = {
   id: number;
   user_id?: number | null;
@@ -409,6 +423,38 @@ export type DhGoalProgress = {
   recommendations: TrainingRecommendation[];
   segments: DhSegmentProgress[];
   recent_sessions: DhSessionSummary[];
+};
+
+export type TrainingReportBoundary =
+  | "day"
+  | "week"
+  | "month"
+  | "3month"
+  | "6month"
+  | "1year"
+  | "2year";
+
+export type TrainingReportPoint = {
+  bucket_start: string;
+  bucket_end: string;
+  z2_average_speed_mps?: number | null;
+  average_aerobic_decoupling_percent?: number | null;
+  climbing_pace_feet_per_week?: number | null;
+  z1_seconds: number;
+  z2_seconds: number;
+  z3_seconds: number;
+  z4_seconds: number;
+  z5_seconds: number;
+  elevation_gain_meters: number;
+  elevation_gain_feet: number;
+};
+
+export type TrainingReportsResponse = {
+  generated_at: string;
+  boundary: TrainingReportBoundary;
+  range_start: string;
+  range_end: string;
+  points: TrainingReportPoint[];
 };
 
 export type AdminAnalyticsBackfillResponse = {
@@ -1154,6 +1200,65 @@ export function useDisconnectStrava() {
   };
 }
 
+export function useGarminIqLinkedDevices(opts?: {
+  enabled?: boolean;
+  refetchIntervalMs?: number | false;
+}) {
+  const response = $api.useQuery("get", "/garmin-iq/devices", {
+    options: {
+      enabled: opts?.enabled ?? true,
+      refetchInterval: opts?.refetchIntervalMs ?? false,
+    },
+  });
+
+  return {
+    ...response,
+    data: (response.data ?? []) as GarminIqLinkedDevice[],
+  };
+}
+
+export function useCompleteGarminIqLink() {
+  const queryClient = useQueryClient();
+  const mutation = $api.useMutation("post", "/garmin-iq/link/complete");
+
+  return {
+    ...mutation,
+    completeAsync: async (pairingCode: string) => {
+      const result = await mutation.mutateAsync({
+        body: {
+          pairing_code: pairingCode,
+        },
+      });
+
+      await queryClient.invalidateQueries({ queryKey: ["get", "/garmin-iq/devices"] });
+
+      return result as GarminIqCompleteLinkResponse;
+    },
+  };
+}
+
+export function useUnlinkGarminIqDevice() {
+  const queryClient = useQueryClient();
+  const mutation = $api.useMutation("delete", "/garmin-iq/devices/{id}");
+
+  return {
+    ...mutation,
+    unlinkAsync: async (id: number) => {
+      const result = await mutation.mutateAsync({
+        params: {
+          path: {
+            id,
+          },
+        },
+      });
+
+      await queryClient.invalidateQueries({ queryKey: ["get", "/garmin-iq/devices"] });
+
+      return result as { message: string };
+    },
+  };
+}
+
 export function useUserPreferences(opts?: {
   enabled?: boolean;
   refetchIntervalMs?: number | false;
@@ -1221,6 +1326,25 @@ export function useDhGoalProgress(opts?: { enabled?: boolean }) {
   return {
     ...response,
     data: (response.data ?? null) as DhGoalProgress | null,
+  };
+}
+
+export function useTrainingReports(
+  boundary: TrainingReportBoundary,
+  opts?: { enabled?: boolean },
+) {
+  const response = $api.useQuery("get", "/training/reports", {
+    params: {
+      query: {
+        boundary,
+      },
+    },
+    options: { enabled: opts?.enabled ?? true },
+  });
+
+  return {
+    ...response,
+    data: (response.data ?? null) as TrainingReportsResponse | null,
   };
 }
 

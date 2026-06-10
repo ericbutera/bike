@@ -1,0 +1,68 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run Monkeybrains (BikeSegments)",
+      "type": "shell",
+      "command": "java",
+      "args": [
+        "-Xms1g",
+        "-Dfile.encoding=UTF-8",
+        "-Dapple.awt.UIElement=true",
+        "-jar",
+        "/Users/eric/Library/Application Support/Garmin/ConnectIQ/Sdks/connectiq-sdk-mac-9.1.0-2026-03-09-6a872a80b/bin/monkeybrains.jar",
+        "-o",
+        "bin/BikeSegments.prg",
+        "-f",
+        "/Users/eric/code/sass/bike/garmin-iq/BikeSegments/monkey.jungle",
+        "-y",
+        "/Users/eric/code/sass/bike/garmin-iq/BikeSegments/source/developer_key",
+        "-d",
+        "edge1030plus",
+        "-w"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Build+Install+Run Monkeybrains (BikeSegments)",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "-lc",
+        "java -Xms1g -Dfile.encoding=UTF-8 -Dapple.awt.UIElement=true -jar \"$HOME/Library/Application Support/Garmin/ConnectIQ/Sdks/connectiq-sdk-mac-9.1.0-2026-03-09-6a872a80b/bin/monkeybrains.jar\" -o bin/BikeSegments.prg -f \"$PWD/monkey.jungle\" -y \"$PWD/source/developer_key\" -d edge1030plus -w && for i in 1 2 3 4 5; do \"$HOME/Library/Application Support/Garmin/ConnectIQ/Sdks/connectiq-sdk-mac-9.1.0-2026-03-09-6a872a80b/bin/monkeydo\" bin/BikeSegments.prg edge1030plus && break || sleep 0.5; done"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Build+Install+Run Monkeybrains (BikeSegments) (Debug)",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "-lc",
+        "open \"$HOME/Library/Application Support/Garmin/ConnectIQ/Sdks/connectiq-sdk-mac-9.1.0-2026-03-09-6a872a80b/bin/ConnectIQ.app\" >/dev/null 2>&1 || true; sleep 1; backup=\"$PWD/resources/strings/strings.xml.bak\"; cp \"$PWD/resources/strings/strings.xml\" \"$backup\"; trap \"mv \\\"$backup\\\" \\\"$PWD/resources/strings/strings.xml\\\"\" EXIT; cp \"$PWD/resources/strings/strings.debug.xml\" \"$PWD/resources/strings/strings.xml\" && java -Xms1g -Dfile.encoding=UTF-8 -Dapple.awt.UIElement=true -jar \"$HOME/Library/Application Support/Garmin/ConnectIQ/Sdks/connectiq-sdk-mac-9.1.0-2026-03-09-6a872a80b/bin/monkeybrains.jar\" -o bin/BikeSegments.prg -f \"$PWD/monkey.jungle\" -y \"$PWD/source/developer_key\" -d edge1030plus -w && for i in 1 2 3 4 5; do \"$HOME/Library/Application Support/Garmin/ConnectIQ/Sdks/connectiq-sdk-mac-9.1.0-2026-03-09-6a872a80b/bin/monkeydo\" bin/BikeSegments.prg edge1030plus && break || sleep 0.5; done"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

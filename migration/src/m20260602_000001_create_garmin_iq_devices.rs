@@ -1,0 +1,170 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[derive(Iden)]
+enum GarminIqDevices {
+    Table,
+    Id,
+    InstallId,
+    UserId,
+    DeviceName,
+    PairingCode,
+    PairingCodeExpiresAt,
+    PairingApprovedAt,
+    RefreshTokenHash,
+    RefreshTokenExpiresAt,
+    AccessTokenHash,
+    AccessTokenExpiresAt,
+    LastSeenAt,
+    LastSyncAt,
+    RevokedAt,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(GarminIqDevices::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(GarminIqDevices::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(GarminIqDevices::InstallId)
+                            .string_len(128)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(GarminIqDevices::UserId).integer().null())
+                    .col(ColumnDef::new(GarminIqDevices::DeviceName).string_len(128).null())
+                    .col(ColumnDef::new(GarminIqDevices::PairingCode).string_len(16).null())
+                    .col(
+                        ColumnDef::new(GarminIqDevices::PairingCodeExpiresAt)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(GarminIqDevices::PairingApprovedAt)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(GarminIqDevices::RefreshTokenHash)
+                            .string_len(128)
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(GarminIqDevices::RefreshTokenExpiresAt)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(GarminIqDevices::AccessTokenHash)
+                            .string_len(128)
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(GarminIqDevices::AccessTokenExpiresAt)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(GarminIqDevices::LastSeenAt)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(GarminIqDevices::LastSyncAt)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(GarminIqDevices::RevokedAt)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(GarminIqDevices::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::cust("CURRENT_TIMESTAMP")),
+                    )
+                    .col(
+                        ColumnDef::new(GarminIqDevices::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::cust("CURRENT_TIMESTAMP")),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx-garmin-iq-devices-install-id")
+                    .table(GarminIqDevices::Table)
+                    .col(GarminIqDevices::InstallId)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx-garmin-iq-devices-pairing-code")
+                    .table(GarminIqDevices::Table)
+                    .col(GarminIqDevices::PairingCode)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx-garmin-iq-devices-user-id")
+                    .table(GarminIqDevices::Table)
+                    .col(GarminIqDevices::UserId)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx-garmin-iq-devices-refresh-hash")
+                    .table(GarminIqDevices::Table)
+                    .col(GarminIqDevices::RefreshTokenHash)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx-garmin-iq-devices-access-hash")
+                    .table(GarminIqDevices::Table)
+                    .col(GarminIqDevices::AccessTokenHash)
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(GarminIqDevices::Table).to_owned())
+            .await
+    }
+}

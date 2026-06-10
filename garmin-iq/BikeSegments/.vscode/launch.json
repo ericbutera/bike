@@ -1,0 +1,15 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Build+Install+Run BikeSegments (Debug)",
+      "type": "pwa-node",
+      "request": "launch",
+      "program": "${workspaceFolder}/.vscode/keepalive.js",
+      "preLaunchTask": "Build+Install+Run Monkeybrains (BikeSegments) (Debug)",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen"
+    }
+  ]
+}

@@ -6,6 +6,7 @@ pub mod activity_imports;
 pub mod activity_training_analyses;
 pub mod analytics_user_states;
 pub mod fitness_freshness_daily;
+pub mod garmin_iq_devices;
 pub mod integration_events;
 pub mod segment_efforts;
 pub mod segment_summaries;

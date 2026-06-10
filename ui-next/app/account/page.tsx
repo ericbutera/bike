@@ -20,11 +20,14 @@ import {
   type UnitSystem,
 } from "../../lib/activityFormatting";
 import {
+  useCompleteGarminIqLink,
   useDisconnectStrava,
+  useGarminIqLinkedDevices,
   useQueueStravaSync,
   useStartStravaConnect,
   useStravaConnection,
   useStravaIntegrationEvents,
+  useUnlinkGarminIqDevice,
   useUpdateUserPreferences,
   useUserPreferences,
 } from "../../lib/queries";
@@ -181,6 +184,9 @@ export default function AccountPage() {
   const startStravaConnectMutation = useStartStravaConnect();
   const queueStravaSyncMutation = useQueueStravaSync();
   const disconnectStravaMutation = useDisconnectStrava();
+  const garminDevicesQuery = useGarminIqLinkedDevices({ enabled: !!user });
+  const completeGarminLinkMutation = useCompleteGarminIqLink();
+  const unlinkGarminDeviceMutation = useUnlinkGarminIqDevice();
   const unitSystem = normalizeUnitSystem(preferencesQuery.data?.unit_system);
   const estimatedFtpWatts = preferencesQuery.data?.estimated_ftp_watts ?? null;
   const heartRateZoneBounds =
@@ -196,6 +202,7 @@ export default function AccountPage() {
   const [draftUnitSystem, setDraftUnitSystem] =
     useState<UnitSystem>(DEFAULT_UNIT_SYSTEM);
   const [draftEstimatedFtpWatts, setDraftEstimatedFtpWatts] = useState("");
+  const [garminPairingCode, setGarminPairingCode] = useState("");
   const [draftMaxHeartRate, setDraftMaxHeartRate] = useState("");
   const [draftHeartRateZoneBounds, setDraftHeartRateZoneBounds] = useState(
     zoneBoundsToDraft(null),
@@ -234,6 +241,16 @@ export default function AccountPage() {
 
     router.replace("/account");
   }, [router, searchParams]);
+
+  useEffect(() => {
+    const pairingCode = searchParams.get("garmin_pair");
+
+    if (!pairingCode) {
+      return;
+    }
+
+    setGarminPairingCode(pairingCode.toUpperCase());
+  }, [searchParams]);
 
   async function handleSave() {
     try {
@@ -311,6 +328,26 @@ export default function AccountPage() {
     }
   }
 
+  async function handleCompleteGarminLink() {
+    try {
+      const result = await completeGarminLinkMutation.completeAsync(
+        garminPairingCode.trim().toUpperCase(),
+      );
+      toast.success(result.message);
+    } catch (error) {
+      toast.error(extractApiMessage(error));
+    }
+  }
+
+  async function handleUnlinkGarminDevice(id: number) {
+    try {
+      const result = await unlinkGarminDeviceMutation.unlinkAsync(id);
+      toast.success(result.message);
+    } catch (error) {
+      toast.error(extractApiMessage(error));
+    }
+  }
+
   const isDirty =
     draftUnitSystem !== unitSystem ||
     draftEstimatedFtpWatts !== (estimatedFtpWatts?.toString() ?? "") ||
@@ -319,12 +356,16 @@ export default function AccountPage() {
   const isStravaSyncPending = isStravaSyncActive(
     stravaConnection.last_sync_status,
   );
+  const garminDevices = garminDevicesQuery.data;
 
   return (
     <Layout>
       <section className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
         {isLoadingUser ||
-        (user && (preferencesQuery.isLoading || stravaQuery.isLoading)) ? (
+        (user &&
+          (preferencesQuery.isLoading ||
+            stravaQuery.isLoading ||
+            garminDevicesQuery.isLoading)) ? (
           <div className="card bg-base-100 shadow-xl">
             <div className="card-body items-center py-10">
               <span className="loading loading-spinner loading-md" />
@@ -551,6 +592,125 @@ export default function AccountPage() {
                   error={stravaEventsQuery.error}
                   emptyMessage="No Strava history yet. Connect Strava or queue a sync to start recording events."
                 />
+              </div>
+            </div>
+
+            <div className="card bg-base-100 shadow-xl">
+              <div className="card-body gap-6">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <h2 className="card-title text-xl">Garmin IQ linking</h2>
+                    <p className="text-sm text-base-content/70">
+                      On the watch, choose Link account to get a pairing code.
+                      Enter that code here to approve the device. Bike stores
+                      only hashed refresh and access secrets for Garmin IQ sync.
+                    </p>
+                  </div>
+                  <span
+                    className={`badge ${garminDevices.length > 0 ? "badge-primary" : "badge-outline"}`}
+                  >
+                    {garminDevices.length > 0 ? "Linked" : "Not linked"}
+                  </span>
+                </div>
+
+                <div className="rounded-box border border-base-300 bg-base-200 p-4 text-sm text-base-content/75">
+                  <div className="font-medium text-base-content">Approve watch link</div>
+                  <p className="mt-2 leading-6">
+                    The watch polls until you approve. Once linked, the watch
+                    stores refresh credentials and rotates short-lived access
+                    tokens automatically.
+                  </p>
+
+                  <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <label className="form-control flex-1">
+                      <div className="label">
+                        <span className="label-text font-medium">
+                          Pairing code
+                        </span>
+                        <span className="label-text-alt">From watch</span>
+                      </div>
+                      <input
+                        type="text"
+                        className="input input-bordered uppercase"
+                        placeholder="A1B2C3"
+                        value={garminPairingCode}
+                        onChange={(event) => {
+                          setGarminPairingCode(event.target.value.toUpperCase());
+                        }}
+                      />
+                    </label>
+
+                    <button
+                      type="button"
+                      className="btn btn-primary sm:mb-1"
+                      disabled={
+                        !garminPairingCode.trim() ||
+                        completeGarminLinkMutation.isPending
+                      }
+                      onClick={handleCompleteGarminLink}
+                    >
+                      {completeGarminLinkMutation.isPending
+                        ? "Approving..."
+                        : "Approve link"}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-sm font-medium text-base-content">
+                    Linked devices
+                  </div>
+
+                  {garminDevices.length === 0 ? (
+                    <div className="mt-3 rounded-box border border-base-300 bg-base-200 p-4 text-sm text-base-content/70">
+                      No Garmin IQ devices linked yet.
+                    </div>
+                  ) : (
+                    <div className="mt-3 space-y-3">
+                      {garminDevices.map((device) => (
+                        <div
+                          key={device.id}
+                          className="rounded-box border border-base-300 bg-base-200 p-4"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="text-sm text-base-content/75">
+                              <div className="font-medium text-base-content">
+                                {device.device_name?.trim() || "Garmin device"}
+                              </div>
+                              <div className="mt-1">Install: {device.install_id}</div>
+                              <div>
+                                Linked: {formatActivityTimestamp(device.linked_at ?? "")}
+                              </div>
+                              <div>
+                                Last seen: {formatActivityTimestamp(device.last_seen_at ?? "")}
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm"
+                              disabled={unlinkGarminDeviceMutation.isPending}
+                              onClick={() => {
+                                void handleUnlinkGarminDevice(device.id);
+                              }}
+                            >
+                              {unlinkGarminDeviceMutation.isPending
+                                ? "Unlinking..."
+                                : "Unlink"}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="card-actions justify-end gap-3 text-xs text-base-content/60">
+                  <span>
+                    If the code expires, restart linking on the watch and enter
+                    the new code.
+                  </span>
+                </div>
               </div>
             </div>
 

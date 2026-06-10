@@ -1,0 +1,7 @@
+<resources>
+    <string id="AppName">Bike Segments</string>
+    <string id="ApiBaseUrl">https://bike.nibelheim.dev</string>
+    <string id="AccountUrl">https://bike.nibelheim.dev/account</string>
+    <string id="AccountLabel">bike.nibelheim.dev/account</string>
+    <string id="AllowProductionFallback">true</string>
+</resources>
