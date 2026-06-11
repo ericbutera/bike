@@ -92,6 +92,18 @@ function sortComparisonRowsByLeader(comparisonRows: LiveComparisonRow[]) {
   });
 }
 
+function formatRideDateLabel(value: string) {
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString(undefined, { dateStyle: "medium" });
+}
+
+function formatAttemptNumber(value: number) {
+  return `Attempt ${value}`;
+}
+
 function buildInitialReferenceEffortId(
   selectedEfforts: SegmentEffort[],
   requestedReferenceEffortId: number | null,
@@ -574,8 +586,8 @@ export default function SegmentRaceViewer({
           <div className="pointer-events-auto absolute inset-x-0 bottom-0 p-4 sm:p-6">
             <div className="mx-auto flex w-full max-w-7xl flex-col gap-3">
               {sortedComparisonRows.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <div className="flex min-w-max items-start gap-3 pb-1">
+                <div className="overflow-x-auto pt-28">
+                  <div className="flex min-w-max items-end gap-3 pb-1">
                     {sortedComparisonRows.map((comparisonRow, index) => {
                       const leaderGapSeconds =
                         leaderGapByEffortId.get(comparisonRow.effort.id) ??
@@ -585,11 +597,21 @@ export default function SegmentRaceViewer({
                           ? null
                           : formatSignedSecondsDelta(leaderGapSeconds);
                       const isTrailing = (leaderGapSeconds ?? 0) > 0;
+                      const rideDate = formatRideDateLabel(
+                        comparisonRow.effort.activity_started_at,
+                      );
+                      const attemptNumber = formatAttemptNumber(
+                        comparisonRow.effort.effort_index,
+                      );
+                      const effortDetailsLabel = `${comparisonRow.effort.rider_name} - ${rideDate} - ${attemptNumber}`;
 
                       return (
                         <div
                           key={comparisonRow.effort.id}
-                          className="w-44 rounded-box bg-base-100 text-base-content shadow-lg p-3"
+                          className="group relative w-44 rounded-box bg-base-100 p-3 text-base-content shadow-lg"
+                          tabIndex={0}
+                          title={effortDetailsLabel}
+                          aria-label={effortDetailsLabel}
                         >
                           <div className="flex items-center gap-2">
                             <span
@@ -620,6 +642,25 @@ export default function SegmentRaceViewer({
                               </span>
                             ) : null}
                           </div>
+                          <div className="pointer-events-none absolute bottom-full left-0 z-20 mb-2 hidden w-44 rounded-box border border-base-300 bg-base-100 p-3 text-left text-xs shadow-xl group-hover:block group-focus:block">
+                            <div className="truncate font-semibold text-base-content">
+                              {comparisonRow.effort.activity_title}
+                            </div>
+                            <div className="mt-2 grid gap-1 text-base-content/70">
+                              <div className="flex justify-between gap-3">
+                                <span>Ride date</span>
+                                <span className="text-right font-medium text-base-content">
+                                  {rideDate}
+                                </span>
+                              </div>
+                              <div className="flex justify-between gap-3">
+                                <span>Attempt</span>
+                                <span className="text-right font-medium text-base-content">
+                                  {attemptNumber}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       );
                     })}
@@ -628,8 +669,8 @@ export default function SegmentRaceViewer({
               ) : null}
 
               <div className="rounded-box border border-base-300 bg-base-100 px-3 py-3 text-base-content shadow-2xl sm:px-4">
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex min-w-0 flex-1 items-center gap-3 max-[420px]:gap-2">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <div className="flex items-center gap-3 sm:contents">
                     <button
                       type="button"
                       className="btn btn-sm btn-circle btn-primary shrink-0"
@@ -656,33 +697,49 @@ export default function SegmentRaceViewer({
                       />
                     </button>
 
-                    <input
-                      type="range"
-                      min={0}
-                      max={Math.max(playbackLimitSeconds, 1)}
-                      step={0.1}
-                      value={Math.min(
-                        playbackSeconds,
-                        Math.max(playbackLimitSeconds, 1),
-                      )}
-                      className="range range-primary min-w-0 flex-1"
-                      disabled={
-                        selectedRows.length === 0 || playbackLimitSeconds <= 0
-                      }
-                      aria-label="Race playback timeline"
-                      onChange={(event) => {
-                        setPlaybackSeconds(Number(event.target.value));
-                        setIsPlaying(false);
-                      }}
-                    />
-
-                    <span className="shrink-0 rounded-full border border-base-300 bg-base-200 px-2.5 py-1 text-xs font-semibold tabular-nums text-base-content/80 max-[420px]:hidden">
+                    <span className="ml-auto shrink-0 rounded-full border border-base-300 bg-base-200 px-2.5 py-1 text-xs font-semibold tabular-nums text-base-content/80 sm:order-3 sm:ml-0">
                       {formatDuration(Math.round(playbackSeconds))} /{" "}
                       {formatDuration(playbackLimitSeconds)}
                     </span>
+
+                    <div className="join shrink-0 sm:hidden">
+                      {PLAYBACK_PACE_OPTIONS.map((option) => (
+                        <button
+                          key={option.key}
+                          type="button"
+                          className={`join-item btn btn-xs ${playbackPace === option.key ? "btn-primary" : "btn-outline"}`}
+                          aria-pressed={playbackPace === option.key}
+                          onClick={() => {
+                            setPlaybackPace(option.key);
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
-                  <div className="join shrink-0 max-[420px]:hidden">
+                  <input
+                    type="range"
+                    min={0}
+                    max={Math.max(playbackLimitSeconds, 1)}
+                    step={0.1}
+                    value={Math.min(
+                      playbackSeconds,
+                      Math.max(playbackLimitSeconds, 1),
+                    )}
+                    className="range range-primary w-full sm:order-2 sm:min-w-0 sm:flex-1"
+                    disabled={
+                      selectedRows.length === 0 || playbackLimitSeconds <= 0
+                    }
+                    aria-label="Race playback timeline"
+                    onChange={(event) => {
+                      setPlaybackSeconds(Number(event.target.value));
+                      setIsPlaying(false);
+                    }}
+                  />
+
+                  <div className="join hidden shrink-0 self-start sm:order-4 sm:flex sm:self-auto">
                     {PLAYBACK_PACE_OPTIONS.map((option) => (
                       <button
                         key={option.key}

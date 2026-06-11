@@ -914,6 +914,11 @@ export default function MapLibreRouteMapClient({
         new maplibregl.AttributionControl({ compact: true }),
         "bottom-right",
       );
+      requestAnimationFrame(() => {
+        containerRef.current
+          ?.querySelector(".maplibregl-ctrl-attrib")
+          ?.classList.remove("maplibregl-compact-show");
+      });
     }
 
     if (interactive && showZoomControls) {
