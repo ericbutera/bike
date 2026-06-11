@@ -39,6 +39,7 @@ pub async fn register_default_processors(
     let backfill_user_xc_training = Arc::new(BackfillUserXcTraining::new(db.clone()));
     let rebuild_fitness_freshness = Arc::new(RebuildFitnessFreshness::new(db.clone()));
     let rebuild_segment_analytics = Arc::new(RebuildSegmentAnalytics::new(db.clone()));
+    let regenerate_segment_efforts = Arc::new(RegenerateSegmentEfforts::new(db.clone()));
     let reprocess_user_activity_imports = Arc::new(ReprocessUserActivityImports::new(db.clone()));
     let regenerate_user_segments = Arc::new(RegenerateUserSegments::new(db.clone()));
     let activity_archive_import = Arc::new(ActivityArchiveImport::new(db.clone()));
@@ -48,6 +49,7 @@ pub async fn register_default_processors(
         .register_processor(backfill_user_xc_training)
         .register_processor(rebuild_fitness_freshness)
         .register_processor(rebuild_segment_analytics)
+        .register_processor(regenerate_segment_efforts)
         .register_processor(reprocess_user_activity_imports)
         .register_processor(regenerate_user_segments)
         .register_processor(activity_archive_import)

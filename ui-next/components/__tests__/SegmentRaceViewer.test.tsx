@@ -199,4 +199,14 @@ describe("SegmentRaceViewer", () => {
       getPlaybackTimer(container).parentElement,
     );
   });
+
+  it("uses eased map following so race playback does not jump through tight turns", () => {
+    renderRaceViewer();
+
+    expect(mocks.renderMapLibreRouteMap).toHaveBeenCalledWith(
+      expect.objectContaining({
+        followViewportBehavior: "ease",
+      }),
+    );
+  });
 });

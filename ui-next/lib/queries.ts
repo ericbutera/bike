@@ -472,6 +472,18 @@ export type ReprocessUserActivityImportsResponse = {
   message: string;
 };
 
+export type RegenerateUserSegmentsResponse = {
+  user_id: number;
+  status: string;
+  message: string;
+};
+
+export type RegenerateSegmentEffortsResponse = {
+  segment_id: number;
+  status: string;
+  message: string;
+};
+
 export type CleanupUserDuplicateActivitiesResponse = {
   user_id: number;
   status: string;
@@ -590,6 +602,57 @@ export function useReprocessUserActivityImports() {
       });
 
       return result as ReprocessUserActivityImportsResponse;
+    },
+  };
+}
+
+export function useRegenerateUserSegments() {
+  const queryClient = useQueryClient();
+  const mutation = $api.useMutation("post", "/admin/segments/regenerate");
+
+  return {
+    ...mutation,
+    regenerateAsync: async (userId: number | string) => {
+      const numericUserId = Number(userId);
+      const result = await mutation.mutateAsync({
+        body: {
+          user_id: numericUserId,
+        },
+      });
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["get", "/segments"] }),
+        queryClient.invalidateQueries({ queryKey: ["get", "/segments/{id}"] }),
+      ]);
+
+      return result as RegenerateUserSegmentsResponse;
+    },
+  };
+}
+
+export function useRegenerateSegmentEfforts() {
+  const queryClient = useQueryClient();
+  const mutation = $api.useMutation(
+    "post",
+    "/admin/segments/regenerate-efforts",
+  );
+
+  return {
+    ...mutation,
+    regenerateAsync: async (segmentId: number | string) => {
+      const numericSegmentId = Number(segmentId);
+      const result = await mutation.mutateAsync({
+        body: {
+          segment_id: numericSegmentId,
+        },
+      });
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["get", "/segments"] }),
+        queryClient.invalidateQueries({ queryKey: ["get", "/segments/{id}"] }),
+      ]);
+
+      return result as RegenerateSegmentEffortsResponse;
     },
   };
 }

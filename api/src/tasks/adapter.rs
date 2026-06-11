@@ -14,6 +14,7 @@ pub enum Task {
     EmailNotification(auth_tasks::EmailNotificationTask),
     RebuildFitnessFreshness(RebuildFitnessFreshnessTask),
     RebuildSegmentAnalytics(RebuildSegmentAnalyticsTask),
+    RegenerateSegmentEfforts(RegenerateSegmentEffortsTask),
     ReprocessUserActivityImports(ReprocessUserActivityImportsTask),
     BackfillUserXcTraining(BackfillUserXcTrainingTask),
     RegenerateUserSegments(RegenerateUserSegmentsTask),
@@ -29,6 +30,11 @@ pub struct RebuildFitnessFreshnessTask {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RebuildSegmentAnalyticsTask {
     pub segment_ids: Vec<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegenerateSegmentEffortsTask {
+    pub segment_id: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,6 +70,7 @@ impl Task {
             Task::EmailNotification(_) => auth_tasks::EMAIL_NOTIFICATION_TASK_TYPE,
             Task::RebuildFitnessFreshness(_) => "rebuild_fitness_freshness",
             Task::RebuildSegmentAnalytics(_) => "rebuild_segment_analytics",
+            Task::RegenerateSegmentEfforts(_) => "regenerate_segment_efforts",
             Task::ReprocessUserActivityImports(_) => "reprocess_user_activity_imports",
             Task::BackfillUserXcTraining(_) => "backfill_user_xc_training",
             Task::RegenerateUserSegments(_) => "regenerate_user_segments",
@@ -158,6 +165,22 @@ impl TaskQueue {
         .await;
     }
 
+    pub async fn regenerate_segment_efforts(&self, segment_id: i32) -> Result<(), String> {
+        if segment_id <= 0 {
+            return Ok(());
+        }
+
+        let task = Task::RegenerateSegmentEfforts(RegenerateSegmentEffortsTask { segment_id });
+        let task_type = task.task_type().to_string();
+
+        self.auth
+            .inner()
+            .enqueue_with_options(task_type, task, None, 1)
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+
     pub async fn regenerate_user_segments(&self, user_id: i32) -> Result<(), String> {
         let task = Task::RegenerateUserSegments(RegenerateUserSegmentsTask { user_id });
         let task_type = task.task_type().to_string();
@@ -171,9 +194,7 @@ impl TaskQueue {
     }
 
     pub async fn reprocess_user_activity_imports(&self, user_id: i32) -> Result<(), String> {
-        let task = Task::ReprocessUserActivityImports(ReprocessUserActivityImportsTask {
-            user_id,
-        });
+        let task = Task::ReprocessUserActivityImports(ReprocessUserActivityImportsTask { user_id });
         let task_type = task.task_type().to_string();
 
         self.auth
@@ -258,4 +279,26 @@ pub fn create_auth_service(db: DatabaseConnection, tasks: TaskQueue) -> AppAuthS
         kaleido::auth::EnvConfigProvider::from_env(),
         metrics,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn regenerate_segment_efforts_task_serializes_for_worker() {
+        let task = Task::RegenerateSegmentEfforts(RegenerateSegmentEffortsTask { segment_id: 51 });
+
+        assert_eq!(task.task_type(), "regenerate_segment_efforts");
+        assert_eq!(
+            serde_json::to_value(task).expect("serialize task"),
+            json!({
+                "type": "RegenerateSegmentEfforts",
+                "data": {
+                    "segment_id": 51,
+                },
+            }),
+        );
+    }
 }

@@ -36,6 +36,10 @@ pub fn routes() -> Router<Arc<AppStorage>> {
         .route("/training/xc-backfill", post(backfill_user_xc_training))
         .route("/segments/regenerate", post(regenerate_user_segments))
         .route(
+            "/segments/regenerate-efforts",
+            post(regenerate_segment_efforts),
+        )
+        .route(
             "/activity-imports/reprocess",
             post(reprocess_user_activity_imports),
         )
@@ -166,6 +170,11 @@ pub struct RegenerateUserSegmentsRequest {
     pub user_id: i32,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct RegenerateSegmentEffortsRequest {
+    pub segment_id: i32,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ArchiveImportResponse {
     pub archive_path: String,
@@ -182,6 +191,13 @@ pub struct ArchiveImportResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct RegenerateUserSegmentsResponse {
     pub user_id: i32,
+    pub status: String,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct RegenerateSegmentEffortsResponse {
+    pub segment_id: i32,
     pub status: String,
     pub message: String,
 }
@@ -346,6 +362,53 @@ pub async fn regenerate_user_segments(
             user_id: request.user_id,
             status: "queued".to_string(),
             message: "Segment regeneration queued.".to_string(),
+        }),
+    ))
+}
+
+#[utoipa::path(
+    post,
+    path = "/admin/segments/regenerate-efforts",
+    operation_id = "admin_regenerate_segment_efforts",
+    request_body = RegenerateSegmentEffortsRequest,
+    responses(
+        (status = 202, description = "Queued effort regeneration for one segment", body = RegenerateSegmentEffortsResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "Segment not found", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "admin",
+)]
+pub async fn regenerate_segment_efforts(
+    _admin: AdminUserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+    Json(request): Json<RegenerateSegmentEffortsRequest>,
+) -> Result<(StatusCode, Json<RegenerateSegmentEffortsResponse>), AppError> {
+    segments::Entity::find_by_id(request.segment_id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| {
+            AppError::not_found(format!("Segment {} was not found", request.segment_id))
+        })?;
+
+    if let Err(message) = state
+        .tasks
+        .regenerate_segment_efforts(request.segment_id)
+        .await
+    {
+        return Err(AppError::internal(format!(
+            "Failed to queue segment effort regeneration: {message}"
+        )));
+    }
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(RegenerateSegmentEffortsResponse {
+            segment_id: request.segment_id,
+            status: "queued".to_string(),
+            message: "Segment effort regeneration queued.".to_string(),
         }),
     ))
 }

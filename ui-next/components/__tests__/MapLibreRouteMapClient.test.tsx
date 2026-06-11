@@ -153,7 +153,7 @@ describe("MapLibreRouteMapClient", () => {
     expect(mapMocks.addControl).toHaveBeenCalledTimes(1);
   });
 
-  it("jumps to follow mode initially, then eases leader tracking without refitting bounds", async () => {
+  it("jumps to follow mode initially, then smooths leader tracking without refitting bounds", async () => {
     const routePoints = [
       { elapsed_seconds: 0, latitude: 45.0, longitude: -122.0 },
       { elapsed_seconds: 120, latitude: 45.004, longitude: -121.996 },
@@ -200,7 +200,7 @@ describe("MapLibreRouteMapClient", () => {
             color: "#0f766e",
           },
         ]}
-        followViewport={{ point: routePoints[1], zoom: 19 }}
+        followViewport={{ point: routePoints[1], zoom: 17 }}
         ariaLabel="Segment comparison map"
         emptyMessage="Segment route geometry is not available yet."
         fitBoundsPadding={24}
@@ -211,9 +211,9 @@ describe("MapLibreRouteMapClient", () => {
     await waitFor(() => {
       expect(mapMocks.easeTo).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          center: [-121.996, 45.004],
-          zoom: 19,
-          duration: 160,
+          center: [-121.99936, 45.00064],
+          zoom: 18.92,
+          duration: 1400,
           easing: expect.any(Function),
         }),
       );

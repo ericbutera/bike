@@ -191,11 +191,18 @@ const MARKER_LAYER_ID = "activity-route-markers-circle";
 const MARKER_LABEL_LAYER_ID = "activity-route-markers-label";
 const DEFAULT_FIT_BOUNDS_PADDING = 56;
 const DEFAULT_FIT_BOUNDS_MAX_ZOOM = 14;
-const FOLLOW_VIEWPORT_EASE_DURATION_MS = 160;
+const FOLLOW_VIEWPORT_EASE_DURATION_MS = 1400;
+const FOLLOW_VIEWPORT_CENTER_SMOOTHING_ALPHA = 0.16;
+const FOLLOW_VIEWPORT_ZOOM_SMOOTHING_ALPHA = 0.04;
 const DEFAULT_MOVING_MARKER_TRANSITION_MS = 0;
 const MIN_MARKER_ANIMATION_FRAME_MS = 1000 / 30;
 const EMPTY_OVERLAYS: RouteOverlay[] = [];
 const EMPTY_MOVING_MARKERS: RouteMovingMarker[] = [];
+
+type FollowCameraTarget = {
+  center: [number, number];
+  zoom: number;
+};
 
 type OverlayLayerEvent = {
   point?: {
@@ -282,6 +289,43 @@ function interpolateOptionalNumber(
   }
 
   return previousValue + (currentValue - previousValue) * progress;
+}
+
+function interpolateNumber(
+  previousValue: number,
+  currentValue: number,
+  smoothingAlpha: number,
+) {
+  return previousValue + (currentValue - previousValue) * smoothingAlpha;
+}
+
+function smoothFollowCameraTarget(
+  previousTarget: FollowCameraTarget | null,
+  nextTarget: FollowCameraTarget,
+): FollowCameraTarget {
+  if (!previousTarget) {
+    return nextTarget;
+  }
+
+  return {
+    center: [
+      interpolateNumber(
+        previousTarget.center[0],
+        nextTarget.center[0],
+        FOLLOW_VIEWPORT_CENTER_SMOOTHING_ALPHA,
+      ),
+      interpolateNumber(
+        previousTarget.center[1],
+        nextTarget.center[1],
+        FOLLOW_VIEWPORT_CENTER_SMOOTHING_ALPHA,
+      ),
+    ],
+    zoom: interpolateNumber(
+      previousTarget.zoom,
+      nextTarget.zoom,
+      FOLLOW_VIEWPORT_ZOOM_SMOOTHING_ALPHA,
+    ),
+  };
 }
 
 function distanceRange(points: ActivityRoutePoint[] | null | undefined) {
@@ -705,6 +749,7 @@ export default function MapLibreRouteMapClient({
   const lastMovingMarkerUpdateAtRef = useRef<number | null>(null);
   const renderedMovingMarkersRef = useRef<RouteMovingMarker[]>([]);
   const lastFollowViewportKeyRef = useRef<string | null>(null);
+  const smoothedFollowTargetRef = useRef<FollowCameraTarget | null>(null);
   const lastFittedRoutePointsRef = useRef<
     ActivityRoutePoint[] | null | undefined
   >(null);
@@ -981,6 +1026,7 @@ export default function MapLibreRouteMapClient({
       renderedMovingMarkersRef.current = [];
       shouldRestoreViewRef.current = false;
       lastFollowViewportKeyRef.current = null;
+      smoothedFollowTargetRef.current = null;
       lastFittedRoutePointsRef.current = null;
       hasFittedInitialViewRef.current = false;
     };
@@ -1247,6 +1293,7 @@ export default function MapLibreRouteMapClient({
 
       if (!followViewport?.point) {
         lastFollowViewportKeyRef.current = null;
+        smoothedFollowTargetRef.current = null;
         return;
       }
 
@@ -1260,7 +1307,7 @@ export default function MapLibreRouteMapClient({
         return;
       }
 
-      const nextView = {
+      const nextTarget = {
         center: [
           followViewport.point.longitude,
           followViewport.point.latitude,
@@ -1272,10 +1319,17 @@ export default function MapLibreRouteMapClient({
         followViewportBehavior === "jump" ||
         lastFollowViewportKeyRef.current == null
       ) {
-        map.jumpTo(nextView);
+        smoothedFollowTargetRef.current = nextTarget;
+        map.jumpTo(nextTarget);
       } else {
+        const smoothedTarget = smoothFollowCameraTarget(
+          smoothedFollowTargetRef.current,
+          nextTarget,
+        );
+
+        smoothedFollowTargetRef.current = smoothedTarget;
         map.easeTo({
-          ...nextView,
+          ...smoothedTarget,
           duration: FOLLOW_VIEWPORT_EASE_DURATION_MS,
           easing: (value) => 1 - (1 - value) * (1 - value),
         });

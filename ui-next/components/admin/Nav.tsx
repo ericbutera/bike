@@ -19,6 +19,14 @@ export default function Nav() {
         </Link>
       </li>
       <li>
+        <Link
+          href="/admin/manual-tasks"
+          className={linkClass("/admin/manual-tasks")}
+        >
+          Manual tasks
+        </Link>
+      </li>
+      <li>
         <Link href="/admin/tasks" className={linkClass("/admin/tasks")}>
           Tasks
         </Link>

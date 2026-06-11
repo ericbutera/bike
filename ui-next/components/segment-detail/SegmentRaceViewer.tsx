@@ -218,7 +218,7 @@ function RaceViewerMap({
         label: marker.label,
       }))}
       followViewport={followViewport}
-      followViewportBehavior="jump"
+      followViewportBehavior="ease"
       ariaLabel="Segment race viewer map"
       emptyMessage="Segment route geometry is not available yet."
       className="absolute inset-0 border-0"

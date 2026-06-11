@@ -31,6 +31,7 @@ use utoipa::OpenApi;
         auth_openapi::paths::oauth_callback,
         admin::backfill_analytics,
         admin::backfill_user_xc_training,
+        admin::regenerate_segment_efforts,
         admin::regenerate_user_segments,
         admin::reprocess_user_activity_imports,
         activities::list_activities,
@@ -80,6 +81,8 @@ use utoipa::OpenApi;
         schemas(
             app_error::ApiErrorResponse,
             admin::AnalyticsBackfillResponse,
+            admin::RegenerateSegmentEffortsRequest,
+            admin::RegenerateSegmentEffortsResponse,
             admin::RegenerateUserSegmentsRequest,
             admin::RegenerateUserSegmentsResponse,
             admin::ReprocessUserActivityImportsRequest,
