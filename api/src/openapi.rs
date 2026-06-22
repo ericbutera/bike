@@ -11,6 +11,7 @@ use crate::controllers::strava;
 use crate::controllers::training_goals;
 use crate::controllers::user_preferences;
 use kaleido::auth::openapi as auth_openapi;
+use kaleido::background_jobs::openapi as background_jobs_openapi;
 use kaleido::glass::openapi as glass_openapi;
 use kaleido::glass::SecurityAddon;
 use utoipa::OpenApi;
@@ -76,6 +77,10 @@ use utoipa::OpenApi;
         glass_openapi::paths::public_flags,
         glass_openapi::paths::list_flags,
         glass_openapi::paths::update_flag,
+        background_jobs_openapi::paths::list_tasks,
+        background_jobs_openapi::paths::get_task,
+        background_jobs_openapi::paths::rerun_task,
+        background_jobs_openapi::paths::cancel_task,
     ),
     components(
         schemas(
@@ -159,6 +164,10 @@ use utoipa::OpenApi;
             glass_openapi::schemas::PaginatedResponse<glass_openapi::schemas::FeatureFlagResponse>,
             glass_openapi::schemas::PaginatedResponse<glass_openapi::schemas::PublicFlagResponse>,
             kaleido::glass::data::pagination::PaginationParams,
+            background_jobs_openapi::schemas::PaginatedResponse<background_jobs_openapi::schemas::TaskResponse>,
+            background_jobs_openapi::schemas::PaginationMetadata,
+            background_jobs_openapi::schemas::TaskResponse,
+            background_jobs_openapi::schemas::TaskDetailResponse,
         )
     ),
     tags(

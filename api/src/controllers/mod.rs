@@ -33,8 +33,8 @@ pub fn routes() -> Router<Arc<AppStorage>> {
         .nest("/api/admin/feature-flags", feature_flags::admin_routes())
         .nest("/api/feature-flags", feature_flags::public_routes())
         .nest(
-            "/api/admin/tasks",
-            background_jobs::admin::admin_routes::<AppStorage, AdminUserContext<AppStorage>>(),
+            "/api",
+            background_jobs::admin::api_routes::<AppStorage, AdminUserContext<AppStorage>>(),
         )
         .nest("/api/admin/users", auth::admin_routes())
         .route(
