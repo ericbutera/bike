@@ -32,6 +32,13 @@ import {
   type UnitSystem,
 } from "../lib/activityFormatting";
 import {
+  ACTIVITY_TYPE_OPTIONS,
+  ACTIVITY_TYPES,
+  formatActivityTypeLabel,
+  normalizeActivityType,
+  type ActivityType,
+} from "../lib/activityTypes";
+import {
   type ActivityChartPoint,
   type ActivityLap,
   type ActivityRoutePoint,
@@ -40,6 +47,7 @@ import {
   useDeleteActivity,
   useRegenerateActivity,
   useSegments,
+  useUpdateActivity,
   useUpdateSegment,
 } from "../lib/queries";
 import { hasSegmentBuilderRoute } from "../lib/segmentBuilder";
@@ -843,6 +851,11 @@ export default function ActivityDetailPanel({
     null,
   );
   const [expandedSegmentIds, setExpandedSegmentIds] = useState<number[]>([]);
+  const [isActivityTypeDialogOpen, setIsActivityTypeDialogOpen] =
+    useState(false);
+  const [activityTypeDraft, setActivityTypeDraft] = useState<ActivityType>(
+    ACTIVITY_TYPES.Training,
+  );
   const [visibleSignalKeys, setVisibleSignalKeys] = useState<SignalMetricKey[]>(
     DEFAULT_VISIBLE_SIGNAL_KEYS,
   );
@@ -854,6 +867,7 @@ export default function ActivityDetailPanel({
   const segmentsQuery = useSegments({ enabled: !!user });
   const regenerateMutation = useRegenerateActivity();
   const deleteMutation = useDeleteActivity();
+  const updateActivityMutation = useUpdateActivity();
   const updateSegmentMutation = useUpdateSegment();
   const activity = activityQuery.data;
   const canBuildSegment = hasSegmentBuilderRoute(activity?.route_points);
@@ -910,6 +924,10 @@ export default function ActivityDetailPanel({
       return next.size === current.length ? current : Array.from(next);
     });
   }, [starredSegmentIds, starredSegmentIdsKey]);
+
+  useEffect(() => {
+    setActivityTypeDraft(normalizeActivityType(activity?.activity_type));
+  }, [activity?.activity_type]);
 
   const heartRateSeries = buildSeries(
     activity?.chart_points,
@@ -1045,6 +1063,21 @@ export default function ActivityDetailPanel({
     }
   }
 
+  async function handleSaveActivityType() {
+    if (!activity) {
+      return;
+    }
+
+    try {
+      await updateActivityMutation.updateAsync(activity.id, {
+        activity_type: activityTypeDraft,
+      });
+      setIsActivityTypeDialogOpen(false);
+    } catch {
+      // The mutation exposes the API error state used below.
+    }
+  }
+
   async function handleDelete() {
     if (!activity) {
       return;
@@ -1122,6 +1155,9 @@ export default function ActivityDetailPanel({
                 <span className="badge badge-outline">
                   {formatSport(activity.sport)}
                 </span>
+                <span className="badge badge-outline">
+                  {formatActivityTypeLabel(activity.activity_type)}
+                </span>
 
                 <div className="dropdown dropdown-end">
                   <button
@@ -1140,6 +1176,19 @@ export default function ActivityDetailPanel({
                       {canBuildSegment && (
                         <Link href={segmentBuilderHref}>Build segment</Link>
                       )}
+                    </li>
+                    <li>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActivityTypeDraft(
+                            normalizeActivityType(activity.activity_type),
+                          );
+                          setIsActivityTypeDialogOpen(true);
+                        }}
+                      >
+                        Activity type
+                      </button>
                     </li>
 
                     {activity.can_regenerate ? (
@@ -1193,6 +1242,82 @@ export default function ActivityDetailPanel({
           {deleteMutation.isError ? (
             <div className="alert alert-error">
               {extractApiMessage(deleteMutation.error)}
+            </div>
+          ) : null}
+
+          {updateActivityMutation.isError ? (
+            <div className="alert alert-error">
+              {extractApiMessage(updateActivityMutation.error)}
+            </div>
+          ) : null}
+
+          {isActivityTypeDialogOpen ? (
+            <div className="modal modal-open">
+              <div className="modal-box max-w-md">
+                <h2 className="text-xl font-semibold text-base-content">
+                  Activity type
+                </h2>
+                <div className="mt-5 space-y-3">
+                  {ACTIVITY_TYPE_OPTIONS.map((option) => (
+                    <label
+                      key={option.value}
+                      className={`flex cursor-pointer items-start gap-3 rounded-box border p-4 ${
+                        activityTypeDraft === option.value
+                          ? "border-primary bg-primary/10"
+                          : "border-base-300 bg-base-100"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="activity-type"
+                        className="radio radio-primary mt-1"
+                        value={option.value}
+                        checked={activityTypeDraft === option.value}
+                        onChange={(event) =>
+                          setActivityTypeDraft(
+                            normalizeActivityType(event.target.value),
+                          )
+                        }
+                      />
+                      <span>
+                        <span className="block font-medium text-base-content">
+                          {option.label}
+                        </span>
+                        <span className="mt-1 block text-sm leading-6 text-base-content/65">
+                          {option.description}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <div className="modal-action">
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={updateActivityMutation.isPending}
+                    onClick={() => setIsActivityTypeDialogOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={updateActivityMutation.isPending}
+                    onClick={() => {
+                      void handleSaveActivityType();
+                    }}
+                  >
+                    {updateActivityMutation.isPending ? "Saving..." : "Save type"}
+                  </button>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="modal-backdrop"
+                aria-label="Close activity type dialog"
+                disabled={updateActivityMutation.isPending}
+                onClick={() => setIsActivityTypeDialogOpen(false)}
+              />
             </div>
           ) : null}
 

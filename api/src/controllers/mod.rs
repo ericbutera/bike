@@ -43,7 +43,9 @@ pub fn routes() -> Router<Arc<AppStorage>> {
         )
         .route(
             "/api/activities/:id",
-            axum::routing::get(activities::get_activity).delete(activities::delete_activity),
+            axum::routing::get(activities::get_activity)
+                .patch(activities::update_activity)
+                .delete(activities::delete_activity),
         )
         .route(
             "/api/activities/:id/regenerate",

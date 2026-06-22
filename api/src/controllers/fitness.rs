@@ -382,6 +382,9 @@ mod tests {
             source_correlation_id: Set(None),
             original_filename: Set(None),
             format: Set(Some("fit".to_string())),
+            activity_type: Set(crate::activity_type::ActivityType::Training
+                .as_str()
+                .to_string()),
             started_at: Set(DateTime::parse_from_rfc3339("2026-05-01T12:00:00Z")
                 .unwrap()
                 .with_timezone(&Utc)),

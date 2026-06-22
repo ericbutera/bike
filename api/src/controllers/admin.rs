@@ -734,6 +734,9 @@ mod tests {
             source_correlation_id: Set(None),
             original_filename: Set(None),
             format: Set(Some("gpx".to_string())),
+            activity_type: Set(crate::activity_type::ActivityType::Training
+                .as_str()
+                .to_string()),
             started_at: Set(now - Duration::hours(2)),
             ended_at: Set(Some(now - Duration::hours(1))),
             distance_meters: Set(Some(25_000.0)),

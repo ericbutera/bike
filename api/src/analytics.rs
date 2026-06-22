@@ -697,6 +697,9 @@ mod tests {
             source_correlation_id: None,
             original_filename: None,
             format: Some("fit".to_string()),
+            activity_type: crate::activity_type::ActivityType::Training
+                .as_str()
+                .to_string(),
             started_at: timestamp,
             ended_at: None,
             distance_meters: Some(40000.0),

@@ -3,6 +3,7 @@ use crate::activity_lifecycle::{
     refresh_activity_derived_state, refresh_activity_derived_state_without_cache_rebuilds,
 };
 use crate::activity_training_analysis::rebuild_activity_training_analysis_cache;
+use crate::activity_type::ActivityType;
 use crate::analytics::{
     mark_segment_activity_changes, mark_user_activity_change, mark_user_fitness_dirty,
 };
@@ -55,6 +56,19 @@ pub enum PersistActivityUploadOutcome {
 pub enum ActivityUploadDeduplication {
     Enabled,
     Disabled,
+}
+
+pub fn infer_activity_type(title: &str, original_filename: &str) -> ActivityType {
+    let haystack = format!("{title} {original_filename}").to_ascii_lowercase();
+
+    if haystack
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .any(|token| matches!(token, "race" | "raceday" | "result" | "results"))
+    {
+        ActivityType::Race
+    } else {
+        ActivityType::Training
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -134,6 +148,7 @@ pub async fn persist_activity_upload(
     tokio::fs::write(&full_path, &upload.bytes).await?;
 
     let original_filename = upload.original_filename.clone();
+    let activity_type = infer_activity_type(&activity_draft.title, &original_filename);
     let format = upload.format.clone();
     let mime_type = upload.mime_type.clone();
     let size_bytes = upload.bytes.len() as i64;
@@ -161,6 +176,7 @@ pub async fn persist_activity_upload(
         source_correlation_id: Set(source_correlation_id),
         original_filename: Set(Some(original_filename)),
         format: Set(Some(format)),
+        activity_type: Set(activity_type.as_str().to_string()),
         started_at: Set(activity_draft.started_at),
         ended_at: Set(activity_draft.ended_at),
         distance_meters: Set(activity_draft.distance_meters),
@@ -260,10 +276,13 @@ async fn reprocess_activity_from_import_with_cache_refresh(
     let derived_data_json = serialize_derived_activity_data(&derived_data)?;
 
     let mut active_model: activities::ActiveModel = activity.into();
+    let activity_type =
+        infer_activity_type(&activity_draft.title, &activity_import.original_filename);
     active_model.title = Set(activity_draft.title);
     active_model.sport = Set(activity_draft.sport);
     active_model.original_filename = Set(Some(activity_import.original_filename.clone()));
     active_model.format = Set(Some(activity_import.format.clone()));
+    active_model.activity_type = Set(activity_type.as_str().to_string());
     active_model.started_at = Set(activity_draft.started_at);
     active_model.ended_at = Set(activity_draft.ended_at);
     active_model.distance_meters = Set(activity_draft.distance_meters);
@@ -497,6 +516,22 @@ mod tests {
             source_correlation_id: source_correlation_id.map(str::to_string),
             bytes: include_bytes!("../tests/fixtures/activity.fit").to_vec(),
         }
+    }
+
+    #[test]
+    fn race_uploads_are_inferred_from_title_or_filename() {
+        assert_eq!(
+            infer_activity_type("Lumberjack 100", "2026 Lumberjack_100 Race result.gpx"),
+            ActivityType::Race
+        );
+        assert_eq!(
+            infer_activity_type("Iceman Race Day", "activity.fit"),
+            ActivityType::Race
+        );
+        assert_eq!(
+            infer_activity_type("Post Canyon Endurance", "post-canyon-endurance.gpx"),
+            ActivityType::Training
+        );
     }
 
     #[tokio::test]

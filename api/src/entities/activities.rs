@@ -18,6 +18,7 @@ pub struct Model {
     pub source_correlation_id: Option<String>,
     pub original_filename: Option<String>,
     pub format: Option<String>,
+    pub activity_type: String,
     pub started_at: DateTime<Utc>,
     pub ended_at: Option<DateTime<Utc>>,
     pub distance_meters: Option<f64>,

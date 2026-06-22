@@ -606,6 +606,9 @@ mod tests {
             source_correlation_id: None,
             original_filename: original_filename.map(str::to_string),
             format: format.map(str::to_string),
+            activity_type: crate::activity_type::ActivityType::Training
+                .as_str()
+                .to_string(),
             started_at: DateTime::parse_from_rfc3339("2026-05-11T13:23:17Z")
                 .expect("started_at")
                 .with_timezone(&Utc),

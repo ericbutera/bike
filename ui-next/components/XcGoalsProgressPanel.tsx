@@ -35,6 +35,7 @@ import {
   type TrainingGoalMetric,
   type TrainingRecommendation,
   type UserPreferences,
+  type XcRaceResult,
 } from "../lib/queries";
 import { hasConfiguredHeartRateZoneBounds } from "../lib/trainingProfile";
 import AuthRequiredCard from "./AuthRequiredCard";
@@ -487,6 +488,133 @@ function SummaryStat({
       <p className="mt-2 text-2xl font-semibold text-base-content">{value}</p>
       <p className="mt-1 text-sm text-base-content/65">{detail}</p>
     </div>
+  );
+}
+
+function formatRaceComparison(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) {
+    return "--";
+  }
+
+  return `${value.toFixed(0)}%`;
+}
+
+function RaceResultCard({
+  race,
+  goalDistanceUnit,
+  goalElevationUnit,
+  unitSystem,
+}: {
+  race: XcRaceResult;
+  goalDistanceUnit: GoalDistanceUnit;
+  goalElevationUnit: GoalElevationUnit;
+  unitSystem: UnitSystem;
+}) {
+  function RaceMetric({
+    label,
+    value,
+    detail,
+  }: {
+    label: string;
+    value: string;
+    detail: string;
+  }) {
+    return (
+      <div className="border-l border-base-300 pl-3">
+        <p className="text-xs uppercase tracking-[0.18em] text-base-content/45">
+          {label}
+        </p>
+        <p className="mt-1 text-xl font-semibold text-base-content">{value}</p>
+        <p className="mt-1 text-sm text-base-content/60">{detail}</p>
+      </div>
+    );
+  }
+
+  return (
+    <article className="rounded-box border border-base-300 bg-base-100 p-5 shadow-sm sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="badge badge-error badge-outline">Race</span>
+            <span className="text-sm text-base-content/55">
+              {formatLongDate(race.started_at)}
+            </span>
+          </div>
+          <h2 className="mt-2 text-xl font-semibold text-base-content">
+            <Link
+              href={`/activities/${race.activity_id}`}
+              className="link link-primary link-hover no-underline"
+            >
+              {race.activity_title}
+            </Link>
+          </h2>
+        </div>
+        <div className="text-right">
+          <p className="text-2xl font-semibold text-base-content">
+            {formatDistance(race.distance_meters, unitSystem)}
+          </p>
+          <p className="text-sm text-base-content/60">
+            {formatElevation(race.elevation_gain_meters, unitSystem)}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <RaceMetric
+          label="Race pace"
+          value={formatSpeed(race.average_speed_mps, unitSystem)}
+          detail={`${formatDuration(race.moving_time_seconds ?? 0)} moving time`}
+        />
+        <RaceMetric
+          label="Race density"
+          value={formatClimbDensity(
+            race.elevation_gain_meters,
+            race.distance_meters,
+            goalDistanceUnit,
+            goalElevationUnit,
+          )}
+          detail="Climbing demand per distance"
+        />
+        <RaceMetric
+          label="4-week Z2"
+          value={formatDuration(race.prior_training_z2_time_seconds)}
+          detail={`${race.prior_training_ride_count} qualifying rides before race day`}
+        />
+        <RaceMetric
+          label="4-week climbing"
+          value={formatElevation(
+            race.prior_training_climbing_elevation_gain_meters,
+            unitSystem,
+          )}
+          detail={`Race was ${formatRaceComparison(race.race_vs_best_training_elevation_percent)} of best prior climb ride`}
+        />
+      </div>
+
+      <div className="mt-5 border-l-2 border-primary/35 bg-base-200/50 px-4 py-3">
+        <h3 className="font-semibold text-base-content">
+          {race.insight_title}
+        </h3>
+        <p className="mt-1 text-sm leading-6 text-base-content/70">
+          {race.insight_detail}
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2 text-xs text-base-content/65">
+          <span className="badge badge-outline">
+            Distance vs best training{" "}
+            {formatRaceComparison(race.race_vs_best_training_distance_percent)}
+          </span>
+          <span className="badge badge-outline">
+            Avg Z2 speed before race{" "}
+            {formatSpeed(race.prior_training_average_z2_speed_mps, unitSystem)}
+          </span>
+          <span className="badge badge-outline">
+            Avg decoupling before race{" "}
+            {race.prior_training_average_aerobic_decoupling_percent != null
+              ? `${race.prior_training_average_aerobic_decoupling_percent.toFixed(1)}%`
+              : "--"}
+          </span>
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -1204,6 +1332,37 @@ export default function XcGoalsProgressPanel() {
           )}
         </div>
       </div>
+
+      {progress.race_results.length > 0 ? (
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold text-base-content">
+                Race result insights
+              </h2>
+              <p className="mt-1 text-sm text-base-content/70">
+                Race-flagged activities are treated as outcomes and compared
+                with the training rides that led into them.
+              </p>
+            </div>
+            <span className="badge badge-outline gap-2 px-3 py-2">
+              {progress.race_results.length} race
+              {progress.race_results.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <div className="space-y-4">
+            {progress.race_results.map((race) => (
+              <RaceResultCard
+                key={race.activity_id}
+                race={race}
+                goalDistanceUnit={goalDistanceUnit}
+                goalElevationUnit={goalElevationUnit}
+                unitSystem={unitSystem}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="rounded-box border border-base-300 bg-base-100 p-5 shadow-sm sm:p-6">
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] xl:items-start">

@@ -831,6 +831,9 @@ mod tests {
             source_correlation_id: None,
             original_filename: Some("ride.fit".to_string()),
             format: Some("fit".to_string()),
+            activity_type: crate::activity_type::ActivityType::Training
+                .as_str()
+                .to_string(),
             started_at: now,
             ended_at: Some(now),
             distance_meters: route_points.last().and_then(|point| point.distance_meters),

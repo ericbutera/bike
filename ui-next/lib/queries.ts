@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { extractApiMessage } from "./activityFormatting";
+import type { ActivityType } from "./activityTypes";
 import { $api } from "./api";
 
 export type PaginationMetadata = {
@@ -108,6 +109,7 @@ export type Activity = {
   title: string;
   sport: string;
   source: string;
+  activity_type?: ActivityType;
   original_filename?: string | null;
   format?: string | null;
   started_at: string;
@@ -135,6 +137,10 @@ export type Activity = {
   segment_efforts?: ActivitySegmentEffort[] | null;
   training_analysis?: ActivityTrainingAnalysis | null;
   can_regenerate?: boolean;
+};
+
+export type UpdateActivityInput = {
+  activity_type?: ActivityType | null;
 };
 
 export type SegmentEffort = {
@@ -321,6 +327,7 @@ export type XcRideProgress = {
   activity_id: number;
   activity_title: string;
   started_at: string;
+  activity_type: ActivityType;
   ride_focus: ActivityRideFocus;
   route_family_key?: string | null;
   distance_meters?: number | null;
@@ -332,6 +339,30 @@ export type XcRideProgress = {
   climbing_time_seconds: number;
   climbing_elevation_gain_meters?: number | null;
   aerobic_decoupling_percent?: number | null;
+};
+
+export type XcRaceResult = {
+  activity_id: number;
+  activity_title: string;
+  started_at: string;
+  distance_meters?: number | null;
+  elevation_gain_meters?: number | null;
+  moving_time_seconds?: number | null;
+  average_speed_mps?: number | null;
+  climb_density_meters_per_kilometer?: number | null;
+  z2_time_seconds: number;
+  climbing_time_seconds: number;
+  climbing_elevation_gain_meters?: number | null;
+  aerobic_decoupling_percent?: number | null;
+  prior_training_ride_count: number;
+  prior_training_z2_time_seconds: number;
+  prior_training_climbing_elevation_gain_meters: number;
+  prior_training_average_z2_speed_mps?: number | null;
+  prior_training_average_aerobic_decoupling_percent?: number | null;
+  race_vs_best_training_distance_percent?: number | null;
+  race_vs_best_training_elevation_percent?: number | null;
+  insight_title: string;
+  insight_detail: string;
 };
 
 export type XcWeeklyProgressPoint = {
@@ -377,6 +408,7 @@ export type XcGoalProgress = {
   generated_at: string;
   event_goal?: XcEventGoal | null;
   summary: XcProgressSummary;
+  race_results: XcRaceResult[];
   goals: TrainingGoalMetric[];
   recommendations: TrainingRecommendation[];
   weekly_progress: XcWeeklyProgressPoint[];
@@ -775,6 +807,32 @@ export function useRegenerateActivity() {
         }),
         queryClient.invalidateQueries({ queryKey: ["get", "/segments"] }),
         queryClient.invalidateQueries({ queryKey: ["get", "/segments/{id}"] }),
+      ]);
+
+      return result as Activity;
+    },
+  };
+}
+
+export function useUpdateActivity() {
+  const queryClient = useQueryClient();
+  const mutation = $api.useMutation("patch", "/activities/{id}");
+
+  return {
+    ...mutation,
+    updateAsync: async (id: number | string, body: UpdateActivityInput) => {
+      const numericId = Number(id);
+      const result = await mutation.mutateAsync({
+        params: { path: { id: numericId } },
+        body,
+      });
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["get", "/activities"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/activities/{id}"],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["get", "/training/xc-progress"] }),
       ]);
 
       return result as Activity;

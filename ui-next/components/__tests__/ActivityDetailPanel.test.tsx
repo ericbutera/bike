@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ACTIVITY_TYPES, type ActivityType } from "../../lib/activityTypes";
 import ActivityDetailPanel from "../ActivityDetailPanel";
 
 vi.mock("recharts", async (importOriginal) => {
@@ -30,6 +31,7 @@ const mocks = vi.hoisted(() => ({
   useCurrentUser: vi.fn(),
   useActivity: vi.fn(),
   useRegenerateActivity: vi.fn(),
+  useUpdateActivity: vi.fn(),
   useDeleteActivity: vi.fn(),
   useSegments: vi.fn(),
   useUpdateSegment: vi.fn(),
@@ -49,6 +51,7 @@ vi.mock("@ericbutera/kaleido", () => ({
 vi.mock("../../lib/queries", () => ({
   useActivity: mocks.useActivity,
   useRegenerateActivity: mocks.useRegenerateActivity,
+  useUpdateActivity: mocks.useUpdateActivity,
   useDeleteActivity: mocks.useDeleteActivity,
   useSegments: mocks.useSegments,
   useUpdateSegment: mocks.useUpdateSegment,
@@ -81,6 +84,7 @@ function makeActivity(
     title: string;
     sport: string;
     source: string;
+    activity_type: ActivityType;
     original_filename: string | null;
     format: string | null;
     started_at: string;
@@ -155,6 +159,7 @@ function makeActivity(
     title: "Lunch Ride",
     sport: "ride",
     source: "manual_upload",
+    activity_type: ACTIVITY_TYPES.Training,
     original_filename: "lunch-ride.tcx",
     format: "tcx",
     started_at: "2026-05-06T12:00:00Z",
@@ -338,6 +343,12 @@ describe("ActivityDetailPanel", () => {
     });
     mocks.useRegenerateActivity.mockReturnValue({
       regenerateAsync: vi.fn().mockResolvedValue(makeActivity()),
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+    mocks.useUpdateActivity.mockReturnValue({
+      updateAsync: vi.fn().mockResolvedValue(makeActivity()),
       isPending: false,
       isError: false,
       error: null,
@@ -665,6 +676,31 @@ describe("ActivityDetailPanel", () => {
     );
 
     expect(regenerateAsync).toHaveBeenCalledWith(7);
+  });
+
+  it("updates the activity type from the actions menu", async () => {
+    const user = userEvent.setup();
+    const updateAsync = vi.fn().mockResolvedValue(
+      makeActivity({
+        activity_type: ACTIVITY_TYPES.Race,
+      }),
+    );
+    mocks.useUpdateActivity.mockReturnValue({
+      updateAsync,
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+
+    render(<ActivityDetailPanel activityId={7} />);
+
+    await user.click(screen.getByRole("button", { name: "Activity type" }));
+    await user.click(screen.getByRole("radio", { name: /Race/i }));
+    await user.click(screen.getByRole("button", { name: "Save type" }));
+
+    expect(updateAsync).toHaveBeenCalledWith(7, {
+      activity_type: ACTIVITY_TYPES.Race,
+    });
   });
 
   it("deletes the activity after confirmation", async () => {

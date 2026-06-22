@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ACTIVITY_TYPES } from "../../lib/activityTypes";
 import XcGoalsProgressPanel from "../XcGoalsProgressPanel";
 
 const mocks = vi.hoisted(() => ({
@@ -136,6 +137,32 @@ describe("XcGoalsProgressPanel", () => {
           total_climbing_elevation_gain_meters: 1800,
           average_aerobic_decoupling_percent: 4.6,
         },
+        race_results: [
+          {
+            activity_id: 201,
+            activity_title: "2026 Lumberjack 100 Race Result",
+            started_at: "2026-06-20T12:00:00Z",
+            distance_meters: 160934.4,
+            elevation_gain_meters: 3048,
+            moving_time_seconds: 32400,
+            average_speed_mps: 4.97,
+            climb_density_meters_per_kilometer: 18.9,
+            z2_time_seconds: 14400,
+            climbing_time_seconds: 7200,
+            climbing_elevation_gain_meters: 3048,
+            aerobic_decoupling_percent: 6.2,
+            prior_training_ride_count: 3,
+            prior_training_z2_time_seconds: 16200,
+            prior_training_climbing_elevation_gain_meters: 1800,
+            prior_training_average_z2_speed_mps: 3.2,
+            prior_training_average_aerobic_decoupling_percent: 4.6,
+            race_vs_best_training_distance_percent: 473.3,
+            race_vs_best_training_elevation_percent: 358.6,
+            insight_title: "Race distance outpaced the recent endurance build",
+            insight_detail:
+              "The result was much longer than your biggest prior training ride while recent Z2 volume was below the v1 build target.",
+          },
+        ],
         goals: [
           {
             key: "weekly_z2_average",
@@ -197,6 +224,7 @@ describe("XcGoalsProgressPanel", () => {
             activity_id: 101,
             activity_title: "Post Canyon Endurance",
             started_at: "2026-05-20T12:00:00Z",
+            activity_type: ACTIVITY_TYPES.Training,
             ride_focus: "xc_endurance",
             route_family_key: "post-canyon",
             distance_meters: 34000,
@@ -210,6 +238,7 @@ describe("XcGoalsProgressPanel", () => {
             activity_id: 102,
             activity_title: "Mixed Trail Spin",
             started_at: "2026-05-15T12:00:00Z",
+            activity_type: ACTIVITY_TYPES.Training,
             ride_focus: "mixed_xc",
             route_family_key: null,
             distance_meters: 22000,
@@ -253,6 +282,15 @@ describe("XcGoalsProgressPanel", () => {
       screen.getByRole("img", { name: "XC decoupling trend chart" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Next ride guidance")).toBeInTheDocument();
+    expect(screen.getByText("Race result insights")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", {
+        name: "2026 Lumberjack 100 Race Result",
+      }),
+    ).toHaveAttribute("href", "/activities/201");
+    expect(
+      screen.getByText("Race distance outpaced the recent endurance build"),
+    ).toBeInTheDocument();
     expect(
       screen.getByText("Add more climbing durability"),
     ).toBeInTheDocument();

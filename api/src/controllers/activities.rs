@@ -11,6 +11,7 @@ use crate::activity_location::location_from_derived_json;
 use crate::activity_training_analysis::{
     load_activity_training_analysis_by_activity_id, ActivityTrainingAnalysisResponse,
 };
+use crate::activity_type::ActivityType;
 use crate::analytics::{
     estimated_training_load, mark_segment_activity_changes, mark_user_fitness_dirty,
 };
@@ -29,8 +30,8 @@ use axum::Json;
 use chrono::{DateTime, Utc};
 use kaleido::auth::UserContext;
 use kaleido::glass::data::pagination::{Paginatable, PaginatedResponse, PaginationParams};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
-use serde::Serialize;
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -43,6 +44,7 @@ pub struct ActivityResponse {
     pub title: String,
     pub sport: String,
     pub source: String,
+    pub activity_type: ActivityType,
     pub original_filename: Option<String>,
     pub format: Option<String>,
     pub started_at: DateTime<Utc>,
@@ -78,6 +80,11 @@ pub struct ActivityResponse {
     pub training_analysis: Option<ActivityTrainingAnalysisResponse>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub can_regenerate: bool,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateActivityRequest {
+    pub activity_type: Option<ActivityType>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -145,6 +152,7 @@ impl ActivityResponse {
             title: model.title,
             sport: model.sport,
             source: model.source,
+            activity_type: ActivityType::from_stored(&model.activity_type),
             original_filename: model.original_filename,
             format: model.format,
             started_at: model.started_at,
@@ -562,6 +570,53 @@ pub async fn get_activity(
 }
 
 #[utoipa::path(
+    patch,
+    path = "/api/activities/{id}",
+    params(
+        ("id" = i32, Path, description = "Activity ID")
+    ),
+    request_body = UpdateActivityRequest,
+    responses(
+        (status = 200, description = "Updated activity detail", body = ActivityResponse),
+        (status = 400, description = "Invalid activity update", body = ApiErrorResponse),
+        (status = 401, description = "Not authenticated"),
+        (status = 404, description = "Activity not found", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    tag = "activities",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn update_activity(
+    Path(id): Path<i32>,
+    UserContext { user, .. }: UserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+    Json(request): Json<UpdateActivityRequest>,
+) -> Result<Json<ActivityResponse>, AppError> {
+    let activity = activities::Entity::find()
+        .filter(activities::Column::Id.eq(id))
+        .filter(activities::Column::UserId.eq(user.id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found("Activity not found"))?;
+    let mut active_model: activities::ActiveModel = activity.into();
+
+    if let Some(activity_type) = request.activity_type {
+        active_model.activity_type = Set(activity_type.as_str().to_string());
+    }
+
+    let updated = active_model.update(&state.db).await?;
+    let segment_efforts = load_activity_segment_efforts(&state.db, user.id, updated.id).await?;
+    let training_analysis =
+        load_activity_training_analysis_by_activity_id(&state.db, updated.id).await?;
+    let mut response = ActivityResponse::from_detail(updated, segment_efforts);
+    response.training_analysis = training_analysis;
+
+    Ok(Json(response))
+}
+
+#[utoipa::path(
     delete,
     path = "/api/activities/{id}",
     params(
@@ -692,6 +747,9 @@ mod tests {
                 source_correlation_id: None,
                 original_filename: Some("evening-ride.gpx".to_string()),
                 format: Some("gpx".to_string()),
+                activity_type: crate::activity_type::ActivityType::Training
+                    .as_str()
+                    .to_string(),
                 started_at: now,
                 ended_at: Some(now),
                 distance_meters: Some(32100.0),
@@ -804,6 +862,9 @@ mod tests {
                 source_correlation_id: None,
                 original_filename: Some("evening-ride.gpx".to_string()),
                 format: Some("gpx".to_string()),
+                activity_type: crate::activity_type::ActivityType::Training
+                    .as_str()
+                    .to_string(),
                 started_at: now,
                 ended_at: Some(now),
                 distance_meters: Some(32100.0),
@@ -939,6 +1000,9 @@ mod tests {
                 source_correlation_id: None,
                 original_filename: Some("morning-ride.gpx".to_string()),
                 format: Some("gpx".to_string()),
+                activity_type: crate::activity_type::ActivityType::Training
+                    .as_str()
+                    .to_string(),
                 started_at: now,
                 ended_at: Some(now),
                 distance_meters: Some(40200.0),
@@ -1018,6 +1082,9 @@ mod tests {
                 source_correlation_id: None,
                 original_filename: Some("morning-ride.gpx".to_string()),
                 format: Some("gpx".to_string()),
+                activity_type: crate::activity_type::ActivityType::Training
+                    .as_str()
+                    .to_string(),
                 started_at: now,
                 ended_at: Some(now),
                 distance_meters: Some(40200.0),
@@ -1101,6 +1168,9 @@ mod tests {
                 source_correlation_id: None,
                 original_filename: Some("morning-ride.gpx".to_string()),
                 format: Some("gpx".to_string()),
+                activity_type: crate::activity_type::ActivityType::Training
+                    .as_str()
+                    .to_string(),
                 started_at: now,
                 ended_at: Some(now),
                 distance_meters: Some(40200.0),

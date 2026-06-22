@@ -28,6 +28,8 @@ mod m20260522_000001_user_preferences_xc_goal_start_date;
 mod m20260524_000001_user_preferences_xc_goal_backfill_status;
 mod m20260527_000001_segment_starred;
 mod m20260602_000001_create_garmin_iq_devices;
+mod m20260622_000001_activity_is_race;
+mod m20260622_000001_activity_type;
 
 pub struct Migrator;
 
@@ -113,6 +115,8 @@ impl MigratorTrait for Migrator {
         locals.push(Box::new(
             m20260602_000001_create_garmin_iq_devices::Migration,
         ));
+        locals.push(Box::new(m20260622_000001_activity_is_race::Migration));
+        locals.push(Box::new(m20260622_000001_activity_type::Migration));
         locals.sort_by_key(|m| m.name().to_string());
 
         migrations.extend(locals);
