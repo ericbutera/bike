@@ -6,10 +6,15 @@ use crate::activity_training_analysis::rebuild_activity_training_analysis_cache;
 use crate::activity_type::ActivityType;
 use crate::analytics::{
     mark_segment_activity_changes, mark_user_activity_change, mark_user_fitness_dirty,
+    rebuild_activity_analytics_cache, rebuild_segment_analytics_cache,
 };
 use crate::app_error::AppError;
 use crate::dedupe::activity_dedupe_matches_model;
 use crate::entities::{activities, activity_imports};
+use crate::integration_events::{
+    record_event, NewIntegrationEvent, INTEGRATION_LEVEL_ERROR, INTEGRATION_LEVEL_INFO,
+    INTEGRATION_LEVEL_SUCCESS,
+};
 use crate::tasks::TaskQueue;
 use crate::training_profile::{
     load_training_profile, serialize_activity_heart_rate_zones, summarize_heart_rate_zones,
@@ -52,6 +57,18 @@ pub enum PersistActivityUploadOutcome {
     Duplicate(DeduplicatedActivityImport),
 }
 
+pub const ACTIVITY_IMPORT_STATUS_PROCESSING: &str = "processing";
+pub const ACTIVITY_IMPORT_STATUS_PROCESSED: &str = "processed";
+pub const ACTIVITY_IMPORT_STATUS_FAILED: &str = "failed";
+pub const ACTIVITY_IMPORT_STAGE_RAW_STORED: &str = "raw_stored";
+pub const ACTIVITY_IMPORT_STAGE_ACTIVITY_SAVED: &str = "activity_saved";
+pub const ACTIVITY_IMPORT_STAGE_SEGMENTS_BUILT: &str = "segments_built";
+pub const ACTIVITY_IMPORT_STAGE_SEGMENT_ANALYTICS_BUILT: &str = "segment_analytics_built";
+pub const ACTIVITY_IMPORT_STAGE_ACTIVITY_ANALYTICS_BUILT: &str = "activity_analytics_built";
+pub const ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT: &str = "training_analysis_built";
+pub const ACTIVITY_IMPORT_STAGE_COMPLETE: &str = "complete";
+const ACTIVITY_PROCESSING_PROVIDER: &str = "activity_processing";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActivityUploadDeduplication {
     Enabled,
@@ -75,6 +92,154 @@ pub fn infer_activity_type(title: &str, original_filename: &str) -> ActivityType
 enum ReprocessCacheRefresh {
     Immediate,
     Deferred,
+}
+
+pub async fn mark_activity_import_processing_stage(
+    db: &DatabaseConnection,
+    import: &activity_imports::Model,
+    stage: &str,
+    activity_id: Option<i32>,
+) -> Result<activity_imports::Model, AppError> {
+    let mut active_model: activity_imports::ActiveModel = import.clone().into();
+    active_model.status = Set(ACTIVITY_IMPORT_STATUS_PROCESSING.to_string());
+    active_model.processing_stage = Set(stage.to_string());
+    active_model.processing_error = Set(None);
+    active_model.last_processing_event_at = Set(Some(Utc::now()));
+    if let Some(activity_id) = activity_id {
+        active_model.activity_id = Set(Some(activity_id));
+    }
+
+    let updated = active_model.update(db).await?;
+    record_activity_processing_event(
+        db,
+        &updated,
+        "stage_completed",
+        INTEGRATION_LEVEL_INFO,
+        format!("Activity import {} reached {stage}", updated.id),
+        Some(serde_json::json!({
+            "import_id": updated.id,
+            "activity_id": updated.activity_id,
+            "source": updated.source,
+            "stage": stage,
+        })),
+    )
+    .await;
+
+    Ok(updated)
+}
+
+pub async fn mark_activity_imports_processed(
+    db: &DatabaseConnection,
+    import_ids: &[i32],
+) -> Result<(), AppError> {
+    let mut import_ids = import_ids
+        .iter()
+        .copied()
+        .filter(|import_id| *import_id > 0)
+        .collect::<Vec<_>>();
+    import_ids.sort_unstable();
+    import_ids.dedup();
+
+    if import_ids.is_empty() {
+        return Ok(());
+    }
+
+    let imports = activity_imports::Entity::find()
+        .filter(activity_imports::Column::Id.is_in(import_ids.iter().copied()))
+        .all(db)
+        .await?;
+
+    for import in imports {
+        let mut active_model: activity_imports::ActiveModel = import.into();
+        active_model.status = Set(ACTIVITY_IMPORT_STATUS_PROCESSED.to_string());
+        active_model.processing_stage = Set(ACTIVITY_IMPORT_STAGE_COMPLETE.to_string());
+        active_model.processing_error = Set(None);
+        active_model.processed_at = Set(Some(Utc::now()));
+        active_model.last_processing_event_at = Set(Some(Utc::now()));
+        let updated = active_model.update(db).await?;
+        record_activity_processing_event(
+            db,
+            &updated,
+            "import_processed",
+            INTEGRATION_LEVEL_SUCCESS,
+            format!("Activity import {} completed processing", updated.id),
+            Some(serde_json::json!({
+                "import_id": updated.id,
+                "activity_id": updated.activity_id,
+                "source": updated.source,
+                "stage": ACTIVITY_IMPORT_STAGE_COMPLETE,
+            })),
+        )
+        .await;
+    }
+
+    Ok(())
+}
+
+pub async fn mark_activity_import_failed(
+    db: &DatabaseConnection,
+    import: &activity_imports::Model,
+    stage: &str,
+    error: &AppError,
+) -> Result<(), AppError> {
+    let mut active_model: activity_imports::ActiveModel = import.clone().into();
+    active_model.status = Set(ACTIVITY_IMPORT_STATUS_FAILED.to_string());
+    active_model.processing_stage = Set(stage.to_string());
+    active_model.processing_error = Set(Some(error.message.clone()));
+    active_model.processing_attempts = Set(import.processing_attempts.saturating_add(1));
+    active_model.last_processing_event_at = Set(Some(Utc::now()));
+    let updated = active_model.update(db).await?;
+
+    record_activity_processing_event(
+        db,
+        &updated,
+        "import_failed",
+        INTEGRATION_LEVEL_ERROR,
+        format!(
+            "Activity import {} failed at {stage}: {}",
+            updated.id, error.message
+        ),
+        Some(serde_json::json!({
+            "import_id": updated.id,
+            "activity_id": updated.activity_id,
+            "source": updated.source,
+            "stage": stage,
+            "error": error.message,
+        })),
+    )
+    .await;
+
+    Ok(())
+}
+
+async fn record_activity_processing_event(
+    db: &DatabaseConnection,
+    import: &activity_imports::Model,
+    event_type: &str,
+    level: &str,
+    message: String,
+    payload: Option<serde_json::Value>,
+) {
+    if let Err(error) = record_event(
+        db,
+        NewIntegrationEvent {
+            user_id: Some(import.user_id),
+            provider: ACTIVITY_PROCESSING_PROVIDER.to_string(),
+            event_type: event_type.to_string(),
+            level: level.to_string(),
+            message,
+            connection_id: None,
+            payload,
+        },
+    )
+    .await
+    {
+        tracing::warn!(
+            import_id = import.id,
+            error = %error.message,
+            "failed to record activity processing event"
+        );
+    }
 }
 
 pub async fn persist_activity_upload(
@@ -157,7 +322,13 @@ pub async fn persist_activity_upload(
         user_id: Set(user_id),
         source: Set(source.to_string()),
         format: Set(format.clone()),
-        status: Set("uploaded".to_string()),
+        status: Set(ACTIVITY_IMPORT_STATUS_PROCESSING.to_string()),
+        activity_id: Set(None),
+        processing_stage: Set(ACTIVITY_IMPORT_STAGE_RAW_STORED.to_string()),
+        processing_error: Set(None),
+        processing_attempts: Set(0),
+        processed_at: Set(None),
+        last_processing_event_at: Set(Some(Utc::now())),
         original_filename: Set(original_filename.clone()),
         storage_path: Set(relative_path),
         size_bytes: Set(size_bytes),
@@ -166,6 +337,19 @@ pub async fn persist_activity_upload(
     }
     .insert(db)
     .await?;
+    record_activity_processing_event(
+        db,
+        &import_model,
+        "stage_completed",
+        INTEGRATION_LEVEL_INFO,
+        format!("Activity import {} stored raw source", import_model.id),
+        Some(serde_json::json!({
+            "import_id": import_model.id,
+            "source": import_model.source,
+            "stage": ACTIVITY_IMPORT_STAGE_RAW_STORED,
+        })),
+    )
+    .await;
 
     let activity_model = activities::ActiveModel {
         user_id: Set(user_id),
@@ -199,10 +383,55 @@ pub async fn persist_activity_upload(
     .insert(db)
     .await?;
 
-    let affected_segment_ids =
-        refresh_activity_derived_state(db, user_id, activity_model.id, &derived_data.route_points)
-            .await?;
+    let import_model = mark_activity_import_processing_stage(
+        db,
+        &import_model,
+        ACTIVITY_IMPORT_STAGE_ACTIVITY_SAVED,
+        Some(activity_model.id),
+    )
+    .await?;
+
+    let affected_segment_ids = refresh_activity_derived_state_without_cache_rebuilds(
+        db,
+        user_id,
+        activity_model.id,
+        &derived_data.route_points,
+    )
+    .await?;
+    let import_model = mark_activity_import_processing_stage(
+        db,
+        &import_model,
+        ACTIVITY_IMPORT_STAGE_SEGMENTS_BUILT,
+        Some(activity_model.id),
+    )
+    .await?;
+
+    rebuild_segment_analytics_cache(db, &affected_segment_ids).await?;
+    let import_model = mark_activity_import_processing_stage(
+        db,
+        &import_model,
+        ACTIVITY_IMPORT_STAGE_SEGMENT_ANALYTICS_BUILT,
+        Some(activity_model.id),
+    )
+    .await?;
+
+    rebuild_activity_analytics_cache(db, &[activity_model.id]).await?;
+    let import_model = mark_activity_import_processing_stage(
+        db,
+        &import_model,
+        ACTIVITY_IMPORT_STAGE_ACTIVITY_ANALYTICS_BUILT,
+        Some(activity_model.id),
+    )
+    .await?;
+
     rebuild_activity_training_analysis_cache(db, &[activity_model.id]).await?;
+    let import_model = mark_activity_import_processing_stage(
+        db,
+        &import_model,
+        ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT,
+        Some(activity_model.id),
+    )
+    .await?;
 
     Ok(PersistActivityUploadOutcome::Imported(
         PersistedActivityImport {

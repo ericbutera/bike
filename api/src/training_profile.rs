@@ -137,8 +137,11 @@ pub fn serialize_heart_rate_zone_bounds(
     }
 }
 
-pub fn deserialize_heart_rate_zone_bounds(raw: Option<&StoredHeartRateZoneBounds>) -> Option<Vec<i32>> {
-    raw.map(|value| value.0.clone()).filter(|value| !value.is_empty())
+pub fn deserialize_heart_rate_zone_bounds(
+    raw: Option<&StoredHeartRateZoneBounds>,
+) -> Option<Vec<i32>> {
+    raw.map(|value| value.0.clone())
+        .filter(|value| !value.is_empty())
 }
 
 pub fn serialize_activity_heart_rate_zones(
@@ -465,7 +468,10 @@ mod tests {
         .expect("stored zones")
         .expect("zones payload");
 
-        assert_eq!(serde_json::to_value(stored).unwrap(), json!([[3, 141, 155, 840, 33300]]));
+        assert_eq!(
+            serde_json::to_value(stored).unwrap(),
+            json!([[3, 141, 155, 840, 33300]])
+        );
     }
 
     #[test]
@@ -474,6 +480,9 @@ mod tests {
             .expect("stored bounds")
             .expect("bounds payload");
 
-        assert_eq!(serde_json::to_value(stored).unwrap(), json!([120, 140, 155, 170]));
+        assert_eq!(
+            serde_json::to_value(stored).unwrap(),
+            json!([120, 140, 155, 170])
+        );
     }
 }

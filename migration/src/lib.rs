@@ -30,6 +30,7 @@ mod m20260527_000001_segment_starred;
 mod m20260602_000001_create_garmin_iq_devices;
 mod m20260622_000001_activity_is_race;
 mod m20260622_000001_activity_type;
+mod m20260622_000002_activity_import_processing_checkpoints;
 
 pub struct Migrator;
 
@@ -117,6 +118,9 @@ impl MigratorTrait for Migrator {
         ));
         locals.push(Box::new(m20260622_000001_activity_is_race::Migration));
         locals.push(Box::new(m20260622_000001_activity_type::Migration));
+        locals.push(Box::new(
+            m20260622_000002_activity_import_processing_checkpoints::Migration,
+        ));
         locals.sort_by_key(|m| m.name().to_string());
 
         migrations.extend(locals);

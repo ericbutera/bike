@@ -1,12 +1,16 @@
 use crate::activity_details::ActivityRoutePoint;
 use crate::activity_import_lock::{
     ensure_user_activity_import_lock_stage, mark_user_activity_import_lock_stage,
-    release_user_activity_import_lock,
-    ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING,
+    release_user_activity_import_lock, ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING,
     ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
 };
 use crate::activity_import_pipeline::{
-    finalize_activity_import_batch, reprocess_activity_from_import_deferred_caches,
+    finalize_activity_import_batch, mark_activity_import_failed,
+    mark_activity_import_processing_stage, mark_activity_imports_processed,
+    reprocess_activity_from_import_deferred_caches, ACTIVITY_IMPORT_STAGE_ACTIVITY_ANALYTICS_BUILT,
+    ACTIVITY_IMPORT_STAGE_SEGMENTS_BUILT, ACTIVITY_IMPORT_STAGE_SEGMENT_ANALYTICS_BUILT,
+    ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT, ACTIVITY_IMPORT_STATUS_FAILED,
+    ACTIVITY_IMPORT_STATUS_PROCESSED,
 };
 use crate::activity_training_analysis::rebuild_activity_training_analysis_cache;
 use crate::analytics::{
@@ -26,7 +30,7 @@ use crate::training_profile::load_training_profile;
 use chrono::Utc;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    TransactionTrait,
+    QueryOrder, TransactionTrait,
 };
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -63,9 +67,13 @@ pub async fn refresh_activity_derived_state<C>(
 where
     C: ConnectionTrait + TransactionTrait,
 {
-    let affected_segment_ids =
-        refresh_activity_derived_state_without_cache_rebuilds(db, user_id, activity_id, route_points)
-            .await?;
+    let affected_segment_ids = refresh_activity_derived_state_without_cache_rebuilds(
+        db,
+        user_id,
+        activity_id,
+        route_points,
+    )
+    .await?;
 
     rebuild_segment_analytics_cache(db, &affected_segment_ids).await?;
     rebuild_activity_analytics_cache(db, &[activity_id]).await?;
@@ -437,6 +445,7 @@ pub async fn reprocess_imported_activities_for_user(
     let mut failed_count = 0usize;
     let mut affected_segment_ids = Vec::new();
     let mut reprocessed_activity_ids = Vec::new();
+    let mut reprocessed_import_ids = Vec::new();
     let mut fitness_dirty_from_day: Option<chrono::NaiveDate> = None;
 
     for activity in activities {
@@ -468,6 +477,7 @@ pub async fn reprocess_imported_activities_for_user(
             Ok(reprocessed) => {
                 reprocessed_count += 1;
                 reprocessed_activity_ids.push(reprocessed.activity.id);
+                reprocessed_import_ids.push(activity_import_id);
                 affected_segment_ids.extend(reprocessed.affected_segment_ids);
                 fitness_dirty_from_day = Some(match fitness_dirty_from_day {
                     Some(current) => current.min(reprocessed.fitness_dirty_from_day),
@@ -515,9 +525,197 @@ pub async fn reprocess_imported_activities_for_user(
             Utc::now(),
         )
         .await?;
+        mark_activity_imports_processed(db, &reprocessed_import_ids).await?;
     }
 
     Ok((reprocessed_count, failed_count))
+}
+
+pub async fn resume_incomplete_activity_imports_for_user(
+    db: &DatabaseConnection,
+    uploads_dir: &str,
+    tasks: &TaskQueue,
+    user_id: i32,
+) -> Result<(usize, usize), AppError> {
+    let imports = activity_imports::Entity::find()
+        .filter(activity_imports::Column::UserId.eq(user_id))
+        .filter(activity_imports::Column::Status.ne(ACTIVITY_IMPORT_STATUS_PROCESSED))
+        .order_by_asc(activity_imports::Column::CreatedAt)
+        .all(db)
+        .await?;
+
+    if imports.is_empty() {
+        return Ok((0, 0));
+    }
+
+    tracing::info!(
+        user_id,
+        import_count = imports.len(),
+        "resuming incomplete activity imports"
+    );
+
+    let activity_import_ids = imports.iter().map(|import| import.id).collect::<Vec<_>>();
+    let activity_ids = imports
+        .iter()
+        .filter_map(|import| import.activity_id)
+        .collect::<Vec<_>>();
+    let mut activities_by_import_id = activities::Entity::find()
+        .filter(activities::Column::UserId.eq(user_id))
+        .filter(
+            activities::Column::ActivityImportId.is_in(
+                activity_import_ids
+                    .iter()
+                    .copied()
+                    .map(Some)
+                    .collect::<Vec<_>>(),
+            ),
+        )
+        .all(db)
+        .await?
+        .into_iter()
+        .filter_map(|activity| {
+            activity
+                .activity_import_id
+                .map(|import_id| (import_id, activity))
+        })
+        .collect::<HashMap<_, _>>();
+
+    if !activity_ids.is_empty() {
+        for activity in activities::Entity::find()
+            .filter(activities::Column::UserId.eq(user_id))
+            .filter(activities::Column::Id.is_in(activity_ids.iter().copied()))
+            .all(db)
+            .await?
+        {
+            if let Some(import_id) = activity.activity_import_id {
+                activities_by_import_id.insert(import_id, activity);
+            }
+        }
+    }
+
+    let training_profile = load_training_profile(db, user_id).await?;
+    let mut resumed_count = 0usize;
+    let mut failed_count = 0usize;
+    let mut affected_segment_ids = Vec::new();
+    let mut resumed_activity_ids = Vec::new();
+    let mut resumed_import_ids = Vec::new();
+    let mut stage_ready_imports = Vec::new();
+    let mut fitness_dirty_from_day: Option<chrono::NaiveDate> = None;
+
+    for import in imports {
+        if import.status == ACTIVITY_IMPORT_STATUS_FAILED
+            && import.processing_stage == ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT
+        {
+            tracing::info!(
+                user_id,
+                import_id = import.id,
+                "retrying failed import from completed derived checkpoint"
+            );
+        }
+
+        let Some(activity) = activities_by_import_id.get(&import.id).cloned() else {
+            failed_count += 1;
+            let error = AppError::internal(format!(
+                "Activity import {} has no linked activity to resume",
+                import.id
+            ));
+            mark_activity_import_failed(db, &import, &import.processing_stage, &error).await?;
+            continue;
+        };
+
+        match reprocess_activity_from_import_deferred_caches(
+            db,
+            uploads_dir,
+            user_id,
+            activity,
+            import.clone(),
+            Some(&training_profile),
+        )
+        .await
+        {
+            Ok(reprocessed) => {
+                let import = mark_activity_import_processing_stage(
+                    db,
+                    &import,
+                    ACTIVITY_IMPORT_STAGE_SEGMENTS_BUILT,
+                    Some(reprocessed.activity.id),
+                )
+                .await?;
+                resumed_count += 1;
+                resumed_activity_ids.push(reprocessed.activity.id);
+                resumed_import_ids.push(import.id);
+                stage_ready_imports.push((import, reprocessed.activity.id));
+                affected_segment_ids.extend(reprocessed.affected_segment_ids);
+                fitness_dirty_from_day = Some(match fitness_dirty_from_day {
+                    Some(current) => current.min(reprocessed.fitness_dirty_from_day),
+                    None => reprocessed.fitness_dirty_from_day,
+                });
+            }
+            Err(error) => {
+                failed_count += 1;
+                mark_activity_import_failed(db, &import, &import.processing_stage, &error).await?;
+            }
+        }
+    }
+
+    if resumed_count == 0 {
+        return Ok((0, failed_count));
+    }
+
+    resumed_activity_ids.sort_unstable();
+    resumed_activity_ids.dedup();
+    affected_segment_ids.sort_unstable();
+    affected_segment_ids.dedup();
+
+    rebuild_segment_analytics_cache(db, &affected_segment_ids).await?;
+    let mut stage_ready_imports_next = Vec::new();
+    for (import, activity_id) in stage_ready_imports {
+        let import = mark_activity_import_processing_stage(
+            db,
+            &import,
+            ACTIVITY_IMPORT_STAGE_SEGMENT_ANALYTICS_BUILT,
+            Some(activity_id),
+        )
+        .await?;
+        stage_ready_imports_next.push((import, activity_id));
+    }
+
+    rebuild_activity_analytics_cache(db, &resumed_activity_ids).await?;
+    let mut stage_ready_imports = Vec::new();
+    for (import, activity_id) in stage_ready_imports_next {
+        let import = mark_activity_import_processing_stage(
+            db,
+            &import,
+            ACTIVITY_IMPORT_STAGE_ACTIVITY_ANALYTICS_BUILT,
+            Some(activity_id),
+        )
+        .await?;
+        stage_ready_imports.push((import, activity_id));
+    }
+
+    rebuild_activity_training_analysis_cache(db, &resumed_activity_ids).await?;
+    for (import, activity_id) in stage_ready_imports {
+        mark_activity_import_processing_stage(
+            db,
+            &import,
+            ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT,
+            Some(activity_id),
+        )
+        .await?;
+    }
+
+    finalize_activity_import_batch(
+        db,
+        tasks,
+        user_id,
+        affected_segment_ids,
+        fitness_dirty_from_day,
+        Utc::now(),
+    )
+    .await?;
+    mark_activity_imports_processed(db, &resumed_import_ids).await?;
+
+    Ok((resumed_count, failed_count))
 }
 
 pub async fn process_user_activity_import_reprocessing(

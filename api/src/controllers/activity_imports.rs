@@ -4,9 +4,11 @@ use crate::activity_import_lock::{
     ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
 };
 use crate::activity_import_pipeline::{
-    finalize_activity_import_batch, persist_activity_upload, validate_activity_format,
-    ActivityUploadDeduplication, ActivityUploadPayload, PersistActivityUploadOutcome,
+    finalize_activity_import_batch, mark_activity_imports_processed, persist_activity_upload,
+    validate_activity_format, ActivityUploadDeduplication, ActivityUploadPayload,
+    PersistActivityUploadOutcome,
 };
+use crate::activity_lifecycle::resume_incomplete_activity_imports_for_user;
 use crate::activity_location::location_from_derived_json;
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::archive_import::{
@@ -319,6 +321,14 @@ pub async fn upload_activity_import(
     .await?;
 
     let result = async {
+        resume_incomplete_activity_imports_for_user(
+            &state.db,
+            &state.uploads_dir,
+            &state.tasks,
+            user.id,
+        )
+        .await?;
+
         let outcome = persist_activity_upload(
             &state.db,
             &state.uploads_dir,
@@ -342,6 +352,7 @@ pub async fn upload_activity_import(
                     Utc::now(),
                 )
                 .await?;
+                mark_activity_imports_processed(&state.db, &[persisted.import.id]).await?;
 
                 Ok((
                     StatusCode::CREATED,
@@ -515,6 +526,12 @@ fn build_duplicate_activity_import_response(
             source: source.to_string(),
             format: upload.format.clone(),
             status: "duplicate".to_string(),
+            activity_id: Some(duplicate.activity.id),
+            processing_stage: "complete".to_string(),
+            processing_error: None,
+            processing_attempts: 0,
+            processed_at: Some(Utc::now()),
+            last_processing_event_at: Some(Utc::now()),
             original_filename: upload.original_filename.clone(),
             storage_path: String::new(),
             size_bytes: upload.bytes.len() as i64,
@@ -698,6 +715,12 @@ mod tests {
                 source: "manual_upload".to_string(),
                 format: "gpx".to_string(),
                 status: "uploaded".to_string(),
+                activity_id: Some(99),
+                processing_stage: "complete".to_string(),
+                processing_error: None,
+                processing_attempts: 0,
+                processed_at: Some(now),
+                last_processing_event_at: Some(now),
                 original_filename: "ride.gpx".to_string(),
                 storage_path: "activity-imports/user/ride.gpx".to_string(),
                 size_bytes: 8192,

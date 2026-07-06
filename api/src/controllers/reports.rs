@@ -102,7 +102,10 @@ pub async fn get_training_reports(
         .all(&state.db)
         .await?;
 
-    let activity_ids = activity_models.iter().map(|activity| activity.id).collect::<Vec<_>>();
+    let activity_ids = activity_models
+        .iter()
+        .map(|activity| activity.id)
+        .collect::<Vec<_>>();
     let analysis_models = if activity_ids.is_empty() {
         Vec::new()
     } else {
@@ -129,7 +132,9 @@ pub async fn get_training_reports(
             bucket.z2_speed_count += 1;
         }
 
-        if let Some(decoupling_percent) = analysis.and_then(|model| model.aerobic_decoupling_percent) {
+        if let Some(decoupling_percent) =
+            analysis.and_then(|model| model.aerobic_decoupling_percent)
+        {
             bucket.decoupling_sum += decoupling_percent;
             bucket.decoupling_count += 1;
         }
@@ -164,13 +169,18 @@ pub async fn get_training_reports(
         points.push(TrainingReportPointResponse {
             bucket_start: cursor.to_rfc3339(),
             bucket_end: bucket_end.to_rfc3339(),
-            z2_average_speed_mps: average_or_none(accumulator.z2_speed_sum, accumulator.z2_speed_count),
+            z2_average_speed_mps: average_or_none(
+                accumulator.z2_speed_sum,
+                accumulator.z2_speed_count,
+            ),
             average_aerobic_decoupling_percent: average_or_none(
                 accumulator.decoupling_sum,
                 accumulator.decoupling_count,
             ),
             climbing_pace_feet_per_week: if accumulator.climbing_feet_total > 0.0 {
-                Some(round_metric(accumulator.climbing_feet_total * 7.0 / day_span))
+                Some(round_metric(
+                    accumulator.climbing_feet_total * 7.0 / day_span,
+                ))
             } else {
                 None
             },
@@ -210,20 +220,16 @@ impl ReportBoundary {
 
     fn bucket_start(self, value: DateTime<Utc>) -> Result<DateTime<Utc>, AppError> {
         match self {
-            Self::Day => make_utc_datetime(
-                value.year(),
-                value.month(),
-                value.day(),
-                value.hour(),
-                0,
-                0,
-            ),
+            Self::Day => {
+                make_utc_datetime(value.year(), value.month(), value.day(), value.hour(), 0, 0)
+            }
             Self::Week | Self::Month => {
                 make_utc_datetime(value.year(), value.month(), value.day(), 0, 0, 0)
             }
             Self::ThreeMonth | Self::SixMonth => {
                 let date = value.date_naive();
-                let monday = date - Duration::days(i64::from(date.weekday().num_days_from_monday()));
+                let monday =
+                    date - Duration::days(i64::from(date.weekday().num_days_from_monday()));
                 make_utc_datetime(monday.year(), monday.month(), monday.day(), 0, 0, 0)
             }
             Self::OneYear | Self::TwoYear => {

@@ -69,9 +69,7 @@ impl MigrationTrait for Migration {
     }
 }
 
-async fn backfill_strava_source_correlation_ids(
-    manager: &SchemaManager<'_>,
-) -> Result<(), DbErr> {
+async fn backfill_strava_source_correlation_ids(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     let select = Query::select()
         .column(Activities::Id)
@@ -110,7 +108,10 @@ fn strava_activity_id_from_filename(filename: &str) -> Option<String> {
         .unwrap_or(filename);
     let candidate = stem.rsplit_once('_')?.1;
 
-    if candidate.chars().all(|character| character.is_ascii_digit()) {
+    if candidate
+        .chars()
+        .all(|character| character.is_ascii_digit())
+    {
         Some(candidate.to_string())
     } else {
         None

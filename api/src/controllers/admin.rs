@@ -725,7 +725,7 @@ mod tests {
         let db = test_db().await;
         let now = Utc::now();
 
-        activities::ActiveModel {
+        let activity = activities::ActiveModel {
             user_id: Set(1),
             activity_import_id: Set(None),
             title: Set("Lunch Ride".to_string()),
@@ -764,7 +764,13 @@ mod tests {
             user_id: Set(1),
             source: Set("manual_upload".to_string()),
             format: Set("gpx".to_string()),
-            status: Set("imported".to_string()),
+            status: Set("processed".to_string()),
+            activity_id: Set(Some(activity.id)),
+            processing_stage: Set("complete".to_string()),
+            processing_error: Set(None),
+            processing_attempts: Set(0),
+            processed_at: Set(Some(now)),
+            last_processing_event_at: Set(Some(now)),
             original_filename: Set("lunch-ride.gpx".to_string()),
             storage_path: Set("/tmp/lunch-ride.gpx".to_string()),
             size_bytes: Set(1_024),

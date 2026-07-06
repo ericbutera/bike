@@ -121,7 +121,10 @@ pub async fn list_admin_integration_events(
         integration_event_service::IntegrationEventListOptions {
             provider: query.provider,
             user_id: query.user_id,
-            limit: query.limit.unwrap_or(DEFAULT_ADMIN_LIMIT).clamp(1, MAX_ADMIN_LIMIT),
+            limit: query
+                .limit
+                .unwrap_or(DEFAULT_ADMIN_LIMIT)
+                .clamp(1, MAX_ADMIN_LIMIT),
         },
     )
     .await?;

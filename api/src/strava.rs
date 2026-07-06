@@ -5,10 +5,12 @@ use crate::activity_import_lock::{
     ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
 };
 use crate::activity_import_pipeline::{
-    finalize_activity_import_batch, persist_activity_upload, ActivityUploadDeduplication,
-    ActivityUploadPayload, PersistActivityUploadOutcome,
+    finalize_activity_import_batch, mark_activity_imports_processed, persist_activity_upload,
+    ActivityUploadDeduplication, ActivityUploadPayload, PersistActivityUploadOutcome,
 };
-use crate::activity_lifecycle::delete_activity_with_derived_state;
+use crate::activity_lifecycle::{
+    delete_activity_with_derived_state, resume_incomplete_activity_imports_for_user,
+};
 use crate::analytics::{mark_segment_activity_changes, mark_user_fitness_dirty};
 use crate::app_error::AppError;
 use crate::config::Config;
@@ -655,6 +657,8 @@ pub async fn process_strava_sync(
             .ok_or_else(|| AppError::internal(format!("User {} for Strava sync was not found", connection.user_id)))?;
         let user_storage_key = user.pid.to_string();
         let tasks = TaskQueue::new(db.clone());
+        resume_incomplete_activity_imports_for_user(db, uploads_dir, &tasks, connection.user_id)
+            .await?;
         let training_profile = load_training_profile(db, connection.user_id).await?;
         let latest_user_activity_started_at =
             load_latest_user_activity_started_at(db, connection.user_id).await?;
@@ -668,6 +672,7 @@ pub async fn process_strava_sync(
         let mut duplicate_count = 0i32;
         let mut failed_count = 0i32;
         let mut affected_segment_ids = Vec::new();
+        let mut imported_import_ids = Vec::new();
         let mut fitness_dirty_from_day: Option<chrono::NaiveDate> = None;
         let mut latest_started_at = connection.last_synced_activity_started_at;
 
@@ -744,6 +749,7 @@ pub async fn process_strava_sync(
                 {
                     Ok(PersistActivityUploadOutcome::Imported(persisted)) => {
                         imported_count += 1;
+                        imported_import_ids.push(persisted.import.id);
                         affected_segment_ids.extend(persisted.affected_segment_ids);
                         fitness_dirty_from_day = Some(match fitness_dirty_from_day {
                             Some(current) => current.min(persisted.fitness_dirty_from_day),
@@ -785,6 +791,7 @@ pub async fn process_strava_sync(
                 Utc::now(),
             )
             .await?;
+            mark_activity_imports_processed(db, &imported_import_ids).await?;
         }
 
         if failed_count > 0 && imported_count == 0 && duplicate_count == 0 {

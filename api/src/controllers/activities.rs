@@ -4,7 +4,7 @@ use crate::activity_details::{
     ActivityRoutePoint,
 };
 use crate::activity_import_pipeline::{
-    finalize_activity_import_batch, reprocess_activity_from_import,
+    finalize_activity_import_batch, mark_activity_imports_processed, reprocess_activity_from_import,
 };
 use crate::activity_lifecycle::delete_activity_with_derived_state;
 use crate::activity_location::location_from_derived_json;
@@ -717,6 +717,7 @@ pub async fn regenerate_activity(
         Utc::now(),
     )
     .await?;
+    mark_activity_imports_processed(&state.db, &[activity_import_id]).await?;
     let updated = reprocessed.activity;
     let segment_efforts = load_activity_segment_efforts(&state.db, user.id, updated.id).await?;
 

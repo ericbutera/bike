@@ -1,12 +1,12 @@
 use crate::activity_details::{
     deserialize_derived_activity_data, ActivityChartPoint, ActivityRoutePoint,
 };
-use crate::entities::{activities, activity_training_analyses, segment_efforts, segments};
 use crate::app_error::AppError;
+use crate::entities::{activities, activity_training_analyses, segment_efforts, segments};
 use crate::training_profile::deserialize_activity_heart_rate_zones;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
-    QueryFilter, Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    Set,
 };
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};

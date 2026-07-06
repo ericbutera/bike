@@ -54,8 +54,12 @@ pub async fn queue_user_xc_goal_backfill(
     .await?;
 
     if let Err(message) = tasks.backfill_user_xc_training(user_id).await {
-        release_user_activity_import_lock(db, user_id, ACTIVITY_IMPORT_LOCK_SOURCE_XC_TRAINING_BACKFILL)
-            .await?;
+        release_user_activity_import_lock(
+            db,
+            user_id,
+            ACTIVITY_IMPORT_LOCK_SOURCE_XC_TRAINING_BACKFILL,
+        )
+        .await?;
         set_user_xc_goal_backfill_state(db, user_id, Some(XC_GOAL_BACKFILL_STATUS_FAILED), None)
             .await?;
         return Err(AppError::internal(format!(

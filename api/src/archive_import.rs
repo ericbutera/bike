@@ -4,9 +4,10 @@ use crate::activity_import_lock::{
     ACTIVITY_IMPORT_LOCK_STAGE_QUEUED, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
 };
 use crate::activity_import_pipeline::{
-    finalize_activity_import_batch, persist_activity_upload, ActivityUploadDeduplication,
-    ActivityUploadPayload, PersistActivityUploadOutcome,
+    finalize_activity_import_batch, mark_activity_imports_processed, persist_activity_upload,
+    ActivityUploadDeduplication, ActivityUploadPayload, PersistActivityUploadOutcome,
 };
+use crate::activity_lifecycle::resume_incomplete_activity_imports_for_user;
 use crate::app_error::AppError;
 use crate::config::Config;
 use crate::entities::activity_archive_import_jobs;
@@ -307,11 +308,14 @@ pub async fn import_activity_archive_from_path(
     display_source: String,
     archive_path: &Path,
 ) -> Result<ActivityArchiveImportResponse, AppError> {
+    resume_incomplete_activity_imports_for_user(db, uploads_dir, tasks, user_id).await?;
+
     let scan = scan_archive_entries(archive_path)?;
     let training_profile = load_training_profile(db, user_id).await?;
     let mut imported_count = 0i32;
     let mut duplicate_count = 0i32;
     let mut affected_segment_ids = Vec::new();
+    let mut imported_import_ids = Vec::new();
     let mut fitness_dirty_from_day: Option<chrono::NaiveDate> = None;
     let mut error_samples = Vec::new();
 
@@ -357,6 +361,7 @@ pub async fn import_activity_archive_from_path(
         {
             Ok(PersistActivityUploadOutcome::Imported(persisted)) => {
                 imported_count += 1;
+                imported_import_ids.push(persisted.import.id);
                 affected_segment_ids.extend(persisted.affected_segment_ids);
                 fitness_dirty_from_day = Some(match fitness_dirty_from_day {
                     Some(current) => current.min(persisted.fitness_dirty_from_day),
@@ -389,6 +394,7 @@ pub async fn import_activity_archive_from_path(
             Utc::now(),
         )
         .await?;
+        mark_activity_imports_processed(db, &imported_import_ids).await?;
     }
 
     let failed_count = error_samples.len() as i32;

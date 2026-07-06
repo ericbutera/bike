@@ -128,7 +128,11 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(Activities::Table)
-                    .add_column(ColumnDef::new(Activities::DerivedDataJsonCompact).json().null())
+                    .add_column(
+                        ColumnDef::new(Activities::DerivedDataJsonCompact)
+                            .json()
+                            .null(),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -162,7 +166,11 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(Activities::Table)
-                    .add_column(ColumnDef::new(Activities::DerivedDataJsonLegacy).text().null())
+                    .add_column(
+                        ColumnDef::new(Activities::DerivedDataJsonLegacy)
+                            .text()
+                            .null(),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -265,7 +273,11 @@ impl From<LegacyActivityDerivedData> for CompactActivityDerivedData {
     fn from(value: LegacyActivityDerivedData) -> Self {
         Self {
             v: STORAGE_FORMAT_VERSION,
-            laps: value.laps.into_iter().map(CompactActivityLap::from).collect(),
+            laps: value
+                .laps
+                .into_iter()
+                .map(CompactActivityLap::from)
+                .collect(),
             chart_points: value
                 .chart_points
                 .into_iter()
@@ -287,7 +299,11 @@ impl From<CompactActivityDerivedData> for LegacyActivityDerivedData {
         }
 
         Self {
-            laps: value.laps.into_iter().map(LegacyActivityLap::from).collect(),
+            laps: value
+                .laps
+                .into_iter()
+                .map(LegacyActivityLap::from)
+                .collect(),
             chart_points: value
                 .chart_points
                 .into_iter()

@@ -74,13 +74,7 @@ struct LegacyActivityHeartRateZoneSummary {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-struct CompactActivityHeartRateZoneSummary(
-    i32,
-    Option<i32>,
-    Option<i32>,
-    i32,
-    i32,
-);
+struct CompactActivityHeartRateZoneSummary(i32, Option<i32>, Option<i32>, i32, i32);
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
@@ -462,7 +456,10 @@ async fn rewrite_heart_rate_bound_rows_to_compact(
 
         let update = Query::update()
             .table(UserPreferences::Table)
-            .value(UserPreferences::HeartRateZoneBoundsJsonCompact, compact_json)
+            .value(
+                UserPreferences::HeartRateZoneBoundsJsonCompact,
+                compact_json,
+            )
             .and_where(Expr::col(UserPreferences::Id).eq(id))
             .to_owned();
 
@@ -472,9 +469,7 @@ async fn rewrite_heart_rate_bound_rows_to_compact(
     Ok(())
 }
 
-async fn rewrite_heart_rate_bound_rows_to_legacy(
-    manager: &SchemaManager<'_>,
-) -> Result<(), DbErr> {
+async fn rewrite_heart_rate_bound_rows_to_legacy(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     let select = Query::select()
         .column(UserPreferences::Id)
