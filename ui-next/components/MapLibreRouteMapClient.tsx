@@ -738,6 +738,8 @@ export default function MapLibreRouteMapClient({
   defaultBasemap = "topo",
   selectedBasemap: selectedBasemapProp,
   onSelectedBasemapChange,
+  fitBoundsPoints,
+  fitBoundsKey,
   fitBoundsPadding = DEFAULT_FIT_BOUNDS_PADDING,
   fitBoundsMaxZoom = DEFAULT_FIT_BOUNDS_MAX_ZOOM,
   showRouteEndpoints = true,
@@ -753,6 +755,12 @@ export default function MapLibreRouteMapClient({
   const lastFittedRoutePointsRef = useRef<
     ActivityRoutePoint[] | null | undefined
   >(null);
+  const lastFittedFitBoundsPointsRef = useRef<
+    ActivityRoutePoint[] | null | undefined
+  >(null);
+  const lastFitBoundsKeyRef = useRef<string | number | null | undefined>(
+    undefined,
+  );
   const hasFittedInitialViewRef = useRef(false);
   const appliedStyleKeyRef = useRef<string | null>(null);
   const preservedViewStateRef = useRef<{
@@ -1028,6 +1036,8 @@ export default function MapLibreRouteMapClient({
       lastFollowViewportKeyRef.current = null;
       smoothedFollowTargetRef.current = null;
       lastFittedRoutePointsRef.current = null;
+      lastFittedFitBoundsPointsRef.current = null;
+      lastFitBoundsKeyRef.current = undefined;
       hasFittedInitialViewRef.current = false;
     };
   }, [interactive, mapStyle, mapStyleKey, showBaseTiles, showZoomControls]);
@@ -1062,7 +1072,9 @@ export default function MapLibreRouteMapClient({
 
       const shouldFitToGeometry =
         !hasFittedInitialViewRef.current ||
-        lastFittedRoutePointsRef.current !== routePoints;
+        lastFittedRoutePointsRef.current !== routePoints ||
+        lastFittedFitBoundsPointsRef.current !== fitBoundsPoints ||
+        lastFitBoundsKeyRef.current !== fitBoundsKey;
 
       ensureMapSourcesAndLayers(map, showBaseTiles);
 
@@ -1162,15 +1174,19 @@ export default function MapLibreRouteMapClient({
         return;
       }
 
+      const explicitFitBoundsPoints = fitBoundsPoints ?? null;
+
       fitMapToGeometry(
         map,
-        routePoints ?? [],
-        overlays.map((overlay) => overlay.points),
+        explicitFitBoundsPoints ?? routePoints ?? [],
+        explicitFitBoundsPoints ? [] : overlays.map((overlay) => overlay.points),
         fitBoundsPadding,
         fitBoundsMaxZoom,
       );
       hasFittedInitialViewRef.current = true;
       lastFittedRoutePointsRef.current = routePoints;
+      lastFittedFitBoundsPointsRef.current = fitBoundsPoints;
+      lastFitBoundsKeyRef.current = fitBoundsKey;
     };
 
     if (map.isStyleLoaded()) {
@@ -1186,6 +1202,8 @@ export default function MapLibreRouteMapClient({
     };
   }, [
     endpointSourceData,
+    fitBoundsKey,
+    fitBoundsPoints,
     overlayHandlers,
     overlaySourceData,
     overlays,

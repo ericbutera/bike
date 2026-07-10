@@ -324,6 +324,107 @@ function makeActivity(
   };
 }
 
+function makeClimbingRoutePoints() {
+  return [
+    {
+      elapsed_seconds: 0,
+      latitude: 45.0,
+      longitude: -122.0,
+      distance_meters: 0,
+      elevation_meters: 100,
+      speed_mps: 0,
+      heart_rate_bpm: 128,
+      cadence_rpm: 80,
+      power_watts: 142,
+    },
+    {
+      elapsed_seconds: 120,
+      latitude: 45.01,
+      longitude: -121.99,
+      distance_meters: 600,
+      elevation_meters: 132,
+      speed_mps: 5,
+      heart_rate_bpm: 142,
+      cadence_rpm: 82,
+      power_watts: 210,
+    },
+    {
+      elapsed_seconds: 240,
+      latitude: 45.02,
+      longitude: -121.98,
+      distance_meters: 1200,
+      elevation_meters: 168,
+      speed_mps: 5,
+      heart_rate_bpm: 148,
+      cadence_rpm: 84,
+      power_watts: 225,
+    },
+    {
+      elapsed_seconds: 360,
+      latitude: 45.03,
+      longitude: -121.97,
+      distance_meters: 1800,
+      elevation_meters: 202,
+      speed_mps: 5,
+      heart_rate_bpm: 154,
+      cadence_rpm: 86,
+      power_watts: 238,
+    },
+    {
+      elapsed_seconds: 480,
+      latitude: 45.04,
+      longitude: -121.96,
+      distance_meters: 2400,
+      elevation_meters: 225,
+      speed_mps: 5,
+      heart_rate_bpm: 160,
+      cadence_rpm: 88,
+      power_watts: 250,
+    },
+  ];
+}
+
+function makeManyClimbRoutePoints(count: number) {
+  const points: ReturnType<typeof makeClimbingRoutePoints> = [];
+  let elapsedSeconds = 0;
+  let distanceMeters = 0;
+  let elevationMeters = 100;
+
+  const pushPoint = () => {
+    points.push({
+      elapsed_seconds: elapsedSeconds,
+      latitude: 45 + elapsedSeconds * 0.00001,
+      longitude: -122 + elapsedSeconds * 0.00001,
+      distance_meters: distanceMeters,
+      elevation_meters: elevationMeters,
+      speed_mps: 5,
+      heart_rate_bpm: 145,
+      cadence_rpm: 84,
+      power_watts: 220,
+    });
+  };
+
+  pushPoint();
+
+  for (let climbIndex = 0; climbIndex < count; climbIndex += 1) {
+    for (let step = 0; step < 4; step += 1) {
+      elapsedSeconds += 120;
+      distanceMeters += 600;
+      elevationMeters += 30;
+      pushPoint();
+    }
+
+    if (climbIndex < count - 1) {
+      elapsedSeconds += 90;
+      distanceMeters += 300;
+      elevationMeters -= 40;
+      pushPoint();
+    }
+  }
+
+  return points;
+}
+
 describe("ActivityDetailPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -402,7 +503,7 @@ describe("ActivityDetailPanel", () => {
     expect(screen.getByText("Activity data")).toBeInTheDocument();
     expect(screen.getByText("Avg")).toBeInTheDocument();
     expect(screen.getByText("Max")).toBeInTheDocument();
-    expect(screen.getByText("28.0 km")).toBeInTheDocument();
+    expect(screen.getByText("17.4 mi")).toBeInTheDocument();
     expect(screen.getByText("53m 20s")).toBeInTheDocument();
     expect(screen.getAllByText("19.5 mph").length).toBeGreaterThan(0);
     expect(screen.getAllByText("168 bpm").length).toBeGreaterThan(0);
@@ -495,6 +596,102 @@ describe("ActivityDetailPanel", () => {
     expect(
       screen.queryByRole("link", { name: "Back to activities" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows climbs and focuses a selected climb on the map", async () => {
+    const user = userEvent.setup();
+
+    mocks.useActivity.mockReturnValue({
+      data: makeActivity({
+        route_points: makeClimbingRoutePoints(),
+        segment_efforts: [],
+      }),
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+
+    render(<ActivityDetailPanel activityId={7} />);
+
+    expect(screen.getByText("Climbs")).toBeInTheDocument();
+    expect(screen.getByText("1 climb")).toBeInTheDocument();
+    expect(screen.getByText("1.5 mi")).toBeInTheDocument();
+    expect(screen.getByText("410 ft")).toBeInTheDocument();
+    expect(screen.getByText("5.2%")).toBeInTheDocument();
+
+    const climbRow = screen.getByRole("button", {
+      name: "Show climb 1 details",
+    });
+
+    expect(climbRow).toHaveAttribute("aria-pressed", "false");
+    expect(mocks.renderMapLibreRouteMap).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        fitBoundsKey: "activity",
+        fitBoundsPoints: null,
+      }),
+    );
+
+    await user.click(climbRow);
+
+    expect(
+      screen.getByRole("button", { name: "Show climb 1 details" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Climb: 0 - 1.5 mi")).toBeInTheDocument();
+    expect(screen.getByText("elevation gain")).toBeInTheDocument();
+    expect(screen.getByText("elevation loss")).toBeInTheDocument();
+    expect(screen.getByText("category")).toBeInTheDocument();
+    expect(screen.getByText("max grade")).toBeInTheDocument();
+    expect(screen.getByText("avg grade")).toBeInTheDocument();
+    expect(screen.getByText("estimated")).toBeInTheDocument();
+    expect(screen.getByText("8m 00s")).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: "Climb 1 elevation profile" }),
+    ).toBeInTheDocument();
+    expect(mocks.renderMapLibreRouteMap).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        fitBoundsKey: "climb-1",
+        fitBoundsPoints: expect.arrayContaining([
+          expect.objectContaining({ distance_meters: 0 }),
+          expect.objectContaining({ distance_meters: 2400 }),
+        ]),
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Zoom out map" }));
+
+    expect(
+      screen.queryByRole("img", { name: "Climb 1 elevation profile" }),
+    ).not.toBeInTheDocument();
+    expect(mocks.renderMapLibreRouteMap).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        fitBoundsKey: "activity",
+        fitBoundsPoints: null,
+      }),
+    );
+  });
+
+  it("scrolls the climb list after fifteen records", () => {
+    mocks.useActivity.mockReturnValue({
+      data: makeActivity({
+        route_points: makeManyClimbRoutePoints(16),
+        segment_efforts: [],
+      }),
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+
+    render(<ActivityDetailPanel activityId={7} />);
+
+    expect(screen.getByText("16 climbs")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Show climb 16 details" }),
+    ).toBeInTheDocument();
+
+    const climbScroll = screen.getByTestId("activity-climbs-table-scroll");
+
+    expect(climbScroll).toHaveClass("overflow-y-auto");
+    expect(climbScroll.style.maxHeight).toBe("40rem");
   });
 
   it("shows the correct run details when a chart point is hovered", () => {

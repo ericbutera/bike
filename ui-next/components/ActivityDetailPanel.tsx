@@ -5,7 +5,7 @@ import { faBars } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import {
   Area,
   CartesianGrid,
@@ -18,6 +18,7 @@ import {
 } from "recharts";
 import {
   extractApiMessage,
+  FEET_PER_METER,
   formatActivityTimestamp,
   formatCadence,
   formatCalories,
@@ -29,8 +30,13 @@ import {
   formatRelativeEffort,
   formatSpeed,
   formatSport,
+  METERS_PER_MILE,
   type UnitSystem,
 } from "../lib/activityFormatting";
+import {
+  buildActivityClimbs,
+  type ActivityClimb,
+} from "../lib/activityClimbs";
 import {
   ACTIVITY_TYPE_OPTIONS,
   ACTIVITY_TYPES,
@@ -155,6 +161,8 @@ const DEFAULT_VISIBLE_SIGNAL_KEYS: SignalMetricKey[] = [
   "heartRate",
   "elevation",
 ];
+const CLIMB_LIST_VISIBLE_ROW_COUNT = 15;
+const CLIMB_LIST_MAX_HEIGHT = "40rem";
 
 const SIGNAL_KEY_ORDER: SignalMetricKey[] = [
   "heartRate",
@@ -428,6 +436,107 @@ function formatSignalValue(
   }
 }
 
+function formatGradePercent(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) {
+    return "--";
+  }
+
+  return `${value.toFixed(1)}%`;
+}
+
+function distanceUnit(unitSystem: UnitSystem) {
+  return unitSystem === "imperial" ? "mi" : "km";
+}
+
+function distanceValue(valueMeters: number, unitSystem: UnitSystem) {
+  const value =
+    unitSystem === "imperial"
+      ? valueMeters / METERS_PER_MILE
+      : valueMeters / 1000;
+  const formatted = value >= 100 ? value.toFixed(0) : value.toFixed(1);
+
+  return formatted.replace(/\.0$/, "");
+}
+
+function elevationChartValue(valueMeters: number, unitSystem: UnitSystem) {
+  return unitSystem === "imperial" ? valueMeters * FEET_PER_METER : valueMeters;
+}
+
+function formatDistanceRange(
+  startDistanceMeters: number,
+  endDistanceMeters: number,
+  unitSystem: UnitSystem,
+) {
+  return `${distanceValue(startDistanceMeters, unitSystem)} - ${distanceValue(endDistanceMeters, unitSystem)} ${distanceUnit(unitSystem)}`;
+}
+
+function formatClimbCategory(category: ActivityClimb["category"]) {
+  if (category == null) {
+    return "--";
+  }
+
+  return category.toString();
+}
+
+function buildClimbElevationRows(climb: ActivityClimb, unitSystem: UnitSystem) {
+  return climb.routePoints.flatMap((point) => {
+    if (
+      point.distance_meters == null ||
+      point.elevation_meters == null ||
+      !Number.isFinite(point.distance_meters) ||
+      !Number.isFinite(point.elevation_meters)
+    ) {
+      return [];
+    }
+
+    return [
+      {
+        distance:
+          unitSystem === "imperial"
+            ? (point.distance_meters - climb.startDistanceMeters) /
+              METERS_PER_MILE
+            : (point.distance_meters - climb.startDistanceMeters) / 1000,
+        elevation: elevationChartValue(point.elevation_meters, unitSystem),
+      },
+    ];
+  });
+}
+
+function ClimbElevationTooltip({
+  active,
+  payload,
+  label,
+  unitSystem,
+}: {
+  active?: boolean;
+  payload?: Array<{
+    value?: number;
+  }>;
+  label?: number;
+  unitSystem: UnitSystem;
+}) {
+  if (!active || !payload?.length) {
+    return null;
+  }
+
+  const elevation = payload[0]?.value;
+
+  return (
+    <div className="rounded-box border border-base-300 bg-base-100 px-3 py-2 text-xs shadow-lg">
+      <div className="font-semibold text-base-content">
+        {typeof label === "number"
+          ? `${label.toFixed(1)} ${distanceUnit(unitSystem)}`
+          : "--"}
+      </div>
+      <div className="mt-1 text-base-content/70">
+        {unitSystem === "imperial"
+          ? `${Math.round(elevation ?? 0)} ft`
+          : `${Math.round(elevation ?? 0)} m`}
+      </div>
+    </div>
+  );
+}
+
 function SignalChartTooltip({
   active,
   label,
@@ -642,6 +751,261 @@ function SignalChartCard({
   );
 }
 
+function ClimbDetailMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="min-w-0">
+      <div className="text-2xl font-semibold text-base-content">{value}</div>
+      <div className="mt-1 text-xs text-base-content/55 uppercase">
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function ActivityClimbsCard({
+  climbs,
+  selectedClimbId,
+  unitSystem,
+  onSelectClimb,
+  onZoomOutMap,
+}: {
+  climbs: ActivityClimb[];
+  selectedClimbId: string | null;
+  unitSystem: UnitSystem;
+  onSelectClimb: (climbId: string) => void;
+  onZoomOutMap: () => void;
+}) {
+  const selectedClimb =
+    climbs.find((climb) => climb.id === selectedClimbId) ?? null;
+  const elevationRows = selectedClimb
+    ? buildClimbElevationRows(selectedClimb, unitSystem)
+    : [];
+  const shouldLimitClimbList = climbs.length > CLIMB_LIST_VISIBLE_ROW_COUNT;
+
+  function handleRowKeyDown(
+    event: KeyboardEvent<HTMLTableRowElement>,
+    climbId: string,
+  ) {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    event.preventDefault();
+    onSelectClimb(climbId);
+  }
+
+  return (
+    <div id="activity-climbs-card" className="card bg-base-100 shadow-xl">
+      <div className="card-body">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <h2 className="card-title text-xl">Climbs</h2>
+          <span className="badge badge-outline">
+            {climbs.length} climb{climbs.length === 1 ? "" : "s"}
+          </span>
+        </div>
+
+        {climbs.length > 0 ? (
+          <>
+            <div
+              data-testid="activity-climbs-table-scroll"
+              className={`mt-5 overflow-x-auto rounded-box border border-base-300 ${
+                shouldLimitClimbList ? "overflow-y-auto" : ""
+              }`}
+              style={
+                shouldLimitClimbList
+                  ? { maxHeight: CLIMB_LIST_MAX_HEIGHT }
+                  : undefined
+              }
+            >
+              <table className="table table-sm">
+                <thead
+                  className={
+                    shouldLimitClimbList ? "sticky top-0 z-10 bg-base-100" : ""
+                  }
+                >
+                  <tr className="h-10">
+                    <th>Climb</th>
+                    <th>Distance</th>
+                    <th>Elevation</th>
+                    <th>Grade</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {climbs.map((climb) => {
+                    const isSelected = climb.id === selectedClimbId;
+
+                    return (
+                      <tr
+                        key={climb.id}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Show climb ${climb.sequence} details`}
+                        aria-pressed={isSelected}
+                        className={`h-10 cursor-pointer transition hover:bg-base-200 focus:bg-base-200 focus:outline-none ${
+                          isSelected ? "bg-primary/10" : ""
+                        }`}
+                        onClick={() => onSelectClimb(climb.id)}
+                        onKeyDown={(event) =>
+                          handleRowKeyDown(event, climb.id)
+                        }
+                      >
+                        <th scope="row" className="whitespace-nowrap font-semibold">
+                          Climb {climb.sequence}
+                        </th>
+                        <td className="whitespace-nowrap">
+                          {formatDistance(climb.distanceMeters, unitSystem)}
+                        </td>
+                        <td className="whitespace-nowrap">
+                          {formatElevation(
+                            climb.elevationGainMeters,
+                            unitSystem,
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap">
+                          {formatGradePercent(climb.avgGradePercent)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {selectedClimb ? (
+              <div className="mt-6 border-t border-base-300 pt-6">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <h3 className="text-lg font-semibold text-base-content">
+                    Climb:{" "}
+                    {formatDistanceRange(
+                      selectedClimb.startDistanceMeters,
+                      selectedClimb.endDistanceMeters,
+                      unitSystem,
+                    )}
+                  </h3>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={onZoomOutMap}
+                  >
+                    Zoom out map
+                  </button>
+                </div>
+
+                <div className="mt-5 grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
+                  <ClimbDetailMetric
+                    label="distance"
+                    value={formatDistance(
+                      selectedClimb.distanceMeters,
+                      unitSystem,
+                    )}
+                  />
+                  <ClimbDetailMetric
+                    label="elevation gain"
+                    value={formatElevation(
+                      selectedClimb.elevationGainMeters,
+                      unitSystem,
+                    )}
+                  />
+                  <ClimbDetailMetric
+                    label="elevation loss"
+                    value={formatElevation(
+                      selectedClimb.elevationLossMeters,
+                      unitSystem,
+                    )}
+                  />
+                  <ClimbDetailMetric
+                    label="category"
+                    value={formatClimbCategory(selectedClimb.category)}
+                  />
+                  <ClimbDetailMetric
+                    label="max grade"
+                    value={formatGradePercent(selectedClimb.maxGradePercent)}
+                  />
+                  <ClimbDetailMetric
+                    label="avg grade"
+                    value={formatGradePercent(selectedClimb.avgGradePercent)}
+                  />
+                  <ClimbDetailMetric
+                    label="estimated"
+                    value={formatDuration(selectedClimb.durationSeconds)}
+                  />
+                </div>
+
+                {elevationRows.length > 1 ? (
+                  <div
+                    role="img"
+                    aria-label={`Climb ${selectedClimb.sequence} elevation profile`}
+                    className="mt-6 overflow-hidden rounded-box border border-base-300 bg-base-200 p-3"
+                  >
+                    <div className="h-[180px] w-full">
+                      <ResponsiveContainer
+                        width="100%"
+                        height="100%"
+                        minWidth={320}
+                        minHeight={180}
+                      >
+                        <ComposedChart
+                          data={elevationRows}
+                          margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
+                        >
+                          <CartesianGrid
+                            vertical={false}
+                            stroke="var(--color-base-content)"
+                            strokeOpacity={0.1}
+                          />
+                          <XAxis
+                            axisLine={false}
+                            dataKey="distance"
+                            tick={{
+                              fill: "var(--color-base-content)",
+                              fontSize: 10,
+                            }}
+                            tickFormatter={(value: number) =>
+                              value.toFixed(1)
+                            }
+                            tickLine={false}
+                            type="number"
+                          />
+                          <YAxis hide domain={["dataMin", "dataMax"]} />
+                          <Tooltip
+                            content={
+                              <ClimbElevationTooltip unitSystem={unitSystem} />
+                            }
+                          />
+                          <Area
+                            type="linear"
+                            dataKey="elevation"
+                            stroke="var(--color-warning)"
+                            fill="var(--color-warning)"
+                            fillOpacity={0.16}
+                            strokeWidth={2}
+                            dot={false}
+                            connectNulls
+                          />
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <div className="alert mt-5">
+            <span>No sustained climbs found.</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function LapCard({
   lap,
   unitSystem,
@@ -747,22 +1111,30 @@ function DenseDetailRow({ label, value }: { label: string; value: string }) {
 function ActivityRouteMap({
   routePoints,
   segmentGroups,
+  climbs,
   canRegenerate,
   isRegenerating,
   onRegenerate,
   onSelectSegment,
+  onSelectClimb,
   selectedSegmentId,
+  selectedClimbId,
 }: {
   routePoints: ActivityRoutePoint[] | null | undefined;
   segmentGroups: SegmentMatchGroup[];
+  climbs: ActivityClimb[];
   canRegenerate: boolean;
   isRegenerating: boolean;
   onRegenerate: () => void;
   onSelectSegment: (segmentId: number) => void;
+  onSelectClimb: (climbId: string) => void;
   selectedSegmentId: number | null;
+  selectedClimbId: string | null;
 }) {
   const hasRouteMap = (routePoints?.length ?? 0) >= 2;
-  const overlays = segmentGroups
+  const selectedClimb =
+    climbs.find((climb) => climb.id === selectedClimbId) ?? null;
+  const segmentOverlays = segmentGroups
     .flatMap((segmentGroup) =>
       segmentGroup.efforts.map((segmentEffort) => ({
         id: `${segmentEffort.segment_id}-${segmentEffort.effort_index}`,
@@ -776,6 +1148,23 @@ function ActivityRouteMap({
       })),
     )
     .filter((overlay) => overlay.points.length >= 2);
+  const climbOverlays = climbs
+    .map((climb) => {
+      const isSelected = selectedClimbId === climb.id;
+
+      return {
+        id: climb.id,
+        color: isSelected ? "#f97316" : "#f59e0b",
+        label: `Climb ${climb.sequence}`,
+        points: climb.routePoints,
+        weight: isSelected ? 9 : 5,
+        onClick: () => {
+          onSelectClimb(climb.id);
+        },
+      };
+    })
+    .filter((overlay) => overlay.points.length >= 2);
+  const overlays = [...segmentOverlays, ...climbOverlays];
 
   return (
     <div className="card bg-base-100 shadow-xl">
@@ -792,6 +1181,9 @@ function ActivityRouteMap({
                 showLayerPicker
                 defaultBasemap="topo"
                 basemapOptions={["topo", "street", "satellite"]}
+                fitBoundsPoints={selectedClimb?.routePoints ?? null}
+                fitBoundsKey={selectedClimb ? selectedClimb.id : "activity"}
+                fitBoundsMaxZoom={selectedClimb ? 15 : undefined}
                 className="h-96 w-full"
               />
             </div>
@@ -850,6 +1242,7 @@ export default function ActivityDetailPanel({
   const [selectedSegmentId, setSelectedSegmentId] = useState<number | null>(
     null,
   );
+  const [selectedClimbId, setSelectedClimbId] = useState<string | null>(null);
   const [expandedSegmentIds, setExpandedSegmentIds] = useState<number[]>([]);
   const [isActivityTypeDialogOpen, setIsActivityTypeDialogOpen] =
     useState(false);
@@ -876,6 +1269,10 @@ export default function ActivityDetailPanel({
     : "/segments/builder";
   const matchedSegmentEfforts = sortMatchedSegmentEfforts(
     activity?.segment_efforts,
+  );
+  const activityClimbs = useMemo(
+    () => buildActivityClimbs(activity?.route_points),
+    [activity?.route_points],
   );
   const matchedSegmentGroups = useMemo(
     () =>
@@ -924,6 +1321,15 @@ export default function ActivityDetailPanel({
       return next.size === current.length ? current : Array.from(next);
     });
   }, [starredSegmentIds, starredSegmentIdsKey]);
+
+  useEffect(() => {
+    if (
+      selectedClimbId &&
+      !activityClimbs.some((climb) => climb.id === selectedClimbId)
+    ) {
+      setSelectedClimbId(null);
+    }
+  }, [activityClimbs, selectedClimbId]);
 
   useEffect(() => {
     setActivityTypeDraft(normalizeActivityType(activity?.activity_type));
@@ -1014,6 +1420,23 @@ export default function ActivityDetailPanel({
 
     if (firstLink instanceof HTMLElement) {
       firstLink.focus({ preventScroll: true });
+    }
+  }
+
+  function focusClimb(climbId: string) {
+    setSelectedClimbId(climbId);
+
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const climbsCard = document.getElementById("activity-climbs-card");
+
+    if (
+      climbsCard instanceof HTMLElement &&
+      typeof climbsCard.scrollIntoView === "function"
+    ) {
+      climbsCard.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }
 
@@ -1444,13 +1867,24 @@ export default function ActivityDetailPanel({
       <ActivityRouteMap
         routePoints={activity.route_points}
         segmentGroups={matchedSegmentGroups}
+        climbs={activityClimbs}
         canRegenerate={!!activity.can_regenerate}
         isRegenerating={regenerateMutation.isPending}
         onRegenerate={() => {
           void handleRegenerate();
         }}
         onSelectSegment={focusSegmentMatch}
+        onSelectClimb={focusClimb}
         selectedSegmentId={selectedSegmentId}
+        selectedClimbId={selectedClimbId}
+      />
+
+      <ActivityClimbsCard
+        climbs={activityClimbs}
+        selectedClimbId={selectedClimbId}
+        unitSystem={unitSystem}
+        onSelectClimb={focusClimb}
+        onZoomOutMap={() => setSelectedClimbId(null)}
       />
 
       <MatchedSegmentsSection

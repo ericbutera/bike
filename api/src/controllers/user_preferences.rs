@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-const DEFAULT_UNIT_SYSTEM: &str = "mixed";
+const DEFAULT_UNIT_SYSTEM: &str = "imperial";
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct UserPreferencesResponse {

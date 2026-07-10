@@ -46,6 +46,8 @@ export type RouteMapProps = {
   defaultBasemap?: RouteMapBasemap;
   selectedBasemap?: RouteMapBasemap;
   onSelectedBasemapChange?: (basemap: RouteMapBasemap) => void;
+  fitBoundsPoints?: ActivityRoutePoint[] | null;
+  fitBoundsKey?: string | number | null;
   fitBoundsPadding?: number;
   fitBoundsMaxZoom?: number;
   showRouteEndpoints?: boolean;

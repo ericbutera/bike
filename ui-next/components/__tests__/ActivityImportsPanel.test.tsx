@@ -61,6 +61,8 @@ function makeActivityImport(
     original_filename: string;
     format: string;
     status: string;
+    processing_stage: string;
+    processing_error: string | null;
     size_bytes: number;
     mime_type: string | null;
     created_at: string;
@@ -74,7 +76,9 @@ function makeActivityImport(
     activity_id: 7,
     original_filename: "ride.gpx",
     format: "gpx",
-    status: "uploaded",
+    status: "processed",
+    processing_stage: "complete",
+    processing_error: null,
     size_bytes: 4096,
     mime_type: "application/gpx+xml",
     created_at: "2026-05-06T12:00:00Z",
@@ -241,7 +245,7 @@ describe("ActivityImportsPanel", () => {
     });
 
     expect(mocks.toastSuccess).toHaveBeenCalledWith(
-      "Imported ride.gpx into your activity feed.",
+      "Queued ride.gpx for processing.",
     );
     expect(screen.queryByText("ride.gpx")).not.toBeInTheDocument();
     expect(
@@ -250,6 +254,40 @@ describe("ActivityImportsPanel", () => {
       ),
     ).toBeInTheDocument();
     expect(input.value).toBe("");
+  });
+
+  it("keeps the manual upload button steady while queueing a file", async () => {
+    const user = userEvent.setup();
+    let resolveUpload: ((value: ReturnType<typeof makeActivityImport>) => void)
+      | undefined;
+    mocks.uploadAsync.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveUpload = resolve;
+        }),
+    );
+
+    render(<ActivityImportsPanel />);
+
+    const input = screen.getByLabelText("Activity file") as HTMLInputElement;
+    const file = new File(["gpx-data"], "ride.gpx", {
+      type: "application/gpx+xml",
+    });
+
+    await user.upload(input, file);
+    await user.click(screen.getByRole("button", { name: "Upload activity" }));
+
+    expect(
+      screen.getByRole("button", { name: "Queueing activity..." }),
+    ).toBeDisabled();
+
+    resolveUpload?.(makeActivityImport());
+
+    await waitFor(() => {
+      expect(mocks.toastSuccess).toHaveBeenCalledWith(
+        "Queued ride.gpx for processing.",
+      );
+    });
   });
 
   it("surfaces duplicate single uploads without creating a second activity", async () => {
@@ -315,7 +353,7 @@ describe("ActivityImportsPanel", () => {
     });
 
     expect(mocks.toastSuccess).toHaveBeenCalledWith(
-      "Imported 2 activities into your activity feed.",
+      "Queued 2 activities for processing.",
     );
     expect(
       screen.getByText(
@@ -350,9 +388,12 @@ describe("ActivityImportsPanel", () => {
     expect(
       screen.getByText("Worker-backed status updates"),
     ).toBeInTheDocument();
+    expect(screen.getByText("Recent archive imports").closest("details")).not
+      .toHaveAttribute("open");
   });
 
-  it("disables new uploads while another activity processing job is active", () => {
+  it("keeps manual uploads available while another activity job is active", async () => {
+    const user = userEvent.setup();
     mocks.useActivityProcessingState.mockReturnValue({
       data: {
         is_active: true,
@@ -369,12 +410,19 @@ describe("ActivityImportsPanel", () => {
 
     render(<ActivityImportsPanel />);
 
-    expect(
-      screen.getByText(/activity reprocessing is currently running/i),
-    ).toBeInTheDocument();
+    const input = screen.getByLabelText("Activity file") as HTMLInputElement;
+    const file = new File(["gpx-data"], "queued-ride.gpx", {
+      type: "application/gpx+xml",
+    });
+
+    await user.upload(input, file);
+
     expect(
       screen.getByRole("button", { name: "Upload activity" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
+    expect(
+      screen.queryByText(/uploads will re-enable automatically/i),
+    ).not.toBeInTheDocument();
   });
 
   it("renders recent archive import job status", () => {
@@ -392,6 +440,8 @@ describe("ActivityImportsPanel", () => {
 
     render(<ActivityImportsPanel />);
 
+    expect(screen.getByText("Recent archive imports").closest("details")).not
+      .toHaveAttribute("open");
     expect(screen.getByText("running")).toBeInTheDocument();
     expect(
       screen.getByText("https://cdn.example.com/export.zip"),
@@ -401,7 +451,7 @@ describe("ActivityImportsPanel", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders recent uploads from the query response", () => {
+  it("renders the manual upload queue from the query response", () => {
     mocks.useActivityImports.mockReturnValue({
       data: [
         makeActivityImport({
@@ -409,6 +459,16 @@ describe("ActivityImportsPanel", () => {
           original_filename: "tempo.fit",
           format: "fit",
           activity_location: "Traverse City, MI",
+        }),
+        makeActivityImport({
+          id: 43,
+          activity_id: null,
+          original_filename: "waiting.gpx",
+          status: "processing",
+          processing_stage: "raw_stored",
+          activity_started_at: null,
+          activity_duration_seconds: null,
+          activity_location: null,
         }),
       ],
       isError: false,
@@ -418,8 +478,12 @@ describe("ActivityImportsPanel", () => {
 
     render(<ActivityImportsPanel />);
 
-    expect(screen.getByText("Traverse City, MI")).toBeInTheDocument();
-    expect(screen.getByText("1h 00m")).toBeInTheDocument();
+    expect(screen.getByText("Manual file processing")).toBeInTheDocument();
+    expect(screen.getByText("tempo.fit")).toBeInTheDocument();
+    expect(screen.getByText("waiting.gpx")).toBeInTheDocument();
+    expect(screen.getByText("queued")).toBeInTheDocument();
+    expect(screen.getByText("Waiting for worker")).toBeInTheDocument();
+    expect(screen.getByText("Traverse City, MI - 1h 00m")).toBeInTheDocument();
     expect(
       screen
         .getAllByRole("link")
@@ -428,6 +492,50 @@ describe("ActivityImportsPanel", () => {
     expect(
       screen.queryByRole("button", { name: "Regenerate" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps the manual upload queue inside the raw file upload card", () => {
+    mocks.useActivityImports.mockReturnValue({
+      data: [makeActivityImport({ id: 42, activity_id: null })],
+      isError: false,
+      isFetching: false,
+      error: null,
+    });
+
+    render(<ActivityImportsPanel />);
+
+    const uploadCard = screen
+      .getByRole("heading", { name: "Upload raw activity files" })
+      .closest(".card");
+    const queueCard = screen
+      .getByRole("heading", { name: "Manual file processing" })
+      .closest(".card");
+
+    expect(queueCard).toBe(uploadCard);
+  });
+
+  it("makes the manual upload queue scroll after ten rows", () => {
+    mocks.useActivityImports.mockReturnValue({
+      data: Array.from({ length: 12 }, (_, index) =>
+        makeActivityImport({
+          id: index + 1,
+          activity_id: null,
+          original_filename: `ride-${index + 1}.gpx`,
+          created_at: `2026-05-06T12:${String(index).padStart(2, "0")}:00Z`,
+        }),
+      ),
+      isError: false,
+      isFetching: false,
+      error: null,
+    });
+
+    render(<ActivityImportsPanel />);
+
+    expect(
+      screen.getByTestId("manual-upload-queue-scroll").getAttribute("style"),
+    ).toContain("max-height: 34rem");
+    expect(screen.getByText("ride-1.gpx")).toBeInTheDocument();
+    expect(screen.getByText("ride-12.gpx")).toBeInTheDocument();
   });
 
   it("navigates to activity details when a recent upload row is clicked", async () => {
@@ -441,7 +549,7 @@ describe("ActivityImportsPanel", () => {
 
     render(<ActivityImportsPanel />);
 
-    await user.click(screen.getByText("Portland, OR"));
+    await user.click(screen.getByText("Portland, OR - 1h 00m"));
 
     expect(mocks.routerPush).toHaveBeenCalledWith("/activities/11");
   });
@@ -457,7 +565,7 @@ describe("ActivityImportsPanel", () => {
 
     render(<ActivityImportsPanel />);
 
-    await user.click(screen.getByText("Portland, OR"));
+    await user.click(screen.getByText("Portland, OR - 1h 00m"));
 
     expect(mocks.routerPush).not.toHaveBeenCalled();
   });

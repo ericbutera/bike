@@ -33,7 +33,7 @@ impl MigrationTrait for Migration {
                         ColumnDef::new(UserPreferences::UnitSystem)
                             .string()
                             .not_null()
-                            .default("mixed"),
+                            .default("imperial"),
                     )
                     .col(
                         ColumnDef::new(UserPreferences::CreatedAt)

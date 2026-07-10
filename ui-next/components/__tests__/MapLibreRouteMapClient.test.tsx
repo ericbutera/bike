@@ -222,6 +222,54 @@ describe("MapLibreRouteMapClient", () => {
     expect(mapMocks.fitBounds).toHaveBeenCalledTimes(1);
   });
 
+  it("refits bounds when a focused point set changes", async () => {
+    const routePoints = [
+      { elapsed_seconds: 0, latitude: 45.0, longitude: -122.0 },
+      { elapsed_seconds: 120, latitude: 45.004, longitude: -121.996 },
+      { elapsed_seconds: 240, latitude: 45.008, longitude: -121.992 },
+    ];
+    const climbPoints = routePoints.slice(1);
+
+    const { rerender } = render(
+      <MapLibreRouteMapClient
+        routePoints={routePoints}
+        ariaLabel="Activity route map"
+        emptyMessage="Activity route geometry is not available yet."
+        fitBoundsKey="activity"
+        fitBoundsPadding={24}
+        fitBoundsMaxZoom={18}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mapMocks.fitBounds).toHaveBeenCalledTimes(1);
+    });
+
+    rerender(
+      <MapLibreRouteMapClient
+        routePoints={routePoints}
+        fitBoundsPoints={climbPoints}
+        fitBoundsKey="climb-1"
+        ariaLabel="Activity route map"
+        emptyMessage="Activity route geometry is not available yet."
+        fitBoundsPadding={24}
+        fitBoundsMaxZoom={18}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mapMocks.fitBounds).toHaveBeenCalledTimes(2);
+    });
+
+    const focusedBounds = mapMocks.fitBounds.mock.calls.at(-1)?.[0] as
+      | { points: [number, number][] }
+      | undefined;
+
+    expect(focusedBounds?.points).toContainEqual([-121.996, 45.004]);
+    expect(focusedBounds?.points).toContainEqual([-121.992, 45.008]);
+    expect(focusedBounds?.points).not.toContainEqual([-122.0, 45.0]);
+  });
+
   it("animates markers along route progress instead of cutting across the path", async () => {
     const animationCallbacks: FrameRequestCallback[] = [];
     const performanceNowSpy = vi.spyOn(performance, "now");

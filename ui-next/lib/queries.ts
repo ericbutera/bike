@@ -1,5 +1,4 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { extractApiMessage } from "./activityFormatting";
 import type { ActivityType } from "./activityTypes";
 import { $api } from "./api";
 
@@ -179,6 +178,8 @@ export type Segment = {
   best_duration_seconds?: number | null;
   current_user_pr_duration_seconds?: number | null;
   created_at: string;
+  processing_task_id?: string | null;
+  processing_task_status?: string | null;
   builder_source?: SegmentBuilderSource | null;
   route_points?: ActivityRoutePoint[] | null;
   efforts?: SegmentEffort[] | null;
@@ -514,6 +515,8 @@ export type RegenerateSegmentEffortsResponse = {
   segment_id: number;
   status: string;
   message: string;
+  task_id: string;
+  task_status: string;
 };
 
 export type CleanupUserDuplicateActivitiesResponse = {
@@ -550,6 +553,8 @@ export type ActivityImport = {
   original_filename: string;
   format: string;
   status: string;
+  processing_stage: string;
+  processing_error?: string | null;
   size_bytes: number;
   mime_type?: string | null;
   created_at: string;
@@ -1158,18 +1163,14 @@ export function useUploadActivityImport() {
 
         return result as ActivityImport;
       } catch (error) {
-        await queryClient.invalidateQueries({
-          queryKey: ["get", "/activity-imports/processing-state"],
-        });
-
-        const message = extractApiMessage(error);
-        if (
-          message.includes("Another activity processing operation is already")
-        ) {
-          throw new Error(
-            "Another activity processing job is running. Wait for it to finish before uploading more rides.",
-          );
-        }
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: ["get", "/activity-imports"],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["get", "/activity-imports/processing-state"],
+          }),
+        ]);
 
         throw error;
       }

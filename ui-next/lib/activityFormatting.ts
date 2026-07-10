@@ -2,10 +2,10 @@ export const UNIT_SYSTEMS = ["metric", "imperial", "mixed"] as const;
 
 export type UnitSystem = (typeof UNIT_SYSTEMS)[number];
 
-export const DEFAULT_UNIT_SYSTEM: UnitSystem = "mixed";
+export const DEFAULT_UNIT_SYSTEM: UnitSystem = "imperial";
 
-const METERS_PER_MILE = 1609.344;
-const FEET_PER_METER = 3.28084;
+export const METERS_PER_MILE = 1609.344;
+export const FEET_PER_METER = 3.28084;
 const MPH_PER_MPS = 2.236936;
 const KPH_PER_MPS = 3.6;
 
