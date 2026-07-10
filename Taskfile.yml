@@ -40,6 +40,16 @@ tasks:
     cmds:
       - cargo test
 
+  fmt:
+    desc: Format the Rust workspace
+    cmds:
+      - cargo fmt --all
+
+  fmt:check:
+    desc: Check Rust formatting without writing changes
+    cmds:
+      - cargo fmt --all --check
+
   openapi:react-query:
     desc: Generate OpenAPI TypeScript definitions from running API
     cmds:
