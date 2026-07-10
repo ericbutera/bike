@@ -2,17 +2,17 @@ use crate::activity_details::{
     derive_activity_detail_data, deserialize_derived_activity_data, ActivityRoutePoint,
 };
 use crate::activity_summary::summarize_activity_upload;
-use crate::analytics::{mark_segment_activity_changes, rebuild_activity_analytics_cache};
+use crate::analytics::rebuild_activity_analytics_cache;
 use crate::app_error::{ApiErrorResponse, AppError};
-use crate::dedupe::{segment_dedupe_key, segment_dedupe_key_from_model};
+use crate::dedupe::segment_dedupe_key;
 use crate::entities::{
     activities, segment_efforts, segment_summaries, segment_user_summaries, segments,
 };
 use crate::segment_support::{
-    deserialize_segment_route_points, replace_segment_efforts_for_segment,
-    serialize_segment_route_points, slice_effort_route_points,
+    deserialize_segment_route_points, serialize_segment_route_points, slice_effort_route_points,
 };
 use crate::storage::AppStorage;
+use crate::tasks::QueuedTaskReference;
 use axum::extract::{Multipart, Path, State};
 use axum::http::StatusCode;
 use axum::Json;
@@ -20,13 +20,15 @@ use chrono::{DateTime, Utc};
 use kaleido::auth::entities::users;
 use kaleido::auth::UserContext;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, IntoActiveModel, QueryFilter,
-    QueryOrder, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, FromQueryResult, IntoActiveModel,
+    QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use utoipa::ToSchema;
+
+const SEGMENT_DEDUPE_DISTANCE_BUCKET_METERS: f64 = 5.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -66,11 +68,53 @@ pub struct SegmentResponse {
     pub current_user_pr_duration_seconds: Option<i32>,
     pub created_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub processing_task_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub processing_task_status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub builder_source: Option<SegmentBuilderSourceResponse>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub route_points: Vec<ActivityRoutePoint>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub efforts: Vec<SegmentEffortResponse>,
+}
+
+#[derive(Clone, Debug, FromQueryResult)]
+struct SegmentListRow {
+    id: i32,
+    title: String,
+    source: String,
+    mode: String,
+    starred: bool,
+    original_filename: Option<String>,
+    format: Option<String>,
+    distance_meters: Option<f64>,
+    source_activity_id: Option<i32>,
+    source_start_route_point_index: Option<i32>,
+    source_end_route_point_index: Option<i32>,
+    last_activity_change_at: DateTime<Utc>,
+    created_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, FromQueryResult)]
+struct SegmentDedupeCandidateRow {
+    id: i32,
+    distance_meters: Option<f64>,
+    route_data_json: Option<crate::activity_details::StoredRoutePointSeries>,
+}
+
+#[derive(Clone, Debug, FromQueryResult)]
+struct EffortActivityRow {
+    id: i32,
+    title: String,
+    started_at: DateTime<Utc>,
+    derived_data_json: Option<crate::activity_details::StoredActivityDerivedData>,
+}
+
+#[derive(Clone, Debug, FromQueryResult)]
+struct RiderNameRow {
+    id: i32,
+    name: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, ToSchema)]
@@ -88,6 +132,23 @@ fn segment_builder_source_from_model(
         segment.source_start_route_point_index,
         segment.source_end_route_point_index,
     ) {
+        (Some(activity_id), Some(start_route_point_index), Some(end_route_point_index)) => {
+            Some(SegmentBuilderSourceResponse {
+                activity_id,
+                start_route_point_index,
+                end_route_point_index,
+            })
+        }
+        _ => None,
+    }
+}
+
+fn segment_builder_source_from_values(
+    activity_id: Option<i32>,
+    start_route_point_index: Option<i32>,
+    end_route_point_index: Option<i32>,
+) -> Option<SegmentBuilderSourceResponse> {
+    match (activity_id, start_route_point_index, end_route_point_index) {
         (Some(activity_id), Some(start_route_point_index), Some(end_route_point_index)) => {
             Some(SegmentBuilderSourceResponse {
                 activity_id,
@@ -159,20 +220,35 @@ pub async fn list_segments(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<Vec<SegmentResponse>>, AppError> {
-    let mut segment_models = segments::Entity::find()
+    let mut segment_rows = segments::Entity::find()
+        .select_only()
+        .column(segments::Column::Id)
+        .column(segments::Column::Title)
+        .column(segments::Column::Source)
+        .column(segments::Column::Mode)
+        .column(segments::Column::Starred)
+        .column(segments::Column::OriginalFilename)
+        .column(segments::Column::Format)
+        .column(segments::Column::DistanceMeters)
+        .column(segments::Column::SourceActivityId)
+        .column(segments::Column::SourceStartRoutePointIndex)
+        .column(segments::Column::SourceEndRoutePointIndex)
+        .column(segments::Column::LastActivityChangeAt)
+        .column(segments::Column::CreatedAt)
         .filter(segments::Column::UserId.eq(user.id))
+        .into_model::<SegmentListRow>()
         .all(&state.db)
         .await?;
 
-    let segment_ids = segment_models
+    let segment_ids = segment_rows
         .iter()
         .map(|segment| segment.id)
         .collect::<Vec<_>>();
     let summary_by_segment_id = load_segment_summaries(&state.db, &segment_ids).await?;
-    sort_segments_by_latest_activity_started_at(&mut segment_models, &summary_by_segment_id);
+    sort_segment_rows_by_latest_activity_started_at(&mut segment_rows, &summary_by_segment_id);
     let user_summary_by_segment_id =
         load_segment_user_summaries(&state.db, user.id, &segment_ids).await?;
-    let stale_segment_ids = segment_models
+    let stale_segment_ids = segment_rows
         .iter()
         .filter_map(|segment| {
             let summary = summary_by_segment_id.get(&segment.id);
@@ -201,12 +277,16 @@ pub async fn list_segments(
     }
 
     Ok(Json(
-        segment_models
+        segment_rows
             .into_iter()
             .map(|segment| {
                 let summary = summary_by_segment_id.get(&segment.id);
                 let user_summary = user_summary_by_segment_id.get(&segment.id);
-                let builder_source = segment_builder_source_from_model(&segment);
+                let builder_source = segment_builder_source_from_values(
+                    segment.source_activity_id,
+                    segment.source_start_route_point_index,
+                    segment.source_end_route_point_index,
+                );
 
                 SegmentResponse {
                     id: segment.id,
@@ -222,6 +302,8 @@ pub async fn list_segments(
                     current_user_pr_duration_seconds: user_summary
                         .and_then(|value| value.personal_best_duration_seconds),
                     created_at: segment.created_at,
+                    processing_task_id: None,
+                    processing_task_status: None,
                     builder_source,
                     route_points: Vec::new(),
                     efforts: Vec::new(),
@@ -396,7 +478,6 @@ pub async fn update_segment_from_activity(
         }
     }
 
-    let previous_activity_ids = load_activity_ids_for_segments(&state.db, &[segment.id]).await?;
     let txn = state.db.begin().await?;
     let mut active_segment = segment.into_active_model();
     active_segment.title = Set(title);
@@ -410,29 +491,13 @@ pub async fn update_segment_from_activity(
     active_segment.source_start_route_point_index = Set(Some(payload.start_route_point_index));
     active_segment.source_end_route_point_index = Set(Some(payload.end_route_point_index));
     let updated_segment = active_segment.update(&txn).await?;
-
-    replace_segment_efforts_for_segment(&txn, updated_segment.id, &segment_route_points).await?;
-
-    let mut affected_activity_ids = previous_activity_ids;
-    affected_activity_ids
-        .extend(load_activity_ids_for_segments(&txn, &[updated_segment.id]).await?);
-    let changed_at = Utc::now();
-    mark_segment_activity_changes(&txn, &[updated_segment.id], changed_at).await?;
-
-    if !affected_activity_ids.is_empty() {
-        rebuild_activity_analytics_cache(&txn, &affected_activity_ids).await?;
-    }
-
     txn.commit().await?;
+    let processing_task = enqueue_segment_effort_regeneration(&state, updated_segment.id).await?;
 
-    state
-        .tasks
-        .rebuild_segment_analytics(vec![updated_segment.id])
-        .await;
-
-    Ok(Json(
-        load_segment_response(&state.db, &updated_segment, user.id).await?,
-    ))
+    Ok(Json(load_light_segment_response(
+        &updated_segment,
+        Some(&processing_task),
+    )))
 }
 
 #[utoipa::path(
@@ -572,23 +637,14 @@ pub async fn create_segment_from_activity(
     .insert(&state.db)
     .await?;
 
-    replace_segment_efforts_for_segment(&state.db, segment.id, &segment_route_points).await?;
-    let activity_ids = load_activity_ids_for_segments(&state.db, &[segment.id]).await?;
-    let changed_at = Utc::now();
-    mark_segment_activity_changes(&state.db, &[segment.id], changed_at).await?;
-
-    if !activity_ids.is_empty() {
-        rebuild_activity_analytics_cache(&state.db, &activity_ids).await?;
-    }
-
-    state
-        .tasks
-        .rebuild_segment_analytics(vec![segment.id])
-        .await;
+    let processing_task = enqueue_segment_effort_regeneration(&state, segment.id).await?;
 
     Ok((
         StatusCode::CREATED,
-        Json(load_segment_response(&state.db, &segment, user.id).await?),
+        Json(load_light_segment_response(
+            &segment,
+            Some(&processing_task),
+        )),
     ))
 }
 
@@ -656,18 +712,14 @@ pub async fn import_segment(
     .insert(&state.db)
     .await?;
 
-    replace_segment_efforts_for_segment(&state.db, segment.id, &segment_detail.route_points)
-        .await?;
-    let changed_at = Utc::now();
-    mark_segment_activity_changes(&state.db, &[segment.id], changed_at).await?;
-    state
-        .tasks
-        .rebuild_segment_analytics(vec![segment.id])
-        .await;
+    let processing_task = enqueue_segment_effort_regeneration(&state, segment.id).await?;
 
     Ok((
         StatusCode::CREATED,
-        Json(load_segment_response(&state.db, &segment, user.id).await?),
+        Json(load_light_segment_response(
+            &segment,
+            Some(&processing_task),
+        )),
     ))
 }
 
@@ -818,18 +870,52 @@ async fn find_duplicate_segment(
         return Ok(None);
     };
 
-    let candidates = segments::Entity::find()
-        .filter(segments::Column::UserId.eq(user_id))
+    let mut candidate_query = segments::Entity::find()
+        .select_only()
+        .column(segments::Column::Id)
+        .column(segments::Column::DistanceMeters)
+        .column(segments::Column::RouteDataJson)
+        .filter(segments::Column::UserId.eq(user_id));
+
+    if let Some((minimum_distance, maximum_distance)) =
+        segment_dedupe_distance_bucket(distance_meters)
+    {
+        candidate_query = candidate_query
+            .filter(segments::Column::DistanceMeters.gte(minimum_distance))
+            .filter(segments::Column::DistanceMeters.lt(maximum_distance));
+    } else {
+        candidate_query = candidate_query.filter(segments::Column::DistanceMeters.is_null());
+    }
+
+    let candidates = candidate_query
+        .into_model::<SegmentDedupeCandidateRow>()
         .all(db)
         .await?;
 
     for segment in candidates {
-        if segment_dedupe_key_from_model(&segment).as_deref() == Some(target_key.as_str()) {
-            return Ok(Some(segment));
+        let candidate_route_points =
+            deserialize_segment_route_points(segment.route_data_json.as_ref());
+        if segment_dedupe_key(segment.distance_meters, &candidate_route_points).as_deref()
+            == Some(target_key.as_str())
+        {
+            return segments::Entity::find()
+                .filter(segments::Column::Id.eq(segment.id))
+                .filter(segments::Column::UserId.eq(user_id))
+                .one(db)
+                .await
+                .map_err(AppError::from);
         }
     }
 
     Ok(None)
+}
+
+fn segment_dedupe_distance_bucket(distance_meters: Option<f64>) -> Option<(f64, f64)> {
+    let distance_meters = distance_meters.filter(|value| value.is_finite() && *value > 0.0)?;
+    let minimum = (distance_meters / SEGMENT_DEDUPE_DISTANCE_BUCKET_METERS).floor()
+        * SEGMENT_DEDUPE_DISTANCE_BUCKET_METERS;
+
+    Some((minimum, minimum + SEGMENT_DEDUPE_DISTANCE_BUCKET_METERS))
 }
 
 async fn load_activity_ids_for_segments<C>(
@@ -844,12 +930,12 @@ where
     }
 
     let mut activity_ids = segment_efforts::Entity::find()
+        .select_only()
+        .column(segment_efforts::Column::ActivityId)
         .filter(segment_efforts::Column::SegmentId.is_in(segment_ids.iter().copied()))
+        .into_tuple::<i32>()
         .all(db)
-        .await?
-        .into_iter()
-        .map(|effort| effort.activity_id)
-        .collect::<Vec<_>>();
+        .await?;
 
     activity_ids.sort_unstable();
     activity_ids.dedup();
@@ -916,17 +1002,79 @@ async fn load_segment_response(
             &efforts, user_id,
         ),
         created_at: segment.created_at,
+        processing_task_id: None,
+        processing_task_status: None,
         builder_source: segment_builder_source_from_model(segment),
         route_points,
         efforts,
     })
 }
 
+fn load_light_segment_response(
+    segment: &segments::Model,
+    processing_task: Option<&QueuedTaskReference>,
+) -> SegmentResponse {
+    SegmentResponse {
+        id: segment.id,
+        title: segment.title.clone(),
+        source: segment.source.clone(),
+        mode: SegmentMode::from_stored(&segment.mode),
+        starred: segment.starred,
+        original_filename: segment.original_filename.clone(),
+        format: segment.format.clone(),
+        distance_meters: segment.distance_meters,
+        effort_count: 0,
+        best_duration_seconds: None,
+        current_user_pr_duration_seconds: None,
+        created_at: segment.created_at,
+        processing_task_id: processing_task.map(|task| task.id.clone()),
+        processing_task_status: processing_task.map(|task| task.status.clone()),
+        builder_source: segment_builder_source_from_model(segment),
+        route_points: Vec::new(),
+        efforts: Vec::new(),
+    }
+}
+
+async fn enqueue_segment_effort_regeneration(
+    state: &AppStorage,
+    segment_id: i32,
+) -> Result<QueuedTaskReference, AppError> {
+    state
+        .tasks
+        .regenerate_segment_efforts(segment_id)
+        .await
+        .map_err(|message| {
+            AppError::internal(format!(
+                "Failed to queue segment effort regeneration: {message}"
+            ))
+        })
+}
+
+#[cfg(test)]
 fn sort_segments_by_latest_activity_started_at(
     segment_models: &mut [segments::Model],
     summary_by_segment_id: &HashMap<i32, segment_summaries::Model>,
 ) {
     segment_models.sort_by(|left, right| {
+        let left_latest = summary_by_segment_id
+            .get(&left.id)
+            .and_then(|summary| summary.latest_activity_started_at);
+        let right_latest = summary_by_segment_id
+            .get(&right.id)
+            .and_then(|summary| summary.latest_activity_started_at);
+
+        right_latest
+            .cmp(&left_latest)
+            .then_with(|| right.created_at.cmp(&left.created_at))
+            .then_with(|| right.id.cmp(&left.id))
+    });
+}
+
+fn sort_segment_rows_by_latest_activity_started_at(
+    segment_rows: &mut [SegmentListRow],
+    summary_by_segment_id: &HashMap<i32, segment_summaries::Model>,
+) {
+    segment_rows.sort_by(|left, right| {
         let left_latest = summary_by_segment_id
             .get(&left.id)
             .and_then(|summary| summary.latest_activity_started_at);
@@ -1000,11 +1148,21 @@ async fn load_effort_responses(
         .map(|effort| effort.user_id)
         .collect::<Vec<_>>();
     let activity_models = activities::Entity::find()
+        .select_only()
+        .column(activities::Column::Id)
+        .column(activities::Column::Title)
+        .column(activities::Column::StartedAt)
+        .column(activities::Column::DerivedDataJson)
         .filter(activities::Column::Id.is_in(activity_ids.iter().copied()))
+        .into_model::<EffortActivityRow>()
         .all(db)
         .await?;
     let rider_models = users::Entity::find()
+        .select_only()
+        .column(users::Column::Id)
+        .column(users::Column::Name)
         .filter(users::Column::Id.is_in(rider_user_ids.iter().copied()))
+        .into_model::<RiderNameRow>()
         .all(db)
         .await?;
     let activities_by_id = activity_models

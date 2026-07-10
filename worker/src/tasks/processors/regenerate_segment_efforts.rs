@@ -1,4 +1,7 @@
-use api::analytics::{mark_segment_activity_changes, rebuild_segment_analytics_cache};
+use api::analytics::{
+    mark_segment_activity_changes, rebuild_activity_analytics_cache,
+    rebuild_segment_analytics_cache,
+};
 use api::entities::segments;
 use api::segment_support::{deserialize_segment_route_points, replace_segment_efforts_for_segment};
 use api::tasks::RegenerateSegmentEffortsTask;
@@ -42,11 +45,17 @@ impl TaskProcessor for RegenerateSegmentEfforts {
             })?;
         let route_points = deserialize_segment_route_points(segment.route_data_json.as_ref());
 
-        replace_segment_efforts_for_segment(&self.db, segment.id, &route_points)
-            .await
-            .map_err(|error| std::io::Error::other(error.message))?;
+        let affected_activity_ids = replace_segment_efforts_for_segment(
+            &self.db,
+            segment.user_id,
+            segment.id,
+            &route_points,
+        )
+        .await
+        .map_err(|error| std::io::Error::other(error.message))?;
         mark_segment_activity_changes(&self.db, &[segment.id], Utc::now()).await?;
         rebuild_segment_analytics_cache(&self.db, &[segment.id]).await?;
+        rebuild_activity_analytics_cache(&self.db, &affected_activity_ids).await?;
 
         Ok(())
     }

@@ -1,6 +1,7 @@
 mod activity_archive_import;
 mod backfill_user_xc_training;
 mod email_notification;
+mod process_activity_import;
 mod rebuild_fitness_freshness;
 mod rebuild_segment_analytics;
 mod regenerate_segment_efforts;
@@ -11,6 +12,7 @@ mod strava_sync;
 pub use activity_archive_import::ActivityArchiveImport;
 pub use backfill_user_xc_training::BackfillUserXcTraining;
 pub use email_notification::EmailNotification;
+pub use process_activity_import::ProcessActivityImport;
 pub use rebuild_fitness_freshness::RebuildFitnessFreshness;
 pub use rebuild_segment_analytics::RebuildSegmentAnalytics;
 pub use regenerate_segment_efforts::RegenerateSegmentEfforts;

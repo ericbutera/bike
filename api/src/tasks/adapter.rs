@@ -6,6 +6,12 @@ use std::sync::Arc;
 
 pub use kaleido::auth::DefaultEnvAuthService as AppAuthService;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueuedTaskReference {
+    pub id: String,
+    pub status: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum Task {
@@ -15,6 +21,7 @@ pub enum Task {
     RebuildFitnessFreshness(RebuildFitnessFreshnessTask),
     RebuildSegmentAnalytics(RebuildSegmentAnalyticsTask),
     RegenerateSegmentEfforts(RegenerateSegmentEffortsTask),
+    ProcessActivityImport(ProcessActivityImportTask),
     ReprocessUserActivityImports(ReprocessUserActivityImportsTask),
     BackfillUserXcTraining(BackfillUserXcTrainingTask),
     RegenerateUserSegments(RegenerateUserSegmentsTask),
@@ -35,6 +42,12 @@ pub struct RebuildSegmentAnalyticsTask {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegenerateSegmentEffortsTask {
     pub segment_id: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessActivityImportTask {
+    pub user_id: i32,
+    pub import_id: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,6 +84,7 @@ impl Task {
             Task::RebuildFitnessFreshness(_) => "rebuild_fitness_freshness",
             Task::RebuildSegmentAnalytics(_) => "rebuild_segment_analytics",
             Task::RegenerateSegmentEfforts(_) => "regenerate_segment_efforts",
+            Task::ProcessActivityImport(_) => "process_activity_import",
             Task::ReprocessUserActivityImports(_) => "reprocess_user_activity_imports",
             Task::BackfillUserXcTraining(_) => "backfill_user_xc_training",
             Task::RegenerateUserSegments(_) => "regenerate_user_segments",
@@ -165,12 +179,38 @@ impl TaskQueue {
         .await;
     }
 
-    pub async fn regenerate_segment_efforts(&self, segment_id: i32) -> Result<(), String> {
+    pub async fn regenerate_segment_efforts(
+        &self,
+        segment_id: i32,
+    ) -> Result<QueuedTaskReference, String> {
         if segment_id <= 0 {
-            return Ok(());
+            return Err("segment id must be positive".to_string());
         }
 
         let task = Task::RegenerateSegmentEfforts(RegenerateSegmentEffortsTask { segment_id });
+        let task_type = task.task_type().to_string();
+
+        self.auth
+            .inner()
+            .enqueue_with_options(task_type, task, None, 1)
+            .await
+            .map(|task| QueuedTaskReference {
+                id: task.id,
+                status: task.status.as_str().to_string(),
+            })
+            .map_err(|error| error.to_string())
+    }
+
+    pub async fn process_activity_import(
+        &self,
+        user_id: i32,
+        import_id: i32,
+    ) -> Result<(), String> {
+        if user_id <= 0 || import_id <= 0 {
+            return Ok(());
+        }
+
+        let task = Task::ProcessActivityImport(ProcessActivityImportTask { user_id, import_id });
         let task_type = task.task_type().to_string();
 
         self.auth
@@ -297,6 +337,26 @@ mod tests {
                 "type": "RegenerateSegmentEfforts",
                 "data": {
                     "segment_id": 51,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn process_activity_import_task_serializes_for_worker() {
+        let task = Task::ProcessActivityImport(ProcessActivityImportTask {
+            user_id: 12,
+            import_id: 34,
+        });
+
+        assert_eq!(task.task_type(), "process_activity_import");
+        assert_eq!(
+            serde_json::to_value(task).expect("serialize task"),
+            json!({
+                "type": "ProcessActivityImport",
+                "data": {
+                    "user_id": 12,
+                    "import_id": 34,
                 },
             }),
         );

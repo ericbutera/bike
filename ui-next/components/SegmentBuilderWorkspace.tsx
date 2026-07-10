@@ -296,7 +296,11 @@ export default function SegmentBuilderWorkspace({
               endRoutePointIndex: normalizedSelection.endIndex,
             });
 
-      toast.success(`Saved ${savedSegment.title}. Opening comparison.`);
+      toast.success(
+        savedSegment.processing_task_id
+          ? `Saved ${savedSegment.title}. Segment matching queued as task ${savedSegment.processing_task_id}.`
+          : `Saved ${savedSegment.title}. Segment matching queued.`,
+      );
       router.push(`/segments/${savedSegment.id}`);
     } catch (mutationError) {
       toast.error(extractApiMessage(mutationError));

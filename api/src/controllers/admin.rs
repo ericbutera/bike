@@ -200,6 +200,8 @@ pub struct RegenerateSegmentEffortsResponse {
     pub segment_id: i32,
     pub status: String,
     pub message: String,
+    pub task_id: String,
+    pub task_status: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -393,15 +395,15 @@ pub async fn regenerate_segment_efforts(
             AppError::not_found(format!("Segment {} was not found", request.segment_id))
         })?;
 
-    if let Err(message) = state
+    let task = state
         .tasks
         .regenerate_segment_efforts(request.segment_id)
         .await
-    {
-        return Err(AppError::internal(format!(
-            "Failed to queue segment effort regeneration: {message}"
-        )));
-    }
+        .map_err(|message| {
+            AppError::internal(format!(
+                "Failed to queue segment effort regeneration: {message}"
+            ))
+        })?;
 
     Ok((
         StatusCode::ACCEPTED,
@@ -409,6 +411,8 @@ pub async fn regenerate_segment_efforts(
             segment_id: request.segment_id,
             status: "queued".to_string(),
             message: "Segment effort regeneration queued.".to_string(),
+            task_id: task.id,
+            task_status: task.status,
         }),
     ))
 }

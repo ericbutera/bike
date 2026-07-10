@@ -145,7 +145,7 @@ describe("SegmentsPanel", () => {
     });
 
     expect(mocks.toastSuccess).toHaveBeenCalledWith(
-      "Imported North Climb and matched 3 efforts.",
+      "Imported North Climb. Segment matching queued.",
     );
     expect(input.value).toBe("");
   });

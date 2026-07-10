@@ -212,9 +212,9 @@ export default function SegmentsPanel() {
         inputRef.current.value = "";
       }
       toast.success(
-        `Imported ${result.title} and matched ${result.effort_count} effort${
-          result.effort_count === 1 ? "" : "s"
-        }.`,
+        result.processing_task_id
+          ? `Imported ${result.title}. Segment matching queued as task ${result.processing_task_id}.`
+          : `Imported ${result.title}. Segment matching queued.`,
       );
     } catch (error) {
       toast.error(extractApiMessage(error));

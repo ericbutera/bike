@@ -8,8 +8,9 @@ use crate::entities::{
 use crate::training_profile::{deserialize_activity_heart_rate_zones, weighted_zone_intensity};
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, Set, TransactionSession, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
+    FromQueryResult, QueryFilter, QueryOrder, QuerySelect, Set, TransactionSession,
+    TransactionTrait,
 };
 use std::collections::{BTreeMap, HashMap};
 
@@ -54,6 +55,25 @@ struct ActivityAnalyticsAccumulator {
     top_10_count: i32,
     pr_count: i32,
     achievement_highlights: Vec<ActivityAchievementHighlight>,
+}
+
+#[derive(Clone, Debug, FromQueryResult)]
+struct ActivityStartedAtRow {
+    id: i32,
+    started_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, FromQueryResult)]
+struct SegmentTitleRow {
+    id: i32,
+    title: String,
+}
+
+#[derive(Clone, Debug, FromQueryResult)]
+struct SegmentPersonalBestRow {
+    segment_id: i32,
+    user_id: i32,
+    personal_best_duration_seconds: Option<i32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -384,12 +404,18 @@ where
         .order_by_asc(segment_efforts::Column::Id)
         .all(db)
         .await?;
-    let activity_ids = efforts
+    let mut activity_ids = efforts
         .iter()
         .map(|effort| effort.activity_id)
         .collect::<Vec<_>>();
+    activity_ids.sort_unstable();
+    activity_ids.dedup();
     let activity_started_at_by_id = activities::Entity::find()
+        .select_only()
+        .column(activities::Column::Id)
+        .column(activities::Column::StartedAt)
         .filter(activities::Column::Id.is_in(activity_ids.iter().copied()))
+        .into_model::<ActivityStartedAtRow>()
         .all(db)
         .await?
         .into_iter()
@@ -554,15 +580,24 @@ where
     user_ids.dedup();
 
     let segment_title_by_id = segments::Entity::find()
+        .select_only()
+        .column(segments::Column::Id)
+        .column(segments::Column::Title)
         .filter(segments::Column::Id.is_in(segment_ids.iter().copied()))
+        .into_model::<SegmentTitleRow>()
         .all(db)
         .await?
         .into_iter()
         .map(|segment| (segment.id, segment.title))
         .collect::<HashMap<_, _>>();
     let personal_best_by_key = segment_user_summaries::Entity::find()
+        .select_only()
+        .column(segment_user_summaries::Column::SegmentId)
+        .column(segment_user_summaries::Column::UserId)
+        .column(segment_user_summaries::Column::PersonalBestDurationSeconds)
         .filter(segment_user_summaries::Column::SegmentId.is_in(segment_ids.iter().copied()))
         .filter(segment_user_summaries::Column::UserId.is_in(user_ids.iter().copied()))
+        .into_model::<SegmentPersonalBestRow>()
         .all(db)
         .await?
         .into_iter()

@@ -1,14 +1,11 @@
 use crate::activity_import_lock::{
-    acquire_user_activity_import_lock, describe_source, describe_stage,
-    load_user_activity_import_lock, release_user_activity_import_lock,
-    ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
+    describe_source, describe_stage, load_user_activity_import_lock,
+    release_user_activity_import_lock, ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD,
 };
 use crate::activity_import_pipeline::{
-    finalize_activity_import_batch, mark_activity_imports_processed, persist_activity_upload,
-    validate_activity_format, ActivityUploadDeduplication, ActivityUploadPayload,
-    PersistActivityUploadOutcome,
+    mark_activity_import_failed, store_activity_upload_import, validate_activity_format,
+    ActivityUploadPayload,
 };
-use crate::activity_lifecycle::resume_incomplete_activity_imports_for_user;
 use crate::activity_location::location_from_derived_json;
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::archive_import::{
@@ -28,6 +25,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
+const ACTIVITY_IMPORT_LIST_LIMIT: u64 = 25;
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ActivityImportResponse {
     pub id: i32,
@@ -35,6 +34,8 @@ pub struct ActivityImportResponse {
     pub original_filename: String,
     pub format: String,
     pub status: String,
+    pub processing_stage: String,
+    pub processing_error: Option<String>,
     pub size_bytes: i64,
     pub mime_type: Option<String>,
     pub created_at: DateTime<Utc>,
@@ -83,10 +84,12 @@ impl ActivityImportResponse {
     fn from_model(model: activity_imports::Model, activity: Option<&activities::Model>) -> Self {
         Self {
             id: model.id,
-            activity_id: activity.map(|value| value.id),
+            activity_id: activity.map(|value| value.id).or(model.activity_id),
             original_filename: model.original_filename,
             format: model.format,
             status: model.status,
+            processing_stage: model.processing_stage,
+            processing_error: model.processing_error,
             size_bytes: model.size_bytes,
             mime_type: model.mime_type,
             created_at: model.created_at,
@@ -154,16 +157,21 @@ pub async fn list_activity_imports(
 ) -> Result<Json<Vec<ActivityImportResponse>>, AppError> {
     let imports = activity_imports::Entity::find()
         .filter(activity_imports::Column::UserId.eq(user.id))
+        .filter(activity_imports::Column::Source.eq(ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD))
         .order_by_desc(activity_imports::Column::CreatedAt)
-        .limit(10)
+        .limit(ACTIVITY_IMPORT_LIST_LIMIT)
         .all(&state.db)
         .await?;
 
     let import_ids = imports.iter().map(|model| model.id).collect::<Vec<_>>();
+    let activity_ids = imports
+        .iter()
+        .filter_map(|model| model.activity_id)
+        .collect::<Vec<_>>();
     let activities_by_import_id = if import_ids.is_empty() {
         HashMap::new()
     } else {
-        activities::Entity::find()
+        let mut activities_by_import_id = activities::Entity::find()
             .filter(activities::Column::UserId.eq(user.id))
             .filter(
                 activities::Column::ActivityImportId
@@ -177,7 +185,27 @@ pub async fn list_activity_imports(
                     .activity_import_id
                     .map(|import_id| (import_id, activity))
             })
-            .collect::<HashMap<_, _>>()
+            .collect::<HashMap<_, _>>();
+
+        if !activity_ids.is_empty() {
+            let imports_by_activity_id = imports
+                .iter()
+                .filter_map(|model| model.activity_id.map(|activity_id| (activity_id, model.id)))
+                .collect::<HashMap<_, _>>();
+
+            for activity in activities::Entity::find()
+                .filter(activities::Column::UserId.eq(user.id))
+                .filter(activities::Column::Id.is_in(activity_ids.iter().copied()))
+                .all(&state.db)
+                .await?
+            {
+                if let Some(import_id) = imports_by_activity_id.get(&activity.id) {
+                    activities_by_import_id.insert(*import_id, activity);
+                }
+            }
+        }
+
+        activities_by_import_id
     };
 
     Ok(Json(
@@ -243,6 +271,11 @@ pub async fn get_activity_processing_state(
         return Ok(Json(ActivityProcessingStateResponse::inactive()));
     };
 
+    if lock.source == ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD {
+        release_user_activity_import_lock(&state.db, user.id, &lock.source).await?;
+        return Ok(Json(ActivityProcessingStateResponse::inactive()));
+    }
+
     Ok(Json(ActivityProcessingStateResponse {
         is_active: true,
         source: Some(lock.source.clone()),
@@ -292,9 +325,8 @@ pub async fn get_activity_archive_import_job(
     request_body(content_type = "multipart/form-data"),
     responses(
         (status = 200, description = "Activity was already imported and the existing record was returned", body = ActivityImportResponse),
-        (status = 201, description = "Activity import uploaded", body = ActivityImportResponse),
+        (status = 202, description = "Activity import queued for worker processing", body = ActivityImportResponse),
         (status = 400, description = "Invalid upload", body = ApiErrorResponse),
-        (status = 409, description = "Another activity import is already running or queued", body = ApiErrorResponse),
         (status = 401, description = "Not authenticated"),
         (status = 413, description = "Payload too large", body = ApiErrorResponse),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
@@ -310,82 +342,36 @@ pub async fn upload_activity_import(
     multipart: Multipart,
 ) -> Result<(StatusCode, Json<ActivityImportResponse>), AppError> {
     let upload = read_uploaded_activity_file(multipart).await?;
-    let upload_for_duplicate = upload.clone();
     let user_storage_key = user.pid.to_string();
-    acquire_user_activity_import_lock(
+
+    let import = match store_activity_upload_import(
         &state.db,
+        &state.uploads_dir,
+        &user_storage_key,
         user.id,
-        ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD,
-        ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
-    )
-    .await?;
-
-    let result = async {
-        resume_incomplete_activity_imports_for_user(
-            &state.db,
-            &state.uploads_dir,
-            &state.tasks,
-            user.id,
-        )
-        .await?;
-
-        let outcome = persist_activity_upload(
-            &state.db,
-            &state.uploads_dir,
-            &user_storage_key,
-            user.id,
-            upload,
-            "manual_upload",
-            ActivityUploadDeduplication::Enabled,
-            None,
-        )
-        .await?;
-
-        match outcome {
-            PersistActivityUploadOutcome::Imported(persisted) => {
-                finalize_activity_import_batch(
-                    &state.db,
-                    &state.tasks,
-                    user.id,
-                    persisted.affected_segment_ids.clone(),
-                    Some(persisted.fitness_dirty_from_day),
-                    Utc::now(),
-                )
-                .await?;
-                mark_activity_imports_processed(&state.db, &[persisted.import.id]).await?;
-
-                Ok((
-                    StatusCode::CREATED,
-                    Json(ActivityImportResponse::from_model(
-                        persisted.import,
-                        Some(&persisted.activity),
-                    )),
-                ))
-            }
-            PersistActivityUploadOutcome::Duplicate(duplicate) => Ok((
-                StatusCode::OK,
-                Json(build_duplicate_activity_import_response(
-                    &upload_for_duplicate,
-                    "manual_upload",
-                    duplicate,
-                )),
-            )),
-        }
-    }
-    .await;
-
-    let release_result = release_user_activity_import_lock(
-        &state.db,
-        user.id,
+        upload,
         ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD,
     )
-    .await;
+    .await
+    {
+        Ok(import) => import,
+        Err(error) => return Err(error),
+    };
 
-    match (result, release_result) {
-        (Err(error), _) => Err(error),
-        (Ok(_), Err(error)) => Err(error),
-        (Ok(response), Ok(())) => Ok(response),
+    if let Err(message) = state
+        .tasks
+        .process_activity_import(user.id, import.id)
+        .await
+    {
+        let error = AppError::internal(format!("Failed to queue activity import: {message}"));
+        mark_activity_import_failed(&state.db, &import, &import.processing_stage, &error).await?;
+        return Err(error);
     }
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(ActivityImportResponse::from_model(import, None)),
+    ))
 }
 
 #[utoipa::path(
@@ -513,41 +499,11 @@ fn map_multipart_error(
     AppError::bad_request(format!("{default_message}: {error_text}"))
 }
 
-fn build_duplicate_activity_import_response(
-    upload: &ActivityUploadPayload,
-    source: &str,
-    duplicate: crate::activity_import_pipeline::DeduplicatedActivityImport,
-) -> ActivityImportResponse {
-    let import_model = duplicate
-        .existing_import
-        .unwrap_or(activity_imports::Model {
-            id: 0,
-            user_id: duplicate.activity.user_id,
-            source: source.to_string(),
-            format: upload.format.clone(),
-            status: "duplicate".to_string(),
-            activity_id: Some(duplicate.activity.id),
-            processing_stage: "complete".to_string(),
-            processing_error: None,
-            processing_attempts: 0,
-            processed_at: Some(Utc::now()),
-            last_processing_event_at: Some(Utc::now()),
-            original_filename: upload.original_filename.clone(),
-            storage_path: String::new(),
-            size_bytes: upload.bytes.len() as i64,
-            mime_type: upload.mime_type.clone(),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        });
-    let mut response = ActivityImportResponse::from_model(import_model, Some(&duplicate.activity));
-    response.status = "duplicate".to_string();
-    response
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::activity_details::serialize_derived_activity_data;
+    use chrono::Utc;
 
     #[test]
     fn validate_activity_format_accepts_supported_extensions() {
@@ -736,6 +692,8 @@ mod tests {
         assert_eq!(response.original_filename, "ride.gpx");
         assert_eq!(response.format, "gpx");
         assert_eq!(response.status, "uploaded");
+        assert_eq!(response.processing_stage, "complete");
+        assert_eq!(response.processing_error, None);
         assert_eq!(response.size_bytes, 8192);
         assert_eq!(response.mime_type.as_deref(), Some("application/gpx+xml"));
         assert_eq!(response.created_at, now);

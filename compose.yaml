@@ -44,7 +44,7 @@ services:
       dockerfile: worker/Dockerfile.dev
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/bike
-      RUST_LOG: info
+      RUST_LOG: trace
       STRAVA_CLIENT_ID: ''
       STRAVA_CLIENT_SECRET: ''
       STRAVA_OAUTH_SCOPES: activity:read_all

@@ -154,21 +154,27 @@ where
 
 pub async fn replace_segment_efforts_for_segment<C>(
     db: &C,
+    user_id: i32,
     segment_id: i32,
     segment_route_points: &[ActivityRoutePoint],
-) -> Result<(), AppError>
+) -> Result<Vec<i32>, AppError>
 where
     C: ConnectionTrait,
 {
     if segment_route_points.len() < 2 {
+        let affected_activity_ids = load_activity_ids_for_segment(db, segment_id).await?;
         segment_efforts::Entity::delete_many()
             .filter(segment_efforts::Column::SegmentId.eq(segment_id))
             .exec(db)
             .await?;
-        return Ok(());
+        return Ok(affected_activity_ids);
     }
 
-    let activities = activities::Entity::find().all(db).await?;
+    let mut affected_activity_ids = load_activity_ids_for_segment(db, segment_id).await?;
+    let activities = activities::Entity::find()
+        .filter(activities::Column::UserId.eq(user_id))
+        .all(db)
+        .await?;
     let mut replacements = Vec::new();
 
     for activity in activities {
@@ -188,6 +194,7 @@ where
         }
 
         replacements.push((activity.user_id, activity.id, matches));
+        affected_activity_ids.push(activity.id);
     }
 
     segment_efforts::Entity::delete_many()
@@ -199,7 +206,27 @@ where
         insert_matches(db, user_id, segment_id, activity_id, &matches).await?;
     }
 
-    Ok(())
+    affected_activity_ids.sort_unstable();
+    affected_activity_ids.dedup();
+
+    Ok(affected_activity_ids)
+}
+
+async fn load_activity_ids_for_segment<C>(db: &C, segment_id: i32) -> Result<Vec<i32>, AppError>
+where
+    C: ConnectionTrait,
+{
+    let mut activity_ids = segment_efforts::Entity::find()
+        .filter(segment_efforts::Column::SegmentId.eq(segment_id))
+        .all(db)
+        .await?
+        .into_iter()
+        .map(|effort| effort.activity_id)
+        .collect::<Vec<_>>();
+    activity_ids.sort_unstable();
+    activity_ids.dedup();
+
+    Ok(activity_ids)
 }
 
 fn activity_may_contain_segment(
