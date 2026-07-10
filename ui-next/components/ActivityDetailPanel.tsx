@@ -56,6 +56,7 @@ import {
   useUpdateActivity,
   useUpdateSegment,
 } from "../lib/queries";
+import { zeroBasedDomain } from "../lib/chartDomains";
 import { hasSegmentBuilderRoute } from "../lib/segmentBuilder";
 import { useUnitPreferences } from "../lib/unitPreferences";
 import AuthRequiredCard from "./AuthRequiredCard";
@@ -614,12 +615,10 @@ function SignalChartCard({
   const visibleSeries = availableSeries.filter((entry) =>
     visibleKeys.includes(entry.key),
   );
-  const maxX = visibleSeries.reduce(
-    (maxValue, entry) =>
-      Math.max(maxValue, entry.points[entry.points.length - 1]?.x ?? 0),
-    0,
+  const signalXDomain = zeroBasedDomain(
+    availableSeries.flatMap((entry) => entry.points.map((point) => point.x)),
   );
-  const rows = buildSignalChartRows(visibleSeries);
+  const rows = buildSignalChartRows(availableSeries);
 
   return (
     <div className="card bg-base-100 shadow-xl">
@@ -674,7 +673,8 @@ function SignalChartCard({
                     <XAxis
                       axisLine={false}
                       dataKey="elapsedSeconds"
-                      domain={[0, Math.max(maxX, 1)]}
+                      domain={signalXDomain}
+                      includeHidden
                       tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
                       tickFormatter={(value: number) =>
                         formatElapsedAxisLabel(value)

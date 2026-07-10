@@ -136,6 +136,28 @@ describe("FitnessFreshnessPanel", () => {
     expect(fatigueToggle).toHaveAttribute("aria-pressed", "false");
   });
 
+  it("keeps the fitness line extent stable when fatigue is toggled off", () => {
+    const { container } = render(<FitnessFreshnessPanel />);
+
+    const fitnessPath = () =>
+      container.querySelector(
+        'path.recharts-line-curve[stroke="#2563eb"]',
+      )?.getAttribute("d") ?? "";
+    const maxPathX = (path: string) => {
+      const values =
+        path.match(/[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/gi)?.map(Number) ??
+        [];
+      const xValues = values.filter((_, index) => index % 2 === 0);
+
+      return Math.max(...xValues);
+    };
+    const beforeMaxX = maxPathX(fitnessPath());
+
+    fireEvent.click(screen.getByRole("button", { name: "Fatigue" }));
+
+    expect(maxPathX(fitnessPath())).toBeCloseTo(beforeMaxX, 3);
+  });
+
   it("requests the selected preset range", () => {
     render(<FitnessFreshnessPanel />);
 

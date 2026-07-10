@@ -447,6 +447,7 @@ export default function FitnessFreshnessPanel() {
                       <XAxis
                         axisLine={false}
                         dataKey="date"
+                        includeHidden
                         tick={{
                           fill: "var(--color-base-content)",
                           fontSize: 10,
@@ -459,6 +460,7 @@ export default function FitnessFreshnessPanel() {
                       />
                       <YAxis
                         axisLine={false}
+                        includeHidden
                         tick={{
                           fill: "var(--color-base-content)",
                           fontSize: 10,
@@ -560,6 +562,7 @@ export default function FitnessFreshnessPanel() {
                       <XAxis
                         axisLine={false}
                         dataKey="date"
+                        includeHidden
                         tick={{
                           fill: "var(--color-base-content)",
                           fontSize: 10,
@@ -573,6 +576,7 @@ export default function FitnessFreshnessPanel() {
                       <YAxis
                         axisLine={false}
                         domain={formDomain}
+                        includeHidden
                         tick={{
                           fill: "var(--color-base-content)",
                           fontSize: 10,
