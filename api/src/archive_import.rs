@@ -319,6 +319,8 @@ pub async fn import_activity_archive_from_path(
     let mut fitness_dirty_from_day: Option<chrono::NaiveDate> = None;
     let mut error_samples = Vec::new();
 
+    // TODO: Very large archives can still put many files in one monthly bucket; add
+    // finer-grained sharding if that becomes an operational problem.
     for indexed_entry in &scan.supported_entries {
         let bytes = match read_archive_entry_bytes(archive_path, &indexed_entry.source) {
             Ok(value) => value,

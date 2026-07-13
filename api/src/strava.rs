@@ -676,6 +676,8 @@ pub async fn process_strava_sync(
         let mut fitness_dirty_from_day: Option<chrono::NaiveDate> = None;
         let mut latest_started_at = connection.last_synced_activity_started_at;
 
+        // TODO: Large initial syncs can still put many generated files in one monthly
+        // bucket; add finer-grained sharding if that becomes an operational problem.
         loop {
             if stop_if_connection_removed(db, &connection).await? {
                 return Ok(());

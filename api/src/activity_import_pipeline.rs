@@ -83,6 +83,20 @@ pub enum ActivityUploadDeduplication {
     Disabled,
 }
 
+fn activity_import_storage_path(
+    user_storage_key: &str,
+    format: &str,
+    bucket_at: DateTime<Utc>,
+) -> String {
+    format!(
+        "activity-imports/{}/{}/{}.{}",
+        user_storage_key,
+        bucket_at.format("%Y/%m"),
+        Uuid::new_v4(),
+        format
+    )
+}
+
 pub async fn recover_stale_manual_activity_imports(
     db: &DatabaseConnection,
     tasks: &TaskQueue,
@@ -541,12 +555,8 @@ pub async fn persist_activity_upload(
     );
     let heart_rate_zones_json = serialize_activity_heart_rate_zones(&heart_rate_zones)?;
     let derived_data_json = serialize_derived_activity_data(&derived_data)?;
-    let relative_path = format!(
-        "activity-imports/{}/{}.{}",
-        user_storage_key,
-        Uuid::new_v4(),
-        upload.format
-    );
+    let relative_path =
+        activity_import_storage_path(user_storage_key, &upload.format, activity_draft.started_at);
     let full_path = Path::new(uploads_dir).join(&relative_path);
 
     if let Some(parent) = full_path.parent() {
@@ -694,12 +704,7 @@ pub async fn store_activity_upload_import(
     upload: ActivityUploadPayload,
     source: &str,
 ) -> Result<activity_imports::Model, AppError> {
-    let relative_path = format!(
-        "activity-imports/{}/{}.{}",
-        user_storage_key,
-        Uuid::new_v4(),
-        upload.format
-    );
+    let relative_path = activity_import_storage_path(user_storage_key, &upload.format, Utc::now());
     let full_path = Path::new(uploads_dir).join(&relative_path);
 
     if let Some(parent) = full_path.parent() {
@@ -1191,6 +1196,18 @@ mod tests {
             source_correlation_id: source_correlation_id.map(str::to_string),
             bytes: include_bytes!("../tests/fixtures/activity.fit").to_vec(),
         }
+    }
+
+    #[test]
+    fn activity_import_storage_path_buckets_files_by_month() {
+        let bucket_at = DateTime::parse_from_rfc3339("2026-07-13T12:00:00Z")
+            .expect("parse date")
+            .with_timezone(&Utc);
+        let path = activity_import_storage_path("test-user", "fit", bucket_at);
+
+        assert!(path.starts_with("activity-imports/test-user/2026/07/"));
+        assert!(path.ends_with(".fit"));
+        assert_eq!(path.split('/').count(), 5);
     }
 
     async fn insert_processing_import(
