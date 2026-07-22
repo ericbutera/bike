@@ -24,6 +24,9 @@ services:
       STRAVA_CLIENT_ID: ''
       STRAVA_CLIENT_SECRET: ''
       STRAVA_OAUTH_SCOPES: activity:read_all
+      AUTHENTIK_OIDC_ISSUER_URL: ''
+      AUTHENTIK_OIDC_CLIENT_ID: ''
+      AUTHENTIK_OIDC_CLIENT_SECRET: ''
       JWT_SECRET: change_me_in_dev
       APP_NAME: 'Bike'
       SMTP_HOST: localhost

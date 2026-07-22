@@ -22,10 +22,33 @@ export default function Providers({
   config: AppConfig;
   children: ReactNode;
 }) {
+  function AuthentikOAuthButton({ text }: { text: string }) {
+    return (
+      <button
+        type="button"
+        className="btn btn-primary w-full"
+        onClick={() => {
+          window.location.assign(
+            `${config.API_URL.replace(/\/$/, "")}/oauth/authentik`,
+          );
+        }}
+      >
+        {text || "Continue with authentik"}
+      </button>
+    );
+  }
+
   return (
     <ConfigProvider initialConfig={config}>
       <QueryClientProvider client={queryClient}>
-        <auth.AuthProvider client={authApiClient}>
+        <auth.AuthProvider
+          client={authApiClient}
+          config={{
+            oauthEnabled: true,
+            registrationEnabled: false,
+            OAuthButton: AuthentikOAuthButton,
+          }}
+        >
           <UnitPreferencesProvider>{children}</UnitPreferencesProvider>
           <Toaster position="top-right" />
         </auth.AuthProvider>

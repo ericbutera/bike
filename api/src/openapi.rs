@@ -19,15 +19,9 @@ use utoipa::OpenApi;
 #[derive(OpenApi)]
 #[openapi(
     paths(
-        auth_openapi::paths::register,
-        auth_openapi::paths::login,
         auth_openapi::paths::current,
         auth_openapi::paths::refresh,
         auth_openapi::paths::logout,
-        auth_openapi::paths::verify_email,
-        auth_openapi::paths::resend_confirmation,
-        auth_openapi::paths::forgot_password,
-        auth_openapi::paths::reset_password,
         auth_openapi::paths::oauth_authorize,
         auth_openapi::paths::oauth_callback,
         admin::backfill_analytics,

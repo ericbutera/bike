@@ -102,7 +102,7 @@ impl OAuthRouteStorage for AppStorage {
     }
 
     fn oauth_enabled(&self) -> bool {
-        false
+        kaleido::auth::OAuthProviderService::is_authentik_enabled()
     }
 }
 

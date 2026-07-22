@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 pub fn routes() -> Router<Arc<AppStorage>> {
     Router::new()
-        .nest("/api", auth::routes())
+        .nest("/api", auth::session_routes())
         .nest("/api/oauth", auth::oauth_routes())
         .nest("/api/admin", admin::routes())
         .nest(
