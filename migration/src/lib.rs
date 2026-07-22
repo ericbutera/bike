@@ -31,6 +31,7 @@ mod m20260602_000001_create_garmin_iq_devices;
 mod m20260622_000001_activity_is_race;
 mod m20260622_000001_activity_type;
 mod m20260622_000002_activity_import_processing_checkpoints;
+mod m20260722_000001_user_preferences_xc_event_target_details;
 
 pub struct Migrator;
 
@@ -120,6 +121,9 @@ impl MigratorTrait for Migrator {
         locals.push(Box::new(m20260622_000001_activity_type::Migration));
         locals.push(Box::new(
             m20260622_000002_activity_import_processing_checkpoints::Migration,
+        ));
+        locals.push(Box::new(
+            m20260722_000001_user_preferences_xc_event_target_details::Migration,
         ));
         locals.sort_by_key(|m| m.name().to_string());
 

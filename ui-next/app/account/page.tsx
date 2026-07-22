@@ -262,12 +262,17 @@ export default function AccountPage() {
         unit_system: draftUnitSystem,
         estimated_ftp_watts: parseOptionalIntegerInput(draftEstimatedFtpWatts),
         heart_rate_zone_bounds_bpm: nextHeartRateZoneBounds,
+        xc_goal_event_name: preferencesQuery.data?.xc_goal_event_name ?? null,
         xc_goal_start_date: preferencesQuery.data?.xc_goal_start_date ?? null,
         xc_goal_target_date: preferencesQuery.data?.xc_goal_target_date ?? null,
         xc_goal_target_distance_meters:
           preferencesQuery.data?.xc_goal_target_distance_meters ?? null,
         xc_goal_target_elevation_gain_meters:
           preferencesQuery.data?.xc_goal_target_elevation_gain_meters ?? null,
+        xc_goal_target_finish_time_seconds:
+          preferencesQuery.data?.xc_goal_target_finish_time_seconds ?? null,
+        xc_goal_event_profile:
+          preferencesQuery.data?.xc_goal_event_profile ?? null,
       });
       toast.success("Preferences saved.");
     } catch (error) {

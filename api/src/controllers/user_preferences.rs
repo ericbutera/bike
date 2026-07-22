@@ -16,6 +16,14 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 const DEFAULT_UNIT_SYSTEM: &str = "imperial";
+const XC_GOAL_EVENT_NAME_MAX_LENGTH: usize = 120;
+const XC_GOAL_EVENT_PROFILES: &[&str] = &[
+    "xc_marathon",
+    "technical_singletrack",
+    "endurance_mtb",
+    "ultra_mtb",
+    "custom",
+];
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct UserPreferencesResponse {
@@ -26,6 +34,9 @@ pub struct UserPreferencesResponse {
     pub xc_goal_target_date: Option<String>,
     pub xc_goal_target_distance_meters: Option<f64>,
     pub xc_goal_target_elevation_gain_meters: Option<f64>,
+    pub xc_goal_event_name: Option<String>,
+    pub xc_goal_target_finish_time_seconds: Option<i32>,
+    pub xc_goal_event_profile: Option<String>,
     pub xc_goal_backfill_status: Option<String>,
     pub xc_goal_backfill_completed_at: Option<DateTime<Utc>>,
 }
@@ -39,6 +50,9 @@ pub struct UpdateUserPreferencesRequest {
     pub xc_goal_target_date: Option<String>,
     pub xc_goal_target_distance_meters: Option<f64>,
     pub xc_goal_target_elevation_gain_meters: Option<f64>,
+    pub xc_goal_event_name: Option<String>,
+    pub xc_goal_target_finish_time_seconds: Option<i32>,
+    pub xc_goal_event_profile: Option<String>,
 }
 
 #[utoipa::path(
@@ -95,6 +109,9 @@ pub async fn update_preferences(
         payload.xc_goal_target_date.as_deref(),
         payload.xc_goal_target_distance_meters,
         payload.xc_goal_target_elevation_gain_meters,
+        payload.xc_goal_event_name.as_deref(),
+        payload.xc_goal_target_finish_time_seconds,
+        payload.xc_goal_event_profile.as_deref(),
     )?;
     let heart_rate_zone_bounds_json =
         serialize_heart_rate_zone_bounds(heart_rate_zone_bounds_bpm.as_deref())?;
@@ -119,6 +136,9 @@ pub async fn update_preferences(
         active_model.xc_goal_target_distance_meters = Set(xc_goal.target_distance_meters);
         active_model.xc_goal_target_elevation_gain_meters =
             Set(xc_goal.target_elevation_gain_meters);
+        active_model.xc_goal_event_name = Set(xc_goal.event_name.clone());
+        active_model.xc_goal_target_finish_time_seconds = Set(xc_goal.target_finish_time_seconds);
+        active_model.xc_goal_event_profile = Set(xc_goal.event_profile.clone());
         if xc_goal.start_date.is_none() {
             active_model.xc_goal_backfill_status = Set(None);
             active_model.xc_goal_backfill_completed_at = Set(None);
@@ -134,6 +154,9 @@ pub async fn update_preferences(
             xc_goal_target_date: Set(xc_goal.target_date),
             xc_goal_target_distance_meters: Set(xc_goal.target_distance_meters),
             xc_goal_target_elevation_gain_meters: Set(xc_goal.target_elevation_gain_meters),
+            xc_goal_event_name: Set(xc_goal.event_name.clone()),
+            xc_goal_target_finish_time_seconds: Set(xc_goal.target_finish_time_seconds),
+            xc_goal_event_profile: Set(xc_goal.event_profile.clone()),
             xc_goal_backfill_status: Set(None),
             xc_goal_backfill_completed_at: Set(None),
             ..Default::default()
@@ -178,6 +201,11 @@ fn response_from_model(model: Option<&user_preferences::Model>) -> UserPreferenc
             .and_then(|preferences| preferences.xc_goal_target_distance_meters),
         xc_goal_target_elevation_gain_meters: model
             .and_then(|preferences| preferences.xc_goal_target_elevation_gain_meters),
+        xc_goal_event_name: model.and_then(|preferences| preferences.xc_goal_event_name.clone()),
+        xc_goal_target_finish_time_seconds: model
+            .and_then(|preferences| preferences.xc_goal_target_finish_time_seconds),
+        xc_goal_event_profile: model
+            .and_then(|preferences| preferences.xc_goal_event_profile.clone()),
         xc_goal_backfill_status: model
             .and_then(|preferences| preferences.xc_goal_backfill_status.clone()),
         xc_goal_backfill_completed_at: model
@@ -185,12 +213,15 @@ fn response_from_model(model: Option<&user_preferences::Model>) -> UserPreferenc
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 struct XcGoalFields {
     start_date: Option<NaiveDate>,
     target_date: Option<NaiveDate>,
     target_distance_meters: Option<f64>,
     target_elevation_gain_meters: Option<f64>,
+    event_name: Option<String>,
+    target_finish_time_seconds: Option<i32>,
+    event_profile: Option<String>,
 }
 
 fn validate_unit_system(value: &str) -> Result<String, AppError> {
@@ -210,6 +241,9 @@ fn validate_xc_goal(
     target_date: Option<&str>,
     target_distance_meters: Option<f64>,
     target_elevation_gain_meters: Option<f64>,
+    event_name: Option<&str>,
+    target_finish_time_seconds: Option<i32>,
+    event_profile: Option<&str>,
 ) -> Result<XcGoalFields, AppError> {
     let parsed_start_date = start_date
         .map(str::trim)
@@ -227,6 +261,10 @@ fn validate_xc_goal(
         "xc_goal_target_elevation_gain_meters",
         target_elevation_gain_meters,
     )?;
+    let event_name = validate_optional_event_name(event_name)?;
+    let target_finish_time_seconds =
+        validate_target_finish_time_seconds(target_finish_time_seconds)?;
+    let event_profile = validate_event_profile(event_profile)?;
 
     let field_count = [
         parsed_start_date.is_some(),
@@ -239,6 +277,13 @@ fn validate_xc_goal(
     .count();
 
     if field_count == 0 {
+        if event_name.is_some() || target_finish_time_seconds.is_some() || event_profile.is_some() {
+            return Err(AppError::validation_field(
+                "xc_goal_start_date",
+                "XC goal event details require a complete event target",
+            ));
+        }
+
         return Ok(XcGoalFields::default());
     }
 
@@ -261,7 +306,51 @@ fn validate_xc_goal(
         target_date: parsed_target_date,
         target_distance_meters,
         target_elevation_gain_meters,
+        event_name,
+        target_finish_time_seconds,
+        event_profile,
     })
+}
+
+fn validate_optional_event_name(value: Option<&str>) -> Result<Option<String>, AppError> {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+
+    if value.chars().count() > XC_GOAL_EVENT_NAME_MAX_LENGTH {
+        return Err(AppError::validation_field(
+            "xc_goal_event_name",
+            "XC goal event name must be 120 characters or fewer",
+        ));
+    }
+
+    Ok(Some(value.to_string()))
+}
+
+fn validate_target_finish_time_seconds(value: Option<i32>) -> Result<Option<i32>, AppError> {
+    match value {
+        Some(seconds) if seconds <= 0 => Err(AppError::validation_field(
+            "xc_goal_target_finish_time_seconds",
+            "Target finish time must be greater than zero",
+        )),
+        _ => Ok(value),
+    }
+}
+
+fn validate_event_profile(value: Option<&str>) -> Result<Option<String>, AppError> {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    let normalized = value.to_ascii_lowercase();
+
+    if !XC_GOAL_EVENT_PROFILES.contains(&normalized.as_str()) {
+        return Err(AppError::validation_field(
+            "xc_goal_event_profile",
+            "XC goal event profile is not supported",
+        ));
+    }
+
+    Ok(Some(normalized))
 }
 
 fn validate_positive_metric(field: &str, value: Option<f64>) -> Result<Option<f64>, AppError> {
@@ -319,6 +408,9 @@ mod tests {
             xc_goal_target_date: Some(NaiveDate::from_ymd_opt(2026, 9, 20).unwrap()),
             xc_goal_target_distance_meters: Some(160_934.4),
             xc_goal_target_elevation_gain_meters: Some(3_962.4),
+            xc_goal_event_name: Some("Marji Gesick MG100".to_string()),
+            xc_goal_target_finish_time_seconds: Some(43_200),
+            xc_goal_event_profile: Some("technical_singletrack".to_string()),
             xc_goal_backfill_status: Some("completed".to_string()),
             xc_goal_backfill_completed_at: Some(now),
             created_at: now,
@@ -335,6 +427,15 @@ mod tests {
         assert_eq!(response.xc_goal_target_distance_meters, Some(160_934.4));
         assert_eq!(response.xc_goal_target_elevation_gain_meters, Some(3_962.4));
         assert_eq!(
+            response.xc_goal_event_name.as_deref(),
+            Some("Marji Gesick MG100")
+        );
+        assert_eq!(response.xc_goal_target_finish_time_seconds, Some(43_200));
+        assert_eq!(
+            response.xc_goal_event_profile.as_deref(),
+            Some("technical_singletrack")
+        );
+        assert_eq!(
             response.xc_goal_backfill_status.as_deref(),
             Some("completed")
         );
@@ -347,6 +448,9 @@ mod tests {
             Some("2026-06-01"),
             Some("2026-09-20"),
             Some(100_000.0),
+            None,
+            None,
+            None,
             None,
         )
         .unwrap_err();
@@ -365,6 +469,9 @@ mod tests {
             Some("09/20/2026"),
             Some(100_000.0),
             Some(1_000.0),
+            None,
+            None,
+            None,
         )
         .unwrap_err();
 
@@ -382,6 +489,9 @@ mod tests {
             Some("2026-09-20"),
             Some(100_000.0),
             Some(1_000.0),
+            None,
+            None,
+            None,
         )
         .unwrap_err();
 
@@ -389,6 +499,44 @@ mod tests {
         assert_eq!(
             error.message,
             "XC goal start date must be on or before the target date"
+        );
+    }
+
+    #[test]
+    fn validate_xc_goal_accepts_optional_event_details() {
+        let goal = validate_xc_goal(
+            Some("2026-06-01"),
+            Some("2026-09-20"),
+            Some(160_934.4),
+            Some(3_962.4),
+            Some(" Marji Gesick MG100 "),
+            Some(43_200),
+            Some("TECHNICAL_SINGLETRACK"),
+        )
+        .unwrap();
+
+        assert_eq!(goal.event_name.as_deref(), Some("Marji Gesick MG100"));
+        assert_eq!(goal.target_finish_time_seconds, Some(43_200));
+        assert_eq!(goal.event_profile.as_deref(), Some("technical_singletrack"));
+    }
+
+    #[test]
+    fn validate_xc_goal_rejects_event_details_without_complete_target() {
+        let error = validate_xc_goal(
+            None,
+            None,
+            None,
+            None,
+            Some("Lumberjack 100"),
+            Some(36_000),
+            None,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            error.message,
+            "XC goal event details require a complete event target"
         );
     }
 }

@@ -7,6 +7,9 @@ use crate::entities::{
     segment_efforts, segments, user_preferences,
 };
 use crate::storage::AppStorage;
+use crate::training_profile::{
+    deserialize_activity_heart_rate_zones, StoredActivityHeartRateZones,
+};
 use axum::extract::State;
 use axum::Json;
 use chrono::{DateTime, Datelike, Duration, NaiveDate, Utc};
@@ -19,11 +22,19 @@ use utoipa::ToSchema;
 
 const XC_RECENT_WINDOW_DAYS: i64 = 28;
 const XC_DECOUPLING_WINDOW_DAYS: i64 = 90;
+const XC_BENCHMARK_WINDOW_DAYS: i64 = 90;
 const XC_WEEKLY_PROGRESS_WEEKS: i64 = 8;
 const XC_RECENT_RIDES_LIMIT: usize = 12;
 const XC_WEEKLY_Z2_GOAL_SECONDS: f64 = 14_400.0;
 const XC_WEEKLY_CLIMBING_GOAL_METERS: f64 = 1_500.0;
 const XC_AEROBIC_DECOUPLING_GOAL_PERCENT: f64 = 5.0;
+const XC_LONG_RIDE_TARGET_RATIO: f64 = 0.65;
+const XC_BIG_CLIMB_DAY_TARGET_RATIO: f64 = 0.45;
+const XC_CLIMB_DENSITY_READY_RATIO: f64 = 0.8;
+const XC_CLIMB_DENSITY_WATCH_RATIO: f64 = 0.6;
+const XC_FINISH_SPEED_READY_RATIO: f64 = 1.05;
+const XC_FINISH_SPEED_WATCH_RATIO: f64 = 0.9;
+const XC_TAPER_WINDOW_DAYS: i64 = 14;
 
 const DH_RECENT_SESSION_LIMIT: usize = 12;
 const DH_RECENT_EFFORT_LIMIT: usize = 5;
@@ -57,6 +68,9 @@ pub enum TrainingMetricUnit {
     Meters,
     Percent,
     Count,
+    MetersPerSecond,
+    MetersPerKilometer,
+    MetersPerHour,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, ToSchema)]
@@ -94,6 +108,73 @@ pub enum TrainingRecommendationPriority {
     Low,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum XcEventProfile {
+    XcMarathon,
+    TechnicalSingletrack,
+    EnduranceMtb,
+    UltraMtb,
+    Custom,
+}
+
+impl XcEventProfile {
+    fn from_stored(value: Option<&str>) -> Option<Self> {
+        match value {
+            Some("xc_marathon") => Some(Self::XcMarathon),
+            Some("technical_singletrack") => Some(Self::TechnicalSingletrack),
+            Some("endurance_mtb") => Some(Self::EnduranceMtb),
+            Some("ultra_mtb") => Some(Self::UltraMtb),
+            Some("custom") => Some(Self::Custom),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum XcReadinessStatus {
+    OnTrack,
+    Watch,
+    FallingBehind,
+    MissingData,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum XcReadinessGateKey {
+    LongRideDistance,
+    BigClimbDay,
+    ClimbDensity,
+    TargetFinishPace,
+    AerobicDecoupling,
+    Recovery,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum XcTrainingDeficitKey {
+    LongRide,
+    BigClimbDay,
+    EventSpecificity,
+    FinishPace,
+    AerobicDurability,
+    Recovery,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum XcTrainingPurpose {
+    BaseEndurance,
+    ClimbDurability,
+    Tempo,
+    Threshold,
+    PunchVo2,
+    TechnicalFatigue,
+    Recovery,
+    DataQuality,
+}
+
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct TrainingGoalMetricResponse {
     pub key: TrainingGoalKey,
@@ -111,6 +192,11 @@ pub struct TrainingRecommendationResponse {
     pub priority: TrainingRecommendationPriority,
     pub title: String,
     pub detail: String,
+    pub purpose: Option<XcTrainingPurpose>,
+    pub limiter: Option<String>,
+    pub gap_value: Option<f64>,
+    pub gap_unit: Option<TrainingMetricUnit>,
+    pub suggested_ride: Option<XcSuggestedRideResponse>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -141,6 +227,13 @@ pub struct XcRideProgressResponse {
     pub climbing_time_seconds: i32,
     pub climbing_elevation_gain_meters: Option<f64>,
     pub aerobic_decoupling_percent: Option<f64>,
+    pub z1_seconds: i32,
+    pub z2_zone_seconds: i32,
+    pub z3_seconds: i32,
+    pub z4_seconds: i32,
+    pub z5_seconds: i32,
+    pub training_purpose: XcTrainingPurpose,
+    pub training_purpose_detail: String,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -173,6 +266,7 @@ pub struct XcWeeklyProgressPointResponse {
     pub week_start: String,
     pub ride_count: i32,
     pub comparable_ride_count: i32,
+    pub distance_meters: f64,
     pub z2_time_seconds: i32,
     pub z2_distance_meters: f64,
     pub average_z2_speed_mps: Option<f64>,
@@ -180,12 +274,19 @@ pub struct XcWeeklyProgressPointResponse {
     pub climbing_elevation_gain_meters: f64,
     pub climbing_vertical_rate_meters_per_hour: Option<f64>,
     pub average_aerobic_decoupling_percent: Option<f64>,
+    pub z1_seconds: i32,
+    pub z2_zone_seconds: i32,
+    pub z3_seconds: i32,
+    pub z4_seconds: i32,
+    pub z5_seconds: i32,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct XcGoalProgressResponse {
     pub generated_at: DateTime<Utc>,
     pub event_goal: Option<XcEventGoalResponse>,
+    pub readiness: Option<XcReadinessSummaryResponse>,
+    pub deficits: Vec<XcTrainingDeficitResponse>,
     pub summary: XcProgressSummaryResponse,
     pub race_results: Vec<XcRaceResultResponse>,
     pub goals: Vec<TrainingGoalMetricResponse>,
@@ -196,38 +297,78 @@ pub struct XcGoalProgressResponse {
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct XcEventGoalResponse {
+    pub event_name: Option<String>,
+    pub event_profile: Option<XcEventProfile>,
     pub start_date: String,
     pub target_date: String,
     pub days_remaining: i64,
     pub target_distance_meters: f64,
     pub target_elevation_gain_meters: f64,
+    pub target_finish_time_seconds: Option<i32>,
+    pub target_finish_speed_mps: Option<f64>,
+    pub target_climb_density_meters_per_kilometer: f64,
     pub training_window_days: i32,
     pub counted_ride_count: i32,
     pub counted_distance_meters: f64,
-    pub counted_distance_progress_percent: f64,
     pub counted_elevation_gain_meters: f64,
-    pub counted_elevation_gain_progress_percent: f64,
-    pub best_distance_meters: Option<f64>,
-    pub best_distance_progress_percent: Option<f64>,
-    pub best_distance_activity: Option<XcGoalActivityReferenceResponse>,
-    pub best_elevation_gain_meters: Option<f64>,
-    pub best_elevation_gain_progress_percent: Option<f64>,
-    pub best_elevation_activity: Option<XcGoalActivityReferenceResponse>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct XcGoalActivityReferenceResponse {
-    pub activity_id: i32,
-    pub activity_title: String,
-    pub started_at: DateTime<Utc>,
+pub struct XcReadinessSummaryResponse {
+    pub status: XcReadinessStatus,
+    pub title: String,
+    pub reason: String,
+    pub missing_most: Option<String>,
+    pub gates: Vec<XcReadinessGateResponse>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct XcReadinessGateResponse {
+    pub key: XcReadinessGateKey,
+    pub label: String,
+    pub status: XcReadinessStatus,
+    pub unit: TrainingMetricUnit,
+    pub direction: TrainingGoalDirection,
+    pub current_value: Option<f64>,
+    pub target_value: Option<f64>,
+    pub gap_value: Option<f64>,
+    pub progress_percent: Option<f64>,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct XcTrainingDeficitResponse {
+    pub key: XcTrainingDeficitKey,
+    pub priority: TrainingRecommendationPriority,
+    pub title: String,
+    pub detail: String,
+    pub gap_value: Option<f64>,
+    pub gap_unit: Option<TrainingMetricUnit>,
+    pub suggested_ride: XcSuggestedRideResponse,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct XcSuggestedRideResponse {
+    pub purpose: XcTrainingPurpose,
+    pub duration_seconds_min: Option<i32>,
+    pub duration_seconds_max: Option<i32>,
+    pub distance_meters_min: Option<f64>,
+    pub distance_meters_max: Option<f64>,
+    pub climbing_elevation_gain_meters: Option<f64>,
+    pub intensity: String,
+    pub terrain: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone)]
 struct XcEventGoal {
     start_date: NaiveDate,
     target_date: NaiveDate,
     target_distance_meters: f64,
     target_elevation_gain_meters: f64,
+    event_name: Option<String>,
+    target_finish_time_seconds: Option<i32>,
+    event_profile: Option<XcEventProfile>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -304,6 +445,7 @@ struct ActivitySummaryRow {
     moving_time_seconds: Option<i32>,
     total_time_seconds: Option<i32>,
     activity_type: String,
+    heart_rate_zones_json: Option<StoredActivityHeartRateZones>,
 }
 
 #[utoipa::path(
@@ -341,6 +483,7 @@ pub async fn get_xc_goal_progress(
         .filter_map(|analysis| {
             let activity = activity_by_id.get(&analysis.activity_id)?;
             let ride_focus = ActivityRideFocus::from_stored(&analysis.ride_focus);
+            let zone_seconds = heart_rate_zone_seconds(activity);
 
             Some(XcRideProgressResponse {
                 activity_id: activity.id,
@@ -360,6 +503,14 @@ pub async fn get_xc_goal_progress(
                     .climbing_elevation_gain_meters
                     .or(activity.elevation_gain_meters),
                 aerobic_decoupling_percent: analysis.aerobic_decoupling_percent,
+                z1_seconds: zone_seconds[0],
+                z2_zone_seconds: zone_seconds[1],
+                z3_seconds: zone_seconds[2],
+                z4_seconds: zone_seconds[3],
+                z5_seconds: zone_seconds[4],
+                training_purpose: XcTrainingPurpose::DataQuality,
+                training_purpose_detail:
+                    "Training purpose will be classified with the active event target.".to_string(),
             })
         })
         .collect::<Vec<_>>();
@@ -467,6 +618,7 @@ async fn load_race_activity_summaries(
         .column(activities::Column::MovingTimeSeconds)
         .column(activities::Column::TotalTimeSeconds)
         .column(activities::Column::ActivityType)
+        .column(activities::Column::HeartRateZonesJson)
         .filter(activities::Column::UserId.eq(user_id))
         .filter(activities::Column::ActivityType.eq(ActivityType::Race.as_str()))
         .into_model::<ActivitySummaryRow>()
@@ -475,6 +627,8 @@ async fn load_race_activity_summaries(
 }
 
 fn race_activity_without_analysis(activity: ActivitySummaryRow) -> XcRideProgressResponse {
+    let zone_seconds = heart_rate_zone_seconds(&activity);
+
     XcRideProgressResponse {
         activity_id: activity.id,
         activity_title: activity.title,
@@ -491,6 +645,14 @@ fn race_activity_without_analysis(activity: ActivitySummaryRow) -> XcRideProgres
         climbing_time_seconds: 0,
         climbing_elevation_gain_meters: activity.elevation_gain_meters,
         aerobic_decoupling_percent: None,
+        z1_seconds: zone_seconds[0],
+        z2_zone_seconds: zone_seconds[1],
+        z3_seconds: zone_seconds[2],
+        z4_seconds: zone_seconds[3],
+        z5_seconds: zone_seconds[4],
+        training_purpose: XcTrainingPurpose::DataQuality,
+        training_purpose_detail:
+            "Race result is used as an outcome benchmark, not a training prescription.".to_string(),
     }
 }
 
@@ -513,6 +675,7 @@ async fn load_activity_summaries_by_ids(
         .column(activities::Column::MovingTimeSeconds)
         .column(activities::Column::TotalTimeSeconds)
         .column(activities::Column::ActivityType)
+        .column(activities::Column::HeartRateZonesJson)
         .filter(activities::Column::UserId.eq(user_id))
         .filter(activities::Column::Id.is_in(activity_ids.iter().copied()))
         .into_model::<ActivitySummaryRow>()
@@ -521,6 +684,17 @@ async fn load_activity_summaries_by_ids(
         .into_iter()
         .map(|activity| (activity.id, activity))
         .collect())
+}
+
+fn heart_rate_zone_seconds(activity: &ActivitySummaryRow) -> [i32; 5] {
+    let mut zone_seconds = [0; 5];
+
+    for zone in deserialize_activity_heart_rate_zones(activity.heart_rate_zones_json.as_ref()) {
+        let zone_index = (zone.zone - 1).clamp(0, 4) as usize;
+        zone_seconds[zone_index] += zone.duration_seconds.max(0);
+    }
+
+    zone_seconds
 }
 
 async fn load_xc_event_goal(
@@ -555,6 +729,11 @@ async fn load_xc_event_goal(
                 target_date,
                 target_distance_meters,
                 target_elevation_gain_meters,
+                event_name: preferences.xc_goal_event_name,
+                target_finish_time_seconds: preferences.xc_goal_target_finish_time_seconds,
+                event_profile: XcEventProfile::from_stored(
+                    preferences.xc_goal_event_profile.as_deref(),
+                ),
             }))
         }
         _ => Ok(None),
@@ -619,6 +798,9 @@ fn build_xc_goal_progress_response(
     now: DateTime<Utc>,
 ) -> XcGoalProgressResponse {
     rides.sort_by(|left, right| right.started_at.cmp(&left.started_at));
+    for ride in &mut rides {
+        apply_xc_training_purpose(ride, goal.as_ref());
+    }
 
     let race_results = build_xc_race_results(&rides);
     let training_rides = rides
@@ -627,8 +809,12 @@ fn build_xc_goal_progress_response(
         .cloned()
         .collect::<Vec<_>>();
 
-    let event_goal = goal.and_then(|goal| build_xc_event_goal_response(&training_rides, goal, now));
-    let history_end = goal.map(|goal| std::cmp::min(now.date_naive(), goal.target_date));
+    let event_goal = goal
+        .as_ref()
+        .and_then(|goal| build_xc_event_goal_response(&training_rides, goal, now));
+    let history_end = goal
+        .as_ref()
+        .map(|goal| std::cmp::min(now.date_naive(), goal.target_date));
 
     let recent_window_start = now - Duration::days(XC_RECENT_WINDOW_DAYS);
     let decoupling_window_start = now - Duration::days(XC_DECOUPLING_WINDOW_DAYS);
@@ -699,18 +885,34 @@ fn build_xc_goal_progress_response(
             XC_AEROBIC_DECOUPLING_GOAL_PERCENT,
         ),
     ];
-    let recommendations = build_xc_recommendations(
-        &training_rides,
-        recent_comparable_rides.len(),
-        weekly_z2_average_seconds,
-        weekly_climbing_average_meters,
-        recent_decoupling_average,
-        freshness,
-    );
-    let weekly_progress = build_xc_weekly_progress(&training_rides, now, goal);
+    let (readiness, deficits) = goal
+        .as_ref()
+        .map(|goal| build_xc_readiness(&rides, goal, now, recent_decoupling_average, freshness))
+        .unwrap_or((None, Vec::new()));
+    let recommendations = if goal.is_some() {
+        build_xc_event_recommendations(
+            &deficits,
+            &training_rides,
+            recent_comparable_rides.len(),
+            weekly_z2_average_seconds,
+            weekly_climbing_average_meters,
+            recent_decoupling_average,
+            freshness,
+        )
+    } else {
+        build_xc_recommendations(
+            &training_rides,
+            recent_comparable_rides.len(),
+            weekly_z2_average_seconds,
+            weekly_climbing_average_meters,
+            recent_decoupling_average,
+            freshness,
+        )
+    };
+    let weekly_progress = build_xc_weekly_progress(&training_rides, now, goal.as_ref());
     let recent_rides = training_rides
         .into_iter()
-        .filter(|ride| match (goal, history_end) {
+        .filter(|ride| match (goal.as_ref(), history_end) {
             (Some(goal), Some(history_end)) => {
                 let ride_day = ride.started_at.date_naive();
                 ride_day >= goal.start_date && ride_day <= history_end
@@ -723,6 +925,8 @@ fn build_xc_goal_progress_response(
     XcGoalProgressResponse {
         generated_at: now,
         event_goal,
+        readiness,
+        deficits,
         summary,
         race_results,
         goals,
@@ -734,7 +938,7 @@ fn build_xc_goal_progress_response(
 
 fn build_xc_event_goal_response(
     rides: &[XcRideProgressResponse],
-    goal: XcEventGoal,
+    goal: &XcEventGoal,
     now: DateTime<Utc>,
 ) -> Option<XcEventGoalResponse> {
     if goal.start_date > goal.target_date {
@@ -761,31 +965,9 @@ fn build_xc_event_goal_response(
                 .unwrap_or_default()
         })
         .sum::<f64>();
-    let best_distance_ride = counted_rides.iter().copied().max_by(|left, right| {
-        left.distance_meters
-            .unwrap_or_default()
-            .partial_cmp(&right.distance_meters.unwrap_or_default())
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    let best_elevation_ride = counted_rides.iter().copied().max_by(|left, right| {
-        left.climbing_elevation_gain_meters
-            .or(left.elevation_gain_meters)
-            .unwrap_or_default()
-            .partial_cmp(
-                &right
-                    .climbing_elevation_gain_meters
-                    .or(right.elevation_gain_meters)
-                    .unwrap_or_default(),
-            )
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    let best_distance_meters = best_distance_ride.and_then(|ride| ride.distance_meters);
-    let best_elevation_gain_meters = best_elevation_ride.and_then(|ride| {
-        ride.climbing_elevation_gain_meters
-            .or(ride.elevation_gain_meters)
-    });
-
     Some(XcEventGoalResponse {
+        event_name: goal.event_name.clone(),
+        event_profile: goal.event_profile,
         start_date: goal.start_date.format("%Y-%m-%d").to_string(),
         target_date: goal.target_date.format("%Y-%m-%d").to_string(),
         days_remaining: goal
@@ -794,6 +976,18 @@ fn build_xc_event_goal_response(
             .num_days(),
         target_distance_meters: round_metric(goal.target_distance_meters),
         target_elevation_gain_meters: round_metric(goal.target_elevation_gain_meters),
+        target_finish_time_seconds: goal.target_finish_time_seconds,
+        target_finish_speed_mps: goal
+            .target_finish_time_seconds
+            .and_then(|seconds| target_finish_speed_mps(goal.target_distance_meters, seconds))
+            .map(round_metric),
+        target_climb_density_meters_per_kilometer: round_metric(
+            climb_density_meters_per_kilometer(
+                Some(goal.target_elevation_gain_meters),
+                Some(goal.target_distance_meters),
+            )
+            .unwrap_or_default(),
+        ),
         training_window_days: (goal
             .target_date
             .signed_duration_since(goal.start_date)
@@ -801,40 +995,720 @@ fn build_xc_event_goal_response(
             + 1) as i32,
         counted_ride_count: counted_rides.len() as i32,
         counted_distance_meters: round_metric(counted_distance_meters),
-        counted_distance_progress_percent: round_metric(
-            goal_progress_percent(
-                Some(counted_distance_meters),
-                goal.target_distance_meters,
-                TrainingGoalDirection::AtLeast,
-            )
-            .unwrap_or_default(),
-        ),
         counted_elevation_gain_meters: round_metric(counted_elevation_gain_meters),
-        counted_elevation_gain_progress_percent: round_metric(
-            goal_progress_percent(
-                Some(counted_elevation_gain_meters),
-                goal.target_elevation_gain_meters,
-                TrainingGoalDirection::AtLeast,
-            )
-            .unwrap_or_default(),
-        ),
-        best_distance_meters: best_distance_meters.map(round_metric),
-        best_distance_progress_percent: goal_progress_percent(
-            best_distance_meters,
-            goal.target_distance_meters,
-            TrainingGoalDirection::AtLeast,
-        )
-        .map(round_metric),
-        best_distance_activity: best_distance_ride.map(goal_activity_reference),
-        best_elevation_gain_meters: best_elevation_gain_meters.map(round_metric),
-        best_elevation_gain_progress_percent: goal_progress_percent(
-            best_elevation_gain_meters,
-            goal.target_elevation_gain_meters,
-            TrainingGoalDirection::AtLeast,
-        )
-        .map(round_metric),
-        best_elevation_activity: best_elevation_ride.map(goal_activity_reference),
     })
+}
+
+fn build_xc_readiness(
+    rides: &[XcRideProgressResponse],
+    goal: &XcEventGoal,
+    now: DateTime<Utc>,
+    recent_decoupling_average: Option<f64>,
+    freshness: Option<FitnessFreshnessSnapshot>,
+) -> (
+    Option<XcReadinessSummaryResponse>,
+    Vec<XcTrainingDeficitResponse>,
+) {
+    let progress_end = std::cmp::min(now.date_naive(), goal.target_date);
+    if goal.start_date > goal.target_date {
+        return (None, Vec::new());
+    }
+
+    let counted_rides = rides
+        .iter()
+        .filter(|ride| {
+            let ride_day = ride.started_at.date_naive();
+            ride_day >= goal.start_date && ride_day <= progress_end
+        })
+        .collect::<Vec<_>>();
+    let training_counted_rides = counted_rides
+        .iter()
+        .copied()
+        .filter(|ride| !ride.activity_type.is_race())
+        .collect::<Vec<_>>();
+    let counted_distance_meters = training_counted_rides
+        .iter()
+        .map(|ride| ride.distance_meters.unwrap_or_default())
+        .sum::<f64>();
+    let counted_climbing_meters = training_counted_rides
+        .iter()
+        .filter_map(|ride| effective_climbing_elevation_gain_meters(ride))
+        .sum::<f64>();
+    let benchmark_window_start = now - Duration::days(XC_BENCHMARK_WINDOW_DAYS);
+    let benchmark_rides = counted_rides
+        .iter()
+        .copied()
+        .filter(|ride| ride.activity_type.is_race() || ride.started_at >= benchmark_window_start)
+        .collect::<Vec<_>>();
+    let best_distance_meters = benchmark_rides
+        .iter()
+        .filter_map(|ride| ride.distance_meters)
+        .reduce(f64::max);
+    let best_climbing_meters = benchmark_rides
+        .iter()
+        .filter_map(|ride| effective_climbing_elevation_gain_meters(ride))
+        .reduce(f64::max);
+    let current_climb_density = climb_density_meters_per_kilometer(
+        Some(counted_climbing_meters),
+        Some(counted_distance_meters),
+    );
+    let target_climb_density = climb_density_meters_per_kilometer(
+        Some(goal.target_elevation_gain_meters),
+        Some(goal.target_distance_meters),
+    );
+    let target_finish_speed = goal
+        .target_finish_time_seconds
+        .and_then(|seconds| target_finish_speed_mps(goal.target_distance_meters, seconds));
+    let recent_window_start = now - Duration::days(XC_RECENT_WINDOW_DAYS);
+    let recent_rides = rides
+        .iter()
+        .filter(|ride| ride.started_at >= recent_window_start)
+        .collect::<Vec<_>>();
+    let recent_z2_speed = weighted_z2_speed_mps(recent_rides.iter().copied());
+
+    let mut gates = vec![
+        build_at_least_gate(
+            XcReadinessGateKey::LongRideDistance,
+            "Recent long ride",
+            best_distance_meters,
+            goal.target_distance_meters * XC_LONG_RIDE_TARGET_RATIO,
+            TrainingMetricUnit::Meters,
+            1.0,
+            0.75,
+            "Best single ride in the last 90 days, or any race in the saved block, compared with the long-ride benchmark for this event distance.",
+        ),
+        build_at_least_gate(
+            XcReadinessGateKey::BigClimbDay,
+            "Recent climb day",
+            best_climbing_meters,
+            goal.target_elevation_gain_meters * XC_BIG_CLIMB_DAY_TARGET_RATIO,
+            TrainingMetricUnit::Meters,
+            1.0,
+            0.75,
+            "Best single climbing ride in the last 90 days, or any race in the saved block, compared with the climbing-day benchmark for this event.",
+        ),
+        build_at_least_gate(
+            XcReadinessGateKey::ClimbDensity,
+            "Climb density",
+            current_climb_density,
+            target_climb_density.unwrap_or_default() * XC_CLIMB_DENSITY_READY_RATIO,
+            TrainingMetricUnit::MetersPerKilometer,
+            1.0,
+            XC_CLIMB_DENSITY_WATCH_RATIO / XC_CLIMB_DENSITY_READY_RATIO,
+            "Training-block climbing per distance compared with the event's climb density.",
+        ),
+        build_at_most_gate(
+            XcReadinessGateKey::AerobicDecoupling,
+            "Aerobic decoupling",
+            recent_decoupling_average,
+            XC_AEROBIC_DECOUPLING_GOAL_PERCENT,
+            TrainingMetricUnit::Percent,
+            1.0,
+            1.4,
+            "Recent comparable endurance drift. Lower is better.",
+        ),
+        build_recovery_gate(freshness),
+    ];
+
+    if let Some(target_finish_speed) = target_finish_speed {
+        gates.push(build_at_least_gate(
+            XcReadinessGateKey::TargetFinishPace,
+            "Target finish pace",
+            recent_z2_speed,
+            target_finish_speed * XC_FINISH_SPEED_READY_RATIO,
+            TrainingMetricUnit::MetersPerSecond,
+            1.0,
+            XC_FINISH_SPEED_WATCH_RATIO / XC_FINISH_SPEED_READY_RATIO,
+            "Recent Z2 speed compared with the event elapsed-speed target plus a small buffer.",
+        ));
+    }
+
+    let mut deficits = build_xc_deficits_from_gates(&gates, goal, now);
+    deficits.sort_by(|left, right| {
+        recommendation_priority_rank(left.priority)
+            .cmp(&recommendation_priority_rank(right.priority))
+            .then_with(|| deficit_rank(left.key).cmp(&deficit_rank(right.key)))
+    });
+
+    let status = overall_readiness_status(&gates);
+    let missing_most = deficits.first().map(|deficit| deficit.title.clone());
+    let title = match status {
+        XcReadinessStatus::OnTrack => "On track".to_string(),
+        XcReadinessStatus::Watch => "Watch the gaps".to_string(),
+        XcReadinessStatus::FallingBehind => "Falling behind".to_string(),
+        XcReadinessStatus::MissingData => "Need more data".to_string(),
+    };
+    let reason = readiness_reason(status, &gates, &deficits);
+
+    (
+        Some(XcReadinessSummaryResponse {
+            status,
+            title,
+            reason,
+            missing_most,
+            gates,
+        }),
+        deficits,
+    )
+}
+
+fn build_at_least_gate(
+    key: XcReadinessGateKey,
+    label: &str,
+    current_value: Option<f64>,
+    target_value: f64,
+    unit: TrainingMetricUnit,
+    on_track_ratio: f64,
+    watch_ratio: f64,
+    detail: &str,
+) -> XcReadinessGateResponse {
+    let status = match current_value {
+        Some(current) if target_value > 0.0 && current >= target_value * on_track_ratio => {
+            XcReadinessStatus::OnTrack
+        }
+        Some(current) if target_value > 0.0 && current >= target_value * watch_ratio => {
+            XcReadinessStatus::Watch
+        }
+        Some(_) => XcReadinessStatus::FallingBehind,
+        None => XcReadinessStatus::MissingData,
+    };
+
+    XcReadinessGateResponse {
+        key,
+        label: label.to_string(),
+        status,
+        unit,
+        direction: TrainingGoalDirection::AtLeast,
+        current_value: current_value.map(round_metric),
+        target_value: Some(round_metric(target_value)),
+        gap_value: current_value
+            .map(|current| (target_value - current).max(0.0))
+            .map(round_metric),
+        progress_percent: goal_progress_percent(
+            current_value,
+            target_value,
+            TrainingGoalDirection::AtLeast,
+        )
+        .map(round_metric),
+        detail: detail.to_string(),
+    }
+}
+
+fn build_at_most_gate(
+    key: XcReadinessGateKey,
+    label: &str,
+    current_value: Option<f64>,
+    target_value: f64,
+    unit: TrainingMetricUnit,
+    on_track_ratio: f64,
+    watch_ratio: f64,
+    detail: &str,
+) -> XcReadinessGateResponse {
+    let status = match current_value {
+        Some(current) if target_value > 0.0 && current <= target_value * on_track_ratio => {
+            XcReadinessStatus::OnTrack
+        }
+        Some(current) if target_value > 0.0 && current <= target_value * watch_ratio => {
+            XcReadinessStatus::Watch
+        }
+        Some(_) => XcReadinessStatus::FallingBehind,
+        None => XcReadinessStatus::MissingData,
+    };
+
+    XcReadinessGateResponse {
+        key,
+        label: label.to_string(),
+        status,
+        unit,
+        direction: TrainingGoalDirection::AtMost,
+        current_value: current_value.map(round_metric),
+        target_value: Some(round_metric(target_value)),
+        gap_value: current_value
+            .map(|current| (current - target_value).max(0.0))
+            .map(round_metric),
+        progress_percent: goal_progress_percent(
+            current_value,
+            target_value,
+            TrainingGoalDirection::AtMost,
+        )
+        .map(round_metric),
+        detail: detail.to_string(),
+    }
+}
+
+fn build_recovery_gate(freshness: Option<FitnessFreshnessSnapshot>) -> XcReadinessGateResponse {
+    let status = match freshness {
+        Some(snapshot) if freshness_needs_recovery(snapshot) => XcReadinessStatus::FallingBehind,
+        Some(snapshot) if freshness_is_ready_for_quality(snapshot, XC_READY_FITNESS_THRESHOLD) => {
+            XcReadinessStatus::OnTrack
+        }
+        Some(_) => XcReadinessStatus::Watch,
+        None => XcReadinessStatus::MissingData,
+    };
+
+    XcReadinessGateResponse {
+        key: XcReadinessGateKey::Recovery,
+        label: "Recovery".to_string(),
+        status,
+        unit: TrainingMetricUnit::Count,
+        direction: TrainingGoalDirection::AtLeast,
+        current_value: freshness.map(|snapshot| round_metric(snapshot.form)),
+        target_value: Some(FRESHNESS_READY_FORM_THRESHOLD),
+        gap_value: None,
+        progress_percent: None,
+        detail: match status {
+            XcReadinessStatus::FallingBehind => {
+                "Fatigue is outrunning fitness; make the next ride easier before adding load."
+            }
+            XcReadinessStatus::OnTrack => {
+                "Fitness is established and form is positive enough for a quality benchmark."
+            }
+            XcReadinessStatus::Watch => {
+                "Recovery is usable, but not a green light for stacking every deficit at once."
+            }
+            XcReadinessStatus::MissingData => {
+                "Fitness/fatigue/form is not available, so recovery cannot adjust the advice."
+            }
+        }
+        .to_string(),
+    }
+}
+
+fn build_xc_deficits_from_gates(
+    gates: &[XcReadinessGateResponse],
+    goal: &XcEventGoal,
+    now: DateTime<Utc>,
+) -> Vec<XcTrainingDeficitResponse> {
+    gates
+        .iter()
+        .filter(|gate| {
+            matches!(
+                gate.status,
+                XcReadinessStatus::Watch | XcReadinessStatus::FallingBehind
+            )
+        })
+        .map(|gate| deficit_from_gate(gate, goal, now))
+        .collect()
+}
+
+fn deficit_from_gate(
+    gate: &XcReadinessGateResponse,
+    goal: &XcEventGoal,
+    now: DateTime<Utc>,
+) -> XcTrainingDeficitResponse {
+    let priority = if gate.status == XcReadinessStatus::FallingBehind {
+        TrainingRecommendationPriority::High
+    } else {
+        TrainingRecommendationPriority::Medium
+    };
+    let days_to_goal = goal
+        .target_date
+        .signed_duration_since(now.date_naive())
+        .num_days();
+    let in_taper_window = days_to_goal <= XC_TAPER_WINDOW_DAYS;
+
+    match gate.key {
+        XcReadinessGateKey::LongRideDistance => XcTrainingDeficitResponse {
+            key: XcTrainingDeficitKey::LongRide,
+            priority,
+            title: "Long-ride benchmark is short".to_string(),
+            detail: "Your biggest recent ride is still below the long endurance benchmark for this event distance.".to_string(),
+            gap_value: gate.gap_value,
+            gap_unit: Some(gate.unit),
+            suggested_ride: suggested_long_ride(goal, in_taper_window),
+        },
+        XcReadinessGateKey::BigClimbDay => XcTrainingDeficitResponse {
+            key: XcTrainingDeficitKey::BigClimbDay,
+            priority,
+            title: "Big climbing day is short".to_string(),
+            detail: "Your biggest climbing ride is below the single-day climbing benchmark for this event.".to_string(),
+            gap_value: gate.gap_value,
+            gap_unit: Some(gate.unit),
+            suggested_ride: suggested_climbing_ride(goal, in_taper_window),
+        },
+        XcReadinessGateKey::ClimbDensity => XcTrainingDeficitResponse {
+            key: XcTrainingDeficitKey::EventSpecificity,
+            priority,
+            title: "Training routes are not specific enough".to_string(),
+            detail: "Current rides are not matching the event's climbing per mile/kilometer closely enough.".to_string(),
+            gap_value: gate.gap_value,
+            gap_unit: Some(gate.unit),
+            suggested_ride: suggested_specificity_ride(goal, in_taper_window),
+        },
+        XcReadinessGateKey::TargetFinishPace => XcTrainingDeficitResponse {
+            key: XcTrainingDeficitKey::FinishPace,
+            priority,
+            title: "Finish-time pace needs work".to_string(),
+            detail: "Recent Z2 speed is not comfortably above the target elapsed finish speed.".to_string(),
+            gap_value: gate.gap_value,
+            gap_unit: Some(gate.unit),
+            suggested_ride: suggested_tempo_ride(goal, in_taper_window),
+        },
+        XcReadinessGateKey::AerobicDecoupling => XcTrainingDeficitResponse {
+            key: XcTrainingDeficitKey::AerobicDurability,
+            priority,
+            title: "Aerobic durability is drifting".to_string(),
+            detail: "Comparable endurance rides are fading more than the durability target.".to_string(),
+            gap_value: gate.gap_value,
+            gap_unit: Some(gate.unit),
+            suggested_ride: suggested_durability_ride(goal, in_taper_window),
+        },
+        XcReadinessGateKey::Recovery => XcTrainingDeficitResponse {
+            key: XcTrainingDeficitKey::Recovery,
+            priority: TrainingRecommendationPriority::High,
+            title: "Recovery should guide the next ride".to_string(),
+            detail: "The next ride should absorb load before chasing the event gaps.".to_string(),
+            gap_value: None,
+            gap_unit: None,
+            suggested_ride: suggested_recovery_ride(),
+        },
+    }
+}
+
+fn suggested_long_ride(goal: &XcEventGoal, in_taper_window: bool) -> XcSuggestedRideResponse {
+    if in_taper_window {
+        return suggested_taper_ride();
+    }
+
+    XcSuggestedRideResponse {
+        purpose: XcTrainingPurpose::BaseEndurance,
+        duration_seconds_min: Some(14_400),
+        duration_seconds_max: Some(25_200),
+        distance_meters_min: Some(goal.target_distance_meters * 0.4),
+        distance_meters_max: Some(goal.target_distance_meters * XC_LONG_RIDE_TARGET_RATIO),
+        climbing_elevation_gain_meters: Some(goal.target_elevation_gain_meters * 0.3),
+        intensity: "Z2 with a conservative finish".to_string(),
+        terrain: "MTB route that resembles the event surface where possible".to_string(),
+        detail: "Useful for long-ride durability, fueling practice, and confidence at event scale."
+            .to_string(),
+    }
+}
+
+fn suggested_climbing_ride(goal: &XcEventGoal, in_taper_window: bool) -> XcSuggestedRideResponse {
+    if in_taper_window {
+        return suggested_taper_ride();
+    }
+
+    XcSuggestedRideResponse {
+        purpose: XcTrainingPurpose::ClimbDurability,
+        duration_seconds_min: Some(9_000),
+        duration_seconds_max: Some(18_000),
+        distance_meters_min: None,
+        distance_meters_max: None,
+        climbing_elevation_gain_meters: Some((goal.target_elevation_gain_meters * 0.25).max(600.0)),
+        intensity: "Z2 on climbs with short tempo pressure only if fresh".to_string(),
+        terrain: "Hilly MTB route or repeated climbs".to_string(),
+        detail: "Useful for climbing durability and making the event elevation feel normal."
+            .to_string(),
+    }
+}
+
+fn suggested_specificity_ride(
+    goal: &XcEventGoal,
+    in_taper_window: bool,
+) -> XcSuggestedRideResponse {
+    if in_taper_window {
+        return suggested_taper_ride();
+    }
+
+    let target_density = climb_density_meters_per_kilometer(
+        Some(goal.target_elevation_gain_meters),
+        Some(goal.target_distance_meters),
+    );
+
+    XcSuggestedRideResponse {
+        purpose: XcTrainingPurpose::TechnicalFatigue,
+        duration_seconds_min: Some(7_200),
+        duration_seconds_max: Some(14_400),
+        distance_meters_min: None,
+        distance_meters_max: None,
+        climbing_elevation_gain_meters: target_density.map(|density| density * 40.0),
+        intensity: "Mostly aerobic with event-like surges".to_string(),
+        terrain: terrain_focus_for_goal(goal),
+        detail: "Useful for matching the event's climbing density and technical fatigue pattern."
+            .to_string(),
+    }
+}
+
+fn suggested_tempo_ride(goal: &XcEventGoal, in_taper_window: bool) -> XcSuggestedRideResponse {
+    if in_taper_window {
+        return suggested_taper_ride();
+    }
+
+    XcSuggestedRideResponse {
+        purpose: XcTrainingPurpose::Tempo,
+        duration_seconds_min: Some(5_400),
+        duration_seconds_max: Some(9_000),
+        distance_meters_min: Some((goal.target_distance_meters * 0.15).min(32_000.0)),
+        distance_meters_max: Some((goal.target_distance_meters * 0.3).min(56_000.0)),
+        climbing_elevation_gain_meters: None,
+        intensity: "Z2 warmup, then 2-3 tempo blocks of 15-25 minutes".to_string(),
+        terrain: "Controlled route where pacing stays steady".to_string(),
+        detail:
+            "Useful for lifting sustainable speed without turning the day into a maximal effort."
+                .to_string(),
+    }
+}
+
+fn suggested_durability_ride(goal: &XcEventGoal, in_taper_window: bool) -> XcSuggestedRideResponse {
+    if in_taper_window {
+        return suggested_taper_ride();
+    }
+
+    XcSuggestedRideResponse {
+        purpose: XcTrainingPurpose::BaseEndurance,
+        duration_seconds_min: Some(10_800),
+        duration_seconds_max: Some(18_000),
+        distance_meters_min: Some((goal.target_distance_meters * 0.25).min(48_000.0)),
+        distance_meters_max: Some((goal.target_distance_meters * 0.45).min(80_000.0)),
+        climbing_elevation_gain_meters: Some(goal.target_elevation_gain_meters * 0.2),
+        intensity: "Strict Z2, steady fueling, no late hero pacing".to_string(),
+        terrain: "Repeatable endurance route with reliable heart-rate data".to_string(),
+        detail: "Useful for reducing decoupling and proving the pace survives the back half."
+            .to_string(),
+    }
+}
+
+fn suggested_recovery_ride() -> XcSuggestedRideResponse {
+    XcSuggestedRideResponse {
+        purpose: XcTrainingPurpose::Recovery,
+        duration_seconds_min: Some(1_800),
+        duration_seconds_max: Some(4_500),
+        distance_meters_min: None,
+        distance_meters_max: None,
+        climbing_elevation_gain_meters: None,
+        intensity: "Z1 to low Z2 only".to_string(),
+        terrain: "Easy route with low consequence and low climbing pressure".to_string(),
+        detail:
+            "Useful for absorbing the current load before chasing another event-specific workout."
+                .to_string(),
+    }
+}
+
+fn suggested_taper_ride() -> XcSuggestedRideResponse {
+    XcSuggestedRideResponse {
+        purpose: XcTrainingPurpose::Recovery,
+        duration_seconds_min: Some(2_700),
+        duration_seconds_max: Some(5_400),
+        distance_meters_min: None,
+        distance_meters_max: None,
+        climbing_elevation_gain_meters: None,
+        intensity: "Easy endurance with a few short openers if fresh".to_string(),
+        terrain: "Familiar route; avoid risky technical fatigue".to_string(),
+        detail: "Useful for preserving freshness now that the event is close.".to_string(),
+    }
+}
+
+fn terrain_focus_for_goal(goal: &XcEventGoal) -> String {
+    match goal.event_profile {
+        Some(XcEventProfile::TechnicalSingletrack) => {
+            "Technical singletrack with punchy climbs and repeated accelerations".to_string()
+        }
+        Some(XcEventProfile::UltraMtb) => {
+            "Long MTB route with self-supported pacing and fueling practice".to_string()
+        }
+        Some(XcEventProfile::XcMarathon) => {
+            "Race-like MTB loop with sustained pedaling and controlled surges".to_string()
+        }
+        Some(XcEventProfile::EnduranceMtb) => {
+            "Endurance MTB terrain with steady climbing and minimal stops".to_string()
+        }
+        Some(XcEventProfile::Custom) | None => {
+            "Route that matches the target event's surface and climb density".to_string()
+        }
+    }
+}
+
+fn overall_readiness_status(gates: &[XcReadinessGateResponse]) -> XcReadinessStatus {
+    if gates
+        .iter()
+        .any(|gate| gate.status == XcReadinessStatus::FallingBehind)
+    {
+        return XcReadinessStatus::FallingBehind;
+    }
+    if gates
+        .iter()
+        .any(|gate| gate.status == XcReadinessStatus::Watch)
+    {
+        return XcReadinessStatus::Watch;
+    }
+    let core_gates = gates
+        .iter()
+        .filter(|gate| gate.key != XcReadinessGateKey::Recovery)
+        .collect::<Vec<_>>();
+
+    if gates.is_empty()
+        || core_gates
+            .iter()
+            .all(|gate| gate.status == XcReadinessStatus::MissingData)
+    {
+        return XcReadinessStatus::MissingData;
+    }
+    if core_gates
+        .iter()
+        .any(|gate| gate.status == XcReadinessStatus::MissingData)
+    {
+        return XcReadinessStatus::Watch;
+    }
+
+    XcReadinessStatus::OnTrack
+}
+
+fn readiness_reason(
+    status: XcReadinessStatus,
+    gates: &[XcReadinessGateResponse],
+    deficits: &[XcTrainingDeficitResponse],
+) -> String {
+    if let Some(deficit) = deficits.first() {
+        return match status {
+            XcReadinessStatus::FallingBehind => {
+                format!("{} is the biggest limiter right now.", deficit.title)
+            }
+            XcReadinessStatus::Watch => {
+                format!(
+                    "{} needs attention before it becomes the limiter.",
+                    deficit.title
+                )
+            }
+            _ => "The key event-specific gates are currently covered.".to_string(),
+        };
+    }
+
+    if gates
+        .iter()
+        .any(|gate| gate.status == XcReadinessStatus::MissingData)
+    {
+        return "Some readiness signals are missing, but the available gates are not alarming."
+            .to_string();
+    }
+
+    "The key event-specific gates are currently covered.".to_string()
+}
+
+fn apply_xc_training_purpose(ride: &mut XcRideProgressResponse, goal: Option<&XcEventGoal>) {
+    let (purpose, detail) = classify_xc_training_purpose(ride, goal);
+    ride.training_purpose = purpose;
+    ride.training_purpose_detail = detail;
+}
+
+fn classify_xc_training_purpose(
+    ride: &XcRideProgressResponse,
+    goal: Option<&XcEventGoal>,
+) -> (XcTrainingPurpose, String) {
+    if ride.activity_type.is_race() {
+        return (
+            XcTrainingPurpose::DataQuality,
+            "Race result is an outcome benchmark, not a training ride.".to_string(),
+        );
+    }
+
+    let moving_time_seconds = ride.moving_time_seconds.unwrap_or_default();
+    let z2_share = if moving_time_seconds > 0 {
+        f64::from(ride.z2_time_seconds) / f64::from(moving_time_seconds)
+    } else {
+        0.0
+    };
+    let climbing_meters = effective_climbing_elevation_gain_meters(ride).unwrap_or_default();
+    let ride_density =
+        climb_density_meters_per_kilometer(Some(climbing_meters), ride.distance_meters);
+    let target_density = goal.and_then(|goal| {
+        climb_density_meters_per_kilometer(
+            Some(goal.target_elevation_gain_meters),
+            Some(goal.target_distance_meters),
+        )
+    });
+    let high_density = match (ride_density, target_density) {
+        (Some(ride_density), Some(target_density)) => ride_density >= target_density * 0.8,
+        (Some(ride_density), None) => ride_density >= 25.0,
+        _ => false,
+    };
+
+    if moving_time_seconds > 0 && moving_time_seconds <= 4_500 && climbing_meters < 250.0 {
+        return (
+            XcTrainingPurpose::Recovery,
+            "Useful for recovery or aerobic maintenance without much event-specific load."
+                .to_string(),
+        );
+    }
+    if high_density || climbing_meters >= 750.0 {
+        return (
+            XcTrainingPurpose::ClimbDurability,
+            "Useful for climbing durability and matching the event's elevation demand.".to_string(),
+        );
+    }
+    if moving_time_seconds >= 10_800 && z2_share >= 0.4 {
+        return (
+            XcTrainingPurpose::BaseEndurance,
+            "Useful for base endurance and long-ride durability.".to_string(),
+        );
+    }
+    if ride
+        .aerobic_decoupling_percent
+        .is_some_and(|value| value > 6.0)
+        && moving_time_seconds >= 7_200
+    {
+        return (
+            XcTrainingPurpose::TechnicalFatigue,
+            "Useful as a fatigue-resistance signal because durability faded late.".to_string(),
+        );
+    }
+    if z2_share < 0.3 && moving_time_seconds >= 3_600 {
+        return (
+            XcTrainingPurpose::Tempo,
+            "Useful for sustainable pressure, tempo, or mixed-intensity race pace.".to_string(),
+        );
+    }
+    if ride.z2_time_seconds == 0 && climbing_meters <= 0.0 {
+        return (
+            XcTrainingPurpose::DataQuality,
+            "Useful mostly as activity history; missing HR/elevation limits training interpretation.".to_string(),
+        );
+    }
+
+    (
+        XcTrainingPurpose::BaseEndurance,
+        "Useful for aerobic consistency and filling the event training block.".to_string(),
+    )
+}
+
+fn weighted_z2_speed_mps<'a>(
+    rides: impl IntoIterator<Item = &'a XcRideProgressResponse>,
+) -> Option<f64> {
+    let mut distance_meters = 0.0;
+    let mut time_seconds = 0;
+
+    for ride in rides {
+        if let Some(distance) = ride.z2_distance_meters {
+            distance_meters += distance;
+            time_seconds += ride.z2_time_seconds.max(0);
+        }
+    }
+
+    (distance_meters > 0.0 && time_seconds > 0).then_some(distance_meters / f64::from(time_seconds))
+}
+
+fn target_finish_speed_mps(distance_meters: f64, target_finish_time_seconds: i32) -> Option<f64> {
+    (distance_meters > 0.0 && target_finish_time_seconds > 0)
+        .then_some(distance_meters / f64::from(target_finish_time_seconds))
+}
+
+fn recommendation_priority_rank(priority: TrainingRecommendationPriority) -> i32 {
+    match priority {
+        TrainingRecommendationPriority::High => 0,
+        TrainingRecommendationPriority::Medium => 1,
+        TrainingRecommendationPriority::Low => 2,
+    }
+}
+
+fn deficit_rank(key: XcTrainingDeficitKey) -> i32 {
+    match key {
+        XcTrainingDeficitKey::Recovery => 0,
+        XcTrainingDeficitKey::EventSpecificity => 1,
+        XcTrainingDeficitKey::FinishPace => 2,
+        XcTrainingDeficitKey::LongRide => 3,
+        XcTrainingDeficitKey::BigClimbDay => 4,
+        XcTrainingDeficitKey::AerobicDurability => 5,
+    }
 }
 
 fn build_xc_race_results(rides: &[XcRideProgressResponse]) -> Vec<XcRaceResultResponse> {
@@ -985,14 +1859,6 @@ fn race_insight(
         "Race result is ready for trend comparison".to_string(),
         "Keep importing race outcomes and comparable endurance rides so the XC page can separate training consistency from event-day demands.".to_string(),
     )
-}
-
-fn goal_activity_reference(ride: &XcRideProgressResponse) -> XcGoalActivityReferenceResponse {
-    XcGoalActivityReferenceResponse {
-        activity_id: ride.activity_id,
-        activity_title: ride.activity_title.clone(),
-        started_at: ride.started_at,
-    }
 }
 
 fn build_dh_goal_progress_response(
@@ -1248,7 +2114,7 @@ fn session_repeat_fade_percent(efforts: &[DhEffortSource]) -> Option<f64> {
 fn build_xc_weekly_progress(
     rides: &[XcRideProgressResponse],
     now: DateTime<Utc>,
-    goal: Option<XcEventGoal>,
+    goal: Option<&XcEventGoal>,
 ) -> Vec<XcWeeklyProgressPointResponse> {
     let history_end = goal.map_or(now.date_naive(), |goal| {
         std::cmp::min(now.date_naive(), goal.target_date)
@@ -1282,6 +2148,10 @@ fn build_xc_weekly_progress(
             .iter()
             .map(|ride| ride.z2_time_seconds)
             .sum::<i32>();
+        let distance_meters = week_rides
+            .iter()
+            .filter_map(|ride| ride.distance_meters)
+            .sum::<f64>();
         let z2_distance_meters = week_rides
             .iter()
             .filter_map(|ride| ride.z2_distance_meters)
@@ -1299,6 +2169,7 @@ fn build_xc_weekly_progress(
             week_start: week_start.format("%Y-%m-%d").to_string(),
             ride_count: week_rides.len() as i32,
             comparable_ride_count,
+            distance_meters: round_metric(distance_meters),
             z2_time_seconds,
             z2_distance_meters: round_metric(z2_distance_meters),
             average_z2_speed_mps: (z2_time_seconds > 0 && z2_distance_meters > 0.0)
@@ -1318,6 +2189,11 @@ fn build_xc_weekly_progress(
                     .filter_map(|ride| ride.aerobic_decoupling_percent),
             )
             .map(round_metric),
+            z1_seconds: week_rides.iter().map(|ride| ride.z1_seconds).sum(),
+            z2_zone_seconds: week_rides.iter().map(|ride| ride.z2_zone_seconds).sum(),
+            z3_seconds: week_rides.iter().map(|ride| ride.z3_seconds).sum(),
+            z4_seconds: week_rides.iter().map(|ride| ride.z4_seconds).sum(),
+            z5_seconds: week_rides.iter().map(|ride| ride.z5_seconds).sum(),
         });
 
         week_start += Duration::days(7);
@@ -1374,12 +2250,12 @@ fn build_xc_recommendations(
     freshness: Option<FitnessFreshnessSnapshot>,
 ) -> Vec<TrainingRecommendationResponse> {
     if rides.is_empty() {
-        return vec![TrainingRecommendationResponse {
-            key: TrainingRecommendationKey::BuildXcBaseline,
-            priority: TrainingRecommendationPriority::High,
-            title: "Build an XC baseline".to_string(),
-            detail: "Complete a steady endurance ride with heart-rate data so the XC screen can start tracking durability and climbing work.".to_string(),
-        }];
+        return vec![basic_training_recommendation(
+            TrainingRecommendationKey::BuildXcBaseline,
+            TrainingRecommendationPriority::High,
+            "Build an XC baseline",
+            "Complete a steady endurance ride with heart-rate data so the XC screen can start tracking durability and climbing work.",
+        )];
     }
 
     let mut recommendations = Vec::new();
@@ -1389,69 +2265,156 @@ fn build_xc_recommendations(
     });
 
     if needs_recovery {
-        recommendations.push(TrainingRecommendationResponse {
-            key: TrainingRecommendationKey::RecoverBeforeNextXcRide,
-            priority: TrainingRecommendationPriority::High,
-            title: "Absorb the current XC load first".to_string(),
-            detail: "Fatigue is outrunning fitness and form is deeply negative, so keep the next ride easy or shorter before adding more endurance volume or climbing demand.".to_string(),
-        });
+        recommendations.push(basic_training_recommendation(
+            TrainingRecommendationKey::RecoverBeforeNextXcRide,
+            TrainingRecommendationPriority::High,
+            "Absorb the current XC load first",
+            "Fatigue is outrunning fitness and form is deeply negative, so keep the next ride easy or shorter before adding more endurance volume or climbing demand.",
+        ));
     }
 
     if recent_comparable_ride_count == 0 {
-        recommendations.push(TrainingRecommendationResponse {
-            key: TrainingRecommendationKey::RepeatComparableEnduranceRide,
-            priority: TrainingRecommendationPriority::High,
-            title: "Repeat a comparable endurance route".to_string(),
-            detail: "A steady XC endurance ride on a repeatable route will unlock stronger durability comparisons and decoupling trend lines.".to_string(),
-        });
+        recommendations.push(basic_training_recommendation(
+            TrainingRecommendationKey::RepeatComparableEnduranceRide,
+            TrainingRecommendationPriority::High,
+            "Repeat a comparable endurance route",
+            "A steady XC endurance ride on a repeatable route will unlock stronger durability comparisons and decoupling trend lines.",
+        ));
     }
     if !needs_recovery
         && recent_decoupling_average
             .is_some_and(|value| value > XC_AEROBIC_DECOUPLING_GOAL_PERCENT + 1.0)
     {
-        recommendations.push(TrainingRecommendationResponse {
-            key: TrainingRecommendationKey::HoldSteadyEndurance,
-            priority: TrainingRecommendationPriority::High,
-            title: "Keep the next endurance ride steadier".to_string(),
-            detail: "Decoupling is still elevated, so prioritize smoother pacing and fueling before pushing volume or intensity.".to_string(),
-        });
+        recommendations.push(basic_training_recommendation(
+            TrainingRecommendationKey::HoldSteadyEndurance,
+            TrainingRecommendationPriority::High,
+            "Keep the next endurance ride steadier",
+            "Decoupling is still elevated, so prioritize smoother pacing and fueling before pushing volume or intensity.",
+        ));
     }
     if !needs_recovery && weekly_z2_average_seconds < XC_WEEKLY_Z2_GOAL_SECONDS {
-        recommendations.push(TrainingRecommendationResponse {
-            key: TrainingRecommendationKey::IncreaseEnduranceVolume,
-            priority: TrainingRecommendationPriority::Medium,
-            title: "Add more weekly Z2 volume".to_string(),
-            detail: "Your recent weekly Z2 average is under the v1 target, so another aerobic endurance ride would move the XC screen forward.".to_string(),
-        });
+        recommendations.push(basic_training_recommendation(
+            TrainingRecommendationKey::IncreaseEnduranceVolume,
+            TrainingRecommendationPriority::Medium,
+            "Add more weekly Z2 volume",
+            "Your recent weekly Z2 average is under the v1 target, so another aerobic endurance ride would move the XC screen forward.",
+        ));
     }
     if !needs_recovery && weekly_climbing_average_meters < XC_WEEKLY_CLIMBING_GOAL_METERS {
-        recommendations.push(TrainingRecommendationResponse {
-            key: TrainingRecommendationKey::AddClimbingEndurance,
-            priority: TrainingRecommendationPriority::Medium,
-            title: "Add more climbing durability".to_string(),
-            detail: "A longer climbing-focused endurance ride would improve the climbing side of the XC progression model.".to_string(),
-        });
+        recommendations.push(basic_training_recommendation(
+            TrainingRecommendationKey::AddClimbingEndurance,
+            TrainingRecommendationPriority::Medium,
+            "Add more climbing durability",
+            "A longer climbing-focused endurance ride would improve the climbing side of the XC progression model.",
+        ));
     }
     if recommendations.is_empty() {
         if ready_for_quality && recent_comparable_ride_count > 0 {
-            recommendations.push(TrainingRecommendationResponse {
-                key: TrainingRecommendationKey::UsePositiveFormForXcBenchmark,
-                priority: TrainingRecommendationPriority::Low,
-                title: "Use the good form for a benchmark XC ride".to_string(),
-                detail: "Fitness is established, fatigue is under control, and form is positive, so this is a strong window for a longer comparable endurance or climbing benchmark ride.".to_string(),
-            });
+            recommendations.push(basic_training_recommendation(
+                TrainingRecommendationKey::UsePositiveFormForXcBenchmark,
+                TrainingRecommendationPriority::Low,
+                "Use the good form for a benchmark XC ride",
+                "Fitness is established, fatigue is under control, and form is positive, so this is a strong window for a longer comparable endurance or climbing benchmark ride.",
+            ));
         } else {
-            recommendations.push(TrainingRecommendationResponse {
-                key: TrainingRecommendationKey::MaintainEnduranceRhythm,
-                priority: TrainingRecommendationPriority::Low,
-                title: "Maintain the current XC rhythm".to_string(),
-                detail: "Your recent endurance volume and durability are tracking well, so keep stacking comparable rides for cleaner trend lines.".to_string(),
-            });
+            recommendations.push(basic_training_recommendation(
+                TrainingRecommendationKey::MaintainEnduranceRhythm,
+                TrainingRecommendationPriority::Low,
+                "Maintain the current XC rhythm",
+                "Your recent endurance volume and durability are tracking well, so keep stacking comparable rides for cleaner trend lines.",
+            ));
         }
     }
 
     recommendations.truncate(3);
     recommendations
+}
+
+fn build_xc_event_recommendations(
+    deficits: &[XcTrainingDeficitResponse],
+    rides: &[XcRideProgressResponse],
+    recent_comparable_ride_count: usize,
+    weekly_z2_average_seconds: f64,
+    weekly_climbing_average_meters: f64,
+    recent_decoupling_average: Option<f64>,
+    freshness: Option<FitnessFreshnessSnapshot>,
+) -> Vec<TrainingRecommendationResponse> {
+    if !deficits.is_empty() {
+        return deficits
+            .iter()
+            .take(3)
+            .map(recommendation_from_deficit)
+            .collect();
+    }
+
+    build_xc_recommendations(
+        rides,
+        recent_comparable_ride_count,
+        weekly_z2_average_seconds,
+        weekly_climbing_average_meters,
+        recent_decoupling_average,
+        freshness,
+    )
+}
+
+fn recommendation_from_deficit(
+    deficit: &XcTrainingDeficitResponse,
+) -> TrainingRecommendationResponse {
+    TrainingRecommendationResponse {
+        key: recommendation_key_for_deficit(deficit.key),
+        priority: deficit.priority,
+        title: next_ride_title_for_deficit(deficit.key).to_string(),
+        detail: deficit.detail.clone(),
+        purpose: Some(deficit.suggested_ride.purpose),
+        limiter: Some(deficit.title.clone()),
+        gap_value: deficit.gap_value,
+        gap_unit: deficit.gap_unit,
+        suggested_ride: Some(deficit.suggested_ride.clone()),
+    }
+}
+
+fn recommendation_key_for_deficit(key: XcTrainingDeficitKey) -> TrainingRecommendationKey {
+    match key {
+        XcTrainingDeficitKey::Recovery => TrainingRecommendationKey::RecoverBeforeNextXcRide,
+        XcTrainingDeficitKey::BigClimbDay | XcTrainingDeficitKey::EventSpecificity => {
+            TrainingRecommendationKey::AddClimbingEndurance
+        }
+        XcTrainingDeficitKey::AerobicDurability => TrainingRecommendationKey::HoldSteadyEndurance,
+        XcTrainingDeficitKey::FinishPace => {
+            TrainingRecommendationKey::UsePositiveFormForXcBenchmark
+        }
+        XcTrainingDeficitKey::LongRide => TrainingRecommendationKey::IncreaseEnduranceVolume,
+    }
+}
+
+fn next_ride_title_for_deficit(key: XcTrainingDeficitKey) -> &'static str {
+    match key {
+        XcTrainingDeficitKey::Recovery => "Make the next ride recovery-first",
+        XcTrainingDeficitKey::BigClimbDay => "Schedule a bigger climbing day",
+        XcTrainingDeficitKey::EventSpecificity => "Choose a more event-like route",
+        XcTrainingDeficitKey::FinishPace => "Add controlled tempo pressure",
+        XcTrainingDeficitKey::AerobicDurability => "Repeat a steadier endurance route",
+        XcTrainingDeficitKey::LongRide => "Extend the next long ride",
+    }
+}
+
+fn basic_training_recommendation(
+    key: TrainingRecommendationKey,
+    priority: TrainingRecommendationPriority,
+    title: &str,
+    detail: &str,
+) -> TrainingRecommendationResponse {
+    TrainingRecommendationResponse {
+        key,
+        priority,
+        title: title.to_string(),
+        detail: detail.to_string(),
+        purpose: None,
+        limiter: None,
+        gap_value: None,
+        gap_unit: None,
+        suggested_ride: None,
+    }
 }
 
 fn build_dh_recommendations(
@@ -1463,20 +2426,20 @@ fn build_dh_recommendations(
     freshness: Option<FitnessFreshnessSnapshot>,
 ) -> Vec<TrainingRecommendationResponse> {
     if segment_count == 0 {
-        return vec![TrainingRecommendationResponse {
-            key: TrainingRecommendationKey::MarkDhSegments,
-            priority: TrainingRecommendationPriority::High,
-            title: "Mark a few segments as DH".to_string(),
-            detail: "DH progress stays opt-in, so mark your core downhill laps first and the screen can start tracking PRs, top-3 averages, and repeat fade.".to_string(),
-        }];
+        return vec![basic_training_recommendation(
+            TrainingRecommendationKey::MarkDhSegments,
+            TrainingRecommendationPriority::High,
+            "Mark a few segments as DH",
+            "DH progress stays opt-in, so mark your core downhill laps first and the screen can start tracking PRs, top-3 averages, and repeat fade.",
+        )];
     }
     if session_count == 0 {
-        return vec![TrainingRecommendationResponse {
-            key: TrainingRecommendationKey::AddDhRepeats,
-            priority: TrainingRecommendationPriority::High,
-            title: "Do repeat laps on a marked DH segment".to_string(),
-            detail: "A few repeated downhill laps in the same session will unlock the first usable DH session and repeatability stats.".to_string(),
-        }];
+        return vec![basic_training_recommendation(
+            TrainingRecommendationKey::AddDhRepeats,
+            TrainingRecommendationPriority::High,
+            "Do repeat laps on a marked DH segment",
+            "A few repeated downhill laps in the same session will unlock the first usable DH session and repeatability stats.",
+        )];
     }
 
     let mut recommendations = Vec::new();
@@ -1486,56 +2449,56 @@ fn build_dh_recommendations(
     });
 
     if needs_recovery {
-        recommendations.push(TrainingRecommendationResponse {
-            key: TrainingRecommendationKey::RecoverBeforeNextDhSession,
-            priority: TrainingRecommendationPriority::High,
-            title: "Recover before the next DH session".to_string(),
-            detail: "Fatigue is running ahead of fitness and form is negative, so keep the next downhill day shorter or technique-focused before adding more repeat laps.".to_string(),
-        });
+        recommendations.push(basic_training_recommendation(
+            TrainingRecommendationKey::RecoverBeforeNextDhSession,
+            TrainingRecommendationPriority::High,
+            "Recover before the next DH session",
+            "Fatigue is running ahead of fitness and form is negative, so keep the next downhill day shorter or technique-focused before adding more repeat laps.",
+        ));
     }
 
     if !needs_recovery && average_efforts_per_session.unwrap_or_default() < DH_LAPS_PER_SESSION_GOAL
     {
-        recommendations.push(TrainingRecommendationResponse {
-            key: TrainingRecommendationKey::AddDhRepeats,
-            priority: TrainingRecommendationPriority::Medium,
-            title: "Add more DH repeats per session".to_string(),
-            detail: "The DH screen gets stronger with three or more laps per session because that makes repeat fade and rolling averages more meaningful.".to_string(),
-        });
+        recommendations.push(basic_training_recommendation(
+            TrainingRecommendationKey::AddDhRepeats,
+            TrainingRecommendationPriority::Medium,
+            "Add more DH repeats per session",
+            "The DH screen gets stronger with three or more laps per session because that makes repeat fade and rolling averages more meaningful.",
+        ));
     }
     if !needs_recovery
         && average_repeat_fade_percent.unwrap_or_default() > DH_REPEAT_FADE_GOAL_PERCENT
     {
-        recommendations.push(TrainingRecommendationResponse {
-            key: TrainingRecommendationKey::ReduceDhFade,
-            priority: TrainingRecommendationPriority::High,
-            title: "Reduce repeat fade".to_string(),
-            detail: "Later laps are slowing down more than the v1 target, so recover a bit more between runs or cap session length before technique falls off.".to_string(),
-        });
+        recommendations.push(basic_training_recommendation(
+            TrainingRecommendationKey::ReduceDhFade,
+            TrainingRecommendationPriority::High,
+            "Reduce repeat fade",
+            "Later laps are slowing down more than the v1 target, so recover a bit more between runs or cap session length before technique falls off.",
+        ));
     }
     if !needs_recovery && average_top_3_gap_percent.unwrap_or_default() > DH_TOP3_GAP_GOAL_PERCENT {
-        recommendations.push(TrainingRecommendationResponse {
-            key: TrainingRecommendationKey::ChaseDhConsistency,
-            priority: TrainingRecommendationPriority::Medium,
-            title: "Bring the rolling top-3 closer to your PR".to_string(),
-            detail: "Your recent downhill benchmark is still a few percent off the PR pace, so focus on consistent fast laps before chasing one-off hero runs.".to_string(),
-        });
+        recommendations.push(basic_training_recommendation(
+            TrainingRecommendationKey::ChaseDhConsistency,
+            TrainingRecommendationPriority::Medium,
+            "Bring the rolling top-3 closer to your PR",
+            "Your recent downhill benchmark is still a few percent off the PR pace, so focus on consistent fast laps before chasing one-off hero runs.",
+        ));
     }
     if recommendations.is_empty() {
         if ready_for_quality {
-            recommendations.push(TrainingRecommendationResponse {
-                key: TrainingRecommendationKey::UsePositiveFormForDhBenchmark,
-                priority: TrainingRecommendationPriority::Low,
-                title: "Use the positive form for a fast DH day".to_string(),
-                detail: "Fitness is established, fatigue is under control, and form is positive, so this is a strong window for a sharper repeat-lap session on your marked DH segments.".to_string(),
-            });
+            recommendations.push(basic_training_recommendation(
+                TrainingRecommendationKey::UsePositiveFormForDhBenchmark,
+                TrainingRecommendationPriority::Low,
+                "Use the positive form for a fast DH day",
+                "Fitness is established, fatigue is under control, and form is positive, so this is a strong window for a sharper repeat-lap session on your marked DH segments.",
+            ));
         } else {
-            recommendations.push(TrainingRecommendationResponse {
-                key: TrainingRecommendationKey::MaintainDhMomentum,
-                priority: TrainingRecommendationPriority::Low,
-                title: "Maintain downhill momentum".to_string(),
-                detail: "Repeatability, recent top-3 pace, and lap count are all in a healthy place, so keep feeding the DH history with more marked sessions.".to_string(),
-            });
+            recommendations.push(basic_training_recommendation(
+                TrainingRecommendationKey::MaintainDhMomentum,
+                TrainingRecommendationPriority::Low,
+                "Maintain downhill momentum",
+                "Repeatability, recent top-3 pace, and lap count are all in a healthy place, so keep feeding the DH history with more marked sessions.",
+            ));
         }
     }
 
@@ -1651,6 +2614,13 @@ mod tests {
             climbing_time_seconds: 1_200,
             climbing_elevation_gain_meters,
             aerobic_decoupling_percent,
+            z1_seconds: 900,
+            z2_zone_seconds: z2_time_seconds,
+            z3_seconds: 300,
+            z4_seconds: 0,
+            z5_seconds: 0,
+            training_purpose: XcTrainingPurpose::DataQuality,
+            training_purpose_detail: "Test fixture".to_string(),
         }
     }
 
@@ -1748,6 +2718,9 @@ mod tests {
             .weekly_progress
             .last()
             .expect("weekly point present");
+        assert_eq!(latest_week.distance_meters, 32_000.0);
+        assert_eq!(latest_week.z2_zone_seconds, 7_200);
+        assert_eq!(latest_week.z3_seconds, 300);
         assert_eq!(latest_week.average_z2_speed_mps, Some(3.2));
         assert_eq!(
             latest_week.climbing_vertical_rate_meters_per_hour,
@@ -1838,10 +2811,22 @@ mod tests {
                 target_date: NaiveDate::from_ymd_opt(2026, 9, 20).unwrap(),
                 target_distance_meters: 160_934.4,
                 target_elevation_gain_meters: 3_962.4,
+                event_name: Some("Marji Gesick".to_string()),
+                target_finish_time_seconds: Some(43_200),
+                event_profile: Some(XcEventProfile::TechnicalSingletrack),
             }),
             None,
             now,
         );
+
+        let readiness = response.readiness.as_ref().expect("readiness present");
+        let gate_keys = readiness
+            .gates
+            .iter()
+            .map(|gate| gate.key)
+            .collect::<Vec<_>>();
+        assert!(gate_keys.contains(&XcReadinessGateKey::LongRideDistance));
+        assert!(gate_keys.contains(&XcReadinessGateKey::BigClimbDay));
 
         let event_goal = response.event_goal.expect("event goal present");
         assert_eq!(event_goal.start_date, "2026-04-01");
@@ -1850,20 +2835,7 @@ mod tests {
         assert_eq!(event_goal.training_window_days, 173);
         assert_eq!(event_goal.counted_ride_count, 2);
         assert_eq!(event_goal.counted_distance_meters, 152_000.0);
-        assert_eq!(event_goal.counted_distance_progress_percent, 94.4);
         assert_eq!(event_goal.counted_elevation_gain_meters, 4_600.0);
-        assert_eq!(event_goal.counted_elevation_gain_progress_percent, 100.0);
-        assert_eq!(event_goal.best_distance_meters, Some(120_000.0));
-        assert_eq!(event_goal.best_distance_progress_percent, Some(74.6));
-        assert_eq!(event_goal.best_elevation_gain_meters, Some(2_700.0));
-        assert_eq!(event_goal.best_elevation_gain_progress_percent, Some(68.1));
-        assert_eq!(
-            event_goal
-                .best_distance_activity
-                .as_ref()
-                .map(|activity| activity.activity_id),
-            Some(2)
-        );
     }
 
     #[test]
@@ -1919,6 +2891,9 @@ mod tests {
                 target_date: NaiveDate::from_ymd_opt(2026, 9, 20).unwrap(),
                 target_distance_meters: 160_934.4,
                 target_elevation_gain_meters: 3_962.4,
+                event_name: Some("Marji Gesick".to_string()),
+                target_finish_time_seconds: Some(43_200),
+                event_profile: Some(XcEventProfile::TechnicalSingletrack),
             }),
             None,
             now,

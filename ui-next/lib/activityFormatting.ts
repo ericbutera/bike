@@ -9,6 +9,12 @@ export const FEET_PER_METER = 3.28084;
 const MPH_PER_MPS = 2.236936;
 const KPH_PER_MPS = 3.6;
 
+function formatRoundedInteger(value: number) {
+  return new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: 0,
+  }).format(Math.round(value));
+}
+
 export function normalizeUnitSystem(value?: string | null): UnitSystem {
   return value === "metric" || value === "imperial" || value === "mixed"
     ? value
@@ -71,10 +77,10 @@ export function formatElevation(
   }
 
   if (unitSystem === "imperial") {
-    return `${Math.round(value * FEET_PER_METER)} ft`;
+    return `${formatRoundedInteger(value * FEET_PER_METER)} ft`;
   }
 
-  return `${Math.round(value)} m`;
+  return `${formatRoundedInteger(value)} m`;
 }
 
 export function formatSpeed(

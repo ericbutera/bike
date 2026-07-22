@@ -189,10 +189,13 @@ export type UserPreferences = {
   unit_system: string;
   estimated_ftp_watts?: number | null;
   heart_rate_zone_bounds_bpm?: number[] | null;
+  xc_goal_event_name?: string | null;
   xc_goal_start_date?: string | null;
   xc_goal_target_date?: string | null;
   xc_goal_target_distance_meters?: number | null;
   xc_goal_target_elevation_gain_meters?: number | null;
+  xc_goal_target_finish_time_seconds?: number | null;
+  xc_goal_event_profile?: XcEventProfile | null;
   xc_goal_backfill_status?: string | null;
   xc_goal_backfill_completed_at?: string | null;
 };
@@ -274,7 +277,14 @@ export type TrainingGoalKey =
   | "dh_repeat_fade"
   | "dh_rolling_top3_gap";
 
-export type TrainingMetricUnit = "seconds" | "meters" | "percent" | "count";
+export type TrainingMetricUnit =
+  | "seconds"
+  | "meters"
+  | "percent"
+  | "count"
+  | "meters_per_second"
+  | "meters_per_kilometer"
+  | "meters_per_hour";
 
 export type TrainingGoalDirection = "at_least" | "at_most";
 
@@ -297,6 +307,57 @@ export type TrainingRecommendationKey =
 
 export type TrainingRecommendationPriority = "high" | "medium" | "low";
 
+export type XcEventProfile =
+  | "xc_marathon"
+  | "technical_singletrack"
+  | "endurance_mtb"
+  | "ultra_mtb"
+  | "custom";
+
+export type XcReadinessStatus =
+  | "on_track"
+  | "watch"
+  | "falling_behind"
+  | "missing_data";
+
+export type XcReadinessGateKey =
+  | "long_ride_distance"
+  | "big_climb_day"
+  | "climb_density"
+  | "target_finish_pace"
+  | "aerobic_decoupling"
+  | "recovery";
+
+export type XcTrainingDeficitKey =
+  | "long_ride"
+  | "big_climb_day"
+  | "event_specificity"
+  | "finish_pace"
+  | "aerobic_durability"
+  | "recovery";
+
+export type XcTrainingPurpose =
+  | "base_endurance"
+  | "climb_durability"
+  | "tempo"
+  | "threshold"
+  | "punch_vo2"
+  | "technical_fatigue"
+  | "recovery"
+  | "data_quality";
+
+export type XcSuggestedRide = {
+  purpose: XcTrainingPurpose;
+  duration_seconds_min?: number | null;
+  duration_seconds_max?: number | null;
+  distance_meters_min?: number | null;
+  distance_meters_max?: number | null;
+  climbing_elevation_gain_meters?: number | null;
+  intensity: string;
+  terrain: string;
+  detail: string;
+};
+
 export type TrainingGoalMetric = {
   key: TrainingGoalKey;
   label: string;
@@ -312,6 +373,11 @@ export type TrainingRecommendation = {
   priority: TrainingRecommendationPriority;
   title: string;
   detail: string;
+  purpose?: XcTrainingPurpose | null;
+  limiter?: string | null;
+  gap_value?: number | null;
+  gap_unit?: TrainingMetricUnit | null;
+  suggested_ride?: XcSuggestedRide | null;
 };
 
 export type XcProgressSummary = {
@@ -340,6 +406,13 @@ export type XcRideProgress = {
   climbing_time_seconds: number;
   climbing_elevation_gain_meters?: number | null;
   aerobic_decoupling_percent?: number | null;
+  z1_seconds: number;
+  z2_zone_seconds: number;
+  z3_seconds: number;
+  z4_seconds: number;
+  z5_seconds: number;
+  training_purpose: XcTrainingPurpose;
+  training_purpose_detail: string;
 };
 
 export type XcRaceResult = {
@@ -370,6 +443,7 @@ export type XcWeeklyProgressPoint = {
   week_start: string;
   ride_count: number;
   comparable_ride_count: number;
+  distance_meters: number;
   z2_time_seconds: number;
   z2_distance_meters: number;
   average_z2_speed_mps?: number | null;
@@ -377,37 +451,66 @@ export type XcWeeklyProgressPoint = {
   climbing_elevation_gain_meters: number;
   climbing_vertical_rate_meters_per_hour?: number | null;
   average_aerobic_decoupling_percent?: number | null;
-};
-
-export type XcGoalActivityReference = {
-  activity_id: number;
-  activity_title: string;
-  started_at: string;
+  z1_seconds: number;
+  z2_zone_seconds: number;
+  z3_seconds: number;
+  z4_seconds: number;
+  z5_seconds: number;
 };
 
 export type XcEventGoal = {
+  event_name?: string | null;
+  event_profile?: XcEventProfile | null;
   start_date: string;
   target_date: string;
   days_remaining: number;
   target_distance_meters: number;
   target_elevation_gain_meters: number;
+  target_finish_time_seconds?: number | null;
+  target_finish_speed_mps?: number | null;
+  target_climb_density_meters_per_kilometer: number;
   training_window_days: number;
   counted_ride_count: number;
   counted_distance_meters: number;
-  counted_distance_progress_percent: number;
   counted_elevation_gain_meters: number;
-  counted_elevation_gain_progress_percent: number;
-  best_distance_meters?: number | null;
-  best_distance_progress_percent?: number | null;
-  best_distance_activity?: XcGoalActivityReference | null;
-  best_elevation_gain_meters?: number | null;
-  best_elevation_gain_progress_percent?: number | null;
-  best_elevation_activity?: XcGoalActivityReference | null;
+};
+
+export type XcReadinessGate = {
+  key: XcReadinessGateKey;
+  label: string;
+  status: XcReadinessStatus;
+  unit: TrainingMetricUnit;
+  direction: TrainingGoalDirection;
+  current_value?: number | null;
+  target_value?: number | null;
+  gap_value?: number | null;
+  progress_percent?: number | null;
+  detail: string;
+};
+
+export type XcReadinessSummary = {
+  status: XcReadinessStatus;
+  title: string;
+  reason: string;
+  missing_most?: string | null;
+  gates: XcReadinessGate[];
+};
+
+export type XcTrainingDeficit = {
+  key: XcTrainingDeficitKey;
+  priority: TrainingRecommendationPriority;
+  title: string;
+  detail: string;
+  gap_value?: number | null;
+  gap_unit?: TrainingMetricUnit | null;
+  suggested_ride: XcSuggestedRide;
 };
 
 export type XcGoalProgress = {
   generated_at: string;
   event_goal?: XcEventGoal | null;
+  readiness?: XcReadinessSummary | null;
+  deficits: XcTrainingDeficit[];
   summary: XcProgressSummary;
   race_results: XcRaceResult[];
   goals: TrainingGoalMetric[];
@@ -1398,10 +1501,13 @@ export function useUserPreferences(opts?: {
       unit_system: "mixed",
       estimated_ftp_watts: null,
       heart_rate_zone_bounds_bpm: null,
+      xc_goal_event_name: null,
       xc_goal_start_date: null,
       xc_goal_target_date: null,
       xc_goal_target_distance_meters: null,
       xc_goal_target_elevation_gain_meters: null,
+      xc_goal_target_finish_time_seconds: null,
+      xc_goal_event_profile: null,
       xc_goal_backfill_status: null,
       xc_goal_backfill_completed_at: null,
     }) as UserPreferences,
