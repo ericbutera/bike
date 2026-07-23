@@ -17,6 +17,10 @@ use utoipa::ToSchema;
 
 const DEFAULT_UNIT_SYSTEM: &str = "imperial";
 const XC_GOAL_EVENT_NAME_MAX_LENGTH: usize = 120;
+const METERS_PER_MILE: f64 = 1609.344;
+const METERS_PER_FOOT: f64 = 0.3048;
+const XC_GOAL_TARGET_DISTANCE_MAX_METERS: f64 = 500.0 * METERS_PER_MILE;
+const XC_GOAL_TARGET_ELEVATION_GAIN_MAX_METERS: f64 = 25_000.0 * METERS_PER_FOOT;
 const XC_GOAL_EVENT_PROFILES: &[&str] = &[
     "xc_marathon",
     "technical_singletrack",
@@ -255,11 +259,17 @@ fn validate_xc_goal(
         .filter(|value| !value.is_empty())
         .map(|value| parse_goal_date("xc_goal_target_date", "XC goal target date", value))
         .transpose()?;
-    let target_distance_meters =
-        validate_positive_metric("xc_goal_target_distance_meters", target_distance_meters)?;
-    let target_elevation_gain_meters = validate_positive_metric(
+    let target_distance_meters = validate_metric_range(
+        "xc_goal_target_distance_meters",
+        target_distance_meters,
+        XC_GOAL_TARGET_DISTANCE_MAX_METERS,
+        "XC goal target distance must be 500 miles or less",
+    )?;
+    let target_elevation_gain_meters = validate_metric_range(
         "xc_goal_target_elevation_gain_meters",
         target_elevation_gain_meters,
+        XC_GOAL_TARGET_ELEVATION_GAIN_MAX_METERS,
+        "XC goal climbing target must be 25,000 feet or less",
     )?;
     let event_name = validate_optional_event_name(event_name)?;
     let target_finish_time_seconds =
@@ -353,12 +363,18 @@ fn validate_event_profile(value: Option<&str>) -> Result<Option<String>, AppErro
     Ok(Some(normalized))
 }
 
-fn validate_positive_metric(field: &str, value: Option<f64>) -> Result<Option<f64>, AppError> {
+fn validate_metric_range(
+    field: &str,
+    value: Option<f64>,
+    max_value: f64,
+    max_message: &str,
+) -> Result<Option<f64>, AppError> {
     match value {
         Some(next) if !next.is_finite() || next <= 0.0 => Err(AppError::validation_field(
             field,
             "Value must be greater than zero",
         )),
+        Some(next) if next > max_value => Err(AppError::validation_field(field, max_message)),
         _ => Ok(value),
     }
 }
@@ -499,6 +515,46 @@ mod tests {
         assert_eq!(
             error.message,
             "XC goal start date must be on or before the target date"
+        );
+    }
+
+    #[test]
+    fn validate_xc_goal_rejects_target_distance_above_guardrail() {
+        let error = validate_xc_goal(
+            Some("2026-06-01"),
+            Some("2026-09-20"),
+            Some(XC_GOAL_TARGET_DISTANCE_MAX_METERS + 1.0),
+            Some(1_000.0),
+            None,
+            None,
+            None,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            error.message,
+            "XC goal target distance must be 500 miles or less"
+        );
+    }
+
+    #[test]
+    fn validate_xc_goal_rejects_target_climbing_above_guardrail() {
+        let error = validate_xc_goal(
+            Some("2026-06-01"),
+            Some("2026-09-20"),
+            Some(160_934.4),
+            Some(130_000.0 * METERS_PER_FOOT),
+            None,
+            None,
+            None,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            error.message,
+            "XC goal climbing target must be 25,000 feet or less"
         );
     }
 

@@ -30,6 +30,7 @@ const XC_WEEKLY_CLIMBING_GOAL_METERS: f64 = 1_500.0;
 const XC_AEROBIC_DECOUPLING_GOAL_PERCENT: f64 = 5.0;
 const XC_LONG_RIDE_TARGET_RATIO: f64 = 0.65;
 const XC_BIG_CLIMB_DAY_TARGET_RATIO: f64 = 0.45;
+const XC_EVENT_TARGET_ELEVATION_GAIN_MAX_METERS: f64 = 25_000.0 * 0.3048;
 const XC_CLIMB_DENSITY_READY_RATIO: f64 = 0.8;
 const XC_CLIMB_DENSITY_WATCH_RATIO: f64 = 0.6;
 const XC_FINISH_SPEED_READY_RATIO: f64 = 1.05;
@@ -1052,8 +1053,9 @@ fn build_xc_readiness(
         Some(counted_climbing_meters),
         Some(counted_distance_meters),
     );
+    let readiness_target_elevation_gain_meters = readiness_goal_elevation_gain_meters(goal);
     let target_climb_density = climb_density_meters_per_kilometer(
-        Some(goal.target_elevation_gain_meters),
+        Some(readiness_target_elevation_gain_meters),
         Some(goal.target_distance_meters),
     );
     let target_finish_speed = goal
@@ -1081,7 +1083,7 @@ fn build_xc_readiness(
             XcReadinessGateKey::BigClimbDay,
             "Recent climb day",
             best_climbing_meters,
-            goal.target_elevation_gain_meters * XC_BIG_CLIMB_DAY_TARGET_RATIO,
+            big_climb_day_target_meters(goal),
             TrainingMetricUnit::Meters,
             1.0,
             0.75,
@@ -1376,7 +1378,7 @@ fn suggested_long_ride(goal: &XcEventGoal, in_taper_window: bool) -> XcSuggested
         duration_seconds_max: Some(25_200),
         distance_meters_min: Some(goal.target_distance_meters * 0.4),
         distance_meters_max: Some(goal.target_distance_meters * XC_LONG_RIDE_TARGET_RATIO),
-        climbing_elevation_gain_meters: Some(goal.target_elevation_gain_meters * 0.3),
+        climbing_elevation_gain_meters: Some(readiness_goal_elevation_gain_meters(goal) * 0.3),
         intensity: "Z2 with a conservative finish".to_string(),
         terrain: "MTB route that resembles the event surface where possible".to_string(),
         detail: "Useful for long-ride durability, fueling practice, and confidence at event scale."
@@ -1395,7 +1397,9 @@ fn suggested_climbing_ride(goal: &XcEventGoal, in_taper_window: bool) -> XcSugge
         duration_seconds_max: Some(18_000),
         distance_meters_min: None,
         distance_meters_max: None,
-        climbing_elevation_gain_meters: Some((goal.target_elevation_gain_meters * 0.25).max(600.0)),
+        climbing_elevation_gain_meters: Some(
+            (readiness_goal_elevation_gain_meters(goal) * 0.25).max(600.0),
+        ),
         intensity: "Z2 on climbs with short tempo pressure only if fresh".to_string(),
         terrain: "Hilly MTB route or repeated climbs".to_string(),
         detail: "Useful for climbing durability and making the event elevation feel normal."
@@ -1412,7 +1416,7 @@ fn suggested_specificity_ride(
     }
 
     let target_density = climb_density_meters_per_kilometer(
-        Some(goal.target_elevation_gain_meters),
+        Some(readiness_goal_elevation_gain_meters(goal)),
         Some(goal.target_distance_meters),
     );
 
@@ -1461,7 +1465,7 @@ fn suggested_durability_ride(goal: &XcEventGoal, in_taper_window: bool) -> XcSug
         duration_seconds_max: Some(18_000),
         distance_meters_min: Some((goal.target_distance_meters * 0.25).min(48_000.0)),
         distance_meters_max: Some((goal.target_distance_meters * 0.45).min(80_000.0)),
-        climbing_elevation_gain_meters: Some(goal.target_elevation_gain_meters * 0.2),
+        climbing_elevation_gain_meters: Some(readiness_goal_elevation_gain_meters(goal) * 0.2),
         intensity: "Strict Z2, steady fueling, no late hero pacing".to_string(),
         terrain: "Repeatable endurance route with reliable heart-rate data".to_string(),
         detail: "Useful for reducing decoupling and proving the pace survives the back half."
@@ -1613,7 +1617,7 @@ fn classify_xc_training_purpose(
         climb_density_meters_per_kilometer(Some(climbing_meters), ride.distance_meters);
     let target_density = goal.and_then(|goal| {
         climb_density_meters_per_kilometer(
-            Some(goal.target_elevation_gain_meters),
+            Some(readiness_goal_elevation_gain_meters(goal)),
             Some(goal.target_distance_meters),
         )
     });
@@ -1690,6 +1694,15 @@ fn weighted_z2_speed_mps<'a>(
 fn target_finish_speed_mps(distance_meters: f64, target_finish_time_seconds: i32) -> Option<f64> {
     (distance_meters > 0.0 && target_finish_time_seconds > 0)
         .then_some(distance_meters / f64::from(target_finish_time_seconds))
+}
+
+fn readiness_goal_elevation_gain_meters(goal: &XcEventGoal) -> f64 {
+    goal.target_elevation_gain_meters
+        .min(XC_EVENT_TARGET_ELEVATION_GAIN_MAX_METERS)
+}
+
+fn big_climb_day_target_meters(goal: &XcEventGoal) -> f64 {
+    readiness_goal_elevation_gain_meters(goal) * XC_BIG_CLIMB_DAY_TARGET_RATIO
 }
 
 fn recommendation_priority_rank(priority: TrainingRecommendationPriority) -> i32 {
@@ -2915,6 +2928,70 @@ mod tests {
             Some("2026-01-26")
         );
         assert!(response.weekly_progress.len() > XC_WEEKLY_PROGRESS_WEEKS as usize);
+    }
+
+    #[test]
+    fn xc_readiness_caps_typoed_climbing_target_for_benchmarks() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-05-21T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let response = build_xc_goal_progress_response(
+            vec![XcRideProgressResponse {
+                distance_meters: Some(64_000.0),
+                elevation_gain_meters: Some(1_945.0),
+                ..build_xc_ride(
+                    1,
+                    chrono::DateTime::parse_from_rfc3339("2026-05-18T12:00:00Z")
+                        .unwrap()
+                        .with_timezone(&Utc),
+                    ActivityRideFocus::XcEndurance,
+                    7_200,
+                    Some(1_945.0),
+                    Some(4.2),
+                )
+            }],
+            Some(XcEventGoal {
+                start_date: NaiveDate::from_ymd_opt(2026, 3, 1).unwrap(),
+                target_date: NaiveDate::from_ymd_opt(2026, 9, 20).unwrap(),
+                target_distance_meters: 110.0 * 1609.344,
+                target_elevation_gain_meters: 130_000.0 * 0.3048,
+                event_name: Some("Typoed climbing target".to_string()),
+                target_finish_time_seconds: Some(41_250),
+                event_profile: Some(XcEventProfile::UltraMtb),
+            }),
+            None,
+            now,
+        );
+
+        let readiness = response.readiness.as_ref().expect("readiness present");
+        let climb_day = readiness
+            .gates
+            .iter()
+            .find(|gate| gate.key == XcReadinessGateKey::BigClimbDay)
+            .expect("climb day gate present");
+        assert_eq!(
+            climb_day.target_value,
+            Some(round_metric(
+                XC_EVENT_TARGET_ELEVATION_GAIN_MAX_METERS * XC_BIG_CLIMB_DAY_TARGET_RATIO
+            ))
+        );
+
+        let climb_density = readiness
+            .gates
+            .iter()
+            .find(|gate| gate.key == XcReadinessGateKey::ClimbDensity)
+            .expect("climb density gate present");
+        assert_eq!(climb_density.target_value, Some(34.4));
+
+        let climb_deficit = response
+            .deficits
+            .iter()
+            .find(|deficit| deficit.key == XcTrainingDeficitKey::BigClimbDay)
+            .expect("big climb deficit present");
+        assert_eq!(
+            climb_deficit.suggested_ride.climbing_elevation_gain_meters,
+            Some(XC_EVENT_TARGET_ELEVATION_GAIN_MAX_METERS * 0.25)
+        );
     }
 
     #[test]

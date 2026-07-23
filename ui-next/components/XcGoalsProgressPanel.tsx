@@ -60,6 +60,14 @@ const ZONE_COLORS = {
 };
 const METERS_PER_MILE = 1609.344;
 const FEET_PER_METER = 3.28084;
+const XC_GOAL_DISTANCE_MAX_MILES = 500;
+const XC_GOAL_DISTANCE_MAX_METERS =
+  XC_GOAL_DISTANCE_MAX_MILES * METERS_PER_MILE;
+const XC_GOAL_DISTANCE_MAX_KILOMETERS =
+  XC_GOAL_DISTANCE_MAX_METERS / 1000;
+const XC_GOAL_ELEVATION_MAX_FEET = 25000;
+const XC_GOAL_ELEVATION_MAX_METERS =
+  XC_GOAL_ELEVATION_MAX_FEET / FEET_PER_METER;
 const RIDE_BENCHMARK_PAGE_SIZE = 5;
 
 type GoalDistanceUnit = "mi" | "km";
@@ -2206,20 +2214,33 @@ export default function XcGoalsProgressPanel() {
       return;
     }
 
+    const targetDistanceMeters = distanceToMeters(
+      parsedDistance,
+      goalDistanceUnit,
+    );
+    const targetElevationGainMeters = elevationToMeters(
+      parsedElevation,
+      goalElevationUnit,
+    );
+
+    if (targetDistanceMeters > XC_GOAL_DISTANCE_MAX_METERS) {
+      toast.error("Goal distance must be 500 mi / 805 km or less.");
+      return;
+    }
+
+    if (targetElevationGainMeters > XC_GOAL_ELEVATION_MAX_METERS) {
+      toast.error("Climbing target must be 25,000 ft / 7,620 m or less.");
+      return;
+    }
+
     try {
       const updatedPreferences = await updatePreferencesMutation.updateAsync(
         buildPreferencesPayload(preferencesQuery.data ?? null, {
           xcGoalEventName: goalEventNameDraft.trim() || null,
           xcGoalStartDate: goalStartDateDraft.trim(),
           xcGoalTargetDate: goalDateDraft.trim(),
-          xcGoalTargetDistanceMeters: distanceToMeters(
-            parsedDistance,
-            goalDistanceUnit,
-          ),
-          xcGoalTargetElevationGainMeters: elevationToMeters(
-            parsedElevation,
-            goalElevationUnit,
-          ),
+          xcGoalTargetDistanceMeters: targetDistanceMeters,
+          xcGoalTargetElevationGainMeters: targetElevationGainMeters,
           xcGoalTargetFinishTimeSeconds: finishTimeHoursToSeconds(
             parsedFinishTimeHours,
           ),
@@ -3190,6 +3211,11 @@ export default function XcGoalsProgressPanel() {
                   <input
                     type="number"
                     min="0"
+                    max={
+                      goalDistanceUnit === "mi"
+                        ? XC_GOAL_DISTANCE_MAX_MILES
+                        : Math.round(XC_GOAL_DISTANCE_MAX_KILOMETERS)
+                    }
                     step="0.1"
                     className="input input-bordered join-item w-full"
                     value={goalDistanceDraft}
@@ -3219,6 +3245,11 @@ export default function XcGoalsProgressPanel() {
                   <input
                     type="number"
                     min="0"
+                    max={
+                      goalElevationUnit === "ft"
+                        ? XC_GOAL_ELEVATION_MAX_FEET
+                        : Math.round(XC_GOAL_ELEVATION_MAX_METERS)
+                    }
                     step="1"
                     className="input input-bordered join-item w-full"
                     value={goalElevationDraft}
