@@ -16,7 +16,21 @@ Natural-language product specifications live in [docs/specifications](docs/speci
 ## Local Development
 
 ```sh
-docker compose up
+task --list
+task ui-next:dev
+task api:dev
+task worker:dev
 ```
 
 The default compose setup uses Postgres on `localhost:5432`, API on `localhost:3000`, and UI on `localhost:3001`.
+
+## Kaleido Dependency
+
+Kaleido updates are explicit in this repo:
+
+```sh
+task kaleido:version
+VERSION=0.7.0 task kaleido:upgrade
+```
+
+The upgrade task updates `ui-next/package.json` and `ui-next/pnpm-lock.yaml`, then runs `pnpm typecheck`.

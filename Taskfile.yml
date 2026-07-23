@@ -5,38 +5,56 @@ vars:
 
 tasks:
   ui-next:deps:
+    desc: Install ui-next dependencies
     dir: ui-next
     cmds:
       - pnpm install
-    status:
-      - test -f ui-next/package.json
 
   ui-next:dev:
+    desc: Start the bike Next frontend
     dir: ui-next
     deps: [ui-next:deps]
     cmds:
       - pnpm run dev
-    status:
-      - test -f ui-next/package.json
 
   api:dev:
+    desc: Start the bike API
     cmds:
       - cargo run --bin api
 
   api:build:
+    desc: Build the bike API
     cmds:
       - cargo build --release --bin api
 
   worker:dev:
+    desc: Start the bike worker
     cmds:
       - cargo run --bin worker
 
+  kaleido:version:
+    desc: Print the bike ui-next Kaleido dependency version
+    dir: ui-next
+    cmds:
+      - node -p "require('./package.json').dependencies['@ericbutera/kaleido']"
+
+  kaleido:upgrade:
+    desc: Upgrade bike ui-next to @ericbutera/kaleido VERSION=x.y.z
+    requires:
+      vars: [VERSION]
+    dir: ui-next
+    cmds:
+      - pnpm up @ericbutera/kaleido@{{.VERSION}}
+      - pnpm typecheck
+
   migration:up:
+    desc: Run bike database migrations
     dir: migration
     cmds:
       - cargo run -- up
 
   test:
+    desc: Run bike Rust tests
     cmds:
       - cargo test
 
