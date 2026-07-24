@@ -1,5 +1,7 @@
 use chrono::Utc;
-use kaleido::auth::worker::tasks as auth_tasks;
+use kaleido::auth::worker::tasks::{
+    enqueue_email_notification, EmailNotificationTask, EMAIL_NOTIFICATION_TASK_TYPE,
+};
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -15,9 +17,7 @@ pub struct QueuedTaskReference {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum Task {
-    EmailRegistration(auth_tasks::EmailRegistrationTask),
-    EmailPasswordReset(auth_tasks::EmailPasswordResetTask),
-    EmailNotification(auth_tasks::EmailNotificationTask),
+    EmailNotification(EmailNotificationTask),
     RebuildFitnessFreshness(RebuildFitnessFreshnessTask),
     RebuildSegmentAnalytics(RebuildSegmentAnalyticsTask),
     RegenerateSegmentEfforts(RegenerateSegmentEffortsTask),
@@ -78,9 +78,7 @@ pub struct StravaSyncTask {
 impl Task {
     pub fn task_type(&self) -> &'static str {
         match self {
-            Task::EmailRegistration(_) => auth_tasks::EMAIL_REGISTRATION_TASK_TYPE,
-            Task::EmailPasswordReset(_) => auth_tasks::EMAIL_PASSWORD_RESET_TASK_TYPE,
-            Task::EmailNotification(_) => auth_tasks::EMAIL_NOTIFICATION_TASK_TYPE,
+            Task::EmailNotification(_) => EMAIL_NOTIFICATION_TASK_TYPE,
             Task::RebuildFitnessFreshness(_) => "rebuild_fitness_freshness",
             Task::RebuildSegmentAnalytics(_) => "rebuild_segment_analytics",
             Task::RegenerateSegmentEfforts(_) => "regenerate_segment_efforts",
@@ -129,29 +127,8 @@ impl TaskQueue {
             .await;
     }
 
-    pub async fn email_registration(&self, to: String, name: String, verification_url: String) {
-        auth_tasks::enqueue_email_registration(self.auth.inner(), to, name, verification_url).await;
-    }
-
-    pub async fn email_password_reset(
-        &self,
-        to: String,
-        name: String,
-        reset_url: String,
-        expiry_hours: u32,
-    ) {
-        auth_tasks::enqueue_email_password_reset(
-            self.auth.inner(),
-            to,
-            name,
-            reset_url,
-            expiry_hours,
-        )
-        .await;
-    }
-
     pub async fn email_notification(&self, to: String, subject: String, message: String) {
-        auth_tasks::enqueue_email_notification(self.auth.inner(), to, subject, message).await;
+        enqueue_email_notification(self.auth.inner(), to, subject, message).await;
     }
 
     pub async fn rebuild_fitness_freshness(&self, user_id: i32) {

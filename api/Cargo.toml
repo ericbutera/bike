@@ -27,8 +27,8 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 migration = { path = "../migration" }
 async-trait = "0.1"
-utoipa = { version = "5", features = ["axum_extras"] }
-utoipa-swagger-ui = { version = "8", features = ["axum"] }
+utoipa = { workspace = true }
+utoipa-swagger-ui = { workspace = true }
 kaleido = { git = "https://github.com/ericbutera/kaleido", branch = "main" }
 roxmltree = "0.20"
 reverse_geocoder = "4.1.1"

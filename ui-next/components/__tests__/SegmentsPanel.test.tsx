@@ -121,8 +121,8 @@ describe("SegmentsPanel", () => {
       "/login",
     );
     expect(
-      screen.getByRole("link", { name: "Create account" }),
-    ).toHaveAttribute("href", "/signup");
+      screen.queryByRole("link", { name: "Create account" }),
+    ).not.toBeInTheDocument();
   });
 
   it("uploads a selected segment route", async () => {

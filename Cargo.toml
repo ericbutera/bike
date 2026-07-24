@@ -21,7 +21,7 @@ tower-http = { version = "0.6", features = ["cors", "trace"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 async-trait = "0.1"
 utoipa = { version = "5", features = ["axum_extras"] }
-utoipa-swagger-ui = { version = "8", features = ["axum"] }
+utoipa-swagger-ui = { version = "8", features = ["axum", "vendored"] }
 chrono = { version = "0.4", features = ["serde"] }
 
 [patch."https://github.com/ericbutera/kaleido"]

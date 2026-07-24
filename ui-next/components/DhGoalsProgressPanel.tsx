@@ -396,7 +396,6 @@ export default function DhGoalsProgressPanel() {
         title="DH goals & progress"
         description="Sign in to view repeat-lap consistency, segment benchmarks, and downhill session shape across your tagged DH trails."
         loginLabel="Sign in to view DH progress"
-        showSignup
       />
     );
   }

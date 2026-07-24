@@ -186,8 +186,8 @@ describe("ActivityImportsPanel", () => {
       "/login",
     );
     expect(
-      screen.getByRole("link", { name: "Create account" }),
-    ).toHaveAttribute("href", "/signup");
+      screen.queryByRole("link", { name: "Create account" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows the selected file details before upload", async () => {

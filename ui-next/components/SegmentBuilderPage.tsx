@@ -111,7 +111,6 @@ export default function SegmentBuilderPage() {
         eyebrow="Segment builder"
         title="Build segments from your rides"
         description="Sign in to crop one of your uploaded rides into a segment, save it, and jump directly into the comparison workspace."
-        showSignup
       />
     );
   }

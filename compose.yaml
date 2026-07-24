@@ -24,9 +24,13 @@ services:
       STRAVA_CLIENT_ID: ''
       STRAVA_CLIENT_SECRET: ''
       STRAVA_OAUTH_SCOPES: activity:read_all
-      AUTHENTIK_OIDC_ISSUER_URL: ''
-      AUTHENTIK_OIDC_CLIENT_ID: ''
-      AUTHENTIK_OIDC_CLIENT_SECRET: ''
+      AUTH_PASSWORD_ENABLED: 'true'
+      AUTH_REGISTRATION_ENABLED: 'true'
+      OAUTH_PROVIDERS: dev
+      OAUTH_DEV_ENABLED: 'true'
+      OAUTH_DEV_EMAIL: developer@bike.local
+      OAUTH_DEV_NAME: Local Developer
+      OAUTH_DEV_SUBJECT: bike-local-dev
       JWT_SECRET: change_me_in_dev
       APP_NAME: 'Bike'
       SMTP_HOST: localhost
@@ -69,6 +73,8 @@ services:
     environment:
       API_URL: http://localhost:3000/api
       CDN_URL: http://localhost:3000/uploads
+      AUTH_PASSWORD_ENABLED: 'true'
+      AUTH_REGISTRATION_ENABLED: 'true'
     depends_on:
       - api
     ports:

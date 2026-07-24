@@ -5,13 +5,11 @@ export default function AuthRequiredCard({
   title,
   description,
   loginLabel = "Sign in",
-  showSignup = false,
 }: {
   eyebrow?: string;
   title: string;
   description: string;
   loginLabel?: string;
-  showSignup?: boolean;
 }) {
   return (
     <section className="card bg-base-100 shadow-xl">
@@ -25,11 +23,6 @@ export default function AuthRequiredCard({
           <Link href="/login" className="btn btn-primary">
             {loginLabel}
           </Link>
-          {showSignup ? (
-            <Link href="/signup" className="btn btn-outline">
-              Create account
-            </Link>
-          ) : null}
         </div>
       </div>
     </section>

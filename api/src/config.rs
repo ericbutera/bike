@@ -17,6 +17,8 @@ pub struct Config {
     pub max_archive_fetch_bytes: usize,
     pub archive_fetch_timeout_seconds: u64,
     pub jwt_secret: String,
+    pub auth_password_enabled: bool,
+    pub auth_registration_enabled: bool,
     pub app_name: String,
     pub smtp_host: String,
     pub smtp_port: u16,
@@ -68,6 +70,8 @@ impl Config {
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(600),
             jwt_secret: env::var("JWT_SECRET").unwrap_or_else(|_| "change_me_in_dev".to_string()),
+            auth_password_enabled: env_bool("AUTH_PASSWORD_ENABLED", true),
+            auth_registration_enabled: env_bool("AUTH_REGISTRATION_ENABLED", true),
             app_name: env::var("APP_NAME").unwrap_or_else(|_| "App".to_string()),
             smtp_host: env::var("SMTP_HOST").unwrap_or_else(|_| "localhost".to_string()),
             smtp_port: env::var("SMTP_PORT")
@@ -110,4 +114,15 @@ impl Config {
             .map(ToOwned::to_owned)
             .collect()
     }
+}
+
+fn env_bool(name: &str, default: bool) -> bool {
+    env::var(name)
+        .ok()
+        .map(|value| match value.trim().to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" | "on" => true,
+            "0" | "false" | "no" | "off" => false,
+            _ => default,
+        })
+        .unwrap_or(default)
 }

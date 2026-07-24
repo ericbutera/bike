@@ -236,7 +236,6 @@ export default function SegmentsPanel() {
       <AuthRequiredCard
         title="Manual Segment Imports"
         description="Sign in to upload a GPX or TCX export for a segment. Bike stores the route definition and matches it against your uploaded activities so you can compare repeated efforts without setting up Strava API keys."
-        showSignup
       />
     );
   }

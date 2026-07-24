@@ -2339,6 +2339,8 @@ mod tests {
             max_archive_fetch_bytes: 1024,
             archive_fetch_timeout_seconds: 60,
             jwt_secret: "test-secret".to_string(),
+            auth_password_enabled: true,
+            auth_registration_enabled: true,
             app_name: "Bike".to_string(),
             smtp_host: "localhost".to_string(),
             smtp_port: 1025,

@@ -140,7 +140,6 @@ export default function ActivityImportsPanel() {
       <AuthRequiredCard
         title="Activity Imports"
         description="Sign in to upload raw activity files or fetch a Garmin or Strava export ZIP by URL. GPX is still the fastest way to test the single-file pipeline, and FIT and TCX are accepted too."
-        showSignup
       />
     );
   }

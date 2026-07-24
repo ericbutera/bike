@@ -2071,7 +2071,6 @@ export default function XcGoalsProgressPanel() {
         title="XC goals & progress"
         description="Sign in to view your endurance volume, climbing durability, and comparable-ride decoupling trends."
         loginLabel="Sign in to view XC progress"
-        showSignup
       />
     );
   }
