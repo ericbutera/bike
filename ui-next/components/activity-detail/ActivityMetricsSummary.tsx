@@ -158,15 +158,6 @@ export default function ActivityMetricsSummary({
                   : "--"
               }
             />
-            <DenseDetailRow label="Location" value={activity.location ?? "--"} />
-            <DenseDetailRow
-              label="Total time"
-              value={formatDuration(activity.total_time_seconds)}
-            />
-            <DenseDetailRow
-              label="Elevation loss"
-              value={formatElevation(activity.elevation_loss_meters, unitSystem)}
-            />
             <DenseDetailRow
               label="Calories"
               value={formatCalories(activity.calories)}

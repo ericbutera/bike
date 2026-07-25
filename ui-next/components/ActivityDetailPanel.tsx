@@ -12,6 +12,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { buildActivityClimbs, type ActivityClimb } from "../lib/activityClimbs";
 import {
   extractApiMessage,
   FEET_PER_METER,
@@ -25,24 +26,20 @@ import {
   type UnitSystem,
 } from "../lib/activityFormatting";
 import {
-  buildActivityClimbs,
-  type ActivityClimb,
-} from "../lib/activityClimbs";
-import {
   ACTIVITY_TYPES,
   normalizeActivityType,
   type ActivityType,
 } from "../lib/activityTypes";
 import {
-  type ActivityLap,
-  type ActivityRoutePoint,
-  type ActivitySegmentEffort,
   useActivity,
   useDeleteActivity,
   useRegenerateActivity,
   useSegments,
   useUpdateActivity,
   useUpdateSegment,
+  type ActivityLap,
+  type ActivityRoutePoint,
+  type ActivitySegmentEffort,
 } from "../lib/queries";
 import { hasSegmentBuilderRoute } from "../lib/segmentBuilder";
 import { useUnitPreferences } from "../lib/unitPreferences";
@@ -392,19 +389,11 @@ function ClimbElevationTooltip({
   );
 }
 
-function ClimbDetailMetric({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function ClimbDetailMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
       <div className="text-2xl font-semibold text-base-content">{value}</div>
-      <div className="mt-1 text-xs text-base-content/55 uppercase">
-        {label}
-      </div>
+      <div className="mt-1 text-xs text-base-content/55 uppercase">{label}</div>
     </div>
   );
 }
@@ -492,11 +481,12 @@ function ActivityClimbsCard({
                           isSelected ? "bg-primary/10" : ""
                         }`}
                         onClick={() => onSelectClimb(climb.id)}
-                        onKeyDown={(event) =>
-                          handleRowKeyDown(event, climb.id)
-                        }
+                        onKeyDown={(event) => handleRowKeyDown(event, climb.id)}
                       >
-                        <th scope="row" className="whitespace-nowrap font-semibold">
+                        <th
+                          scope="row"
+                          className="whitespace-nowrap font-semibold"
+                        >
                           Climb {climb.sequence}
                         </th>
                         <td className="whitespace-nowrap">
@@ -607,9 +597,7 @@ function ActivityClimbsCard({
                               fill: "var(--color-base-content)",
                               fontSize: 10,
                             }}
-                            tickFormatter={(value: number) =>
-                              value.toFixed(1)
-                            }
+                            tickFormatter={(value: number) => value.toFixed(1)}
                             tickLine={false}
                             type="number"
                           />
@@ -1081,12 +1069,9 @@ export default function ActivityDetailPanel({
               <h1 className="mt-2 text-4xl font-semibold">{activity.title}</h1>
               <p className="mt-3 text-sm text-base-content/70">
                 {formatActivityTimestamp(activity.started_at)}
+                {" - "}
+                {activity.location}
               </p>
-              {activity.location ? (
-                <p className="mt-2 text-sm text-base-content/60">
-                  {activity.location}
-                </p>
-              ) : null}
             </div>
             <ActivityHeaderActions
               activity={activity}
