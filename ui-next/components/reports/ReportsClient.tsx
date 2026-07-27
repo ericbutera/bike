@@ -6,6 +6,10 @@ import { extractApiMessage } from "../../lib/activityFormatting";
 import {
   useRideSummaryReport,
   useTrainingReports,
+  type ClimbingReport,
+  type EnduranceReport,
+  type FatigueReport,
+  type HourlyDurability,
   type RideSummaryReport,
 } from "../../lib/queries";
 import Charts from "./Charts";
@@ -36,6 +40,8 @@ export default function ReportsClient() {
   const selectedReport = findReportDefinition(selectedReportId);
   const isAggregateTrends = selectedReport.id === "aggregate_trends";
   const isRideSummary = selectedReport.id === "ride_summary";
+  const standaloneReportId = standaloneReportIdFor(selectedReport.id);
+  const isStandaloneReport = standaloneReportId != null;
   const { data, isLoading, isError, error, isFetching } = useTrainingReports(
     range,
     {
@@ -44,11 +50,12 @@ export default function ReportsClient() {
       endDate,
     },
   );
-  const rideSummaryQuery = useRideSummaryReport({
+  const reportQuery = useRideSummaryReport({
+    report: standaloneReportId ?? "ride_summary",
     boundary: range,
     startDate,
     endDate,
-    enabled: isRideSummary,
+    enabled: isStandaloneReport,
   });
 
   const points = data?.points ?? [];
@@ -162,13 +169,34 @@ export default function ReportsClient() {
             />
           ) : isRideSummary ? (
             <RideSummaryReportView
-              summary={rideSummaryQuery.data?.ride_summary ?? null}
+              summary={reportQuery.data?.ride_summary ?? null}
               startDate={startDate}
               endDate={endDate}
-              isLoading={rideSummaryQuery.isLoading}
-              isError={rideSummaryQuery.isError}
-              error={rideSummaryQuery.error}
-              isFetching={rideSummaryQuery.isFetching}
+              isLoading={reportQuery.isLoading}
+              isError={reportQuery.isError}
+              error={reportQuery.error}
+              isFetching={reportQuery.isFetching}
+            />
+          ) : selectedReport.id === "endurance" ? (
+            <EnduranceReportView
+              report={reportQuery.data?.endurance ?? null}
+              isLoading={reportQuery.isLoading}
+              isError={reportQuery.isError}
+              error={reportQuery.error}
+            />
+          ) : selectedReport.id === "climbing" ? (
+            <ClimbingReportView
+              report={reportQuery.data?.climbing ?? null}
+              isLoading={reportQuery.isLoading}
+              isError={reportQuery.isError}
+              error={reportQuery.error}
+            />
+          ) : selectedReport.id === "fatigue" ? (
+            <FatigueReportView
+              report={reportQuery.data?.fatigue ?? null}
+              isLoading={reportQuery.isLoading}
+              isError={reportQuery.isError}
+              error={reportQuery.error}
             />
           ) : (
             <PlannedReport report={selectedReport} />
@@ -342,6 +370,231 @@ function ReportMetricCard({
   );
 }
 
+function EnduranceReportView({
+  report,
+  isLoading,
+  isError,
+  error,
+}: {
+  report: EnduranceReport | null;
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+}) {
+  if (isLoading) return <LoadingReport label="Generating endurance report..." />;
+  if (isError) return <ErrorReport error={error} label="Failed to generate endurance report." />;
+  if (!report || report.activity_count === 0) return <EmptyReport label="No rides with usable point data found." />;
+
+  return (
+    <div className="mt-5 grid gap-5">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <ReportMetricCard label="Rides" value={report.activity_count.toString()} />
+        <ReportMetricCard
+          label="Median decoupling"
+          value={formatOptionalNumber(report.median_aerobic_decoupling_percent)}
+          unit={report.median_aerobic_decoupling_percent == null ? undefined : "%"}
+        />
+        <ReportMetricCard
+          label="Median late fade"
+          value={formatOptionalNumber(report.median_late_speed_change_percent)}
+          unit={report.median_late_speed_change_percent == null ? undefined : "%"}
+        />
+      </div>
+      <div className="overflow-x-auto">
+        <table className="table table-zebra">
+          <thead>
+            <tr>
+              <th>Ride</th>
+              <th>Duration</th>
+              <th>Decoupling</th>
+              <th>Late Speed</th>
+              <th>Late HR</th>
+              <th>Hours</th>
+            </tr>
+          </thead>
+          <tbody>
+            {report.rides.map((ride) => (
+              <tr key={ride.activity_id}>
+                <td>{ride.title}</td>
+                <td>{formatDuration(ride.elapsed_seconds)}</td>
+                <td>{formatPercent(ride.aerobic_decoupling_percent)}</td>
+                <td>{formatPercent(ride.late_speed_change_percent)}</td>
+                <td>{formatPercent(ride.late_heart_rate_change_percent)}</td>
+                <td>{ride.hourly.length}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ClimbingReportView({
+  report,
+  isLoading,
+  isError,
+  error,
+}: {
+  report: ClimbingReport | null;
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+}) {
+  if (isLoading) return <LoadingReport label="Generating climbing report..." />;
+  if (isError) return <ErrorReport error={error} label="Failed to generate climbing report." />;
+  if (!report || report.climb_count === 0) return <EmptyReport label="No sustained climbs found." />;
+
+  const summaryRows = [
+    ["Longest climb", report.longest_climb],
+    ["Fastest vertical rate", report.fastest_vertical_rate],
+    ["Median climb", report.median_climb],
+    ["95th percentile climb", report.percentile_95_climb],
+    ["First-half median", report.first_half_median],
+    ["Second-half median", report.second_half_median],
+    ["Best climb", report.best_climb],
+    ["Worst climb", report.worst_climb],
+  ] as const;
+
+  return (
+    <div className="mt-5 grid gap-5">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {summaryRows.map(([label, climb]) => (
+          <ReportMetricCard
+            key={label}
+            label={label}
+            value={climb ? formatNumber(climb.vertical_rate_meters_per_hour) : "n/a"}
+            unit={climb ? "m/h" : undefined}
+          />
+        ))}
+      </div>
+      <div className="overflow-x-auto">
+        <table className="table table-zebra">
+          <thead>
+            <tr>
+              <th>Ride</th>
+              <th>#</th>
+              <th>Gain</th>
+              <th>Duration</th>
+              <th>Vertical Rate</th>
+              <th>Grade</th>
+              <th>Avg HR</th>
+              <th>Half</th>
+            </tr>
+          </thead>
+          <tbody>
+            {report.climbs.map((climb) => (
+              <tr key={`${climb.activity_id}-${climb.climb_number}`}>
+                <td>{climb.activity_title}</td>
+                <td>{climb.climb_number}</td>
+                <td>{formatNumber(climb.gain_meters)} m</td>
+                <td>{formatDuration(climb.duration_seconds)}</td>
+                <td>{formatNumber(climb.vertical_rate_meters_per_hour)} m/h</td>
+                <td>{formatPercent(climb.average_grade_percent)}</td>
+                <td>{formatOptionalNumber(climb.average_heart_rate_bpm)}</td>
+                <td>{climb.first_or_second_half}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function FatigueReportView({
+  report,
+  isLoading,
+  isError,
+  error,
+}: {
+  report: FatigueReport | null;
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+}) {
+  if (isLoading) return <LoadingReport label="Generating fatigue report..." />;
+  if (isError) return <ErrorReport error={error} label="Failed to generate fatigue report." />;
+  if (!report || report.activity_count === 0) return <EmptyReport label="No rides with usable point data found." />;
+
+  return (
+    <div className="mt-5 grid gap-5">
+      {report.rides.map((ride) => (
+        <section key={ride.activity_id} className="rounded-lg border border-base-300 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-base font-semibold">{ride.title}</h3>
+            <span className="badge badge-outline">
+              {ride.fatigue_start_hour
+                ? `Fade begins hour ${ride.fatigue_start_hour}`
+                : "No clear fade"}
+            </span>
+          </div>
+          <HourlyTable rows={ride.hourly} />
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function HourlyTable({ rows }: { rows: HourlyDurability[] }) {
+  return (
+    <div className="mt-4 overflow-x-auto">
+      <table className="table table-zebra">
+        <thead>
+          <tr>
+            <th>Hour</th>
+            <th>Speed</th>
+            <th>HR</th>
+            <th>Ascent</th>
+            <th>Moving</th>
+            <th>Stopped</th>
+            <th>Stops</th>
+            <th>Efficiency</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.hour}>
+              <td>{row.hour}</td>
+              <td>{formatOptionalNumber(row.average_speed_mps)} m/s</td>
+              <td>{formatOptionalNumber(row.average_heart_rate_bpm)}</td>
+              <td>{formatNumber(row.ascent_meters)} m</td>
+              <td>{formatDuration(row.moving_seconds)}</td>
+              <td>{formatDuration(row.stopped_seconds)}</td>
+              <td>{row.stop_count}</td>
+              <td>{formatOptionalNumber(row.efficiency_mps_per_bpm)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function LoadingReport({ label }: { label: string }) {
+  return (
+    <div className="alert mt-4">
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function ErrorReport({ error, label }: { error: unknown; label: string }) {
+  return (
+    <div className="alert alert-error mt-4">
+      <span>{extractApiMessage(error) || label}</span>
+    </div>
+  );
+}
+
+function EmptyReport({ label }: { label: string }) {
+  return (
+    <div className="alert mt-4">
+      <span>{label}</span>
+    </div>
+  );
+}
+
 function ReportMenu({
   selectedReportId,
   onSelect,
@@ -502,6 +755,20 @@ function parseTimeRange(value: string | null): TimeRange {
   }
 }
 
+function standaloneReportIdFor(
+  reportId: ReportId,
+): "ride_summary" | "endurance" | "climbing" | "fatigue" | null {
+  switch (reportId) {
+    case "ride_summary":
+    case "endurance":
+    case "climbing":
+    case "fatigue":
+      return reportId;
+    default:
+      return null;
+  }
+}
+
 function dateRangeForTimeRange(range: TimeRange) {
   const end = new Date();
   const start = new Date(end);
@@ -552,6 +819,10 @@ function formatNumber(value: number) {
 
 function formatOptionalNumber(value?: number | null) {
   return value == null ? "n/a" : formatNumber(value);
+}
+
+function formatPercent(value?: number | null) {
+  return value == null ? "n/a" : `${formatNumber(value)}%`;
 }
 
 function formatDuration(seconds: number) {

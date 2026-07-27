@@ -592,6 +592,9 @@ export type TrainingReportsResponse = {
   range_end: string;
   points: TrainingReportPoint[];
   ride_summary?: RideSummaryReport | null;
+  endurance?: EnduranceReport | null;
+  climbing?: ClimbingReport | null;
+  fatigue?: FatigueReport | null;
 };
 
 export type RideSummaryReport = {
@@ -614,6 +617,86 @@ export type RideSummaryReport = {
   z4_seconds: number;
   z5_seconds: number;
   data_quality_flags: string[];
+};
+
+export type HourlyDurability = {
+  hour: number;
+  elapsed_start_seconds: number;
+  elapsed_end_seconds: number;
+  distance_meters?: number | null;
+  average_speed_mps?: number | null;
+  average_heart_rate_bpm?: number | null;
+  max_heart_rate_bpm?: number | null;
+  ascent_meters: number;
+  moving_seconds: number;
+  stopped_seconds: number;
+  stop_count: number;
+  efficiency_mps_per_bpm?: number | null;
+};
+
+export type EnduranceReport = {
+  activity_count: number;
+  median_aerobic_decoupling_percent?: number | null;
+  median_late_speed_change_percent?: number | null;
+  rides: EnduranceRide[];
+};
+
+export type EnduranceRide = {
+  activity_id: number;
+  title: string;
+  started_at: string;
+  elapsed_seconds: number;
+  first_half_efficiency_mps_per_bpm?: number | null;
+  second_half_efficiency_mps_per_bpm?: number | null;
+  aerobic_decoupling_percent?: number | null;
+  late_speed_change_percent?: number | null;
+  late_heart_rate_change_percent?: number | null;
+  hourly: HourlyDurability[];
+};
+
+export type FatigueReport = {
+  activity_count: number;
+  rides: FatigueRide[];
+};
+
+export type FatigueRide = {
+  activity_id: number;
+  title: string;
+  started_at: string;
+  elapsed_seconds: number;
+  fatigue_start_hour?: number | null;
+  hourly: HourlyDurability[];
+};
+
+export type ClimbingReport = {
+  activity_count: number;
+  climb_count: number;
+  longest_climb?: ClimbReportRow | null;
+  fastest_vertical_rate?: ClimbReportRow | null;
+  median_climb?: ClimbReportRow | null;
+  percentile_95_climb?: ClimbReportRow | null;
+  first_half_median?: ClimbReportRow | null;
+  second_half_median?: ClimbReportRow | null;
+  best_climb?: ClimbReportRow | null;
+  worst_climb?: ClimbReportRow | null;
+  climbs: ClimbReportRow[];
+};
+
+export type ClimbReportRow = {
+  activity_id: number;
+  activity_title: string;
+  climb_number: number;
+  start_seconds: number;
+  summit_seconds: number;
+  duration_seconds: number;
+  distance_meters: number;
+  gain_meters: number;
+  average_grade_percent?: number | null;
+  vertical_rate_meters_per_hour: number;
+  average_speed_mps?: number | null;
+  average_heart_rate_bpm?: number | null;
+  peak_heart_rate_bpm?: number | null;
+  first_or_second_half: string;
 };
 
 export type AdminAnalyticsBackfillResponse = {
@@ -1651,6 +1734,7 @@ export function useTrainingReports(
 }
 
 export function useRideSummaryReport(opts: {
+  report?: "ride_summary" | "endurance" | "climbing" | "fatigue";
   boundary: TrainingReportBoundary;
   startDate: string;
   endDate: string;
@@ -1660,7 +1744,7 @@ export function useRideSummaryReport(opts: {
     params: {
       query: {
         boundary: opts.boundary,
-        report: "ride_summary",
+        report: opts.report ?? "ride_summary",
         start_date: opts.startDate,
         end_date: opts.endDate,
       },

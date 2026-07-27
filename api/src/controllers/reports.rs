@@ -1,3 +1,6 @@
+use crate::activity_details::{
+    deserialize_derived_activity_data, ActivityChartPoint, ActivityRoutePoint,
+};
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::entities::{activities, activity_training_analyses};
 use crate::storage::AppStorage;
@@ -62,6 +65,9 @@ pub struct TrainingReportsResponse {
     pub range_end: String,
     pub points: Vec<TrainingReportPointResponse>,
     pub ride_summary: Option<RideSummaryReportResponse>,
+    pub endurance: Option<EnduranceReportResponse>,
+    pub climbing: Option<ClimbingReportResponse>,
+    pub fatigue: Option<FatigueReportResponse>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -85,6 +91,102 @@ pub struct RideSummaryReportResponse {
     pub z4_seconds: i32,
     pub z5_seconds: i32,
     pub data_quality_flags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct EnduranceReportResponse {
+    pub activity_count: i32,
+    pub median_aerobic_decoupling_percent: Option<f64>,
+    pub median_late_speed_change_percent: Option<f64>,
+    pub rides: Vec<EnduranceRideResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct EnduranceRideResponse {
+    pub activity_id: i32,
+    pub title: String,
+    pub started_at: DateTime<Utc>,
+    pub elapsed_seconds: i32,
+    pub first_half_efficiency_mps_per_bpm: Option<f64>,
+    pub second_half_efficiency_mps_per_bpm: Option<f64>,
+    pub aerobic_decoupling_percent: Option<f64>,
+    pub late_speed_change_percent: Option<f64>,
+    pub late_heart_rate_change_percent: Option<f64>,
+    pub hourly: Vec<HourlyDurabilityResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct FatigueReportResponse {
+    pub activity_count: i32,
+    pub rides: Vec<FatigueRideResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct FatigueRideResponse {
+    pub activity_id: i32,
+    pub title: String,
+    pub started_at: DateTime<Utc>,
+    pub elapsed_seconds: i32,
+    pub fatigue_start_hour: Option<i32>,
+    pub hourly: Vec<HourlyDurabilityResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct HourlyDurabilityResponse {
+    pub hour: i32,
+    pub elapsed_start_seconds: i32,
+    pub elapsed_end_seconds: i32,
+    pub distance_meters: Option<f64>,
+    pub average_speed_mps: Option<f64>,
+    pub average_heart_rate_bpm: Option<f64>,
+    pub max_heart_rate_bpm: Option<i32>,
+    pub ascent_meters: f64,
+    pub moving_seconds: i32,
+    pub stopped_seconds: i32,
+    pub stop_count: i32,
+    pub efficiency_mps_per_bpm: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ClimbingReportResponse {
+    pub activity_count: i32,
+    pub climb_count: i32,
+    pub longest_climb: Option<ClimbResponse>,
+    pub fastest_vertical_rate: Option<ClimbResponse>,
+    pub median_climb: Option<ClimbResponse>,
+    pub percentile_95_climb: Option<ClimbResponse>,
+    pub first_half_median: Option<ClimbResponse>,
+    pub second_half_median: Option<ClimbResponse>,
+    pub best_climb: Option<ClimbResponse>,
+    pub worst_climb: Option<ClimbResponse>,
+    pub climbs: Vec<ClimbResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ClimbResponse {
+    pub activity_id: i32,
+    pub activity_title: String,
+    pub climb_number: i32,
+    pub start_seconds: i32,
+    pub summit_seconds: i32,
+    pub duration_seconds: i32,
+    pub distance_meters: f64,
+    pub gain_meters: f64,
+    pub average_grade_percent: Option<f64>,
+    pub vertical_rate_meters_per_hour: f64,
+    pub average_speed_mps: Option<f64>,
+    pub average_heart_rate_bpm: Option<f64>,
+    pub peak_heart_rate_bpm: Option<i32>,
+    pub first_or_second_half: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TrendSample {
+    elapsed_seconds: i32,
+    distance_meters: Option<f64>,
+    elevation_meters: Option<f64>,
+    speed_mps: Option<f64>,
+    heart_rate_bpm: Option<i32>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -129,15 +231,60 @@ pub async fn get_training_reports(
         .all(&state.db)
         .await?;
 
-    if query.report.as_deref() == Some("ride_summary") {
-        return Ok(Json(TrainingReportsResponse {
-            generated_at: now,
-            boundary,
-            range_start: range_start.to_rfc3339(),
-            range_end: range_end.to_rfc3339(),
-            points: Vec::new(),
-            ride_summary: Some(build_ride_summary_report(&activity_models)),
-        }));
+    match query.report.as_deref() {
+        Some("ride_summary") => {
+            return Ok(Json(TrainingReportsResponse {
+                generated_at: now,
+                boundary,
+                range_start: range_start.to_rfc3339(),
+                range_end: range_end.to_rfc3339(),
+                points: Vec::new(),
+                ride_summary: Some(build_ride_summary_report(&activity_models)),
+                endurance: None,
+                climbing: None,
+                fatigue: None,
+            }));
+        }
+        Some("endurance") => {
+            return Ok(Json(TrainingReportsResponse {
+                generated_at: now,
+                boundary,
+                range_start: range_start.to_rfc3339(),
+                range_end: range_end.to_rfc3339(),
+                points: Vec::new(),
+                ride_summary: None,
+                endurance: Some(build_endurance_report(&activity_models)),
+                climbing: None,
+                fatigue: None,
+            }));
+        }
+        Some("climbing") => {
+            return Ok(Json(TrainingReportsResponse {
+                generated_at: now,
+                boundary,
+                range_start: range_start.to_rfc3339(),
+                range_end: range_end.to_rfc3339(),
+                points: Vec::new(),
+                ride_summary: None,
+                endurance: None,
+                climbing: Some(build_climbing_report(&activity_models)),
+                fatigue: None,
+            }));
+        }
+        Some("fatigue") => {
+            return Ok(Json(TrainingReportsResponse {
+                generated_at: now,
+                boundary,
+                range_start: range_start.to_rfc3339(),
+                range_end: range_end.to_rfc3339(),
+                points: Vec::new(),
+                ride_summary: None,
+                endurance: None,
+                climbing: None,
+                fatigue: Some(build_fatigue_report(&activity_models)),
+            }));
+        }
+        _ => {}
     }
 
     let activity_ids = activity_models
@@ -245,6 +392,9 @@ pub async fn get_training_reports(
         range_end: range_end.to_rfc3339(),
         points,
         ride_summary: None,
+        endurance: None,
+        climbing: None,
+        fatigue: None,
     }))
 }
 
@@ -402,6 +552,127 @@ fn build_ride_summary_report(activities: &[activities::Model]) -> RideSummaryRep
     }
 }
 
+fn build_endurance_report(activities: &[activities::Model]) -> EnduranceReportResponse {
+    let rides = activities
+        .iter()
+        .filter_map(|activity| {
+            let samples = activity_samples(activity);
+            if samples.len() < 2 {
+                return None;
+            }
+
+            let elapsed_seconds = samples.last()?.elapsed_seconds;
+            let first = segment_samples(&samples, 0, elapsed_seconds / 2);
+            let second = segment_samples(&samples, elapsed_seconds / 2, elapsed_seconds);
+            let first_efficiency = efficiency(&first);
+            let second_efficiency = efficiency(&second);
+            let late = late_ride_changes(&samples);
+
+            Some(EnduranceRideResponse {
+                activity_id: activity.id,
+                title: activity.title.clone(),
+                started_at: activity.started_at,
+                elapsed_seconds,
+                first_half_efficiency_mps_per_bpm: first_efficiency.map(round_metric),
+                second_half_efficiency_mps_per_bpm: second_efficiency.map(round_metric),
+                aerobic_decoupling_percent: percent_change(first_efficiency, second_efficiency)
+                    .map(round_metric),
+                late_speed_change_percent: late.0.map(round_metric),
+                late_heart_rate_change_percent: late.1.map(round_metric),
+                hourly: hourly_durability(&samples),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    EnduranceReportResponse {
+        activity_count: rides.len() as i32,
+        median_aerobic_decoupling_percent: median(
+            rides
+                .iter()
+                .filter_map(|ride| ride.aerobic_decoupling_percent)
+                .collect(),
+        )
+        .map(round_metric),
+        median_late_speed_change_percent: median(
+            rides
+                .iter()
+                .filter_map(|ride| ride.late_speed_change_percent)
+                .collect(),
+        )
+        .map(round_metric),
+        rides,
+    }
+}
+
+fn build_fatigue_report(activities: &[activities::Model]) -> FatigueReportResponse {
+    let rides = activities
+        .iter()
+        .filter_map(|activity| {
+            let samples = activity_samples(activity);
+            if samples.len() < 2 {
+                return None;
+            }
+
+            let hourly = hourly_durability(&samples);
+            let fatigue_start_hour = fatigue_start_hour(&hourly);
+
+            Some(FatigueRideResponse {
+                activity_id: activity.id,
+                title: activity.title.clone(),
+                started_at: activity.started_at,
+                elapsed_seconds: samples.last()?.elapsed_seconds,
+                fatigue_start_hour,
+                hourly,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    FatigueReportResponse {
+        activity_count: rides.len() as i32,
+        rides,
+    }
+}
+
+fn build_climbing_report(activities: &[activities::Model]) -> ClimbingReportResponse {
+    let mut climbs = Vec::new();
+
+    for activity in activities {
+        let samples = activity_samples(activity);
+        climbs.extend(detect_climbs(activity, &samples));
+    }
+
+    climbs.sort_by_key(|climb| (climb.activity_id, climb.climb_number));
+
+    let first_half_climbs = climbs
+        .iter()
+        .filter(|climb| climb.first_or_second_half == "first")
+        .cloned()
+        .collect::<Vec<_>>();
+    let second_half_climbs = climbs
+        .iter()
+        .filter(|climb| climb.first_or_second_half == "second")
+        .cloned()
+        .collect::<Vec<_>>();
+
+    ClimbingReportResponse {
+        activity_count: activities.len() as i32,
+        climb_count: climbs.len() as i32,
+        longest_climb: max_by_metric(&climbs, |climb| f64::from(climb.duration_seconds)),
+        fastest_vertical_rate: max_by_metric(&climbs, |climb| climb.vertical_rate_meters_per_hour),
+        median_climb: percentile_by_metric(&climbs, 0.50, |climb| climb.gain_meters),
+        percentile_95_climb: percentile_by_metric(&climbs, 0.95, |climb| climb.gain_meters),
+        first_half_median: percentile_by_metric(&first_half_climbs, 0.50, |climb| {
+            climb.vertical_rate_meters_per_hour
+        }),
+        second_half_median: percentile_by_metric(&second_half_climbs, 0.50, |climb| {
+            climb.vertical_rate_meters_per_hour
+        }),
+        best_climb: max_by_metric(&climbs, |climb| climb.vertical_rate_meters_per_hour),
+        worst_climb: min_by_metric(&climbs, |climb| climb.vertical_rate_meters_per_hour),
+        climbs,
+    }
+}
+
 fn push_missing_flag(flags: &mut Vec<String>, missing: usize, total: usize, label: &str) {
     if missing == 0 {
         return;
@@ -410,6 +681,387 @@ fn push_missing_flag(flags: &mut Vec<String>, missing: usize, total: usize, labe
     flags.push(format!(
         "{missing} of {total} activities missing {label} data"
     ));
+}
+
+fn activity_samples(activity: &activities::Model) -> Vec<TrendSample> {
+    let derived_data = deserialize_derived_activity_data(activity.derived_data_json.as_ref());
+    if derived_data.route_points.len() >= 2 {
+        return derived_data
+            .route_points
+            .iter()
+            .map(sample_from_route_point)
+            .collect();
+    }
+
+    derived_data
+        .chart_points
+        .iter()
+        .map(sample_from_chart_point)
+        .collect()
+}
+
+fn sample_from_route_point(point: &ActivityRoutePoint) -> TrendSample {
+    TrendSample {
+        elapsed_seconds: point.elapsed_seconds,
+        distance_meters: point.distance_meters,
+        elevation_meters: point.elevation_meters,
+        speed_mps: point.speed_mps,
+        heart_rate_bpm: point.heart_rate_bpm,
+    }
+}
+
+fn sample_from_chart_point(point: &ActivityChartPoint) -> TrendSample {
+    TrendSample {
+        elapsed_seconds: point.elapsed_seconds,
+        distance_meters: point.distance_meters,
+        elevation_meters: point.elevation_meters,
+        speed_mps: point.speed_mps,
+        heart_rate_bpm: point.heart_rate_bpm,
+    }
+}
+
+fn segment_samples(
+    samples: &[TrendSample],
+    start_seconds: i32,
+    end_seconds: i32,
+) -> Vec<TrendSample> {
+    samples
+        .iter()
+        .copied()
+        .filter(|sample| {
+            sample.elapsed_seconds >= start_seconds && sample.elapsed_seconds <= end_seconds
+        })
+        .collect()
+}
+
+fn hourly_durability(samples: &[TrendSample]) -> Vec<HourlyDurabilityResponse> {
+    let Some(last) = samples.last() else {
+        return Vec::new();
+    };
+    let hour_count = ((last.elapsed_seconds as f64) / 3600.0).ceil() as i32;
+    let mut rows = Vec::new();
+
+    for hour in 1..=hour_count.max(1) {
+        let start = (hour - 1) * 3600;
+        let end = (hour * 3600).min(last.elapsed_seconds);
+        let segment = segment_samples(samples, start, end);
+        if segment.len() < 2 {
+            continue;
+        }
+        let distance = segment_distance(&segment);
+        let average_speed = average_speed(&segment);
+        let average_hr = average_heart_rate(&segment);
+        let max_hr = segment
+            .iter()
+            .filter_map(|sample| sample.heart_rate_bpm)
+            .max();
+        let (moving_seconds, stopped_seconds, stop_count) = movement_breakdown(&segment);
+        let ascent = positive_gain(&segment);
+
+        rows.push(HourlyDurabilityResponse {
+            hour,
+            elapsed_start_seconds: start,
+            elapsed_end_seconds: end,
+            distance_meters: distance.map(round_metric),
+            average_speed_mps: average_speed.map(round_metric),
+            average_heart_rate_bpm: average_hr.map(round_metric),
+            max_heart_rate_bpm: max_hr,
+            ascent_meters: round_metric(ascent),
+            moving_seconds,
+            stopped_seconds,
+            stop_count,
+            efficiency_mps_per_bpm: efficiency(&segment).map(round_metric),
+        });
+    }
+
+    rows
+}
+
+fn fatigue_start_hour(hourly: &[HourlyDurabilityResponse]) -> Option<i32> {
+    let baseline = hourly
+        .iter()
+        .take(2)
+        .filter_map(|row| row.efficiency_mps_per_bpm)
+        .collect::<Vec<_>>();
+    let baseline = median(baseline)?;
+
+    hourly
+        .iter()
+        .find(|row| {
+            row.hour >= 2
+                && row
+                    .efficiency_mps_per_bpm
+                    .is_some_and(|efficiency| efficiency <= baseline * 0.90)
+        })
+        .map(|row| row.hour)
+}
+
+fn detect_climbs(activity: &activities::Model, samples: &[TrendSample]) -> Vec<ClimbResponse> {
+    let mut climbs = Vec::new();
+    let mut start_index: Option<usize> = None;
+    let mut gain = 0.0;
+    let total_elapsed = samples
+        .last()
+        .map(|sample| sample.elapsed_seconds)
+        .unwrap_or_default();
+
+    for index in 1..samples.len() {
+        let previous = samples[index - 1];
+        let current = samples[index];
+        let Some(delta_distance) = delta_distance(previous, current) else {
+            continue;
+        };
+        let Some(delta_elevation) = delta_elevation(previous, current) else {
+            continue;
+        };
+        let delta_time = current.elapsed_seconds - previous.elapsed_seconds;
+        let grade = if delta_distance > 0.0 {
+            (delta_elevation / delta_distance) * 100.0
+        } else {
+            0.0
+        };
+
+        if delta_time > 0 && delta_distance > 0.0 && delta_elevation > 0.0 && grade >= 3.0 {
+            start_index.get_or_insert(index - 1);
+            gain += delta_elevation;
+            continue;
+        }
+
+        finalize_climb(
+            activity,
+            samples,
+            start_index,
+            index - 1,
+            gain,
+            total_elapsed,
+            &mut climbs,
+        );
+        start_index = None;
+        gain = 0.0;
+    }
+
+    finalize_climb(
+        activity,
+        samples,
+        start_index,
+        samples.len().saturating_sub(1),
+        gain,
+        total_elapsed,
+        &mut climbs,
+    );
+
+    climbs
+}
+
+fn finalize_climb(
+    activity: &activities::Model,
+    samples: &[TrendSample],
+    start_index: Option<usize>,
+    end_index: usize,
+    gain_meters: f64,
+    total_elapsed_seconds: i32,
+    climbs: &mut Vec<ClimbResponse>,
+) {
+    let Some(start_index) = start_index else {
+        return;
+    };
+    if end_index <= start_index || end_index >= samples.len() {
+        return;
+    }
+
+    let segment = &samples[start_index..=end_index];
+    let duration_seconds =
+        segment.last().unwrap().elapsed_seconds - segment.first().unwrap().elapsed_seconds;
+    let distance_meters = segment_distance(segment).unwrap_or_default();
+
+    if duration_seconds < 60 || distance_meters < 250.0 || gain_meters < 20.0 {
+        return;
+    }
+
+    let vertical_rate = 3600.0 * gain_meters / f64::from(duration_seconds.max(1));
+
+    climbs.push(ClimbResponse {
+        activity_id: activity.id,
+        activity_title: activity.title.clone(),
+        climb_number: climbs.len() as i32 + 1,
+        start_seconds: segment.first().unwrap().elapsed_seconds,
+        summit_seconds: segment.last().unwrap().elapsed_seconds,
+        duration_seconds,
+        distance_meters: round_metric(distance_meters),
+        gain_meters: round_metric(gain_meters),
+        average_grade_percent: Some(round_metric((gain_meters / distance_meters) * 100.0)),
+        vertical_rate_meters_per_hour: round_metric(vertical_rate),
+        average_speed_mps: average_speed(segment).map(round_metric),
+        average_heart_rate_bpm: average_heart_rate(segment).map(round_metric),
+        peak_heart_rate_bpm: segment
+            .iter()
+            .filter_map(|sample| sample.heart_rate_bpm)
+            .max(),
+        first_or_second_half: if segment.last().unwrap().elapsed_seconds
+            <= total_elapsed_seconds / 2
+        {
+            "first".to_string()
+        } else {
+            "second".to_string()
+        },
+    });
+}
+
+fn segment_distance(samples: &[TrendSample]) -> Option<f64> {
+    let first = samples.iter().find_map(|sample| sample.distance_meters)?;
+    let last = samples
+        .iter()
+        .rev()
+        .find_map(|sample| sample.distance_meters)?;
+    (last >= first).then_some(last - first)
+}
+
+fn average_speed(samples: &[TrendSample]) -> Option<f64> {
+    let distance = segment_distance(samples)?;
+    let duration = samples.last()?.elapsed_seconds - samples.first()?.elapsed_seconds;
+    (duration > 0 && distance > 0.0).then_some(distance / f64::from(duration))
+}
+
+fn average_heart_rate(samples: &[TrendSample]) -> Option<f64> {
+    let values = samples
+        .iter()
+        .filter_map(|sample| sample.heart_rate_bpm.map(f64::from))
+        .collect::<Vec<_>>();
+    mean(values)
+}
+
+fn efficiency(samples: &[TrendSample]) -> Option<f64> {
+    let speed = average_speed(samples)?;
+    let heart_rate = average_heart_rate(samples)?;
+    (heart_rate > 0.0).then_some(speed / heart_rate)
+}
+
+fn late_ride_changes(samples: &[TrendSample]) -> (Option<f64>, Option<f64>) {
+    let Some(last) = samples.last() else {
+        return (None, None);
+    };
+    let total = last.elapsed_seconds;
+    let early = segment_samples(samples, total / 10, (total as f64 * 0.35) as i32);
+    let late = segment_samples(samples, (total as f64 * 0.75) as i32, total);
+
+    (
+        percent_change(average_speed(&early), average_speed(&late)),
+        percent_change(average_heart_rate(&early), average_heart_rate(&late)),
+    )
+}
+
+fn movement_breakdown(samples: &[TrendSample]) -> (i32, i32, i32) {
+    let mut moving = 0;
+    let mut stopped = 0;
+    let mut stop_count = 0;
+    let mut was_stopped = false;
+
+    for window in samples.windows(2) {
+        let previous = window[0];
+        let current = window[1];
+        let delta_time = current.elapsed_seconds - previous.elapsed_seconds;
+        if !(1..=30).contains(&delta_time) {
+            continue;
+        }
+        let speed = previous
+            .speed_mps
+            .or_else(|| {
+                delta_distance(previous, current).map(|distance| distance / f64::from(delta_time))
+            })
+            .unwrap_or_default();
+        if speed < 0.5 {
+            stopped += delta_time;
+            if !was_stopped {
+                stop_count += 1;
+            }
+            was_stopped = true;
+        } else {
+            moving += delta_time;
+            was_stopped = false;
+        }
+    }
+
+    (moving, stopped, stop_count)
+}
+
+fn positive_gain(samples: &[TrendSample]) -> f64 {
+    samples
+        .windows(2)
+        .filter_map(|window| delta_elevation(window[0], window[1]))
+        .filter(|delta| *delta >= 1.0)
+        .sum()
+}
+
+fn delta_distance(previous: TrendSample, current: TrendSample) -> Option<f64> {
+    let delta = current.distance_meters? - previous.distance_meters?;
+    (delta >= 0.0).then_some(delta)
+}
+
+fn delta_elevation(previous: TrendSample, current: TrendSample) -> Option<f64> {
+    Some(current.elevation_meters? - previous.elevation_meters?)
+}
+
+fn percent_change(early: Option<f64>, late: Option<f64>) -> Option<f64> {
+    let early = early?;
+    let late = late?;
+    (early.abs() > f64::EPSILON).then_some(((late - early) / early) * 100.0)
+}
+
+fn mean(values: Vec<f64>) -> Option<f64> {
+    if values.is_empty() {
+        return None;
+    }
+    Some(values.iter().sum::<f64>() / values.len() as f64)
+}
+
+fn median(mut values: Vec<f64>) -> Option<f64> {
+    if values.is_empty() {
+        return None;
+    }
+    values.sort_by(f64::total_cmp);
+    let middle = values.len() / 2;
+    if values.len() % 2 == 0 {
+        Some((values[middle - 1] + values[middle]) / 2.0)
+    } else {
+        Some(values[middle])
+    }
+}
+
+fn max_by_metric<F>(climbs: &[ClimbResponse], metric: F) -> Option<ClimbResponse>
+where
+    F: Fn(&ClimbResponse) -> f64,
+{
+    climbs
+        .iter()
+        .cloned()
+        .max_by(|a, b| metric(a).total_cmp(&metric(b)))
+}
+
+fn min_by_metric<F>(climbs: &[ClimbResponse], metric: F) -> Option<ClimbResponse>
+where
+    F: Fn(&ClimbResponse) -> f64,
+{
+    climbs
+        .iter()
+        .cloned()
+        .min_by(|a, b| metric(a).total_cmp(&metric(b)))
+}
+
+fn percentile_by_metric<F>(
+    climbs: &[ClimbResponse],
+    percentile: f64,
+    metric: F,
+) -> Option<ClimbResponse>
+where
+    F: Fn(&ClimbResponse) -> f64,
+{
+    if climbs.is_empty() {
+        return None;
+    }
+    let mut sorted = climbs.to_vec();
+    sorted.sort_by(|a, b| metric(a).total_cmp(&metric(b)));
+    let index = ((sorted.len() - 1) as f64 * percentile).round() as usize;
+    sorted.get(index).cloned()
 }
 
 impl ReportBoundary {
