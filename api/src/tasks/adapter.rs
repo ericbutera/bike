@@ -23,6 +23,7 @@ pub enum Task {
     RegenerateSegmentEfforts(RegenerateSegmentEffortsTask),
     ProcessActivityImport(ProcessActivityImportTask),
     ReprocessUserActivityImports(ReprocessUserActivityImportsTask),
+    ReprocessActivityImport(ReprocessActivityImportTask),
     BackfillUserXcTraining(BackfillUserXcTrainingTask),
     RegenerateUserSegments(RegenerateUserSegmentsTask),
     ActivityArchiveImport(ActivityArchiveImportTask),
@@ -56,6 +57,11 @@ pub struct ReprocessUserActivityImportsTask {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReprocessActivityImportTask {
+    pub activity_id: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackfillUserXcTrainingTask {
     pub user_id: i32,
 }
@@ -84,6 +90,7 @@ impl Task {
             Task::RegenerateSegmentEfforts(_) => "regenerate_segment_efforts",
             Task::ProcessActivityImport(_) => "process_activity_import",
             Task::ReprocessUserActivityImports(_) => "reprocess_user_activity_imports",
+            Task::ReprocessActivityImport(_) => "reprocess_activity_import",
             Task::BackfillUserXcTraining(_) => "backfill_user_xc_training",
             Task::RegenerateUserSegments(_) => "regenerate_user_segments",
             Task::ActivityArchiveImport(_) => "activity_archive_import",
@@ -219,6 +226,24 @@ impl TaskQueue {
             .enqueue_with_options(task_type, task, None, 1)
             .await
             .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+
+    pub async fn reprocess_activity_import(
+        &self,
+        activity_id: i32,
+    ) -> Result<QueuedTaskReference, String> {
+        let task = Task::ReprocessActivityImport(ReprocessActivityImportTask { activity_id });
+        let task_type = task.task_type().to_string();
+
+        self.auth
+            .inner()
+            .enqueue_with_options(task_type, task, None, 1)
+            .await
+            .map(|task| QueuedTaskReference {
+                id: task.id,
+                status: task.status.as_str().to_string(),
+            })
             .map_err(|error| error.to_string())
     }
 

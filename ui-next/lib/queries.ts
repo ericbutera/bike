@@ -608,6 +608,15 @@ export type ReprocessUserActivityImportsResponse = {
   message: string;
 };
 
+export type ReprocessActivityImportResponse = {
+  activity_id: number;
+  user_id: number;
+  status: string;
+  message: string;
+  task_id: string;
+  task_status: string;
+};
+
 export type RegenerateUserSegmentsResponse = {
   user_id: number;
   status: string;
@@ -742,6 +751,41 @@ export function useReprocessUserActivityImports() {
       });
 
       return result as ReprocessUserActivityImportsResponse;
+    },
+  };
+}
+
+export function useReprocessActivityImport() {
+  const queryClient = useQueryClient();
+  const mutation = $api.useMutation(
+    "post",
+    "/admin/activity-imports/reprocess-activity",
+  );
+
+  return {
+    ...mutation,
+    reprocessAsync: async (activityId: number | string) => {
+      const numericActivityId = Number(activityId);
+      const result = await mutation.mutateAsync({
+        body: {
+          activity_id: numericActivityId,
+        },
+      });
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["get", "/activities"] }),
+        queryClient.invalidateQueries({ queryKey: ["get", "/activities/{id}"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/activity-imports"],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["get", "/segments"] }),
+        queryClient.invalidateQueries({ queryKey: ["get", "/segments/{id}"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/training/xc-progress"],
+        }),
+      ]);
+
+      return result as ReprocessActivityImportResponse;
     },
   };
 }

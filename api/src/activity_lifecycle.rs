@@ -8,9 +8,9 @@ use crate::activity_import_pipeline::{
     finalize_activity_import_batch, mark_activity_import_failed,
     mark_activity_import_processing_stage, mark_activity_imports_processed,
     reprocess_activity_from_import_deferred_caches, ACTIVITY_IMPORT_STAGE_ACTIVITY_ANALYTICS_BUILT,
-    ACTIVITY_IMPORT_STAGE_SEGMENTS_BUILT, ACTIVITY_IMPORT_STAGE_SEGMENT_ANALYTICS_BUILT,
-    ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT, ACTIVITY_IMPORT_STATUS_FAILED,
-    ACTIVITY_IMPORT_STATUS_PROCESSED,
+    ACTIVITY_IMPORT_STAGE_RAW_STORED, ACTIVITY_IMPORT_STAGE_SEGMENTS_BUILT,
+    ACTIVITY_IMPORT_STAGE_SEGMENT_ANALYTICS_BUILT, ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT,
+    ACTIVITY_IMPORT_STATUS_FAILED, ACTIVITY_IMPORT_STATUS_PROCESSED,
 };
 use crate::activity_training_analysis::rebuild_activity_training_analysis_cache;
 use crate::analytics::{
@@ -42,6 +42,13 @@ pub struct DuplicateActivityCleanupSummary {
     pub duplicate_group_count: usize,
     pub deleted_activity_count: usize,
     pub retained_activity_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActivityImportReprocessSummary {
+    pub activity_id: i32,
+    pub activity_import_id: i32,
+    pub affected_segment_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -716,6 +723,144 @@ pub async fn resume_incomplete_activity_imports_for_user(
     mark_activity_imports_processed(db, &resumed_import_ids).await?;
 
     Ok((resumed_count, failed_count))
+}
+
+pub async fn process_single_activity_import_reprocessing(
+    db: &DatabaseConnection,
+    uploads_dir: &str,
+    tasks: &TaskQueue,
+    activity_id: i32,
+) -> Result<ActivityImportReprocessSummary, AppError> {
+    let activity = activities::Entity::find_by_id(activity_id)
+        .one(db)
+        .await?
+        .ok_or_else(|| AppError::not_found(format!("Activity {activity_id} was not found")))?;
+    let user_id = activity.user_id;
+
+    ensure_user_activity_import_lock_stage(
+        db,
+        user_id,
+        ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING,
+        ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
+    )
+    .await?;
+
+    let result = async {
+        let activity_import_id = activity.activity_import_id.ok_or_else(|| {
+            AppError::bad_request(format!(
+                "Activity {activity_id} is not linked to a stored import"
+            ))
+        })?;
+        let activity_import = activity_imports::Entity::find_by_id(activity_import_id)
+            .one(db)
+            .await?
+            .ok_or_else(|| {
+                AppError::not_found(format!(
+                    "Activity import {activity_import_id} was not found"
+                ))
+            })?;
+        let training_profile = load_training_profile(db, user_id).await?;
+
+        let activity_import = mark_activity_import_processing_stage(
+            db,
+            &activity_import,
+            ACTIVITY_IMPORT_STAGE_RAW_STORED,
+            Some(activity.id),
+        )
+        .await?;
+        let reprocessed = match reprocess_activity_from_import_deferred_caches(
+            db,
+            uploads_dir,
+            user_id,
+            activity,
+            activity_import.clone(),
+            Some(&training_profile),
+        )
+        .await
+        {
+            Ok(reprocessed) => reprocessed,
+            Err(error) => {
+                mark_activity_import_failed(
+                    db,
+                    &activity_import,
+                    &activity_import.processing_stage,
+                    &error,
+                )
+                .await?;
+                return Err(error);
+            }
+        };
+
+        let activity_import = mark_activity_import_processing_stage(
+            db,
+            &activity_import,
+            ACTIVITY_IMPORT_STAGE_SEGMENTS_BUILT,
+            Some(reprocessed.activity.id),
+        )
+        .await?;
+
+        let mut affected_segment_ids = reprocessed.affected_segment_ids;
+        affected_segment_ids.sort_unstable();
+        affected_segment_ids.dedup();
+
+        rebuild_segment_analytics_cache(db, &affected_segment_ids).await?;
+        let activity_import = mark_activity_import_processing_stage(
+            db,
+            &activity_import,
+            ACTIVITY_IMPORT_STAGE_SEGMENT_ANALYTICS_BUILT,
+            Some(reprocessed.activity.id),
+        )
+        .await?;
+
+        rebuild_activity_analytics_cache(db, &[reprocessed.activity.id]).await?;
+        let activity_import = mark_activity_import_processing_stage(
+            db,
+            &activity_import,
+            ACTIVITY_IMPORT_STAGE_ACTIVITY_ANALYTICS_BUILT,
+            Some(reprocessed.activity.id),
+        )
+        .await?;
+
+        rebuild_activity_training_analysis_cache(db, &[reprocessed.activity.id]).await?;
+        mark_activity_import_processing_stage(
+            db,
+            &activity_import,
+            ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT,
+            Some(reprocessed.activity.id),
+        )
+        .await?;
+
+        finalize_activity_import_batch(
+            db,
+            tasks,
+            user_id,
+            affected_segment_ids.clone(),
+            Some(reprocessed.fitness_dirty_from_day),
+            Utc::now(),
+        )
+        .await?;
+        mark_activity_imports_processed(db, &[activity_import_id]).await?;
+
+        Ok(ActivityImportReprocessSummary {
+            activity_id: reprocessed.activity.id,
+            activity_import_id,
+            affected_segment_count: affected_segment_ids.len(),
+        })
+    }
+    .await;
+
+    let release_result = release_user_activity_import_lock(
+        db,
+        user_id,
+        ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING,
+    )
+    .await;
+
+    match (result, release_result) {
+        (Err(error), _) => Err(error),
+        (Ok(_), Err(error)) => Err(error),
+        (Ok(summary), Ok(())) => Ok(summary),
+    }
 }
 
 pub async fn process_user_activity_import_reprocessing(

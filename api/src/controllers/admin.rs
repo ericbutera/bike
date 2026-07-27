@@ -44,6 +44,10 @@ pub fn routes() -> Router<Arc<AppStorage>> {
             post(reprocess_user_activity_imports),
         )
         .route(
+            "/activity-imports/reprocess-activity",
+            post(reprocess_activity_import),
+        )
+        .route(
             "/activity-imports/cleanup-duplicates",
             post(cleanup_user_duplicate_activities),
         )
@@ -214,6 +218,21 @@ pub struct ReprocessUserActivityImportsResponse {
     pub user_id: i32,
     pub status: String,
     pub message: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ReprocessActivityImportRequest {
+    pub activity_id: i32,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ReprocessActivityImportResponse {
+    pub activity_id: i32,
+    pub user_id: i32,
+    pub status: String,
+    pub message: String,
+    pub task_id: String,
+    pub task_status: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -473,6 +492,77 @@ pub async fn reprocess_user_activity_imports(
             user_id: request.user_id,
             status: "queued".to_string(),
             message: "Activity reprocessing queued.".to_string(),
+        }),
+    ))
+}
+
+#[utoipa::path(
+    post,
+    path = "/admin/activity-imports/reprocess-activity",
+    operation_id = "admin_reprocess_activity_import",
+    request_body = ReprocessActivityImportRequest,
+    responses(
+        (status = 202, description = "Queued stored-file activity reprocessing for one activity", body = ReprocessActivityImportResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "Activity not found", body = ApiErrorResponse),
+        (status = 409, description = "Another activity import is already running or queued", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "admin",
+)]
+pub async fn reprocess_activity_import(
+    _admin: AdminUserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+    Json(request): Json<ReprocessActivityImportRequest>,
+) -> Result<(StatusCode, Json<ReprocessActivityImportResponse>), AppError> {
+    let activity = activities::Entity::find_by_id(request.activity_id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| {
+            AppError::not_found(format!("Activity {} was not found", request.activity_id))
+        })?;
+
+    if activity.activity_import_id.is_none() {
+        return Err(AppError::bad_request(format!(
+            "Activity {} is not linked to a stored import",
+            request.activity_id
+        )));
+    }
+
+    acquire_user_activity_import_lock(
+        &state.db,
+        activity.user_id,
+        ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING,
+        ACTIVITY_IMPORT_LOCK_STAGE_QUEUED,
+    )
+    .await?;
+
+    let task = match state.tasks.reprocess_activity_import(activity.id).await {
+        Ok(task) => task,
+        Err(message) => {
+            release_user_activity_import_lock(
+                &state.db,
+                activity.user_id,
+                ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING,
+            )
+            .await?;
+            return Err(AppError::internal(format!(
+                "Failed to queue activity reprocessing: {message}"
+            )));
+        }
+    };
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(ReprocessActivityImportResponse {
+            activity_id: activity.id,
+            user_id: activity.user_id,
+            status: "queued".to_string(),
+            message: "Activity reprocessing queued.".to_string(),
+            task_id: task.id,
+            task_status: task.status,
         }),
     ))
 }

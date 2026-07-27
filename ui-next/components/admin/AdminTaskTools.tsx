@@ -9,12 +9,14 @@ import {
   useImportActivityArchiveUrl,
   useRegenerateSegmentEfforts,
   useRegenerateUserSegments,
+  useReprocessActivityImport,
   useReprocessUserActivityImports,
   type ActivityArchiveImportJob,
   type AdminAnalyticsBackfillResponse,
   type CleanupUserDuplicateActivitiesResponse,
   type RegenerateSegmentEffortsResponse,
   type RegenerateUserSegmentsResponse,
+  type ReprocessActivityImportResponse,
   type ReprocessUserActivityImportsResponse,
 } from "@/lib/queries";
 import Link from "next/link";
@@ -32,6 +34,10 @@ export default function AdminTaskTools() {
     useCleanupUserDuplicateActivities();
   const { reprocessAsync, isPending: isReprocessPending } =
     useReprocessUserActivityImports();
+  const {
+    reprocessAsync: reprocessActivityAsync,
+    isPending: isActivityReprocessPending,
+  } = useReprocessActivityImport();
   const {
     regenerateAsync: regenerateUserSegmentsAsync,
     isPending: isUserSegmentRegenerationPending,
@@ -60,6 +66,11 @@ export default function AdminTaskTools() {
   const [reprocessErrorMessage, setReprocessErrorMessage] = useState<
     string | null
   >(null);
+  const [activityReprocessId, setActivityReprocessId] = useState("");
+  const [activityReprocessResult, setActivityReprocessResult] =
+    useState<ReprocessActivityImportResponse | null>(null);
+  const [activityReprocessErrorMessage, setActivityReprocessErrorMessage] =
+    useState<string | null>(null);
   const [userSegmentUserId, setUserSegmentUserId] = useState("");
   const [userSegmentResult, setUserSegmentResult] =
     useState<RegenerateUserSegmentsResponse | null>(null);
@@ -128,6 +139,26 @@ export default function AdminTaskTools() {
     } catch (error) {
       setReprocessResult(null);
       setReprocessErrorMessage(extractApiMessage(error));
+    }
+  }
+
+  async function handleActivityReprocess() {
+    const numericActivityId = Number(activityReprocessId);
+
+    setActivityReprocessErrorMessage(null);
+
+    if (!Number.isFinite(numericActivityId) || numericActivityId < 1) {
+      setActivityReprocessResult(null);
+      setActivityReprocessErrorMessage("Enter a valid activity id.");
+      return;
+    }
+
+    try {
+      const response = await reprocessActivityAsync(numericActivityId);
+      setActivityReprocessResult(response);
+    } catch (error) {
+      setActivityReprocessResult(null);
+      setActivityReprocessErrorMessage(extractApiMessage(error));
     }
   }
 
@@ -213,6 +244,98 @@ export default function AdminTaskTools() {
 
   return (
     <div className="grid gap-6">
+      <section className="rounded-2xl border border-base-300 bg-base-100 p-6 shadow-sm">
+        <h2 className="text-lg font-semibold">
+          Reprocess one imported activity
+        </h2>
+        <p className="mt-2 max-w-3xl text-sm text-base-content/70">
+          Queue a focused rebuild for one activity from its stored source file.
+          This refreshes segment efforts, segment analytics, activity analytics,
+          XC training analysis, and fitness freshness without rerunning every
+          activity for the rider.
+        </p>
+
+        <label className="form-control mt-5 max-w-sm">
+          <div className="label">
+            <span className="label-text font-medium">Activity id</span>
+            <span className="label-text-alt">Required</span>
+          </div>
+          <input
+            type="number"
+            min={1}
+            step={1}
+            inputMode="numeric"
+            className="input input-bordered"
+            placeholder="1647"
+            value={activityReprocessId}
+            onChange={(event) => {
+              setActivityReprocessId(event.target.value);
+            }}
+          />
+          <div className="label">
+            <span className="label-text-alt text-base-content/60">
+              The activity must be linked to a stored import file.
+            </span>
+          </div>
+        </label>
+
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button
+            className="btn btn-primary"
+            disabled={
+              !activityReprocessId.trim() || isActivityReprocessPending
+            }
+            onClick={handleActivityReprocess}
+          >
+            {isActivityReprocessPending
+              ? "Queueing reprocess..."
+              : "Queue activity reprocess"}
+          </button>
+          <Link href="/admin/tasks" className="btn btn-ghost">
+            View background tasks
+          </Link>
+          <Link href="/admin/integrations" className="btn btn-ghost">
+            View processing events
+          </Link>
+        </div>
+
+        {activityReprocessErrorMessage ? (
+          <div className="alert alert-error mt-4">
+            <span>{activityReprocessErrorMessage}</span>
+          </div>
+        ) : null}
+
+        {activityReprocessResult ? (
+          <div className="mt-5 rounded-2xl bg-base-200 p-5">
+            <div className="text-sm text-base-content/60">
+              Queued activity reprocess
+            </div>
+            <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
+              <SummaryItem
+                label="Activity id"
+                value={activityReprocessResult.activity_id}
+              />
+              <SummaryItem
+                label="User id"
+                value={activityReprocessResult.user_id}
+              />
+              <SummaryTextItem
+                label="Task id"
+                value={activityReprocessResult.task_id}
+              />
+              <SummaryTextItem
+                label="Status"
+                value={activityReprocessResult.status}
+              />
+              <SummaryTextItem
+                label="Message"
+                value={activityReprocessResult.message}
+              />
+            </dl>
+          </div>
+        ) : null}
+      </section>
+
       <section className="rounded-2xl border border-base-300 bg-base-100 p-6 shadow-sm">
         <h2 className="text-lg font-semibold">Regenerate segment efforts</h2>
         <p className="mt-2 max-w-3xl text-sm text-base-content/70">

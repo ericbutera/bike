@@ -6,6 +6,7 @@ mod rebuild_fitness_freshness;
 mod rebuild_segment_analytics;
 mod regenerate_segment_efforts;
 mod regenerate_user_segments;
+mod reprocess_activity_import;
 mod reprocess_user_activity_imports;
 mod strava_sync;
 
@@ -17,5 +18,6 @@ pub use rebuild_fitness_freshness::RebuildFitnessFreshness;
 pub use rebuild_segment_analytics::RebuildSegmentAnalytics;
 pub use regenerate_segment_efforts::RegenerateSegmentEfforts;
 pub use regenerate_user_segments::RegenerateUserSegments;
+pub use reprocess_activity_import::ReprocessActivityImport;
 pub use reprocess_user_activity_imports::ReprocessUserActivityImports;
 pub use strava_sync::StravaSync;

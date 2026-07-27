@@ -41,6 +41,7 @@ pub async fn register_default_processors(
     let rebuild_segment_analytics = Arc::new(RebuildSegmentAnalytics::new(db.clone()));
     let regenerate_segment_efforts = Arc::new(RegenerateSegmentEfforts::new(db.clone()));
     let process_activity_import = Arc::new(ProcessActivityImport::new(db.clone()));
+    let reprocess_activity_import = Arc::new(ReprocessActivityImport::new(db.clone()));
     let reprocess_user_activity_imports = Arc::new(ReprocessUserActivityImports::new(db.clone()));
     let regenerate_user_segments = Arc::new(RegenerateUserSegments::new(db.clone()));
     let activity_archive_import = Arc::new(ActivityArchiveImport::new(db.clone()));
@@ -54,6 +55,7 @@ pub async fn register_default_processors(
         .register_processor(rebuild_segment_analytics)
         .register_processor(regenerate_segment_efforts)
         .register_processor(process_activity_import)
+        .register_processor(reprocess_activity_import)
         .register_processor(reprocess_user_activity_imports)
         .register_processor(regenerate_user_segments)
         .register_processor(activity_archive_import)
