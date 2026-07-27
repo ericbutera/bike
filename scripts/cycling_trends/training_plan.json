@@ -1,0 +1,26 @@
+{
+  "prescriptions": [
+    {"month": 6, "ride_type": "Punch", "frequency_per_week": 1, "hr_min": 168, "hr_max": 182, "duration_min_hours": 1.0, "duration_max_hours": 1.5},
+    {"month": 6, "ride_type": "Density", "frequency_per_week": 1, "hr_min": 141, "hr_max": 160, "duration_min_hours": 1.5, "duration_max_hours": 2.0},
+    {"month": 6, "ride_type": "Combo", "frequency_per_week": 1, "hr_min": 128, "hr_max": 160, "duration_min_hours": 2.0, "duration_max_hours": 2.5, "notes": "Expected harder opening block followed by Z2"},
+    {"month": 6, "ride_type": "Z2 flat", "frequency_per_week": 1, "hr_min": 128, "hr_max": 141, "duration_min_hours": 1.0, "duration_max_hours": 2.0},
+    {"month": 6, "ride_type": "Long ride", "frequency_per_week": 1, "hr_min": 128, "hr_max": 149, "duration_min_hours": 4.0, "duration_max_hours": 5.0},
+
+    {"month": 7, "ride_type": "Punch", "frequency_per_week": 1, "hr_min": 168, "hr_max": 182, "duration_min_hours": 1.0, "duration_max_hours": 1.5},
+    {"month": 7, "ride_type": "Density", "frequency_per_week": 1, "hr_min": 141, "hr_max": 160, "duration_min_hours": 1.5, "duration_max_hours": 2.25},
+    {"month": 7, "ride_type": "Tempo", "frequency_per_week": 1, "hr_min": 141, "hr_max": 149, "duration_min_hours": 1.5, "duration_max_hours": 2.5},
+    {"month": 7, "ride_type": "Z2 flat", "frequency_per_week": 1, "hr_min": 128, "hr_max": 141, "duration_min_hours": 1.0, "duration_max_hours": 2.0},
+    {"month": 7, "ride_type": "Long ride", "frequency_per_week": 1, "hr_min": 128, "hr_max": 149, "duration_min_hours": 6.0, "duration_max_hours": 8.0},
+
+    {"month": 8, "ride_type": "Punch", "frequency_per_week": 1, "hr_min": 168, "hr_max": 182, "duration_min_hours": 1.0, "duration_max_hours": 1.5},
+    {"month": 8, "ride_type": "Density", "frequency_per_week": 1, "hr_min": 141, "hr_max": 160, "duration_min_hours": 1.5, "duration_max_hours": 2.25},
+    {"month": 8, "ride_type": "Tempo", "frequency_per_week": 1, "hr_min": 141, "hr_max": 149, "duration_min_hours": 1.5, "duration_max_hours": 2.5},
+    {"month": 8, "ride_type": "Back-to-back Saturday", "frequency_per_week": 1, "hr_min": 128, "hr_max": 149, "duration_min_hours": 5.0, "duration_max_hours": 6.0},
+    {"month": 8, "ride_type": "Back-to-back Sunday", "frequency_per_week": 1, "hr_min": 128, "hr_max": 141, "duration_min_hours": 3.0, "duration_max_hours": 4.0},
+
+    {"month": 9, "ride_type": "Punch reduced", "frequency_per_week": 1, "hr_min": 168, "hr_max": 175, "duration_min_hours": 0.75, "duration_max_hours": 1.0},
+    {"month": 9, "ride_type": "Density reduced", "frequency_per_week": 1, "hr_min": 141, "hr_max": 155, "duration_min_hours": 0.75, "duration_max_hours": 1.25},
+    {"month": 9, "ride_type": "Z2 flat", "frequency_per_week": 1, "hr_min": 128, "hr_max": 141, "duration_min_hours": 0.5, "duration_max_hours": 1.0},
+    {"month": 9, "ride_type": "Easy long", "frequency_per_week": 1, "hr_min": 128, "hr_max": 141, "duration_min_hours": 2.5, "duration_max_hours": 4.0}
+  ]
+}

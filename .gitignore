@@ -34,3 +34,5 @@ yarn-error.log*
 
 data/
 uploads/
+
+__pycache__
