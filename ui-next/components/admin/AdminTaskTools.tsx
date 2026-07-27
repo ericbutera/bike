@@ -316,6 +316,10 @@ export default function AdminTaskTools() {
                 value={activityReprocessResult.activity_id}
               />
               <SummaryItem
+                label="Import id"
+                value={activityReprocessResult.activity_import_id}
+              />
+              <SummaryItem
                 label="User id"
                 value={activityReprocessResult.user_id}
               />
@@ -332,6 +336,23 @@ export default function AdminTaskTools() {
                 value={activityReprocessResult.message}
               />
             </dl>
+            <div className="mt-5 flex flex-wrap gap-3">
+              <Link
+                href={`/admin/integrations?provider=activity_processing&user_id=${activityReprocessResult.user_id}&activity_id=${activityReprocessResult.activity_id}`}
+                className="btn btn-sm btn-outline"
+              >
+                Trace activity events
+              </Link>
+              <Link
+                href={`/admin/integrations?provider=activity_processing&user_id=${activityReprocessResult.user_id}&import_id=${activityReprocessResult.activity_import_id}`}
+                className="btn btn-sm btn-outline"
+              >
+                Trace import events
+              </Link>
+              <Link href="/admin/tasks" className="btn btn-sm btn-ghost">
+                View task queue
+              </Link>
+            </div>
           </div>
         ) : null}
       </section>

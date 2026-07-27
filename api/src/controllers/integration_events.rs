@@ -40,6 +40,8 @@ pub struct IntegrationEventResponse {
 pub struct IntegrationEventsQuery {
     pub provider: Option<String>,
     pub user_id: Option<i32>,
+    pub activity_id: Option<i32>,
+    pub import_id: Option<i32>,
     pub limit: Option<u64>,
 }
 
@@ -81,6 +83,8 @@ pub async fn list_strava_history(
         integration_event_service::IntegrationEventListOptions {
             provider: Some(integration_event_service::INTEGRATION_PROVIDER_STRAVA.to_string()),
             user_id: Some(user.id),
+            activity_id: None,
+            import_id: None,
             limit: USER_HISTORY_LIMIT,
         },
     )
@@ -100,6 +104,8 @@ pub async fn list_strava_history(
     params(
         ("provider" = Option<String>, Query, description = "Optional integration provider filter"),
         ("user_id" = Option<i32>, Query, description = "Optional Bike user id filter"),
+        ("activity_id" = Option<i32>, Query, description = "Optional activity id filter against event payload"),
+        ("import_id" = Option<i32>, Query, description = "Optional activity import id filter against event payload"),
         ("limit" = Option<u64>, Query, description = "Maximum number of rows to return"),
     ),
     responses(
@@ -121,6 +127,8 @@ pub async fn list_admin_integration_events(
         integration_event_service::IntegrationEventListOptions {
             provider: query.provider,
             user_id: query.user_id,
+            activity_id: query.activity_id,
+            import_id: query.import_id,
             limit: query
                 .limit
                 .unwrap_or(DEFAULT_ADMIN_LIMIT)

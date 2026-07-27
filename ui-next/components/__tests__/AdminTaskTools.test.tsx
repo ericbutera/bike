@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   useImportActivityArchiveUrl: vi.fn(),
   useRegenerateSegmentEfforts: vi.fn(),
   useRegenerateUserSegments: vi.fn(),
+  useReprocessActivityImport: vi.fn(),
   useReprocessUserActivityImports: vi.fn(),
   backfillAnalyticsAsync: vi.fn(),
   backfillXcTrainingAsync: vi.fn(),
@@ -18,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   importArchiveAsync: vi.fn(),
   regenerateSegmentEffortsAsync: vi.fn(),
   regenerateUserSegmentsAsync: vi.fn(),
+  reprocessActivityAsync: vi.fn(),
   reprocessAsync: vi.fn(),
 }));
 
@@ -29,6 +31,7 @@ vi.mock("@/lib/queries", () => ({
   useImportActivityArchiveUrl: mocks.useImportActivityArchiveUrl,
   useRegenerateSegmentEfforts: mocks.useRegenerateSegmentEfforts,
   useRegenerateUserSegments: mocks.useRegenerateUserSegments,
+  useReprocessActivityImport: mocks.useReprocessActivityImport,
   useReprocessUserActivityImports: mocks.useReprocessUserActivityImports,
 }));
 
@@ -75,6 +78,10 @@ describe("AdminTaskTools", () => {
       reprocessAsync: mocks.reprocessAsync,
       isPending: false,
     });
+    mocks.useReprocessActivityImport.mockReturnValue({
+      reprocessAsync: mocks.reprocessActivityAsync,
+      isPending: false,
+    });
   });
 
   it("queues targeted segment effort regeneration", async () => {
@@ -101,5 +108,40 @@ describe("AdminTaskTools", () => {
     expect(
       screen.getByText("Segment effort regeneration queued."),
     ).toBeInTheDocument();
+  });
+
+  it("links targeted activity reprocess results to event traces", async () => {
+    mocks.reprocessActivityAsync.mockResolvedValue({
+      activity_id: 1647,
+      activity_import_id: 88,
+      user_id: 1,
+      task_id: "302",
+      task_status: "pending",
+      status: "queued",
+      message: "Activity reprocessing queued.",
+    });
+
+    const user = userEvent.setup();
+    render(<AdminTaskTools />);
+
+    await user.type(screen.getByLabelText(/activity id/i), "1647");
+    await user.click(
+      screen.getByRole("button", { name: /queue activity reprocess/i }),
+    );
+
+    expect(mocks.reprocessActivityAsync).toHaveBeenCalledWith(1647);
+
+    await waitFor(() => {
+      expect(screen.getByText("Queued activity reprocess")).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole("link", { name: /trace activity events/i })).toHaveAttribute(
+      "href",
+      "/admin/integrations?provider=activity_processing&user_id=1&activity_id=1647",
+    );
+    expect(screen.getByRole("link", { name: /trace import events/i })).toHaveAttribute(
+      "href",
+      "/admin/integrations?provider=activity_processing&user_id=1&import_id=88",
+    );
   });
 });

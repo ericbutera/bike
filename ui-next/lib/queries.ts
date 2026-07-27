@@ -610,6 +610,7 @@ export type ReprocessUserActivityImportsResponse = {
 
 export type ReprocessActivityImportResponse = {
   activity_id: number;
+  activity_import_id: number;
   user_id: number;
   status: string;
   message: string;
@@ -1379,6 +1380,8 @@ export function useAdminIntegrationEvents(opts?: {
   enabled?: boolean;
   provider?: string;
   userId?: number | null;
+  activityId?: number | null;
+  importId?: number | null;
   limit?: number;
   refetchIntervalMs?: number | false;
 }) {
@@ -1387,6 +1390,8 @@ export function useAdminIntegrationEvents(opts?: {
       query: {
         provider: opts?.provider,
         user_id: opts?.userId ?? undefined,
+        activity_id: opts?.activityId ?? undefined,
+        import_id: opts?.importId ?? undefined,
         limit: opts?.limit,
       },
     },

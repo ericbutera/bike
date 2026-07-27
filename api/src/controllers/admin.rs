@@ -228,6 +228,7 @@ pub struct ReprocessActivityImportRequest {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ReprocessActivityImportResponse {
     pub activity_id: i32,
+    pub activity_import_id: i32,
     pub user_id: i32,
     pub status: String,
     pub message: String,
@@ -524,12 +525,12 @@ pub async fn reprocess_activity_import(
             AppError::not_found(format!("Activity {} was not found", request.activity_id))
         })?;
 
-    if activity.activity_import_id.is_none() {
+    let Some(activity_import_id) = activity.activity_import_id else {
         return Err(AppError::bad_request(format!(
             "Activity {} is not linked to a stored import",
             request.activity_id
         )));
-    }
+    };
 
     acquire_user_activity_import_lock(
         &state.db,
@@ -558,6 +559,7 @@ pub async fn reprocess_activity_import(
         StatusCode::ACCEPTED,
         Json(ReprocessActivityImportResponse {
             activity_id: activity.id,
+            activity_import_id,
             user_id: activity.user_id,
             status: "queued".to_string(),
             message: "Activity reprocessing queued.".to_string(),
