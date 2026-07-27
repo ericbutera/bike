@@ -106,6 +106,7 @@ use utoipa::OpenApi;
             fitness::FitnessFreshnessPoint,
             fitness::FitnessFreshnessResponse,
             reports::ReportBoundary,
+            reports::RideSummaryReportResponse,
             reports::TrainingReportPointResponse,
             reports::TrainingReportsResponse,
             training_goals::TrainingGoalKey,

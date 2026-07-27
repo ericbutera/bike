@@ -591,6 +591,29 @@ export type TrainingReportsResponse = {
   range_start: string;
   range_end: string;
   points: TrainingReportPoint[];
+  ride_summary?: RideSummaryReport | null;
+};
+
+export type RideSummaryReport = {
+  activity_count: number;
+  total_distance_meters: number;
+  total_distance_miles: number;
+  total_elevation_gain_meters: number;
+  total_elevation_gain_feet: number;
+  total_elapsed_seconds: number;
+  total_moving_seconds: number;
+  total_stopped_seconds: number;
+  average_speed_mps?: number | null;
+  average_speed_mph?: number | null;
+  average_heart_rate_bpm?: number | null;
+  max_heart_rate_bpm?: number | null;
+  climbing_density_feet_per_hour?: number | null;
+  z1_seconds: number;
+  z2_seconds: number;
+  z3_seconds: number;
+  z4_seconds: number;
+  z5_seconds: number;
+  data_quality_flags: string[];
 };
 
 export type AdminAnalyticsBackfillResponse = {
@@ -1608,15 +1631,41 @@ export function useDhGoalProgress(opts?: { enabled?: boolean }) {
 
 export function useTrainingReports(
   boundary: TrainingReportBoundary,
-  opts?: { enabled?: boolean },
+  opts?: { enabled?: boolean; startDate?: string; endDate?: string },
 ) {
   const response = $api.useQuery("get", "/training/reports", {
     params: {
       query: {
         boundary,
+        start_date: opts?.startDate,
+        end_date: opts?.endDate,
       },
     },
     options: { enabled: opts?.enabled ?? true },
+  });
+
+  return {
+    ...response,
+    data: (response.data ?? null) as TrainingReportsResponse | null,
+  };
+}
+
+export function useRideSummaryReport(opts: {
+  boundary: TrainingReportBoundary;
+  startDate: string;
+  endDate: string;
+  enabled?: boolean;
+}) {
+  const response = $api.useQuery("get", "/training/reports", {
+    params: {
+      query: {
+        boundary: opts.boundary,
+        report: "ride_summary",
+        start_date: opts.startDate,
+        end_date: opts.endDate,
+      },
+    },
+    options: { enabled: opts.enabled ?? true },
   });
 
   return {
