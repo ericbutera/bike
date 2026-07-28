@@ -3,15 +3,15 @@ WORKDIR /app
 
 FROM chef AS planner
 COPY . .
-RUN sed -i '/^\[patch\."https:\/\/github\.com\/ericbutera\/kaleido"\]/,/^auth = { path/d' Cargo.toml
+RUN sed -i 's#../kaleido/#kaleido/#g' Cargo.toml
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
 COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --release --recipe-path recipe.json --bin api
+RUN cargo chef cook --locked --release --recipe-path recipe.json --bin api
 COPY . .
-RUN sed -i '/^\[patch\."https:\/\/github\.com\/ericbutera\/kaleido"\]/,/^auth = { path/d' Cargo.toml
-RUN cargo build --release --bin api
+RUN sed -i 's#../kaleido/#kaleido/#g' Cargo.toml
+RUN cargo build --locked --release --bin api
 
 FROM debian:bookworm-slim
 WORKDIR /app

@@ -1,0 +1,22 @@
+# Git metadata
+.git
+**/.git
+
+# Rust build artifacts
+target
+**/target
+
+# Node artifacts and UI-only sources
+ui-next
+node_modules
+**/node_modules
+.pnpm-store
+**/.pnpm-store
+
+# Local data
+data
+uploads
+
+# Editor / OS files
+.DS_Store
+.vscode

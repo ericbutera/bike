@@ -4,6 +4,7 @@ members = [
   "worker",
   "migration",
 ]
+exclude = ["kaleido"]
 resolver = "2"
 
 [workspace.dependencies]

@@ -19,5 +19,6 @@ steps:
 
   - name: test-ui
     image: node:25-alpine
+    depends_on: [clone-kaleido]
     commands:
       - sh .woodpecker/test-ui.sh
