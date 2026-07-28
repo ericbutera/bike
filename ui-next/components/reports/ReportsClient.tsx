@@ -496,6 +496,11 @@ function ClimbingReportView({
               <th>Vertical Rate</th>
               <th>Grade</th>
               <th>Avg HR</th>
+              <th>Avg Cadence</th>
+              <th>Avg Power</th>
+              <th>HR Recovery</th>
+              <th>Drop Time</th>
+              <th>Descent</th>
               <th>Half</th>
             </tr>
           </thead>
@@ -509,6 +514,25 @@ function ClimbingReportView({
                 <td>{formatNumber(climb.vertical_rate_meters_per_hour)} m/h</td>
                 <td>{formatPercent(climb.average_grade_percent)}</td>
                 <td>{formatOptionalNumber(climb.average_heart_rate_bpm)}</td>
+                <td>{formatOptionalNumber(climb.average_cadence_rpm)}</td>
+                <td>
+                  {climb.average_power_watts == null
+                    ? "n/a"
+                    : `${formatNumber(climb.average_power_watts)} W`}
+                </td>
+                <td>
+                  {formatRecovery(
+                    climb.heart_rate_recovery_30_seconds_bpm,
+                    climb.heart_rate_recovery_60_seconds_bpm,
+                  )}
+                </td>
+                <td>
+                  {formatDropTimes(
+                    climb.seconds_to_drop_10_bpm,
+                    climb.seconds_to_drop_15_bpm,
+                  )}
+                </td>
+                <td>{climb.summit_immediately_enters_descent ? "Yes" : "No"}</td>
                 <td>{climb.first_or_second_half}</td>
               </tr>
             ))}
@@ -1021,6 +1045,30 @@ function formatOptionalNumber(value?: number | null) {
 
 function formatPercent(value?: number | null) {
   return value == null ? "n/a" : `${formatNumber(value)}%`;
+}
+
+function formatRecovery(
+  recovery30Seconds?: number | null,
+  recovery60Seconds?: number | null,
+) {
+  const recovery30 =
+    recovery30Seconds == null ? "n/a" : `${formatNumber(recovery30Seconds)} bpm`;
+  const recovery60 =
+    recovery60Seconds == null ? "n/a" : `${formatNumber(recovery60Seconds)} bpm`;
+
+  return `30s ${recovery30} / 60s ${recovery60}`;
+}
+
+function formatDropTimes(
+  secondsToDrop10Bpm?: number | null,
+  secondsToDrop15Bpm?: number | null,
+) {
+  const drop10 =
+    secondsToDrop10Bpm == null ? "n/a" : formatDuration(secondsToDrop10Bpm);
+  const drop15 =
+    secondsToDrop15Bpm == null ? "n/a" : formatDuration(secondsToDrop15Bpm);
+
+  return `10 bpm ${drop10} / 15 bpm ${drop15}`;
 }
 
 function formatShortDate(value: string) {

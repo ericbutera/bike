@@ -51,7 +51,8 @@ Implemented:
 - `/api/training/reports` accepts `report`, `start_date`, `end_date`, `boundary`, and `activity_ids`.
 - Standalone report responses exist for ride summary, endurance, climbing, fatigue, and compare rides.
 - The backend reads normalized route/chart points from `activities.derived_data_json` for standalone analyzer-style computations.
-- The backend computes basic ride summary totals, hourly durability rows, grade-block climb rows, climb summaries, late ride speed/HR changes, and a compare-rides metric table.
+- The backend computes basic ride summary totals, hourly durability rows, valley-to-confirmed-crest climb rows, climb summaries, late ride speed/HR changes, and a compare-rides metric table.
+- The climbing report includes average cadence, average power, 30-second/60-second HR recovery, seconds to drop 10/15 bpm, and whether the summit immediately enters a descent when source data supports those fields.
 - The existing bucket charts remain available through the aggregate trends report.
 
 Missing or incomplete:
@@ -60,14 +61,12 @@ Missing or incomplete:
 - Report filters are incomplete. The API does not yet support ride focus, route family, minimum duration, minimum distance, keyword, or automatic matching criteria beyond client-side candidate shortcuts.
 - The aggregate trends report still depends on `activity_training_analyses` for several metrics instead of being fully produced by the standalone reports analyzer.
 - The analyzer code is still embedded in `api/src/controllers/reports.rs`; it has not been extracted into a dedicated Rust `activity_trends` analyzer module.
-- Climb detection is currently grade-block accumulation. It still needs the specified valley-to-confirmed-crest algorithm with summit confirmation and valley reset drops.
 - Ride summary does not yet include coasting time, cadence fields, power fields, or compact per-ride summaries.
 - Endurance does not yet expose a deterministic fatigue index, terrain-sensitive labeling, or benchmark-route guidance.
-- Climbing does not yet include average cadence, average power, 30-second/60-second HR recovery, seconds to drop 10/15 bpm, or whether the summit immediately enters a descent.
 - Fatigue hourly rows do not yet include climb rate or coasting minutes, and the fatigue index is still a minimal efficiency-drop marker rather than the full deterministic scoring described below.
 - Compare rides does not yet include median 60-second HR recovery, Z2 speed, HR zone distribution, route-family-aware trend handling, route-family matching, ride-type matching, race-effort matching, or backend minimum duration/distance matching.
 - Aggregate trends has not yet expanded beyond chart points into overall, weekly, monthly, ride-focus, route-family, and label rollups with the required aggregate fields.
-- Tests still need to cover the analyzer helpers and report response contracts before these reports should be treated as complete.
+- Tests still need to cover the non-climbing analyzer helpers and report response contracts before these reports should be treated as complete.
 
 Completion criteria:
 

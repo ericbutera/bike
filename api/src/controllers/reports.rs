@@ -179,6 +179,13 @@ pub struct ClimbResponse {
     pub average_speed_mps: Option<f64>,
     pub average_heart_rate_bpm: Option<f64>,
     pub peak_heart_rate_bpm: Option<i32>,
+    pub average_cadence_rpm: Option<f64>,
+    pub average_power_watts: Option<f64>,
+    pub heart_rate_recovery_30_seconds_bpm: Option<i32>,
+    pub heart_rate_recovery_60_seconds_bpm: Option<i32>,
+    pub seconds_to_drop_10_bpm: Option<i32>,
+    pub seconds_to_drop_15_bpm: Option<i32>,
+    pub summit_immediately_enters_descent: bool,
     pub first_or_second_half: String,
 }
 
@@ -233,6 +240,8 @@ struct TrendSample {
     elevation_meters: Option<f64>,
     speed_mps: Option<f64>,
     heart_rate_bpm: Option<i32>,
+    cadence_rpm: Option<i32>,
+    power_watts: Option<i32>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -1072,6 +1081,8 @@ fn sample_from_route_point(point: &ActivityRoutePoint) -> TrendSample {
         elevation_meters: point.elevation_meters,
         speed_mps: point.speed_mps,
         heart_rate_bpm: point.heart_rate_bpm,
+        cadence_rpm: point.cadence_rpm,
+        power_watts: point.power_watts,
     }
 }
 
@@ -1082,6 +1093,8 @@ fn sample_from_chart_point(point: &ActivityChartPoint) -> TrendSample {
         elevation_meters: point.elevation_meters,
         speed_mps: point.speed_mps,
         heart_rate_bpm: point.heart_rate_bpm,
+        cadence_rpm: point.cadence_rpm,
+        power_watts: point.power_watts,
     }
 }
 
@@ -1162,56 +1175,98 @@ fn fatigue_start_hour(hourly: &[HourlyDurabilityResponse]) -> Option<i32> {
 }
 
 fn detect_climbs(activity: &activities::Model, samples: &[TrendSample]) -> Vec<ClimbResponse> {
+    const MIN_GAIN_METERS: f64 = 20.0;
+    const MIN_DURATION_SECONDS: i32 = 90;
+    const MIN_DISTANCE_METERS: f64 = 300.0;
+    const SUMMIT_CONFIRMATION_DROP_METERS: f64 = 5.0;
+    const VALLEY_RESET_DROP_METERS: f64 = 8.0;
+
     let mut climbs = Vec::new();
-    let mut start_index: Option<usize> = None;
-    let mut gain = 0.0;
     let total_elapsed = samples
         .last()
         .map(|sample| sample.elapsed_seconds)
         .unwrap_or_default();
+    let Some((mut valley_index, mut valley_elevation)) = first_elevation_sample(samples) else {
+        return climbs;
+    };
+    let mut crest_index = valley_index;
+    let mut crest_elevation = valley_elevation;
 
-    for index in 1..samples.len() {
-        let previous = samples[index - 1];
-        let current = samples[index];
-        let Some(delta_distance) = delta_distance(previous, current) else {
+    for index in (valley_index + 1)..samples.len() {
+        let Some(elevation) = samples[index].elevation_meters else {
             continue;
         };
-        let Some(delta_elevation) = delta_elevation(previous, current) else {
-            continue;
-        };
-        let delta_time = current.elapsed_seconds - previous.elapsed_seconds;
-        let grade = if delta_distance > 0.0 {
-            (delta_elevation / delta_distance) * 100.0
-        } else {
-            0.0
-        };
 
-        if delta_time > 0 && delta_distance > 0.0 && delta_elevation > 0.0 && grade >= 3.0 {
-            start_index.get_or_insert(index - 1);
-            gain += delta_elevation;
+        if elevation < valley_elevation {
+            let drop_from_crest = crest_elevation - elevation;
+            if crest_index > valley_index && drop_from_crest >= SUMMIT_CONFIRMATION_DROP_METERS {
+                finalize_climb(
+                    activity,
+                    samples,
+                    valley_index,
+                    crest_index,
+                    crest_elevation - valley_elevation,
+                    total_elapsed,
+                    MIN_GAIN_METERS,
+                    MIN_DURATION_SECONDS,
+                    MIN_DISTANCE_METERS,
+                    &mut climbs,
+                );
+                valley_index = index;
+                valley_elevation = elevation;
+                crest_index = index;
+                crest_elevation = elevation;
+                continue;
+            }
+
+            if crest_index == valley_index || drop_from_crest >= VALLEY_RESET_DROP_METERS {
+                valley_index = index;
+                valley_elevation = elevation;
+                crest_index = index;
+                crest_elevation = elevation;
+            }
+            continue;
+        }
+
+        if elevation > crest_elevation {
+            crest_index = index;
+            crest_elevation = elevation;
+            continue;
+        }
+
+        let drop_from_crest = crest_elevation - elevation;
+        if drop_from_crest < SUMMIT_CONFIRMATION_DROP_METERS {
             continue;
         }
 
         finalize_climb(
             activity,
             samples,
-            start_index,
-            index - 1,
-            gain,
+            valley_index,
+            crest_index,
+            crest_elevation - valley_elevation,
             total_elapsed,
+            MIN_GAIN_METERS,
+            MIN_DURATION_SECONDS,
+            MIN_DISTANCE_METERS,
             &mut climbs,
         );
-        start_index = None;
-        gain = 0.0;
+        valley_index = index;
+        valley_elevation = elevation;
+        crest_index = index;
+        crest_elevation = elevation;
     }
 
     finalize_climb(
         activity,
         samples,
-        start_index,
-        samples.len().saturating_sub(1),
-        gain,
+        valley_index,
+        crest_index,
+        crest_elevation - valley_elevation,
         total_elapsed,
+        MIN_GAIN_METERS,
+        MIN_DURATION_SECONDS,
+        MIN_DISTANCE_METERS,
         &mut climbs,
     );
 
@@ -1221,36 +1276,40 @@ fn detect_climbs(activity: &activities::Model, samples: &[TrendSample]) -> Vec<C
 fn finalize_climb(
     activity: &activities::Model,
     samples: &[TrendSample],
-    start_index: Option<usize>,
-    end_index: usize,
+    start_index: usize,
+    summit_index: usize,
     gain_meters: f64,
     total_elapsed_seconds: i32,
+    min_gain_meters: f64,
+    min_duration_seconds: i32,
+    min_distance_meters: f64,
     climbs: &mut Vec<ClimbResponse>,
 ) {
-    let Some(start_index) = start_index else {
-        return;
-    };
-    if end_index <= start_index || end_index >= samples.len() {
+    if summit_index <= start_index || summit_index >= samples.len() {
         return;
     }
 
-    let segment = &samples[start_index..=end_index];
+    let segment = &samples[start_index..=summit_index];
     let duration_seconds =
         segment.last().unwrap().elapsed_seconds - segment.first().unwrap().elapsed_seconds;
     let distance_meters = segment_distance(segment).unwrap_or_default();
 
-    if duration_seconds < 60 || distance_meters < 250.0 || gain_meters < 20.0 {
+    if duration_seconds < min_duration_seconds
+        || distance_meters < min_distance_meters
+        || gain_meters < min_gain_meters
+    {
         return;
     }
 
     let vertical_rate = 3600.0 * gain_meters / f64::from(duration_seconds.max(1));
+    let summit_seconds = segment.last().unwrap().elapsed_seconds;
 
     climbs.push(ClimbResponse {
         activity_id: activity.id,
         activity_title: activity.title.clone(),
         climb_number: climbs.len() as i32 + 1,
         start_seconds: segment.first().unwrap().elapsed_seconds,
-        summit_seconds: segment.last().unwrap().elapsed_seconds,
+        summit_seconds,
         duration_seconds,
         distance_meters: round_metric(distance_meters),
         gain_meters: round_metric(gain_meters),
@@ -1262,6 +1321,13 @@ fn finalize_climb(
             .iter()
             .filter_map(|sample| sample.heart_rate_bpm)
             .max(),
+        average_cadence_rpm: average_cadence(segment).map(round_metric),
+        average_power_watts: average_power(segment).map(round_metric),
+        heart_rate_recovery_30_seconds_bpm: heart_rate_recovery(samples, summit_index, 30),
+        heart_rate_recovery_60_seconds_bpm: heart_rate_recovery(samples, summit_index, 60),
+        seconds_to_drop_10_bpm: seconds_to_drop_bpm(samples, summit_index, 10),
+        seconds_to_drop_15_bpm: seconds_to_drop_bpm(samples, summit_index, 15),
+        summit_immediately_enters_descent: summit_enters_descent(samples, summit_index),
         first_or_second_half: if segment.last().unwrap().elapsed_seconds
             <= total_elapsed_seconds / 2
         {
@@ -1270,6 +1336,13 @@ fn finalize_climb(
             "second".to_string()
         },
     });
+}
+
+fn first_elevation_sample(samples: &[TrendSample]) -> Option<(usize, f64)> {
+    samples
+        .iter()
+        .enumerate()
+        .find_map(|(index, sample)| sample.elevation_meters.map(|elevation| (index, elevation)))
 }
 
 fn segment_distance(samples: &[TrendSample]) -> Option<f64> {
@@ -1293,6 +1366,75 @@ fn average_heart_rate(samples: &[TrendSample]) -> Option<f64> {
         .filter_map(|sample| sample.heart_rate_bpm.map(f64::from))
         .collect::<Vec<_>>();
     mean(values)
+}
+
+fn average_cadence(samples: &[TrendSample]) -> Option<f64> {
+    let values = samples
+        .iter()
+        .filter_map(|sample| sample.cadence_rpm.map(f64::from))
+        .collect::<Vec<_>>();
+    mean(values)
+}
+
+fn average_power(samples: &[TrendSample]) -> Option<f64> {
+    let values = samples
+        .iter()
+        .filter_map(|sample| sample.power_watts.map(f64::from))
+        .collect::<Vec<_>>();
+    mean(values)
+}
+
+fn heart_rate_recovery(
+    samples: &[TrendSample],
+    summit_index: usize,
+    recovery_seconds: i32,
+) -> Option<i32> {
+    let summit_heart_rate = samples.get(summit_index)?.heart_rate_bpm?;
+    let target_seconds = samples.get(summit_index)?.elapsed_seconds + recovery_seconds;
+    let recovery_heart_rate = heart_rate_at_or_after(samples, target_seconds)?;
+    Some(summit_heart_rate - recovery_heart_rate)
+}
+
+fn heart_rate_at_or_after(samples: &[TrendSample], elapsed_seconds: i32) -> Option<i32> {
+    samples
+        .iter()
+        .filter(|sample| sample.elapsed_seconds >= elapsed_seconds)
+        .find_map(|sample| sample.heart_rate_bpm)
+}
+
+fn seconds_to_drop_bpm(samples: &[TrendSample], summit_index: usize, drop_bpm: i32) -> Option<i32> {
+    let summit = samples.get(summit_index)?;
+    let summit_heart_rate = summit.heart_rate_bpm?;
+    let target_heart_rate = summit_heart_rate - drop_bpm;
+
+    samples
+        .iter()
+        .skip(summit_index + 1)
+        .find(|sample| {
+            sample
+                .heart_rate_bpm
+                .is_some_and(|hr| hr <= target_heart_rate)
+        })
+        .map(|sample| sample.elapsed_seconds - summit.elapsed_seconds)
+}
+
+fn summit_enters_descent(samples: &[TrendSample], summit_index: usize) -> bool {
+    let Some(summit) = samples.get(summit_index) else {
+        return false;
+    };
+    let Some(summit_elevation) = summit.elevation_meters else {
+        return false;
+    };
+
+    samples
+        .iter()
+        .skip(summit_index + 1)
+        .take_while(|sample| sample.elapsed_seconds - summit.elapsed_seconds <= 120)
+        .any(|sample| {
+            sample
+                .elevation_meters
+                .is_some_and(|elevation| summit_elevation - elevation >= 5.0)
+        })
 }
 
 fn efficiency(samples: &[TrendSample]) -> Option<f64> {
@@ -1503,4 +1645,104 @@ fn average_or_none(sum: f64, count: i32) -> Option<f64> {
 
 fn round_metric(value: f64) -> f64 {
     (value * 100.0).round() / 100.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_activity() -> activities::Model {
+        let now = Utc::now();
+        activities::Model {
+            id: 42,
+            user_id: 7,
+            activity_import_id: None,
+            title: "Benchmark climb".to_string(),
+            sport: "Ride".to_string(),
+            source: "test".to_string(),
+            source_correlation_id: None,
+            original_filename: None,
+            format: None,
+            activity_type: "ride".to_string(),
+            started_at: now,
+            ended_at: None,
+            distance_meters: None,
+            moving_time_seconds: None,
+            total_time_seconds: None,
+            elevation_gain_meters: None,
+            elevation_loss_meters: None,
+            average_speed_mps: None,
+            max_speed_mps: None,
+            average_heart_rate_bpm: None,
+            max_heart_rate_bpm: None,
+            average_cadence_rpm: None,
+            max_cadence_rpm: None,
+            calories: None,
+            estimated_ftp_watts: None,
+            heart_rate_zones_json: None,
+            derived_data_json: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    fn sample(
+        elapsed_seconds: i32,
+        distance_meters: f64,
+        elevation_meters: f64,
+        heart_rate_bpm: i32,
+    ) -> TrendSample {
+        TrendSample {
+            elapsed_seconds,
+            distance_meters: Some(distance_meters),
+            elevation_meters: Some(elevation_meters),
+            speed_mps: None,
+            heart_rate_bpm: Some(heart_rate_bpm),
+            cadence_rpm: Some(80),
+            power_watts: Some(220),
+        }
+    }
+
+    #[test]
+    fn detects_valley_to_confirmed_crest_climb_with_recovery_metrics() {
+        let samples = vec![
+            sample(0, 0.0, 100.0, 120),
+            sample(30, 125.0, 106.0, 130),
+            sample(60, 250.0, 114.0, 142),
+            sample(90, 390.0, 122.0, 152),
+            sample(120, 520.0, 126.0, 160),
+            sample(150, 560.0, 123.0, 154),
+            sample(160, 590.0, 120.0, 150),
+            sample(180, 640.0, 118.0, 142),
+        ];
+
+        let climbs = detect_climbs(&test_activity(), &samples);
+
+        assert_eq!(climbs.len(), 1);
+        let climb = &climbs[0];
+        assert_eq!(climb.start_seconds, 0);
+        assert_eq!(climb.summit_seconds, 120);
+        assert_eq!(climb.duration_seconds, 120);
+        assert_eq!(climb.distance_meters, 520.0);
+        assert_eq!(climb.gain_meters, 26.0);
+        assert_eq!(climb.average_cadence_rpm, Some(80.0));
+        assert_eq!(climb.average_power_watts, Some(220.0));
+        assert_eq!(climb.heart_rate_recovery_30_seconds_bpm, Some(6));
+        assert_eq!(climb.heart_rate_recovery_60_seconds_bpm, Some(18));
+        assert_eq!(climb.seconds_to_drop_10_bpm, Some(40));
+        assert_eq!(climb.seconds_to_drop_15_bpm, Some(60));
+        assert!(climb.summit_immediately_enters_descent);
+    }
+
+    #[test]
+    fn rejects_short_or_unconfirmed_climbs_below_defaults() {
+        let short_samples = vec![
+            sample(0, 0.0, 100.0, 120),
+            sample(30, 120.0, 110.0, 130),
+            sample(60, 240.0, 124.0, 145),
+            sample(80, 260.0, 118.0, 140),
+        ];
+
+        assert!(detect_climbs(&test_activity(), &short_samples).is_empty());
+    }
 }

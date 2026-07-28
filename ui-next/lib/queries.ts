@@ -697,6 +697,13 @@ export type ClimbReportRow = {
   average_speed_mps?: number | null;
   average_heart_rate_bpm?: number | null;
   peak_heart_rate_bpm?: number | null;
+  average_cadence_rpm?: number | null;
+  average_power_watts?: number | null;
+  heart_rate_recovery_30_seconds_bpm?: number | null;
+  heart_rate_recovery_60_seconds_bpm?: number | null;
+  seconds_to_drop_10_bpm?: number | null;
+  seconds_to_drop_15_bpm?: number | null;
+  summit_immediately_enters_descent: boolean;
   first_or_second_half: string;
 };
 
