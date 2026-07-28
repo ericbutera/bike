@@ -7,6 +7,8 @@ import {
   useRideSummaryReport,
   useTrainingReports,
   type ClimbingReport,
+  type CompareRideCandidate,
+  type CompareRidesReport,
   type EnduranceReport,
   type FatigueReport,
   type HourlyDurability,
@@ -37,6 +39,9 @@ export default function ReportsClient() {
   const [selectedReportId, setSelectedReportId] = useState<ReportId>(
     findReportDefinition(searchParams.get("report")).id,
   );
+  const [selectedActivityIds, setSelectedActivityIds] = useState<number[]>(
+    parseActivityIds(searchParams.get("activity_ids")),
+  );
   const selectedReport = findReportDefinition(selectedReportId);
   const isAggregateTrends = selectedReport.id === "aggregate_trends";
   const isRideSummary = selectedReport.id === "ride_summary";
@@ -55,6 +60,7 @@ export default function ReportsClient() {
     boundary: range,
     startDate,
     endDate,
+    activityIds: selectedActivityIds,
     enabled: isStandaloneReport,
   });
 
@@ -68,12 +74,23 @@ export default function ReportsClient() {
     params.set("range", range);
     params.set("start_date", startDate);
     params.set("end_date", endDate);
+    if (selectedActivityIds.length > 0) {
+      params.set("activity_ids", selectedActivityIds.join(","));
+    }
 
     const nextQuery = params.toString();
     if (nextQuery !== searchParams.toString()) {
       router.replace(`/training/reports?${nextQuery}`, { scroll: false });
     }
-  }, [endDate, range, router, searchParams, selectedReportId, startDate]);
+  }, [
+    endDate,
+    range,
+    router,
+    searchParams,
+    selectedActivityIds,
+    selectedReportId,
+    startDate,
+  ]);
 
   function handleRangeChange(nextRange: TimeRange) {
     const nextDateRange = dateRangeForTimeRange(nextRange);
@@ -147,15 +164,6 @@ export default function ReportsClient() {
                 {selectedReport.purpose}
               </p>
             </div>
-            <span
-              className={
-                selectedReport.status === "available"
-                  ? "badge badge-success badge-outline uppercase"
-                  : "badge badge-ghost uppercase"
-              }
-            >
-              {selectedReport.status}
-            </span>
           </div>
 
           {isAggregateTrends ? (
@@ -194,6 +202,15 @@ export default function ReportsClient() {
           ) : selectedReport.id === "fatigue" ? (
             <FatigueReportView
               report={reportQuery.data?.fatigue ?? null}
+              isLoading={reportQuery.isLoading}
+              isError={reportQuery.isError}
+              error={reportQuery.error}
+            />
+          ) : selectedReport.id === "compare_rides" ? (
+            <CompareRidesReportView
+              report={reportQuery.data?.compare_rides ?? null}
+              selectedActivityIds={selectedActivityIds}
+              onSelectedActivityIdsChange={setSelectedActivityIds}
               isLoading={reportQuery.isLoading}
               isError={reportQuery.isError}
               error={reportQuery.error}
@@ -536,6 +553,184 @@ function FatigueReportView({
   );
 }
 
+function CompareRidesReportView({
+  report,
+  selectedActivityIds,
+  onSelectedActivityIdsChange,
+  isLoading,
+  isError,
+  error,
+}: {
+  report: CompareRidesReport | null;
+  selectedActivityIds: number[];
+  onSelectedActivityIdsChange: (activityIds: number[]) => void;
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+}) {
+  if (isLoading) return <LoadingReport label="Loading compare ride candidates..." />;
+  if (isError) return <ErrorReport error={error} label="Failed to load compare rides." />;
+  if (!report) return <EmptyReport label="No compare ride data found." />;
+
+  function toggleActivity(activityId: number) {
+    onSelectedActivityIdsChange(
+      selectedActivityIds.includes(activityId)
+        ? selectedActivityIds.filter((id) => id !== activityId)
+        : [...selectedActivityIds, activityId],
+    );
+  }
+
+  return (
+    <div className="mt-5 grid gap-5">
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          className="btn btn-sm btn-outline"
+          onClick={() => {
+            onSelectedActivityIdsChange(
+              topCandidates(report.candidates, "duration", 4),
+            );
+          }}
+        >
+          Latest long rides
+        </button>
+        <button
+          type="button"
+          className="btn btn-sm btn-outline"
+          onClick={() => {
+            onSelectedActivityIdsChange(
+              topCandidates(report.candidates, "distance", 4),
+            );
+          }}
+        >
+          Longest rides
+        </button>
+        <button
+          type="button"
+          className="btn btn-sm btn-outline"
+          onClick={() => {
+            onSelectedActivityIdsChange(
+              topCandidates(report.candidates, "elevation", 4),
+            );
+          }}
+        >
+          Biggest climbs
+        </button>
+        <button
+          type="button"
+          className="btn btn-sm btn-ghost"
+          disabled={selectedActivityIds.length === 0}
+          onClick={() => {
+            onSelectedActivityIdsChange([]);
+          }}
+        >
+          Clear selection
+        </button>
+      </div>
+
+      {report.selected_rides.length >= 2 ? (
+        <div className="overflow-x-auto rounded-lg border border-base-300">
+          <table className="table table-zebra">
+            <thead>
+              <tr>
+                <th>Metric</th>
+                {report.selected_rides.map((ride) => (
+                  <th key={ride.activity_id}>
+                    <div className="min-w-40">
+                      <div>{ride.title}</div>
+                      <div className="text-xs font-normal text-base-content/50">
+                        {formatShortDate(ride.started_at)}
+                      </div>
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {report.metrics.map((metric) => (
+                <tr key={metric.key}>
+                  <td>
+                    <div className="font-medium">{metric.label}</div>
+                    <div className="text-xs text-base-content/50">
+                      {metric.direction === "lower"
+                        ? "Lower is better"
+                        : metric.direction === "higher"
+                          ? "Higher is better"
+                          : "Route-sensitive"}
+                    </div>
+                  </td>
+                  {report.selected_rides.map((ride) => {
+                    const value = metric.values.find(
+                      (candidate) => candidate.activity_id === ride.activity_id,
+                    );
+                    return <td key={ride.activity_id}>{value?.display ?? "n/a"}</td>;
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="alert">
+          <span>Select at least two rides to generate the comparison table.</span>
+        </div>
+      )}
+
+      <section className="rounded-lg border border-base-300 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-base font-semibold">Candidate Rides</h3>
+          <span className="text-sm text-base-content/60">
+            {selectedActivityIds.length} selected
+          </span>
+        </div>
+        <div className="mt-4 overflow-x-auto">
+          <table className="table table-zebra">
+            <thead>
+              <tr>
+                <th>Select</th>
+                <th>Ride</th>
+                <th>Date</th>
+                <th>Distance</th>
+                <th>Elevation</th>
+                <th>Moving</th>
+              </tr>
+            </thead>
+            <tbody>
+              {report.candidates.map((candidate) => (
+                <tr key={candidate.activity_id}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      className="checkbox checkbox-sm"
+                      checked={selectedActivityIds.includes(candidate.activity_id)}
+                      onChange={() => {
+                        toggleActivity(candidate.activity_id);
+                      }}
+                    />
+                  </td>
+                  <td>{candidate.title}</td>
+                  <td>{formatShortDate(candidate.started_at)}</td>
+                  <td>
+                    {candidate.distance_meters == null
+                      ? "n/a"
+                      : `${formatNumber(candidate.distance_meters / 1609.344)} mi`}
+                  </td>
+                  <td>
+                    {candidate.elevation_gain_meters == null
+                      ? "n/a"
+                      : `${formatNumber(candidate.elevation_gain_meters * 3.28084)} ft`}
+                  </td>
+                  <td>{formatDuration(candidate.moving_time_seconds ?? 0)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function HourlyTable({ rows }: { rows: HourlyDurability[] }) {
   return (
     <div className="mt-4 overflow-x-auto">
@@ -624,15 +819,6 @@ function ReportMenu({
           >
             <span className="flex items-center justify-between gap-3">
               <span className="font-medium">{report.name}</span>
-              <span
-                className={
-                  report.status === "available"
-                    ? "badge badge-success badge-outline badge-sm"
-                    : "badge badge-ghost badge-sm"
-                }
-              >
-                {report.status}
-              </span>
             </span>
             <span className="mt-1 block text-xs leading-5 text-base-content/60">
               {report.purpose}
@@ -755,14 +941,26 @@ function parseTimeRange(value: string | null): TimeRange {
   }
 }
 
+function parseActivityIds(value: string | null) {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(",")
+    .map((part) => Number(part.trim()))
+    .filter((id) => Number.isFinite(id) && id > 0);
+}
+
 function standaloneReportIdFor(
   reportId: ReportId,
-): "ride_summary" | "endurance" | "climbing" | "fatigue" | null {
+): "ride_summary" | "endurance" | "climbing" | "fatigue" | "compare_rides" | null {
   switch (reportId) {
     case "ride_summary":
     case "endurance":
     case "climbing":
     case "fatigue":
+    case "compare_rides":
       return reportId;
     default:
       return null;
@@ -825,6 +1023,14 @@ function formatPercent(value?: number | null) {
   return value == null ? "n/a" : `${formatNumber(value)}%`;
 }
 
+function formatShortDate(value: string) {
+  return new Date(value).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 function formatDuration(seconds: number) {
   const safeSeconds = Math.max(0, seconds);
   const hours = Math.floor(safeSeconds / 3600);
@@ -835,4 +1041,26 @@ function formatDuration(seconds: number) {
   }
 
   return `${hours}h ${minutes.toString().padStart(2, "0")}m`;
+}
+
+function topCandidates(
+  candidates: CompareRideCandidate[],
+  sortBy: "duration" | "distance" | "elevation",
+  limit: number,
+) {
+  return [...candidates]
+    .sort((a, b) => {
+      if (sortBy === "duration") {
+        return (
+          (b.moving_time_seconds ?? b.total_time_seconds ?? 0) -
+          (a.moving_time_seconds ?? a.total_time_seconds ?? 0)
+        );
+      }
+      if (sortBy === "distance") {
+        return (b.distance_meters ?? 0) - (a.distance_meters ?? 0);
+      }
+      return (b.elevation_gain_meters ?? 0) - (a.elevation_gain_meters ?? 0);
+    })
+    .slice(0, limit)
+    .map((candidate) => candidate.activity_id);
 }

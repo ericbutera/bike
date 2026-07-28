@@ -39,6 +39,7 @@ pub struct TrainingReportsQuery {
     pub report: Option<String>,
     pub start_date: Option<NaiveDate>,
     pub end_date: Option<NaiveDate>,
+    pub activity_ids: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -68,6 +69,7 @@ pub struct TrainingReportsResponse {
     pub endurance: Option<EnduranceReportResponse>,
     pub climbing: Option<ClimbingReportResponse>,
     pub fatigue: Option<FatigueReportResponse>,
+    pub compare_rides: Option<CompareRidesReportResponse>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -180,6 +182,50 @@ pub struct ClimbResponse {
     pub first_or_second_half: String,
 }
 
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct CompareRidesReportResponse {
+    pub candidates: Vec<CompareRideCandidateResponse>,
+    pub selected_rides: Vec<CompareRideColumnResponse>,
+    pub metrics: Vec<CompareRideMetricResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct CompareRideCandidateResponse {
+    pub activity_id: i32,
+    pub title: String,
+    pub started_at: DateTime<Utc>,
+    pub distance_meters: Option<f64>,
+    pub elevation_gain_meters: Option<f64>,
+    pub moving_time_seconds: Option<i32>,
+    pub total_time_seconds: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct CompareRideColumnResponse {
+    pub activity_id: i32,
+    pub title: String,
+    pub started_at: DateTime<Utc>,
+    pub distance_meters: Option<f64>,
+    pub elevation_gain_meters: Option<f64>,
+    pub elapsed_seconds: i32,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct CompareRideMetricResponse {
+    pub key: String,
+    pub label: String,
+    pub unit: Option<String>,
+    pub direction: String,
+    pub values: Vec<CompareRideMetricValueResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct CompareRideMetricValueResponse {
+    pub activity_id: i32,
+    pub value: Option<f64>,
+    pub display: String,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct TrendSample {
     elapsed_seconds: i32,
@@ -243,6 +289,7 @@ pub async fn get_training_reports(
                 endurance: None,
                 climbing: None,
                 fatigue: None,
+                compare_rides: None,
             }));
         }
         Some("endurance") => {
@@ -256,6 +303,7 @@ pub async fn get_training_reports(
                 endurance: Some(build_endurance_report(&activity_models)),
                 climbing: None,
                 fatigue: None,
+                compare_rides: None,
             }));
         }
         Some("climbing") => {
@@ -269,6 +317,7 @@ pub async fn get_training_reports(
                 endurance: None,
                 climbing: Some(build_climbing_report(&activity_models)),
                 fatigue: None,
+                compare_rides: None,
             }));
         }
         Some("fatigue") => {
@@ -282,6 +331,35 @@ pub async fn get_training_reports(
                 endurance: None,
                 climbing: None,
                 fatigue: Some(build_fatigue_report(&activity_models)),
+                compare_rides: None,
+            }));
+        }
+        Some("compare_rides") => {
+            let selected_ids = parse_activity_ids(query.activity_ids.as_deref())?;
+            let selected_models = if selected_ids.is_empty() {
+                Vec::new()
+            } else {
+                activities::Entity::find()
+                    .filter(activities::Column::UserId.eq(user.id))
+                    .filter(activities::Column::Id.is_in(selected_ids))
+                    .all(&state.db)
+                    .await?
+            };
+
+            return Ok(Json(TrainingReportsResponse {
+                generated_at: now,
+                boundary,
+                range_start: range_start.to_rfc3339(),
+                range_end: range_end.to_rfc3339(),
+                points: Vec::new(),
+                ride_summary: None,
+                endurance: None,
+                climbing: None,
+                fatigue: None,
+                compare_rides: Some(build_compare_rides_report(
+                    &activity_models,
+                    &selected_models,
+                )),
             }));
         }
         _ => {}
@@ -395,7 +473,33 @@ pub async fn get_training_reports(
         endurance: None,
         climbing: None,
         fatigue: None,
+        compare_rides: None,
     }))
+}
+
+fn parse_activity_ids(raw: Option<&str>) -> Result<Vec<i32>, AppError> {
+    let Some(raw) = raw else {
+        return Ok(Vec::new());
+    };
+    let mut ids = Vec::new();
+    for part in raw
+        .split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+    {
+        let id = part
+            .parse::<i32>()
+            .map_err(|_| AppError::bad_request("activity_ids must be comma-separated integers"))?;
+        if id <= 0 {
+            return Err(AppError::bad_request(
+                "activity_ids must be positive integers",
+            ));
+        }
+        ids.push(id);
+    }
+    ids.sort_unstable();
+    ids.dedup();
+    Ok(ids)
 }
 
 fn report_range(
@@ -673,6 +777,254 @@ fn build_climbing_report(activities: &[activities::Model]) -> ClimbingReportResp
     }
 }
 
+fn build_compare_rides_report(
+    candidates: &[activities::Model],
+    selected: &[activities::Model],
+) -> CompareRidesReportResponse {
+    let mut candidate_rows = candidates
+        .iter()
+        .map(compare_candidate_from_activity)
+        .collect::<Vec<_>>();
+    candidate_rows.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+
+    let selected_rides = selected
+        .iter()
+        .map(compare_column_from_activity)
+        .collect::<Vec<_>>();
+
+    let analyses = selected
+        .iter()
+        .map(compare_analysis_from_activity)
+        .collect::<Vec<_>>();
+
+    let metrics = vec![
+        compare_metric(
+            "distance_miles",
+            "Distance",
+            Some("mi"),
+            "neutral",
+            &analyses,
+            |analysis| analysis.distance_meters.map(|value| value / 1609.344),
+        ),
+        compare_metric(
+            "elevation_gain_feet",
+            "Elevation",
+            Some("ft"),
+            "neutral",
+            &analyses,
+            |analysis| {
+                analysis
+                    .elevation_gain_meters
+                    .map(|value| value * FEET_PER_METER)
+            },
+        ),
+        compare_metric(
+            "elapsed_hours",
+            "Elapsed Time",
+            Some("h"),
+            "neutral",
+            &analyses,
+            |analysis| Some(f64::from(analysis.elapsed_seconds) / 3600.0),
+        ),
+        compare_metric(
+            "moving_hours",
+            "Moving Time",
+            Some("h"),
+            "neutral",
+            &analyses,
+            |analysis| {
+                analysis
+                    .moving_seconds
+                    .map(|value| f64::from(value) / 3600.0)
+            },
+        ),
+        compare_metric(
+            "aerobic_decoupling_percent",
+            "Aerobic Decoupling",
+            Some("%"),
+            "lower",
+            &analyses,
+            |analysis| analysis.aerobic_decoupling_percent,
+        ),
+        compare_metric(
+            "median_climb_rate_mph",
+            "Median Climb Rate",
+            Some("m/h"),
+            "higher",
+            &analyses,
+            |analysis| analysis.median_climb_rate,
+        ),
+        compare_metric(
+            "late_speed_change_percent",
+            "Late Ride Fade",
+            Some("%"),
+            "higher",
+            &analyses,
+            |analysis| analysis.late_speed_change_percent,
+        ),
+        compare_metric(
+            "stopped_time_percent",
+            "Stopped Time",
+            Some("%"),
+            "lower",
+            &analyses,
+            |analysis| analysis.stopped_time_percent,
+        ),
+        compare_metric(
+            "climbing_density_feet_per_hour",
+            "Climbing Density",
+            Some("ft/h"),
+            "neutral",
+            &analyses,
+            |analysis| analysis.climbing_density_feet_per_hour,
+        ),
+        compare_metric(
+            "z2_time_hours",
+            "Z2 Time",
+            Some("h"),
+            "neutral",
+            &analyses,
+            |analysis| Some(f64::from(analysis.z2_seconds) / 3600.0),
+        ),
+    ];
+
+    CompareRidesReportResponse {
+        candidates: candidate_rows,
+        selected_rides,
+        metrics,
+    }
+}
+
+#[derive(Debug, Clone)]
+struct CompareRideAnalysis {
+    activity_id: i32,
+    distance_meters: Option<f64>,
+    elevation_gain_meters: Option<f64>,
+    elapsed_seconds: i32,
+    moving_seconds: Option<i32>,
+    aerobic_decoupling_percent: Option<f64>,
+    median_climb_rate: Option<f64>,
+    late_speed_change_percent: Option<f64>,
+    stopped_time_percent: Option<f64>,
+    climbing_density_feet_per_hour: Option<f64>,
+    z2_seconds: i32,
+}
+
+fn compare_analysis_from_activity(activity: &activities::Model) -> CompareRideAnalysis {
+    let samples = activity_samples(activity);
+    let elapsed_seconds = activity_elapsed_seconds(activity, &samples);
+    let moving_seconds = activity.moving_time_seconds;
+    let first = segment_samples(&samples, 0, elapsed_seconds / 2);
+    let second = segment_samples(&samples, elapsed_seconds / 2, elapsed_seconds);
+    let aerobic_decoupling_percent = percent_change(efficiency(&first), efficiency(&second));
+    let late_speed_change_percent = late_ride_changes(&samples).0;
+    let climbs = detect_climbs(activity, &samples);
+    let median_climb_rate = median(
+        climbs
+            .iter()
+            .map(|climb| climb.vertical_rate_meters_per_hour)
+            .collect(),
+    );
+    let stopped_seconds = activity
+        .total_time_seconds
+        .zip(activity.moving_time_seconds)
+        .map(|(total, moving)| (total - moving).max(0));
+    let stopped_time_percent =
+        stopped_seconds
+            .zip(activity.total_time_seconds)
+            .and_then(|(stopped, total)| {
+                (total > 0).then_some((f64::from(stopped) / f64::from(total)) * 100.0)
+            });
+    let moving_hours = moving_seconds.map(|value| f64::from(value) / 3600.0);
+    let climbing_density_feet_per_hour = activity
+        .elevation_gain_meters
+        .zip(moving_hours)
+        .and_then(|(gain, hours)| (hours > 0.0).then_some((gain * FEET_PER_METER) / hours));
+    let z2_seconds = deserialize_activity_heart_rate_zones(activity.heart_rate_zones_json.as_ref())
+        .into_iter()
+        .find(|zone| zone.zone == 2)
+        .map(|zone| zone.duration_seconds.max(0))
+        .unwrap_or_default();
+
+    CompareRideAnalysis {
+        activity_id: activity.id,
+        distance_meters: activity.distance_meters,
+        elevation_gain_meters: activity.elevation_gain_meters,
+        elapsed_seconds,
+        moving_seconds,
+        aerobic_decoupling_percent,
+        median_climb_rate,
+        late_speed_change_percent,
+        stopped_time_percent,
+        climbing_density_feet_per_hour,
+        z2_seconds,
+    }
+}
+
+fn compare_candidate_from_activity(activity: &activities::Model) -> CompareRideCandidateResponse {
+    CompareRideCandidateResponse {
+        activity_id: activity.id,
+        title: activity.title.clone(),
+        started_at: activity.started_at,
+        distance_meters: activity.distance_meters.map(round_metric),
+        elevation_gain_meters: activity.elevation_gain_meters.map(round_metric),
+        moving_time_seconds: activity.moving_time_seconds,
+        total_time_seconds: activity.total_time_seconds,
+    }
+}
+
+fn compare_column_from_activity(activity: &activities::Model) -> CompareRideColumnResponse {
+    let samples = activity_samples(activity);
+    CompareRideColumnResponse {
+        activity_id: activity.id,
+        title: activity.title.clone(),
+        started_at: activity.started_at,
+        distance_meters: activity.distance_meters.map(round_metric),
+        elevation_gain_meters: activity.elevation_gain_meters.map(round_metric),
+        elapsed_seconds: activity_elapsed_seconds(activity, &samples),
+    }
+}
+
+fn compare_metric<F>(
+    key: &str,
+    label: &str,
+    unit: Option<&str>,
+    direction: &str,
+    analyses: &[CompareRideAnalysis],
+    value_for: F,
+) -> CompareRideMetricResponse
+where
+    F: Fn(&CompareRideAnalysis) -> Option<f64>,
+{
+    CompareRideMetricResponse {
+        key: key.to_string(),
+        label: label.to_string(),
+        unit: unit.map(str::to_string),
+        direction: direction.to_string(),
+        values: analyses
+            .iter()
+            .map(|analysis| {
+                let value = value_for(analysis).map(round_metric);
+                CompareRideMetricValueResponse {
+                    activity_id: analysis.activity_id,
+                    value,
+                    display: display_metric_value(value, unit),
+                }
+            })
+            .collect(),
+    }
+}
+
+fn display_metric_value(value: Option<f64>, unit: Option<&str>) -> String {
+    match (value, unit) {
+        (Some(value), Some("h")) => format!("{value:.1}h"),
+        (Some(value), Some("%")) => format!("{value:.1}%"),
+        (Some(value), Some(unit)) => format!("{value:.0} {unit}"),
+        (Some(value), None) => format!("{value:.1}"),
+        (None, _) => "n/a".to_string(),
+    }
+}
+
 fn push_missing_flag(flags: &mut Vec<String>, missing: usize, total: usize, label: &str) {
     if missing == 0 {
         return;
@@ -698,6 +1050,19 @@ fn activity_samples(activity: &activities::Model) -> Vec<TrendSample> {
         .iter()
         .map(sample_from_chart_point)
         .collect()
+}
+
+fn activity_elapsed_seconds(activity: &activities::Model, samples: &[TrendSample]) -> i32 {
+    activity
+        .total_time_seconds
+        .or_else(|| samples.last().map(|sample| sample.elapsed_seconds))
+        .or_else(|| {
+            activity
+                .ended_at
+                .map(|ended_at| (ended_at - activity.started_at).num_seconds() as i32)
+        })
+        .unwrap_or_default()
+        .max(0)
 }
 
 fn sample_from_route_point(point: &ActivityRoutePoint) -> TrendSample {

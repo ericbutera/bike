@@ -595,6 +595,7 @@ export type TrainingReportsResponse = {
   endurance?: EnduranceReport | null;
   climbing?: ClimbingReport | null;
   fatigue?: FatigueReport | null;
+  compare_rides?: CompareRidesReport | null;
 };
 
 export type RideSummaryReport = {
@@ -697,6 +698,45 @@ export type ClimbReportRow = {
   average_heart_rate_bpm?: number | null;
   peak_heart_rate_bpm?: number | null;
   first_or_second_half: string;
+};
+
+export type CompareRidesReport = {
+  candidates: CompareRideCandidate[];
+  selected_rides: CompareRideColumn[];
+  metrics: CompareRideMetric[];
+};
+
+export type CompareRideCandidate = {
+  activity_id: number;
+  title: string;
+  started_at: string;
+  distance_meters?: number | null;
+  elevation_gain_meters?: number | null;
+  moving_time_seconds?: number | null;
+  total_time_seconds?: number | null;
+};
+
+export type CompareRideColumn = {
+  activity_id: number;
+  title: string;
+  started_at: string;
+  distance_meters?: number | null;
+  elevation_gain_meters?: number | null;
+  elapsed_seconds: number;
+};
+
+export type CompareRideMetric = {
+  key: string;
+  label: string;
+  unit?: string | null;
+  direction: string;
+  values: CompareRideMetricValue[];
+};
+
+export type CompareRideMetricValue = {
+  activity_id: number;
+  value?: number | null;
+  display: string;
 };
 
 export type AdminAnalyticsBackfillResponse = {
@@ -1734,10 +1774,11 @@ export function useTrainingReports(
 }
 
 export function useRideSummaryReport(opts: {
-  report?: "ride_summary" | "endurance" | "climbing" | "fatigue";
+  report?: "ride_summary" | "endurance" | "climbing" | "fatigue" | "compare_rides";
   boundary: TrainingReportBoundary;
   startDate: string;
   endDate: string;
+  activityIds?: number[];
   enabled?: boolean;
 }) {
   const response = $api.useQuery("get", "/training/reports", {
@@ -1747,6 +1788,10 @@ export function useRideSummaryReport(opts: {
         report: opts.report ?? "ride_summary",
         start_date: opts.startDate,
         end_date: opts.endDate,
+        activity_ids:
+          opts.activityIds && opts.activityIds.length > 0
+            ? opts.activityIds.join(",")
+            : undefined,
       },
     },
     options: { enabled: opts.enabled ?? true },
