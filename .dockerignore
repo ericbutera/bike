@@ -15,6 +15,16 @@ node_modules
 .pnpm-store
 **/.pnpm-store
 
+# Non-Rust service sources
+.woodpecker
+docs
+garmin-iq
+scripts
+.copier-answers.yml
+README.md
+Taskfile.yml
+compose.yaml
+
 # Local data
 data
 uploads

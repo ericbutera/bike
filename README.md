@@ -16,10 +16,7 @@ Natural-language product specifications live in [docs/specifications](docs/speci
 ## Local Development
 
 ```sh
-task --list
-task ui-next:dev
-task api:dev
-task worker:dev
+docker compose up
 ```
 
 The default compose setup uses Postgres on `localhost:5432`, API on `localhost:3000`, and UI on `localhost:3001`.

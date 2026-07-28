@@ -8,6 +8,11 @@ steps:
     image: rust:1.93.0-bookworm
     environment:
       TEST_MODE: "1"
+      CARGO_HOME: /cache/bike/cargo
+      RUSTUP_HOME: /cache/bike/rustup
+      CARGO_TARGET_DIR: /cache/bike/target
+    volumes:
+      - woodpecker-cache:/cache
     commands:
       - sh .woodpecker/test-rust.sh
 
@@ -30,7 +35,7 @@ steps:
       context: .
       dockerfile: api/Dockerfile
       cache: true
-      cache_repo: bike-api-cache
+      cache_repo: bike-rust-cache
 
   - name: build-worker
     image: woodpeckerci/plugin-kaniko
@@ -46,7 +51,7 @@ steps:
       context: .
       dockerfile: worker/Dockerfile
       cache: true
-      cache_repo: bike-worker-cache
+      cache_repo: bike-rust-cache
 
   - name: build-ui
     image: woodpeckerci/plugin-kaniko

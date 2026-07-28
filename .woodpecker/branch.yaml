@@ -8,6 +8,11 @@ steps:
     image: rust:1.93.0-bookworm
     environment:
       TEST_MODE: "1"
+      CARGO_HOME: /cache/bike/cargo
+      RUSTUP_HOME: /cache/bike/rustup
+      CARGO_TARGET_DIR: /cache/bike/target
+    volumes:
+      - woodpecker-cache:/cache
     commands:
       - sh .woodpecker/test-rust.sh
 
