@@ -1931,6 +1931,8 @@ dependencies = [
 [[package]]
 name = "kaleido"
 version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0312c0ebff9a304a777f66f28d2fea059ca6b1dff9b9f0de3a5672204dcac84d"
 dependencies = [
  "argon2",
  "async-trait",
