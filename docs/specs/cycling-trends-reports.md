@@ -42,37 +42,43 @@ Bike should not run this Python in production. The logic should be converted int
 
 ## Implementation Status
 
-Status as of 2026-07-28: the first implementation slice is partially complete, but the full spec is not done.
+Status as of 2026-07-28: the report runner foundation, backend report registry, minimum server-side filters, standalone report responses, and compare-rides speed trend view are implemented. The full spec is not done.
 
 Implemented:
 
 - `/training/reports` has a report menu with `ride_summary`, `endurance`, `climbing`, `fatigue`, `compare_rides`, and `aggregate_trends`.
 - The UI has explicit start and end date controls and preserves `report`, `range`, `start_date`, `end_date`, and `activity_ids` in the URL.
-- `/api/training/reports` accepts `report`, `start_date`, `end_date`, `boundary`, and `activity_ids`.
+- `/api/training/reports` accepts `report`, `start_date`, `end_date`, `boundary`, `activity_ids`, `min_duration_seconds`, and `min_distance_meters`.
+- A Rust report registry now declares the initial six report definitions with stable ids, supported filters, required data quality, result sections, metrics, and metric direction.
+- `/api/training/reports/definitions` exposes the backend-owned report registry, and the UI report menu consumes it with a local fallback for initial render or request failure.
+- The backend validates report ids instead of silently falling back to aggregate trends for unknown `report` values.
+- Minimum duration and minimum distance filters are applied server-side before generating report results and compare-ride candidate lists.
 - Standalone report responses exist for ride summary, endurance, climbing, fatigue, and compare rides.
 - The backend reads normalized route/chart points from `activities.derived_data_json` for standalone analyzer-style computations.
 - The backend computes basic ride summary totals, hourly durability rows, valley-to-confirmed-crest climb rows, climb summaries, late ride speed/HR changes, and a compare-rides metric table.
+- Compare rides sorts selected rides chronologically and shows first-to-latest trend deltas so benchmark ride speed changes are visible over time.
+- Compare rides includes moving speed, standalone Z2 speed when heart-rate zone bounds and sample distance support it, and median 60-second post-climb HR recovery.
 - The climbing report includes average cadence, average power, 30-second/60-second HR recovery, seconds to drop 10/15 bpm, and whether the summit immediately enters a descent when source data supports those fields.
 - The existing bucket charts remain available through the aggregate trends report.
+- Focused backend tests cover registry contents, report id validation, minimum filter validation, climb detection defaults, and compare-rides chronological speed trends.
 
 Missing or incomplete:
 
-- The report registry is UI-only. There is no Rust report registry declaring stable definitions, supported filters, required data quality, result sections, metrics, and metric direction.
-- Report filters are incomplete. The API does not yet support ride focus, route family, minimum duration, minimum distance, keyword, or automatic matching criteria beyond client-side candidate shortcuts.
+- Report filters are still incomplete. The API now supports explicit activity ids plus minimum duration and minimum distance, but it does not yet support ride focus, route family, keyword, or automatic matching criteria beyond client-side candidate shortcuts.
 - The aggregate trends report still depends on `activity_training_analyses` for several metrics instead of being fully produced by the standalone reports analyzer.
 - The analyzer code is still embedded in `api/src/controllers/reports.rs`; it has not been extracted into a dedicated Rust `activity_trends` analyzer module.
 - Ride summary does not yet include coasting time, cadence fields, power fields, or compact per-ride summaries.
 - Endurance does not yet expose a deterministic fatigue index, terrain-sensitive labeling, or benchmark-route guidance.
 - Fatigue hourly rows do not yet include climb rate or coasting minutes, and the fatigue index is still a minimal efficiency-drop marker rather than the full deterministic scoring described below.
-- Compare rides does not yet include median 60-second HR recovery, Z2 speed, HR zone distribution, route-family-aware trend handling, route-family matching, ride-type matching, race-effort matching, or backend minimum duration/distance matching.
+- Compare rides does not yet include HR zone distribution, route-family-aware speed interpretation beyond a route-sensitive label, route-family matching, ride-type matching, or race-effort matching.
 - Aggregate trends has not yet expanded beyond chart points into overall, weekly, monthly, ride-focus, route-family, and label rollups with the required aggregate fields.
-- Tests still need to cover the non-climbing analyzer helpers and report response contracts before these reports should be treated as complete.
+- Tests still need broader coverage for non-climbing analyzer helpers, server-side filter query behavior, frontend filter rendering, and report response contracts before these reports should be treated as complete.
 
 Completion criteria:
 
 - The UI should avoid showing per-report completion badges until the backend registry can report meaningful availability/completeness from the same source of truth used by the API.
 - A report is complete only when its required fields below are computed by the standalone analyzer, exposed through the API, rendered in the UI, and covered by focused tests.
-- Race readiness remains explicitly out of scope for this implementation slice.
+- Race readiness remains explicitly out of scope for the current deterministic reports work.
 
 ## Report Runner
 
@@ -86,7 +92,7 @@ Completion criteria:
 - preserve report criteria in the URL so a report can be revisited or shared;
 - allow each report to define its own result shape.
 
-The menu should be backed by a small report registry in Rust. Each report definition should declare:
+The menu is backed by a small report registry in Rust. Each report definition declares:
 
 - stable id;
 - display name;
@@ -99,9 +105,9 @@ The menu should be backed by a small report registry in Rust. Each report defini
 
 This registry is the extension point for future Bike racing metrics. Adding a new report should not require rewriting the whole reports endpoint or UI. It should mean adding a report definition, analyzer functions when needed, response serializer, and UI renderer for the declared result sections.
 
-## Initial Report Menu
+## Current Report Menu
 
-Start with these report types:
+The current menu includes these report types:
 
 - Ride summary: overall volume, intensity, climbing, stopped time, and data quality for the selected range.
 - Endurance: aerobic decoupling, hourly efficiency, moving average HR, hourly speed, and fatigue index.
@@ -110,7 +116,7 @@ Start with these report types:
 - Compare rides: selected or automatically matched rides shown side by side.
 - Aggregate trends: weekly, monthly, ride-focus, and route-family rollups for the selected date range.
 
-Race readiness should appear in this menu later, but not in the first implementation slice.
+Race readiness should appear in this menu later, after the deterministic report analyzer and trend rows are extracted, tested, and stable.
 
 ## Date Range Behavior
 
@@ -283,6 +289,7 @@ The comparison table should show one row per metric and one column per ride:
 - median 60-second HR recovery after climbs;
 - stopped time percentage;
 - climbing density;
+- moving speed;
 - Z2 speed;
 - Z2 time;
 - HR zone distribution;
@@ -291,7 +298,7 @@ The comparison table should show one row per metric and one column per ride:
 - elapsed time;
 - moving time.
 
-Each row should include an optional trend indicator only when higher or lower is clearly better. For example, lower decoupling is generally better; higher stopped time is generally worse; average speed is route-sensitive and should be neutral unless route family matches.
+Each row can include a first-to-latest delta so the rider can see what changed over time. The UI should interpret the delta only when higher or lower is clearly better. For example, lower decoupling is generally better; higher stopped time is generally worse; moving speed is route-sensitive and should remain neutral unless route family matches.
 
 ## Aggregate Trend Reports
 
@@ -323,7 +330,7 @@ Required aggregate fields:
 
 ## Race Readiness Later
 
-Race readiness should be built on top of the standalone analyzer outputs, not mixed into the first analyzer implementation.
+Race readiness should be built on top of the standalone analyzer outputs, not mixed into the current deterministic report analyzer work.
 
 Future score dimensions:
 
@@ -336,32 +343,36 @@ Future score dimensions:
 
 The first readiness version should return component scores and the evidence behind each score. The UI should not show a single weighted score until the components are stable and tested.
 
-## Rust Conversion Plan
+## Implementation Plan And Progress
 
-1. Define the report registry and request/response envelope.
-2. Add explicit `start_date`, `end_date`, `report_id`, and optional filters to the reports API.
-3. Extract a Rust `activity_trends` analyzer module.
-4. Reuse existing normalized route/chart samples from `activity_details`.
-5. Port time-weighted mean, interpolation, rolling median, moving/stopped/coasting detection, and percent-change helpers.
-6. Port hourly durability metrics.
-7. Port valley-to-crest climb detection.
-8. Add per-climb summary selection helpers.
-9. Add late-ride comparison metrics.
-10. Add trend-row construction from activity plus analyzer output.
-11. Implement the first report definitions by running analyzers directly against activities in the requested range.
-12. Replace the reports UI with a report menu, date range controls, filters, generated results, summary cards, trend tables, comparison controls, and charts.
+Done:
 
-## First Implementation Slice
+- Define the backend report registry and response envelope.
+- Add explicit `start_date`, `end_date`, `report`, `activity_ids`, `min_duration_seconds`, and `min_distance_meters` inputs to the reports API.
+- Reuse normalized route/chart samples from `activities.derived_data_json`.
+- Compute ride summary totals, hourly durability rows, climb detection rows, climb summaries, late-ride changes, and compare-rides metric rows.
+- Use valley-to-confirmed-crest climb detection with the current defaults.
+- Expose ride summary, endurance, climbing, fatigue, compare-rides, and aggregate trends through `/api/training/reports`.
+- Keep the existing bucket charts available as the aggregate trends report.
+- Replace the reports UI with a report menu, date range controls, minimum duration/distance filters, generated results, summary cards, trend tables, comparison controls, and charts.
+- Add compare-rides chronological trend deltas for speed, endurance, climbing, recovery, stopping, and Z2 metrics when enough data exists.
 
-The first slice should be narrow and useful:
+Partially done:
 
-- add the report registry with `ride_summary`, `endurance`, `climbing`, `fatigue`, `compare_rides`, and `aggregate_trends` definitions;
-- add date range controls and report menu UI;
-- add the ad-hoc API request/response envelope;
-- add Rust analyzer structs and pure functions;
-- compute ride summary, hourly durability, climb detection, climb summaries, and late-ride metrics for one activity;
-- expose ride summary and compare-rides reports through `/api/training/reports`;
-- keep the existing bucket charts available as the aggregate trends report.
+- Analyzer logic exists, but it is still embedded in `api/src/controllers/reports.rs` instead of a dedicated `activity_trends` module.
+- Helper functions exist for mean, percent change, moving/stopped detection, climb detection, and Z2 speed, but time-weighted means, interpolation, rolling medians, coasting detection, and reusable trend-row construction are incomplete.
+- Trend rows exist for compare rides, but route-family-aware interpretation and automatic matching are not implemented.
+- Aggregate trends still relies on `activity_training_analyses` for some metrics.
+
+Next actionable slices:
+
+- Extract the standalone analyzer into a dedicated Rust module with pure structs/functions and focused tests for non-climbing helpers.
+- Add route-family and ride-focus filters/matching so compare-rides speed trends can distinguish true improvement from route differences.
+- Add HR zone distribution and route-family-aware speed interpretation to compare rides.
+- Fill fatigue gaps: climb rate, coasting minutes, and a deterministic fatigue index that accounts for speed, HR, climb rate, stopped time, and data quality.
+- Fill ride summary gaps: coasting time, cadence fields, power fields, and compact per-ride summaries.
+- Expand aggregate trends into overall, weekly, monthly, ride-focus, route-family, and label rollups produced by the standalone analyzer.
+- Add frontend tests for report definitions, filters, and compare-rides trend rendering.
 
 Defer race readiness, training-plan compliance, manual ride labels, weighted scoring, and report caching until the standalone analyzer is trustworthy.
 

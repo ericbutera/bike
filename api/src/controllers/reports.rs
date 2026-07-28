@@ -9,13 +9,40 @@ use axum::extract::{Query, State};
 use axum::Json;
 use chrono::{DateTime, Datelike, Duration, NaiveDate, TimeZone, Timelike, Utc};
 use kaleido::auth::UserContext;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter, Select};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 const FEET_PER_METER: f64 = 3.28084;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ReportId {
+    RideSummary,
+    Endurance,
+    Climbing,
+    Fatigue,
+    CompareRides,
+    AggregateTrends,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ReportFilterKey {
+    ActivityIds,
+    MinDuration,
+    MinDistance,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ReportMetricDirection {
+    Higher,
+    Lower,
+    Neutral,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -40,6 +67,32 @@ pub struct TrainingReportsQuery {
     pub start_date: Option<NaiveDate>,
     pub end_date: Option<NaiveDate>,
     pub activity_ids: Option<String>,
+    pub min_duration_seconds: Option<i32>,
+    pub min_distance_meters: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct TrainingReportDefinitionsResponse {
+    pub reports: Vec<TrainingReportDefinitionResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct TrainingReportDefinitionResponse {
+    pub id: ReportId,
+    pub display_name: String,
+    pub short_purpose: String,
+    pub supported_filters: Vec<ReportFilterKey>,
+    pub required_data_quality: Vec<String>,
+    pub result_sections: Vec<String>,
+    pub metrics: Vec<TrainingReportMetricDefinitionResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct TrainingReportMetricDefinitionResponse {
+    pub key: String,
+    pub label: String,
+    pub unit: Option<String>,
+    pub direction: ReportMetricDirection,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -223,7 +276,18 @@ pub struct CompareRideMetricResponse {
     pub label: String,
     pub unit: Option<String>,
     pub direction: String,
+    pub trend: Option<CompareRideMetricTrendResponse>,
     pub values: Vec<CompareRideMetricValueResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct CompareRideMetricTrendResponse {
+    pub first_activity_id: i32,
+    pub latest_activity_id: i32,
+    pub change: Option<f64>,
+    pub change_percent: Option<f64>,
+    pub display: String,
+    pub interpretation: String,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -257,6 +321,26 @@ struct BucketAccumulator {
 
 #[utoipa::path(
     get,
+    path = "/api/training/reports/definitions",
+    responses(
+        (status = 200, description = "Training report definitions", body = TrainingReportDefinitionsResponse),
+        (status = 401, description = "Not authenticated"),
+    ),
+    tag = "training",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn get_training_report_definitions(
+    UserContext { .. }: UserContext<AppStorage>,
+) -> Json<TrainingReportDefinitionsResponse> {
+    Json(TrainingReportDefinitionsResponse {
+        reports: report_definitions(),
+    })
+}
+
+#[utoipa::path(
+    get,
     path = "/api/training/reports",
     params(TrainingReportsQuery),
     responses(
@@ -278,16 +362,21 @@ pub async fn get_training_reports(
     let boundary = query.boundary.unwrap_or(ReportBoundary::Month);
     let now = Utc::now();
     let (range_start, range_end) = report_range(boundary, now, &query)?;
+    let report_id = parse_report_id(query.report.as_deref())?;
+    validate_report_filters(&query)?;
 
-    let activity_models = activities::Entity::find()
-        .filter(activities::Column::UserId.eq(user.id))
-        .filter(activities::Column::StartedAt.gte(range_start))
-        .filter(activities::Column::StartedAt.lte(range_end))
-        .all(&state.db)
-        .await?;
+    let activity_models = filter_activities(
+        activities::Entity::find()
+            .filter(activities::Column::UserId.eq(user.id))
+            .filter(activities::Column::StartedAt.gte(range_start))
+            .filter(activities::Column::StartedAt.lte(range_end)),
+        &query,
+    )
+    .all(&state.db)
+    .await?;
 
-    match query.report.as_deref() {
-        Some("ride_summary") => {
+    match report_id {
+        ReportId::RideSummary => {
             return Ok(Json(TrainingReportsResponse {
                 generated_at: now,
                 boundary,
@@ -301,7 +390,7 @@ pub async fn get_training_reports(
                 compare_rides: None,
             }));
         }
-        Some("endurance") => {
+        ReportId::Endurance => {
             return Ok(Json(TrainingReportsResponse {
                 generated_at: now,
                 boundary,
@@ -315,7 +404,7 @@ pub async fn get_training_reports(
                 compare_rides: None,
             }));
         }
-        Some("climbing") => {
+        ReportId::Climbing => {
             return Ok(Json(TrainingReportsResponse {
                 generated_at: now,
                 boundary,
@@ -329,7 +418,7 @@ pub async fn get_training_reports(
                 compare_rides: None,
             }));
         }
-        Some("fatigue") => {
+        ReportId::Fatigue => {
             return Ok(Json(TrainingReportsResponse {
                 generated_at: now,
                 boundary,
@@ -343,16 +432,19 @@ pub async fn get_training_reports(
                 compare_rides: None,
             }));
         }
-        Some("compare_rides") => {
+        ReportId::CompareRides => {
             let selected_ids = parse_activity_ids(query.activity_ids.as_deref())?;
             let selected_models = if selected_ids.is_empty() {
                 Vec::new()
             } else {
-                activities::Entity::find()
-                    .filter(activities::Column::UserId.eq(user.id))
-                    .filter(activities::Column::Id.is_in(selected_ids))
-                    .all(&state.db)
-                    .await?
+                filter_activities(
+                    activities::Entity::find()
+                        .filter(activities::Column::UserId.eq(user.id))
+                        .filter(activities::Column::Id.is_in(selected_ids)),
+                    &query,
+                )
+                .all(&state.db)
+                .await?
             };
 
             return Ok(Json(TrainingReportsResponse {
@@ -371,7 +463,7 @@ pub async fn get_training_reports(
                 )),
             }));
         }
-        _ => {}
+        ReportId::AggregateTrends => {}
     }
 
     let activity_ids = activity_models
@@ -484,6 +576,355 @@ pub async fn get_training_reports(
         fatigue: None,
         compare_rides: None,
     }))
+}
+
+fn report_definitions() -> Vec<TrainingReportDefinitionResponse> {
+    vec![
+        TrainingReportDefinitionResponse {
+            id: ReportId::RideSummary,
+            display_name: "Ride Summary".to_string(),
+            short_purpose: "Overall volume, intensity, climbing, stopped time, and data quality."
+                .to_string(),
+            supported_filters: vec![ReportFilterKey::MinDuration, ReportFilterKey::MinDistance],
+            required_data_quality: vec![
+                "distance".to_string(),
+                "elevation".to_string(),
+                "time".to_string(),
+                "heart_rate".to_string(),
+            ],
+            result_sections: vec![
+                "summary_cards".to_string(),
+                "heart_rate_zones".to_string(),
+                "data_quality".to_string(),
+            ],
+            metrics: vec![
+                metric_definition(
+                    "distance",
+                    "Distance",
+                    Some("mi"),
+                    ReportMetricDirection::Neutral,
+                ),
+                metric_definition(
+                    "elevation_gain",
+                    "Elevation",
+                    Some("ft"),
+                    ReportMetricDirection::Neutral,
+                ),
+                metric_definition(
+                    "moving_time",
+                    "Moving Time",
+                    Some("seconds"),
+                    ReportMetricDirection::Neutral,
+                ),
+                metric_definition(
+                    "stopped_time",
+                    "Stopped Time",
+                    Some("seconds"),
+                    ReportMetricDirection::Lower,
+                ),
+                metric_definition(
+                    "heart_rate_zones",
+                    "Heart Rate Zones",
+                    None,
+                    ReportMetricDirection::Neutral,
+                ),
+            ],
+        },
+        TrainingReportDefinitionResponse {
+            id: ReportId::Endurance,
+            display_name: "Endurance".to_string(),
+            short_purpose: "Aerobic durability, efficiency, speed, HR, and late-ride drift."
+                .to_string(),
+            supported_filters: vec![ReportFilterKey::MinDuration, ReportFilterKey::MinDistance],
+            required_data_quality: vec![
+                "distance".to_string(),
+                "time".to_string(),
+                "heart_rate".to_string(),
+            ],
+            result_sections: vec!["summary_cards".to_string(), "ride_table".to_string()],
+            metrics: vec![
+                metric_definition(
+                    "aerobic_decoupling_percent",
+                    "Aerobic Decoupling",
+                    Some("%"),
+                    ReportMetricDirection::Lower,
+                ),
+                metric_definition(
+                    "hourly_efficiency",
+                    "Hourly Efficiency",
+                    Some("mps_per_bpm"),
+                    ReportMetricDirection::Higher,
+                ),
+                metric_definition(
+                    "late_speed_change_percent",
+                    "Late Ride Fade",
+                    Some("%"),
+                    ReportMetricDirection::Higher,
+                ),
+                metric_definition(
+                    "late_heart_rate_change_percent",
+                    "Late HR Change",
+                    Some("%"),
+                    ReportMetricDirection::Neutral,
+                ),
+            ],
+        },
+        TrainingReportDefinitionResponse {
+            id: ReportId::Climbing,
+            display_name: "Climbing".to_string(),
+            short_purpose: "Climb summaries, vertical rate trends, and raw climb rows.".to_string(),
+            supported_filters: vec![ReportFilterKey::MinDuration, ReportFilterKey::MinDistance],
+            required_data_quality: vec![
+                "distance".to_string(),
+                "elevation".to_string(),
+                "time".to_string(),
+            ],
+            result_sections: vec!["summary_cards".to_string(), "climb_table".to_string()],
+            metrics: vec![
+                metric_definition(
+                    "longest_climb",
+                    "Longest Climb",
+                    Some("seconds"),
+                    ReportMetricDirection::Higher,
+                ),
+                metric_definition(
+                    "median_climb_rate",
+                    "Median Climb Rate",
+                    Some("m/h"),
+                    ReportMetricDirection::Higher,
+                ),
+                metric_definition(
+                    "heart_rate_recovery_60_seconds_bpm",
+                    "60s HR Recovery",
+                    Some("bpm"),
+                    ReportMetricDirection::Higher,
+                ),
+            ],
+        },
+        TrainingReportDefinitionResponse {
+            id: ReportId::Fatigue,
+            display_name: "Fatigue".to_string(),
+            short_purpose: "Hour-by-hour ride fade across HR, speed, climbing, and stops."
+                .to_string(),
+            supported_filters: vec![ReportFilterKey::MinDuration, ReportFilterKey::MinDistance],
+            required_data_quality: vec![
+                "distance".to_string(),
+                "time".to_string(),
+                "heart_rate".to_string(),
+            ],
+            result_sections: vec!["ride_sections".to_string(), "hourly_table".to_string()],
+            metrics: vec![
+                metric_definition(
+                    "average_speed",
+                    "Hourly Speed",
+                    Some("m/s"),
+                    ReportMetricDirection::Neutral,
+                ),
+                metric_definition(
+                    "average_hr",
+                    "Hourly HR",
+                    Some("bpm"),
+                    ReportMetricDirection::Neutral,
+                ),
+                metric_definition(
+                    "stop_count",
+                    "Stop Frequency",
+                    Some("count"),
+                    ReportMetricDirection::Lower,
+                ),
+                metric_definition(
+                    "efficiency",
+                    "Efficiency",
+                    Some("mps_per_bpm"),
+                    ReportMetricDirection::Higher,
+                ),
+            ],
+        },
+        TrainingReportDefinitionResponse {
+            id: ReportId::CompareRides,
+            display_name: "Compare Rides".to_string(),
+            short_purpose: "Side-by-side comparison of selected races and benchmark rides."
+                .to_string(),
+            supported_filters: vec![
+                ReportFilterKey::ActivityIds,
+                ReportFilterKey::MinDuration,
+                ReportFilterKey::MinDistance,
+            ],
+            required_data_quality: vec![
+                "distance".to_string(),
+                "elevation".to_string(),
+                "time".to_string(),
+                "heart_rate".to_string(),
+            ],
+            result_sections: vec![
+                "comparison_table".to_string(),
+                "candidate_table".to_string(),
+            ],
+            metrics: vec![
+                metric_definition(
+                    "aerobic_decoupling_percent",
+                    "Aerobic Decoupling",
+                    Some("%"),
+                    ReportMetricDirection::Lower,
+                ),
+                metric_definition(
+                    "median_climb_rate",
+                    "Median Climb Rate",
+                    Some("m/h"),
+                    ReportMetricDirection::Higher,
+                ),
+                metric_definition(
+                    "median_60s_hr_recovery_bpm",
+                    "Median 60s HR Recovery",
+                    Some("bpm"),
+                    ReportMetricDirection::Higher,
+                ),
+                metric_definition(
+                    "late_speed_change_percent",
+                    "Late Ride Fade",
+                    Some("%"),
+                    ReportMetricDirection::Higher,
+                ),
+                metric_definition(
+                    "stopped_time_percent",
+                    "Stopped Time",
+                    Some("%"),
+                    ReportMetricDirection::Lower,
+                ),
+                metric_definition(
+                    "moving_speed_mph",
+                    "Moving Speed",
+                    Some("mph"),
+                    ReportMetricDirection::Neutral,
+                ),
+                metric_definition(
+                    "z2_average_speed_mph",
+                    "Z2 Speed",
+                    Some("mph"),
+                    ReportMetricDirection::Higher,
+                ),
+                metric_definition(
+                    "z2_time",
+                    "Z2 Time",
+                    Some("hours"),
+                    ReportMetricDirection::Neutral,
+                ),
+            ],
+        },
+        TrainingReportDefinitionResponse {
+            id: ReportId::AggregateTrends,
+            display_name: "Aggregate Trends".to_string(),
+            short_purpose: "Existing weekly, monthly, zone, climbing, and elevation charts."
+                .to_string(),
+            supported_filters: vec![ReportFilterKey::MinDuration, ReportFilterKey::MinDistance],
+            required_data_quality: vec![
+                "distance".to_string(),
+                "elevation".to_string(),
+                "heart_rate_zones".to_string(),
+            ],
+            result_sections: vec!["bucket_charts".to_string()],
+            metrics: vec![
+                metric_definition(
+                    "z2_speed",
+                    "Z2 Speed",
+                    Some("m/s"),
+                    ReportMetricDirection::Neutral,
+                ),
+                metric_definition(
+                    "aerobic_decoupling_percent",
+                    "Decoupling",
+                    Some("%"),
+                    ReportMetricDirection::Lower,
+                ),
+                metric_definition(
+                    "climbing_pace",
+                    "Climbing Pace",
+                    Some("ft/week"),
+                    ReportMetricDirection::Higher,
+                ),
+                metric_definition(
+                    "heart_rate_zones",
+                    "Heart Rate Zones",
+                    None,
+                    ReportMetricDirection::Neutral,
+                ),
+            ],
+        },
+    ]
+}
+
+fn metric_definition(
+    key: &str,
+    label: &str,
+    unit: Option<&str>,
+    direction: ReportMetricDirection,
+) -> TrainingReportMetricDefinitionResponse {
+    TrainingReportMetricDefinitionResponse {
+        key: key.to_string(),
+        label: label.to_string(),
+        unit: unit.map(str::to_string),
+        direction,
+    }
+}
+
+fn parse_report_id(raw: Option<&str>) -> Result<ReportId, AppError> {
+    match raw {
+        None | Some("") | Some("aggregate_trends") => Ok(ReportId::AggregateTrends),
+        Some("ride_summary") => Ok(ReportId::RideSummary),
+        Some("endurance") => Ok(ReportId::Endurance),
+        Some("climbing") => Ok(ReportId::Climbing),
+        Some("fatigue") => Ok(ReportId::Fatigue),
+        Some("compare_rides") => Ok(ReportId::CompareRides),
+        Some(_) => Err(AppError::bad_request("Unknown report id")),
+    }
+}
+
+fn validate_report_filters(query: &TrainingReportsQuery) -> Result<(), AppError> {
+    if query
+        .min_duration_seconds
+        .is_some_and(|seconds| seconds < 0)
+    {
+        return Err(AppError::bad_request(
+            "min_duration_seconds must be greater than or equal to zero",
+        ));
+    }
+
+    if query
+        .min_distance_meters
+        .is_some_and(|meters| meters < 0.0 || !meters.is_finite())
+    {
+        return Err(AppError::bad_request(
+            "min_distance_meters must be a finite non-negative number",
+        ));
+    }
+
+    Ok(())
+}
+
+fn filter_activities(
+    mut query_builder: Select<activities::Entity>,
+    query: &TrainingReportsQuery,
+) -> Select<activities::Entity> {
+    if let Some(min_duration_seconds) = query
+        .min_duration_seconds
+        .filter(|min_duration_seconds| *min_duration_seconds > 0)
+    {
+        query_builder = query_builder.filter(
+            Condition::any()
+                .add(activities::Column::MovingTimeSeconds.gte(min_duration_seconds))
+                .add(activities::Column::TotalTimeSeconds.gte(min_duration_seconds)),
+        );
+    }
+
+    if let Some(min_distance_meters) = query
+        .min_distance_meters
+        .filter(|min_distance_meters| *min_distance_meters > 0.0)
+    {
+        query_builder =
+            query_builder.filter(activities::Column::DistanceMeters.gte(min_distance_meters));
+    }
+
+    query_builder
 }
 
 fn parse_activity_ids(raw: Option<&str>) -> Result<Vec<i32>, AppError> {
@@ -796,14 +1237,17 @@ fn build_compare_rides_report(
         .collect::<Vec<_>>();
     candidate_rows.sort_by(|a, b| b.started_at.cmp(&a.started_at));
 
-    let selected_rides = selected
+    let mut selected_sorted = selected.iter().collect::<Vec<_>>();
+    selected_sorted.sort_by(|a, b| a.started_at.cmp(&b.started_at));
+
+    let selected_rides = selected_sorted
         .iter()
-        .map(compare_column_from_activity)
+        .map(|activity| compare_column_from_activity(activity))
         .collect::<Vec<_>>();
 
-    let analyses = selected
+    let analyses = selected_sorted
         .iter()
-        .map(compare_analysis_from_activity)
+        .map(|activity| compare_analysis_from_activity(activity))
         .collect::<Vec<_>>();
 
     let metrics = vec![
@@ -848,6 +1292,14 @@ fn build_compare_rides_report(
             },
         ),
         compare_metric(
+            "moving_speed_mph",
+            "Moving Speed",
+            Some("mph"),
+            "neutral",
+            &analyses,
+            |analysis| analysis.moving_speed_mps.map(|value| value * 2.236_936),
+        ),
+        compare_metric(
             "aerobic_decoupling_percent",
             "Aerobic Decoupling",
             Some("%"),
@@ -862,6 +1314,14 @@ fn build_compare_rides_report(
             "higher",
             &analyses,
             |analysis| analysis.median_climb_rate,
+        ),
+        compare_metric(
+            "median_60s_hr_recovery_bpm",
+            "Median 60s HR Recovery",
+            Some("bpm"),
+            "higher",
+            &analyses,
+            |analysis| analysis.median_60s_hr_recovery_bpm,
         ),
         compare_metric(
             "late_speed_change_percent",
@@ -888,6 +1348,14 @@ fn build_compare_rides_report(
             |analysis| analysis.climbing_density_feet_per_hour,
         ),
         compare_metric(
+            "z2_average_speed_mph",
+            "Z2 Speed",
+            Some("mph"),
+            "higher",
+            &analyses,
+            |analysis| analysis.z2_average_speed_mps.map(|value| value * 2.236_936),
+        ),
+        compare_metric(
             "z2_time_hours",
             "Z2 Time",
             Some("h"),
@@ -911,11 +1379,14 @@ struct CompareRideAnalysis {
     elevation_gain_meters: Option<f64>,
     elapsed_seconds: i32,
     moving_seconds: Option<i32>,
+    moving_speed_mps: Option<f64>,
     aerobic_decoupling_percent: Option<f64>,
     median_climb_rate: Option<f64>,
+    median_60s_hr_recovery_bpm: Option<f64>,
     late_speed_change_percent: Option<f64>,
     stopped_time_percent: Option<f64>,
     climbing_density_feet_per_hour: Option<f64>,
+    z2_average_speed_mps: Option<f64>,
     z2_seconds: i32,
 }
 
@@ -923,6 +1394,13 @@ fn compare_analysis_from_activity(activity: &activities::Model) -> CompareRideAn
     let samples = activity_samples(activity);
     let elapsed_seconds = activity_elapsed_seconds(activity, &samples);
     let moving_seconds = activity.moving_time_seconds;
+    let moving_speed_mps = activity
+        .distance_meters
+        .zip(moving_seconds)
+        .and_then(|(distance, seconds)| {
+            (distance > 0.0 && seconds > 0).then_some(distance / f64::from(seconds))
+        })
+        .or(activity.average_speed_mps);
     let first = segment_samples(&samples, 0, elapsed_seconds / 2);
     let second = segment_samples(&samples, elapsed_seconds / 2, elapsed_seconds);
     let aerobic_decoupling_percent = percent_change(efficiency(&first), efficiency(&second));
@@ -932,6 +1410,12 @@ fn compare_analysis_from_activity(activity: &activities::Model) -> CompareRideAn
         climbs
             .iter()
             .map(|climb| climb.vertical_rate_meters_per_hour)
+            .collect(),
+    );
+    let median_60s_hr_recovery_bpm = median(
+        climbs
+            .iter()
+            .filter_map(|climb| climb.heart_rate_recovery_60_seconds_bpm.map(f64::from))
             .collect(),
     );
     let stopped_seconds = activity
@@ -954,6 +1438,7 @@ fn compare_analysis_from_activity(activity: &activities::Model) -> CompareRideAn
         .find(|zone| zone.zone == 2)
         .map(|zone| zone.duration_seconds.max(0))
         .unwrap_or_default();
+    let z2_average_speed_mps = z2_average_speed(&samples, activity);
 
     CompareRideAnalysis {
         activity_id: activity.id,
@@ -961,11 +1446,14 @@ fn compare_analysis_from_activity(activity: &activities::Model) -> CompareRideAn
         elevation_gain_meters: activity.elevation_gain_meters,
         elapsed_seconds,
         moving_seconds,
+        moving_speed_mps,
         aerobic_decoupling_percent,
         median_climb_rate,
+        median_60s_hr_recovery_bpm,
         late_speed_change_percent,
         stopped_time_percent,
         climbing_density_feet_per_hour,
+        z2_average_speed_mps,
         z2_seconds,
     }
 }
@@ -1010,6 +1498,7 @@ where
         label: label.to_string(),
         unit: unit.map(str::to_string),
         direction: direction.to_string(),
+        trend: compare_metric_trend(direction, unit, analyses, &value_for),
         values: analyses
             .iter()
             .map(|analysis| {
@@ -1024,13 +1513,73 @@ where
     }
 }
 
+fn compare_metric_trend<F>(
+    direction: &str,
+    unit: Option<&str>,
+    analyses: &[CompareRideAnalysis],
+    value_for: &F,
+) -> Option<CompareRideMetricTrendResponse>
+where
+    F: Fn(&CompareRideAnalysis) -> Option<f64>,
+{
+    if analyses.len() < 2 {
+        return None;
+    }
+
+    let first = analyses.first()?;
+    let latest = analyses.last()?;
+    let first_value = value_for(first)?;
+    let latest_value = value_for(latest)?;
+    let change = latest_value - first_value;
+    let change_percent =
+        (first_value.abs() > f64::EPSILON).then_some((change / first_value) * 100.0);
+    let interpretation = match direction {
+        "higher" if change > 0.0 => "improving",
+        "higher" if change < 0.0 => "declining",
+        "lower" if change < 0.0 => "improving",
+        "lower" if change > 0.0 => "declining",
+        "neutral" => "route_sensitive",
+        _ => "flat",
+    };
+
+    Some(CompareRideMetricTrendResponse {
+        first_activity_id: first.activity_id,
+        latest_activity_id: latest.activity_id,
+        change: Some(round_metric(change)),
+        change_percent: change_percent.map(round_metric),
+        display: display_metric_change(change, change_percent, unit),
+        interpretation: interpretation.to_string(),
+    })
+}
+
 fn display_metric_value(value: Option<f64>, unit: Option<&str>) -> String {
     match (value, unit) {
         (Some(value), Some("h")) => format!("{value:.1}h"),
         (Some(value), Some("%")) => format!("{value:.1}%"),
+        (Some(value), Some("mph")) => format!("{value:.1} mph"),
+        (Some(value), Some("bpm")) => format!("{value:.0} bpm"),
         (Some(value), Some(unit)) => format!("{value:.0} {unit}"),
         (Some(value), None) => format!("{value:.1}"),
         (None, _) => "n/a".to_string(),
+    }
+}
+
+fn display_metric_change(change: f64, change_percent: Option<f64>, unit: Option<&str>) -> String {
+    let sign = if change > 0.0 { "+" } else { "" };
+    let value = match unit {
+        Some("h") => format!("{sign}{change:.1}h"),
+        Some("%") => format!("{sign}{change:.1}%"),
+        Some("mph") => format!("{sign}{change:.1} mph"),
+        Some("bpm") => format!("{sign}{change:.0} bpm"),
+        Some(unit) => format!("{sign}{change:.0} {unit}"),
+        None => format!("{sign}{change:.1}"),
+    };
+    match change_percent {
+        Some(percent) => {
+            let percent_sign = if percent > 0.0 { "+" } else { "" };
+            format!("{value} ({percent_sign}{percent:.1}%)")
+        }
+        None => value,
     }
 }
 
@@ -1457,6 +2006,41 @@ fn late_ride_changes(samples: &[TrendSample]) -> (Option<f64>, Option<f64>) {
     )
 }
 
+fn z2_average_speed(samples: &[TrendSample], activity: &activities::Model) -> Option<f64> {
+    let zone = deserialize_activity_heart_rate_zones(activity.heart_rate_zones_json.as_ref())
+        .into_iter()
+        .find(|zone| zone.zone == 2)?;
+    let min_bpm = zone.min_bpm?;
+    let max_bpm = zone.max_bpm?;
+    let mut z2_distance = 0.0;
+    let mut z2_seconds = 0;
+
+    for window in samples.windows(2) {
+        let previous = window[0];
+        let current = window[1];
+        let delta_time = current.elapsed_seconds - previous.elapsed_seconds;
+        if delta_time <= 0 {
+            continue;
+        }
+
+        let Some(heart_rate_bpm) = previous.heart_rate_bpm.or(current.heart_rate_bpm) else {
+            continue;
+        };
+        if heart_rate_bpm < min_bpm || heart_rate_bpm > max_bpm {
+            continue;
+        }
+
+        let Some(delta_distance) = delta_distance(previous, current) else {
+            continue;
+        };
+
+        z2_distance += delta_distance;
+        z2_seconds += delta_time;
+    }
+
+    (z2_distance > 0.0 && z2_seconds > 0).then_some(z2_distance / f64::from(z2_seconds))
+}
+
 fn movement_breakdown(samples: &[TrendSample]) -> (i32, i32, i32) {
     let mut moving = 0;
     let mut stopped = 0;
@@ -1650,6 +2234,10 @@ fn round_metric(value: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::activity_details::{serialize_derived_activity_data, ActivityDerivedData};
+    use crate::training_profile::{
+        serialize_activity_heart_rate_zones, ActivityHeartRateZoneSummary,
+    };
 
     fn test_activity() -> activities::Model {
         let now = Utc::now();
@@ -1686,6 +2274,70 @@ mod tests {
         }
     }
 
+    fn compare_test_activity(
+        id: i32,
+        title: &str,
+        started_at: DateTime<Utc>,
+        distance_meters: f64,
+        moving_time_seconds: i32,
+        z2_distance_meters: f64,
+    ) -> activities::Model {
+        let mut activity = test_activity();
+        activity.id = id;
+        activity.title = title.to_string();
+        activity.started_at = started_at;
+        activity.distance_meters = Some(distance_meters);
+        activity.moving_time_seconds = Some(moving_time_seconds);
+        activity.total_time_seconds = Some(moving_time_seconds);
+        activity.average_speed_mps = Some(distance_meters / f64::from(moving_time_seconds));
+        activity.heart_rate_zones_json = serialize_activity_heart_rate_zones(&[
+            ActivityHeartRateZoneSummary {
+                zone: 1,
+                label: "Z1".to_string(),
+                min_bpm: None,
+                max_bpm: Some(120),
+                duration_seconds: 0,
+                share_percent: 0.0,
+            },
+            ActivityHeartRateZoneSummary {
+                zone: 2,
+                label: "Z2".to_string(),
+                min_bpm: Some(121),
+                max_bpm: Some(140),
+                duration_seconds: moving_time_seconds,
+                share_percent: 100.0,
+            },
+        ])
+        .unwrap();
+        activity.derived_data_json = Some(
+            serialize_derived_activity_data(&ActivityDerivedData {
+                chart_points: vec![
+                    ActivityChartPoint {
+                        elapsed_seconds: 0,
+                        distance_meters: Some(0.0),
+                        elevation_meters: Some(100.0),
+                        speed_mps: None,
+                        heart_rate_bpm: Some(130),
+                        cadence_rpm: None,
+                        power_watts: None,
+                    },
+                    ActivityChartPoint {
+                        elapsed_seconds: moving_time_seconds,
+                        distance_meters: Some(z2_distance_meters),
+                        elevation_meters: Some(100.0),
+                        speed_mps: None,
+                        heart_rate_bpm: Some(130),
+                        cadence_rpm: None,
+                        power_watts: None,
+                    },
+                ],
+                ..ActivityDerivedData::default()
+            })
+            .unwrap(),
+        );
+        activity
+    }
+
     fn sample(
         elapsed_seconds: i32,
         distance_meters: f64,
@@ -1701,6 +2353,116 @@ mod tests {
             cadence_rpm: Some(80),
             power_watts: Some(220),
         }
+    }
+
+    #[test]
+    fn report_registry_declares_initial_reports_and_compare_filters() {
+        let definitions = report_definitions();
+
+        assert_eq!(definitions.len(), 6);
+        assert!(definitions
+            .iter()
+            .any(|definition| definition.id == ReportId::AggregateTrends));
+
+        let compare = definitions
+            .iter()
+            .find(|definition| definition.id == ReportId::CompareRides)
+            .unwrap();
+        assert!(compare
+            .supported_filters
+            .contains(&ReportFilterKey::ActivityIds));
+        assert!(compare
+            .supported_filters
+            .contains(&ReportFilterKey::MinDuration));
+        assert!(compare
+            .supported_filters
+            .contains(&ReportFilterKey::MinDistance));
+        assert!(compare
+            .metrics
+            .iter()
+            .any(|metric| metric.key == "aerobic_decoupling_percent"
+                && metric.direction == ReportMetricDirection::Lower));
+    }
+
+    #[test]
+    fn parses_report_ids_and_rejects_unknown_reports() {
+        assert_eq!(parse_report_id(None).unwrap(), ReportId::AggregateTrends);
+        assert_eq!(
+            parse_report_id(Some("compare_rides")).unwrap(),
+            ReportId::CompareRides
+        );
+        assert!(parse_report_id(Some("race_readiness")).is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_minimum_filters() {
+        let query = TrainingReportsQuery {
+            boundary: None,
+            report: None,
+            start_date: None,
+            end_date: None,
+            activity_ids: None,
+            min_duration_seconds: Some(-1),
+            min_distance_meters: None,
+        };
+        assert!(validate_report_filters(&query).is_err());
+
+        let query = TrainingReportsQuery {
+            min_duration_seconds: None,
+            min_distance_meters: Some(f64::NAN),
+            ..query
+        };
+        assert!(validate_report_filters(&query).is_err());
+    }
+
+    #[test]
+    fn compare_rides_sorts_chronologically_and_reports_speed_trends() {
+        let older = compare_test_activity(
+            1,
+            "Older benchmark",
+            Utc.with_ymd_and_hms(2026, 1, 1, 12, 0, 0).single().unwrap(),
+            16_093.44,
+            3600,
+            16_093.44,
+        );
+        let latest = compare_test_activity(
+            2,
+            "Latest benchmark",
+            Utc.with_ymd_and_hms(2026, 2, 1, 12, 0, 0).single().unwrap(),
+            19_312.128,
+            3600,
+            19_312.128,
+        );
+
+        let report = build_compare_rides_report(&[latest.clone(), older.clone()], &[latest, older]);
+
+        assert_eq!(report.selected_rides[0].activity_id, 1);
+        assert_eq!(report.selected_rides[1].activity_id, 2);
+
+        let moving_speed = report
+            .metrics
+            .iter()
+            .find(|metric| metric.key == "moving_speed_mph")
+            .unwrap();
+        assert_eq!(moving_speed.values[0].display, "10.0 mph");
+        assert_eq!(moving_speed.values[1].display, "12.0 mph");
+        assert_eq!(
+            moving_speed.trend.as_ref().unwrap().display,
+            "+2.0 mph (+20.0%)"
+        );
+        assert_eq!(
+            moving_speed.trend.as_ref().unwrap().interpretation,
+            "route_sensitive"
+        );
+
+        let z2_speed = report
+            .metrics
+            .iter()
+            .find(|metric| metric.key == "z2_average_speed_mph")
+            .unwrap();
+        assert_eq!(z2_speed.values[0].display, "10.0 mph");
+        assert_eq!(z2_speed.values[1].display, "12.0 mph");
+        assert_eq!(z2_speed.trend.as_ref().unwrap().interpretation, "improving");
     }
 
     #[test]

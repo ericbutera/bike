@@ -68,6 +68,10 @@ pub fn routes() -> Router<Arc<AppStorage>> {
             axum::routing::get(reports::get_training_reports),
         )
         .route(
+            "/api/training/reports/definitions",
+            axum::routing::get(reports::get_training_report_definitions),
+        )
+        .route(
             "/api/segments",
             axum::routing::get(segments::list_segments)
                 .post(segments::import_segment)

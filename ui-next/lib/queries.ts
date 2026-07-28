@@ -570,6 +570,42 @@ export type TrainingReportBoundary =
   | "1year"
   | "2year";
 
+export type TrainingReportId =
+  | "ride_summary"
+  | "endurance"
+  | "climbing"
+  | "fatigue"
+  | "compare_rides"
+  | "aggregate_trends";
+
+export type TrainingReportFilterKey =
+  | "activity_ids"
+  | "min_duration"
+  | "min_distance";
+
+export type TrainingReportMetricDirection = "higher" | "lower" | "neutral";
+
+export type TrainingReportMetricDefinition = {
+  key: string;
+  label: string;
+  unit?: string | null;
+  direction: TrainingReportMetricDirection;
+};
+
+export type TrainingReportDefinition = {
+  id: TrainingReportId;
+  display_name: string;
+  short_purpose: string;
+  supported_filters: TrainingReportFilterKey[];
+  required_data_quality: string[];
+  result_sections: string[];
+  metrics: TrainingReportMetricDefinition[];
+};
+
+export type TrainingReportDefinitionsResponse = {
+  reports: TrainingReportDefinition[];
+};
+
 export type TrainingReportPoint = {
   bucket_start: string;
   bucket_end: string;
@@ -737,7 +773,17 @@ export type CompareRideMetric = {
   label: string;
   unit?: string | null;
   direction: string;
+  trend?: CompareRideMetricTrend | null;
   values: CompareRideMetricValue[];
+};
+
+export type CompareRideMetricTrend = {
+  first_activity_id: number;
+  latest_activity_id: number;
+  change?: number | null;
+  change_percent?: number | null;
+  display: string;
+  interpretation: string;
 };
 
 export type CompareRideMetricValue = {
@@ -1761,7 +1807,13 @@ export function useDhGoalProgress(opts?: { enabled?: boolean }) {
 
 export function useTrainingReports(
   boundary: TrainingReportBoundary,
-  opts?: { enabled?: boolean; startDate?: string; endDate?: string },
+  opts?: {
+    enabled?: boolean;
+    startDate?: string;
+    endDate?: string;
+    minDurationSeconds?: number;
+    minDistanceMeters?: number;
+  },
 ) {
   const response = $api.useQuery("get", "/training/reports", {
     params: {
@@ -1769,6 +1821,8 @@ export function useTrainingReports(
         boundary,
         start_date: opts?.startDate,
         end_date: opts?.endDate,
+        min_duration_seconds: opts?.minDurationSeconds,
+        min_distance_meters: opts?.minDistanceMeters,
       },
     },
     options: { enabled: opts?.enabled ?? true },
@@ -1786,6 +1840,8 @@ export function useRideSummaryReport(opts: {
   startDate: string;
   endDate: string;
   activityIds?: number[];
+  minDurationSeconds?: number;
+  minDistanceMeters?: number;
   enabled?: boolean;
 }) {
   const response = $api.useQuery("get", "/training/reports", {
@@ -1795,6 +1851,8 @@ export function useRideSummaryReport(opts: {
         report: opts.report ?? "ride_summary",
         start_date: opts.startDate,
         end_date: opts.endDate,
+        min_duration_seconds: opts.minDurationSeconds,
+        min_distance_meters: opts.minDistanceMeters,
         activity_ids:
           opts.activityIds && opts.activityIds.length > 0
             ? opts.activityIds.join(",")
@@ -1807,6 +1865,15 @@ export function useRideSummaryReport(opts: {
   return {
     ...response,
     data: (response.data ?? null) as TrainingReportsResponse | null,
+  };
+}
+
+export function useTrainingReportDefinitions() {
+  const response = $api.useQuery("get", "/training/reports/definitions", {});
+
+  return {
+    ...response,
+    data: (response.data ?? null) as TrainingReportDefinitionsResponse | null,
   };
 }
 

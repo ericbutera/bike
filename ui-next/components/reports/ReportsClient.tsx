@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { extractApiMessage } from "../../lib/activityFormatting";
 import {
   useRideSummaryReport,
+  useTrainingReportDefinitions,
   useTrainingReports,
   type ClimbingReport,
   type CompareRideCandidate,
@@ -18,8 +19,8 @@ import Charts from "./Charts";
 import TimeRangeSelector, { TimeRange } from "./TimeRangeSelector";
 import {
   DEFAULT_REPORT_ID,
-  REPORT_DEFINITIONS,
   findReportDefinition,
+  toReportDefinitions,
   type ReportDefinition,
   type ReportId,
 } from "./reportDefinitions";
@@ -42,17 +43,29 @@ export default function ReportsClient() {
   const [selectedActivityIds, setSelectedActivityIds] = useState<number[]>(
     parseActivityIds(searchParams.get("activity_ids")),
   );
-  const selectedReport = findReportDefinition(selectedReportId);
+  const [minDurationHours, setMinDurationHours] = useState(
+    secondsToHoursInput(searchParams.get("min_duration_seconds")),
+  );
+  const [minDistanceMiles, setMinDistanceMiles] = useState(
+    metersToMilesInput(searchParams.get("min_distance_meters")),
+  );
+  const definitionsQuery = useTrainingReportDefinitions();
+  const reportDefinitions = toReportDefinitions(definitionsQuery.data?.reports);
+  const selectedReport = findReportDefinition(selectedReportId, reportDefinitions);
   const isAggregateTrends = selectedReport.id === "aggregate_trends";
   const isRideSummary = selectedReport.id === "ride_summary";
   const standaloneReportId = standaloneReportIdFor(selectedReport.id);
   const isStandaloneReport = standaloneReportId != null;
+  const minDurationSeconds = hoursInputToSeconds(minDurationHours);
+  const minDistanceMeters = milesInputToMeters(minDistanceMiles);
   const { data, isLoading, isError, error, isFetching } = useTrainingReports(
     range,
     {
       enabled: isAggregateTrends,
       startDate,
       endDate,
+      minDurationSeconds,
+      minDistanceMeters,
     },
   );
   const reportQuery = useRideSummaryReport({
@@ -61,6 +74,8 @@ export default function ReportsClient() {
     startDate,
     endDate,
     activityIds: selectedActivityIds,
+    minDurationSeconds,
+    minDistanceMeters,
     enabled: isStandaloneReport,
   });
 
@@ -77,6 +92,12 @@ export default function ReportsClient() {
     if (selectedActivityIds.length > 0) {
       params.set("activity_ids", selectedActivityIds.join(","));
     }
+    if (minDurationSeconds != null) {
+      params.set("min_duration_seconds", minDurationSeconds.toString());
+    }
+    if (minDistanceMeters != null) {
+      params.set("min_distance_meters", minDistanceMeters.toString());
+    }
 
     const nextQuery = params.toString();
     if (nextQuery !== searchParams.toString()) {
@@ -90,6 +111,8 @@ export default function ReportsClient() {
     selectedActivityIds,
     selectedReportId,
     startDate,
+    minDurationSeconds,
+    minDistanceMeters,
   ]);
 
   function handleRangeChange(nextRange: TimeRange) {
@@ -153,6 +176,7 @@ export default function ReportsClient() {
       <div className="grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
         <ReportMenu
           selectedReportId={selectedReport.id}
+          reports={reportDefinitions}
           onSelect={setSelectedReportId}
         />
 
@@ -165,6 +189,14 @@ export default function ReportsClient() {
               </p>
             </div>
           </div>
+
+          <ReportFilters
+            report={selectedReport}
+            minDurationHours={minDurationHours}
+            minDistanceMiles={minDistanceMiles}
+            onMinDurationHoursChange={setMinDurationHours}
+            onMinDistanceMilesChange={setMinDistanceMiles}
+          />
 
           {isAggregateTrends ? (
             <AggregateTrendsReport
@@ -682,6 +714,19 @@ function CompareRidesReportView({
                           ? "Higher is better"
                           : "Route-sensitive"}
                     </div>
+                    {metric.trend ? (
+                      <div
+                        className={
+                          "mt-1 text-xs font-medium " +
+                          trendClassName(metric.trend.interpretation)
+                        }
+                      >
+                        Latest vs first: {metric.trend.display}
+                        {metric.trend.interpretation === "route_sensitive"
+                          ? " route-sensitive"
+                          : ""}
+                      </div>
+                    ) : null}
                   </td>
                   {report.selected_rides.map((ride) => {
                     const value = metric.values.find(
@@ -816,9 +861,11 @@ function EmptyReport({ label }: { label: string }) {
 
 function ReportMenu({
   selectedReportId,
+  reports,
   onSelect,
 }: {
   selectedReportId: ReportId;
+  reports: ReportDefinition[];
   onSelect: (reportId: ReportId) => void;
 }) {
   return (
@@ -827,7 +874,7 @@ function ReportMenu({
         Report Menu
       </div>
       <div className="grid gap-1">
-        {REPORT_DEFINITIONS.map((report) => (
+        {reports.map((report) => (
           <button
             key={report.id}
             type="button"
@@ -851,6 +898,81 @@ function ReportMenu({
         ))}
       </div>
     </nav>
+  );
+}
+
+function ReportFilters({
+  report,
+  minDurationHours,
+  minDistanceMiles,
+  onMinDurationHoursChange,
+  onMinDistanceMilesChange,
+}: {
+  report: ReportDefinition;
+  minDurationHours: string;
+  minDistanceMiles: string;
+  onMinDurationHoursChange: (value: string) => void;
+  onMinDistanceMilesChange: (value: string) => void;
+}) {
+  const supportsDuration = report.supportedFilters.includes("min_duration");
+  const supportsDistance = report.supportedFilters.includes("min_distance");
+
+  if (!supportsDuration && !supportsDistance) {
+    return null;
+  }
+
+  return (
+    <div className="mt-4 rounded-lg border border-base-300 bg-base-200/30 p-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,12rem)_minmax(0,12rem)_auto] lg:items-end">
+        {supportsDuration ? (
+          <label className="form-control">
+            <div className="label">
+              <span className="label-text font-medium">Minimum duration</span>
+            </div>
+            <input
+              type="number"
+              min="0"
+              step="0.25"
+              className="input input-bordered"
+              placeholder="Any"
+              value={minDurationHours}
+              onChange={(event) => {
+                onMinDurationHoursChange(event.target.value);
+              }}
+            />
+            <div className="label">
+              <span className="label-text-alt text-base-content/60">hours</span>
+            </div>
+          </label>
+        ) : null}
+
+        {supportsDistance ? (
+          <label className="form-control">
+            <div className="label">
+              <span className="label-text font-medium">Minimum distance</span>
+            </div>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              className="input input-bordered"
+              placeholder="Any"
+              value={minDistanceMiles}
+              onChange={(event) => {
+                onMinDistanceMilesChange(event.target.value);
+              }}
+            />
+            <div className="label">
+              <span className="label-text-alt text-base-content/60">miles</span>
+            </div>
+          </label>
+        ) : null}
+
+        <div className="text-sm text-base-content/60">
+          Filters are applied by the reports API before generating results.
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -976,6 +1098,48 @@ function parseActivityIds(value: string | null) {
     .filter((id) => Number.isFinite(id) && id > 0);
 }
 
+function secondsToHoursInput(value: string | null) {
+  if (!value) {
+    return "";
+  }
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return "";
+  }
+  return trimNumericInput(seconds / 3600);
+}
+
+function metersToMilesInput(value: string | null) {
+  if (!value) {
+    return "";
+  }
+  const meters = Number(value);
+  if (!Number.isFinite(meters) || meters <= 0) {
+    return "";
+  }
+  return trimNumericInput(meters / 1609.344);
+}
+
+function hoursInputToSeconds(value: string) {
+  const hours = Number(value);
+  if (!Number.isFinite(hours) || hours <= 0) {
+    return undefined;
+  }
+  return Math.round(hours * 3600);
+}
+
+function milesInputToMeters(value: string) {
+  const miles = Number(value);
+  if (!Number.isFinite(miles) || miles <= 0) {
+    return undefined;
+  }
+  return Math.round(miles * 1609.344);
+}
+
+function trimNumericInput(value: number) {
+  return Number.isInteger(value) ? value.toString() : value.toFixed(2).replace(/\.?0+$/, "");
+}
+
 function standaloneReportIdFor(
   reportId: ReportId,
 ): "ride_summary" | "endurance" | "climbing" | "fatigue" | "compare_rides" | null {
@@ -1069,6 +1233,19 @@ function formatDropTimes(
     secondsToDrop15Bpm == null ? "n/a" : formatDuration(secondsToDrop15Bpm);
 
   return `10 bpm ${drop10} / 15 bpm ${drop15}`;
+}
+
+function trendClassName(interpretation: string) {
+  switch (interpretation) {
+    case "improving":
+      return "text-success";
+    case "declining":
+      return "text-error";
+    case "route_sensitive":
+      return "text-base-content/60";
+    default:
+      return "text-base-content/70";
+  }
 }
 
 function formatShortDate(value: string) {
