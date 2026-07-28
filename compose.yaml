@@ -75,6 +75,7 @@ services:
       CDN_URL: http://localhost:3000/uploads
       AUTH_PASSWORD_ENABLED: 'true'
       AUTH_REGISTRATION_ENABLED: 'true'
+      USE_LOCAL_KALEIDO: 'true'
     depends_on:
       - api
     ports:

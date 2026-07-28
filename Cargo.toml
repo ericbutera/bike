@@ -4,7 +4,6 @@ members = [
   "worker",
   "migration",
 ]
-exclude = ["kaleido"]
 resolver = "2"
 
 [workspace.dependencies]
@@ -24,7 +23,4 @@ async-trait = "0.1"
 utoipa = { version = "5", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "8", features = ["axum", "vendored"] }
 chrono = { version = "0.4", features = ["serde"] }
-
-[patch."https://github.com/ericbutera/kaleido"]
-kaleido = { path = "../kaleido/rust/kaleido" }
-kaleido_migrations = { path = "../kaleido/rust/kaleido_migrations" }
+kaleido = "0.8"

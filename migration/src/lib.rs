@@ -39,7 +39,7 @@ pub struct Migrator;
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
     fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-        let mut migrations = kaleido_migrations::external_migrations();
+        let mut migrations = kaleido::migrations::external_migrations();
         migrations.sort_by_key(|m| m.name().to_string());
 
         let mut locals: Vec<Box<dyn MigrationTrait>> = Vec::new();

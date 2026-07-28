@@ -1,4 +1,6 @@
 FROM rust:latest
 WORKDIR /app
+RUN mkdir -p /usr/local/cargo && \
+    printf '[patch.crates-io]\nkaleido = { path = "/kaleido/rust/kaleido" }\n' > /usr/local/cargo/config.toml
 RUN cargo install --locked cargo-watch
-CMD ["cargo", "watch", "-w", "api/src", "-w", "migration/src", "-w", "api/Cargo.toml", "-w", "migration/Cargo.toml", "-w", "Cargo.toml", "-x", "run --bin api"]
+CMD ["cargo", "watch", "-w", "api/src", "-w", "migration/src", "-w", "api/Cargo.toml", "-w", "migration/Cargo.toml", "-w", "Cargo.toml", "-w", "/kaleido/rust/kaleido/src", "-w", "/kaleido/rust/kaleido/Cargo.toml", "-x", "run --bin api"]

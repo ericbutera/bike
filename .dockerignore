@@ -5,6 +5,8 @@
 # Rust build artifacts
 target
 **/target
+.cargo
+kaleido
 
 # Node artifacts and UI-only sources
 ui-next

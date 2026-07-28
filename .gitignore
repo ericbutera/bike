@@ -2,7 +2,8 @@
 /target/
 **/target/
 **/*.rs.bk
-kaleido/
+.cargo/
+/kaleido/
 
 # TypeScript / Node
 node_modules/

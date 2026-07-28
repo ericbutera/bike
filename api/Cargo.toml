@@ -29,7 +29,7 @@ migration = { path = "../migration" }
 async-trait = "0.1"
 utoipa = { workspace = true }
 utoipa-swagger-ui = { workspace = true }
-kaleido = { git = "https://github.com/ericbutera/kaleido", branch = "main" }
+kaleido = { workspace = true }
 roxmltree = "0.20"
 reverse_geocoder = "4.1.1"
 fitparser = "0.11"

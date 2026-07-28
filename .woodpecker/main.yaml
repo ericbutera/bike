@@ -4,14 +4,8 @@ when:
   - event: manual
 
 steps:
-  - name: clone-kaleido
-    image: alpine/git
-    commands:
-      - sh .woodpecker/clone-kaleido.sh
-
   - name: test-rust
     image: rust:1.93.0-bookworm
-    depends_on: [clone-kaleido]
     environment:
       TEST_MODE: "1"
     commands:
@@ -19,7 +13,6 @@ steps:
 
   - name: test-ui
     image: node:25-alpine
-    depends_on: [clone-kaleido]
     commands:
       - sh .woodpecker/test-ui.sh
 
