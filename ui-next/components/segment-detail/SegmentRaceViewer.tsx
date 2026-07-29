@@ -352,7 +352,21 @@ export default function SegmentRaceViewer({
       }),
     );
   }, [sortedComparisonRows]);
-  const backHref = `/segments/${segmentId}`;
+  const backHref = useMemo(() => {
+    const searchParams = new URLSearchParams();
+
+    if (selectedEffortIds.length > 0) {
+      searchParams.set("efforts", selectedEffortIds.join(","));
+    }
+
+    if (referenceEffortId != null) {
+      searchParams.set("ref", String(referenceEffortId));
+    }
+
+    const queryString = searchParams.toString();
+
+    return `/segments/${segmentId}${queryString ? `?${queryString}` : ""}`;
+  }, [referenceEffortId, segmentId, selectedEffortIds]);
 
   useEffect(() => {
     if (!segment || allEfforts.length === 0) {

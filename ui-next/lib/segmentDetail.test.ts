@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   buildLeaderPairFollowViewport,
+  parseOptionalPositiveNumberParam,
+  parsePlaybackPaceParam,
+  parseSelectedEffortIdsParam,
   segmentEffortDayAttemptSummaries,
 } from "./segmentDetail";
 
@@ -61,6 +64,26 @@ describe("buildLeaderPairFollowViewport", () => {
     expect(viewport?.point.longitude).toBeCloseTo(-121.996, 6);
     expect(viewport?.zoom).toBeLessThan(19);
     expect(viewport?.zoom).toBeGreaterThanOrEqual(12);
+  });
+});
+
+describe("segment route param parsers", () => {
+  it("parses selected effort IDs from a comma-delimited route param", () => {
+    expect(parseSelectedEffortIdsParam("1, 2,bad,-3,4")).toEqual([1, 2, 4]);
+    expect(parseSelectedEffortIdsParam(["7,8", "9"])).toEqual([7, 8]);
+    expect(parseSelectedEffortIdsParam(undefined)).toEqual([]);
+  });
+
+  it("parses optional positive number params", () => {
+    expect(parseOptionalPositiveNumberParam("12")).toBe(12);
+    expect(parseOptionalPositiveNumberParam("0")).toBeNull();
+    expect(parseOptionalPositiveNumberParam("bad")).toBeNull();
+  });
+
+  it("parses playback pace params", () => {
+    expect(parsePlaybackPaceParam("detail")).toBe("detail");
+    expect(parsePlaybackPaceParam("fast")).toBe("fast");
+    expect(parsePlaybackPaceParam("slow")).toBeUndefined();
   });
 });
 

@@ -73,6 +73,45 @@ export type GapChartRow = {
   [key: string]: number | null | undefined;
 };
 
+function firstRouteParamValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export function parseSelectedEffortIdsParam(
+  value: string | string[] | undefined,
+) {
+  const raw = firstRouteParamValue(value);
+
+  if (!raw) {
+    return [] as number[];
+  }
+
+  return raw
+    .split(",")
+    .map((entry) => Number(entry.trim()))
+    .filter((entry) => Number.isFinite(entry) && entry > 0);
+}
+
+export function parseOptionalPositiveNumberParam(
+  value: string | string[] | undefined,
+) {
+  const numericValue = Number(firstRouteParamValue(value));
+
+  return Number.isFinite(numericValue) && numericValue > 0
+    ? numericValue
+    : null;
+}
+
+export function parsePlaybackPaceParam(
+  value: string | string[] | undefined,
+): PlaybackPace | undefined {
+  const nextValue = firstRouteParamValue(value);
+
+  return nextValue === "detail" || nextValue === "auto" || nextValue === "fast"
+    ? nextValue
+    : undefined;
+}
+
 function startOfDay(value: Date) {
   const next = new Date(value);
   next.setHours(0, 0, 0, 0);

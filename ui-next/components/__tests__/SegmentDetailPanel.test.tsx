@@ -369,7 +369,7 @@ describe("SegmentDetailPanel", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows same-day run numbers and the fastest run in the efforts table", () => {
+  it("shows same-day run numbers in the efforts table", () => {
     const segment = makeSegment();
     const fasterHistoricalEfforts = Array.from({ length: 10 }, (_, index) => ({
       id: index + 1,
@@ -479,9 +479,9 @@ describe("SegmentDetailPanel", () => {
       within(fastestRunRow as HTMLElement).getByText("Run 2"),
     ).toBeInTheDocument();
     expect(
-      within(fastestRunRow as HTMLElement).getByText("Fastest"),
-    ).toBeInTheDocument();
-    expect(fastestRunRow).toHaveClass("bg-success/10");
+      within(fastestRunRow as HTMLElement).queryByText("Fastest"),
+    ).not.toBeInTheDocument();
+    expect(fastestRunRow).not.toHaveClass("bg-success/10");
     expect(
       within(runThreeRow as HTMLElement).getByText("Run 3"),
     ).toBeInTheDocument();
@@ -790,6 +790,30 @@ describe("SegmentDetailPanel", () => {
     expect(
       mocks.renderMapLibreRouteMap.mock.lastCall?.[0]?.followViewport,
     ).toBeUndefined();
+  });
+
+  it("uses initially requested efforts when returning from the race viewer", () => {
+    render(
+      <SegmentDetailPanel
+        segmentId={14}
+        initialSelectedEffortIds={[2]}
+        initialReferenceEffortId={2}
+      />,
+    );
+
+    expect(
+      screen.getAllByRole("button", {
+        name: "Remove Hill Attack from comparison",
+      }),
+    ).toHaveLength(2);
+    expect(
+      screen.getByRole("button", {
+        name: "Add Lunch Ride to comparison",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Open race viewer" }),
+    ).toHaveAttribute("href", "/segments/14/race?efforts=2&ref=2");
   });
 
   it("hides timer and pace controls on very narrow screens", () => {

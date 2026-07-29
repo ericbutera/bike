@@ -37,8 +37,12 @@ import SegmentDetailHeader from "./segment-detail/SegmentDetailHeader";
 
 export default function SegmentDetailPanel({
   segmentId,
+  initialSelectedEffortIds = EMPTY_EFFORT_IDS,
+  initialReferenceEffortId = null,
 }: {
   segmentId: number | string;
+  initialSelectedEffortIds?: number[];
+  initialReferenceEffortId?: number | null;
 }) {
   const authApi = auth.useAuthApi();
   const router = useRouter();
@@ -47,7 +51,12 @@ export default function SegmentDetailPanel({
   const segmentQuery = useSegment(user ? segmentId : null);
   const updateSegmentMutation = useUpdateSegment();
   const deleteSegmentMutation = useDeleteSegment();
-  const [selectedEffortIds, setSelectedEffortIds] = useState<number[]>([]);
+  const requestedSelectionBySegmentIdRef = useRef(
+    new Map<number, number[]>([[Number(segmentId), initialSelectedEffortIds]]),
+  );
+  const [selectedEffortIds, setSelectedEffortIds] = useState<number[]>(
+    initialSelectedEffortIds,
+  );
   const initializedSelectionSegmentIdRef = useRef<number | null>(null);
   const playbackAnimationFrameRef = useRef<number | null>(null);
   const playbackLastTimestampRef = useRef<number | null>(null);
@@ -55,7 +64,9 @@ export default function SegmentDetailPanel({
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackPace, setPlaybackPace] = useState<PlaybackPace>("auto");
   const [hoveredEffortId, setHoveredEffortId] = useState<number | null>(null);
-  const [pinnedEffortId, setPinnedEffortId] = useState<number | null>(null);
+  const [pinnedEffortId, setPinnedEffortId] = useState<number | null>(
+    initialReferenceEffortId,
+  );
   const [effortTimeFilter, setEffortTimeFilter] =
     useState<EffortTimeFilter>("all");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -196,9 +207,16 @@ export default function SegmentDetailPanel({
     initializedSelectionSegmentIdRef.current = segment.id;
 
     setSelectedEffortIds((current) => {
-      const valid = current.filter((id) =>
-        allEfforts.some((effort) => effort.id === id),
-      );
+      const availableIds = new Set(allEfforts.map((effort) => effort.id));
+      const requested = (
+        requestedSelectionBySegmentIdRef.current.get(segment.id) ?? []
+      ).filter((id) => availableIds.has(id));
+
+      if (requested.length > 0 && shouldSeedSelection) {
+        return areEffortIdListsEqual(current, requested) ? current : requested;
+      }
+
+      const valid = current.filter((id) => availableIds.has(id));
 
       if (valid.length > 0) {
         return areEffortIdListsEqual(current, valid) ? current : valid;

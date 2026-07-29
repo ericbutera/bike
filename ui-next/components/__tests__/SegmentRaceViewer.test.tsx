@@ -171,6 +171,15 @@ describe("SegmentRaceViewer", () => {
     ).toBeInTheDocument();
   });
 
+  it("links back to the segment detail with the selected efforts", () => {
+    renderRaceViewer();
+
+    expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute(
+      "href",
+      "/segments/1?efforts=3896%2C3954%2C3586&ref=3896",
+    );
+  });
+
   it("renders the mobile pace controls beside the playback timer", () => {
     const { container } = renderRaceViewer();
 

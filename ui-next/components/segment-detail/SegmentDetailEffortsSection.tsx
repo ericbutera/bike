@@ -5,7 +5,6 @@ import {
   faCrown,
   faMinus,
   faPlus,
-  faRocket,
   faTrophy,
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -144,19 +143,15 @@ export default function SegmentDetailEffortsSection({
                       const achievement = primarySegmentAchievement({
                         overallRank,
                         personalRank: isCurrentUserPr ? 1 : null,
-                        isFastestOfDay:
-                          attemptSummary?.isFastestOfDay ?? false,
                       });
                       const rowClassName =
                         achievement?.kind === "pr"
                           ? "bg-primary/10"
                           : achievement?.kind === "kom"
                             ? "bg-warning/10"
-                            : achievement?.kind === "fastest"
-                              ? "bg-success/10"
-                              : checked
-                                ? "bg-base-200/70"
-                                : undefined;
+                            : checked
+                              ? "bg-base-200/70"
+                              : undefined;
 
                       return (
                         <tr key={effort.id} className={rowClassName}>
@@ -241,14 +236,6 @@ export default function SegmentDetailEffortsSection({
                               ) : achievement?.kind === "pr" ? (
                                 <span className="badge badge-primary badge-xs">
                                   PR
-                                </span>
-                              ) : achievement?.kind === "fastest" ? (
-                                <span className="badge badge-success badge-xs gap-1">
-                                  <FontAwesomeIcon
-                                    icon={faRocket}
-                                    className="h-3 w-3"
-                                  />
-                                  Fastest
                                 </span>
                               ) : null}
                             </div>
