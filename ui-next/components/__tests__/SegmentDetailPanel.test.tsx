@@ -369,6 +369,124 @@ describe("SegmentDetailPanel", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows same-day run numbers and the fastest run in the efforts table", () => {
+    const segment = makeSegment();
+    const fasterHistoricalEfforts = Array.from({ length: 10 }, (_, index) => ({
+      id: index + 1,
+      rider_user_id: 3,
+      activity_id: 100 + index,
+      activity_title: `Earlier Fast Ride ${index + 1}`,
+      rider_name: "Riley Quick",
+      activity_started_at: `2026-05-${String(index + 1).padStart(2, "0")}T08:00:00Z`,
+      effort_index: 1,
+      duration_seconds: 300 + index,
+      start_elapsed_seconds: 100,
+      end_elapsed_seconds: 400 + index,
+      distance_meters: 1800,
+      route_points: [
+        makeRoutePoint(0, 45.0, -122.0),
+        makeRoutePoint(300 + index, 45.012, -121.988),
+      ],
+    }));
+
+    segment.efforts = [
+      ...fasterHistoricalEfforts,
+      {
+        id: 101,
+        rider_user_id: 2,
+        activity_id: 210,
+        activity_title: "Evening Repeats",
+        rider_name: "Casey Fast",
+        activity_started_at: "2026-05-08T22:00:00Z",
+        effort_index: 1,
+        duration_seconds: 420,
+        start_elapsed_seconds: 300,
+        end_elapsed_seconds: 720,
+        distance_meters: 1800,
+        route_points: [
+          makeRoutePoint(0, 45.0, -122.0),
+          makeRoutePoint(420, 45.012, -121.988),
+        ],
+      },
+      {
+        id: 102,
+        rider_user_id: 2,
+        activity_id: 210,
+        activity_title: "Evening Repeats",
+        rider_name: "Casey Fast",
+        activity_started_at: "2026-05-08T22:00:00Z",
+        effort_index: 2,
+        duration_seconds: 410,
+        start_elapsed_seconds: 900,
+        end_elapsed_seconds: 1310,
+        distance_meters: 1800,
+        route_points: [
+          makeRoutePoint(0, 45.0, -122.0),
+          makeRoutePoint(410, 45.012, -121.988),
+        ],
+      },
+      {
+        id: 103,
+        rider_user_id: 2,
+        activity_id: 210,
+        activity_title: "Evening Repeats",
+        rider_name: "Casey Fast",
+        activity_started_at: "2026-05-08T22:00:00Z",
+        effort_index: 3,
+        duration_seconds: 430,
+        start_elapsed_seconds: 1500,
+        end_elapsed_seconds: 1930,
+        distance_meters: 1800,
+        route_points: [
+          makeRoutePoint(0, 45.0, -122.0),
+          makeRoutePoint(430, 45.012, -121.988),
+        ],
+      },
+    ];
+    segment.effort_count = segment.efforts.length;
+    segment.best_duration_seconds = 300;
+
+    mocks.useSegment.mockReturnValue({
+      data: segment,
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+
+    render(<SegmentDetailPanel segmentId={14} />);
+
+    const table = screen.getByLabelText("Segment efforts table");
+    const runOneRow = within(table)
+      .getByRole("link", { name: "7m 00s" })
+      .closest("tr");
+    const fastestRunRow = within(table)
+      .getByRole("link", { name: "6m 50s" })
+      .closest("tr");
+    const runThreeRow = within(table)
+      .getByRole("link", { name: "7m 10s" })
+      .closest("tr");
+
+    expect(
+      within(table).getByRole("columnheader", { name: "Run" }),
+    ).toBeInTheDocument();
+    expect(runOneRow).not.toBeNull();
+    expect(fastestRunRow).not.toBeNull();
+    expect(runThreeRow).not.toBeNull();
+    expect(
+      within(runOneRow as HTMLElement).getByText("Run 1"),
+    ).toBeInTheDocument();
+    expect(
+      within(fastestRunRow as HTMLElement).getByText("Run 2"),
+    ).toBeInTheDocument();
+    expect(
+      within(fastestRunRow as HTMLElement).getByText("Fastest"),
+    ).toBeInTheDocument();
+    expect(fastestRunRow).toHaveClass("bg-success/10");
+    expect(
+      within(runThreeRow as HTMLElement).getByText("Run 3"),
+    ).toBeInTheDocument();
+  });
+
   it("paginates efforts 25 per page", async () => {
     const user = userEvent.setup();
     const segment = makeSegment();

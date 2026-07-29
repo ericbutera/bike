@@ -51,6 +51,12 @@ export type SelectedEffortRow = {
   markerLabel: string;
 };
 
+export type SegmentEffortDayAttemptSummary = {
+  attemptNumber: number;
+  attemptCount: number;
+  isFastestOfDay: boolean;
+};
+
 export type LiveComparisonRow = SelectedEffortRow & {
   currentPoint: ActivityRoutePoint | null;
   gapSeconds: number | null;
@@ -134,6 +140,65 @@ export function overallEffortRanks(
   );
 
   return new Map(ranked.map((effort, index) => [effort.id, index + 1]));
+}
+
+function effortLocalDayKey(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+export function segmentEffortDayAttemptSummaries(
+  efforts: SegmentEffort[] | null | undefined,
+) {
+  const effortsByRiderDay = new Map<string, SegmentEffort[]>();
+
+  for (const effort of efforts ?? []) {
+    const key = `${effort.rider_user_id}:${effortLocalDayKey(effort.activity_started_at)}`;
+    const existing = effortsByRiderDay.get(key);
+
+    if (existing) {
+      existing.push(effort);
+      continue;
+    }
+
+    effortsByRiderDay.set(key, [effort]);
+  }
+
+  const summaries = new Map<number, SegmentEffortDayAttemptSummary>();
+
+  for (const group of effortsByRiderDay.values()) {
+    const orderedAttempts = [...group].sort(
+      (left, right) =>
+        new Date(left.activity_started_at).getTime() -
+          new Date(right.activity_started_at).getTime() ||
+        left.start_elapsed_seconds - right.start_elapsed_seconds ||
+        left.effort_index - right.effort_index ||
+        left.id - right.id,
+    );
+    const fastestAttempt = [...group].sort(
+      (left, right) =>
+        left.duration_seconds - right.duration_seconds || left.id - right.id,
+    )[0];
+
+    orderedAttempts.forEach((effort, index) => {
+      summaries.set(effort.id, {
+        attemptNumber: index + 1,
+        attemptCount: group.length,
+        isFastestOfDay: group.length > 1 && effort.id === fastestAttempt.id,
+      });
+    });
+  }
+
+  return summaries;
 }
 
 export function areEffortIdListsEqual(left: number[], right: number[]) {

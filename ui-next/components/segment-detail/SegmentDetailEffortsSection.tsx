@@ -5,6 +5,7 @@ import {
   faCrown,
   faMinus,
   faPlus,
+  faRocket,
   faTrophy,
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -19,6 +20,7 @@ import { primarySegmentAchievement } from "../../lib/segmentAchievements";
 import {
   EFFORTS_PER_PAGE,
   EFFORT_TIME_FILTERS,
+  segmentEffortDayAttemptSummaries,
   type EffortTimeFilter,
   type SelectedEffortRow,
 } from "../../lib/segmentDetail";
@@ -70,6 +72,13 @@ export default function SegmentDetailEffortsSection({
     const startIndex = (page - 1) * EFFORTS_PER_PAGE;
     return visibleEfforts.slice(startIndex, startIndex + EFFORTS_PER_PAGE);
   }, [page, visibleEfforts]);
+  const attemptSummaryByEffortId = useMemo(
+    () => segmentEffortDayAttemptSummaries(visibleEfforts),
+    [visibleEfforts],
+  );
+  const showAttemptColumn = Array.from(
+    attemptSummaryByEffortId.values(),
+  ).some((summary) => summary.attemptCount > 1);
   const rangeStart =
     visibleEfforts.length === 0 ? 0 : (page - 1) * EFFORTS_PER_PAGE + 1;
   const rangeEnd = Math.min(page * EFFORTS_PER_PAGE, visibleEfforts.length);
@@ -117,6 +126,7 @@ export default function SegmentDetailEffortsSection({
                         <span className="sr-only">Compare</span>
                       </th>
                       <th>Time</th>
+                      {showAttemptColumn ? <th className="w-24">Run</th> : null}
                       <th>Rider</th>
                       <th>Date</th>
                     </tr>
@@ -128,18 +138,25 @@ export default function SegmentDetailEffortsSection({
                       const overallRank =
                         overallRankByEffortId.get(effort.id) ?? null;
                       const isCurrentUserPr = currentUserPr?.id === effort.id;
+                      const attemptSummary = attemptSummaryByEffortId.get(
+                        effort.id,
+                      );
                       const achievement = primarySegmentAchievement({
                         overallRank,
                         personalRank: isCurrentUserPr ? 1 : null,
+                        isFastestOfDay:
+                          attemptSummary?.isFastestOfDay ?? false,
                       });
                       const rowClassName =
                         achievement?.kind === "pr"
                           ? "bg-primary/10"
                           : achievement?.kind === "kom"
                             ? "bg-warning/10"
-                            : checked
-                              ? "bg-base-200/70"
-                              : undefined;
+                            : achievement?.kind === "fastest"
+                              ? "bg-success/10"
+                              : checked
+                                ? "bg-base-200/70"
+                                : undefined;
 
                       return (
                         <tr key={effort.id} className={rowClassName}>
@@ -225,9 +242,24 @@ export default function SegmentDetailEffortsSection({
                                 <span className="badge badge-primary badge-xs">
                                   PR
                                 </span>
+                              ) : achievement?.kind === "fastest" ? (
+                                <span className="badge badge-success badge-xs gap-1">
+                                  <FontAwesomeIcon
+                                    icon={faRocket}
+                                    className="h-3 w-3"
+                                  />
+                                  Fastest
+                                </span>
                               ) : null}
                             </div>
                           </td>
+                          {showAttemptColumn ? (
+                            <td className="whitespace-nowrap text-xs font-medium text-base-content/70">
+                              {attemptSummary && attemptSummary.attemptCount > 1
+                                ? `Run ${attemptSummary.attemptNumber}`
+                                : "--"}
+                            </td>
+                          ) : null}
                           <td>{effort.rider_name}</td>
                           <td className="whitespace-nowrap text-base-content/65">
                             {formatActivityTimestamp(
