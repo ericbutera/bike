@@ -34,6 +34,19 @@ export const PLAYBACK_PACE_OPTIONS = [
   { key: "fast", label: "Fast", multiplier: 0.65 },
 ] as const;
 
+export const RACE_PLAYBACK_SPEED_OPTIONS = [
+  { value: 0.1, label: "0.10x" },
+  { value: 0.25, label: "0.25x" },
+  { value: 0.5, label: "0.5x" },
+  { value: 0.75, label: "0.75x" },
+  { value: 1, label: "1x" },
+  { value: 1.25, label: "1.25x" },
+  { value: 1.5, label: "1.5x" },
+  { value: 2, label: "2x" },
+  { value: 3, label: "3x" },
+  { value: 4, label: "4x" },
+] as const;
+
 export const EFFORT_TIME_FILTERS = [
   { key: "all", label: "All" },
   { key: "day", label: "Day" },
@@ -44,6 +57,8 @@ export const EFFORT_TIME_FILTERS = [
 
 export type EffortTimeFilter = (typeof EFFORT_TIME_FILTERS)[number]["key"];
 export type PlaybackPace = (typeof PLAYBACK_PACE_OPTIONS)[number]["key"];
+export type RacePlaybackSpeed =
+  (typeof RACE_PLAYBACK_SPEED_OPTIONS)[number]["value"];
 
 export type SelectedEffortRow = {
   effort: SegmentEffort;
@@ -109,6 +124,18 @@ export function parsePlaybackPaceParam(
 
   return nextValue === "detail" || nextValue === "auto" || nextValue === "fast"
     ? nextValue
+    : undefined;
+}
+
+export function parseRacePlaybackSpeedParam(
+  value: string | string[] | undefined,
+): RacePlaybackSpeed | undefined {
+  const numericValue = Number(firstRouteParamValue(value));
+
+  return RACE_PLAYBACK_SPEED_OPTIONS.some(
+    (option) => option.value === numericValue,
+  )
+    ? (numericValue as RacePlaybackSpeed)
     : undefined;
 }
 
@@ -552,6 +579,66 @@ export function buildLeaderPairFollowViewport(
   return {
     point: {
       ...leaderPoint,
+      latitude: centerLatitude,
+      longitude: centerLongitude,
+    },
+    zoom,
+  };
+}
+
+export function buildLeaderGroupFollowViewport(
+  points: ActivityRoutePoint[],
+  maxZoom: number,
+) {
+  const firstPoint = points[0];
+
+  if (!firstPoint) {
+    return null;
+  }
+
+  if (points.length === 1) {
+    return {
+      point: firstPoint,
+      zoom: maxZoom,
+    };
+  }
+
+  const latitudeValues = points.map((point) => point.latitude);
+  const longitudeValues = points.map((point) => point.longitude);
+  const minLatitude = Math.min(...latitudeValues);
+  const maxLatitude = Math.max(...latitudeValues);
+  const minLongitude = Math.min(...longitudeValues);
+  const maxLongitude = Math.max(...longitudeValues);
+  const centerLatitude = (minLatitude + maxLatitude) / 2;
+  const centerLongitude = (minLongitude + maxLongitude) / 2;
+  const latitudeRadians = (centerLatitude * Math.PI) / 180;
+  const longitudeScale = Math.max(Math.cos(latitudeRadians), 0.01);
+  const latitudeSpreadMeters = Math.abs(maxLatitude - minLatitude) * 111_320;
+  const longitudeSpreadMeters =
+    Math.abs(maxLongitude - minLongitude) * 111_320 * longitudeScale;
+  const spreadMeters = Math.max(latitudeSpreadMeters, longitudeSpreadMeters);
+
+  if (spreadMeters <= 1) {
+    return {
+      point: firstPoint,
+      zoom: maxZoom,
+    };
+  }
+
+  const paddedSpreadMeters = spreadMeters * FOLLOW_PAIR_VIEWPORT_PADDING_FACTOR;
+  const metersPerPixelAtZoom0 =
+    WEB_MERCATOR_METERS_PER_PIXEL_AT_ZOOM_0 * longitudeScale;
+  const computedZoom = Math.log2(
+    (metersPerPixelAtZoom0 * FOLLOW_PAIR_VIEWPORT_TARGET_SPAN_PX) /
+      paddedSpreadMeters,
+  );
+  const zoom = Number.isFinite(computedZoom)
+    ? Math.min(maxZoom, Math.max(FOLLOW_PAIR_MIN_ZOOM, computedZoom))
+    : maxZoom;
+
+  return {
+    point: {
+      ...firstPoint,
       latitude: centerLatitude,
       longitude: centerLongitude,
     },

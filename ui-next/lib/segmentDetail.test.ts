@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildLeaderGroupFollowViewport,
   buildLeaderPairFollowViewport,
   parseOptionalPositiveNumberParam,
   parsePlaybackPaceParam,
+  parseRacePlaybackSpeedParam,
   parseSelectedEffortIdsParam,
   segmentEffortDayAttemptSummaries,
 } from "./segmentDetail";
@@ -67,6 +69,36 @@ describe("buildLeaderPairFollowViewport", () => {
   });
 });
 
+describe("buildLeaderGroupFollowViewport", () => {
+  it("widens enough to include the top three markers", () => {
+    const leaderPoint = {
+      elapsed_seconds: 12,
+      latitude: 45,
+      longitude: -122,
+    };
+    const runnerUpPoint = {
+      elapsed_seconds: 12,
+      latitude: 45.002,
+      longitude: -121.998,
+    };
+    const thirdPoint = {
+      elapsed_seconds: 12,
+      latitude: 45.006,
+      longitude: -121.99,
+    };
+
+    const viewport = buildLeaderGroupFollowViewport(
+      [leaderPoint, runnerUpPoint, thirdPoint],
+      19,
+    );
+
+    expect(viewport?.point.latitude).toBeCloseTo(45.003, 6);
+    expect(viewport?.point.longitude).toBeCloseTo(-121.995, 6);
+    expect(viewport?.zoom).toBeLessThan(19);
+    expect(viewport?.zoom).toBeGreaterThanOrEqual(12);
+  });
+});
+
 describe("segment route param parsers", () => {
   it("parses selected effort IDs from a comma-delimited route param", () => {
     expect(parseSelectedEffortIdsParam("1, 2,bad,-3,4")).toEqual([1, 2, 4]);
@@ -84,6 +116,14 @@ describe("segment route param parsers", () => {
     expect(parsePlaybackPaceParam("detail")).toBe("detail");
     expect(parsePlaybackPaceParam("fast")).toBe("fast");
     expect(parsePlaybackPaceParam("slow")).toBeUndefined();
+  });
+
+  it("parses race playback speed params", () => {
+    expect(parseRacePlaybackSpeedParam("0.10")).toBe(0.1);
+    expect(parseRacePlaybackSpeedParam("0.25")).toBe(0.25);
+    expect(parseRacePlaybackSpeedParam("4")).toBe(4);
+    expect(parseRacePlaybackSpeedParam("fast")).toBeUndefined();
+    expect(parseRacePlaybackSpeedParam("0.2")).toBeUndefined();
   });
 });
 

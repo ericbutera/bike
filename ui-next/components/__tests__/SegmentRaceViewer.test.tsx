@@ -1,4 +1,5 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { type ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import SegmentRaceViewer from "../segment-detail/SegmentRaceViewer";
 
@@ -52,6 +53,7 @@ function makeEffort({
   effort_index,
   duration_seconds,
   rider_name = "Eric",
+  route_points,
 }: {
   id: number;
   activity_title: string;
@@ -59,6 +61,7 @@ function makeEffort({
   effort_index: number;
   duration_seconds: number;
   rider_name?: string;
+  route_points?: ReturnType<typeof makeRoutePoint>[];
 }) {
   return {
     id,
@@ -72,7 +75,7 @@ function makeEffort({
     start_elapsed_seconds: 0,
     end_elapsed_seconds: duration_seconds,
     distance_meters: 1000,
-    route_points: [
+    route_points: route_points ?? [
       makeRoutePoint(0),
       makeRoutePoint(duration_seconds / 2),
       makeRoutePoint(duration_seconds),
@@ -117,13 +120,25 @@ function makeSegment() {
   };
 }
 
-function renderRaceViewer() {
+function renderRaceViewer({
+  segment = makeSegment(),
+  selectedEffortIds = [3896, 3954, 3586],
+  referenceEffortId = 3896,
+  initialPlaybackSpeed,
+}: {
+  segment?: ReturnType<typeof makeSegment>;
+  selectedEffortIds?: number[];
+  referenceEffortId?: number | null;
+  initialPlaybackSpeed?: ComponentProps<
+    typeof SegmentRaceViewer
+  >["initialPlaybackSpeed"];
+} = {}) {
   mocks.useCurrentUser.mockReturnValue({
     user: { id: 1, name: "Eric" },
     isLoading: false,
   });
   mocks.useSegment.mockReturnValue({
-    data: makeSegment(),
+    data: segment,
     isLoading: false,
     isError: false,
     error: null,
@@ -132,8 +147,9 @@ function renderRaceViewer() {
   return render(
     <SegmentRaceViewer
       segmentId={1}
-      initialSelectedEffortIds={[3896, 3954, 3586]}
-      initialReferenceEffortId={3896}
+      initialSelectedEffortIds={selectedEffortIds}
+      initialReferenceEffortId={referenceEffortId}
+      initialPlaybackSpeed={initialPlaybackSpeed}
     />,
   );
 }
@@ -154,7 +170,7 @@ describe("SegmentRaceViewer", () => {
   it("exposes ride date and attempt number on each effort card", () => {
     renderRaceViewer();
 
-    const secondAttemptCard = screen.getByLabelText(
+    const secondAttemptCard = screen.getByTitle(
       /Eric - .*May 6, 2026.* - Attempt 2/,
     );
 
@@ -180,22 +196,117 @@ describe("SegmentRaceViewer", () => {
     );
   });
 
-  it("renders the mobile pace controls beside the playback timer", () => {
+  it("removes a ride from the race viewer and back link selection", () => {
+    renderRaceViewer();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Remove Eric - .*May 6, 2026.* - Attempt 2 from race viewer/,
+      }),
+    );
+
+    expect(
+      screen.queryByTitle(/Eric - .*May 6, 2026.* - Attempt 2/),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute(
+      "href",
+      "/segments/1?efforts=3896%2C3586&ref=3896",
+    );
+  });
+
+  it("renders exact speed values in a dropdown slider", () => {
     const { container } = renderRaceViewer();
 
     const timer = getPlaybackTimer(container);
-    const mobileControls = timer.parentElement?.querySelector(".sm\\:hidden");
+    const speedControl = screen.getByRole("button", {
+      name: "Race playback speed",
+    });
 
-    expect(mobileControls).toBeTruthy();
+    expect(speedControl).toHaveTextContent("1x");
+    expect(timer.parentElement).toContainElement(speedControl);
+
+    const speedSlider = screen.getByLabelText("Race playback speed slider");
+    expect(speedSlider).toHaveAttribute("max", "9");
+
+    fireEvent.change(speedSlider, { target: { value: "9" } });
+
+    expect(speedControl).toHaveTextContent("4x");
+    expect(screen.getByRole("button", { name: "0.10x" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "0.25x" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "4x" })).toBeInTheDocument();
+  });
+
+  it("honors an initially requested race playback speed", () => {
+    renderRaceViewer({ initialPlaybackSpeed: 0.25 });
+
     expect(
-      within(mobileControls as HTMLElement).getByText("Slow"),
-    ).toBeInTheDocument();
-    expect(
-      within(mobileControls as HTMLElement).getByText("Auto"),
-    ).toBeInTheDocument();
-    expect(
-      within(mobileControls as HTMLElement).getByText("Fast"),
-    ).toBeInTheDocument();
+      screen.getByRole("button", { name: "Race playback speed" }),
+    ).toHaveTextContent("0.25x");
+  });
+
+  it("keeps effort cards in selected order while live lead labels update", () => {
+    const segment = makeSegment();
+    segment.efforts = [
+      makeEffort({
+        id: 1,
+        activity_title: "Warmup Run",
+        activity_started_at: "2026-05-06T12:00:00Z",
+        effort_index: 1,
+        duration_seconds: 140,
+        rider_name: "Taylor",
+      }),
+      makeEffort({
+        id: 2,
+        activity_title: "Race Run",
+        activity_started_at: "2026-05-06T13:00:00Z",
+        effort_index: 1,
+        duration_seconds: 95,
+        rider_name: "Jordan",
+      }),
+      makeEffort({
+        id: 3,
+        activity_title: "Evening Run",
+        activity_started_at: "2026-05-06T14:00:00Z",
+        effort_index: 1,
+        duration_seconds: 125,
+        rider_name: "Morgan",
+      }),
+    ];
+
+    renderRaceViewer({
+      segment,
+      selectedEffortIds: [1, 2, 3],
+      referenceEffortId: 2,
+    });
+
+    fireEvent.change(screen.getByLabelText("Race playback timeline"), {
+      target: { value: "100" },
+    });
+
+    const cards = screen
+      .getAllByTitle(/(Taylor|Jordan|Morgan) - .* - Attempt 1/)
+      .filter((card) => card.getAttribute("aria-label")?.includes(" - "));
+
+    expect(cards.map((card) => card.getAttribute("aria-label"))).toEqual([
+      expect.stringMatching(/^Taylor/),
+      expect.stringMatching(/^Jordan/),
+      expect.stringMatching(/^Morgan/),
+    ]);
+    expect(within(cards[1]).getByText("Lead")).toBeInTheDocument();
+  });
+
+  it("delegates user zoom preservation to the route map", () => {
+    renderRaceViewer();
+
+    const mapProps =
+      mocks.renderMapLibreRouteMap.mock.calls.at(-1)?.[0] ?? {};
+
+    expect(mapProps).toEqual(
+      expect.objectContaining({
+        followViewportBehavior: "ease",
+        followViewportPreserveUserZoom: true,
+      }),
+    );
   });
 
   it("keeps the timeline on its own full-width row for narrow viewports", () => {

@@ -34,6 +34,7 @@ export type RouteMapProps = {
   movingMarkerTransitionMs?: number;
   followViewport?: RouteMapFollowViewport | null;
   followViewportBehavior?: RouteMapFollowViewportBehavior;
+  followViewportPreserveUserZoom?: boolean;
   layerPickerClassName?: string;
   ariaLabel: string;
   className?: string;

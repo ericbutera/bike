@@ -10,6 +10,8 @@ const mapMocks = vi.hoisted(() => ({
   addControl: vi.fn(),
   createMap: vi.fn(),
   sources: new Map<string, { setData: ReturnType<typeof vi.fn> }>(),
+  handlers: new Map<string, Array<(event?: any) => void>>(),
+  zoom: 13,
 }));
 
 vi.mock("maplibre-gl", () => {
@@ -49,13 +51,38 @@ vi.mock("maplibre-gl", () => {
         })),
         isStyleLoaded: vi.fn(() => true),
         once: vi.fn(),
-        off: vi.fn(),
-        on: vi.fn(),
+        off: vi.fn((eventName: string, handler: (event?: any) => void) => {
+          const handlers = mapMocks.handlers.get(eventName) ?? [];
+          mapMocks.handlers.set(
+            eventName,
+            handlers.filter((entry) => entry !== handler),
+          );
+        }),
+        on: vi.fn(
+          (
+            eventName: string,
+            layerOrHandler: string | ((event?: any) => void),
+            maybeHandler?: (event?: any) => void,
+          ) => {
+            const handler =
+              typeof layerOrHandler === "function"
+                ? layerOrHandler
+                : maybeHandler;
+
+            if (!handler) {
+              return;
+            }
+
+            const handlers = mapMocks.handlers.get(eventName) ?? [];
+            handlers.push(handler);
+            mapMocks.handlers.set(eventName, handlers);
+          },
+        ),
         getCanvas: vi.fn(() => canvas),
         easeTo: mapMocks.easeTo,
         fitBounds: mapMocks.fitBounds,
         getCenter: vi.fn(() => ({ lng: -122, lat: 45 })),
-        getZoom: vi.fn(() => 13),
+        getZoom: vi.fn(() => mapMocks.zoom),
         getBearing: vi.fn(() => 0),
         getPitch: vi.fn(() => 0),
         jumpTo: mapMocks.jumpTo,
@@ -87,6 +114,8 @@ describe("MapLibreRouteMapClient", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mapMocks.sources.clear();
+    mapMocks.handlers.clear();
+    mapMocks.zoom = 13;
   });
 
   it("does not refit bounds when only playback markers change", async () => {
@@ -220,6 +249,104 @@ describe("MapLibreRouteMapClient", () => {
     });
 
     expect(mapMocks.fitBounds).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves user zoom during follow mode without fighting the zoom gesture", async () => {
+    const routePoints = [
+      { elapsed_seconds: 0, latitude: 45.0, longitude: -122.0 },
+      { elapsed_seconds: 120, latitude: 45.004, longitude: -121.996 },
+      { elapsed_seconds: 240, latitude: 45.008, longitude: -121.992 },
+    ];
+
+    const { rerender } = render(
+      <MapLibreRouteMapClient
+        routePoints={routePoints}
+        movingMarkers={[
+          {
+            id: "1",
+            point: routePoints[0],
+            color: "#0f766e",
+          },
+        ]}
+        followViewport={{ point: routePoints[0], zoom: 19 }}
+        followViewportPreserveUserZoom
+        ariaLabel="Segment comparison map"
+        emptyMessage="Segment route geometry is not available yet."
+        fitBoundsPadding={24}
+        fitBoundsMaxZoom={18}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mapMocks.jumpTo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          zoom: 19,
+        }),
+      );
+    });
+
+    mapMocks.zoom = 16;
+    mapMocks.handlers.get("zoomstart")?.forEach((handler) => {
+      handler({ originalEvent: new Event("wheel") });
+    });
+
+    rerender(
+      <MapLibreRouteMapClient
+        routePoints={routePoints}
+        movingMarkers={[
+          {
+            id: "1",
+            point: routePoints[1],
+            color: "#0f766e",
+          },
+        ]}
+        followViewport={{ point: routePoints[1], zoom: 17 }}
+        followViewportPreserveUserZoom
+        ariaLabel="Segment comparison map"
+        emptyMessage="Segment route geometry is not available yet."
+        fitBoundsPadding={24}
+        fitBoundsMaxZoom={18}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        mapMocks.sources.get("activity-route-markers")?.setData,
+      ).toHaveBeenCalledTimes(2);
+    });
+
+    expect(mapMocks.easeTo).not.toHaveBeenCalled();
+
+    mapMocks.handlers.get("zoomend")?.forEach((handler) => {
+      handler({ originalEvent: new Event("wheel") });
+    });
+
+    rerender(
+      <MapLibreRouteMapClient
+        routePoints={routePoints}
+        movingMarkers={[
+          {
+            id: "1",
+            point: routePoints[2],
+            color: "#0f766e",
+          },
+        ]}
+        followViewport={{ point: routePoints[2], zoom: 17 }}
+        followViewportPreserveUserZoom
+        ariaLabel="Segment comparison map"
+        emptyMessage="Segment route geometry is not available yet."
+        fitBoundsPadding={24}
+        fitBoundsMaxZoom={18}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mapMocks.easeTo).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          zoom: 16,
+        }),
+      );
+    });
   });
 
   it("refits bounds when a focused point set changes", async () => {

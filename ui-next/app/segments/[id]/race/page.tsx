@@ -1,7 +1,7 @@
 import SegmentRaceViewer from "../../../../components/segment-detail/SegmentRaceViewer";
 import {
   parseOptionalPositiveNumberParam,
-  parsePlaybackPaceParam,
+  parseRacePlaybackSpeedParam,
   parseSelectedEffortIdsParam,
 } from "../../../../lib/segmentDetail";
 
@@ -24,7 +24,9 @@ export default async function SegmentRacePage({
       initialReferenceEffortId={parseOptionalPositiveNumberParam(
         resolvedSearchParams.ref,
       )}
-      initialPlaybackPace={parsePlaybackPaceParam(resolvedSearchParams.pace)}
+      initialPlaybackSpeed={parseRacePlaybackSpeedParam(
+        resolvedSearchParams.pace,
+      )}
     />
   );
 }

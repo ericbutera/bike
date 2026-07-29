@@ -10,6 +10,7 @@ The specs are intentionally written as product contracts instead of implementati
 - [Activity ingestion](activity-ingestion.md)
 - [Activity experience](activity-experience.md)
 - [Segment processing](segment-processing.md)
+- [Segment race viewer](segment-race-viewer.md)
 - [Training analytics](training-analytics.md)
 - [Cycling trends reports](cycling-trends-reports.md)
 - [XC event readiness](xc-event-readiness.md)

@@ -194,6 +194,8 @@ const DEFAULT_FIT_BOUNDS_MAX_ZOOM = 14;
 const FOLLOW_VIEWPORT_EASE_DURATION_MS = 1400;
 const FOLLOW_VIEWPORT_CENTER_SMOOTHING_ALPHA = 0.16;
 const FOLLOW_VIEWPORT_ZOOM_SMOOTHING_ALPHA = 0.04;
+const FOLLOW_VIEWPORT_USER_ZOOM_COOLDOWN_MS = 8000;
+const FOLLOW_VIEWPORT_AUTO_WIDEN_MIN_ZOOM_DELTA = 0.5;
 const DEFAULT_MOVING_MARKER_TRANSITION_MS = 0;
 const MIN_MARKER_ANIMATION_FRAME_MS = 1000 / 30;
 const EMPTY_OVERLAYS: RouteOverlay[] = [];
@@ -215,6 +217,10 @@ type OverlayLayerEvent = {
       label?: string;
     };
   }>;
+};
+
+type MapInteractionEvent = {
+  originalEvent?: unknown;
 };
 
 function toPositions(points: ActivityRoutePoint[]): Position[] {
@@ -326,6 +332,34 @@ function smoothFollowCameraTarget(
       FOLLOW_VIEWPORT_ZOOM_SMOOTHING_ALPHA,
     ),
   };
+}
+
+function resolveFollowViewportZoom({
+  requestedZoom,
+  preserveUserZoom,
+  userFollowZoom,
+  now,
+}: {
+  requestedZoom: number;
+  preserveUserZoom: boolean;
+  userFollowZoom: { zoom: number; changedAtMs: number } | null;
+  now: number;
+}) {
+  if (!preserveUserZoom || !userFollowZoom) {
+    return requestedZoom;
+  }
+
+  const isFresh =
+    now - userFollowZoom.changedAtMs < FOLLOW_VIEWPORT_USER_ZOOM_COOLDOWN_MS;
+  const shouldAutoWiden =
+    requestedZoom <
+    userFollowZoom.zoom - FOLLOW_VIEWPORT_AUTO_WIDEN_MIN_ZOOM_DELTA;
+
+  if (isFresh || !shouldAutoWiden) {
+    return userFollowZoom.zoom;
+  }
+
+  return requestedZoom;
 }
 
 function distanceRange(points: ActivityRoutePoint[] | null | undefined) {
@@ -729,6 +763,7 @@ export default function MapLibreRouteMapClient({
   movingMarkerTransitionMs = DEFAULT_MOVING_MARKER_TRANSITION_MS,
   followViewport = null,
   followViewportBehavior = "ease",
+  followViewportPreserveUserZoom = false,
   layerPickerClassName,
   showBaseTiles = true,
   interactive = true,
@@ -752,6 +787,11 @@ export default function MapLibreRouteMapClient({
   const renderedMovingMarkersRef = useRef<RouteMovingMarker[]>([]);
   const lastFollowViewportKeyRef = useRef<string | null>(null);
   const smoothedFollowTargetRef = useRef<FollowCameraTarget | null>(null);
+  const isUserChangingZoomRef = useRef(false);
+  const userFollowZoomRef = useRef<{
+    zoom: number;
+    changedAtMs: number;
+  } | null>(null);
   const lastFittedRoutePointsRef = useRef<
     ActivityRoutePoint[] | null | undefined
   >(null);
@@ -1035,12 +1075,55 @@ export default function MapLibreRouteMapClient({
       shouldRestoreViewRef.current = false;
       lastFollowViewportKeyRef.current = null;
       smoothedFollowTargetRef.current = null;
+      isUserChangingZoomRef.current = false;
+      userFollowZoomRef.current = null;
       lastFittedRoutePointsRef.current = null;
       lastFittedFitBoundsPointsRef.current = null;
       lastFitBoundsKeyRef.current = undefined;
       hasFittedInitialViewRef.current = false;
     };
   }, [interactive, mapStyle, mapStyleKey, showBaseTiles, showZoomControls]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !followViewportPreserveUserZoom) {
+      userFollowZoomRef.current = null;
+      isUserChangingZoomRef.current = false;
+      return undefined;
+    }
+
+    const handleZoomStart = (event: MapInteractionEvent) => {
+      if (!event.originalEvent || mapRef.current !== map) {
+        return;
+      }
+
+      isUserChangingZoomRef.current = true;
+    };
+    const handleZoomEnd = (event: MapInteractionEvent) => {
+      if (!event.originalEvent || mapRef.current !== map) {
+        return;
+      }
+
+      userFollowZoomRef.current = {
+        zoom: map.getZoom(),
+        changedAtMs: performance.now(),
+      };
+      isUserChangingZoomRef.current = false;
+      smoothedFollowTargetRef.current = {
+        center: [map.getCenter().lng, map.getCenter().lat],
+        zoom: map.getZoom(),
+      };
+    };
+
+    map.on("zoomstart", handleZoomStart);
+    map.on("zoomend", handleZoomEnd);
+
+    return () => {
+      map.off("zoomstart", handleZoomStart);
+      map.off("zoomend", handleZoomEnd);
+      isUserChangingZoomRef.current = false;
+    };
+  }, [followViewportPreserveUserZoom]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1315,10 +1398,28 @@ export default function MapLibreRouteMapClient({
         return;
       }
 
+      if (isUserChangingZoomRef.current) {
+        return;
+      }
+
+      const targetZoom = resolveFollowViewportZoom({
+        requestedZoom: followViewport.zoom,
+        preserveUserZoom: followViewportPreserveUserZoom,
+        userFollowZoom: userFollowZoomRef.current,
+        now,
+      });
+
+      if (
+        userFollowZoomRef.current &&
+        targetZoom !== userFollowZoomRef.current.zoom
+      ) {
+        userFollowZoomRef.current = null;
+      }
+
       const nextFollowViewportKey = [
         followViewport.point.longitude,
         followViewport.point.latitude,
-        followViewport.zoom,
+        targetZoom,
       ].join(":");
 
       if (lastFollowViewportKeyRef.current === nextFollowViewportKey) {
@@ -1330,7 +1431,7 @@ export default function MapLibreRouteMapClient({
           followViewport.point.longitude,
           followViewport.point.latitude,
         ] as [number, number],
-        zoom: followViewport.zoom,
+        zoom: targetZoom,
       };
 
       if (
@@ -1373,6 +1474,7 @@ export default function MapLibreRouteMapClient({
   }, [
     followViewport,
     followViewportBehavior,
+    followViewportPreserveUserZoom,
     markerSourceData,
     mapStyleKey,
     movingMarkerTransitionMs,

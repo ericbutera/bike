@@ -3,8 +3,11 @@
 import { auth } from "@ericbutera/kaleido";
 import {
   faArrowLeft,
+  faChevronDown,
+  faGaugeHigh,
   faPause,
   faPlay,
+  faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
@@ -24,17 +27,17 @@ import {
   EMPTY_EFFORTS,
   EMPTY_EFFORT_IDS,
   PLAYBACK_END_EPSILON,
-  PLAYBACK_PACE_OPTIONS,
+  RACE_PLAYBACK_SPEED_OPTIONS,
   areEffortIdListsEqual,
+  buildLeaderGroupFollowViewport,
   buildLeaderPairFollowViewport,
   buildLiveComparisonRows,
   comparisonMarkerPoint,
   fastestEffort,
   formatSignedSecondsDelta,
   interpolateRoutePointByProgress,
-  playbackTargetSeconds,
   type LiveComparisonRow,
-  type PlaybackPace,
+  type RacePlaybackSpeed,
   type SelectedEffortRow,
 } from "../../lib/segmentDetail";
 import AuthRequiredCard from "../AuthRequiredCard";
@@ -44,6 +47,7 @@ import { type RouteMapBasemap } from "../RouteMapTypes";
 type RaceMapMode = "overview" | "leader-follow";
 
 const FOLLOW_LEADER_MAP_ZOOM = 19;
+const LONG_SEGMENT_AUTO_ZOOM_SECONDS = 180;
 
 function resolveRaceViewerBasemap(styleUrl: string): RouteMapBasemap {
   switch (styleUrl.trim().toLowerCase()) {
@@ -104,6 +108,85 @@ function formatAttemptNumber(value: number) {
   return `Attempt ${value}`;
 }
 
+function racePlaybackSpeedLabel(speed: RacePlaybackSpeed) {
+  return (
+    RACE_PLAYBACK_SPEED_OPTIONS.find((option) => option.value === speed)
+      ?.label ?? `${speed}x`
+  );
+}
+
+function RacePlaybackSpeedControl({
+  value,
+  onChange,
+}: {
+  value: RacePlaybackSpeed;
+  onChange: (value: RacePlaybackSpeed) => void;
+}) {
+  const selectedIndex = Math.max(
+    RACE_PLAYBACK_SPEED_OPTIONS.findIndex((option) => option.value === value),
+    0,
+  );
+
+  return (
+    <div className="dropdown dropdown-top dropdown-end shrink-0 sm:order-4">
+      <button
+        type="button"
+        tabIndex={0}
+        className="btn btn-sm btn-outline min-w-[6.75rem]"
+        aria-label="Race playback speed"
+      >
+        <FontAwesomeIcon icon={faGaugeHigh} className="h-3.5 w-3.5" />
+        {racePlaybackSpeedLabel(value)}
+        <FontAwesomeIcon icon={faChevronDown} className="h-3 w-3" />
+      </button>
+      <div
+        tabIndex={0}
+        className="dropdown-content z-30 mb-2 w-72 rounded-box border border-base-300 bg-base-100 p-4 shadow-xl"
+      >
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <span className="text-xs font-semibold uppercase tracking-[0.16em] text-base-content/55">
+            Speed
+          </span>
+          <span className="rounded-full border border-base-300 bg-base-200 px-2.5 py-1 text-xs font-semibold tabular-nums">
+            {racePlaybackSpeedLabel(value)}
+          </span>
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={RACE_PLAYBACK_SPEED_OPTIONS.length - 1}
+          step={1}
+          value={selectedIndex}
+          className="range range-primary range-xs"
+          aria-label="Race playback speed slider"
+          onChange={(event) => {
+            const nextOption =
+              RACE_PLAYBACK_SPEED_OPTIONS[Number(event.target.value)];
+
+            if (nextOption) {
+              onChange(nextOption.value);
+            }
+          }}
+        />
+        <div className="mt-3 grid grid-cols-5 gap-1 text-center text-[0.65rem] font-medium tabular-nums text-base-content/65">
+          {RACE_PLAYBACK_SPEED_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={`rounded px-1 py-1 ${option.value === value ? "bg-primary text-primary-content" : "hover:bg-base-200"}`}
+              onClick={() => {
+                onChange(option.value);
+              }}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function buildInitialReferenceEffortId(
   selectedEfforts: SegmentEffort[],
   requestedReferenceEffortId: number | null,
@@ -135,6 +218,7 @@ function RaceViewerMap({
   mapMode,
   selectedBasemap,
   onSelectedBasemapChange,
+  playbackLimitSeconds,
 }: {
   routePoints: ActivityRoutePoint[] | null | undefined;
   comparisonRows: LiveComparisonRow[];
@@ -142,6 +226,7 @@ function RaceViewerMap({
   mapMode: RaceMapMode;
   selectedBasemap: RouteMapBasemap;
   onSelectedBasemapChange: (basemap: RouteMapBasemap) => void;
+  playbackLimitSeconds: number;
 }) {
   const hasRouteMap = (routePoints?.length ?? 0) >= 2;
 
@@ -196,7 +281,7 @@ function RaceViewerMap({
             } => marker !== null,
           )
       : [];
-  const followViewport =
+  const pairFollowViewport =
     mapMode === "leader-follow"
       ? buildLeaderPairFollowViewport(
           rankedMarkers[0]?.point ?? null,
@@ -204,6 +289,17 @@ function RaceViewerMap({
           FOLLOW_LEADER_MAP_ZOOM,
         )
       : null;
+  const topThreeFollowViewport =
+    mapMode === "leader-follow"
+      ? buildLeaderGroupFollowViewport(
+          rankedMarkers.slice(0, 3).map((marker) => marker.point),
+          FOLLOW_LEADER_MAP_ZOOM,
+        )
+      : null;
+  const followViewport =
+    playbackLimitSeconds >= LONG_SEGMENT_AUTO_ZOOM_SECONDS
+      ? (topThreeFollowViewport ?? pairFollowViewport)
+      : pairFollowViewport;
 
   return hasRouteMap ? (
     <MapLibreRouteMap
@@ -219,6 +315,7 @@ function RaceViewerMap({
       }))}
       followViewport={followViewport}
       followViewportBehavior="ease"
+      followViewportPreserveUserZoom
       ariaLabel="Segment race viewer map"
       emptyMessage="Segment route geometry is not available yet."
       className="absolute inset-0 border-0"
@@ -243,12 +340,12 @@ export default function SegmentRaceViewer({
   segmentId,
   initialSelectedEffortIds,
   initialReferenceEffortId,
-  initialPlaybackPace = "auto",
+  initialPlaybackSpeed = 1,
 }: {
   segmentId: number | string;
   initialSelectedEffortIds: number[];
   initialReferenceEffortId: number | null;
-  initialPlaybackPace?: PlaybackPace;
+  initialPlaybackSpeed?: RacePlaybackSpeed;
 }) {
   const authApi = auth.useAuthApi();
   const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
@@ -272,8 +369,8 @@ export default function SegmentRaceViewer({
   );
   const [playbackSeconds, setPlaybackSeconds] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [playbackPace, setPlaybackPace] =
-    useState<PlaybackPace>(initialPlaybackPace);
+  const [playbackSpeed, setPlaybackSpeed] =
+    useState<RacePlaybackSpeed>(initialPlaybackSpeed);
   const [selectedBasemap, setSelectedBasemap] = useState<RouteMapBasemap>(() =>
     resolveRaceViewerBasemap(config.MAP_STYLE_URL),
   );
@@ -306,10 +403,6 @@ export default function SegmentRaceViewer({
   const referenceEffort =
     selectedEfforts.find((effort) => effort.id === referenceEffortId) ?? null;
   const playbackLimitSeconds = referenceEffort?.duration_seconds ?? 0;
-  const targetPlaybackDurationSeconds = playbackTargetSeconds(
-    playbackLimitSeconds,
-    playbackPace,
-  );
   const comparisonRows = useMemo(
     () =>
       buildLiveComparisonRows(selectedRows, referenceEffort, playbackSeconds),
@@ -352,6 +445,16 @@ export default function SegmentRaceViewer({
       }),
     );
   }, [sortedComparisonRows]);
+  const livePositionByEffortId = useMemo(
+    () =>
+      new Map(
+        sortedComparisonRows.map((comparisonRow, index) => [
+          comparisonRow.effort.id,
+          index + 1,
+        ]),
+      ),
+    [sortedComparisonRows],
+  );
   const backHref = useMemo(() => {
     const searchParams = new URLSearchParams();
 
@@ -458,9 +561,8 @@ export default function SegmentRaceViewer({
     const tick = (timestamp: number) => {
       const previousTimestamp = playbackLastTimestampRef.current ?? timestamp;
       const deltaSeconds =
-        targetPlaybackDurationSeconds > 0
-          ? ((timestamp - previousTimestamp) / 1000) *
-            (playbackLimitSeconds / targetPlaybackDurationSeconds)
+        playbackSpeed > 0
+          ? ((timestamp - previousTimestamp) / 1000) * playbackSpeed
           : 0;
 
       playbackLastTimestampRef.current = timestamp;
@@ -497,7 +599,7 @@ export default function SegmentRaceViewer({
       }
       playbackLastTimestampRef.current = null;
     };
-  }, [isPlaying, playbackLimitSeconds, targetPlaybackDurationSeconds]);
+  }, [isPlaying, playbackLimitSeconds, playbackSpeed]);
 
   if (isLoadingUser || segmentQuery.isLoading) {
     return (
@@ -547,6 +649,7 @@ export default function SegmentRaceViewer({
           mapMode={mapMode}
           selectedBasemap={selectedBasemap}
           onSelectedBasemapChange={setSelectedBasemap}
+          playbackLimitSeconds={playbackLimitSeconds}
         />
 
         <div className="pointer-events-none absolute inset-0">
@@ -599,15 +702,18 @@ export default function SegmentRaceViewer({
 
           <div className="pointer-events-auto absolute inset-x-0 bottom-0 p-4 sm:p-6">
             <div className="mx-auto flex w-full max-w-7xl flex-col gap-3">
-              {sortedComparisonRows.length > 0 ? (
+              {comparisonRows.length > 0 ? (
                 <div className="overflow-x-auto pt-28">
                   <div className="flex min-w-max items-end gap-3 pb-1">
-                    {sortedComparisonRows.map((comparisonRow, index) => {
+                    {comparisonRows.map((comparisonRow) => {
                       const leaderGapSeconds =
                         leaderGapByEffortId.get(comparisonRow.effort.id) ??
                         null;
+                      const livePosition =
+                        livePositionByEffortId.get(comparisonRow.effort.id) ??
+                        null;
                       const gapValue =
-                        index === 0
+                        livePosition === 1
                           ? null
                           : formatSignedSecondsDelta(leaderGapSeconds);
                       const isTrailing = (leaderGapSeconds ?? 0) > 0;
@@ -629,7 +735,7 @@ export default function SegmentRaceViewer({
                         >
                           <div className="flex items-center gap-2">
                             <span
-                              className="inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold text-white"
+                              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white"
                               style={{ backgroundColor: comparisonRow.color }}
                             >
                               {comparisonRow.markerLabel}
@@ -637,6 +743,24 @@ export default function SegmentRaceViewer({
                             <span className="truncate font-semibold">
                               {comparisonRow.effort.rider_name}
                             </span>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-xs btn-circle ml-auto min-h-6 h-6 w-6 shrink-0 text-base-content/55 hover:text-error"
+                              aria-label={`Remove ${effortDetailsLabel} from race viewer`}
+                              onClick={() => {
+                                setSelectedEffortIds((current) =>
+                                  current.filter(
+                                    (effortId) =>
+                                      effortId !== comparisonRow.effort.id,
+                                  ),
+                                );
+                              }}
+                            >
+                              <FontAwesomeIcon
+                                icon={faXmark}
+                                className="h-3 w-3"
+                              />
+                            </button>
                           </div>
                           <div className="mt-1 flex items-center justify-between gap-2 text-xs">
                             <span className="text-base-content/70">
@@ -650,7 +774,7 @@ export default function SegmentRaceViewer({
                               >
                                 {gapValue}
                               </span>
-                            ) : index === 0 ? (
+                            ) : livePosition === 1 ? (
                               <span className="font-semibold text-success">
                                 Lead
                               </span>
@@ -716,21 +840,10 @@ export default function SegmentRaceViewer({
                       {formatDuration(playbackLimitSeconds)}
                     </span>
 
-                    <div className="join shrink-0 sm:hidden">
-                      {PLAYBACK_PACE_OPTIONS.map((option) => (
-                        <button
-                          key={option.key}
-                          type="button"
-                          className={`join-item btn btn-xs ${playbackPace === option.key ? "btn-primary" : "btn-outline"}`}
-                          aria-pressed={playbackPace === option.key}
-                          onClick={() => {
-                            setPlaybackPace(option.key);
-                          }}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
+                    <RacePlaybackSpeedControl
+                      value={playbackSpeed}
+                      onChange={setPlaybackSpeed}
+                    />
                   </div>
 
                   <input
@@ -752,22 +865,6 @@ export default function SegmentRaceViewer({
                       setIsPlaying(false);
                     }}
                   />
-
-                  <div className="join hidden shrink-0 self-start sm:order-4 sm:flex sm:self-auto">
-                    {PLAYBACK_PACE_OPTIONS.map((option) => (
-                      <button
-                        key={option.key}
-                        type="button"
-                        className={`join-item btn btn-sm ${playbackPace === option.key ? "btn-primary" : "btn-outline"}`}
-                        aria-pressed={playbackPace === option.key}
-                        onClick={() => {
-                          setPlaybackPace(option.key);
-                        }}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
                 </div>
               </div>
             </div>
