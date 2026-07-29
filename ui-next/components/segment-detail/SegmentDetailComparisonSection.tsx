@@ -772,6 +772,7 @@ type SegmentDetailComparisonSectionProps = {
   referenceEffortId: number | null;
   referenceSummaryLabel: string;
   raceViewerHref: string | null;
+  isLoading: boolean;
   playbackLimitSeconds: number;
   playbackSeconds: number;
   isPlaying: boolean;
@@ -794,6 +795,7 @@ export default function SegmentDetailComparisonSection({
   referenceEffortId,
   referenceSummaryLabel,
   raceViewerHref,
+  isLoading,
   playbackLimitSeconds,
   playbackSeconds,
   isPlaying,
@@ -832,112 +834,121 @@ export default function SegmentDetailComparisonSection({
           </div>
         </div>
 
-        <div className="overflow-hidden border border-base-300 bg-base-200">
-          <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.78fr)]">
-            <div className="border-b border-base-300 xl:order-2 xl:border-b-0 xl:border-l">
-              <SelectedEffortsPanel
-                comparisonRows={liveComparisonRows}
-                focusedEffortId={focusedEffortId}
+        {isLoading ? (
+          <div className="flex min-h-[28rem] items-center justify-center border border-base-300 bg-base-200">
+            <span
+              className="loading loading-spinner loading-lg"
+              aria-label="Loading segment comparison"
+            />
+          </div>
+        ) : (
+          <div className="overflow-hidden border border-base-300 bg-base-200">
+            <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.78fr)]">
+              <div className="border-b border-base-300 xl:order-2 xl:border-b-0 xl:border-l">
+                <SelectedEffortsPanel
+                  comparisonRows={liveComparisonRows}
+                  focusedEffortId={focusedEffortId}
+                  referenceEffortId={referenceEffortId}
+                  playbackSeconds={playbackSeconds}
+                  unitSystem={unitSystem}
+                  onHoverEffort={onHoverEffort}
+                  onTogglePinnedEffort={onTogglePinnedEffort}
+                  onRemoveEffort={onRemoveEffort}
+                />
+              </div>
+
+              <div className="min-h-[24rem] xl:order-1">
+                <RouteComparisonMap
+                  routePoints={routePoints}
+                  selectedRows={selectedRows}
+                  playbackSeconds={playbackSeconds}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 border-t border-base-300 bg-base-100 px-3 py-3 sm:px-4">
+              <div className="flex min-w-0 flex-1 items-center gap-3 max-[420px]:gap-2">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-circle shrink-0 border-0 bg-orange-500 text-white hover:bg-orange-600"
+                  disabled={
+                    selectedRows.length === 0 || playbackLimitSeconds <= 0
+                  }
+                  aria-label={
+                    isPlaying
+                      ? "Pause comparison playback"
+                      : playbackSeconds >= playbackLimitSeconds
+                        ? "Replay comparison playback"
+                        : "Play comparison playback"
+                  }
+                  onClick={() => {
+                    if (playbackSeconds >= playbackLimitSeconds) {
+                      onPlaybackSecondsChange(0);
+                    }
+                    onPlayingChange(!isPlaying);
+                  }}
+                >
+                  <FontAwesomeIcon
+                    icon={isPlaying ? faPause : faPlay}
+                    className="h-4 w-4"
+                  />
+                </button>
+
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(playbackLimitSeconds, 1)}
+                  step={0.1}
+                  value={Math.min(
+                    playbackSeconds,
+                    Math.max(playbackLimitSeconds, 1),
+                  )}
+                  className="range range-primary min-w-0 flex-1"
+                  disabled={
+                    selectedRows.length === 0 || playbackLimitSeconds <= 0
+                  }
+                  aria-label="Playback timeline"
+                  onChange={(event) => {
+                    onPlaybackSecondsChange(Number(event.target.value));
+                    onPlayingChange(false);
+                  }}
+                />
+
+                <span className="shrink-0 rounded-full border border-base-300 px-2.5 py-1 text-xs font-semibold tabular-nums text-base-content/80 max-[420px]:hidden">
+                  {formatDuration(Math.round(playbackSeconds))} /{" "}
+                  {formatDuration(playbackLimitSeconds)}
+                </span>
+              </div>
+
+              <div className="join shrink-0 max-[420px]:hidden">
+                {PLAYBACK_PACE_OPTIONS.map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    className={`join-item btn btn-sm ${playbackPace === option.key ? "btn-neutral" : "btn-ghost"}`}
+                    aria-pressed={playbackPace === option.key}
+                    onClick={() => {
+                      onPlaybackPaceChange(option.key);
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="border-t border-base-300 bg-base-100/95">
+              <ComparisonChart
+                routePoints={routePoints}
+                routeDistanceMeters={routeDistanceMeters}
+                selectedRows={selectedRows}
                 referenceEffortId={referenceEffortId}
                 playbackSeconds={playbackSeconds}
                 unitSystem={unitSystem}
-                onHoverEffort={onHoverEffort}
-                onTogglePinnedEffort={onTogglePinnedEffort}
-                onRemoveEffort={onRemoveEffort}
-              />
-            </div>
-
-            <div className="min-h-[24rem] xl:order-1">
-              <RouteComparisonMap
-                routePoints={routePoints}
-                selectedRows={selectedRows}
-                playbackSeconds={playbackSeconds}
               />
             </div>
           </div>
-
-          <div className="flex flex-wrap items-center gap-3 border-t border-base-300 bg-base-100 px-3 py-3 sm:px-4">
-            <div className="flex min-w-0 flex-1 items-center gap-3 max-[420px]:gap-2">
-              <button
-                type="button"
-                className="btn btn-sm btn-circle shrink-0 border-0 bg-orange-500 text-white hover:bg-orange-600"
-                disabled={
-                  selectedRows.length === 0 || playbackLimitSeconds <= 0
-                }
-                aria-label={
-                  isPlaying
-                    ? "Pause comparison playback"
-                    : playbackSeconds >= playbackLimitSeconds
-                      ? "Replay comparison playback"
-                      : "Play comparison playback"
-                }
-                onClick={() => {
-                  if (playbackSeconds >= playbackLimitSeconds) {
-                    onPlaybackSecondsChange(0);
-                  }
-                  onPlayingChange(!isPlaying);
-                }}
-              >
-                <FontAwesomeIcon
-                  icon={isPlaying ? faPause : faPlay}
-                  className="h-4 w-4"
-                />
-              </button>
-
-              <input
-                type="range"
-                min={0}
-                max={Math.max(playbackLimitSeconds, 1)}
-                step={0.1}
-                value={Math.min(
-                  playbackSeconds,
-                  Math.max(playbackLimitSeconds, 1),
-                )}
-                className="range range-primary min-w-0 flex-1"
-                disabled={
-                  selectedRows.length === 0 || playbackLimitSeconds <= 0
-                }
-                aria-label="Playback timeline"
-                onChange={(event) => {
-                  onPlaybackSecondsChange(Number(event.target.value));
-                  onPlayingChange(false);
-                }}
-              />
-
-              <span className="shrink-0 rounded-full border border-base-300 px-2.5 py-1 text-xs font-semibold tabular-nums text-base-content/80 max-[420px]:hidden">
-                {formatDuration(Math.round(playbackSeconds))} /{" "}
-                {formatDuration(playbackLimitSeconds)}
-              </span>
-            </div>
-
-            <div className="join shrink-0 max-[420px]:hidden">
-              {PLAYBACK_PACE_OPTIONS.map((option) => (
-                <button
-                  key={option.key}
-                  type="button"
-                  className={`join-item btn btn-sm ${playbackPace === option.key ? "btn-neutral" : "btn-ghost"}`}
-                  aria-pressed={playbackPace === option.key}
-                  onClick={() => {
-                    onPlaybackPaceChange(option.key);
-                  }}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="border-t border-base-300 bg-base-100/95">
-            <ComparisonChart
-              routePoints={routePoints}
-              routeDistanceMeters={routeDistanceMeters}
-              selectedRows={selectedRows}
-              referenceEffortId={referenceEffortId}
-              playbackSeconds={playbackSeconds}
-              unitSystem={unitSystem}
-            />
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );

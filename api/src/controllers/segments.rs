@@ -74,7 +74,16 @@ pub struct SegmentResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub builder_source: Option<SegmentBuilderSourceResponse>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub route_points: Vec<ActivityRoutePoint>,
+    pub route_points: Vec<SegmentRoutePointResponse>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub efforts: Vec<SegmentEffortResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SegmentComparisonResponse {
+    pub segment_id: i32,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub route_points: Vec<SegmentRoutePointResponse>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub efforts: Vec<SegmentEffortResponse>,
 }
@@ -160,17 +169,6 @@ fn segment_builder_source_from_values(
     }
 }
 
-fn current_user_pr_duration_from_responses(
-    efforts: &[SegmentEffortResponse],
-    user_id: i32,
-) -> Option<i32> {
-    efforts
-        .iter()
-        .filter(|effort| effort.rider_user_id == user_id)
-        .map(|effort| effort.duration_seconds)
-        .min()
-}
-
 #[derive(Debug, Serialize, ToSchema)]
 pub struct SegmentEffortResponse {
     pub id: i32,
@@ -185,7 +183,22 @@ pub struct SegmentEffortResponse {
     pub end_elapsed_seconds: i32,
     pub distance_meters: Option<f64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub route_points: Vec<ActivityRoutePoint>,
+    pub route_points: Vec<SegmentRoutePointResponse>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
+pub struct SegmentRoutePointResponse {
+    pub elapsed_seconds: i32,
+    pub latitude: f64,
+    pub longitude: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub distance_meters: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub elevation_meters: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speed_mps: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub heart_rate_bpm: Option<i32>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -320,7 +333,7 @@ pub async fn list_segments(
         ("id" = i32, Path, description = "Segment ID")
     ),
     responses(
-        (status = 200, description = "Segment detail and effort comparison data", body = SegmentResponse),
+        (status = 200, description = "Segment metadata and summary data", body = SegmentResponse),
         (status = 401, description = "Not authenticated"),
         (status = 404, description = "Segment not found", body = ApiErrorResponse),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
@@ -342,7 +355,41 @@ pub async fn get_segment(
         .await?
         .ok_or_else(|| AppError::not_found("Segment not found"))?;
     Ok(Json(
-        load_segment_response(&state.db, &segment, user.id).await?,
+        load_segment_summary_response(&state.db, &segment, user.id).await?,
+    ))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/segments/{id}/comparison",
+    params(
+        ("id" = i32, Path, description = "Segment ID")
+    ),
+    responses(
+        (status = 200, description = "Segment route and effort comparison samples", body = SegmentComparisonResponse),
+        (status = 401, description = "Not authenticated"),
+        (status = 404, description = "Segment not found", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    tag = "segments",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn get_segment_comparison(
+    Path(id): Path<i32>,
+    UserContext { user, .. }: UserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+) -> Result<Json<SegmentComparisonResponse>, AppError> {
+    let segment = segments::Entity::find()
+        .filter(segments::Column::Id.eq(id))
+        .filter(segments::Column::UserId.eq(user.id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found("Segment not found"))?;
+
+    Ok(Json(
+        load_segment_comparison_response(&state.db, &segment).await?,
     ))
 }
 
@@ -391,7 +438,7 @@ pub async fn update_segment(
 
     if !title_changed && !mode_changed && !starred_changed {
         return Ok(Json(
-            load_segment_response(&state.db, &segment, user.id).await?,
+            load_segment_summary_response(&state.db, &segment, user.id).await?,
         ));
     }
 
@@ -414,7 +461,7 @@ pub async fn update_segment(
     txn.commit().await?;
 
     Ok(Json(
-        load_segment_response(&state.db, &updated_segment, user.id).await?,
+        load_segment_summary_response(&state.db, &updated_segment, user.id).await?,
     ))
 }
 
@@ -615,7 +662,7 @@ pub async fn create_segment_from_activity(
 
         return Ok((
             StatusCode::OK,
-            Json(load_segment_response(&state.db, &existing_segment, user.id).await?),
+            Json(load_segment_summary_response(&state.db, &existing_segment, user.id).await?),
         ));
     }
 
@@ -691,7 +738,7 @@ pub async fn import_segment(
     {
         return Ok((
             StatusCode::OK,
-            Json(load_segment_response(&state.db, &existing_segment, user.id).await?),
+            Json(load_segment_summary_response(&state.db, &existing_segment, user.id).await?),
         ));
     }
 
@@ -979,13 +1026,16 @@ async fn delete_segment_with_related_state(
     Ok(())
 }
 
-async fn load_segment_response(
+async fn load_segment_summary_response(
     db: &sea_orm::DatabaseConnection,
     segment: &segments::Model,
     user_id: i32,
 ) -> Result<SegmentResponse, AppError> {
-    let route_points = deserialize_segment_route_points(segment.route_data_json.as_ref());
-    let efforts = load_effort_responses(db, &[segment.id]).await?;
+    let summary_by_segment_id = load_segment_summaries(db, &[segment.id]).await?;
+    let user_summary_by_segment_id =
+        load_segment_user_summaries(db, user_id, &[segment.id]).await?;
+    let summary = summary_by_segment_id.get(&segment.id);
+    let user_summary = user_summary_by_segment_id.get(&segment.id);
 
     Ok(SegmentResponse {
         id: segment.id,
@@ -996,18 +1046,56 @@ async fn load_segment_response(
         original_filename: segment.original_filename.clone(),
         format: segment.format.clone(),
         distance_meters: segment.distance_meters,
-        effort_count: efforts.len() as i32,
-        best_duration_seconds: efforts.iter().map(|effort| effort.duration_seconds).min(),
-        current_user_pr_duration_seconds: current_user_pr_duration_from_responses(
-            &efforts, user_id,
-        ),
+        effort_count: summary.map(|value| value.effort_count).unwrap_or_default(),
+        best_duration_seconds: summary.and_then(|value| value.best_duration_seconds),
+        current_user_pr_duration_seconds: user_summary
+            .and_then(|value| value.personal_best_duration_seconds),
         created_at: segment.created_at,
         processing_task_id: None,
         processing_task_status: None,
         builder_source: segment_builder_source_from_model(segment),
+        route_points: Vec::new(),
+        efforts: Vec::new(),
+    })
+}
+
+async fn load_segment_comparison_response(
+    db: &sea_orm::DatabaseConnection,
+    segment: &segments::Model,
+) -> Result<SegmentComparisonResponse, AppError> {
+    let route_points = segment_route_point_responses(&deserialize_segment_route_points(
+        segment.route_data_json.as_ref(),
+    ));
+    let efforts = load_effort_responses(db, &[segment.id]).await?;
+
+    Ok(SegmentComparisonResponse {
+        segment_id: segment.id,
         route_points,
         efforts,
     })
+}
+
+fn segment_route_point_responses(
+    route_points: &[ActivityRoutePoint],
+) -> Vec<SegmentRoutePointResponse> {
+    route_points
+        .iter()
+        .map(SegmentRoutePointResponse::from_activity_route_point)
+        .collect()
+}
+
+impl SegmentRoutePointResponse {
+    fn from_activity_route_point(point: &ActivityRoutePoint) -> Self {
+        Self {
+            elapsed_seconds: point.elapsed_seconds,
+            latitude: point.latitude,
+            longitude: point.longitude,
+            distance_meters: point.distance_meters,
+            elevation_meters: point.elevation_meters,
+            speed_mps: point.speed_mps,
+            heart_rate_bpm: point.heart_rate_bpm,
+        }
+    }
 }
 
 fn load_light_segment_response(
@@ -1182,6 +1270,12 @@ async fn load_effort_responses(
             let derived_data =
                 deserialize_derived_activity_data(activity.derived_data_json.as_ref());
 
+            let route_points = slice_effort_route_points(
+                &derived_data.route_points,
+                effort.start_route_point_index,
+                effort.end_route_point_index,
+            );
+
             Some(SegmentEffortResponse {
                 id: effort.id,
                 rider_user_id: effort.user_id,
@@ -1194,11 +1288,7 @@ async fn load_effort_responses(
                 start_elapsed_seconds: effort.start_elapsed_seconds,
                 end_elapsed_seconds: effort.end_elapsed_seconds,
                 distance_meters: effort.distance_meters,
-                route_points: slice_effort_route_points(
-                    &derived_data.route_points,
-                    effort.start_route_point_index,
-                    effort.end_route_point_index,
-                ),
+                route_points: segment_route_point_responses(&route_points),
             })
         })
         .collect())
@@ -1298,6 +1388,59 @@ mod tests {
         assert_eq!(SegmentMode::from_stored("xc"), SegmentMode::Xc);
         assert_eq!(SegmentMode::from_stored("dh"), SegmentMode::Dh);
         assert_eq!(SegmentMode::from_stored("unknown"), SegmentMode::Xc);
+    }
+
+    #[test]
+    fn segment_route_point_responses_preserve_all_points() {
+        let route_points = (0..25)
+            .map(|index| {
+                build_route_point(
+                    index,
+                    Some(index as f64 * 10.0),
+                    45.0 + index as f64 * 0.001,
+                    -122.0 - index as f64 * 0.001,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let response_points = segment_route_point_responses(&route_points);
+
+        assert_eq!(response_points.len(), route_points.len());
+        assert_eq!(
+            response_points.first().map(|point| point.elapsed_seconds),
+            Some(0)
+        );
+        assert_eq!(
+            response_points.last().map(|point| point.elapsed_seconds),
+            Some(24)
+        );
+    }
+
+    #[test]
+    fn segment_route_point_response_preserves_precision_and_omits_unused_telemetry() {
+        let point = ActivityRoutePoint {
+            elapsed_seconds: 12,
+            latitude: 45.12345678,
+            longitude: -122.87654321,
+            distance_meters: Some(123.4567),
+            elevation_meters: Some(987.6543),
+            speed_mps: Some(4.567),
+            heart_rate_bpm: Some(151),
+            cadence_rpm: Some(88),
+            power_watts: Some(240),
+        };
+
+        let response = SegmentRoutePointResponse::from_activity_route_point(&point);
+        let serialized = serde_json::to_value(response).unwrap();
+
+        assert_eq!(serialized["latitude"], serde_json::json!(45.12345678));
+        assert_eq!(serialized["longitude"], serde_json::json!(-122.87654321));
+        assert_eq!(serialized["distance_meters"], serde_json::json!(123.4567));
+        assert_eq!(serialized["elevation_meters"], serde_json::json!(987.6543));
+        assert_eq!(serialized["speed_mps"], serde_json::json!(4.567));
+        assert_eq!(serialized["heart_rate_bpm"], serde_json::json!(151));
+        assert!(serialized.get("cadence_rpm").is_none());
+        assert!(serialized.get("power_watts").is_none());
     }
 
     #[test]

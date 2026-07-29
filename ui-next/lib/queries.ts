@@ -185,6 +185,12 @@ export type Segment = {
   efforts?: SegmentEffort[] | null;
 };
 
+export type SegmentComparison = {
+  segment_id: number;
+  route_points?: ActivityRoutePoint[] | null;
+  efforts?: SegmentEffort[] | null;
+};
+
 export type UserPreferences = {
   unit_system: string;
   estimated_ftp_watts?: number | null;
@@ -981,6 +987,9 @@ export function useReprocessActivityImport() {
         queryClient.invalidateQueries({ queryKey: ["get", "/segments"] }),
         queryClient.invalidateQueries({ queryKey: ["get", "/segments/{id}"] }),
         queryClient.invalidateQueries({
+          queryKey: ["get", "/segments/{id}/comparison"],
+        }),
+        queryClient.invalidateQueries({
           queryKey: ["get", "/training/xc-progress"],
         }),
       ]);
@@ -1007,6 +1016,9 @@ export function useRegenerateUserSegments() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["get", "/segments"] }),
         queryClient.invalidateQueries({ queryKey: ["get", "/segments/{id}"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/segments/{id}/comparison"],
+        }),
       ]);
 
       return result as RegenerateUserSegmentsResponse;
@@ -1034,6 +1046,9 @@ export function useRegenerateSegmentEfforts() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["get", "/segments"] }),
         queryClient.invalidateQueries({ queryKey: ["get", "/segments/{id}"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/segments/{id}/comparison"],
+        }),
       ]);
 
       return result as RegenerateSegmentEffortsResponse;
@@ -1159,6 +1174,9 @@ export function useRegenerateActivity() {
         }),
         queryClient.invalidateQueries({ queryKey: ["get", "/segments"] }),
         queryClient.invalidateQueries({ queryKey: ["get", "/segments/{id}"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/segments/{id}/comparison"],
+        }),
       ]);
 
       return result as Activity;
@@ -1214,6 +1232,9 @@ export function useDeleteActivity() {
         }),
         queryClient.invalidateQueries({ queryKey: ["get", "/segments"] }),
         queryClient.invalidateQueries({ queryKey: ["get", "/segments/{id}"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/segments/{id}/comparison"],
+        }),
         queryClient.invalidateQueries({ queryKey: ["get", "/fitness"] }),
       ]);
 
@@ -1247,6 +1268,20 @@ export function useSegment(id: number | string | null | undefined) {
   };
 }
 
+export function useSegmentComparison(id: number | string | null | undefined) {
+  const numericId = Number(id);
+  const enabled = Number.isFinite(numericId) && numericId > 0;
+  const response = $api.useQuery("get", "/segments/{id}/comparison", {
+    params: { path: { id: enabled ? numericId : 0 } },
+    options: { enabled },
+  });
+
+  return {
+    ...response,
+    data: (response.data ?? null) as SegmentComparison | null,
+  };
+}
+
 export function useUploadSegment() {
   const queryClient = useQueryClient();
   const mutation = $api.useMutation("post", "/segments");
@@ -1262,6 +1297,9 @@ export function useUploadSegment() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["get", "/segments"] }),
         queryClient.invalidateQueries({ queryKey: ["get", "/segments/{id}"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/segments/{id}/comparison"],
+        }),
         queryClient.invalidateQueries({ queryKey: ["get", "/activities"] }),
         queryClient.invalidateQueries({
           queryKey: ["get", "/activities/{id}"],
@@ -1297,6 +1335,9 @@ export function useCreateSegmentFromActivity() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["get", "/segments"] }),
         queryClient.invalidateQueries({ queryKey: ["get", "/segments/{id}"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/segments/{id}/comparison"],
+        }),
         queryClient.invalidateQueries({ queryKey: ["get", "/activities"] }),
         queryClient.invalidateQueries({
           queryKey: ["get", "/activities/{id}"],
@@ -1335,6 +1376,9 @@ export function useUpdateSegmentFromActivity() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["get", "/segments"] }),
         queryClient.invalidateQueries({ queryKey: ["get", "/segments/{id}"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/segments/{id}/comparison"],
+        }),
         queryClient.invalidateQueries({ queryKey: ["get", "/activities"] }),
         queryClient.invalidateQueries({
           queryKey: ["get", "/activities/{id}"],
@@ -1390,6 +1434,9 @@ export function useUpdateSegment() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["get", "/segments"] }),
         queryClient.invalidateQueries({ queryKey: ["get", "/segments/{id}"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/segments/{id}/comparison"],
+        }),
         queryClient.invalidateQueries({ queryKey: ["get", "/activities"] }),
         queryClient.invalidateQueries({
           queryKey: ["get", "/activities/{id}"],
@@ -1416,6 +1463,9 @@ export function useDeleteSegment() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["get", "/segments"] }),
         queryClient.invalidateQueries({ queryKey: ["get", "/segments/{id}"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/segments/{id}/comparison"],
+        }),
         queryClient.invalidateQueries({ queryKey: ["get", "/activities"] }),
         queryClient.invalidateQueries({
           queryKey: ["get", "/activities/{id}"],

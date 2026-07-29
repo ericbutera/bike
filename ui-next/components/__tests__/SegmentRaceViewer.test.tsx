@@ -6,6 +6,7 @@ import SegmentRaceViewer from "../segment-detail/SegmentRaceViewer";
 const mocks = vi.hoisted(() => ({
   useCurrentUser: vi.fn(),
   useSegment: vi.fn(),
+  useSegmentComparison: vi.fn(),
   renderMapLibreRouteMap: vi.fn(),
 }));
 
@@ -19,6 +20,7 @@ vi.mock("@ericbutera/kaleido", () => ({
 
 vi.mock("../../lib/queries", () => ({
   useSegment: mocks.useSegment,
+  useSegmentComparison: mocks.useSegmentComparison,
 }));
 
 vi.mock("../MapLibreRouteMap", () => ({
@@ -139,6 +141,12 @@ function renderRaceViewer({
   });
   mocks.useSegment.mockReturnValue({
     data: segment,
+    isLoading: false,
+    isError: false,
+    error: null,
+  });
+  mocks.useSegmentComparison.mockReturnValue({
+    data: null,
     isLoading: false,
     isError: false,
     error: null,

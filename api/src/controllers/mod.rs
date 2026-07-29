@@ -92,6 +92,10 @@ pub fn routes() -> Router<Arc<AppStorage>> {
                 .delete(segments::delete_segment),
         )
         .route(
+            "/api/segments/:id/comparison",
+            axum::routing::get(segments::get_segment_comparison),
+        )
+        .route(
             "/api/preferences",
             axum::routing::get(user_preferences::get_preferences)
                 .put(user_preferences::update_preferences),

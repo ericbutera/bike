@@ -31,6 +31,7 @@ type SegmentDetailEffortsSectionProps = {
   selectedRows: SelectedEffortRow[];
   overallRankByEffortId: Map<number, number>;
   currentUserPr: SegmentEffort | null;
+  isLoading: boolean;
   effortTimeFilter: EffortTimeFilter;
   onEffortTimeFilterChange: (filter: EffortTimeFilter) => void;
   onAddEffort: (effortId: number) => void;
@@ -44,6 +45,7 @@ export default function SegmentDetailEffortsSection({
   selectedRows,
   overallRankByEffortId,
   currentUserPr,
+  isLoading,
   effortTimeFilter,
   onEffortTimeFilterChange,
   onAddEffort,
@@ -114,7 +116,14 @@ export default function SegmentDetailEffortsSection({
             </div>
           </div>
 
-          {paginatedEfforts.length > 0 ? (
+          {isLoading ? (
+            <div className="mt-5 flex min-h-[14rem] items-center justify-center border border-base-300 bg-base-100">
+              <span
+                className="loading loading-spinner loading-md"
+                aria-label="Loading segment efforts"
+              />
+            </div>
+          ) : paginatedEfforts.length > 0 ? (
             <div aria-label="Segment efforts table" className="mt-5 space-y-4">
               <div className="overflow-x-auto border border-base-300 bg-base-100">
                 <table className="table table-pin-rows table-sm">

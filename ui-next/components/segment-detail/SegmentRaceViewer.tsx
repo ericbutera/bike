@@ -19,6 +19,7 @@ import {
 import { config } from "../../lib/config";
 import {
   useSegment,
+  useSegmentComparison,
   type ActivityRoutePoint,
   type SegmentEffort,
 } from "../../lib/queries";
@@ -350,6 +351,9 @@ export default function SegmentRaceViewer({
   const authApi = auth.useAuthApi();
   const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
   const segmentQuery = useSegment(user ? segmentId : null);
+  const comparisonQuery = useSegmentComparison(
+    user && segmentQuery.data ? segmentId : null,
+  );
   const playbackAnimationFrameRef = useRef<number | null>(null);
   const playbackLastTimestampRef = useRef<number | null>(null);
   const requestedSelectionBySegmentIdRef = useRef(
@@ -375,7 +379,21 @@ export default function SegmentRaceViewer({
     resolveRaceViewerBasemap(config.MAP_STYLE_URL),
   );
   const mapMode: RaceMapMode = "leader-follow";
-  const segment = segmentQuery.data;
+  const segment = useMemo(
+    () =>
+      segmentQuery.data
+        ? {
+            ...segmentQuery.data,
+            route_points:
+              comparisonQuery.data?.route_points ??
+              segmentQuery.data.route_points ??
+              [],
+            efforts:
+              comparisonQuery.data?.efforts ?? segmentQuery.data.efforts ?? [],
+          }
+        : null,
+    [comparisonQuery.data, segmentQuery.data],
+  );
   const allEfforts = segment?.efforts ?? EMPTY_EFFORTS;
   const currentUserId =
     typeof user?.id === "number"
@@ -601,7 +619,11 @@ export default function SegmentRaceViewer({
     };
   }, [isPlaying, playbackLimitSeconds, playbackSpeed]);
 
-  if (isLoadingUser || segmentQuery.isLoading) {
+  if (
+    isLoadingUser ||
+    segmentQuery.isLoading ||
+    (segmentQuery.data && comparisonQuery.isLoading)
+  ) {
     return (
       <section className="flex min-h-screen items-center justify-center bg-base-200 px-6 py-10">
         <span className="loading loading-spinner loading-lg" />
@@ -623,12 +645,13 @@ export default function SegmentRaceViewer({
     );
   }
 
-  if (segmentQuery.isError || !segment) {
+  if (segmentQuery.isError || comparisonQuery.isError || !segment) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-base-200 px-6 py-10">
         <div className="alert max-w-2xl bg-base-100 text-sm text-base-content/80 shadow-lg">
           <span>
             {extractApiMessage(segmentQuery.error) ||
+              extractApiMessage(comparisonQuery.error) ||
               "Segment playback could not be loaded."}
           </span>
           <Link href={backHref} className="btn btn-sm btn-outline">

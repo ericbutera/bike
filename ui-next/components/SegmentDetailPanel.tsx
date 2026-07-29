@@ -8,6 +8,7 @@ import { extractApiMessage, formatDuration } from "../lib/activityFormatting";
 import {
   useDeleteSegment,
   useSegment,
+  useSegmentComparison,
   useUpdateSegment,
   type SegmentEffort,
   type SegmentMode,
@@ -49,8 +50,13 @@ export default function SegmentDetailPanel({
   const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
   const { unitSystem } = useUnitPreferences();
   const segmentQuery = useSegment(user ? segmentId : null);
+  const comparisonQuery = useSegmentComparison(
+    user && segmentQuery.data ? segmentId : null,
+  );
   const updateSegmentMutation = useUpdateSegment();
   const deleteSegmentMutation = useDeleteSegment();
+  const isComparisonLoading =
+    Boolean(segmentQuery.data) && comparisonQuery.isLoading;
   const requestedSelectionBySegmentIdRef = useRef(
     new Map<number, number[]>([[Number(segmentId), initialSelectedEffortIds]]),
   );
@@ -71,7 +77,21 @@ export default function SegmentDetailPanel({
     useState<EffortTimeFilter>("all");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
-  const segment = segmentQuery.data;
+  const segment = useMemo(
+    () =>
+      segmentQuery.data
+        ? {
+            ...segmentQuery.data,
+            route_points:
+              comparisonQuery.data?.route_points ??
+              segmentQuery.data.route_points ??
+              [],
+            efforts:
+              comparisonQuery.data?.efforts ?? segmentQuery.data.efforts ?? [],
+          }
+        : null,
+    [comparisonQuery.data, segmentQuery.data],
+  );
   const allEfforts = segment?.efforts ?? EMPTY_EFFORTS;
   const visibleEfforts = filterEffortsByTimeWindow(
     segment?.efforts,
@@ -488,6 +508,7 @@ export default function SegmentDetailPanel({
         selectedRows={selectedRows}
         overallRankByEffortId={overallRankByEffortId}
         currentUserPr={currentUserPr}
+        isLoading={isComparisonLoading}
         effortTimeFilter={effortTimeFilter}
         onEffortTimeFilterChange={setEffortTimeFilter}
         onAddEffort={addEffortToComparison}
@@ -503,6 +524,7 @@ export default function SegmentDetailPanel({
         referenceEffortId={referenceEffortId}
         referenceSummaryLabel={referenceSummaryLabel}
         raceViewerHref={raceViewerHref}
+        isLoading={isComparisonLoading}
         playbackLimitSeconds={playbackLimitSeconds}
         playbackSeconds={playbackSeconds}
         isPlaying={isPlaying}
