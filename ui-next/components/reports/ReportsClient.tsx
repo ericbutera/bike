@@ -2,7 +2,12 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { extractApiMessage } from "../../lib/activityFormatting";
+import {
+  extractApiMessage,
+  formatElevation,
+  formatElevationRate,
+  type UnitSystem,
+} from "../../lib/activityFormatting";
 import {
   useRideSummaryReport,
   useTrainingReportDefinitions,
@@ -15,6 +20,7 @@ import {
   type HourlyDurability,
   type RideSummaryReport,
 } from "../../lib/queries";
+import { useUnitPreferences } from "../../lib/unitPreferences";
 import Charts from "./Charts";
 import TimeRangeSelector, { TimeRange } from "./TimeRangeSelector";
 import {
@@ -28,6 +34,7 @@ import {
 export default function ReportsClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { unitSystem } = useUnitPreferences();
   const initialRange = parseTimeRange(searchParams.get("range"));
   const initialDateRange = dateRangeForTimeRange(initialRange);
   const [range, setRange] = useState<TimeRange>(initialRange);
@@ -227,6 +234,7 @@ export default function ReportsClient() {
           ) : selectedReport.id === "climbing" ? (
             <ClimbingReportView
               report={reportQuery.data?.climbing ?? null}
+              unitSystem={unitSystem}
               isLoading={reportQuery.isLoading}
               isError={reportQuery.isError}
               error={reportQuery.error}
@@ -481,11 +489,13 @@ function EnduranceReportView({
 
 function ClimbingReportView({
   report,
+  unitSystem,
   isLoading,
   isError,
   error,
 }: {
   report: ClimbingReport | null;
+  unitSystem: UnitSystem;
   isLoading: boolean;
   isError: boolean;
   error: unknown;
@@ -512,8 +522,11 @@ function ClimbingReportView({
           <ReportMetricCard
             key={label}
             label={label}
-            value={climb ? formatNumber(climb.vertical_rate_meters_per_hour) : "n/a"}
-            unit={climb ? "m/h" : undefined}
+            value={
+              climb
+                ? formatElevationRate(climb.vertical_rate_meters_per_hour, unitSystem)
+                : "n/a"
+            }
           />
         ))}
       </div>
@@ -541,9 +554,14 @@ function ClimbingReportView({
               <tr key={`${climb.activity_id}-${climb.climb_number}`}>
                 <td>{climb.activity_title}</td>
                 <td>{climb.climb_number}</td>
-                <td>{formatNumber(climb.gain_meters)} m</td>
+                <td>{formatElevation(climb.gain_meters, unitSystem)}</td>
                 <td>{formatDuration(climb.duration_seconds)}</td>
-                <td>{formatNumber(climb.vertical_rate_meters_per_hour)} m/h</td>
+                <td>
+                  {formatElevationRate(
+                    climb.vertical_rate_meters_per_hour,
+                    unitSystem,
+                  )}
+                </td>
                 <td>{formatPercent(climb.average_grade_percent)}</td>
                 <td>{formatOptionalNumber(climb.average_heart_rate_bpm)}</td>
                 <td>{formatOptionalNumber(climb.average_cadence_rpm)}</td>

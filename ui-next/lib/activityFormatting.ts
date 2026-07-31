@@ -83,6 +83,21 @@ export function formatElevation(
   return `${formatRoundedInteger(value)} m`;
 }
 
+export function formatElevationRate(
+  value?: number | null,
+  unitSystem: UnitSystem = DEFAULT_UNIT_SYSTEM,
+) {
+  if (value == null) {
+    return "--";
+  }
+
+  if (unitSystem === "imperial") {
+    return `${formatRoundedInteger(value * FEET_PER_METER)} ft/h`;
+  }
+
+  return `${formatRoundedInteger(value)} m/h`;
+}
+
 export function formatSpeed(
   value?: number | null,
   unitSystem: UnitSystem = DEFAULT_UNIT_SYSTEM,
