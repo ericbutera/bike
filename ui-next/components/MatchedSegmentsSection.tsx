@@ -11,35 +11,26 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import { formatDuration, formatHeartRate } from "../lib/activityFormatting";
 import {
   type ActivityRoutePoint,
   type ActivitySegmentEffort,
+  useActivity,
+  useSegments,
+  useUpdateSegment,
 } from "../lib/queries";
 import {
   primarySegmentAchievement,
   type SegmentAchievement,
   type SegmentAchievementKind,
 } from "../lib/segmentAchievements";
-
-type SegmentToneViewModel = {
-  mapColor: string;
-  dotClassName: string;
-  highlightClassName: string;
-};
-
-type MatchedSegmentGroup = {
-  segmentId: number;
-  segmentTitle: string;
-  efforts: ActivitySegmentEffort[];
-  tone: SegmentToneViewModel;
-  bestEffort: ActivitySegmentEffort;
-  bestOverallRank: number | null;
-  peakHeartRate: number | null;
-  anchorId: string;
-};
+import {
+  segmentOverlayPoints,
+  type MatchedSegmentGroup,
+  useMatchedSegmentGroups,
+} from "./activity-detail/matchedSegments";
 
 type SegmentAttemptChartPoint = {
   effort: ActivitySegmentEffort;
@@ -59,38 +50,6 @@ type SegmentAttemptTooltipState = {
   x: number;
   y: number;
 };
-
-function clampRouteIndex(index: number, routeLength: number) {
-  if (routeLength <= 0) {
-    return 0;
-  }
-
-  return Math.max(0, Math.min(index, routeLength - 1));
-}
-
-function segmentOverlayPoints(
-  routePoints: ActivityRoutePoint[] | null | undefined,
-  segmentEffort: ActivitySegmentEffort,
-) {
-  if (!routePoints || routePoints.length === 0) {
-    return [] as ActivityRoutePoint[];
-  }
-
-  const startIndex = clampRouteIndex(
-    segmentEffort.start_route_point_index,
-    routePoints.length,
-  );
-  const endIndex = clampRouteIndex(
-    segmentEffort.end_route_point_index,
-    routePoints.length,
-  );
-
-  if (startIndex > endIndex) {
-    return [];
-  }
-
-  return routePoints.slice(startIndex, endIndex + 1);
-}
 
 function formatOverallRank(rank: number | null | undefined) {
   return rank != null ? `#${rank} overall` : "No global rank";
@@ -616,27 +575,88 @@ function SegmentAttemptsChart({
 }
 
 export default function MatchedSegmentsSection({
-  segmentGroups,
-  routePoints,
+  activityId,
   selectedSegmentId,
-  expandedSegmentIds,
-  starredSegmentIds,
-  updateSegmentPending,
   onToggleSegmentMatch,
-  onToggleSegmentStar,
 }: {
-  segmentGroups: MatchedSegmentGroup[];
-  routePoints: ActivityRoutePoint[] | null | undefined;
+  activityId: number | string;
   selectedSegmentId: number | null;
-  expandedSegmentIds: number[];
-  starredSegmentIds: Set<number>;
-  updateSegmentPending: boolean;
   onToggleSegmentMatch: (segmentId: number) => void;
-  onToggleSegmentStar: (
-    segmentId: number,
-    starred: boolean,
-  ) => void | Promise<void>;
 }) {
+  const [expandedSegmentIds, setExpandedSegmentIds] = useState<number[]>([]);
+  const activityQuery = useActivity(activityId);
+  const activity = activityQuery.data;
+  const routePoints = activity?.route_points;
+  const segmentGroups = useMatchedSegmentGroups(activity);
+  const segmentsQuery = useSegments();
+  const updateSegmentMutation = useUpdateSegment();
+  const starredSegmentIds = useMemo(
+    () =>
+      new Set(
+        segmentsQuery.data
+          .filter((segment) => segment.starred)
+          .map((segment) => segment.id),
+      ),
+    [segmentsQuery.data],
+  );
+  const starredSegmentIdsKey = useMemo(
+    () =>
+      Array.from(starredSegmentIds)
+        .sort((left, right) => left - right)
+        .join(","),
+    [starredSegmentIds],
+  );
+
+  useEffect(() => {
+    if (starredSegmentIds.size === 0) {
+      return;
+    }
+
+    setExpandedSegmentIds((current) => {
+      const next = new Set(current);
+
+      for (const segmentId of starredSegmentIds) {
+        next.add(segmentId);
+      }
+
+      return next.size === current.length ? current : Array.from(next);
+    });
+  }, [starredSegmentIds, starredSegmentIdsKey]);
+
+  useEffect(() => {
+    if (selectedSegmentId == null) {
+      return;
+    }
+
+    setExpandedSegmentIds((current) =>
+      current.includes(selectedSegmentId)
+        ? current
+        : [...current, selectedSegmentId],
+    );
+  }, [selectedSegmentId]);
+
+  async function toggleSegmentStar(segmentId: number, starred: boolean) {
+    try {
+      await updateSegmentMutation.updateAsync({ id: segmentId, starred });
+      if (starred) {
+        setExpandedSegmentIds((current) =>
+          current.includes(segmentId) ? current : [...current, segmentId],
+        );
+      }
+    } catch {
+      // The mutation exposes error state where segment controls are rendered.
+    }
+  }
+
+  function toggleSegmentMatch(segmentId: number) {
+    setExpandedSegmentIds((current) =>
+      current.includes(segmentId)
+        ? current.filter((entry) => entry !== segmentId)
+        : [...current, segmentId],
+    );
+    onToggleSegmentMatch(segmentId);
+  }
+
   function handleToggleRow(
     segmentId: number,
     isStarred: boolean,
@@ -651,7 +671,7 @@ export default function MatchedSegmentsSection({
     }
 
     event?.preventDefault();
-    onToggleSegmentMatch(segmentId);
+    toggleSegmentMatch(segmentId);
   }
 
   return (
@@ -692,7 +712,7 @@ export default function MatchedSegmentsSection({
                           return;
                         }
 
-                        onToggleSegmentMatch(segmentGroup.segmentId);
+                        toggleSegmentMatch(segmentGroup.segmentId);
                       }}
                       onKeyDown={(event) => {
                         handleToggleRow(
@@ -707,10 +727,10 @@ export default function MatchedSegmentsSection({
                         className={`btn btn-ghost btn-sm btn-square self-center ${isStarred ? "text-warning" : "text-base-content/45"}`}
                         aria-label={`${isStarred ? "Unstar" : "Star"} ${segmentGroup.segmentTitle}`}
                         aria-pressed={isStarred}
-                        disabled={updateSegmentPending}
+                        disabled={updateSegmentMutation.isPending}
                         onClick={(event) => {
                           event.stopPropagation();
-                          void onToggleSegmentStar(
+                          void toggleSegmentStar(
                             segmentGroup.segmentId,
                             !isStarred,
                           );
@@ -770,7 +790,7 @@ export default function MatchedSegmentsSection({
                               return;
                             }
 
-                            onToggleSegmentMatch(segmentGroup.segmentId);
+                            toggleSegmentMatch(segmentGroup.segmentId);
                           }}
                         >
                           <FontAwesomeIcon

@@ -11,11 +11,10 @@ import {
 } from "../../lib/activityTypes";
 import { formatSport } from "../../lib/activityFormatting";
 import type { Activity } from "../../lib/queries";
+import { hasSegmentBuilderRoute } from "../../lib/segmentBuilder";
 
 export function ActivityHeaderActions({
   activity,
-  canBuildSegment,
-  segmentBuilderHref,
   isRegenerating,
   isDeleting,
   onOpenActivityTypeDialog,
@@ -23,14 +22,15 @@ export function ActivityHeaderActions({
   onDelete,
 }: {
   activity: Activity;
-  canBuildSegment: boolean;
-  segmentBuilderHref: string;
   isRegenerating: boolean;
   isDeleting: boolean;
   onOpenActivityTypeDialog: () => void;
   onRegenerate: () => void;
   onDelete: () => void;
 }) {
+  const canBuildSegment = hasSegmentBuilderRoute(activity.route_points);
+  const segmentBuilderHref = `/segments/builder?activityId=${activity.id}`;
+
   return (
     <div className="flex flex-col items-start gap-3 sm:items-end">
       <div className="flex flex-wrap gap-2">
