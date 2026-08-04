@@ -48,6 +48,10 @@ vi.mock("@ericbutera/kaleido", async () => {
         useCurrentUser: mocks.useCurrentUser,
       }),
     },
+    ApiErrorAlert: ({ fallback, children }: any) =>
+      React.createElement("div", { role: "alert" }, children ?? fallback),
+    LoadingSpinner: (props: any) =>
+      React.createElement("span", { "aria-hidden": "true", ...props }),
     Pagination: ({
       page,
       perPage,

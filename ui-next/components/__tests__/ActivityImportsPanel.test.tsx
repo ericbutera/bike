@@ -24,6 +24,11 @@ vi.mock("@ericbutera/kaleido", () => ({
       useCurrentUser: mocks.useCurrentUser,
     }),
   },
+  ApiErrorAlert: ({ fallback, children }: any) => (
+    <div role="alert">{children ?? fallback}</div>
+  ),
+  LoadingCard: () => <div aria-label="Loading" />,
+  LoadingSpinner: (props: any) => <span aria-hidden="true" {...props} />,
 }));
 
 vi.mock("../../lib/queries", () => ({

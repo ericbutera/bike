@@ -50,8 +50,6 @@ function NewSegmentBuilderPage({ activityId }: { activityId: number | null }) {
         segment={null}
         activity={activityQuery.data}
         isLoading={activityQuery.isLoading}
-        isError={activityQuery.isError}
-        error={activityQuery.error}
       />
     </SegmentBuilderPageShell>
   );
@@ -75,12 +73,7 @@ function EditSegmentBuilderPage({ segmentId }: { segmentId: number }) {
         segment={segmentQuery.data ?? null}
         activity={activityQuery.data}
         isLoading={segmentQuery.isLoading || activityQuery.isLoading}
-        isError={
-          Boolean(builderStateError) ||
-          segmentQuery.isError ||
-          activityQuery.isError
-        }
-        error={builderStateError ?? segmentQuery.error ?? activityQuery.error}
+        unavailableMessage={builderStateError?.message}
       />
     </SegmentBuilderPageShell>
   );

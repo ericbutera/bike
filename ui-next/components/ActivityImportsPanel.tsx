@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import toast from "react-hot-toast";
 import {
-  extractApiMessage,
   formatActivityTimestamp,
   formatDuration,
 } from "../lib/activityFormatting";
@@ -17,6 +16,7 @@ import {
   type ActivityArchiveImportJob,
   type ActivityImport,
 } from "../lib/queries";
+import { LoadingSpinner } from "./ui/QueryState";
 
 const ALLOWED_EXTENSIONS = new Set(["fit", "tcx", "gpx"]);
 const MANUAL_IMPORT_VISIBLE_ROW_COUNT = 10;
@@ -53,11 +53,11 @@ export default function ActivityImportsPanel() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [archiveUrl, setArchiveUrl] = useState("");
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
-  const activeUploadCount = importsQuery.data.filter(
-    isActivityImportActive,
-  ).length;
+  const imports = importsQuery.data ?? [];
+  const archiveJobs = archiveJobsQuery.data ?? [];
+  const activeUploadCount = imports.filter(isActivityImportActive).length;
   const shouldLimitManualImportQueue =
-    importsQuery.data.length > MANUAL_IMPORT_VISIBLE_ROW_COUNT;
+    imports.length > MANUAL_IMPORT_VISIBLE_ROW_COUNT;
 
   const onUpload = async () => {
     if (isUploadingFiles) {
@@ -95,8 +95,8 @@ export default function ActivityImportsPanel() {
       }
 
       toast.success(buildUploadSuccessMessage(results));
-    } catch (error) {
-      toast.error(extractApiMessage(error));
+    } catch {
+      // Mutation errors are surfaced by the app-level React Query handler.
     } finally {
       setIsUploadingFiles(false);
     }
@@ -114,8 +114,8 @@ export default function ActivityImportsPanel() {
       toast.success(
         "Queued archive import. Bike will fetch and process it in the background.",
       );
-    } catch (error) {
-      toast.error(extractApiMessage(error));
+    } catch {
+      // Mutation errors are surfaced by the app-level React Query handler.
     }
   };
 
@@ -207,7 +207,7 @@ export default function ActivityImportsPanel() {
               >
                 {isUploadingFiles ? (
                   <>
-                    <span className="loading loading-spinner loading-xs" />
+                    <LoadingSpinner size="xs" />
                     {selectedFiles.length > 1
                       ? "Queueing activities..."
                       : "Queueing activity..."}
@@ -239,18 +239,12 @@ export default function ActivityImportsPanel() {
                   </span>
                 ) : null}
                 {importsQuery.isFetching ? (
-                  <span className="loading loading-spinner loading-xs" />
+                  <LoadingSpinner size="xs" />
                 ) : null}
               </div>
             </div>
 
-            {importsQuery.isError ? (
-              <div className="alert alert-error mt-4">
-                {extractApiMessage(importsQuery.error)}
-              </div>
-            ) : null}
-
-            {!importsQuery.isError && importsQuery.data.length === 0 ? (
+            {importsQuery.data?.length === 0 ? (
               <div className="alert mt-4">
                 <span>
                   No uploads yet. Start with one of your GPX exports to seed
@@ -259,7 +253,7 @@ export default function ActivityImportsPanel() {
               </div>
             ) : null}
 
-            {importsQuery.data.length > 0 ? (
+            {imports.length > 0 ? (
               <div
                 className={
                   shouldLimitManualImportQueue
@@ -283,7 +277,7 @@ export default function ActivityImportsPanel() {
                     </tr>
                   </thead>
                   <tbody>
-                    {importsQuery.data.map((activityImport) => {
+                    {imports.map((activityImport) => {
                       const href = activityImport.activity_id
                         ? `/activities/${activityImport.activity_id}`
                         : null;
@@ -405,27 +399,20 @@ export default function ActivityImportsPanel() {
                 </div>
               </div>
               {archiveJobsQuery.isFetching ? (
-                <span className="loading loading-spinner loading-xs" />
+                <LoadingSpinner size="xs" />
               ) : null}
             </summary>
 
             <div className="collapse-content">
-              {archiveJobsQuery.isError ? (
-                <div className="alert alert-error mt-4">
-                  {extractApiMessage(archiveJobsQuery.error)}
-                </div>
-              ) : null}
-
-              {!archiveJobsQuery.isError &&
-              archiveJobsQuery.data.length === 0 ? (
+              {archiveJobsQuery.data?.length === 0 ? (
                 <div className="mt-4 rounded-xl border border-dashed border-base-300 bg-base-200 px-4 py-3 text-sm text-base-content/70">
                   No archive imports queued yet.
                 </div>
               ) : null}
 
-              {archiveJobsQuery.data.length > 0 ? (
+              {archiveJobs.length > 0 ? (
                 <div className="mt-4 space-y-3">
-                  {archiveJobsQuery.data.map((job) => (
+                  {archiveJobs.map((job) => (
                     <div
                       key={job.id}
                       className="rounded-2xl border border-base-300 bg-base-200 p-4"
@@ -470,9 +457,7 @@ export default function ActivityImportsPanel() {
                       </dl>
 
                       {job.failure_message ? (
-                        <div className="alert alert-error mt-4 text-sm">
-                          <span>{job.failure_message}</span>
-                        </div>
+                        <ArchiveJobFailureMessage message={job.failure_message} />
                       ) : null}
 
                       {job.error_samples && job.error_samples.length > 0 ? (
@@ -617,6 +602,14 @@ function ArchiveSummaryItem({
     <div className="rounded-xl bg-base-200 px-4 py-3">
       <dt className="text-base-content/60">{label}</dt>
       <dd className="mt-1 text-lg font-semibold">{value}</dd>
+    </div>
+  );
+}
+
+function ArchiveJobFailureMessage({ message }: { message: string }) {
+  return (
+    <div className="alert alert-error mt-4 text-sm">
+      <span>{message}</span>
     </div>
   );
 }

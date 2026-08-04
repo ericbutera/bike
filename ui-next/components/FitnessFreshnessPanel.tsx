@@ -13,7 +13,6 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { extractApiMessage } from "../lib/activityFormatting";
 import {
   type FitnessFreshnessPoint,
   useFitnessFreshness,
@@ -276,26 +275,8 @@ export default function FitnessFreshnessPanel() {
   ];
   const includeYearLabels = selectedRange === "all" || selectedRange === "2y";
 
-  if (fitnessQuery.isLoading) {
-    return (
-      <section className="card bg-base-100 shadow-xl">
-        <div className="card-body items-center py-10">
-          <span className="loading loading-spinner loading-md" />
-        </div>
-      </section>
-    );
-  }
-
-  if (fitnessQuery.isError) {
-    return (
-      <section className="card bg-base-100 shadow-xl">
-        <div className="card-body">
-          <div className="alert alert-error">
-            {extractApiMessage(fitnessQuery.error)}
-          </div>
-        </div>
-      </section>
-    );
+  if (!fitnessQuery.data) {
+    return null;
   }
 
   return (

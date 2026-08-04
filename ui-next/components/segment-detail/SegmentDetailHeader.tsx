@@ -34,7 +34,6 @@ type SegmentDetailHeaderProps = {
   isSavingSegment: boolean;
   isDeletingSegment: boolean;
   builderEditHref: string | null;
-  actionErrorMessage: string | null;
   onStartEditingTitle: () => void;
   onCancelEditingTitle: () => void;
   onDraftTitleChange: (value: string) => void;
@@ -59,7 +58,6 @@ export default function SegmentDetailHeader({
   isSavingSegment,
   isDeletingSegment,
   builderEditHref,
-  actionErrorMessage,
   onStartEditingTitle,
   onCancelEditingTitle,
   onDraftTitleChange,
@@ -221,10 +219,6 @@ export default function SegmentDetailHeader({
                 </ul>
               </div>
             </div>
-
-            {actionErrorMessage ? (
-              <div className="alert alert-error">{actionErrorMessage}</div>
-            ) : null}
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="min-w-[14rem] border border-base-300 bg-base-200 px-4 py-4">

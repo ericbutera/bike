@@ -1,10 +1,10 @@
 "use client";
 
 import {
-  extractApiMessage,
   formatActivityTimestamp,
 } from "@/lib/activityFormatting";
 import type { IntegrationEvent } from "@/lib/queries";
+import { CenteredLoading } from "./ui/QueryState";
 
 type IntegrationEventFeedProps = {
   events: IntegrationEvent[];
@@ -24,19 +24,11 @@ export default function IntegrationEventFeed({
   showProvider = false,
 }: IntegrationEventFeedProps) {
   if (isLoading) {
-    return (
-      <div className="flex justify-center py-8">
-        <span className="loading loading-spinner loading-md" />
-      </div>
-    );
+    return <CenteredLoading />;
   }
 
   if (error) {
-    return (
-      <div className="alert alert-error/80 text-sm">
-        <span>{extractApiMessage(error)}</span>
-      </div>
-    );
+    return null;
   }
 
   if (events.length === 0) {

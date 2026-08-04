@@ -217,7 +217,7 @@ function AdminIntegrationsContent() {
 
       <section className="rounded-2xl border border-base-300 bg-base-100 p-6 shadow-sm">
         <IntegrationEventFeed
-          events={eventsQuery.data}
+          events={eventsQuery.data ?? []}
           isLoading={eventsQuery.isLoading}
           error={eventsQuery.error}
           emptyMessage="No integration events matched the current filter."

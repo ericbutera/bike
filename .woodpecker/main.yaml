@@ -72,10 +72,10 @@ steps:
     depends_on: [build-api, build-worker, build-ui]
     environment:
       PULUMI_ACCESS_TOKEN:
-        from_secret: PULUMI_ACCESS_TOKEN
+        from_secret: pulumi_access_token
       GITHUB_TOKEN:
-        from_secret: GITHUB_TOKEN
+        from_secret: github_token
       PULUMI_IAC_REPO:
-        from_secret: PULUMI_IAC_REPO
+        from_secret: pulumi_iac_repo
     commands:
       - sh .woodpecker/deploy.sh

@@ -16,7 +16,6 @@ import {
   YAxis,
 } from "recharts";
 import {
-  extractApiMessage,
   formatActivityTimestamp,
   formatDistance,
   formatDuration,
@@ -44,6 +43,7 @@ import {
   type XcTrainingPurpose,
 } from "../lib/queries";
 import { hasConfiguredHeartRateZoneBounds } from "../lib/trainingProfile";
+import { LoadingSpinner } from "./ui/QueryState";
 
 const Z2_COLOR = "#0f766e";
 const CLIMB_COLOR = "#ea580c";
@@ -2048,22 +2048,7 @@ export default function XcGoalsProgressPanel() {
     );
   }, [rideBenchmarkTotalPages]);
 
-  if (progressQuery.isError) {
-    return (
-      <section className="space-y-4">
-        <div className="rounded-box border border-error/30 bg-error/10 p-6 shadow-sm">
-          <h2 className="text-xl font-semibold text-base-content">
-            XC goals & progress
-          </h2>
-          <p className="mt-2 text-sm text-base-content/75">
-            {extractApiMessage(progressQuery.error)}
-          </p>
-        </div>
-      </section>
-    );
-  }
-
-  if (progressQuery.isLoading || !progressQuery.data) {
+  if (progressQuery.isLoading) {
     return (
       <section className="space-y-6">
         <div className="rounded-box border border-base-300 bg-base-100 p-6 shadow-sm">
@@ -2085,6 +2070,10 @@ export default function XcGoalsProgressPanel() {
         </div>
       </section>
     );
+  }
+
+  if (!progressQuery.data) {
+    return null;
   }
 
   const progress = progressQuery.data;
@@ -2231,8 +2220,8 @@ export default function XcGoalsProgressPanel() {
         toast.success("XC event goal saved.");
       }
       setIsEditingGoal(false);
-    } catch (error) {
-      toast.error(extractApiMessage(error));
+    } catch {
+      // Mutation errors are surfaced by the app-level React Query handler.
     }
   }
 
@@ -2258,8 +2247,8 @@ export default function XcGoalsProgressPanel() {
       setGoalEventProfileDraft("");
       setIsEditingGoal(false);
       toast.success("XC event goal cleared.");
-    } catch (error) {
-      toast.error(extractApiMessage(error));
+    } catch {
+      // Mutation errors are surfaced by the app-level React Query handler.
     }
   }
 
@@ -2308,7 +2297,7 @@ export default function XcGoalsProgressPanel() {
               Updated {formatActivityTimestamp(progress.generated_at)}
             </span>
             {progressQuery.isFetching ? (
-              <span className="loading loading-spinner loading-sm" />
+              <LoadingSpinner size="sm" />
             ) : null}
           </div>
         </div>

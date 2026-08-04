@@ -20,6 +20,8 @@ vi.mock("@ericbutera/kaleido", () => ({
       useCurrentUser: mocks.useCurrentUser,
     }),
   },
+  LoadingCard: () => <div aria-label="Loading" />,
+  LoadingSpinner: (props: any) => <span aria-hidden="true" {...props} />,
 }));
 
 vi.mock("../../lib/queries", () => ({

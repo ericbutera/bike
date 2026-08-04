@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/kaleido";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect } from "react";
+import { LoadingSpinner } from "./ui/QueryState";
 
 export default function RequireAdmin({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -25,7 +26,7 @@ export default function RequireAdmin({ children }: { children: ReactNode }) {
   if (user === undefined) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <span className="loading loading-spinner loading-lg"></span>
+        <LoadingSpinner size="lg" />
       </div>
     );
   }

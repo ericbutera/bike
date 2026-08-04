@@ -14,6 +14,7 @@ vi.mock("@ericbutera/kaleido", () => ({
       useCurrentUser: mocks.useCurrentUser,
     }),
   },
+  LoadingCard: () => <div aria-label="Loading" />,
 }));
 
 vi.mock("../../lib/queries", () => ({

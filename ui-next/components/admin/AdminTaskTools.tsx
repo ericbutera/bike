@@ -1,6 +1,5 @@
 "use client";
 
-import { extractApiMessage } from "@/lib/activityFormatting";
 import {
   useActivityArchiveImportJobs,
   useAdminBackfillAnalytics,
@@ -21,6 +20,7 @@ import {
 } from "@/lib/queries";
 import Link from "next/link";
 import { useState } from "react";
+import toast from "react-hot-toast";
 
 export default function AdminTaskTools() {
   const { backfillAsync, isPending } = useAdminBackfillAnalytics();
@@ -28,6 +28,7 @@ export default function AdminTaskTools() {
     enabled: true,
     refetchIntervalMs: 5000,
   });
+  const archiveJobs = archiveJobsQuery.data ?? [];
   const { importAsync, isPending: isImportPending } =
     useImportActivityArchiveUrl();
   const { cleanupAsync, isPending: isCleanupPending } =
@@ -53,192 +54,145 @@ export default function AdminTaskTools() {
   const [result, setResult] = useState<AdminAnalyticsBackfillResponse | null>(
     null,
   );
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [archiveUrl, setArchiveUrl] = useState("");
   const [archiveResult, setArchiveResult] =
     useState<ActivityArchiveImportJob | null>(null);
-  const [archiveErrorMessage, setArchiveErrorMessage] = useState<string | null>(
-    null,
-  );
   const [reprocessUserId, setReprocessUserId] = useState("");
   const [reprocessResult, setReprocessResult] =
     useState<ReprocessUserActivityImportsResponse | null>(null);
-  const [reprocessErrorMessage, setReprocessErrorMessage] = useState<
-    string | null
-  >(null);
   const [activityReprocessId, setActivityReprocessId] = useState("");
   const [activityReprocessResult, setActivityReprocessResult] =
     useState<ReprocessActivityImportResponse | null>(null);
-  const [activityReprocessErrorMessage, setActivityReprocessErrorMessage] =
-    useState<string | null>(null);
   const [userSegmentUserId, setUserSegmentUserId] = useState("");
   const [userSegmentResult, setUserSegmentResult] =
     useState<RegenerateUserSegmentsResponse | null>(null);
-  const [userSegmentErrorMessage, setUserSegmentErrorMessage] = useState<
-    string | null
-  >(null);
   const [segmentEffortSegmentId, setSegmentEffortSegmentId] = useState("");
   const [segmentEffortResult, setSegmentEffortResult] =
     useState<RegenerateSegmentEffortsResponse | null>(null);
-  const [segmentEffortErrorMessage, setSegmentEffortErrorMessage] = useState<
-    string | null
-  >(null);
   const [xcBackfillUserId, setXcBackfillUserId] = useState("");
   const [xcBackfillResult, setXcBackfillResult] =
     useState<ReprocessUserActivityImportsResponse | null>(null);
-  const [xcBackfillErrorMessage, setXcBackfillErrorMessage] = useState<
-    string | null
-  >(null);
   const [cleanupUserId, setCleanupUserId] = useState("");
   const [cleanupResult, setCleanupResult] =
     useState<CleanupUserDuplicateActivitiesResponse | null>(null);
-  const [cleanupErrorMessage, setCleanupErrorMessage] = useState<string | null>(
-    null,
-  );
 
   async function handleBackfill() {
-    setErrorMessage(null);
-
     try {
       const response = await backfillAsync();
       setResult(response);
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "Failed to enqueue analytics backfill",
-      );
+    } catch {
+      setResult(null);
     }
   }
 
   async function handleArchiveImport() {
-    setArchiveErrorMessage(null);
-
     try {
       const response = await importAsync(archiveUrl.trim());
       setArchiveResult(response);
-    } catch (error) {
-      setArchiveErrorMessage(extractApiMessage(error));
+    } catch {
+      setArchiveResult(null);
     }
   }
 
   async function handleReprocessImports() {
     const numericUserId = Number(reprocessUserId);
 
-    setReprocessErrorMessage(null);
-
     if (!Number.isFinite(numericUserId) || numericUserId < 1) {
       setReprocessResult(null);
-      setReprocessErrorMessage("Enter a valid user id.");
+      toast.error("Enter a valid user id.");
       return;
     }
 
     try {
       const response = await reprocessAsync(numericUserId);
       setReprocessResult(response);
-    } catch (error) {
+    } catch {
       setReprocessResult(null);
-      setReprocessErrorMessage(extractApiMessage(error));
     }
   }
 
   async function handleActivityReprocess() {
     const numericActivityId = Number(activityReprocessId);
 
-    setActivityReprocessErrorMessage(null);
-
     if (!Number.isFinite(numericActivityId) || numericActivityId < 1) {
       setActivityReprocessResult(null);
-      setActivityReprocessErrorMessage("Enter a valid activity id.");
+      toast.error("Enter a valid activity id.");
       return;
     }
 
     try {
       const response = await reprocessActivityAsync(numericActivityId);
       setActivityReprocessResult(response);
-    } catch (error) {
+    } catch {
       setActivityReprocessResult(null);
-      setActivityReprocessErrorMessage(extractApiMessage(error));
     }
   }
 
   async function handleUserSegmentRegeneration() {
     const numericUserId = Number(userSegmentUserId);
 
-    setUserSegmentErrorMessage(null);
-
     if (!Number.isFinite(numericUserId) || numericUserId < 1) {
       setUserSegmentResult(null);
-      setUserSegmentErrorMessage("Enter a valid user id.");
+      toast.error("Enter a valid user id.");
       return;
     }
 
     try {
       const response = await regenerateUserSegmentsAsync(numericUserId);
       setUserSegmentResult(response);
-    } catch (error) {
+    } catch {
       setUserSegmentResult(null);
-      setUserSegmentErrorMessage(extractApiMessage(error));
     }
   }
 
   async function handleSegmentEffortRegeneration() {
     const numericSegmentId = Number(segmentEffortSegmentId);
 
-    setSegmentEffortErrorMessage(null);
-
     if (!Number.isFinite(numericSegmentId) || numericSegmentId < 1) {
       setSegmentEffortResult(null);
-      setSegmentEffortErrorMessage("Enter a valid segment id.");
+      toast.error("Enter a valid segment id.");
       return;
     }
 
     try {
       const response = await regenerateSegmentEffortsAsync(numericSegmentId);
       setSegmentEffortResult(response);
-    } catch (error) {
+    } catch {
       setSegmentEffortResult(null);
-      setSegmentEffortErrorMessage(extractApiMessage(error));
     }
   }
 
   async function handleCleanupDuplicates() {
     const numericUserId = Number(cleanupUserId);
 
-    setCleanupErrorMessage(null);
-
     if (!Number.isFinite(numericUserId) || numericUserId < 1) {
       setCleanupResult(null);
-      setCleanupErrorMessage("Enter a valid user id.");
+      toast.error("Enter a valid user id.");
       return;
     }
 
     try {
       const response = await cleanupAsync(numericUserId);
       setCleanupResult(response);
-    } catch (error) {
+    } catch {
       setCleanupResult(null);
-      setCleanupErrorMessage(extractApiMessage(error));
     }
   }
 
   async function handleXcTrainingBackfill() {
     const numericUserId = Number(xcBackfillUserId);
 
-    setXcBackfillErrorMessage(null);
-
     if (!Number.isFinite(numericUserId) || numericUserId < 1) {
       setXcBackfillResult(null);
-      setXcBackfillErrorMessage("Enter a valid user id.");
+      toast.error("Enter a valid user id.");
       return;
     }
 
     try {
       const response = await backfillXcTrainingAsync(numericUserId);
       setXcBackfillResult(response);
-    } catch (error) {
+    } catch {
       setXcBackfillResult(null);
-      setXcBackfillErrorMessage(extractApiMessage(error));
     }
   }
 
@@ -298,12 +252,6 @@ export default function AdminTaskTools() {
             View processing events
           </Link>
         </div>
-
-        {activityReprocessErrorMessage ? (
-          <div className="alert alert-error mt-4">
-            <span>{activityReprocessErrorMessage}</span>
-          </div>
-        ) : null}
 
         {activityReprocessResult ? (
           <div className="mt-5 rounded-2xl bg-base-200 p-5">
@@ -409,12 +357,6 @@ export default function AdminTaskTools() {
           </Link>
         </div>
 
-        {segmentEffortErrorMessage ? (
-          <div className="alert alert-error mt-4">
-            <span>{segmentEffortErrorMessage}</span>
-          </div>
-        ) : null}
-
         {segmentEffortResult ? (
           <div className="mt-5 rounded-2xl bg-base-200 p-5">
             <div className="text-sm text-base-content/60">
@@ -482,12 +424,6 @@ export default function AdminTaskTools() {
           </Link>
         </div>
 
-        {userSegmentErrorMessage ? (
-          <div className="alert alert-error mt-4">
-            <span>{userSegmentErrorMessage}</span>
-          </div>
-        ) : null}
-
         {userSegmentResult ? (
           <div className="mt-5 rounded-2xl bg-base-200 p-5">
             <div className="text-sm text-base-content/60">
@@ -554,12 +490,6 @@ export default function AdminTaskTools() {
           </Link>
         </div>
 
-        {archiveErrorMessage ? (
-          <div className="alert alert-error mt-4">
-            <span>{archiveErrorMessage}</span>
-          </div>
-        ) : null}
-
         {archiveResult ? (
           <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
             <div className="rounded-2xl bg-base-200 p-5">
@@ -619,13 +549,13 @@ export default function AdminTaskTools() {
           </div>
         ) : null}
 
-        {archiveJobsQuery.data.length > 0 ? (
+        {archiveJobs.length > 0 ? (
           <div className="mt-5 rounded-2xl bg-base-200 p-5">
             <div className="text-sm text-base-content/60">
               Recent archive jobs
             </div>
             <div className="mt-4 space-y-2 text-sm">
-              {archiveJobsQuery.data.map((job) => (
+              {archiveJobs.map((job) => (
                 <div
                   key={job.id}
                   className="rounded-xl border border-base-300 bg-base-100 px-3 py-2"
@@ -687,12 +617,6 @@ export default function AdminTaskTools() {
             Find user ids
           </Link>
         </div>
-
-        {cleanupErrorMessage ? (
-          <div className="alert alert-error mt-4">
-            <span>{cleanupErrorMessage}</span>
-          </div>
-        ) : null}
 
         {cleanupResult ? (
           <div className="mt-5 rounded-2xl bg-base-200 p-5">
@@ -772,12 +696,6 @@ export default function AdminTaskTools() {
           </Link>
         </div>
 
-        {xcBackfillErrorMessage ? (
-          <div className="alert alert-error mt-4">
-            <span>{xcBackfillErrorMessage}</span>
-          </div>
-        ) : null}
-
         {xcBackfillResult ? (
           <div className="mt-5 rounded-2xl bg-base-200 p-5">
             <div className="text-sm text-base-content/60">
@@ -847,12 +765,6 @@ export default function AdminTaskTools() {
           </Link>
         </div>
 
-        {reprocessErrorMessage ? (
-          <div className="alert alert-error mt-4">
-            <span>{reprocessErrorMessage}</span>
-          </div>
-        ) : null}
-
         {reprocessResult ? (
           <div className="mt-5 rounded-2xl bg-base-200 p-5">
             <div className="text-sm text-base-content/60">Queued reprocess</div>
@@ -889,11 +801,6 @@ export default function AdminTaskTools() {
           </Link>
         </div>
 
-        {errorMessage ? (
-          <div className="alert alert-error mt-4">
-            <span>{errorMessage}</span>
-          </div>
-        ) : null}
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

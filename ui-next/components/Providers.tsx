@@ -1,6 +1,10 @@
 "use client";
 
-import { admin, auth, QueryClientProvider } from "@ericbutera/kaleido";
+import {
+  admin,
+  auth,
+  QueryClientProvider,
+} from "@ericbutera/kaleido";
 import {
   useEffect,
   useMemo,
@@ -14,6 +18,7 @@ import { authApiClient, queryClient } from "../lib/kaleido";
 import { UnitPreferencesProvider } from "../lib/unitPreferences";
 import AdminNav from "./admin/Nav";
 import Navigation from "./Navigation";
+import { ReactQueryActivityIndicator } from "./ui/QueryState";
 
 admin.configureAdminLayout({
   SiteNavigation: Navigation,
@@ -36,6 +41,7 @@ export default function Providers({
   return (
     <ConfigProvider initialConfig={config}>
       <QueryClientProvider client={queryClient}>
+        <ReactQueryActivityIndicator />
         <auth.AuthProvider client={authApiClient} config={authConfig as any}>
           <UnitPreferencesProvider>{children}</UnitPreferencesProvider>
           <Toaster position="top-right" />

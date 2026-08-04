@@ -13,11 +13,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import {
-  extractApiMessage,
-  formatActivityTimestamp,
-  formatDuration,
-} from "../lib/activityFormatting";
+import { formatActivityTimestamp, formatDuration } from "../lib/activityFormatting";
 import {
   type DhSegmentProgress,
   type DhSessionSummary,
@@ -25,6 +21,7 @@ import {
   type TrainingRecommendation,
   useDhGoalProgress,
 } from "../lib/queries";
+import { LoadingSpinner } from "./ui/QueryState";
 
 const SESSION_BAR_COLOR = "#ea580c";
 const FADE_LINE_COLOR = "#2563eb";
@@ -375,22 +372,7 @@ export default function DhGoalsProgressPanel() {
       }));
   }, [progressQuery.data?.recent_sessions]);
 
-  if (progressQuery.isError) {
-    return (
-      <section className="space-y-4">
-        <div className="rounded-box border border-error/30 bg-error/10 p-6 shadow-sm">
-          <h2 className="text-xl font-semibold text-base-content">
-            DH goals & progress
-          </h2>
-          <p className="mt-2 text-sm text-base-content/75">
-            {extractApiMessage(progressQuery.error)}
-          </p>
-        </div>
-      </section>
-    );
-  }
-
-  if (progressQuery.isLoading || !progressQuery.data) {
+  if (progressQuery.isLoading) {
     return (
       <section className="space-y-6">
         <div className="rounded-box border border-base-300 bg-base-100 p-6 shadow-sm">
@@ -412,6 +394,10 @@ export default function DhGoalsProgressPanel() {
         </div>
       </section>
     );
+  }
+
+  if (!progressQuery.data) {
+    return null;
   }
 
   const progress = progressQuery.data;
@@ -446,7 +432,7 @@ export default function DhGoalsProgressPanel() {
               Updated {formatActivityTimestamp(progress.generated_at)}
             </span>
             {progressQuery.isFetching ? (
-              <span className="loading loading-spinner loading-sm" />
+              <LoadingSpinner size="sm" />
             ) : null}
           </div>
         </div>

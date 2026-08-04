@@ -21,6 +21,8 @@ vi.mock("@ericbutera/kaleido", () => ({
   featureFlags: {
     useFeatureFlag: mocks.useFeatureFlag,
   },
+  LoadingCard: () => <div aria-label="Loading" />,
+  LoadingSpinner: (props: any) => <span aria-hidden="true" {...props} />,
   Pagination: ({ page, perPage, total, onPageChange }: any) => (
     <div>
       <span>{`pagination:${page}:${perPage}:${total}`}</span>

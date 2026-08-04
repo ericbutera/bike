@@ -1,16 +1,19 @@
 "use client";
 
-import { Pagination, featureFlags } from "@ericbutera/kaleido";
+import {
+  Pagination,
+  featureFlags,
+} from "@ericbutera/kaleido";
 import { faUpload } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { extractApiMessage } from "../lib/activityFormatting";
 import { FLAG_ACTIVITY_LIST_FULL_MAPS } from "../lib/featureFlags";
 import { useActivities } from "../lib/queries";
 import { useUnitPreferences } from "../lib/unitPreferences";
 import ActivityStreamCard from "./activity-stream/ActivityStreamCard";
+import { LoadingSpinner } from "./ui/QueryState";
 
 export default function ActivityStream() {
   const { unitSystem } = useUnitPreferences();
@@ -53,7 +56,7 @@ export default function ActivityStream() {
           Recent activities
         </h2>
         {activitiesQuery.isFetching ? (
-          <span className="loading loading-spinner loading-sm" />
+          <LoadingSpinner size="sm" />
         ) : null}
 
         <Link href="/upload" className="btn btn-ghost btn-sm">
@@ -62,13 +65,7 @@ export default function ActivityStream() {
         </Link>
       </div>
 
-      {activitiesQuery.isError ? (
-        <div className="alert alert-error">
-          {extractApiMessage(activitiesQuery.error)}
-        </div>
-      ) : null}
-
-      {!activitiesQuery.isError && activitiesQuery.data.length === 0 ? (
+      {activitiesQuery.data?.length === 0 ? (
         <div className="alert bg-base-100 shadow-sm">
           <span>
             No activities yet. Upload a GPX, TCX, or FIT file below to seed your
@@ -78,7 +75,7 @@ export default function ActivityStream() {
       ) : null}
 
       <div className="space-y-3">
-        {activitiesQuery.data.map((activity) => (
+        {activitiesQuery.data?.map((activity) => (
           <ActivityStreamCard
             key={activity.id}
             activity={activity}
@@ -88,7 +85,7 @@ export default function ActivityStream() {
         ))}
       </div>
 
-      {(activitiesQuery.metadata?.total ?? 0) > perPage ? (
+      {activitiesQuery.metadata && activitiesQuery.metadata.total > perPage ? (
         <Pagination
           page={activitiesQuery.metadata.page}
           perPage={activitiesQuery.metadata.per_page}

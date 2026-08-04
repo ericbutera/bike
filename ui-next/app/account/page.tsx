@@ -6,9 +6,9 @@ import toast from "react-hot-toast";
 import IntegrationEventFeed from "../../components/IntegrationEventFeed";
 import Layout from "../../components/Layout";
 import RequireAuth from "../../components/RequireAuth";
+import { LoadingCard } from "../../components/ui/QueryState";
 import {
   DEFAULT_UNIT_SYSTEM,
-  extractApiMessage,
   formatActivityTimestamp,
   formatDistance,
   formatElevation,
@@ -258,11 +258,20 @@ function AuthenticatedAccountPage() {
   }, [searchParams]);
 
   async function handleSave() {
+    let nextHeartRateZoneBounds;
+
     try {
-      const nextHeartRateZoneBounds = parseHeartRateZoneBounds(
+      nextHeartRateZoneBounds = parseHeartRateZoneBounds(
         draftHeartRateZoneBounds,
       );
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Invalid heart rate zones.",
+      );
+      return;
+    }
 
+    try {
       await updatePreferencesMutation.updateAsync({
         unit_system: draftUnitSystem,
         estimated_ftp_watts: parseOptionalIntegerInput(draftEstimatedFtpWatts),
@@ -280,10 +289,8 @@ function AuthenticatedAccountPage() {
           preferencesQuery.data?.xc_goal_event_profile ?? null,
       });
       toast.success("Preferences saved.");
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : extractApiMessage(error),
-      );
+    } catch {
+      // Mutation errors are surfaced by the app-level React Query handler.
     }
   }
 
@@ -315,8 +322,8 @@ function AuthenticatedAccountPage() {
     try {
       const result = await startStravaConnectMutation.beginAsync();
       window.location.assign(result.authorization_url);
-    } catch (error) {
-      toast.error(extractApiMessage(error));
+    } catch {
+      // Mutation errors are surfaced by the app-level React Query handler.
     }
   }
 
@@ -324,8 +331,8 @@ function AuthenticatedAccountPage() {
     try {
       await queueStravaSyncMutation.queueAsync();
       toast.success("Strava sync queued.");
-    } catch (error) {
-      toast.error(extractApiMessage(error));
+    } catch {
+      // Mutation errors are surfaced by the app-level React Query handler.
     }
   }
 
@@ -333,8 +340,8 @@ function AuthenticatedAccountPage() {
     try {
       const result = await disconnectStravaMutation.disconnectAsync();
       toast.success(result.message);
-    } catch (error) {
-      toast.error(extractApiMessage(error));
+    } catch {
+      // Mutation errors are surfaced by the app-level React Query handler.
     }
   }
 
@@ -344,8 +351,8 @@ function AuthenticatedAccountPage() {
         garminPairingCode.trim().toUpperCase(),
       );
       toast.success(result.message);
-    } catch (error) {
-      toast.error(extractApiMessage(error));
+    } catch {
+      // Mutation errors are surfaced by the app-level React Query handler.
     }
   }
 
@@ -353,8 +360,8 @@ function AuthenticatedAccountPage() {
     try {
       const result = await unlinkGarminDeviceMutation.unlinkAsync(id);
       toast.success(result.message);
-    } catch (error) {
-      toast.error(extractApiMessage(error));
+    } catch {
+      // Mutation errors are surfaced by the app-level React Query handler.
     }
   }
 
@@ -366,20 +373,14 @@ function AuthenticatedAccountPage() {
   const isStravaSyncPending = isStravaSyncActive(
     stravaConnection.last_sync_status,
   );
-  const garminDevices = garminDevicesQuery.data;
+  const garminDevices = garminDevicesQuery.data ?? [];
 
   if (
     preferencesQuery.isLoading ||
     stravaQuery.isLoading ||
     garminDevicesQuery.isLoading
   ) {
-    return (
-      <div className="card bg-base-100 shadow-xl">
-        <div className="card-body items-center py-10">
-          <span className="loading loading-spinner loading-md" />
-        </div>
-      </div>
-    );
+    return <LoadingCard />;
   }
 
   return (
@@ -592,7 +593,7 @@ function AuthenticatedAccountPage() {
                 </div>
 
                 <IntegrationEventFeed
-                  events={stravaEventsQuery.data}
+                  events={stravaEventsQuery.data ?? []}
                   isLoading={stravaEventsQuery.isLoading}
                   error={stravaEventsQuery.error}
                   emptyMessage="No Strava history yet. Connect Strava or queue a sync to start recording events."

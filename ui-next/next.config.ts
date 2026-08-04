@@ -26,6 +26,9 @@ const singletonAliasesWebpack = (appRoot: string) => ({
   "react-router-dom": path.join(appRoot, "node_modules/react-router-dom"),
 });
 
+const kaleidoSrcRelative = "kaleido/typescript/packages/kaleido/src/index.ts";
+
+const dockerKaleidoEntry = path.join(__dirname, kaleidoSrcRelative);
 const localKaleidoEntry = path.resolve(
   __dirname,
   "../../kaleido/typescript/packages/kaleido/src/index.ts",
@@ -38,14 +41,15 @@ const enableLocalKaleidoSource = /^(1|true|yes)$/i.test(
 const useLocalKaleido =
   process.env.NODE_ENV !== "production" &&
   enableLocalKaleidoSource &&
-  fs.existsSync(localKaleidoEntry);
+  (fs.existsSync(dockerKaleidoEntry) || fs.existsSync(localKaleidoEntry));
+
+const kaleidoEntry = fs.existsSync(dockerKaleidoEntry)
+  ? dockerKaleidoEntry
+  : localKaleidoEntry;
 
 const turbopackAlias = (() => {
   if (!useLocalKaleido) return null;
-  const rel = path
-    .relative(__dirname, localKaleidoEntry)
-    .split(path.sep)
-    .join("/");
+  const rel = path.relative(__dirname, kaleidoEntry).split(path.sep).join("/");
   if (rel.startsWith("../")) return null;
   return `./${rel}`;
 })();
@@ -69,7 +73,7 @@ const nextConfig: NextConfig = {
     if (useLocalKaleido) {
       config.resolve.alias = {
         ...(config.resolve.alias ?? {}),
-        "@ericbutera/kaleido": localKaleidoEntry,
+        "@ericbutera/kaleido": kaleidoEntry,
         ...singletonAliasesWebpack(__dirname),
       };
     }

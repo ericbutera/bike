@@ -593,7 +593,7 @@ export default function MatchedSegmentsSection({
   const starredSegmentIds = useMemo(
     () =>
       new Set(
-        segmentsQuery.data
+        (segmentsQuery.data ?? [])
           .filter((segment) => segment.starred)
           .map((segment) => segment.id),
       ),

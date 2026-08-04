@@ -11,10 +11,7 @@ import {
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  extractApiMessage,
-  formatDuration,
-} from "../../lib/activityFormatting";
+import { formatDuration } from "../../lib/activityFormatting";
 import { config } from "../../lib/config";
 import {
   useSegment,
@@ -22,6 +19,7 @@ import {
   type ActivityRoutePoint,
   type SegmentEffort,
 } from "../../lib/queries";
+import { LoadingSpinner } from "../ui/QueryState";
 import {
   EFFORT_COLORS,
   EMPTY_EFFORTS,
@@ -623,26 +621,13 @@ export default function SegmentRaceViewer({
   ) {
     return (
       <section className="flex min-h-screen items-center justify-center bg-base-200 px-6 py-10">
-        <span className="loading loading-spinner loading-lg" />
+        <LoadingSpinner size="lg" />
       </section>
     );
   }
 
-  if (segmentQuery.isError || comparisonQuery.isError || !segment) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-base-200 px-6 py-10">
-        <div className="alert max-w-2xl bg-base-100 text-sm text-base-content/80 shadow-lg">
-          <span>
-            {extractApiMessage(segmentQuery.error) ||
-              extractApiMessage(comparisonQuery.error) ||
-              "Segment playback could not be loaded."}
-          </span>
-          <Link href={backHref} className="btn btn-sm btn-outline">
-            Back to segment
-          </Link>
-        </div>
-      </div>
-    );
+  if (!segment) {
+    return null;
   }
 
   return (

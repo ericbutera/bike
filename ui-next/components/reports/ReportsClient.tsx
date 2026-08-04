@@ -3,7 +3,6 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  extractApiMessage,
   formatElevation,
   formatElevationRate,
   type UnitSystem,
@@ -65,7 +64,7 @@ export default function ReportsClient() {
   const isStandaloneReport = standaloneReportId != null;
   const minDurationSeconds = hoursInputToSeconds(minDurationHours);
   const minDistanceMeters = milesInputToMeters(minDistanceMiles);
-  const { data, isLoading, isError, error, isFetching } = useTrainingReports(
+  const { data, isLoading, isFetching } = useTrainingReports(
     range,
     {
       enabled: isAggregateTrends,
@@ -210,8 +209,6 @@ export default function ReportsClient() {
               points={points}
               range={range}
               isLoading={isLoading}
-              isError={isError}
-              error={error}
               isFetching={isFetching}
             />
           ) : isRideSummary ? (
@@ -220,31 +217,23 @@ export default function ReportsClient() {
               startDate={startDate}
               endDate={endDate}
               isLoading={reportQuery.isLoading}
-              isError={reportQuery.isError}
-              error={reportQuery.error}
               isFetching={reportQuery.isFetching}
             />
           ) : selectedReport.id === "endurance" ? (
             <EnduranceReportView
               report={reportQuery.data?.endurance ?? null}
               isLoading={reportQuery.isLoading}
-              isError={reportQuery.isError}
-              error={reportQuery.error}
             />
           ) : selectedReport.id === "climbing" ? (
             <ClimbingReportView
               report={reportQuery.data?.climbing ?? null}
               unitSystem={unitSystem}
               isLoading={reportQuery.isLoading}
-              isError={reportQuery.isError}
-              error={reportQuery.error}
             />
           ) : selectedReport.id === "fatigue" ? (
             <FatigueReportView
               report={reportQuery.data?.fatigue ?? null}
               isLoading={reportQuery.isLoading}
-              isError={reportQuery.isError}
-              error={reportQuery.error}
             />
           ) : selectedReport.id === "compare_rides" ? (
             <CompareRidesReportView
@@ -252,8 +241,6 @@ export default function ReportsClient() {
               selectedActivityIds={selectedActivityIds}
               onSelectedActivityIdsChange={setSelectedActivityIds}
               isLoading={reportQuery.isLoading}
-              isError={reportQuery.isError}
-              error={reportQuery.error}
             />
           ) : (
             <PlannedReport report={selectedReport} />
@@ -269,30 +256,18 @@ function RideSummaryReportView({
   startDate,
   endDate,
   isLoading,
-  isError,
-  error,
   isFetching,
 }: {
   summary: RideSummaryReport | null;
   startDate: string;
   endDate: string;
   isLoading: boolean;
-  isError: boolean;
-  error: unknown;
   isFetching: boolean;
 }) {
   if (isLoading) {
     return (
       <div className="alert mt-4">
         <span>Generating ride summary...</span>
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div className="alert alert-error mt-4">
-        <span>{extractApiMessage(error) || "Failed to generate ride summary."}</span>
       </div>
     );
   }
@@ -430,16 +405,11 @@ function ReportMetricCard({
 function EnduranceReportView({
   report,
   isLoading,
-  isError,
-  error,
 }: {
   report: EnduranceReport | null;
   isLoading: boolean;
-  isError: boolean;
-  error: unknown;
 }) {
   if (isLoading) return <LoadingReport label="Generating endurance report..." />;
-  if (isError) return <ErrorReport error={error} label="Failed to generate endurance report." />;
   if (!report || report.activity_count === 0) return <EmptyReport label="No rides with usable point data found." />;
 
   return (
@@ -491,17 +461,12 @@ function ClimbingReportView({
   report,
   unitSystem,
   isLoading,
-  isError,
-  error,
 }: {
   report: ClimbingReport | null;
   unitSystem: UnitSystem;
   isLoading: boolean;
-  isError: boolean;
-  error: unknown;
 }) {
   if (isLoading) return <LoadingReport label="Generating climbing report..." />;
-  if (isError) return <ErrorReport error={error} label="Failed to generate climbing report." />;
   if (!report || report.climb_count === 0) return <EmptyReport label="No sustained climbs found." />;
 
   const summaryRows = [
@@ -596,16 +561,11 @@ function ClimbingReportView({
 function FatigueReportView({
   report,
   isLoading,
-  isError,
-  error,
 }: {
   report: FatigueReport | null;
   isLoading: boolean;
-  isError: boolean;
-  error: unknown;
 }) {
   if (isLoading) return <LoadingReport label="Generating fatigue report..." />;
-  if (isError) return <ErrorReport error={error} label="Failed to generate fatigue report." />;
   if (!report || report.activity_count === 0) return <EmptyReport label="No rides with usable point data found." />;
 
   return (
@@ -632,18 +592,13 @@ function CompareRidesReportView({
   selectedActivityIds,
   onSelectedActivityIdsChange,
   isLoading,
-  isError,
-  error,
 }: {
   report: CompareRidesReport | null;
   selectedActivityIds: number[];
   onSelectedActivityIdsChange: (activityIds: number[]) => void;
   isLoading: boolean;
-  isError: boolean;
-  error: unknown;
 }) {
   if (isLoading) return <LoadingReport label="Loading compare ride candidates..." />;
-  if (isError) return <ErrorReport error={error} label="Failed to load compare rides." />;
   if (!report) return <EmptyReport label="No compare ride data found." />;
 
   function toggleActivity(activityId: number) {
@@ -861,14 +816,6 @@ function LoadingReport({ label }: { label: string }) {
   );
 }
 
-function ErrorReport({ error, label }: { error: unknown; label: string }) {
-  return (
-    <div className="alert alert-error mt-4">
-      <span>{extractApiMessage(error) || label}</span>
-    </div>
-  );
-}
-
 function EmptyReport({ label }: { label: string }) {
   return (
     <div className="alert mt-4">
@@ -998,15 +945,11 @@ function AggregateTrendsReport({
   points,
   range,
   isLoading,
-  isError,
-  error,
   isFetching,
 }: {
   points: NonNullable<ReturnType<typeof useTrainingReports>["data"]>["points"];
   range: TimeRange;
   isLoading: boolean;
-  isError: boolean;
-  error: unknown;
   isFetching: boolean;
 }) {
   return (
@@ -1017,13 +960,7 @@ function AggregateTrendsReport({
         </div>
       ) : null}
 
-      {isError ? (
-        <div className="alert alert-error mt-4">
-          <span>{extractApiMessage(error) || "Failed to load reports."}</span>
-        </div>
-      ) : null}
-
-      {!isLoading && !isError && points.length === 0 ? (
+      {!isLoading && points.length === 0 ? (
         <div className="alert mt-4">
           <span>No report data found for this boundary.</span>
         </div>
@@ -1056,7 +993,7 @@ function AggregateTrendsReport({
         </div>
       </div>
 
-      {!isLoading && !isError && isFetching ? (
+      {!isLoading && isFetching ? (
         <p className="mt-3 text-sm opacity-70">Refreshing...</p>
       ) : null}
     </div>

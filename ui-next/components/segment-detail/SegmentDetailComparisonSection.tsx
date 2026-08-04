@@ -25,6 +25,7 @@ import {
   type UnitSystem,
 } from "../../lib/activityFormatting";
 import type { ActivityRoutePoint } from "../../lib/queries";
+import { LoadingSpinner } from "../ui/QueryState";
 import {
   ATHLETE_PANEL_ROW_ANIMATION_MS,
   PLAYBACK_PACE_OPTIONS,
@@ -836,8 +837,8 @@ export default function SegmentDetailComparisonSection({
 
         {isLoading ? (
           <div className="flex min-h-[28rem] items-center justify-center border border-base-300 bg-base-200">
-            <span
-              className="loading loading-spinner loading-lg"
+            <LoadingSpinner
+              size="lg"
               aria-label="Loading segment comparison"
             />
           </div>

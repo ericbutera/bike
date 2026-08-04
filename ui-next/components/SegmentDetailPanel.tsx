@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { extractApiMessage, formatDuration } from "../lib/activityFormatting";
+import { formatDuration } from "../lib/activityFormatting";
 import {
   useDeleteSegment,
   useSegment,
@@ -422,26 +422,8 @@ export default function SegmentDetailPanel({
     };
   }, [isPlaying, playbackLimitSeconds, targetPlaybackDurationSeconds]);
 
-  if (segmentQuery.isLoading) {
-    return (
-      <section className="card bg-base-100 shadow-xl">
-        <div className="card-body items-center py-10">
-          <span className="loading loading-spinner loading-md" />
-        </div>
-      </section>
-    );
-  }
-
-  if (segmentQuery.isError || !segment) {
-    return (
-      <section className="card bg-base-100 shadow-xl">
-        <div className="card-body">
-          <div className="alert alert-error">
-            {extractApiMessage(segmentQuery.error) || "Segment not found"}
-          </div>
-        </div>
-      </section>
-    );
+  if (!segment) {
+    return null;
   }
 
   return (
@@ -462,13 +444,6 @@ export default function SegmentDetailPanel({
         isSavingSegment={updateSegmentMutation.isPending}
         isDeletingSegment={deleteSegmentMutation.isPending}
         builderEditHref={builderEditHref}
-        actionErrorMessage={
-          updateSegmentMutation.isError
-            ? extractApiMessage(updateSegmentMutation.error)
-            : deleteSegmentMutation.isError
-              ? extractApiMessage(deleteSegmentMutation.error)
-              : null
-        }
         onStartEditingTitle={() => {
           setDraftTitle(segment.title);
           setIsEditingTitle(true);

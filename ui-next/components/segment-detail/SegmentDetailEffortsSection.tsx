@@ -23,6 +23,7 @@ import {
   type EffortTimeFilter,
   type SelectedEffortRow,
 } from "../../lib/segmentDetail";
+import { LoadingSpinner } from "../ui/QueryState";
 
 type SegmentDetailEffortsSectionProps = {
   segment: Segment;
@@ -118,8 +119,8 @@ export default function SegmentDetailEffortsSection({
 
           {isLoading ? (
             <div className="mt-5 flex min-h-[14rem] items-center justify-center border border-base-300 bg-base-100">
-              <span
-                className="loading loading-spinner loading-md"
+              <LoadingSpinner
+                size="md"
                 aria-label="Loading segment efforts"
               />
             </div>

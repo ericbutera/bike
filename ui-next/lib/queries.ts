@@ -1124,20 +1124,12 @@ export function useActivities(opts?: {
     options: { enabled: opts?.enabled ?? true },
   });
 
-  const pageData = (response.data ?? {
-    data: [],
-    metadata: {
-      page,
-      per_page: perPage,
-      total: 0,
-      total_pages: 1,
-    },
-  }) as PaginatedResponse<Activity>;
+  const pageData = response.data as PaginatedResponse<Activity> | undefined;
 
   return {
     ...response,
-    data: pageData.data,
-    metadata: pageData.metadata,
+    data: pageData?.data,
+    metadata: pageData?.metadata,
   };
 }
 
@@ -1250,7 +1242,7 @@ export function useSegments(opts?: { enabled?: boolean }) {
 
   return {
     ...response,
-    data: (response.data ?? []) as Segment[],
+    data: response.data as Segment[] | undefined,
   };
 }
 
@@ -1490,7 +1482,7 @@ export function useActivityImports(opts?: {
 
   return {
     ...response,
-    data: (response.data ?? []) as ActivityImport[],
+    data: response.data as ActivityImport[] | undefined,
   };
 }
 
@@ -1507,7 +1499,7 @@ export function useActivityArchiveImportJobs(opts?: {
 
   return {
     ...response,
-    data: (response.data ?? []) as ActivityArchiveImportJob[],
+    data: response.data as ActivityArchiveImportJob[] | undefined,
   };
 }
 
@@ -1621,7 +1613,7 @@ export function useStravaIntegrationEvents(opts?: {
 
   return {
     ...response,
-    data: (response.data ?? []) as IntegrationEvent[],
+    data: response.data as IntegrationEvent[] | undefined,
   };
 }
 
@@ -1652,7 +1644,7 @@ export function useAdminIntegrationEvents(opts?: {
 
   return {
     ...response,
-    data: (response.data ?? []) as IntegrationEvent[],
+    data: response.data as IntegrationEvent[] | undefined,
   };
 }
 
@@ -1736,7 +1728,7 @@ export function useGarminIqLinkedDevices(opts?: {
 
   return {
     ...response,
-    data: (response.data ?? []) as GarminIqLinkedDevice[],
+    data: response.data as GarminIqLinkedDevice[] | undefined,
   };
 }
 

@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
-  extractApiMessage,
   formatActivityTimestamp,
   formatDistance,
   formatDuration,
@@ -34,6 +33,7 @@ import {
 } from "../lib/segmentBuilder";
 import { useUnitPreferences } from "../lib/unitPreferences";
 import MapLibreRouteMap from "./MapLibreRouteMap";
+import { ErrorCard, LoadingCard } from "./ui/QueryState";
 
 const EMPTY_ROUTE_POINTS: ActivityRoutePoint[] = [];
 
@@ -154,16 +154,14 @@ type SegmentBuilderWorkspaceProps = {
   segment: Segment | null;
   activity: Activity | null;
   isLoading: boolean;
-  isError: boolean;
-  error: unknown;
+  unavailableMessage?: string | null;
 };
 
 export default function SegmentBuilderWorkspace({
   segment,
   activity,
   isLoading,
-  isError,
-  error,
+  unavailableMessage = null,
 }: SegmentBuilderWorkspaceProps) {
   const router = useRouter();
   const { unitSystem } = useUnitPreferences();
@@ -302,28 +300,28 @@ export default function SegmentBuilderWorkspace({
           : `Saved ${savedSegment.title}. Segment matching queued.`,
       );
       router.push(`/segments/${savedSegment.id}`);
-    } catch (mutationError) {
-      toast.error(extractApiMessage(mutationError));
+    } catch {
+      // Mutation errors are surfaced by the app-level React Query handler.
     }
   }
 
   if (isLoading) {
     return (
-      <section className="card border border-base-300 bg-base-100 shadow-xl">
-        <div className="card-body items-center justify-center py-16">
-          <span className="loading loading-spinner loading-lg" />
-        </div>
-      </section>
+      <LoadingCard
+        size="lg"
+        className="border border-base-300"
+        bodyClassName="items-center justify-center py-16"
+      />
     );
   }
 
-  if (isError) {
+  if (unavailableMessage) {
     return (
-      <section className="card border border-base-300 bg-base-100 shadow-xl">
-        <div className="card-body">
-          <div className="alert alert-error">{extractApiMessage(error)}</div>
-        </div>
-      </section>
+      <ErrorCard
+        error={null}
+        fallback={unavailableMessage}
+        className="border border-base-300"
+      />
     );
   }
 

@@ -2,10 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import {
-  extractApiMessage,
-  formatActivityTimestamp,
-} from "../lib/activityFormatting";
+import { formatActivityTimestamp } from "../lib/activityFormatting";
 import {
   ACTIVITY_TYPES,
   normalizeActivityType,
@@ -151,26 +148,8 @@ export default function ActivityDetailPanel({
     }
   }
 
-  if (activityQuery.isLoading) {
-    return (
-      <section className="card bg-base-100 shadow-xl">
-        <div className="card-body items-center py-10">
-          <span className="loading loading-spinner loading-md" />
-        </div>
-      </section>
-    );
-  }
-
-  if (activityQuery.isError || !activity) {
-    return (
-      <section className="card bg-base-100 shadow-xl">
-        <div className="card-body">
-          <div className="alert alert-error">
-            {extractApiMessage(activityQuery.error) || "Activity not found"}
-          </div>
-        </div>
-      </section>
-    );
+  if (!activity) {
+    return null;
   }
 
   return (
@@ -204,24 +183,6 @@ export default function ActivityDetailPanel({
               }}
             />
           </div>
-
-          {regenerateMutation.isError ? (
-            <div className="alert alert-error">
-              {extractApiMessage(regenerateMutation.error)}
-            </div>
-          ) : null}
-
-          {deleteMutation.isError ? (
-            <div className="alert alert-error">
-              {extractApiMessage(deleteMutation.error)}
-            </div>
-          ) : null}
-
-          {updateActivityMutation.isError ? (
-            <div className="alert alert-error">
-              {extractApiMessage(updateActivityMutation.error)}
-            </div>
-          ) : null}
 
           {isActivityTypeDialogOpen ? (
             <ActivityTypeDialog

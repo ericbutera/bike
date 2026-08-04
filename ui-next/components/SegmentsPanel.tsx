@@ -1,6 +1,9 @@
 "use client";
 
-import { GenericList, type Column } from "@ericbutera/kaleido";
+import {
+  GenericList,
+  type Column,
+} from "@ericbutera/kaleido";
 import { faStar } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
@@ -8,7 +11,6 @@ import { useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { MemoryRouter } from "react-router-dom";
 import {
-  extractApiMessage,
   formatDistance,
   formatDuration,
 } from "../lib/activityFormatting";
@@ -19,6 +21,7 @@ import {
   type Segment,
 } from "../lib/queries";
 import { useUnitPreferences } from "../lib/unitPreferences";
+import { LoadingSpinner } from "./ui/QueryState";
 
 const ALLOWED_EXTENSIONS = new Set(["gpx", "tcx"]);
 
@@ -180,7 +183,7 @@ export default function SegmentsPanel() {
 
   const useSegmentsGridQuery = (params: SegmentsGridParams) => {
     const normalizedParams = normalizeSegmentsGridParams(params);
-    const filtered = filterSegments(segmentsQuery.data, normalizedParams);
+    const filtered = filterSegments(segmentsQuery.data ?? [], normalizedParams);
     const startIndex = (normalizedParams.page - 1) * normalizedParams.per_page;
 
     return {
@@ -213,8 +216,8 @@ export default function SegmentsPanel() {
           ? `Imported ${result.title}. Segment matching queued as task ${result.processing_task_id}.`
           : `Imported ${result.title}. Segment matching queued.`,
       );
-    } catch (error) {
-      toast.error(extractApiMessage(error));
+    } catch {
+      // Mutation errors are surfaced by the app-level React Query handler.
     }
   };
 
@@ -302,50 +305,44 @@ export default function SegmentsPanel() {
 
       <div className="card bg-base-100 shadow-xl">
         <div className="card-body">
-          {segmentsQuery.isError ? (
-            <div className="alert alert-error">
-              {extractApiMessage(segmentsQuery.error)}
-            </div>
-          ) : (
-            <MemoryRouter>
-              <GenericList
-                title="Comparison-ready routes"
-                actions={
-                  segmentsQuery.isFetching ? (
-                    <span className="loading loading-spinner loading-xs" />
-                  ) : undefined
-                }
-                paramsSchema={SegmentsGridSchema}
-                useQuery={useSegmentsGridQuery}
-                columns={segmentColumns}
-                renderFilters={(params, setFilter) => (
-                  <>
-                    <input
-                      type="search"
-                      placeholder="Search segments"
-                      className="input input-sm input-bordered w-52"
-                      value={params.q ?? ""}
-                      onChange={(event) => {
-                        setFilter("q", event.target.value);
-                      }}
-                    />
-                    <select
-                      className="select select-sm select-bordered w-36"
-                      value={params.mode ?? ""}
-                      onChange={(event) => {
-                        setFilter("mode", event.target.value);
-                      }}
-                    >
-                      <option value="">All types</option>
-                      <option value="xc">XC</option>
-                      <option value="dh">DH</option>
-                    </select>
-                  </>
-                )}
-                emptyMessage="No segments found matching the current filters."
-              />
-            </MemoryRouter>
-          )}
+          <MemoryRouter>
+            <GenericList
+              title="Comparison-ready routes"
+              actions={
+                segmentsQuery.isFetching ? (
+                  <LoadingSpinner size="xs" />
+                ) : undefined
+              }
+              paramsSchema={SegmentsGridSchema}
+              useQuery={useSegmentsGridQuery}
+              columns={segmentColumns}
+              renderFilters={(params, setFilter) => (
+                <>
+                  <input
+                    type="search"
+                    placeholder="Search segments"
+                    className="input input-sm input-bordered w-52"
+                    value={params.q ?? ""}
+                    onChange={(event) => {
+                      setFilter("q", event.target.value);
+                    }}
+                  />
+                  <select
+                    className="select select-sm select-bordered w-36"
+                    value={params.mode ?? ""}
+                    onChange={(event) => {
+                      setFilter("mode", event.target.value);
+                    }}
+                  >
+                    <option value="">All types</option>
+                    <option value="xc">XC</option>
+                    <option value="dh">DH</option>
+                  </select>
+                </>
+              )}
+              emptyMessage="No segments found matching the current filters."
+            />
+          </MemoryRouter>
         </div>
       </div>
     </section>
