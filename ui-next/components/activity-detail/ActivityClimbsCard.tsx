@@ -20,6 +20,7 @@ import {
   type UnitSystem,
 } from "../../lib/activityFormatting";
 import { useActivity } from "../../lib/queries";
+import MetricCard from "../MetricCard";
 
 const CLIMB_LIST_VISIBLE_ROW_COUNT = 15;
 const CLIMB_LIST_MAX_HEIGHT = "40rem";
@@ -121,15 +122,6 @@ function ClimbElevationTooltip({
           ? `${Math.round(elevation ?? 0)} ft`
           : `${Math.round(elevation ?? 0)} m`}
       </div>
-    </div>
-  );
-}
-
-function ClimbDetailMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <div className="text-2xl font-semibold text-base-content">{value}</div>
-      <div className="mt-1 text-xs text-base-content/55 uppercase">{label}</div>
     </div>
   );
 }
@@ -272,40 +264,47 @@ export default function ActivityClimbsCard({
                 </div>
 
                 <div className="mt-5 grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
-                  <ClimbDetailMetric
+                  <MetricCard
+                    variant="plain"
                     label="distance"
                     value={formatDistance(
                       selectedClimb.distanceMeters,
                       unitSystem,
                     )}
                   />
-                  <ClimbDetailMetric
+                  <MetricCard
+                    variant="plain"
                     label="elevation gain"
                     value={formatElevation(
                       selectedClimb.elevationGainMeters,
                       unitSystem,
                     )}
                   />
-                  <ClimbDetailMetric
+                  <MetricCard
+                    variant="plain"
                     label="elevation loss"
                     value={formatElevation(
                       selectedClimb.elevationLossMeters,
                       unitSystem,
                     )}
                   />
-                  <ClimbDetailMetric
+                  <MetricCard
+                    variant="plain"
                     label="category"
                     value={formatClimbCategory(selectedClimb.category)}
                   />
-                  <ClimbDetailMetric
+                  <MetricCard
+                    variant="plain"
                     label="max grade"
                     value={formatGradePercent(selectedClimb.maxGradePercent)}
                   />
-                  <ClimbDetailMetric
+                  <MetricCard
+                    variant="plain"
                     label="avg grade"
                     value={formatGradePercent(selectedClimb.avgGradePercent)}
                   />
-                  <ClimbDetailMetric
+                  <MetricCard
+                    variant="plain"
                     label="estimated"
                     value={formatDuration(selectedClimb.durationSeconds)}
                   />

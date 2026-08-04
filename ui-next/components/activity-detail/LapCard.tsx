@@ -6,7 +6,7 @@ import {
   type UnitSystem,
 } from "../../lib/activityFormatting";
 import { type ActivityLap } from "../../lib/queries";
-import DetailMetric from "./DetailMetric";
+import MetricCard from "../MetricCard";
 
 export default function LapCard({
   lap,
@@ -29,19 +29,19 @@ export default function LapCard({
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <DetailMetric
+          <MetricCard
             label="Distance"
             value={formatDistance(lap.distance_meters, unitSystem)}
           />
-          <DetailMetric
+          <MetricCard
             label="Average speed"
             value={formatSpeed(lap.average_speed_mps, unitSystem)}
           />
-          <DetailMetric
+          <MetricCard
             label="Average heart rate"
             value={formatHeartRate(lap.average_heart_rate_bpm)}
           />
-          <DetailMetric
+          <MetricCard
             label="Max heart rate"
             value={formatHeartRate(lap.max_heart_rate_bpm)}
           />
