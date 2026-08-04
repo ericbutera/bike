@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@ericbutera/kaleido':
-        specifier: 0.8.0
-        version: 0.8.0(@fortawesome/fontawesome-svg-core@7.2.0)(@fortawesome/free-solid-svg-icons@7.2.0)(@fortawesome/react-fontawesome@3.3.1(@fortawesome/fontawesome-svg-core@7.2.0)(react@19.2.3))(@tanstack/react-query@5.100.9(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react-hook-form@7.75.0(react@19.2.3))(react-hot-toast@2.6.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-router-dom@7.15.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)
+        specifier: 0.8.4
+        version: 0.8.4(@fortawesome/fontawesome-svg-core@7.2.0)(@fortawesome/free-solid-svg-icons@7.2.0)(@fortawesome/react-fontawesome@3.3.1(@fortawesome/fontawesome-svg-core@7.2.0)(react@19.2.3))(@tanstack/react-query@5.100.9(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react-hook-form@7.75.0(react@19.2.3))(react-hot-toast@2.6.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-router-dom@7.15.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)
       '@fortawesome/fontawesome-svg-core':
         specifier: ^7.2.0
         version: 7.2.0
@@ -122,8 +122,8 @@ packages:
   '@emnapi/wasi-threads@1.2.1':
     resolution: {integrity: sha512-uTII7OYF+/Mes/MrcIOYp5yOtSMLBWSIoLPpcgwipoiKbli6k322tcoFsxoIIxPDqW01SQGAgko4EzZi2BNv2w==}
 
-  '@ericbutera/kaleido@0.8.0':
-    resolution: {integrity: sha512-/fpgaeOAlmsEso9ao5Ixiu4eqvDbpURQzA3IWED9idURDTi692Gd0ePRurav1KIj+UyKTniSU8KKlSE+F8Jldw==}
+  '@ericbutera/kaleido@0.8.4':
+    resolution: {integrity: sha512-GKOau7eDnCJtZFUN1Z0Wx/H5k/F/4sKFugXUrqUr7uhm9YSSzcrmJvlFxCCZa85ZrY5qeY2+UZToEjzOEjeivQ==}
     peerDependencies:
       '@fortawesome/fontawesome-svg-core': '>=6.0.0'
       '@fortawesome/free-solid-svg-icons': '>=6.0.0'
@@ -343,11 +343,12 @@ packages:
   '@maplibre/vt-pbf@4.3.0':
     resolution: {integrity: sha512-jIvp8F5hQCcreqOOpEt42TJMUlsrEcpf/kI1T2v85YrQRV6PPXUcEXUg5karKtH6oh47XJZ4kHu56pUkOuqA7w==}
 
-  '@napi-rs/wasm-runtime@1.1.6':
-    resolution: {integrity: sha512-ZLv/JdUfkvOy9eCnnBaGfiO+XimbjebAeO+MRQqD/B+FR1tnRN0tpKSJHRbE8sFfS6aqsXZ67TQjfwfsxULVbg==}
+  '@napi-rs/wasm-runtime@1.2.2':
+    resolution: {integrity: sha512-JfB4kuJQjaoHuCTseIINHtHWeJnvgEcxjwA5t/Y00ZgaOO1Crz3fjT/p8kT28zA/Caz7oiUMn3d6H2yOVCVwuw==}
+    engines: {node: ^20.19.0 || ^22.13.0 || >=23.5.0}
     peerDependencies:
-      '@emnapi/core': ^1.7.1
-      '@emnapi/runtime': ^1.7.1
+      '@emnapi/core': ^1.7.1 || ^2.0.0-alpha.3
+      '@emnapi/runtime': ^1.7.1 || ^2.0.0-alpha.3
 
   '@next/env@16.1.6':
     resolution: {integrity: sha512-N1ySLuZjnAtN3kFnwhAwPvZah8RJxKasD7x1f8shFqhncnWZn4JMfg37diLNuoHsLAlrDfM3g4mawVdtAG8XLQ==}
@@ -691,8 +692,8 @@ packages:
   '@types/lodash-es@4.17.12':
     resolution: {integrity: sha512-0NgftHUcV4v34VhXm8QBSftKVXtbkBG3ViCjs6+eJ5a6y6Mi/jiFGPc1sC7QK+9BFhWrURE3EOggmWaSxL9OzQ==}
 
-  '@types/lodash@4.17.24':
-    resolution: {integrity: sha512-gIW7lQLZbue7lRSWEFql49QJJWThrTFFeIMJdp3eH4tKoxm1OvEPg02rm4wCCSHS0cL3/Fizimb35b7k8atwsQ==}
+  '@types/lodash@4.17.25':
+    resolution: {integrity: sha512-+K1NIO8I+F9/wNulfVvu23QYd0Pe9/OCqRrim4NoYIf1VoEDL90Ve4ClzpyqBLc7NpGGWRvYNCKZ1BE/Jpf8dQ==}
 
   '@types/node@20.19.39':
     resolution: {integrity: sha512-orrrD74MBUyK8jOAD/r0+lfa1I2MO6I+vAkmAWzMYbCcgrN4lCrmK52gRFQq/JRxfYPfonkr4b0jcY7Olqdqbw==}
@@ -1126,8 +1127,8 @@ packages:
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
-  nanoid@3.3.16:
-    resolution: {integrity: sha512-bzlKTyNJ7+LdGIIwy8ijFpIqEQIvafahV7eYykJ8Cvh42EdJeODoJ6gUJXpQJvej1BddH8OqTXZNE/KfbWAu8Q==}
+  nanoid@3.3.17:
+    resolution: {integrity: sha512-xQLf0A3HOMlgHq0n247/LRuAOYmB7dXJ/DvAxGvsSBij45XtBSmQycu+F8ODbHwns/XyFZagyL1+J0Offw1E0g==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
@@ -1193,8 +1194,8 @@ packages:
     resolution: {integrity: sha512-SoSL4+OSEtR99LHFZQiJLkT59C5B1amGO1NzTwj7TT1qCUgUO6hxOvzkOYxD+vMrXBM3XJIKzokoERdqQq/Zmg==}
     engines: {node: ^10 || ^12 || >=14}
 
-  postcss@8.5.22:
-    resolution: {integrity: sha512-KBDEIpLrvpv16pp3K0Fw+UCoZfopFjjgeB+0tA/aaThfEE74kKDLrgg603YvOWJyg3+WYtyq3xYsQWsIyZlPqQ==}
+  postcss@8.5.25:
+    resolution: {integrity: sha512-DTPx3RWSSnWyzLxQnlH0rJP+EW5ekl16ZU4/psbIhA0e53kJfdgaN5vKM+xP7yJtXVu+nfdVFmlgFDEKAe4Pyw==}
     engines: {node: ^10 || ^12 || >=14}
 
   potpack@2.1.0:
@@ -1541,7 +1542,7 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
-  '@ericbutera/kaleido@0.8.0(@fortawesome/fontawesome-svg-core@7.2.0)(@fortawesome/free-solid-svg-icons@7.2.0)(@fortawesome/react-fontawesome@3.3.1(@fortawesome/fontawesome-svg-core@7.2.0)(react@19.2.3))(@tanstack/react-query@5.100.9(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react-hook-form@7.75.0(react@19.2.3))(react-hot-toast@2.6.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-router-dom@7.15.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)':
+  '@ericbutera/kaleido@0.8.4(@fortawesome/fontawesome-svg-core@7.2.0)(@fortawesome/free-solid-svg-icons@7.2.0)(@fortawesome/react-fontawesome@3.3.1(@fortawesome/fontawesome-svg-core@7.2.0)(react@19.2.3))(@tanstack/react-query@5.100.9(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react-hook-form@7.75.0(react@19.2.3))(react-hot-toast@2.6.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-router-dom@7.15.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)':
     dependencies:
       '@fortawesome/fontawesome-svg-core': 7.2.0
       '@fortawesome/free-solid-svg-icons': 7.2.0
@@ -1735,7 +1736,7 @@ snapshots:
       pbf: 4.0.1
       supercluster: 8.0.1
 
-  '@napi-rs/wasm-runtime@1.1.6(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
+  '@napi-rs/wasm-runtime@1.2.2(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
     dependencies:
       '@emnapi/core': 1.10.0
       '@emnapi/runtime': 1.10.0
@@ -1822,7 +1823,7 @@ snapshots:
     dependencies:
       '@emnapi/core': 1.10.0
       '@emnapi/runtime': 1.10.0
-      '@napi-rs/wasm-runtime': 1.1.6(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
+      '@napi-rs/wasm-runtime': 1.2.2(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
     optional: true
 
   '@rolldown/binding-win32-arm64-msvc@1.0.0-rc.17':
@@ -1997,9 +1998,9 @@ snapshots:
 
   '@types/lodash-es@4.17.12':
     dependencies:
-      '@types/lodash': 4.17.24
+      '@types/lodash': 4.17.25
 
-  '@types/lodash@4.17.24': {}
+  '@types/lodash@4.17.25': {}
 
   '@types/node@20.19.39':
     dependencies:
@@ -2355,7 +2356,7 @@ snapshots:
 
   nanoid@3.3.12: {}
 
-  nanoid@3.3.16: {}
+  nanoid@3.3.17: {}
 
   next@16.1.6(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
     dependencies:
@@ -2419,9 +2420,9 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  postcss@8.5.22:
+  postcss@8.5.25:
     dependencies:
-      nanoid: 3.3.16
+      nanoid: 3.3.17
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
@@ -2657,7 +2658,7 @@ snapshots:
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.5
-      postcss: 8.5.22
+      postcss: 8.5.25
       rolldown: 1.0.0-rc.17
       tinyglobby: 0.2.17
     optionalDependencies:
