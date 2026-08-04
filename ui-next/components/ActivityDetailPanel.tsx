@@ -1,6 +1,5 @@
 "use client";
 
-import { auth } from "@ericbutera/kaleido";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
@@ -29,7 +28,6 @@ import ActivityMetricsSummary from "./activity-detail/ActivityMetricsSummary";
 import ActivityRouteMap from "./activity-detail/ActivityRouteMap";
 import ActivitySignalsCard from "./activity-detail/ActivitySignalsCard";
 import { buildSegmentAnchorId } from "./activity-detail/matchedSegments";
-import AuthRequiredCard from "./AuthRequiredCard";
 import MatchedSegmentsSection from "./MatchedSegmentsSection";
 import TrainingProfileSnapshot from "./TrainingProfileSnapshot";
 
@@ -47,11 +45,9 @@ export default function ActivityDetailPanel({
   const [activityTypeDraft, setActivityTypeDraft] = useState<ActivityType>(
     ACTIVITY_TYPES.Training,
   );
-  const authApi = auth.useAuthApi();
   const router = useRouter();
-  const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
   const { unitSystem } = useUnitPreferences();
-  const activityQuery = useActivity(user ? activityId : null);
+  const activityQuery = useActivity(activityId);
   const regenerateMutation = useRegenerateActivity();
   const deleteMutation = useDeleteActivity();
   const updateActivityMutation = useUpdateActivity();
@@ -155,23 +151,13 @@ export default function ActivityDetailPanel({
     }
   }
 
-  if (isLoadingUser || activityQuery.isLoading) {
+  if (activityQuery.isLoading) {
     return (
       <section className="card bg-base-100 shadow-xl">
         <div className="card-body items-center py-10">
           <span className="loading loading-spinner loading-md" />
         </div>
       </section>
-    );
-  }
-
-  if (!user) {
-    return (
-      <AuthRequiredCard
-        eyebrow="Activity detail"
-        title="Sign in to view activity details"
-        description="Activity summaries are scoped per user account, so sign in first to inspect the metrics for this upload."
-      />
     );
   }
 

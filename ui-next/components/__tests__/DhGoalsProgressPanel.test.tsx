@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import DhGoalsProgressPanel from "../DhGoalsProgressPanel";
+import RequireAuth from "../RequireAuth";
 
 const mocks = vi.hoisted(() => ({
   useCurrentUser: vi.fn(),
@@ -141,12 +142,17 @@ describe("DhGoalsProgressPanel", () => {
   it("renders a sign-in prompt when the user is signed out", () => {
     mocks.useCurrentUser.mockReturnValue({ user: null, isLoading: false });
 
-    render(<DhGoalsProgressPanel />);
+    render(
+      <RequireAuth>
+        <DhGoalsProgressPanel />
+      </RequireAuth>,
+    );
 
-    expect(screen.getByText("DH goals & progress")).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "Sign in to view DH progress" }),
-    ).toHaveAttribute("href", "/login");
+    expect(screen.getByText("Sign in required")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
+      "href",
+      "/login",
+    );
   });
 
   it("renders DH goals, session trend, recommendations, and segment benchmarks", () => {

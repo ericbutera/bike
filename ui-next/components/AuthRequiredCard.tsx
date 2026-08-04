@@ -1,27 +1,16 @@
 import Link from "next/link";
 
-export default function AuthRequiredCard({
-  eyebrow,
-  title,
-  description,
-  loginLabel = "Sign in",
-}: {
-  eyebrow?: string;
-  title: string;
-  description: string;
-  loginLabel?: string;
-}) {
+export default function AuthRequiredCard() {
   return (
     <section className="card bg-base-100 shadow-xl">
       <div className="card-body">
-        {eyebrow ? (
-          <p className="text-sm text-base-content/60">{eyebrow}</p>
-        ) : null}
-        <h2 className="card-title text-3xl">{title}</h2>
-        <p className="max-w-2xl text-base-content/70">{description}</p>
+        <h2 className="card-title text-3xl">Sign in required</h2>
+        <p className="max-w-2xl text-base-content/70">
+          Sign in to view this page.
+        </p>
         <div className="card-actions justify-start">
           <Link href="/login" className="btn btn-primary">
-            {loginLabel}
+            Sign in
           </Link>
         </div>
       </div>

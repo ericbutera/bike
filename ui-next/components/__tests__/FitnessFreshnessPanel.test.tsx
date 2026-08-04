@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import FitnessFreshnessPanel from "../FitnessFreshnessPanel";
+import RequireAuth from "../RequireAuth";
 
 const mocks = vi.hoisted(() => ({
   useCurrentUser: vi.fn(),
@@ -88,11 +89,13 @@ describe("FitnessFreshnessPanel", () => {
       isLoading: false,
     });
 
-    render(<FitnessFreshnessPanel />);
+    render(
+      <RequireAuth>
+        <FitnessFreshnessPanel />
+      </RequireAuth>,
+    );
 
-    expect(
-      screen.getByText("Sign in to view fitness and freshness"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Sign in required")).toBeInTheDocument();
   });
 
   it("renders the summary cards and charts", () => {
@@ -164,7 +167,6 @@ describe("FitnessFreshnessPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "3 months" }));
 
     expect(mocks.useFitnessFreshness).toHaveBeenLastCalledWith({
-      enabled: true,
       startDate: "2026-02-07",
       endDate: "2026-05-07",
     });

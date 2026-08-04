@@ -1,6 +1,5 @@
 "use client";
 
-import { auth } from "@ericbutera/kaleido";
 import { useMemo, useState } from "react";
 import {
   Bar,
@@ -19,7 +18,6 @@ import {
   type FitnessFreshnessPoint,
   useFitnessFreshness,
 } from "../lib/queries";
-import AuthRequiredCard from "./AuthRequiredCard";
 
 const LOAD_COLOR = "#94a3b8";
 const FITNESS_COLOR = "#2563eb";
@@ -246,8 +244,6 @@ function SummaryMetric({
 }
 
 export default function FitnessFreshnessPanel() {
-  const authApi = auth.useAuthApi();
-  const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
   const [selectedRange, setSelectedRange] = useState<RangePresetKey>("6m");
   const [showFitness, setShowFitness] = useState(true);
   const [showFatigue, setShowFatigue] = useState(true);
@@ -263,7 +259,6 @@ export default function FitnessFreshnessPanel() {
     return toDateParam(subtractMonths(endDate, preset.months));
   }, [endDate, selectedRange]);
   const fitnessQuery = useFitnessFreshness({
-    enabled: !!user,
     startDate: startDateParam,
     endDate: endDateParam,
   });
@@ -281,23 +276,13 @@ export default function FitnessFreshnessPanel() {
   ];
   const includeYearLabels = selectedRange === "all" || selectedRange === "2y";
 
-  if (isLoadingUser || fitnessQuery.isLoading) {
+  if (fitnessQuery.isLoading) {
     return (
       <section className="card bg-base-100 shadow-xl">
         <div className="card-body items-center py-10">
           <span className="loading loading-spinner loading-md" />
         </div>
       </section>
-    );
-  }
-
-  if (!user) {
-    return (
-      <AuthRequiredCard
-        eyebrow="Fitness"
-        title="Sign in to view fitness and freshness"
-        description="Bike builds fitness, fatigue, and form from your recorded activity load over time."
-      />
     );
   }
 

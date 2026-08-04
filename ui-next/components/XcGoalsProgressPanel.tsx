@@ -1,6 +1,5 @@
 "use client";
 
-import { auth } from "@ericbutera/kaleido";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -45,7 +44,6 @@ import {
   type XcTrainingPurpose,
 } from "../lib/queries";
 import { hasConfiguredHeartRateZoneBounds } from "../lib/trainingProfile";
-import AuthRequiredCard from "./AuthRequiredCard";
 
 const Z2_COLOR = "#0f766e";
 const CLIMB_COLOR = "#ea580c";
@@ -1649,17 +1647,13 @@ function EmptyTrendState({ message }: { message: string }) {
 }
 
 export default function XcGoalsProgressPanel() {
-  const authApi = auth.useAuthApi();
-  const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
   const queryClient = useQueryClient();
   const preferencesQuery = useUserPreferences({
-    enabled: !!user,
-    refetchIntervalMs: user ? 5000 : false,
+    refetchIntervalMs: 5000,
   });
-  const progressQuery = useXcGoalProgress({ enabled: !!user });
+  const progressQuery = useXcGoalProgress();
   const processingStateQuery = useActivityProcessingState({
-    enabled: !!user,
-    refetchIntervalMs: user ? 5000 : false,
+    refetchIntervalMs: 5000,
   });
   const updatePreferencesMutation = useUpdateUserPreferences();
   const unitSystem = normalizeUnitSystem(preferencesQuery.data?.unit_system);
@@ -2053,27 +2047,6 @@ export default function XcGoalsProgressPanel() {
       Math.min(currentPage, rideBenchmarkTotalPages - 1),
     );
   }, [rideBenchmarkTotalPages]);
-
-  if (isLoadingUser) {
-    return (
-      <section className="rounded-box border border-base-300 bg-base-100 shadow-sm">
-        <div className="flex items-center justify-center py-16">
-          <span className="loading loading-spinner loading-lg" />
-        </div>
-      </section>
-    );
-  }
-
-  if (!user) {
-    return (
-      <AuthRequiredCard
-        eyebrow="XC training"
-        title="XC goals & progress"
-        description="Sign in to view your endurance volume, climbing durability, and comparable-ride decoupling trends."
-        loginLabel="Sign in to view XC progress"
-      />
-    );
-  }
 
   if (progressQuery.isError) {
     return (

@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { type ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import RequireAuth from "../RequireAuth";
 import SegmentDetailPanel from "../SegmentDetailPanel";
 import { ComparisonGapChartTooltip } from "../segment-detail/SegmentDetailComparisonSection";
 
@@ -263,14 +265,22 @@ describe("SegmentDetailPanel", () => {
     vi.restoreAllMocks();
   });
 
+  function renderSegmentDetailPanel(
+    props: Partial<ComponentProps<typeof SegmentDetailPanel>> = {},
+  ) {
+    return render(
+      <RequireAuth>
+        <SegmentDetailPanel segmentId={14} {...props} />
+      </RequireAuth>,
+    );
+  }
+
   it("renders sign-in actions when the user is signed out", () => {
     mocks.useCurrentUser.mockReturnValue({ user: null, isLoading: false });
 
-    render(<SegmentDetailPanel segmentId={14} />);
+    renderSegmentDetailPanel();
 
-    expect(
-      screen.getByText("Sign in to compare segment efforts"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Sign in required")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
       "href",
       "/login",
@@ -278,7 +288,7 @@ describe("SegmentDetailPanel", () => {
   });
 
   it("renders the comparison UI for a segment", () => {
-    render(<SegmentDetailPanel segmentId={14} />);
+    renderSegmentDetailPanel();
 
     const hillAttackRow = screen
       .getByRole("link", { name: "5m 00s" })
@@ -461,7 +471,7 @@ describe("SegmentDetailPanel", () => {
       error: null,
     });
 
-    render(<SegmentDetailPanel segmentId={14} />);
+    renderSegmentDetailPanel();
 
     const table = screen.getByLabelText("Segment efforts table");
     const runOneRow = within(table)
@@ -511,7 +521,7 @@ describe("SegmentDetailPanel", () => {
       error: null,
     });
 
-    render(<SegmentDetailPanel segmentId={14} />);
+    renderSegmentDetailPanel();
 
     const table = screen.getByLabelText("Segment efforts table");
 
@@ -539,7 +549,7 @@ describe("SegmentDetailPanel", () => {
       error: null,
     });
 
-    render(<SegmentDetailPanel segmentId={14} />);
+    renderSegmentDetailPanel();
 
     await user.selectOptions(
       screen.getByRole("combobox", { name: "Segment mode" }),
@@ -553,7 +563,7 @@ describe("SegmentDetailPanel", () => {
   });
 
   it("updates live comparison metrics when playback moves", async () => {
-    render(<SegmentDetailPanel segmentId={14} />);
+    renderSegmentDetailPanel();
 
     fireEvent.change(
       screen.getByRole("slider", { name: "Playback timeline" }),
@@ -595,7 +605,7 @@ describe("SegmentDetailPanel", () => {
       error: null,
     });
 
-    render(<SegmentDetailPanel segmentId={14} />);
+    renderSegmentDetailPanel();
 
     expect(screen.queryByText(/\btarget\b/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Auto" })).toHaveClass(
@@ -634,7 +644,7 @@ describe("SegmentDetailPanel", () => {
       error: null,
     });
 
-    render(<SegmentDetailPanel segmentId={14} />);
+    renderSegmentDetailPanel();
 
     fireEvent.change(
       screen.getByRole("slider", { name: "Playback timeline" }),
@@ -655,7 +665,7 @@ describe("SegmentDetailPanel", () => {
   });
 
   it("sorts the athlete pane by the current leader as playback advances", () => {
-    render(<SegmentDetailPanel segmentId={14} />);
+    renderSegmentDetailPanel();
 
     fireEvent.change(
       screen.getByRole("slider", { name: "Playback timeline" }),
@@ -713,7 +723,7 @@ describe("SegmentDetailPanel", () => {
       error: null,
     });
 
-    render(<SegmentDetailPanel segmentId={14} />);
+    renderSegmentDetailPanel();
 
     expect(screen.getByText("KOM")).toBeInTheDocument();
     expect(screen.queryByText("PR")).not.toBeInTheDocument();
@@ -734,7 +744,7 @@ describe("SegmentDetailPanel", () => {
       error: null,
     });
 
-    render(<SegmentDetailPanel segmentId={14} />);
+    renderSegmentDetailPanel();
 
     expect(screen.getByText("Your PR 5m 12s")).toBeInTheDocument();
     expect(
@@ -764,7 +774,7 @@ describe("SegmentDetailPanel", () => {
       error: null,
     });
 
-    render(<SegmentDetailPanel segmentId={14} />);
+    renderSegmentDetailPanel();
 
     fireEvent.change(
       screen.getByRole("slider", { name: "Playback timeline" }),
@@ -784,7 +794,7 @@ describe("SegmentDetailPanel", () => {
   });
 
   it("keeps the embedded map in overview mode and links to the race viewer", () => {
-    render(<SegmentDetailPanel segmentId={14} />);
+    renderSegmentDetailPanel();
 
     expect(
       screen.queryByRole("button", { name: "Overview" }),
@@ -801,13 +811,10 @@ describe("SegmentDetailPanel", () => {
   });
 
   it("uses initially requested efforts when returning from the race viewer", () => {
-    render(
-      <SegmentDetailPanel
-        segmentId={14}
-        initialSelectedEffortIds={[2]}
-        initialReferenceEffortId={2}
-      />,
-    );
+    renderSegmentDetailPanel({
+      initialSelectedEffortIds: [2],
+      initialReferenceEffortId: 2,
+    });
 
     expect(
       screen.getAllByRole("button", {
@@ -825,7 +832,7 @@ describe("SegmentDetailPanel", () => {
   });
 
   it("hides timer and pace controls on very narrow screens", () => {
-    render(<SegmentDetailPanel segmentId={14} />);
+    renderSegmentDetailPanel();
 
     const timeline = screen.getByRole("slider", { name: "Playback timeline" });
     const timerChip =
@@ -841,7 +848,7 @@ describe("SegmentDetailPanel", () => {
   it("does not dim other comparison rows when a reference ride is selected", async () => {
     const user = userEvent.setup();
 
-    render(<SegmentDetailPanel segmentId={14} />);
+    renderSegmentDetailPanel();
 
     await user.click(
       screen.getByRole("button", {
@@ -853,7 +860,7 @@ describe("SegmentDetailPanel", () => {
   });
 
   it("renders the athlete pane without drag and drop affordances", () => {
-    render(<SegmentDetailPanel segmentId={14} />);
+    renderSegmentDetailPanel();
 
     expect(document.querySelector("[draggable='true']")).toBeNull();
     expect(
@@ -864,7 +871,7 @@ describe("SegmentDetailPanel", () => {
   it("filters efforts by the selected time window", async () => {
     const user = userEvent.setup();
 
-    render(<SegmentDetailPanel segmentId={14} />);
+    renderSegmentDetailPanel();
 
     await user.click(screen.getByRole("button", { name: "Day" }));
 
@@ -881,7 +888,7 @@ describe("SegmentDetailPanel", () => {
   it("keeps compared efforts selected across time filters until removed", async () => {
     const user = userEvent.setup();
 
-    render(<SegmentDetailPanel segmentId={14} />);
+    renderSegmentDetailPanel();
 
     expect(screen.queryByText(/^\d+ selected$/)).not.toBeInTheDocument();
 

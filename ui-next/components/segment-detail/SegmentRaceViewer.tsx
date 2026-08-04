@@ -1,6 +1,5 @@
 "use client";
 
-import { auth } from "@ericbutera/kaleido";
 import {
   faArrowLeft,
   faChevronDown,
@@ -41,8 +40,8 @@ import {
   type RacePlaybackSpeed,
   type SelectedEffortRow,
 } from "../../lib/segmentDetail";
-import AuthRequiredCard from "../AuthRequiredCard";
 import MapLibreRouteMap from "../MapLibreRouteMap";
+import { useAuthenticatedUser } from "../RequireAuth";
 import { type RouteMapBasemap } from "../RouteMapTypes";
 
 type RaceMapMode = "overview" | "leader-follow";
@@ -348,11 +347,10 @@ export default function SegmentRaceViewer({
   initialReferenceEffortId: number | null;
   initialPlaybackSpeed?: RacePlaybackSpeed;
 }) {
-  const authApi = auth.useAuthApi();
-  const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
-  const segmentQuery = useSegment(user ? segmentId : null);
+  const user = useAuthenticatedUser();
+  const segmentQuery = useSegment(segmentId);
   const comparisonQuery = useSegmentComparison(
-    user && segmentQuery.data ? segmentId : null,
+    segmentQuery.data ? segmentId : null,
   );
   const playbackAnimationFrameRef = useRef<number | null>(null);
   const playbackLastTimestampRef = useRef<number | null>(null);
@@ -620,7 +618,6 @@ export default function SegmentRaceViewer({
   }, [isPlaying, playbackLimitSeconds, playbackSpeed]);
 
   if (
-    isLoadingUser ||
     segmentQuery.isLoading ||
     (segmentQuery.data && comparisonQuery.isLoading)
   ) {
@@ -628,20 +625,6 @@ export default function SegmentRaceViewer({
       <section className="flex min-h-screen items-center justify-center bg-base-200 px-6 py-10">
         <span className="loading loading-spinner loading-lg" />
       </section>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-base-200 px-6 py-10">
-        <div className="w-full max-w-2xl">
-          <AuthRequiredCard
-            eyebrow="Race viewer"
-            title="Sign in to open the race viewer"
-            description="Open the fullscreen race viewer to watch selected efforts on the map without the chart and leaderboard."
-          />
-        </div>
-      </div>
     );
   }
 

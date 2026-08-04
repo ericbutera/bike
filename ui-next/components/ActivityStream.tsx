@@ -1,6 +1,6 @@
 "use client";
 
-import { Pagination, auth, featureFlags } from "@ericbutera/kaleido";
+import { Pagination, featureFlags } from "@ericbutera/kaleido";
 import { faUpload } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
@@ -11,11 +11,8 @@ import { FLAG_ACTIVITY_LIST_FULL_MAPS } from "../lib/featureFlags";
 import { useActivities } from "../lib/queries";
 import { useUnitPreferences } from "../lib/unitPreferences";
 import ActivityStreamCard from "./activity-stream/ActivityStreamCard";
-import AuthRequiredCard from "./AuthRequiredCard";
 
 export default function ActivityStream() {
-  const authApi = auth.useAuthApi();
-  const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
   const { unitSystem } = useUnitPreferences();
   const showFullRouteMaps = featureFlags.useFeatureFlag(
     FLAG_ACTIVITY_LIST_FULL_MAPS,
@@ -26,7 +23,7 @@ export default function ActivityStream() {
   const currentUrlPage = parsePageParam(searchParams.get("page"));
   const [page, setPage] = useState(currentUrlPage);
   const perPage = 10;
-  const activitiesQuery = useActivities({ enabled: !!user, page, perPage });
+  const activitiesQuery = useActivities({ page, perPage });
 
   useEffect(() => {
     setPage(currentUrlPage);
@@ -48,27 +45,6 @@ export default function ActivityStream() {
       scroll: false,
     });
   };
-
-  if (isLoadingUser) {
-    return (
-      <section className="rounded-box border border-base-300 bg-base-100 shadow-sm">
-        <div className="flex items-center justify-center py-10">
-          <span className="loading loading-spinner loading-md" />
-        </div>
-      </section>
-    );
-  }
-
-  if (!user) {
-    return (
-      <AuthRequiredCard
-        eyebrow="Activity stream"
-        title="Recent activity feed"
-        description="Sign in to see your latest uploads normalized into a Garmin or Strava style stream."
-        loginLabel="Sign in to view activities"
-      />
-    );
-  }
 
   return (
     <section className="space-y-4">

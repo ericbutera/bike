@@ -1,3 +1,4 @@
+import RequireAuth from "../../../../components/RequireAuth";
 import SegmentRaceViewer from "../../../../components/segment-detail/SegmentRaceViewer";
 import {
   parseOptionalPositiveNumberParam,
@@ -16,17 +17,19 @@ export default async function SegmentRacePage({
   const resolvedSearchParams = await searchParams;
 
   return (
-    <SegmentRaceViewer
-      segmentId={id}
-      initialSelectedEffortIds={parseSelectedEffortIdsParam(
-        resolvedSearchParams.efforts,
-      )}
-      initialReferenceEffortId={parseOptionalPositiveNumberParam(
-        resolvedSearchParams.ref,
-      )}
-      initialPlaybackSpeed={parseRacePlaybackSpeedParam(
-        resolvedSearchParams.pace,
-      )}
-    />
+    <RequireAuth>
+      <SegmentRaceViewer
+        segmentId={id}
+        initialSelectedEffortIds={parseSelectedEffortIdsParam(
+          resolvedSearchParams.efforts,
+        )}
+        initialReferenceEffortId={parseOptionalPositiveNumberParam(
+          resolvedSearchParams.ref,
+        )}
+        initialPlaybackSpeed={parseRacePlaybackSpeedParam(
+          resolvedSearchParams.pace,
+        )}
+      />
+    </RequireAuth>
   );
 }

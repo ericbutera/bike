@@ -1,6 +1,5 @@
 "use client";
 
-import { auth } from "@ericbutera/kaleido";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
@@ -31,7 +30,7 @@ import {
   type SelectedEffortRow,
 } from "../lib/segmentDetail";
 import { useUnitPreferences } from "../lib/unitPreferences";
-import AuthRequiredCard from "./AuthRequiredCard";
+import { useAuthenticatedUser } from "./RequireAuth";
 import SegmentDetailComparisonSection from "./segment-detail/SegmentDetailComparisonSection";
 import SegmentDetailEffortsSection from "./segment-detail/SegmentDetailEffortsSection";
 import SegmentDetailHeader from "./segment-detail/SegmentDetailHeader";
@@ -45,13 +44,12 @@ export default function SegmentDetailPanel({
   initialSelectedEffortIds?: number[];
   initialReferenceEffortId?: number | null;
 }) {
-  const authApi = auth.useAuthApi();
   const router = useRouter();
-  const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
+  const user = useAuthenticatedUser();
   const { unitSystem } = useUnitPreferences();
-  const segmentQuery = useSegment(user ? segmentId : null);
+  const segmentQuery = useSegment(segmentId);
   const comparisonQuery = useSegmentComparison(
-    user && segmentQuery.data ? segmentId : null,
+    segmentQuery.data ? segmentId : null,
   );
   const updateSegmentMutation = useUpdateSegment();
   const deleteSegmentMutation = useDeleteSegment();
@@ -97,8 +95,8 @@ export default function SegmentDetailPanel({
     segment?.efforts,
     effortTimeFilter,
   );
-  const currentUserId = user?.id ?? null;
-  const currentUserName = user?.name?.trim() || null;
+  const currentUserId = typeof user.id === "number" ? user.id : null;
+  const currentUserName = user.name?.trim() || null;
   const overallRankByEffortId = overallEffortRanks(allEfforts);
   const overallKom = fastestEffort(allEfforts);
   const currentUserPr =
@@ -424,23 +422,13 @@ export default function SegmentDetailPanel({
     };
   }, [isPlaying, playbackLimitSeconds, targetPlaybackDurationSeconds]);
 
-  if (isLoadingUser || segmentQuery.isLoading) {
+  if (segmentQuery.isLoading) {
     return (
       <section className="card bg-base-100 shadow-xl">
         <div className="card-body items-center py-10">
           <span className="loading loading-spinner loading-md" />
         </div>
       </section>
-    );
-  }
-
-  if (!user) {
-    return (
-      <AuthRequiredCard
-        eyebrow="Segment comparison"
-        title="Sign in to compare segment efforts"
-        description="Select attempts, then use time to open the full activity detail."
-      />
     );
   }
 

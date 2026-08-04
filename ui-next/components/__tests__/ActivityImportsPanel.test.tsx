@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ActivityImportsPanel from "../ActivityImportsPanel";
+import RequireAuth from "../RequireAuth";
 
 const mocks = vi.hoisted(() => ({
   useCurrentUser: vi.fn(),
@@ -178,9 +179,13 @@ describe("ActivityImportsPanel", () => {
   it("renders sign-in actions when the user is signed out", () => {
     mocks.useCurrentUser.mockReturnValue({ user: null, isLoading: false });
 
-    render(<ActivityImportsPanel />);
+    render(
+      <RequireAuth>
+        <ActivityImportsPanel />
+      </RequireAuth>,
+    );
 
-    expect(screen.getByText("Activity Imports")).toBeInTheDocument();
+    expect(screen.getByText("Sign in required")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
       "href",
       "/login",

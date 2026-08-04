@@ -1,4 +1,5 @@
 import Layout from "../../../components/Layout";
+import RequireAuth from "../../../components/RequireAuth";
 import SegmentDetailPanel from "../../../components/SegmentDetailPanel";
 import {
   parseOptionalPositiveNumberParam,
@@ -18,15 +19,17 @@ export default async function SegmentDetailPage({
   return (
     <Layout>
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-10 px-4 py-10 sm:px-6 lg:px-8">
-        <SegmentDetailPanel
-          segmentId={id}
-          initialSelectedEffortIds={parseSelectedEffortIdsParam(
-            resolvedSearchParams.efforts,
-          )}
-          initialReferenceEffortId={parseOptionalPositiveNumberParam(
-            resolvedSearchParams.ref,
-          )}
-        />
+        <RequireAuth>
+          <SegmentDetailPanel
+            segmentId={id}
+            initialSelectedEffortIds={parseSelectedEffortIdsParam(
+              resolvedSearchParams.efforts,
+            )}
+            initialReferenceEffortId={parseOptionalPositiveNumberParam(
+              resolvedSearchParams.ref,
+            )}
+          />
+        </RequireAuth>
       </div>
     </Layout>
   );

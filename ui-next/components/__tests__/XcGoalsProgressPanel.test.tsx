@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ACTIVITY_TYPES } from "../../lib/activityTypes";
+import RequireAuth from "../RequireAuth";
 import XcGoalsProgressPanel from "../XcGoalsProgressPanel";
 
 const mocks = vi.hoisted(() => ({
@@ -473,12 +474,26 @@ describe("XcGoalsProgressPanel", () => {
   it("renders a sign-in prompt when the user is signed out", () => {
     mocks.useCurrentUser.mockReturnValue({ user: null, isLoading: false });
 
-    renderPanel();
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
 
-    expect(screen.getByText("XC goals & progress")).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "Sign in to view XC progress" }),
-    ).toHaveAttribute("href", "/login");
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RequireAuth>
+          <XcGoalsProgressPanel />
+        </RequireAuth>
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByText("Sign in required")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
+      "href",
+      "/login",
+    );
   });
 
   it("renders XC goals, charts, recommendations, and recent rides", () => {

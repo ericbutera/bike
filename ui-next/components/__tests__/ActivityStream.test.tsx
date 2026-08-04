@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ActivityStream from "../ActivityStream";
+import RequireAuth from "../RequireAuth";
 
 const mocks = vi.hoisted(() => ({
   useCurrentUser: vi.fn(),
@@ -145,12 +146,17 @@ describe("ActivityStream", () => {
   it("renders a sign-in prompt when signed out", () => {
     mocks.useCurrentUser.mockReturnValue({ user: null, isLoading: false });
 
-    render(<ActivityStream />);
+    render(
+      <RequireAuth>
+        <ActivityStream />
+      </RequireAuth>,
+    );
 
-    expect(screen.getByText("Recent activity feed")).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "Sign in to view activities" }),
-    ).toHaveAttribute("href", "/login");
+    expect(screen.getByText("Sign in required")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
+      "href",
+      "/login",
+    );
   });
 
   it("renders activities in the order returned by the query", () => {

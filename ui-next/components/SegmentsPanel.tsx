@@ -1,6 +1,6 @@
 "use client";
 
-import { auth, GenericList, type Column } from "@ericbutera/kaleido";
+import { GenericList, type Column } from "@ericbutera/kaleido";
 import { faStar } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
@@ -19,7 +19,6 @@ import {
   type Segment,
 } from "../lib/queries";
 import { useUnitPreferences } from "../lib/unitPreferences";
-import AuthRequiredCard from "./AuthRequiredCard";
 
 const ALLOWED_EXTENSIONS = new Set(["gpx", "tcx"]);
 
@@ -86,10 +85,8 @@ function normalizeSegmentsGridParams(params: SegmentsGridParams) {
 }
 
 export default function SegmentsPanel() {
-  const authApi = auth.useAuthApi();
-  const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
   const { unitSystem } = useUnitPreferences();
-  const segmentsQuery = useSegments({ enabled: !!user });
+  const segmentsQuery = useSegments();
   const updateSegmentMutation = useUpdateSegment();
   const uploadMutation = useUploadSegment();
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -220,25 +217,6 @@ export default function SegmentsPanel() {
       toast.error(extractApiMessage(error));
     }
   };
-
-  if (isLoadingUser) {
-    return (
-      <section className="card bg-base-100 shadow-xl">
-        <div className="card-body items-center py-10">
-          <span className="loading loading-spinner loading-md" />
-        </div>
-      </section>
-    );
-  }
-
-  if (!user) {
-    return (
-      <AuthRequiredCard
-        title="Manual Segment Imports"
-        description="Sign in to upload a GPX or TCX export for a segment. Bike stores the route definition and matches it against your uploaded activities so you can compare repeated efforts without setting up Strava API keys."
-      />
-    );
-  }
 
   return (
     <section className="grid gap-6">

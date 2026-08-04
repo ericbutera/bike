@@ -1,6 +1,5 @@
 "use client";
 
-import { auth } from "@ericbutera/kaleido";
 import Link from "next/link";
 import { useMemo } from "react";
 import {
@@ -26,7 +25,6 @@ import {
   type TrainingRecommendation,
   useDhGoalProgress,
 } from "../lib/queries";
-import AuthRequiredCard from "./AuthRequiredCard";
 
 const SESSION_BAR_COLOR = "#ea580c";
 const FADE_LINE_COLOR = "#2563eb";
@@ -363,9 +361,7 @@ function SegmentBenchmarkCard({ segment }: { segment: DhSegmentProgress }) {
 }
 
 export default function DhGoalsProgressPanel() {
-  const authApi = auth.useAuthApi();
-  const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
-  const progressQuery = useDhGoalProgress({ enabled: !!user });
+  const progressQuery = useDhGoalProgress();
 
   const sessionChartData = useMemo<SessionChartPoint[]>(() => {
     return (progressQuery.data?.recent_sessions ?? [])
@@ -378,27 +374,6 @@ export default function DhGoalsProgressPanel() {
         averageRepeatFadePercent: session.average_repeat_fade_percent ?? null,
       }));
   }, [progressQuery.data?.recent_sessions]);
-
-  if (isLoadingUser) {
-    return (
-      <section className="rounded-box border border-base-300 bg-base-100 shadow-sm">
-        <div className="flex items-center justify-center py-16">
-          <span className="loading loading-spinner loading-lg" />
-        </div>
-      </section>
-    );
-  }
-
-  if (!user) {
-    return (
-      <AuthRequiredCard
-        eyebrow="DH training"
-        title="DH goals & progress"
-        description="Sign in to view repeat-lap consistency, segment benchmarks, and downhill session shape across your tagged DH trails."
-        loginLabel="Sign in to view DH progress"
-      />
-    );
-  }
 
   if (progressQuery.isError) {
     return (

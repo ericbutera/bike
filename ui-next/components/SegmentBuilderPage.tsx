@@ -1,10 +1,8 @@
 "use client";
 
-import { auth } from "@ericbutera/kaleido";
 import { useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
 import { useActivity, useSegment } from "../lib/queries";
-import AuthRequiredCard from "./AuthRequiredCard";
 import SegmentBuilderWorkspace from "./SegmentBuilderWorkspace";
 
 function parseNumericId(rawValue: string | null) {
@@ -89,31 +87,9 @@ function EditSegmentBuilderPage({ segmentId }: { segmentId: number }) {
 }
 
 export default function SegmentBuilderPage() {
-  const authApi = auth.useAuthApi();
-  const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
   const searchParams = useSearchParams();
   const selectedSegmentId = parseNumericId(searchParams.get("segmentId"));
   const requestedActivityId = parseNumericId(searchParams.get("activityId"));
-
-  if (isLoadingUser) {
-    return (
-      <section className="card bg-base-100 shadow-xl">
-        <div className="card-body items-center py-16">
-          <span className="loading loading-spinner loading-lg" />
-        </div>
-      </section>
-    );
-  }
-
-  if (!user) {
-    return (
-      <AuthRequiredCard
-        eyebrow="Segment builder"
-        title="Build segments from your rides"
-        description="Sign in to crop one of your uploaded rides into a segment, save it, and jump directly into the comparison workspace."
-      />
-    );
-  }
 
   return selectedSegmentId != null ? (
     <EditSegmentBuilderPage segmentId={selectedSegmentId} />

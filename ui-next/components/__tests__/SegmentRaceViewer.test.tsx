@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { type ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import RequireAuth from "../RequireAuth";
 import SegmentRaceViewer from "../segment-detail/SegmentRaceViewer";
 
 const mocks = vi.hoisted(() => ({
@@ -153,12 +154,14 @@ function renderRaceViewer({
   });
 
   return render(
-    <SegmentRaceViewer
-      segmentId={1}
-      initialSelectedEffortIds={selectedEffortIds}
-      initialReferenceEffortId={referenceEffortId}
-      initialPlaybackSpeed={initialPlaybackSpeed}
-    />,
+    <RequireAuth>
+      <SegmentRaceViewer
+        segmentId={1}
+        initialSelectedEffortIds={selectedEffortIds}
+        initialReferenceEffortId={referenceEffortId}
+        initialPlaybackSpeed={initialPlaybackSpeed}
+      />
+    </RequireAuth>,
   );
 }
 

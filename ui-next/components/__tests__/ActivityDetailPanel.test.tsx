@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ACTIVITY_TYPES, type ActivityType } from "../../lib/activityTypes";
 import ActivityDetailPanel from "../ActivityDetailPanel";
+import RequireAuth from "../RequireAuth";
 
 vi.mock("recharts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("recharts")>();
@@ -481,11 +482,13 @@ describe("ActivityDetailPanel", () => {
   it("renders a sign-in prompt when the user is signed out", () => {
     mocks.useCurrentUser.mockReturnValue({ user: null, isLoading: false });
 
-    render(<ActivityDetailPanel activityId={7} />);
+    render(
+      <RequireAuth>
+        <ActivityDetailPanel activityId={7} />
+      </RequireAuth>,
+    );
 
-    expect(
-      screen.getByText("Sign in to view activity details"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Sign in required")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
       "href",
       "/login",

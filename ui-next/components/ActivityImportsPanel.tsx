@@ -1,6 +1,5 @@
 "use client";
 
-import { auth } from "@ericbutera/kaleido";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
@@ -18,7 +17,6 @@ import {
   type ActivityArchiveImportJob,
   type ActivityImport,
 } from "../lib/queries";
-import AuthRequiredCard from "./AuthRequiredCard";
 
 const ALLOWED_EXTENSIONS = new Set(["fit", "tcx", "gpx"]);
 const MANUAL_IMPORT_VISIBLE_ROW_COUNT = 10;
@@ -42,16 +40,12 @@ function getExtension(filename: string) {
 }
 
 export default function ActivityImportsPanel() {
-  const authApi = auth.useAuthApi();
-  const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
   const router = useRouter();
   const archiveJobsQuery = useActivityArchiveImportJobs({
-    enabled: !!user,
     refetchIntervalMs: 5000,
   });
   const importsQuery = useActivityImports({
-    enabled: !!user,
-    refetchIntervalMs: user ? 5000 : false,
+    refetchIntervalMs: 5000,
   });
   const uploadMutation = useUploadActivityImport();
   const archiveImportMutation = useImportActivityArchiveUrl();
@@ -124,25 +118,6 @@ export default function ActivityImportsPanel() {
       toast.error(extractApiMessage(error));
     }
   };
-
-  if (isLoadingUser) {
-    return (
-      <section className="card bg-base-100 shadow-xl">
-        <div className="card-body items-center py-10">
-          <span className="loading loading-spinner loading-md" />
-        </div>
-      </section>
-    );
-  }
-
-  if (!user) {
-    return (
-      <AuthRequiredCard
-        title="Activity Imports"
-        description="Sign in to upload raw activity files or fetch a Garmin or Strava export ZIP by URL. GPX is still the fastest way to test the single-file pipeline, and FIT and TCX are accepted too."
-      />
-    );
-  }
 
   return (
     <section id="manual-upload" className="grid gap-6">

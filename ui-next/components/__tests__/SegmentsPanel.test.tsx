@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import RequireAuth from "../RequireAuth";
 import SegmentsPanel from "../SegmentsPanel";
 
 const mocks = vi.hoisted(() => ({
@@ -113,9 +114,13 @@ describe("SegmentsPanel", () => {
   it("renders sign-in actions when the user is signed out", () => {
     mocks.useCurrentUser.mockReturnValue({ user: null, isLoading: false });
 
-    render(<SegmentsPanel />);
+    render(
+      <RequireAuth>
+        <SegmentsPanel />
+      </RequireAuth>,
+    );
 
-    expect(screen.getByText("Manual Segment Imports")).toBeInTheDocument();
+    expect(screen.getByText("Sign in required")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
       "href",
       "/login",

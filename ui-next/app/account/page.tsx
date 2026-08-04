@@ -1,12 +1,11 @@
 "use client";
 
-import { auth } from "@ericbutera/kaleido";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import AuthRequiredCard from "../../components/AuthRequiredCard";
 import IntegrationEventFeed from "../../components/IntegrationEventFeed";
 import Layout from "../../components/Layout";
+import RequireAuth from "../../components/RequireAuth";
 import {
   DEFAULT_UNIT_SYSTEM,
   extractApiMessage,
@@ -171,20 +170,29 @@ function isStravaSyncActive(status: string) {
 }
 
 export default function AccountPage() {
-  const authApi = auth.useAuthApi();
-  const { user, isLoading: isLoadingUser } = authApi.useCurrentUser();
+  return (
+    <Layout>
+      <section className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+        <RequireAuth>
+          <AuthenticatedAccountPage />
+        </RequireAuth>
+      </section>
+    </Layout>
+  );
+}
+
+function AuthenticatedAccountPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const preferencesQuery = useUserPreferences({ enabled: !!user });
+  const preferencesQuery = useUserPreferences();
   const stravaQuery = useStravaConnection({
-    enabled: !!user,
-    refetchIntervalMs: user ? 5000 : false,
+    refetchIntervalMs: 5000,
   });
   const updatePreferencesMutation = useUpdateUserPreferences();
   const startStravaConnectMutation = useStartStravaConnect();
   const queueStravaSyncMutation = useQueueStravaSync();
   const disconnectStravaMutation = useDisconnectStrava();
-  const garminDevicesQuery = useGarminIqLinkedDevices({ enabled: !!user });
+  const garminDevicesQuery = useGarminIqLinkedDevices();
   const completeGarminLinkMutation = useCompleteGarminIqLink();
   const unlinkGarminDeviceMutation = useUnlinkGarminIqDevice();
   const unitSystem = normalizeUnitSystem(preferencesQuery.data?.unit_system);
@@ -193,11 +201,8 @@ export default function AccountPage() {
     preferencesQuery.data?.heart_rate_zone_bounds_bpm ?? null;
   const stravaConnection = stravaQuery.data;
   const stravaEventsQuery = useStravaIntegrationEvents({
-    enabled: !!user,
     refetchIntervalMs:
-      user && isStravaSyncActive(stravaConnection.last_sync_status)
-        ? 5000
-        : false,
+      isStravaSyncActive(stravaConnection.last_sync_status) ? 5000 : false,
   });
   const [draftUnitSystem, setDraftUnitSystem] =
     useState<UnitSystem>(DEFAULT_UNIT_SYSTEM);
@@ -363,27 +368,22 @@ export default function AccountPage() {
   );
   const garminDevices = garminDevicesQuery.data;
 
+  if (
+    preferencesQuery.isLoading ||
+    stravaQuery.isLoading ||
+    garminDevicesQuery.isLoading
+  ) {
+    return (
+      <div className="card bg-base-100 shadow-xl">
+        <div className="card-body items-center py-10">
+          <span className="loading loading-spinner loading-md" />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <Layout>
-      <section className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
-        {isLoadingUser ||
-        (user &&
-          (preferencesQuery.isLoading ||
-            stravaQuery.isLoading ||
-            garminDevicesQuery.isLoading)) ? (
-          <div className="card bg-base-100 shadow-xl">
-            <div className="card-body items-center py-10">
-              <span className="loading loading-spinner loading-md" />
-            </div>
-          </div>
-        ) : !user ? (
-          <AuthRequiredCard
-            eyebrow="Account"
-            title="Sign in to manage preferences"
-            description="Bike stores unit preferences, heart rate zones, and FTP estimates per account so activity analysis stays consistent."
-          />
-        ) : (
-          <div className="space-y-6">
+    <div className="space-y-6">
             <div>
               <p className="text-sm uppercase tracking-[0.22em] text-base-content/50">
                 Account
@@ -968,8 +968,5 @@ export default function AccountPage() {
               </div>
             </div>
           </div>
-        )}
-      </section>
-    </Layout>
   );
 }
