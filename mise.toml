@@ -1,0 +1,31 @@
+[tools]
+node = "25.2.1"
+pnpm = "10.30.1"
+prek = "0.4.12"
+"npm:prettier" = "3.7.4"
+
+[settings]
+disable_tools = [
+  "act",
+  "copier",
+  "dotnet",
+  "go",
+  "helm",
+  "k9s",
+  "kubectl",
+  "pulumi",
+  "python",
+  "ripgrep",
+  "rust",
+  "task",
+  "tilt",
+  "woodpecker-cli",
+]
+
+[tasks."hooks:install"]
+description = "Install prek Git hooks for this repository"
+run = "prek install -f"
+
+[tasks."format:staged"]
+description = "Run prek on staged files"
+run = "prek run"

@@ -1,0 +1,8 @@
+ui-next/.next/
+ui-next/coverage/
+ui-next/dist/
+ui-next/node_modules/
+ui-next/output.log
+ui-next/stderr.log
+ui-next/stdout.log
+ui-next/typecheck_output.txt

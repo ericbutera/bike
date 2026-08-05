@@ -1,0 +1,12 @@
+minimum_prek_version = "0.4.0"
+
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "prettier"
+name = "Prettier"
+language = "system"
+entry = "mise exec -- prettier --write --ignore-unknown"
+files = "^ui-next/.*\\.(css|js|jsx|json|jsonc|md|mdx|ts|tsx|yaml|yml)$"
+exclude = "^ui-next/(\\.next|coverage|dist|node_modules|public)/"
