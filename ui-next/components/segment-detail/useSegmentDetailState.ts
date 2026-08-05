@@ -2,10 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import {
-  formatDuration,
-  type UnitSystem,
-} from "../../lib/activityFormatting";
+import { type UnitSystem } from "../../lib/activityFormatting";
 import {
   useSegment,
   useSegmentComparison,
@@ -76,12 +73,9 @@ export type SegmentComparisonWorkspace = {
   selectedRows: SelectedEffortRow[];
   liveComparisonRows: LiveComparisonRow[];
   focusedEffortId: number | null;
-  referenceEffortId: number | null;
-  referenceSummaryLabel: string;
   raceViewerHref: string | null;
   actions: {
     hoverEffort: (effortId: number | null) => void;
-    togglePinnedEffort: (effortId: number) => void;
     removeEffort: (effortId: number) => void;
   };
 };
@@ -107,13 +101,9 @@ export type SegmentEffortsContainer = {
   selectedEfforts: SegmentEffort[];
   selectedRows: SelectedEffortRow[];
   focusedEffortId: number | null;
-  referenceEffortId: number | null;
-  referenceEffort: SegmentEffort | null;
-  referenceSummaryLabel: string;
   raceViewerHref: (playbackPace?: PlaybackPace) => string | null;
   actions: {
     hoverEffort: (effortId: number | null) => void;
-    togglePinnedEffort: (effortId: number) => void;
     addEffort: (effortId: number) => void;
     removeEffort: (effortId: number) => void;
   };
@@ -136,17 +126,6 @@ function useCurrentSegmentRider() {
     }),
     [currentUserId, currentUserName],
   );
-}
-
-function currentRiderMatchesEffort(
-  effort: SegmentEffort,
-  currentRider: SegmentCurrentRider,
-) {
-  if (currentRider.id != null) {
-    return effort.rider_user_id === currentRider.id;
-  }
-
-  return currentRider.name ? effort.rider_name === currentRider.name : false;
 }
 
 function currentRiderFastestEffort(
@@ -192,21 +171,15 @@ function selectedRowsForEfforts(selectedEfforts: SegmentEffort[]) {
 
 function segmentEffortSearchParams({
   selectedEffortIds,
-  referenceEffortId,
   playbackPace,
 }: {
   selectedEffortIds: number[];
-  referenceEffortId: number | null;
   playbackPace?: PlaybackPace;
 }) {
   const searchParams = new URLSearchParams();
 
   if (selectedEffortIds.length > 0) {
     searchParams.set("efforts", selectedEffortIds.join(","));
-  }
-
-  if (referenceEffortId != null) {
-    searchParams.set("ref", String(referenceEffortId));
   }
 
   if (playbackPace && playbackPace !== "auto") {
@@ -219,15 +192,12 @@ function segmentEffortSearchParams({
 export function buildSegmentDetailHref({
   segmentId,
   selectedEffortIds,
-  referenceEffortId,
 }: {
   segmentId: number | string;
   selectedEffortIds: number[];
-  referenceEffortId: number | null;
 }) {
   const queryString = segmentEffortSearchParams({
     selectedEffortIds,
-    referenceEffortId,
   }).toString();
 
   return `/segments/${segmentId}${queryString ? `?${queryString}` : ""}`;
@@ -236,44 +206,18 @@ export function buildSegmentDetailHref({
 export function buildSegmentRaceViewerHref({
   segmentId,
   selectedEffortIds,
-  referenceEffortId,
   playbackPace,
 }: {
   segmentId: number | string;
   selectedEffortIds: number[];
-  referenceEffortId: number | null;
   playbackPace?: PlaybackPace;
 }) {
   const queryString = segmentEffortSearchParams({
     selectedEffortIds,
-    referenceEffortId,
     playbackPace,
   }).toString();
 
   return `/segments/${segmentId}/race${queryString ? `?${queryString}` : ""}`;
-}
-
-export function chooseSegmentReferenceEffortId({
-  selectedEfforts,
-  requestedReferenceEffortId,
-  currentRider,
-}: {
-  selectedEfforts: SegmentEffort[];
-  requestedReferenceEffortId: number | null;
-  currentRider: SegmentCurrentRider;
-}) {
-  if (
-    requestedReferenceEffortId != null &&
-    selectedEfforts.some((effort) => effort.id === requestedReferenceEffortId)
-  ) {
-    return requestedReferenceEffortId;
-  }
-
-  const currentRiderReference = selectedEfforts.find((effort) =>
-    currentRiderMatchesEffort(effort, currentRider),
-  );
-
-  return currentRiderReference?.id ?? selectedEfforts[0]?.id ?? null;
 }
 
 export function useSegmentWithComparison(segmentId: number | string) {
@@ -391,61 +335,6 @@ export function useSegmentEffortSelection({
     setSelectedEffortIds,
     addEffort,
     removeEffort,
-  };
-}
-
-export function useSegmentReferenceEffortState({
-  segmentId,
-  segment,
-  selectedEfforts,
-  initialReferenceEffortId,
-}: {
-  segmentId: number | string;
-  segment: Segment | null;
-  selectedEfforts: SegmentEffort[];
-  initialReferenceEffortId: number | null;
-}) {
-  const currentRider = useCurrentSegmentRider();
-  const requestedReferenceBySegmentIdRef = useRef(
-    new Map<number, number | null>([
-      [Number(segmentId), initialReferenceEffortId],
-    ]),
-  );
-  const [referenceEffortId, setReferenceEffortId] = useState<number | null>(
-    initialReferenceEffortId,
-  );
-  const referenceEffort =
-    selectedEfforts.find((effort) => effort.id === referenceEffortId) ?? null;
-
-  useEffect(() => {
-    if (selectedEfforts.length === 0) {
-      setReferenceEffortId(null);
-      return;
-    }
-
-    setReferenceEffortId((current) => {
-      if (
-        current != null &&
-        selectedEfforts.some((effort) => effort.id === current)
-      ) {
-        return current;
-      }
-
-      return chooseSegmentReferenceEffortId({
-        selectedEfforts,
-        requestedReferenceEffortId:
-          segment?.id != null
-            ? (requestedReferenceBySegmentIdRef.current.get(segment.id) ?? null)
-            : initialReferenceEffortId,
-        currentRider,
-      });
-    });
-  }, [currentRider, initialReferenceEffortId, segment?.id, selectedEfforts]);
-
-  return {
-    referenceEffortId,
-    referenceEffort,
-    setReferenceEffortId,
   };
 }
 
@@ -649,14 +538,11 @@ export function useSegmentEffortsContainer({
   segmentId,
   segment,
   initialSelectedEffortIds,
-  initialReferenceEffortId,
 }: {
   segmentId: number | string;
   segment: Segment | null;
   initialSelectedEffortIds: number[];
-  initialReferenceEffortId: number | null;
 }): SegmentEffortsContainer {
-  const currentRider = useCurrentSegmentRider();
   const effortSelection = useSegmentEffortSelection({
     segmentId,
     segment,
@@ -664,9 +550,6 @@ export function useSegmentEffortsContainer({
     reseedWhenSelectionEmpty: false,
   });
   const [hoveredEffortId, setHoveredEffortId] = useState<number | null>(null);
-  const [pinnedEffortId, setPinnedEffortId] = useState<number | null>(
-    initialReferenceEffortId,
-  );
   const [effortTimeFilter, setEffortTimeFilter] =
     useState<EffortTimeFilter>("all");
   const {
@@ -680,17 +563,6 @@ export function useSegmentEffortsContainer({
     segment?.efforts,
     effortTimeFilter,
   );
-  const focusedEffortId = hoveredEffortId ?? pinnedEffortId;
-  const referenceEffortId = chooseSegmentReferenceEffortId({
-    selectedEfforts,
-    requestedReferenceEffortId: pinnedEffortId,
-    currentRider,
-  });
-  const referenceEffort =
-    selectedEfforts.find((effort) => effort.id === referenceEffortId) ?? null;
-  const referenceSummaryLabel = referenceEffort
-    ? `${referenceEffort.rider_name} - ${formatDuration(referenceEffort.duration_seconds)}`
-    : "No reference ride";
   const raceViewerHref = (playbackPace?: PlaybackPace) => {
     if (!segment?.id) {
       return null;
@@ -699,30 +571,18 @@ export function useSegmentEffortsContainer({
     return buildSegmentRaceViewerHref({
       segmentId: segment.id,
       selectedEffortIds,
-      referenceEffortId,
       playbackPace,
     });
   };
 
   useEffect(() => {
     if (
-      pinnedEffortId != null &&
-      !selectedEfforts.some((effort) => effort.id === pinnedEffortId)
-    ) {
-      setPinnedEffortId(null);
-    }
-
-    if (
       hoveredEffortId != null &&
       !selectedEfforts.some((effort) => effort.id === hoveredEffortId)
     ) {
       setHoveredEffortId(null);
     }
-  }, [hoveredEffortId, pinnedEffortId, selectedEfforts]);
-
-  function togglePinnedEffort(effortId: number) {
-    setPinnedEffortId((current) => (current === effortId ? null : effortId));
-  }
+  }, [hoveredEffortId, selectedEfforts]);
 
   return {
     effortList: {
@@ -737,14 +597,10 @@ export function useSegmentEffortsContainer({
     selectedEffortIds,
     selectedEfforts,
     selectedRows,
-    focusedEffortId,
-    referenceEffortId,
-    referenceEffort,
-    referenceSummaryLabel,
+    focusedEffortId: hoveredEffortId,
     raceViewerHref,
     actions: {
       hoverEffort: setHoveredEffortId,
-      togglePinnedEffort,
       addEffort,
       removeEffort,
     },

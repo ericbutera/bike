@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildLeaderGroupFollowViewport,
   buildLeaderPairFollowViewport,
-  parseOptionalPositiveNumberParam,
   parsePlaybackPaceParam,
   parseRacePlaybackSpeedParam,
   parseSelectedEffortIdsParam,
@@ -104,12 +103,6 @@ describe("segment route param parsers", () => {
     expect(parseSelectedEffortIdsParam("1, 2,bad,-3,4")).toEqual([1, 2, 4]);
     expect(parseSelectedEffortIdsParam(["7,8", "9"])).toEqual([7, 8]);
     expect(parseSelectedEffortIdsParam(undefined)).toEqual([]);
-  });
-
-  it("parses optional positive number params", () => {
-    expect(parseOptionalPositiveNumberParam("12")).toBe(12);
-    expect(parseOptionalPositiveNumberParam("0")).toBeNull();
-    expect(parseOptionalPositiveNumberParam("bad")).toBeNull();
   });
 
   it("parses playback pace params", () => {

@@ -10,7 +10,6 @@ import {
   ComposedChart,
   Line,
   ReferenceDot,
-  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -29,11 +28,9 @@ import { LoadingSpinner } from "../ui/QueryState";
 import {
   ATHLETE_PANEL_ROW_ANIMATION_MS,
   PLAYBACK_PACE_OPTIONS,
-  buildGapChartRowAtProgress,
-  buildGapChartRows,
-  buildPlaybackGapMarker,
+  buildEffortOverlayChartRows,
+  buildPlaybackEffortOverlayMarker,
   comparisonMarkerPoint,
-  effortProgressAtElapsed,
   effortSeriesDataKey,
   formatSignedSecondsDelta,
   formatSignedSpeedDelta,
@@ -89,60 +86,67 @@ function formatTooltipDuration(value?: number | null) {
   return formatTooltipSeconds(wholeSeconds, fractionalMilliseconds, false);
 }
 
+type ComparisonGapChartTooltipPayloadEntry = {
+  color?: string;
+  dataKey?: string;
+  payload?: GapChartRow;
+  value?: number | string | null;
+};
+
+function numericChartValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function comparisonTooltipContext({
+  label,
+  payload,
+}: {
+  label: number;
+  payload?: ComparisonGapChartTooltipPayloadEntry[];
+}) {
+  const tooltipRow = payload?.find((entry) => entry.payload)?.payload;
+  const elevationEntry = payload?.find(
+    (entry) => entry.dataKey === "elevation",
+  );
+
+  return {
+    progress: numericChartValue(tooltipRow?.progress),
+    distanceMeters: numericChartValue(tooltipRow?.distanceMeters) ?? label,
+    elevationMeters:
+      numericChartValue(tooltipRow?.elevation) ??
+      numericChartValue(elevationEntry?.value),
+  };
+}
+
 export function ComparisonGapChartTooltip({
   active,
   label,
   payload,
   selectedRows,
-  referenceEffort,
   unitSystem,
 }: {
   active?: boolean;
   label?: number;
-  payload?: Array<{
-    color?: string;
-    dataKey?: string;
-    payload?: GapChartRow;
-    value?: number | string | null;
-  }>;
+  payload?: ComparisonGapChartTooltipPayloadEntry[];
   selectedRows: SelectedEffortRow[];
-  referenceEffort: SelectedEffortRow["effort"] | null;
   unitSystem: UnitSystem;
 }) {
   if (!active || typeof label !== "number") {
     return null;
   }
 
-  const tooltipRow = payload?.find((entry) => entry.payload != null)?.payload;
-  const progress =
-    typeof tooltipRow?.progress === "number" ? tooltipRow.progress : null;
-  const distanceValue =
-    typeof tooltipRow?.distanceMeters === "number"
-      ? tooltipRow.distanceMeters
-      : label;
-  const elevationValue =
-    typeof tooltipRow?.elevation === "number"
-      ? tooltipRow.elevation
-      : typeof payload?.find((entry) => entry.dataKey === "elevation")
-            ?.value === "number"
-        ? Number(payload?.find((entry) => entry.dataKey === "elevation")?.value)
-        : null;
-  const referencePoint =
-    progress != null
-      ? interpolateRoutePointByProgress(referenceEffort?.route_points, progress)
-      : null;
+  const { progress, distanceMeters, elevationMeters } = comparisonTooltipContext(
+    { label, payload },
+  );
 
   return (
     <div className="max-w-[26rem] border border-base-300 bg-base-100 px-3 py-3 shadow-lg">
       <div className="flex flex-wrap gap-2 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-base-content/60">
         <span className="border border-base-300 bg-base-200/70 px-2 py-1">
-          Time {formatTooltipDuration(referencePoint?.elapsed_seconds ?? null)}
+          Elev {formatElevation(elevationMeters, unitSystem)}
         </span>
         <span className="border border-base-300 bg-base-200/70 px-2 py-1">
-          Elev {formatElevation(elevationValue, unitSystem)}
-        </span>
-        <span className="border border-base-300 bg-base-200/70 px-2 py-1">
-          Dist {formatDistance(distanceValue, unitSystem)}
+          Dist {formatDistance(distanceMeters, unitSystem)}
         </span>
       </div>
 
@@ -261,49 +265,27 @@ function ComparisonChart({
   routePoints,
   routeDistanceMeters,
   selectedRows,
-  referenceEffortId,
   playbackSeconds,
   unitSystem,
 }: {
   routePoints: ActivityRoutePoint[] | null | undefined;
   routeDistanceMeters: number | null | undefined;
   selectedRows: SelectedEffortRow[];
-  referenceEffortId: number | null;
   playbackSeconds: number;
   unitSystem: UnitSystem;
 }) {
   const [hoveredRow, setHoveredRow] = useState<GapChartRow | null>(null);
-  const referenceEffort =
-    selectedRows.find(
-      (selectedRow) => selectedRow.effort.id === referenceEffortId,
-    )?.effort ?? null;
   const chartRows = useMemo(
     () =>
-      buildGapChartRows(
+      buildEffortOverlayChartRows(
         routePoints,
         selectedRows,
-        referenceEffort,
         routeDistanceMeters,
       ),
-    [referenceEffort, routeDistanceMeters, routePoints, selectedRows],
+    [routeDistanceMeters, routePoints, selectedRows],
   );
   const maxDistance =
     chartRows.at(-1)?.distanceMeters ?? routeDistanceMeters ?? 1;
-  const playbackProgress = referenceEffort
-    ? effortProgressAtElapsed(referenceEffort, playbackSeconds)
-    : null;
-  const playbackRow =
-    referenceEffort && playbackProgress != null
-      ? buildGapChartRowAtProgress(
-          playbackProgress,
-          routePoints,
-          selectedRows,
-          referenceEffort,
-          routeDistanceMeters,
-        )
-      : null;
-  const displayRow = hoveredRow ?? playbackRow;
-  const displayDistance = displayRow?.distanceMeters ?? 0;
 
   return chartRows.length >= 2 ? (
     <div
@@ -367,16 +349,15 @@ function ComparisonChart({
             axisLine={false}
             orientation="right"
             tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
-            tickFormatter={(value: number) => formatSignedSecondsDelta(value)}
+            tickFormatter={(value: number) => formatDuration(Math.round(value))}
             tickLine={false}
             tickMargin={10}
             width={72}
-            yAxisId="gap"
+            yAxisId="elapsed"
           />
           <Tooltip
             content={
               <ComparisonGapChartTooltip
-                referenceEffort={referenceEffort}
                 selectedRows={selectedRows}
                 unitSystem={unitSystem}
               />
@@ -400,24 +381,15 @@ function ComparisonChart({
             dot={false}
             connectNulls
           />
-          <ReferenceLine
-            y={0}
-            yAxisId="gap"
-            stroke="#52525b"
-            strokeOpacity={0.8}
-          />
-
           {selectedRows.map((selectedRow) => {
-            const isReference = selectedRow.effort.id === referenceEffortId;
-
             return (
               <Line
                 key={selectedRow.effort.id}
                 type="linear"
                 dataKey={effortSeriesDataKey(selectedRow.effort.id)}
-                yAxisId="gap"
+                yAxisId="elapsed"
                 stroke={selectedRow.color}
-                strokeWidth={isReference ? 3.2 : 2.4}
+                strokeWidth={2.4}
                 strokeOpacity={1}
                 dot={false}
                 activeDot={false}
@@ -426,21 +398,11 @@ function ComparisonChart({
             );
           })}
 
-          {!hoveredRow && displayRow && displayDistance > 0 ? (
-            <ReferenceLine
-              x={displayDistance}
-              stroke="#52525b"
-              strokeDasharray="4 4"
-            />
-          ) : null}
-
-          {!hoveredRow && displayRow
+          {!hoveredRow
             ? selectedRows.map((selectedRow) => {
-                const playbackMarker = buildPlaybackGapMarker(
+                const playbackMarker = buildPlaybackEffortOverlayMarker(
                   selectedRow,
                   routePoints,
-                  selectedRows,
-                  referenceEffort,
                   routeDistanceMeters,
                   playbackSeconds,
                 );
@@ -460,7 +422,7 @@ function ComparisonChart({
                     stroke="var(--color-base-100)"
                     strokeOpacity={1}
                     strokeWidth={1.2}
-                    yAxisId="gap"
+                    yAxisId="elapsed"
                   />
                 );
               })
@@ -481,20 +443,14 @@ function ComparisonChart({
 function SelectedEffortsPanel({
   comparisonRows,
   focusedEffortId,
-  referenceEffortId,
-  playbackSeconds,
   unitSystem,
   onHoverEffort,
-  onTogglePinnedEffort,
   onRemoveEffort,
 }: {
   comparisonRows: LiveComparisonRow[];
   focusedEffortId: number | null;
-  referenceEffortId: number | null;
-  playbackSeconds: number;
   unitSystem: UnitSystem;
   onHoverEffort: (effortId: number | null) => void;
-  onTogglePinnedEffort: (effortId: number) => void;
   onRemoveEffort: (effortId: number) => void;
 }) {
   const rowRefs = useRef(new Map<number, HTMLLIElement>());
@@ -605,7 +561,7 @@ function SelectedEffortsPanel({
               className={`grid items-center gap-3 text-xs font-semibold uppercase tracking-[0.14em] text-base-content/55 xl:gap-4 ${athleteGridTemplateClassName}`}
             >
               <span className="col-span-2">Athletes</span>
-              <span className="justify-self-end text-right">Time</span>
+              <span className="justify-self-end text-right">Gap</span>
               <span className="justify-self-end text-right">Speed</span>
               <span className="justify-self-end text-right">HR</span>
               <span aria-hidden="true" className="block" />
@@ -615,7 +571,7 @@ function SelectedEffortsPanel({
           <ul className="list bg-base-100 p-0">
             {sortedComparisonRows.map((comparisonRow) => {
               const isFocused = focusedEffortId === comparisonRow.effort.id;
-              const speedValue = comparisonRow.isReference
+              const speedValue = comparisonRow.isLeader
                 ? formatSpeed(
                     comparisonRow.currentPoint?.speed_mps ?? null,
                     unitSystem,
@@ -629,15 +585,8 @@ function SelectedEffortsPanel({
                 : formatHeartRate(
                     comparisonRow.currentPoint?.heart_rate_bpm ?? null,
                   );
-              const timeValue = comparisonRow.isReference
-                ? formatDuration(
-                    Math.round(
-                      Math.min(
-                        playbackSeconds,
-                        comparisonRow.effort.duration_seconds,
-                      ),
-                    ),
-                  )
+              const timeValue = comparisonRow.isLeader
+                ? "Lead"
                 : formatSignedSecondsDelta(comparisonRow.gapSeconds);
               const isPositiveGap = (comparisonRow.gapSeconds ?? 0) > 0;
               const isNegativeGap = (comparisonRow.gapSeconds ?? 0) < 0;
@@ -671,21 +620,7 @@ function SelectedEffortsPanel({
                     {comparisonRow.markerLabel}
                   </span>
 
-                  <button
-                    type="button"
-                    className="min-w-0 text-left"
-                    aria-pressed={comparisonRow.effort.id === referenceEffortId}
-                    aria-label={`Make ${comparisonRow.effort.activity_title} the reference ride`}
-                    onFocus={() => {
-                      onHoverEffort(comparisonRow.effort.id);
-                    }}
-                    onBlur={() => {
-                      onHoverEffort(null);
-                    }}
-                    onClick={() => {
-                      onTogglePinnedEffort(comparisonRow.effort.id);
-                    }}
-                  >
+                  <div className="min-w-0 text-left">
                     <div className="min-w-0">
                       <div className="truncate font-semibold leading-tight text-base-content">
                         {comparisonRow.effort.rider_name}
@@ -696,16 +631,16 @@ function SelectedEffortsPanel({
                         )}
                       </div>
                     </div>
-                  </button>
+                  </div>
 
                   <div
-                    className={`justify-self-end text-right font-semibold ${comparisonRow.isReference ? "text-base-content" : isPositiveGap ? "text-success" : isNegativeGap ? "text-error" : "text-base-content"}`}
+                    className={`justify-self-end text-right font-semibold ${comparisonRow.isLeader ? "text-success" : isPositiveGap ? "text-error" : isNegativeGap ? "text-success" : "text-base-content"}`}
                   >
                     {timeValue}
                   </div>
 
                   <div
-                    className={`justify-self-end text-right font-semibold ${comparisonRow.isReference ? "text-base-content" : isPositiveSpeed ? "text-success" : isNegativeSpeed ? "text-error" : "text-base-content"}`}
+                    className={`justify-self-end text-right font-semibold ${comparisonRow.isLeader ? "text-base-content" : isPositiveSpeed ? "text-success" : isNegativeSpeed ? "text-error" : "text-base-content"}`}
                   >
                     {speedValue}
                   </div>
@@ -759,8 +694,6 @@ export default function SegmentDetailComparisonSection({
     selectedRows,
     liveComparisonRows,
     focusedEffortId,
-    referenceEffortId,
-    referenceSummaryLabel,
     raceViewerHref,
     actions,
   } = workspace;
@@ -774,15 +707,11 @@ export default function SegmentDetailComparisonSection({
               Comparison workspace
             </h2>
             <p className="text-sm text-base-content/70">
-              Playback follows the reference ride so time gaps, speed, and heart
-              rate update on every frame.
+              Playback follows elapsed time so positions, leader gaps, speed,
+              and heart rate update on every frame.
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <span className="badge badge-outline whitespace-nowrap">
-              Ref: {referenceSummaryLabel}
-            </span>
-
             {raceViewerHref ? (
               <Link href={raceViewerHref} className="btn btn-sm btn-outline">
                 Open race viewer
@@ -805,11 +734,8 @@ export default function SegmentDetailComparisonSection({
                 <SelectedEffortsPanel
                   comparisonRows={liveComparisonRows}
                   focusedEffortId={focusedEffortId}
-                  referenceEffortId={referenceEffortId}
-                  playbackSeconds={playback.seconds}
                   unitSystem={unitSystem}
                   onHoverEffort={actions.hoverEffort}
-                  onTogglePinnedEffort={actions.togglePinnedEffort}
                   onRemoveEffort={actions.removeEffort}
                 />
               </div>
@@ -899,7 +825,6 @@ export default function SegmentDetailComparisonSection({
                 routePoints={routePoints}
                 routeDistanceMeters={routeDistanceMeters}
                 selectedRows={selectedRows}
-                referenceEffortId={referenceEffortId}
                 playbackSeconds={playback.seconds}
                 unitSystem={unitSystem}
               />

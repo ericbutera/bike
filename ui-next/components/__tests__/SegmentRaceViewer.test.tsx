@@ -128,12 +128,10 @@ function makeSegment() {
 function renderRaceViewer({
   segment = makeSegment(),
   selectedEffortIds = [3896, 3954, 3586],
-  referenceEffortId = 3896,
   initialPlaybackSpeed,
 }: {
   segment?: ReturnType<typeof makeSegment>;
   selectedEffortIds?: number[];
-  referenceEffortId?: number | null;
   initialPlaybackSpeed?: ComponentProps<
     typeof SegmentRaceViewer
   >["initialPlaybackSpeed"];
@@ -160,7 +158,6 @@ function renderRaceViewer({
       <SegmentRaceViewer
         segmentId={1}
         initialSelectedEffortIds={selectedEffortIds}
-        initialReferenceEffortId={referenceEffortId}
         initialPlaybackSpeed={initialPlaybackSpeed}
       />
     </RequireAuth>,
@@ -170,7 +167,7 @@ function renderRaceViewer({
 function getPlaybackTimer(container: HTMLElement) {
   const timer = container.querySelector(".tabular-nums");
 
-  expect(timer).toHaveTextContent("-- / 1m 35s");
+  expect(timer).toHaveTextContent("-- / 1m 45s");
 
   return timer as HTMLElement;
 }
@@ -205,7 +202,7 @@ describe("SegmentRaceViewer", () => {
 
     expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute(
       "href",
-      "/segments/1?efforts=3896%2C3954%2C3586&ref=3896",
+      "/segments/1?efforts=3896%2C3954%2C3586",
     );
   });
 
@@ -223,7 +220,7 @@ describe("SegmentRaceViewer", () => {
     ).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute(
       "href",
-      "/segments/1?efforts=3896%2C3586&ref=3896",
+      "/segments/1?efforts=3896%2C3586",
     );
   });
 
@@ -289,7 +286,6 @@ describe("SegmentRaceViewer", () => {
     renderRaceViewer({
       segment,
       selectedEffortIds: [1, 2, 3],
-      referenceEffortId: 2,
     });
 
     fireEvent.change(screen.getByLabelText("Race playback timeline"), {

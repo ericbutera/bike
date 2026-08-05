@@ -1,10 +1,7 @@
 import Layout from "../../../components/Layout";
 import RequireAuth from "../../../components/RequireAuth";
 import SegmentDetailPanel from "../../../components/SegmentDetailPanel";
-import {
-  parseOptionalPositiveNumberParam,
-  parseSelectedEffortIdsParam,
-} from "../../../lib/segmentDetail";
+import { parseSelectedEffortIdsParam } from "../../../lib/segmentDetail";
 
 export default async function SegmentDetailPage({
   params,
@@ -24,9 +21,6 @@ export default async function SegmentDetailPage({
             segmentId={id}
             initialSelectedEffortIds={parseSelectedEffortIdsParam(
               resolvedSearchParams.efforts,
-            )}
-            initialReferenceEffortId={parseOptionalPositiveNumberParam(
-              resolvedSearchParams.ref,
             )}
           />
         </RequireAuth>

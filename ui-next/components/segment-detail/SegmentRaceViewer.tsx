@@ -19,10 +19,9 @@ import {
   RACE_PLAYBACK_SPEED_OPTIONS,
   buildLeaderGroupFollowViewport,
   buildLeaderPairFollowViewport,
-  buildLiveComparisonRows,
+  buildLiveLeaderComparisonRows,
   comparisonMarkerPoint,
   formatSignedSecondsDelta,
-  interpolateRoutePointByProgress,
   sortLiveComparisonRowsByLeader,
   type LiveComparisonRow,
   type RacePlaybackSpeed,
@@ -33,7 +32,6 @@ import {
   buildSegmentDetailHref,
   useSegmentEffortSelection,
   useSegmentPlayback,
-  useSegmentReferenceEffortState,
   useSegmentWithComparison,
 } from "./useSegmentDetailState";
 
@@ -280,12 +278,10 @@ function RaceViewerMap({
 export default function SegmentRaceViewer({
   segmentId,
   initialSelectedEffortIds,
-  initialReferenceEffortId,
   initialPlaybackSpeed = 1,
 }: {
   segmentId: number | string;
   initialSelectedEffortIds: number[];
-  initialReferenceEffortId: number | null;
   initialPlaybackSpeed?: RacePlaybackSpeed;
 }) {
   const { segmentQuery, comparisonQuery, segment } =
@@ -302,62 +298,33 @@ export default function SegmentRaceViewer({
     initialSelectedEffortIds,
     reseedWhenSelectionEmpty: true,
   });
-  const { selectedEffortIds, selectedEfforts, selectedRows, removeEffort } =
-    effortSelection;
-  const { referenceEffortId, referenceEffort } =
-    useSegmentReferenceEffortState({
-      segmentId,
-      segment,
-      selectedEfforts,
-      initialReferenceEffortId,
-    });
-  const playbackLimitSeconds = referenceEffort?.duration_seconds ?? 0;
+  const { selectedEffortIds, selectedRows, removeEffort } = effortSelection;
+  const playbackLimitSeconds = Math.max(
+    0,
+    ...selectedRows.map((row) => row.effort.duration_seconds),
+  );
   const playback = useSegmentPlayback({
     playbackLimitSeconds,
     playbackRate: playbackSpeed > 0 ? playbackSpeed : 0,
   });
   const comparisonRows = useMemo(
-    () =>
-      buildLiveComparisonRows(selectedRows, referenceEffort, playback.seconds),
-    [playback.seconds, referenceEffort, selectedRows],
+    () => buildLiveLeaderComparisonRows(selectedRows, playback.seconds),
+    [playback.seconds, selectedRows],
   );
   const sortedComparisonRows = useMemo(
     () => sortLiveComparisonRowsByLeader(comparisonRows),
     [comparisonRows],
   );
-  const leaderGapByEffortId = useMemo(() => {
-    const leaderRow = sortedComparisonRows[0];
-
-    if (!leaderRow || leaderRow.progress == null) {
-      return new Map<number, number | null>();
-    }
-
-    const leaderProgressPoint = interpolateRoutePointByProgress(
-      leaderRow.effort.route_points,
-      leaderRow.progress,
-    );
-
-    if (!leaderProgressPoint) {
-      return new Map<number, number | null>();
-    }
-
-    return new Map(
-      sortedComparisonRows.map((comparisonRow) => {
-        const progressPoint = interpolateRoutePointByProgress(
-          comparisonRow.effort.route_points,
-          leaderRow.progress ?? 0,
-        );
-
-        return [
+  const leaderGapByEffortId = useMemo(
+    () =>
+      new Map(
+        comparisonRows.map((comparisonRow) => [
           comparisonRow.effort.id,
-          progressPoint
-            ? progressPoint.elapsed_seconds -
-              leaderProgressPoint.elapsed_seconds
-            : null,
-        ];
-      }),
-    );
-  }, [sortedComparisonRows]);
+          comparisonRow.gapSeconds,
+        ]),
+      ),
+    [comparisonRows],
+  );
   const livePositionByEffortId = useMemo(
     () =>
       new Map(
@@ -372,9 +339,8 @@ export default function SegmentRaceViewer({
     return buildSegmentDetailHref({
       segmentId,
       selectedEffortIds,
-      referenceEffortId,
     });
-  }, [referenceEffortId, segmentId, selectedEffortIds]);
+  }, [segmentId, selectedEffortIds]);
 
   if (
     segmentQuery.isLoading ||

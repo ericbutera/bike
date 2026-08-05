@@ -14,7 +14,7 @@ export const EFFORT_COLORS = [
   "#c2410c",
 ];
 
-export const EFFORTS_PER_PAGE = 25;
+export const EFFORTS_PER_PAGE = 10;
 export const EMPTY_EFFORTS: SegmentEffort[] = [];
 export const EMPTY_EFFORT_IDS: number[] = [];
 export const AUTO_PLAYBACK_MIN_SECONDS = 25;
@@ -76,7 +76,7 @@ export type LiveComparisonRow = SelectedEffortRow & {
   currentPoint: ActivityRoutePoint | null;
   gapSeconds: number | null;
   speedDeltaMps: number | null;
-  isReference: boolean;
+  isLeader: boolean;
   progress: number | null;
   isFinished: boolean;
 };
@@ -87,6 +87,8 @@ export type GapChartRow = {
   elevation?: number | null;
   [key: string]: number | null | undefined;
 };
+
+export type EffortOverlayChartRow = GapChartRow;
 
 function firstRouteParamValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -105,16 +107,6 @@ export function parseSelectedEffortIdsParam(
     .split(",")
     .map((entry) => Number(entry.trim()))
     .filter((entry) => Number.isFinite(entry) && entry > 0);
-}
-
-export function parseOptionalPositiveNumberParam(
-  value: string | string[] | undefined,
-) {
-  const numericValue = Number(firstRouteParamValue(value));
-
-  return Number.isFinite(numericValue) && numericValue > 0
-    ? numericValue
-    : null;
 }
 
 export function parsePlaybackPaceParam(
@@ -795,28 +787,14 @@ export function effortSeriesDataKey(effortId: number) {
   return `effort_${effortId}`;
 }
 
-export function buildGapChartRowAtProgress(
+export function buildEffortOverlayChartRowAtProgress(
   progress: number,
   routePoints: ActivityRoutePoint[] | null | undefined,
   selectedRows: SelectedEffortRow[],
-  referenceEffort: SegmentEffort | null,
   fallbackDistanceMeters: number | null | undefined,
 ) {
-  if (!referenceEffort) {
-    return null;
-  }
-
-  const referencePoint = interpolateRoutePointByProgress(
-    referenceEffort.route_points,
-    progress,
-  );
-
-  if (!referencePoint) {
-    return null;
-  }
-
   const routePoint = interpolateRoutePointByProgress(routePoints, progress);
-  const row: GapChartRow = {
+  const row: EffortOverlayChartRow = {
     progress,
     distanceMeters: routeDistanceAtProgress(
       routePoints,
@@ -832,116 +810,74 @@ export function buildGapChartRowAtProgress(
       progress,
     );
 
-    row[effortSeriesDataKey(selectedRow.effort.id)] = comparisonPoint
-      ? referencePoint.elapsed_seconds - comparisonPoint.elapsed_seconds
-      : null;
+    row[effortSeriesDataKey(selectedRow.effort.id)] =
+      comparisonPoint?.elapsed_seconds ?? null;
   }
 
   return row;
 }
 
-export function buildGapChartRows(
+export function buildEffortOverlayChartRows(
   routePoints: ActivityRoutePoint[] | null | undefined,
   selectedRows: SelectedEffortRow[],
-  referenceEffort: SegmentEffort | null,
   fallbackDistanceMeters: number | null | undefined,
 ) {
-  if (!routePoints || routePoints.length < 2 || !referenceEffort) {
-    return [] as GapChartRow[];
+  if (!routePoints || routePoints.length < 2 || selectedRows.length === 0) {
+    return [] as EffortOverlayChartRow[];
   }
 
   const range = distanceRange(routePoints);
 
-  return routePoints
-    .map((point, index) => {
-      const progress = range
-        ? ((point.distance_meters as number) - range.firstDistance) /
-          range.totalDistance
-        : index / Math.max(routePoints.length - 1, 1);
+  return routePoints.map((point, index) => {
+    const progress = range
+      ? ((point.distance_meters as number) - range.firstDistance) /
+        range.totalDistance
+      : index / Math.max(routePoints.length - 1, 1);
 
-      return buildGapChartRowAtProgress(
-        progress,
-        routePoints,
-        selectedRows,
-        referenceEffort,
-        fallbackDistanceMeters,
-      );
-    })
-    .filter((row): row is GapChartRow => row !== null);
+    return buildEffortOverlayChartRowAtProgress(
+      progress,
+      routePoints,
+      selectedRows,
+      fallbackDistanceMeters,
+    );
+  });
 }
 
-export function buildPlaybackGapMarker(
+export function buildPlaybackEffortOverlayMarker(
   selectedRow: SelectedEffortRow,
   routePoints: ActivityRoutePoint[] | null | undefined,
-  selectedRows: SelectedEffortRow[],
-  referenceEffort: SegmentEffort | null,
   fallbackDistanceMeters: number | null | undefined,
   playbackSeconds: number,
 ) {
-  if (!referenceEffort) {
-    return null;
-  }
-
+  const activePlaybackSeconds = playbackSecondsForEffort(
+    selectedRow.effort,
+    playbackSeconds,
+  );
   const progress = effortProgressAtElapsed(
     selectedRow.effort,
-    playbackSecondsForEffort(selectedRow.effort, playbackSeconds),
+    activePlaybackSeconds,
   );
 
   if (progress == null) {
     return null;
   }
 
-  const row = buildGapChartRowAtProgress(
-    progress,
-    routePoints,
-    selectedRows,
-    referenceEffort,
-    fallbackDistanceMeters,
-  );
-
-  if (!row) {
-    return null;
-  }
-
-  const value = row[effortSeriesDataKey(selectedRow.effort.id)];
-
-  if (typeof value !== "number") {
-    return null;
-  }
-
   return {
-    distanceMeters: row.distanceMeters,
-    value,
+    distanceMeters: routeDistanceAtProgress(
+      routePoints,
+      progress,
+      fallbackDistanceMeters,
+    ),
+    value: activePlaybackSeconds,
     isFinished: isEffortFinishedAtPlayback(selectedRow.effort, playbackSeconds),
   };
 }
 
-export function buildLiveComparisonRows(
+export function buildLiveLeaderComparisonRows(
   selectedRows: SelectedEffortRow[],
-  referenceEffort: SegmentEffort | null,
   playbackSeconds: number,
 ) {
-  if (!referenceEffort) {
-    return [] as LiveComparisonRow[];
-  }
-
-  const referenceCurrentPoint = interpolateRoutePoint(
-    referenceEffort.route_points,
-    playbackSeconds,
-  );
-  const referenceProgress = effortProgressAtElapsed(
-    referenceEffort,
-    playbackSeconds,
-  );
-  const referenceProgressPoint =
-    referenceProgress != null
-      ? interpolateRoutePointByProgress(
-          referenceEffort.route_points,
-          referenceProgress,
-        )
-      : null;
-
-  return [...selectedRows].map((selectedRow) => {
+  const rows = selectedRows.map((selectedRow) => {
     const activePlaybackSeconds = playbackSecondsForEffort(
       selectedRow.effort,
       playbackSeconds,
@@ -960,31 +896,49 @@ export function buildLiveComparisonRows(
           selectedRow.effort.route_points,
           activePlaybackSeconds,
         );
-    const progressPoint =
-      referenceProgress != null
-        ? interpolateRoutePointByProgress(
-            selectedRow.effort.route_points,
-            referenceProgress,
-          )
-        : null;
 
     return {
       ...selectedRow,
       currentPoint,
-      gapSeconds:
-        referenceProgressPoint && progressPoint
-          ? referenceProgressPoint.elapsed_seconds -
-            progressPoint.elapsed_seconds
-          : null,
-      speedDeltaMps:
-        !isFinished &&
-        currentPoint?.speed_mps != null &&
-        referenceCurrentPoint?.speed_mps != null
-          ? currentPoint.speed_mps - referenceCurrentPoint.speed_mps
-          : null,
-      isReference: selectedRow.effort.id === referenceEffort.id,
+      gapSeconds: null,
+      speedDeltaMps: null,
+      isLeader: false,
       progress,
       isFinished,
+    };
+  });
+  const leaderRow = sortLiveComparisonRowsByLeader(rows)[0] ?? null;
+
+  if (!leaderRow || leaderRow.progress == null) {
+    return rows;
+  }
+
+  const leaderProgressPoint = interpolateRoutePointByProgress(
+    leaderRow.effort.route_points,
+    leaderRow.progress,
+  );
+
+  return rows.map((row) => {
+    const isLeader = row.effort.id === leaderRow.effort.id;
+    const progressPoint = interpolateRoutePointByProgress(
+      row.effort.route_points,
+      leaderRow.progress ?? 0,
+    );
+
+    return {
+      ...row,
+      gapSeconds:
+        leaderProgressPoint && progressPoint
+          ? progressPoint.elapsed_seconds - leaderProgressPoint.elapsed_seconds
+          : null,
+      speedDeltaMps:
+        !isLeader &&
+        !row.isFinished &&
+        row.currentPoint?.speed_mps != null &&
+        leaderRow.currentPoint?.speed_mps != null
+          ? row.currentPoint.speed_mps - leaderRow.currentPoint.speed_mps
+          : null,
+      isLeader,
     };
   });
 }

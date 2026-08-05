@@ -10,7 +10,7 @@ import {
 } from "../lib/queries";
 import {
   EMPTY_EFFORT_IDS,
-  buildLiveComparisonRows,
+  buildLiveLeaderComparisonRows,
   playbackTargetSeconds,
   type PlaybackPace,
 } from "../lib/segmentDetail";
@@ -29,11 +29,9 @@ import {
 export default function SegmentDetailPanel({
   segmentId,
   initialSelectedEffortIds = EMPTY_EFFORT_IDS,
-  initialReferenceEffortId = null,
 }: {
   segmentId: number | string;
   initialSelectedEffortIds?: number[];
-  initialReferenceEffortId?: number | null;
 }) {
   const router = useRouter();
   const { segmentQuery, comparisonQuery, segment } =
@@ -52,10 +50,12 @@ export default function SegmentDetailPanel({
     segmentId,
     segment,
     initialSelectedEffortIds,
-    initialReferenceEffortId,
   });
   const [playbackPace, setPlaybackPace] = useState<PlaybackPace>("auto");
-  const playbackLimitSeconds = efforts.referenceEffort?.duration_seconds ?? 0;
+  const playbackLimitSeconds = Math.max(
+    0,
+    ...efforts.selectedRows.map((row) => row.effort.duration_seconds),
+  );
   const targetPlaybackDurationSeconds = playbackTargetSeconds(
     playbackLimitSeconds,
     playbackPace,
@@ -69,13 +69,8 @@ export default function SegmentDetailPanel({
     playbackRate,
   });
   const liveComparisonRows = useMemo(
-    () =>
-      buildLiveComparisonRows(
-        efforts.selectedRows,
-        efforts.referenceEffort,
-        playback.seconds,
-      ),
-    [efforts.referenceEffort, efforts.selectedRows, playback.seconds],
+    () => buildLiveLeaderComparisonRows(efforts.selectedRows, playback.seconds),
+    [efforts.selectedRows, playback.seconds],
   );
   const raceViewerHref = efforts.raceViewerHref(playbackPace);
   const builderEditHref = segment?.builder_source
@@ -169,12 +164,9 @@ export default function SegmentDetailPanel({
           selectedRows: efforts.selectedRows,
           liveComparisonRows,
           focusedEffortId: efforts.focusedEffortId,
-          referenceEffortId: efforts.referenceEffortId,
-          referenceSummaryLabel: efforts.referenceSummaryLabel,
           raceViewerHref,
           actions: {
             hoverEffort: efforts.actions.hoverEffort,
-            togglePinnedEffort: efforts.actions.togglePinnedEffort,
             removeEffort: efforts.actions.removeEffort,
           },
         }}

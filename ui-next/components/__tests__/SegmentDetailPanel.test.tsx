@@ -376,11 +376,6 @@ describe("SegmentDetailPanel", () => {
     expect(
       screen.queryByRole("button", { name: "Heart rate" }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText(
-        "Click a ride to make it the reference line while playback runs.",
-      ),
-    ).not.toBeInTheDocument();
     expect(screen.queryByText("Hover point")).not.toBeInTheDocument();
     expect(screen.queryByText("Back to home")).not.toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Segment mode" })).toHaveValue(
@@ -391,7 +386,8 @@ describe("SegmentDetailPanel", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows same-day run numbers in the efforts table", () => {
+  it("shows same-day run numbers in the efforts table", async () => {
+    const user = userEvent.setup();
     const segment = makeSegment();
     const fasterHistoricalEfforts = Array.from({ length: 10 }, (_, index) => ({
       id: index + 1,
@@ -478,6 +474,9 @@ describe("SegmentDetailPanel", () => {
     renderSegmentDetailPanel();
 
     const table = screen.getByLabelText("Segment efforts table");
+
+    await user.click(screen.getByRole("button", { name: "2" }));
+
     const runOneRow = within(table)
       .getByRole("link", { name: "7m 00s" })
       .closest("tr");
@@ -509,7 +508,7 @@ describe("SegmentDetailPanel", () => {
     ).toBeInTheDocument();
   });
 
-  it("paginates efforts 25 per page", async () => {
+  it("paginates efforts 10 per page", async () => {
     const user = userEvent.setup();
     const segment = makeSegment();
 
@@ -529,13 +528,13 @@ describe("SegmentDetailPanel", () => {
 
     const table = screen.getByLabelText("Segment efforts table");
 
-    expect(within(table).getAllByRole("row")).toHaveLength(26);
-    expect(screen.getByText("Showing 1-25 of 30 efforts")).toBeInTheDocument();
+    expect(within(table).getAllByRole("row")).toHaveLength(11);
+    expect(screen.getByText("Showing 1-10 of 30 efforts")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "2" }));
+    await user.click(screen.getByRole("button", { name: "3" }));
 
-    expect(within(table).getAllByRole("row")).toHaveLength(6);
-    expect(screen.getByText("Showing 26-30 of 30 efforts")).toBeInTheDocument();
+    expect(within(table).getAllByRole("row")).toHaveLength(11);
+    expect(screen.getByText("Showing 21-30 of 30 efforts")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /5m 09s/i })).toBeInTheDocument();
   });
 
@@ -576,9 +575,8 @@ describe("SegmentDetailPanel", () => {
       },
     );
 
-    expect(screen.getByText("2m 00s")).toBeInTheDocument();
+    expect(screen.getByText("Lead")).toBeInTheDocument();
     expect(screen.queryByText("elapsed")).not.toBeInTheDocument();
-    expect(screen.queryByText("vs ref")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Slow" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Auto" })).toHaveClass(
       "btn-neutral",
@@ -586,7 +584,7 @@ describe("SegmentDetailPanel", () => {
     expect(screen.queryByText(/\btarget\b/i)).not.toBeInTheDocument();
   });
 
-  it("hides the playback target helper badge for long reference rides", () => {
+  it("hides the playback target helper badge for long selected rides", () => {
     const segment = makeSegment();
 
     segment.efforts = [
@@ -617,7 +615,7 @@ describe("SegmentDetailPanel", () => {
     );
   });
 
-  it("keeps non-reference rides from showing live metrics after they finish", () => {
+  it("keeps finished rides from showing live speed and heart rate metrics", () => {
     const segment = makeSegment();
 
     segment.efforts = [
@@ -657,10 +655,10 @@ describe("SegmentDetailPanel", () => {
       },
     );
 
-    const hillAttackReferenceButton = screen.getByRole("button", {
-      name: "Make Hill Attack the reference ride",
+    const hillAttackRemoveButtons = screen.getAllByRole("button", {
+      name: "Remove Hill Attack from comparison",
     });
-    const hillAttackRow = hillAttackReferenceButton.closest("div.grid");
+    const hillAttackRow = hillAttackRemoveButtons.at(-1)?.closest("li");
 
     expect(hillAttackRow).not.toBeNull();
     expect(
@@ -678,18 +676,10 @@ describe("SegmentDetailPanel", () => {
       },
     );
 
-    const referenceButtons = screen.getAllByRole("button", {
-      name: /Make .* the reference ride/,
-    });
+    const comparisonRows = Array.from(document.querySelectorAll("ul.list > li"));
 
-    expect(referenceButtons[0]).toHaveAttribute(
-      "aria-label",
-      "Make Hill Attack the reference ride",
-    );
-    expect(referenceButtons[1]).toHaveAttribute(
-      "aria-label",
-      "Make Lunch Ride the reference ride",
-    );
+    expect(comparisonRows[0]).toHaveTextContent("Casey Fast");
+    expect(comparisonRows[1]).toHaveTextContent("Eric Butera");
   });
 
   it("shows only KOM when the same effort is also the current user PR", () => {
@@ -808,7 +798,7 @@ describe("SegmentDetailPanel", () => {
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Open race viewer" }),
-    ).toHaveAttribute("href", "/segments/14/race?efforts=1%2C2&ref=1");
+    ).toHaveAttribute("href", "/segments/14/race?efforts=1%2C2");
     expect(
       mocks.renderMapLibreRouteMap.mock.lastCall?.[0]?.followViewport,
     ).toBeUndefined();
@@ -817,7 +807,6 @@ describe("SegmentDetailPanel", () => {
   it("uses initially requested efforts when returning from the race viewer", () => {
     renderSegmentDetailPanel({
       initialSelectedEffortIds: [2],
-      initialReferenceEffortId: 2,
     });
 
     expect(
@@ -832,7 +821,7 @@ describe("SegmentDetailPanel", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Open race viewer" }),
-    ).toHaveAttribute("href", "/segments/14/race?efforts=2&ref=2");
+    ).toHaveAttribute("href", "/segments/14/race?efforts=2");
   });
 
   it("hides timer and pace controls on very narrow screens", () => {
@@ -847,20 +836,6 @@ describe("SegmentDetailPanel", () => {
 
     expect(timerChip).toHaveClass("max-[420px]:hidden");
     expect(paceControls).toHaveClass("max-[420px]:hidden");
-  });
-
-  it("does not dim other comparison rows when a reference ride is selected", async () => {
-    const user = userEvent.setup();
-
-    renderSegmentDetailPanel();
-
-    await user.click(
-      screen.getByRole("button", {
-        name: "Make Hill Attack the reference ride",
-      }),
-    );
-
-    expect(document.querySelector(".opacity-40")).toBeNull();
   });
 
   it("renders the athlete pane without drag and drop affordances", () => {
@@ -1015,13 +990,12 @@ describe("SegmentDetailPanel", () => {
             payload: tooltipRow,
           },
         ]}
-        referenceEffort={selectedRows[0].effort}
         selectedRows={selectedRows}
         unitSystem="metric"
       />,
     );
 
-    expect(screen.getByText("Time 1m 00s")).toBeInTheDocument();
+    expect(screen.queryByText("Time 1m 00s")).not.toBeInTheDocument();
     expect(screen.getByText("Elev 20 m")).toBeInTheDocument();
     expect(screen.getByText("Dist 0.5 km")).toBeInTheDocument();
 
@@ -1047,7 +1021,7 @@ describe("SegmentDetailPanel", () => {
           id: 201,
           rider_user_id: 1,
           activity_id: 81,
-          activity_title: "Reference Ride",
+          activity_title: "Morning Ride",
           rider_name: "Eric Butera",
           activity_started_at: "2026-05-10T12:00:00Z",
           effort_index: 1,
@@ -1130,14 +1104,15 @@ describe("SegmentDetailPanel", () => {
             payload: tooltipRow,
           },
         ]}
-        referenceEffort={selectedRows[0].effort}
         selectedRows={selectedRows}
         unitSystem="imperial"
       />,
     );
 
-    expect(screen.getByText("Time 20.844s")).toBeInTheDocument();
+    expect(screen.queryByText("Time 20.844s")).not.toBeInTheDocument();
 
+    const rideOneRow = screen.getByLabelText("Ride 1 tooltip row");
+    expect(within(rideOneRow).getByText("20.844s")).toBeInTheDocument();
     const rideTwoRow = screen.getByLabelText("Ride 2 tooltip row");
     expect(within(rideTwoRow).getByText("19.500s")).toBeInTheDocument();
     expect(within(rideTwoRow).getByText("21.2 mph")).toBeInTheDocument();
