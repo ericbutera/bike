@@ -14,45 +14,43 @@ import {
   formatActivityTimestamp,
   formatDuration,
 } from "../../lib/activityFormatting";
-import type { Segment, SegmentEffort } from "../../lib/queries";
+import type { Segment } from "../../lib/queries";
 import { primarySegmentAchievement } from "../../lib/segmentAchievements";
 import {
   EFFORTS_PER_PAGE,
   EFFORT_TIME_FILTERS,
   segmentEffortDayAttemptSummaries,
-  type EffortTimeFilter,
-  type SelectedEffortRow,
 } from "../../lib/segmentDetail";
 import { LoadingSpinner } from "../ui/QueryState";
+import type {
+  SegmentEffortListState,
+  SegmentPerformanceSummary,
+} from "./useSegmentDetailState";
 
 type SegmentDetailEffortsSectionProps = {
   segment: Segment;
-  visibleEfforts: SegmentEffort[];
-  selectedEffortIds: number[];
-  selectedRows: SelectedEffortRow[];
-  overallRankByEffortId: Map<number, number>;
-  currentUserPr: SegmentEffort | null;
+  effortList: SegmentEffortListState;
+  performance: SegmentPerformanceSummary;
   isLoading: boolean;
-  effortTimeFilter: EffortTimeFilter;
-  onEffortTimeFilterChange: (filter: EffortTimeFilter) => void;
-  onAddEffort: (effortId: number) => void;
-  onRemoveEffort: (effortId: number) => void;
 };
 
 export default function SegmentDetailEffortsSection({
   segment,
-  visibleEfforts,
-  selectedEffortIds,
-  selectedRows,
-  overallRankByEffortId,
-  currentUserPr,
+  effortList,
+  performance,
   isLoading,
-  effortTimeFilter,
-  onEffortTimeFilterChange,
-  onAddEffort,
-  onRemoveEffort,
 }: SegmentDetailEffortsSectionProps) {
   const [page, setPage] = useState(1);
+  const {
+    visibleEfforts,
+    selectedEffortIds,
+    selectedRows,
+    effortTimeFilter,
+    setEffortTimeFilter,
+    addEffort,
+    removeEffort,
+  } = effortList;
+  const { overallRankByEffortId, currentUserPr } = performance;
   const selectedEffortIdSet = new Set(selectedEffortIds);
   const selectedRowByEffortId = new Map(
     selectedRows.map((row) => [row.effort.id, row]),
@@ -107,7 +105,7 @@ export default function SegmentDetailEffortsSection({
                     type="button"
                     className={`join-item btn btn-sm ${effortTimeFilter === filter.key ? "btn-neutral" : "btn-ghost"}`}
                     onClick={() => {
-                      onEffortTimeFilterChange(filter.key);
+                      setEffortTimeFilter(filter.key);
                     }}
                   >
                     {filter.label}
@@ -187,7 +185,7 @@ export default function SegmentDetailEffortsSection({
                                   className="btn btn-ghost btn-xs btn-circle"
                                   aria-label={`Remove ${effort.activity_title} from comparison`}
                                   onClick={() => {
-                                    onRemoveEffort(effort.id);
+                                    removeEffort(effort.id);
                                   }}
                                 >
                                   <FontAwesomeIcon
@@ -205,7 +203,7 @@ export default function SegmentDetailEffortsSection({
                                 className="btn btn-ghost btn-xs btn-circle"
                                 aria-label={`Add ${effort.activity_title} to comparison`}
                                 onClick={() => {
-                                  onAddEffort(effort.id);
+                                  addEffort(effort.id);
                                 }}
                               >
                                 <FontAwesomeIcon

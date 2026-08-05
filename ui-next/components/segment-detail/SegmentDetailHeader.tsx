@@ -13,58 +13,53 @@ import {
   formatDistance,
   formatDuration,
   formatElevation,
-  type UnitSystem,
 } from "../../lib/activityFormatting";
-import type { Segment, SegmentEffort, SegmentMode } from "../../lib/queries";
+import type { Segment, SegmentMode } from "../../lib/queries";
 import { formatGradePercent } from "../../lib/segmentDetail";
+import type {
+  SegmentPerformanceSummary,
+  SegmentRouteMetrics,
+  SegmentTitleEditor,
+} from "./useSegmentDetailState";
 
 type SegmentDetailHeaderProps = {
   segment: Segment;
-  routeDistanceMeters: number | null | undefined;
-  routeGradePercent: number | null | undefined;
-  routeNetElevationMeters: number | null | undefined;
-  unitSystem: UnitSystem;
-  currentUserPr: SegmentEffort | null;
-  currentUserName: string | null;
-  currentUserPrDurationSeconds: number | null;
-  currentUserPrLabel: string;
-  overallKom: SegmentEffort | null;
-  isEditingTitle: boolean;
-  draftTitle: string;
-  isSavingSegment: boolean;
-  isDeletingSegment: boolean;
-  builderEditHref: string | null;
-  onStartEditingTitle: () => void;
-  onCancelEditingTitle: () => void;
-  onDraftTitleChange: (value: string) => void;
-  onSaveTitle: () => void;
-  onSegmentModeChange: (mode: SegmentMode) => void;
-  onDeleteSegment: () => void;
+  metrics: SegmentRouteMetrics;
+  performance: SegmentPerformanceSummary;
+  editor: SegmentTitleEditor;
+  status: {
+    isSavingSegment: boolean;
+    isDeletingSegment: boolean;
+  };
+  links: {
+    builderEditHref: string | null;
+  };
+  actions: {
+    changeSegmentMode: (mode: SegmentMode) => void;
+    deleteSegment: () => void;
+  };
 };
 
 export default function SegmentDetailHeader({
   segment,
-  routeDistanceMeters,
-  routeGradePercent,
-  routeNetElevationMeters,
-  unitSystem,
-  currentUserPr,
-  currentUserName,
-  currentUserPrDurationSeconds,
-  currentUserPrLabel,
-  overallKom,
-  isEditingTitle,
-  draftTitle,
-  isSavingSegment,
-  isDeletingSegment,
-  builderEditHref,
-  onStartEditingTitle,
-  onCancelEditingTitle,
-  onDraftTitleChange,
-  onSaveTitle,
-  onSegmentModeChange,
-  onDeleteSegment,
+  metrics,
+  performance,
+  editor,
+  status,
+  links,
+  actions,
 }: SegmentDetailHeaderProps) {
+  const { routeDistanceMeters, routeGradePercent, routeNetElevationMeters } =
+    metrics;
+  const {
+    currentUserPrDurationSeconds,
+    currentUserPrLabel,
+    currentUserPrDisplayName,
+    overallKom,
+  } = performance;
+  const { isEditingTitle, draftTitle } = editor;
+  const { isSavingSegment, isDeletingSegment } = status;
+
   return (
     <div className="card bg-base-100 shadow-xl">
       <div className="card-body gap-6">
@@ -79,7 +74,7 @@ export default function SegmentDetailHeader({
                 className="mt-2 flex max-w-3xl flex-col gap-3 sm:flex-row sm:items-end"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  onSaveTitle();
+                  editor.saveTitle();
                 }}
               >
                 <label className="form-control w-full">
@@ -94,7 +89,7 @@ export default function SegmentDetailHeader({
                     value={draftTitle}
                     autoFocus
                     onChange={(event) => {
-                      onDraftTitleChange(event.target.value);
+                      editor.setDraftTitle(event.target.value);
                     }}
                   />
                 </label>
@@ -110,7 +105,7 @@ export default function SegmentDetailHeader({
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"
-                    onClick={onCancelEditingTitle}
+                    onClick={editor.cancelEditingTitle}
                     disabled={isSavingSegment}
                   >
                     Cancel
@@ -131,7 +126,7 @@ export default function SegmentDetailHeader({
                 />
                 {formatDistance(
                   routeDistanceMeters ?? segment.distance_meters,
-                  unitSystem,
+                  metrics.unitSystem,
                 )}
               </span>
               <span>{formatGradePercent(routeGradePercent)}</span>
@@ -140,7 +135,7 @@ export default function SegmentDetailHeader({
                   routeNetElevationMeters != null
                     ? Math.abs(routeNetElevationMeters)
                     : null,
-                  unitSystem,
+                  metrics.unitSystem,
                 )}{" "}
                 elev
               </span>
@@ -174,7 +169,7 @@ export default function SegmentDetailHeader({
                 value={segment.mode}
                 disabled={isSavingSegment || isDeletingSegment}
                 onChange={(event) => {
-                  onSegmentModeChange(event.target.value as SegmentMode);
+                  actions.changeSegmentMode(event.target.value as SegmentMode);
                 }}
               >
                 <option value="xc">XC</option>
@@ -194,14 +189,17 @@ export default function SegmentDetailHeader({
                   tabIndex={0}
                   className="dropdown-content menu z-20 mt-2 w-56 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
                 >
-                  {builderEditHref ? (
+                  {links.builderEditHref ? (
                     <li>
-                      <Link href={builderEditHref}>Edit in builder</Link>
+                      <Link href={links.builderEditHref}>Edit in builder</Link>
                     </li>
                   ) : null}
                   {!isEditingTitle ? (
                     <li>
-                      <button type="button" onClick={onStartEditingTitle}>
+                      <button
+                        type="button"
+                        onClick={editor.startEditingTitle}
+                      >
                         Rename
                       </button>
                     </li>
@@ -210,7 +208,7 @@ export default function SegmentDetailHeader({
                     <button
                       type="button"
                       className="text-error"
-                      onClick={onDeleteSegment}
+                      onClick={actions.deleteSegment}
                       disabled={isDeletingSegment}
                     >
                       {isDeletingSegment ? "Deleting..." : "Delete segment"}
@@ -232,7 +230,7 @@ export default function SegmentDetailHeader({
                   </span>
                 </div>
                 <div className="mt-2 font-semibold text-base-content">
-                  {currentUserPr?.rider_name ?? currentUserName ?? "You"}
+                  {currentUserPrDisplayName}
                 </div>
                 <div className="mt-1 text-sm text-base-content/65">
                   {currentUserPrLabel}

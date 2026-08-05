@@ -988,3 +988,33 @@ export function buildLiveComparisonRows(
     };
   });
 }
+
+export function sortLiveComparisonRowsByLeader(
+  comparisonRows: LiveComparisonRow[],
+) {
+  const fallbackIndexByEffortId = new Map(
+    comparisonRows.map((comparisonRow, index) => [
+      comparisonRow.effort.id,
+      index,
+    ]),
+  );
+
+  return [...comparisonRows].sort((left, right) => {
+    const progressDelta = (right.progress ?? -1) - (left.progress ?? -1);
+
+    if (Math.abs(progressDelta) > Number.EPSILON) {
+      return progressDelta;
+    }
+
+    const gapDelta = (right.gapSeconds ?? 0) - (left.gapSeconds ?? 0);
+
+    if (Math.abs(gapDelta) > Number.EPSILON) {
+      return gapDelta;
+    }
+
+    return (
+      (fallbackIndexByEffortId.get(left.effort.id) ?? 0) -
+      (fallbackIndexByEffortId.get(right.effort.id) ?? 0)
+    );
+  });
+}

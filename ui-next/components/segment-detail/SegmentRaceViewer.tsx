@@ -10,37 +10,32 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { formatDuration } from "../../lib/activityFormatting";
 import { config } from "../../lib/config";
-import {
-  useSegment,
-  useSegmentComparison,
-  type ActivityRoutePoint,
-  type SegmentEffort,
-} from "../../lib/queries";
+import { type ActivityRoutePoint } from "../../lib/queries";
 import { LoadingSpinner } from "../ui/QueryState";
 import {
-  EFFORT_COLORS,
-  EMPTY_EFFORTS,
-  EMPTY_EFFORT_IDS,
-  PLAYBACK_END_EPSILON,
   RACE_PLAYBACK_SPEED_OPTIONS,
-  areEffortIdListsEqual,
   buildLeaderGroupFollowViewport,
   buildLeaderPairFollowViewport,
   buildLiveComparisonRows,
   comparisonMarkerPoint,
-  fastestEffort,
   formatSignedSecondsDelta,
   interpolateRoutePointByProgress,
+  sortLiveComparisonRowsByLeader,
   type LiveComparisonRow,
   type RacePlaybackSpeed,
-  type SelectedEffortRow,
 } from "../../lib/segmentDetail";
 import MapLibreRouteMap from "../MapLibreRouteMap";
-import { useAuthenticatedUser } from "../RequireAuth";
 import { type RouteMapBasemap } from "../RouteMapTypes";
+import {
+  buildSegmentDetailHref,
+  useSegmentEffortSelection,
+  useSegmentPlayback,
+  useSegmentReferenceEffortState,
+  useSegmentWithComparison,
+} from "./useSegmentDetailState";
 
 type RaceMapMode = "overview" | "leader-follow";
 
@@ -64,34 +59,6 @@ function resolveRaceViewerBasemap(styleUrl: string): RouteMapBasemap {
     default:
       return "topo";
   }
-}
-
-function sortComparisonRowsByLeader(comparisonRows: LiveComparisonRow[]) {
-  const fallbackIndexByEffortId = new Map(
-    comparisonRows.map((comparisonRow, index) => [
-      comparisonRow.effort.id,
-      index,
-    ]),
-  );
-
-  return [...comparisonRows].sort((left, right) => {
-    const progressDelta = (right.progress ?? -1) - (left.progress ?? -1);
-
-    if (Math.abs(progressDelta) > Number.EPSILON) {
-      return progressDelta;
-    }
-
-    const gapDelta = (right.gapSeconds ?? 0) - (left.gapSeconds ?? 0);
-
-    if (Math.abs(gapDelta) > Number.EPSILON) {
-      return gapDelta;
-    }
-
-    return (
-      (fallbackIndexByEffortId.get(left.effort.id) ?? 0) -
-      (fallbackIndexByEffortId.get(right.effort.id) ?? 0)
-    );
-  });
 }
 
 function formatRideDateLabel(value: string) {
@@ -185,30 +152,6 @@ function RacePlaybackSpeedControl({
   );
 }
 
-function buildInitialReferenceEffortId(
-  selectedEfforts: SegmentEffort[],
-  requestedReferenceEffortId: number | null,
-  currentUserId: number | null,
-  currentUserName: string | null,
-) {
-  if (
-    requestedReferenceEffortId != null &&
-    selectedEfforts.some((effort) => effort.id === requestedReferenceEffortId)
-  ) {
-    return requestedReferenceEffortId;
-  }
-
-  const currentUserReference = selectedEfforts.find((effort) => {
-    if (currentUserId != null) {
-      return effort.rider_user_id === currentUserId;
-    }
-
-    return currentUserName ? effort.rider_name === currentUserName : false;
-  });
-
-  return currentUserReference?.id ?? selectedEfforts[0]?.id ?? null;
-}
-
 function RaceViewerMap({
   routePoints,
   comparisonRows,
@@ -259,7 +202,7 @@ function RaceViewerMap({
         label: string;
       } => marker !== null,
     );
-  const sortedComparisonRows = sortComparisonRowsByLeader(comparisonRows);
+  const sortedComparisonRows = sortLiveComparisonRowsByLeader(comparisonRows);
   const markerById = new Map(markers.map((marker) => [marker.id, marker]));
   const rankedMarkers =
     mapMode === "leader-follow"
@@ -345,85 +288,41 @@ export default function SegmentRaceViewer({
   initialReferenceEffortId: number | null;
   initialPlaybackSpeed?: RacePlaybackSpeed;
 }) {
-  const user = useAuthenticatedUser();
-  const segmentQuery = useSegment(segmentId);
-  const comparisonQuery = useSegmentComparison(
-    segmentQuery.data ? segmentId : null,
-  );
-  const playbackAnimationFrameRef = useRef<number | null>(null);
-  const playbackLastTimestampRef = useRef<number | null>(null);
-  const requestedSelectionBySegmentIdRef = useRef(
-    new Map<number, number[]>([[Number(segmentId), initialSelectedEffortIds]]),
-  );
-  const requestedReferenceBySegmentIdRef = useRef(
-    new Map<number, number | null>([
-      [Number(segmentId), initialReferenceEffortId],
-    ]),
-  );
-  const initializedSelectionSegmentIdRef = useRef<number | null>(null);
-  const [selectedEffortIds, setSelectedEffortIds] = useState<number[]>(
-    initialSelectedEffortIds,
-  );
-  const [referenceEffortId, setReferenceEffortId] = useState<number | null>(
-    initialReferenceEffortId,
-  );
-  const [playbackSeconds, setPlaybackSeconds] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const { segmentQuery, comparisonQuery, segment } =
+    useSegmentWithComparison(segmentId);
   const [playbackSpeed, setPlaybackSpeed] =
     useState<RacePlaybackSpeed>(initialPlaybackSpeed);
   const [selectedBasemap, setSelectedBasemap] = useState<RouteMapBasemap>(() =>
     resolveRaceViewerBasemap(config.MAP_STYLE_URL),
   );
   const mapMode: RaceMapMode = "leader-follow";
-  const segment = useMemo(
-    () =>
-      segmentQuery.data
-        ? {
-            ...segmentQuery.data,
-            route_points:
-              comparisonQuery.data?.route_points ??
-              segmentQuery.data.route_points ??
-              [],
-            efforts:
-              comparisonQuery.data?.efforts ?? segmentQuery.data.efforts ?? [],
-          }
-        : null,
-    [comparisonQuery.data, segmentQuery.data],
-  );
-  const allEfforts = segment?.efforts ?? EMPTY_EFFORTS;
-  const currentUserId =
-    typeof user?.id === "number"
-      ? user.id
-      : user?.id != null && Number.isFinite(Number(user.id))
-        ? Number(user.id)
-        : null;
-  const currentUserName = user?.name?.trim() || null;
-  const selectedEfforts = useMemo(() => {
-    const effortById = new Map(allEfforts.map((effort) => [effort.id, effort]));
-
-    return selectedEffortIds
-      .map((id) => effortById.get(id))
-      .filter((effort): effort is SegmentEffort => Boolean(effort));
-  }, [allEfforts, selectedEffortIds]);
-  const selectedRows = useMemo(
-    (): SelectedEffortRow[] =>
-      selectedEfforts.map((effort, index) => ({
-        effort,
-        color: EFFORT_COLORS[index % EFFORT_COLORS.length],
-        markerLabel: String(index + 1),
-      })),
-    [selectedEfforts],
-  );
-  const referenceEffort =
-    selectedEfforts.find((effort) => effort.id === referenceEffortId) ?? null;
+  const effortSelection = useSegmentEffortSelection({
+    segmentId,
+    segment,
+    initialSelectedEffortIds,
+    reseedWhenSelectionEmpty: true,
+  });
+  const { selectedEffortIds, selectedEfforts, selectedRows, removeEffort } =
+    effortSelection;
+  const { referenceEffortId, referenceEffort } =
+    useSegmentReferenceEffortState({
+      segmentId,
+      segment,
+      selectedEfforts,
+      initialReferenceEffortId,
+    });
   const playbackLimitSeconds = referenceEffort?.duration_seconds ?? 0;
+  const playback = useSegmentPlayback({
+    playbackLimitSeconds,
+    playbackRate: playbackSpeed > 0 ? playbackSpeed : 0,
+  });
   const comparisonRows = useMemo(
     () =>
-      buildLiveComparisonRows(selectedRows, referenceEffort, playbackSeconds),
-    [playbackSeconds, referenceEffort, selectedRows],
+      buildLiveComparisonRows(selectedRows, referenceEffort, playback.seconds),
+    [playback.seconds, referenceEffort, selectedRows],
   );
   const sortedComparisonRows = useMemo(
-    () => sortComparisonRowsByLeader(comparisonRows),
+    () => sortLiveComparisonRowsByLeader(comparisonRows),
     [comparisonRows],
   );
   const leaderGapByEffortId = useMemo(() => {
@@ -470,150 +369,12 @@ export default function SegmentRaceViewer({
     [sortedComparisonRows],
   );
   const backHref = useMemo(() => {
-    const searchParams = new URLSearchParams();
-
-    if (selectedEffortIds.length > 0) {
-      searchParams.set("efforts", selectedEffortIds.join(","));
-    }
-
-    if (referenceEffortId != null) {
-      searchParams.set("ref", String(referenceEffortId));
-    }
-
-    const queryString = searchParams.toString();
-
-    return `/segments/${segmentId}${queryString ? `?${queryString}` : ""}`;
+    return buildSegmentDetailHref({
+      segmentId,
+      selectedEffortIds,
+      referenceEffortId,
+    });
   }, [referenceEffortId, segmentId, selectedEffortIds]);
-
-  useEffect(() => {
-    if (!segment || allEfforts.length === 0) {
-      initializedSelectionSegmentIdRef.current = null;
-      setSelectedEffortIds((current) =>
-        current.length === 0 ? current : EMPTY_EFFORT_IDS,
-      );
-      setReferenceEffortId((current) => (current == null ? current : null));
-      setPlaybackSeconds((current) => (current === 0 ? current : 0));
-      setIsPlaying((current) => (current ? false : current));
-      return;
-    }
-
-    const shouldSeedSelection =
-      initializedSelectionSegmentIdRef.current !== segment.id;
-    initializedSelectionSegmentIdRef.current = segment.id;
-
-    setSelectedEffortIds((current) => {
-      const availableIds = new Set(allEfforts.map((effort) => effort.id));
-      const requested = (
-        requestedSelectionBySegmentIdRef.current.get(segment.id) ?? []
-      ).filter((id) => availableIds.has(id));
-
-      if (requested.length > 0 && shouldSeedSelection) {
-        return areEffortIdListsEqual(current, requested) ? current : requested;
-      }
-
-      const valid = current.filter((id) => availableIds.has(id));
-
-      if (valid.length > 0) {
-        return areEffortIdListsEqual(current, valid) ? current : valid;
-      }
-
-      const seeded = allEfforts
-        .slice(0, Math.min(3, allEfforts.length))
-        .map((effort) => effort.id);
-
-      return areEffortIdListsEqual(current, seeded) ? current : seeded;
-    });
-  }, [allEfforts, segment?.id, segment]);
-
-  useEffect(() => {
-    if (selectedEfforts.length === 0) {
-      setReferenceEffortId(null);
-      return;
-    }
-
-    setReferenceEffortId((current) => {
-      if (
-        current != null &&
-        selectedEfforts.some((effort) => effort.id === current)
-      ) {
-        return current;
-      }
-
-      return buildInitialReferenceEffortId(
-        selectedEfforts,
-        segment?.id != null
-          ? (requestedReferenceBySegmentIdRef.current.get(segment.id) ?? null)
-          : initialReferenceEffortId,
-        currentUserId,
-        currentUserName,
-      );
-    });
-  }, [
-    currentUserId,
-    currentUserName,
-    initialReferenceEffortId,
-    segment?.id,
-    selectedEfforts,
-  ]);
-
-  useEffect(() => {
-    if (playbackLimitSeconds <= 0) {
-      setPlaybackSeconds(0);
-      setIsPlaying(false);
-      return;
-    }
-
-    setPlaybackSeconds((current) => Math.min(current, playbackLimitSeconds));
-  }, [playbackLimitSeconds]);
-
-  useEffect(() => {
-    if (!isPlaying || playbackLimitSeconds <= 0) {
-      playbackLastTimestampRef.current = null;
-      return undefined;
-    }
-
-    const tick = (timestamp: number) => {
-      const previousTimestamp = playbackLastTimestampRef.current ?? timestamp;
-      const deltaSeconds =
-        playbackSpeed > 0
-          ? ((timestamp - previousTimestamp) / 1000) * playbackSpeed
-          : 0;
-
-      playbackLastTimestampRef.current = timestamp;
-
-      let reachedEnd = false;
-
-      setPlaybackSeconds((current) => {
-        const next = Math.min(current + deltaSeconds, playbackLimitSeconds);
-
-        if (next >= playbackLimitSeconds - PLAYBACK_END_EPSILON) {
-          reachedEnd = true;
-          return playbackLimitSeconds;
-        }
-
-        return next;
-      });
-
-      if (reachedEnd) {
-        playbackLastTimestampRef.current = null;
-        playbackAnimationFrameRef.current = null;
-        setIsPlaying(false);
-        return;
-      }
-
-      playbackAnimationFrameRef.current = window.requestAnimationFrame(tick);
-    };
-
-    playbackAnimationFrameRef.current = window.requestAnimationFrame(tick);
-
-    return () => {
-      if (playbackAnimationFrameRef.current != null) {
-        window.cancelAnimationFrame(playbackAnimationFrameRef.current);
-        playbackAnimationFrameRef.current = null;
-      }
-      playbackLastTimestampRef.current = null;
-    };
-  }, [isPlaying, playbackLimitSeconds, playbackSpeed]);
 
   if (
     segmentQuery.isLoading ||
@@ -636,11 +397,11 @@ export default function SegmentRaceViewer({
         <RaceViewerMap
           routePoints={segment.route_points}
           comparisonRows={comparisonRows}
-          playbackSeconds={playbackSeconds}
+          playbackSeconds={playback.seconds}
           mapMode={mapMode}
           selectedBasemap={selectedBasemap}
           onSelectedBasemapChange={setSelectedBasemap}
-          playbackLimitSeconds={playbackLimitSeconds}
+          playbackLimitSeconds={playback.limitSeconds}
         />
 
         <div className="pointer-events-none absolute inset-0">
@@ -739,12 +500,7 @@ export default function SegmentRaceViewer({
                               className="btn btn-ghost btn-xs btn-circle ml-auto min-h-6 h-6 w-6 shrink-0 text-base-content/55 hover:text-error"
                               aria-label={`Remove ${effortDetailsLabel} from race viewer`}
                               onClick={() => {
-                                setSelectedEffortIds((current) =>
-                                  current.filter(
-                                    (effortId) =>
-                                      effortId !== comparisonRow.effort.id,
-                                  ),
-                                );
+                                removeEffort(comparisonRow.effort.id);
                               }}
                             >
                               <FontAwesomeIcon
@@ -804,31 +560,32 @@ export default function SegmentRaceViewer({
                       type="button"
                       className="btn btn-sm btn-circle btn-primary shrink-0"
                       disabled={
-                        selectedRows.length === 0 || playbackLimitSeconds <= 0
+                        selectedRows.length === 0 ||
+                        playback.limitSeconds <= 0
                       }
                       aria-label={
-                        isPlaying
+                        playback.isPlaying
                           ? "Pause race playback"
-                          : playbackSeconds >= playbackLimitSeconds
+                          : playback.seconds >= playback.limitSeconds
                             ? "Replay race playback"
                             : "Play race playback"
                       }
                       onClick={() => {
-                        if (playbackSeconds >= playbackLimitSeconds) {
-                          setPlaybackSeconds(0);
+                        if (playback.seconds >= playback.limitSeconds) {
+                          playback.setSeconds(0);
                         }
-                        setIsPlaying(!isPlaying);
+                        playback.setIsPlaying(!playback.isPlaying);
                       }}
                     >
                       <FontAwesomeIcon
-                        icon={isPlaying ? faPause : faPlay}
+                        icon={playback.isPlaying ? faPause : faPlay}
                         className="h-4 w-4"
                       />
                     </button>
 
                     <span className="ml-auto shrink-0 rounded-full border border-base-300 bg-base-200 px-2.5 py-1 text-xs font-semibold tabular-nums text-base-content/80 sm:order-3 sm:ml-0">
-                      {formatDuration(Math.round(playbackSeconds))} /{" "}
-                      {formatDuration(playbackLimitSeconds)}
+                      {formatDuration(Math.round(playback.seconds))} /{" "}
+                      {formatDuration(playback.limitSeconds)}
                     </span>
 
                     <RacePlaybackSpeedControl
@@ -840,20 +597,20 @@ export default function SegmentRaceViewer({
                   <input
                     type="range"
                     min={0}
-                    max={Math.max(playbackLimitSeconds, 1)}
+                    max={Math.max(playback.limitSeconds, 1)}
                     step={0.1}
                     value={Math.min(
-                      playbackSeconds,
-                      Math.max(playbackLimitSeconds, 1),
+                      playback.seconds,
+                      Math.max(playback.limitSeconds, 1),
                     )}
                     className="range range-primary w-full sm:order-2 sm:min-w-0 sm:flex-1"
                     disabled={
-                      selectedRows.length === 0 || playbackLimitSeconds <= 0
+                      selectedRows.length === 0 || playback.limitSeconds <= 0
                     }
                     aria-label="Race playback timeline"
                     onChange={(event) => {
-                      setPlaybackSeconds(Number(event.target.value));
-                      setIsPlaying(false);
+                      playback.setSeconds(Number(event.target.value));
+                      playback.setIsPlaying(false);
                     }}
                   />
                 </div>

@@ -38,12 +38,16 @@ import {
   formatSignedSecondsDelta,
   formatSignedSpeedDelta,
   interpolateRoutePointByProgress,
+  sortLiveComparisonRowsByLeader,
   type GapChartRow,
   type LiveComparisonRow,
-  type PlaybackPace,
   type SelectedEffortRow,
 } from "../../lib/segmentDetail";
 import MapLibreRouteMap from "../MapLibreRouteMap";
+import type {
+  SegmentComparisonPlayback,
+  SegmentComparisonWorkspace,
+} from "./useSegmentDetailState";
 
 function formatTooltipSeconds(
   wholeSeconds: number,
@@ -83,34 +87,6 @@ function formatTooltipDuration(value?: number | null) {
   }
 
   return formatTooltipSeconds(wholeSeconds, fractionalMilliseconds, false);
-}
-
-function sortComparisonRowsByLeader(comparisonRows: LiveComparisonRow[]) {
-  const fallbackIndexByEffortId = new Map(
-    comparisonRows.map((comparisonRow, index) => [
-      comparisonRow.effort.id,
-      index,
-    ]),
-  );
-
-  return [...comparisonRows].sort((left, right) => {
-    const progressDelta = (right.progress ?? -1) - (left.progress ?? -1);
-
-    if (Math.abs(progressDelta) > Number.EPSILON) {
-      return progressDelta;
-    }
-
-    const gapDelta = (right.gapSeconds ?? 0) - (left.gapSeconds ?? 0);
-
-    if (Math.abs(gapDelta) > Number.EPSILON) {
-      return gapDelta;
-    }
-
-    return (
-      (fallbackIndexByEffortId.get(left.effort.id) ?? 0) -
-      (fallbackIndexByEffortId.get(right.effort.id) ?? 0)
-    );
-  });
 }
 
 export function ComparisonGapChartTooltip({
@@ -527,7 +503,7 @@ function SelectedEffortsPanel({
   const athleteGridTemplateClassName =
     "[grid-template-columns:auto_minmax(0,1fr)_4.5rem_5rem_3.75rem_1rem] xl:[grid-template-columns:auto_minmax(0,1fr)_5.25rem_6.5rem_4.5rem_1.25rem]";
   const sortedComparisonRows = useMemo(() => {
-    return sortComparisonRowsByLeader(comparisonRows);
+    return sortLiveComparisonRowsByLeader(comparisonRows);
   }, [comparisonRows]);
   const sortedComparisonRowOrder = useMemo(
     () =>
@@ -765,50 +741,30 @@ function SelectedEffortsPanel({
 }
 
 type SegmentDetailComparisonSectionProps = {
-  routePoints: ActivityRoutePoint[] | null | undefined;
-  routeDistanceMeters: number | null | undefined;
-  selectedRows: SelectedEffortRow[];
-  liveComparisonRows: LiveComparisonRow[];
-  focusedEffortId: number | null;
-  referenceEffortId: number | null;
-  referenceSummaryLabel: string;
-  raceViewerHref: string | null;
   isLoading: boolean;
-  playbackLimitSeconds: number;
-  playbackSeconds: number;
-  isPlaying: boolean;
-  playbackPace: PlaybackPace;
   unitSystem: UnitSystem;
-  onHoverEffort: (effortId: number | null) => void;
-  onTogglePinnedEffort: (effortId: number) => void;
-  onRemoveEffort: (effortId: number) => void;
-  onPlaybackSecondsChange: (seconds: number) => void;
-  onPlayingChange: (isPlaying: boolean) => void;
-  onPlaybackPaceChange: (pace: PlaybackPace) => void;
+  workspace: SegmentComparisonWorkspace;
+  playback: SegmentComparisonPlayback;
 };
 
 export default function SegmentDetailComparisonSection({
-  routePoints,
-  routeDistanceMeters,
-  selectedRows,
-  liveComparisonRows,
-  focusedEffortId,
-  referenceEffortId,
-  referenceSummaryLabel,
-  raceViewerHref,
   isLoading,
-  playbackLimitSeconds,
-  playbackSeconds,
-  isPlaying,
-  playbackPace,
   unitSystem,
-  onHoverEffort,
-  onTogglePinnedEffort,
-  onRemoveEffort,
-  onPlaybackSecondsChange,
-  onPlayingChange,
-  onPlaybackPaceChange,
+  workspace,
+  playback,
 }: SegmentDetailComparisonSectionProps) {
+  const {
+    routePoints,
+    routeDistanceMeters,
+    selectedRows,
+    liveComparisonRows,
+    focusedEffortId,
+    referenceEffortId,
+    referenceSummaryLabel,
+    raceViewerHref,
+    actions,
+  } = workspace;
+
   return (
     <div className="card bg-base-100 shadow-xl">
       <div className="card-body gap-4">
@@ -850,11 +806,11 @@ export default function SegmentDetailComparisonSection({
                   comparisonRows={liveComparisonRows}
                   focusedEffortId={focusedEffortId}
                   referenceEffortId={referenceEffortId}
-                  playbackSeconds={playbackSeconds}
+                  playbackSeconds={playback.seconds}
                   unitSystem={unitSystem}
-                  onHoverEffort={onHoverEffort}
-                  onTogglePinnedEffort={onTogglePinnedEffort}
-                  onRemoveEffort={onRemoveEffort}
+                  onHoverEffort={actions.hoverEffort}
+                  onTogglePinnedEffort={actions.togglePinnedEffort}
+                  onRemoveEffort={actions.removeEffort}
                 />
               </div>
 
@@ -862,7 +818,7 @@ export default function SegmentDetailComparisonSection({
                 <RouteComparisonMap
                   routePoints={routePoints}
                   selectedRows={selectedRows}
-                  playbackSeconds={playbackSeconds}
+                  playbackSeconds={playback.seconds}
                 />
               </div>
             </div>
@@ -873,24 +829,24 @@ export default function SegmentDetailComparisonSection({
                   type="button"
                   className="btn btn-sm btn-circle shrink-0 border-0 bg-orange-500 text-white hover:bg-orange-600"
                   disabled={
-                    selectedRows.length === 0 || playbackLimitSeconds <= 0
+                    selectedRows.length === 0 || playback.limitSeconds <= 0
                   }
                   aria-label={
-                    isPlaying
+                    playback.isPlaying
                       ? "Pause comparison playback"
-                      : playbackSeconds >= playbackLimitSeconds
+                      : playback.seconds >= playback.limitSeconds
                         ? "Replay comparison playback"
                         : "Play comparison playback"
                   }
                   onClick={() => {
-                    if (playbackSeconds >= playbackLimitSeconds) {
-                      onPlaybackSecondsChange(0);
+                    if (playback.seconds >= playback.limitSeconds) {
+                      playback.setSeconds(0);
                     }
-                    onPlayingChange(!isPlaying);
+                    playback.setIsPlaying(!playback.isPlaying);
                   }}
                 >
                   <FontAwesomeIcon
-                    icon={isPlaying ? faPause : faPlay}
+                    icon={playback.isPlaying ? faPause : faPlay}
                     className="h-4 w-4"
                   />
                 </button>
@@ -898,26 +854,26 @@ export default function SegmentDetailComparisonSection({
                 <input
                   type="range"
                   min={0}
-                  max={Math.max(playbackLimitSeconds, 1)}
+                  max={Math.max(playback.limitSeconds, 1)}
                   step={0.1}
                   value={Math.min(
-                    playbackSeconds,
-                    Math.max(playbackLimitSeconds, 1),
+                    playback.seconds,
+                    Math.max(playback.limitSeconds, 1),
                   )}
                   className="range range-primary min-w-0 flex-1"
                   disabled={
-                    selectedRows.length === 0 || playbackLimitSeconds <= 0
+                    selectedRows.length === 0 || playback.limitSeconds <= 0
                   }
                   aria-label="Playback timeline"
                   onChange={(event) => {
-                    onPlaybackSecondsChange(Number(event.target.value));
-                    onPlayingChange(false);
+                    playback.setSeconds(Number(event.target.value));
+                    playback.setIsPlaying(false);
                   }}
                 />
 
                 <span className="shrink-0 rounded-full border border-base-300 px-2.5 py-1 text-xs font-semibold tabular-nums text-base-content/80 max-[420px]:hidden">
-                  {formatDuration(Math.round(playbackSeconds))} /{" "}
-                  {formatDuration(playbackLimitSeconds)}
+                  {formatDuration(Math.round(playback.seconds))} /{" "}
+                  {formatDuration(playback.limitSeconds)}
                 </span>
               </div>
 
@@ -926,10 +882,10 @@ export default function SegmentDetailComparisonSection({
                   <button
                     key={option.key}
                     type="button"
-                    className={`join-item btn btn-sm ${playbackPace === option.key ? "btn-neutral" : "btn-ghost"}`}
-                    aria-pressed={playbackPace === option.key}
+                    className={`join-item btn btn-sm ${playback.pace === option.key ? "btn-neutral" : "btn-ghost"}`}
+                    aria-pressed={playback.pace === option.key}
                     onClick={() => {
-                      onPlaybackPaceChange(option.key);
+                      playback.setPace(option.key);
                     }}
                   >
                     {option.label}
@@ -944,7 +900,7 @@ export default function SegmentDetailComparisonSection({
                 routeDistanceMeters={routeDistanceMeters}
                 selectedRows={selectedRows}
                 referenceEffortId={referenceEffortId}
-                playbackSeconds={playbackSeconds}
+                playbackSeconds={playback.seconds}
                 unitSystem={unitSystem}
               />
             </div>
