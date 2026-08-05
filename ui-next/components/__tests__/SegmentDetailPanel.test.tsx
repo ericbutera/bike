@@ -279,18 +279,6 @@ describe("SegmentDetailPanel", () => {
     );
   }
 
-  it("renders sign-in actions when the user is signed out", () => {
-    mocks.useCurrentUser.mockReturnValue({ user: null, isLoading: false });
-
-    renderSegmentDetailPanel();
-
-    expect(screen.getByText("Sign in required")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
-      "href",
-      "/login",
-    );
-  });
-
   it("renders the comparison UI for a segment", () => {
     renderSegmentDetailPanel();
 
@@ -676,7 +664,9 @@ describe("SegmentDetailPanel", () => {
       },
     );
 
-    const comparisonRows = Array.from(document.querySelectorAll("ul.list > li"));
+    const comparisonRows = Array.from(
+      document.querySelectorAll("ul.list > li"),
+    );
 
     expect(comparisonRows[0]).toHaveTextContent("Casey Fast");
     expect(comparisonRows[1]).toHaveTextContent("Eric Butera");

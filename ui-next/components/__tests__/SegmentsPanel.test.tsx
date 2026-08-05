@@ -111,25 +111,6 @@ describe("SegmentsPanel", () => {
     mocks.uploadAsync.mockResolvedValue(makeSegment());
   });
 
-  it("renders sign-in actions when the user is signed out", () => {
-    mocks.useCurrentUser.mockReturnValue({ user: null, isLoading: false });
-
-    render(
-      <RequireAuth>
-        <SegmentsPanel />
-      </RequireAuth>,
-    );
-
-    expect(screen.getByText("Sign in required")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
-      "href",
-      "/login",
-    );
-    expect(
-      screen.queryByRole("link", { name: "Create account" }),
-    ).not.toBeInTheDocument();
-  });
-
   it("uploads a selected segment route", async () => {
     const user = userEvent.setup();
 

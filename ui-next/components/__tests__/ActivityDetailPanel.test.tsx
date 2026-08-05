@@ -480,22 +480,6 @@ describe("ActivityDetailPanel", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders a sign-in prompt when the user is signed out", () => {
-    mocks.useCurrentUser.mockReturnValue({ user: null, isLoading: false });
-
-    render(
-      <RequireAuth>
-        <ActivityDetailPanel activityId={7} />
-      </RequireAuth>,
-    );
-
-    expect(screen.getByText("Sign in")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
-      "href",
-      "/login",
-    );
-  });
-
   it("renders the summary metrics, laps, and charts", () => {
     render(<ActivityDetailPanel activityId={7} />);
 

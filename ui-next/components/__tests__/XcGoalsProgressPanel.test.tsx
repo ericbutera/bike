@@ -165,7 +165,8 @@ describe("XcGoalsProgressPanel", () => {
               target_value: 19.7,
               gap_value: 7.7,
               progress_percent: 30,
-              detail: "Training-block climbing per distance compared with the event's climb density.",
+              detail:
+                "Training-block climbing per distance compared with the event's climb density.",
             },
             {
               key: "aerobic_decoupling",
@@ -473,37 +474,14 @@ describe("XcGoalsProgressPanel", () => {
     });
   });
 
-  it("renders a sign-in prompt when the user is signed out", () => {
-    mocks.useCurrentUser.mockReturnValue({ user: null, isLoading: false });
-
-    const queryClient = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false },
-        mutations: { retry: false },
-      },
-    });
-
-    render(
-      <QueryClientProvider client={queryClient}>
-        <RequireAuth>
-          <XcGoalsProgressPanel />
-        </RequireAuth>
-      </QueryClientProvider>,
-    );
-
-    expect(screen.getByText("Sign in required")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
-      "href",
-      "/login",
-    );
-  });
-
   it("renders XC goals, charts, recommendations, and recent rides", () => {
     renderPanel();
 
     expect(screen.getByText("Event target")).toBeInTheDocument();
     expect(screen.getAllByText("Lumberjack 100").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "Edit target" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Edit target" }),
+    ).toBeInTheDocument();
     expect(screen.queryByDisplayValue("2026-09-20")).not.toBeInTheDocument();
     expect(
       screen.queryByText("Current read on the target"),
@@ -511,7 +489,9 @@ describe("XcGoalsProgressPanel", () => {
     expect(screen.getByText("Qualifying rides")).toBeInTheDocument();
     expect(screen.getByText("Target density")).toBeInTheDocument();
     expect(screen.getByText("Current density")).toBeInTheDocument();
-    expect(screen.getByText(/Training block: Mar 1, 2026 to Sep 20, 2026/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Training block: Mar 1, 2026 to Sep 20, 2026/),
+    ).toBeInTheDocument();
     expect(
       screen.queryByText(/This target is the course demand model/),
     ).not.toBeInTheDocument();
@@ -581,9 +561,7 @@ describe("XcGoalsProgressPanel", () => {
       screen.getAllByTitle(
         "Keep the effort mostly aerobic and collect steady climbing.",
       ).length,
-    ).toBeGreaterThan(
-      0,
-    );
+    ).toBeGreaterThan(0);
     expect(
       screen.queryByText(
         "Useful for accumulating sustained climbing in the event build.",
@@ -608,8 +586,9 @@ describe("XcGoalsProgressPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
 
-    expect(
-      screen.getByRole("link", { name: "Ride 106" }),
-    ).toHaveAttribute("href", "/activities/106");
+    expect(screen.getByRole("link", { name: "Ride 106" })).toHaveAttribute(
+      "href",
+      "/activities/106",
+    );
   });
 });

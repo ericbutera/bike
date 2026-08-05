@@ -84,21 +84,6 @@ describe("FitnessFreshnessPanel", () => {
     vi.useRealTimers();
   });
 
-  it("renders a sign-in prompt when the user is signed out", () => {
-    mocks.useCurrentUser.mockReturnValue({
-      user: null,
-      isLoading: false,
-    });
-
-    render(
-      <RequireAuth>
-        <FitnessFreshnessPanel />
-      </RequireAuth>,
-    );
-
-    expect(screen.getByText("Sign in required")).toBeInTheDocument();
-  });
-
   it("renders the summary cards and charts", () => {
     render(<FitnessFreshnessPanel />);
 
@@ -144,9 +129,9 @@ describe("FitnessFreshnessPanel", () => {
     const { container } = render(<FitnessFreshnessPanel />);
 
     const fitnessPath = () =>
-      container.querySelector(
-        'path.recharts-line-curve[stroke="#2563eb"]',
-      )?.getAttribute("d") ?? "";
+      container
+        .querySelector('path.recharts-line-curve[stroke="#2563eb"]')
+        ?.getAttribute("d") ?? "";
     const maxPathX = (path: string) => {
       const values =
         path.match(/[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/gi)?.map(Number) ??

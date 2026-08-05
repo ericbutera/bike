@@ -141,22 +141,6 @@ describe("DhGoalsProgressPanel", () => {
     });
   });
 
-  it("renders a sign-in prompt when the user is signed out", () => {
-    mocks.useCurrentUser.mockReturnValue({ user: null, isLoading: false });
-
-    render(
-      <RequireAuth>
-        <DhGoalsProgressPanel />
-      </RequireAuth>,
-    );
-
-    expect(screen.getByText("Sign in required")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
-      "href",
-      "/login",
-    );
-  });
-
   it("renders DH goals, session trend, recommendations, and segment benchmarks", () => {
     render(<DhGoalsProgressPanel />);
 

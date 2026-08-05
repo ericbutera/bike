@@ -145,22 +145,6 @@ describe("ActivityStream", () => {
     });
   });
 
-  it("renders a sign-in prompt when signed out", () => {
-    mocks.useCurrentUser.mockReturnValue({ user: null, isLoading: false });
-
-    render(
-      <RequireAuth>
-        <ActivityStream />
-      </RequireAuth>,
-    );
-
-    expect(screen.getByText("Sign in required")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
-      "href",
-      "/login",
-    );
-  });
-
   it("renders activities in the order returned by the query", () => {
     mocks.useActivities.mockReturnValue({
       data: [

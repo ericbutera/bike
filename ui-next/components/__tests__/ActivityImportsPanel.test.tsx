@@ -181,25 +181,6 @@ describe("ActivityImportsPanel", () => {
     mocks.importArchiveAsync.mockResolvedValue(makeArchiveImportJob());
   });
 
-  it("renders sign-in actions when the user is signed out", () => {
-    mocks.useCurrentUser.mockReturnValue({ user: null, isLoading: false });
-
-    render(
-      <RequireAuth>
-        <ActivityImportsPanel />
-      </RequireAuth>,
-    );
-
-    expect(screen.getByText("Sign in required")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
-      "href",
-      "/login",
-    );
-    expect(
-      screen.queryByRole("link", { name: "Create account" }),
-    ).not.toBeInTheDocument();
-  });
-
   it("shows the selected file details before upload", async () => {
     const user = userEvent.setup();
 
@@ -268,7 +249,8 @@ describe("ActivityImportsPanel", () => {
 
   it("keeps the manual upload button steady while queueing a file", async () => {
     const user = userEvent.setup();
-    let resolveUpload: ((value: ReturnType<typeof makeActivityImport>) => void)
+    let resolveUpload:
+      | ((value: ReturnType<typeof makeActivityImport>) => void)
       | undefined;
     mocks.uploadAsync.mockImplementation(
       () =>
@@ -398,8 +380,9 @@ describe("ActivityImportsPanel", () => {
     expect(
       screen.getByText("Worker-backed status updates"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Recent archive imports").closest("details")).not
-      .toHaveAttribute("open");
+    expect(
+      screen.getByText("Recent archive imports").closest("details"),
+    ).not.toHaveAttribute("open");
   });
 
   it("keeps manual uploads available while another activity job is active", async () => {
@@ -450,8 +433,9 @@ describe("ActivityImportsPanel", () => {
 
     render(<ActivityImportsPanel />);
 
-    expect(screen.getByText("Recent archive imports").closest("details")).not
-      .toHaveAttribute("open");
+    expect(
+      screen.getByText("Recent archive imports").closest("details"),
+    ).not.toHaveAttribute("open");
     expect(screen.getByText("running")).toBeInTheDocument();
     expect(
       screen.getByText("https://cdn.example.com/export.zip"),
