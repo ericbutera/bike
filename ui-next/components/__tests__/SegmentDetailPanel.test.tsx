@@ -314,7 +314,7 @@ describe("SegmentDetailPanel", () => {
     expect(
       screen.getByRole("heading", { name: "North Climb" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("FMR / Effort Comparison")).toBeInTheDocument();
+    expect(screen.queryByText("Segment")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("searchbox", { name: "Search efforts" }),
     ).not.toBeInTheDocument();

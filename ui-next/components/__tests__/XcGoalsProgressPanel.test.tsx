@@ -511,7 +511,10 @@ describe("XcGoalsProgressPanel", () => {
     expect(screen.getByText("Qualifying rides")).toBeInTheDocument();
     expect(screen.getByText("Target density")).toBeInTheDocument();
     expect(screen.getByText("Current density")).toBeInTheDocument();
-    expect(screen.getByText(/This target is the course demand model/)).toBeInTheDocument();
+    expect(screen.getByText(/Training block: Mar 1, 2026 to Sep 20, 2026/)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/This target is the course demand model/),
+    ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Edit target" }));
     expect(screen.getByDisplayValue("2026-09-20")).toBeInTheDocument();
     expect(screen.getByDisplayValue("9")).toBeInTheDocument();
@@ -569,10 +572,18 @@ describe("XcGoalsProgressPanel", () => {
     ).toBeInTheDocument();
     expect(screen.getAllByText("Climb durability").length).toBeGreaterThan(0);
     expect(
-      screen.getAllByText(
+      screen.getByLabelText("Choose a more event-like route details"),
+    ).toHaveAttribute(
+      "title",
+      "Current rides are not matching the event's climbing per mile closely enough.",
+    );
+    expect(
+      screen.getAllByTitle(
         "Keep the effort mostly aerobic and collect steady climbing.",
-      ),
-    ).toHaveLength(1);
+      ).length,
+    ).toBeGreaterThan(
+      0,
+    );
     expect(
       screen.queryByText(
         "Useful for accumulating sustained climbing in the event build.",

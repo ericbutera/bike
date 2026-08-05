@@ -24,7 +24,6 @@ import {
   type UnitSystem,
 } from "../../lib/activityFormatting";
 import type { ActivityRoutePoint } from "../../lib/queries";
-import { LoadingSpinner } from "../ui/QueryState";
 import {
   ATHLETE_PANEL_ROW_ANIMATION_MS,
   PLAYBACK_PACE_OPTIONS,
@@ -41,10 +40,15 @@ import {
   type SelectedEffortRow,
 } from "../../lib/segmentDetail";
 import MapLibreRouteMap from "../MapLibreRouteMap";
+import InfoTooltip from "../ui/InfoTooltip";
+import { LoadingSpinner } from "../ui/QueryState";
 import type {
   SegmentComparisonPlayback,
   SegmentComparisonWorkspace,
 } from "./useSegmentDetailState";
+
+const COMPARISON_WORKSPACE_HELP_TEXT =
+  "Playback follows elapsed time so positions, leader gaps, speed, and heart rate update on every frame.";
 
 function formatTooltipSeconds(
   wholeSeconds: number,
@@ -700,20 +704,23 @@ export default function SegmentDetailComparisonSection({
 
   return (
     <div className="card bg-base-100 shadow-xl">
-      <div className="card-body gap-4">
-        <div className="flex flex-wrap items-end justify-between gap-4">
+      <div className="card-body gap-3">
+        <div className="flex items-center justify-between gap-3 text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
           <div>
-            <h2 className="text-xl font-semibold text-base-content">
-              Comparison workspace
-            </h2>
-            <p className="text-sm text-base-content/70">
-              Playback follows elapsed time so positions, leader gaps, speed,
-              and heart rate update on every frame.
-            </p>
+            <div className="flex items-center gap-2">
+              <h2>Comparison workspace</h2>
+              <InfoTooltip
+                label="Comparison workspace details"
+                tip={COMPARISON_WORKSPACE_HELP_TEXT}
+              />
+            </div>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             {raceViewerHref ? (
-              <Link href={raceViewerHref} className="btn btn-sm btn-outline">
+              <Link
+                href={raceViewerHref}
+                className="btn btn-sm btn-outline normal-case tracking-normal"
+              >
                 Open race viewer
               </Link>
             ) : null}

@@ -84,204 +84,202 @@ export default function SegmentDetailEffortsSection({
   const rangeEnd = Math.min(page * EFFORTS_PER_PAGE, visibleEfforts.length);
 
   return (
-    <div className="card border border-base-300 bg-base-100 shadow-xl">
-      <div className="card-body">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <h2 className="card-title text-xl">Efforts</h2>
-        </div>
+    <section className="space-y-3">
+      <div className="flex items-center justify-between gap-3 text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
+        <h2>Efforts</h2>
+      </div>
 
-        <div className="mt-5 min-w-0 border border-base-300 bg-base-200 p-4">
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="text-sm text-base-content/70">
-                {visibleEfforts.length === 0
-                  ? "No efforts in this time window"
-                  : `Showing ${rangeStart}-${rangeEnd} of ${visibleEfforts.length} efforts`}
-              </div>
-              <div className="join">
-                {EFFORT_TIME_FILTERS.map((filter) => (
-                  <button
-                    key={filter.key}
-                    type="button"
-                    className={`join-item btn btn-sm ${effortTimeFilter === filter.key ? "btn-neutral" : "btn-ghost"}`}
-                    onClick={() => {
-                      setEffortTimeFilter(filter.key);
-                    }}
-                  >
-                    {filter.label}
-                  </button>
-                ))}
-              </div>
+      <div className="min-w-0 border border-base-300 bg-base-200 p-4">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm text-base-content/70">
+              {visibleEfforts.length === 0
+                ? "No efforts in this time window"
+                : `Showing ${rangeStart}-${rangeEnd} of ${visibleEfforts.length} efforts`}
+            </div>
+            <div className="join">
+              {EFFORT_TIME_FILTERS.map((filter) => (
+                <button
+                  key={filter.key}
+                  type="button"
+                  className={`join-item btn btn-sm ${effortTimeFilter === filter.key ? "btn-neutral" : "btn-ghost"}`}
+                  onClick={() => {
+                    setEffortTimeFilter(filter.key);
+                  }}
+                >
+                  {filter.label}
+                </button>
+              ))}
             </div>
           </div>
+        </div>
 
-          {isLoading ? (
-            <div className="mt-5 flex min-h-[14rem] items-center justify-center border border-base-300 bg-base-100">
-              <LoadingSpinner
-                size="md"
-                aria-label="Loading segment efforts"
-              />
-            </div>
-          ) : paginatedEfforts.length > 0 ? (
-            <div aria-label="Segment efforts table" className="mt-5 space-y-4">
-              <div className="overflow-x-auto border border-base-300 bg-base-100">
-                <table className="table table-pin-rows table-sm">
-                  <thead>
-                    <tr>
-                      <th className="w-14">Place</th>
-                      <th className="w-20">
-                        <span className="sr-only">Compare</span>
-                      </th>
-                      <th>Time</th>
-                      {showAttemptColumn ? <th className="w-24">Run</th> : null}
-                      <th>Rider</th>
-                      <th>Date</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {paginatedEfforts.map((effort) => {
-                      const checked = selectedEffortIdSet.has(effort.id);
-                      const selectedRow = selectedRowByEffortId.get(effort.id);
-                      const overallRank =
-                        overallRankByEffortId.get(effort.id) ?? null;
-                      const isCurrentUserPr = currentUserPr?.id === effort.id;
-                      const attemptSummary = attemptSummaryByEffortId.get(
-                        effort.id,
-                      );
-                      const achievement = primarySegmentAchievement({
-                        overallRank,
-                        personalRank: isCurrentUserPr ? 1 : null,
-                      });
-                      const rowClassName =
-                        achievement?.kind === "pr"
-                          ? "bg-primary/10"
-                          : achievement?.kind === "kom"
-                            ? "bg-warning/10"
-                            : checked
-                              ? "bg-base-200/70"
-                              : undefined;
+        {isLoading ? (
+          <div className="mt-5 flex min-h-[14rem] items-center justify-center border border-base-300 bg-base-100">
+            <LoadingSpinner
+              size="md"
+              aria-label="Loading segment efforts"
+            />
+          </div>
+        ) : paginatedEfforts.length > 0 ? (
+          <div aria-label="Segment efforts table" className="mt-5 space-y-4">
+            <div className="overflow-x-auto border border-base-300 bg-base-100">
+              <table className="table table-pin-rows table-sm">
+                <thead>
+                  <tr>
+                    <th className="w-14">Place</th>
+                    <th className="w-20">
+                      <span className="sr-only">Compare</span>
+                    </th>
+                    <th>Time</th>
+                    {showAttemptColumn ? <th className="w-24">Run</th> : null}
+                    <th>Rider</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedEfforts.map((effort) => {
+                    const checked = selectedEffortIdSet.has(effort.id);
+                    const selectedRow = selectedRowByEffortId.get(effort.id);
+                    const overallRank =
+                      overallRankByEffortId.get(effort.id) ?? null;
+                    const isCurrentUserPr = currentUserPr?.id === effort.id;
+                    const attemptSummary = attemptSummaryByEffortId.get(
+                      effort.id,
+                    );
+                    const achievement = primarySegmentAchievement({
+                      overallRank,
+                      personalRank: isCurrentUserPr ? 1 : null,
+                    });
+                    const rowClassName =
+                      achievement?.kind === "pr"
+                        ? "bg-primary/10"
+                        : achievement?.kind === "kom"
+                          ? "bg-warning/10"
+                          : checked
+                            ? "bg-base-200/70"
+                            : undefined;
 
-                      return (
-                        <tr key={effort.id} className={rowClassName}>
-                          <td className="font-mono text-sm font-semibold tabular-nums text-base-content/70">
-                            {overallRank ?? "--"}
-                          </td>
-                          <td>
-                            {checked ? (
-                              <div className="flex items-center gap-1.5">
-                                {selectedRow ? (
-                                  <span
-                                    aria-hidden
-                                    className="inline-flex h-5 w-5 items-center justify-center text-[0.65rem] font-semibold text-white"
-                                    style={{
-                                      backgroundColor: selectedRow.color,
-                                    }}
-                                  >
-                                    {selectedRow.markerLabel}
-                                  </span>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  className="btn btn-ghost btn-xs btn-circle"
-                                  aria-label={`Remove ${effort.activity_title} from comparison`}
-                                  onClick={() => {
-                                    removeEffort(effort.id);
+                    return (
+                      <tr key={effort.id} className={rowClassName}>
+                        <td className="font-mono text-sm font-semibold tabular-nums text-base-content/70">
+                          {overallRank ?? "--"}
+                        </td>
+                        <td>
+                          {checked ? (
+                            <div className="flex items-center gap-1.5">
+                              {selectedRow ? (
+                                <span
+                                  aria-hidden
+                                  className="inline-flex h-5 w-5 items-center justify-center text-[0.65rem] font-semibold text-white"
+                                  style={{
+                                    backgroundColor: selectedRow.color,
                                   }}
                                 >
-                                  <FontAwesomeIcon
-                                    icon={faMinus}
-                                    className="h-3.5 w-3.5"
-                                  />
-                                  <span className="sr-only">
-                                    Remove from comparison
-                                  </span>
-                                </button>
-                              </div>
-                            ) : (
+                                  {selectedRow.markerLabel}
+                                </span>
+                              ) : null}
                               <button
                                 type="button"
                                 className="btn btn-ghost btn-xs btn-circle"
-                                aria-label={`Add ${effort.activity_title} to comparison`}
+                                aria-label={`Remove ${effort.activity_title} from comparison`}
                                 onClick={() => {
-                                  addEffort(effort.id);
+                                  removeEffort(effort.id);
                                 }}
                               >
                                 <FontAwesomeIcon
-                                  icon={faPlus}
+                                  icon={faMinus}
                                   className="h-3.5 w-3.5"
                                 />
                                 <span className="sr-only">
-                                  Add to comparison
+                                  Remove from comparison
                                 </span>
                               </button>
-                            )}
-                          </td>
-                          <td className="font-semibold text-base-content">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Link
-                                href={`/activities/${effort.activity_id}`}
-                                className="transition hover:text-primary"
-                                title={effort.activity_title}
-                              >
-                                {formatDuration(effort.duration_seconds)}
-                              </Link>
-                              {achievement?.kind === "kom" ? (
-                                <span className="badge badge-warning badge-xs gap-1">
-                                  <FontAwesomeIcon
-                                    icon={faCrown}
-                                    className="h-3 w-3"
-                                  />
-                                  KOM
-                                </span>
-                              ) : achievement?.kind === "top-10" ? (
-                                <span className="badge badge-warning badge-xs gap-1">
-                                  <FontAwesomeIcon
-                                    icon={faTrophy}
-                                    className="h-3 w-3"
-                                  />
-                                  {achievement.longLabel}
-                                </span>
-                              ) : achievement?.kind === "pr" ? (
-                                <span className="badge badge-primary badge-xs">
-                                  PR
-                                </span>
-                              ) : null}
                             </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-xs btn-circle"
+                              aria-label={`Add ${effort.activity_title} to comparison`}
+                              onClick={() => {
+                                addEffort(effort.id);
+                              }}
+                            >
+                              <FontAwesomeIcon
+                                icon={faPlus}
+                                className="h-3.5 w-3.5"
+                              />
+                              <span className="sr-only">
+                                Add to comparison
+                              </span>
+                            </button>
+                          )}
+                        </td>
+                        <td className="font-semibold text-base-content">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Link
+                              href={`/activities/${effort.activity_id}`}
+                              className="transition hover:text-primary"
+                              title={effort.activity_title}
+                            >
+                              {formatDuration(effort.duration_seconds)}
+                            </Link>
+                            {achievement?.kind === "kom" ? (
+                              <span className="badge badge-warning badge-xs gap-1">
+                                <FontAwesomeIcon
+                                  icon={faCrown}
+                                  className="h-3 w-3"
+                                />
+                                KOM
+                              </span>
+                            ) : achievement?.kind === "top-10" ? (
+                              <span className="badge badge-warning badge-xs gap-1">
+                                <FontAwesomeIcon
+                                  icon={faTrophy}
+                                  className="h-3 w-3"
+                                />
+                                {achievement.longLabel}
+                              </span>
+                            ) : achievement?.kind === "pr" ? (
+                              <span className="badge badge-primary badge-xs">
+                                PR
+                              </span>
+                            ) : null}
+                          </div>
+                        </td>
+                        {showAttemptColumn ? (
+                          <td className="whitespace-nowrap text-xs font-medium text-base-content/70">
+                            {attemptSummary && attemptSummary.attemptCount > 1
+                              ? `Run ${attemptSummary.attemptNumber}`
+                              : "--"}
                           </td>
-                          {showAttemptColumn ? (
-                            <td className="whitespace-nowrap text-xs font-medium text-base-content/70">
-                              {attemptSummary && attemptSummary.attemptCount > 1
-                                ? `Run ${attemptSummary.attemptNumber}`
-                                : "--"}
-                            </td>
-                          ) : null}
-                          <td>{effort.rider_name}</td>
-                          <td className="whitespace-nowrap text-base-content/65">
-                            {formatActivityTimestamp(
-                              effort.activity_started_at,
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                        ) : null}
+                        <td>{effort.rider_name}</td>
+                        <td className="whitespace-nowrap text-base-content/65">
+                          {formatActivityTimestamp(
+                            effort.activity_started_at,
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
-              <Pagination
-                page={page}
-                perPage={EFFORTS_PER_PAGE}
-                total={visibleEfforts.length}
-                onPageChange={setPage}
-              />
-            </div>
-          ) : (
-            <div className="alert mt-5">
-              <span>No efforts match this time window.</span>
-            </div>
-          )}
-        </div>
+            <Pagination
+              page={page}
+              perPage={EFFORTS_PER_PAGE}
+              total={visibleEfforts.length}
+              onPageChange={setPage}
+            />
+          </div>
+        ) : (
+          <div className="alert mt-5">
+            <span>No efforts match this time window.</span>
+          </div>
+        )}
       </div>
-    </div>
+    </section>
   );
 }

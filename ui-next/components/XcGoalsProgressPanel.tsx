@@ -43,6 +43,7 @@ import {
   type XcTrainingPurpose,
 } from "../lib/queries";
 import { hasConfiguredHeartRateZoneBounds } from "../lib/trainingProfile";
+import InfoTooltip from "./ui/InfoTooltip";
 import { LoadingSpinner } from "./ui/QueryState";
 
 const Z2_COLOR = "#0f766e";
@@ -67,6 +68,14 @@ const XC_GOAL_ELEVATION_MAX_FEET = 25000;
 const XC_GOAL_ELEVATION_MAX_METERS =
   XC_GOAL_ELEVATION_MAX_FEET / FEET_PER_METER;
 const RIDE_BENCHMARK_PAGE_SIZE = 5;
+const XC_PROGRESS_HELP_TEXT =
+  "Track aerobic durability, weekly endurance load, climbing work, and training-block progress against your target event demands.";
+const RACE_RESULT_INSIGHTS_HELP_TEXT =
+  "Race-flagged activities are treated as outcomes and compared with the training rides that led into them.";
+const NEXT_RIDE_GUIDANCE_HELP_TEXT =
+  "Deterministic nudges based on endurance volume, climbing work, and durability.";
+const EVENT_TARGET_HELP_TEXT =
+  "This target drives the readiness checks. Keep it stable unless your race, date, course distance, or climbing demand changes.";
 
 type GoalDistanceUnit = "mi" | "km";
 type GoalElevationUnit = "ft" | "m";
@@ -946,11 +955,13 @@ function SummaryStat({
 }) {
   return (
     <div className="rounded-box border border-base-300/80 bg-base-100/80 p-4 shadow-sm backdrop-blur">
-      <p className="text-xs uppercase tracking-[0.2em] text-base-content/45">
-        {label}
-      </p>
+      <div className="flex items-center gap-1.5">
+        <p className="text-xs uppercase tracking-[0.2em] text-base-content/45">
+          {label}
+        </p>
+        <InfoTooltip label={`${label} details`} tip={detail} />
+      </div>
       <p className="mt-2 text-2xl font-semibold text-base-content">{value}</p>
-      <p className="mt-1 text-sm text-base-content/65">{detail}</p>
     </div>
   );
 }
@@ -959,9 +970,12 @@ function TrendSummaryItem({ summary }: { summary: TrendSummary }) {
   return (
     <div className="border-t border-base-300/70 pt-3">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-xs uppercase tracking-[0.18em] text-base-content/45">
-          {summary.label}
-        </p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-xs uppercase tracking-[0.18em] text-base-content/45">
+            {summary.label}
+          </p>
+          <InfoTooltip label={`${summary.label} details`} tip={summary.detail} />
+        </div>
         <span
           className={`whitespace-nowrap text-xs font-semibold uppercase ${trendDirectionClass(
             summary.direction,
@@ -972,9 +986,6 @@ function TrendSummaryItem({ summary }: { summary: TrendSummary }) {
       </div>
       <p className="mt-2 text-xl font-semibold text-base-content">
         {summary.value}
-      </p>
-      <p className="mt-1 text-sm leading-6 text-base-content/65">
-        {summary.detail}
       </p>
       {summary.targetDetail ? (
         <p className="mt-1 text-sm leading-6 text-base-content/55">
@@ -1048,9 +1059,7 @@ function SuggestedRideDetails({
           </div>
         ))}
       </dl>
-      <p className="mt-2 text-sm leading-6 text-base-content/70">
-        {ride.detail}
-      </p>
+      <InfoTooltip label="Suggested ride details" tip={ride.detail} />
     </div>
   );
 }
@@ -1083,17 +1092,20 @@ function ReadinessOverview({
               <p className="text-sm uppercase tracking-[0.2em] text-base-content/45">
                 Quick status
               </p>
-              <h2 className="mt-1 text-xl font-semibold text-base-content">
-                {readiness.title}
-              </h2>
+              <div className="mt-1 flex items-center gap-2">
+                <h2 className="text-xl font-semibold text-base-content">
+                  {readiness.title}
+                </h2>
+                <InfoTooltip
+                  label="Quick status details"
+                  tip={readiness.reason}
+                />
+              </div>
             </div>
             <span className={readinessBadgeClass(readiness.status)}>
               {formatReadinessStatusLabel(readiness.status)}
             </span>
           </div>
-          <p className="mt-2 text-sm leading-6 text-base-content/75">
-            {readiness.reason}
-          </p>
           {readiness.missing_most ? (
             <p className="mt-2 text-sm font-medium text-base-content">
               Missing most: {readiness.missing_most}
@@ -1102,16 +1114,30 @@ function ReadinessOverview({
         </div>
 
         <div className="rounded-box border border-base-300/80 bg-base-100/80 p-3 sm:p-4">
-          <p className="text-sm font-semibold text-base-content">
-            What am I missing?
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold text-base-content">
+              What am I missing?
+            </p>
+            {!primaryDeficit ? (
+              <InfoTooltip
+                label="Missing limiter details"
+                tip="No major limiter is flagged right now. Keep stacking event-like endurance and climbing work while freshness stays manageable."
+              />
+            ) : null}
+          </div>
           {primaryDeficit ? (
             <div className="mt-3 space-y-3">
               <div>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="font-semibold text-base-content">
-                    {primaryDeficit.title}
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-base-content">
+                      {primaryDeficit.title}
+                    </h3>
+                    <InfoTooltip
+                      label={`${primaryDeficit.title} details`}
+                      tip={primaryDeficit.detail}
+                    />
+                  </div>
                   <span
                     className={recommendationPriorityBadgeClass(
                       primaryDeficit.priority,
@@ -1119,12 +1145,9 @@ function ReadinessOverview({
                   >
                     {primaryDeficit.priority}
                   </span>
-              </div>
-              <p className="mt-2 text-sm leading-6 text-base-content/70">
-                {primaryDeficit.detail}
-              </p>
-              {primaryDeficit.gap_value != null ? (
-                <p className="mt-2 text-sm font-medium text-base-content">
+                </div>
+                {primaryDeficit.gap_value != null ? (
+                  <p className="mt-2 text-sm font-medium text-base-content">
                     Gap:{" "}
                     {formatDeficitGapValue(
                       primaryDeficit,
@@ -1137,9 +1160,8 @@ function ReadinessOverview({
               </div>
             </div>
           ) : (
-            <p className="mt-3 text-sm leading-6 text-base-content/70">
-              No major limiter is flagged right now. Keep stacking event-like
-              endurance and climbing work while freshness stays manageable.
+            <p className="mt-3 text-sm font-medium text-base-content">
+              No major limiter flagged
             </p>
           )}
         </div>
@@ -1227,11 +1249,13 @@ function formatRaceComparison(value: number | null | undefined) {
 
 function RaceResultCard({
   race,
+  raceCount,
   goalDistanceUnit,
   goalElevationUnit,
   unitSystem,
 }: {
   race: XcRaceResult;
+  raceCount: number;
   goalDistanceUnit: GoalDistanceUnit;
   goalElevationUnit: GoalElevationUnit;
   unitSystem: UnitSystem;
@@ -1247,17 +1271,32 @@ function RaceResultCard({
   }) {
     return (
       <div className="border-l border-base-300 pl-3">
-        <p className="text-xs uppercase tracking-[0.18em] text-base-content/45">
-          {label}
-        </p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-xs uppercase tracking-[0.18em] text-base-content/45">
+            {label}
+          </p>
+          <InfoTooltip label={`${label} details`} tip={detail} />
+        </div>
         <p className="mt-1 text-xl font-semibold text-base-content">{value}</p>
-        <p className="mt-1 text-sm text-base-content/60">{detail}</p>
       </div>
     );
   }
 
   return (
     <article className="rounded-box border border-base-300 bg-base-100 p-5 shadow-sm sm:p-6">
+      <div className="mb-5 flex items-center justify-between gap-3 text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
+        <div className="flex items-center gap-2">
+          <h2>Race result insights</h2>
+          <InfoTooltip
+            label="Race result insights details"
+            tip={RACE_RESULT_INSIGHTS_HELP_TEXT}
+          />
+        </div>
+        <span className="badge badge-outline whitespace-nowrap">
+          {raceCount} race{raceCount === 1 ? "" : "s"}
+        </span>
+      </div>
+
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1319,12 +1358,15 @@ function RaceResultCard({
       </div>
 
       <div className="mt-5 border-l-2 border-primary/35 bg-base-200/50 px-4 py-3">
-        <h3 className="font-semibold text-base-content">
-          {race.insight_title}
-        </h3>
-        <p className="mt-1 text-sm leading-6 text-base-content/70">
-          {race.insight_detail}
-        </p>
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-base-content">
+            {race.insight_title}
+          </h3>
+          <InfoTooltip
+            label={`${race.insight_title} details`}
+            tip={race.insight_detail}
+          />
+        </div>
         <dl className="mt-3 grid gap-2 text-xs text-base-content/65 sm:grid-cols-3">
           <div>
             <dt className="uppercase tracking-[0.14em] text-base-content/45">
@@ -1438,9 +1480,15 @@ function RecommendationCard({
     <article className="rounded-box border border-base-300 bg-base-100 p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-base font-semibold text-base-content">
-            {recommendation.title}
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-base font-semibold text-base-content">
+              {recommendation.title}
+            </h3>
+            <InfoTooltip
+              label={`${recommendation.title} details`}
+              tip={recommendation.detail}
+            />
+          </div>
           <div className="mt-2 flex flex-wrap gap-2">
             {recommendation.purpose ? (
               <span
@@ -1457,9 +1505,6 @@ function RecommendationCard({
           {recommendation.priority}
         </span>
       </div>
-      <p className="mt-2 text-sm leading-6 text-base-content/70">
-        {recommendation.detail}
-      </p>
       {recommendation.limiter ? (
         <p className="mt-2 text-sm text-base-content/70">
           <span className="font-medium text-base-content">Limiter:</span>{" "}
@@ -2261,13 +2306,15 @@ export default function XcGoalsProgressPanel() {
             <p className="text-sm uppercase tracking-[0.24em] text-base-content/45">
               XC training
             </p>
-            <h1 className="mt-3 text-4xl font-semibold tracking-tight text-base-content sm:text-5xl">
-              XC goals & progress
-            </h1>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-base-content/70 sm:text-lg">
-              Track aerobic durability, weekly endurance load, climbing work,
-              and training-block progress against your target event demands.
-            </p>
+            <div className="mt-3 flex items-center gap-2">
+              <h1 className="text-4xl font-semibold tracking-tight text-base-content sm:text-5xl">
+                XC goals & progress
+              </h1>
+              <InfoTooltip
+                label="XC goals and progress details"
+                tip={XC_PROGRESS_HELP_TEXT}
+              />
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-base-content/65">
@@ -2356,26 +2403,12 @@ export default function XcGoalsProgressPanel() {
 
       {progress.race_results.length > 0 ? (
         <section className="space-y-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-semibold text-base-content">
-                Race result insights
-              </h2>
-              <p className="mt-1 text-sm text-base-content/70">
-                Race-flagged activities are treated as outcomes and compared
-                with the training rides that led into them.
-              </p>
-            </div>
-            <span className="badge badge-outline whitespace-nowrap gap-2 px-3 py-2">
-              {progress.race_results.length} race
-              {progress.race_results.length === 1 ? "" : "s"}
-            </span>
-          </div>
           <div className="space-y-4">
             {progress.race_results.map((race) => (
               <RaceResultCard
                 key={race.activity_id}
                 race={race}
+                raceCount={progress.race_results.length}
                 goalDistanceUnit={goalDistanceUnit}
                 goalElevationUnit={goalElevationUnit}
                 unitSystem={unitSystem}
@@ -2394,24 +2427,27 @@ export default function XcGoalsProgressPanel() {
       ) : null}
 
       <section className="rounded-box border border-base-300 bg-base-100 p-5 shadow-sm sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="mb-5 flex items-center justify-between gap-3 text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
           <div>
-            <h2 className="text-xl font-semibold text-base-content">
-              Trends over time
-            </h2>
-            <p className="mt-1 text-sm text-base-content/70">
-              {eventGoal
-                ? `Weekly trends across the active training block, starting ${formatLongDate(eventGoal.start_date)}. Status compares recent weeks with the opening block.`
-                : `Weekly trends over the last eight weeks. Status compares recent weeks with the opening block.`}
-            </p>
+            <div className="flex items-center gap-2">
+              <h2>Trends over time</h2>
+              <InfoTooltip
+                label="Trends over time details"
+                tip={
+                  eventGoal
+                    ? `Weekly trends across the active training block, starting ${formatLongDate(eventGoal.start_date)}. Status compares recent weeks with the opening block.`
+                    : "Weekly trends over the last eight weeks. Status compares recent weeks with the opening block."
+                }
+              />
+            </div>
           </div>
-          <p className="whitespace-nowrap text-sm text-base-content/60">
+          <p className="whitespace-nowrap">
             {weeklyChartData.length} week
             {weeklyChartData.length === 1 ? "" : "s"} tracked
           </p>
         </div>
 
-        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {trendSummaries.map((summary) => (
             <TrendSummaryItem key={summary.label} summary={summary} />
           ))}
@@ -2760,14 +2796,14 @@ export default function XcGoalsProgressPanel() {
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.2fr)]">
         <section className="space-y-4 rounded-box border border-base-300 bg-base-100 p-5 shadow-sm sm:p-6">
-          <div>
-            <h2 className="text-xl font-semibold text-base-content">
-              Next ride guidance
-            </h2>
-            <p className="mt-1 text-sm text-base-content/70">
-              Deterministic nudges based on endurance volume, climbing work, and
-              durability.
-            </p>
+          <div className="mb-3 flex items-center justify-between gap-3 text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
+            <div className="flex items-center gap-2">
+              <h2>Next ride guidance</h2>
+              <InfoTooltip
+                label="Next ride guidance details"
+                tip={NEXT_RIDE_GUIDANCE_HELP_TEXT}
+              />
+            </div>
           </div>
 
           <div className="space-y-3">
@@ -2796,20 +2832,25 @@ export default function XcGoalsProgressPanel() {
         </section>
 
         <section className="rounded-box border border-base-300 bg-base-100 p-5 shadow-sm sm:p-6">
-          <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+          <div className="mb-5 flex items-center justify-between gap-3 text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
             <div>
-              <h2 className="text-xl font-semibold text-base-content">
-                {eventGoal
-                  ? "Training-block ride benchmarks"
-                  : "Recent ride benchmarks"}
-              </h2>
-              <p className="mt-1 text-sm text-base-content/70">
-                {eventGoal
-                  ? "Latest qualifying endurance rides inside the saved training block, including Z2 speed, climb totals, and ride vertical rate."
-                  : "Recent endurance rides and the metrics that feed the XC screen."}
-              </p>
+              <div className="flex items-center gap-2">
+                <h2>
+                  {eventGoal
+                    ? "Training-block ride benchmarks"
+                    : "Recent ride benchmarks"}
+                </h2>
+                <InfoTooltip
+                  label="Ride benchmarks details"
+                  tip={
+                    eventGoal
+                      ? "Latest qualifying endurance rides inside the saved training block, including Z2 speed, climb totals, and ride vertical rate."
+                      : "Recent endurance rides and the metrics that feed the XC screen."
+                  }
+                />
+              </div>
             </div>
-            <p className="whitespace-nowrap text-sm text-base-content/60">
+            <p className="whitespace-nowrap">
               {progress.recent_rides.length} ride
               {progress.recent_rides.length === 1 ? "" : "s"} available
             </p>
@@ -2954,20 +2995,20 @@ export default function XcGoalsProgressPanel() {
       </div>
 
       <section className="rounded-box border border-base-300 bg-base-100 p-5 shadow-sm sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="mb-5 flex items-center justify-between gap-3 text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
           <div>
-            <h2 className="text-xl font-semibold text-base-content">
-              Event target
-            </h2>
-            <p className="mt-1 text-sm text-base-content/70">
-              This target drives the readiness checks. Keep it stable unless
-              your race, date, course distance, or climbing demand changes.
-            </p>
+            <div className="flex items-center gap-2">
+              <h2>Event target</h2>
+              <InfoTooltip
+                label="Event target details"
+                tip={EVENT_TARGET_HELP_TEXT}
+              />
+            </div>
           </div>
           {!isEditingGoal ? (
             <button
               type="button"
-              className="btn btn-outline btn-sm"
+              className="btn btn-outline btn-sm normal-case tracking-normal"
               onClick={() => {
                 resetGoalDraftsFromPreferences(preferencesQuery.data ?? null);
                 setIsEditingGoal(true);
@@ -3072,9 +3113,7 @@ export default function XcGoalsProgressPanel() {
               <p className="text-sm leading-6 text-base-content/60">
                 Training block: {formatLongDate(eventGoal.start_date)} to{" "}
                 {formatLongDate(eventGoal.target_date)} (
-                {eventGoal.training_window_days} days). This target is the
-                course demand model used by Quick status, Trends, and Next ride
-                guidance.
+                {eventGoal.training_window_days} days).
               </p>
             </div>
           ) : (

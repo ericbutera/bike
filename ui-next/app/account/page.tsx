@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import IntegrationEventFeed from "../../components/IntegrationEventFeed";
 import Layout from "../../components/Layout";
 import RequireAuth from "../../components/RequireAuth";
+import InfoTooltip from "../../components/ui/InfoTooltip";
 import { LoadingCard } from "../../components/ui/QueryState";
 import {
   DEFAULT_UNIT_SYSTEM,
@@ -36,6 +37,17 @@ import {
   MAX_MAX_HEART_RATE_BPM,
   MIN_MAX_HEART_RATE_BPM,
 } from "../../lib/trainingProfile";
+
+const ACCOUNT_PREFERENCES_HELP_TEXT =
+  "Choose how Bike formats units and define the training profile Bike uses for ride-level zone summaries and future load models.";
+const STRAVA_INTEGRATION_HELP_TEXT =
+  "Connect a Strava athlete so Bike can pull new activities in the background and feed them through the same import pipeline as manual uploads.";
+const UNITS_HELP_TEXT =
+  "This preference is stored in Bike and applied anywhere those values are rendered.";
+const TRAINING_PROFILE_HELP_TEXT =
+  "Heart rate zones are stored in Bike and written onto new or regenerated rides. Estimated FTP is kept alongside them so future power-based analysis has a stable snapshot.";
+const TRAINING_PROFILE_USAGE_HELP_TEXT =
+  "New uploads and regenerated rides will persist per-ride heart rate zone time. Existing rides keep their historical snapshot until you regenerate them.";
 
 const UNIT_SYSTEM_OPTIONS: Array<{
   value: UnitSystem;
@@ -389,23 +401,28 @@ function AuthenticatedAccountPage() {
               <p className="text-sm uppercase tracking-[0.22em] text-base-content/50">
                 Account
               </p>
-              <h1 className="mt-2 text-4xl font-semibold">Preferences</h1>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-base-content/70">
-                Choose how Bike formats units and define the training profile
-                Bike uses for ride-level zone summaries and future load models.
-              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <h1 className="text-4xl font-semibold">Preferences</h1>
+                <InfoTooltip
+                  label="Preferences details"
+                  tip={ACCOUNT_PREFERENCES_HELP_TEXT}
+                />
+              </div>
             </div>
 
             <div className="card bg-base-100 shadow-xl">
               <div className="card-body gap-6">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
-                    <h2 className="card-title text-xl">Strava integration</h2>
-                    <p className="text-sm text-base-content/70">
-                      Connect a Strava athlete so Bike can pull new activities
-                      in the background and feed them through the same import
-                      pipeline as manual uploads.
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <h2 className="card-title text-xl">
+                        Strava integration
+                      </h2>
+                      <InfoTooltip
+                        label="Strava integration details"
+                        tip={STRAVA_INTEGRATION_HELP_TEXT}
+                      />
+                    </div>
                   </div>
                   <span
                     className={`badge ${stravaConnection.connected ? "badge-primary" : "badge-outline"}`}
@@ -723,11 +740,10 @@ function AuthenticatedAccountPage() {
             <div className="card bg-base-100 shadow-xl">
               <div className="card-body gap-6">
                 <div>
-                  <h2 className="card-title text-xl">Units</h2>
-                  <p className="text-sm text-base-content/70">
-                    This preference is stored in Bike and applied anywhere those
-                    values are rendered.
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <h2 className="card-title text-xl">Units</h2>
+                    <InfoTooltip label="Units details" tip={UNITS_HELP_TEXT} />
+                  </div>
                 </div>
 
                 <div className="grid gap-3 lg:grid-cols-3">
@@ -779,12 +795,13 @@ function AuthenticatedAccountPage() {
             <div className="card bg-base-100 shadow-xl">
               <div className="card-body gap-6">
                 <div>
-                  <h2 className="card-title text-xl">Training profile</h2>
-                  <p className="text-sm text-base-content/70">
-                    Heart rate zones are stored in Bike and written onto new or
-                    regenerated rides. Estimated FTP is kept alongside them so
-                    future power-based analysis has a stable snapshot.
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <h2 className="card-title text-xl">Training profile</h2>
+                    <InfoTooltip
+                      label="Training profile details"
+                      tip={TRAINING_PROFILE_HELP_TEXT}
+                    />
+                  </div>
                 </div>
 
                 {!heartRateZonesConfigured ? (
@@ -929,14 +946,15 @@ function AuthenticatedAccountPage() {
                 </div>
 
                 <div className="rounded-box bg-base-200 p-4 text-sm text-base-content/75">
-                  <div className="font-medium text-base-content">
-                    How Bike uses this
+                  <div className="flex items-center gap-2">
+                    <div className="font-medium text-base-content">
+                      How Bike uses this
+                    </div>
+                    <InfoTooltip
+                      label="Training profile usage details"
+                      tip={TRAINING_PROFILE_USAGE_HELP_TEXT}
+                    />
                   </div>
-                  <p className="mt-2 leading-6">
-                    New uploads and regenerated rides will persist per-ride
-                    heart rate zone time. Existing rides keep their historical
-                    snapshot until you regenerate them.
-                  </p>
                 </div>
 
                 <div className="card-actions justify-end">

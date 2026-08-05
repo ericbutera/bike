@@ -65,13 +65,9 @@ export default function SegmentDetailHeader({
       <div className="card-body gap-6">
         <div className="flex flex-wrap items-start justify-between gap-6">
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-base-content/45">
-              FMR / Effort Comparison
-            </p>
-
             {isEditingTitle ? (
               <form
-                className="mt-2 flex max-w-3xl flex-col gap-3 sm:flex-row sm:items-end"
+                className="flex max-w-3xl flex-col gap-3 sm:flex-row sm:items-end"
                 onSubmit={(event) => {
                   event.preventDefault();
                   editor.saveTitle();
@@ -113,7 +109,7 @@ export default function SegmentDetailHeader({
                 </div>
               </form>
             ) : (
-              <h1 className="mt-2 text-4xl font-semibold tracking-tight">
+              <h1 className="text-4xl font-semibold tracking-tight">
                 {segment.title}
               </h1>
             )}

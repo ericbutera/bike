@@ -318,11 +318,11 @@ export default function ActivitySignalsCard({
   return (
     <div className="card bg-base-100 shadow-xl">
       <div className="card-body">
-        <h2 className="card-title text-xs opacity-60 uppercase">
-          Ride signals
-        </h2>
+        <div className="mb-3 flex items-center justify-between gap-3 text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
+          <h2>Ride signals</h2>
+        </div>
 
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2">
           {availableSeries.map((entry) => {
             const isVisible = visibleKeys.includes(entry.key);
 

@@ -17,6 +17,10 @@ import {
   type FitnessFreshnessPoint,
   useFitnessFreshness,
 } from "../lib/queries";
+import InfoTooltip from "./ui/InfoTooltip";
+
+const FITNESS_FRESHNESS_HELP_TEXT =
+  "Fitness tracks your 42-day exponentially weighted load average. Fatigue tracks your 7-day average. Form is fitness minus fatigue. Bike currently estimates daily load from duration plus average heart rate, then rolls it forward with the same CTL/ATL style model used by training tools.";
 
 const LOAD_COLOR = "#94a3b8";
 const FITNESS_COLOR = "#2563eb";
@@ -286,16 +290,15 @@ export default function FitnessFreshnessPanel() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-sm text-base-content/60">Training load</p>
-              <h1 className="mt-2 text-4xl font-semibold">
-                Fitness &amp; Freshness
-              </h1>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-base-content/70">
-                Fitness tracks your 42-day exponentially weighted load average.
-                Fatigue tracks your 7-day average. Form is fitness minus
-                fatigue. Bike currently estimates daily load from duration plus
-                average heart rate, then rolls it forward with the same CTL/ATL
-                style model used by training tools.
-              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <h1 className="text-4xl font-semibold">
+                  Fitness &amp; Freshness
+                </h1>
+                <InfoTooltip
+                  label="Fitness and freshness details"
+                  tip={FITNESS_FRESHNESS_HELP_TEXT}
+                />
+              </div>
             </div>
 
             <div className="join">

@@ -68,9 +68,13 @@ export default function ActivityRouteMap({
   return (
     <div className="card bg-base-100 shadow-xl">
       <div className="card-body">
+        <div className="mb-3 flex items-center justify-between gap-3 text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
+          <h2>Route map</h2>
+        </div>
+
         {hasRouteMap ? (
           <>
-            <div className="mt-5 overflow-hidden border border-base-300 bg-base-200">
+            <div className="overflow-hidden border border-base-300 bg-base-200">
               <MapLibreRouteMap
                 routePoints={routePoints}
                 overlays={overlays}

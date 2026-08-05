@@ -167,8 +167,8 @@ export default function ActivityClimbsCard({
   return (
     <div id="activity-climbs-card" className="card bg-base-100 shadow-xl">
       <div className="card-body">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <h2 className="card-title text-xl">Climbs</h2>
+        <div className="mb-3 flex items-center justify-between gap-3 text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
+          <h2>Climbs</h2>
           <span className="badge badge-outline">
             {activityClimbs.length} climb
             {activityClimbs.length === 1 ? "" : "s"}
@@ -179,7 +179,7 @@ export default function ActivityClimbsCard({
           <>
             <div
               data-testid="activity-climbs-table-scroll"
-              className={`mt-5 overflow-x-auto rounded-box border border-base-300 ${
+              className={`overflow-x-auto rounded-box border border-base-300 ${
                 shouldLimitClimbList ? "overflow-y-auto" : ""
               }`}
               style={

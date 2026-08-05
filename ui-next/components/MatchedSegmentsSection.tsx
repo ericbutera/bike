@@ -679,7 +679,9 @@ export default function MatchedSegmentsSection({
       <div className="card-body">
         {segmentGroups.length > 0 && (
           <ul className="list overflow-hidden bg-base-100">
-            <li className="text-xs opacity-60 uppercase">Matched segments</li>
+            <li className="mb-3 flex items-center justify-between gap-3 px-0 text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
+              <span>Matched segments</span>
+            </li>
 
             {segmentGroups.map((segmentGroup) => {
               const segmentHref = `/segments/${segmentGroup.segmentId}`;

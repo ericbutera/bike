@@ -489,7 +489,7 @@ describe("ActivityDetailPanel", () => {
       </RequireAuth>,
     );
 
-    expect(screen.getByText("Sign in required")).toBeInTheDocument();
+    expect(screen.getByText("Sign in")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
       "href",
       "/login",
@@ -576,6 +576,13 @@ describe("ActivityDetailPanel", () => {
       screen.getByRole("button", { name: "Delete activity" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Lap splits")).toBeInTheDocument();
+    expect(screen.getByLabelText("Lap splits details")).toHaveAttribute(
+      "title",
+      "These lap rollups come from the upload-time read side and can be regenerated when the development flag is enabled.",
+    );
+    expect(
+      screen.queryByText(/These lap rollups come from/i),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Lap 1" })).toBeInTheDocument();
     expect(screen.getByText("Ride signals")).toBeInTheDocument();
     expect(

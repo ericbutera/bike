@@ -1,19 +1,13 @@
 "use client";
 
-import {
-  GenericList,
-  type Column,
-} from "@ericbutera/kaleido";
+import { GenericList, type Column } from "@ericbutera/kaleido";
 import { faStar } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { MemoryRouter } from "react-router-dom";
-import {
-  formatDistance,
-  formatDuration,
-} from "../lib/activityFormatting";
+import { formatDistance, formatDuration } from "../lib/activityFormatting";
 import {
   useSegments,
   useUpdateSegment,
@@ -21,9 +15,13 @@ import {
   type Segment,
 } from "../lib/queries";
 import { useUnitPreferences } from "../lib/unitPreferences";
+import InfoTooltip from "./ui/InfoTooltip";
 import { LoadingSpinner } from "./ui/QueryState";
 
 const ALLOWED_EXTENSIONS = new Set(["gpx", "tcx"]);
+const SEGMENTS_PAGE_SIZE = 25;
+const SEGMENT_BUILDER_HELP_TEXT =
+  "Crop a segment directly from one of your rides, or import a GPX or TCX route file when you already have the trace.";
 
 type SegmentsGridParams = {
   q?: string;
@@ -83,7 +81,8 @@ function normalizeSegmentsGridParams(params: SegmentsGridParams) {
   return {
     ...params,
     page: Number.isFinite(page) && page > 0 ? page : 1,
-    per_page: Number.isFinite(perPage) && perPage > 0 ? perPage : 20,
+    per_page:
+      Number.isFinite(perPage) && perPage > 0 ? perPage : SEGMENTS_PAGE_SIZE,
   };
 }
 
@@ -227,12 +226,13 @@ export default function SegmentsPanel() {
         <div className="card-body">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-sm text-base-content/60">Segments</p>
-              <h2 className="card-title text-3xl">Build or import segments</h2>
-              <p className="mt-2 max-w-2xl text-sm text-base-content/70">
-                Crop a segment directly from one of your rides, or import a GPX
-                or TCX route file when you already have the trace.
-              </p>
+              <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
+                <h2>Import Segment</h2>
+                <InfoTooltip
+                  label="Build or import segments details"
+                  tip={SEGMENT_BUILDER_HELP_TEXT}
+                />
+              </div>
               <p className="mt-2 max-w-2xl text-sm text-base-content/70">
                 You can download Strava segment GPX files from
                 <a
@@ -260,30 +260,20 @@ export default function SegmentsPanel() {
               }}
             />
 
-            <div className="card bg-base-100 shadow-sm">
-              <div className="card-body p-4 text-sm text-base-content/70">
-                {selectedFile ? (
+            {selectedFile && (
+              <div className="card bg-base-100 shadow-sm">
+                <div className="card-body p-4 text-sm text-base-content/70">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="font-medium text-base-content">
-                        {selectedFile.name}
-                      </div>
-                      <div className="text-sm text-base-content/70">
-                        Route geometry is required, so FIT is not supported here
-                        yet.
-                      </div>
+                    <div className="font-medium text-base-content">
+                      {selectedFile.name}
                     </div>
                     <span className="badge badge-neutral badge-outline uppercase">
                       {getExtension(selectedFile.name) || "unknown"}
                     </span>
                   </div>
-                ) : (
-                  <span>
-                    Choose one `.gpx` or `.tcx` file that traces the segment.
-                  </span>
-                )}
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <button
@@ -294,57 +284,55 @@ export default function SegmentsPanel() {
               >
                 {uploadMutation.isPending ? "Importing..." : "Import segment"}
               </button>
-              <div className="badge badge-ghost">
-                GPX and TCX work best because they keep route coordinates
-                explicit.
-              </div>
+              <InfoTooltip
+                label="Segment route file details"
+                tip="GPX and TCX work best because they keep route coordinates explicit."
+              />
             </div>
           </fieldset>
         </div>
       </div>
 
-      <div className="card bg-base-100 shadow-xl">
-        <div className="card-body">
-          <MemoryRouter>
-            <GenericList
-              title="Comparison-ready routes"
-              actions={
-                segmentsQuery.isFetching ? (
-                  <LoadingSpinner size="xs" />
-                ) : undefined
-              }
-              paramsSchema={SegmentsGridSchema}
-              useQuery={useSegmentsGridQuery}
-              columns={segmentColumns}
-              renderFilters={(params, setFilter) => (
-                <>
-                  <input
-                    type="search"
-                    placeholder="Search segments"
-                    className="input input-sm input-bordered w-52"
-                    value={params.q ?? ""}
-                    onChange={(event) => {
-                      setFilter("q", event.target.value);
-                    }}
-                  />
-                  <select
-                    className="select select-sm select-bordered w-36"
-                    value={params.mode ?? ""}
-                    onChange={(event) => {
-                      setFilter("mode", event.target.value);
-                    }}
-                  >
-                    <option value="">All types</option>
-                    <option value="xc">XC</option>
-                    <option value="dh">DH</option>
-                  </select>
-                </>
-              )}
-              emptyMessage="No segments found matching the current filters."
-            />
-          </MemoryRouter>
-        </div>
-      </div>
+      <MemoryRouter>
+        <GenericList
+          title={
+            <span className="text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
+              Segments
+            </span>
+          }
+          actions={
+            segmentsQuery.isFetching ? <LoadingSpinner size="xs" /> : undefined
+          }
+          paramsSchema={SegmentsGridSchema}
+          useQuery={useSegmentsGridQuery}
+          columns={segmentColumns}
+          renderFilters={(params, setFilter) => (
+            <>
+              <input
+                type="search"
+                placeholder="Search segments"
+                className="input input-sm input-bordered w-52"
+                value={params.q ?? ""}
+                onChange={(event) => {
+                  setFilter("q", event.target.value);
+                }}
+              />
+              <select
+                className="select select-sm select-bordered w-36"
+                value={params.mode ?? ""}
+                onChange={(event) => {
+                  setFilter("mode", event.target.value);
+                }}
+              >
+                <option value="">All types</option>
+                <option value="xc">XC</option>
+                <option value="dh">DH</option>
+              </select>
+            </>
+          )}
+          emptyMessage="No segments found matching the current filters."
+        />
+      </MemoryRouter>
     </section>
   );
 }

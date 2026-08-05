@@ -27,6 +27,10 @@ import ActivitySignalsCard from "./activity-detail/ActivitySignalsCard";
 import { buildSegmentAnchorId } from "./activity-detail/matchedSegments";
 import MatchedSegmentsSection from "./MatchedSegmentsSection";
 import TrainingProfileSnapshot from "./TrainingProfileSnapshot";
+import InfoTooltip from "./ui/InfoTooltip";
+
+const LAP_SPLITS_HELP_TEXT =
+  "These lap rollups come from the upload-time read side and can be regenerated when the development flag is enabled.";
 
 export default function ActivityDetailPanel({
   activityId,
@@ -234,13 +238,13 @@ export default function ActivityDetailPanel({
 
       <div className="card bg-base-100 shadow-xl">
         <div className="card-body">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h2 className="card-title text-xl">Lap splits</h2>
-              <p className="text-sm text-base-content/70">
-                These lap rollups come from the upload-time read side and can be
-                regenerated when the development flag is enabled.
-              </p>
+          <div className="mb-3 flex items-center justify-between gap-3 text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
+            <div className="flex items-center gap-2">
+              <h2>Lap splits</h2>
+              <InfoTooltip
+                label="Lap splits details"
+                tip={LAP_SPLITS_HELP_TEXT}
+              />
             </div>
             <span className="badge badge-outline">
               {(activity.laps ?? []).length} lap
@@ -249,7 +253,7 @@ export default function ActivityDetailPanel({
           </div>
 
           {(activity.laps ?? []).length > 0 ? (
-            <div className="mt-5 grid gap-4 xl:grid-cols-2">
+            <div className="grid gap-4 xl:grid-cols-2">
               {(activity.laps ?? []).map((lap) => (
                 <LapCard
                   key={`${lap.lap_index}-${lap.title}`}

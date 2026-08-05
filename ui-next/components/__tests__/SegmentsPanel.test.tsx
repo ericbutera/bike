@@ -183,7 +183,7 @@ describe("SegmentsPanel", () => {
       "href",
       "/segments/13",
     );
-    expect(screen.getByText("Comparison-ready routes")).toBeInTheDocument();
+    expect(screen.getByText("Segments")).toBeInTheDocument();
     expect(screen.getByText("Type")).toBeInTheDocument();
     expect(screen.getByText("Efforts")).toBeInTheDocument();
     expect(screen.getByText("2")).toBeInTheDocument();
@@ -202,6 +202,28 @@ describe("SegmentsPanel", () => {
     ]);
     expect(
       screen.queryByRole("link", { name: "Compare efforts" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("limits segments to 25 rows before pagination", () => {
+    mocks.useSegments.mockReturnValue({
+      data: Array.from({ length: 26 }, (_, index) =>
+        makeSegment({
+          id: index + 1,
+          title: `Route ${String(index + 1).padStart(2, "0")}`,
+        }),
+      ),
+      isError: false,
+      isLoading: false,
+      isFetching: false,
+      error: null,
+    });
+
+    render(<SegmentsPanel />);
+
+    expect(screen.getByRole("link", { name: "Route 25" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Route 26" }),
     ).not.toBeInTheDocument();
   });
 

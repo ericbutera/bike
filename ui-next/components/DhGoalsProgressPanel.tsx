@@ -21,11 +21,14 @@ import {
   type TrainingRecommendation,
   useDhGoalProgress,
 } from "../lib/queries";
+import InfoTooltip from "./ui/InfoTooltip";
 import { LoadingSpinner } from "./ui/QueryState";
 
 const SESSION_BAR_COLOR = "#ea580c";
 const FADE_LINE_COLOR = "#2563eb";
 const GOAL_LINE_COLOR = "#dc2626";
+const RECENT_SESSION_SHAPE_HELP_TEXT =
+  "Watch lap count and average repeat fade across your latest DH days to see whether volume and consistency are moving together.";
 
 type SessionChartPoint = {
   label: string;
@@ -493,13 +496,15 @@ export default function DhGoalsProgressPanel() {
         <article className="rounded-box border border-base-300 bg-base-100 p-5 shadow-sm sm:p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-xl font-semibold text-base-content">
-                Recent session shape
-              </h2>
-              <p className="mt-1 text-sm text-base-content/70">
-                Watch lap count and average repeat fade across your latest DH
-                days to see whether volume and consistency are moving together.
-              </p>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-semibold text-base-content">
+                  Recent session shape
+                </h2>
+                <InfoTooltip
+                  label="Recent session shape details"
+                  tip={RECENT_SESSION_SHAPE_HELP_TEXT}
+                />
+              </div>
             </div>
           </div>
 

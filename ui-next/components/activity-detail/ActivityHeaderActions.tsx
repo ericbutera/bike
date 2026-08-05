@@ -33,9 +33,11 @@ export function ActivityHeaderActions({
 
   return (
     <div className="flex flex-col items-start gap-3 sm:items-end">
-      <div className="flex flex-wrap gap-2">
-        <span className="badge badge-outline">{formatSport(activity.sport)}</span>
-        <span className="badge badge-outline">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <span className="badge badge-outline h-8">
+          {formatSport(activity.sport)}
+        </span>
+        <span className="badge badge-outline h-8">
           {formatActivityTypeLabel(activity.activity_type)}
         </span>
 

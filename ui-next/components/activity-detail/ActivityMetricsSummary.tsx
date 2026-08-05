@@ -14,6 +14,10 @@ import {
   type UnitSystem,
 } from "../../lib/activityFormatting";
 import type { Activity } from "../../lib/queries";
+import InfoTooltip from "../ui/InfoTooltip";
+
+const ACTIVITY_DATA_HELP_TEXT =
+  "Secondary fields are grouped into a tighter stats list so the summary stays readable.";
 
 function PrimaryActivityStat({
   label,
@@ -96,13 +100,15 @@ export default function ActivityMetricsSummary({
 
       <div className="space-y-3">
         <div>
-          <h2 className="text-lg font-semibold text-base-content">
-            Activity data
-          </h2>
-          <p className="text-sm text-base-content/70">
-            Secondary fields are grouped into a tighter stats list so the
-            summary stays readable.
-          </p>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
+              Activity data
+            </h2>
+            <InfoTooltip
+              label="Activity data details"
+              tip={ACTIVITY_DATA_HELP_TEXT}
+            />
+          </div>
         </div>
 
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:items-start">

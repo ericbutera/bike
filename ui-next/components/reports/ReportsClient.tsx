@@ -20,6 +20,7 @@ import {
   type RideSummaryReport,
 } from "../../lib/queries";
 import { useUnitPreferences } from "../../lib/unitPreferences";
+import InfoTooltip from "../ui/InfoTooltip";
 import Charts from "./Charts";
 import TimeRangeSelector, { TimeRange } from "./TimeRangeSelector";
 import {
@@ -29,6 +30,11 @@ import {
   type ReportDefinition,
   type ReportId,
 } from "./reportDefinitions";
+
+const REPORTS_HELP_TEXT =
+  "Generate ad-hoc ride analysis for the selected range.";
+const REPORT_RANGE_HELP_TEXT =
+  "Reports are generated from rides started inside this range.";
 
 export default function ReportsClient() {
   const router = useRouter();
@@ -132,10 +138,10 @@ export default function ReportsClient() {
     <div className="grid gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Reports</h1>
-          <p className="mt-2 max-w-3xl text-sm text-base-content/70">
-            Generate ad-hoc ride analysis for the selected range.
-          </p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-semibold">Reports</h1>
+            <InfoTooltip label="Reports details" tip={REPORTS_HELP_TEXT} />
+          </div>
         </div>
         <div className="min-w-0">
           <div className="mb-2 text-xs font-medium uppercase text-base-content/50">
@@ -173,8 +179,12 @@ export default function ReportsClient() {
               }}
             />
           </label>
-          <div className="text-sm text-base-content/60">
-            Reports are generated from rides started inside this range.
+          <div className="flex items-center gap-2 text-sm text-base-content/60">
+            <span>Selected range</span>
+            <InfoTooltip
+              label="Report range details"
+              tip={REPORT_RANGE_HELP_TEXT}
+            />
           </div>
         </div>
       </section>
@@ -189,10 +199,15 @@ export default function ReportsClient() {
         <section className="min-w-0 rounded-lg border border-base-300 bg-base-100 p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold">{selectedReport.name}</h2>
-              <p className="mt-1 max-w-2xl text-sm text-base-content/70">
-                {selectedReport.purpose}
-              </p>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-semibold">
+                  {selectedReport.name}
+                </h2>
+                <InfoTooltip
+                  label={`${selectedReport.name} details`}
+                  tip={selectedReport.purpose}
+                />
+              </div>
             </div>
           </div>
 
