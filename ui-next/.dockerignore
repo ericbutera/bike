@@ -1,0 +1,27 @@
+# Dependencies and package manager caches
+node_modules
+.pnpm-store
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Next/build outputs
+.next
+out
+dist
+coverage
+*.tsbuildinfo
+
+# Local environment and editor files
+.env
+.env.*
+!.env.example
+.DS_Store
+.vscode
+
+# Local-only linked source mounted by compose for dev
+kaleido
+
+# Generated local diagnostics
+typecheck_output.txt
