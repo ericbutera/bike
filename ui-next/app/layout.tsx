@@ -7,6 +7,24 @@ import RuntimeConfigScript from "../components/RuntimeConfigScript";
 import { getServerConfig } from "../lib/config";
 import "./globals.css";
 
+const siteName = "bike";
+const siteDescription = "all vibes bike analytic platform";
+const socialPreviewImage = "/social-preview.jpg";
+
+function getMetadataBase() {
+  const rawUrl =
+    process.env.SITE_URL ??
+    process.env.NEXT_PUBLIC_SITE_URL ??
+    process.env.FRONTEND_URL ??
+    "https://bike.nibelheim.dev";
+
+  try {
+    return new URL(rawUrl);
+  } catch {
+    return new URL("https://bike.nibelheim.dev");
+  }
+}
+
 const themeScript = `
 (() => {
   try {
@@ -31,8 +49,10 @@ const themeScript = `
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "bike",
-  description: "Next.js frontend scaffold",
+  metadataBase: getMetadataBase(),
+  title: siteName,
+  description: siteDescription,
+  applicationName: siteName,
   icons: {
     icon: [
       { url: "/favicon.ico" },
@@ -40,6 +60,27 @@ export const metadata: Metadata = {
     ],
     shortcut: [{ url: "/favicon.ico" }],
     apple: [{ url: "/favicon-512.png", type: "image/png", sizes: "512x512" }],
+  },
+  openGraph: {
+    type: "website",
+    siteName,
+    title: siteName,
+    description: siteDescription,
+    url: "/",
+    images: [
+      {
+        url: socialPreviewImage,
+        width: 1376,
+        height: 768,
+        alt: siteDescription,
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: siteName,
+    description: siteDescription,
+    images: [socialPreviewImage],
   },
 };
 

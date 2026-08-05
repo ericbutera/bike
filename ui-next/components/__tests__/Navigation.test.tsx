@@ -61,4 +61,22 @@ describe("Navigation", () => {
     expect(trainingMenu).not.toHaveAttribute("open");
     expect(accountMenu).toHaveAttribute("open");
   });
+
+  it("hides protected navigation when signed out", () => {
+    mocks.useCurrentUser.mockReturnValue({
+      user: null,
+      isLoading: false,
+    });
+
+    render(<Navigation />);
+
+    expect(screen.queryByText("Activities")).not.toBeInTheDocument();
+    expect(screen.queryByText("Training")).not.toBeInTheDocument();
+    expect(screen.queryByText("Account")).not.toBeInTheDocument();
+    expect(screen.queryByText("Theme")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
+      "href",
+      "/login",
+    );
+  });
 });

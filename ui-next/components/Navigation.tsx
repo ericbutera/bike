@@ -12,6 +12,7 @@ export default function Navigation() {
   const { user, isLoading } = authApi.useCurrentUser();
   const logout = authApi.useLogout();
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
+  const isAuthenticated = Boolean(user);
 
   const handleMenuToggle =
     (menu: Exclude<OpenMenu, null>) =>
@@ -36,73 +37,73 @@ export default function Navigation() {
           <Link href="/" className="btn btn-ghost normal-case text-lg">
             bike
           </Link>
-          <div className="flex items-center gap-2">
-            <Link href="/" className="btn btn-ghost btn-sm">
-              Activities
-            </Link>
+          {isAuthenticated ? (
+            <div className="flex items-center gap-2">
+              <Link href="/" className="btn btn-ghost btn-sm">
+                Activities
+              </Link>
 
-            <ul className="menu menu-horizontal px-1">
-              <li>
-                <details
-                  open={openMenu === "training"}
-                  onToggle={handleMenuToggle("training")}
-                >
-                  <summary className="btn btn-ghost btn-sm">Training</summary>
-                  <ul className="z-50 mt-2 w-56 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
-                    <li>
-                      <Link href="/xc" onClick={closeMenu}>
-                        Cross Country (XC)
-                      </Link>
-                    </li>
-                    <li>
-                      <Link href="/dh" onClick={closeMenu}>
-                        Downhill (DH)
-                      </Link>
-                    </li>
-                    <li>
-                      <Link href="/segments" onClick={closeMenu}>
-                        Segments
-                      </Link>
-                    </li>
-                    <li>
-                      <Link href="/fitness" onClick={closeMenu}>
-                        Fitness
-                      </Link>
-                    </li>
-                    <li>
-                      <Link href="/training/reports" onClick={closeMenu}>
-                        Reports
-                      </Link>
-                    </li>
-                  </ul>
-                </details>
-              </li>
-            </ul>
-
-            <ul className="menu menu-horizontal px-1">
-              <li>
-                <details
-                  open={openMenu === "account"}
-                  onToggle={handleMenuToggle("account")}
-                >
-                  <summary className="btn btn-ghost btn-sm">Account</summary>
-                  <ul className="z-50 mt-2 w-56 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
-                    <li>
-                      <Link href="/account" onClick={closeMenu}>
-                        Account
-                      </Link>
-                    </li>
-                    {user?.is_admin ? (
+              <ul className="menu menu-horizontal px-1">
+                <li>
+                  <details
+                    open={openMenu === "training"}
+                    onToggle={handleMenuToggle("training")}
+                  >
+                    <summary className="btn btn-ghost btn-sm">Training</summary>
+                    <ul className="z-50 mt-2 w-56 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
                       <li>
-                        <Link href="/admin" onClick={closeMenu}>
-                          Admin
+                        <Link href="/xc" onClick={closeMenu}>
+                          Cross Country (XC)
                         </Link>
                       </li>
-                    ) : null}
-                    <li>
-                      <ThemeToggle />
-                    </li>
-                    {isLoading ? null : user ? (
+                      <li>
+                        <Link href="/dh" onClick={closeMenu}>
+                          Downhill (DH)
+                        </Link>
+                      </li>
+                      <li>
+                        <Link href="/segments" onClick={closeMenu}>
+                          Segments
+                        </Link>
+                      </li>
+                      <li>
+                        <Link href="/fitness" onClick={closeMenu}>
+                          Fitness
+                        </Link>
+                      </li>
+                      <li>
+                        <Link href="/training/reports" onClick={closeMenu}>
+                          Reports
+                        </Link>
+                      </li>
+                    </ul>
+                  </details>
+                </li>
+              </ul>
+
+              <ul className="menu menu-horizontal px-1">
+                <li>
+                  <details
+                    open={openMenu === "account"}
+                    onToggle={handleMenuToggle("account")}
+                  >
+                    <summary className="btn btn-ghost btn-sm">Account</summary>
+                    <ul className="z-50 mt-2 w-56 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
+                      <li>
+                        <Link href="/account" onClick={closeMenu}>
+                          Account
+                        </Link>
+                      </li>
+                      {user?.is_admin ? (
+                        <li>
+                          <Link href="/admin" onClick={closeMenu}>
+                            Admin
+                          </Link>
+                        </li>
+                      ) : null}
+                      <li>
+                        <ThemeToggle />
+                      </li>
                       <li>
                         <button
                           type="button"
@@ -115,20 +116,21 @@ export default function Navigation() {
                           {logout.isPending ? "Signing out..." : "Sign out"}
                         </button>
                       </li>
-                    ) : (
-                      <li>
-                        <Link href="/login" onClick={closeMenu}>
-                          Login
-                        </Link>
-                      </li>
-                    )}
-                  </ul>
-                </details>
-              </li>
-            </ul>
-          </div>
+                    </ul>
+                  </details>
+                </li>
+              </ul>
+            </div>
+          ) : null}
         </div>
       </div>
+      {!isLoading && !isAuthenticated ? (
+        <div className="flex-none">
+          <Link href="/login" className="btn btn-primary btn-sm">
+            Sign in
+          </Link>
+        </div>
+      ) : null}
     </div>
   );
 }

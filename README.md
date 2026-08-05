@@ -1,5 +1,7 @@
 # Bike
 
+![all vibes bike analytic platform](ui-next/public/social-preview.jpg)
+
 Bike is a multi-user activity and training app for cycling data. It imports rides from files, archive exports, and Strava; stores normalized activity data; matches user-owned route segments; and surfaces XC/DH training progress.
 
 Natural-language product specifications live in [docs/specifications](docs/specifications). Treat those docs as the source of truth for intended behavior, and update the affected spec alongside code changes that alter user-visible functionality, processing semantics, or training recommendations.
