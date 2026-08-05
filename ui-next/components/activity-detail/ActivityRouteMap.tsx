@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { buildActivityClimbs } from "../../lib/activityClimbs";
 import { useActivity } from "../../lib/queries";
 import MapLibreRouteMap from "../MapLibreRouteMap";
+import { AppCard, CardHeader } from "../ui/Card";
 import {
   segmentOverlayPoints,
   useMatchedSegmentGroups,
@@ -26,10 +27,7 @@ export default function ActivityRouteMap({
   const activity = activityQuery.data;
   const routePoints = activity?.route_points;
   const segmentGroups = useMatchedSegmentGroups(activity);
-  const climbs = useMemo(
-    () => buildActivityClimbs(routePoints),
-    [routePoints],
-  );
+  const climbs = useMemo(() => buildActivityClimbs(routePoints), [routePoints]);
   const hasRouteMap = (routePoints?.length ?? 0) >= 2;
   const selectedClimb =
     climbs.find((climb) => climb.id === selectedClimbId) ?? null;
@@ -66,73 +64,72 @@ export default function ActivityRouteMap({
   const overlays = [...segmentOverlays, ...climbOverlays];
 
   return (
-    <div className="card bg-base-100 shadow-xl">
-      <div className="card-body">
-        <div className="mb-3 flex items-center justify-between gap-3 text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
-          <h2>Route map</h2>
-        </div>
+    <AppCard>
+      <CardHeader className="mb-3" title="Route map" />
 
-        {hasRouteMap ? (
-          <>
-            <div className="overflow-hidden border border-base-300 bg-base-200">
-              <MapLibreRouteMap
-                routePoints={routePoints}
-                overlays={overlays}
-                ariaLabel="Activity route map"
-                emptyMessage="This activity does not have enough stored route points for the map yet."
-                showZoomControls
-                showLayerPicker
-                defaultBasemap="topo"
-                basemapOptions={["topo", "street", "satellite"]}
-                fitBoundsPoints={selectedClimb?.routePoints ?? null}
-                fitBoundsKey={selectedClimb ? selectedClimb.id : "activity"}
-                fitBoundsMaxZoom={selectedClimb ? 15 : undefined}
-                className="h-96 w-full"
-              />
-            </div>
-
-            {segmentGroups.length > 0 ? (
-              <div className="card-actions mt-4 gap-2">
-                {segmentGroups.map((segmentGroup) => {
-                  const isSelected =
-                    selectedSegmentId === segmentGroup.segmentId;
-
-                  return (
-                    <button
-                      key={`${segmentGroup.segmentId}-legend`}
-                      type="button"
-                      className={`btn btn-sm ${isSelected ? segmentGroup.tone.buttonClassName : segmentGroup.tone.outlineButtonClassName}`}
-                      aria-label={`Jump to ${segmentGroup.segmentTitle} matches`}
-                      onClick={() => {
-                        onSelectSegment(segmentGroup.segmentId);
-                      }}
-                    >
-                      <span
-                        aria-hidden
-                        className={`inline-block h-2.5 w-2.5 rounded-full ${segmentGroup.tone.dotClassName}`}
-                      />
-                      <span>{segmentGroup.segmentTitle}</span>
-                      <span className="badge badge-ghost badge-sm">
-                        {segmentGroup.efforts.length}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
-          </>
-        ) : (
-          <div className="alert mt-5">
-            <div>
-              <p>
-                This activity does not have enough stored route points for the
-                map yet. Regenerate it once to rebuild the full route geometry
-                and re-run segment matching.
-              </p>
-            </div>
+      {hasRouteMap ? (
+        <>
+          <div className="overflow-hidden border border-base-300 bg-base-200">
+            <MapLibreRouteMap
+              routePoints={routePoints}
+              overlays={overlays}
+              ariaLabel="Activity route map"
+              emptyMessage="This activity does not have enough stored route points for the map yet."
+              showZoomControls
+              showLayerPicker
+              defaultBasemap="topo"
+              basemapOptions={["topo", "street", "satellite"]}
+              fitBoundsPoints={selectedClimb?.routePoints ?? null}
+              fitBoundsKey={selectedClimb ? selectedClimb.id : "activity"}
+              fitBoundsMaxZoom={selectedClimb ? 15 : undefined}
+              className="h-96 w-full"
+            />
           </div>
-        )}
-      </div>
-    </div>
+
+          {segmentGroups.length > 0 ? (
+            <div className="card-actions mt-4 gap-2">
+              {segmentGroups.map((segmentGroup) => {
+                const isSelected = selectedSegmentId === segmentGroup.segmentId;
+
+                return (
+                  <button
+                    key={`${segmentGroup.segmentId}-legend`}
+                    type="button"
+                    className={`btn btn-sm ${
+                      isSelected
+                        ? segmentGroup.tone.buttonClassName
+                        : segmentGroup.tone.outlineButtonClassName
+                    }`}
+                    aria-label={`Jump to ${segmentGroup.segmentTitle} matches`}
+                    onClick={() => {
+                      onSelectSegment(segmentGroup.segmentId);
+                    }}
+                  >
+                    <span
+                      aria-hidden
+                      className={`inline-block h-2.5 w-2.5 rounded-full ${segmentGroup.tone.dotClassName}`}
+                    />
+                    <span>{segmentGroup.segmentTitle}</span>
+                    <span className="badge badge-ghost badge-sm">
+                      {segmentGroup.efforts.length}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <div className="alert mt-5">
+          <div>
+            <p>
+              This activity does not have enough stored route points for the map
+              yet. Regenerate it once to rebuild the full route geometry and
+              re-run segment matching.
+            </p>
+          </div>
+        </div>
+      )}
+    </AppCard>
   );
 }

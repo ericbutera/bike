@@ -20,6 +20,7 @@ import {
 } from "../../lib/activityFormatting";
 import type { ActivityChartPoint } from "../../lib/queries";
 import { zeroBasedDomain } from "../../lib/chartDomains";
+import { AppCard, CardHeader } from "../ui/Card";
 
 type ChartSeriesPoint = {
   x: number;
@@ -206,7 +207,10 @@ function useActivitySignalSeries(
         dotClassName: "bg-info",
         strokeColor: "var(--color-info)",
         strokeWidth: 1.5,
-        summary: `Top speed ${formatSpeed(maxSeriesValue(speedSeries), unitSystem)}`,
+        summary: `Top speed ${formatSpeed(
+          maxSeriesValue(speedSeries),
+          unitSystem,
+        )}`,
       },
       {
         key: "elevation",
@@ -217,7 +221,10 @@ function useActivitySignalSeries(
         strokeColor: "var(--color-success)",
         strokeWidth: 1.75,
         fillColor: "var(--color-success)",
-        summary: `${formatElevation(minSeriesValue(elevationSeries), unitSystem)} to ${formatElevation(maxSeriesValue(elevationSeries), unitSystem)}`,
+        summary: `${formatElevation(
+          minSeriesValue(elevationSeries),
+          unitSystem,
+        )} to ${formatElevation(maxSeriesValue(elevationSeries), unitSystem)}`,
       },
     ];
   }, [chartPoints, unitSystem]);
@@ -316,132 +323,130 @@ export default function ActivitySignalsCard({
   }
 
   return (
-    <div className="card bg-base-100 shadow-xl">
-      <div className="card-body">
-        <div className="mb-3 flex items-center justify-between gap-3 text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
-          <h2>Ride signals</h2>
-        </div>
+    <AppCard>
+      <CardHeader className="mb-3" title="Ride signals" />
 
-        <div className="flex flex-wrap gap-2">
-          {availableSeries.map((entry) => {
-            const isVisible = visibleKeys.includes(entry.key);
+      <div className="flex flex-wrap gap-2">
+        {availableSeries.map((entry) => {
+          const isVisible = visibleKeys.includes(entry.key);
 
-            return (
-              <button
-                key={entry.key}
-                type="button"
-                className={`btn btn-sm ${isVisible ? entry.buttonClassName : "btn-ghost"}`}
-                aria-pressed={isVisible}
-                onClick={() => {
-                  toggleSignalLayer(entry.key);
-                }}
-              >
-                {entry.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {visibleSeries.length > 0 ? (
-          <>
-            <div
-              role="img"
-              aria-label="Activity signals chart"
-              className="mt-5 overflow-hidden rounded-box border border-base-300 bg-base-200 p-3"
+          return (
+            <button
+              key={entry.key}
+              type="button"
+              className={`btn btn-sm ${
+                isVisible ? entry.buttonClassName : "btn-ghost"
+              }`}
+              aria-pressed={isVisible}
+              onClick={() => {
+                toggleSignalLayer(entry.key);
+              }}
             >
-              <div className="h-[208px] w-full">
-                <ResponsiveContainer
-                  width="100%"
-                  height="100%"
-                  minWidth={320}
-                  minHeight={208}
-                >
-                  <ComposedChart
-                    data={rows}
-                    margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
-                  >
-                    <CartesianGrid
-                      vertical={false}
-                      stroke="var(--color-base-content)"
-                      strokeOpacity={0.1}
-                    />
-                    <XAxis
-                      axisLine={false}
-                      dataKey="elapsedSeconds"
-                      domain={signalXDomain}
-                      includeHidden
-                      tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
-                      tickFormatter={(value: number) =>
-                        formatElapsedAxisLabel(value)
-                      }
-                      tickLine={false}
-                      type="number"
-                    />
-                    {visibleSeries.map((entry) => (
-                      <YAxis
-                        key={`${entry.key}-axis`}
-                        hide
-                        yAxisId={entry.key}
-                        domain={["dataMin", "dataMax"]}
-                      />
-                    ))}
-                    <Tooltip
-                      content={<SignalChartTooltip unitSystem={unitSystem} />}
-                    />
-                    {visibleSeries.map((entry) =>
-                      entry.key === "elevation" ? (
-                        <Area
-                          key={entry.key}
-                          type="linear"
-                          dataKey={entry.key}
-                          yAxisId={entry.key}
-                          stroke={entry.strokeColor}
-                          fill={entry.fillColor ?? entry.strokeColor}
-                          fillOpacity={0.08}
-                          strokeOpacity={0.35}
-                          strokeWidth={entry.strokeWidth ?? 1.75}
-                          dot={false}
-                          connectNulls
-                        />
-                      ) : (
-                        <Line
-                          key={entry.key}
-                          type="linear"
-                          dataKey={entry.key}
-                          yAxisId={entry.key}
-                          stroke={entry.strokeColor}
-                          strokeWidth={entry.strokeWidth ?? 2}
-                          dot={false}
-                          connectNulls
-                        />
-                      ),
-                    )}
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              {visibleSeries.map((entry) => (
-                <div
-                  key={`${entry.key}-summary`}
-                  className="badge badge-outline gap-2 px-3 py-3"
-                >
-                  <span
-                    aria-hidden
-                    className={`inline-block h-2.5 w-2.5 rounded-full ${entry.dotClassName}`}
-                  />
-                  <span>{entry.summary}</span>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <div className="alert mt-5">
-            <span>Turn on at least one signal layer to render the chart.</span>
-          </div>
-        )}
+              {entry.label}
+            </button>
+          );
+        })}
       </div>
-    </div>
+
+      {visibleSeries.length > 0 ? (
+        <>
+          <div
+            role="img"
+            aria-label="Activity signals chart"
+            className="mt-5 overflow-hidden rounded-box border border-base-300 bg-base-200 p-3"
+          >
+            <div className="h-[208px] w-full">
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+                minWidth={320}
+                minHeight={208}
+              >
+                <ComposedChart
+                  data={rows}
+                  margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
+                >
+                  <CartesianGrid
+                    vertical={false}
+                    stroke="var(--color-base-content)"
+                    strokeOpacity={0.1}
+                  />
+                  <XAxis
+                    axisLine={false}
+                    dataKey="elapsedSeconds"
+                    domain={signalXDomain}
+                    includeHidden
+                    tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
+                    tickFormatter={(value: number) =>
+                      formatElapsedAxisLabel(value)
+                    }
+                    tickLine={false}
+                    type="number"
+                  />
+                  {visibleSeries.map((entry) => (
+                    <YAxis
+                      key={`${entry.key}-axis`}
+                      hide
+                      yAxisId={entry.key}
+                      domain={["dataMin", "dataMax"]}
+                    />
+                  ))}
+                  <Tooltip
+                    content={<SignalChartTooltip unitSystem={unitSystem} />}
+                  />
+                  {visibleSeries.map((entry) =>
+                    entry.key === "elevation" ? (
+                      <Area
+                        key={entry.key}
+                        type="linear"
+                        dataKey={entry.key}
+                        yAxisId={entry.key}
+                        stroke={entry.strokeColor}
+                        fill={entry.fillColor ?? entry.strokeColor}
+                        fillOpacity={0.08}
+                        strokeOpacity={0.35}
+                        strokeWidth={entry.strokeWidth ?? 1.75}
+                        dot={false}
+                        connectNulls
+                      />
+                    ) : (
+                      <Line
+                        key={entry.key}
+                        type="linear"
+                        dataKey={entry.key}
+                        yAxisId={entry.key}
+                        stroke={entry.strokeColor}
+                        strokeWidth={entry.strokeWidth ?? 2}
+                        dot={false}
+                        connectNulls
+                      />
+                    ),
+                  )}
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {visibleSeries.map((entry) => (
+              <div
+                key={`${entry.key}-summary`}
+                className="badge badge-outline gap-2 px-3 py-3"
+              >
+                <span
+                  aria-hidden
+                  className={`inline-block h-2.5 w-2.5 rounded-full ${entry.dotClassName}`}
+                />
+                <span>{entry.summary}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <div className="alert mt-5">
+          <span>Turn on at least one signal layer to render the chart.</span>
+        </div>
+      )}
+    </AppCard>
   );
 }

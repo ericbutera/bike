@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import IntegrationEventFeed from "../../components/IntegrationEventFeed";
 import Layout from "../../components/Layout";
 import RequireAuth from "../../components/RequireAuth";
+import { AppCard, CardHeader } from "../../components/ui/Card";
 import InfoTooltip from "../../components/ui/InfoTooltip";
 import { LoadingCard } from "../../components/ui/QueryState";
 import {
@@ -213,8 +214,9 @@ function AuthenticatedAccountPage() {
     preferencesQuery.data?.heart_rate_zone_bounds_bpm ?? null;
   const stravaConnection = stravaQuery.data;
   const stravaEventsQuery = useStravaIntegrationEvents({
-    refetchIntervalMs:
-      isStravaSyncActive(stravaConnection.last_sync_status) ? 5000 : false,
+    refetchIntervalMs: isStravaSyncActive(stravaConnection.last_sync_status)
+      ? 5000
+      : false,
   });
   const [draftUnitSystem, setDraftUnitSystem] =
     useState<UnitSystem>(DEFAULT_UNIT_SYSTEM);
@@ -397,595 +399,557 @@ function AuthenticatedAccountPage() {
 
   return (
     <div className="space-y-6">
-            <div>
-              <p className="text-sm uppercase tracking-[0.22em] text-base-content/50">
-                Account
+      <div>
+        <p className="text-sm uppercase tracking-[0.22em] text-base-content/50">
+          Account
+        </p>
+        <div className="mt-2 flex items-center gap-2">
+          <h1 className="text-4xl font-semibold">Preferences</h1>
+          <InfoTooltip
+            label="Preferences details"
+            tip={ACCOUNT_PREFERENCES_HELP_TEXT}
+          />
+        </div>
+      </div>
+
+      <AppCard bodyClassName="gap-6">
+        <CardHeader
+          title="Strava integration"
+          titleExtras={
+            <InfoTooltip
+              label="Strava integration details"
+              tip={STRAVA_INTEGRATION_HELP_TEXT}
+            />
+          }
+          actions={
+            <span
+              className={`badge ${stravaConnection.connected ? "badge-primary" : "badge-outline"}`}
+            >
+              {stravaConnection.connected ? "Connected" : "Not connected"}
+            </span>
+          }
+        />
+
+        {!stravaConnection.configured ? (
+          <div className="rounded-box border border-warning/30 bg-warning/10 p-4 text-sm text-base-content/80">
+            This Bike deployment does not have Strava OAuth credentials
+            configured yet. Set <code>STRAVA_CLIENT_ID</code> and
+            <code>STRAVA_CLIENT_SECRET</code> on the API and worker.
+          </div>
+        ) : null}
+
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+          <div className="rounded-box bg-base-200 p-4 text-sm text-base-content/75">
+            {stravaConnection.connected ? (
+              <div className="space-y-4">
+                <div>
+                  <div className="font-medium text-base-content">
+                    {stravaConnection.athlete_name ?? "Connected athlete"}
+                  </div>
+                  <div className="mt-1 text-sm text-base-content/70">
+                    {stravaConnection.athlete_username
+                      ? `@${stravaConnection.athlete_username}`
+                      : "Strava account linked to this Bike user."}
+                  </div>
+                </div>
+
+                {stravaConnection.scopes.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {stravaConnection.scopes.map((scope) => (
+                      <span key={scope} className="badge badge-ghost badge-sm">
+                        {scope}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div className="rounded-box border border-base-300 bg-base-100 p-4">
+                  <div className="font-medium text-base-content">
+                    {formatStravaSyncStatus(stravaConnection.last_sync_status)}
+                  </div>
+                  <div className="mt-2 space-y-2 text-sm text-base-content/70">
+                    <div>
+                      {stravaConnection.last_sync_message ??
+                        "Bike has the connection and is ready to sync."}
+                    </div>
+                    <div>
+                      Last finished:{" "}
+                      {formatActivityTimestamp(
+                        stravaConnection.last_sync_finished_at ?? "",
+                      )}
+                    </div>
+                    <div>
+                      Cursor:{" "}
+                      {formatActivityTimestamp(
+                        stravaConnection.last_synced_activity_started_at ?? "",
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3 leading-6">
+                <p>
+                  Bike requests Strava activity access and stores the refresh
+                  token so new syncs can happen without asking you to reconnect
+                  each time.
+                </p>
+                <p>
+                  The first sync backfills your available activities and runs
+                  them through Bike&apos;s existing dedupe and import pipeline.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="grid gap-3">
+            <div className="stats stats-vertical bg-base-200 shadow-sm lg:stats-horizontal">
+              <div className="stat px-4 py-3">
+                <div className="stat-title">Imported</div>
+                <div className="stat-value text-2xl">
+                  {stravaConnection.last_sync_imported_count}
+                </div>
+              </div>
+              <div className="stat px-4 py-3">
+                <div className="stat-title">Duplicates</div>
+                <div className="stat-value text-2xl">
+                  {stravaConnection.last_sync_duplicate_count}
+                </div>
+              </div>
+              <div className="stat px-4 py-3">
+                <div className="stat-title">Failed</div>
+                <div className="stat-value text-2xl">
+                  {stravaConnection.last_sync_failed_count}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-box border border-base-300 bg-base-200 p-4 text-sm text-base-content/70">
+              <div className="font-medium text-base-content">Sync behavior</div>
+              <p className="mt-2 leading-6">
+                Bike pulls activity summaries and streams from Strava,
+                synthesizes a TCX payload, then reuses the existing upload
+                pipeline so dedupe and derived metrics stay in one place.
               </p>
-              <div className="mt-2 flex items-center gap-2">
-                <h1 className="text-4xl font-semibold">Preferences</h1>
-                <InfoTooltip
-                  label="Preferences details"
-                  tip={ACCOUNT_PREFERENCES_HELP_TEXT}
-                />
-              </div>
-            </div>
-
-            <div className="card bg-base-100 shadow-xl">
-              <div className="card-body gap-6">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="card-title text-xl">
-                        Strava integration
-                      </h2>
-                      <InfoTooltip
-                        label="Strava integration details"
-                        tip={STRAVA_INTEGRATION_HELP_TEXT}
-                      />
-                    </div>
-                  </div>
-                  <span
-                    className={`badge ${stravaConnection.connected ? "badge-primary" : "badge-outline"}`}
-                  >
-                    {stravaConnection.connected ? "Connected" : "Not connected"}
-                  </span>
-                </div>
-
-                {!stravaConnection.configured ? (
-                  <div className="rounded-box border border-warning/30 bg-warning/10 p-4 text-sm text-base-content/80">
-                    This Bike deployment does not have Strava OAuth credentials
-                    configured yet. Set <code>STRAVA_CLIENT_ID</code> and
-                    <code>STRAVA_CLIENT_SECRET</code> on the API and worker.
-                  </div>
-                ) : null}
-
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-                  <div className="rounded-box bg-base-200 p-4 text-sm text-base-content/75">
-                    {stravaConnection.connected ? (
-                      <div className="space-y-4">
-                        <div>
-                          <div className="font-medium text-base-content">
-                            {stravaConnection.athlete_name ??
-                              "Connected athlete"}
-                          </div>
-                          <div className="mt-1 text-sm text-base-content/70">
-                            {stravaConnection.athlete_username
-                              ? `@${stravaConnection.athlete_username}`
-                              : "Strava account linked to this Bike user."}
-                          </div>
-                        </div>
-
-                        {stravaConnection.scopes.length > 0 ? (
-                          <div className="flex flex-wrap gap-2">
-                            {stravaConnection.scopes.map((scope) => (
-                              <span
-                                key={scope}
-                                className="badge badge-ghost badge-sm"
-                              >
-                                {scope}
-                              </span>
-                            ))}
-                          </div>
-                        ) : null}
-
-                        <div className="rounded-box border border-base-300 bg-base-100 p-4">
-                          <div className="font-medium text-base-content">
-                            {formatStravaSyncStatus(
-                              stravaConnection.last_sync_status,
-                            )}
-                          </div>
-                          <div className="mt-2 space-y-2 text-sm text-base-content/70">
-                            <div>
-                              {stravaConnection.last_sync_message ??
-                                "Bike has the connection and is ready to sync."}
-                            </div>
-                            <div>
-                              Last finished:{" "}
-                              {formatActivityTimestamp(
-                                stravaConnection.last_sync_finished_at ?? "",
-                              )}
-                            </div>
-                            <div>
-                              Cursor:{" "}
-                              {formatActivityTimestamp(
-                                stravaConnection.last_synced_activity_started_at ??
-                                  "",
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-3 leading-6">
-                        <p>
-                          Bike requests Strava activity access and stores the
-                          refresh token so new syncs can happen without asking
-                          you to reconnect each time.
-                        </p>
-                        <p>
-                          The first sync backfills your available activities and
-                          runs them through Bike&apos;s existing dedupe and
-                          import pipeline.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="grid gap-3">
-                    <div className="stats stats-vertical bg-base-200 shadow-sm lg:stats-horizontal">
-                      <div className="stat px-4 py-3">
-                        <div className="stat-title">Imported</div>
-                        <div className="stat-value text-2xl">
-                          {stravaConnection.last_sync_imported_count}
-                        </div>
-                      </div>
-                      <div className="stat px-4 py-3">
-                        <div className="stat-title">Duplicates</div>
-                        <div className="stat-value text-2xl">
-                          {stravaConnection.last_sync_duplicate_count}
-                        </div>
-                      </div>
-                      <div className="stat px-4 py-3">
-                        <div className="stat-title">Failed</div>
-                        <div className="stat-value text-2xl">
-                          {stravaConnection.last_sync_failed_count}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="rounded-box border border-base-300 bg-base-200 p-4 text-sm text-base-content/70">
-                      <div className="font-medium text-base-content">
-                        Sync behavior
-                      </div>
-                      <p className="mt-2 leading-6">
-                        Bike pulls activity summaries and streams from Strava,
-                        synthesizes a TCX payload, then reuses the existing
-                        upload pipeline so dedupe and derived metrics stay in
-                        one place.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="card-actions justify-end gap-3">
-                  {stravaConnection.connected ? (
-                    <>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        disabled={
-                          disconnectStravaMutation.isPending ||
-                          startStravaConnectMutation.isPending
-                        }
-                        onClick={handleDisconnectStrava}
-                      >
-                        {disconnectStravaMutation.isPending
-                          ? "Disconnecting..."
-                          : "Disconnect"}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-outline"
-                        disabled={
-                          isStravaSyncPending ||
-                          queueStravaSyncMutation.isPending ||
-                          disconnectStravaMutation.isPending
-                        }
-                        onClick={handleQueueStravaSync}
-                      >
-                        {isStravaSyncPending ||
-                        queueStravaSyncMutation.isPending
-                          ? "Sync queued..."
-                          : "Sync now"}
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      disabled={
-                        !stravaConnection.configured ||
-                        startStravaConnectMutation.isPending ||
-                        disconnectStravaMutation.isPending
-                      }
-                      onClick={handleStartStravaConnect}
-                    >
-                      {startStravaConnectMutation.isPending
-                        ? "Redirecting..."
-                        : "Connect Strava"}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="card bg-base-100 shadow-xl">
-              <div className="card-body gap-6">
-                <div>
-                  <h2 className="card-title text-xl">Strava sync history</h2>
-                  <p className="text-sm text-base-content/70">
-                    Recent OAuth, webhook, sync, and disconnect events for this
-                    account.
-                  </p>
-                </div>
-
-                <IntegrationEventFeed
-                  events={stravaEventsQuery.data ?? []}
-                  isLoading={stravaEventsQuery.isLoading}
-                  error={stravaEventsQuery.error}
-                  emptyMessage="No Strava history yet. Connect Strava or queue a sync to start recording events."
-                />
-              </div>
-            </div>
-
-            <div className="card bg-base-100 shadow-xl">
-              <div className="card-body gap-6">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div>
-                    <h2 className="card-title text-xl">Garmin IQ linking</h2>
-                    <p className="text-sm text-base-content/70">
-                      On the watch, choose Link account to get a pairing code.
-                      Enter that code here to approve the device. Bike stores
-                      only hashed refresh and access secrets for Garmin IQ sync.
-                    </p>
-                  </div>
-                  <span
-                    className={`badge ${garminDevices.length > 0 ? "badge-primary" : "badge-outline"}`}
-                  >
-                    {garminDevices.length > 0 ? "Linked" : "Not linked"}
-                  </span>
-                </div>
-
-                <div className="rounded-box border border-base-300 bg-base-200 p-4 text-sm text-base-content/75">
-                  <div className="font-medium text-base-content">Approve watch link</div>
-                  <p className="mt-2 leading-6">
-                    The watch polls until you approve. Once linked, the watch
-                    stores refresh credentials and rotates short-lived access
-                    tokens automatically.
-                  </p>
-
-                  <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
-                    <label className="form-control flex-1">
-                      <div className="label">
-                        <span className="label-text font-medium">
-                          Pairing code
-                        </span>
-                        <span className="label-text-alt">From watch</span>
-                      </div>
-                      <input
-                        type="text"
-                        className="input input-bordered uppercase"
-                        placeholder="A1B2C3"
-                        value={garminPairingCode}
-                        onChange={(event) => {
-                          setGarminPairingCode(event.target.value.toUpperCase());
-                        }}
-                      />
-                    </label>
-
-                    <button
-                      type="button"
-                      className="btn btn-primary sm:mb-1"
-                      disabled={
-                        !garminPairingCode.trim() ||
-                        completeGarminLinkMutation.isPending
-                      }
-                      onClick={handleCompleteGarminLink}
-                    >
-                      {completeGarminLinkMutation.isPending
-                        ? "Approving..."
-                        : "Approve link"}
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-sm font-medium text-base-content">
-                    Linked devices
-                  </div>
-
-                  {garminDevices.length === 0 ? (
-                    <div className="mt-3 rounded-box border border-base-300 bg-base-200 p-4 text-sm text-base-content/70">
-                      No Garmin IQ devices linked yet.
-                    </div>
-                  ) : (
-                    <div className="mt-3 space-y-3">
-                      {garminDevices.map((device) => (
-                        <div
-                          key={device.id}
-                          className="rounded-box border border-base-300 bg-base-200 p-4"
-                        >
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div className="text-sm text-base-content/75">
-                              <div className="font-medium text-base-content">
-                                {device.device_name?.trim() || "Garmin device"}
-                              </div>
-                              <div className="mt-1">Install: {device.install_id}</div>
-                              <div>
-                                Linked: {formatActivityTimestamp(device.linked_at ?? "")}
-                              </div>
-                              <div>
-                                Last seen: {formatActivityTimestamp(device.last_seen_at ?? "")}
-                              </div>
-                            </div>
-
-                            <button
-                              type="button"
-                              className="btn btn-ghost btn-sm"
-                              disabled={unlinkGarminDeviceMutation.isPending}
-                              onClick={() => {
-                                void handleUnlinkGarminDevice(device.id);
-                              }}
-                            >
-                              {unlinkGarminDeviceMutation.isPending
-                                ? "Unlinking..."
-                                : "Unlink"}
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="card-actions justify-end gap-3 text-xs text-base-content/60">
-                  <span>
-                    If the code expires, restart linking on the watch and enter
-                    the new code.
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="card bg-base-100 shadow-xl">
-              <div className="card-body gap-6">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="card-title text-xl">Units</h2>
-                    <InfoTooltip label="Units details" tip={UNITS_HELP_TEXT} />
-                  </div>
-                </div>
-
-                <div className="grid gap-3 lg:grid-cols-3">
-                  {UNIT_SYSTEM_OPTIONS.map((option) => {
-                    const isSelected = draftUnitSystem === option.value;
-
-                    return (
-                      <label
-                        key={option.value}
-                        className={`card cursor-pointer border transition ${isSelected ? "border-primary bg-primary/5 shadow-md" : "border-base-300 bg-base-200/70 shadow-sm"}`}
-                      >
-                        <div className="card-body gap-3 p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <div className="font-semibold text-base-content">
-                                {option.label}
-                              </div>
-                              <p className="mt-1 text-sm text-base-content/70">
-                                {option.description}
-                              </p>
-                            </div>
-                            <input
-                              type="radio"
-                              name="unit-system"
-                              className="radio radio-primary radio-sm mt-1"
-                              checked={isSelected}
-                              onChange={() => {
-                                setDraftUnitSystem(option.value);
-                              }}
-                            />
-                          </div>
-                        </div>
-                      </label>
-                    );
-                  })}
-                </div>
-
-                <div className="rounded-box bg-base-200 p-4 text-sm text-base-content/75">
-                  <div className="font-medium text-base-content">Preview</div>
-                  <div className="mt-2 flex flex-wrap gap-4">
-                    <span>{`Distance ${formatDistance(40233, draftUnitSystem)}`}</span>
-                    <span>{`Speed ${formatSpeed(8.94, draftUnitSystem)}`}</span>
-                    <span>{`Elevation ${formatElevation(512, draftUnitSystem)}`}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="card bg-base-100 shadow-xl">
-              <div className="card-body gap-6">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="card-title text-xl">Training profile</h2>
-                    <InfoTooltip
-                      label="Training profile details"
-                      tip={TRAINING_PROFILE_HELP_TEXT}
-                    />
-                  </div>
-                </div>
-
-                {!heartRateZonesConfigured ? (
-                  <div className="alert alert-warning text-sm">
-                    <span>
-                      XC training needs heart rate zones for Z2 speed,
-                      decoupling, and weekly endurance load. Calculate them from
-                      max heart rate below or enter the zone ceilings manually.
-                    </span>
-                  </div>
-                ) : null}
-
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,1.3fr)]">
-                  <label className="form-control">
-                    <div className="label">
-                      <span className="label-text font-medium">
-                        Estimated FTP
-                      </span>
-                      <span className="label-text-alt">Optional</span>
-                    </div>
-                    <input
-                      type="number"
-                      min={80}
-                      max={600}
-                      className="input input-bordered"
-                      placeholder="265"
-                      value={draftEstimatedFtpWatts}
-                      onChange={(event) => {
-                        setDraftEstimatedFtpWatts(event.target.value);
-                      }}
-                    />
-                    <div className="label">
-                      <span className="label-text-alt text-base-content/60">
-                        Stored now for power zones and future load estimates
-                        once Bike carries power data.
-                      </span>
-                    </div>
-                  </label>
-
-                  <div className="rounded-box border border-base-300 bg-base-200/70 p-4 text-sm text-base-content/75">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="font-medium text-base-content">
-                          Calculate from max heart rate
-                        </div>
-                        <p className="mt-1 leading-6">
-                          Bike can seed Z1 through Z4 ceilings from a simple
-                          HRmax model, then you can edit the numbers manually
-                          before saving.
-                        </p>
-                      </div>
-                      <span className="badge badge-outline">Calculator</span>
-                    </div>
-
-                    <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
-                      <label className="form-control flex-1">
-                        <div className="label">
-                          <span className="label-text font-medium">
-                            Max heart rate
-                          </span>
-                          <span className="label-text-alt">Optional</span>
-                        </div>
-                        <input
-                          type="number"
-                          min={MIN_MAX_HEART_RATE_BPM}
-                          max={MAX_MAX_HEART_RATE_BPM}
-                          className="input input-bordered"
-                          placeholder="182"
-                          value={draftMaxHeartRate}
-                          onChange={(event) => {
-                            setDraftMaxHeartRate(event.target.value);
-                          }}
-                        />
-                      </label>
-
-                      <button
-                        type="button"
-                        className="btn btn-outline sm:mb-1"
-                        onClick={handleCalculateHeartRateZones}
-                      >
-                        Calculate zones
-                      </button>
-                    </div>
-
-                    <p className="mt-3 text-xs leading-6 text-base-content/60">
-                      Uses simple zone ceilings at 60%, 70%, 80%, and 90% of max
-                      heart rate. Adjust them manually if you use a more
-                      specific threshold-based setup.
-                    </p>
-                  </div>
-
-                  <div className="rounded-box bg-base-200 p-4 text-sm text-base-content/75">
-                    <div className="font-medium text-base-content">
-                      Training preview
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-4">
-                      <span>{`FTP ${formatPower(parseOptionalIntegerInput(draftEstimatedFtpWatts))}`}</span>
-                    </div>
-                    <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                      {zonePreviewLabels.map((label) => (
-                        <div
-                          key={label}
-                          className="rounded-lg border border-base-300 bg-base-100 px-3 py-2"
-                        >
-                          {label}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  {HEART_RATE_ZONE_FIELDS.map((field, index) => (
-                    <label key={field.label} className="form-control">
-                      <div className="label">
-                        <span className="label-text font-medium">
-                          {field.label}
-                        </span>
-                      </div>
-                      <input
-                        type="number"
-                        min={40}
-                        max={240}
-                        className="input input-bordered"
-                        placeholder={`${120 + index * 15}`}
-                        value={draftHeartRateZoneBounds[index]}
-                        onChange={(event) => {
-                          setDraftHeartRateZoneBounds((current) => {
-                            const next = [...current];
-                            next[index] = event.target.value;
-                            return next;
-                          });
-                        }}
-                      />
-                      <div className="label">
-                        <span className="label-text-alt text-base-content/60">
-                          {field.description}
-                        </span>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-
-                <div className="rounded-box bg-base-200 p-4 text-sm text-base-content/75">
-                  <div className="flex items-center gap-2">
-                    <div className="font-medium text-base-content">
-                      How Bike uses this
-                    </div>
-                    <InfoTooltip
-                      label="Training profile usage details"
-                      tip={TRAINING_PROFILE_USAGE_HELP_TEXT}
-                    />
-                  </div>
-                </div>
-
-                <div className="card-actions justify-end">
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    disabled={!isDirty || updatePreferencesMutation.isPending}
-                    onClick={() => {
-                      setDraftUnitSystem(unitSystem);
-                      setDraftEstimatedFtpWatts(
-                        estimatedFtpWatts?.toString() ?? "",
-                      );
-                      setDraftMaxHeartRate("");
-                      setDraftHeartRateZoneBounds(storedHeartRateZoneDraft);
-                    }}
-                  >
-                    Reset
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    disabled={!isDirty || updatePreferencesMutation.isPending}
-                    onClick={handleSave}
-                  >
-                    {updatePreferencesMutation.isPending
-                      ? "Saving..."
-                      : "Save preferences"}
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
+        </div>
+
+        <div className="card-actions justify-end gap-3">
+          {stravaConnection.connected ? (
+            <>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={
+                  disconnectStravaMutation.isPending ||
+                  startStravaConnectMutation.isPending
+                }
+                onClick={handleDisconnectStrava}
+              >
+                {disconnectStravaMutation.isPending
+                  ? "Disconnecting..."
+                  : "Disconnect"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline"
+                disabled={
+                  isStravaSyncPending ||
+                  queueStravaSyncMutation.isPending ||
+                  disconnectStravaMutation.isPending
+                }
+                onClick={handleQueueStravaSync}
+              >
+                {isStravaSyncPending || queueStravaSyncMutation.isPending
+                  ? "Sync queued..."
+                  : "Sync now"}
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={
+                !stravaConnection.configured ||
+                startStravaConnectMutation.isPending ||
+                disconnectStravaMutation.isPending
+              }
+              onClick={handleStartStravaConnect}
+            >
+              {startStravaConnectMutation.isPending
+                ? "Redirecting..."
+                : "Connect Strava"}
+            </button>
+          )}
+        </div>
+      </AppCard>
+
+      <AppCard bodyClassName="gap-6">
+        <CardHeader
+          title="Strava sync history"
+          description="Recent OAuth, webhook, sync, and disconnect events for this account."
+        />
+
+        <IntegrationEventFeed
+          events={stravaEventsQuery.data ?? []}
+          isLoading={stravaEventsQuery.isLoading}
+          error={stravaEventsQuery.error}
+          emptyMessage="No Strava history yet. Connect Strava or queue a sync to start recording events."
+        />
+      </AppCard>
+
+      <AppCard bodyClassName="gap-6">
+        <CardHeader
+          title="Garmin IQ linking"
+          description="On the watch, choose Link account to get a pairing code. Enter that code here to approve the device. Bike stores only hashed refresh and access secrets for Garmin IQ sync."
+          actions={
+            <span
+              className={`badge ${garminDevices.length > 0 ? "badge-primary" : "badge-outline"}`}
+            >
+              {garminDevices.length > 0 ? "Linked" : "Not linked"}
+            </span>
+          }
+        />
+
+        <div className="rounded-box border border-base-300 bg-base-200 p-4 text-sm text-base-content/75">
+          <div className="font-medium text-base-content">
+            Approve watch link
+          </div>
+          <p className="mt-2 leading-6">
+            The watch polls until you approve. Once linked, the watch stores
+            refresh credentials and rotates short-lived access tokens
+            automatically.
+          </p>
+
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+            <label className="form-control flex-1">
+              <div className="label">
+                <span className="label-text font-medium">Pairing code</span>
+                <span className="label-text-alt">From watch</span>
+              </div>
+              <input
+                type="text"
+                className="input input-bordered uppercase"
+                placeholder="A1B2C3"
+                value={garminPairingCode}
+                onChange={(event) => {
+                  setGarminPairingCode(event.target.value.toUpperCase());
+                }}
+              />
+            </label>
+
+            <button
+              type="button"
+              className="btn btn-primary sm:mb-1"
+              disabled={
+                !garminPairingCode.trim() ||
+                completeGarminLinkMutation.isPending
+              }
+              onClick={handleCompleteGarminLink}
+            >
+              {completeGarminLinkMutation.isPending
+                ? "Approving..."
+                : "Approve link"}
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <div className="text-sm font-medium text-base-content">
+            Linked devices
+          </div>
+
+          {garminDevices.length === 0 ? (
+            <div className="mt-3 rounded-box border border-base-300 bg-base-200 p-4 text-sm text-base-content/70">
+              No Garmin IQ devices linked yet.
+            </div>
+          ) : (
+            <div className="mt-3 space-y-3">
+              {garminDevices.map((device) => (
+                <div
+                  key={device.id}
+                  className="rounded-box border border-base-300 bg-base-200 p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="text-sm text-base-content/75">
+                      <div className="font-medium text-base-content">
+                        {device.device_name?.trim() || "Garmin device"}
+                      </div>
+                      <div className="mt-1">Install: {device.install_id}</div>
+                      <div>
+                        Linked:{" "}
+                        {formatActivityTimestamp(device.linked_at ?? "")}
+                      </div>
+                      <div>
+                        Last seen:{" "}
+                        {formatActivityTimestamp(device.last_seen_at ?? "")}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      disabled={unlinkGarminDeviceMutation.isPending}
+                      onClick={() => {
+                        void handleUnlinkGarminDevice(device.id);
+                      }}
+                    >
+                      {unlinkGarminDeviceMutation.isPending
+                        ? "Unlinking..."
+                        : "Unlink"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="card-actions justify-end gap-3 text-xs text-base-content/60">
+          <span>
+            If the code expires, restart linking on the watch and enter the new
+            code.
+          </span>
+        </div>
+      </AppCard>
+
+      <AppCard bodyClassName="gap-6">
+        <CardHeader
+          title="Units"
+          titleExtras={
+            <InfoTooltip label="Units details" tip={UNITS_HELP_TEXT} />
+          }
+        />
+
+        <div className="grid gap-3 lg:grid-cols-3">
+          {UNIT_SYSTEM_OPTIONS.map((option) => {
+            const isSelected = draftUnitSystem === option.value;
+
+            return (
+              <label
+                key={option.value}
+                className={`card cursor-pointer border transition ${isSelected ? "border-primary bg-primary/5 shadow-md" : "border-base-300 bg-base-200/70 shadow-sm"}`}
+              >
+                <div className="card-body gap-3 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold text-base-content">
+                        {option.label}
+                      </div>
+                      <p className="mt-1 text-sm text-base-content/70">
+                        {option.description}
+                      </p>
+                    </div>
+                    <input
+                      type="radio"
+                      name="unit-system"
+                      className="radio radio-primary radio-sm mt-1"
+                      checked={isSelected}
+                      onChange={() => {
+                        setDraftUnitSystem(option.value);
+                      }}
+                    />
+                  </div>
+                </div>
+              </label>
+            );
+          })}
+        </div>
+
+        <div className="rounded-box bg-base-200 p-4 text-sm text-base-content/75">
+          <div className="font-medium text-base-content">Preview</div>
+          <div className="mt-2 flex flex-wrap gap-4">
+            <span>{`Distance ${formatDistance(40233, draftUnitSystem)}`}</span>
+            <span>{`Speed ${formatSpeed(8.94, draftUnitSystem)}`}</span>
+            <span>{`Elevation ${formatElevation(512, draftUnitSystem)}`}</span>
+          </div>
+        </div>
+      </AppCard>
+
+      <AppCard bodyClassName="gap-6">
+        <CardHeader
+          title="Training profile"
+          titleExtras={
+            <InfoTooltip
+              label="Training profile details"
+              tip={TRAINING_PROFILE_HELP_TEXT}
+            />
+          }
+        />
+
+        {!heartRateZonesConfigured ? (
+          <div className="alert alert-warning text-sm">
+            <span>
+              XC training needs heart rate zones for Z2 speed, decoupling, and
+              weekly endurance load. Calculate them from max heart rate below or
+              enter the zone ceilings manually.
+            </span>
+          </div>
+        ) : null}
+
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,1.3fr)]">
+          <label className="form-control">
+            <div className="label">
+              <span className="label-text font-medium">Estimated FTP</span>
+              <span className="label-text-alt">Optional</span>
+            </div>
+            <input
+              type="number"
+              min={80}
+              max={600}
+              className="input input-bordered"
+              placeholder="265"
+              value={draftEstimatedFtpWatts}
+              onChange={(event) => {
+                setDraftEstimatedFtpWatts(event.target.value);
+              }}
+            />
+            <div className="label">
+              <span className="label-text-alt text-base-content/60">
+                Stored now for power zones and future load estimates once Bike
+                carries power data.
+              </span>
+            </div>
+          </label>
+
+          <div className="rounded-box border border-base-300 bg-base-200/70 p-4 text-sm text-base-content/75">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="font-medium text-base-content">
+                  Calculate from max heart rate
+                </div>
+                <p className="mt-1 leading-6">
+                  Bike can seed Z1 through Z4 ceilings from a simple HRmax
+                  model, then you can edit the numbers manually before saving.
+                </p>
+              </div>
+              <span className="badge badge-outline">Calculator</span>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+              <label className="form-control flex-1">
+                <div className="label">
+                  <span className="label-text font-medium">Max heart rate</span>
+                  <span className="label-text-alt">Optional</span>
+                </div>
+                <input
+                  type="number"
+                  min={MIN_MAX_HEART_RATE_BPM}
+                  max={MAX_MAX_HEART_RATE_BPM}
+                  className="input input-bordered"
+                  placeholder="182"
+                  value={draftMaxHeartRate}
+                  onChange={(event) => {
+                    setDraftMaxHeartRate(event.target.value);
+                  }}
+                />
+              </label>
+
+              <button
+                type="button"
+                className="btn btn-outline sm:mb-1"
+                onClick={handleCalculateHeartRateZones}
+              >
+                Calculate zones
+              </button>
+            </div>
+
+            <p className="mt-3 text-xs leading-6 text-base-content/60">
+              Uses simple zone ceilings at 60%, 70%, 80%, and 90% of max heart
+              rate. Adjust them manually if you use a more specific
+              threshold-based setup.
+            </p>
+          </div>
+
+          <div className="rounded-box bg-base-200 p-4 text-sm text-base-content/75">
+            <div className="font-medium text-base-content">
+              Training preview
+            </div>
+            <div className="mt-2 flex flex-wrap gap-4">
+              <span>{`FTP ${formatPower(parseOptionalIntegerInput(draftEstimatedFtpWatts))}`}</span>
+            </div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {zonePreviewLabels.map((label) => (
+                <div
+                  key={label}
+                  className="rounded-lg border border-base-300 bg-base-100 px-3 py-2"
+                >
+                  {label}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {HEART_RATE_ZONE_FIELDS.map((field, index) => (
+            <label key={field.label} className="form-control">
+              <div className="label">
+                <span className="label-text font-medium">{field.label}</span>
+              </div>
+              <input
+                type="number"
+                min={40}
+                max={240}
+                className="input input-bordered"
+                placeholder={`${120 + index * 15}`}
+                value={draftHeartRateZoneBounds[index]}
+                onChange={(event) => {
+                  setDraftHeartRateZoneBounds((current) => {
+                    const next = [...current];
+                    next[index] = event.target.value;
+                    return next;
+                  });
+                }}
+              />
+              <div className="label">
+                <span className="label-text-alt text-base-content/60">
+                  {field.description}
+                </span>
+              </div>
+            </label>
+          ))}
+        </div>
+
+        <div className="rounded-box bg-base-200 p-4 text-sm text-base-content/75">
+          <div className="flex items-center gap-2">
+            <div className="font-medium text-base-content">
+              How Bike uses this
+            </div>
+            <InfoTooltip
+              label="Training profile usage details"
+              tip={TRAINING_PROFILE_USAGE_HELP_TEXT}
+            />
+          </div>
+        </div>
+
+        <div className="card-actions justify-end">
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={!isDirty || updatePreferencesMutation.isPending}
+            onClick={() => {
+              setDraftUnitSystem(unitSystem);
+              setDraftEstimatedFtpWatts(estimatedFtpWatts?.toString() ?? "");
+              setDraftMaxHeartRate("");
+              setDraftHeartRateZoneBounds(storedHeartRateZoneDraft);
+            }}
+          >
+            Reset
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={!isDirty || updatePreferencesMutation.isPending}
+            onClick={handleSave}
+          >
+            {updatePreferencesMutation.isPending
+              ? "Saving..."
+              : "Save preferences"}
+          </button>
+        </div>
+      </AppCard>
+    </div>
   );
 }

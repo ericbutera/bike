@@ -4,6 +4,7 @@ import {
   formatPower,
 } from "../lib/activityFormatting";
 import { type ActivityHeartRateZone } from "../lib/queries";
+import { AppCard, CardHeader } from "./ui/Card";
 
 const ZONE_BAR_CLASS_NAMES = [
   "bg-sky-500",
@@ -55,50 +56,51 @@ export default function TrainingProfileSnapshot({
   return (
     <>
       {zones.length > 0 && (
-        <section className="card bg-base-100 shadow-xl">
-          <div className="card-body gap-4">
-            <div className="mb-3 flex items-center justify-between gap-3 text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
-              <span>Zone distribution</span>
-            </div>
-            <div className="space-y-3">
-              {zones.map((zone, index) => (
-                <div
-                  key={zone.zone}
-                  className="grid gap-2 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)_auto] sm:items-center"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="badge badge-ghost badge-sm">
-                        {zone.label}
-                      </span>
-                      <span className="truncate text-xs text-base-content/60">
-                        {formatHeartRateZoneRange(zone)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <div className="h-3 flex-1 overflow-hidden rounded-full bg-base-200">
-                      <div
-                        className={`h-full rounded-full transition-[width] ${zoneBarClassName(index)}`}
-                        style={{
-                          width: `${Math.max(0, Math.min(zone.share_percent, 100))}%`,
-                        }}
-                      />
-                    </div>
-                    <span className="w-12 text-right text-xs font-medium text-base-content/60">
-                      {formatSharePercent(zone.share_percent)}
+        <AppCard as="section" bodyClassName="gap-4">
+          <CardHeader className="mb-3" title="Zone distribution" />
+          <div className="space-y-3">
+            {zones.map((zone, index) => (
+              <div
+                key={zone.zone}
+                className="grid gap-2 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)_auto] sm:items-center"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="badge badge-ghost badge-sm">
+                      {zone.label}
+                    </span>
+                    <span className="truncate text-xs text-base-content/60">
+                      {formatHeartRateZoneRange(zone)}
                     </span>
                   </div>
-
-                  <div className="text-sm font-medium text-base-content sm:min-w-24 sm:text-right">
-                    {formatDuration(zone.duration_seconds)}
-                  </div>
                 </div>
-              ))}
-            </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="h-3 flex-1 overflow-hidden rounded-full bg-base-200">
+                    <div
+                      className={`h-full rounded-full transition-[width] ${zoneBarClassName(
+                        index,
+                      )}`}
+                      style={{
+                        width: `${Math.max(
+                          0,
+                          Math.min(zone.share_percent, 100),
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                  <span className="w-12 text-right text-xs font-medium text-base-content/60">
+                    {formatSharePercent(zone.share_percent)}
+                  </span>
+                </div>
+
+                <div className="text-sm font-medium text-base-content sm:min-w-24 sm:text-right">
+                  {formatDuration(zone.duration_seconds)}
+                </div>
+              </div>
+            ))}
           </div>
-        </section>
+        </AppCard>
       )}
     </>
   );

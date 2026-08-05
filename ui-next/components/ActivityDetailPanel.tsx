@@ -5,8 +5,8 @@ import { useEffect, useState } from "react";
 import { formatActivityTimestamp } from "../lib/activityFormatting";
 import {
   ACTIVITY_TYPES,
-  normalizeActivityType,
   type ActivityType,
+  normalizeActivityType,
 } from "../lib/activityTypes";
 import {
   useActivity,
@@ -27,6 +27,7 @@ import ActivitySignalsCard from "./activity-detail/ActivitySignalsCard";
 import { buildSegmentAnchorId } from "./activity-detail/matchedSegments";
 import MatchedSegmentsSection from "./MatchedSegmentsSection";
 import TrainingProfileSnapshot from "./TrainingProfileSnapshot";
+import { AppCard, CardHeader } from "./ui/Card";
 import InfoTooltip from "./ui/InfoTooltip";
 
 const LAP_SPLITS_HELP_TEXT =
@@ -158,51 +159,49 @@ export default function ActivityDetailPanel({
 
   return (
     <section className="space-y-8">
-      <div className="card bg-base-100 shadow-xl">
-        <div className="card-body gap-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h1 className="mt-2 text-4xl font-semibold">{activity.title}</h1>
-              <p className="mt-3 text-sm text-base-content/70">
-                {formatActivityTimestamp(activity.started_at)}
-                {" - "}
-                {activity.location}
-              </p>
-            </div>
-            <ActivityHeaderActions
-              activity={activity}
-              isRegenerating={regenerateMutation.isPending}
-              isDeleting={deleteMutation.isPending}
-              onOpenActivityTypeDialog={() => {
-                setActivityTypeDraft(
-                  normalizeActivityType(activity.activity_type),
-                );
-                setIsActivityTypeDialogOpen(true);
-              }}
-              onRegenerate={() => {
-                void handleRegenerate();
-              }}
-              onDelete={() => {
-                void handleDelete();
-              }}
-            />
+      <AppCard bodyClassName="gap-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="mt-2 text-4xl font-semibold">{activity.title}</h1>
+            <p className="mt-3 text-sm text-base-content/70">
+              {formatActivityTimestamp(activity.started_at)}
+              {" - "}
+              {activity.location}
+            </p>
           </div>
-
-          {isActivityTypeDialogOpen ? (
-            <ActivityTypeDialog
-              activityTypeDraft={activityTypeDraft}
-              isSaving={updateActivityMutation.isPending}
-              onCancel={() => setIsActivityTypeDialogOpen(false)}
-              onSave={() => {
-                void handleSaveActivityType();
-              }}
-              onChange={setActivityTypeDraft}
-            />
-          ) : null}
-
-          <ActivityMetricsSummary activity={activity} unitSystem={unitSystem} />
+          <ActivityHeaderActions
+            activity={activity}
+            isRegenerating={regenerateMutation.isPending}
+            isDeleting={deleteMutation.isPending}
+            onOpenActivityTypeDialog={() => {
+              setActivityTypeDraft(
+                normalizeActivityType(activity.activity_type),
+              );
+              setIsActivityTypeDialogOpen(true);
+            }}
+            onRegenerate={() => {
+              void handleRegenerate();
+            }}
+            onDelete={() => {
+              void handleDelete();
+            }}
+          />
         </div>
-      </div>
+
+        {isActivityTypeDialogOpen ? (
+          <ActivityTypeDialog
+            activityTypeDraft={activityTypeDraft}
+            isSaving={updateActivityMutation.isPending}
+            onCancel={() => setIsActivityTypeDialogOpen(false)}
+            onSave={() => {
+              void handleSaveActivityType();
+            }}
+            onChange={setActivityTypeDraft}
+          />
+        ) : null}
+
+        <ActivityMetricsSummary activity={activity} unitSystem={unitSystem} />
+      </AppCard>
 
       <ActivityRouteMap
         activityId={activityId}
@@ -236,39 +235,40 @@ export default function ActivityDetailPanel({
         unitSystem={unitSystem}
       />
 
-      <div className="card bg-base-100 shadow-xl">
-        <div className="card-body">
-          <div className="mb-3 flex items-center justify-between gap-3 text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
-            <div className="flex items-center gap-2">
-              <h2>Lap splits</h2>
-              <InfoTooltip
-                label="Lap splits details"
-                tip={LAP_SPLITS_HELP_TEXT}
-              />
-            </div>
+      <AppCard>
+        <CardHeader
+          className="mb-3"
+          title="Lap splits"
+          titleExtras={
+            <InfoTooltip
+              label="Lap splits details"
+              tip={LAP_SPLITS_HELP_TEXT}
+            />
+          }
+          actions={
             <span className="badge badge-outline">
               {(activity.laps ?? []).length} lap
               {(activity.laps ?? []).length === 1 ? "" : "s"}
             </span>
-          </div>
+          }
+        />
 
-          {(activity.laps ?? []).length > 0 ? (
-            <div className="grid gap-4 xl:grid-cols-2">
-              {(activity.laps ?? []).map((lap) => (
-                <LapCard
-                  key={`${lap.lap_index}-${lap.title}`}
-                  lap={lap}
-                  unitSystem={unitSystem}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="alert mt-5">
-              <span>This upload did not contain explicit lap data.</span>
-            </div>
-          )}
-        </div>
-      </div>
+        {(activity.laps ?? []).length > 0 ? (
+          <div className="grid gap-4 xl:grid-cols-2">
+            {(activity.laps ?? []).map((lap) => (
+              <LapCard
+                key={`${lap.lap_index}-${lap.title}`}
+                lap={lap}
+                unitSystem={unitSystem}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="alert mt-5">
+            <span>This upload did not contain explicit lap data.</span>
+          </div>
+        )}
+      </AppCard>
     </section>
   );
 }

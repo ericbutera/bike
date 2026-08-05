@@ -2,6 +2,7 @@
 
 import { useIsFetching, useIsMutating } from "@tanstack/react-query";
 import type { ComponentProps, ReactNode } from "react";
+import { AppCard } from "./Card";
 
 type SpinnerSize = "xs" | "sm" | "md" | "lg";
 
@@ -49,9 +50,9 @@ function QueryStateCard({
   bodyClassName?: string;
 }) {
   return (
-    <section className={cx("card bg-base-100 shadow-xl", className)}>
-      <div className={cx("card-body", bodyClassName)}>{children}</div>
-    </section>
+    <AppCard as="section" className={className} bodyClassName={bodyClassName}>
+      {children}
+    </AppCard>
   );
 }
 

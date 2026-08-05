@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
 import { useActivity, useSegment } from "../lib/queries";
 import SegmentBuilderWorkspace from "./SegmentBuilderWorkspace";
+import { AppCard } from "./ui/Card";
 
 function parseNumericId(rawValue: string | null) {
   const parsed = Number(rawValue);
@@ -24,17 +25,15 @@ function SegmentBuilderPageShell({
 }) {
   return (
     <section className="space-y-6">
-      <div className="card bg-base-100 shadow-xl">
-        <div className="card-body gap-4">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h1 className="text-4xl font-semibold tracking-tight text-base-content">
-                Segment builder
-              </h1>
-            </div>
+      <AppCard bodyClassName="gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-4xl font-semibold tracking-tight text-base-content">
+              Segment builder
+            </h1>
           </div>
         </div>
-      </div>
+      </AppCard>
 
       {children}
     </section>

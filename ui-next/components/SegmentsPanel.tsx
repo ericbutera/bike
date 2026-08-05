@@ -1,6 +1,6 @@
 "use client";
 
-import { GenericList, type Column } from "@ericbutera/kaleido";
+import { type Column, GenericList } from "@ericbutera/kaleido";
 import { faStar } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
@@ -9,12 +9,13 @@ import toast from "react-hot-toast";
 import { MemoryRouter } from "react-router-dom";
 import { formatDistance, formatDuration } from "../lib/activityFormatting";
 import {
+  type Segment,
   useSegments,
   useUpdateSegment,
   useUploadSegment,
-  type Segment,
 } from "../lib/queries";
 import { useUnitPreferences } from "../lib/unitPreferences";
+import { AppCard, CardHeader } from "./ui/Card";
 import InfoTooltip from "./ui/InfoTooltip";
 import { LoadingSpinner } from "./ui/QueryState";
 
@@ -103,8 +104,12 @@ export default function SegmentsPanel() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              className={`btn btn-ghost btn-xs btn-square ${segment.starred ? "text-warning" : "text-base-content/45"}`}
-              aria-label={`${segment.starred ? "Unstar" : "Star"} ${segment.title}`}
+              className={`btn btn-ghost btn-xs btn-square ${
+                segment.starred ? "text-warning" : "text-base-content/45"
+              }`}
+              aria-label={`${
+                segment.starred ? "Unstar" : "Star"
+              } ${segment.title}`}
               aria-pressed={!!segment.starred}
               disabled={updateSegmentMutation.isPending}
               onClick={() => {
@@ -222,76 +227,77 @@ export default function SegmentsPanel() {
 
   return (
     <section className="grid gap-6">
-      <div className="card bg-base-100 shadow-xl">
-        <div className="card-body">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
-                <h2>Import Segment</h2>
+      <AppCard>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <CardHeader
+              className="mb-3"
+              title="Import Segment"
+              titleExtras={
                 <InfoTooltip
                   label="Build or import segments details"
                   tip={SEGMENT_BUILDER_HELP_TEXT}
                 />
-              </div>
-              <p className="mt-2 max-w-2xl text-sm text-base-content/70">
-                You can download Strava segment GPX files from
-                <a
-                  href="https://www.doogal.co.uk/SegmentExplorer"
-                  target="_blank"
-                >
-                  Doogal Segment explorer
-                </a>
-                .
-              </p>
-            </div>
-          </div>
-
-          <fieldset className="fieldset rounded-box border border-base-300 bg-base-200 p-4">
-            <legend className="fieldset-legend">Segment route file</legend>
-            <input
-              ref={inputRef}
-              type="file"
-              accept=".gpx,.tcx"
-              aria-label="Segment route file"
-              className="file-input file-input-bordered w-full"
-              onChange={(event) => {
-                const file = event.target.files?.[0] ?? null;
-                setSelectedFile(file);
-              }}
+              }
             />
+            <p className="mt-2 max-w-2xl text-sm text-base-content/70">
+              You can download Strava segment GPX files from
+              <a
+                href="https://www.doogal.co.uk/SegmentExplorer"
+                target="_blank"
+              >
+                Doogal Segment explorer
+              </a>
+              .
+            </p>
+          </div>
+        </div>
 
-            {selectedFile && (
-              <div className="card bg-base-100 shadow-sm">
-                <div className="card-body p-4 text-sm text-base-content/70">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="font-medium text-base-content">
-                      {selectedFile.name}
-                    </div>
-                    <span className="badge badge-neutral badge-outline uppercase">
-                      {getExtension(selectedFile.name) || "unknown"}
-                    </span>
+        <fieldset className="fieldset rounded-box border border-base-300 bg-base-200 p-4">
+          <legend className="fieldset-legend">Segment route file</legend>
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".gpx,.tcx"
+            aria-label="Segment route file"
+            className="file-input file-input-bordered w-full"
+            onChange={(event) => {
+              const file = event.target.files?.[0] ?? null;
+              setSelectedFile(file);
+            }}
+          />
+
+          {selectedFile && (
+            <div className="card bg-base-100 shadow-sm">
+              <div className="card-body p-4 text-sm text-base-content/70">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="font-medium text-base-content">
+                    {selectedFile.name}
                   </div>
+                  <span className="badge badge-neutral badge-outline uppercase">
+                    {getExtension(selectedFile.name) || "unknown"}
+                  </span>
                 </div>
               </div>
-            )}
-
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={!selectedFile || uploadMutation.isPending}
-                onClick={onUpload}
-              >
-                {uploadMutation.isPending ? "Importing..." : "Import segment"}
-              </button>
-              <InfoTooltip
-                label="Segment route file details"
-                tip="GPX and TCX work best because they keep route coordinates explicit."
-              />
             </div>
-          </fieldset>
-        </div>
-      </div>
+          )}
+
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={!selectedFile || uploadMutation.isPending}
+              onClick={onUpload}
+            >
+              {uploadMutation.isPending ? "Importing..." : "Import segment"}
+            </button>
+            <InfoTooltip
+              label="Segment route file details"
+              tip="GPX and TCX work best because they keep route coordinates explicit."
+            />
+          </div>
+        </fieldset>
+      </AppCard>
 
       <MemoryRouter>
         <GenericList

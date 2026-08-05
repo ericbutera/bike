@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, type KeyboardEvent } from "react";
+import { type KeyboardEvent, useMemo } from "react";
 import {
   Area,
   CartesianGrid,
@@ -10,7 +10,10 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { buildActivityClimbs, type ActivityClimb } from "../../lib/activityClimbs";
+import {
+  type ActivityClimb,
+  buildActivityClimbs,
+} from "../../lib/activityClimbs";
 import {
   FEET_PER_METER,
   formatDistance,
@@ -21,6 +24,7 @@ import {
 } from "../../lib/activityFormatting";
 import { useActivity } from "../../lib/queries";
 import MetricCard from "../MetricCard";
+import { AppCard, CardHeader } from "../ui/Card";
 
 const CLIMB_LIST_VISIBLE_ROW_COUNT = 15;
 const CLIMB_LIST_MAX_HEIGHT = "40rem";
@@ -56,7 +60,10 @@ function formatDistanceRange(
   endDistanceMeters: number,
   unitSystem: UnitSystem,
 ) {
-  return `${distanceValue(startDistanceMeters, unitSystem)} - ${distanceValue(endDistanceMeters, unitSystem)} ${distanceUnit(unitSystem)}`;
+  return `${distanceValue(startDistanceMeters, unitSystem)} - ${distanceValue(
+    endDistanceMeters,
+    unitSystem,
+  )} ${distanceUnit(unitSystem)}`;
 }
 
 function formatClimbCategory(category: ActivityClimb["category"]) {
@@ -165,214 +172,212 @@ export default function ActivityClimbsCard({
   }
 
   return (
-    <div id="activity-climbs-card" className="card bg-base-100 shadow-xl">
-      <div className="card-body">
-        <div className="mb-3 flex items-center justify-between gap-3 text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
-          <h2>Climbs</h2>
+    <AppCard id="activity-climbs-card">
+      <CardHeader
+        className="mb-3"
+        title="Climbs"
+        actions={
           <span className="badge badge-outline">
             {activityClimbs.length} climb
             {activityClimbs.length === 1 ? "" : "s"}
           </span>
-        </div>
+        }
+      />
 
-        {activityClimbs.length > 0 ? (
-          <>
-            <div
-              data-testid="activity-climbs-table-scroll"
-              className={`overflow-x-auto rounded-box border border-base-300 ${
-                shouldLimitClimbList ? "overflow-y-auto" : ""
-              }`}
-              style={
-                shouldLimitClimbList
-                  ? { maxHeight: CLIMB_LIST_MAX_HEIGHT }
-                  : undefined
-              }
-            >
-              <table className="table table-sm">
-                <thead
-                  className={
-                    shouldLimitClimbList ? "sticky top-0 z-10 bg-base-100" : ""
-                  }
-                >
-                  <tr className="h-10">
-                    <th>Climb</th>
-                    <th>Distance</th>
-                    <th>Elevation</th>
-                    <th>Grade</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {activityClimbs.map((climb) => {
-                    const isSelected = climb.id === selectedClimbId;
+      {activityClimbs.length > 0 ? (
+        <>
+          <div
+            data-testid="activity-climbs-table-scroll"
+            className={`overflow-x-auto rounded-box border border-base-300 ${
+              shouldLimitClimbList ? "overflow-y-auto" : ""
+            }`}
+            style={
+              shouldLimitClimbList
+                ? { maxHeight: CLIMB_LIST_MAX_HEIGHT }
+                : undefined
+            }
+          >
+            <table className="table table-sm">
+              <thead
+                className={
+                  shouldLimitClimbList ? "sticky top-0 z-10 bg-base-100" : ""
+                }
+              >
+                <tr className="h-10">
+                  <th>Climb</th>
+                  <th>Distance</th>
+                  <th>Elevation</th>
+                  <th>Grade</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activityClimbs.map((climb) => {
+                  const isSelected = climb.id === selectedClimbId;
 
-                    return (
-                      <tr
-                        key={climb.id}
-                        role="button"
-                        tabIndex={0}
-                        aria-label={`Show climb ${climb.sequence} details`}
-                        aria-pressed={isSelected}
-                        className={`h-10 cursor-pointer transition hover:bg-base-200 focus:bg-base-200 focus:outline-none ${
-                          isSelected ? "bg-primary/10" : ""
-                        }`}
-                        onClick={() => onSelectClimb(climb.id)}
-                        onKeyDown={(event) => handleRowKeyDown(event, climb.id)}
+                  return (
+                    <tr
+                      key={climb.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Show climb ${climb.sequence} details`}
+                      aria-pressed={isSelected}
+                      className={`h-10 cursor-pointer transition hover:bg-base-200 focus:bg-base-200 focus:outline-none ${
+                        isSelected ? "bg-primary/10" : ""
+                      }`}
+                      onClick={() => onSelectClimb(climb.id)}
+                      onKeyDown={(event) => handleRowKeyDown(event, climb.id)}
+                    >
+                      <th
+                        scope="row"
+                        className="whitespace-nowrap font-semibold"
                       >
-                        <th
-                          scope="row"
-                          className="whitespace-nowrap font-semibold"
-                        >
-                          Climb {climb.sequence}
-                        </th>
-                        <td className="whitespace-nowrap">
-                          {formatDistance(climb.distanceMeters, unitSystem)}
-                        </td>
-                        <td className="whitespace-nowrap">
-                          {formatElevation(
-                            climb.elevationGainMeters,
-                            unitSystem,
-                          )}
-                        </td>
-                        <td className="whitespace-nowrap">
-                          {formatGradePercent(climb.avgGradePercent)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {selectedClimb ? (
-              <div className="mt-6 border-t border-base-300 pt-6">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <h3 className="text-lg font-semibold text-base-content">
-                    Climb:{" "}
-                    {formatDistanceRange(
-                      selectedClimb.startDistanceMeters,
-                      selectedClimb.endDistanceMeters,
-                      unitSystem,
-                    )}
-                  </h3>
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-sm"
-                    onClick={onZoomOutMap}
-                  >
-                    Zoom out map
-                  </button>
-                </div>
-
-                <div className="mt-5 grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
-                  <MetricCard
-                    variant="plain"
-                    label="distance"
-                    value={formatDistance(
-                      selectedClimb.distanceMeters,
-                      unitSystem,
-                    )}
-                  />
-                  <MetricCard
-                    variant="plain"
-                    label="elevation gain"
-                    value={formatElevation(
-                      selectedClimb.elevationGainMeters,
-                      unitSystem,
-                    )}
-                  />
-                  <MetricCard
-                    variant="plain"
-                    label="elevation loss"
-                    value={formatElevation(
-                      selectedClimb.elevationLossMeters,
-                      unitSystem,
-                    )}
-                  />
-                  <MetricCard
-                    variant="plain"
-                    label="category"
-                    value={formatClimbCategory(selectedClimb.category)}
-                  />
-                  <MetricCard
-                    variant="plain"
-                    label="max grade"
-                    value={formatGradePercent(selectedClimb.maxGradePercent)}
-                  />
-                  <MetricCard
-                    variant="plain"
-                    label="avg grade"
-                    value={formatGradePercent(selectedClimb.avgGradePercent)}
-                  />
-                  <MetricCard
-                    variant="plain"
-                    label="estimated"
-                    value={formatDuration(selectedClimb.durationSeconds)}
-                  />
-                </div>
-
-                {elevationRows.length > 1 ? (
-                  <div
-                    role="img"
-                    aria-label={`Climb ${selectedClimb.sequence} elevation profile`}
-                    className="mt-6 overflow-hidden rounded-box border border-base-300 bg-base-200 p-3"
-                  >
-                    <div className="h-[180px] w-full">
-                      <ResponsiveContainer
-                        width="100%"
-                        height="100%"
-                        minWidth={320}
-                        minHeight={180}
-                      >
-                        <ComposedChart
-                          data={elevationRows}
-                          margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
-                        >
-                          <CartesianGrid
-                            vertical={false}
-                            stroke="var(--color-base-content)"
-                            strokeOpacity={0.1}
-                          />
-                          <XAxis
-                            axisLine={false}
-                            dataKey="distance"
-                            tick={{
-                              fill: "var(--color-base-content)",
-                              fontSize: 10,
-                            }}
-                            tickFormatter={(value: number) => value.toFixed(1)}
-                            tickLine={false}
-                            type="number"
-                          />
-                          <YAxis hide domain={["dataMin", "dataMax"]} />
-                          <Tooltip
-                            content={
-                              <ClimbElevationTooltip unitSystem={unitSystem} />
-                            }
-                          />
-                          <Area
-                            type="linear"
-                            dataKey="elevation"
-                            stroke="var(--color-warning)"
-                            fill="var(--color-warning)"
-                            fillOpacity={0.16}
-                            strokeWidth={2}
-                            dot={false}
-                            connectNulls
-                          />
-                        </ComposedChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </>
-        ) : (
-          <div className="alert mt-5">
-            <span>No sustained climbs found.</span>
+                        Climb {climb.sequence}
+                      </th>
+                      <td className="whitespace-nowrap">
+                        {formatDistance(climb.distanceMeters, unitSystem)}
+                      </td>
+                      <td className="whitespace-nowrap">
+                        {formatElevation(climb.elevationGainMeters, unitSystem)}
+                      </td>
+                      <td className="whitespace-nowrap">
+                        {formatGradePercent(climb.avgGradePercent)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        )}
-      </div>
-    </div>
+
+          {selectedClimb ? (
+            <div className="mt-6 border-t border-base-300 pt-6">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <h3 className="text-lg font-semibold text-base-content">
+                  Climb:{" "}
+                  {formatDistanceRange(
+                    selectedClimb.startDistanceMeters,
+                    selectedClimb.endDistanceMeters,
+                    unitSystem,
+                  )}
+                </h3>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={onZoomOutMap}
+                >
+                  Zoom out map
+                </button>
+              </div>
+
+              <div className="mt-5 grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
+                <MetricCard
+                  variant="plain"
+                  label="distance"
+                  value={formatDistance(
+                    selectedClimb.distanceMeters,
+                    unitSystem,
+                  )}
+                />
+                <MetricCard
+                  variant="plain"
+                  label="elevation gain"
+                  value={formatElevation(
+                    selectedClimb.elevationGainMeters,
+                    unitSystem,
+                  )}
+                />
+                <MetricCard
+                  variant="plain"
+                  label="elevation loss"
+                  value={formatElevation(
+                    selectedClimb.elevationLossMeters,
+                    unitSystem,
+                  )}
+                />
+                <MetricCard
+                  variant="plain"
+                  label="category"
+                  value={formatClimbCategory(selectedClimb.category)}
+                />
+                <MetricCard
+                  variant="plain"
+                  label="max grade"
+                  value={formatGradePercent(selectedClimb.maxGradePercent)}
+                />
+                <MetricCard
+                  variant="plain"
+                  label="avg grade"
+                  value={formatGradePercent(selectedClimb.avgGradePercent)}
+                />
+                <MetricCard
+                  variant="plain"
+                  label="estimated"
+                  value={formatDuration(selectedClimb.durationSeconds)}
+                />
+              </div>
+
+              {elevationRows.length > 1 ? (
+                <div
+                  role="img"
+                  aria-label={`Climb ${selectedClimb.sequence} elevation profile`}
+                  className="mt-6 overflow-hidden rounded-box border border-base-300 bg-base-200 p-3"
+                >
+                  <div className="h-[180px] w-full">
+                    <ResponsiveContainer
+                      width="100%"
+                      height="100%"
+                      minWidth={320}
+                      minHeight={180}
+                    >
+                      <ComposedChart
+                        data={elevationRows}
+                        margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
+                      >
+                        <CartesianGrid
+                          vertical={false}
+                          stroke="var(--color-base-content)"
+                          strokeOpacity={0.1}
+                        />
+                        <XAxis
+                          axisLine={false}
+                          dataKey="distance"
+                          tick={{
+                            fill: "var(--color-base-content)",
+                            fontSize: 10,
+                          }}
+                          tickFormatter={(value: number) => value.toFixed(1)}
+                          tickLine={false}
+                          type="number"
+                        />
+                        <YAxis hide domain={["dataMin", "dataMax"]} />
+                        <Tooltip
+                          content={
+                            <ClimbElevationTooltip unitSystem={unitSystem} />
+                          }
+                        />
+                        <Area
+                          type="linear"
+                          dataKey="elevation"
+                          stroke="var(--color-warning)"
+                          fill="var(--color-warning)"
+                          fillOpacity={0.16}
+                          strokeWidth={2}
+                          dot={false}
+                          connectNulls
+                        />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <div className="alert mt-5">
+          <span>No sustained climbs found.</span>
+        </div>
+      )}
+    </AppCard>
   );
 }

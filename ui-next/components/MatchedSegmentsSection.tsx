@@ -11,7 +11,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
-import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { type KeyboardEvent, useEffect, useMemo, useState } from "react";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import { formatDuration, formatHeartRate } from "../lib/activityFormatting";
 import {
@@ -27,10 +27,11 @@ import {
   type SegmentAchievementKind,
 } from "../lib/segmentAchievements";
 import {
-  segmentOverlayPoints,
   type MatchedSegmentGroup,
+  segmentOverlayPoints,
   useMatchedSegmentGroups,
 } from "./activity-detail/matchedSegments";
+import { AppCard, CardHeader } from "./ui/Card";
 
 type SegmentAttemptChartPoint = {
   effort: ActivitySegmentEffort;
@@ -261,10 +262,14 @@ function SegmentAttemptTooltipContent({
   return (
     <div className="rounded-box border border-base-300 bg-base-100 px-3 py-3 shadow-lg">
       <p className="text-sm font-semibold text-base-content">
-        {`Run ${attempt.runNumber} · ${formatDuration(attempt.durationSeconds)}`}
+        {`Run ${attempt.runNumber} · ${formatDuration(
+          attempt.durationSeconds,
+        )}`}
       </p>
       <p className="mt-1 text-sm text-base-content/70">
-        {`Leaderboard ${formatOverallRank(attempt.overallRank)} · Max heart rate ${formatHeartRate(attempt.maxHeartRate)}`}
+        {`Leaderboard ${formatOverallRank(
+          attempt.overallRank,
+        )} · Max heart rate ${formatHeartRate(attempt.maxHeartRate)}`}
       </p>
       <p className="mt-1 text-xs text-base-content/60">
         {`Personal rank ${formatPersonalRank(attempt.personalRank)}`}
@@ -675,14 +680,11 @@ export default function MatchedSegmentsSection({
   }
 
   return (
-    <div className="card bg-base-100 shadow-xl">
-      <div className="card-body">
-        {segmentGroups.length > 0 && (
+    <AppCard>
+      {segmentGroups.length > 0 && (
+        <>
+          <CardHeader className="mb-3" title="Matched segments" />
           <ul className="list overflow-hidden bg-base-100">
-            <li className="mb-3 flex items-center justify-between gap-3 px-0 text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
-              <span>Matched segments</span>
-            </li>
-
             {segmentGroups.map((segmentGroup) => {
               const segmentHref = `/segments/${segmentGroup.segmentId}`;
               const segmentAchievement =
@@ -698,10 +700,18 @@ export default function MatchedSegmentsSection({
                 <li
                   id={segmentGroup.anchorId}
                   key={segmentGroup.segmentId}
-                  className={`list-row grid-cols-1 w-full p-0 transition ${isSelected ? `${segmentGroup.tone.highlightClassName} bg-base-200/60` : "bg-base-100"} border-b border-base-300 last:border-b-0`}
+                  className={`list-row grid-cols-1 w-full p-0 transition ${
+                    isSelected
+                      ? `${segmentGroup.tone.highlightClassName} bg-base-200/60`
+                      : "bg-base-100"
+                  } border-b border-base-300 last:border-b-0`}
                 >
                   <div
-                    className={`collapse min-w-0 w-full rounded-none ring-1 ring-inset transition ${isSelected ? segmentGroup.tone.highlightClassName : "ring-transparent"} ${isExpanded ? "collapse-open" : "collapse-close"}`}
+                    className={`collapse min-w-0 w-full rounded-none ring-1 ring-inset transition ${
+                      isSelected
+                        ? segmentGroup.tone.highlightClassName
+                        : "ring-transparent"
+                    } ${isExpanded ? "collapse-open" : "collapse-close"}`}
                   >
                     <div
                       role="button"
@@ -726,8 +736,12 @@ export default function MatchedSegmentsSection({
                     >
                       <button
                         type="button"
-                        className={`btn btn-ghost btn-sm btn-square self-center ${isStarred ? "text-warning" : "text-base-content/45"}`}
-                        aria-label={`${isStarred ? "Unstar" : "Star"} ${segmentGroup.segmentTitle}`}
+                        className={`btn btn-ghost btn-sm btn-square self-center ${
+                          isStarred ? "text-warning" : "text-base-content/45"
+                        }`}
+                        aria-label={`${
+                          isStarred ? "Unstar" : "Star"
+                        } ${segmentGroup.segmentTitle}`}
                         aria-pressed={isStarred}
                         disabled={updateSegmentMutation.isPending}
                         onClick={(event) => {
@@ -843,8 +857,8 @@ export default function MatchedSegmentsSection({
               );
             })}
           </ul>
-        )}
-      </div>
-    </div>
+        </>
+      )}
+    </AppCard>
   );
 }

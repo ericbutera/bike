@@ -17,6 +17,7 @@ import {
   type FitnessFreshnessPoint,
   useFitnessFreshness,
 } from "../lib/queries";
+import { AppCard } from "./ui/Card";
 import InfoTooltip from "./ui/InfoTooltip";
 
 const FITNESS_FRESHNESS_HELP_TEXT =
@@ -285,338 +286,346 @@ export default function FitnessFreshnessPanel() {
 
   return (
     <section className="space-y-6">
-      <div className="card bg-base-100 shadow-xl">
-        <div className="card-body gap-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-sm text-base-content/60">Training load</p>
-              <div className="mt-2 flex items-center gap-2">
-                <h1 className="text-4xl font-semibold">
-                  Fitness &amp; Freshness
-                </h1>
-                <InfoTooltip
-                  label="Fitness and freshness details"
-                  tip={FITNESS_FRESHNESS_HELP_TEXT}
-                />
-              </div>
-            </div>
-
-            <div className="join">
-              {RANGE_PRESETS.map((preset) => (
-                <button
-                  key={preset.key}
-                  type="button"
-                  className={`join-item btn btn-sm ${selectedRange === preset.key ? "btn-primary" : "btn-ghost"}`}
-                  onClick={() => {
-                    setSelectedRange(preset.key);
-                  }}
-                >
-                  {preset.label}
-                </button>
-              ))}
+      <AppCard bodyClassName="gap-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-sm text-base-content/60">Training load</p>
+            <div className="mt-2 flex items-center gap-2">
+              <h1 className="text-4xl font-semibold">
+                Fitness &amp; Freshness
+              </h1>
+              <InfoTooltip
+                label="Fitness and freshness details"
+                tip={FITNESS_FRESHNESS_HELP_TEXT}
+              />
             </div>
           </div>
 
-          {points.length > 0 ? (
-            <>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <SummaryMetric
-                  label="Current fitness"
-                  value={formatMetric(latestPoint?.fitness)}
-                  accent={FITNESS_COLOR}
-                  description={`${fitnessQuery.data?.fitness_window_days ?? 42} day load average`}
-                />
-                <SummaryMetric
-                  label="Current fatigue"
-                  value={formatMetric(latestPoint?.fatigue)}
-                  accent={FATIGUE_COLOR}
-                  description={`${fitnessQuery.data?.fatigue_window_days ?? 7} day load average`}
-                />
-                <div className="stat rounded-box bg-base-200 px-4 py-3 shadow-sm">
-                  <div className="stat-title">Current form</div>
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="stat-value text-2xl"
-                      style={{ color: FORM_COLOR }}
-                    >
-                      {formatMetric(latestPoint?.form)}
-                    </div>
-                    <span className={`badge ${formZone.badgeClassName}`}>
-                      {formZone.label}
-                    </span>
-                  </div>
-                  <div className="stat-desc">{formZone.description}</div>
-                </div>
-                <SummaryMetric
-                  label="Last 7 day load"
-                  value={formatMetric(lastSevenDayLoad)}
-                  description="Sum of estimated daily load across the trailing week"
-                />
-              </div>
-
-              <div className="rounded-box border border-base-300 bg-base-200 p-4">
-                <div className="mb-3 flex flex-wrap gap-2 text-xs text-base-content/75">
-                  <span className="badge badge-outline gap-2 px-3 py-3">
-                    <span
-                      className="inline-block h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: LOAD_COLOR }}
-                    />
-                    Load
-                  </span>
-                  <button
-                    type="button"
-                    className={`badge gap-2 px-3 py-3 transition ${showFitness ? ACTIVE_TOGGLE_CLASS : INACTIVE_TOGGLE_CLASS}`}
-                    aria-pressed={showFitness}
-                    onClick={() => {
-                      setShowFitness((value) => !value);
-                    }}
-                  >
-                    <span
-                      className="inline-block h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: FITNESS_COLOR }}
-                    />
-                    Fitness
-                  </button>
-                  <button
-                    type="button"
-                    className={`badge gap-2 px-3 py-3 transition ${showFatigue ? ACTIVE_TOGGLE_CLASS : INACTIVE_TOGGLE_CLASS}`}
-                    aria-pressed={showFatigue}
-                    onClick={() => {
-                      setShowFatigue((value) => !value);
-                    }}
-                  >
-                    <span
-                      className="inline-block h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: FATIGUE_COLOR }}
-                    />
-                    Fatigue
-                  </button>
-                </div>
-
-                <div
-                  role="img"
-                  aria-label="Fitness and fatigue chart"
-                  className="h-[360px] w-full"
-                >
-                  <ResponsiveContainer
-                    width="100%"
-                    height="100%"
-                    minWidth={320}
-                    minHeight={360}
-                  >
-                    <ComposedChart
-                      data={points}
-                      margin={{ top: 8, right: 12, bottom: 12, left: 0 }}
-                    >
-                      <CartesianGrid
-                        vertical={false}
-                        stroke="var(--color-base-content)"
-                        strokeOpacity={0.1}
-                      />
-                      <XAxis
-                        axisLine={false}
-                        dataKey="date"
-                        includeHidden
-                        tick={{
-                          fill: "var(--color-base-content)",
-                          fontSize: 10,
-                        }}
-                        tickFormatter={(value: string) =>
-                          formatDateLabel(value, includeYearLabels)
-                        }
-                        tickLine={false}
-                        minTickGap={28}
-                      />
-                      <YAxis
-                        axisLine={false}
-                        includeHidden
-                        tick={{
-                          fill: "var(--color-base-content)",
-                          fontSize: 10,
-                        }}
-                        tickLine={false}
-                        width={54}
-                      />
-                      <YAxis hide yAxisId="load" />
-                      <Tooltip content={<FitnessTooltip />} />
-                      <Bar
-                        dataKey="training_load"
-                        yAxisId="load"
-                        fill={LOAD_COLOR}
-                        fillOpacity={0.35}
-                        barSize={10}
-                        radius={[4, 4, 0, 0]}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="fitness"
-                        hide={!showFitness}
-                        stroke={FITNESS_COLOR}
-                        strokeWidth={3}
-                        dot={false}
-                        activeDot={{
-                          r: 5,
-                          fill: FITNESS_COLOR,
-                          stroke: "var(--color-base-100)",
-                          strokeWidth: 1.25,
-                        }}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="fatigue"
-                        hide={!showFatigue}
-                        stroke={FATIGUE_COLOR}
-                        strokeWidth={3}
-                        dot={false}
-                        activeDot={{
-                          r: 5,
-                          fill: FATIGUE_COLOR,
-                          stroke: "var(--color-base-100)",
-                          strokeWidth: 1.25,
-                        }}
-                      />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              <div className="rounded-box border border-base-300 bg-base-200 p-4">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-lg font-semibold text-base-content">
-                      Form
-                    </h2>
-                    <p className="text-sm text-base-content/70">
-                      Negative form means you are carrying fatigue. Positive
-                      form means you are getting fresher.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2 text-xs text-base-content/75">
-                    <span className="badge badge-error badge-outline">
-                      High risk &lt; -25
-                    </span>
-                    <span className="badge badge-warning badge-outline">
-                      Build -25 to -10
-                    </span>
-                    <span className="badge badge-ghost">Neutral -10 to 5</span>
-                    <span className="badge badge-success badge-outline">
-                      Fresh 5 to 20
-                    </span>
-                    <span className="badge badge-info badge-outline">
-                      Race ready &gt; 20
-                    </span>
-                  </div>
-                </div>
-
-                <div
-                  role="img"
-                  aria-label="Form chart"
-                  className="h-[220px] w-full"
-                >
-                  <ResponsiveContainer
-                    width="100%"
-                    height="100%"
-                    minWidth={320}
-                    minHeight={220}
-                  >
-                    <ComposedChart
-                      data={points}
-                      margin={{ top: 8, right: 12, bottom: 12, left: 0 }}
-                    >
-                      <CartesianGrid
-                        vertical={false}
-                        stroke="var(--color-base-content)"
-                        strokeOpacity={0.1}
-                      />
-                      <XAxis
-                        axisLine={false}
-                        dataKey="date"
-                        includeHidden
-                        tick={{
-                          fill: "var(--color-base-content)",
-                          fontSize: 10,
-                        }}
-                        tickFormatter={(value: string) =>
-                          formatDateLabel(value, includeYearLabels)
-                        }
-                        tickLine={false}
-                        minTickGap={28}
-                      />
-                      <YAxis
-                        axisLine={false}
-                        domain={formDomain}
-                        includeHidden
-                        tick={{
-                          fill: "var(--color-base-content)",
-                          fontSize: 10,
-                        }}
-                        tickLine={false}
-                        width={54}
-                      />
-                      <ReferenceArea
-                        y1={formDomain[0]}
-                        y2={-25}
-                        fill="#dc2626"
-                        fillOpacity={0.08}
-                      />
-                      <ReferenceArea
-                        y1={-25}
-                        y2={-10}
-                        fill="#f59e0b"
-                        fillOpacity={0.1}
-                      />
-                      <ReferenceArea
-                        y1={-10}
-                        y2={5}
-                        fill="#94a3b8"
-                        fillOpacity={0.08}
-                      />
-                      <ReferenceArea
-                        y1={5}
-                        y2={20}
-                        fill="#22c55e"
-                        fillOpacity={0.08}
-                      />
-                      <ReferenceArea
-                        y1={20}
-                        y2={formDomain[1]}
-                        fill="#0ea5e9"
-                        fillOpacity={0.08}
-                      />
-                      <ReferenceLine
-                        y={0}
-                        stroke="#64748b"
-                        strokeDasharray="4 4"
-                      />
-                      <Tooltip content={<FormTooltip />} />
-                      <Line
-                        type="monotone"
-                        dataKey="form"
-                        stroke={FORM_COLOR}
-                        strokeWidth={3}
-                        dot={false}
-                        activeDot={{
-                          r: 5,
-                          fill: FORM_COLOR,
-                          stroke: "var(--color-base-100)",
-                          strokeWidth: 1.25,
-                        }}
-                      />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="alert bg-base-200 text-base-content/80">
-              <span>
-                No activities are available yet. Import a few sessions with
-                duration data to start building fitness and fatigue history.
-              </span>
-            </div>
-          )}
+          <div className="join">
+            {RANGE_PRESETS.map((preset) => (
+              <button
+                key={preset.key}
+                type="button"
+                className={`join-item btn btn-sm ${
+                  selectedRange === preset.key ? "btn-primary" : "btn-ghost"
+                }`}
+                onClick={() => {
+                  setSelectedRange(preset.key);
+                }}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+
+        {points.length > 0 ? (
+          <>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <SummaryMetric
+                label="Current fitness"
+                value={formatMetric(latestPoint?.fitness)}
+                accent={FITNESS_COLOR}
+                description={`${
+                  fitnessQuery.data?.fitness_window_days ?? 42
+                } day load average`}
+              />
+              <SummaryMetric
+                label="Current fatigue"
+                value={formatMetric(latestPoint?.fatigue)}
+                accent={FATIGUE_COLOR}
+                description={`${
+                  fitnessQuery.data?.fatigue_window_days ?? 7
+                } day load average`}
+              />
+              <div className="stat rounded-box bg-base-200 px-4 py-3 shadow-sm">
+                <div className="stat-title">Current form</div>
+                <div className="flex items-center gap-3">
+                  <div
+                    className="stat-value text-2xl"
+                    style={{ color: FORM_COLOR }}
+                  >
+                    {formatMetric(latestPoint?.form)}
+                  </div>
+                  <span className={`badge ${formZone.badgeClassName}`}>
+                    {formZone.label}
+                  </span>
+                </div>
+                <div className="stat-desc">{formZone.description}</div>
+              </div>
+              <SummaryMetric
+                label="Last 7 day load"
+                value={formatMetric(lastSevenDayLoad)}
+                description="Sum of estimated daily load across the trailing week"
+              />
+            </div>
+
+            <div className="rounded-box border border-base-300 bg-base-200 p-4">
+              <div className="mb-3 flex flex-wrap gap-2 text-xs text-base-content/75">
+                <span className="badge badge-outline gap-2 px-3 py-3">
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: LOAD_COLOR }}
+                  />
+                  Load
+                </span>
+                <button
+                  type="button"
+                  className={`badge gap-2 px-3 py-3 transition ${
+                    showFitness ? ACTIVE_TOGGLE_CLASS : INACTIVE_TOGGLE_CLASS
+                  }`}
+                  aria-pressed={showFitness}
+                  onClick={() => {
+                    setShowFitness((value) => !value);
+                  }}
+                >
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: FITNESS_COLOR }}
+                  />
+                  Fitness
+                </button>
+                <button
+                  type="button"
+                  className={`badge gap-2 px-3 py-3 transition ${
+                    showFatigue ? ACTIVE_TOGGLE_CLASS : INACTIVE_TOGGLE_CLASS
+                  }`}
+                  aria-pressed={showFatigue}
+                  onClick={() => {
+                    setShowFatigue((value) => !value);
+                  }}
+                >
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: FATIGUE_COLOR }}
+                  />
+                  Fatigue
+                </button>
+              </div>
+
+              <div
+                role="img"
+                aria-label="Fitness and fatigue chart"
+                className="h-[360px] w-full"
+              >
+                <ResponsiveContainer
+                  width="100%"
+                  height="100%"
+                  minWidth={320}
+                  minHeight={360}
+                >
+                  <ComposedChart
+                    data={points}
+                    margin={{ top: 8, right: 12, bottom: 12, left: 0 }}
+                  >
+                    <CartesianGrid
+                      vertical={false}
+                      stroke="var(--color-base-content)"
+                      strokeOpacity={0.1}
+                    />
+                    <XAxis
+                      axisLine={false}
+                      dataKey="date"
+                      includeHidden
+                      tick={{
+                        fill: "var(--color-base-content)",
+                        fontSize: 10,
+                      }}
+                      tickFormatter={(value: string) =>
+                        formatDateLabel(value, includeYearLabels)
+                      }
+                      tickLine={false}
+                      minTickGap={28}
+                    />
+                    <YAxis
+                      axisLine={false}
+                      includeHidden
+                      tick={{
+                        fill: "var(--color-base-content)",
+                        fontSize: 10,
+                      }}
+                      tickLine={false}
+                      width={54}
+                    />
+                    <YAxis hide yAxisId="load" />
+                    <Tooltip content={<FitnessTooltip />} />
+                    <Bar
+                      dataKey="training_load"
+                      yAxisId="load"
+                      fill={LOAD_COLOR}
+                      fillOpacity={0.35}
+                      barSize={10}
+                      radius={[4, 4, 0, 0]}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="fitness"
+                      hide={!showFitness}
+                      stroke={FITNESS_COLOR}
+                      strokeWidth={3}
+                      dot={false}
+                      activeDot={{
+                        r: 5,
+                        fill: FITNESS_COLOR,
+                        stroke: "var(--color-base-100)",
+                        strokeWidth: 1.25,
+                      }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="fatigue"
+                      hide={!showFatigue}
+                      stroke={FATIGUE_COLOR}
+                      strokeWidth={3}
+                      dot={false}
+                      activeDot={{
+                        r: 5,
+                        fill: FATIGUE_COLOR,
+                        stroke: "var(--color-base-100)",
+                        strokeWidth: 1.25,
+                      }}
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="rounded-box border border-base-300 bg-base-200 p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-base-content">
+                    Form
+                  </h2>
+                  <p className="text-sm text-base-content/70">
+                    Negative form means you are carrying fatigue. Positive form
+                    means you are getting fresher.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2 text-xs text-base-content/75">
+                  <span className="badge badge-error badge-outline">
+                    High risk &lt; -25
+                  </span>
+                  <span className="badge badge-warning badge-outline">
+                    Build -25 to -10
+                  </span>
+                  <span className="badge badge-ghost">Neutral -10 to 5</span>
+                  <span className="badge badge-success badge-outline">
+                    Fresh 5 to 20
+                  </span>
+                  <span className="badge badge-info badge-outline">
+                    Race ready &gt; 20
+                  </span>
+                </div>
+              </div>
+
+              <div
+                role="img"
+                aria-label="Form chart"
+                className="h-[220px] w-full"
+              >
+                <ResponsiveContainer
+                  width="100%"
+                  height="100%"
+                  minWidth={320}
+                  minHeight={220}
+                >
+                  <ComposedChart
+                    data={points}
+                    margin={{ top: 8, right: 12, bottom: 12, left: 0 }}
+                  >
+                    <CartesianGrid
+                      vertical={false}
+                      stroke="var(--color-base-content)"
+                      strokeOpacity={0.1}
+                    />
+                    <XAxis
+                      axisLine={false}
+                      dataKey="date"
+                      includeHidden
+                      tick={{
+                        fill: "var(--color-base-content)",
+                        fontSize: 10,
+                      }}
+                      tickFormatter={(value: string) =>
+                        formatDateLabel(value, includeYearLabels)
+                      }
+                      tickLine={false}
+                      minTickGap={28}
+                    />
+                    <YAxis
+                      axisLine={false}
+                      domain={formDomain}
+                      includeHidden
+                      tick={{
+                        fill: "var(--color-base-content)",
+                        fontSize: 10,
+                      }}
+                      tickLine={false}
+                      width={54}
+                    />
+                    <ReferenceArea
+                      y1={formDomain[0]}
+                      y2={-25}
+                      fill="#dc2626"
+                      fillOpacity={0.08}
+                    />
+                    <ReferenceArea
+                      y1={-25}
+                      y2={-10}
+                      fill="#f59e0b"
+                      fillOpacity={0.1}
+                    />
+                    <ReferenceArea
+                      y1={-10}
+                      y2={5}
+                      fill="#94a3b8"
+                      fillOpacity={0.08}
+                    />
+                    <ReferenceArea
+                      y1={5}
+                      y2={20}
+                      fill="#22c55e"
+                      fillOpacity={0.08}
+                    />
+                    <ReferenceArea
+                      y1={20}
+                      y2={formDomain[1]}
+                      fill="#0ea5e9"
+                      fillOpacity={0.08}
+                    />
+                    <ReferenceLine
+                      y={0}
+                      stroke="#64748b"
+                      strokeDasharray="4 4"
+                    />
+                    <Tooltip content={<FormTooltip />} />
+                    <Line
+                      type="monotone"
+                      dataKey="form"
+                      stroke={FORM_COLOR}
+                      strokeWidth={3}
+                      dot={false}
+                      activeDot={{
+                        r: 5,
+                        fill: FORM_COLOR,
+                        stroke: "var(--color-base-100)",
+                        strokeWidth: 1.25,
+                      }}
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="alert bg-base-200 text-base-content/80">
+            <span>
+              No activities are available yet. Import a few sessions with
+              duration data to start building fitness and fatigue history.
+            </span>
+          </div>
+        )}
+      </AppCard>
     </section>
   );
 }

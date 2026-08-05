@@ -13,26 +13,27 @@ import {
   type UnitSystem,
 } from "../lib/activityFormatting";
 import {
-  useCreateSegmentFromActivity,
-  useUpdateSegmentFromActivity,
   type Activity,
   type ActivityRoutePoint,
   type Segment,
+  useCreateSegmentFromActivity,
+  useUpdateSegmentFromActivity,
 } from "../lib/queries";
 import {
   buildInitialSegmentSelection,
   clampEndIndex,
   clampStartIndex,
   hasSegmentBuilderRoute,
+  type SegmentBuilderSelection,
   segmentSelectionDistanceMeters,
   segmentSelectionDurationSeconds,
   shiftEndIndex,
   shiftStartIndex,
   sliceSegmentRoutePoints,
-  type SegmentBuilderSelection,
 } from "../lib/segmentBuilder";
 import { useUnitPreferences } from "../lib/unitPreferences";
 import MapLibreRouteMap from "./MapLibreRouteMap";
+import { AppCard } from "./ui/Card";
 import { ErrorCard, LoadingCard } from "./ui/QueryState";
 
 const EMPTY_ROUTE_POINTS: ActivityRoutePoint[] = [];
@@ -327,218 +328,220 @@ export default function SegmentBuilderWorkspace({
 
   if (!activity) {
     return (
-      <section className="card border border-dashed border-base-300 bg-base-100 shadow-xl">
-        <div className="card-body py-16 text-center">
-          <h2 className="text-2xl font-semibold text-base-content">
-            Open the builder from a ride
-          </h2>
-        </div>
-      </section>
+      <AppCard
+        as="section"
+        className="border border-dashed border-base-300"
+        bodyClassName="py-16 text-center"
+      >
+        <h2 className="text-2xl font-semibold text-base-content">
+          Open the builder from a ride
+        </h2>
+      </AppCard>
     );
   }
 
   return (
-    <section className="card border border-base-300 bg-base-100 shadow-xl">
-      <div className="card-body gap-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm text-base-content/60">Segment workspace</p>
-              {isEditingExistingSegment ? (
-                <span className="badge badge-outline">
-                  Editing saved segment
-                </span>
-              ) : null}
-            </div>
-            <h2 className="text-2xl font-semibold text-base-content">
-              {activity.title}
-            </h2>
-            <p className="mt-2 text-sm text-base-content/70">
-              {formatActivityTimestamp(activity.started_at)}
-              {activity.location ? ` · ${activity.location}` : ""}
-            </p>
+    <AppCard
+      as="section"
+      className="border border-base-300"
+      bodyClassName="gap-6"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm text-base-content/60">Segment workspace</p>
+            {isEditingExistingSegment ? (
+              <span className="badge badge-outline">Editing saved segment</span>
+            ) : null}
           </div>
-
-          <Link
-            href={`/activities/${activity.id}`}
-            className="btn btn-ghost btn-sm"
-          >
-            Open full ride detail
-          </Link>
+          <h2 className="text-2xl font-semibold text-base-content">
+            {activity.title}
+          </h2>
+          <p className="mt-2 text-sm text-base-content/70">
+            {formatActivityTimestamp(activity.started_at)}
+            {activity.location ? ` · ${activity.location}` : ""}
+          </p>
         </div>
 
-        {!hasRoute ? (
-          <div className="alert alert-warning">
-            <span>
-              This activity does not have enough route geometry yet. Regenerate
-              or re-import it before building a segment from it.
-            </span>
-          </div>
-        ) : (
-          <>
-            <div className="rounded-box border border-base-300 bg-base-200 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-semibold text-base-content">
-                    Route crop
-                  </h3>
-                  <p className="mt-1 text-sm text-base-content/70">
-                    Drag the start and end sliders to crop the route, then use
-                    the arrow controls for point-level adjustments.
-                  </p>
-                </div>
-                <span className="badge badge-outline whitespace-nowrap">
-                  {overlayPoints.length} selected points
-                </span>
-              </div>
-
-              <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                <SelectionControl
-                  label="Start point"
-                  toneClassName="bg-success"
-                  value={startIndex}
-                  min={0}
-                  max={Math.max(0, routePoints.length - 2)}
-                  routePointCount={routePoints.length}
-                  point={startPoint}
-                  unitSystem={unitSystem}
-                  onChange={(nextValue) => {
-                    setSelection((current) => ({
-                      startIndex: clampStartIndex(
-                        routePoints,
-                        nextValue,
-                        current.endIndex,
-                      ),
-                      endIndex: current.endIndex,
-                    }));
-                  }}
-                  onShift={(delta) => {
-                    setSelection((current) =>
-                      shiftStartIndex(routePoints, current, delta),
-                    );
-                  }}
-                />
-
-                <SelectionControl
-                  label="End point"
-                  toneClassName="bg-error"
-                  value={endIndex}
-                  min={Math.min(routePoints.length - 1, startIndex + 1)}
-                  max={Math.max(1, routePoints.length - 1)}
-                  routePointCount={routePoints.length}
-                  point={endPoint}
-                  unitSystem={unitSystem}
-                  onChange={(nextValue) => {
-                    setSelection((current) => ({
-                      startIndex: current.startIndex,
-                      endIndex: clampEndIndex(
-                        routePoints,
-                        current.startIndex,
-                        nextValue,
-                      ),
-                    }));
-                  }}
-                  onShift={(delta) => {
-                    setSelection((current) =>
-                      shiftEndIndex(routePoints, current, delta),
-                    );
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <BuilderStat
-                label="Selected distance"
-                value={formatDistance(selectedDistance, unitSystem)}
-              />
-              <BuilderStat
-                label="Selected duration"
-                value={formatDuration(selectedDuration)}
-              />
-              <BuilderStat
-                label="Start position"
-                value={formatDuration(startPoint?.elapsed_seconds ?? null)}
-                detail={formatDistance(
-                  startPoint?.distance_meters ?? null,
-                  unitSystem,
-                )}
-              />
-              <BuilderStat
-                label="End position"
-                value={formatDuration(endPoint?.elapsed_seconds ?? null)}
-                detail={formatDistance(
-                  endPoint?.distance_meters ?? null,
-                  unitSystem,
-                )}
-              />
-            </div>
-
-            <div className="overflow-hidden rounded-box border border-base-300 bg-base-200">
-              <MapLibreRouteMap
-                routePoints={routePoints}
-                overlays={
-                  overlayPoints.length >= 2
-                    ? [
-                        {
-                          id: "segment-selection",
-                          points: overlayPoints,
-                          color: "#f97316",
-                          weight: 7,
-                        },
-                      ]
-                    : undefined
-                }
-                movingMarkers={mapMarkers}
-                ariaLabel="Segment builder map"
-                emptyMessage="This ride does not have route geometry yet."
-                className="h-[28rem] w-full rounded-none border-0"
-                showZoomControls
-                showLayerPicker
-                fitBoundsPadding={48}
-                fitBoundsMaxZoom={16}
-                showRouteEndpoints={false}
-              />
-            </div>
-
-            <div className="rounded-box border border-base-300 bg-base-200 p-4">
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-                <label className="form-control w-full">
-                  <div className="label px-0 pb-2">
-                    <span className="label-text font-semibold text-base-content">
-                      Segment name
-                    </span>
-                  </div>
-                  <input
-                    type="text"
-                    value={segmentName}
-                    className="input input-bordered w-full bg-base-100"
-                    placeholder="Name this segment"
-                    onChange={(event) => {
-                      setSegmentName(event.target.value);
-                    }}
-                  />
-                </label>
-
-                <button
-                  type="button"
-                  className="btn btn-primary lg:min-w-[12rem]"
-                  disabled={isSaving || segmentName.trim().length === 0}
-                  onClick={() => {
-                    void handleSave();
-                  }}
-                >
-                  {isSaving
-                    ? "Saving..."
-                    : isEditingExistingSegment
-                      ? "Save changes"
-                      : "Save segment"}
-                </button>
-              </div>
-            </div>
-          </>
-        )}
+        <Link
+          href={`/activities/${activity.id}`}
+          className="btn btn-ghost btn-sm"
+        >
+          Open full ride detail
+        </Link>
       </div>
-    </section>
+
+      {!hasRoute ? (
+        <div className="alert alert-warning">
+          <span>
+            This activity does not have enough route geometry yet. Regenerate or
+            re-import it before building a segment from it.
+          </span>
+        </div>
+      ) : (
+        <>
+          <div className="rounded-box border border-base-300 bg-base-200 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-base-content">
+                  Route crop
+                </h3>
+                <p className="mt-1 text-sm text-base-content/70">
+                  Drag the start and end sliders to crop the route, then use the
+                  arrow controls for point-level adjustments.
+                </p>
+              </div>
+              <span className="badge badge-outline whitespace-nowrap">
+                {overlayPoints.length} selected points
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <SelectionControl
+                label="Start point"
+                toneClassName="bg-success"
+                value={startIndex}
+                min={0}
+                max={Math.max(0, routePoints.length - 2)}
+                routePointCount={routePoints.length}
+                point={startPoint}
+                unitSystem={unitSystem}
+                onChange={(nextValue) => {
+                  setSelection((current) => ({
+                    startIndex: clampStartIndex(
+                      routePoints,
+                      nextValue,
+                      current.endIndex,
+                    ),
+                    endIndex: current.endIndex,
+                  }));
+                }}
+                onShift={(delta) => {
+                  setSelection((current) =>
+                    shiftStartIndex(routePoints, current, delta),
+                  );
+                }}
+              />
+
+              <SelectionControl
+                label="End point"
+                toneClassName="bg-error"
+                value={endIndex}
+                min={Math.min(routePoints.length - 1, startIndex + 1)}
+                max={Math.max(1, routePoints.length - 1)}
+                routePointCount={routePoints.length}
+                point={endPoint}
+                unitSystem={unitSystem}
+                onChange={(nextValue) => {
+                  setSelection((current) => ({
+                    startIndex: current.startIndex,
+                    endIndex: clampEndIndex(
+                      routePoints,
+                      current.startIndex,
+                      nextValue,
+                    ),
+                  }));
+                }}
+                onShift={(delta) => {
+                  setSelection((current) =>
+                    shiftEndIndex(routePoints, current, delta),
+                  );
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <BuilderStat
+              label="Selected distance"
+              value={formatDistance(selectedDistance, unitSystem)}
+            />
+            <BuilderStat
+              label="Selected duration"
+              value={formatDuration(selectedDuration)}
+            />
+            <BuilderStat
+              label="Start position"
+              value={formatDuration(startPoint?.elapsed_seconds ?? null)}
+              detail={formatDistance(
+                startPoint?.distance_meters ?? null,
+                unitSystem,
+              )}
+            />
+            <BuilderStat
+              label="End position"
+              value={formatDuration(endPoint?.elapsed_seconds ?? null)}
+              detail={formatDistance(
+                endPoint?.distance_meters ?? null,
+                unitSystem,
+              )}
+            />
+          </div>
+
+          <div className="overflow-hidden rounded-box border border-base-300 bg-base-200">
+            <MapLibreRouteMap
+              routePoints={routePoints}
+              overlays={
+                overlayPoints.length >= 2
+                  ? [
+                      {
+                        id: "segment-selection",
+                        points: overlayPoints,
+                        color: "#f97316",
+                        weight: 7,
+                      },
+                    ]
+                  : undefined
+              }
+              movingMarkers={mapMarkers}
+              ariaLabel="Segment builder map"
+              emptyMessage="This ride does not have route geometry yet."
+              className="h-[28rem] w-full rounded-none border-0"
+              showZoomControls
+              showLayerPicker
+              fitBoundsPadding={48}
+              fitBoundsMaxZoom={16}
+              showRouteEndpoints={false}
+            />
+          </div>
+
+          <div className="rounded-box border border-base-300 bg-base-200 p-4">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+              <label className="form-control w-full">
+                <div className="label px-0 pb-2">
+                  <span className="label-text font-semibold text-base-content">
+                    Segment name
+                  </span>
+                </div>
+                <input
+                  type="text"
+                  value={segmentName}
+                  className="input input-bordered w-full bg-base-100"
+                  placeholder="Name this segment"
+                  onChange={(event) => {
+                    setSegmentName(event.target.value);
+                  }}
+                />
+              </label>
+
+              <button
+                type="button"
+                className="btn btn-primary lg:min-w-[12rem]"
+                disabled={isSaving || segmentName.trim().length === 0}
+                onClick={() => {
+                  void handleSave();
+                }}
+              >
+                {isSaving
+                  ? "Saving..."
+                  : isEditingExistingSegment
+                    ? "Save changes"
+                    : "Save segment"}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </AppCard>
   );
 }

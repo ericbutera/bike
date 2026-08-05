@@ -26,20 +26,21 @@ import {
 import type { ActivityRoutePoint } from "../../lib/queries";
 import {
   ATHLETE_PANEL_ROW_ANIMATION_MS,
-  PLAYBACK_PACE_OPTIONS,
   buildEffortOverlayChartRows,
   buildPlaybackEffortOverlayMarker,
   comparisonMarkerPoint,
   effortSeriesDataKey,
   formatSignedSecondsDelta,
   formatSignedSpeedDelta,
-  interpolateRoutePointByProgress,
-  sortLiveComparisonRowsByLeader,
   type GapChartRow,
+  interpolateRoutePointByProgress,
   type LiveComparisonRow,
+  PLAYBACK_PACE_OPTIONS,
   type SelectedEffortRow,
+  sortLiveComparisonRowsByLeader,
 } from "../../lib/segmentDetail";
 import MapLibreRouteMap from "../MapLibreRouteMap";
+import { AppCard, CardHeader } from "../ui/Card";
 import InfoTooltip from "../ui/InfoTooltip";
 import { LoadingSpinner } from "../ui/QueryState";
 import type {
@@ -84,7 +85,11 @@ function formatTooltipDuration(value?: number | null) {
   const fractionalMilliseconds = secondMilliseconds % 1000;
 
   if (minutes > 0) {
-    return `${minutes}m ${formatTooltipSeconds(wholeSeconds, fractionalMilliseconds, true)}`;
+    return `${minutes}m ${formatTooltipSeconds(
+      wholeSeconds,
+      fractionalMilliseconds,
+      true,
+    )}`;
   }
 
   return formatTooltipSeconds(wholeSeconds, fractionalMilliseconds, false);
@@ -139,9 +144,8 @@ export function ComparisonGapChartTooltip({
     return null;
   }
 
-  const { progress, distanceMeters, elevationMeters } = comparisonTooltipContext(
-    { label, payload },
-  );
+  const { progress, distanceMeters, elevationMeters } =
+    comparisonTooltipContext({ label, payload });
 
   return (
     <div className="max-w-[26rem] border border-base-300 bg-base-100 px-3 py-3 shadow-lg">
@@ -607,7 +611,9 @@ function SelectedEffortsPanel({
                       rowRefs.current.delete(comparisonRow.effort.id);
                     }
                   }}
-                  className={`list-row grid min-w-0 items-center gap-3 rounded-none border-b border-base-300 px-3 py-3 transition-colors last:border-b-0 sm:px-4 xl:gap-4 ${athleteGridTemplateClassName} ${isFocused ? "bg-base-200/80" : "bg-transparent"}`}
+                  className={`list-row grid min-w-0 items-center gap-3 rounded-none border-b border-base-300 px-3 py-3 transition-colors last:border-b-0 sm:px-4 xl:gap-4 ${athleteGridTemplateClassName} ${
+                    isFocused ? "bg-base-200/80" : "bg-transparent"
+                  }`}
                   style={{ willChange: "transform" }}
                   onMouseEnter={() => {
                     onHoverEffort(comparisonRow.effort.id);
@@ -638,13 +644,29 @@ function SelectedEffortsPanel({
                   </div>
 
                   <div
-                    className={`justify-self-end text-right font-semibold ${comparisonRow.isLeader ? "text-success" : isPositiveGap ? "text-error" : isNegativeGap ? "text-success" : "text-base-content"}`}
+                    className={`justify-self-end text-right font-semibold ${
+                      comparisonRow.isLeader
+                        ? "text-success"
+                        : isPositiveGap
+                          ? "text-error"
+                          : isNegativeGap
+                            ? "text-success"
+                            : "text-base-content"
+                    }`}
                   >
                     {timeValue}
                   </div>
 
                   <div
-                    className={`justify-self-end text-right font-semibold ${comparisonRow.isLeader ? "text-base-content" : isPositiveSpeed ? "text-success" : isNegativeSpeed ? "text-error" : "text-base-content"}`}
+                    className={`justify-self-end text-right font-semibold ${
+                      comparisonRow.isLeader
+                        ? "text-base-content"
+                        : isPositiveSpeed
+                          ? "text-success"
+                          : isNegativeSpeed
+                            ? "text-error"
+                            : "text-base-content"
+                    }`}
                   >
                     {speedValue}
                   </div>
@@ -703,142 +725,137 @@ export default function SegmentDetailComparisonSection({
   } = workspace;
 
   return (
-    <div className="card bg-base-100 shadow-xl">
-      <div className="card-body gap-3">
-        <div className="flex items-center justify-between gap-3 text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
-          <div>
-            <div className="flex items-center gap-2">
-              <h2>Comparison workspace</h2>
-              <InfoTooltip
-                label="Comparison workspace details"
-                tip={COMPARISON_WORKSPACE_HELP_TEXT}
+    <AppCard bodyClassName="gap-3">
+      <CardHeader
+        title="Comparison workspace"
+        titleExtras={
+          <InfoTooltip
+            label="Comparison workspace details"
+            tip={COMPARISON_WORKSPACE_HELP_TEXT}
+          />
+        }
+        actions={
+          raceViewerHref ? (
+            <Link
+              href={raceViewerHref}
+              className="btn btn-sm btn-outline normal-case tracking-normal"
+            >
+              Open race viewer
+            </Link>
+          ) : null
+        }
+      />
+
+      {isLoading ? (
+        <div className="flex min-h-[28rem] items-center justify-center border border-base-300 bg-base-200">
+          <LoadingSpinner size="lg" aria-label="Loading segment comparison" />
+        </div>
+      ) : (
+        <div className="overflow-hidden border border-base-300 bg-base-200">
+          <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.78fr)]">
+            <div className="border-b border-base-300 xl:order-2 xl:border-b-0 xl:border-l">
+              <SelectedEffortsPanel
+                comparisonRows={liveComparisonRows}
+                focusedEffortId={focusedEffortId}
+                unitSystem={unitSystem}
+                onHoverEffort={actions.hoverEffort}
+                onRemoveEffort={actions.removeEffort}
               />
             </div>
-          </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            {raceViewerHref ? (
-              <Link
-                href={raceViewerHref}
-                className="btn btn-sm btn-outline normal-case tracking-normal"
-              >
-                Open race viewer
-              </Link>
-            ) : null}
-          </div>
-        </div>
 
-        {isLoading ? (
-          <div className="flex min-h-[28rem] items-center justify-center border border-base-300 bg-base-200">
-            <LoadingSpinner
-              size="lg"
-              aria-label="Loading segment comparison"
-            />
-          </div>
-        ) : (
-          <div className="overflow-hidden border border-base-300 bg-base-200">
-            <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.78fr)]">
-              <div className="border-b border-base-300 xl:order-2 xl:border-b-0 xl:border-l">
-                <SelectedEffortsPanel
-                  comparisonRows={liveComparisonRows}
-                  focusedEffortId={focusedEffortId}
-                  unitSystem={unitSystem}
-                  onHoverEffort={actions.hoverEffort}
-                  onRemoveEffort={actions.removeEffort}
-                />
-              </div>
-
-              <div className="min-h-[24rem] xl:order-1">
-                <RouteComparisonMap
-                  routePoints={routePoints}
-                  selectedRows={selectedRows}
-                  playbackSeconds={playback.seconds}
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3 border-t border-base-300 bg-base-100 px-3 py-3 sm:px-4">
-              <div className="flex min-w-0 flex-1 items-center gap-3 max-[420px]:gap-2">
-                <button
-                  type="button"
-                  className="btn btn-sm btn-circle shrink-0 border-0 bg-orange-500 text-white hover:bg-orange-600"
-                  disabled={
-                    selectedRows.length === 0 || playback.limitSeconds <= 0
-                  }
-                  aria-label={
-                    playback.isPlaying
-                      ? "Pause comparison playback"
-                      : playback.seconds >= playback.limitSeconds
-                        ? "Replay comparison playback"
-                        : "Play comparison playback"
-                  }
-                  onClick={() => {
-                    if (playback.seconds >= playback.limitSeconds) {
-                      playback.setSeconds(0);
-                    }
-                    playback.setIsPlaying(!playback.isPlaying);
-                  }}
-                >
-                  <FontAwesomeIcon
-                    icon={playback.isPlaying ? faPause : faPlay}
-                    className="h-4 w-4"
-                  />
-                </button>
-
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(playback.limitSeconds, 1)}
-                  step={0.1}
-                  value={Math.min(
-                    playback.seconds,
-                    Math.max(playback.limitSeconds, 1),
-                  )}
-                  className="range range-primary min-w-0 flex-1"
-                  disabled={
-                    selectedRows.length === 0 || playback.limitSeconds <= 0
-                  }
-                  aria-label="Playback timeline"
-                  onChange={(event) => {
-                    playback.setSeconds(Number(event.target.value));
-                    playback.setIsPlaying(false);
-                  }}
-                />
-
-                <span className="shrink-0 rounded-full border border-base-300 px-2.5 py-1 text-xs font-semibold tabular-nums text-base-content/80 max-[420px]:hidden">
-                  {formatDuration(Math.round(playback.seconds))} /{" "}
-                  {formatDuration(playback.limitSeconds)}
-                </span>
-              </div>
-
-              <div className="join shrink-0 max-[420px]:hidden">
-                {PLAYBACK_PACE_OPTIONS.map((option) => (
-                  <button
-                    key={option.key}
-                    type="button"
-                    className={`join-item btn btn-sm ${playback.pace === option.key ? "btn-neutral" : "btn-ghost"}`}
-                    aria-pressed={playback.pace === option.key}
-                    onClick={() => {
-                      playback.setPace(option.key);
-                    }}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="border-t border-base-300 bg-base-100/95">
-              <ComparisonChart
+            <div className="min-h-[24rem] xl:order-1">
+              <RouteComparisonMap
                 routePoints={routePoints}
-                routeDistanceMeters={routeDistanceMeters}
                 selectedRows={selectedRows}
                 playbackSeconds={playback.seconds}
-                unitSystem={unitSystem}
               />
             </div>
           </div>
-        )}
-      </div>
-    </div>
+
+          <div className="flex flex-wrap items-center gap-3 border-t border-base-300 bg-base-100 px-3 py-3 sm:px-4">
+            <div className="flex min-w-0 flex-1 items-center gap-3 max-[420px]:gap-2">
+              <button
+                type="button"
+                className="btn btn-sm btn-circle shrink-0 border-0 bg-orange-500 text-white hover:bg-orange-600"
+                disabled={
+                  selectedRows.length === 0 || playback.limitSeconds <= 0
+                }
+                aria-label={
+                  playback.isPlaying
+                    ? "Pause comparison playback"
+                    : playback.seconds >= playback.limitSeconds
+                      ? "Replay comparison playback"
+                      : "Play comparison playback"
+                }
+                onClick={() => {
+                  if (playback.seconds >= playback.limitSeconds) {
+                    playback.setSeconds(0);
+                  }
+                  playback.setIsPlaying(!playback.isPlaying);
+                }}
+              >
+                <FontAwesomeIcon
+                  icon={playback.isPlaying ? faPause : faPlay}
+                  className="h-4 w-4"
+                />
+              </button>
+
+              <input
+                type="range"
+                min={0}
+                max={Math.max(playback.limitSeconds, 1)}
+                step={0.1}
+                value={Math.min(
+                  playback.seconds,
+                  Math.max(playback.limitSeconds, 1),
+                )}
+                className="range range-primary min-w-0 flex-1"
+                disabled={
+                  selectedRows.length === 0 || playback.limitSeconds <= 0
+                }
+                aria-label="Playback timeline"
+                onChange={(event) => {
+                  playback.setSeconds(Number(event.target.value));
+                  playback.setIsPlaying(false);
+                }}
+              />
+
+              <span className="shrink-0 rounded-full border border-base-300 px-2.5 py-1 text-xs font-semibold tabular-nums text-base-content/80 max-[420px]:hidden">
+                {formatDuration(Math.round(playback.seconds))} /{" "}
+                {formatDuration(playback.limitSeconds)}
+              </span>
+            </div>
+
+            <div className="join shrink-0 max-[420px]:hidden">
+              {PLAYBACK_PACE_OPTIONS.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  className={`join-item btn btn-sm ${
+                    playback.pace === option.key ? "btn-neutral" : "btn-ghost"
+                  }`}
+                  aria-pressed={playback.pace === option.key}
+                  onClick={() => {
+                    playback.setPace(option.key);
+                  }}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-t border-base-300 bg-base-100/95">
+            <ComparisonChart
+              routePoints={routePoints}
+              routeDistanceMeters={routeDistanceMeters}
+              selectedRows={selectedRows}
+              playbackSeconds={playback.seconds}
+              unitSystem={unitSystem}
+            />
+          </div>
+        </div>
+      )}
+    </AppCard>
   );
 }
