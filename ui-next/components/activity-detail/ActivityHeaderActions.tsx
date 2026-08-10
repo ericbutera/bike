@@ -3,12 +3,7 @@
 import { faBars } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
-import {
-  ACTIVITY_TYPE_OPTIONS,
-  formatActivityTypeLabel,
-  normalizeActivityType,
-  type ActivityType,
-} from "../../lib/activityTypes";
+import { formatActivityTypeLabel } from "../../lib/activityTypes";
 import { formatSport } from "../../lib/activityFormatting";
 import type { Activity } from "../../lib/queries";
 import { hasSegmentBuilderRoute } from "../../lib/segmentBuilder";
@@ -17,14 +12,14 @@ export function ActivityHeaderActions({
   activity,
   isRegenerating,
   isDeleting,
-  onOpenActivityTypeDialog,
+  onOpenEditDialog,
   onRegenerate,
   onDelete,
 }: {
   activity: Activity;
   isRegenerating: boolean;
   isDeleting: boolean;
-  onOpenActivityTypeDialog: () => void;
+  onOpenEditDialog: () => void;
   onRegenerate: () => void;
   onDelete: () => void;
 }) {
@@ -60,8 +55,8 @@ export function ActivityHeaderActions({
               )}
             </li>
             <li>
-              <button type="button" onClick={onOpenActivityTypeDialog}>
-                Activity type
+              <button type="button" onClick={onOpenEditDialog}>
+                Edit activity
               </button>
             </li>
 
@@ -72,7 +67,9 @@ export function ActivityHeaderActions({
                   onClick={onRegenerate}
                   disabled={isRegenerating}
                 >
-                  {isRegenerating ? "Regenerating..." : "Regenerate derived data"}
+                  {isRegenerating
+                    ? "Regenerating..."
+                    : "Regenerate derived data"}
                 </button>
               </li>
             ) : null}
@@ -96,86 +93,6 @@ export function ActivityHeaderActions({
           from it.
         </p>
       ) : null}
-    </div>
-  );
-}
-
-export function ActivityTypeDialog({
-  activityTypeDraft,
-  isSaving,
-  onCancel,
-  onSave,
-  onChange,
-}: {
-  activityTypeDraft: ActivityType;
-  isSaving: boolean;
-  onCancel: () => void;
-  onSave: () => void;
-  onChange: (activityType: ActivityType) => void;
-}) {
-  return (
-    <div className="modal modal-open">
-      <div className="modal-box max-w-md">
-        <h2 className="text-xl font-semibold text-base-content">
-          Activity type
-        </h2>
-        <div className="mt-5 space-y-3">
-          {ACTIVITY_TYPE_OPTIONS.map((option) => (
-            <label
-              key={option.value}
-              className={`flex cursor-pointer items-start gap-3 rounded-box border p-4 ${
-                activityTypeDraft === option.value
-                  ? "border-primary bg-primary/10"
-                  : "border-base-300 bg-base-100"
-              }`}
-            >
-              <input
-                type="radio"
-                name="activity-type"
-                className="radio radio-primary mt-1"
-                value={option.value}
-                checked={activityTypeDraft === option.value}
-                onChange={(event) =>
-                  onChange(normalizeActivityType(event.target.value))
-                }
-              />
-              <span>
-                <span className="block font-medium text-base-content">
-                  {option.label}
-                </span>
-                <span className="mt-1 block text-sm leading-6 text-base-content/65">
-                  {option.description}
-                </span>
-              </span>
-            </label>
-          ))}
-        </div>
-        <div className="modal-action">
-          <button
-            type="button"
-            className="btn btn-ghost"
-            disabled={isSaving}
-            onClick={onCancel}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={isSaving}
-            onClick={onSave}
-          >
-            {isSaving ? "Saving..." : "Save type"}
-          </button>
-        </div>
-      </div>
-      <button
-        type="button"
-        className="modal-backdrop"
-        aria-label="Close activity type dialog"
-        disabled={isSaving}
-        onClick={onCancel}
-      />
     </div>
   );
 }

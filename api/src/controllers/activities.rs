@@ -84,6 +84,7 @@ pub struct ActivityResponse {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateActivityRequest {
+    pub title: Option<String>,
     pub activity_type: Option<ActivityType>,
 }
 
@@ -605,6 +606,9 @@ pub async fn update_activity(
     if let Some(activity_type) = request.activity_type {
         active_model.activity_type = Set(activity_type.as_str().to_string());
     }
+    if let Some(title) = request.title {
+        active_model.title = Set(normalize_activity_title(&title)?);
+    }
 
     let updated = active_model.update(&state.db).await?;
     let segment_efforts = load_activity_segment_efforts(&state.db, user.id, updated.id).await?;
@@ -725,6 +729,19 @@ pub async fn regenerate_activity(
         updated,
         segment_efforts,
     )))
+}
+
+fn normalize_activity_title(raw_title: &str) -> Result<String, AppError> {
+    let title = raw_title.trim();
+
+    if title.is_empty() {
+        return Err(AppError::validation_field(
+            "title",
+            "Activity title is required",
+        ));
+    }
+
+    Ok(title.to_string())
 }
 
 #[cfg(test)]
@@ -917,6 +934,21 @@ mod tests {
                 .map(|value| value.sustained_climb_count),
             Some(2)
         );
+    }
+
+    #[test]
+    fn normalize_activity_title_trims_whitespace() {
+        assert_eq!(
+            normalize_activity_title("  Lunch Loop  ").unwrap(),
+            "Lunch Loop"
+        );
+    }
+
+    #[test]
+    fn normalize_activity_title_rejects_blank_titles() {
+        let error = normalize_activity_title("   ").unwrap_err();
+
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
     }
 
     fn make_segment_effort_model(

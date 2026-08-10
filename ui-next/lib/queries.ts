@@ -139,6 +139,7 @@ export type Activity = {
 };
 
 export type UpdateActivityInput = {
+  title?: string | null;
   activity_type?: ActivityType | null;
 };
 
@@ -980,7 +981,9 @@ export function useReprocessActivityImport() {
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["get", "/activities"] }),
-        queryClient.invalidateQueries({ queryKey: ["get", "/activities/{id}"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/activities/{id}"],
+        }),
         queryClient.invalidateQueries({
           queryKey: ["get", "/activity-imports"],
         }),
@@ -1194,7 +1197,9 @@ export function useUpdateActivity() {
         queryClient.invalidateQueries({
           queryKey: ["get", "/activities/{id}"],
         }),
-        queryClient.invalidateQueries({ queryKey: ["get", "/training/xc-progress"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/training/xc-progress"],
+        }),
       ]);
 
       return result as Activity;
@@ -1745,7 +1750,9 @@ export function useCompleteGarminIqLink() {
         },
       });
 
-      await queryClient.invalidateQueries({ queryKey: ["get", "/garmin-iq/devices"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["get", "/garmin-iq/devices"],
+      });
 
       return result as GarminIqCompleteLinkResponse;
     },
@@ -1767,7 +1774,9 @@ export function useUnlinkGarminIqDevice() {
         },
       });
 
-      await queryClient.invalidateQueries({ queryKey: ["get", "/garmin-iq/devices"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["get", "/garmin-iq/devices"],
+      });
 
       return result as { message: string };
     },
@@ -1877,7 +1886,12 @@ export function useTrainingReports(
 }
 
 export function useRideSummaryReport(opts: {
-  report?: "ride_summary" | "endurance" | "climbing" | "fatigue" | "compare_rides";
+  report?:
+    | "ride_summary"
+    | "endurance"
+    | "climbing"
+    | "fatigue"
+    | "compare_rides";
   boundary: TrainingReportBoundary;
   startDate: string;
   endDate: string;

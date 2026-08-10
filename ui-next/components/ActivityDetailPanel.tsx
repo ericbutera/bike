@@ -1,25 +1,17 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { formatActivityTimestamp } from "../lib/activityFormatting";
-import {
-  ACTIVITY_TYPES,
-  type ActivityType,
-  normalizeActivityType,
-} from "../lib/activityTypes";
 import {
   useActivity,
   useDeleteActivity,
   useRegenerateActivity,
-  useUpdateActivity,
 } from "../lib/queries";
 import { useUnitPreferences } from "../lib/unitPreferences";
 import ActivityClimbsCard from "./activity-detail/ActivityClimbsCard";
-import {
-  ActivityHeaderActions,
-  ActivityTypeDialog,
-} from "./activity-detail/ActivityHeaderActions";
+import { ActivityHeaderActions } from "./activity-detail/ActivityHeaderActions";
+import ActivityModal from "./activity-detail/ActivityModal";
 import LapCard from "./activity-detail/LapCard";
 import ActivityMetricsSummary from "./activity-detail/ActivityMetricsSummary";
 import ActivityRouteMap from "./activity-detail/ActivityRouteMap";
@@ -42,22 +34,13 @@ export default function ActivityDetailPanel({
     null,
   );
   const [selectedClimbId, setSelectedClimbId] = useState<string | null>(null);
-  const [isActivityTypeDialogOpen, setIsActivityTypeDialogOpen] =
-    useState(false);
-  const [activityTypeDraft, setActivityTypeDraft] = useState<ActivityType>(
-    ACTIVITY_TYPES.Training,
-  );
+  const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const router = useRouter();
   const { unitSystem } = useUnitPreferences();
   const activityQuery = useActivity(activityId);
   const regenerateMutation = useRegenerateActivity();
   const deleteMutation = useDeleteActivity();
-  const updateActivityMutation = useUpdateActivity();
   const activity = activityQuery.data;
-
-  useEffect(() => {
-    setActivityTypeDraft(normalizeActivityType(activity?.activity_type));
-  }, [activity?.activity_type]);
 
   function focusSegmentMatch(segmentId: number) {
     setSelectedSegmentId(segmentId);
@@ -114,21 +97,6 @@ export default function ActivityDetailPanel({
     }
   }
 
-  async function handleSaveActivityType() {
-    if (!activity) {
-      return;
-    }
-
-    try {
-      await updateActivityMutation.updateAsync(activity.id, {
-        activity_type: activityTypeDraft,
-      });
-      setIsActivityTypeDialogOpen(false);
-    } catch {
-      // The mutation exposes the API error state used below.
-    }
-  }
-
   async function handleDelete() {
     if (!activity) {
       return;
@@ -173,12 +141,7 @@ export default function ActivityDetailPanel({
             activity={activity}
             isRegenerating={regenerateMutation.isPending}
             isDeleting={deleteMutation.isPending}
-            onOpenActivityTypeDialog={() => {
-              setActivityTypeDraft(
-                normalizeActivityType(activity.activity_type),
-              );
-              setIsActivityTypeDialogOpen(true);
-            }}
+            onOpenEditDialog={() => setIsActivityModalOpen(true)}
             onRegenerate={() => {
               void handleRegenerate();
             }}
@@ -188,15 +151,12 @@ export default function ActivityDetailPanel({
           />
         </div>
 
-        {isActivityTypeDialogOpen ? (
-          <ActivityTypeDialog
-            activityTypeDraft={activityTypeDraft}
-            isSaving={updateActivityMutation.isPending}
-            onCancel={() => setIsActivityTypeDialogOpen(false)}
-            onSave={() => {
-              void handleSaveActivityType();
-            }}
-            onChange={setActivityTypeDraft}
+        {isActivityModalOpen ? (
+          <ActivityModal
+            activityId={activity.id}
+            initialTitle={activity.title}
+            initialActivityType={activity.activity_type}
+            onClose={() => setIsActivityModalOpen(false)}
           />
         ) : null}
 
