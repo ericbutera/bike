@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import {
   formatElevation,
   formatElevationRate,
+  formatSpeed as formatActivitySpeed,
   type UnitSystem,
 } from "../../lib/activityFormatting";
 import {
@@ -35,6 +36,7 @@ const REPORTS_HELP_TEXT =
   "Generate ad-hoc ride analysis for the selected range.";
 const REPORT_RANGE_HELP_TEXT =
   "Reports are generated from rides started inside this range.";
+const CLIMBS_PER_PAGE = 10;
 
 export default function ReportsClient() {
   const router = useRouter();
@@ -63,23 +65,23 @@ export default function ReportsClient() {
   );
   const definitionsQuery = useTrainingReportDefinitions();
   const reportDefinitions = toReportDefinitions(definitionsQuery.data?.reports);
-  const selectedReport = findReportDefinition(selectedReportId, reportDefinitions);
+  const selectedReport = findReportDefinition(
+    selectedReportId,
+    reportDefinitions,
+  );
   const isAggregateTrends = selectedReport.id === "aggregate_trends";
   const isRideSummary = selectedReport.id === "ride_summary";
   const standaloneReportId = standaloneReportIdFor(selectedReport.id);
   const isStandaloneReport = standaloneReportId != null;
   const minDurationSeconds = hoursInputToSeconds(minDurationHours);
   const minDistanceMeters = milesInputToMeters(minDistanceMiles);
-  const { data, isLoading, isFetching } = useTrainingReports(
-    range,
-    {
-      enabled: isAggregateTrends,
-      startDate,
-      endDate,
-      minDurationSeconds,
-      minDistanceMeters,
-    },
-  );
+  const { data, isLoading, isFetching } = useTrainingReports(range, {
+    enabled: isAggregateTrends,
+    startDate,
+    endDate,
+    minDurationSeconds,
+    minDistanceMeters,
+  });
   const reportQuery = useRideSummaryReport({
     report: standaloneReportId ?? "ride_summary",
     boundary: range,
@@ -200,9 +202,7 @@ export default function ReportsClient() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-semibold">
-                  {selectedReport.name}
-                </h2>
+                <h2 className="text-lg font-semibold">{selectedReport.name}</h2>
                 <InfoTooltip
                   label={`${selectedReport.name} details`}
                   tip={selectedReport.purpose}
@@ -237,6 +237,7 @@ export default function ReportsClient() {
           ) : selectedReport.id === "endurance" ? (
             <EnduranceReportView
               report={reportQuery.data?.endurance ?? null}
+              unitSystem={unitSystem}
               isLoading={reportQuery.isLoading}
             />
           ) : selectedReport.id === "climbing" ? (
@@ -248,6 +249,7 @@ export default function ReportsClient() {
           ) : selectedReport.id === "fatigue" ? (
             <FatigueReportView
               report={reportQuery.data?.fatigue ?? null}
+              unitSystem={unitSystem}
               isLoading={reportQuery.isLoading}
             />
           ) : selectedReport.id === "compare_rides" ? (
@@ -290,7 +292,9 @@ function RideSummaryReportView({
   if (!summary || summary.activity_count === 0) {
     return (
       <div className="alert mt-4">
-        <span>No rides found from {startDate} through {endDate}.</span>
+        <span>
+          No rides found from {startDate} through {endDate}.
+        </span>
       </div>
     );
   }
@@ -348,34 +352,47 @@ function RideSummaryReportView({
         <ReportMetricCard
           label="Climb density"
           value={formatOptionalNumber(summary.climbing_density_feet_per_hour)}
-          unit={summary.climbing_density_feet_per_hour == null ? undefined : "ft/h"}
+          unit={
+            summary.climbing_density_feet_per_hour == null ? undefined : "ft/h"
+          }
         />
       </div>
 
       <section className="rounded-lg border border-base-300 p-4">
         <h3 className="text-base font-semibold">Heart Rate Zones</h3>
-        <div className="mt-4 grid gap-3 sm:grid-cols-5">
-          {[
-            ["Z1", summary.z1_seconds],
-            ["Z2", summary.z2_seconds],
-            ["Z3", summary.z3_seconds],
-            ["Z4", summary.z4_seconds],
-            ["Z5", summary.z5_seconds],
-          ].map(([label, seconds]) => (
-            <div key={label} className="rounded-md bg-base-200 p-3">
-              <div className="text-xs font-medium uppercase text-base-content/50">
-                {label}
+        <div className="mt-4">
+          <div
+            className="flex h-8 overflow-hidden rounded border border-base-300 bg-base-200"
+            aria-label="Heart-rate zone distribution"
+          >
+            {heartRateZoneRows(summary).map((zone) => (
+              <div
+                key={zone.label}
+                className={zone.color}
+                style={{
+                  width:
+                    zoneTotal > 0
+                      ? `${(zone.seconds / zoneTotal) * 100}%`
+                      : "20%",
+                }}
+                title={`${zone.label}: ${formatDuration(zone.seconds)} (${formatZonePercent(zone.seconds, zoneTotal)})`}
+              />
+            ))}
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-5">
+            {heartRateZoneRows(summary).map((zone) => (
+              <div key={zone.label} className="min-w-0 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className={`h-2.5 w-2.5 rounded-sm ${zone.color}`} />
+                  <span className="font-medium">{zone.label}</span>
+                </div>
+                <div className="mt-1 text-xs text-base-content/60">
+                  {formatZonePercent(zone.seconds, zoneTotal)} ·{" "}
+                  {formatDuration(zone.seconds)}
+                </div>
               </div>
-              <div className="mt-1 text-lg font-semibold">
-                {formatDuration(seconds as number)}
-              </div>
-              <div className="mt-1 text-xs text-base-content/60">
-                {zoneTotal > 0
-                  ? `${Math.round(((seconds as number) / zoneTotal) * 100)}%`
-                  : "n/a"}
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </section>
 
@@ -399,10 +416,12 @@ function ReportMetricCard({
   label,
   value,
   unit,
+  guide,
 }: {
   label: string;
   value: string;
   unit?: string;
+  guide?: string;
 }) {
   return (
     <div className="rounded-lg border border-base-300 bg-base-200/40 p-4">
@@ -411,47 +430,169 @@ function ReportMetricCard({
       </div>
       <div className="mt-2 flex items-baseline gap-2">
         <span className="text-2xl font-semibold">{value}</span>
-        {unit ? <span className="text-sm text-base-content/60">{unit}</span> : null}
+        {unit ? (
+          <span className="text-sm text-base-content/60">{unit}</span>
+        ) : null}
+      </div>
+      {guide ? (
+        <div className="mt-2 text-xs leading-4 text-base-content/55">
+          {guide}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MetricHeader({
+  label,
+  unit,
+  tip,
+}: {
+  label: string;
+  unit?: string;
+  tip?: string;
+}) {
+  return (
+    <div className="whitespace-nowrap">
+      <div className="flex items-center gap-1 font-semibold">
+        {label}
+        {unit ? (
+          <span className="font-normal text-base-content/60">({unit})</span>
+        ) : null}
+        {tip ? (
+          <InfoTooltip label={`${label} details`} tip={tip} position="bottom" />
+        ) : null}
       </div>
     </div>
   );
 }
 
+function heartRateZoneRows(summary: RideSummaryReport) {
+  return [
+    {
+      label: "Z1",
+      seconds: summary.z1_seconds,
+      color: "bg-violet-500",
+    },
+    {
+      label: "Z2",
+      seconds: summary.z2_seconds,
+      color: "bg-emerald-500",
+    },
+    {
+      label: "Z3",
+      seconds: summary.z3_seconds,
+      color: "bg-amber-400",
+    },
+    {
+      label: "Z4",
+      seconds: summary.z4_seconds,
+      color: "bg-rose-500",
+    },
+    {
+      label: "Z5",
+      seconds: summary.z5_seconds,
+      color: "bg-sky-500",
+    },
+  ];
+}
+
 function EnduranceReportView({
   report,
+  unitSystem,
   isLoading,
 }: {
   report: EnduranceReport | null;
+  unitSystem: UnitSystem;
   isLoading: boolean;
 }) {
-  if (isLoading) return <LoadingReport label="Generating endurance report..." />;
-  if (!report || report.activity_count === 0) return <EmptyReport label="No rides with usable point data found." />;
+  if (isLoading)
+    return <LoadingReport label="Generating endurance report..." />;
+  if (!report || report.activity_count === 0)
+    return <EmptyReport label="No rides with usable point data found." />;
 
   return (
     <div className="mt-5 grid gap-5">
       <div className="grid gap-3 sm:grid-cols-3">
-        <ReportMetricCard label="Rides" value={report.activity_count.toString()} />
         <ReportMetricCard
           label="Median decoupling"
           value={formatOptionalNumber(report.median_aerobic_decoupling_percent)}
-          unit={report.median_aerobic_decoupling_percent == null ? undefined : "%"}
+          unit={
+            report.median_aerobic_decoupling_percent == null ? undefined : "%"
+          }
+          guide="<5 good; >10 fade"
         />
         <ReportMetricCard
           label="Median late fade"
           value={formatOptionalNumber(report.median_late_speed_change_percent)}
-          unit={report.median_late_speed_change_percent == null ? undefined : "%"}
+          unit={
+            report.median_late_speed_change_percent == null ? undefined : "%"
+          }
+          guide="closer to 0 is better"
+        />
+        <ReportMetricCard
+          label="Median fatigue"
+          value={formatOptionalNumber(report.median_fatigue_index)}
+          unit={report.median_fatigue_index == null ? undefined : "/100"}
+          guide="<15 steady; 25+ fade"
         />
       </div>
       <div className="overflow-x-auto">
         <table className="table table-zebra">
           <thead>
             <tr>
-              <th>Ride</th>
-              <th>Duration</th>
-              <th>Decoupling</th>
-              <th>Late Speed</th>
-              <th>Late HR</th>
-              <th>Hours</th>
+              <th>
+                <MetricHeader label="Ride" />
+              </th>
+              <th>
+                <MetricHeader label="Duration" tip="Elapsed ride duration." />
+              </th>
+              <th>
+                <MetricHeader
+                  label="Drift"
+                  unit="%"
+                  tip="Aerobic decoupling: second-half efficiency compared with first-half efficiency. Lower is better; under 5% is good, over 10% suggests fade. Negative means efficiency improved in the second half."
+                />
+              </th>
+              <th>
+                <MetricHeader
+                  label="Eff 1H"
+                  tip="First-half efficiency: average speed divided by average heart rate. Unit is speed per bpm. Higher is better, but compare similar terrain."
+                />
+              </th>
+              <th>
+                <MetricHeader
+                  label="Eff 2H"
+                  tip="Second-half efficiency: average speed divided by average heart rate. Unit is speed per bpm. Higher is better, but compare similar terrain."
+                />
+              </th>
+              <th>
+                <MetricHeader
+                  label="Late speed"
+                  unit="%"
+                  tip="Late-ride speed change versus the early steady portion. Near 0% is steady; negative means fading; positive can mean finishing faster or easier terrain."
+                />
+              </th>
+              <th>
+                <MetricHeader
+                  label="Late HR"
+                  unit="%"
+                  tip="Late-ride heart-rate change versus the early steady portion. Use with late speed: slower speed at similar or higher HR is fatigue evidence."
+                />
+              </th>
+              <th>
+                <MetricHeader
+                  label="Fatigue"
+                  unit="/100"
+                  tip="Deterministic fade score from hourly efficiency, speed, climb rate, and stops. Under 15 is steady; 25+ is a fade signal; higher is worse."
+                />
+              </th>
+              <th>
+                <MetricHeader
+                  label="Hours"
+                  tip="Number of hourly rows available for the ride."
+                />
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -460,13 +601,35 @@ function EnduranceReportView({
                 <td>{ride.title}</td>
                 <td>{formatDuration(ride.elapsed_seconds)}</td>
                 <td>{formatPercent(ride.aerobic_decoupling_percent)}</td>
+                <td>
+                  {formatOptionalNumber(ride.first_half_efficiency_mps_per_bpm)}
+                </td>
+                <td>
+                  {formatOptionalNumber(
+                    ride.second_half_efficiency_mps_per_bpm,
+                  )}
+                </td>
                 <td>{formatPercent(ride.late_speed_change_percent)}</td>
                 <td>{formatPercent(ride.late_heart_rate_change_percent)}</td>
+                <td>{formatFatigueIndex(ride.fatigue_index)}</td>
                 <td>{ride.hourly.length}</td>
               </tr>
             ))}
           </tbody>
         </table>
+      </div>
+      <div className="grid gap-3">
+        {report.rides.map((ride) => (
+          <details
+            key={ride.activity_id}
+            className="rounded-lg border border-base-300 p-4"
+          >
+            <summary className="cursor-pointer text-base font-semibold">
+              Hourly durability: {ride.title}
+            </summary>
+            <HourlyTable rows={ride.hourly} unitSystem={unitSystem} />
+          </details>
+        ))}
       </div>
     </div>
   );
@@ -481,8 +644,15 @@ function ClimbingReportView({
   unitSystem: UnitSystem;
   isLoading: boolean;
 }) {
+  const [climbPage, setClimbPage] = useState(1);
+
+  useEffect(() => {
+    setClimbPage(1);
+  }, [report?.climb_count]);
+
   if (isLoading) return <LoadingReport label="Generating climbing report..." />;
-  if (!report || report.climb_count === 0) return <EmptyReport label="No sustained climbs found." />;
+  if (!report || report.climb_count === 0)
+    return <EmptyReport label="No sustained climbs found." />;
 
   const summaryRows = [
     ["Longest climb", report.longest_climb],
@@ -494,6 +664,16 @@ function ClimbingReportView({
     ["Best climb", report.best_climb],
     ["Worst climb", report.worst_climb],
   ] as const;
+  const totalPages = Math.max(
+    1,
+    Math.ceil(report.climbs.length / CLIMBS_PER_PAGE),
+  );
+  const safePage = Math.min(climbPage, totalPages);
+  const startIndex = (safePage - 1) * CLIMBS_PER_PAGE;
+  const visibleClimbs = report.climbs.slice(
+    startIndex,
+    startIndex + CLIMBS_PER_PAGE,
+  );
 
   return (
     <div className="mt-5 grid gap-5">
@@ -504,9 +684,13 @@ function ClimbingReportView({
             label={label}
             value={
               climb
-                ? formatElevationRate(climb.vertical_rate_meters_per_hour, unitSystem)
+                ? formatElevationRate(
+                    climb.vertical_rate_meters_per_hour,
+                    unitSystem,
+                  )
                 : "n/a"
             }
+            guide="higher is better"
           />
         ))}
       </div>
@@ -514,23 +698,86 @@ function ClimbingReportView({
         <table className="table table-zebra">
           <thead>
             <tr>
-              <th>Ride</th>
-              <th>#</th>
-              <th>Gain</th>
-              <th>Duration</th>
-              <th>Vertical Rate</th>
-              <th>Grade</th>
-              <th>Avg HR</th>
-              <th>Avg Cadence</th>
-              <th>Avg Power</th>
-              <th>HR Recovery</th>
-              <th>Drop Time</th>
-              <th>Descent</th>
-              <th>Half</th>
+              <th>
+                <MetricHeader label="Ride" />
+              </th>
+              <th>
+                <MetricHeader label="#" />
+              </th>
+              <th>
+                <MetricHeader
+                  label="Gain"
+                  unit={elevationUnit(unitSystem)}
+                  tip="Elevation gained during the detected climb. Use as context when comparing vertical rate."
+                />
+              </th>
+              <th>
+                <MetricHeader label="Duration" tip="Climb duration." />
+              </th>
+              <th>
+                <MetricHeader
+                  label="VAM"
+                  unit={elevationRateUnit(unitSystem)}
+                  tip="Vertical ascent rate for the climb. Higher is better on similar climb grades and surfaces."
+                />
+              </th>
+              <th>
+                <MetricHeader
+                  label="Grade"
+                  unit="%"
+                  tip="Average grade for the climb. Steeper climbs usually reduce speed and change HR response."
+                />
+              </th>
+              <th>
+                <MetricHeader
+                  label="Avg HR"
+                  unit="bpm"
+                  tip="Average heart rate during the climb. Context for whether the effort was aerobic, tempo, or harder."
+                />
+              </th>
+              <th>
+                <MetricHeader
+                  label="Cad"
+                  unit="rpm"
+                  tip="Average cadence during the climb, when cadence data is available."
+                />
+              </th>
+              <th>
+                <MetricHeader
+                  label="Power"
+                  unit="W"
+                  tip="Average power during the climb, when power data is available."
+                />
+              </th>
+              <th>
+                <MetricHeader
+                  label="HR rec"
+                  unit="bpm"
+                  tip="Heart-rate drop after the summit. Higher recovery is generally better when the post-climb terrain is comparable."
+                />
+              </th>
+              <th>
+                <MetricHeader
+                  label="Drop"
+                  tip="Time after the summit to drop 10 bpm and 15 bpm. Lower is generally better."
+                />
+              </th>
+              <th>
+                <MetricHeader
+                  label="Descent"
+                  tip="Whether the climb immediately rolls into a descent, which affects HR recovery."
+                />
+              </th>
+              <th>
+                <MetricHeader
+                  label="Half"
+                  tip="Whether the climb ended in the first or second half of the ride."
+                />
+              </th>
             </tr>
           </thead>
           <tbody>
-            {report.climbs.map((climb) => (
+            {visibleClimbs.map((climb) => (
               <tr key={`${climb.activity_id}-${climb.climb_number}`}>
                 <td>{climb.activity_title}</td>
                 <td>{climb.climb_number}</td>
@@ -562,40 +809,60 @@ function ClimbingReportView({
                     climb.seconds_to_drop_15_bpm,
                   )}
                 </td>
-                <td>{climb.summit_immediately_enters_descent ? "Yes" : "No"}</td>
+                <td>
+                  {climb.summit_immediately_enters_descent ? "Yes" : "No"}
+                </td>
                 <td>{climb.first_or_second_half}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      <PaginationControls
+        page={safePage}
+        totalPages={totalPages}
+        totalItems={report.climbs.length}
+        pageSize={CLIMBS_PER_PAGE}
+        onPageChange={setClimbPage}
+      />
     </div>
   );
 }
 
 function FatigueReportView({
   report,
+  unitSystem,
   isLoading,
 }: {
   report: FatigueReport | null;
+  unitSystem: UnitSystem;
   isLoading: boolean;
 }) {
   if (isLoading) return <LoadingReport label="Generating fatigue report..." />;
-  if (!report || report.activity_count === 0) return <EmptyReport label="No rides with usable point data found." />;
+  if (!report || report.activity_count === 0)
+    return <EmptyReport label="No rides with usable point data found." />;
 
   return (
-    <div className="mt-5 grid gap-5">
+    <div className="mt-5 grid min-w-0 gap-5">
       {report.rides.map((ride) => (
-        <section key={ride.activity_id} className="rounded-lg border border-base-300 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h3 className="text-base font-semibold">{ride.title}</h3>
+        <section
+          key={ride.activity_id}
+          className="min-w-0 overflow-hidden rounded-lg border border-base-300 p-4"
+        >
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
+            <h3 className="min-w-0 flex-1 truncate text-base font-semibold">
+              {ride.title}
+            </h3>
             <span className="badge badge-outline">
               {ride.fatigue_start_hour
                 ? `Fade begins hour ${ride.fatigue_start_hour}`
                 : "No clear fade"}
             </span>
+            <span className="badge badge-neutral">
+              Worst fatigue {formatFatigueIndex(ride.worst_fatigue_index)}
+            </span>
           </div>
-          <HourlyTable rows={ride.hourly} />
+          <HourlyTable rows={ride.hourly} unitSystem={unitSystem} />
         </section>
       ))}
     </div>
@@ -613,7 +880,8 @@ function CompareRidesReportView({
   onSelectedActivityIdsChange: (activityIds: number[]) => void;
   isLoading: boolean;
 }) {
-  if (isLoading) return <LoadingReport label="Loading compare ride candidates..." />;
+  if (isLoading)
+    return <LoadingReport label="Loading compare ride candidates..." />;
   if (!report) return <EmptyReport label="No compare ride data found." />;
 
   function toggleActivity(activityId: number) {
@@ -694,14 +962,11 @@ function CompareRidesReportView({
               {report.metrics.map((metric) => (
                 <tr key={metric.key}>
                   <td>
-                    <div className="font-medium">{metric.label}</div>
-                    <div className="text-xs text-base-content/50">
-                      {metric.direction === "lower"
-                        ? "Lower is better"
-                        : metric.direction === "higher"
-                          ? "Higher is better"
-                          : "Route-sensitive"}
-                    </div>
+                    <MetricHeader
+                      label={metric.label}
+                      unit={metric.unit ?? undefined}
+                      tip={compareMetricGuide(metric.direction, metric.key)}
+                    />
                     {metric.trend ? (
                       <div
                         className={
@@ -720,7 +985,9 @@ function CompareRidesReportView({
                     const value = metric.values.find(
                       (candidate) => candidate.activity_id === ride.activity_id,
                     );
-                    return <td key={ride.activity_id}>{value?.display ?? "n/a"}</td>;
+                    return (
+                      <td key={ride.activity_id}>{value?.display ?? "n/a"}</td>
+                    );
                   })}
                 </tr>
               ))}
@@ -729,7 +996,9 @@ function CompareRidesReportView({
         </div>
       ) : (
         <div className="alert">
-          <span>Select at least two rides to generate the comparison table.</span>
+          <span>
+            Select at least two rides to generate the comparison table.
+          </span>
         </div>
       )}
 
@@ -744,12 +1013,35 @@ function CompareRidesReportView({
           <table className="table table-zebra">
             <thead>
               <tr>
-                <th>Select</th>
-                <th>Ride</th>
-                <th>Date</th>
-                <th>Distance</th>
-                <th>Elevation</th>
-                <th>Moving</th>
+                <th>
+                  <MetricHeader label="Select" />
+                </th>
+                <th>
+                  <MetricHeader label="Ride" />
+                </th>
+                <th>
+                  <MetricHeader label="Date" />
+                </th>
+                <th>
+                  <MetricHeader
+                    label="Distance"
+                    unit="mi"
+                    tip="Ride distance. Route-sensitive."
+                  />
+                </th>
+                <th>
+                  <MetricHeader
+                    label="Elevation"
+                    unit="ft"
+                    tip="Ride elevation gain. Route-sensitive."
+                  />
+                </th>
+                <th>
+                  <MetricHeader
+                    label="Moving"
+                    tip="Moving time for the ride."
+                  />
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -759,7 +1051,9 @@ function CompareRidesReportView({
                     <input
                       type="checkbox"
                       className="checkbox checkbox-sm"
-                      checked={selectedActivityIds.includes(candidate.activity_id)}
+                      checked={selectedActivityIds.includes(
+                        candidate.activity_id,
+                      )}
                       onChange={() => {
                         toggleActivity(candidate.activity_id);
                       }}
@@ -788,37 +1082,172 @@ function CompareRidesReportView({
   );
 }
 
-function HourlyTable({ rows }: { rows: HourlyDurability[] }) {
+function HourlyTable({
+  rows,
+  unitSystem,
+}: {
+  rows: HourlyDurability[];
+  unitSystem: UnitSystem;
+}) {
   return (
-    <div className="mt-4 overflow-x-auto">
-      <table className="table table-zebra">
+    <div className="mt-4 min-w-0 max-w-full overflow-x-auto overscroll-x-contain">
+      <table className="table table-sm table-zebra w-max min-w-full">
         <thead>
           <tr>
-            <th>Hour</th>
-            <th>Speed</th>
-            <th>HR</th>
-            <th>Ascent</th>
-            <th>Moving</th>
-            <th>Stopped</th>
-            <th>Stops</th>
-            <th>Efficiency</th>
+            <th>
+              <MetricHeader label="Hour" />
+            </th>
+            <th>
+              <MetricHeader
+                label="Speed"
+                unit={speedUnit(unitSystem)}
+                tip="Average speed for this hour. Route-sensitive: terrain, stops, and trail difficulty matter."
+              />
+            </th>
+            <th>
+              <MetricHeader
+                label="HR"
+                unit="bpm"
+                tip="Average heart rate for this hour."
+              />
+            </th>
+            <th>
+              <MetricHeader
+                label="Ascent"
+                unit={elevationUnit(unitSystem)}
+                tip="Elevation gained during this hour."
+              />
+            </th>
+            <th>
+              <MetricHeader
+                label="VAM"
+                unit={elevationRateUnit(unitSystem)}
+                tip="Vertical ascent rate for this hour. Higher is better on similar terrain."
+              />
+            </th>
+            <th>
+              <MetricHeader label="Moving" tip="Moving time in this hour." />
+            </th>
+            <th>
+              <MetricHeader
+                label="Stopped"
+                tip="Stopped time in this hour. Lower is generally better."
+              />
+            </th>
+            <th>
+              <MetricHeader
+                label="Stops"
+                unit="/h"
+                tip="Stop starts per hour. Lower is generally better."
+              />
+            </th>
+            <th>
+              <MetricHeader
+                label="Eff"
+                tip="Hourly efficiency: average speed divided by average heart rate. Unit is speed per bpm. Higher is better on similar terrain."
+              />
+            </th>
+            <th>
+              <MetricHeader
+                label="Fatigue"
+                unit="/100"
+                tip="Deterministic fade score from hourly efficiency, speed, climb rate, and stops. Under 15 is steady; 25+ is a fade signal; higher is worse."
+              />
+            </th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
             <tr key={row.hour}>
-              <td>{row.hour}</td>
-              <td>{formatOptionalNumber(row.average_speed_mps)} m/s</td>
-              <td>{formatOptionalNumber(row.average_heart_rate_bpm)}</td>
-              <td>{formatNumber(row.ascent_meters)} m</td>
-              <td>{formatDuration(row.moving_seconds)}</td>
-              <td>{formatDuration(row.stopped_seconds)}</td>
-              <td>{row.stop_count}</td>
-              <td>{formatOptionalNumber(row.efficiency_mps_per_bpm)}</td>
+              <td className="whitespace-nowrap">{row.hour}</td>
+              <td className="whitespace-nowrap">
+                {formatActivitySpeed(row.average_speed_mps, unitSystem)}
+              </td>
+              <td className="whitespace-nowrap">
+                {row.average_heart_rate_bpm == null
+                  ? "n/a"
+                  : `${formatNumber(row.average_heart_rate_bpm)} bpm`}
+              </td>
+              <td className="whitespace-nowrap">
+                {formatElevation(row.ascent_meters, unitSystem)}
+              </td>
+              <td className="whitespace-nowrap">
+                {row.climb_rate_meters_per_hour == null
+                  ? "n/a"
+                  : formatElevationRate(
+                      row.climb_rate_meters_per_hour,
+                      unitSystem,
+                    )}
+              </td>
+              <td className="whitespace-nowrap">
+                {formatDuration(row.moving_seconds)}
+              </td>
+              <td className="whitespace-nowrap">
+                {formatDuration(row.stopped_seconds)}
+              </td>
+              <td className="whitespace-nowrap">
+                {formatNumber(row.stop_frequency_per_hour)}
+              </td>
+              <td className="whitespace-nowrap">
+                {formatOptionalNumber(row.efficiency_mps_per_bpm)}
+              </td>
+              <td className="whitespace-nowrap">
+                {formatFatigueIndex(row.fatigue_index)}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function PaginationControls({
+  page,
+  totalPages,
+  totalItems,
+  pageSize,
+  onPageChange,
+}: {
+  page: number;
+  totalPages: number;
+  totalItems: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+}) {
+  const startItem = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
+  const endItem = Math.min(page * pageSize, totalItems);
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+      <div className="text-base-content/60">
+        Showing {startItem}-{endItem} of {totalItems}
+      </div>
+      <div className="join">
+        <button
+          type="button"
+          className="btn join-item btn-sm"
+          disabled={page <= 1}
+          onClick={() => {
+            onPageChange(page - 1);
+          }}
+        >
+          Previous
+        </button>
+        <span className="join-item border border-base-300 px-3 py-1.5">
+          Page {page} of {totalPages}
+        </span>
+        <button
+          type="button"
+          className="btn join-item btn-sm"
+          disabled={page >= totalPages}
+          onClick={() => {
+            onPageChange(page + 1);
+          }}
+        >
+          Next
+        </button>
+      </div>
     </div>
   );
 }
@@ -983,27 +1412,42 @@ function AggregateTrendsReport({
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 mt-4">
         <div className="card p-4">
-          <h2 className="text-lg font-medium mb-2">Z2 Speed</h2>
+          <h2 className="text-lg font-medium mb-2">Z2 Speed (mph)</h2>
+          <p className="mb-2 text-xs text-base-content/55">
+            Higher is better only on comparable routes.
+          </p>
           <Charts type="z2_speed" points={points} range={range} />
         </div>
 
         <div className="card p-4">
-          <h2 className="text-lg font-medium mb-2">Decoupling</h2>
+          <h2 className="text-lg font-medium mb-2">Decoupling (%)</h2>
+          <p className="mb-2 text-xs text-base-content/55">
+            Lower is better; &lt;5 good, &gt;10 fade.
+          </p>
           <Charts type="decoupling" points={points} range={range} />
         </div>
 
         <div className="card p-4">
-          <h2 className="text-lg font-medium mb-2">Climbing Pace (feet/week)</h2>
+          <h2 className="text-lg font-medium mb-2">Median Climb Rate (ft/h)</h2>
+          <p className="mb-2 text-xs text-base-content/55">
+            Higher is better on similar climb profiles.
+          </p>
           <Charts type="climbing_pace" points={points} range={range} />
         </div>
 
         <div className="card p-4">
           <h2 className="text-lg font-medium mb-2">Heart Rate Zones</h2>
+          <p className="mb-2 text-xs text-base-content/55">
+            Percent of heart-rate time in each bucket.
+          </p>
           <Charts type="hr_zones" points={points} range={range} />
         </div>
 
         <div className="card p-4 md:col-span-2">
-          <h2 className="text-lg font-medium mb-2">Elevation</h2>
+          <h2 className="text-lg font-medium mb-2">Elevation (ft)</h2>
+          <p className="mb-2 text-xs text-base-content/55">
+            Total gain in the bucket.
+          </p>
           <Charts type="elevation" points={points} range={range} />
         </div>
       </div>
@@ -1107,12 +1551,20 @@ function milesInputToMeters(value: string) {
 }
 
 function trimNumericInput(value: number) {
-  return Number.isInteger(value) ? value.toString() : value.toFixed(2).replace(/\.?0+$/, "");
+  return Number.isInteger(value)
+    ? value.toString()
+    : value.toFixed(2).replace(/\.?0+$/, "");
 }
 
 function standaloneReportIdFor(
   reportId: ReportId,
-): "ride_summary" | "endurance" | "climbing" | "fatigue" | "compare_rides" | null {
+):
+  | "ride_summary"
+  | "endurance"
+  | "climbing"
+  | "fatigue"
+  | "compare_rides"
+  | null {
   switch (reportId) {
     case "ride_summary":
     case "endurance":
@@ -1181,14 +1633,64 @@ function formatPercent(value?: number | null) {
   return value == null ? "n/a" : `${formatNumber(value)}%`;
 }
 
+function formatZonePercent(seconds: number, totalSeconds: number) {
+  if (totalSeconds <= 0) {
+    return "n/a";
+  }
+
+  return `${formatNumber((seconds / totalSeconds) * 100)}%`;
+}
+
+function formatFatigueIndex(value?: number | null) {
+  return value == null ? "n/a" : `${formatNumber(value)}/100`;
+}
+
+function speedUnit(unitSystem: UnitSystem) {
+  return unitSystem === "metric" ? "km/h" : "mph";
+}
+
+function elevationUnit(unitSystem: UnitSystem) {
+  return unitSystem === "imperial" ? "ft" : "m";
+}
+
+function elevationRateUnit(unitSystem: UnitSystem) {
+  return unitSystem === "imperial" ? "ft/h" : "m/h";
+}
+
+function compareMetricGuide(direction: string, key: string) {
+  if (key === "aerobic_decoupling_percent") {
+    return "<5 good; >10 fade";
+  }
+  if (key === "late_speed_change_percent") {
+    return "near 0 good; negative fade";
+  }
+  if (key === "stopped_time_percent") {
+    return "lower is better";
+  }
+  if (key.includes("climb_rate") || key.includes("recovery")) {
+    return "higher is better";
+  }
+  if (direction === "lower") {
+    return "lower is better";
+  }
+  if (direction === "higher") {
+    return "higher is better";
+  }
+  return "route-sensitive";
+}
+
 function formatRecovery(
   recovery30Seconds?: number | null,
   recovery60Seconds?: number | null,
 ) {
   const recovery30 =
-    recovery30Seconds == null ? "n/a" : `${formatNumber(recovery30Seconds)} bpm`;
+    recovery30Seconds == null
+      ? "n/a"
+      : `${formatNumber(recovery30Seconds)} bpm`;
   const recovery60 =
-    recovery60Seconds == null ? "n/a" : `${formatNumber(recovery60Seconds)} bpm`;
+    recovery60Seconds == null
+      ? "n/a"
+      : `${formatNumber(recovery60Seconds)} bpm`;
 
   return `30s ${recovery30} / 60s ${recovery60}`;
 }

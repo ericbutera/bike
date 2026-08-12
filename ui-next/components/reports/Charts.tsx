@@ -9,8 +9,6 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
-  AreaChart,
-  Area,
   BarChart,
   Bar,
   Legend,
@@ -18,7 +16,51 @@ import {
 import type { TimeRange } from "./TimeRangeSelector";
 import type { TrainingReportPoint } from "../../lib/queries";
 
-type ChartType = "z2_speed" | "decoupling" | "climbing_pace" | "hr_zones" | "elevation";
+type ChartType =
+  | "z2_speed"
+  | "decoupling"
+  | "climbing_pace"
+  | "hr_zones"
+  | "elevation";
+type ChartRow = {
+  label: string;
+  speed?: number | null;
+  decoupling?: number | null;
+  climbing?: number | null;
+  z1: number;
+  z2: number;
+  z3: number;
+  z4: number;
+  z5: number;
+  elevation: number;
+};
+
+const LINE_CHART_CONFIG = {
+  z2_speed: {
+    dataKey: "speed",
+    name: "Z2 speed",
+    unit: "mph",
+    axisLabel: "mph",
+  },
+  decoupling: {
+    dataKey: "decoupling",
+    name: "Aerobic decoupling",
+    unit: "%",
+    axisLabel: "%",
+  },
+  climbing_pace: {
+    dataKey: "climbing",
+    name: "Median climb rate",
+    unit: "ft/h",
+    axisLabel: "ft/h",
+  },
+  elevation: {
+    dataKey: "elevation",
+    name: "Elevation gain",
+    unit: "ft",
+    axisLabel: "ft",
+  },
+} as const;
 
 function makeLabel(date: Date, range: TimeRange) {
   if (range === "day") {
@@ -33,14 +75,21 @@ function makeLabel(date: Date, range: TimeRange) {
   return date.toLocaleDateString([], { year: "numeric", month: "short" });
 }
 
-function mapData(points: TrainingReportPoint[], type: ChartType, range: TimeRange) {
+function mapData(
+  points: TrainingReportPoint[],
+  type: ChartType,
+  range: TimeRange,
+) {
   return points.map((point) => {
     const label = makeLabel(new Date(point.bucket_start), range);
     const row = {
       label,
-      speed: point.z2_average_speed_mps,
+      speed:
+        point.z2_average_speed_mps == null
+          ? null
+          : point.z2_average_speed_mps * 2.236_936,
       decoupling: point.average_aerobic_decoupling_percent,
-      climbing: point.climbing_pace_feet_per_week,
+      climbing: point.climbing_vertical_rate_feet_per_hour,
       z1: point.z1_seconds,
       z2: point.z2_seconds,
       z3: point.z3_seconds,
@@ -85,8 +134,11 @@ export default function Charts({
           <BarChart data={data}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="label" />
-            <YAxis unit="%" />
-            <Tooltip />
+            <YAxis
+              unit="%"
+              label={{ value: "%", angle: -90, position: "insideLeft" }}
+            />
+            <Tooltip formatter={(value) => formatTooltipValue(value, "%")} />
             <Legend />
             <Bar dataKey="z1" stackId="a" fill="#8884d8" />
             <Bar dataKey="z2" stackId="a" fill="#82ca9d" />
@@ -99,27 +151,69 @@ export default function Charts({
     );
   }
 
-  // line charts for other metrics
-  const lineKey =
-    type === "z2_speed"
-      ? "speed"
-      : type === "decoupling"
-        ? "decoupling"
-        : type === "climbing_pace"
-          ? "climbing"
-          : "elevation";
+  const config = LINE_CHART_CONFIG[type];
+  const lineData = data.filter((row) => hasFiniteValue(row, config.dataKey));
+
+  if (lineData.length === 0) {
+    return (
+      <div className="flex h-60 items-center justify-center rounded border border-dashed border-base-300 text-sm text-base-content/60">
+        No {config.name.toLowerCase()} data in this range.
+      </div>
+    );
+  }
 
   return (
     <div style={{ width: "100%", height: 240 }}>
       <ResponsiveContainer>
-        <LineChart data={data}>
+        <LineChart data={lineData}>
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis dataKey="label" />
-          <YAxis />
-          <Tooltip />
-          <Line type="monotone" dataKey={lineKey} stroke="#8884d8" strokeWidth={2} dot={false} />
+          <YAxis
+            width={58}
+            label={{
+              value: config.axisLabel,
+              angle: -90,
+              position: "insideLeft",
+            }}
+            tickFormatter={(value) => formatAxisTick(value)}
+          />
+          <Tooltip
+            formatter={(value) => formatTooltipValue(value, config.unit)}
+          />
+          <Line
+            type="monotone"
+            name={config.name}
+            dataKey={config.dataKey}
+            stroke="#8884d8"
+            strokeWidth={2}
+            dot={lineData.length <= 12}
+          />
         </LineChart>
       </ResponsiveContainer>
     </div>
   );
+}
+
+function hasFiniteValue(row: ChartRow, key: keyof ChartRow) {
+  const value = row[key];
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function formatAxisTick(value: unknown) {
+  return typeof value === "number"
+    ? new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(
+        value,
+      )
+    : `${value}`;
+}
+
+function formatTooltipValue(value: unknown, unit: string): [string, string] {
+  if (typeof value !== "number") {
+    return [`${value}`, unit];
+  }
+
+  const formatted = new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: value >= 100 ? 0 : 1,
+  }).format(value);
+  return [`${formatted} ${unit}`, unit];
 }

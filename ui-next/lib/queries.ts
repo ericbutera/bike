@@ -619,6 +619,7 @@ export type TrainingReportPoint = {
   z2_average_speed_mps?: number | null;
   average_aerobic_decoupling_percent?: number | null;
   climbing_pace_feet_per_week?: number | null;
+  climbing_vertical_rate_feet_per_hour?: number | null;
   z1_seconds: number;
   z2_seconds: number;
   z3_seconds: number;
@@ -672,16 +673,20 @@ export type HourlyDurability = {
   average_heart_rate_bpm?: number | null;
   max_heart_rate_bpm?: number | null;
   ascent_meters: number;
+  climb_rate_meters_per_hour?: number | null;
   moving_seconds: number;
   stopped_seconds: number;
   stop_count: number;
+  stop_frequency_per_hour: number;
   efficiency_mps_per_bpm?: number | null;
+  fatigue_index?: number | null;
 };
 
 export type EnduranceReport = {
   activity_count: number;
   median_aerobic_decoupling_percent?: number | null;
   median_late_speed_change_percent?: number | null;
+  median_fatigue_index?: number | null;
   rides: EnduranceRide[];
 };
 
@@ -695,6 +700,7 @@ export type EnduranceRide = {
   aerobic_decoupling_percent?: number | null;
   late_speed_change_percent?: number | null;
   late_heart_rate_change_percent?: number | null;
+  fatigue_index?: number | null;
   hourly: HourlyDurability[];
 };
 
@@ -709,6 +715,7 @@ export type FatigueRide = {
   started_at: string;
   elapsed_seconds: number;
   fatigue_start_hour?: number | null;
+  worst_fatigue_index?: number | null;
   hourly: HourlyDurability[];
 };
 

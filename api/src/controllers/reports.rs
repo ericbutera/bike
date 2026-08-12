@@ -102,6 +102,7 @@ pub struct TrainingReportPointResponse {
     pub z2_average_speed_mps: Option<f64>,
     pub average_aerobic_decoupling_percent: Option<f64>,
     pub climbing_pace_feet_per_week: Option<f64>,
+    pub climbing_vertical_rate_feet_per_hour: Option<f64>,
     pub z1_seconds: i32,
     pub z2_seconds: i32,
     pub z3_seconds: i32,
@@ -153,6 +154,7 @@ pub struct EnduranceReportResponse {
     pub activity_count: i32,
     pub median_aerobic_decoupling_percent: Option<f64>,
     pub median_late_speed_change_percent: Option<f64>,
+    pub median_fatigue_index: Option<f64>,
     pub rides: Vec<EnduranceRideResponse>,
 }
 
@@ -167,6 +169,7 @@ pub struct EnduranceRideResponse {
     pub aerobic_decoupling_percent: Option<f64>,
     pub late_speed_change_percent: Option<f64>,
     pub late_heart_rate_change_percent: Option<f64>,
+    pub fatigue_index: Option<f64>,
     pub hourly: Vec<HourlyDurabilityResponse>,
 }
 
@@ -183,6 +186,7 @@ pub struct FatigueRideResponse {
     pub started_at: DateTime<Utc>,
     pub elapsed_seconds: i32,
     pub fatigue_start_hour: Option<i32>,
+    pub worst_fatigue_index: Option<f64>,
     pub hourly: Vec<HourlyDurabilityResponse>,
 }
 
@@ -196,10 +200,13 @@ pub struct HourlyDurabilityResponse {
     pub average_heart_rate_bpm: Option<f64>,
     pub max_heart_rate_bpm: Option<i32>,
     pub ascent_meters: f64,
+    pub climb_rate_meters_per_hour: Option<f64>,
     pub moving_seconds: i32,
     pub stopped_seconds: i32,
     pub stop_count: i32,
+    pub stop_frequency_per_hour: f64,
     pub efficiency_mps_per_bpm: Option<f64>,
+    pub fatigue_index: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -315,6 +322,8 @@ struct BucketAccumulator {
     decoupling_sum: f64,
     decoupling_count: i32,
     climbing_feet_total: f64,
+    climb_rate_sum: f64,
+    climb_rate_count: i32,
     elevation_meters_total: f64,
     zone_seconds: [i32; 5],
 }
@@ -490,17 +499,27 @@ pub async fn get_training_reports(
         let bucket_start = boundary.bucket_start(activity.started_at)?;
         let bucket = buckets.entry(bucket_start).or_default();
         let analysis = analysis_by_activity.get(&activity.id);
+        let standalone_analysis = compare_analysis_from_activity(activity);
 
-        if let Some(speed_mps) = analysis.and_then(|model| model.z2_average_speed_mps) {
+        if let Some(speed_mps) = analysis
+            .and_then(|model| model.z2_average_speed_mps)
+            .or(standalone_analysis.z2_average_speed_mps)
+        {
             bucket.z2_speed_sum += speed_mps;
             bucket.z2_speed_count += 1;
         }
 
-        if let Some(decoupling_percent) =
-            analysis.and_then(|model| model.aerobic_decoupling_percent)
+        if let Some(decoupling_percent) = analysis
+            .and_then(|model| model.aerobic_decoupling_percent)
+            .or(standalone_analysis.aerobic_decoupling_percent)
         {
             bucket.decoupling_sum += decoupling_percent;
             bucket.decoupling_count += 1;
+        }
+
+        if let Some(climb_rate_meters_per_hour) = standalone_analysis.median_climb_rate {
+            bucket.climb_rate_sum += climb_rate_meters_per_hour * FEET_PER_METER;
+            bucket.climb_rate_count += 1;
         }
 
         let climbing_meters = analysis
@@ -552,6 +571,10 @@ pub async fn get_training_reports(
             } else {
                 None
             },
+            climbing_vertical_rate_feet_per_hour: average_or_none(
+                accumulator.climb_rate_sum,
+                accumulator.climb_rate_count,
+            ),
             z1_seconds: accumulator.zone_seconds[0],
             z2_seconds: accumulator.zone_seconds[1],
             z3_seconds: accumulator.zone_seconds[2],
@@ -667,6 +690,12 @@ fn report_definitions() -> Vec<TrainingReportDefinitionResponse> {
                     Some("%"),
                     ReportMetricDirection::Neutral,
                 ),
+                metric_definition(
+                    "fatigue_index",
+                    "Fatigue Index",
+                    Some("score"),
+                    ReportMetricDirection::Lower,
+                ),
             ],
         },
         TrainingReportDefinitionResponse {
@@ -729,8 +758,14 @@ fn report_definitions() -> Vec<TrainingReportDefinitionResponse> {
                 metric_definition(
                     "stop_count",
                     "Stop Frequency",
-                    Some("count"),
+                    Some("stops/hour"),
                     ReportMetricDirection::Lower,
+                ),
+                metric_definition(
+                    "climb_rate",
+                    "Climb Rate",
+                    Some("m/h"),
+                    ReportMetricDirection::Higher,
                 ),
                 metric_definition(
                     "efficiency",
@@ -838,8 +873,8 @@ fn report_definitions() -> Vec<TrainingReportDefinitionResponse> {
                 ),
                 metric_definition(
                     "climbing_pace",
-                    "Climbing Pace",
-                    Some("ft/week"),
+                    "Median Climb Rate",
+                    Some("ft/h"),
                     ReportMetricDirection::Higher,
                 ),
                 metric_definition(
@@ -1121,6 +1156,8 @@ fn build_endurance_report(activities: &[activities::Model]) -> EnduranceReportRe
             let first_efficiency = efficiency(&first);
             let second_efficiency = efficiency(&second);
             let late = late_ride_changes(&samples);
+            let hourly = hourly_durability(&samples);
+            let fatigue_index = worst_fatigue_index(&hourly);
 
             Some(EnduranceRideResponse {
                 activity_id: activity.id,
@@ -1133,7 +1170,8 @@ fn build_endurance_report(activities: &[activities::Model]) -> EnduranceReportRe
                     .map(round_metric),
                 late_speed_change_percent: late.0.map(round_metric),
                 late_heart_rate_change_percent: late.1.map(round_metric),
-                hourly: hourly_durability(&samples),
+                fatigue_index,
+                hourly,
             })
         })
         .collect::<Vec<_>>();
@@ -1154,6 +1192,8 @@ fn build_endurance_report(activities: &[activities::Model]) -> EnduranceReportRe
                 .collect(),
         )
         .map(round_metric),
+        median_fatigue_index: median(rides.iter().filter_map(|ride| ride.fatigue_index).collect())
+            .map(round_metric),
         rides,
     }
 }
@@ -1176,6 +1216,7 @@ fn build_fatigue_report(activities: &[activities::Model]) -> FatigueReportRespon
                 started_at: activity.started_at,
                 elapsed_seconds: samples.last()?.elapsed_seconds,
                 fatigue_start_hour,
+                worst_fatigue_index: worst_fatigue_index(&hourly),
                 hourly,
             })
         })
@@ -1684,6 +1725,10 @@ fn hourly_durability(samples: &[TrendSample]) -> Vec<HourlyDurabilityResponse> {
             .max();
         let (moving_seconds, stopped_seconds, stop_count) = movement_breakdown(&segment);
         let ascent = positive_gain(&segment);
+        let duration_seconds = (end - start).max(1);
+        let duration_hours = f64::from(duration_seconds) / 3600.0;
+        let climb_rate_meters_per_hour = (ascent > 0.0 && moving_seconds > 0)
+            .then_some(ascent / (f64::from(moving_seconds) / 3600.0));
 
         rows.push(HourlyDurabilityResponse {
             hour,
@@ -1694,33 +1739,134 @@ fn hourly_durability(samples: &[TrendSample]) -> Vec<HourlyDurabilityResponse> {
             average_heart_rate_bpm: average_hr.map(round_metric),
             max_heart_rate_bpm: max_hr,
             ascent_meters: round_metric(ascent),
+            climb_rate_meters_per_hour: climb_rate_meters_per_hour.map(round_metric),
             moving_seconds,
             stopped_seconds,
             stop_count,
+            stop_frequency_per_hour: round_metric(f64::from(stop_count) / duration_hours),
             efficiency_mps_per_bpm: efficiency(&segment).map(round_metric),
+            fatigue_index: None,
         });
     }
 
+    apply_fatigue_indexes(&mut rows);
     rows
 }
 
 fn fatigue_start_hour(hourly: &[HourlyDurabilityResponse]) -> Option<i32> {
-    let baseline = hourly
-        .iter()
-        .take(2)
-        .filter_map(|row| row.efficiency_mps_per_bpm)
-        .collect::<Vec<_>>();
-    let baseline = median(baseline)?;
-
     hourly
         .iter()
         .find(|row| {
             row.hour >= 2
                 && row
-                    .efficiency_mps_per_bpm
-                    .is_some_and(|efficiency| efficiency <= baseline * 0.90)
+                    .fatigue_index
+                    .is_some_and(|fatigue_index| fatigue_index >= 25.0)
         })
         .map(|row| row.hour)
+}
+
+fn worst_fatigue_index(hourly: &[HourlyDurabilityResponse]) -> Option<f64> {
+    hourly
+        .iter()
+        .filter_map(|row| row.fatigue_index)
+        .max_by(f64::total_cmp)
+        .map(round_metric)
+}
+
+fn apply_fatigue_indexes(rows: &mut [HourlyDurabilityResponse]) {
+    let baseline = FatigueBaseline {
+        efficiency: median(
+            rows.iter()
+                .take(2)
+                .filter_map(|row| row.efficiency_mps_per_bpm)
+                .collect(),
+        ),
+        speed: median(
+            rows.iter()
+                .take(2)
+                .filter_map(|row| row.average_speed_mps)
+                .collect(),
+        ),
+        climb_rate: median(
+            rows.iter()
+                .take(2)
+                .filter_map(|row| row.climb_rate_meters_per_hour)
+                .collect(),
+        ),
+        stop_frequency: median(
+            rows.iter()
+                .take(2)
+                .map(|row| row.stop_frequency_per_hour)
+                .collect(),
+        ),
+        heart_rate: median(
+            rows.iter()
+                .take(2)
+                .filter_map(|row| row.average_heart_rate_bpm)
+                .collect(),
+        ),
+    };
+
+    for row in rows {
+        row.fatigue_index = fatigue_index_for_row(row, &baseline).map(round_metric);
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FatigueBaseline {
+    efficiency: Option<f64>,
+    speed: Option<f64>,
+    climb_rate: Option<f64>,
+    stop_frequency: Option<f64>,
+    heart_rate: Option<f64>,
+}
+
+fn fatigue_index_for_row(
+    row: &HourlyDurabilityResponse,
+    baseline: &FatigueBaseline,
+) -> Option<f64> {
+    let mut score = 0.0;
+    let mut evidence_count = 0;
+
+    if let (Some(baseline_efficiency), Some(efficiency)) =
+        (baseline.efficiency, row.efficiency_mps_per_bpm)
+    {
+        if baseline_efficiency > f64::EPSILON {
+            let drop = ((baseline_efficiency - efficiency) / baseline_efficiency).max(0.0);
+            score += (drop * 180.0).min(45.0);
+            evidence_count += 1;
+        }
+    }
+
+    if let (Some(baseline_speed), Some(speed)) = (baseline.speed, row.average_speed_mps) {
+        if baseline_speed > f64::EPSILON {
+            let drop = ((baseline_speed - speed) / baseline_speed).max(0.0);
+            let heart_rate_pressure = match (baseline.heart_rate, row.average_heart_rate_bpm) {
+                (Some(baseline_hr), Some(hr)) if hr >= baseline_hr - 3.0 => 1.15,
+                _ => 1.0,
+            };
+            score += ((drop * 100.0) * heart_rate_pressure).min(25.0);
+            evidence_count += 1;
+        }
+    }
+
+    if let (Some(baseline_climb_rate), Some(climb_rate)) =
+        (baseline.climb_rate, row.climb_rate_meters_per_hour)
+    {
+        if baseline_climb_rate > f64::EPSILON {
+            let drop = ((baseline_climb_rate - climb_rate) / baseline_climb_rate).max(0.0);
+            score += (drop * 100.0).min(20.0);
+            evidence_count += 1;
+        }
+    }
+
+    if let Some(baseline_stop_frequency) = baseline.stop_frequency {
+        let added_stops = (row.stop_frequency_per_hour - baseline_stop_frequency).max(0.0);
+        score += (added_stops * 4.0).min(10.0);
+        evidence_count += 1;
+    }
+
+    (evidence_count >= 2).then_some(score.clamp(0.0, 100.0))
 }
 
 fn detect_climbs(activity: &activities::Model, samples: &[TrendSample]) -> Vec<ClimbResponse> {
@@ -2355,6 +2501,38 @@ mod tests {
         }
     }
 
+    fn hourly_sample_series() -> Vec<TrendSample> {
+        let mut samples = Vec::new();
+        let mut distance_meters = 0.0;
+        let mut elevation_meters = 100.0;
+
+        for elapsed_seconds in (0..=10_800).step_by(30) {
+            let (speed_mps, heart_rate_bpm, climb_rate_meters_per_hour) =
+                if elapsed_seconds <= 7_200 {
+                    (5.0, 130, 120.0)
+                } else {
+                    (3.0, 132, 40.0)
+                };
+
+            if elapsed_seconds > 0 {
+                distance_meters += speed_mps * 30.0;
+                elevation_meters += climb_rate_meters_per_hour * (30.0 / 3600.0);
+            }
+
+            samples.push(TrendSample {
+                elapsed_seconds,
+                distance_meters: Some(distance_meters),
+                elevation_meters: Some(elevation_meters),
+                speed_mps: Some(speed_mps),
+                heart_rate_bpm: Some(heart_rate_bpm),
+                cadence_rpm: Some(80),
+                power_watts: None,
+            });
+        }
+
+        samples
+    }
+
     #[test]
     fn report_registry_declares_initial_reports_and_compare_filters() {
         let definitions = report_definitions();
@@ -2506,5 +2684,17 @@ mod tests {
         ];
 
         assert!(detect_climbs(&test_activity(), &short_samples).is_empty());
+    }
+
+    #[test]
+    fn hourly_durability_exposes_climb_rate_stop_frequency_and_fatigue_index() {
+        let hourly = hourly_durability(&hourly_sample_series());
+
+        assert_eq!(hourly.len(), 3);
+        assert_eq!(hourly[0].stop_frequency_per_hour, 0.0);
+        assert!(hourly[0].climb_rate_meters_per_hour.unwrap_or_default() > 100.0);
+        assert!(hourly[2].climb_rate_meters_per_hour.unwrap_or_default() < 50.0);
+        assert!(hourly[2].fatigue_index.unwrap_or_default() >= 25.0);
+        assert_eq!(fatigue_start_hour(&hourly), Some(3));
     }
 }
