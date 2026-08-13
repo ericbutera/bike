@@ -52,6 +52,10 @@ pub fn routes() -> Router<Arc<AppStorage>> {
             axum::routing::post(activities::regenerate_activity),
         )
         .route(
+            "/api/activities/:id/source-file",
+            axum::routing::get(activities::download_activity_source_file),
+        )
+        .route(
             "/api/fitness",
             axum::routing::get(fitness::get_fitness_freshness),
         )

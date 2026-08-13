@@ -50,6 +50,11 @@ vi.mock("@ericbutera/kaleido", () => ({
   LoadingCard: () => <div aria-label="Loading" />,
 }));
 
+vi.mock("../../lib/activitySourceFiles", () => ({
+  activitySourceFileUrl: (id: number | string) =>
+    `http://localhost:3000/api/activities/${id}/source-file`,
+}));
+
 vi.mock("../../lib/queries", () => ({
   useActivity: mocks.useActivity,
   useRegenerateActivity: mocks.useRegenerateActivity,
@@ -154,6 +159,7 @@ function makeActivity(
       personal_best_duration_seconds?: number | null;
     }>;
     can_regenerate: boolean;
+    can_download_source_file: boolean;
   }> = {},
 ) {
   return {
@@ -322,6 +328,7 @@ function makeActivity(
       },
     ],
     can_regenerate: true,
+    can_download_source_file: true,
     ...overrides,
   };
 }
@@ -557,13 +564,16 @@ describe("ActivityDetailPanel", () => {
       screen.getByRole("button", { name: "Regenerate derived data" }),
     ).toBeInTheDocument();
     expect(
+      screen.getByRole("link", { name: "Download source file" }),
+    ).toHaveAttribute(
+      "href",
+      "http://localhost:3000/api/activities/7/source-file",
+    );
+    expect(
       screen.getByRole("button", { name: "Delete activity" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Lap splits")).toBeInTheDocument();
-    expect(screen.getByLabelText("Lap splits details")).toHaveAttribute(
-      "title",
-      "These lap rollups come from the upload-time read side and can be regenerated when the development flag is enabled.",
-    );
+    expect(screen.getByLabelText("Lap splits details")).toBeInTheDocument();
     expect(
       screen.queryByText(/These lap rollups come from/i),
     ).not.toBeInTheDocument();

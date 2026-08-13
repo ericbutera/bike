@@ -136,6 +136,7 @@ export type Activity = {
   segment_efforts?: ActivitySegmentEffort[] | null;
   training_analysis?: ActivityTrainingAnalysis | null;
   can_regenerate?: boolean;
+  can_download_source_file?: boolean;
 };
 
 export type UpdateActivityInput = {
@@ -583,6 +584,7 @@ export type TrainingReportId =
   | "climbing"
   | "fatigue"
   | "compare_rides"
+  | "reassessment"
   | "aggregate_trends";
 
 export type TrainingReportFilterKey =
@@ -640,6 +642,127 @@ export type TrainingReportsResponse = {
   climbing?: ClimbingReport | null;
   fatigue?: FatigueReport | null;
   compare_rides?: CompareRidesReport | null;
+  reassessment?: ReassessmentReport | null;
+};
+
+export type ReassessmentVerdict =
+  | "on_track"
+  | "plausible_but_risky"
+  | "needs_more_evidence"
+  | "missing_data";
+
+export type ReassessmentTargetSource = "saved_goal" | "missing_goal";
+
+export type ReassessmentTarget = {
+  event_name: string;
+  target_source: ReassessmentTargetSource;
+  target_source_detail: string;
+  target_date?: string | null;
+  event_profile?: string | null;
+  target_finish_seconds?: number | null;
+  target_distance_meters?: number | null;
+  target_elevation_gain_meters?: number | null;
+  target_speed_mps?: number | null;
+  target_speed_mph?: number | null;
+  target_climb_density_feet_per_hour?: number | null;
+};
+
+export type ReassessmentAbilityEstimate = {
+  estimated_finish_seconds?: number | null;
+  estimated_speed_mph?: number | null;
+  pace_limited_finish_seconds?: number | null;
+  climbing_limited_finish_seconds?: number | null;
+  current_long_ride_speed_mph?: number | null;
+  current_climb_density_feet_per_hour?: number | null;
+  limiter?: string | null;
+  detail: string;
+};
+
+export type ReassessmentWindow = {
+  label: string;
+  start_date: string;
+  end_date: string;
+  activity_count: number;
+  long_ride_count: number;
+  total_distance_miles: number;
+  total_elevation_gain_feet: number;
+  best_long_ride_distance_miles?: number | null;
+  best_long_ride_duration_seconds?: number | null;
+  best_long_ride_speed_mph?: number | null;
+  best_long_ride_climbing_density_feet_per_hour?: number | null;
+  aggregate_long_ride_climbing_density_feet_per_hour?: number | null;
+  median_long_ride_decoupling_percent?: number | null;
+  median_long_ride_late_speed_change_percent?: number | null;
+  median_long_ride_fatigue_index?: number | null;
+  average_fitness?: number | null;
+  latest_fitness?: number | null;
+};
+
+export type ReassessmentImprovement = {
+  fitness_change?: number | null;
+  fitness_change_percent?: number | null;
+  long_ride_speed_change_mph?: number | null;
+  long_ride_speed_change_percent?: number | null;
+  long_ride_distance_change_miles?: number | null;
+  long_ride_distance_change_percent?: number | null;
+  climbing_density_change_feet_per_hour?: number | null;
+  climbing_density_change_percent?: number | null;
+};
+
+export type ReassessmentSignal = {
+  status: ReassessmentVerdict;
+  title: string;
+  detail: string;
+  current_value?: number | null;
+  projected_current_value?: number | null;
+  baseline_value?: number | null;
+  target_value?: number | null;
+  unit: string;
+  current_source_activity_id?: number | null;
+  current_source_title?: string | null;
+  current_source_started_at?: string | null;
+  last_known_value?: number | null;
+  last_known_source_activity_id?: number | null;
+  last_known_source_title?: string | null;
+  last_known_source_started_at?: string | null;
+  last_known_days_old?: number | null;
+  projection_detail?: string | null;
+  baseline_source_activity_id?: number | null;
+  baseline_source_title?: string | null;
+  baseline_source_started_at?: string | null;
+};
+
+export type ReassessmentBenchmarkRide = {
+  activity_id: number;
+  title: string;
+  started_at: string;
+  distance_miles?: number | null;
+  elevation_gain_feet?: number | null;
+  elapsed_seconds: number;
+  moving_seconds?: number | null;
+  elapsed_speed_mph?: number | null;
+  moving_speed_mph?: number | null;
+  climbing_density_feet_per_hour?: number | null;
+  aerobic_decoupling_percent?: number | null;
+  late_speed_change_percent?: number | null;
+  fatigue_index?: number | null;
+};
+
+export type ReassessmentReport = {
+  verdict: ReassessmentVerdict;
+  verdict_title: string;
+  verdict_detail: string;
+  target: ReassessmentTarget;
+  ability_estimate: ReassessmentAbilityEstimate;
+  recent_window: ReassessmentWindow;
+  spring_baseline_window: ReassessmentWindow;
+  improvement: ReassessmentImprovement;
+  endurance_progression: ReassessmentSignal;
+  climbing_density: ReassessmentSignal;
+  long_ride_pace: ReassessmentSignal;
+  fitness_delta: ReassessmentSignal;
+  benchmark_rides: ReassessmentBenchmarkRide[];
+  notes: string[];
 };
 
 export type RideSummaryReport = {
@@ -1898,7 +2021,8 @@ export function useRideSummaryReport(opts: {
     | "endurance"
     | "climbing"
     | "fatigue"
-    | "compare_rides";
+    | "compare_rides"
+    | "reassessment";
   boundary: TrainingReportBoundary;
   startDate: string;
   endDate: string;

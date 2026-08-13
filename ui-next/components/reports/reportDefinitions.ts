@@ -11,6 +11,7 @@ export type ReportId =
   | "climbing"
   | "fatigue"
   | "compare_rides"
+  | "reassessment"
   | "aggregate_trends";
 
 export type ReportDefinition = {
@@ -26,7 +27,8 @@ export const FALLBACK_REPORT_DEFINITIONS: ReportDefinition[] = [
   {
     id: "ride_summary",
     name: "Ride Summary",
-    purpose: "Overall volume, intensity, climbing, stopped time, and data quality.",
+    purpose:
+      "Overall volume, intensity, climbing, stopped time, and data quality.",
     metrics: ["Distance", "Elevation", "Moving time", "HR zones"],
     supportedFilters: ["min_duration", "min_distance"],
     metricDirections: {},
@@ -43,7 +45,12 @@ export const FALLBACK_REPORT_DEFINITIONS: ReportDefinition[] = [
     id: "climbing",
     name: "Climbing",
     purpose: "Climb summaries, vertical rate trends, and raw climb rows.",
-    metrics: ["Longest climb", "Median climb", "95th percentile", "Vertical rate"],
+    metrics: [
+      "Longest climb",
+      "Median climb",
+      "95th percentile",
+      "Vertical rate",
+    ],
     supportedFilters: ["min_duration", "min_distance"],
     metricDirections: {},
   },
@@ -59,8 +66,28 @@ export const FALLBACK_REPORT_DEFINITIONS: ReportDefinition[] = [
     id: "compare_rides",
     name: "Compare Rides",
     purpose: "Side-by-side comparison of selected races and benchmark rides.",
-    metrics: ["Moving speed", "Z2 speed", "Decoupling", "Climb rate", "Late fade"],
+    metrics: [
+      "Moving speed",
+      "Z2 speed",
+      "Decoupling",
+      "Climb rate",
+      "Late fade",
+    ],
     supportedFilters: ["activity_ids", "min_duration", "min_distance"],
+    metricDirections: {},
+  },
+  {
+    id: "reassessment",
+    name: "Reassessment",
+    purpose:
+      "Reassess the active XC event goal from endurance, climbing density, elapsed long-ride pace, and spring-baseline fitness delta.",
+    metrics: [
+      "Endurance progression",
+      "Climbing density",
+      "Elapsed long-ride pace",
+      "Fitness delta",
+    ],
+    supportedFilters: ["min_duration", "min_distance"],
     metricDirections: {},
   },
   {

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
@@ -12,12 +13,20 @@ import {
   useRideSummaryReport,
   useTrainingReportDefinitions,
   useTrainingReports,
+  useUserPreferences,
   type ClimbingReport,
   type CompareRideCandidate,
   type CompareRidesReport,
   type EnduranceReport,
   type FatigueReport,
   type HourlyDurability,
+  type ReassessmentAbilityEstimate,
+  type ReassessmentSignal,
+  type ReassessmentReport,
+  type ReassessmentTarget,
+  type ReassessmentTargetSource,
+  type ReassessmentVerdict,
+  type ReassessmentWindow,
   type RideSummaryReport,
 } from "../../lib/queries";
 import { useUnitPreferences } from "../../lib/unitPreferences";
@@ -36,6 +45,8 @@ const REPORTS_HELP_TEXT =
   "Generate ad-hoc ride analysis for the selected range.";
 const REPORT_RANGE_HELP_TEXT =
   "Reports are generated from rides started inside this range.";
+const REASSESSMENT_DATE_HELP_TEXT =
+  "Reassessment uses the saved XC training start date through today and compares that evidence with the spring baseline.";
 const CLIMBS_PER_PAGE = 10;
 
 export default function ReportsClient() {
@@ -57,6 +68,8 @@ export default function ReportsClient() {
   const [selectedActivityIds, setSelectedActivityIds] = useState<number[]>(
     parseActivityIds(searchParams.get("activity_ids")),
   );
+  const [isReportNavExpanded, setIsReportNavExpanded] = useState(true);
+  const [isMobileReportNavOpen, setIsMobileReportNavOpen] = useState(false);
   const [minDurationHours, setMinDurationHours] = useState(
     secondsToHoursInput(searchParams.get("min_duration_seconds")),
   );
@@ -71,10 +84,19 @@ export default function ReportsClient() {
   );
   const isAggregateTrends = selectedReport.id === "aggregate_trends";
   const isRideSummary = selectedReport.id === "ride_summary";
+  const isReassessment = selectedReport.id === "reassessment";
   const standaloneReportId = standaloneReportIdFor(selectedReport.id);
   const isStandaloneReport = standaloneReportId != null;
   const minDurationSeconds = hoursInputToSeconds(minDurationHours);
   const minDistanceMeters = milesInputToMeters(minDistanceMiles);
+  const preferencesQuery = useUserPreferences({ enabled: isReassessment });
+  const todayDate = formatDateInput(new Date());
+  const reassessmentStartDate =
+    preferencesQuery.data.xc_goal_start_date ?? undefined;
+  const reportStartDate = isReassessment
+    ? (reassessmentStartDate ?? todayDate)
+    : startDate;
+  const reportEndDate = isReassessment ? todayDate : endDate;
   const { data, isLoading, isFetching } = useTrainingReports(range, {
     enabled: isAggregateTrends,
     startDate,
@@ -85,12 +107,12 @@ export default function ReportsClient() {
   const reportQuery = useRideSummaryReport({
     report: standaloneReportId ?? "ride_summary",
     boundary: range,
-    startDate,
-    endDate,
+    startDate: reportStartDate,
+    endDate: reportEndDate,
     activityIds: selectedActivityIds,
     minDurationSeconds,
     minDistanceMeters,
-    enabled: isStandaloneReport,
+    enabled: isStandaloneReport && (!isReassessment || !!reassessmentStartDate),
   });
 
   const points = data?.points ?? [];
@@ -100,9 +122,16 @@ export default function ReportsClient() {
     if (selectedReportId !== DEFAULT_REPORT_ID) {
       params.set("report", selectedReportId);
     }
-    params.set("range", range);
-    params.set("start_date", startDate);
-    params.set("end_date", endDate);
+    if (isReassessment) {
+      if (reassessmentStartDate) {
+        params.set("start_date", reassessmentStartDate);
+      }
+      params.set("end_date", todayDate);
+    } else {
+      params.set("range", range);
+      params.set("start_date", startDate);
+      params.set("end_date", endDate);
+    }
     if (selectedActivityIds.length > 0) {
       params.set("activity_ids", selectedActivityIds.join(","));
     }
@@ -127,6 +156,9 @@ export default function ReportsClient() {
     startDate,
     minDurationSeconds,
     minDistanceMeters,
+    isReassessment,
+    reassessmentStartDate,
+    todayDate,
   ]);
 
   function handleRangeChange(nextRange: TimeRange) {
@@ -136,136 +168,401 @@ export default function ReportsClient() {
     setEndDate(nextDateRange.endDate);
   }
 
+  function handleReportSelect(reportId: ReportId) {
+    setSelectedReportId(reportId);
+    setIsMobileReportNavOpen(false);
+  }
+
   return (
-    <div className="grid gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold">Reports</h1>
-            <InfoTooltip label="Reports details" tip={REPORTS_HELP_TEXT} />
-          </div>
-        </div>
-        <div className="min-w-0">
-          <div className="mb-2 text-xs font-medium uppercase text-base-content/50">
-            Preset
-          </div>
-          <TimeRangeSelector value={range} onChange={handleRangeChange} />
-        </div>
+    <div className="min-h-screen">
+      <div className="flex h-16 items-center justify-between border-b border-base-300 bg-base-100 px-4 lg:hidden">
+        <Link href="/" className="btn btn-ghost px-2 text-lg normal-case">
+          bike
+        </Link>
+        <button
+          type="button"
+          className="btn btn-outline btn-sm"
+          aria-expanded={isMobileReportNavOpen}
+          onClick={() => {
+            setIsMobileReportNavOpen((isOpen) => !isOpen);
+          }}
+        >
+          {isMobileReportNavOpen ? "Close" : "Reports"}
+        </button>
       </div>
 
-      <section className="rounded-lg border border-base-300 bg-base-100 p-4">
-        <div className="grid gap-4 sm:grid-cols-[minmax(0,14rem)_minmax(0,14rem)_auto] sm:items-end">
-          <label className="form-control">
-            <div className="label">
-              <span className="label-text font-medium">Start date</span>
-            </div>
-            <input
-              type="date"
-              className="input input-bordered"
-              value={startDate}
-              onChange={(event) => {
-                setStartDate(event.target.value);
+      <div
+        className={
+          "grid min-h-[calc(100vh-4rem)] lg:min-h-screen " +
+          (isReportNavExpanded
+            ? "lg:grid-cols-[20rem_minmax(0,1fr)]"
+            : "lg:grid-cols-[4.75rem_minmax(0,1fr)]")
+        }
+      >
+        <aside
+          className={
+            (isMobileReportNavOpen ? "block" : "hidden") +
+            " border-b border-base-300 bg-base-100 lg:block lg:border-b-0 lg:border-r"
+          }
+        >
+          <div className="lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto">
+            <ReportSidebarHeader
+              expanded={isReportNavExpanded}
+              onDesktopToggle={() => {
+                setIsReportNavExpanded((isExpanded) => !isExpanded);
+              }}
+              onMobileClose={() => {
+                setIsMobileReportNavOpen(false);
               }}
             />
-          </label>
-          <label className="form-control">
-            <div className="label">
-              <span className="label-text font-medium">End date</span>
+            <ReportAppNav expanded={isReportNavExpanded} />
+            <div
+              className={
+                "border-t border-base-300 " +
+                (isReportNavExpanded ? "" : "lg:hidden")
+              }
+            >
+              <ReportMenu
+                selectedReportId={selectedReport.id}
+                reports={reportDefinitions}
+                onSelect={handleReportSelect}
+              />
             </div>
-            <input
-              type="date"
-              className="input input-bordered"
-              value={endDate}
-              onChange={(event) => {
-                setEndDate(event.target.value);
-              }}
-            />
-          </label>
-          <div className="flex items-center gap-2 text-sm text-base-content/60">
-            <span>Selected range</span>
-            <InfoTooltip
-              label="Report range details"
-              tip={REPORT_RANGE_HELP_TEXT}
+            <CollapsedReportMenu
+              selectedReportId={selectedReport.id}
+              reports={reportDefinitions}
+              onSelect={handleReportSelect}
+              hidden={isReportNavExpanded}
             />
           </div>
-        </div>
-      </section>
+        </aside>
 
-      <div className="grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
-        <ReportMenu
-          selectedReportId={selectedReport.id}
-          reports={reportDefinitions}
-          onSelect={setSelectedReportId}
-        />
-
-        <section className="min-w-0 rounded-lg border border-base-300 bg-base-100 p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-semibold">{selectedReport.name}</h2>
-                <InfoTooltip
-                  label={`${selectedReport.name} details`}
-                  tip={selectedReport.purpose}
-                />
+        <main className="min-w-0 px-4 py-5 sm:px-6 lg:px-8 xl:px-10">
+          <div className="grid w-full gap-6">
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-2xl font-semibold">Reports</h1>
+                  <InfoTooltip
+                    label="Reports details"
+                    tip={REPORTS_HELP_TEXT}
+                  />
+                </div>
               </div>
+              {!isReassessment ? (
+                <div className="min-w-0">
+                  <div className="mb-2 text-xs font-medium uppercase text-base-content/50">
+                    Preset
+                  </div>
+                  <TimeRangeSelector
+                    value={range}
+                    onChange={handleRangeChange}
+                  />
+                </div>
+              ) : null}
             </div>
+
+            <section className="rounded-lg border border-base-300 bg-base-100 p-4">
+              {isReassessment ? (
+                <div className="grid gap-4 sm:grid-cols-[minmax(0,14rem)_minmax(0,14rem)_auto] sm:items-end">
+                  <label className="form-control">
+                    <div className="label">
+                      <span className="label-text font-medium">
+                        Training start
+                      </span>
+                    </div>
+                    <input
+                      type="date"
+                      className="input input-bordered"
+                      value={reassessmentStartDate ?? ""}
+                      readOnly
+                    />
+                  </label>
+                  <label className="form-control">
+                    <div className="label">
+                      <span className="label-text font-medium">Through</span>
+                    </div>
+                    <input
+                      type="date"
+                      className="input input-bordered"
+                      value={todayDate}
+                      readOnly
+                    />
+                  </label>
+                  <div className="flex items-center gap-2 text-sm text-base-content/60">
+                    <span>Uses the active XC training block</span>
+                    <InfoTooltip
+                      label="Reassessment range details"
+                      tip={REASSESSMENT_DATE_HELP_TEXT}
+                    />
+                  </div>
+                  {!reassessmentStartDate && !preferencesQuery.isLoading ? (
+                    <div className="alert sm:col-span-3">
+                      <span>
+                        Save an XC training start date before generating a
+                        reassessment.
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-[minmax(0,14rem)_minmax(0,14rem)_auto] sm:items-end">
+                  <label className="form-control">
+                    <div className="label">
+                      <span className="label-text font-medium">Start date</span>
+                    </div>
+                    <input
+                      type="date"
+                      className="input input-bordered"
+                      value={startDate}
+                      onChange={(event) => {
+                        setStartDate(event.target.value);
+                      }}
+                    />
+                  </label>
+                  <label className="form-control">
+                    <div className="label">
+                      <span className="label-text font-medium">End date</span>
+                    </div>
+                    <input
+                      type="date"
+                      className="input input-bordered"
+                      value={endDate}
+                      onChange={(event) => {
+                        setEndDate(event.target.value);
+                      }}
+                    />
+                  </label>
+                  <div className="flex items-center gap-2 text-sm text-base-content/60">
+                    <span>Selected range</span>
+                    <InfoTooltip
+                      label="Report range details"
+                      tip={REPORT_RANGE_HELP_TEXT}
+                    />
+                  </div>
+                </div>
+              )}
+            </section>
+
+            <section className="min-w-0 rounded-lg border border-base-300 bg-base-100 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-lg font-semibold">
+                      {selectedReport.name}
+                    </h2>
+                    <InfoTooltip
+                      label={`${selectedReport.name} details`}
+                      tip={selectedReport.purpose}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <ReportFilters
+                report={selectedReport}
+                minDurationHours={minDurationHours}
+                minDistanceMiles={minDistanceMiles}
+                onMinDurationHoursChange={setMinDurationHours}
+                onMinDistanceMilesChange={setMinDistanceMiles}
+              />
+
+              {isAggregateTrends ? (
+                <AggregateTrendsReport
+                  points={points}
+                  range={range}
+                  isLoading={isLoading}
+                  isFetching={isFetching}
+                />
+              ) : isRideSummary ? (
+                <RideSummaryReportView
+                  summary={reportQuery.data?.ride_summary ?? null}
+                  startDate={startDate}
+                  endDate={endDate}
+                  isLoading={reportQuery.isLoading}
+                  isFetching={reportQuery.isFetching}
+                />
+              ) : selectedReport.id === "endurance" ? (
+                <EnduranceReportView
+                  report={reportQuery.data?.endurance ?? null}
+                  unitSystem={unitSystem}
+                  isLoading={reportQuery.isLoading}
+                />
+              ) : selectedReport.id === "climbing" ? (
+                <ClimbingReportView
+                  report={reportQuery.data?.climbing ?? null}
+                  unitSystem={unitSystem}
+                  isLoading={reportQuery.isLoading}
+                />
+              ) : selectedReport.id === "fatigue" ? (
+                <FatigueReportView
+                  report={reportQuery.data?.fatigue ?? null}
+                  unitSystem={unitSystem}
+                  isLoading={reportQuery.isLoading}
+                />
+              ) : selectedReport.id === "compare_rides" ? (
+                <CompareRidesReportView
+                  report={reportQuery.data?.compare_rides ?? null}
+                  selectedActivityIds={selectedActivityIds}
+                  onSelectedActivityIdsChange={setSelectedActivityIds}
+                  isLoading={reportQuery.isLoading}
+                />
+              ) : selectedReport.id === "reassessment" ? (
+                <ReassessmentReportView
+                  report={reportQuery.data?.reassessment ?? null}
+                  isLoading={reportQuery.isLoading}
+                />
+              ) : (
+                <PlannedReport report={selectedReport} />
+              )}
+            </section>
           </div>
-
-          <ReportFilters
-            report={selectedReport}
-            minDurationHours={minDurationHours}
-            minDistanceMiles={minDistanceMiles}
-            onMinDurationHoursChange={setMinDurationHours}
-            onMinDistanceMilesChange={setMinDistanceMiles}
-          />
-
-          {isAggregateTrends ? (
-            <AggregateTrendsReport
-              points={points}
-              range={range}
-              isLoading={isLoading}
-              isFetching={isFetching}
-            />
-          ) : isRideSummary ? (
-            <RideSummaryReportView
-              summary={reportQuery.data?.ride_summary ?? null}
-              startDate={startDate}
-              endDate={endDate}
-              isLoading={reportQuery.isLoading}
-              isFetching={reportQuery.isFetching}
-            />
-          ) : selectedReport.id === "endurance" ? (
-            <EnduranceReportView
-              report={reportQuery.data?.endurance ?? null}
-              unitSystem={unitSystem}
-              isLoading={reportQuery.isLoading}
-            />
-          ) : selectedReport.id === "climbing" ? (
-            <ClimbingReportView
-              report={reportQuery.data?.climbing ?? null}
-              unitSystem={unitSystem}
-              isLoading={reportQuery.isLoading}
-            />
-          ) : selectedReport.id === "fatigue" ? (
-            <FatigueReportView
-              report={reportQuery.data?.fatigue ?? null}
-              unitSystem={unitSystem}
-              isLoading={reportQuery.isLoading}
-            />
-          ) : selectedReport.id === "compare_rides" ? (
-            <CompareRidesReportView
-              report={reportQuery.data?.compare_rides ?? null}
-              selectedActivityIds={selectedActivityIds}
-              onSelectedActivityIdsChange={setSelectedActivityIds}
-              isLoading={reportQuery.isLoading}
-            />
-          ) : (
-            <PlannedReport report={selectedReport} />
-          )}
-        </section>
+        </main>
       </div>
     </div>
   );
+}
+
+function ReportSidebarHeader({
+  expanded,
+  onDesktopToggle,
+  onMobileClose,
+}: {
+  expanded: boolean;
+  onDesktopToggle: () => void;
+  onMobileClose: () => void;
+}) {
+  return (
+    <div className="flex h-16 items-center justify-between gap-2 px-4">
+      <Link
+        href="/training/reports"
+        className={
+          "btn btn-ghost min-w-0 px-2 text-lg normal-case " +
+          (expanded ? "justify-start" : "lg:btn-square lg:justify-center")
+        }
+        title="bike reports"
+      >
+        <span className={expanded ? "truncate" : "lg:sr-only"}>
+          bike reports
+        </span>
+        <span className={expanded ? "hidden" : "hidden lg:inline"}>R</span>
+      </Link>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm lg:hidden"
+          onClick={onMobileClose}
+        >
+          Close
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost btn-square btn-sm hidden lg:inline-flex"
+          aria-label={
+            expanded ? "Collapse report navigation" : "Expand report navigation"
+          }
+          aria-expanded={expanded}
+          title={
+            expanded ? "Collapse report navigation" : "Expand report navigation"
+          }
+          onClick={onDesktopToggle}
+        >
+          {expanded ? "<" : ">"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ReportAppNav({ expanded }: { expanded: boolean }) {
+  const links = [
+    { href: "/", label: "Activities", shortLabel: "A" },
+    { href: "/xc", label: "XC", shortLabel: "XC" },
+    { href: "/dh", label: "DH", shortLabel: "DH" },
+    { href: "/segments", label: "Segments", shortLabel: "S" },
+    { href: "/fitness", label: "Fitness", shortLabel: "F" },
+  ];
+
+  return (
+    <nav
+      className={"grid gap-1 px-3 pb-3 " + (expanded ? "" : "lg:px-2")}
+      aria-label="Bike navigation"
+    >
+      {links.map((link) => (
+        <Link
+          key={link.href}
+          href={link.href}
+          className={
+            "btn btn-ghost btn-sm min-h-9 " +
+            (expanded ? "justify-start" : "lg:btn-square lg:justify-center")
+          }
+          title={link.label}
+        >
+          <span className={expanded ? "truncate" : "lg:sr-only"}>
+            {link.label}
+          </span>
+          <span className={expanded ? "hidden" : "hidden lg:inline"}>
+            {link.shortLabel}
+          </span>
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
+function CollapsedReportMenu({
+  selectedReportId,
+  reports,
+  onSelect,
+  hidden,
+}: {
+  selectedReportId: ReportId;
+  reports: ReportDefinition[];
+  onSelect: (reportId: ReportId) => void;
+  hidden: boolean;
+}) {
+  return (
+    <nav
+      className={
+        "hidden border-t border-base-300 p-2 " + (hidden ? "" : "lg:grid gap-2")
+      }
+      aria-label="Report menu"
+    >
+      {reports.map((report) => (
+        <button
+          key={report.id}
+          type="button"
+          className={
+            "btn btn-square btn-sm " +
+            (selectedReportId === report.id ? "btn-primary" : "btn-ghost")
+          }
+          title={report.name}
+          aria-label={report.name}
+          onClick={() => {
+            onSelect(report.id);
+          }}
+        >
+          {reportShortLabel(report.name)}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function reportShortLabel(name: string): string {
+  const words = name
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter(Boolean);
+
+  if (words.length === 0) {
+    return "?";
+  }
+
+  return words
+    .slice(0, 2)
+    .map((word) => word[0]?.toUpperCase() ?? "")
+    .join("");
 }
 
 function RideSummaryReportView({
@@ -1082,6 +1379,469 @@ function CompareRidesReportView({
   );
 }
 
+function ReassessmentReportView({
+  report,
+  isLoading,
+}: {
+  report: ReassessmentReport | null;
+  isLoading: boolean;
+}) {
+  if (isLoading) return <LoadingReport label="Reassessing goal evidence..." />;
+  if (!report) return <EmptyReport label="No reassessment data found." />;
+
+  const signals = [
+    report.endurance_progression,
+    report.climbing_density,
+    report.long_ride_pace,
+    report.fitness_delta,
+  ];
+
+  return (
+    <div className="mt-5 grid gap-5">
+      <section
+        className={
+          "rounded-lg border p-5 " +
+          reassessmentVerdictPanelClass(report.verdict)
+        }
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-xs font-medium uppercase text-base-content/55">
+              {report.target.event_name} ·{" "}
+              {report.target.target_finish_seconds == null
+                ? "finish target missing"
+                : formatDuration(report.target.target_finish_seconds)}
+            </div>
+            <h3 className="mt-2 text-xl font-semibold">
+              {report.verdict_title}
+            </h3>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-base-content/70">
+              {report.verdict_detail}
+            </p>
+          </div>
+          <span
+            className={"badge " + reassessmentVerdictBadgeClass(report.verdict)}
+          >
+            {reassessmentVerdictLabel(report.verdict)}
+          </span>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <ReportMetricCard
+            label="Target pace"
+            value={formatOptionalNumber(report.target.target_speed_mph)}
+            unit={report.target.target_speed_mph == null ? undefined : "mph"}
+            guide={
+              report.target.target_speed_mph == null
+                ? reassessmentTargetMissingGuide(report.target)
+                : reassessmentTargetSourceLabel(report.target.target_source)
+            }
+          />
+          <ReportMetricCard
+            label="Target climbing density"
+            value={formatOptionalNumber(
+              report.target.target_climb_density_feet_per_hour,
+            )}
+            unit={
+              report.target.target_climb_density_feet_per_hour == null
+                ? undefined
+                : "ft/h"
+            }
+            guide={
+              report.target.target_climb_density_feet_per_hour == null
+                ? reassessmentTargetMissingGuide(report.target)
+                : report.target.target_date == null
+                  ? (report.target.event_profile ?? undefined)
+                  : `Target ${report.target.target_date}`
+            }
+          />
+          <ReportMetricCard
+            label="Target distance"
+            value={formatOptionalNumber(
+              report.target.target_distance_meters == null
+                ? null
+                : report.target.target_distance_meters / 1609.344,
+            )}
+            unit={
+              report.target.target_distance_meters == null ? undefined : "mi"
+            }
+          />
+        </div>
+        <ReassessmentAbilityEstimateCard estimate={report.ability_estimate} />
+      </section>
+
+      <div className="grid gap-3 lg:grid-cols-4">
+        {signals.map((signal) => (
+          <ReassessmentSignalCard
+            key={signal.title}
+            signal={signal}
+            currentLabel={report.recent_window.label}
+            baselineLabel={report.spring_baseline_window.label}
+          />
+        ))}
+      </div>
+
+      <section className="rounded-lg border border-base-300 p-4">
+        <h3 className="text-base font-semibold">Current Training vs Spring</h3>
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          <ReassessmentWindowCard window={report.recent_window} />
+          <ReassessmentWindowCard window={report.spring_baseline_window} />
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <ReportMetricCard
+            label="Fitness change"
+            value={formatSignedNumber(report.improvement.fitness_change)}
+            unit="CTL"
+            guide={formatOptionalPercent(
+              report.improvement.fitness_change_percent,
+            )}
+          />
+          <ReportMetricCard
+            label="Elapsed speed change"
+            value={formatSignedNumber(
+              report.improvement.long_ride_speed_change_mph,
+            )}
+            unit="mph"
+            guide={formatOptionalPercent(
+              report.improvement.long_ride_speed_change_percent,
+            )}
+          />
+          <ReportMetricCard
+            label="Long-ride distance change"
+            value={formatSignedNumber(
+              report.improvement.long_ride_distance_change_miles,
+            )}
+            unit="mi"
+            guide={formatOptionalPercent(
+              report.improvement.long_ride_distance_change_percent,
+            )}
+          />
+          <ReportMetricCard
+            label="Climb density change"
+            value={formatSignedNumber(
+              report.improvement.climbing_density_change_feet_per_hour,
+            )}
+            unit="ft/h"
+            guide={formatOptionalPercent(
+              report.improvement.climbing_density_change_percent,
+            )}
+          />
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-base-300 p-4">
+        <h3 className="text-base font-semibold">Benchmark Long Rides</h3>
+        {report.benchmark_rides.length === 0 ? (
+          <div className="alert mt-4">
+            <span>
+              No long rides found for the training-block or spring windows.
+            </span>
+          </div>
+        ) : (
+          <div className="mt-4 overflow-x-auto">
+            <table className="table table-zebra">
+              <thead>
+                <tr>
+                  <th>Ride</th>
+                  <th>Date</th>
+                  <th>Elapsed</th>
+                  <th>Moving</th>
+                  <th>Distance</th>
+                  <th>Elevation</th>
+                  <th>Elapsed speed</th>
+                  <th>Moving speed</th>
+                  <th>Climb density</th>
+                  <th>Drift</th>
+                  <th>Late speed</th>
+                  <th>Fatigue</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.benchmark_rides.map((ride) => (
+                  <tr key={ride.activity_id}>
+                    <td>{ride.title}</td>
+                    <td>{formatShortDate(ride.started_at)}</td>
+                    <td>{formatDuration(ride.elapsed_seconds)}</td>
+                    <td>{formatOptionalDuration(ride.moving_seconds)}</td>
+                    <td>{formatOptionalNumber(ride.distance_miles)} mi</td>
+                    <td>{formatOptionalNumber(ride.elevation_gain_feet)} ft</td>
+                    <td>{formatOptionalNumber(ride.elapsed_speed_mph)} mph</td>
+                    <td>{formatOptionalNumber(ride.moving_speed_mph)} mph</td>
+                    <td>
+                      {formatOptionalNumber(
+                        ride.climbing_density_feet_per_hour,
+                      )}{" "}
+                      ft/h
+                    </td>
+                    <td>{formatPercent(ride.aerobic_decoupling_percent)}</td>
+                    <td>{formatPercent(ride.late_speed_change_percent)}</td>
+                    <td>{formatFatigueIndex(ride.fatigue_index)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {report.notes.length > 0 ? (
+        <div className="rounded-lg border border-base-300 bg-base-200/40 p-4 text-sm leading-6 text-base-content/70">
+          {report.notes.map((note) => (
+            <p key={note} className="mb-1 last:mb-0">
+              {note}
+            </p>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ReassessmentAbilityEstimateCard({
+  estimate,
+}: {
+  estimate: ReassessmentAbilityEstimate;
+}) {
+  return (
+    <div className="mt-4 rounded-lg border border-base-300 bg-base-100 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-semibold">Estimated current ability</h4>
+          <p className="mt-1 max-w-3xl text-xs leading-5 text-base-content/65">
+            {estimate.detail}
+          </p>
+        </div>
+        {estimate.limiter ? (
+          <span className="badge badge-outline">
+            Limited by {estimate.limiter}
+          </span>
+        ) : null}
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <ReportMetricCard
+          label="Estimated finish"
+          value={formatOptionalDuration(estimate.estimated_finish_seconds)}
+        />
+        <ReportMetricCard
+          label="Estimated course speed"
+          value={formatOptionalNumber(estimate.estimated_speed_mph)}
+          unit={estimate.estimated_speed_mph == null ? undefined : "mph"}
+        />
+        <ReportMetricCard
+          label="Current best pace"
+          value={formatOptionalNumber(estimate.current_long_ride_speed_mph)}
+          unit={
+            estimate.current_long_ride_speed_mph == null ? undefined : "mph"
+          }
+          guide={
+            estimate.pace_limited_finish_seconds == null
+              ? "pace limit n/a"
+              : `pace limit ${formatDuration(estimate.pace_limited_finish_seconds)}`
+          }
+        />
+        <ReportMetricCard
+          label="Current climb density"
+          value={formatOptionalNumber(
+            estimate.current_climb_density_feet_per_hour,
+          )}
+          unit={
+            estimate.current_climb_density_feet_per_hour == null
+              ? undefined
+              : "ft/h"
+          }
+          guide={
+            estimate.climbing_limited_finish_seconds == null
+              ? "climb limit n/a"
+              : `climb limit ${formatDuration(
+                  estimate.climbing_limited_finish_seconds,
+                )}`
+          }
+        />
+      </div>
+    </div>
+  );
+}
+
+function ReassessmentSignalCard({
+  signal,
+  currentLabel,
+  baselineLabel,
+}: {
+  signal: ReassessmentSignal;
+  currentLabel: string;
+  baselineLabel: string;
+}) {
+  return (
+    <div className="rounded-lg border border-base-300 bg-base-200/40 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-32 flex-1 text-sm font-semibold leading-5">
+          {signal.title}
+        </div>
+        <span
+          className={
+            "badge badge-sm shrink-0 whitespace-nowrap " +
+            reassessmentVerdictBadgeClass(signal.status)
+          }
+        >
+          {reassessmentVerdictLabel(signal.status)}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-2 text-sm">
+        <ReassessmentSignalValue
+          label={currentLabel}
+          value={signal.current_value}
+          unit={signal.unit}
+        />
+        {signal.projected_current_value != null ? (
+          <ReassessmentSignalValue
+            label="Projected current"
+            value={signal.projected_current_value}
+            unit={signal.unit}
+          />
+        ) : null}
+        {signal.last_known_value != null ? (
+          <ReassessmentSignalValue
+            label="Last known"
+            value={signal.last_known_value}
+            unit={signal.unit}
+          />
+        ) : null}
+        <ReassessmentSignalValue
+          label={baselineLabel}
+          value={signal.baseline_value}
+          unit={signal.unit}
+        />
+        {signal.target_value != null ? (
+          <ReassessmentSignalValue
+            label="Target"
+            value={signal.target_value}
+            unit={signal.unit}
+          />
+        ) : null}
+      </div>
+      <p className="mt-3 text-xs leading-5 text-base-content/65">
+        {signal.detail}
+      </p>
+      {signal.projection_detail ? (
+        <p className="mt-2 text-xs leading-5 text-base-content/55">
+          {signal.projection_detail}
+        </p>
+      ) : null}
+      {signal.current_source_title ||
+      signal.last_known_source_title ||
+      signal.baseline_source_title ? (
+        <div className="mt-3 grid gap-1 text-xs text-base-content/55">
+          {signal.current_source_title ? (
+            <div>
+              {formatSignalSource(
+                currentLabel,
+                signal.current_source_title,
+                signal.current_source_started_at,
+              )}
+            </div>
+          ) : null}
+          {signal.last_known_source_title ? (
+            <div>
+              {formatSignalSource(
+                "Last known",
+                signal.last_known_source_title,
+                signal.last_known_source_started_at,
+              )}
+              {signal.last_known_days_old != null
+                ? `, ${signal.last_known_days_old} days old`
+                : ""}
+            </div>
+          ) : null}
+          {signal.baseline_source_title ? (
+            <div>
+              {formatSignalSource(
+                baselineLabel,
+                signal.baseline_source_title,
+                signal.baseline_source_started_at,
+              )}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ReassessmentSignalValue({
+  label,
+  value,
+  unit,
+}: {
+  label: string;
+  value?: number | null;
+  unit: string;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-2">
+      <span className="text-base-content/55">{label}</span>
+      <span className="font-medium">
+        {formatOptionalNumber(value)} {value == null ? "" : unit}
+      </span>
+    </div>
+  );
+}
+
+function ReassessmentWindowCard({ window }: { window: ReassessmentWindow }) {
+  return (
+    <div className="rounded-lg border border-base-300 bg-base-200/30 p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h4 className="font-semibold">{window.label}</h4>
+        <span className="text-sm text-base-content/60">
+          {window.start_date} to {window.end_date}
+        </span>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <ReportMetricCard
+          label="Rides"
+          value={window.activity_count.toString()}
+          guide={`${window.long_ride_count} long`}
+        />
+        <ReportMetricCard
+          label="Total elevation"
+          value={formatNumber(window.total_elevation_gain_feet)}
+          unit="ft"
+        />
+        <ReportMetricCard
+          label="Aggregate climb density"
+          value={formatOptionalNumber(
+            window.aggregate_long_ride_climbing_density_feet_per_hour,
+          )}
+          unit={
+            window.aggregate_long_ride_climbing_density_feet_per_hour == null
+              ? undefined
+              : "ft/h"
+          }
+          guide="weighted across benchmark long rides"
+        />
+        <ReportMetricCard
+          label="Best long ride"
+          value={formatOptionalNumber(window.best_long_ride_distance_miles)}
+          unit={window.best_long_ride_distance_miles == null ? undefined : "mi"}
+          guide={
+            window.best_long_ride_duration_seconds == null
+              ? "n/a"
+              : formatDuration(window.best_long_ride_duration_seconds)
+          }
+        />
+        <ReportMetricCard
+          label="Avg fitness"
+          value={formatOptionalNumber(window.average_fitness)}
+          unit={window.average_fitness == null ? undefined : "CTL"}
+          guide={
+            window.latest_fitness == null
+              ? "latest n/a"
+              : `latest ${formatNumber(window.latest_fitness)}`
+          }
+        />
+      </div>
+    </div>
+  );
+}
+
 function HourlyTable({
   rows,
   unitSystem,
@@ -1278,9 +2038,9 @@ function ReportMenu({
   onSelect: (reportId: ReportId) => void;
 }) {
   return (
-    <nav className="rounded-lg border border-base-300 bg-base-100 p-3">
+    <nav className="p-3" aria-label="Report menu">
       <div className="px-2 pb-2 text-xs font-medium uppercase text-base-content/50">
-        Report Menu
+        Reports
       </div>
       <div className="grid gap-1">
         {reports.map((report) => (
@@ -1290,7 +2050,7 @@ function ReportMenu({
             className={
               "rounded-md px-3 py-3 text-left transition hover:bg-base-200 " +
               (selectedReportId === report.id
-                ? "bg-base-200 text-base-content"
+                ? "bg-primary text-primary-content hover:bg-primary/90"
                 : "text-base-content/75")
             }
             onClick={() => {
@@ -1300,7 +2060,14 @@ function ReportMenu({
             <span className="flex items-center justify-between gap-3">
               <span className="font-medium">{report.name}</span>
             </span>
-            <span className="mt-1 block text-xs leading-5 text-base-content/60">
+            <span
+              className={
+                "mt-1 block text-xs leading-5 " +
+                (selectedReportId === report.id
+                  ? "text-primary-content/80"
+                  : "text-base-content/60")
+              }
+            >
               {report.purpose}
             </span>
           </button>
@@ -1564,6 +2331,7 @@ function standaloneReportIdFor(
   | "climbing"
   | "fatigue"
   | "compare_rides"
+  | "reassessment"
   | null {
   switch (reportId) {
     case "ride_summary":
@@ -1571,6 +2339,7 @@ function standaloneReportIdFor(
     case "climbing":
     case "fatigue":
     case "compare_rides":
+    case "reassessment":
       return reportId;
     default:
       return null;
@@ -1631,6 +2400,18 @@ function formatOptionalNumber(value?: number | null) {
 
 function formatPercent(value?: number | null) {
   return value == null ? "n/a" : `${formatNumber(value)}%`;
+}
+
+function formatOptionalPercent(value?: number | null) {
+  return value == null ? "n/a" : `${formatSignedNumber(value)}%`;
+}
+
+function formatSignedNumber(value?: number | null) {
+  if (value == null) {
+    return "n/a";
+  }
+
+  return `${value > 0 ? "+" : ""}${formatNumber(value)}`;
 }
 
 function formatZonePercent(seconds: number, totalSeconds: number) {
@@ -1720,6 +2501,76 @@ function trendClassName(interpretation: string) {
   }
 }
 
+function reassessmentVerdictLabel(verdict: ReassessmentVerdict) {
+  switch (verdict) {
+    case "on_track":
+      return "On track";
+    case "plausible_but_risky":
+      return "Risky";
+    case "needs_more_evidence":
+      return "Needs work";
+    case "missing_data":
+      return "Missing data";
+  }
+}
+
+function reassessmentVerdictBadgeClass(verdict: ReassessmentVerdict) {
+  switch (verdict) {
+    case "on_track":
+      return "badge-success";
+    case "plausible_but_risky":
+      return "badge-warning";
+    case "needs_more_evidence":
+      return "badge-warning";
+    case "missing_data":
+      return "badge-ghost";
+  }
+}
+
+function reassessmentVerdictPanelClass(verdict: ReassessmentVerdict) {
+  switch (verdict) {
+    case "on_track":
+      return "border-success/30 bg-success/10";
+    case "plausible_but_risky":
+      return "border-warning/40 bg-warning/10";
+    case "needs_more_evidence":
+      return "border-warning/40 bg-warning/10";
+    case "missing_data":
+      return "border-base-300 bg-base-200/40";
+  }
+}
+
+function reassessmentTargetSourceLabel(source: ReassessmentTargetSource) {
+  switch (source) {
+    case "saved_goal":
+      return "Saved goal";
+    case "missing_goal":
+      return "Missing goal";
+  }
+}
+
+function reassessmentTargetMissingGuide(target: ReassessmentTarget) {
+  if (
+    target.target_source === "missing_goal" ||
+    target.target_distance_meters == null ||
+    target.target_elevation_gain_meters == null
+  ) {
+    return "Goal incomplete";
+  }
+  if (target.target_finish_seconds == null) {
+    return "Finish target missing";
+  }
+  return reassessmentTargetSourceLabel(target.target_source);
+}
+
+function formatSignalSource(
+  label: string,
+  title: string,
+  startedAt?: string | null,
+) {
+  return `${label}: ${title}${startedAt ? ` (${formatShortDate(startedAt)})` : ""}`;
+}
+
 function formatShortDate(value: string) {
   return new Date(value).toLocaleDateString(undefined, {
     month: "short",
@@ -1738,6 +2589,10 @@ function formatDuration(seconds: number) {
   }
 
   return `${hours}h ${minutes.toString().padStart(2, "0")}m`;
+}
+
+function formatOptionalDuration(seconds?: number | null) {
+  return seconds == null ? "--" : formatDuration(seconds);
 }
 
 function topCandidates(

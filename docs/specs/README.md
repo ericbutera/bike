@@ -14,6 +14,7 @@ The specs are intentionally written as product contracts instead of implementati
 - [Training analytics](training-analytics.md)
 - [Cycling trends reports](cycling-trends-reports.md)
 - [XC event readiness](xc-event-readiness.md)
+- [Reassessment report](reassessment-report.md)
 - [Account integrations](account-integrations.md)
 - [Admin operations](admin-operations.md)
 - [Auth configuration](auth-configuration.md)

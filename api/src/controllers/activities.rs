@@ -24,8 +24,10 @@ use crate::storage::AppStorage;
 use crate::training_profile::{
     deserialize_activity_heart_rate_zones, ActivityHeartRateZoneSummary,
 };
+use axum::body::Body;
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::Json;
 use chrono::{DateTime, Utc};
 use kaleido::auth::UserContext;
@@ -33,6 +35,7 @@ use kaleido::glass::data::pagination::{Paginatable, PaginatedResponse, Paginatio
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
+use std::path::{Component, Path as FsPath, PathBuf};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
@@ -80,6 +83,8 @@ pub struct ActivityResponse {
     pub training_analysis: Option<ActivityTrainingAnalysisResponse>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub can_regenerate: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub can_download_source_file: bool,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -183,6 +188,7 @@ impl ActivityResponse {
             segment_efforts,
             training_analysis: None,
             can_regenerate,
+            can_download_source_file: can_regenerate,
         }
     }
 }
@@ -571,6 +577,73 @@ pub async fn get_activity(
 }
 
 #[utoipa::path(
+    get,
+    path = "/api/activities/{id}/source-file",
+    params(
+        ("id" = i32, Path, description = "Activity ID")
+    ),
+    responses(
+        (status = 200, description = "Original retained source file for the activity"),
+        (status = 401, description = "Not authenticated"),
+        (status = 404, description = "Activity source file not found", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    tag = "activities",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn download_activity_source_file(
+    Path(id): Path<i32>,
+    UserContext { user, .. }: UserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+) -> Result<Response, AppError> {
+    let activity = activities::Entity::find()
+        .filter(activities::Column::Id.eq(id))
+        .filter(activities::Column::UserId.eq(user.id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found("Activity not found"))?;
+    let activity_import_id = activity
+        .activity_import_id
+        .ok_or_else(|| AppError::not_found("Activity source file not found"))?;
+    let activity_import = activity_imports::Entity::find()
+        .filter(activity_imports::Column::Id.eq(activity_import_id))
+        .filter(activity_imports::Column::UserId.eq(user.id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found("Activity source file not found"))?;
+    let source_path =
+        resolve_activity_import_storage_path(&state.uploads_dir, &activity_import.storage_path)?;
+    let bytes = match tokio::fs::read(&source_path).await {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(AppError::not_found("Activity source file not found"));
+        }
+        Err(error) => return Err(error.into()),
+    };
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(activity_source_content_type(&activity_import.format)),
+    );
+    headers.insert(
+        header::CONTENT_LENGTH,
+        HeaderValue::from_str(&bytes.len().to_string())
+            .map_err(|_| AppError::internal("Failed to build source file response"))?,
+    );
+    headers.insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_str(&content_disposition_header(
+            &activity_import.original_filename,
+        ))
+        .map_err(|_| AppError::internal("Failed to build source file response"))?,
+    );
+
+    Ok((headers, Body::from(bytes)).into_response())
+}
+
+#[utoipa::path(
     patch,
     path = "/api/activities/{id}",
     params(
@@ -742,6 +815,63 @@ fn normalize_activity_title(raw_title: &str) -> Result<String, AppError> {
     }
 
     Ok(title.to_string())
+}
+
+fn activity_source_content_type(format: &str) -> &'static str {
+    match format {
+        "gpx" => "application/gpx+xml",
+        "tcx" => "application/vnd.garmin.tcx+xml",
+        "fit" => "application/octet-stream",
+        _ => "application/octet-stream",
+    }
+}
+
+fn content_disposition_header(filename: &str) -> String {
+    format!(
+        "attachment; filename=\"{}\"",
+        safe_content_disposition_filename(filename)
+    )
+}
+
+fn safe_content_disposition_filename(filename: &str) -> String {
+    let safe = filename
+        .chars()
+        .map(|ch| match ch {
+            '"' | '\\' | '/' => '_',
+            ch if ch.is_ascii_control() || !ch.is_ascii() => '_',
+            ch => ch,
+        })
+        .collect::<String>()
+        .trim()
+        .to_string();
+
+    if safe.is_empty() {
+        "activity-source-file".to_string()
+    } else {
+        safe
+    }
+}
+
+fn resolve_activity_import_storage_path(
+    uploads_dir: &str,
+    storage_path: &str,
+) -> Result<PathBuf, AppError> {
+    let relative_path = FsPath::new(storage_path);
+
+    if relative_path.is_absolute() {
+        return Err(AppError::internal("Invalid activity source file path"));
+    }
+
+    for component in relative_path.components() {
+        match component {
+            Component::Normal(_) | Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(AppError::internal("Invalid activity source file path"));
+            }
+        }
+    }
+
+    Ok(FsPath::new(uploads_dir).join(relative_path))
 }
 
 #[cfg(test)]
@@ -949,6 +1079,37 @@ mod tests {
         let error = normalize_activity_title("   ").unwrap_err();
 
         assert_eq!(error.status, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn source_file_response_helpers_are_header_safe() {
+        assert_eq!(
+            content_disposition_header("Morning Ride.fit"),
+            "attachment; filename=\"Morning Ride.fit\""
+        );
+        assert_eq!(
+            content_disposition_header("../ride\"bad.fit"),
+            "attachment; filename=\".._ride_bad.fit\""
+        );
+        assert_eq!(
+            activity_source_content_type("fit"),
+            "application/octet-stream"
+        );
+        assert_eq!(
+            activity_source_content_type("tcx"),
+            "application/vnd.garmin.tcx+xml"
+        );
+    }
+
+    #[test]
+    fn source_file_path_resolution_rejects_unsafe_relative_paths() {
+        assert_eq!(
+            resolve_activity_import_storage_path("/uploads", "activity-imports/u/ride.fit")
+                .unwrap(),
+            FsPath::new("/uploads").join("activity-imports/u/ride.fit")
+        );
+        assert!(resolve_activity_import_storage_path("/uploads", "../ride.fit").is_err());
+        assert!(resolve_activity_import_storage_path("/uploads", "/tmp/ride.fit").is_err());
     }
 
     fn make_segment_effort_model(

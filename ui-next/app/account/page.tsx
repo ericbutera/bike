@@ -527,9 +527,11 @@ function AuthenticatedAccountPage() {
             <div className="rounded-box border border-base-300 bg-base-200 p-4 text-sm text-base-content/70">
               <div className="font-medium text-base-content">Sync behavior</div>
               <p className="mt-2 leading-6">
-                Bike pulls activity summaries and streams from Strava,
-                synthesizes a TCX payload, then reuses the existing upload
-                pipeline so dedupe and derived metrics stay in one place.
+                Bike imports the detailed activity streams available through
+                Strava's API, stores them as retained source files, then reuses
+                the existing upload pipeline so dedupe and derived metrics stay
+                in one place. FIT originals are preserved when they come from a
+                direct file upload.
               </p>
             </div>
           </div>

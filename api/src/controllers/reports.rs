@@ -2,14 +2,16 @@ use crate::activity_details::{
     deserialize_derived_activity_data, ActivityChartPoint, ActivityRoutePoint,
 };
 use crate::app_error::{ApiErrorResponse, AppError};
-use crate::entities::{activities, activity_training_analyses};
+use crate::entities::{
+    activities, activity_training_analyses, fitness_freshness_daily, user_preferences,
+};
 use crate::storage::AppStorage;
 use crate::training_profile::deserialize_activity_heart_rate_zones;
 use axum::extract::{Query, State};
 use axum::Json;
 use chrono::{DateTime, Datelike, Duration, NaiveDate, TimeZone, Timelike, Utc};
 use kaleido::auth::UserContext;
-use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter, Select};
+use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, Select};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -25,6 +27,7 @@ pub enum ReportId {
     Climbing,
     Fatigue,
     CompareRides,
+    Reassessment,
     AggregateTrends,
 }
 
@@ -124,6 +127,142 @@ pub struct TrainingReportsResponse {
     pub climbing: Option<ClimbingReportResponse>,
     pub fatigue: Option<FatigueReportResponse>,
     pub compare_rides: Option<CompareRidesReportResponse>,
+    pub reassessment: Option<ReassessmentReportResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ReassessmentReportResponse {
+    pub verdict: ReassessmentVerdict,
+    pub verdict_title: String,
+    pub verdict_detail: String,
+    pub target: ReassessmentTargetResponse,
+    pub ability_estimate: ReassessmentAbilityEstimateResponse,
+    pub recent_window: ReassessmentWindowResponse,
+    pub spring_baseline_window: ReassessmentWindowResponse,
+    pub improvement: ReassessmentImprovementResponse,
+    pub endurance_progression: ReassessmentSignalResponse,
+    pub climbing_density: ReassessmentSignalResponse,
+    pub long_ride_pace: ReassessmentSignalResponse,
+    pub fitness_delta: ReassessmentSignalResponse,
+    pub benchmark_rides: Vec<ReassessmentBenchmarkRideResponse>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ReassessmentVerdict {
+    OnTrack,
+    PlausibleButRisky,
+    NeedsMoreEvidence,
+    MissingData,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ReassessmentTargetResponse {
+    pub event_name: String,
+    pub target_source: ReassessmentTargetSource,
+    pub target_source_detail: String,
+    pub target_date: Option<String>,
+    pub event_profile: Option<String>,
+    pub target_finish_seconds: Option<i32>,
+    pub target_distance_meters: Option<f64>,
+    pub target_elevation_gain_meters: Option<f64>,
+    pub target_speed_mps: Option<f64>,
+    pub target_speed_mph: Option<f64>,
+    pub target_climb_density_feet_per_hour: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ReassessmentAbilityEstimateResponse {
+    pub estimated_finish_seconds: Option<i32>,
+    pub estimated_speed_mph: Option<f64>,
+    pub pace_limited_finish_seconds: Option<i32>,
+    pub climbing_limited_finish_seconds: Option<i32>,
+    pub current_long_ride_speed_mph: Option<f64>,
+    pub current_climb_density_feet_per_hour: Option<f64>,
+    pub limiter: Option<String>,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ReassessmentTargetSource {
+    SavedGoal,
+    MissingGoal,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ReassessmentWindowResponse {
+    pub label: String,
+    pub start_date: String,
+    pub end_date: String,
+    pub activity_count: i32,
+    pub long_ride_count: i32,
+    pub total_distance_miles: f64,
+    pub total_elevation_gain_feet: f64,
+    pub best_long_ride_distance_miles: Option<f64>,
+    pub best_long_ride_duration_seconds: Option<i32>,
+    pub best_long_ride_speed_mph: Option<f64>,
+    pub best_long_ride_climbing_density_feet_per_hour: Option<f64>,
+    pub aggregate_long_ride_climbing_density_feet_per_hour: Option<f64>,
+    pub median_long_ride_decoupling_percent: Option<f64>,
+    pub median_long_ride_late_speed_change_percent: Option<f64>,
+    pub median_long_ride_fatigue_index: Option<f64>,
+    pub average_fitness: Option<f64>,
+    pub latest_fitness: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ReassessmentImprovementResponse {
+    pub fitness_change: Option<f64>,
+    pub fitness_change_percent: Option<f64>,
+    pub long_ride_speed_change_mph: Option<f64>,
+    pub long_ride_speed_change_percent: Option<f64>,
+    pub long_ride_distance_change_miles: Option<f64>,
+    pub long_ride_distance_change_percent: Option<f64>,
+    pub climbing_density_change_feet_per_hour: Option<f64>,
+    pub climbing_density_change_percent: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ReassessmentSignalResponse {
+    pub status: ReassessmentVerdict,
+    pub title: String,
+    pub detail: String,
+    pub current_value: Option<f64>,
+    pub projected_current_value: Option<f64>,
+    pub baseline_value: Option<f64>,
+    pub target_value: Option<f64>,
+    pub unit: String,
+    pub current_source_activity_id: Option<i32>,
+    pub current_source_title: Option<String>,
+    pub current_source_started_at: Option<DateTime<Utc>>,
+    pub last_known_value: Option<f64>,
+    pub last_known_source_activity_id: Option<i32>,
+    pub last_known_source_title: Option<String>,
+    pub last_known_source_started_at: Option<DateTime<Utc>>,
+    pub last_known_days_old: Option<i64>,
+    pub projection_detail: Option<String>,
+    pub baseline_source_activity_id: Option<i32>,
+    pub baseline_source_title: Option<String>,
+    pub baseline_source_started_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ReassessmentBenchmarkRideResponse {
+    pub activity_id: i32,
+    pub title: String,
+    pub started_at: DateTime<Utc>,
+    pub distance_miles: Option<f64>,
+    pub elevation_gain_feet: Option<f64>,
+    pub elapsed_seconds: i32,
+    pub moving_seconds: Option<i32>,
+    pub elapsed_speed_mph: Option<f64>,
+    pub moving_speed_mph: Option<f64>,
+    pub climbing_density_feet_per_hour: Option<f64>,
+    pub aerobic_decoupling_percent: Option<f64>,
+    pub late_speed_change_percent: Option<f64>,
+    pub fatigue_index: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -397,6 +536,7 @@ pub async fn get_training_reports(
                 climbing: None,
                 fatigue: None,
                 compare_rides: None,
+                reassessment: None,
             }));
         }
         ReportId::Endurance => {
@@ -411,6 +551,7 @@ pub async fn get_training_reports(
                 climbing: None,
                 fatigue: None,
                 compare_rides: None,
+                reassessment: None,
             }));
         }
         ReportId::Climbing => {
@@ -425,6 +566,7 @@ pub async fn get_training_reports(
                 climbing: Some(build_climbing_report(&activity_models)),
                 fatigue: None,
                 compare_rides: None,
+                reassessment: None,
             }));
         }
         ReportId::Fatigue => {
@@ -439,6 +581,7 @@ pub async fn get_training_reports(
                 climbing: None,
                 fatigue: Some(build_fatigue_report(&activity_models)),
                 compare_rides: None,
+                reassessment: None,
             }));
         }
         ReportId::CompareRides => {
@@ -469,6 +612,89 @@ pub async fn get_training_reports(
                 compare_rides: Some(build_compare_rides_report(
                     &activity_models,
                     &selected_models,
+                )),
+                reassessment: None,
+            }));
+        }
+        ReportId::Reassessment => {
+            let preferences = user_preferences::Entity::find()
+                .filter(user_preferences::Column::UserId.eq(user.id))
+                .one(&state.db)
+                .await?;
+            let reassessment_range_end = make_utc_datetime(
+                now.date_naive().year(),
+                now.date_naive().month(),
+                now.date_naive().day(),
+                23,
+                59,
+                59,
+            )?;
+            let reassessment_range_start = match preferences
+                .as_ref()
+                .and_then(|model| model.xc_goal_start_date)
+            {
+                Some(start_date) => make_utc_datetime(
+                    start_date.year(),
+                    start_date.month(),
+                    start_date.day(),
+                    0,
+                    0,
+                    0,
+                )?,
+                None => range_start,
+            };
+            let spring_year = if reassessment_range_end.date_naive().month() < 6 {
+                reassessment_range_end.date_naive().year() - 1
+            } else {
+                reassessment_range_end.date_naive().year()
+            };
+            let spring_start_date = NaiveDate::from_ymd_opt(spring_year, 3, 1)
+                .ok_or_else(|| AppError::bad_request("Invalid spring baseline date"))?;
+            let spring_start = make_utc_datetime(
+                spring_start_date.year(),
+                spring_start_date.month(),
+                spring_start_date.day(),
+                0,
+                0,
+                0,
+            )?;
+            let analysis_range_start = reassessment_range_start.min(spring_start);
+            let reassessment_activity_models = filter_activities(
+                activities::Entity::find()
+                    .filter(activities::Column::UserId.eq(user.id))
+                    .filter(activities::Column::StartedAt.gte(analysis_range_start))
+                    .filter(activities::Column::StartedAt.lte(reassessment_range_end)),
+                &query,
+            )
+            .all(&state.db)
+            .await?;
+            let fitness_rows = fitness_freshness_daily::Entity::find()
+                .filter(fitness_freshness_daily::Column::UserId.eq(user.id))
+                .filter(fitness_freshness_daily::Column::Day.gte(analysis_range_start.date_naive()))
+                .filter(
+                    fitness_freshness_daily::Column::Day.lte(reassessment_range_end.date_naive()),
+                )
+                .order_by_asc(fitness_freshness_daily::Column::Day)
+                .all(&state.db)
+                .await?;
+
+            return Ok(Json(TrainingReportsResponse {
+                generated_at: now,
+                boundary,
+                range_start: reassessment_range_start.to_rfc3339(),
+                range_end: reassessment_range_end.to_rfc3339(),
+                points: Vec::new(),
+                ride_summary: None,
+                endurance: None,
+                climbing: None,
+                fatigue: None,
+                compare_rides: None,
+                reassessment: Some(build_reassessment_report(
+                    &reassessment_activity_models,
+                    &fitness_rows,
+                    preferences.as_ref(),
+                    reassessment_range_start.date_naive(),
+                    reassessment_range_end.date_naive(),
                 )),
             }));
         }
@@ -598,6 +824,7 @@ pub async fn get_training_reports(
         climbing: None,
         fatigue: None,
         compare_rides: None,
+        reassessment: None,
     }))
 }
 
@@ -847,6 +1074,51 @@ fn report_definitions() -> Vec<TrainingReportDefinitionResponse> {
             ],
         },
         TrainingReportDefinitionResponse {
+            id: ReportId::Reassessment,
+            display_name: "Reassessment".to_string(),
+            short_purpose: "Reassess the active XC event goal from endurance progression, climbing density, elapsed long-ride pace, and spring-baseline fitness delta.".to_string(),
+            supported_filters: vec![ReportFilterKey::MinDuration, ReportFilterKey::MinDistance],
+            required_data_quality: vec![
+                "distance".to_string(),
+                "elevation".to_string(),
+                "time".to_string(),
+                "heart_rate".to_string(),
+                "fitness_freshness".to_string(),
+            ],
+            result_sections: vec![
+                "verdict".to_string(),
+                "readiness_signals".to_string(),
+                "spring_vs_recent".to_string(),
+                "benchmark_rides".to_string(),
+            ],
+            metrics: vec![
+                metric_definition(
+                    "endurance_progression",
+                    "Endurance Progression",
+                    None,
+                    ReportMetricDirection::Higher,
+                ),
+                metric_definition(
+                    "climbing_density",
+                    "Climbing Density",
+                    Some("ft/h"),
+                    ReportMetricDirection::Higher,
+                ),
+                metric_definition(
+                    "long_ride_pace",
+                    "Elapsed Long-Ride Pace",
+                    Some("mph"),
+                    ReportMetricDirection::Higher,
+                ),
+                metric_definition(
+                    "fitness_delta",
+                    "Fitness Delta",
+                    Some("CTL"),
+                    ReportMetricDirection::Higher,
+                ),
+            ],
+        },
+        TrainingReportDefinitionResponse {
             id: ReportId::AggregateTrends,
             display_name: "Aggregate Trends".to_string(),
             short_purpose: "Existing weekly, monthly, zone, climbing, and elevation charts."
@@ -910,6 +1182,7 @@ fn parse_report_id(raw: Option<&str>) -> Result<ReportId, AppError> {
         Some("climbing") => Ok(ReportId::Climbing),
         Some("fatigue") => Ok(ReportId::Fatigue),
         Some("compare_rides") => Ok(ReportId::CompareRides),
+        Some("reassessment") => Ok(ReportId::Reassessment),
         Some(_) => Err(AppError::bad_request("Unknown report id")),
     }
 }
@@ -1411,6 +1684,1056 @@ fn build_compare_rides_report(
         selected_rides,
         metrics,
     }
+}
+
+const REASSESSMENT_LONG_RIDE_MIN_SECONDS: i32 = 10_800;
+const REASSESSMENT_LONG_RIDE_MIN_DISTANCE_METERS: f64 = 56_327.04;
+const REASSESSMENT_LONG_RIDE_TARGET_RATIO: f64 = 0.65;
+
+#[derive(Debug, Clone)]
+struct ReassessmentTarget {
+    response: ReassessmentTargetResponse,
+}
+
+#[derive(Debug, Clone)]
+struct ReassessmentWindowMetrics {
+    response: ReassessmentWindowResponse,
+    benchmark_rides: Vec<ReassessmentBenchmarkRideResponse>,
+    endurance_ride: Option<ReassessmentBenchmarkRideResponse>,
+    pace_ride: Option<ReassessmentBenchmarkRideResponse>,
+}
+
+fn build_reassessment_report(
+    activities: &[activities::Model],
+    fitness_rows: &[fitness_freshness_daily::Model],
+    preferences: Option<&user_preferences::Model>,
+    range_start: NaiveDate,
+    range_end: NaiveDate,
+) -> ReassessmentReportResponse {
+    let target = reassessment_target(preferences);
+    let spring_year = if range_end.month() < 6 {
+        range_end.year() - 1
+    } else {
+        range_end.year()
+    };
+    let spring_start = NaiveDate::from_ymd_opt(spring_year, 3, 1).unwrap_or(range_end);
+    let spring_end = NaiveDate::from_ymd_opt(spring_year, 5, 31).unwrap_or(range_end);
+    let training_start = range_start.min(range_end);
+    let current_start = if training_start <= spring_end {
+        (spring_end + Duration::days(1)).min(range_end)
+    } else {
+        training_start
+    };
+    let prior_training = if training_start < current_start {
+        Some(reassessment_window_metrics(
+            "Last known training evidence",
+            training_start,
+            current_start - Duration::days(1),
+            activities,
+            fitness_rows,
+        ))
+    } else {
+        None
+    };
+
+    let recent = reassessment_window_metrics(
+        "Current training block",
+        current_start,
+        range_end,
+        activities,
+        fitness_rows,
+    );
+    let spring = reassessment_window_metrics(
+        "Spring baseline",
+        spring_start,
+        spring_end,
+        activities,
+        fitness_rows,
+    );
+    let improvement = reassessment_improvement(&recent.response, &spring.response);
+    let ability_estimate = reassessment_ability_estimate(&recent, &target);
+
+    let endurance_progression = reassessment_endurance_signal(
+        &recent,
+        &spring,
+        prior_training.as_ref(),
+        &target,
+        fitness_rows,
+        range_end,
+    );
+    let climbing_density = reassessment_climbing_density_signal(
+        &recent,
+        &spring,
+        prior_training.as_ref(),
+        &target,
+        fitness_rows,
+        range_end,
+    );
+    let long_ride_pace = reassessment_long_ride_pace_signal(
+        &recent,
+        &spring,
+        prior_training.as_ref(),
+        &target,
+        fitness_rows,
+        range_end,
+    );
+    let fitness_delta =
+        reassessment_fitness_delta_signal(&recent.response, &spring.response, range_end);
+    let verdict = reassessment_overall_verdict(&[
+        endurance_progression.status,
+        climbing_density.status,
+        long_ride_pace.status,
+        fitness_delta.status,
+    ]);
+    let (verdict_title, verdict_detail) = reassessment_verdict_copy(
+        verdict,
+        &target.response,
+        &recent.response,
+        &spring.response,
+        &fitness_delta,
+        &ability_estimate,
+    );
+
+    let mut benchmark_rides = recent
+        .benchmark_rides
+        .iter()
+        .chain(spring.benchmark_rides.iter())
+        .cloned()
+        .collect::<Vec<_>>();
+    benchmark_rides.sort_by(|a, b| {
+        b.elapsed_seconds
+            .cmp(&a.elapsed_seconds)
+            .then_with(|| b.started_at.cmp(&a.started_at))
+    });
+    benchmark_rides.truncate(8);
+
+    let mut notes = vec![
+        "The saved training start anchors this report; current evidence starts after the spring baseline when those windows overlap.".to_string(),
+        "Long rides are rides at least 3 hours or 35 miles.".to_string(),
+        "Long-ride pace uses elapsed time because the event clock does not pause for breaks."
+            .to_string(),
+        "Moving speed remains useful context, but it is not used for the pace verdict.".to_string(),
+    ];
+    if target.response.target_source != ReassessmentTargetSource::SavedGoal {
+        notes.push(target.response.target_source_detail.clone());
+    }
+    if target.response.target_finish_seconds.is_none() {
+        notes.push("The active XC goal does not include a target finish time, so target pace and target climbing-density signals are limited.".to_string());
+    }
+    if spring.response.activity_count == 0 {
+        notes.push(
+            "No spring-baseline rides were found, so improvement claims are limited.".to_string(),
+        );
+    }
+    if recent.response.long_ride_count == 0 {
+        notes.push("No current long rides were found in the reassessment window.".to_string());
+    }
+
+    ReassessmentReportResponse {
+        verdict,
+        verdict_title,
+        verdict_detail,
+        target: target.response,
+        ability_estimate,
+        recent_window: recent.response,
+        spring_baseline_window: spring.response,
+        improvement,
+        endurance_progression,
+        climbing_density,
+        long_ride_pace,
+        fitness_delta,
+        benchmark_rides,
+        notes,
+    }
+}
+
+fn reassessment_target(preferences: Option<&user_preferences::Model>) -> ReassessmentTarget {
+    if let Some(preferences) = preferences {
+        if let (Some(distance), Some(elevation)) = (
+            preferences.xc_goal_target_distance_meters,
+            preferences.xc_goal_target_elevation_gain_meters,
+        ) {
+            if distance > 0.0 && elevation > 0.0 {
+                let target_finish_seconds = preferences.xc_goal_target_finish_time_seconds;
+                let target_speed_mps = target_finish_seconds
+                    .and_then(|seconds| (seconds > 0).then_some(distance / f64::from(seconds)));
+                let target_climb_density_feet_per_hour =
+                    target_finish_seconds.and_then(|seconds| {
+                        (seconds > 0)
+                            .then_some(elevation * FEET_PER_METER / (f64::from(seconds) / 3600.0))
+                    });
+
+                return ReassessmentTarget {
+                    response: ReassessmentTargetResponse {
+                        event_name: preferences
+                            .xc_goal_event_name
+                            .clone()
+                            .unwrap_or_else(|| "XC event goal".to_string()),
+                        target_source: ReassessmentTargetSource::SavedGoal,
+                        target_source_detail:
+                            "Using the saved XC event goal from account preferences.".to_string(),
+                        target_date: preferences
+                            .xc_goal_target_date
+                            .map(|date| date.format("%Y-%m-%d").to_string()),
+                        event_profile: preferences.xc_goal_event_profile.clone(),
+                        target_finish_seconds,
+                        target_distance_meters: Some(round_metric(distance)),
+                        target_elevation_gain_meters: Some(round_metric(elevation)),
+                        target_speed_mps: target_speed_mps.map(round_metric),
+                        target_speed_mph: target_speed_mps
+                            .map(|speed| round_metric(speed * 2.236_936)),
+                        target_climb_density_feet_per_hour: target_climb_density_feet_per_hour
+                            .map(round_metric),
+                    },
+                };
+            }
+        }
+    }
+
+    ReassessmentTarget {
+        response: ReassessmentTargetResponse {
+            event_name: "XC event goal missing".to_string(),
+            target_source: ReassessmentTargetSource::MissingGoal,
+            target_source_detail: if preferences.is_some() {
+                "The saved XC goal is missing distance or elevation, so target-specific pace and climbing-density signals are unavailable."
+            } else {
+                "No saved XC goal was found, so target-specific pace and climbing-density signals are unavailable."
+            }
+            .to_string(),
+            target_date: None,
+            event_profile: None,
+            target_finish_seconds: None,
+            target_distance_meters: None,
+            target_elevation_gain_meters: None,
+            target_speed_mps: None,
+            target_speed_mph: None,
+            target_climb_density_feet_per_hour: None,
+        },
+    }
+}
+
+fn reassessment_window_metrics(
+    label: &str,
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+    activities: &[activities::Model],
+    fitness_rows: &[fitness_freshness_daily::Model],
+) -> ReassessmentWindowMetrics {
+    let mut activity_count = 0;
+    let mut total_distance_meters = 0.0;
+    let mut total_elevation_gain_meters = 0.0;
+    let mut benchmark_rides = Vec::new();
+
+    for activity in activities
+        .iter()
+        .filter(|activity| (start_date..=end_date).contains(&activity.started_at.date_naive()))
+    {
+        activity_count += 1;
+        total_distance_meters += activity.distance_meters.unwrap_or_default().max(0.0);
+        total_elevation_gain_meters += activity.elevation_gain_meters.unwrap_or_default().max(0.0);
+
+        let samples = activity_samples(activity);
+        let elapsed_seconds = activity_elapsed_seconds(activity, &samples);
+        let is_long_ride = elapsed_seconds >= REASSESSMENT_LONG_RIDE_MIN_SECONDS
+            || activity
+                .distance_meters
+                .is_some_and(|distance| distance >= REASSESSMENT_LONG_RIDE_MIN_DISTANCE_METERS);
+        if !is_long_ride {
+            continue;
+        }
+
+        let analysis = compare_analysis_from_activity(activity);
+        let elapsed_speed_mph = activity.distance_meters.and_then(|distance| {
+            (distance > 0.0 && elapsed_seconds > 0)
+                .then(|| round_metric((distance / f64::from(elapsed_seconds)) * 2.236_936))
+        });
+        benchmark_rides.push(ReassessmentBenchmarkRideResponse {
+            activity_id: activity.id,
+            title: activity.title.clone(),
+            started_at: activity.started_at,
+            distance_miles: activity
+                .distance_meters
+                .map(|distance| round_metric(distance / 1609.344)),
+            elevation_gain_feet: activity
+                .elevation_gain_meters
+                .map(|gain| round_metric(gain * FEET_PER_METER)),
+            elapsed_seconds,
+            moving_seconds: activity.moving_time_seconds,
+            elapsed_speed_mph,
+            moving_speed_mph: analysis
+                .moving_speed_mps
+                .map(|speed| round_metric(speed * 2.236_936)),
+            climbing_density_feet_per_hour: analysis
+                .climbing_density_feet_per_hour
+                .map(round_metric),
+            aerobic_decoupling_percent: analysis.aerobic_decoupling_percent.map(round_metric),
+            late_speed_change_percent: analysis.late_speed_change_percent.map(round_metric),
+            fatigue_index: worst_fatigue_index(&hourly_durability(&samples)),
+        });
+    }
+
+    benchmark_rides.sort_by(|a, b| {
+        b.elapsed_seconds
+            .cmp(&a.elapsed_seconds)
+            .then_with(|| b.started_at.cmp(&a.started_at))
+    });
+
+    let endurance_ride = benchmark_rides
+        .iter()
+        .cloned()
+        .max_by(|a, b| reassessment_endurance_score(a).total_cmp(&reassessment_endurance_score(b)));
+    let pace_ride = benchmark_rides
+        .iter()
+        .filter(|ride| ride.elapsed_speed_mph.is_some())
+        .cloned()
+        .max_by(|a, b| {
+            a.elapsed_speed_mph
+                .unwrap_or_default()
+                .total_cmp(&b.elapsed_speed_mph.unwrap_or_default())
+        });
+    let climbing_density_ride = benchmark_rides
+        .iter()
+        .filter(|ride| ride.climbing_density_feet_per_hour.is_some())
+        .cloned()
+        .max_by(|a, b| {
+            a.climbing_density_feet_per_hour
+                .unwrap_or_default()
+                .total_cmp(&b.climbing_density_feet_per_hour.unwrap_or_default())
+        });
+    let fitness_values = fitness_rows
+        .iter()
+        .filter(|row| (start_date..=end_date).contains(&row.day))
+        .map(|row| row.fitness)
+        .collect::<Vec<_>>();
+    let latest_fitness = fitness_rows
+        .iter()
+        .rev()
+        .find(|row| (start_date..=end_date).contains(&row.day))
+        .map(|row| row.fitness);
+
+    ReassessmentWindowMetrics {
+        response: ReassessmentWindowResponse {
+            label: label.to_string(),
+            start_date: start_date.format("%Y-%m-%d").to_string(),
+            end_date: end_date.format("%Y-%m-%d").to_string(),
+            activity_count,
+            long_ride_count: benchmark_rides.len() as i32,
+            total_distance_miles: round_metric(total_distance_meters / 1609.344),
+            total_elevation_gain_feet: round_metric(total_elevation_gain_meters * FEET_PER_METER),
+            best_long_ride_distance_miles: endurance_ride
+                .as_ref()
+                .and_then(|ride| ride.distance_miles),
+            best_long_ride_duration_seconds: endurance_ride
+                .as_ref()
+                .map(|ride| ride.elapsed_seconds),
+            best_long_ride_speed_mph: pace_ride.as_ref().and_then(|ride| ride.elapsed_speed_mph),
+            best_long_ride_climbing_density_feet_per_hour: climbing_density_ride
+                .as_ref()
+                .and_then(|ride| ride.climbing_density_feet_per_hour),
+            aggregate_long_ride_climbing_density_feet_per_hour:
+                aggregate_climbing_density_feet_per_hour(&benchmark_rides),
+            median_long_ride_decoupling_percent: median(
+                benchmark_rides
+                    .iter()
+                    .filter_map(|ride| ride.aerobic_decoupling_percent)
+                    .collect(),
+            )
+            .map(round_metric),
+            median_long_ride_late_speed_change_percent: median(
+                benchmark_rides
+                    .iter()
+                    .filter_map(|ride| ride.late_speed_change_percent)
+                    .collect(),
+            )
+            .map(round_metric),
+            median_long_ride_fatigue_index: median(
+                benchmark_rides
+                    .iter()
+                    .filter_map(|ride| ride.fatigue_index)
+                    .collect(),
+            )
+            .map(round_metric),
+            average_fitness: mean(fitness_values).map(round_metric),
+            latest_fitness: latest_fitness.map(round_metric),
+        },
+        benchmark_rides,
+        endurance_ride,
+        pace_ride,
+    }
+}
+
+fn reassessment_endurance_score(ride: &ReassessmentBenchmarkRideResponse) -> f64 {
+    let duration_hours = f64::from(ride.elapsed_seconds.max(0)) / 3600.0;
+    let distance_score = ride.distance_miles.unwrap_or_default() / 10.0;
+    duration_hours.max(distance_score)
+}
+
+fn aggregate_climbing_density_feet_per_hour(
+    rides: &[ReassessmentBenchmarkRideResponse],
+) -> Option<f64> {
+    let mut elevation_feet = 0.0;
+    let mut duration_seconds = 0;
+
+    for ride in rides {
+        let Some(ride_elevation_feet) = ride.elevation_gain_feet else {
+            continue;
+        };
+        let ride_duration_seconds = ride.moving_seconds.unwrap_or(ride.elapsed_seconds);
+        if ride_elevation_feet <= 0.0 || ride_duration_seconds <= 0 {
+            continue;
+        }
+
+        elevation_feet += ride_elevation_feet;
+        duration_seconds += ride_duration_seconds;
+    }
+
+    (elevation_feet > 0.0 && duration_seconds > 0)
+        .then(|| round_metric(elevation_feet / (f64::from(duration_seconds) / 3600.0)))
+}
+
+fn latest_benchmark_value<F>(
+    metrics: Option<&ReassessmentWindowMetrics>,
+    value: F,
+) -> (Option<&ReassessmentBenchmarkRideResponse>, Option<f64>)
+where
+    F: Fn(&ReassessmentBenchmarkRideResponse) -> Option<f64>,
+{
+    let ride = metrics.and_then(|metrics| {
+        metrics
+            .benchmark_rides
+            .iter()
+            .filter(|ride| value(ride).is_some())
+            .max_by(|a, b| a.started_at.cmp(&b.started_at))
+    });
+    (ride, ride.and_then(value))
+}
+
+fn latest_fitness_on_or_before(
+    fitness_rows: &[fitness_freshness_daily::Model],
+    day: NaiveDate,
+) -> Option<f64> {
+    fitness_rows
+        .iter()
+        .filter(|row| row.day <= day && row.fitness > 0.0)
+        .max_by(|a, b| a.day.cmp(&b.day))
+        .map(|row| row.fitness)
+}
+
+fn projected_stale_signal_value(
+    last_known_value: Option<f64>,
+    last_known_source: Option<&ReassessmentBenchmarkRideResponse>,
+    fitness_rows: &[fitness_freshness_daily::Model],
+    end_date: NaiveDate,
+) -> (Option<f64>, Option<String>) {
+    let (Some(value), Some(source)) = (last_known_value, last_known_source) else {
+        return (None, None);
+    };
+    let source_day = source.started_at.date_naive();
+    let Some(source_fitness) = latest_fitness_on_or_before(fitness_rows, source_day) else {
+        return (None, None);
+    };
+    let Some(current_fitness) = latest_fitness_on_or_before(fitness_rows, end_date) else {
+        return (None, None);
+    };
+    if source_fitness <= 0.0 || current_fitness <= 0.0 {
+        return (None, None);
+    }
+
+    let fitness_ratio = (current_fitness / source_fitness).clamp(0.60, 1.05);
+    let projected_value = round_metric(value * fitness_ratio);
+
+    (
+        Some(projected_value),
+        Some(format!(
+            "Fitness-adjusted from last known benchmark using CTL {} -> {}; not used for verdict.",
+            round_metric(source_fitness),
+            round_metric(current_fitness)
+        )),
+    )
+}
+
+fn reassessment_improvement(
+    recent: &ReassessmentWindowResponse,
+    spring: &ReassessmentWindowResponse,
+) -> ReassessmentImprovementResponse {
+    ReassessmentImprovementResponse {
+        fitness_change: delta(recent.average_fitness, spring.average_fitness),
+        fitness_change_percent: percent_delta(recent.average_fitness, spring.average_fitness),
+        long_ride_speed_change_mph: delta(
+            recent.best_long_ride_speed_mph,
+            spring.best_long_ride_speed_mph,
+        ),
+        long_ride_speed_change_percent: percent_delta(
+            recent.best_long_ride_speed_mph,
+            spring.best_long_ride_speed_mph,
+        ),
+        long_ride_distance_change_miles: delta(
+            recent.best_long_ride_distance_miles,
+            spring.best_long_ride_distance_miles,
+        ),
+        long_ride_distance_change_percent: percent_delta(
+            recent.best_long_ride_distance_miles,
+            spring.best_long_ride_distance_miles,
+        ),
+        climbing_density_change_feet_per_hour: delta(
+            recent.aggregate_long_ride_climbing_density_feet_per_hour,
+            spring.aggregate_long_ride_climbing_density_feet_per_hour,
+        ),
+        climbing_density_change_percent: percent_delta(
+            recent.aggregate_long_ride_climbing_density_feet_per_hour,
+            spring.aggregate_long_ride_climbing_density_feet_per_hour,
+        ),
+    }
+}
+
+fn reassessment_ability_estimate(
+    recent: &ReassessmentWindowMetrics,
+    target: &ReassessmentTarget,
+) -> ReassessmentAbilityEstimateResponse {
+    let target_distance_miles = target
+        .response
+        .target_distance_meters
+        .map(|meters| meters / 1609.344);
+    let target_elevation_feet = target
+        .response
+        .target_elevation_gain_meters
+        .map(|meters| meters * FEET_PER_METER);
+    let current_speed = recent.response.best_long_ride_speed_mph;
+    let current_climb_density = recent
+        .response
+        .aggregate_long_ride_climbing_density_feet_per_hour;
+    let pace_limited_finish_seconds = match (target_distance_miles, current_speed) {
+        (Some(distance), Some(speed)) if distance > 0.0 && speed > 0.0 => {
+            Some((distance / speed * 3600.0).round() as i32)
+        }
+        _ => None,
+    };
+    let climbing_limited_finish_seconds = match (target_elevation_feet, current_climb_density) {
+        (Some(elevation), Some(density)) if elevation > 0.0 && density > 0.0 => {
+            Some((elevation / density * 3600.0).round() as i32)
+        }
+        _ => None,
+    };
+    let estimated_finish_seconds =
+        match (pace_limited_finish_seconds, climbing_limited_finish_seconds) {
+            (Some(pace), Some(climbing)) => Some(pace.max(climbing)),
+            (Some(pace), None) => Some(pace),
+            (None, Some(climbing)) => Some(climbing),
+            (None, None) => None,
+        };
+    let limiter = match (pace_limited_finish_seconds, climbing_limited_finish_seconds) {
+        (Some(pace), Some(climbing)) if climbing > pace => Some("climbing".to_string()),
+        (Some(_), Some(_)) => Some("pace".to_string()),
+        (Some(_), None) => Some("pace".to_string()),
+        (None, Some(_)) => Some("climbing".to_string()),
+        (None, None) => None,
+    };
+    let estimated_speed_mph = match (target_distance_miles, estimated_finish_seconds) {
+        (Some(distance), Some(seconds)) if distance > 0.0 && seconds > 0 => {
+            Some(round_metric(distance / (f64::from(seconds) / 3600.0)))
+        }
+        _ => None,
+    };
+    let detail = if estimated_finish_seconds.is_some() {
+        "Estimated from current benchmark long rides against the saved course distance and elevation. This is a current-ability estimate, not a finish target."
+    } else if target.response.target_distance_meters.is_none()
+        || target.response.target_elevation_gain_meters.is_none()
+    {
+        "Save course distance and elevation before Bike can estimate current course ability."
+    } else {
+        "Bike needs at least one current benchmark long ride with pace or climbing-density data before it can estimate current course ability."
+    };
+
+    ReassessmentAbilityEstimateResponse {
+        estimated_finish_seconds,
+        estimated_speed_mph,
+        pace_limited_finish_seconds,
+        climbing_limited_finish_seconds,
+        current_long_ride_speed_mph: current_speed,
+        current_climb_density_feet_per_hour: current_climb_density,
+        limiter,
+        detail: detail.to_string(),
+    }
+}
+
+fn reassessment_endurance_signal(
+    recent: &ReassessmentWindowMetrics,
+    spring: &ReassessmentWindowMetrics,
+    prior_training: Option<&ReassessmentWindowMetrics>,
+    target: &ReassessmentTarget,
+    fitness_rows: &[fitness_freshness_daily::Model],
+    range_end: NaiveDate,
+) -> ReassessmentSignalResponse {
+    let duration_hours = recent
+        .response
+        .best_long_ride_duration_seconds
+        .map(|seconds| f64::from(seconds) / 3600.0);
+    let baseline_hours = spring
+        .response
+        .best_long_ride_duration_seconds
+        .map(|seconds| f64::from(seconds) / 3600.0);
+    let distance = recent.response.best_long_ride_distance_miles;
+    let fatigue = recent.response.median_long_ride_fatigue_index;
+    let target_hours = target
+        .response
+        .target_finish_seconds
+        .map(|seconds| f64::from(seconds) / 3600.0 * REASSESSMENT_LONG_RIDE_TARGET_RATIO);
+    let target_miles = target
+        .response
+        .target_distance_meters
+        .map(|meters| (meters / 1609.344) * REASSESSMENT_LONG_RIDE_TARGET_RATIO);
+    let improved_duration =
+        percent_delta(duration_hours, baseline_hours).unwrap_or_default() >= 10.0;
+    let status = if recent.response.long_ride_count == 0 || spring.response.long_ride_count == 0 {
+        ReassessmentVerdict::MissingData
+    } else if target_hours
+        .is_some_and(|hours_target| duration_hours.is_some_and(|hours| hours >= hours_target))
+        || target_miles
+            .is_some_and(|miles_target| distance.is_some_and(|miles| miles >= miles_target))
+    {
+        if fatigue.is_none_or(|value| value <= 25.0) {
+            ReassessmentVerdict::OnTrack
+        } else {
+            ReassessmentVerdict::PlausibleButRisky
+        }
+    } else if target_hours.is_some_and(|hours_target| {
+        duration_hours.is_some_and(|hours| hours >= hours_target * 0.70)
+    }) || target_miles
+        .is_some_and(|miles_target| distance.is_some_and(|miles| miles >= miles_target * 0.70))
+        || improved_duration
+    {
+        ReassessmentVerdict::PlausibleButRisky
+    } else {
+        ReassessmentVerdict::NeedsMoreEvidence
+    };
+    let (last_known_source, last_known_value) = if duration_hours.is_none() {
+        latest_benchmark_value(prior_training, |ride| {
+            Some(f64::from(ride.elapsed_seconds) / 3600.0)
+        })
+    } else {
+        (None, None)
+    };
+    let (projected_current_value, projection_detail) =
+        projected_stale_signal_value(last_known_value, last_known_source, fitness_rows, range_end);
+
+    reassessment_signal(
+        status,
+        "Endurance progression",
+        match status {
+            ReassessmentVerdict::OnTrack => "Current long-ride duration or distance is in the range that can support the active XC goal if terrain execution holds.",
+            ReassessmentVerdict::PlausibleButRisky => "Current endurance is substantial or improving, but the best long ride is still short of a strong target-specific proof point.",
+            ReassessmentVerdict::NeedsMoreEvidence => "Current long rides do not yet show enough duration or distance progression for this reassessment.",
+            ReassessmentVerdict::MissingData => "No current long rides were available for endurance progression.",
+        },
+        duration_hours.map(round_metric),
+        baseline_hours.map(round_metric),
+        target_hours.map(round_metric),
+        "h",
+        recent.endurance_ride.as_ref(),
+        spring.endurance_ride.as_ref(),
+        last_known_value,
+        last_known_source,
+        projected_current_value,
+        projection_detail,
+        range_end,
+    )
+}
+
+fn reassessment_climbing_density_signal(
+    recent: &ReassessmentWindowMetrics,
+    spring: &ReassessmentWindowMetrics,
+    prior_training: Option<&ReassessmentWindowMetrics>,
+    target: &ReassessmentTarget,
+    fitness_rows: &[fitness_freshness_daily::Model],
+    range_end: NaiveDate,
+) -> ReassessmentSignalResponse {
+    let current = recent
+        .response
+        .aggregate_long_ride_climbing_density_feet_per_hour;
+    let baseline = spring
+        .response
+        .aggregate_long_ride_climbing_density_feet_per_hour;
+    let target_value = target.response.target_climb_density_feet_per_hour;
+    let improved = percent_delta(current, baseline).unwrap_or_default() >= 15.0;
+    let status = if current.is_none() || baseline.is_none() {
+        ReassessmentVerdict::MissingData
+    } else if target_value.is_none() {
+        if improved {
+            ReassessmentVerdict::PlausibleButRisky
+        } else {
+            ReassessmentVerdict::NeedsMoreEvidence
+        }
+    } else if current.is_some_and(|value| value >= target_value.unwrap_or_default() * 0.90) {
+        ReassessmentVerdict::OnTrack
+    } else if current.is_some_and(|value| value >= target_value.unwrap_or_default() * 0.75)
+        || improved
+    {
+        ReassessmentVerdict::PlausibleButRisky
+    } else {
+        ReassessmentVerdict::NeedsMoreEvidence
+    };
+    let detail = match status {
+        ReassessmentVerdict::OnTrack => {
+            "Training-block benchmark rides are close to the target event's required vertical-per-hour load in aggregate."
+        }
+        ReassessmentVerdict::PlausibleButRisky => {
+            if target_value.is_none() {
+                "Training-block climbing density is improving versus spring, but a finish target is still needed for required course density."
+            } else {
+                "Aggregate climbing density is improving or partially specific, but still leaves execution risk for the target finish time."
+            }
+        }
+        ReassessmentVerdict::NeedsMoreEvidence => {
+            if target_value.is_none() {
+                "Training-block climbing density is below the spring benchmark. A finish target is still needed for required course density."
+            } else {
+                "Training-block long rides are not dense enough in aggregate to model the required climbing load."
+            }
+        }
+        ReassessmentVerdict::MissingData if target_value.is_none() => {
+            if target.response.target_finish_seconds.is_none() {
+                "The saved XC goal needs a target finish time to calculate required climbing density. Current and spring ride density are shown as context."
+            } else {
+                "The active XC goal needs distance, elevation, and finish-time targets before required climbing density can be calculated."
+            }
+        }
+        ReassessmentVerdict::MissingData if current.is_none() => {
+            "No training-block long rides had enough elevation and time data for aggregate climbing density."
+        }
+        ReassessmentVerdict::MissingData if baseline.is_none() => {
+            "No spring-baseline long ride had enough distance, elevation, and time data for climbing density."
+        }
+        ReassessmentVerdict::MissingData => {
+            "Climbing-density data is incomplete for this reassessment."
+        }
+    };
+    let (last_known_source, last_known_value) = if current.is_none() {
+        latest_benchmark_value(prior_training, |ride| ride.climbing_density_feet_per_hour)
+    } else {
+        (None, None)
+    };
+    let (projected_current_value, projection_detail) =
+        projected_stale_signal_value(last_known_value, last_known_source, fitness_rows, range_end);
+
+    reassessment_signal(
+        status,
+        "Climbing density",
+        detail,
+        current,
+        baseline,
+        target_value,
+        "ft/h",
+        None,
+        None,
+        last_known_value,
+        last_known_source,
+        projected_current_value,
+        projection_detail,
+        range_end,
+    )
+}
+
+fn reassessment_long_ride_pace_signal(
+    recent: &ReassessmentWindowMetrics,
+    spring: &ReassessmentWindowMetrics,
+    prior_training: Option<&ReassessmentWindowMetrics>,
+    target: &ReassessmentTarget,
+    fitness_rows: &[fitness_freshness_daily::Model],
+    range_end: NaiveDate,
+) -> ReassessmentSignalResponse {
+    let current = recent.response.best_long_ride_speed_mph;
+    let baseline = spring.response.best_long_ride_speed_mph;
+    let target_value = target.response.target_speed_mph;
+    let improved = percent_delta(current, baseline).unwrap_or_default() >= 5.0;
+    let status = if current.is_none() || baseline.is_none() {
+        ReassessmentVerdict::MissingData
+    } else if target_value.is_none() {
+        if improved {
+            ReassessmentVerdict::PlausibleButRisky
+        } else {
+            ReassessmentVerdict::NeedsMoreEvidence
+        }
+    } else if current.is_some_and(|value| value >= target_value.unwrap_or_default() * 1.05) {
+        ReassessmentVerdict::OnTrack
+    } else if current.is_some_and(|value| value >= target_value.unwrap_or_default() * 0.95)
+        || improved
+    {
+        ReassessmentVerdict::PlausibleButRisky
+    } else {
+        ReassessmentVerdict::NeedsMoreEvidence
+    };
+    let detail = match status {
+        ReassessmentVerdict::OnTrack => {
+            "Current long-ride elapsed pace clears the arithmetic target pace with some route-sensitivity buffer."
+        }
+        ReassessmentVerdict::PlausibleButRisky => {
+            if target_value.is_none() {
+                "Current long-ride elapsed pace is improving versus spring, but a finish target is still needed for target pace."
+            } else {
+                "Current long-ride pace is near target or improving, but the margin is thin for technical singletrack."
+            }
+        }
+        ReassessmentVerdict::NeedsMoreEvidence => {
+            if target_value.is_none() {
+                "Current long-ride elapsed pace is below the spring benchmark. A finish target is still needed for target pace."
+            } else {
+                "Current long-ride pace is not yet close enough to the active goal's arithmetic requirement."
+            }
+        }
+        ReassessmentVerdict::MissingData if target_value.is_none() => {
+            if target.response.target_finish_seconds.is_none() {
+                "The saved XC goal needs a target finish time to calculate required elapsed pace. Current and spring elapsed pace are shown as context."
+            } else {
+                "The active XC goal needs distance and finish-time targets before required elapsed pace can be calculated."
+            }
+        }
+        ReassessmentVerdict::MissingData if current.is_none() => {
+            "No current long ride had enough distance and elapsed-time data for pace."
+        }
+        ReassessmentVerdict::MissingData if baseline.is_none() => {
+            "No spring-baseline long ride had enough distance and elapsed-time data for pace."
+        }
+        ReassessmentVerdict::MissingData => "Long-ride pace data is incomplete for this reassessment.",
+    };
+    let (last_known_source, last_known_value) = if current.is_none() {
+        latest_benchmark_value(prior_training, |ride| ride.elapsed_speed_mph)
+    } else {
+        (None, None)
+    };
+    let (projected_current_value, projection_detail) =
+        projected_stale_signal_value(last_known_value, last_known_source, fitness_rows, range_end);
+
+    reassessment_signal(
+        status,
+        "Long-ride pace",
+        detail,
+        current,
+        baseline,
+        target_value,
+        "mph",
+        recent.pace_ride.as_ref(),
+        spring.pace_ride.as_ref(),
+        last_known_value,
+        last_known_source,
+        projected_current_value,
+        projection_detail,
+        range_end,
+    )
+}
+
+fn reassessment_fitness_delta_signal(
+    recent: &ReassessmentWindowResponse,
+    spring: &ReassessmentWindowResponse,
+    range_end: NaiveDate,
+) -> ReassessmentSignalResponse {
+    let current = recent.latest_fitness.or(recent.average_fitness);
+    let baseline = spring.average_fitness.or(spring.latest_fitness);
+    let change = delta(current, baseline).unwrap_or_default();
+    let change_percent = percent_delta(current, baseline).unwrap_or_default();
+    let status = if current.is_none() || baseline.is_none() {
+        ReassessmentVerdict::MissingData
+    } else if change >= 5.0 && change_percent >= 10.0 {
+        ReassessmentVerdict::OnTrack
+    } else if change >= 2.0 || change_percent >= 5.0 {
+        ReassessmentVerdict::PlausibleButRisky
+    } else {
+        ReassessmentVerdict::NeedsMoreEvidence
+    };
+
+    reassessment_signal(
+        status,
+        "Fitness vs spring baseline",
+        match status {
+            ReassessmentVerdict::OnTrack => {
+                "Current training-block fitness is materially higher than the spring baseline."
+            }
+            ReassessmentVerdict::PlausibleButRisky => {
+                "Current training-block fitness is somewhat higher than spring, but the gain is modest."
+            }
+            ReassessmentVerdict::NeedsMoreEvidence => {
+                "Current training-block fitness is not materially better than the spring baseline."
+            }
+            ReassessmentVerdict::MissingData => {
+                "Fitness freshness rows were not available for both training-block and spring windows."
+            }
+        },
+        current,
+        baseline,
+        None,
+        "CTL",
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        range_end,
+    )
+}
+
+fn reassessment_signal(
+    status: ReassessmentVerdict,
+    title: &str,
+    detail: &str,
+    current_value: Option<f64>,
+    baseline_value: Option<f64>,
+    target_value: Option<f64>,
+    unit: &str,
+    current_source: Option<&ReassessmentBenchmarkRideResponse>,
+    baseline_source: Option<&ReassessmentBenchmarkRideResponse>,
+    last_known_value: Option<f64>,
+    last_known_source: Option<&ReassessmentBenchmarkRideResponse>,
+    projected_current_value: Option<f64>,
+    projection_detail: Option<String>,
+    range_end: NaiveDate,
+) -> ReassessmentSignalResponse {
+    ReassessmentSignalResponse {
+        status,
+        title: title.to_string(),
+        detail: detail.to_string(),
+        current_value: current_value.map(round_metric),
+        projected_current_value: projected_current_value.map(round_metric),
+        baseline_value: baseline_value.map(round_metric),
+        target_value: target_value.map(round_metric),
+        unit: unit.to_string(),
+        current_source_activity_id: current_source.map(|ride| ride.activity_id),
+        current_source_title: current_source.map(|ride| ride.title.clone()),
+        current_source_started_at: current_source.map(|ride| ride.started_at),
+        last_known_value: last_known_value.map(round_metric),
+        last_known_source_activity_id: last_known_source.map(|ride| ride.activity_id),
+        last_known_source_title: last_known_source.map(|ride| ride.title.clone()),
+        last_known_source_started_at: last_known_source.map(|ride| ride.started_at),
+        last_known_days_old: last_known_source
+            .map(|ride| (range_end - ride.started_at.date_naive()).num_days().max(0)),
+        projection_detail,
+        baseline_source_activity_id: baseline_source.map(|ride| ride.activity_id),
+        baseline_source_title: baseline_source.map(|ride| ride.title.clone()),
+        baseline_source_started_at: baseline_source.map(|ride| ride.started_at),
+    }
+}
+
+fn reassessment_overall_verdict(signals: &[ReassessmentVerdict]) -> ReassessmentVerdict {
+    let missing = signals
+        .iter()
+        .filter(|status| **status == ReassessmentVerdict::MissingData)
+        .count();
+    if missing > 0 {
+        return ReassessmentVerdict::MissingData;
+    }
+
+    let on_track = signals
+        .iter()
+        .filter(|status| **status == ReassessmentVerdict::OnTrack)
+        .count();
+    let plausible = signals
+        .iter()
+        .filter(|status| **status == ReassessmentVerdict::PlausibleButRisky)
+        .count();
+    let unsupported = signals
+        .iter()
+        .filter(|status| **status == ReassessmentVerdict::NeedsMoreEvidence)
+        .count();
+
+    if on_track >= 3 && unsupported == 0 {
+        ReassessmentVerdict::OnTrack
+    } else if on_track + plausible >= 2 && unsupported <= 1 {
+        ReassessmentVerdict::PlausibleButRisky
+    } else {
+        ReassessmentVerdict::NeedsMoreEvidence
+    }
+}
+
+fn reassessment_verdict_copy(
+    verdict: ReassessmentVerdict,
+    target: &ReassessmentTargetResponse,
+    recent: &ReassessmentWindowResponse,
+    spring: &ReassessmentWindowResponse,
+    fitness_delta: &ReassessmentSignalResponse,
+    ability_estimate: &ReassessmentAbilityEstimateResponse,
+) -> (String, String) {
+    if target.target_finish_seconds.is_none()
+        && target.target_source == ReassessmentTargetSource::SavedGoal
+        && recent.long_ride_count > 0
+        && spring.long_ride_count > 0
+        && fitness_delta.status != ReassessmentVerdict::MissingData
+    {
+        return match verdict {
+            ReassessmentVerdict::OnTrack | ReassessmentVerdict::PlausibleButRisky => (
+                "Current ability estimate available".to_string(),
+                if ability_estimate.estimated_finish_seconds.is_some() {
+                    "Bike can estimate current course ability from current benchmark rides, but a target finish time is still needed to decide whether the desired result is supported.".to_string()
+                } else {
+                    "Bike can compare current and spring benchmark evidence, but needs a target finish time to decide whether the desired result is supported.".to_string()
+                },
+            ),
+            ReassessmentVerdict::NeedsMoreEvidence => (
+                "Current ability needs more evidence".to_string(),
+                if ability_estimate.estimated_finish_seconds.is_some() {
+                    "Bike can estimate current course ability from benchmark rides. Endurance, pace, climbing density, or fitness still needs more proof before race-specific targeting.".to_string()
+                } else {
+                    "Bike has training-block and spring benchmark rides, but the current evidence needs more proof before race-specific targeting.".to_string()
+                },
+            ),
+            ReassessmentVerdict::MissingData => (
+                "Not enough data to estimate ability".to_string(),
+                "Bike found a saved course goal, but still needs enough current rides, spring baseline rides, and fitness rows to estimate current ability.".to_string(),
+            ),
+        };
+    }
+
+    match verdict {
+        ReassessmentVerdict::OnTrack => (
+            "Goal is supported by current evidence".to_string(),
+            "The current window shows enough specificity across endurance, climbing load, pace, and fitness delta to keep the active XC goal live.".to_string(),
+        ),
+        ReassessmentVerdict::PlausibleButRisky => (
+            "Goal is plausible, but still high risk".to_string(),
+            "Current evidence is better than baseline in meaningful places, but one or more target-specific demands still needs proof.".to_string(),
+        ),
+        ReassessmentVerdict::NeedsMoreEvidence => (
+            "Goal needs more evidence".to_string(),
+            "The training-block data still needs more long-ride durability, climbing density, pace, or fitness proof before the target is strongly supported.".to_string(),
+        ),
+        ReassessmentVerdict::MissingData => {
+            if target.target_source == ReassessmentTargetSource::MissingGoal {
+                (
+                    "XC goal required".to_string(),
+                    "The report found training evidence, but the active XC goal is missing distance or elevation, so target-specific pace and climbing-density checks cannot be calculated.".to_string(),
+                )
+            } else if recent.long_ride_count == 0 {
+                (
+                    "Current long ride required".to_string(),
+                    "The report needs at least one current benchmark long ride to reassess the active XC goal.".to_string(),
+                )
+            } else if spring.long_ride_count == 0 {
+                (
+                    "Spring baseline required".to_string(),
+                    "The report needs spring-baseline benchmark rides to tell whether recent long-ride evidence is materially better.".to_string(),
+                )
+            } else if fitness_delta.status == ReassessmentVerdict::MissingData {
+                (
+                    "Fitness baseline required".to_string(),
+                    "The report has ride evidence, but fitness/freshness rows are missing for one of the comparison windows.".to_string(),
+                )
+            } else {
+                (
+                    "Not enough data to reassess".to_string(),
+                    "One or more required reassessment signals is missing enough data to make a defensible call.".to_string(),
+                )
+            }
+        }
+    }
+}
+
+fn delta(current: Option<f64>, baseline: Option<f64>) -> Option<f64> {
+    Some(round_metric(current? - baseline?))
+}
+
+fn percent_delta(current: Option<f64>, baseline: Option<f64>) -> Option<f64> {
+    let current = current?;
+    let baseline = baseline?;
+    (baseline.abs() > f64::EPSILON)
+        .then_some(round_metric(((current - baseline) / baseline) * 100.0))
 }
 
 #[derive(Debug, Clone)]
@@ -2484,6 +3807,128 @@ mod tests {
         activity
     }
 
+    fn reassessment_test_activity(
+        id: i32,
+        title: &str,
+        started_at: DateTime<Utc>,
+        distance_miles: f64,
+        elevation_feet: f64,
+        moving_seconds: i32,
+        elapsed_seconds: i32,
+    ) -> activities::Model {
+        let mut activity = test_activity();
+        activity.id = id;
+        activity.title = title.to_string();
+        activity.started_at = started_at;
+        activity.distance_meters = Some(distance_miles * 1609.344);
+        activity.elevation_gain_meters = Some(elevation_feet / FEET_PER_METER);
+        activity.moving_time_seconds = Some(moving_seconds);
+        activity.total_time_seconds = Some(elapsed_seconds);
+        activity.average_speed_mps = Some((distance_miles * 1609.344) / f64::from(moving_seconds));
+        activity
+    }
+
+    fn test_preferences() -> user_preferences::Model {
+        let now = Utc::now();
+        user_preferences::Model {
+            id: 1,
+            user_id: 7,
+            unit_system: "imperial".to_string(),
+            estimated_ftp_watts: None,
+            heart_rate_zone_bounds_json: None,
+            xc_goal_start_date: Some(NaiveDate::from_ymd_opt(2026, 6, 1).unwrap()),
+            xc_goal_target_date: Some(NaiveDate::from_ymd_opt(2026, 9, 20).unwrap()),
+            xc_goal_target_distance_meters: Some(160_934.4),
+            xc_goal_target_elevation_gain_meters: Some(3_962.4),
+            xc_goal_event_name: Some("Configured event".to_string()),
+            xc_goal_target_finish_time_seconds: Some(43_200),
+            xc_goal_event_profile: Some("technical_singletrack".to_string()),
+            xc_goal_backfill_status: None,
+            xc_goal_backfill_completed_at: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    fn fitness_row(id: i32, day: NaiveDate, fitness: f64) -> fitness_freshness_daily::Model {
+        let now = Utc::now();
+        fitness_freshness_daily::Model {
+            id,
+            user_id: 7,
+            day,
+            activity_count: 1,
+            training_load: 0.0,
+            fitness,
+            fatigue: fitness,
+            form: 0.0,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    fn reassessment_test_activities() -> Vec<activities::Model> {
+        vec![
+            reassessment_test_activity(
+                1,
+                "Spring endurance",
+                Utc.with_ymd_and_hms(2026, 4, 1, 12, 0, 0).single().unwrap(),
+                45.0,
+                1_000.0,
+                14_400,
+                14_400,
+            ),
+            reassessment_test_activity(
+                2,
+                "Spring pace",
+                Utc.with_ymd_and_hms(2026, 4, 8, 12, 0, 0).single().unwrap(),
+                36.0,
+                500.0,
+                10_800,
+                10_800,
+            ),
+            reassessment_test_activity(
+                3,
+                "Spring climbing",
+                Utc.with_ymd_and_hms(2026, 4, 15, 12, 0, 0)
+                    .single()
+                    .unwrap(),
+                35.0,
+                3_000.0,
+                10_800,
+                10_800,
+            ),
+            reassessment_test_activity(
+                4,
+                "Recent endurance",
+                Utc.with_ymd_and_hms(2026, 8, 1, 12, 0, 0).single().unwrap(),
+                60.0,
+                2_000.0,
+                28_800,
+                28_800,
+            ),
+            reassessment_test_activity(
+                5,
+                "Recent pace",
+                Utc.with_ymd_and_hms(2026, 8, 8, 12, 0, 0).single().unwrap(),
+                45.0,
+                1_000.0,
+                10_800,
+                14_400,
+            ),
+            reassessment_test_activity(
+                6,
+                "Recent climbing",
+                Utc.with_ymd_and_hms(2026, 8, 15, 12, 0, 0)
+                    .single()
+                    .unwrap(),
+                36.0,
+                5_000.0,
+                12_600,
+                12_600,
+            ),
+        ]
+    }
+
     fn sample(
         elapsed_seconds: i32,
         distance_meters: f64,
@@ -2537,7 +3982,7 @@ mod tests {
     fn report_registry_declares_initial_reports_and_compare_filters() {
         let definitions = report_definitions();
 
-        assert_eq!(definitions.len(), 6);
+        assert_eq!(definitions.len(), 7);
         assert!(definitions
             .iter()
             .any(|definition| definition.id == ReportId::AggregateTrends));
@@ -2560,6 +4005,19 @@ mod tests {
             .iter()
             .any(|metric| metric.key == "aerobic_decoupling_percent"
                 && metric.direction == ReportMetricDirection::Lower));
+
+        let reassessment = definitions
+            .iter()
+            .find(|definition| definition.id == ReportId::Reassessment)
+            .unwrap();
+        assert!(reassessment
+            .required_data_quality
+            .contains(&"fitness_freshness".to_string()));
+        assert!(reassessment
+            .metrics
+            .iter()
+            .any(|metric| metric.key == "long_ride_pace"
+                && metric.direction == ReportMetricDirection::Higher));
     }
 
     #[test]
@@ -2569,7 +4027,302 @@ mod tests {
             parse_report_id(Some("compare_rides")).unwrap(),
             ReportId::CompareRides
         );
+        assert_eq!(
+            parse_report_id(Some("reassessment")).unwrap(),
+            ReportId::Reassessment
+        );
         assert!(parse_report_id(Some("race_readiness")).is_err());
+    }
+
+    #[test]
+    fn reassessment_target_uses_saved_goal_before_defaults() {
+        let preferences = test_preferences();
+        let target = reassessment_target(Some(&preferences)).response;
+
+        assert_eq!(target.event_name, "Configured event");
+        assert_eq!(target.target_source, ReassessmentTargetSource::SavedGoal);
+        assert_eq!(target.target_finish_seconds, Some(43_200));
+        assert_eq!(target.target_elevation_gain_meters, Some(3_962.4));
+        assert_eq!(target.target_date.as_deref(), Some("2026-09-20"));
+
+        let fallback = reassessment_target(None).response;
+        assert_eq!(
+            fallback.target_source,
+            ReassessmentTargetSource::MissingGoal
+        );
+        assert_eq!(fallback.target_finish_seconds, None);
+        assert_eq!(fallback.target_distance_meters, None);
+    }
+
+    #[test]
+    fn reassessment_uses_independent_long_ride_evidence_sources() {
+        let activities = reassessment_test_activities();
+        let fitness_rows = vec![
+            fitness_row(1, NaiveDate::from_ymd_opt(2026, 4, 15).unwrap(), 50.0),
+            fitness_row(2, NaiveDate::from_ymd_opt(2026, 8, 15).unwrap(), 60.0),
+        ];
+        let preferences = test_preferences();
+
+        let report = build_reassessment_report(
+            &activities,
+            &fitness_rows,
+            Some(&preferences),
+            preferences.xc_goal_start_date.unwrap(),
+            NaiveDate::from_ymd_opt(2026, 8, 31).unwrap(),
+        );
+
+        assert_eq!(report.recent_window.label, "Current training block");
+        assert_eq!(report.recent_window.start_date, "2026-06-01");
+        assert_eq!(report.recent_window.end_date, "2026-08-31");
+        assert_eq!(report.verdict, ReassessmentVerdict::OnTrack);
+        assert_eq!(
+            report.endurance_progression.current_source_title.as_deref(),
+            Some("Recent endurance")
+        );
+        assert_eq!(
+            report.long_ride_pace.current_source_title.as_deref(),
+            Some("Recent pace")
+        );
+        assert_eq!(report.long_ride_pace.current_value, Some(11.25));
+        let pace_benchmark = report
+            .benchmark_rides
+            .iter()
+            .find(|ride| ride.activity_id == 5)
+            .unwrap();
+        assert_eq!(pace_benchmark.elapsed_speed_mph, Some(11.25));
+        assert_eq!(pace_benchmark.moving_speed_mph, Some(15.0));
+        assert_eq!(
+            report
+                .recent_window
+                .aggregate_long_ride_climbing_density_feet_per_hour,
+            Some(551.72)
+        );
+        assert_eq!(
+            report
+                .spring_baseline_window
+                .aggregate_long_ride_climbing_density_feet_per_hour,
+            Some(450.0)
+        );
+        assert_eq!(report.climbing_density.current_value, Some(551.72));
+        assert_eq!(report.climbing_density.baseline_value, Some(450.0));
+        assert_eq!(report.climbing_density.current_source_title, None);
+        assert_eq!(
+            report.climbing_density.status,
+            ReassessmentVerdict::PlausibleButRisky
+        );
+    }
+
+    #[test]
+    fn reassessment_current_window_does_not_reuse_spring_baseline_rides() {
+        let activities = reassessment_test_activities();
+        let fitness_rows = vec![
+            fitness_row(1, NaiveDate::from_ymd_opt(2026, 4, 15).unwrap(), 50.0),
+            fitness_row(2, NaiveDate::from_ymd_opt(2026, 8, 15).unwrap(), 60.0),
+        ];
+        let mut preferences = test_preferences();
+        preferences.xc_goal_start_date = Some(NaiveDate::from_ymd_opt(2026, 4, 1).unwrap());
+
+        let report = build_reassessment_report(
+            &activities,
+            &fitness_rows,
+            Some(&preferences),
+            preferences.xc_goal_start_date.unwrap(),
+            NaiveDate::from_ymd_opt(2026, 8, 31).unwrap(),
+        );
+
+        assert_eq!(report.recent_window.label, "Current training block");
+        assert_eq!(report.recent_window.start_date, "2026-06-01");
+        assert_eq!(report.spring_baseline_window.start_date, "2026-03-01");
+        assert_eq!(report.spring_baseline_window.end_date, "2026-05-31");
+        assert_eq!(
+            report.long_ride_pace.current_source_title.as_deref(),
+            Some("Recent pace")
+        );
+        assert_eq!(
+            report.long_ride_pace.baseline_source_title.as_deref(),
+            Some("Spring pace")
+        );
+        assert_eq!(report.long_ride_pace.current_source_activity_id, Some(5));
+        assert_eq!(report.long_ride_pace.baseline_source_activity_id, Some(2));
+        assert_ne!(
+            report.long_ride_pace.current_source_activity_id,
+            report.long_ride_pace.baseline_source_activity_id
+        );
+    }
+
+    #[test]
+    fn reassessment_stale_training_rides_are_last_known_not_current() {
+        let activities = reassessment_test_activities()
+            .into_iter()
+            .filter(|activity| activity.id <= 3)
+            .collect::<Vec<_>>();
+        let fitness_rows = vec![
+            fitness_row(1, NaiveDate::from_ymd_opt(2026, 4, 15).unwrap(), 70.0),
+            fitness_row(2, NaiveDate::from_ymd_opt(2026, 8, 31).unwrap(), 65.0),
+        ];
+        let mut preferences = test_preferences();
+        preferences.xc_goal_start_date = Some(NaiveDate::from_ymd_opt(2026, 4, 1).unwrap());
+
+        let report = build_reassessment_report(
+            &activities,
+            &fitness_rows,
+            Some(&preferences),
+            preferences.xc_goal_start_date.unwrap(),
+            NaiveDate::from_ymd_opt(2026, 8, 31).unwrap(),
+        );
+
+        assert_eq!(report.recent_window.start_date, "2026-06-01");
+        assert_eq!(report.recent_window.long_ride_count, 0);
+        assert_eq!(
+            report.long_ride_pace.status,
+            ReassessmentVerdict::MissingData
+        );
+        assert_eq!(report.long_ride_pace.current_value, None);
+        assert_eq!(report.long_ride_pace.current_source_activity_id, None);
+        assert_eq!(
+            report.long_ride_pace.last_known_source_title.as_deref(),
+            Some("Spring climbing")
+        );
+        assert_eq!(report.long_ride_pace.last_known_value, Some(11.67));
+        assert_eq!(report.long_ride_pace.projected_current_value, Some(10.84));
+        assert_eq!(report.long_ride_pace.last_known_days_old, Some(138));
+        assert!(report
+            .long_ride_pace
+            .projection_detail
+            .as_deref()
+            .is_some_and(|detail| detail.contains("not used for verdict")));
+    }
+
+    #[test]
+    fn reassessment_missing_fitness_forces_missing_data_verdict() {
+        let activities = reassessment_test_activities();
+        let preferences = test_preferences();
+
+        let report = build_reassessment_report(
+            &activities,
+            &[],
+            Some(&preferences),
+            preferences.xc_goal_start_date.unwrap(),
+            NaiveDate::from_ymd_opt(2026, 8, 31).unwrap(),
+        );
+
+        assert_eq!(
+            report.fitness_delta.status,
+            ReassessmentVerdict::MissingData
+        );
+        assert_eq!(report.verdict, ReassessmentVerdict::MissingData);
+    }
+
+    #[test]
+    fn reassessment_missing_finish_time_still_estimates_current_ability() {
+        let activities = reassessment_test_activities();
+        let fitness_rows = vec![
+            fitness_row(1, NaiveDate::from_ymd_opt(2026, 4, 15).unwrap(), 50.0),
+            fitness_row(2, NaiveDate::from_ymd_opt(2026, 8, 15).unwrap(), 60.0),
+        ];
+        let mut preferences = test_preferences();
+        preferences.xc_goal_target_finish_time_seconds = None;
+
+        let report = build_reassessment_report(
+            &activities,
+            &fitness_rows,
+            Some(&preferences),
+            preferences.xc_goal_start_date.unwrap(),
+            NaiveDate::from_ymd_opt(2026, 8, 31).unwrap(),
+        );
+
+        assert_ne!(report.verdict, ReassessmentVerdict::MissingData);
+        assert_eq!(report.verdict_title, "Current ability estimate available");
+        assert!(report
+            .verdict_detail
+            .contains("estimate current course ability"));
+        assert!(report.ability_estimate.estimated_finish_seconds.is_some());
+        assert_eq!(report.ability_estimate.limiter.as_deref(), Some("climbing"));
+        assert_eq!(
+            report.ability_estimate.current_long_ride_speed_mph,
+            report.long_ride_pace.current_value
+        );
+        assert!(report.long_ride_pace.current_value.is_some());
+        assert_ne!(
+            report.long_ride_pace.status,
+            ReassessmentVerdict::MissingData
+        );
+        assert!(report.long_ride_pace.detail.contains("finish target"));
+        assert!(!report.long_ride_pace.detail.contains("No recent long ride"));
+        assert!(report.climbing_density.current_value.is_some());
+        assert_ne!(
+            report.climbing_density.status,
+            ReassessmentVerdict::MissingData
+        );
+        assert!(report.climbing_density.detail.contains("finish target"));
+        assert!(!report
+            .climbing_density
+            .detail
+            .contains("No recent long ride"));
+    }
+
+    #[test]
+    fn reassessment_fitness_signal_uses_latest_training_block_fitness() {
+        let activities = reassessment_test_activities();
+        let fitness_rows = vec![
+            fitness_row(1, NaiveDate::from_ymd_opt(2026, 4, 15).unwrap(), 50.0),
+            fitness_row(2, NaiveDate::from_ymd_opt(2026, 6, 15).unwrap(), 35.0),
+            fitness_row(3, NaiveDate::from_ymd_opt(2026, 8, 31).unwrap(), 60.0),
+        ];
+        let preferences = test_preferences();
+
+        let report = build_reassessment_report(
+            &activities,
+            &fitness_rows,
+            Some(&preferences),
+            preferences.xc_goal_start_date.unwrap(),
+            NaiveDate::from_ymd_opt(2026, 8, 31).unwrap(),
+        );
+
+        assert_eq!(report.recent_window.average_fitness, Some(47.5));
+        assert_eq!(report.recent_window.latest_fitness, Some(60.0));
+        assert_eq!(report.fitness_delta.current_value, Some(60.0));
+        assert_eq!(report.fitness_delta.status, ReassessmentVerdict::OnTrack);
+    }
+
+    #[test]
+    fn reassessment_overall_verdict_covers_all_statuses() {
+        assert_eq!(
+            reassessment_overall_verdict(&[
+                ReassessmentVerdict::OnTrack,
+                ReassessmentVerdict::OnTrack,
+                ReassessmentVerdict::PlausibleButRisky,
+                ReassessmentVerdict::OnTrack,
+            ]),
+            ReassessmentVerdict::OnTrack
+        );
+        assert_eq!(
+            reassessment_overall_verdict(&[
+                ReassessmentVerdict::PlausibleButRisky,
+                ReassessmentVerdict::PlausibleButRisky,
+                ReassessmentVerdict::NeedsMoreEvidence,
+                ReassessmentVerdict::OnTrack,
+            ]),
+            ReassessmentVerdict::PlausibleButRisky
+        );
+        assert_eq!(
+            reassessment_overall_verdict(&[
+                ReassessmentVerdict::NeedsMoreEvidence,
+                ReassessmentVerdict::NeedsMoreEvidence,
+                ReassessmentVerdict::PlausibleButRisky,
+                ReassessmentVerdict::OnTrack,
+            ]),
+            ReassessmentVerdict::NeedsMoreEvidence
+        );
+        assert_eq!(
+            reassessment_overall_verdict(&[
+                ReassessmentVerdict::MissingData,
+                ReassessmentVerdict::OnTrack,
+                ReassessmentVerdict::OnTrack,
+                ReassessmentVerdict::OnTrack,
+            ]),
+            ReassessmentVerdict::MissingData
+        );
     }
 
     #[test]

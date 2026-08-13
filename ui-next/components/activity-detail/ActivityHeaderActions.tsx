@@ -3,6 +3,7 @@
 import { faBars } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
+import { activitySourceFileUrl } from "../../lib/activitySourceFiles";
 import { formatActivityTypeLabel } from "../../lib/activityTypes";
 import { formatSport } from "../../lib/activityFormatting";
 import type { Activity } from "../../lib/queries";
@@ -71,6 +72,13 @@ export function ActivityHeaderActions({
                     ? "Regenerating..."
                     : "Regenerate derived data"}
                 </button>
+              </li>
+            ) : null}
+            {activity.can_download_source_file ? (
+              <li>
+                <a href={activitySourceFileUrl(activity.id)}>
+                  Download source file
+                </a>
               </li>
             ) : null}
             <li>

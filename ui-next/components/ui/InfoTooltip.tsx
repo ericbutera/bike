@@ -50,6 +50,7 @@ export default function InfoTooltip({
         className={`inline-flex cursor-help items-center text-base-content/60 ${className ?? ""}`.trim()}
         aria-label={label}
         aria-describedby={coordinates ? tooltipId : undefined}
+        title={tip}
         tabIndex={0}
         onPointerEnter={openTooltip}
         onPointerLeave={closeTooltip}
