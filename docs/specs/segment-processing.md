@@ -50,6 +50,68 @@ When matching completes, the worker should rebuild segment analytics and refresh
 
 Incomplete analytics should feel normal in the UI. A newly created segment may initially show queued or pending matching instead of efforts.
 
+The activity ingestion graph also rebuilds segment efforts after an activity is saved. That pipeline owns import orchestration and trace events; this spec owns the segment route-matching behavior used by that graph stage.
+
+## Matching Contract
+
+Bike matches stored segment routes against normalized activity route points to create segment efforts. This contract must stay stable across parser, matcher, import, and performance changes.
+
+- A segment effort is directional. A reverse ride must only match a reverse segment route, not the forward segment.
+- Matching starts with ordered endpoint candidates. The activity must pass near the segment start before it can pass near the segment end.
+- Candidate efforts must remain within the configured segment distance ratio bounds.
+- Candidate efforts are scored against sampled route shape points. The matcher should prefer the lowest-scoring valid candidate when several candidate start/end pairs satisfy the same segment.
+- Repeated segment efforts in a single activity are allowed. After a match is accepted, later searches continue after that effort's end route point.
+- The matcher uses stricter profiles first and only falls back to more lenient profiles when no stricter match is found.
+
+## Reworked Trails
+
+Some public segments represent routes that have drifted from the current trail because of reroutes or trail work. Bike should follow Strava-compatible leniency for these cases:
+
+- Endpoint order and approximate distance remain required.
+- Moderate shape deviation is acceptable when the activity still follows the same practical segment corridor.
+- The reworked-trail fallback must not replace stricter matching when a strict or normal fallback match exists.
+- Leniency is for old-vs-current route drift, not for matching unrelated nearby trails or the wrong direction.
+
+## Regression Fixtures
+
+Favorite segment regression fixtures live in `api/tests/fixtures/segment_matching`. The test `favorite_segment_fixtures_match_expected_activity_files` parses the real FIT and GPX files and asserts that each listed segment produces at least one match.
+
+Required fixture matches:
+
+- `unmarked_01.fit` must match `Segment - F-BOMB OUT.gpx`.
+- `unmarked_01.fit` must match `Segment - Jam Sesh.gpx`.
+- `unmarked_01.fit` must match `Segment - Adderall in Reverse.gpx`.
+- `unmarked_01.fit` must match `Not-So Holy Grail (EB).gpx`.
+- `unmarked_01.fit` must match `Segment - The Holy Grail Single Track.gpx`.
+- `unmarked_02.fit` must match `VST Clockwise 2020 (6 to 5 - Saplings).gpx`.
+- `unmarked_02.fit` must match `Segment - F-BOMB IN.gpx`.
+- `unmarked_02.fit` must match `Segment - Rally Back CBS Rework.gpx`.
+- `commons_01.fit` must match `Segment - Breakin The Law.gpx`.
+- `commons_01.fit` must match `Segment - FMR.gpx`.
+- `commons_01.fit` must match `Segment - FMR Full.gpx`.
+- `commons_01.fit` must match `Log Jam.gpx`.
+- `city_01.fit` must match `Segment - Breakin The Law.gpx`.
+- `city_01.fit` must match `Segment - -g.gpx`.
+- `city_01.fit` must match `Segment - The Hick's Descent.gpx`.
+- `city_01.fit` must match `Segment - Hickory Hills To Hickory Meadows.gpx`.
+- `city_02.fit` must match `East Side Flow.gpx`.
+- `city_02.fit` must match `Country Club Boys.gpx`.
+- `city_02.fit` must match `Segment - -g.gpx`.
+- `city_02.fit` must match `Segment - The Hick's Descent.gpx`.
+- `city_02.fit` must match `Segment - Breakin The Law.gpx`.
+
+Changes to segment parsing, route point derivation, segment effort generation, or matcher thresholds must run:
+
+```bash
+cargo test favorite_segment_fixtures_match_expected_activity_files -- --nocapture
+```
+
+Changes that touch matcher internals should also run:
+
+```bash
+cargo test segment_support
+```
+
 ## Segment Responses
 
 The segment list should be lightweight. It should include summary information such as title, mode, starred state, distance, effort count, best duration, current-user PR, builder source, and processing state. It should not load full route blobs or full effort route slices just to render the list.

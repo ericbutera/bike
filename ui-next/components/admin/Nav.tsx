@@ -33,6 +33,14 @@ export default function Nav() {
       </li>
       <li>
         <Link
+          href="/admin/activities"
+          className={linkClass("/admin/activities")}
+        >
+          Activities
+        </Link>
+      </li>
+      <li>
+        <Link
           href="/admin/integrations"
           className={linkClass("/admin/integrations")}
         >

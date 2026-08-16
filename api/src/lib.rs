@@ -23,6 +23,7 @@ pub mod openapi;
 pub mod segment_support;
 pub mod storage;
 pub mod strava;
+pub mod strava_provider_payload;
 pub mod tasks;
 pub mod training_profile;
 pub mod xc_goal_backfill;

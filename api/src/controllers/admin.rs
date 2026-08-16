@@ -5,33 +5,89 @@ use crate::activity_import_lock::{
     ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION, ACTIVITY_IMPORT_LOCK_STAGE_QUEUED,
     ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
 };
+use crate::activity_import_pipeline::ACTIVITY_PROCESSING_PROVIDER;
 use crate::activity_lifecycle::cleanup_duplicate_activities_for_user;
 use crate::analytics::mark_user_activity_changes;
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::archive_import::{import_activity_archive_from_path, resolve_local_archive_import_path};
+use crate::controllers::activity_imports as activity_imports_controller;
 use crate::entities::{activities, activity_imports, segments, strava_connections};
+use crate::integration_events as integration_event_service;
 use crate::storage::AppStorage;
 use crate::xc_goal_backfill::queue_user_xc_goal_backfill;
 use axum::{
-    extract::State,
+    extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
     Json, Router,
 };
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use kaleido::auth::entities::users;
 use kaleido::auth::AdminUserContext;
 use kaleido::glass::aggregator::{Aggregator, NamedStat};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect};
+use kaleido::glass::data::pagination::{PaginatedResponse, PaginationParams};
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, EntityTrait, FromQueryResult, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
 const SEGMENT_BACKFILL_CHUNK_SIZE: usize = 250;
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminActivityResponse {
+    pub id: i32,
+    pub user_id: i32,
+    pub title: String,
+    pub sport: String,
+    pub source: String,
+    pub started_at: chrono::DateTime<Utc>,
+    pub format: Option<String>,
+    pub activity_import_id: Option<i32>,
+    pub import_version: Option<i32>,
+    pub import_status: Option<String>,
+    pub import_processing_stage: Option<String>,
+}
+
+#[derive(Debug, FromQueryResult)]
+struct AdminActivityListRow {
+    id: i32,
+    user_id: i32,
+    title: String,
+    sport: String,
+    source: String,
+    started_at: DateTime<Utc>,
+    format: Option<String>,
+    activity_import_id: Option<i32>,
+}
+
+impl AdminActivityResponse {
+    fn from_list_row(
+        activity: AdminActivityListRow,
+        import: Option<&activity_imports::Model>,
+    ) -> Self {
+        Self {
+            id: activity.id,
+            user_id: activity.user_id,
+            title: activity.title,
+            sport: activity.sport,
+            source: activity.source,
+            started_at: activity.started_at,
+            format: activity.format,
+            activity_import_id: activity.activity_import_id,
+            import_version: import.map(|value| value.import_version),
+            import_status: import.map(|value| value.status.clone()),
+            import_processing_stage: import.map(|value| value.processing_stage.clone()),
+        }
+    }
+}
+
 pub fn routes() -> Router<Arc<AppStorage>> {
     Router::new()
         .route("/metrics/app", get(app_metrics))
+        .route("/activities", get(list_admin_activities))
         .route("/analytics/backfill", post(backfill_analytics))
         .route("/training/xc-backfill", post(backfill_user_xc_training))
         .route("/segments/regenerate", post(regenerate_user_segments))
@@ -42,6 +98,10 @@ pub fn routes() -> Router<Arc<AppStorage>> {
         .route(
             "/activity-imports/reprocess",
             post(reprocess_user_activity_imports),
+        )
+        .route(
+            "/activity-imports/:id/trace",
+            get(get_admin_activity_import_trace),
         )
         .route(
             "/activity-imports/reprocess-activity",
@@ -71,6 +131,150 @@ pub async fn app_metrics(
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<Vec<NamedStat>>, AppError> {
     Ok(Json(bike_metrics(&state.db).await))
+}
+
+#[utoipa::path(
+    get,
+    path = "/admin/activities",
+    operation_id = "admin_list_activities",
+    params(PaginationParams),
+    responses(
+        (status = 200, description = "Paginated activities for administrators", body = PaginatedResponse<AdminActivityResponse>),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "admin",
+)]
+pub async fn list_admin_activities(
+    _admin: AdminUserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+    Query(params): Query<PaginationParams>,
+) -> Result<Json<PaginatedResponse<AdminActivityResponse>>, AppError> {
+    let (page, per_page) = params.normalized();
+    let total = activities::Entity::find().count(&state.db).await? as i64;
+    let activities = activities::Entity::find()
+        .select_only()
+        .column(activities::Column::Id)
+        .column(activities::Column::UserId)
+        .column(activities::Column::Title)
+        .column(activities::Column::Sport)
+        .column(activities::Column::Source)
+        .column(activities::Column::StartedAt)
+        .column(activities::Column::Format)
+        .column(activities::Column::ActivityImportId)
+        .order_by_desc(activities::Column::StartedAt)
+        .order_by_desc(activities::Column::Id)
+        .into_model::<AdminActivityListRow>()
+        .paginate(&state.db, per_page as u64)
+        .fetch_page((page - 1) as u64)
+        .await?;
+    let import_ids = activities
+        .iter()
+        .filter_map(|activity| activity.activity_import_id)
+        .collect::<Vec<_>>();
+    let imports_by_id = if import_ids.is_empty() {
+        std::collections::HashMap::new()
+    } else {
+        activity_imports::Entity::find()
+            .filter(activity_imports::Column::Id.is_in(import_ids))
+            .all(&state.db)
+            .await?
+            .into_iter()
+            .map(|import| (import.id, import))
+            .collect::<std::collections::HashMap<_, _>>()
+    };
+
+    Ok(Json(PaginatedResponse::new(
+        activities
+            .into_iter()
+            .map(|activity| {
+                let import = activity
+                    .activity_import_id
+                    .and_then(|import_id| imports_by_id.get(&import_id));
+                AdminActivityResponse::from_list_row(activity, import)
+            })
+            .collect(),
+        page,
+        per_page,
+        total,
+    )))
+}
+
+#[utoipa::path(
+    get,
+    path = "/admin/activity-imports/{id}/trace",
+    operation_id = "admin_get_activity_import_trace",
+    params(
+        ("id" = i32, Path, description = "Activity import id"),
+    ),
+    responses(
+        (status = 200, description = "Activity import processing DAG and event trace for administrators", body = activity_imports_controller::ActivityImportTraceResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "Activity import not found", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "admin",
+)]
+pub async fn get_admin_activity_import_trace(
+    _admin: AdminUserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+    Path(import_id): Path<i32>,
+) -> Result<Json<activity_imports_controller::ActivityImportTraceResponse>, AppError> {
+    let import = activity_imports::Entity::find_by_id(import_id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found("Activity import not found"))?;
+    let activity = load_activity_for_admin_import_trace(&state.db, &import).await?;
+    let events = integration_event_service::list_recent_events(
+        &state.db,
+        integration_event_service::IntegrationEventListOptions {
+            provider: Some(ACTIVITY_PROCESSING_PROVIDER.to_string()),
+            user_id: Some(import.user_id),
+            activity_id: None,
+            import_id: Some(import.id),
+            limit: 100,
+        },
+    )
+    .await?;
+    let trace_events = events
+        .into_iter()
+        .map(activity_imports_controller::ActivityImportTraceEventResponse::from_model)
+        .collect::<Vec<_>>();
+    let trace_nodes = activity_imports_controller::build_trace_nodes(&import, &trace_events)?;
+
+    Ok(Json(
+        activity_imports_controller::ActivityImportTraceResponse {
+            import: activity_imports_controller::ActivityImportResponse::from_model(
+                import,
+                activity.as_ref(),
+            ),
+            graph: activity_imports_controller::ActivityProcessingGraphResponse::from_graph(),
+            nodes: trace_nodes,
+            events: trace_events,
+        },
+    ))
+}
+
+async fn load_activity_for_admin_import_trace(
+    db: &DatabaseConnection,
+    import: &activity_imports::Model,
+) -> Result<Option<activities::Model>, AppError> {
+    if let Some(activity_id) = import.activity_id {
+        return activities::Entity::find_by_id(activity_id)
+            .one(db)
+            .await
+            .map_err(AppError::from);
+    }
+
+    activities::Entity::find()
+        .filter(activities::Column::ActivityImportId.eq(Some(import.id)))
+        .one(db)
+        .await
+        .map_err(AppError::from)
 }
 
 async fn bike_metrics(db: &DatabaseConnection) -> Vec<NamedStat> {

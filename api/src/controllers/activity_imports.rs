@@ -3,8 +3,11 @@ use crate::activity_import_lock::{
     release_user_activity_import_lock, ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD,
 };
 use crate::activity_import_pipeline::{
-    mark_activity_import_failed, store_activity_upload_import, validate_activity_format,
-    ActivityUploadPayload,
+    activity_processing_graph_mermaid, activity_processing_graph_nodes,
+    activity_processing_topological_order, mark_activity_import_failed,
+    store_activity_upload_import, validate_activity_format, ActivityProcessingGraphNode,
+    ActivityProcessingNode, ActivityUploadPayload, ACTIVITY_IMPORT_STAGE_COMPLETE,
+    ACTIVITY_PROCESSING_PROVIDER,
 };
 use crate::activity_location::location_from_derived_json;
 use crate::app_error::{ApiErrorResponse, AppError};
@@ -13,6 +16,7 @@ use crate::archive_import::{
 };
 use crate::config::Config;
 use crate::entities::{activities, activity_archive_import_jobs, activity_imports};
+use crate::integration_events as integration_event_service;
 use crate::storage::AppStorage;
 use axum::extract::{Multipart, Path, State};
 use axum::http::StatusCode;
@@ -30,6 +34,7 @@ const ACTIVITY_IMPORT_LIST_LIMIT: u64 = 25;
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ActivityImportResponse {
     pub id: i32,
+    pub import_version: i32,
     pub activity_id: Option<i32>,
     pub original_filename: String,
     pub format: String,
@@ -71,6 +76,53 @@ pub struct ActivityArchiveImportJobResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct ActivityProcessingGraphResponse {
+    pub nodes: Vec<ActivityProcessingGraphNodeResponse>,
+    pub edges: Vec<ActivityProcessingGraphEdgeResponse>,
+    pub mermaid: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ActivityProcessingGraphNodeResponse {
+    pub id: String,
+    pub label: String,
+    pub stage: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ActivityProcessingGraphEdgeResponse {
+    pub from: String,
+    pub to: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ActivityImportTraceResponse {
+    pub import: ActivityImportResponse,
+    pub graph: ActivityProcessingGraphResponse,
+    pub nodes: Vec<ActivityImportTraceNodeResponse>,
+    pub events: Vec<ActivityImportTraceEventResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ActivityImportTraceNodeResponse {
+    pub id: String,
+    pub label: String,
+    pub stage: String,
+    pub status: String,
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ActivityImportTraceEventResponse {
+    pub id: i32,
+    pub event_type: String,
+    pub level: String,
+    pub message: String,
+    pub payload: Option<serde_json::Value>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ActivityProcessingStateResponse {
     pub is_active: bool,
     pub source: Option<String>,
@@ -81,9 +133,13 @@ pub struct ActivityProcessingStateResponse {
 }
 
 impl ActivityImportResponse {
-    fn from_model(model: activity_imports::Model, activity: Option<&activities::Model>) -> Self {
+    pub(crate) fn from_model(
+        model: activity_imports::Model,
+        activity: Option<&activities::Model>,
+    ) -> Self {
         Self {
             id: model.id,
+            import_version: model.import_version,
             activity_id: activity.map(|value| value.id).or(model.activity_id),
             original_filename: model.original_filename,
             format: model.format,
@@ -100,6 +156,145 @@ impl ActivityImportResponse {
                 .and_then(|value| location_from_derived_json(value.derived_data_json.as_ref())),
         }
     }
+}
+
+impl ActivityProcessingGraphResponse {
+    pub(crate) fn from_graph() -> Self {
+        let nodes = activity_processing_graph_nodes()
+            .iter()
+            .map(ActivityProcessingGraphNodeResponse::from_graph_node)
+            .collect();
+        let edges = activity_processing_graph_nodes()
+            .iter()
+            .flat_map(|node| {
+                node.depends_on
+                    .iter()
+                    .map(|dependency| ActivityProcessingGraphEdgeResponse {
+                        from: dependency.id().to_string(),
+                        to: node.node.id().to_string(),
+                    })
+            })
+            .collect();
+
+        Self {
+            nodes,
+            edges,
+            mermaid: activity_processing_graph_mermaid(),
+        }
+    }
+}
+
+impl ActivityProcessingGraphNodeResponse {
+    fn from_graph_node(node: &ActivityProcessingGraphNode) -> Self {
+        Self {
+            id: node.node.id().to_string(),
+            label: node.node.label().to_string(),
+            stage: node.stage.to_string(),
+        }
+    }
+}
+
+impl ActivityImportTraceEventResponse {
+    pub(crate) fn from_model(model: crate::entities::integration_events::Model) -> Self {
+        Self {
+            id: model.id,
+            event_type: model.event_type,
+            level: model.level,
+            message: model.message,
+            payload: model.payload,
+            created_at: model.created_at,
+        }
+    }
+}
+
+async fn load_activity_for_import_trace(
+    db: &sea_orm::DatabaseConnection,
+    user_id: i32,
+    import: &activity_imports::Model,
+) -> Result<Option<activities::Model>, AppError> {
+    if let Some(activity_id) = import.activity_id {
+        return activities::Entity::find()
+            .filter(activities::Column::UserId.eq(user_id))
+            .filter(activities::Column::Id.eq(activity_id))
+            .one(db)
+            .await
+            .map_err(AppError::from);
+    }
+
+    activities::Entity::find()
+        .filter(activities::Column::UserId.eq(user_id))
+        .filter(activities::Column::ActivityImportId.eq(Some(import.id)))
+        .one(db)
+        .await
+        .map_err(AppError::from)
+}
+
+pub(crate) fn build_trace_nodes(
+    import: &activity_imports::Model,
+    events: &[ActivityImportTraceEventResponse],
+) -> Result<Vec<ActivityImportTraceNodeResponse>, AppError> {
+    let rank_by_stage = activity_processing_topological_order()?
+        .into_iter()
+        .enumerate()
+        .map(|(index, node)| (node.id().to_string(), index))
+        .collect::<HashMap<_, _>>();
+    let current_rank = if import.processing_stage == ACTIVITY_IMPORT_STAGE_COMPLETE {
+        usize::MAX
+    } else {
+        rank_by_stage
+            .get(&import.processing_stage)
+            .copied()
+            .unwrap_or(0)
+    };
+
+    Ok(activity_processing_graph_nodes()
+        .iter()
+        .map(|node| {
+            let rank = rank_by_stage.get(node.node.id()).copied().unwrap_or(0);
+            ActivityImportTraceNodeResponse {
+                id: node.node.id().to_string(),
+                label: node.node.label().to_string(),
+                stage: node.stage.to_string(),
+                status: trace_node_status(import, node.node, rank, current_rank).to_string(),
+                completed_at: stage_completed_at(events, node.stage),
+            }
+        })
+        .collect())
+}
+
+fn trace_node_status(
+    import: &activity_imports::Model,
+    node: ActivityProcessingNode,
+    rank: usize,
+    current_rank: usize,
+) -> &'static str {
+    if import.status == crate::activity_import_pipeline::ACTIVITY_IMPORT_STATUS_FAILED
+        && import.processing_stage == node.id()
+    {
+        "failed"
+    } else if rank <= current_rank {
+        "completed"
+    } else {
+        "pending"
+    }
+}
+
+fn stage_completed_at(
+    events: &[ActivityImportTraceEventResponse],
+    stage: &str,
+) -> Option<DateTime<Utc>> {
+    events
+        .iter()
+        .filter(|event| event.event_type == "stage_completed")
+        .find(|event| {
+            event
+                .payload
+                .as_ref()
+                .and_then(|payload| payload.get("stage"))
+                .and_then(|value| value.as_str())
+                == Some(stage)
+        })
+        .map(|event| event.created_at)
 }
 
 impl ActivityArchiveImportJobResponse {
@@ -217,6 +412,79 @@ pub async fn list_activity_imports(
             })
             .collect(),
     ))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/activity-imports/processing-graph",
+    responses(
+        (status = 200, description = "Activity import processing DAG", body = ActivityProcessingGraphResponse),
+        (status = 401, description = "Not authenticated"),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    tag = "activity-imports",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn get_activity_processing_graph(
+    UserContext { .. }: UserContext<AppStorage>,
+) -> Result<Json<ActivityProcessingGraphResponse>, AppError> {
+    Ok(Json(ActivityProcessingGraphResponse::from_graph()))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/activity-imports/{id}/trace",
+    params(
+        ("id" = i32, Path, description = "Activity import id"),
+    ),
+    responses(
+        (status = 200, description = "Activity import processing DAG and event trace", body = ActivityImportTraceResponse),
+        (status = 401, description = "Not authenticated"),
+        (status = 404, description = "Activity import not found", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    tag = "activity-imports",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn get_activity_import_trace(
+    UserContext { user, .. }: UserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+    Path(import_id): Path<i32>,
+) -> Result<Json<ActivityImportTraceResponse>, AppError> {
+    let import = activity_imports::Entity::find()
+        .filter(activity_imports::Column::Id.eq(import_id))
+        .filter(activity_imports::Column::UserId.eq(user.id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found("Activity import not found"))?;
+    let activity = load_activity_for_import_trace(&state.db, user.id, &import).await?;
+    let events = integration_event_service::list_recent_events(
+        &state.db,
+        integration_event_service::IntegrationEventListOptions {
+            provider: Some(ACTIVITY_PROCESSING_PROVIDER.to_string()),
+            user_id: Some(user.id),
+            activity_id: None,
+            import_id: Some(import.id),
+            limit: 100,
+        },
+    )
+    .await?;
+    let trace_events = events
+        .into_iter()
+        .map(ActivityImportTraceEventResponse::from_model)
+        .collect::<Vec<_>>();
+    let trace_nodes = build_trace_nodes(&import, &trace_events)?;
+
+    Ok(Json(ActivityImportTraceResponse {
+        import: ActivityImportResponse::from_model(import, activity.as_ref()),
+        graph: ActivityProcessingGraphResponse::from_graph(),
+        nodes: trace_nodes,
+        events: trace_events,
+    }))
 }
 
 #[utoipa::path(
@@ -668,6 +936,7 @@ mod tests {
             activity_imports::Model {
                 id: 7,
                 user_id: 12,
+                import_version: crate::entities::activity_imports::ACTIVITY_IMPORT_VERSION_CURRENT,
                 source: "manual_upload".to_string(),
                 format: "gpx".to_string(),
                 status: "uploaded".to_string(),
@@ -688,6 +957,10 @@ mod tests {
         );
 
         assert_eq!(response.id, 7);
+        assert_eq!(
+            response.import_version,
+            crate::entities::activity_imports::ACTIVITY_IMPORT_VERSION_CURRENT
+        );
         assert_eq!(response.activity_id, Some(21));
         assert_eq!(response.original_filename, "ride.gpx");
         assert_eq!(response.format, "gpx");

@@ -326,7 +326,12 @@ pub async fn import_activity_archive_from_path(
 
     // TODO: Very large archives can still put many files in one monthly bucket; add
     // finer-grained sharding if that becomes an operational problem.
-    for indexed_entry in &scan.supported_entries {
+    let mut supported_entries = scan.supported_entries.clone();
+    supported_entries
+        .sort_by_key(|entry| archive_activity_entry_fidelity_rank(&entry.activity_entry));
+    supported_entries.reverse();
+
+    for indexed_entry in &supported_entries {
         let bytes = match read_archive_entry_bytes(archive_path, &indexed_entry.source) {
             Ok(value) => value,
             Err(error) => {
@@ -419,6 +424,15 @@ pub async fn import_activity_archive_from_path(
         failed_count,
         error_samples,
     })
+}
+
+fn archive_activity_entry_fidelity_rank(entry: &ArchiveActivityEntry) -> i32 {
+    match entry.format.as_str() {
+        "fit" => 3,
+        "tcx" => 2,
+        "gpx" => 1,
+        _ => 0,
+    }
 }
 
 pub async fn download_archive_from_url(
@@ -959,8 +973,9 @@ async fn mark_activity_archive_import_job_failed(
 mod tests {
     use super::*;
     use crate::entities::{
-        activities, activity_analytics, activity_imports, activity_training_analyses,
-        analytics_user_states, segment_efforts, segments, user_preferences,
+        activities, activity_analytics, activity_import_artifacts, activity_imports,
+        activity_training_analyses, analytics_user_states, segment_efforts, segments,
+        user_preferences,
     };
     use kaleido::background_jobs::background_tasks;
     use sea_orm::{ConnectionTrait, Database, EntityTrait, PaginatorTrait, Schema};
@@ -1004,6 +1019,9 @@ mod tests {
         db.execute(&schema.create_table_from_entity(activity_imports::Entity))
             .await
             .expect("create activity imports table");
+        db.execute(&schema.create_table_from_entity(activity_import_artifacts::Entity))
+            .await
+            .expect("create activity import artifacts table");
         db.execute(&schema.create_table_from_entity(activity_analytics::Entity))
             .await
             .expect("create activity analytics table");

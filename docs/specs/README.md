@@ -25,4 +25,5 @@ The specs are intentionally written as product contracts instead of implementati
 - Deterministic rules should be documented before an LLM or narrative layer summarizes them.
 - If a change fixes a bug by changing intended behavior, update the spec so future revisions do not restore the old behavior.
 - If implementation details are uncertain, keep them in an "Open Gaps" or "Open Decisions" section instead of weakening the product contract.
+- Before creating a new spec, check whether an existing domain spec can own the behavior. Prefer expanding the owning spec over creating a narrower overlapping file.
 - Avoid reviving root-level feature backlog files for Bike. Add new feature specs here and link them from this index.

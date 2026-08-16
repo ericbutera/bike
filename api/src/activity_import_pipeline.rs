@@ -6,7 +6,7 @@
 
 use crate::activity_details::serialize_derived_activity_data;
 use crate::activity_lifecycle::refresh_activity_derived_state_without_cache_rebuilds;
-use crate::activity_parser::{parse_activity_data, ParsedActivityData};
+use crate::activity_parser::{parse_activity_artifact, ActivityParserArtifact, ParsedActivityData};
 use crate::activity_training_analysis::rebuild_activity_training_analysis_cache;
 use crate::activity_type::ActivityType;
 use crate::analytics::{
@@ -15,7 +15,7 @@ use crate::analytics::{
 };
 use crate::app_error::AppError;
 use crate::dedupe::activity_dedupe_matches_model;
-use crate::entities::{activities, activity_imports};
+use crate::entities::{activities, activity_import_artifacts, activity_imports};
 use crate::integration_events::{
     record_event, NewIntegrationEvent, INTEGRATION_LEVEL_ERROR, INTEGRATION_LEVEL_INFO,
     INTEGRATION_LEVEL_SUCCESS,
@@ -33,6 +33,7 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect, Set,
 };
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::Path;
 use uuid::Uuid;
@@ -43,6 +44,16 @@ pub struct ActivityUploadPayload {
     pub format: String,
     pub mime_type: Option<String>,
     pub source_correlation_id: Option<String>,
+    pub bytes: Vec<u8>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ActivityImportArtifactPayload {
+    pub artifact_kind: String,
+    pub format: String,
+    pub source_quality: String,
+    pub original_filename: String,
+    pub mime_type: Option<String>,
     pub bytes: Vec<u8>,
 }
 
@@ -74,6 +85,19 @@ pub struct PersistActivityUploadRequest<'a> {
     pub training_profile: Option<&'a TrainingProfile>,
 }
 
+pub struct PersistActivityUploadWithArtifactsRequest<'a> {
+    pub uploads_dir: &'a str,
+    pub user_storage_key: &'a str,
+    pub user_id: i32,
+    pub upload: ActivityUploadPayload,
+    pub primary_artifact_kind: &'a str,
+    pub primary_source_quality: &'a str,
+    pub additional_artifacts: Vec<ActivityImportArtifactPayload>,
+    pub source: &'a str,
+    pub deduplication: ActivityUploadDeduplication,
+    pub training_profile: Option<&'a TrainingProfile>,
+}
+
 pub enum PersistActivityUploadOutcome {
     Imported(PersistedActivityImport),
     Duplicate(DeduplicatedActivityImport),
@@ -92,7 +116,19 @@ pub const ACTIVITY_IMPORT_STAGE_ACTIVITY_ANALYTICS_BUILT: &str = "activity_analy
 pub const ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT: &str = "training_analysis_built";
 pub const ACTIVITY_IMPORT_STAGE_COMPLETE: &str = "complete";
 pub const ACTIVITY_IMPORT_STALE_PROCESSING_SECONDS: i64 = 300;
-const ACTIVITY_PROCESSING_PROVIDER: &str = "activity_processing";
+pub const ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL: &str = "original";
+pub const ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD: &str = "provider_payload";
+pub const ACTIVITY_IMPORT_ARTIFACT_KIND_GENERATED_EXPORT: &str = "generated_export";
+pub const ACTIVITY_IMPORT_SOURCE_QUALITY_FIT_ORIGINAL: &str = "fit_original";
+pub const ACTIVITY_IMPORT_SOURCE_QUALITY_TCX_ORIGINAL: &str = "tcx_original";
+pub const ACTIVITY_IMPORT_SOURCE_QUALITY_GPX_ORIGINAL: &str = "gpx_original";
+pub const ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS: &str = "strava_streams";
+pub const ACTIVITY_IMPORT_SOURCE_QUALITY_GENERATED_TCX: &str = "generated_tcx";
+pub const ACTIVITY_IMPORT_VERSION_LEGACY: i32 = activity_imports::ACTIVITY_IMPORT_VERSION_LEGACY;
+pub const ACTIVITY_IMPORT_VERSION_ARTIFACT_AWARE: i32 =
+    activity_imports::ACTIVITY_IMPORT_VERSION_ARTIFACT_AWARE;
+pub const ACTIVITY_IMPORT_VERSION_CURRENT: i32 = activity_imports::ACTIVITY_IMPORT_VERSION_CURRENT;
+pub const ACTIVITY_PROCESSING_PROVIDER: &str = "activity_processing";
 const PROCESS_ACTIVITY_IMPORT_TASK_TYPE: &str = "process_activity_import";
 const MANUAL_UPLOAD_SOURCE: &str = "manual_upload";
 
@@ -105,6 +141,32 @@ pub enum ActivityProcessingNode {
     SegmentAnalyticsBuilt,
     ActivityAnalyticsBuilt,
     TrainingAnalysisBuilt,
+}
+
+impl ActivityProcessingNode {
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::RawStored => "raw_stored",
+            Self::ActivityParsed => "activity_parsed",
+            Self::ActivitySaved => "activity_saved",
+            Self::SegmentsBuilt => "segments_built",
+            Self::SegmentAnalyticsBuilt => "segment_analytics_built",
+            Self::ActivityAnalyticsBuilt => "activity_analytics_built",
+            Self::TrainingAnalysisBuilt => "training_analysis_built",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::RawStored => "Raw stored",
+            Self::ActivityParsed => "Activity parsed",
+            Self::ActivitySaved => "Activity saved",
+            Self::SegmentsBuilt => "Segments built",
+            Self::SegmentAnalyticsBuilt => "Segment analytics built",
+            Self::ActivityAnalyticsBuilt => "Activity analytics built",
+            Self::TrainingAnalysisBuilt => "Training analysis built",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -166,6 +228,27 @@ const ACTIVITY_PROCESSING_GRAPH_NODES: &[ActivityProcessingGraphNode] = &[
 
 pub fn activity_processing_graph_nodes() -> &'static [ActivityProcessingGraphNode] {
     ACTIVITY_PROCESSING_GRAPH_NODES
+}
+
+pub fn activity_processing_graph_mermaid() -> String {
+    let mut lines = vec!["flowchart LR".to_string()];
+    for graph_node in ACTIVITY_PROCESSING_GRAPH_NODES {
+        lines.push(format!(
+            "  {}[\"{}\"]",
+            graph_node.node.id(),
+            graph_node.node.label()
+        ));
+    }
+    for graph_node in ACTIVITY_PROCESSING_GRAPH_NODES {
+        for dependency in graph_node.depends_on {
+            lines.push(format!(
+                "  {} --> {}",
+                dependency.id(),
+                graph_node.node.id()
+            ));
+        }
+    }
+    lines.join("\n")
 }
 
 pub fn activity_processing_graph() -> DiGraphMap<ActivityProcessingNode, ()> {
@@ -444,7 +527,17 @@ struct ActivityProcessingState {
     activity_model: Option<activities::Model>,
     parsed_activity: Option<ParsedActivityData>,
     affected_segment_ids: Vec<i32>,
+    parsing_artifact: ActivityProcessingArtifact,
     bytes: Vec<u8>,
+}
+
+#[derive(Debug, Clone)]
+struct ActivityProcessingArtifact {
+    artifact_kind: String,
+    original_filename: String,
+    format: String,
+    source_quality: String,
+    storage_path: String,
 }
 
 struct ActivitySaveData {
@@ -677,14 +770,126 @@ async fn run_activity_processing_graph(
 async fn load_activity_processing_state(
     run: &ActivityProcessingRun<'_>,
 ) -> Result<ActivityProcessingState, AppError> {
-    let bytes = tokio::fs::read(Path::new(run.uploads_dir).join(&run.import.storage_path)).await?;
+    let parsing_artifact = load_best_activity_parsing_artifact(run.db, &run.import).await?;
+    let bytes =
+        tokio::fs::read(Path::new(run.uploads_dir).join(&parsing_artifact.storage_path)).await?;
     Ok(ActivityProcessingState {
         import_model: run.import.clone(),
         activity_model: run.existing_activity.clone(),
         parsed_activity: None,
         affected_segment_ids: Vec::new(),
+        parsing_artifact,
         bytes,
     })
+}
+
+async fn load_best_activity_parsing_artifact(
+    db: &DatabaseConnection,
+    import: &activity_imports::Model,
+) -> Result<ActivityProcessingArtifact, AppError> {
+    let artifacts = activity_import_artifacts::Entity::find()
+        .filter(activity_import_artifacts::Column::ActivityImportId.eq(import.id))
+        .filter(activity_import_artifacts::Column::UserId.eq(import.user_id))
+        .all(db)
+        .await?;
+
+    artifacts
+        .into_iter()
+        .filter(activity_artifact_is_parsable)
+        .max_by_key(activity_artifact_parse_priority)
+        .map(activity_processing_artifact_from_model)
+        .or_else(|| legacy_activity_processing_artifact(import))
+        .ok_or_else(|| {
+            AppError::bad_request(format!(
+                "Activity import {} does not have a parsable source artifact",
+                import.id
+            ))
+        })
+}
+
+fn activity_processing_artifact_from_model(
+    artifact: activity_import_artifacts::Model,
+) -> ActivityProcessingArtifact {
+    ActivityProcessingArtifact {
+        artifact_kind: artifact.artifact_kind,
+        original_filename: artifact.original_filename,
+        format: artifact.format,
+        source_quality: artifact.source_quality,
+        storage_path: artifact.storage_path,
+    }
+}
+
+fn legacy_activity_processing_artifact(
+    import: &activity_imports::Model,
+) -> Option<ActivityProcessingArtifact> {
+    if !activity_format_is_parsable(&import.format) {
+        return None;
+    }
+
+    Some(ActivityProcessingArtifact {
+        artifact_kind: ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL.to_string(),
+        original_filename: import.original_filename.clone(),
+        format: import.format.clone(),
+        source_quality: original_source_quality_for_format(&import.format).to_string(),
+        storage_path: import.storage_path.clone(),
+    })
+}
+
+fn activity_artifact_is_parsable(artifact: &activity_import_artifacts::Model) -> bool {
+    match artifact.artifact_kind.as_str() {
+        ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL | ACTIVITY_IMPORT_ARTIFACT_KIND_GENERATED_EXPORT => {
+            activity_format_is_parsable(&artifact.format)
+        }
+        ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD => {
+            artifact.source_quality == ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS
+                && artifact.format == "json"
+        }
+        _ => false,
+    }
+}
+
+fn activity_format_is_parsable(format: &str) -> bool {
+    matches!(format, "fit" | "tcx" | "gpx")
+}
+
+fn activity_artifact_parse_priority(artifact: &activity_import_artifacts::Model) -> i32 {
+    match (
+        artifact.artifact_kind.as_str(),
+        artifact.source_quality.as_str(),
+        artifact.format.as_str(),
+    ) {
+        (
+            ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL,
+            ACTIVITY_IMPORT_SOURCE_QUALITY_FIT_ORIGINAL,
+            _,
+        ) => 500,
+        (
+            ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL,
+            ACTIVITY_IMPORT_SOURCE_QUALITY_TCX_ORIGINAL,
+            _,
+        ) => 400,
+        (
+            ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL,
+            ACTIVITY_IMPORT_SOURCE_QUALITY_GPX_ORIGINAL,
+            _,
+        ) => 300,
+        (ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL, _, "fit") => 490,
+        (ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL, _, "tcx") => 390,
+        (ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL, _, "gpx") => 290,
+        (
+            ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD,
+            ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS,
+            "json",
+        ) => 200,
+        (
+            ACTIVITY_IMPORT_ARTIFACT_KIND_GENERATED_EXPORT,
+            ACTIVITY_IMPORT_SOURCE_QUALITY_GENERATED_TCX,
+            "tcx",
+        ) => 100,
+        (ACTIVITY_IMPORT_ARTIFACT_KIND_GENERATED_EXPORT, _, "tcx") => 90,
+        (ACTIVITY_IMPORT_ARTIFACT_KIND_GENERATED_EXPORT, _, "gpx") => 80,
+        _ => 0,
+    }
 }
 
 async fn run_activity_processing_node(
@@ -771,11 +976,13 @@ async fn parse_activity_node(
     state: &mut ActivityProcessingState,
     stage: &str,
 ) -> Result<(), AppError> {
-    state.parsed_activity = Some(parse_activity_data(
-        &state.import_model.original_filename,
-        &state.import_model.format,
-        &state.bytes,
-    )?);
+    state.parsed_activity = Some(parse_activity_artifact(ActivityParserArtifact {
+        original_filename: &state.parsing_artifact.original_filename,
+        format: &state.parsing_artifact.format,
+        artifact_kind: &state.parsing_artifact.artifact_kind,
+        source_quality: &state.parsing_artifact.source_quality,
+        bytes: &state.bytes,
+    })?);
     state.import_model = mark_activity_import_processing_stage(
         run.db,
         &state.import_model,
@@ -819,13 +1026,32 @@ async fn save_activity_node(
 ) -> Result<(), AppError> {
     let parsed = parsed_activity_ref(state)?.clone();
     let training_profile = load_processing_training_profile(run).await?;
-    let save_data = build_activity_save_data(&parsed, &state.import_model, &training_profile)?;
+    let save_data = build_activity_save_data(
+        &parsed,
+        &state.parsing_artifact.original_filename,
+        &training_profile,
+    )?;
     let saved_activity = match state.activity_model.take() {
         Some(activity) => {
-            update_activity_from_parsed(run.db, activity, &state.import_model, &parsed, save_data)
-                .await?
+            update_activity_from_parsed(
+                run.db,
+                activity,
+                &state.parsing_artifact,
+                &parsed,
+                save_data,
+            )
+            .await?
         }
-        None => insert_activity_from_parsed(run, &state.import_model, &parsed, save_data).await?,
+        None => {
+            insert_activity_from_parsed(
+                run,
+                &state.import_model,
+                &state.parsing_artifact,
+                &parsed,
+                save_data,
+            )
+            .await?
+        }
     };
 
     state.import_model = mark_activity_import_processing_stage(
@@ -850,7 +1076,7 @@ async fn load_processing_training_profile(
 
 fn build_activity_save_data(
     parsed: &ParsedActivityData,
-    import: &activity_imports::Model,
+    original_filename: &str,
     training_profile: &TrainingProfile,
 ) -> Result<ActivitySaveData, AppError> {
     let heart_rate_zones = summarize_heart_rate_zones(
@@ -865,7 +1091,7 @@ fn build_activity_save_data(
     );
 
     Ok(ActivitySaveData {
-        activity_type: infer_activity_type(&parsed.draft.title, &import.original_filename),
+        activity_type: infer_activity_type(&parsed.draft.title, original_filename),
         estimated_ftp_watts: training_profile.estimated_ftp_watts,
         heart_rate_zones_json: serialize_activity_heart_rate_zones(&heart_rate_zones)?,
         derived_data_json: serialize_derived_activity_data(&parsed.derived_data)?,
@@ -875,18 +1101,19 @@ fn build_activity_save_data(
 async fn update_activity_from_parsed(
     db: &DatabaseConnection,
     activity: activities::Model,
-    import: &activity_imports::Model,
+    parsing_artifact: &ActivityProcessingArtifact,
     parsed: &ParsedActivityData,
     save_data: ActivitySaveData,
 ) -> Result<activities::Model, AppError> {
     let mut active_model: activities::ActiveModel = activity.into();
-    apply_common_activity_fields(&mut active_model, import, parsed, save_data);
+    apply_common_activity_fields(&mut active_model, parsing_artifact, parsed, save_data);
     active_model.update(db).await.map_err(AppError::from)
 }
 
 async fn insert_activity_from_parsed(
     run: &ActivityProcessingRun<'_>,
     import: &activity_imports::Model,
+    parsing_artifact: &ActivityProcessingArtifact,
     parsed: &ParsedActivityData,
     save_data: ActivitySaveData,
 ) -> Result<activities::Model, AppError> {
@@ -897,20 +1124,20 @@ async fn insert_activity_from_parsed(
         source_correlation_id: Set(run.source_correlation_id.clone()),
         ..Default::default()
     };
-    apply_common_activity_fields(&mut active_model, import, parsed, save_data);
+    apply_common_activity_fields(&mut active_model, parsing_artifact, parsed, save_data);
     active_model.insert(run.db).await.map_err(AppError::from)
 }
 
 fn apply_common_activity_fields(
     active_model: &mut activities::ActiveModel,
-    import: &activity_imports::Model,
+    parsing_artifact: &ActivityProcessingArtifact,
     parsed: &ParsedActivityData,
     save_data: ActivitySaveData,
 ) {
     active_model.title = Set(parsed.draft.title.clone());
     active_model.sport = Set(parsed.draft.sport.clone());
-    active_model.original_filename = Set(Some(import.original_filename.clone()));
-    active_model.format = Set(Some(import.format.clone()));
+    active_model.original_filename = Set(Some(parsing_artifact.original_filename.clone()));
+    active_model.format = Set(Some(parsing_artifact.format.clone()));
     active_model.activity_type = Set(save_data.activity_type.as_str().to_string());
     active_model.started_at = Set(parsed.draft.started_at);
     active_model.ended_at = Set(parsed.draft.ended_at);
@@ -1022,6 +1249,29 @@ pub async fn persist_activity_upload(
     db: &DatabaseConnection,
     request: PersistActivityUploadRequest<'_>,
 ) -> Result<PersistActivityUploadOutcome, AppError> {
+    let source_quality = original_source_quality_for_format(&request.upload.format);
+    persist_activity_upload_with_artifacts(
+        db,
+        PersistActivityUploadWithArtifactsRequest {
+            uploads_dir: request.uploads_dir,
+            user_storage_key: request.user_storage_key,
+            user_id: request.user_id,
+            upload: request.upload,
+            primary_artifact_kind: ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL,
+            primary_source_quality: source_quality,
+            additional_artifacts: Vec::new(),
+            source: request.source,
+            deduplication: request.deduplication,
+            training_profile: request.training_profile,
+        },
+    )
+    .await
+}
+
+pub async fn persist_activity_upload_with_artifacts(
+    db: &DatabaseConnection,
+    request: PersistActivityUploadWithArtifactsRequest<'_>,
+) -> Result<PersistActivityUploadOutcome, AppError> {
     let source_correlation_id = request.upload.source_correlation_id.clone();
 
     if request.deduplication == ActivityUploadDeduplication::Enabled {
@@ -1037,12 +1287,15 @@ pub async fn persist_activity_upload(
         }
     }
 
-    let import_model = store_activity_upload_import(
+    let import_model = store_activity_upload_import_with_artifacts(
         db,
         request.uploads_dir,
         request.user_storage_key,
         request.user_id,
         request.upload,
+        request.primary_artifact_kind,
+        request.primary_source_quality,
+        request.additional_artifacts,
         request.source,
     )
     .await?;
@@ -1080,6 +1333,36 @@ pub async fn store_activity_upload_import(
     upload: ActivityUploadPayload,
     source: &str,
 ) -> Result<activity_imports::Model, AppError> {
+    let source_quality = original_source_quality_for_format(&upload.format);
+    store_activity_upload_import_with_artifacts(
+        db,
+        uploads_dir,
+        user_storage_key,
+        user_id,
+        upload,
+        ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL,
+        source_quality,
+        Vec::new(),
+        source,
+    )
+    .await
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "shared persistence bridge keeps legacy import row and artifact rows consistent"
+)]
+pub async fn store_activity_upload_import_with_artifacts(
+    db: &DatabaseConnection,
+    uploads_dir: &str,
+    user_storage_key: &str,
+    user_id: i32,
+    upload: ActivityUploadPayload,
+    primary_artifact_kind: &str,
+    primary_source_quality: &str,
+    additional_artifacts: Vec<ActivityImportArtifactPayload>,
+    source: &str,
+) -> Result<activity_imports::Model, AppError> {
     let relative_path = activity_import_storage_path(user_storage_key, &upload.format, Utc::now());
     let full_path = Path::new(uploads_dir).join(&relative_path);
 
@@ -1088,9 +1371,18 @@ pub async fn store_activity_upload_import(
     }
 
     tokio::fs::write(&full_path, &upload.bytes).await?;
+    let primary_artifact = ActivityImportArtifactPayload {
+        artifact_kind: primary_artifact_kind.to_string(),
+        format: upload.format.clone(),
+        source_quality: primary_source_quality.to_string(),
+        original_filename: upload.original_filename.clone(),
+        mime_type: upload.mime_type.clone(),
+        bytes: upload.bytes.clone(),
+    };
 
     let import_model = activity_imports::ActiveModel {
         user_id: Set(user_id),
+        import_version: Set(ACTIVITY_IMPORT_VERSION_CURRENT),
         source: Set(source.to_string()),
         format: Set(upload.format),
         status: Set(ACTIVITY_IMPORT_STATUS_PROCESSING.to_string()),
@@ -1101,13 +1393,33 @@ pub async fn store_activity_upload_import(
         processed_at: Set(None),
         last_processing_event_at: Set(Some(Utc::now())),
         original_filename: Set(upload.original_filename),
-        storage_path: Set(relative_path),
+        storage_path: Set(relative_path.clone()),
         size_bytes: Set(upload.bytes.len() as i64),
         mime_type: Set(upload.mime_type),
         ..Default::default()
     }
     .insert(db)
     .await?;
+
+    insert_activity_import_artifact(
+        db,
+        &import_model,
+        primary_artifact,
+        relative_path,
+        upload.bytes.len() as i64,
+    )
+    .await?;
+
+    for artifact in additional_artifacts {
+        store_additional_activity_import_artifact(
+            db,
+            uploads_dir,
+            user_storage_key,
+            &import_model,
+            artifact,
+        )
+        .await?;
+    }
 
     record_activity_processing_event(
         db,
@@ -1124,6 +1436,66 @@ pub async fn store_activity_upload_import(
     .await;
 
     Ok(import_model)
+}
+
+pub fn original_source_quality_for_format(format: &str) -> &'static str {
+    match format {
+        "fit" => ACTIVITY_IMPORT_SOURCE_QUALITY_FIT_ORIGINAL,
+        "tcx" => ACTIVITY_IMPORT_SOURCE_QUALITY_TCX_ORIGINAL,
+        "gpx" => ACTIVITY_IMPORT_SOURCE_QUALITY_GPX_ORIGINAL,
+        _ => "unknown_original",
+    }
+}
+
+async fn store_additional_activity_import_artifact(
+    db: &DatabaseConnection,
+    uploads_dir: &str,
+    user_storage_key: &str,
+    import: &activity_imports::Model,
+    artifact: ActivityImportArtifactPayload,
+) -> Result<activity_import_artifacts::Model, AppError> {
+    let relative_path =
+        activity_import_storage_path(user_storage_key, &artifact.format, Utc::now());
+    let full_path = Path::new(uploads_dir).join(&relative_path);
+
+    if let Some(parent) = full_path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+
+    tokio::fs::write(&full_path, &artifact.bytes).await?;
+    let size_bytes = artifact.bytes.len() as i64;
+    insert_activity_import_artifact(db, import, artifact, relative_path, size_bytes).await
+}
+
+async fn insert_activity_import_artifact(
+    db: &DatabaseConnection,
+    import: &activity_imports::Model,
+    artifact: ActivityImportArtifactPayload,
+    storage_path: String,
+    size_bytes: i64,
+) -> Result<activity_import_artifacts::Model, AppError> {
+    let checksum_sha256 = checksum_sha256_hex(&artifact.bytes);
+
+    activity_import_artifacts::ActiveModel {
+        activity_import_id: Set(import.id),
+        user_id: Set(import.user_id),
+        artifact_kind: Set(artifact.artifact_kind),
+        format: Set(artifact.format),
+        source_quality: Set(artifact.source_quality),
+        original_filename: Set(artifact.original_filename),
+        storage_path: Set(storage_path),
+        size_bytes: Set(size_bytes),
+        mime_type: Set(artifact.mime_type),
+        checksum_sha256: Set(checksum_sha256),
+        ..Default::default()
+    }
+    .insert(db)
+    .await
+    .map_err(AppError::from)
+}
+
+fn checksum_sha256_hex(bytes: &[u8]) -> String {
+    hex::encode(Sha256::digest(bytes))
 }
 
 pub async fn process_stored_activity_import(
@@ -1337,8 +1709,8 @@ async fn deduplicated_activity_import_for_model(
 mod tests {
     use super::*;
     use crate::entities::{
-        activities, activity_analytics, activity_imports, activity_training_analyses,
-        segment_efforts, segments,
+        activities, activity_analytics, activity_import_artifacts, activity_imports,
+        activity_training_analyses, integration_events, segment_efforts, segments,
     };
     use crate::tasks::{ProcessActivityImportTask, Task};
     use crate::training_profile::TrainingProfile;
@@ -1358,6 +1730,9 @@ mod tests {
         db.execute(&schema.create_table_from_entity(activity_imports::Entity))
             .await
             .expect("create activity imports table");
+        db.execute(&schema.create_table_from_entity(activity_import_artifacts::Entity))
+            .await
+            .expect("create activity import artifacts table");
         db.execute(&schema.create_table_from_entity(background_tasks::Entity))
             .await
             .expect("create background tasks table");
@@ -1373,6 +1748,9 @@ mod tests {
         db.execute(&schema.create_table_from_entity(segment_efforts::Entity))
             .await
             .expect("create segment efforts table");
+        db.execute(&schema.create_table_from_entity(integration_events::Entity))
+            .await
+            .expect("create integration events table");
 
         db
     }
@@ -1536,6 +1914,16 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn activity_processing_graph_mermaid_matches_graph_edges() {
+        let mermaid = activity_processing_graph_mermaid();
+
+        assert!(mermaid.starts_with("flowchart LR"));
+        assert!(mermaid.contains("raw_stored[\"Raw stored\"]"));
+        assert!(mermaid.contains("raw_stored --> activity_parsed"));
+        assert!(mermaid.contains("activity_analytics_built --> training_analysis_built"));
     }
 
     #[tokio::test]
@@ -1718,6 +2106,21 @@ mod tests {
         assert!(std::path::Path::new(&uploads_dir)
             .join(&import.storage_path)
             .exists());
+        let artifact = activity_import_artifacts::Entity::find()
+            .filter(activity_import_artifacts::Column::ActivityImportId.eq(import.id))
+            .one(&db)
+            .await
+            .expect("load stored artifact")
+            .expect("artifact exists");
+        assert_eq!(
+            artifact.artifact_kind,
+            ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL
+        );
+        assert_eq!(
+            artifact.source_quality,
+            ACTIVITY_IMPORT_SOURCE_QUALITY_FIT_ORIGINAL
+        );
+        assert_eq!(artifact.storage_path, import.storage_path);
 
         let processed = process_stored_activity_import(
             &db,
@@ -1742,6 +2145,222 @@ mod tests {
         assert_eq!(activities::Entity::find().count(&db).await.unwrap(), 1);
 
         let _ = std::fs::remove_dir_all(&uploads_dir);
+    }
+
+    #[tokio::test]
+    async fn processed_activity_import_emits_stage_trace_events() {
+        let db = test_db().await;
+        let uploads_dir = test_uploads_dir();
+        let training_profile = TrainingProfile::default();
+
+        let processed = persist_test_activity_upload(
+            &db,
+            &uploads_dir,
+            fit_upload(None),
+            "manual_upload",
+            &training_profile,
+        )
+        .await
+        .expect("process upload");
+        let PersistActivityUploadOutcome::Imported(imported) = processed else {
+            panic!("expected imported activity");
+        };
+
+        let events = integration_events::Entity::find()
+            .filter(integration_events::Column::Provider.eq(ACTIVITY_PROCESSING_PROVIDER))
+            .all(&db)
+            .await
+            .expect("load activity processing events");
+        let event_stages = events
+            .iter()
+            .filter(|event| event.event_type == "stage_completed")
+            .filter_map(|event| {
+                event
+                    .payload
+                    .as_ref()
+                    .filter(|payload| {
+                        payload.get("import_id").and_then(|value| value.as_i64())
+                            == Some(i64::from(imported.import.id))
+                    })
+                    .and_then(|payload| payload.get("stage"))
+                    .and_then(|value| value.as_str())
+                    .map(str::to_string)
+            })
+            .collect::<Vec<_>>();
+
+        for graph_node in activity_processing_graph_nodes() {
+            assert!(
+                event_stages.iter().any(|stage| stage == graph_node.stage),
+                "missing stage event for {}",
+                graph_node.stage
+            );
+        }
+        mark_activity_imports_processed(&db, &[imported.import.id])
+            .await
+            .expect("mark processed");
+        let events = integration_events::Entity::find()
+            .filter(integration_events::Column::Provider.eq(ACTIVITY_PROCESSING_PROVIDER))
+            .all(&db)
+            .await
+            .expect("reload activity processing events");
+        assert!(events.iter().any(|event| {
+            event.event_type == "import_processed"
+                && event
+                    .payload
+                    .as_ref()
+                    .and_then(|payload| payload.get("import_id"))
+                    .and_then(|value| value.as_i64())
+                    == Some(i64::from(imported.import.id))
+        }));
+
+        let _ = std::fs::remove_dir_all(&uploads_dir);
+    }
+
+    #[tokio::test]
+    async fn parsing_artifact_selection_prefers_original_fit_over_generated_tcx() {
+        let db = test_db().await;
+        let now = Utc::now();
+        let import = activity_imports::ActiveModel {
+            user_id: Set(1),
+            source: Set("strava_sync".to_string()),
+            format: Set("tcx".to_string()),
+            status: Set(ACTIVITY_IMPORT_STATUS_PROCESSING.to_string()),
+            activity_id: Set(None),
+            processing_stage: Set(ACTIVITY_IMPORT_STAGE_RAW_STORED.to_string()),
+            processing_error: Set(None),
+            processing_attempts: Set(0),
+            processed_at: Set(None),
+            last_processing_event_at: Set(Some(now)),
+            original_filename: Set("generated.tcx".to_string()),
+            storage_path: Set("activity-imports/test/generated.tcx".to_string()),
+            size_bytes: Set(123),
+            mime_type: Set(None),
+            created_at: Set(now),
+            updated_at: Set(now),
+            ..Default::default()
+        }
+        .insert(&db)
+        .await
+        .expect("insert import");
+
+        for (artifact_kind, format, source_quality, filename, storage_path) in [
+            (
+                ACTIVITY_IMPORT_ARTIFACT_KIND_GENERATED_EXPORT,
+                "tcx",
+                ACTIVITY_IMPORT_SOURCE_QUALITY_GENERATED_TCX,
+                "generated.tcx",
+                "activity-imports/test/generated.tcx",
+            ),
+            (
+                ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL,
+                "fit",
+                ACTIVITY_IMPORT_SOURCE_QUALITY_FIT_ORIGINAL,
+                "original.fit",
+                "activity-imports/test/original.fit",
+            ),
+        ] {
+            activity_import_artifacts::ActiveModel {
+                activity_import_id: Set(import.id),
+                user_id: Set(import.user_id),
+                artifact_kind: Set(artifact_kind.to_string()),
+                format: Set(format.to_string()),
+                source_quality: Set(source_quality.to_string()),
+                original_filename: Set(filename.to_string()),
+                storage_path: Set(storage_path.to_string()),
+                size_bytes: Set(123),
+                mime_type: Set(None),
+                checksum_sha256: Set("checksum".to_string()),
+                ..Default::default()
+            }
+            .insert(&db)
+            .await
+            .expect("insert artifact");
+        }
+
+        let selected = load_best_activity_parsing_artifact(&db, &import)
+            .await
+            .expect("select parsing artifact");
+
+        assert_eq!(selected.original_filename, "original.fit");
+        assert_eq!(selected.format, "fit");
+        assert_eq!(selected.storage_path, "activity-imports/test/original.fit");
+    }
+
+    #[tokio::test]
+    async fn parsing_artifact_selection_prefers_strava_provider_payload_over_generated_tcx() {
+        let db = test_db().await;
+        let now = Utc::now();
+        let import = activity_imports::ActiveModel {
+            user_id: Set(1),
+            source: Set("strava_sync".to_string()),
+            format: Set("tcx".to_string()),
+            status: Set(ACTIVITY_IMPORT_STATUS_PROCESSING.to_string()),
+            activity_id: Set(None),
+            processing_stage: Set(ACTIVITY_IMPORT_STAGE_RAW_STORED.to_string()),
+            processing_error: Set(None),
+            processing_attempts: Set(0),
+            processed_at: Set(None),
+            last_processing_event_at: Set(Some(now)),
+            original_filename: Set("generated.tcx".to_string()),
+            storage_path: Set("activity-imports/test/generated.tcx".to_string()),
+            size_bytes: Set(123),
+            mime_type: Set(None),
+            created_at: Set(now),
+            updated_at: Set(now),
+            ..Default::default()
+        }
+        .insert(&db)
+        .await
+        .expect("insert import");
+
+        for (artifact_kind, format, source_quality, filename, storage_path) in [
+            (
+                ACTIVITY_IMPORT_ARTIFACT_KIND_GENERATED_EXPORT,
+                "tcx",
+                ACTIVITY_IMPORT_SOURCE_QUALITY_GENERATED_TCX,
+                "generated.tcx",
+                "activity-imports/test/generated.tcx",
+            ),
+            (
+                ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD,
+                "json",
+                ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS,
+                "strava_activity_99.json",
+                "activity-imports/test/strava_activity_99.json",
+            ),
+        ] {
+            activity_import_artifacts::ActiveModel {
+                activity_import_id: Set(import.id),
+                user_id: Set(import.user_id),
+                artifact_kind: Set(artifact_kind.to_string()),
+                format: Set(format.to_string()),
+                source_quality: Set(source_quality.to_string()),
+                original_filename: Set(filename.to_string()),
+                storage_path: Set(storage_path.to_string()),
+                size_bytes: Set(123),
+                mime_type: Set(None),
+                checksum_sha256: Set("checksum".to_string()),
+                ..Default::default()
+            }
+            .insert(&db)
+            .await
+            .expect("insert artifact");
+        }
+
+        let selected = load_best_activity_parsing_artifact(&db, &import)
+            .await
+            .expect("select parsing artifact");
+
+        assert_eq!(
+            selected.artifact_kind,
+            ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD
+        );
+        assert_eq!(
+            selected.source_quality,
+            ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS
+        );
+        assert_eq!(selected.original_filename, "strava_activity_99.json");
+        assert_eq!(selected.format, "json");
     }
 
     #[tokio::test]

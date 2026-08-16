@@ -36,6 +36,10 @@ The current graph nodes are:
 
 The graph dependencies are encoded in code and validated by tests. Manual upload worker processing, Strava sync imports, archive imports, single-activity reprocessing, and user-level reprocessing should call the graph executor for actual activity data processing. Import-specific code may still handle discovery, download, decompression, authentication, locking, queueing, and provider event logging outside the graph, but it must not parse or normalize activity data with separate techniques.
 
+The `segments_built` stage delegates to the segment processing contract. Activity ingestion owns the import DAG, artifact selection, source replay, and traceability; segment processing owns segment definitions, route matching, effort regeneration, and segment analytics.
+
+The processing graph is observable. `GET /api/activity-imports/processing-graph` returns the canonical DAG as nodes, edges, and Mermaid `flowchart TD` text derived from the same graph definition used by the executor. `GET /api/activity-imports/{id}/trace` overlays a specific import's current stage and `activity_processing` integration events on that graph so operators can see which stages completed, failed, or remain pending.
+
 Raw storage intentionally precedes activity parsing for all retained file imports. This means fingerprint duplicates can leave a duplicate import row that points at the duplicate raw source and the existing activity. Provider-correlation duplicates, such as already-seen Strava activity IDs, may still short-circuit before raw storage when no new source artifact would be retained.
 
 The activity import pipeline is guarded by Clippy size and complexity lints. `activity_import_pipeline.rs` denies oversized functions, excessive argument lists, and excessive cognitive complexity, with thresholds configured in `clippy.toml`. Pipeline changes should split graph node behavior into named helpers instead of growing the executor match arms.
@@ -52,56 +56,50 @@ The canonical processing order should be:
 
 The import schema should distinguish original source artifacts from generated compatibility artifacts. Downloading an activity source file should return the retained original source by default. If only a generated artifact exists, the API and UI should identify it as generated/lossy rather than "original".
 
-## To Convert
+Activity imports carry an explicit `import_version`. The version describes the replay contract for the import record and its retained artifacts, not the parser implementation version. Existing historical imports are version 1. New artifact-aware imports that can retain multiple source artifacts and parse native provider payloads are version 2. Backward-compatible parser improvements should keep the same import version; incompatible source-shape or replay-semantics changes must increment the version and preserve readers for older versions.
 
-The following current code paths use TCX as canonical data or lose source fidelity and need conversion before Bike is fully FIT-first:
+## Current FIT-First Implementation
 
-- `api/src/strava.rs`: `process_strava_sync` calls `get_activity_streams`, then `build_activity_upload`, which creates a `.tcx` filename, sets `format = "tcx"`, sets a TCX MIME type, and passes generated XML into `persist_activity_upload`. This makes a lossy synthetic TCX look like the retained source.
-- `api/src/strava.rs`: `get_activity_streams` currently requests only `time,distance,latlng,altitude,velocity_smooth,heartrate,cadence,watts`. It omits other available Strava streams such as `temp`, `moving`, and `grade_smooth`, and does not retain the raw stream payload, stream `original_size`, or stream `resolution`.
-- `api/src/strava.rs`: `build_tcx_document` serializes Strava summary and stream data into `TrainingCenterDatabase` XML. This flattens provider payloads into TCX, drops fields that have no TCX mapping, interpolates elapsed time/distance when streams are missing, creates a single lap, and cannot represent FIT-only data such as event records, developer fields, MTB dynamics, detailed device metadata, or full session/lap semantics.
-- `api/src/activity_import_pipeline.rs`: `persist_activity_upload`, `store_activity_upload_import`, `process_stored_activity_import`, and `reprocess_activity_from_import` trust `activity_imports.format` and `activity_imports.storage_path` as the replayable source. For Strava imports those values point at generated TCX, so reprocessing and "source file" download replay the lossy artifact instead of provider raw data or FIT.
-- `api/src/controllers/activities.rs`: `download_activity_source_file` returns the bytes from `activity_imports.storage_path` with `activity_import.original_filename`. For Strava-synced rides this currently downloads generated TCX while the UI labels the action "Download source file".
-- `migration/src/m20260512_000014_add_activity_source_correlation_id.rs`: historical Strava correlation backfill extracts IDs from `.tcx` filenames such as `Morning_Mountain_Bike_Ride_18468904796.tcx`. Future data should store provider correlation IDs independently from filenames and formats.
+Activity imports persist explicit source artifacts in `activity_import_artifacts`. The legacy `activity_imports.format`, `activity_imports.storage_path`, and related columns remain as a compatibility bridge, but processing and download behavior should prefer artifact metadata.
+
+Manual upload and archive import store supported FIT/TCX/GPX bytes as `original` artifacts with source-quality labels such as `fit_original`, `tcx_original`, or `gpx_original`. Archive import sorts supported entries by fidelity before processing, so FIT representations are attempted before TCX and GPX when an archive contains duplicate representations.
+
+Strava sync stores the raw provider summary and stream payload as a versioned `provider_payload` artifact with `source_quality = strava_streams`. The parser can normalize that retained provider payload directly into Bike summary/detail data. Strava still builds a generated TCX as a `generated_export` artifact with `source_quality = generated_tcx`, not as an original source, but that TCX is now a compatibility/export artifact and legacy fallback rather than the normal parsing input. Strava stream requests include `time`, `distance`, `latlng`, `altitude`, `velocity_smooth`, `heartrate`, `cadence`, `watts`, `temp`, `moving`, and `grade_smooth`, and retained stream payloads include Strava stream metadata such as `original_size`, `resolution`, and `series_type` when provided.
+
+The activity-processing graph chooses the richest parsable artifact for normalization: original FIT first, original TCX/GPX next, Strava provider payload next, and generated TCX only as a last-resort compatibility artifact. The source-file endpoint returns retained original artifacts only. Provider payload and generated export downloads should remain separate concepts.
+
+## Remaining Gaps
+
+- `api/src/strava.rs`: `build_tcx_document` still serializes Strava summary and stream data into `TrainingCenterDatabase` XML as a compatibility export/fallback. This generated TCX is correctly labeled as lossy and should not regain priority over retained provider payload parsing.
 - `api/src/activity_details.rs` and `api/src/fit_support.rs`: FIT parsing exists, but the normalized derived data currently keeps common route/chart/lap fields only: distance, elevation, speed, heart rate, cadence, power, calories, ascent/descent, and timing. FIT fields for grit, flow, jumps, hang time, jump distance, event records, developer data, device metadata, and raw message coverage are not persisted in the normalized model.
-- `api/src/activity_summary.rs` and `api/src/activity_details.rs`: TCX and GPX parsers remain valid compatibility parsers, but they cannot be used as the fallback representation for sources that were richer than TCX/GPX.
-- `api/src/archive_import.rs`: archive import correctly stores original supported entry bytes after gzip decoding, but it treats FIT, TCX, and GPX as peers. It should prefer FIT when the same activity appears multiple times in an archive and should record source-quality metadata for duplicate cleanup.
+- `migration/src/m20260512_000014_add_activity_source_correlation_id.rs`: historical Strava correlation backfill extracts IDs from `.tcx` filenames such as `Morning_Mountain_Bike_Ride_18468904796.tcx`. Future data should store provider correlation IDs independently from filenames and formats.
 - `ui-next/components/ActivityImportsPanel.tsx`, `ui-next/components/ActivityStream.tsx`, and related tests: upload copy presents FIT, TCX, and GPX as equal choices. UI copy should steer riders toward FIT for full telemetry and present TCX/GPX as fallback formats.
-- `ui-next/components/activity-detail/ActivityHeaderActions.tsx` and `ui-next/components/__tests__/ActivityDetailPanel.test.tsx`: "Download source file" assumes the retained import is original. The UI should distinguish original FIT/source, provider stream archive, and generated compatibility exports.
+- `ui-next/components/activity-detail/ActivityHeaderActions.tsx` and `ui-next/components/__tests__/ActivityDetailPanel.test.tsx`: the detail action now says "Download original source", but the UI still does not expose provider-payload or generated-export downloads as separate actions.
 - `api/src/controllers/segments.rs`, `ui-next/components/SegmentsPanel.tsx`, and `docs/specs/segment-processing.md`: segment import is GPX/TCX-only. This is acceptable for route-only segment definitions, but it should stay separate from activity source fidelity and should not imply TCX is preferred for activity ingestion.
 
-## FIT-First Plan
+## Native Strava Provider Parsing
 
-1. Add source artifact metadata.
+Implemented in `api/src/strava_provider_payload.rs` and the artifact-aware parser path in `api/src/activity_parser.rs`.
 
-   Extend persistence so an activity import can have one or more artifacts with fields for `artifact_kind` (`original`, `provider_payload`, `generated_export`), `format`, `storage_path`, `mime_type`, `size_bytes`, checksum, and fidelity ranking. Keep the existing `activity_imports.storage_path` as a migration bridge until callers are moved. Add explicit source-quality labels such as `fit_original`, `tcx_original`, `gpx_original`, `strava_streams`, and `generated_tcx`.
+1. Define a stored Strava provider payload shape.
 
-2. Preserve Strava raw provider data instead of pretending it is TCX.
+   Done. `StoredStravaProviderPayload` includes a version, provider name, Strava activity ID, activity summary fields, streams keyed by stream type, and stream metadata such as `original_size`, `resolution`, and `series_type`.
 
-   Change Strava sync to store the raw activity summary/detail payload and raw stream response as `provider_payload` artifacts. Request all useful public stream keys: `time`, `distance`, `latlng`, `altitude`, `velocity_smooth`, `heartrate`, `cadence`, `watts`, `temp`, `moving`, and `grade_smooth`. Treat generated TCX, if still needed for compatibility, as a derived export artifact that can be regenerated from the provider payload.
+2. Extend the parser interface to be artifact-aware.
 
-3. Prefer true FIT files wherever Bike can obtain them.
+   Done for the activity-processing graph. `parse_activity_artifact` dispatches between file artifacts (`fit`, `tcx`, `gpx`) and provider artifacts such as `strava_streams` without requiring provider data to masquerade as a file format.
 
-   Manual upload and archive import should preserve FIT bytes unchanged. Archive import and duplicate cleanup should rank duplicate sources by fidelity, with original FIT above original TCX, original GPX, Strava streams, and generated exports. A later Garmin integration should ingest official FIT files if available and should not rely on reverse-engineered Garmin endpoints.
+3. Implement `parse_strava_provider_payload`.
 
-4. Expand FIT parsing into a richer normalized model.
+   Done. The parser builds an `ActivityDraft` from Strava summary fields and `ActivityDerivedData` from Strava streams, including route points, chart points, and a full-activity lap. Stream arrays map directly without serializing through generated TCX first.
 
-   Extend `fit_support.rs` to parse and retain session/lap/event/device/developer records and MTB fields including grit, flow, jump count, hang time, and jump distance when present. Extend `ActivityDerivedData` or add telemetry-specific tables for fields that do not belong in route/chart points. Keep unknown FIT/developer fields in a replayable raw-message sidecar if the typed model does not yet understand them.
+4. Change artifact selection priority once native parsing exists.
 
-5. Move import processing to a source-aware parser and graph executor.
+   Done. The activity-processing graph chooses artifacts in this order: original FIT, original TCX/GPX, Strava provider payload, and generated TCX only as a legacy fallback. Provider payload selection is covered by regression tests so generated TCX cannot regain priority over retained provider data.
 
-   Import processing now has a graph-shaped executor backed by `petgraph`, but source selection is still format/import-row based. Replace format-only dispatch with artifact-aware dispatch: parse original FIT first, original TCX/GPX second, provider payloads third, and generated exports only as a last resort for legacy rows. Reprocessing should choose the richest available artifact and update normalized records without changing the original artifact.
+5. Keep generated TCX as optional export or legacy fallback only.
 
-6. Migrate legacy Strava synthetic TCX imports.
-
-   Mark existing `strava_sync` imports whose `format = "tcx"` and filename ends with a Strava activity ID as `generated_tcx`/legacy. Preserve them for replay until a new Strava sync can fetch raw provider payloads. When possible, re-sync connected accounts to attach Strava raw summaries and streams to existing activities by `source_correlation_id`.
-
-7. Fix source-file download semantics.
-
-   Change the source-file endpoint to return the highest-fidelity original artifact by default. If no original file exists, return a clear 404 or a provider payload download endpoint, and expose generated TCX as a separate "Download generated TCX" action. The UI should not call synthetic TCX an original source file.
-
-8. Rebuild downstream analytics from richer data.
-
-   Once richer FIT/provider data is retained, reprocess affected activities, rebuild derived route/chart/lap data, segment efforts, activity analytics, training analysis, and fitness freshness. Add validation reports showing which activities are backed by original FIT, original TCX/GPX, Strava streams, or legacy generated TCX.
+   Done for parsing priority. New Strava imports still retain generated TCX as a compatibility export/fallback, but native provider payload parsing is the normal Strava path and generated TCX stays labeled as lossy/generated.
 
 ## Deduplication
 
@@ -124,6 +122,8 @@ The upload UI should show recent archive-import jobs so the rider can track prog
 Invalid files should fail with field-level validation where possible. Empty uploads, unsupported extensions, malformed multipart data, and payloads above the upload limit should produce clear user-facing errors.
 
 Worker failures should mark the import or archive job failed without losing the source record. A later reprocess path should be able to recover when the parser or source data issue is fixed.
+
+Every activity-processing graph stage should emit an `activity_processing` integration event with `event_type = stage_completed` and payload fields including `import_id`, `activity_id` when known, `source`, and `stage`. Terminal processed, duplicate, and failed outcomes should emit `import_processed`, `import_duplicate`, or `import_failed`. Tests should cover stage event emission so traceability does not silently regress.
 
 ## Code Anchors
 

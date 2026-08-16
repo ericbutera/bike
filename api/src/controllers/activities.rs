@@ -17,8 +17,8 @@ use crate::analytics::{
 };
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::entities::{
-    activities, activity_analytics, activity_imports, segment_efforts, segment_user_summaries,
-    segments,
+    activities, activity_analytics, activity_import_artifacts, activity_imports, segment_efforts,
+    segment_user_summaries, segments,
 };
 use crate::storage::AppStorage;
 use crate::training_profile::{
@@ -570,10 +570,47 @@ pub async fn get_activity(
     let segment_efforts = load_activity_segment_efforts(&state.db, user.id, activity.id).await?;
     let training_analysis =
         load_activity_training_analysis_by_activity_id(&state.db, activity.id).await?;
+    let can_download_source_file = match activity.activity_import_id {
+        Some(import_id) => {
+            load_downloadable_original_source_artifact(&state.db, user.id, import_id)
+                .await?
+                .is_some()
+        }
+        None => false,
+    };
     let mut response = ActivityResponse::from_detail(activity, segment_efforts);
     response.training_analysis = training_analysis;
+    response.can_download_source_file = can_download_source_file;
 
     Ok(Json(response))
+}
+
+async fn load_downloadable_original_source_artifact(
+    db: &sea_orm::DatabaseConnection,
+    user_id: i32,
+    activity_import_id: i32,
+) -> Result<Option<activity_import_artifacts::Model>, AppError> {
+    let artifacts = activity_import_artifacts::Entity::find()
+        .filter(activity_import_artifacts::Column::UserId.eq(user_id))
+        .filter(activity_import_artifacts::Column::ActivityImportId.eq(activity_import_id))
+        .filter(activity_import_artifacts::Column::ArtifactKind.eq("original"))
+        .all(db)
+        .await?;
+
+    Ok(artifacts
+        .into_iter()
+        .filter(|artifact| matches!(artifact.format.as_str(), "fit" | "tcx" | "gpx"))
+        .max_by_key(|artifact| match artifact.source_quality.as_str() {
+            "fit_original" => 500,
+            "tcx_original" => 400,
+            "gpx_original" => 300,
+            _ => match artifact.format.as_str() {
+                "fit" => 490,
+                "tcx" => 390,
+                "gpx" => 290,
+                _ => 0,
+            },
+        }))
 }
 
 #[utoipa::path(
@@ -607,14 +644,12 @@ pub async fn download_activity_source_file(
     let activity_import_id = activity
         .activity_import_id
         .ok_or_else(|| AppError::not_found("Activity source file not found"))?;
-    let activity_import = activity_imports::Entity::find()
-        .filter(activity_imports::Column::Id.eq(activity_import_id))
-        .filter(activity_imports::Column::UserId.eq(user.id))
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| AppError::not_found("Activity source file not found"))?;
+    let source_artifact =
+        load_downloadable_original_source_artifact(&state.db, user.id, activity_import_id)
+            .await?
+            .ok_or_else(|| AppError::not_found("Activity source file not found"))?;
     let source_path =
-        resolve_activity_import_storage_path(&state.uploads_dir, &activity_import.storage_path)?;
+        resolve_activity_import_storage_path(&state.uploads_dir, &source_artifact.storage_path)?;
     let bytes = match tokio::fs::read(&source_path).await {
         Ok(bytes) => bytes,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -625,7 +660,7 @@ pub async fn download_activity_source_file(
     let mut headers = HeaderMap::new();
     headers.insert(
         header::CONTENT_TYPE,
-        HeaderValue::from_static(activity_source_content_type(&activity_import.format)),
+        HeaderValue::from_static(activity_source_content_type(&source_artifact.format)),
     );
     headers.insert(
         header::CONTENT_LENGTH,
@@ -635,7 +670,7 @@ pub async fn download_activity_source_file(
     headers.insert(
         header::CONTENT_DISPOSITION,
         HeaderValue::from_str(&content_disposition_header(
-            &activity_import.original_filename,
+            &source_artifact.original_filename,
         ))
         .map_err(|_| AppError::internal("Failed to build source file response"))?,
     );

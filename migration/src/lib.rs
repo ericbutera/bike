@@ -38,6 +38,9 @@ mod m20260622_000001_activity_type;
 mod m20260622_000002_activity_import_processing_checkpoints;
 mod m20260717_000001_add_oidc_identity_to_users;
 mod m20260722_000001_user_preferences_xc_event_target_details;
+mod m20260816_000001_create_activity_import_artifacts;
+mod m20260816_000002_add_activity_import_version;
+mod m20260816_000003_add_admin_activities_sort_index;
 
 pub struct Migrator;
 
@@ -137,6 +140,15 @@ impl MigratorTrait for Migrator {
         ));
         locals.push(Box::new(
             m20260722_000001_user_preferences_xc_event_target_details::Migration,
+        ));
+        locals.push(Box::new(
+            m20260816_000001_create_activity_import_artifacts::Migration,
+        ));
+        locals.push(Box::new(
+            m20260816_000002_add_activity_import_version::Migration,
+        ));
+        locals.push(Box::new(
+            m20260816_000003_add_admin_activities_sort_index::Migration,
         ));
         locals.sort_by_key(|m| m.name().to_string());
 

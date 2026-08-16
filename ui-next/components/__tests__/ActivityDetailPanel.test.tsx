@@ -564,7 +564,7 @@ describe("ActivityDetailPanel", () => {
       screen.getByRole("button", { name: "Regenerate derived data" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "Download source file" }),
+      screen.getByRole("link", { name: "Download original source" }),
     ).toHaveAttribute(
       "href",
       "http://localhost:3000/api/activities/7/source-file",

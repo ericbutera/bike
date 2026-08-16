@@ -139,6 +139,37 @@ export type Activity = {
   can_download_source_file?: boolean;
 };
 
+export type AdminActivity = {
+  id: number;
+  user_id: number;
+  title: string;
+  sport: string;
+  source: string;
+  started_at: string;
+  format?: string | null;
+  activity_import_id?: number | null;
+  import_version?: number | null;
+  import_status?: string | null;
+  import_processing_stage?: string | null;
+};
+
+export type ActivityProcessingGraphNode = {
+  id: string;
+  label: string;
+  stage: string;
+};
+
+export type ActivityProcessingGraphEdge = {
+  from: string;
+  to: string;
+};
+
+export type ActivityProcessingGraph = {
+  nodes: ActivityProcessingGraphNode[];
+  edges: ActivityProcessingGraphEdge[];
+  mermaid: string;
+};
+
 export type UpdateActivityInput = {
   title?: string | null;
   activity_type?: ActivityType | null;
@@ -998,6 +1029,7 @@ export type ActivityArchiveImportJob = {
 
 export type ActivityImport = {
   id: number;
+  import_version: number;
   activity_id?: number | null;
   original_filename: string;
   format: string;
@@ -1263,6 +1295,40 @@ export function useActivities(opts?: {
     ...response,
     data: pageData?.data,
     metadata: pageData?.metadata,
+  };
+}
+
+export function useAdminActivities(opts?: {
+  enabled?: boolean;
+  page?: number;
+  perPage?: number;
+}) {
+  const page = Math.max(1, opts?.page ?? 1);
+  const perPage = Math.max(1, opts?.perPage ?? 25);
+  const response = $api.useQuery("get", "/admin/activities", {
+    params: { query: { page, per_page: perPage } },
+    options: { enabled: opts?.enabled ?? true },
+  });
+
+  const pageData = response.data as
+    | PaginatedResponse<AdminActivity>
+    | undefined;
+
+  return {
+    ...response,
+    data: pageData?.data,
+    metadata: pageData?.metadata,
+  };
+}
+
+export function useActivityProcessingGraph(opts?: { enabled?: boolean }) {
+  const response = $api.useQuery("get", "/activity-imports/processing-graph", {
+    options: { enabled: opts?.enabled ?? true },
+  });
+
+  return {
+    ...response,
+    data: (response.data ?? null) as ActivityProcessingGraph | null,
   };
 }
 

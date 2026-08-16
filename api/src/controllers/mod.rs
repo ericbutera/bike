@@ -123,6 +123,14 @@ pub fn routes() -> Router<Arc<AppStorage>> {
             axum::routing::get(activity_imports::get_activity_processing_state),
         )
         .route(
+            "/api/activity-imports/processing-graph",
+            axum::routing::get(activity_imports::get_activity_processing_graph),
+        )
+        .route(
+            "/api/activity-imports/:id/trace",
+            axum::routing::get(activity_imports::get_activity_import_trace),
+        )
+        .route(
             "/api/activity-imports/archive-jobs/:id",
             axum::routing::get(activity_imports::get_activity_archive_import_job),
         )

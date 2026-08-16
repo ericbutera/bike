@@ -77,7 +77,7 @@ export function ActivityHeaderActions({
             {activity.can_download_source_file ? (
               <li>
                 <a href={activitySourceFileUrl(activity.id)}>
-                  Download source file
+                  Download original source
                 </a>
               </li>
             ) : null}

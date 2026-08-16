@@ -5,9 +5,12 @@ use crate::activity_import_lock::{
     ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
 };
 use crate::activity_import_pipeline::{
-    finalize_activity_import_batch, mark_activity_imports_processed, persist_activity_upload,
+    finalize_activity_import_batch, mark_activity_imports_processed,
+    persist_activity_upload_with_artifacts, ActivityImportArtifactPayload,
     ActivityUploadDeduplication, ActivityUploadPayload, PersistActivityUploadOutcome,
-    PersistActivityUploadRequest,
+    PersistActivityUploadWithArtifactsRequest, ACTIVITY_IMPORT_ARTIFACT_KIND_GENERATED_EXPORT,
+    ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD, ACTIVITY_IMPORT_SOURCE_QUALITY_GENERATED_TCX,
+    ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS,
 };
 use crate::activity_lifecycle::{
     delete_activity_with_derived_state, resume_incomplete_activity_imports_for_user,
@@ -19,6 +22,9 @@ use crate::entities::{activities, strava_connections};
 use crate::integration_events::{
     self, NewIntegrationEvent, INTEGRATION_LEVEL_ERROR, INTEGRATION_LEVEL_INFO,
     INTEGRATION_LEVEL_SUCCESS, INTEGRATION_LEVEL_WARNING, INTEGRATION_PROVIDER_STRAVA,
+};
+use crate::strava_provider_payload::{
+    StoredStravaProviderPayload, StravaActivityStreams, StravaActivitySummary, StravaStream,
 };
 use crate::tasks::{StravaSyncTask, TaskQueue};
 use crate::training_profile::load_training_profile;
@@ -92,46 +98,6 @@ struct StravaAthleteSummary {
     firstname: Option<String>,
     lastname: Option<String>,
     profile_medium: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct StravaActivitySummary {
-    id: i64,
-    name: String,
-    distance: Option<f64>,
-    moving_time: Option<i32>,
-    elapsed_time: Option<i32>,
-    max_speed: Option<f64>,
-    average_heartrate: Option<f64>,
-    max_heartrate: Option<f64>,
-    average_cadence: Option<f64>,
-    calories: Option<f64>,
-    sport_type: Option<String>,
-    #[serde(rename = "type")]
-    legacy_type: Option<String>,
-    start_date: DateTime<Utc>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct StravaActivityStreams {
-    time: Option<StravaStream<i32>>,
-    distance: Option<StravaStream<f64>>,
-    latlng: Option<StravaLatLngStream>,
-    altitude: Option<StravaStream<f64>>,
-    velocity_smooth: Option<StravaStream<f64>>,
-    heartrate: Option<StravaStream<i32>>,
-    cadence: Option<StravaStream<f64>>,
-    watts: Option<StravaStream<i32>>,
-}
-
-#[derive(Debug, Deserialize)]
-struct StravaStream<T> {
-    data: Vec<T>,
-}
-
-#[derive(Debug, Deserialize)]
-struct StravaLatLngStream {
-    data: Vec<[f64; 2]>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -721,7 +687,7 @@ pub async fn process_strava_sync(
                     }
                 };
 
-                let upload = match build_activity_upload(activity, &streams) {
+                let import_payload = match build_activity_upload(activity, &streams) {
                     Ok(value) => value,
                     Err(error) => {
                         failed_count += 1;
@@ -738,17 +704,20 @@ pub async fn process_strava_sync(
                     return Ok(());
                 }
 
-                match persist_activity_upload(db, PersistActivityUploadRequest {
+                let persist_request = PersistActivityUploadWithArtifactsRequest {
                     uploads_dir,
                     user_storage_key: &user_storage_key,
                     user_id: connection.user_id,
-                    upload,
+                    upload: import_payload.generated_tcx_upload,
+                    primary_artifact_kind: ACTIVITY_IMPORT_ARTIFACT_KIND_GENERATED_EXPORT,
+                    primary_source_quality: ACTIVITY_IMPORT_SOURCE_QUALITY_GENERATED_TCX,
+                    additional_artifacts: vec![import_payload.provider_payload_artifact],
                     source: "strava_sync",
                     deduplication: ActivityUploadDeduplication::Enabled,
                     training_profile: Some(&training_profile),
-                })
-                .await
-                {
+                };
+
+                match persist_activity_upload_with_artifacts(db, persist_request).await {
                     Ok(PersistActivityUploadOutcome::Imported(persisted)) => {
                         imported_count += 1;
                         imported_import_ids.push(persisted.import.id);
@@ -933,7 +902,7 @@ impl StravaApiClient {
                 .query(&[
                     (
                         "keys",
-                        "time,distance,latlng,altitude,velocity_smooth,heartrate,cadence,watts",
+                        "time,distance,latlng,altitude,velocity_smooth,heartrate,cadence,watts,temp,moving,grade_smooth",
                     ),
                     ("key_by_type", "true"),
                 ])
@@ -1506,22 +1475,47 @@ async fn queue_sync_task_for_connection(
     Ok(queued_connection)
 }
 
+struct StravaActivityImportPayload {
+    generated_tcx_upload: ActivityUploadPayload,
+    provider_payload_artifact: ActivityImportArtifactPayload,
+}
+
 fn build_activity_upload(
     activity: &StravaActivitySummary,
     streams: &StravaActivityStreams,
-) -> Result<ActivityUploadPayload, AppError> {
+) -> Result<StravaActivityImportPayload, AppError> {
     let original_filename = format!(
         "{}.tcx",
         sanitize_title_for_filename(&activity.name, activity.id)
     );
     let bytes = build_tcx_document(activity, streams).into_bytes();
+    let provider_payload = serde_json::to_vec(&StoredStravaProviderPayload::new(
+        activity.clone(),
+        streams.clone(),
+    ))
+    .map_err(|error| {
+        AppError::internal(format!(
+            "Failed to serialize Strava provider payload for activity {}: {error}",
+            activity.id
+        ))
+    })?;
 
-    Ok(ActivityUploadPayload {
-        original_filename,
-        format: "tcx".to_string(),
-        mime_type: Some("application/vnd.garmin.tcx+xml".to_string()),
-        source_correlation_id: Some(activity.id.to_string()),
-        bytes,
+    Ok(StravaActivityImportPayload {
+        generated_tcx_upload: ActivityUploadPayload {
+            original_filename,
+            format: "tcx".to_string(),
+            mime_type: Some("application/vnd.garmin.tcx+xml".to_string()),
+            source_correlation_id: Some(activity.id.to_string()),
+            bytes,
+        },
+        provider_payload_artifact: ActivityImportArtifactPayload {
+            artifact_kind: ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD.to_string(),
+            format: "json".to_string(),
+            source_quality: ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS.to_string(),
+            original_filename: format!("strava_activity_{}.json", activity.id),
+            mime_type: Some("application/json".to_string()),
+            bytes: provider_payload,
+        },
     })
 }
 
@@ -2513,28 +2507,22 @@ mod tests {
                 .with_timezone(&Utc),
         };
         let streams = StravaActivityStreams {
-            time: Some(StravaStream {
-                data: vec![0, 160, 320],
-            }),
-            distance: Some(StravaStream {
-                data: vec![0.0, 500.0, 1000.0],
-            }),
-            latlng: Some(StravaLatLngStream {
+            time: Some(test_stream(vec![0, 160, 320])),
+            distance: Some(test_stream(vec![0.0, 500.0, 1000.0])),
+            latlng: Some(crate::strava_provider_payload::StravaLatLngStream {
                 data: vec![[35.0, -82.0], [35.0005, -82.0005], [35.001, -82.001]],
+                original_size: None,
+                resolution: None,
+                series_type: None,
             }),
-            altitude: Some(StravaStream {
-                data: vec![700.0, 720.0, 725.0],
-            }),
+            altitude: Some(test_stream(vec![700.0, 720.0, 725.0])),
             velocity_smooth: None,
-            heartrate: Some(StravaStream {
-                data: vec![140, 145, 150],
-            }),
-            cadence: Some(StravaStream {
-                data: vec![86.0, 88.0, 90.0],
-            }),
-            watts: Some(StravaStream {
-                data: vec![205, 220, 235],
-            }),
+            heartrate: Some(test_stream(vec![140, 145, 150])),
+            cadence: Some(test_stream(vec![86.0, 88.0, 90.0])),
+            watts: Some(test_stream(vec![205, 220, 235])),
+            temp: None,
+            moving: None,
+            grade_smooth: None,
         };
 
         let tcx = build_tcx_document(&activity, &streams);
@@ -2545,6 +2533,71 @@ mod tests {
         assert!(tcx.contains("<HeartRateBpm><Value>140</Value></HeartRateBpm>"));
         assert!(tcx.contains("<Cadence>86</Cadence>"));
         assert!(tcx.contains("<ns3:Watts>205</ns3:Watts>"));
+    }
+
+    #[test]
+    fn builds_strava_import_payload_with_provider_artifact_and_generated_tcx() {
+        let activity = StravaActivitySummary {
+            id: 99,
+            name: "Lunch Ride".to_string(),
+            distance: Some(1000.0),
+            moving_time: Some(300),
+            elapsed_time: Some(320),
+            max_speed: Some(6.2),
+            average_heartrate: Some(145.0),
+            max_heartrate: Some(162.0),
+            average_cadence: Some(88.0),
+            calories: Some(120.0),
+            sport_type: Some("Ride".to_string()),
+            legacy_type: Some("Ride".to_string()),
+            start_date: DateTime::parse_from_rfc3339("2026-05-12T12:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
+        };
+        let streams = StravaActivityStreams {
+            time: Some(test_stream(vec![0, 160, 320])),
+            distance: Some(test_stream(vec![0.0, 500.0, 1000.0])),
+            latlng: None,
+            altitude: None,
+            velocity_smooth: None,
+            heartrate: None,
+            cadence: None,
+            watts: None,
+            temp: Some(test_stream(vec![18, 19, 20])),
+            moving: Some(test_stream(vec![true, true, false])),
+            grade_smooth: Some(test_stream(vec![0.1, 0.2, -0.1])),
+        };
+
+        let payload = build_activity_upload(&activity, &streams).expect("build payload");
+
+        assert_eq!(payload.generated_tcx_upload.format, "tcx");
+        assert_eq!(
+            payload.provider_payload_artifact.artifact_kind,
+            ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD
+        );
+        assert_eq!(
+            payload.provider_payload_artifact.source_quality,
+            ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS
+        );
+        let raw_json: serde_json::Value =
+            serde_json::from_slice(&payload.provider_payload_artifact.bytes)
+                .expect("provider payload json");
+        assert_eq!(raw_json["v"], 1);
+        assert_eq!(raw_json["provider"], "strava");
+        assert_eq!(raw_json["provider_activity_id"], 99);
+        assert_eq!(raw_json["activity"]["id"], 99);
+        assert_eq!(raw_json["streams"]["temp"]["data"][0], 18);
+        assert_eq!(raw_json["streams"]["moving"]["data"][2], false);
+        assert_eq!(raw_json["streams"]["grade_smooth"]["data"][1], 0.2);
+    }
+
+    fn test_stream<T>(data: Vec<T>) -> StravaStream<T> {
+        StravaStream {
+            data,
+            original_size: None,
+            resolution: None,
+            series_type: None,
+        }
     }
 
     #[tokio::test]
