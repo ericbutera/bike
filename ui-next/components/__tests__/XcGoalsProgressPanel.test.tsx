@@ -3,7 +3,9 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ACTIVITY_TYPES } from "../../lib/activityTypes";
 import RequireAuth from "../RequireAuth";
-import XcGoalsProgressPanel from "../XcGoalsProgressPanel";
+import XcGoalsProgressPanel, {
+  indexedLowerIsBetterPercentTrendValue,
+} from "../XcGoalsProgressPanel";
 
 const mocks = vi.hoisted(() => ({
   useActivityProcessingState: vi.fn(),
@@ -472,6 +474,13 @@ describe("XcGoalsProgressPanel", () => {
       isError: false,
       error: null,
     });
+  });
+
+  it("indexes aerobic decoupling as lower-is-better percent points", () => {
+    expect(indexedLowerIsBetterPercentTrendValue(8, 8)).toBe(100);
+    expect(indexedLowerIsBetterPercentTrendValue(-2, 8)).toBe(110);
+    expect(indexedLowerIsBetterPercentTrendValue(18, 8)).toBe(90);
+    expect(indexedLowerIsBetterPercentTrendValue(null, 8)).toBeNull();
   });
 
   it("renders XC goals, charts, recommendations, and recent rides", () => {

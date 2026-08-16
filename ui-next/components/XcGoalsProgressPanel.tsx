@@ -62,8 +62,7 @@ const FEET_PER_METER = 3.28084;
 const XC_GOAL_DISTANCE_MAX_MILES = 500;
 const XC_GOAL_DISTANCE_MAX_METERS =
   XC_GOAL_DISTANCE_MAX_MILES * METERS_PER_MILE;
-const XC_GOAL_DISTANCE_MAX_KILOMETERS =
-  XC_GOAL_DISTANCE_MAX_METERS / 1000;
+const XC_GOAL_DISTANCE_MAX_KILOMETERS = XC_GOAL_DISTANCE_MAX_METERS / 1000;
 const XC_GOAL_ELEVATION_MAX_FEET = 25000;
 const XC_GOAL_ELEVATION_MAX_METERS =
   XC_GOAL_ELEVATION_MAX_FEET / FEET_PER_METER;
@@ -196,9 +195,7 @@ function parseOptionalNumberInput(value: string) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function formatTargetFinishTimeInput(
-  valueSeconds: number | null | undefined,
-) {
+function formatTargetFinishTimeInput(valueSeconds: number | null | undefined) {
   if (valueSeconds == null || !Number.isFinite(valueSeconds)) {
     return "";
   }
@@ -561,7 +558,7 @@ function firstFiniteValue(values: Array<number | null | undefined>) {
   );
 }
 
-function indexedTrendValue(
+export function indexedTrendValue(
   value: number | null | undefined,
   baseline: number | null | undefined,
 ) {
@@ -576,6 +573,22 @@ function indexedTrendValue(
   }
 
   return (value / baseline) * 100;
+}
+
+export function indexedLowerIsBetterPercentTrendValue(
+  value: number | null | undefined,
+  baseline: number | null | undefined,
+) {
+  if (
+    value == null ||
+    baseline == null ||
+    !Number.isFinite(value) ||
+    !Number.isFinite(baseline)
+  ) {
+    return null;
+  }
+
+  return 100 + (baseline - value);
 }
 
 function classifyTrend(
@@ -677,10 +690,7 @@ function speedChartValue(
   valueMetersPerSecond: number | null | undefined,
   unitSystem: UnitSystem,
 ) {
-  if (
-    valueMetersPerSecond == null ||
-    !Number.isFinite(valueMetersPerSecond)
-  ) {
+  if (valueMetersPerSecond == null || !Number.isFinite(valueMetersPerSecond)) {
     return null;
   }
 
@@ -938,8 +948,7 @@ function buildPreferencesPayload(
     xc_goal_target_distance_meters: overrides.xcGoalTargetDistanceMeters,
     xc_goal_target_elevation_gain_meters:
       overrides.xcGoalTargetElevationGainMeters,
-    xc_goal_target_finish_time_seconds:
-      overrides.xcGoalTargetFinishTimeSeconds,
+    xc_goal_target_finish_time_seconds: overrides.xcGoalTargetFinishTimeSeconds,
     xc_goal_event_profile: overrides.xcGoalEventProfile,
   };
 }
@@ -974,7 +983,10 @@ function TrendSummaryItem({ summary }: { summary: TrendSummary }) {
           <p className="text-xs uppercase tracking-[0.18em] text-base-content/45">
             {summary.label}
           </p>
-          <InfoTooltip label={`${summary.label} details`} tip={summary.detail} />
+          <InfoTooltip
+            label={`${summary.label} details`}
+            tip={summary.detail}
+          />
         </div>
         <span
           className={`whitespace-nowrap text-xs font-semibold uppercase ${trendDirectionClass(
@@ -1373,7 +1385,9 @@ function RaceResultCard({
               Distance vs best training
             </dt>
             <dd className="mt-1 font-medium text-base-content">
-              {formatRaceComparison(race.race_vs_best_training_distance_percent)}
+              {formatRaceComparison(
+                race.race_vs_best_training_distance_percent,
+              )}
             </dd>
           </div>
           <div>
@@ -1381,7 +1395,10 @@ function RaceResultCard({
               Avg Z2 speed before race
             </dt>
             <dd className="mt-1 font-medium text-base-content">
-              {formatSpeed(race.prior_training_average_z2_speed_mps, unitSystem)}
+              {formatSpeed(
+                race.prior_training_average_z2_speed_mps,
+                unitSystem,
+              )}
             </dd>
           </div>
           <div>
@@ -1878,7 +1895,7 @@ export default function XcGoalsProgressPanel() {
         point.climbingVerticalRateChartValue,
         climbingRateBaseline,
       ),
-      aerobicDecouplingIndex: indexedTrendValue(
+      aerobicDecouplingIndex: indexedLowerIsBetterPercentTrendValue(
         point.averageAerobicDecouplingPercent,
         decouplingBaseline,
       ),
@@ -1990,7 +2007,7 @@ export default function XcGoalsProgressPanel() {
               )}; Z2 should trend comfortably above it.`
             : heartRateZonesConfigured
               ? "Add target finish time to compare Z2 speed against event pace."
-              : "Set HR zones, then regenerate older rides for Z2 speed."
+              : "Set HR zones, then regenerate older rides for Z2 speed.",
       },
       {
         label: "Climb rate",
@@ -2012,9 +2029,7 @@ export default function XcGoalsProgressPanel() {
       },
       {
         label: "Aerobic decoupling",
-        value: decouplingTrend
-          ? `${decouplingTrend.recent.toFixed(1)}%`
-          : "--",
+        value: decouplingTrend ? `${decouplingTrend.recent.toFixed(1)}%` : "--",
         direction: classifyTrend(decouplingTrend, { lowerIsBetter: true }),
         detail: formatTrendChange(
           decouplingTrend,
@@ -2066,20 +2081,14 @@ export default function XcGoalsProgressPanel() {
       currentClimbDensity,
       targetClimbDensity,
     };
-  }, [
-    goalDistanceUnit,
-    goalElevationUnit,
-    progressQuery.data,
-  ]);
+  }, [goalDistanceUnit, goalElevationUnit, progressQuery.data]);
   const rideBenchmarkTotalPages = Math.max(
     Math.ceil(
-      (progressQuery.data?.recent_rides.length ?? 0) /
-        RIDE_BENCHMARK_PAGE_SIZE,
+      (progressQuery.data?.recent_rides.length ?? 0) / RIDE_BENCHMARK_PAGE_SIZE,
     ),
     1,
   );
-  const rideBenchmarkStartIndex =
-    rideBenchmarkPage * RIDE_BENCHMARK_PAGE_SIZE;
+  const rideBenchmarkStartIndex = rideBenchmarkPage * RIDE_BENCHMARK_PAGE_SIZE;
   const visibleRideBenchmarks = useMemo(() => {
     return (progressQuery.data?.recent_rides ?? []).slice(
       rideBenchmarkStartIndex,
@@ -2343,9 +2352,7 @@ export default function XcGoalsProgressPanel() {
             <span className="whitespace-nowrap">
               Updated {formatActivityTimestamp(progress.generated_at)}
             </span>
-            {progressQuery.isFetching ? (
-              <LoadingSpinner size="sm" />
-            ) : null}
+            {progressQuery.isFetching ? <LoadingSpinner size="sm" /> : null}
           </div>
         </div>
 
@@ -2689,9 +2696,7 @@ export default function XcGoalsProgressPanel() {
         <div className="mt-6 border-t border-base-300/70 pt-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h3 className="font-semibold text-base-content">
-                Time in zones
-              </h3>
+              <h3 className="font-semibold text-base-content">Time in zones</h3>
               <p className="mt-1 text-sm text-base-content/65">
                 Weekly heart-rate zone mix shows whether the block is mostly
                 aerobic or drifting into too much intensity.
@@ -2953,7 +2958,9 @@ export default function XcGoalsProgressPanel() {
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-base-content/65">
             <p>
               Showing{" "}
-              {progress.recent_rides.length > 0 ? rideBenchmarkStartIndex + 1 : 0}
+              {progress.recent_rides.length > 0
+                ? rideBenchmarkStartIndex + 1
+                : 0}
               -
               {Math.min(
                 rideBenchmarkStartIndex + RIDE_BENCHMARK_PAGE_SIZE,
@@ -3290,9 +3297,7 @@ export default function XcGoalsProgressPanel() {
                 className="btn btn-outline"
                 disabled={updatePreferencesMutation.isPending}
                 onClick={() => {
-                  resetGoalDraftsFromPreferences(
-                    preferencesQuery.data ?? null,
-                  );
+                  resetGoalDraftsFromPreferences(preferencesQuery.data ?? null);
                   setIsEditingGoal(false);
                 }}
               >

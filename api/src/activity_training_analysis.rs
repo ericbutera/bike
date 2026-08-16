@@ -30,6 +30,8 @@ const MIXED_XC_MIN_CLIMBING_TIME_SECONDS: i32 = 600;
 const DISTANCE_COMPARISON_BUCKET_METERS: f64 = 5_000.0;
 const ELEVATION_COMPARISON_BUCKET_METERS: f64 = 100.0;
 const DECOUPLING_MIN_QUALIFYING_TIME_SECONDS: f64 = 1_800.0;
+const DECOUPLING_MIN_PLAUSIBLE_PERCENT: f64 = -50.0;
+const DECOUPLING_MAX_PLAUSIBLE_PERCENT: f64 = 50.0;
 const ROUTE_FAMILY_MAX_TOKENS: usize = 4;
 const TRAINING_ANALYSIS_BACKFILL_BATCH_SIZE: usize = 128;
 const ROUTE_FAMILY_STOP_WORDS: &[&str] = &[
@@ -471,6 +473,12 @@ fn z2_distance_meters(
     found.then_some(total_distance_meters)
 }
 
+pub fn plausible_aerobic_decoupling_percent(value: f64) -> Option<f64> {
+    (value.is_finite()
+        && (DECOUPLING_MIN_PLAUSIBLE_PERCENT..=DECOUPLING_MAX_PLAUSIBLE_PERCENT).contains(&value))
+    .then_some(value)
+}
+
 fn averaged_heart_rate(previous: Option<i32>, current: Option<i32>) -> Option<i32> {
     match (previous, current) {
         (Some(left), Some(right)) => Some((left + right) / 2),
@@ -663,7 +671,9 @@ fn aerobic_decoupling_percent(
     let first_efficiency = first_half.efficiency_factor()?;
     let second_efficiency = second_half.efficiency_factor()?;
 
-    Some(((first_efficiency - second_efficiency) / first_efficiency) * 100.0)
+    plausible_aerobic_decoupling_percent(
+        ((first_efficiency - second_efficiency) / first_efficiency) * 100.0,
+    )
 }
 
 fn aerobic_intervals(
@@ -1006,5 +1016,14 @@ mod tests {
         );
         assert!(analysis.aerobic_decoupling_percent.is_some());
         assert!((analysis.aerobic_decoupling_percent.unwrap_or_default() - 15.68).abs() < 0.2);
+    }
+
+    #[test]
+    fn rejects_implausible_aerobic_decoupling_values() {
+        assert_eq!(plausible_aerobic_decoupling_percent(-189.3), None);
+        assert_eq!(plausible_aerobic_decoupling_percent(88.0), None);
+        assert_eq!(plausible_aerobic_decoupling_percent(f64::NAN), None);
+        assert_eq!(plausible_aerobic_decoupling_percent(-21.5), Some(-21.5));
+        assert_eq!(plausible_aerobic_decoupling_percent(28.9), Some(28.9));
     }
 }

@@ -1,6 +1,7 @@
 use crate::activity_details::{
     deserialize_derived_activity_data, ActivityChartPoint, ActivityRoutePoint,
 };
+use crate::activity_training_analysis::plausible_aerobic_decoupling_percent;
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::entities::{
     activities, activity_training_analyses, fitness_freshness_daily, user_preferences,
@@ -738,6 +739,7 @@ pub async fn get_training_reports(
         if let Some(decoupling_percent) = analysis
             .and_then(|model| model.aerobic_decoupling_percent)
             .or(standalone_analysis.aerobic_decoupling_percent)
+            .and_then(plausible_aerobic_decoupling_percent)
         {
             bucket.decoupling_sum += decoupling_percent;
             bucket.decoupling_count += 1;
@@ -1440,6 +1442,7 @@ fn build_endurance_report(activities: &[activities::Model]) -> EnduranceReportRe
                 first_half_efficiency_mps_per_bpm: first_efficiency.map(round_metric),
                 second_half_efficiency_mps_per_bpm: second_efficiency.map(round_metric),
                 aerobic_decoupling_percent: percent_change(first_efficiency, second_efficiency)
+                    .and_then(plausible_aerobic_decoupling_percent)
                     .map(round_metric),
                 late_speed_change_percent: late.0.map(round_metric),
                 late_heart_rate_change_percent: late.1.map(round_metric),
@@ -1966,7 +1969,10 @@ fn reassessment_window_metrics(
             climbing_density_feet_per_hour: analysis
                 .climbing_density_feet_per_hour
                 .map(round_metric),
-            aerobic_decoupling_percent: analysis.aerobic_decoupling_percent.map(round_metric),
+            aerobic_decoupling_percent: analysis
+                .aerobic_decoupling_percent
+                .and_then(plausible_aerobic_decoupling_percent)
+                .map(round_metric),
             late_speed_change_percent: analysis.late_speed_change_percent.map(round_metric),
             fatigue_index: worst_fatigue_index(&hourly_durability(&samples)),
         });
@@ -2771,7 +2777,8 @@ fn compare_analysis_from_activity(activity: &activities::Model) -> CompareRideAn
         .or(activity.average_speed_mps);
     let first = segment_samples(&samples, 0, elapsed_seconds / 2);
     let second = segment_samples(&samples, elapsed_seconds / 2, elapsed_seconds);
-    let aerobic_decoupling_percent = percent_change(efficiency(&first), efficiency(&second));
+    let aerobic_decoupling_percent = percent_change(efficiency(&first), efficiency(&second))
+        .and_then(plausible_aerobic_decoupling_percent);
     let late_speed_change_percent = late_ride_changes(&samples).0;
     let climbs = detect_climbs(activity, &samples);
     let median_climb_rate = median(

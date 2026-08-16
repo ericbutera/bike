@@ -1,4 +1,4 @@
-use crate::activity_training_analysis::ActivityRideFocus;
+use crate::activity_training_analysis::{plausible_aerobic_decoupling_percent, ActivityRideFocus};
 use crate::activity_type::ActivityType;
 use crate::analytics::{FATIGUE_WINDOW_DAYS, FITNESS_WINDOW_DAYS};
 use crate::app_error::{ApiErrorResponse, AppError};
@@ -503,7 +503,9 @@ pub async fn get_xc_goal_progress(
                 climbing_elevation_gain_meters: analysis
                     .climbing_elevation_gain_meters
                     .or(activity.elevation_gain_meters),
-                aerobic_decoupling_percent: analysis.aerobic_decoupling_percent,
+                aerobic_decoupling_percent: analysis
+                    .aerobic_decoupling_percent
+                    .and_then(plausible_aerobic_decoupling_percent),
                 z1_seconds: zone_seconds[0],
                 z2_zone_seconds: zone_seconds[1],
                 z3_seconds: zone_seconds[2],
@@ -800,6 +802,9 @@ fn build_xc_goal_progress_response(
 ) -> XcGoalProgressResponse {
     rides.sort_by(|left, right| right.started_at.cmp(&left.started_at));
     for ride in &mut rides {
+        ride.aerobic_decoupling_percent = ride
+            .aerobic_decoupling_percent
+            .and_then(plausible_aerobic_decoupling_percent);
         apply_xc_training_purpose(ride, goal.as_ref());
     }
 
@@ -2752,6 +2757,115 @@ mod tests {
             response.recommendations[0].key,
             TrainingRecommendationKey::IncreaseEnduranceVolume
         );
+    }
+
+    #[test]
+    fn xc_progress_ignores_implausible_aerobic_decoupling_values() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-07-31T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let response = build_xc_goal_progress_response(
+            vec![build_xc_ride(
+                1,
+                chrono::DateTime::parse_from_rfc3339("2026-07-31T12:00:00Z")
+                    .unwrap()
+                    .with_timezone(&Utc),
+                ActivityRideFocus::XcEndurance,
+                3_600,
+                Some(600.0),
+                Some(-189.3),
+            )],
+            None,
+            None,
+            now,
+        );
+
+        assert_eq!(response.summary.comparable_ride_count, 0);
+        assert_eq!(response.summary.average_aerobic_decoupling_percent, None);
+        assert_eq!(
+            response
+                .recent_rides
+                .first()
+                .and_then(|ride| ride.aerobic_decoupling_percent),
+            None
+        );
+        assert_eq!(
+            response
+                .weekly_progress
+                .last()
+                .and_then(|point| point.average_aerobic_decoupling_percent),
+            None
+        );
+    }
+
+    #[test]
+    fn xc_weekly_progress_keeps_positive_and_negative_decoupling_averages() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-08-16T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let response = build_xc_goal_progress_response(
+            vec![
+                build_xc_ride(
+                    1,
+                    chrono::DateTime::parse_from_rfc3339("2026-08-04T12:00:00Z")
+                        .unwrap()
+                        .with_timezone(&Utc),
+                    ActivityRideFocus::XcEndurance,
+                    3_600,
+                    Some(600.0),
+                    Some(8.0),
+                ),
+                build_xc_ride(
+                    2,
+                    chrono::DateTime::parse_from_rfc3339("2026-08-05T12:00:00Z")
+                        .unwrap()
+                        .with_timezone(&Utc),
+                    ActivityRideFocus::XcEndurance,
+                    3_600,
+                    Some(600.0),
+                    Some(10.0),
+                ),
+                build_xc_ride(
+                    3,
+                    chrono::DateTime::parse_from_rfc3339("2026-08-11T12:00:00Z")
+                        .unwrap()
+                        .with_timezone(&Utc),
+                    ActivityRideFocus::XcEndurance,
+                    3_600,
+                    Some(600.0),
+                    Some(-12.0),
+                ),
+                build_xc_ride(
+                    4,
+                    chrono::DateTime::parse_from_rfc3339("2026-08-12T12:00:00Z")
+                        .unwrap()
+                        .with_timezone(&Utc),
+                    ActivityRideFocus::XcEndurance,
+                    3_600,
+                    Some(600.0),
+                    Some(4.0),
+                ),
+            ],
+            None,
+            None,
+            now,
+        );
+
+        let positive_week = response
+            .weekly_progress
+            .iter()
+            .find(|point| point.week_start == "2026-08-03")
+            .expect("positive decoupling week present");
+        let negative_week = response
+            .weekly_progress
+            .iter()
+            .find(|point| point.week_start == "2026-08-10")
+            .expect("negative decoupling week present");
+
+        assert_eq!(positive_week.comparable_ride_count, 2);
+        assert_eq!(positive_week.average_aerobic_decoupling_percent, Some(9.0));
+        assert_eq!(negative_week.comparable_ride_count, 2);
+        assert_eq!(negative_week.average_aerobic_decoupling_percent, Some(-4.0));
     }
 
     #[test]

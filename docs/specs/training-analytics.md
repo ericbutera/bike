@@ -43,6 +43,8 @@ XC progress should emphasize:
 
 Z2 speed alone must not be treated as the readiness verdict. It is one useful signal inside a broader durability and specificity picture.
 
+Aerobic decoupling is terrain-sensitive, especially on MTB routes. Implausible values outside the accepted product range should be treated as missing data instead of displayed or averaged into readiness. Trend charts must also respect metric direction: higher Z2 speed and climb rate are better, but lower aerobic decoupling is better, so decoupling cannot use the same direct ratio index as speed.
+
 ## DH Analytics
 
 DH analytics only use segments whose mode is explicitly set to `dh`. A segment defaults to XC behavior and must not appear in DH progress unless the rider intentionally marks it as downhill.
