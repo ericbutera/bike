@@ -14,4 +14,5 @@ if [ -n "${CARGO_TARGET_DIR:-}" ]; then
 fi
 
 cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace

@@ -12,6 +12,9 @@ path = "src/main.rs"
 name = "worker"
 path = "src/lib.rs"
 
+[lints]
+workspace = true
+
 [dependencies]
 api = { path = "../api" }
 tokio = { workspace = true }

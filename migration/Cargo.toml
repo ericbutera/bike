@@ -7,6 +7,9 @@ edition = "2021"
 name = "migration"
 path = "src/lib.rs"
 
+[lints]
+workspace = true
+
 [[bin]]
 name = "migration"
 path = "src/main.rs"

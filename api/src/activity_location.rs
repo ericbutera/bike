@@ -17,7 +17,7 @@ pub fn location_from_route_points(route_points: &[ActivityRoutePoint]) -> Option
     let point = route_points.first()?;
     let result = REVERSE_GEOCODER.search((point.latitude, point.longitude));
 
-    format_record(&result.record)
+    format_record(result.record)
 }
 
 fn format_record(record: &Record) -> Option<String> {

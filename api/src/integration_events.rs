@@ -96,17 +96,13 @@ fn json_payload_int_filter(
     value: i32,
 ) -> sea_orm::sea_query::SimpleExpr {
     match backend {
-        DatabaseBackend::Postgres => {
-            Expr::cust(format!("payload->>'{key}' = '{value}'")).into()
-        }
+        DatabaseBackend::Postgres => Expr::cust(format!("payload->>'{key}' = '{value}'")),
         DatabaseBackend::Sqlite => Expr::cust(format!(
             "(json_extract(payload, '$.{key}') = {value} OR json_extract(payload, '$.{key}') = '{value}')"
-        ))
-        .into(),
+        )),
         DatabaseBackend::MySql => Expr::cust(format!(
             "JSON_UNQUOTE(JSON_EXTRACT(payload, '$.{key}')) = '{value}'"
-        ))
-        .into(),
-        _ => Expr::cust(format!("payload->>'{key}' = '{value}'")).into(),
+        )),
+        _ => Expr::cust(format!("payload->>'{key}' = '{value}'")),
     }
 }

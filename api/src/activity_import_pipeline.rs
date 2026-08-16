@@ -1,7 +1,12 @@
-use crate::activity_details::{derive_activity_detail_data, serialize_derived_activity_data};
-use crate::activity_lifecycle::{
-    refresh_activity_derived_state, refresh_activity_derived_state_without_cache_rebuilds,
-};
+#![deny(
+    clippy::cognitive_complexity,
+    clippy::too_many_arguments,
+    clippy::too_many_lines
+)]
+
+use crate::activity_details::serialize_derived_activity_data;
+use crate::activity_lifecycle::refresh_activity_derived_state_without_cache_rebuilds;
+use crate::activity_parser::{parse_activity_data, ParsedActivityData};
 use crate::activity_training_analysis::rebuild_activity_training_analysis_cache;
 use crate::activity_type::ActivityType;
 use crate::analytics::{
@@ -22,10 +27,13 @@ use crate::training_profile::{
 };
 use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, Utc};
 use kaleido::background_jobs::background_tasks;
+use petgraph::algo::toposort;
+use petgraph::graphmap::DiGraphMap;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect, Set,
 };
+use std::collections::HashMap;
 use std::path::Path;
 use uuid::Uuid;
 
@@ -56,6 +64,16 @@ pub struct DeduplicatedActivityImport {
     pub existing_import: Option<activity_imports::Model>,
 }
 
+pub struct PersistActivityUploadRequest<'a> {
+    pub uploads_dir: &'a str,
+    pub user_storage_key: &'a str,
+    pub user_id: i32,
+    pub upload: ActivityUploadPayload,
+    pub source: &'a str,
+    pub deduplication: ActivityUploadDeduplication,
+    pub training_profile: Option<&'a TrainingProfile>,
+}
+
 pub enum PersistActivityUploadOutcome {
     Imported(PersistedActivityImport),
     Duplicate(DeduplicatedActivityImport),
@@ -66,6 +84,7 @@ pub const ACTIVITY_IMPORT_STATUS_PROCESSED: &str = "processed";
 pub const ACTIVITY_IMPORT_STATUS_FAILED: &str = "failed";
 pub const ACTIVITY_IMPORT_STATUS_DUPLICATE: &str = "duplicate";
 pub const ACTIVITY_IMPORT_STAGE_RAW_STORED: &str = "raw_stored";
+pub const ACTIVITY_IMPORT_STAGE_ACTIVITY_PARSED: &str = "activity_parsed";
 pub const ACTIVITY_IMPORT_STAGE_ACTIVITY_SAVED: &str = "activity_saved";
 pub const ACTIVITY_IMPORT_STAGE_SEGMENTS_BUILT: &str = "segments_built";
 pub const ACTIVITY_IMPORT_STAGE_SEGMENT_ANALYTICS_BUILT: &str = "segment_analytics_built";
@@ -76,6 +95,98 @@ pub const ACTIVITY_IMPORT_STALE_PROCESSING_SECONDS: i64 = 300;
 const ACTIVITY_PROCESSING_PROVIDER: &str = "activity_processing";
 const PROCESS_ACTIVITY_IMPORT_TASK_TYPE: &str = "process_activity_import";
 const MANUAL_UPLOAD_SOURCE: &str = "manual_upload";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum ActivityProcessingNode {
+    RawStored,
+    ActivityParsed,
+    ActivitySaved,
+    SegmentsBuilt,
+    SegmentAnalyticsBuilt,
+    ActivityAnalyticsBuilt,
+    TrainingAnalysisBuilt,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ActivityProcessingGraphNode {
+    pub node: ActivityProcessingNode,
+    pub stage: &'static str,
+    pub depends_on: &'static [ActivityProcessingNode],
+}
+
+const NO_DEPENDENCIES: &[ActivityProcessingNode] = &[];
+const PARSE_DEPENDENCIES: &[ActivityProcessingNode] = &[ActivityProcessingNode::RawStored];
+const ACTIVITY_SAVE_DEPENDENCIES: &[ActivityProcessingNode] =
+    &[ActivityProcessingNode::ActivityParsed];
+const SEGMENT_DEPENDENCIES: &[ActivityProcessingNode] = &[ActivityProcessingNode::ActivitySaved];
+const SEGMENT_ANALYTICS_DEPENDENCIES: &[ActivityProcessingNode] =
+    &[ActivityProcessingNode::SegmentsBuilt];
+const ACTIVITY_ANALYTICS_DEPENDENCIES: &[ActivityProcessingNode] =
+    &[ActivityProcessingNode::SegmentAnalyticsBuilt];
+const TRAINING_ANALYSIS_DEPENDENCIES: &[ActivityProcessingNode] =
+    &[ActivityProcessingNode::ActivityAnalyticsBuilt];
+
+const ACTIVITY_PROCESSING_GRAPH_NODES: &[ActivityProcessingGraphNode] = &[
+    ActivityProcessingGraphNode {
+        node: ActivityProcessingNode::RawStored,
+        stage: ACTIVITY_IMPORT_STAGE_RAW_STORED,
+        depends_on: NO_DEPENDENCIES,
+    },
+    ActivityProcessingGraphNode {
+        node: ActivityProcessingNode::ActivityParsed,
+        stage: ACTIVITY_IMPORT_STAGE_ACTIVITY_PARSED,
+        depends_on: PARSE_DEPENDENCIES,
+    },
+    ActivityProcessingGraphNode {
+        node: ActivityProcessingNode::ActivitySaved,
+        stage: ACTIVITY_IMPORT_STAGE_ACTIVITY_SAVED,
+        depends_on: ACTIVITY_SAVE_DEPENDENCIES,
+    },
+    ActivityProcessingGraphNode {
+        node: ActivityProcessingNode::SegmentsBuilt,
+        stage: ACTIVITY_IMPORT_STAGE_SEGMENTS_BUILT,
+        depends_on: SEGMENT_DEPENDENCIES,
+    },
+    ActivityProcessingGraphNode {
+        node: ActivityProcessingNode::SegmentAnalyticsBuilt,
+        stage: ACTIVITY_IMPORT_STAGE_SEGMENT_ANALYTICS_BUILT,
+        depends_on: SEGMENT_ANALYTICS_DEPENDENCIES,
+    },
+    ActivityProcessingGraphNode {
+        node: ActivityProcessingNode::ActivityAnalyticsBuilt,
+        stage: ACTIVITY_IMPORT_STAGE_ACTIVITY_ANALYTICS_BUILT,
+        depends_on: ACTIVITY_ANALYTICS_DEPENDENCIES,
+    },
+    ActivityProcessingGraphNode {
+        node: ActivityProcessingNode::TrainingAnalysisBuilt,
+        stage: ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT,
+        depends_on: TRAINING_ANALYSIS_DEPENDENCIES,
+    },
+];
+
+pub fn activity_processing_graph_nodes() -> &'static [ActivityProcessingGraphNode] {
+    ACTIVITY_PROCESSING_GRAPH_NODES
+}
+
+pub fn activity_processing_graph() -> DiGraphMap<ActivityProcessingNode, ()> {
+    let mut graph = DiGraphMap::new();
+    for graph_node in ACTIVITY_PROCESSING_GRAPH_NODES {
+        graph.add_node(graph_node.node);
+        for dependency in graph_node.depends_on {
+            graph.add_edge(*dependency, graph_node.node, ());
+        }
+    }
+    graph
+}
+
+pub fn activity_processing_topological_order() -> Result<Vec<ActivityProcessingNode>, AppError> {
+    toposort(&activity_processing_graph(), None).map_err(|cycle| {
+        AppError::internal(format!(
+            "Activity processing graph contains a cycle at {:?}",
+            cycle.node_id()
+        ))
+    })
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActivityUploadDeduplication {
@@ -316,6 +427,43 @@ enum ReprocessCacheRefresh {
     Deferred,
 }
 
+struct ActivityProcessingRun<'a> {
+    db: &'a DatabaseConnection,
+    uploads_dir: &'a str,
+    user_id: i32,
+    import: activity_imports::Model,
+    existing_activity: Option<activities::Model>,
+    source_correlation_id: Option<String>,
+    deduplication: ActivityUploadDeduplication,
+    training_profile: Option<&'a TrainingProfile>,
+    cache_refresh: ReprocessCacheRefresh,
+}
+
+struct ActivityProcessingState {
+    import_model: activity_imports::Model,
+    activity_model: Option<activities::Model>,
+    parsed_activity: Option<ParsedActivityData>,
+    affected_segment_ids: Vec<i32>,
+    bytes: Vec<u8>,
+}
+
+struct ActivitySaveData {
+    activity_type: ActivityType,
+    estimated_ftp_watts: Option<i32>,
+    heart_rate_zones_json: Option<crate::training_profile::StoredActivityHeartRateZones>,
+    derived_data_json: crate::activity_details::StoredActivityDerivedData,
+}
+
+struct ReprocessActivityImportRequest<'a> {
+    db: &'a DatabaseConnection,
+    uploads_dir: &'a str,
+    user_id: i32,
+    activity: activities::Model,
+    activity_import: activity_imports::Model,
+    training_profile: Option<&'a TrainingProfile>,
+    cache_refresh: ReprocessCacheRefresh,
+}
+
 pub async fn mark_activity_import_processing_stage(
     db: &DatabaseConnection,
     import: &activity_imports::Model,
@@ -499,23 +647,388 @@ async fn record_activity_processing_event(
     }
 }
 
+async fn run_activity_processing_graph(
+    run: ActivityProcessingRun<'_>,
+) -> Result<PersistActivityUploadOutcome, AppError> {
+    let graph_nodes_by_node = activity_processing_graph_nodes()
+        .iter()
+        .map(|node| (node.node, *node))
+        .collect::<HashMap<_, _>>();
+    let mut state = load_activity_processing_state(&run).await?;
+
+    for node in activity_processing_topological_order()? {
+        let graph_node = graph_nodes_by_node.get(&node).ok_or_else(|| {
+            AppError::internal(format!(
+                "Activity processing graph is missing metadata for {node:?}"
+            ))
+        })?;
+
+        if let Some(outcome) = run_activity_processing_node(&run, &mut state, *graph_node).await? {
+            return Ok(outcome);
+        }
+        if should_stop_activity_processing(&run, node) {
+            break;
+        }
+    }
+
+    activity_processing_result(state)
+}
+
+async fn load_activity_processing_state(
+    run: &ActivityProcessingRun<'_>,
+) -> Result<ActivityProcessingState, AppError> {
+    let bytes = tokio::fs::read(Path::new(run.uploads_dir).join(&run.import.storage_path)).await?;
+    Ok(ActivityProcessingState {
+        import_model: run.import.clone(),
+        activity_model: run.existing_activity.clone(),
+        parsed_activity: None,
+        affected_segment_ids: Vec::new(),
+        bytes,
+    })
+}
+
+async fn run_activity_processing_node(
+    run: &ActivityProcessingRun<'_>,
+    state: &mut ActivityProcessingState,
+    graph_node: ActivityProcessingGraphNode,
+) -> Result<Option<PersistActivityUploadOutcome>, AppError> {
+    match graph_node.node {
+        ActivityProcessingNode::RawStored => mark_raw_stored_node(run, state).await?,
+        ActivityProcessingNode::ActivityParsed => {
+            parse_activity_node(run, state, graph_node.stage).await?;
+            if let Some(outcome) = prevent_duplicate_activity(run, state).await? {
+                return Ok(Some(outcome));
+            }
+        }
+        ActivityProcessingNode::ActivitySaved => {
+            save_activity_node(run, state, graph_node.stage).await?
+        }
+        ActivityProcessingNode::SegmentsBuilt => {
+            build_segments_node(run, state, graph_node.stage).await?
+        }
+        ActivityProcessingNode::SegmentAnalyticsBuilt => {
+            build_segment_analytics_node(run, state, graph_node.stage).await?;
+        }
+        ActivityProcessingNode::ActivityAnalyticsBuilt => {
+            build_activity_analytics_node(run, state, graph_node.stage).await?;
+        }
+        ActivityProcessingNode::TrainingAnalysisBuilt => {
+            build_training_analysis_node(run, state, graph_node.stage).await?;
+        }
+    }
+
+    Ok(None)
+}
+
+fn should_stop_activity_processing(
+    run: &ActivityProcessingRun<'_>,
+    node: ActivityProcessingNode,
+) -> bool {
+    run.cache_refresh == ReprocessCacheRefresh::Deferred
+        && node == ActivityProcessingNode::SegmentsBuilt
+}
+
+fn activity_processing_result(
+    state: ActivityProcessingState,
+) -> Result<PersistActivityUploadOutcome, AppError> {
+    let parsed = state.parsed_activity.ok_or_else(|| {
+        AppError::internal("Activity processing graph did not run the parser node")
+    })?;
+    let activity = state
+        .activity_model
+        .ok_or_else(|| AppError::internal("Activity processing graph did not save an activity"))?;
+
+    Ok(PersistActivityUploadOutcome::Imported(
+        PersistedActivityImport {
+            import: state.import_model,
+            activity,
+            affected_segment_ids: state.affected_segment_ids,
+            fitness_dirty_from_day: parsed.draft.started_at.date_naive(),
+        },
+    ))
+}
+
+async fn mark_raw_stored_node(
+    run: &ActivityProcessingRun<'_>,
+    state: &mut ActivityProcessingState,
+) -> Result<(), AppError> {
+    if state.import_model.processing_stage == ACTIVITY_IMPORT_STAGE_RAW_STORED {
+        return Ok(());
+    }
+
+    state.import_model = mark_activity_import_processing_stage(
+        run.db,
+        &state.import_model,
+        ACTIVITY_IMPORT_STAGE_RAW_STORED,
+        state.activity_model.as_ref().map(|activity| activity.id),
+    )
+    .await?;
+    Ok(())
+}
+
+async fn parse_activity_node(
+    run: &ActivityProcessingRun<'_>,
+    state: &mut ActivityProcessingState,
+    stage: &str,
+) -> Result<(), AppError> {
+    state.parsed_activity = Some(parse_activity_data(
+        &state.import_model.original_filename,
+        &state.import_model.format,
+        &state.bytes,
+    )?);
+    state.import_model = mark_activity_import_processing_stage(
+        run.db,
+        &state.import_model,
+        stage,
+        state.activity_model.as_ref().map(|activity| activity.id),
+    )
+    .await?;
+    Ok(())
+}
+
+async fn prevent_duplicate_activity(
+    run: &ActivityProcessingRun<'_>,
+    state: &mut ActivityProcessingState,
+) -> Result<Option<PersistActivityUploadOutcome>, AppError> {
+    if state.activity_model.is_some() || run.deduplication == ActivityUploadDeduplication::Disabled
+    {
+        return Ok(None);
+    }
+
+    let parsed = parsed_activity_ref(state)?;
+    let Some(duplicate) =
+        find_duplicate_activity(run.db, run.user_id, &parsed.draft, &parsed.derived_data).await?
+    else {
+        return Ok(None);
+    };
+
+    let import_model =
+        mark_activity_import_duplicate(run.db, &state.import_model, duplicate.activity.id).await?;
+    Ok(Some(PersistActivityUploadOutcome::Duplicate(
+        DeduplicatedActivityImport {
+            activity: duplicate.activity,
+            existing_import: Some(import_model),
+        },
+    )))
+}
+
+async fn save_activity_node(
+    run: &ActivityProcessingRun<'_>,
+    state: &mut ActivityProcessingState,
+    stage: &str,
+) -> Result<(), AppError> {
+    let parsed = parsed_activity_ref(state)?.clone();
+    let training_profile = load_processing_training_profile(run).await?;
+    let save_data = build_activity_save_data(&parsed, &state.import_model, &training_profile)?;
+    let saved_activity = match state.activity_model.take() {
+        Some(activity) => {
+            update_activity_from_parsed(run.db, activity, &state.import_model, &parsed, save_data)
+                .await?
+        }
+        None => insert_activity_from_parsed(run, &state.import_model, &parsed, save_data).await?,
+    };
+
+    state.import_model = mark_activity_import_processing_stage(
+        run.db,
+        &state.import_model,
+        stage,
+        Some(saved_activity.id),
+    )
+    .await?;
+    state.activity_model = Some(saved_activity);
+    Ok(())
+}
+
+async fn load_processing_training_profile(
+    run: &ActivityProcessingRun<'_>,
+) -> Result<TrainingProfile, AppError> {
+    match run.training_profile {
+        Some(profile) => Ok(profile.clone()),
+        None => load_training_profile(run.db, run.user_id).await,
+    }
+}
+
+fn build_activity_save_data(
+    parsed: &ParsedActivityData,
+    import: &activity_imports::Model,
+    training_profile: &TrainingProfile,
+) -> Result<ActivitySaveData, AppError> {
+    let heart_rate_zones = summarize_heart_rate_zones(
+        &parsed.derived_data.route_points,
+        &parsed.derived_data.chart_points,
+        parsed
+            .draft
+            .moving_time_seconds
+            .or(parsed.draft.total_time_seconds),
+        parsed.draft.average_heart_rate_bpm,
+        training_profile.heart_rate_zone_bounds_bpm.as_deref(),
+    );
+
+    Ok(ActivitySaveData {
+        activity_type: infer_activity_type(&parsed.draft.title, &import.original_filename),
+        estimated_ftp_watts: training_profile.estimated_ftp_watts,
+        heart_rate_zones_json: serialize_activity_heart_rate_zones(&heart_rate_zones)?,
+        derived_data_json: serialize_derived_activity_data(&parsed.derived_data)?,
+    })
+}
+
+async fn update_activity_from_parsed(
+    db: &DatabaseConnection,
+    activity: activities::Model,
+    import: &activity_imports::Model,
+    parsed: &ParsedActivityData,
+    save_data: ActivitySaveData,
+) -> Result<activities::Model, AppError> {
+    let mut active_model: activities::ActiveModel = activity.into();
+    apply_common_activity_fields(&mut active_model, import, parsed, save_data);
+    active_model.update(db).await.map_err(AppError::from)
+}
+
+async fn insert_activity_from_parsed(
+    run: &ActivityProcessingRun<'_>,
+    import: &activity_imports::Model,
+    parsed: &ParsedActivityData,
+    save_data: ActivitySaveData,
+) -> Result<activities::Model, AppError> {
+    let mut active_model = activities::ActiveModel {
+        user_id: Set(run.user_id),
+        activity_import_id: Set(Some(import.id)),
+        source: Set(import.source.clone()),
+        source_correlation_id: Set(run.source_correlation_id.clone()),
+        ..Default::default()
+    };
+    apply_common_activity_fields(&mut active_model, import, parsed, save_data);
+    active_model.insert(run.db).await.map_err(AppError::from)
+}
+
+fn apply_common_activity_fields(
+    active_model: &mut activities::ActiveModel,
+    import: &activity_imports::Model,
+    parsed: &ParsedActivityData,
+    save_data: ActivitySaveData,
+) {
+    active_model.title = Set(parsed.draft.title.clone());
+    active_model.sport = Set(parsed.draft.sport.clone());
+    active_model.original_filename = Set(Some(import.original_filename.clone()));
+    active_model.format = Set(Some(import.format.clone()));
+    active_model.activity_type = Set(save_data.activity_type.as_str().to_string());
+    active_model.started_at = Set(parsed.draft.started_at);
+    active_model.ended_at = Set(parsed.draft.ended_at);
+    active_model.distance_meters = Set(parsed.draft.distance_meters);
+    active_model.moving_time_seconds = Set(parsed.draft.moving_time_seconds);
+    active_model.total_time_seconds = Set(parsed.draft.total_time_seconds);
+    active_model.elevation_gain_meters = Set(parsed.draft.elevation_gain_meters);
+    active_model.elevation_loss_meters = Set(parsed.draft.elevation_loss_meters);
+    active_model.average_speed_mps = Set(parsed.draft.average_speed_mps);
+    active_model.max_speed_mps = Set(parsed.draft.max_speed_mps);
+    active_model.average_heart_rate_bpm = Set(parsed.draft.average_heart_rate_bpm);
+    active_model.max_heart_rate_bpm = Set(parsed.draft.max_heart_rate_bpm);
+    active_model.average_cadence_rpm = Set(parsed.draft.average_cadence_rpm);
+    active_model.max_cadence_rpm = Set(parsed.draft.max_cadence_rpm);
+    active_model.calories = Set(parsed.draft.calories);
+    active_model.estimated_ftp_watts = Set(save_data.estimated_ftp_watts);
+    active_model.heart_rate_zones_json = Set(save_data.heart_rate_zones_json);
+    active_model.derived_data_json = Set(Some(save_data.derived_data_json));
+}
+
+async fn build_segments_node(
+    run: &ActivityProcessingRun<'_>,
+    state: &mut ActivityProcessingState,
+    stage: &str,
+) -> Result<(), AppError> {
+    let parsed = parsed_activity_ref(state)?;
+    let activity_id = activity_model_ref(state)?.id;
+    state.affected_segment_ids = refresh_activity_derived_state_without_cache_rebuilds(
+        run.db,
+        run.user_id,
+        activity_id,
+        &parsed.derived_data.route_points,
+    )
+    .await?;
+    state.import_model = mark_activity_import_processing_stage(
+        run.db,
+        &state.import_model,
+        stage,
+        Some(activity_id),
+    )
+    .await?;
+    Ok(())
+}
+
+async fn build_segment_analytics_node(
+    run: &ActivityProcessingRun<'_>,
+    state: &mut ActivityProcessingState,
+    stage: &str,
+) -> Result<(), AppError> {
+    let activity_id = activity_model_ref(state)?.id;
+    rebuild_segment_analytics_cache(run.db, &state.affected_segment_ids).await?;
+    state.import_model = mark_activity_import_processing_stage(
+        run.db,
+        &state.import_model,
+        stage,
+        Some(activity_id),
+    )
+    .await?;
+    Ok(())
+}
+
+async fn build_activity_analytics_node(
+    run: &ActivityProcessingRun<'_>,
+    state: &mut ActivityProcessingState,
+    stage: &str,
+) -> Result<(), AppError> {
+    let activity_id = activity_model_ref(state)?.id;
+    rebuild_activity_analytics_cache(run.db, &[activity_id]).await?;
+    state.import_model = mark_activity_import_processing_stage(
+        run.db,
+        &state.import_model,
+        stage,
+        Some(activity_id),
+    )
+    .await?;
+    Ok(())
+}
+
+async fn build_training_analysis_node(
+    run: &ActivityProcessingRun<'_>,
+    state: &mut ActivityProcessingState,
+    stage: &str,
+) -> Result<(), AppError> {
+    let activity_id = activity_model_ref(state)?.id;
+    rebuild_activity_training_analysis_cache(run.db, &[activity_id]).await?;
+    state.import_model = mark_activity_import_processing_stage(
+        run.db,
+        &state.import_model,
+        stage,
+        Some(activity_id),
+    )
+    .await?;
+    Ok(())
+}
+
+fn parsed_activity_ref(state: &ActivityProcessingState) -> Result<&ParsedActivityData, AppError> {
+    state.parsed_activity.as_ref().ok_or_else(|| {
+        AppError::internal("Activity processing reached a dependent node before parse")
+    })
+}
+
+fn activity_model_ref(state: &ActivityProcessingState) -> Result<&activities::Model, AppError> {
+    state.activity_model.as_ref().ok_or_else(|| {
+        AppError::internal("Activity processing reached a dependent node before activity save")
+    })
+}
+
 pub async fn persist_activity_upload(
     db: &DatabaseConnection,
-    uploads_dir: &str,
-    user_storage_key: &str,
-    user_id: i32,
-    upload: ActivityUploadPayload,
-    source: &str,
-    deduplication: ActivityUploadDeduplication,
-    training_profile: Option<&TrainingProfile>,
+    request: PersistActivityUploadRequest<'_>,
 ) -> Result<PersistActivityUploadOutcome, AppError> {
-    let source_correlation_id = upload.source_correlation_id.clone();
+    let source_correlation_id = request.upload.source_correlation_id.clone();
 
-    if deduplication == ActivityUploadDeduplication::Enabled {
+    if request.deduplication == ActivityUploadDeduplication::Enabled {
         if let Some(existing) = find_existing_activity_by_source_correlation(
             db,
-            user_id,
-            source,
+            request.user_id,
+            request.source,
             source_correlation_id.as_deref(),
         )
         .await?
@@ -524,176 +1037,39 @@ pub async fn persist_activity_upload(
         }
     }
 
-    let activity_draft = crate::activity_summary::summarize_activity_upload(
-        &upload.original_filename,
-        &upload.format,
-        &upload.bytes,
-    )?;
-    let derived_data =
-        derive_activity_detail_data(&upload.original_filename, &upload.format, &upload.bytes)?;
-
-    if deduplication == ActivityUploadDeduplication::Enabled {
-        if let Some(duplicate) =
-            find_duplicate_activity(db, user_id, &activity_draft, &derived_data).await?
-        {
-            return Ok(PersistActivityUploadOutcome::Duplicate(duplicate));
-        }
-    }
-
-    let training_profile = match training_profile {
-        Some(profile) => profile.clone(),
-        None => load_training_profile(db, user_id).await?,
-    };
-    let heart_rate_zones = summarize_heart_rate_zones(
-        &derived_data.route_points,
-        &derived_data.chart_points,
-        activity_draft
-            .moving_time_seconds
-            .or(activity_draft.total_time_seconds),
-        activity_draft.average_heart_rate_bpm,
-        training_profile.heart_rate_zone_bounds_bpm.as_deref(),
-    );
-    let heart_rate_zones_json = serialize_activity_heart_rate_zones(&heart_rate_zones)?;
-    let derived_data_json = serialize_derived_activity_data(&derived_data)?;
-    let relative_path =
-        activity_import_storage_path(user_storage_key, &upload.format, activity_draft.started_at);
-    let full_path = Path::new(uploads_dir).join(&relative_path);
-
-    if let Some(parent) = full_path.parent() {
-        tokio::fs::create_dir_all(parent).await?;
-    }
-
-    tokio::fs::write(&full_path, &upload.bytes).await?;
-
-    let original_filename = upload.original_filename.clone();
-    let activity_type = infer_activity_type(&activity_draft.title, &original_filename);
-    let format = upload.format.clone();
-    let mime_type = upload.mime_type.clone();
-    let size_bytes = upload.bytes.len() as i64;
-
-    let import_model = activity_imports::ActiveModel {
-        user_id: Set(user_id),
-        source: Set(source.to_string()),
-        format: Set(format.clone()),
-        status: Set(ACTIVITY_IMPORT_STATUS_PROCESSING.to_string()),
-        activity_id: Set(None),
-        processing_stage: Set(ACTIVITY_IMPORT_STAGE_RAW_STORED.to_string()),
-        processing_error: Set(None),
-        processing_attempts: Set(0),
-        processed_at: Set(None),
-        last_processing_event_at: Set(Some(Utc::now())),
-        original_filename: Set(original_filename.clone()),
-        storage_path: Set(relative_path),
-        size_bytes: Set(size_bytes),
-        mime_type: Set(mime_type.clone()),
-        ..Default::default()
-    }
-    .insert(db)
-    .await?;
-    record_activity_processing_event(
+    let import_model = store_activity_upload_import(
         db,
-        &import_model,
-        "stage_completed",
-        INTEGRATION_LEVEL_INFO,
-        format!("Activity import {} stored raw source", import_model.id),
-        Some(serde_json::json!({
-            "import_id": import_model.id,
-            "source": import_model.source,
-            "stage": ACTIVITY_IMPORT_STAGE_RAW_STORED,
-        })),
+        request.uploads_dir,
+        request.user_storage_key,
+        request.user_id,
+        request.upload,
+        request.source,
     )
+    .await?;
+
+    let result = run_activity_processing_graph(ActivityProcessingRun {
+        db,
+        uploads_dir: request.uploads_dir,
+        user_id: request.user_id,
+        import: import_model.clone(),
+        existing_activity: None,
+        source_correlation_id,
+        deduplication: request.deduplication,
+        training_profile: request.training_profile,
+        cache_refresh: ReprocessCacheRefresh::Immediate,
+    })
     .await;
 
-    let activity_model = activities::ActiveModel {
-        user_id: Set(user_id),
-        activity_import_id: Set(Some(import_model.id)),
-        title: Set(activity_draft.title),
-        sport: Set(activity_draft.sport),
-        source: Set(source.to_string()),
-        source_correlation_id: Set(source_correlation_id),
-        original_filename: Set(Some(original_filename)),
-        format: Set(Some(format)),
-        activity_type: Set(activity_type.as_str().to_string()),
-        started_at: Set(activity_draft.started_at),
-        ended_at: Set(activity_draft.ended_at),
-        distance_meters: Set(activity_draft.distance_meters),
-        moving_time_seconds: Set(activity_draft.moving_time_seconds),
-        total_time_seconds: Set(activity_draft.total_time_seconds),
-        elevation_gain_meters: Set(activity_draft.elevation_gain_meters),
-        elevation_loss_meters: Set(activity_draft.elevation_loss_meters),
-        average_speed_mps: Set(activity_draft.average_speed_mps),
-        max_speed_mps: Set(activity_draft.max_speed_mps),
-        average_heart_rate_bpm: Set(activity_draft.average_heart_rate_bpm),
-        max_heart_rate_bpm: Set(activity_draft.max_heart_rate_bpm),
-        average_cadence_rpm: Set(activity_draft.average_cadence_rpm),
-        max_cadence_rpm: Set(activity_draft.max_cadence_rpm),
-        calories: Set(activity_draft.calories),
-        estimated_ftp_watts: Set(training_profile.estimated_ftp_watts),
-        heart_rate_zones_json: Set(heart_rate_zones_json),
-        derived_data_json: Set(Some(derived_data_json)),
-        ..Default::default()
+    if let Err(error) = &result {
+        let latest_import = activity_imports::Entity::find_by_id(import_model.id)
+            .one(db)
+            .await?
+            .unwrap_or(import_model);
+        mark_activity_import_failed(db, &latest_import, &latest_import.processing_stage, error)
+            .await?;
     }
-    .insert(db)
-    .await?;
 
-    let import_model = mark_activity_import_processing_stage(
-        db,
-        &import_model,
-        ACTIVITY_IMPORT_STAGE_ACTIVITY_SAVED,
-        Some(activity_model.id),
-    )
-    .await?;
-
-    let affected_segment_ids = refresh_activity_derived_state_without_cache_rebuilds(
-        db,
-        user_id,
-        activity_model.id,
-        &derived_data.route_points,
-    )
-    .await?;
-    let import_model = mark_activity_import_processing_stage(
-        db,
-        &import_model,
-        ACTIVITY_IMPORT_STAGE_SEGMENTS_BUILT,
-        Some(activity_model.id),
-    )
-    .await?;
-
-    rebuild_segment_analytics_cache(db, &affected_segment_ids).await?;
-    let import_model = mark_activity_import_processing_stage(
-        db,
-        &import_model,
-        ACTIVITY_IMPORT_STAGE_SEGMENT_ANALYTICS_BUILT,
-        Some(activity_model.id),
-    )
-    .await?;
-
-    rebuild_activity_analytics_cache(db, &[activity_model.id]).await?;
-    let import_model = mark_activity_import_processing_stage(
-        db,
-        &import_model,
-        ACTIVITY_IMPORT_STAGE_ACTIVITY_ANALYTICS_BUILT,
-        Some(activity_model.id),
-    )
-    .await?;
-
-    rebuild_activity_training_analysis_cache(db, &[activity_model.id]).await?;
-    let import_model = mark_activity_import_processing_stage(
-        db,
-        &import_model,
-        ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT,
-        Some(activity_model.id),
-    )
-    .await?;
-
-    Ok(PersistActivityUploadOutcome::Imported(
-        PersistedActivityImport {
-            import: import_model,
-            activity: activity_model,
-            affected_segment_ids,
-            fitness_dirty_from_day: activity_draft.started_at.date_naive(),
-        },
-    ))
+    result
 }
 
 pub async fn store_activity_upload_import(
@@ -758,136 +1134,18 @@ pub async fn process_stored_activity_import(
     deduplication: ActivityUploadDeduplication,
     training_profile: Option<&TrainingProfile>,
 ) -> Result<PersistActivityUploadOutcome, AppError> {
-    let bytes = tokio::fs::read(Path::new(uploads_dir).join(&import.storage_path)).await?;
-    let activity_draft = crate::activity_summary::summarize_activity_upload(
-        &import.original_filename,
-        &import.format,
-        &bytes,
-    )?;
-    let derived_data =
-        derive_activity_detail_data(&import.original_filename, &import.format, &bytes)?;
-
-    if deduplication == ActivityUploadDeduplication::Enabled {
-        if let Some(duplicate) =
-            find_duplicate_activity(db, user_id, &activity_draft, &derived_data).await?
-        {
-            let import = mark_activity_import_duplicate(db, &import, duplicate.activity.id).await?;
-            return Ok(PersistActivityUploadOutcome::Duplicate(
-                DeduplicatedActivityImport {
-                    activity: duplicate.activity,
-                    existing_import: Some(import),
-                },
-            ));
-        }
-    }
-
-    let training_profile = match training_profile {
-        Some(profile) => profile.clone(),
-        None => load_training_profile(db, user_id).await?,
-    };
-    let heart_rate_zones = summarize_heart_rate_zones(
-        &derived_data.route_points,
-        &derived_data.chart_points,
-        activity_draft
-            .moving_time_seconds
-            .or(activity_draft.total_time_seconds),
-        activity_draft.average_heart_rate_bpm,
-        training_profile.heart_rate_zone_bounds_bpm.as_deref(),
-    );
-    let heart_rate_zones_json = serialize_activity_heart_rate_zones(&heart_rate_zones)?;
-    let derived_data_json = serialize_derived_activity_data(&derived_data)?;
-    let activity_type = infer_activity_type(&activity_draft.title, &import.original_filename);
-
-    let activity_model = activities::ActiveModel {
-        user_id: Set(user_id),
-        activity_import_id: Set(Some(import.id)),
-        title: Set(activity_draft.title),
-        sport: Set(activity_draft.sport),
-        source: Set(import.source.clone()),
-        source_correlation_id: Set(None),
-        original_filename: Set(Some(import.original_filename.clone())),
-        format: Set(Some(import.format.clone())),
-        activity_type: Set(activity_type.as_str().to_string()),
-        started_at: Set(activity_draft.started_at),
-        ended_at: Set(activity_draft.ended_at),
-        distance_meters: Set(activity_draft.distance_meters),
-        moving_time_seconds: Set(activity_draft.moving_time_seconds),
-        total_time_seconds: Set(activity_draft.total_time_seconds),
-        elevation_gain_meters: Set(activity_draft.elevation_gain_meters),
-        elevation_loss_meters: Set(activity_draft.elevation_loss_meters),
-        average_speed_mps: Set(activity_draft.average_speed_mps),
-        max_speed_mps: Set(activity_draft.max_speed_mps),
-        average_heart_rate_bpm: Set(activity_draft.average_heart_rate_bpm),
-        max_heart_rate_bpm: Set(activity_draft.max_heart_rate_bpm),
-        average_cadence_rpm: Set(activity_draft.average_cadence_rpm),
-        max_cadence_rpm: Set(activity_draft.max_cadence_rpm),
-        calories: Set(activity_draft.calories),
-        estimated_ftp_watts: Set(training_profile.estimated_ftp_watts),
-        heart_rate_zones_json: Set(heart_rate_zones_json),
-        derived_data_json: Set(Some(derived_data_json)),
-        ..Default::default()
-    }
-    .insert(db)
-    .await?;
-
-    let import_model = mark_activity_import_processing_stage(
+    run_activity_processing_graph(ActivityProcessingRun {
         db,
-        &import,
-        ACTIVITY_IMPORT_STAGE_ACTIVITY_SAVED,
-        Some(activity_model.id),
-    )
-    .await?;
-
-    let affected_segment_ids = refresh_activity_derived_state_without_cache_rebuilds(
-        db,
+        uploads_dir,
         user_id,
-        activity_model.id,
-        &derived_data.route_points,
-    )
-    .await?;
-    let import_model = mark_activity_import_processing_stage(
-        db,
-        &import_model,
-        ACTIVITY_IMPORT_STAGE_SEGMENTS_BUILT,
-        Some(activity_model.id),
-    )
-    .await?;
-
-    rebuild_segment_analytics_cache(db, &affected_segment_ids).await?;
-    let import_model = mark_activity_import_processing_stage(
-        db,
-        &import_model,
-        ACTIVITY_IMPORT_STAGE_SEGMENT_ANALYTICS_BUILT,
-        Some(activity_model.id),
-    )
-    .await?;
-
-    rebuild_activity_analytics_cache(db, &[activity_model.id]).await?;
-    let import_model = mark_activity_import_processing_stage(
-        db,
-        &import_model,
-        ACTIVITY_IMPORT_STAGE_ACTIVITY_ANALYTICS_BUILT,
-        Some(activity_model.id),
-    )
-    .await?;
-
-    rebuild_activity_training_analysis_cache(db, &[activity_model.id]).await?;
-    let import_model = mark_activity_import_processing_stage(
-        db,
-        &import_model,
-        ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT,
-        Some(activity_model.id),
-    )
-    .await?;
-
-    Ok(PersistActivityUploadOutcome::Imported(
-        PersistedActivityImport {
-            import: import_model,
-            activity: activity_model,
-            affected_segment_ids,
-            fitness_dirty_from_day: activity_draft.started_at.date_naive(),
-        },
-    ))
+        import,
+        existing_activity: None,
+        source_correlation_id: None,
+        deduplication,
+        training_profile,
+        cache_refresh: ReprocessCacheRefresh::Immediate,
+    })
+    .await
 }
 
 pub async fn finalize_activity_import_batch(
@@ -916,93 +1174,31 @@ pub async fn finalize_activity_import_batch(
 }
 
 async fn reprocess_activity_from_import_with_cache_refresh(
-    db: &DatabaseConnection,
-    uploads_dir: &str,
-    user_id: i32,
-    activity: activities::Model,
-    activity_import: activity_imports::Model,
-    training_profile: Option<&TrainingProfile>,
-    cache_refresh: ReprocessCacheRefresh,
+    request: ReprocessActivityImportRequest<'_>,
 ) -> Result<ReprocessedActivityImport, AppError> {
-    let bytes = tokio::fs::read(Path::new(uploads_dir).join(&activity_import.storage_path)).await?;
-    let activity_draft = crate::activity_summary::summarize_activity_upload(
-        &activity_import.original_filename,
-        &activity_import.format,
-        &bytes,
-    )?;
-    let derived_data = derive_activity_detail_data(
-        &activity_import.original_filename,
-        &activity_import.format,
-        &bytes,
-    )?;
-    let training_profile = match training_profile {
-        Some(profile) => profile.clone(),
-        None => load_training_profile(db, user_id).await?,
-    };
-    let heart_rate_zones = summarize_heart_rate_zones(
-        &derived_data.route_points,
-        &derived_data.chart_points,
-        activity_draft
-            .moving_time_seconds
-            .or(activity_draft.total_time_seconds),
-        activity_draft.average_heart_rate_bpm,
-        training_profile.heart_rate_zone_bounds_bpm.as_deref(),
-    );
-    let heart_rate_zones_json = serialize_activity_heart_rate_zones(&heart_rate_zones)?;
-    let derived_data_json = serialize_derived_activity_data(&derived_data)?;
-
-    let mut active_model: activities::ActiveModel = activity.into();
-    let activity_type =
-        infer_activity_type(&activity_draft.title, &activity_import.original_filename);
-    active_model.title = Set(activity_draft.title);
-    active_model.sport = Set(activity_draft.sport);
-    active_model.original_filename = Set(Some(activity_import.original_filename.clone()));
-    active_model.format = Set(Some(activity_import.format.clone()));
-    active_model.activity_type = Set(activity_type.as_str().to_string());
-    active_model.started_at = Set(activity_draft.started_at);
-    active_model.ended_at = Set(activity_draft.ended_at);
-    active_model.distance_meters = Set(activity_draft.distance_meters);
-    active_model.moving_time_seconds = Set(activity_draft.moving_time_seconds);
-    active_model.total_time_seconds = Set(activity_draft.total_time_seconds);
-    active_model.elevation_gain_meters = Set(activity_draft.elevation_gain_meters);
-    active_model.elevation_loss_meters = Set(activity_draft.elevation_loss_meters);
-    active_model.average_speed_mps = Set(activity_draft.average_speed_mps);
-    active_model.max_speed_mps = Set(activity_draft.max_speed_mps);
-    active_model.average_heart_rate_bpm = Set(activity_draft.average_heart_rate_bpm);
-    active_model.max_heart_rate_bpm = Set(activity_draft.max_heart_rate_bpm);
-    active_model.average_cadence_rpm = Set(activity_draft.average_cadence_rpm);
-    active_model.max_cadence_rpm = Set(activity_draft.max_cadence_rpm);
-    active_model.calories = Set(activity_draft.calories);
-    active_model.estimated_ftp_watts = Set(training_profile.estimated_ftp_watts);
-    active_model.heart_rate_zones_json = Set(heart_rate_zones_json);
-    active_model.derived_data_json = Set(Some(derived_data_json));
-
-    let updated = active_model.update(db).await?;
-    let affected_segment_ids = match cache_refresh {
-        ReprocessCacheRefresh::Immediate => {
-            refresh_activity_derived_state(db, user_id, updated.id, &derived_data.route_points)
-                .await?
-        }
-        ReprocessCacheRefresh::Deferred => {
-            refresh_activity_derived_state_without_cache_rebuilds(
-                db,
-                user_id,
-                updated.id,
-                &derived_data.route_points,
-            )
-            .await?
-        }
-    };
-
-    if cache_refresh == ReprocessCacheRefresh::Immediate {
-        rebuild_activity_training_analysis_cache(db, &[updated.id]).await?;
-    }
-
-    Ok(ReprocessedActivityImport {
-        activity: updated,
-        affected_segment_ids,
-        fitness_dirty_from_day: activity_draft.started_at.date_naive(),
+    let outcome = run_activity_processing_graph(ActivityProcessingRun {
+        db: request.db,
+        uploads_dir: request.uploads_dir,
+        user_id: request.user_id,
+        import: request.activity_import,
+        existing_activity: Some(request.activity),
+        source_correlation_id: None,
+        deduplication: ActivityUploadDeduplication::Disabled,
+        training_profile: request.training_profile,
+        cache_refresh: request.cache_refresh,
     })
+    .await?;
+
+    match outcome {
+        PersistActivityUploadOutcome::Imported(imported) => Ok(ReprocessedActivityImport {
+            activity: imported.activity,
+            affected_segment_ids: imported.affected_segment_ids,
+            fitness_dirty_from_day: imported.fitness_dirty_from_day,
+        }),
+        PersistActivityUploadOutcome::Duplicate(_) => Err(AppError::internal(
+            "Reprocessing an existing activity cannot produce a duplicate outcome",
+        )),
+    }
 }
 
 pub async fn reprocess_activity_from_import(
@@ -1013,15 +1209,15 @@ pub async fn reprocess_activity_from_import(
     activity_import: activity_imports::Model,
     training_profile: Option<&TrainingProfile>,
 ) -> Result<ReprocessedActivityImport, AppError> {
-    reprocess_activity_from_import_with_cache_refresh(
+    reprocess_activity_from_import_with_cache_refresh(ReprocessActivityImportRequest {
         db,
         uploads_dir,
         user_id,
         activity,
         activity_import,
         training_profile,
-        ReprocessCacheRefresh::Immediate,
-    )
+        cache_refresh: ReprocessCacheRefresh::Immediate,
+    })
     .await
 }
 
@@ -1033,15 +1229,15 @@ pub async fn reprocess_activity_from_import_deferred_caches(
     activity_import: activity_imports::Model,
     training_profile: Option<&TrainingProfile>,
 ) -> Result<ReprocessedActivityImport, AppError> {
-    reprocess_activity_from_import_with_cache_refresh(
+    reprocess_activity_from_import_with_cache_refresh(ReprocessActivityImportRequest {
         db,
         uploads_dir,
         user_id,
         activity,
         activity_import,
         training_profile,
-        ReprocessCacheRefresh::Deferred,
-    )
+        cache_refresh: ReprocessCacheRefresh::Deferred,
+    })
     .await
 }
 
@@ -1284,6 +1480,28 @@ mod tests {
         .expect("insert process import task")
     }
 
+    async fn persist_test_activity_upload(
+        db: &DatabaseConnection,
+        uploads_dir: &str,
+        upload: ActivityUploadPayload,
+        source: &str,
+        training_profile: &TrainingProfile,
+    ) -> Result<PersistActivityUploadOutcome, AppError> {
+        persist_activity_upload(
+            db,
+            PersistActivityUploadRequest {
+                uploads_dir,
+                user_storage_key: "test-user",
+                user_id: 1,
+                upload,
+                source,
+                deduplication: ActivityUploadDeduplication::Enabled,
+                training_profile: Some(training_profile),
+            },
+        )
+        .await
+    }
+
     #[test]
     fn race_uploads_are_inferred_from_title_or_filename() {
         assert_eq!(
@@ -1300,35 +1518,49 @@ mod tests {
         );
     }
 
+    #[test]
+    fn activity_processing_graph_orders_required_dependencies() {
+        let order = activity_processing_topological_order().expect("activity graph is a DAG");
+        let position = order
+            .iter()
+            .enumerate()
+            .map(|(index, node)| (*node, index))
+            .collect::<std::collections::HashMap<_, _>>();
+
+        for node in activity_processing_graph_nodes() {
+            for dependency in node.depends_on {
+                assert!(
+                    position[dependency] < position[&node.node],
+                    "{dependency:?} should run before {:?}",
+                    node.node
+                );
+            }
+        }
+    }
+
     #[tokio::test]
     async fn manual_uploads_still_deduplicate_existing_activity() {
         let db = test_db().await;
         let uploads_dir = test_uploads_dir();
         let training_profile = TrainingProfile::default();
 
-        let first = persist_activity_upload(
+        let first = persist_test_activity_upload(
             &db,
             &uploads_dir,
-            "test-user",
-            1,
             fit_upload(None),
             "manual_upload",
-            ActivityUploadDeduplication::Enabled,
-            Some(&training_profile),
+            &training_profile,
         )
         .await
         .expect("import first manual upload");
         assert!(matches!(first, PersistActivityUploadOutcome::Imported(_)));
 
-        let second = persist_activity_upload(
+        let second = persist_test_activity_upload(
             &db,
             &uploads_dir,
-            "test-user",
-            1,
             fit_upload(None),
             "manual_upload",
-            ActivityUploadDeduplication::Enabled,
-            Some(&training_profile),
+            &training_profile,
         )
         .await
         .expect("import second manual upload");
@@ -1337,7 +1569,7 @@ mod tests {
         assert_eq!(activities::Entity::find().count(&db).await.unwrap(), 1);
         assert_eq!(
             activity_imports::Entity::find().count(&db).await.unwrap(),
-            1
+            2
         );
 
         let _ = std::fs::remove_dir_all(&uploads_dir);
@@ -1518,15 +1750,12 @@ mod tests {
         let uploads_dir = test_uploads_dir();
         let training_profile = TrainingProfile::default();
 
-        let first = match persist_activity_upload(
+        let first = match persist_test_activity_upload(
             &db,
             &uploads_dir,
-            "test-user",
-            1,
             fit_upload(None),
             "manual_upload",
-            ActivityUploadDeduplication::Enabled,
-            Some(&training_profile),
+            &training_profile,
         )
         .await
         .expect("import first manual upload")
@@ -1580,29 +1809,23 @@ mod tests {
         let uploads_dir = test_uploads_dir();
         let training_profile = TrainingProfile::default();
 
-        let first = persist_activity_upload(
+        let first = persist_test_activity_upload(
             &db,
             &uploads_dir,
-            "test-user",
-            1,
             fit_upload(Some("strava-123")),
             "strava_sync",
-            ActivityUploadDeduplication::Enabled,
-            Some(&training_profile),
+            &training_profile,
         )
         .await
         .expect("import first Strava upload");
         assert!(matches!(first, PersistActivityUploadOutcome::Imported(_)));
 
-        let second = persist_activity_upload(
+        let second = persist_test_activity_upload(
             &db,
             &uploads_dir,
-            "test-user",
-            1,
             fit_upload(Some("strava-123")),
             "strava_sync",
-            ActivityUploadDeduplication::Enabled,
-            Some(&training_profile),
+            &training_profile,
         )
         .await
         .expect("import second Strava upload");
@@ -1623,15 +1846,12 @@ mod tests {
         let uploads_dir = test_uploads_dir();
         let training_profile = TrainingProfile::default();
 
-        let imported = match persist_activity_upload(
+        let imported = match persist_test_activity_upload(
             &db,
             &uploads_dir,
-            "test-user",
-            1,
             fit_upload(None),
             "manual_upload",
-            ActivityUploadDeduplication::Enabled,
-            Some(&training_profile),
+            &training_profile,
         )
         .await
         .expect("import activity")
@@ -1675,15 +1895,12 @@ mod tests {
         let uploads_dir = test_uploads_dir();
         let training_profile = TrainingProfile::default();
 
-        let imported = match persist_activity_upload(
+        let imported = match persist_test_activity_upload(
             &db,
             &uploads_dir,
-            "test-user",
-            1,
             fit_upload(None),
             "manual_upload",
-            ActivityUploadDeduplication::Enabled,
-            Some(&training_profile),
+            &training_profile,
         )
         .await
         .expect("import activity")

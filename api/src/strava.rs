@@ -7,6 +7,7 @@ use crate::activity_import_lock::{
 use crate::activity_import_pipeline::{
     finalize_activity_import_batch, mark_activity_imports_processed, persist_activity_upload,
     ActivityUploadDeduplication, ActivityUploadPayload, PersistActivityUploadOutcome,
+    PersistActivityUploadRequest,
 };
 use crate::activity_lifecycle::{
     delete_activity_with_derived_state, resume_incomplete_activity_imports_for_user,
@@ -207,7 +208,7 @@ pub fn create_authorization_url_for_user(config: &Config, user_id: i32) -> Resul
         ))
     })?;
 
-    build_authorization_url(config, &state).map_err(|message| AppError::internal(message))
+    build_authorization_url(config, &state).map_err(AppError::internal)
 }
 
 pub fn create_state_token(config: &Config, user_id: i32) -> Result<String, String> {
@@ -737,16 +738,15 @@ pub async fn process_strava_sync(
                     return Ok(());
                 }
 
-                match persist_activity_upload(
-                    db,
+                match persist_activity_upload(db, PersistActivityUploadRequest {
                     uploads_dir,
-                    &user_storage_key,
-                    connection.user_id,
+                    user_storage_key: &user_storage_key,
+                    user_id: connection.user_id,
                     upload,
-                    "strava_sync",
-                    ActivityUploadDeduplication::Enabled,
-                    Some(&training_profile),
-                )
+                    source: "strava_sync",
+                    deduplication: ActivityUploadDeduplication::Enabled,
+                    training_profile: Some(&training_profile),
+                })
                 .await
                 {
                     Ok(PersistActivityUploadOutcome::Imported(persisted)) => {

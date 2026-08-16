@@ -153,9 +153,9 @@ fn cache_is_usable(
         return false;
     }
 
-    !freshness_state
+    freshness_state
         .and_then(|state| state.fitness_dirty_from_day)
-        .is_some_and(|dirty_from_day| dirty_from_day <= end_date)
+        .is_none_or(|dirty_from_day| dirty_from_day > end_date)
 }
 
 fn build_points_from_cached_rows(

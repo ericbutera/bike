@@ -1,3 +1,8 @@
+#![allow(
+    clippy::too_many_lines,
+    reason = "migration DDL functions are append-only schema definitions"
+)]
+
 pub use sea_orm_migration::prelude::*;
 mod m20260506_000001_create_activity_imports;
 mod m20260506_000002_create_activities;
@@ -38,6 +43,10 @@ pub struct Migrator;
 
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
+    #[expect(
+        clippy::vec_init_then_push,
+        reason = "migration registry keeps one migration per line for append-only review"
+    )]
     fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         let mut migrations = kaleido::migrations::external_migrations();
         migrations.sort_by_key(|m| m.name().to_string());

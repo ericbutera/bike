@@ -4,6 +4,7 @@ pub mod activity_import_lock;
 pub mod activity_import_pipeline;
 pub mod activity_lifecycle;
 pub mod activity_location;
+pub mod activity_parser;
 pub mod activity_summary;
 pub mod activity_training_analysis;
 pub mod activity_type;

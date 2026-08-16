@@ -2571,6 +2571,10 @@ fn reassessment_fitness_delta_signal(
     )
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "report response factory maps explicit signal fields into the API schema"
+)]
 fn reassessment_signal(
     status: ReassessmentVerdict,
     title: &str,
@@ -3291,6 +3295,10 @@ fn detect_climbs(activity: &activities::Model, samples: &[TrendSample]) -> Vec<C
     climbs
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "climb finalization receives parser state accumulated across samples"
+)]
 fn finalize_climb(
     activity: &activities::Model,
     samples: &[TrendSample],
@@ -3580,7 +3588,7 @@ fn median(mut values: Vec<f64>) -> Option<f64> {
     }
     values.sort_by(f64::total_cmp);
     let middle = values.len() / 2;
-    if values.len() % 2 == 0 {
+    if values.len().is_multiple_of(2) {
         Some((values[middle - 1] + values[middle]) / 2.0)
     } else {
         Some(values[middle])

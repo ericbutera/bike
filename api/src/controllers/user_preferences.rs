@@ -194,12 +194,10 @@ fn response_from_model(model: Option<&user_preferences::Model>) -> UserPreferenc
             deserialize_heart_rate_zone_bounds(preferences.heart_rate_zone_bounds_json.as_ref())
         }),
         xc_goal_start_date: model
-            .map(|preferences| preferences.xc_goal_start_date)
-            .flatten()
+            .and_then(|preferences| preferences.xc_goal_start_date)
             .map(|value| value.format("%Y-%m-%d").to_string()),
         xc_goal_target_date: model
-            .map(|preferences| preferences.xc_goal_target_date)
-            .flatten()
+            .and_then(|preferences| preferences.xc_goal_target_date)
             .map(|value| value.format("%Y-%m-%d").to_string()),
         xc_goal_target_distance_meters: model
             .and_then(|preferences| preferences.xc_goal_target_distance_meters),
@@ -381,7 +379,7 @@ fn validate_metric_range(
 
 fn parse_goal_date(field: &str, label: &str, value: &str) -> Result<NaiveDate, AppError> {
     NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|_| {
-        AppError::validation_field(field, &format!("{label} must use YYYY-MM-DD format"))
+        AppError::validation_field(field, format!("{label} must use YYYY-MM-DD format"))
     })
 }
 

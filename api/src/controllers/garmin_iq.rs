@@ -680,12 +680,9 @@ pub async fn sync_segments(
 
     let mut last_attempt_by_segment_id = HashMap::<i32, (i32, DateTime<Utc>)>::new();
     for effort in recent_efforts {
-        if !last_attempt_by_segment_id.contains_key(&effort.segment_id) {
-            last_attempt_by_segment_id.insert(
-                effort.segment_id,
-                (effort.duration_seconds, effort.created_at),
-            );
-        }
+        last_attempt_by_segment_id
+            .entry(effort.segment_id)
+            .or_insert((effort.duration_seconds, effort.created_at));
     }
 
     let mut items = Vec::new();

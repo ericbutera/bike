@@ -1154,6 +1154,10 @@ fn build_xc_readiness(
     )
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "readiness gate builder mirrors the API response fields"
+)]
 fn build_at_least_gate(
     key: XcReadinessGateKey,
     label: &str,
@@ -1196,6 +1200,10 @@ fn build_at_least_gate(
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "readiness gate builder mirrors the API response fields"
+)]
 fn build_at_most_gate(
     key: XcReadinessGateKey,
     label: &str,

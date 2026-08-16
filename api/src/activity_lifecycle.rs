@@ -503,7 +503,7 @@ pub async fn reprocess_imported_activities_for_user(
         }
 
         let processed_count = reprocessed_count + failed_count;
-        if processed_count % 25 == 0 || processed_count == total_activity_count {
+        if processed_count.is_multiple_of(25) || processed_count == total_activity_count {
             tracing::info!(
                 user_id,
                 processed_count,

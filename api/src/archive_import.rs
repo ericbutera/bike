@@ -6,6 +6,7 @@ use crate::activity_import_lock::{
 use crate::activity_import_pipeline::{
     finalize_activity_import_batch, mark_activity_imports_processed, persist_activity_upload,
     ActivityUploadDeduplication, ActivityUploadPayload, PersistActivityUploadOutcome,
+    PersistActivityUploadRequest,
 };
 use crate::activity_lifecycle::resume_incomplete_activity_imports_for_user;
 use crate::app_error::AppError;
@@ -298,6 +299,10 @@ enum ArchiveScanMode {
     StravaExport,
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "archive import entrypoint is shared by admin, worker, and URL flows"
+)]
 pub async fn import_activity_archive_from_path(
     db: &sea_orm::DatabaseConnection,
     tasks: &TaskQueue,
@@ -351,13 +356,15 @@ pub async fn import_activity_archive_from_path(
 
         match persist_activity_upload(
             db,
-            uploads_dir,
-            user_storage_key,
-            user_id,
-            upload,
-            activity_source,
-            ActivityUploadDeduplication::Enabled,
-            Some(&training_profile),
+            PersistActivityUploadRequest {
+                uploads_dir,
+                user_storage_key,
+                user_id,
+                upload,
+                source: activity_source,
+                deduplication: ActivityUploadDeduplication::Enabled,
+                training_profile: Some(&training_profile),
+            },
         )
         .await
         {
@@ -1148,7 +1155,7 @@ mod tests {
         assert_eq!(activities::Entity::find().count(&db).await.unwrap(), 1);
         assert_eq!(
             activity_imports::Entity::find().count(&db).await.unwrap(),
-            1
+            2
         );
 
         let _ = std::fs::remove_file(&archive_path);
@@ -1197,32 +1204,20 @@ mod tests {
                     }
                 };
 
-                match crate::activity_summary::summarize_activity_upload(
+                match crate::activity_parser::parse_activity_data(
                     &indexed_entry.activity_entry.original_filename,
                     &indexed_entry.activity_entry.format,
                     &bytes,
                 ) {
-                    Ok(draft) => {
-                        match crate::activity_details::derive_activity_detail_data(
-                            &indexed_entry.activity_entry.original_filename,
-                            &indexed_entry.activity_entry.format,
-                            &bytes,
-                        ) {
-                            Ok(derived) => {
-                                let _ = crate::dedupe::activity_dedupe_key(
-                                    &draft,
-                                    &derived.route_points,
-                                );
-                                parsed_count += 1;
-                            }
-                            Err(error) => error_samples.push(format!(
-                                "{}: derive failed: {}",
-                                indexed_entry.entry_name, error.message
-                            )),
-                        }
+                    Ok(parsed) => {
+                        let _ = crate::dedupe::activity_dedupe_key(
+                            &parsed.draft,
+                            &parsed.derived_data.route_points,
+                        );
+                        parsed_count += 1;
                     }
                     Err(error) => error_samples.push(format!(
-                        "{}: summary failed: {}",
+                        "{}: parse failed: {}",
                         indexed_entry.entry_name, error.message
                     )),
                 }

@@ -24,3 +24,6 @@ utoipa = { version = "5", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "8", features = ["axum", "vendored"] }
 chrono = { version = "0.4", features = ["serde"] }
 kaleido = "0.8"
+
+[workspace.lints.clippy]
+all = "deny"

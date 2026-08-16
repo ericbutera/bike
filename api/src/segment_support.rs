@@ -397,6 +397,10 @@ struct MatchCandidate {
     score: f64,
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "segment matcher carries precomputed route anchors for hot-path matching"
+)]
 fn find_best_match_for_first_passing_start(
     segment_route_points: &[ActivityRoutePoint],
     activity_route_points: &[ActivityRoutePoint],
@@ -434,6 +438,10 @@ fn find_best_match_for_first_passing_start(
     None
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "segment matcher carries precomputed route anchors for hot-path matching"
+)]
 fn find_best_match_across_starts(
     segment_route_points: &[ActivityRoutePoint],
     activity_route_points: &[ActivityRoutePoint],
@@ -475,6 +483,10 @@ fn find_best_match_across_starts(
     best_match
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "segment matcher carries precomputed route anchors for hot-path matching"
+)]
 fn find_best_match_for_start(
     segment_route_points: &[ActivityRoutePoint],
     activity_route_points: &[ActivityRoutePoint],
