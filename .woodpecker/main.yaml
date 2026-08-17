@@ -5,7 +5,7 @@ when:
 
 steps:
   - name: test-rust
-    image: rust:1.93.0-bookworm
+    image: rust:1-bookworm
     environment:
       TEST_MODE: "1"
       CARGO_HOME: /cache/bike/cargo

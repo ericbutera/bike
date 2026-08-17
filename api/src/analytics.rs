@@ -5,7 +5,9 @@ use crate::entities::{
     activities, activity_analytics, analytics_user_states, fitness_freshness_daily,
     segment_efforts, segment_summaries, segment_user_summaries, segments,
 };
-use crate::training_profile::{deserialize_activity_heart_rate_zones, weighted_zone_intensity};
+use crate::training_profile::{
+    deserialize_activity_heart_rate_zones, weighted_zone_intensity, StoredActivityHeartRateZones,
+};
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
@@ -64,6 +66,28 @@ struct ActivityStartedAtRow {
 }
 
 #[derive(Clone, Debug, FromQueryResult)]
+struct ActivityTrainingLoadRow {
+    started_at: DateTime<Utc>,
+    moving_time_seconds: Option<i32>,
+    total_time_seconds: Option<i32>,
+    average_heart_rate_bpm: Option<i32>,
+    max_heart_rate_bpm: Option<i32>,
+    heart_rate_zones_json: Option<StoredActivityHeartRateZones>,
+}
+
+impl ActivityTrainingLoadRow {
+    fn training_load(&self) -> Option<f64> {
+        estimated_training_load_from_fields(
+            self.moving_time_seconds,
+            self.total_time_seconds,
+            self.average_heart_rate_bpm,
+            self.max_heart_rate_bpm,
+            self.heart_rate_zones_json.as_ref(),
+        )
+    }
+}
+
+#[derive(Clone, Debug, FromQueryResult)]
 struct SegmentTitleRow {
     id: i32,
     title: String,
@@ -109,16 +133,31 @@ pub fn build_fitness_freshness_rows_with_seed(
     initial_fitness: f64,
     initial_fatigue: f64,
 ) -> Vec<FitnessFreshnessDay> {
+    build_fitness_freshness_rows_from_loads(
+        activities.iter().filter_map(|activity| {
+            estimated_training_load(activity)
+                .map(|training_load| (activity.started_at.date_naive(), training_load))
+        }),
+        start_date,
+        end_date,
+        initial_fitness,
+        initial_fatigue,
+    )
+}
+
+fn build_fitness_freshness_rows_from_loads(
+    activity_loads: impl IntoIterator<Item = (NaiveDate, f64)>,
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+    initial_fitness: f64,
+    initial_fatigue: f64,
+) -> Vec<FitnessFreshnessDay> {
     let mut daily_load_by_date = BTreeMap::<NaiveDate, (i32, f64)>::new();
 
-    for activity in activities {
-        if let Some(training_load) = estimated_training_load(activity) {
-            let entry = daily_load_by_date
-                .entry(activity.started_at.date_naive())
-                .or_insert((0, 0.0));
-            entry.0 += 1;
-            entry.1 += training_load;
-        }
+    for (day, training_load) in activity_loads {
+        let entry = daily_load_by_date.entry(day).or_insert((0, 0.0));
+        entry.0 += 1;
+        entry.1 += training_load;
     }
 
     let mut current_date = start_date;
@@ -151,15 +190,32 @@ pub fn build_fitness_freshness_rows_with_seed(
 }
 
 pub fn estimated_training_load(activity: &activities::Model) -> Option<f64> {
-    let duration_seconds = activity
-        .moving_time_seconds
-        .or(activity.total_time_seconds)
+    estimated_training_load_from_fields(
+        activity.moving_time_seconds,
+        activity.total_time_seconds,
+        activity.average_heart_rate_bpm,
+        activity.max_heart_rate_bpm,
+        activity.heart_rate_zones_json.as_ref(),
+    )
+}
+
+fn estimated_training_load_from_fields(
+    moving_time_seconds: Option<i32>,
+    total_time_seconds: Option<i32>,
+    average_heart_rate_bpm: Option<i32>,
+    max_heart_rate_bpm: Option<i32>,
+    heart_rate_zones_json: Option<&StoredActivityHeartRateZones>,
+) -> Option<f64> {
+    let duration_seconds = moving_time_seconds
+        .or(total_time_seconds)
         .filter(|value| *value > 0)?;
     let duration_hours = f64::from(duration_seconds) / 3600.0;
     let heart_rate_ratio = weighted_zone_intensity(&deserialize_activity_heart_rate_zones(
-        activity.heart_rate_zones_json.as_ref(),
+        heart_rate_zones_json,
     ))
-    .unwrap_or_else(|| estimated_heart_rate_ratio(activity));
+    .unwrap_or_else(|| {
+        estimated_heart_rate_ratio_from_fields(average_heart_rate_bpm, max_heart_rate_bpm)
+    });
 
     Some(duration_hours * 100.0 * heart_rate_ratio.powi(2))
 }
@@ -303,7 +359,17 @@ pub async fn rebuild_fitness_freshness_cache(
         activity_query = activity_query.filter(activities::Column::StartedAt.gte(start_bound));
     }
 
-    let activity_models = activity_query.all(db).await?;
+    let activity_rows = activity_query
+        .select_only()
+        .column(activities::Column::StartedAt)
+        .column(activities::Column::MovingTimeSeconds)
+        .column(activities::Column::TotalTimeSeconds)
+        .column(activities::Column::AverageHeartRateBpm)
+        .column(activities::Column::MaxHeartRateBpm)
+        .column(activities::Column::HeartRateZonesJson)
+        .into_model::<ActivityTrainingLoadRow>()
+        .all(db)
+        .await?;
     let checkpoint_row = if let Some(rebuild_from_day) = dirty_from_day {
         fitness_freshness_daily::Entity::find()
             .filter(fitness_freshness_daily::Column::UserId.eq(user_id))
@@ -314,10 +380,18 @@ pub async fn rebuild_fitness_freshness_cache(
     } else {
         None
     };
-    let start_date = dirty_from_day
-        .unwrap_or_else(|| default_fitness_rebuild_start_date(&activity_models, end_date));
-    let rows = build_fitness_freshness_rows_with_seed(
-        &activity_models,
+    let start_date = dirty_from_day.unwrap_or_else(|| {
+        activity_rows
+            .first()
+            .map(|activity| activity.started_at.date_naive())
+            .unwrap_or(end_date)
+    });
+    let rows = build_fitness_freshness_rows_from_loads(
+        activity_rows.iter().filter_map(|activity| {
+            activity
+                .training_load()
+                .map(|training_load| (activity.started_at.date_naive(), training_load))
+        }),
         start_date,
         end_date,
         checkpoint_row
@@ -343,8 +417,9 @@ pub async fn rebuild_fitness_freshness_cache(
 
     delete_query.exec(&txn).await?;
 
-    for row in rows {
-        fitness_freshness_daily::ActiveModel {
+    let row_models = rows
+        .into_iter()
+        .map(|row| fitness_freshness_daily::ActiveModel {
             user_id: Set(user_id),
             day: Set(row.day),
             activity_count: Set(row.activity_count),
@@ -352,10 +427,16 @@ pub async fn rebuild_fitness_freshness_cache(
             fitness: Set(row.fitness),
             fatigue: Set(row.fatigue),
             form: Set(row.form),
+            created_at: Set(rebuilt_at),
+            updated_at: Set(rebuilt_at),
             ..Default::default()
-        }
-        .insert(&txn)
-        .await?;
+        })
+        .collect::<Vec<_>>();
+
+    for chunk in row_models.chunks(200) {
+        fitness_freshness_daily::Entity::insert_many(chunk.iter().cloned())
+            .exec(&txn)
+            .await?;
     }
 
     if let Some(model) = freshness_state {
@@ -696,8 +777,11 @@ fn activity_achievement_kind(
     None
 }
 
-fn estimated_heart_rate_ratio(activity: &activities::Model) -> f64 {
-    match (activity.average_heart_rate_bpm, activity.max_heart_rate_bpm) {
+fn estimated_heart_rate_ratio_from_fields(
+    average_heart_rate_bpm: Option<i32>,
+    max_heart_rate_bpm: Option<i32>,
+) -> f64 {
+    match (average_heart_rate_bpm, max_heart_rate_bpm) {
         (Some(average), Some(maximum)) if maximum > 0 => {
             (f64::from(average) / f64::from(maximum)).clamp(0.35, 1.0)
         }

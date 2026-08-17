@@ -1,6 +1,5 @@
-FROM lukemathwalker/cargo-chef:latest-rust-1.93.0-bookworm AS chef
+FROM lukemathwalker/cargo-chef:latest-rust-1-bookworm AS chef
 WORKDIR /app
-ENV RUSTUP_TOOLCHAIN=1.93.0
 
 FROM chef AS planner
 COPY . .

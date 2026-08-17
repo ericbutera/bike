@@ -1552,10 +1552,10 @@ fn build_compare_rides_report(
         .iter()
         .map(compare_candidate_from_activity)
         .collect::<Vec<_>>();
-    candidate_rows.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+    candidate_rows.sort_by_key(|row| std::cmp::Reverse(row.started_at));
 
     let mut selected_sorted = selected.iter().collect::<Vec<_>>();
-    selected_sorted.sort_by(|a, b| a.started_at.cmp(&b.started_at));
+    selected_sorted.sort_by_key(|activity| activity.started_at);
 
     let selected_rides = selected_sorted
         .iter()

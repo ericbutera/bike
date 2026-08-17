@@ -530,7 +530,7 @@ pub async fn get_xc_goal_progress(
             .map(race_activity_without_analysis),
     );
 
-    rides.sort_by(|left, right| right.started_at.cmp(&left.started_at));
+    rides.sort_by_key(|ride| std::cmp::Reverse(ride.started_at));
 
     Ok(Json(build_xc_goal_progress_response(
         rides,
@@ -800,7 +800,7 @@ fn build_xc_goal_progress_response(
     freshness: Option<FitnessFreshnessSnapshot>,
     now: DateTime<Utc>,
 ) -> XcGoalProgressResponse {
-    rides.sort_by(|left, right| right.started_at.cmp(&left.started_at));
+    rides.sort_by_key(|ride| std::cmp::Reverse(ride.started_at));
     for ride in &mut rides {
         ride.aerobic_decoupling_percent = ride
             .aerobic_decoupling_percent
@@ -1742,7 +1742,7 @@ fn build_xc_race_results(rides: &[XcRideProgressResponse]) -> Vec<XcRaceResultRe
         .iter()
         .filter(|ride| ride.activity_type.is_race())
         .collect::<Vec<_>>();
-    races.sort_by(|left, right| right.started_at.cmp(&left.started_at));
+    races.sort_by_key(|race| std::cmp::Reverse(race.started_at));
 
     races
         .into_iter()
@@ -1901,7 +1901,7 @@ fn build_dh_goal_progress_response(
             .then_with(|| left.segment_title.cmp(&right.segment_title))
     });
     let mut recent_sessions = build_dh_session_progress(&efforts);
-    recent_sessions.sort_by(|left, right| right.started_at.cmp(&left.started_at));
+    recent_sessions.sort_by_key(|session| std::cmp::Reverse(session.started_at));
     recent_sessions.truncate(DH_RECENT_SESSION_LIMIT);
 
     let session_count = recent_sessions.len() as i32;
@@ -2060,7 +2060,7 @@ fn build_dh_session_progress(efforts: &[DhEffortSource]) -> Vec<DhSessionSummary
     efforts_by_activity_id
         .into_values()
         .filter_map(|mut session_efforts| {
-            session_efforts.sort_by(|left, right| left.effort_index.cmp(&right.effort_index));
+            session_efforts.sort_by_key(|effort| effort.effort_index);
             let first_effort = session_efforts.first()?;
             let mut efforts_by_segment_id = HashMap::<i32, Vec<DhEffortSource>>::new();
             for effort in session_efforts.iter().cloned() {
@@ -2111,7 +2111,7 @@ fn average_recent_segment_repeat_fade(efforts: &[DhEffortSource]) -> Option<f64>
             session_repeat_fade_percent(&segment_efforts).map(|fade| (started_at, fade))
         })
         .collect::<Vec<_>>();
-    session_fades.sort_by(|left, right| right.0.cmp(&left.0));
+    session_fades.sort_by_key(|fade| std::cmp::Reverse(fade.0));
 
     average_f64(
         session_fades
@@ -2127,7 +2127,7 @@ fn session_repeat_fade_percent(efforts: &[DhEffortSource]) -> Option<f64> {
     }
 
     let mut ordered_efforts = efforts.to_vec();
-    ordered_efforts.sort_by(|left, right| left.effort_index.cmp(&right.effort_index));
+    ordered_efforts.sort_by_key(|effort| effort.effort_index);
 
     let first_duration_seconds = f64::from(ordered_efforts.first()?.duration_seconds);
     let last_duration_seconds = f64::from(ordered_efforts.last()?.duration_seconds);
