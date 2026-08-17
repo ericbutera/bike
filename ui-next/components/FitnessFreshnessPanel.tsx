@@ -43,6 +43,11 @@ const INACTIVE_TOGGLE_CLASS =
 
 type RangePresetKey = (typeof RANGE_PRESETS)[number]["key"];
 
+type MetricRange = {
+  min: number | null;
+  max: number | null;
+};
+
 function formatDateLabel(value: string, includeYear = false) {
   const date = new Date(`${value}T00:00:00Z`);
 
@@ -73,6 +78,33 @@ function formatTooltipDate(value: string) {
 
 function formatMetric(value: number | null | undefined) {
   return typeof value === "number" ? value.toFixed(1) : "--";
+}
+
+function metricRange(
+  points: FitnessFreshnessPoint[],
+  key: keyof Pick<
+    FitnessFreshnessPoint,
+    "training_load" | "fitness" | "fatigue"
+  >,
+): MetricRange {
+  const values = points
+    .map((point) => point[key])
+    .filter((value): value is number => typeof value === "number");
+
+  if (values.length === 0) {
+    return { min: null, max: null };
+  }
+
+  return {
+    min: Math.min(...values),
+    max: Math.max(...values),
+  };
+}
+
+function formatRange(range: MetricRange) {
+  return `Period min/max ${formatMetric(range.min)} / ${formatMetric(
+    range.max,
+  )}`;
 }
 
 function subtractMonths(date: Date, months: number) {
@@ -227,22 +259,29 @@ function SummaryMetric({
   value,
   accent,
   description,
+  detail,
 }: {
   label: string;
   value: string;
   accent?: string;
   description?: string;
+  detail?: string;
 }) {
   return (
     <div className="stat rounded-box bg-base-200 px-4 py-3 shadow-sm">
-      <div className="stat-title">{label}</div>
+      <div className="stat-title flex items-center gap-1.5">
+        <span>{label}</span>
+        {description ? (
+          <InfoTooltip label={`${label} details`} tip={description} />
+        ) : null}
+      </div>
       <div
         className="stat-value text-2xl"
         style={accent ? { color: accent } : undefined}
       >
         {value}
       </div>
-      {description ? <div className="stat-desc">{description}</div> : null}
+      {detail ? <div className="stat-desc truncate">{detail}</div> : null}
     </div>
   );
 }
@@ -271,6 +310,9 @@ export default function FitnessFreshnessPanel() {
   const lastSevenDayLoad = points
     .slice(-7)
     .reduce((total, point) => total + point.training_load, 0);
+  const loadRange = metricRange(points, "training_load");
+  const fitnessRange = metricRange(points, "fitness");
+  const fatigueRange = metricRange(points, "fatigue");
   const formZone = currentFormZone(latestPoint?.form);
   const formMin = Math.min(...points.map((point) => point.form), -30);
   const formMax = Math.max(...points.map((point) => point.form), 30);
@@ -329,6 +371,7 @@ export default function FitnessFreshnessPanel() {
                 description={`${
                   fitnessQuery.data?.fitness_window_days ?? 42
                 } day load average`}
+                detail={formatRange(fitnessRange)}
               />
               <SummaryMetric
                 label="Current fatigue"
@@ -337,9 +380,16 @@ export default function FitnessFreshnessPanel() {
                 description={`${
                   fitnessQuery.data?.fatigue_window_days ?? 7
                 } day load average`}
+                detail={formatRange(fatigueRange)}
               />
               <div className="stat rounded-box bg-base-200 px-4 py-3 shadow-sm">
-                <div className="stat-title">Current form</div>
+                <div className="stat-title flex items-center gap-1.5">
+                  <span>Current form</span>
+                  <InfoTooltip
+                    label="Current form details"
+                    tip={formZone.description}
+                  />
+                </div>
                 <div className="flex items-center gap-3">
                   <div
                     className="stat-value text-2xl"
@@ -351,12 +401,12 @@ export default function FitnessFreshnessPanel() {
                     {formZone.label}
                   </span>
                 </div>
-                <div className="stat-desc">{formZone.description}</div>
               </div>
               <SummaryMetric
                 label="Last 7 day load"
                 value={formatMetric(lastSevenDayLoad)}
                 description="Sum of estimated daily load across the trailing week"
+                detail={formatRange(loadRange)}
               />
             </div>
 
@@ -449,6 +499,22 @@ export default function FitnessFreshnessPanel() {
                     />
                     <YAxis hide yAxisId="load" />
                     <Tooltip content={<FitnessTooltip />} />
+                    {showFitness && fitnessRange.max != null ? (
+                      <ReferenceLine
+                        y={fitnessRange.max}
+                        stroke={FITNESS_COLOR}
+                        strokeDasharray="5 5"
+                        strokeOpacity={0.7}
+                        label={{
+                          value: `Max fitness ${formatMetric(
+                            fitnessRange.max,
+                          )}`,
+                          position: "insideTopRight",
+                          fill: FITNESS_COLOR,
+                          fontSize: 12,
+                        }}
+                      />
+                    ) : null}
                     <Bar
                       dataKey="training_load"
                       yAxisId="load"

@@ -484,7 +484,7 @@ describe("XcGoalsProgressPanel", () => {
   });
 
   it("renders XC goals, charts, recommendations, and recent rides", () => {
-    renderPanel();
+    const { container } = renderPanel();
 
     expect(screen.getByText("Event target")).toBeInTheDocument();
     expect(screen.getAllByText("Lumberjack 100").length).toBeGreaterThan(0);
@@ -516,8 +516,8 @@ describe("XcGoalsProgressPanel", () => {
     expect(screen.getByText("Recent climb day")).toBeInTheDocument();
     expect(screen.getByText("Climb density")).toBeInTheDocument();
     expect(
-      screen.getByTitle("Best single ride in the last 90 days."),
-    ).toBeInTheDocument();
+      screen.getByText("Recent long ride").closest(".tooltip"),
+    ).toHaveAttribute("data-tip", "Best single ride in the last 90 days.");
     expect(
       screen.queryByText("Best single ride in the last 90 days."),
     ).not.toBeInTheDocument();
@@ -562,25 +562,24 @@ describe("XcGoalsProgressPanel", () => {
     expect(screen.getAllByText("Climb durability").length).toBeGreaterThan(0);
     expect(
       screen.getByLabelText("Choose a more event-like route details"),
-    ).toHaveAttribute(
-      "title",
-      "Current rides are not matching the event's climbing per mile closely enough.",
-    );
+    ).toBeInTheDocument();
     expect(
-      screen.getAllByTitle(
-        "Keep the effort mostly aerobic and collect steady climbing.",
-      ).length,
-    ).toBeGreaterThan(0);
+      container.querySelector('[aria-label="Suggested ride details"]'),
+    ).toBeInTheDocument();
     expect(
       screen.queryByText(
         "Useful for accumulating sustained climbing in the event build.",
       ),
     ).not.toBeInTheDocument();
     expect(
-      screen.getAllByTitle(
-        "Useful for accumulating sustained climbing in the event build.",
-      ).length,
-    ).toBeGreaterThan(0);
+      screen
+        .getAllByText("Climb durability")
+        .some(
+          (element) =>
+            element.closest(".tooltip")?.getAttribute("data-tip") ===
+            "Useful for accumulating sustained climbing in the event build.",
+        ),
+    ).toBe(true);
     expect(
       screen
         .getAllByRole("link", { name: "Post Canyon Endurance" })

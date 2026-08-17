@@ -1194,10 +1194,7 @@ function ReadinessOverview({
                   className="tooltip tooltip-right cursor-help text-left"
                   data-tip={gate.detail}
                 >
-                  <h3
-                    className="font-semibold text-base-content underline decoration-dotted underline-offset-4"
-                    title={gate.detail}
-                  >
+                  <h3 className="font-semibold text-base-content underline decoration-dotted underline-offset-4">
                     {gate.label}
                   </h3>
                 </div>
@@ -2911,7 +2908,6 @@ export default function XcGoalsProgressPanel() {
                           className={trainingPurposeBadgeClass(
                             ride.training_purpose,
                           )}
-                          title={ride.training_purpose_detail}
                         >
                           {formatTrainingPurposeLabel(ride.training_purpose)}
                         </span>

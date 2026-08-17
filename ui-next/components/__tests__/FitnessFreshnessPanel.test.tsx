@@ -92,6 +92,12 @@ describe("FitnessFreshnessPanel", () => {
     expect(screen.getByText("Current fatigue")).toBeInTheDocument();
     expect(screen.getByText("Current form")).toBeInTheDocument();
     expect(screen.getByText("Neutral")).toBeInTheDocument();
+    expect(screen.getByText("Period min/max 30.2 / 31.2")).toBeInTheDocument();
+    expect(screen.getByText("Period min/max 32.8 / 44.3")).toBeInTheDocument();
+    expect(screen.getByText("Period min/max 0.0 / 52.4")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Current fitness details"),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("img", { name: "Fitness and fatigue chart" }),
     ).toBeInTheDocument();
