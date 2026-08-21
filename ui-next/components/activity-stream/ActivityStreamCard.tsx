@@ -5,6 +5,7 @@ import {
   formatDuration,
   formatElevation,
   formatHeartRate,
+  formatSpeed,
   type UnitSystem,
 } from "../../lib/activityFormatting";
 import { type Activity } from "../../lib/queries";
@@ -78,7 +79,7 @@ export default function ActivityStreamCard({
             </div>
           ) : null}
 
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
             <MetricCard
               label="Distance"
               value={formatDistance(activity.distance_meters, unitSystem)}
@@ -88,10 +89,8 @@ export default function ActivityStreamCard({
               className="sm:min-w-[9rem]"
             />
             <MetricCard
-              label="Moving time"
-              value={formatDuration(
-                activity.moving_time_seconds ?? activity.total_time_seconds,
-              )}
+              label="Average speed"
+              value={formatSpeed(activity.average_speed_mps, unitSystem)}
               size="sm"
               tone="base-100"
               shadow={false}
@@ -109,8 +108,18 @@ export default function ActivityStreamCard({
               className="sm:min-w-[9rem]"
             />
             <MetricCard
-              label="Max heart rate"
-              value={formatHeartRate(activity.max_heart_rate_bpm)}
+              label="Moving time"
+              value={formatDuration(
+                activity.moving_time_seconds ?? activity.total_time_seconds,
+              )}
+              size="sm"
+              tone="base-100"
+              shadow={false}
+              className="sm:min-w-[9rem]"
+            />
+            <MetricCard
+              label="Average heart rate"
+              value={formatHeartRate(activity.average_heart_rate_bpm)}
               size="sm"
               tone="base-100"
               shadow={false}
