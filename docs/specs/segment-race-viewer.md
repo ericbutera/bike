@@ -16,9 +16,7 @@ When the rider sets the zoom manually, that zoom should stick during playback. L
 
 Manual zoom is especially important while markers are bunched. At high zoom levels, the viewer should preserve enough marker separation and label clarity for the selected efforts to remain identifiable.
 
-On longer segments, the viewer may slowly scroll back out when a meaningful gap emerges between the top three efforts. This automatic zoom-out should be gradual enough to preserve visual continuity and should not fight a recent manual zoom choice.
-
-Automatic zoom-out should be based on the top three live efforts, not only the first two. The target viewport should include the leading group when their positions spread out, while still avoiding sudden zoom jumps.
+The race viewer should not automatically zoom in or out during playback. Automatic spread-based zoom has too many edge cases on loops, switchbacks, and overlapping course layouts. If automatic framing returns later, it should be an explicit rider action such as a "fit leaders" command rather than continuous playback behavior.
 
 ## Playback Speed
 
@@ -49,7 +47,7 @@ Cards may still display live position, lead status, and gap values, but those in
 
 ## Live Gap Display
 
-The viewer should continue to compute race position and leader gaps from live playback progress. Those calculations should drive marker following, leader/gap labels, and top-three zoom-out decisions.
+The viewer should continue to compute race position and leader gaps from live playback progress. Those calculations should drive marker following and leader/gap labels.
 
 Gap labels on cards should be derived from the current live leader even though the cards do not reorder. The current leader should be visually obvious without moving the leader card to the first position.
 
@@ -61,8 +59,8 @@ Gap labels on cards should be derived from the current live leader even though t
 - Speed selection is presented as a compact dropdown slider control, replacing the fast/slow/auto button group.
 - Selected rider cards stay in a stable order for the full playback session.
 - Live position and gap labels update without moving cards.
-- On longer segments, when the top three efforts spread apart, the map eases toward a wider viewport rather than snapping.
-- Recent manual zoom input temporarily wins over automatic zoom-out.
+- Race playback does not automatically change map zoom as markers spread apart or overlap.
+- Race leader-follow does not stack long-running camera animations during playback.
 
 ## Code Anchors
 
@@ -77,11 +75,10 @@ Gap labels on cards should be derived from the current live leader even though t
 
 - Replace `PLAYBACK_PACE_OPTIONS` with a multiplier-based speed model or add a separate race-viewer speed model if the embedded segment-detail comparison should keep its current automatic pace behavior.
 - Keep a sorted live-comparison collection for calculations, but render cards from the stable selected-row order.
-- Extend leader-follow viewport calculation to account for the top three live markers when choosing automatic zoom-out.
-- Track the timestamp of the most recent manual zoom interaction so automatic follow behavior can honor a cooldown before widening the viewport again.
+- Keep race-viewer zoom fixed unless the rider changes it manually.
+- Use direct follow-camera updates during race playback rather than long `easeTo` animations that can overlap at high playback speeds.
 
 ## Open Decisions
 
-- Decide the exact manual-zoom cooldown before automatic zoom-out is allowed to resume.
 - Decide whether race speed should be persisted in the URL, local storage, or only component state.
 - Decide whether zoom should be persisted per segment, per viewer session, or globally for the race viewer.

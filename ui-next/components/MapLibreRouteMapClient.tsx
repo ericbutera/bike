@@ -194,8 +194,6 @@ const DEFAULT_FIT_BOUNDS_MAX_ZOOM = 14;
 const FOLLOW_VIEWPORT_EASE_DURATION_MS = 1400;
 const FOLLOW_VIEWPORT_CENTER_SMOOTHING_ALPHA = 0.16;
 const FOLLOW_VIEWPORT_ZOOM_SMOOTHING_ALPHA = 0.04;
-const FOLLOW_VIEWPORT_USER_ZOOM_COOLDOWN_MS = 8000;
-const FOLLOW_VIEWPORT_AUTO_WIDEN_MIN_ZOOM_DELTA = 0.5;
 const DEFAULT_MOVING_MARKER_TRANSITION_MS = 0;
 const MIN_MARKER_ANIMATION_FRAME_MS = 1000 / 30;
 const EMPTY_OVERLAYS: RouteOverlay[] = [];
@@ -338,28 +336,16 @@ function resolveFollowViewportZoom({
   requestedZoom,
   preserveUserZoom,
   userFollowZoom,
-  now,
 }: {
   requestedZoom: number;
   preserveUserZoom: boolean;
-  userFollowZoom: { zoom: number; changedAtMs: number } | null;
-  now: number;
+  userFollowZoom: { zoom: number } | null;
 }) {
   if (!preserveUserZoom || !userFollowZoom) {
     return requestedZoom;
   }
 
-  const isFresh =
-    now - userFollowZoom.changedAtMs < FOLLOW_VIEWPORT_USER_ZOOM_COOLDOWN_MS;
-  const shouldAutoWiden =
-    requestedZoom <
-    userFollowZoom.zoom - FOLLOW_VIEWPORT_AUTO_WIDEN_MIN_ZOOM_DELTA;
-
-  if (isFresh || !shouldAutoWiden) {
-    return userFollowZoom.zoom;
-  }
-
-  return requestedZoom;
+  return userFollowZoom.zoom;
 }
 
 function distanceRange(points: ActivityRoutePoint[] | null | undefined) {
@@ -790,7 +776,6 @@ export default function MapLibreRouteMapClient({
   const isUserChangingZoomRef = useRef(false);
   const userFollowZoomRef = useRef<{
     zoom: number;
-    changedAtMs: number;
   } | null>(null);
   const lastFittedRoutePointsRef = useRef<
     ActivityRoutePoint[] | null | undefined
@@ -1106,7 +1091,6 @@ export default function MapLibreRouteMapClient({
 
       userFollowZoomRef.current = {
         zoom: map.getZoom(),
-        changedAtMs: performance.now(),
       };
       isUserChangingZoomRef.current = false;
       smoothedFollowTargetRef.current = {
@@ -1262,7 +1246,9 @@ export default function MapLibreRouteMapClient({
       fitMapToGeometry(
         map,
         explicitFitBoundsPoints ?? routePoints ?? [],
-        explicitFitBoundsPoints ? [] : overlays.map((overlay) => overlay.points),
+        explicitFitBoundsPoints
+          ? []
+          : overlays.map((overlay) => overlay.points),
         fitBoundsPadding,
         fitBoundsMaxZoom,
       );
@@ -1406,15 +1392,7 @@ export default function MapLibreRouteMapClient({
         requestedZoom: followViewport.zoom,
         preserveUserZoom: followViewportPreserveUserZoom,
         userFollowZoom: userFollowZoomRef.current,
-        now,
       });
-
-      if (
-        userFollowZoomRef.current &&
-        targetZoom !== userFollowZoomRef.current.zoom
-      ) {
-        userFollowZoomRef.current = null;
-      }
 
       const nextFollowViewportKey = [
         followViewport.point.longitude,

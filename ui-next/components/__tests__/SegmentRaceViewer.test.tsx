@@ -191,7 +191,9 @@ describe("SegmentRaceViewer", () => {
     expect(
       within(secondAttemptCard).getByText("Ride date"),
     ).toBeInTheDocument();
-    expect(within(secondAttemptCard).getByText("Attempt 2")).toBeInTheDocument();
+    expect(
+      within(secondAttemptCard).getByText("Attempt 2"),
+    ).toBeInTheDocument();
     expect(
       within(secondAttemptCard).getByText("Lunch Laps"),
     ).toBeInTheDocument();
@@ -307,12 +309,11 @@ describe("SegmentRaceViewer", () => {
   it("delegates user zoom preservation to the route map", () => {
     renderRaceViewer();
 
-    const mapProps =
-      mocks.renderMapLibreRouteMap.mock.calls.at(-1)?.[0] ?? {};
+    const mapProps = mocks.renderMapLibreRouteMap.mock.calls.at(-1)?.[0] ?? {};
 
     expect(mapProps).toEqual(
       expect.objectContaining({
-        followViewportBehavior: "ease",
+        followViewportBehavior: "jump",
         followViewportPreserveUserZoom: true,
       }),
     );
@@ -329,12 +330,72 @@ describe("SegmentRaceViewer", () => {
     );
   });
 
-  it("uses eased map following so race playback does not jump through tight turns", () => {
+  it("uses direct map following so race playback does not stack camera animations", () => {
     renderRaceViewer();
 
     expect(mocks.renderMapLibreRouteMap).toHaveBeenCalledWith(
       expect.objectContaining({
-        followViewportBehavior: "ease",
+        followViewportBehavior: "jump",
+      }),
+    );
+  });
+
+  it("keeps race follow zoom fixed instead of auto zooming from marker spread", () => {
+    const segment = makeSegment();
+    segment.route_points = [
+      { ...makeRoutePoint(0), latitude: 45, longitude: -122 },
+      { ...makeRoutePoint(240), latitude: 45.02, longitude: -121.98 },
+    ];
+    segment.efforts = [
+      makeEffort({
+        id: 1,
+        activity_title: "Leader",
+        activity_started_at: "2026-05-06T12:00:00Z",
+        effort_index: 1,
+        duration_seconds: 240,
+        route_points: [
+          { ...makeRoutePoint(0), latitude: 45, longitude: -122 },
+          { ...makeRoutePoint(240), latitude: 45.02, longitude: -121.98 },
+        ],
+      }),
+      makeEffort({
+        id: 2,
+        activity_title: "Runner Up",
+        activity_started_at: "2026-05-06T13:00:00Z",
+        effort_index: 1,
+        duration_seconds: 260,
+        route_points: [
+          { ...makeRoutePoint(0), latitude: 45, longitude: -122 },
+          { ...makeRoutePoint(260), latitude: 45.02, longitude: -121.98 },
+        ],
+      }),
+      makeEffort({
+        id: 3,
+        activity_title: "Third",
+        activity_started_at: "2026-05-06T14:00:00Z",
+        effort_index: 1,
+        duration_seconds: 280,
+        route_points: [
+          { ...makeRoutePoint(0), latitude: 45, longitude: -122 },
+          { ...makeRoutePoint(280), latitude: 45.02, longitude: -121.98 },
+        ],
+      }),
+    ];
+
+    renderRaceViewer({
+      segment,
+      selectedEffortIds: [1, 2, 3],
+    });
+
+    fireEvent.change(screen.getByLabelText("Race playback timeline"), {
+      target: { value: "180" },
+    });
+
+    const mapProps = mocks.renderMapLibreRouteMap.mock.calls.at(-1)?.[0] ?? {};
+
+    expect(mapProps.followViewport).toEqual(
+      expect.objectContaining({
+        zoom: 19,
       }),
     );
   });

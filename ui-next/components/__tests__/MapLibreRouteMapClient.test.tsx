@@ -349,6 +349,62 @@ describe("MapLibreRouteMapClient", () => {
     });
   });
 
+  it("keeps a manually tighter follow zoom instead of widening it later", async () => {
+    const routePoints = [
+      { elapsed_seconds: 0, latitude: 45.0, longitude: -122.0 },
+      { elapsed_seconds: 120, latitude: 45.004, longitude: -121.996 },
+      { elapsed_seconds: 240, latitude: 45.008, longitude: -121.992 },
+    ];
+
+    const { rerender } = render(
+      <MapLibreRouteMapClient
+        routePoints={routePoints}
+        followViewport={{ point: routePoints[0], zoom: 19 }}
+        followViewportPreserveUserZoom
+        ariaLabel="Segment comparison map"
+        emptyMessage="Segment route geometry is not available yet."
+        fitBoundsPadding={24}
+        fitBoundsMaxZoom={18}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mapMocks.jumpTo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          zoom: 19,
+        }),
+      );
+    });
+
+    mapMocks.zoom = 20;
+    mapMocks.handlers.get("zoomstart")?.forEach((handler) => {
+      handler({ originalEvent: new Event("wheel") });
+    });
+    mapMocks.handlers.get("zoomend")?.forEach((handler) => {
+      handler({ originalEvent: new Event("wheel") });
+    });
+
+    rerender(
+      <MapLibreRouteMapClient
+        routePoints={routePoints}
+        followViewport={{ point: routePoints[2], zoom: 17 }}
+        followViewportPreserveUserZoom
+        ariaLabel="Segment comparison map"
+        emptyMessage="Segment route geometry is not available yet."
+        fitBoundsPadding={24}
+        fitBoundsMaxZoom={18}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mapMocks.easeTo).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          zoom: 20,
+        }),
+      );
+    });
+  });
+
   it("refits bounds when a focused point set changes", async () => {
     const routePoints = [
       { elapsed_seconds: 0, latitude: 45.0, longitude: -122.0 },

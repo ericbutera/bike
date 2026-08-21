@@ -17,8 +17,6 @@ import { type ActivityRoutePoint } from "../../lib/queries";
 import { LoadingSpinner } from "../ui/QueryState";
 import {
   RACE_PLAYBACK_SPEED_OPTIONS,
-  buildLeaderGroupFollowViewport,
-  buildLeaderPairFollowViewport,
   buildLiveLeaderComparisonRows,
   comparisonMarkerPoint,
   formatSignedSecondsDelta,
@@ -38,7 +36,6 @@ import {
 type RaceMapMode = "overview" | "leader-follow";
 
 const FOLLOW_LEADER_MAP_ZOOM = 19;
-const LONG_SEGMENT_AUTO_ZOOM_SECONDS = 180;
 
 function resolveRaceViewerBasemap(styleUrl: string): RouteMapBasemap {
   switch (styleUrl.trim().toLowerCase()) {
@@ -157,7 +154,6 @@ function RaceViewerMap({
   mapMode,
   selectedBasemap,
   onSelectedBasemapChange,
-  playbackLimitSeconds,
 }: {
   routePoints: ActivityRoutePoint[] | null | undefined;
   comparisonRows: LiveComparisonRow[];
@@ -165,7 +161,6 @@ function RaceViewerMap({
   mapMode: RaceMapMode;
   selectedBasemap: RouteMapBasemap;
   onSelectedBasemapChange: (basemap: RouteMapBasemap) => void;
-  playbackLimitSeconds: number;
 }) {
   const hasRouteMap = (routePoints?.length ?? 0) >= 2;
 
@@ -220,25 +215,13 @@ function RaceViewerMap({
             } => marker !== null,
           )
       : [];
-  const pairFollowViewport =
-    mapMode === "leader-follow"
-      ? buildLeaderPairFollowViewport(
-          rankedMarkers[0]?.point ?? null,
-          rankedMarkers[1]?.point ?? null,
-          FOLLOW_LEADER_MAP_ZOOM,
-        )
-      : null;
-  const topThreeFollowViewport =
-    mapMode === "leader-follow"
-      ? buildLeaderGroupFollowViewport(
-          rankedMarkers.slice(0, 3).map((marker) => marker.point),
-          FOLLOW_LEADER_MAP_ZOOM,
-        )
-      : null;
   const followViewport =
-    playbackLimitSeconds >= LONG_SEGMENT_AUTO_ZOOM_SECONDS
-      ? (topThreeFollowViewport ?? pairFollowViewport)
-      : pairFollowViewport;
+    mapMode === "leader-follow" && rankedMarkers[0]?.point
+      ? {
+          point: rankedMarkers[0].point,
+          zoom: FOLLOW_LEADER_MAP_ZOOM,
+        }
+      : null;
 
   return hasRouteMap ? (
     <MapLibreRouteMap
@@ -253,7 +236,7 @@ function RaceViewerMap({
         label: marker.label,
       }))}
       followViewport={followViewport}
-      followViewportBehavior="ease"
+      followViewportBehavior="jump"
       followViewportPreserveUserZoom
       ariaLabel="Segment race viewer map"
       emptyMessage="Segment route geometry is not available yet."
@@ -367,7 +350,6 @@ export default function SegmentRaceViewer({
           mapMode={mapMode}
           selectedBasemap={selectedBasemap}
           onSelectedBasemapChange={setSelectedBasemap}
-          playbackLimitSeconds={playback.limitSeconds}
         />
 
         <div className="pointer-events-none absolute inset-0">
@@ -526,8 +508,7 @@ export default function SegmentRaceViewer({
                       type="button"
                       className="btn btn-sm btn-circle btn-primary shrink-0"
                       disabled={
-                        selectedRows.length === 0 ||
-                        playback.limitSeconds <= 0
+                        selectedRows.length === 0 || playback.limitSeconds <= 0
                       }
                       aria-label={
                         playback.isPlaying
