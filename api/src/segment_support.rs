@@ -21,6 +21,7 @@ const REWORKED_MAX_ENDPOINT_THRESHOLD_METERS: f64 = 260.0;
 const REWORKED_SHAPE_AVERAGE_THRESHOLD_METERS: f64 = 180.0;
 const REWORKED_SHAPE_MAX_THRESHOLD_METERS: f64 = 360.0;
 const REWORKED_SCORE_THRESHOLD: f64 = 320.0;
+const REWORKED_MIN_SEGMENT_DISTANCE_METERS: f64 = 1_500.0;
 const DISTANCE_RATIO_MIN: f64 = 0.65;
 const DISTANCE_RATIO_MAX: f64 = 1.35;
 const SHAPE_SAMPLE_POINTS: usize = 12;
@@ -346,6 +347,13 @@ fn match_segment_efforts(
 
     if !fallback_matches.is_empty() {
         return fallback_matches;
+    }
+
+    let Some(segment_distance_meters) = route_distance_meters(segment_route_points) else {
+        return Vec::new();
+    };
+    if segment_distance_meters < REWORKED_MIN_SEGMENT_DISTANCE_METERS {
+        return Vec::new();
     }
 
     match_segment_efforts_with_profile(
@@ -1043,6 +1051,21 @@ mod tests {
         )
     }
 
+    fn load_gpx_activity_fixture_route_points(filename: &str) -> Vec<ActivityRoutePoint> {
+        load_route_fixture(
+            &workspace_fixture_path(&[
+                "api",
+                "tests",
+                "fixtures",
+                "segment_matching",
+                "activities",
+                filename,
+            ]),
+            filename,
+            "gpx",
+        )
+    }
+
     fn load_segment_fixture_route_points(filename: &str) -> Vec<ActivityRoutePoint> {
         load_route_fixture(
             &workspace_fixture_path(&[
@@ -1153,6 +1176,29 @@ mod tests {
     }
 
     #[test]
+    fn rejects_short_connector_historical_false_positive() {
+        let segment_route_points = load_segment_fixture_route_points("short_connector_segment.gpx");
+        let activity_route_points =
+            load_gpx_activity_fixture_route_points("short_connector_nearby_route.gpx");
+
+        let reworked_matches = match_segment_efforts_with_profile(
+            &segment_route_points,
+            &activity_route_points,
+            REWORKED_TRAIL_MATCH_PROFILE,
+            MatchSearchMode::BestPassingStart,
+        );
+        assert_eq!(
+            reworked_matches.len(),
+            1,
+            "fixture should represent the historical short-connector false positive"
+        );
+
+        let matches = match_segment_efforts(&segment_route_points, &activity_route_points);
+
+        assert!(matches.is_empty());
+    }
+
+    #[test]
     fn matches_repeated_segment_efforts_within_one_activity() {
         let segment_route_points = vec![
             route_point(0, 35.0000, -120.0000, 0.0),
@@ -1200,6 +1246,28 @@ mod tests {
         assert_eq!(matches[0].start_route_point_index, 0);
         assert_eq!(matches[0].end_route_point_index, 4);
         assert_eq!(matches[0].duration_seconds, 240);
+    }
+
+    #[test]
+    fn rejects_short_nearby_routes_that_only_pass_reworked_profile() {
+        let segment_route_points = vec![
+            route_point_at_offsets(0, 0.0, 0.0, 0.0),
+            route_point_at_offsets(60, 250.0, 0.0, 250.0),
+            route_point_at_offsets(120, 500.0, 0.0, 500.0),
+            route_point_at_offsets(180, 750.0, 0.0, 750.0),
+            route_point_at_offsets(240, 1000.0, 0.0, 1000.0),
+        ];
+        let nearby_activity_route_points = vec![
+            route_point_at_offsets(0, 0.0, 170.0, 0.0),
+            route_point_at_offsets(60, 250.0, 170.0, 250.0),
+            route_point_at_offsets(120, 500.0, 170.0, 500.0),
+            route_point_at_offsets(180, 750.0, 170.0, 750.0),
+            route_point_at_offsets(240, 1000.0, 170.0, 1000.0),
+        ];
+
+        let matches = match_segment_efforts(&segment_route_points, &nearby_activity_route_points);
+
+        assert!(matches.is_empty());
     }
 
     #[test]

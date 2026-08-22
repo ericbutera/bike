@@ -62,6 +62,7 @@ Bike matches stored segment routes against normalized activity route points to c
 - Candidate efforts are scored against sampled route shape points. The matcher should prefer the lowest-scoring valid candidate when several candidate start/end pairs satisfy the same segment.
 - Repeated segment efforts in a single activity are allowed. After a match is accepted, later searches continue after that effort's end route point.
 - The matcher uses stricter profiles first and only falls back to more lenient profiles when no stricter match is found.
+- Short segments must not use the broad reworked-trail fallback. Small connector segments are too easy to confuse with nearby trails when the tolerance grows to handle full-route trail reworks. Strict and normal fallback matching still apply to short segments.
 
 ## Reworked Trails
 
@@ -71,6 +72,7 @@ Some public segments represent routes that have drifted from the current trail b
 - Moderate shape deviation is acceptable when the activity still follows the same practical segment corridor.
 - The reworked-trail fallback must not replace stricter matching when a strict or normal fallback match exists.
 - Leniency is for old-vs-current route drift, not for matching unrelated nearby trails or the wrong direction.
+- The broad reworked-trail fallback is intended for longer public trail routes where the same route has moved over time. It must not be used to infer efforts on short, isolated connectors, private-property connectors, or trails the rider did not actually enter.
 
 ## Regression Fixtures
 
@@ -99,6 +101,8 @@ Required fixture matches:
 - `city_02.fit` must match `Segment - -g.gpx`.
 - `city_02.fit` must match `Segment - The Hick's Descent.gpx`.
 - `city_02.fit` must match `Segment - Breakin The Law.gpx`.
+
+False-positive regression fixtures are equally important. The short-connector fixture captures a historical bug where a nearby activity route window matched a connector segment even though the activity only passed an adjacent trail corridor. `short_connector_nearby_route.gpx` must not match `short_connector_segment.gpx`, even though the raw reworked-trail fallback profile alone would accept it.
 
 Changes to segment parsing, route point derivation, segment effort generation, or matcher thresholds must run:
 

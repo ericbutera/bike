@@ -35,3 +35,7 @@ city_02.fit
 - -g
 - The Hick's Descent
 - Breakin The Law
+
+short_connector_nearby_route.gpx:
+
+- Short-connector false-positive regression; this nearby route window must not match `short_connector_segment.gpx`.
