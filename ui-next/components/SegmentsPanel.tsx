@@ -15,6 +15,7 @@ import {
   useUploadSegment,
 } from "../lib/queries";
 import { useUnitPreferences } from "../lib/unitPreferences";
+import SegmentRenameModal from "./SegmentRenameModal";
 import { AppCard, CardHeader } from "./ui/Card";
 import InfoTooltip from "./ui/InfoTooltip";
 import { LoadingSpinner } from "./ui/QueryState";
@@ -127,6 +128,7 @@ export default function SegmentsPanel() {
             >
               {segment.title}
             </Link>
+            <SegmentRenameModal segment={segment} />
           </div>
           <div className="mt-1 text-xs text-base-content/60">
             Imported from {segment.source}

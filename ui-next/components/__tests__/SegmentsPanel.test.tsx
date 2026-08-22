@@ -259,4 +259,68 @@ describe("SegmentsPanel", () => {
       starred: true,
     });
   });
+
+  it("renames a segment from the library grid modal", async () => {
+    const user = userEvent.setup();
+
+    mocks.useSegments.mockReturnValue({
+      data: [makeSegment({ id: 12, title: "River Sprint" })],
+      isError: false,
+      isLoading: false,
+      isFetching: false,
+      error: null,
+    });
+    mocks.updateSegmentAsync.mockResolvedValue(
+      makeSegment({ id: 12, title: "River Sprint East" }),
+    );
+
+    render(<SegmentsPanel />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Rename River Sprint" }),
+    );
+
+    expect(
+      screen.getByRole("dialog", { name: "Rename segment" }),
+    ).toBeInTheDocument();
+
+    const titleInput = screen.getByLabelText("Segment name");
+    await user.clear(titleInput);
+    await user.type(titleInput, "River Sprint East");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(mocks.updateSegmentAsync).toHaveBeenCalledWith({
+        id: 12,
+        title: "River Sprint East",
+      });
+    });
+    expect(mocks.toastSuccess).toHaveBeenCalledWith("Saved River Sprint East.");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("requires a segment name before saving a rename", async () => {
+    const user = userEvent.setup();
+
+    mocks.useSegments.mockReturnValue({
+      data: [makeSegment({ id: 12, title: "River Sprint" })],
+      isError: false,
+      isLoading: false,
+      isFetching: false,
+      error: null,
+    });
+
+    render(<SegmentsPanel />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Rename River Sprint" }),
+    );
+
+    await user.clear(screen.getByLabelText("Segment name"));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(mocks.toastError).toHaveBeenCalledWith("Segment name is required.");
+    expect(mocks.updateSegmentAsync).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
 });
