@@ -67,6 +67,11 @@ export default function Navigation() {
                         </Link>
                       </li>
                       <li>
+                        <Link href="/segments/progress" onClick={closeMenu}>
+                          Segment Progress
+                        </Link>
+                      </li>
+                      <li>
                         <Link href="/fitness" onClick={closeMenu}>
                           Fitness
                         </Link>

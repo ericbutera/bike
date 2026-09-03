@@ -16,7 +16,7 @@ use crate::tasks::QueuedTaskReference;
 use axum::extract::{Multipart, Path, State};
 use axum::http::StatusCode;
 use axum::Json;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Utc};
 use kaleido::auth::entities::users;
 use kaleido::auth::UserContext;
 use sea_orm::{
@@ -88,6 +88,27 @@ pub struct SegmentComparisonResponse {
     pub efforts: Vec<SegmentEffortResponse>,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SegmentYearlyBestsResponse {
+    pub segment_id: i32,
+    pub segment_title: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub years: Vec<SegmentYearlyBestResponse>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, ToSchema)]
+pub struct SegmentYearlyBestResponse {
+    pub year: i32,
+    pub effort_id: i32,
+    pub activity_id: i32,
+    pub activity_title: String,
+    pub activity_started_at: DateTime<Utc>,
+    pub effort_index: i32,
+    pub duration_seconds: i32,
+    pub improvement_from_previous_year_seconds: Option<i32>,
+    pub improvement_from_first_year_seconds: Option<i32>,
+}
+
 #[derive(Clone, Debug, FromQueryResult)]
 struct SegmentListRow {
     id: i32,
@@ -118,6 +139,13 @@ struct EffortActivityRow {
     title: String,
     started_at: DateTime<Utc>,
     derived_data_json: Option<crate::activity_details::StoredActivityDerivedData>,
+}
+
+#[derive(Clone, Debug, FromQueryResult)]
+struct EffortActivitySummaryRow {
+    id: i32,
+    title: String,
+    started_at: DateTime<Utc>,
 }
 
 #[derive(Clone, Debug, FromQueryResult)]
@@ -390,6 +418,40 @@ pub async fn get_segment_comparison(
 
     Ok(Json(
         load_segment_comparison_response(&state.db, &segment).await?,
+    ))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/segments/{id}/yearly-bests",
+    params(
+        ("id" = i32, Path, description = "Segment ID")
+    ),
+    responses(
+        (status = 200, description = "Fastest authenticated rider effort per year for one segment", body = SegmentYearlyBestsResponse),
+        (status = 401, description = "Not authenticated"),
+        (status = 404, description = "Segment not found", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    tag = "segments",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn get_segment_yearly_bests(
+    Path(id): Path<i32>,
+    UserContext { user, .. }: UserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+) -> Result<Json<SegmentYearlyBestsResponse>, AppError> {
+    let segment = segments::Entity::find()
+        .filter(segments::Column::Id.eq(id))
+        .filter(segments::Column::UserId.eq(user.id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found("Segment not found"))?;
+
+    Ok(Json(
+        load_segment_yearly_bests_response(&state.db, &segment, user.id).await?,
     ))
 }
 
@@ -1075,6 +1137,101 @@ async fn load_segment_comparison_response(
     })
 }
 
+async fn load_segment_yearly_bests_response(
+    db: &sea_orm::DatabaseConnection,
+    segment: &segments::Model,
+    user_id: i32,
+) -> Result<SegmentYearlyBestsResponse, AppError> {
+    let efforts = segment_efforts::Entity::find()
+        .filter(segment_efforts::Column::SegmentId.eq(segment.id))
+        .filter(segment_efforts::Column::UserId.eq(user_id))
+        .order_by_asc(segment_efforts::Column::DurationSeconds)
+        .order_by_asc(segment_efforts::Column::Id)
+        .all(db)
+        .await?;
+    if efforts.is_empty() {
+        return Ok(SegmentYearlyBestsResponse {
+            segment_id: segment.id,
+            segment_title: segment.title.clone(),
+            years: Vec::new(),
+        });
+    }
+
+    let activity_ids = efforts
+        .iter()
+        .map(|effort| effort.activity_id)
+        .collect::<Vec<_>>();
+    let activity_models = activities::Entity::find()
+        .select_only()
+        .column(activities::Column::Id)
+        .column(activities::Column::Title)
+        .column(activities::Column::StartedAt)
+        .filter(activities::Column::Id.is_in(activity_ids.iter().copied()))
+        .into_model::<EffortActivitySummaryRow>()
+        .all(db)
+        .await?;
+    let activities_by_id = activity_models
+        .into_iter()
+        .map(|activity| (activity.id, activity))
+        .collect::<HashMap<_, _>>();
+
+    Ok(SegmentYearlyBestsResponse {
+        segment_id: segment.id,
+        segment_title: segment.title.clone(),
+        years: segment_yearly_bests_from_models(efforts, &activities_by_id),
+    })
+}
+
+fn segment_yearly_bests_from_models(
+    efforts: Vec<segment_efforts::Model>,
+    activities_by_id: &HashMap<i32, EffortActivitySummaryRow>,
+) -> Vec<SegmentYearlyBestResponse> {
+    let mut best_by_year = HashMap::<i32, SegmentYearlyBestResponse>::new();
+
+    for effort in efforts {
+        let Some(activity) = activities_by_id.get(&effort.activity_id) else {
+            continue;
+        };
+        let year = activity.started_at.year();
+        let candidate = SegmentYearlyBestResponse {
+            year,
+            effort_id: effort.id,
+            activity_id: effort.activity_id,
+            activity_title: activity.title.clone(),
+            activity_started_at: activity.started_at,
+            effort_index: effort.effort_index,
+            duration_seconds: effort.duration_seconds,
+            improvement_from_previous_year_seconds: None,
+            improvement_from_first_year_seconds: None,
+        };
+
+        let should_replace = best_by_year.get(&year).is_none_or(|current| {
+            (candidate.duration_seconds, candidate.effort_id)
+                < (current.duration_seconds, current.effort_id)
+        });
+
+        if should_replace {
+            best_by_year.insert(year, candidate);
+        }
+    }
+
+    let mut yearly_bests = best_by_year.into_values().collect::<Vec<_>>();
+    yearly_bests.sort_by_key(|best| best.year);
+
+    let first_duration = yearly_bests.first().map(|best| best.duration_seconds);
+    let mut previous_duration = None::<i32>;
+
+    for best in &mut yearly_bests {
+        best.improvement_from_previous_year_seconds =
+            previous_duration.map(|duration| duration - best.duration_seconds);
+        best.improvement_from_first_year_seconds =
+            first_duration.map(|duration| duration - best.duration_seconds);
+        previous_duration = Some(best.duration_seconds);
+    }
+
+    yearly_bests
+}
+
 fn segment_route_point_responses(
     route_points: &[ActivityRoutePoint],
 ) -> Vec<SegmentRoutePointResponse> {
@@ -1350,6 +1507,44 @@ mod tests {
         }
     }
 
+    fn build_effort_model(
+        id: i32,
+        activity_id: i32,
+        duration_seconds: i32,
+    ) -> segment_efforts::Model {
+        let now = Utc::now();
+
+        segment_efforts::Model {
+            id,
+            segment_id: 10,
+            user_id: 7,
+            activity_id,
+            effort_index: id,
+            duration_seconds,
+            start_elapsed_seconds: 0,
+            end_elapsed_seconds: duration_seconds,
+            start_route_point_index: 0,
+            end_route_point_index: 1,
+            distance_meters: Some(1800.0),
+            overall_rank: None,
+            user_rank: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    fn build_effort_activity_row(
+        id: i32,
+        title: &str,
+        started_at: DateTime<Utc>,
+    ) -> EffortActivitySummaryRow {
+        EffortActivitySummaryRow {
+            id,
+            title: title.to_string(),
+            started_at,
+        }
+    }
+
     #[test]
     fn validate_segment_format_accepts_route_files() {
         assert_eq!(validate_segment_format("climb.gpx").unwrap(), "gpx");
@@ -1565,6 +1760,89 @@ mod tests {
 
         assert_eq!(current_user_pr_duration_from_models(&efforts, 7), Some(305));
         assert_eq!(current_user_pr_duration_from_models(&efforts, 11), None);
+    }
+
+    #[test]
+    fn segment_yearly_bests_choose_fastest_effort_per_activity_year() {
+        let activities_by_id = HashMap::from([
+            (
+                100,
+                build_effort_activity_row(
+                    100,
+                    "Spring ride",
+                    DateTime::parse_from_rfc3339("2024-04-01T12:00:00Z")
+                        .unwrap()
+                        .with_timezone(&Utc),
+                ),
+            ),
+            (
+                101,
+                build_effort_activity_row(
+                    101,
+                    "Summer ride",
+                    DateTime::parse_from_rfc3339("2024-07-01T12:00:00Z")
+                        .unwrap()
+                        .with_timezone(&Utc),
+                ),
+            ),
+            (
+                102,
+                build_effort_activity_row(
+                    102,
+                    "Next year ride",
+                    DateTime::parse_from_rfc3339("2025-05-01T12:00:00Z")
+                        .unwrap()
+                        .with_timezone(&Utc),
+                ),
+            ),
+        ]);
+        let efforts = vec![
+            build_effort_model(1, 100, 90),
+            build_effort_model(2, 101, 82),
+            build_effort_model(3, 102, 76),
+        ];
+
+        let yearly_bests = segment_yearly_bests_from_models(efforts, &activities_by_id);
+
+        assert_eq!(yearly_bests.len(), 2);
+        assert_eq!(yearly_bests[0].year, 2024);
+        assert_eq!(yearly_bests[0].effort_id, 2);
+        assert_eq!(yearly_bests[0].duration_seconds, 82);
+        assert_eq!(yearly_bests[0].improvement_from_first_year_seconds, Some(0));
+        assert_eq!(yearly_bests[1].year, 2025);
+        assert_eq!(yearly_bests[1].duration_seconds, 76);
+        assert_eq!(
+            yearly_bests[1].improvement_from_previous_year_seconds,
+            Some(6)
+        );
+        assert_eq!(yearly_bests[1].improvement_from_first_year_seconds, Some(6));
+    }
+
+    #[test]
+    fn segment_yearly_bests_ignore_missing_activity_rows_and_tie_break_by_effort_id() {
+        let activities_by_id = HashMap::from([(
+            100,
+            build_effort_activity_row(
+                100,
+                "Tie ride",
+                DateTime::parse_from_rfc3339("2026-04-01T12:00:00Z")
+                    .unwrap()
+                    .with_timezone(&Utc),
+            ),
+        )]);
+        let efforts = vec![
+            build_effort_model(5, 100, 65),
+            build_effort_model(4, 100, 65),
+            build_effort_model(3, 999, 50),
+        ];
+
+        let yearly_bests = segment_yearly_bests_from_models(efforts, &activities_by_id);
+
+        assert_eq!(yearly_bests.len(), 1);
+        assert_eq!(yearly_bests[0].effort_id, 4);
+        assert_eq!(yearly_bests[0].duration_seconds, 65);
+        assert_eq!(yearly_bests[0].improvement_from_previous_year_seconds, None);
+        assert_eq!(yearly_bests[0].improvement_from_first_year_seconds, Some(0));
     }
 
     #[test]

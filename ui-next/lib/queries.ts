@@ -224,6 +224,24 @@ export type SegmentComparison = {
   efforts?: SegmentEffort[] | null;
 };
 
+export type SegmentYearlyBest = {
+  year: number;
+  effort_id: number;
+  activity_id: number;
+  activity_title: string;
+  activity_started_at: string;
+  effort_index: number;
+  duration_seconds: number;
+  improvement_from_previous_year_seconds?: number | null;
+  improvement_from_first_year_seconds?: number | null;
+};
+
+export type SegmentYearlyBests = {
+  segment_id: number;
+  segment_title: string;
+  years: SegmentYearlyBest[];
+};
+
 export type UserPreferences = {
   unit_system: string;
   estimated_ftp_watts?: number | null;
@@ -1472,6 +1490,20 @@ export function useSegmentComparison(id: number | string | null | undefined) {
   return {
     ...response,
     data: (response.data ?? null) as SegmentComparison | null,
+  };
+}
+
+export function useSegmentYearlyBests(id: number | string | null | undefined) {
+  const numericId = Number(id);
+  const enabled = Number.isFinite(numericId) && numericId > 0;
+  const response = $api.useQuery("get", "/segments/{id}/yearly-bests", {
+    params: { path: { id: enabled ? numericId : 0 } },
+    options: { enabled },
+  });
+
+  return {
+    ...response,
+    data: (response.data ?? null) as SegmentYearlyBests | null,
   };
 }
 

@@ -309,7 +309,15 @@ export default function SegmentsPanel() {
             </span>
           }
           actions={
-            segmentsQuery.isFetching ? <LoadingSpinner size="xs" /> : undefined
+            <div className="flex items-center gap-2">
+              <Link
+                href="/segments/progress"
+                className="btn btn-outline btn-sm"
+              >
+                Progress
+              </Link>
+              {segmentsQuery.isFetching ? <LoadingSpinner size="xs" /> : null}
+            </div>
           }
           paramsSchema={SegmentsGridSchema}
           useQuery={useSegmentsGridQuery}
