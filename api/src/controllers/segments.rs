@@ -13,7 +13,7 @@ use crate::segment_support::{
 };
 use crate::storage::AppStorage;
 use crate::tasks::QueuedTaskReference;
-use axum::extract::{Multipart, Path, State};
+use axum::extract::{Multipart, Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use chrono::{DateTime, Datelike, Utc};
@@ -26,9 +26,13 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
 const SEGMENT_DEDUPE_DISTANCE_BUCKET_METERS: f64 = 5.0;
+const DEFAULT_ANALYSIS_SPLIT_COUNT: usize = 10;
+const MIN_ANALYSIS_SPLIT_COUNT: usize = 2;
+const MAX_ANALYSIS_SPLIT_COUNT: usize = 30;
+const TOP_ANALYSIS_SECTION_EFFORT_COUNT: usize = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -109,6 +113,68 @@ pub struct SegmentYearlyBestResponse {
     pub improvement_from_first_year_seconds: Option<i32>,
 }
 
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+pub struct SegmentEffortAnalysisQuery {
+    pub reference_effort_id: Option<i32>,
+    pub split_count: Option<usize>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SegmentEffortAnalysisResponse {
+    pub segment_id: i32,
+    pub segment_title: String,
+    pub split_count: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub route_points: Vec<SegmentRoutePointResponse>,
+    pub reference_effort: SegmentAnalysisEffortSummaryResponse,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub efforts: Vec<SegmentAnalysisEffortSummaryResponse>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sections: Vec<SegmentAnalysisSectionResponse>,
+    pub theoretical_best_duration_seconds: f64,
+    pub theoretical_best_gain_seconds: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, ToSchema)]
+pub struct SegmentAnalysisEffortSummaryResponse {
+    pub effort_id: i32,
+    pub activity_id: i32,
+    pub activity_title: String,
+    pub activity_started_at: DateTime<Utc>,
+    pub effort_index: i32,
+    pub duration_seconds: i32,
+    pub delta_from_reference_seconds: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, ToSchema)]
+pub struct SegmentAnalysisSectionResponse {
+    pub section_index: usize,
+    pub start_progress_percent: f64,
+    pub end_progress_percent: f64,
+    pub reference_split_seconds: f64,
+    pub best_split_seconds: f64,
+    pub best_effort_id: i32,
+    pub best_activity_id: i32,
+    pub best_activity_title: String,
+    pub gain_available_seconds: f64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub top_efforts: Vec<SegmentAnalysisSectionEffortResponse>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub efforts: Vec<SegmentAnalysisSectionEffortResponse>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, ToSchema)]
+pub struct SegmentAnalysisSectionEffortResponse {
+    pub effort_id: i32,
+    pub activity_id: i32,
+    pub activity_title: String,
+    pub activity_started_at: DateTime<Utc>,
+    pub split_seconds: f64,
+    pub delta_from_reference_seconds: f64,
+    pub delta_from_best_seconds: f64,
+    pub average_speed_mps: Option<f64>,
+}
+
 #[derive(Clone, Debug, FromQueryResult)]
 struct SegmentListRow {
     id: i32,
@@ -146,6 +212,22 @@ struct EffortActivitySummaryRow {
     id: i32,
     title: String,
     started_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug)]
+struct SegmentAnalysisEffortSource {
+    effort_id: i32,
+    activity_id: i32,
+    activity_title: String,
+    activity_started_at: DateTime<Utc>,
+    effort_index: i32,
+    duration_seconds: i32,
+    route_points: Vec<ActivityRoutePoint>,
+}
+
+#[derive(Clone, Debug)]
+struct SegmentAnalysisSample {
+    elapsed_seconds: f64,
 }
 
 #[derive(Clone, Debug, FromQueryResult)]
@@ -452,6 +534,43 @@ pub async fn get_segment_yearly_bests(
 
     Ok(Json(
         load_segment_yearly_bests_response(&state.db, &segment, user.id).await?,
+    ))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/segments/{id}/effort-analysis",
+    params(
+        ("id" = i32, Path, description = "Segment ID"),
+        SegmentEffortAnalysisQuery
+    ),
+    responses(
+        (status = 200, description = "Distance-normalized effort split analysis for one segment", body = SegmentEffortAnalysisResponse),
+        (status = 400, description = "Invalid analysis options", body = ApiErrorResponse),
+        (status = 401, description = "Not authenticated"),
+        (status = 404, description = "Segment or reference effort not found", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    tag = "segments",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn get_segment_effort_analysis(
+    Path(id): Path<i32>,
+    Query(query): Query<SegmentEffortAnalysisQuery>,
+    UserContext { user, .. }: UserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+) -> Result<Json<SegmentEffortAnalysisResponse>, AppError> {
+    let segment = segments::Entity::find()
+        .filter(segments::Column::Id.eq(id))
+        .filter(segments::Column::UserId.eq(user.id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found("Segment not found"))?;
+
+    Ok(Json(
+        load_segment_effort_analysis_response(&state.db, &segment, user.id, query).await?,
     ))
 }
 
@@ -1232,6 +1351,414 @@ fn segment_yearly_bests_from_models(
     yearly_bests
 }
 
+async fn load_segment_effort_analysis_response(
+    db: &sea_orm::DatabaseConnection,
+    segment: &segments::Model,
+    user_id: i32,
+    query: SegmentEffortAnalysisQuery,
+) -> Result<SegmentEffortAnalysisResponse, AppError> {
+    let split_count = normalized_analysis_split_count(query.split_count)?;
+    let efforts = segment_efforts::Entity::find()
+        .filter(segment_efforts::Column::SegmentId.eq(segment.id))
+        .filter(segment_efforts::Column::UserId.eq(user_id))
+        .order_by_asc(segment_efforts::Column::DurationSeconds)
+        .order_by_asc(segment_efforts::Column::Id)
+        .all(db)
+        .await?;
+
+    if efforts.is_empty() {
+        return Err(AppError::not_found("No efforts found for this segment"));
+    }
+
+    let activity_ids = efforts
+        .iter()
+        .map(|effort| effort.activity_id)
+        .collect::<Vec<_>>();
+    let activity_models = activities::Entity::find()
+        .select_only()
+        .column(activities::Column::Id)
+        .column(activities::Column::Title)
+        .column(activities::Column::StartedAt)
+        .column(activities::Column::DerivedDataJson)
+        .filter(activities::Column::Id.is_in(activity_ids.iter().copied()))
+        .into_model::<EffortActivityRow>()
+        .all(db)
+        .await?;
+    let activities_by_id = activity_models
+        .into_iter()
+        .map(|activity| (activity.id, activity))
+        .collect::<HashMap<_, _>>();
+    let effort_sources = efforts
+        .into_iter()
+        .filter_map(|effort| {
+            let activity = activities_by_id.get(&effort.activity_id)?;
+            let derived_data =
+                deserialize_derived_activity_data(activity.derived_data_json.as_ref());
+            let route_points = slice_effort_route_points(
+                &derived_data.route_points,
+                effort.start_route_point_index,
+                effort.end_route_point_index,
+            );
+
+            if route_points.len() < 2 {
+                return None;
+            }
+
+            Some(SegmentAnalysisEffortSource {
+                effort_id: effort.id,
+                activity_id: effort.activity_id,
+                activity_title: activity.title.clone(),
+                activity_started_at: activity.started_at,
+                effort_index: effort.effort_index,
+                duration_seconds: effort.duration_seconds,
+                route_points,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    segment_effort_analysis_from_sources(
+        segment.id,
+        segment.title.clone(),
+        segment_route_point_responses(&deserialize_segment_route_points(
+            segment.route_data_json.as_ref(),
+        )),
+        effort_sources,
+        query.reference_effort_id,
+        split_count,
+    )
+}
+
+fn normalized_analysis_split_count(value: Option<usize>) -> Result<usize, AppError> {
+    let split_count = value.unwrap_or(DEFAULT_ANALYSIS_SPLIT_COUNT);
+
+    if !(MIN_ANALYSIS_SPLIT_COUNT..=MAX_ANALYSIS_SPLIT_COUNT).contains(&split_count) {
+        return Err(AppError::validation_field(
+            "split_count",
+            format!(
+                "Split count must be between {MIN_ANALYSIS_SPLIT_COUNT} and {MAX_ANALYSIS_SPLIT_COUNT}"
+            ),
+        ));
+    }
+
+    Ok(split_count)
+}
+
+fn segment_effort_analysis_from_sources(
+    segment_id: i32,
+    segment_title: String,
+    route_points: Vec<SegmentRoutePointResponse>,
+    mut efforts: Vec<SegmentAnalysisEffortSource>,
+    reference_effort_id: Option<i32>,
+    split_count: usize,
+) -> Result<SegmentEffortAnalysisResponse, AppError> {
+    efforts.sort_by_key(|effort| (effort.duration_seconds, effort.effort_id));
+    let reference_index = match reference_effort_id {
+        Some(effort_id) => efforts
+            .iter()
+            .position(|effort| effort.effort_id == effort_id)
+            .ok_or_else(|| AppError::not_found("Reference effort not found"))?,
+        None => 0,
+    };
+    let reference_effort = efforts
+        .get(reference_index)
+        .cloned()
+        .ok_or_else(|| AppError::not_found("No analyzable efforts found for this segment"))?;
+    let sampled_efforts = efforts
+        .iter()
+        .filter_map(|effort| {
+            let samples = analysis_samples_for_effort(effort, split_count)?;
+            Some((effort, samples))
+        })
+        .collect::<Vec<_>>();
+    let reference_samples = sampled_efforts
+        .iter()
+        .find(|(effort, _)| effort.effort_id == reference_effort.effort_id)
+        .map(|(_, samples)| samples)
+        .ok_or_else(|| AppError::not_found("Reference effort is not analyzable"))?;
+
+    let summaries = sampled_efforts
+        .iter()
+        .map(|(effort, _)| SegmentAnalysisEffortSummaryResponse {
+            effort_id: effort.effort_id,
+            activity_id: effort.activity_id,
+            activity_title: effort.activity_title.clone(),
+            activity_started_at: effort.activity_started_at,
+            effort_index: effort.effort_index,
+            duration_seconds: effort.duration_seconds,
+            delta_from_reference_seconds: round_seconds(
+                effort.duration_seconds as f64 - reference_effort.duration_seconds as f64,
+            ),
+        })
+        .collect::<Vec<_>>();
+
+    let mut sections = Vec::with_capacity(split_count);
+    let mut theoretical_best_duration_seconds = 0.0;
+
+    for section_index in 0..split_count {
+        let reference_split_seconds =
+            split_seconds(reference_samples, section_index).unwrap_or_default();
+        let mut section_efforts = Vec::new();
+        let mut best_split: Option<(&SegmentAnalysisEffortSource, f64)> = None;
+
+        for (effort, samples) in &sampled_efforts {
+            let Some(split_seconds) = split_seconds(samples, section_index) else {
+                continue;
+            };
+            let average_speed_mps = section_distance_meters(effort, split_count)
+                .and_then(|distance| (split_seconds > 0.0).then_some(distance / split_seconds));
+
+            if best_split
+                .as_ref()
+                .is_none_or(|(best_effort, best_seconds)| {
+                    (split_seconds, effort.effort_id) < (*best_seconds, best_effort.effort_id)
+                })
+            {
+                best_split = Some((effort, split_seconds));
+            }
+
+            section_efforts.push(SegmentAnalysisSectionEffortResponse {
+                effort_id: effort.effort_id,
+                activity_id: effort.activity_id,
+                activity_title: effort.activity_title.clone(),
+                activity_started_at: effort.activity_started_at,
+                split_seconds: round_seconds(split_seconds),
+                delta_from_reference_seconds: round_seconds(
+                    split_seconds - reference_split_seconds,
+                ),
+                delta_from_best_seconds: 0.0,
+                average_speed_mps: average_speed_mps.map(round_metric),
+            });
+        }
+
+        let Some((best_effort, best_split_seconds)) = best_split else {
+            continue;
+        };
+
+        for effort in &mut section_efforts {
+            effort.delta_from_best_seconds =
+                round_seconds(effort.split_seconds - best_split_seconds);
+        }
+        let mut top_efforts = section_efforts.clone();
+        top_efforts.sort_by(|left, right| {
+            left.split_seconds
+                .total_cmp(&right.split_seconds)
+                .then_with(|| left.effort_id.cmp(&right.effort_id))
+        });
+        top_efforts.truncate(TOP_ANALYSIS_SECTION_EFFORT_COUNT);
+
+        theoretical_best_duration_seconds += best_split_seconds;
+        sections.push(SegmentAnalysisSectionResponse {
+            section_index: section_index + 1,
+            start_progress_percent: round_metric(section_index as f64 * 100.0 / split_count as f64),
+            end_progress_percent: round_metric(
+                (section_index + 1) as f64 * 100.0 / split_count as f64,
+            ),
+            reference_split_seconds: round_seconds(reference_split_seconds),
+            best_split_seconds: round_seconds(best_split_seconds),
+            best_effort_id: best_effort.effort_id,
+            best_activity_id: best_effort.activity_id,
+            best_activity_title: best_effort.activity_title.clone(),
+            gain_available_seconds: round_seconds(reference_split_seconds - best_split_seconds),
+            top_efforts,
+            efforts: section_efforts,
+        });
+    }
+
+    let theoretical_best_duration_seconds = round_seconds(theoretical_best_duration_seconds);
+
+    Ok(SegmentEffortAnalysisResponse {
+        segment_id,
+        segment_title,
+        split_count,
+        route_points,
+        reference_effort: SegmentAnalysisEffortSummaryResponse {
+            effort_id: reference_effort.effort_id,
+            activity_id: reference_effort.activity_id,
+            activity_title: reference_effort.activity_title,
+            activity_started_at: reference_effort.activity_started_at,
+            effort_index: reference_effort.effort_index,
+            duration_seconds: reference_effort.duration_seconds,
+            delta_from_reference_seconds: 0.0,
+        },
+        efforts: summaries,
+        sections,
+        theoretical_best_duration_seconds,
+        theoretical_best_gain_seconds: round_seconds(
+            reference_effort.duration_seconds as f64 - theoretical_best_duration_seconds,
+        ),
+    })
+}
+
+fn analysis_samples_for_effort(
+    effort: &SegmentAnalysisEffortSource,
+    split_count: usize,
+) -> Option<Vec<SegmentAnalysisSample>> {
+    (0..=split_count)
+        .map(|index| {
+            let progress = index as f64 / split_count as f64;
+            interpolate_activity_route_point_by_progress(&effort.route_points, progress).map(
+                |point| SegmentAnalysisSample {
+                    elapsed_seconds: point.elapsed_seconds as f64,
+                },
+            )
+        })
+        .collect()
+}
+
+fn split_seconds(samples: &[SegmentAnalysisSample], section_index: usize) -> Option<f64> {
+    let start = samples.get(section_index)?;
+    let end = samples.get(section_index + 1)?;
+    Some((end.elapsed_seconds - start.elapsed_seconds).max(0.0))
+}
+
+fn section_distance_meters(
+    effort: &SegmentAnalysisEffortSource,
+    split_count: usize,
+) -> Option<f64> {
+    let total = effort
+        .route_points
+        .last()
+        .and_then(|point| point.distance_meters)?;
+    (total > 0.0).then_some(total / split_count as f64)
+}
+
+fn interpolate_activity_route_point_by_progress(
+    points: &[ActivityRoutePoint],
+    progress: f64,
+) -> Option<ActivityRoutePoint> {
+    if points.is_empty() {
+        return None;
+    }
+
+    if points.len() == 1 {
+        return points.first().cloned();
+    }
+
+    let clamped_progress = progress.clamp(0.0, 1.0);
+    if clamped_progress <= 0.0 {
+        return points.first().cloned();
+    }
+
+    let distance_range = activity_route_distance_range(points);
+    let target_measure = distance_range
+        .map(|(_, total)| clamped_progress * total)
+        .unwrap_or_else(|| clamped_progress * (points.len() - 1) as f64);
+
+    for index in 1..points.len() {
+        let previous = &points[index - 1];
+        let current = &points[index];
+        let previous_measure = distance_range
+            .map(|(first, _)| previous.distance_meters.unwrap_or(first) - first)
+            .unwrap_or((index - 1) as f64);
+        let current_measure = distance_range
+            .map(|(first, _)| current.distance_meters.unwrap_or(first) - first)
+            .unwrap_or(index as f64);
+
+        if target_measure <= current_measure {
+            let span = (current_measure - previous_measure).max(f64::EPSILON);
+            let local_progress = (target_measure - previous_measure) / span;
+            return Some(interpolate_activity_route_point(
+                previous,
+                current,
+                local_progress,
+                distance_range.map(|_| target_measure),
+            ));
+        }
+    }
+
+    points.last().cloned()
+}
+
+fn activity_route_distance_range(points: &[ActivityRoutePoint]) -> Option<(f64, f64)> {
+    let first_distance = points.first()?.distance_meters?;
+    let last_distance = points.last()?.distance_meters?;
+
+    if last_distance <= first_distance
+        || !points
+            .iter()
+            .all(|point| point.distance_meters.is_some_and(f64::is_finite))
+    {
+        return None;
+    }
+
+    Some((first_distance, last_distance - first_distance))
+}
+
+fn interpolate_activity_route_point(
+    previous: &ActivityRoutePoint,
+    current: &ActivityRoutePoint,
+    progress: f64,
+    normalized_distance_meters: Option<f64>,
+) -> ActivityRoutePoint {
+    ActivityRoutePoint {
+        elapsed_seconds: interpolate_i32(
+            previous.elapsed_seconds,
+            current.elapsed_seconds,
+            progress,
+        ),
+        latitude: interpolate_f64(previous.latitude, current.latitude, progress),
+        longitude: interpolate_f64(previous.longitude, current.longitude, progress),
+        distance_meters: normalized_distance_meters.or_else(|| {
+            interpolate_optional_f64(previous.distance_meters, current.distance_meters, progress)
+        }),
+        elevation_meters: interpolate_optional_f64(
+            previous.elevation_meters,
+            current.elevation_meters,
+            progress,
+        ),
+        speed_mps: interpolate_optional_f64(previous.speed_mps, current.speed_mps, progress),
+        heart_rate_bpm: interpolate_optional_i32(
+            previous.heart_rate_bpm,
+            current.heart_rate_bpm,
+            progress,
+        ),
+        cadence_rpm: interpolate_optional_i32(previous.cadence_rpm, current.cadence_rpm, progress),
+        power_watts: interpolate_optional_i32(previous.power_watts, current.power_watts, progress),
+    }
+}
+
+fn interpolate_f64(previous: f64, current: f64, progress: f64) -> f64 {
+    previous + (current - previous) * progress
+}
+
+fn interpolate_i32(previous: i32, current: i32, progress: f64) -> i32 {
+    interpolate_f64(previous as f64, current as f64, progress).round() as i32
+}
+
+fn interpolate_optional_f64(
+    previous: Option<f64>,
+    current: Option<f64>,
+    progress: f64,
+) -> Option<f64> {
+    match (previous, current) {
+        (Some(previous), Some(current)) => Some(interpolate_f64(previous, current, progress)),
+        (Some(previous), None) => Some(previous),
+        (None, Some(current)) => Some(current),
+        (None, None) => None,
+    }
+}
+
+fn interpolate_optional_i32(
+    previous: Option<i32>,
+    current: Option<i32>,
+    progress: f64,
+) -> Option<i32> {
+    match (previous, current) {
+        (Some(previous), Some(current)) => Some(interpolate_i32(previous, current, progress)),
+        (Some(previous), None) => Some(previous),
+        (None, Some(current)) => Some(current),
+        (None, None) => None,
+    }
+}
+
+fn round_seconds(value: f64) -> f64 {
+    (value * 10.0).round() / 10.0
+}
+
+fn round_metric(value: f64) -> f64 {
+    (value * 100.0).round() / 100.0
+}
+
 fn segment_route_point_responses(
     route_points: &[ActivityRoutePoint],
 ) -> Vec<SegmentRoutePointResponse> {
@@ -1545,6 +2072,45 @@ mod tests {
         }
     }
 
+    fn build_analysis_effort(
+        effort_id: i32,
+        activity_id: i32,
+        title: &str,
+        duration_seconds: i32,
+        elapsed_boundaries: &[i32],
+    ) -> SegmentAnalysisEffortSource {
+        let route_points = elapsed_boundaries
+            .iter()
+            .enumerate()
+            .map(|(index, elapsed_seconds)| {
+                let distance_meters = index as f64 * 100.0;
+                ActivityRoutePoint {
+                    elapsed_seconds: *elapsed_seconds,
+                    latitude: 44.0 + index as f64 * 0.001,
+                    longitude: -93.0 - index as f64 * 0.001,
+                    distance_meters: Some(distance_meters),
+                    elevation_meters: None,
+                    speed_mps: Some(100.0 / elapsed_seconds.max(&1).to_owned() as f64),
+                    heart_rate_bpm: None,
+                    cadence_rpm: None,
+                    power_watts: None,
+                }
+            })
+            .collect::<Vec<_>>();
+
+        SegmentAnalysisEffortSource {
+            effort_id,
+            activity_id,
+            activity_title: title.to_string(),
+            activity_started_at: DateTime::parse_from_rfc3339("2026-04-01T12:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
+            effort_index: effort_id,
+            duration_seconds,
+            route_points,
+        }
+    }
+
     #[test]
     fn validate_segment_format_accepts_route_files() {
         assert_eq!(validate_segment_format("climb.gpx").unwrap(), "gpx");
@@ -1843,6 +2409,74 @@ mod tests {
         assert_eq!(yearly_bests[0].duration_seconds, 65);
         assert_eq!(yearly_bests[0].improvement_from_previous_year_seconds, None);
         assert_eq!(yearly_bests[0].improvement_from_first_year_seconds, Some(0));
+    }
+
+    #[test]
+    fn effort_analysis_uses_reference_and_stitches_best_splits() {
+        let efforts = vec![
+            build_analysis_effort(1, 101, "PR", 100, &[0, 30, 60, 100]),
+            build_analysis_effort(2, 102, "Fast top", 103, &[0, 25, 65, 103]),
+            build_analysis_effort(3, 103, "Fast middle", 105, &[0, 35, 58, 105]),
+        ];
+
+        let analysis = segment_effort_analysis_from_sources(
+            10,
+            "Breaking the Law".to_string(),
+            Vec::new(),
+            efforts,
+            None,
+            3,
+        )
+        .unwrap();
+
+        assert_eq!(analysis.reference_effort.effort_id, 1);
+        assert_eq!(analysis.sections.len(), 3);
+        assert_eq!(analysis.sections[0].best_effort_id, 2);
+        assert_eq!(analysis.sections[0].best_split_seconds, 25.0);
+        assert_eq!(
+            analysis.sections[0]
+                .top_efforts
+                .iter()
+                .map(|effort| effort.effort_id)
+                .collect::<Vec<_>>(),
+            vec![2, 1, 3]
+        );
+        assert_eq!(analysis.sections[1].best_effort_id, 3);
+        assert_eq!(analysis.sections[1].best_split_seconds, 23.0);
+        assert_eq!(analysis.sections[2].best_effort_id, 2);
+        assert_eq!(analysis.theoretical_best_duration_seconds, 86.0);
+        assert_eq!(analysis.theoretical_best_gain_seconds, 14.0);
+    }
+
+    #[test]
+    fn effort_analysis_can_use_requested_reference_effort() {
+        let efforts = vec![
+            build_analysis_effort(1, 101, "PR", 100, &[0, 30, 60, 100]),
+            build_analysis_effort(2, 102, "Other", 103, &[0, 25, 65, 103]),
+        ];
+
+        let analysis = segment_effort_analysis_from_sources(
+            10,
+            "Breaking the Law".to_string(),
+            Vec::new(),
+            efforts,
+            Some(2),
+            3,
+        )
+        .unwrap();
+
+        assert_eq!(analysis.reference_effort.effort_id, 2);
+        assert_eq!(analysis.efforts[0].delta_from_reference_seconds, -3.0);
+        assert_eq!(analysis.efforts[1].delta_from_reference_seconds, 0.0);
+    }
+
+    #[test]
+    fn normalized_analysis_split_count_rejects_out_of_range_values() {
+        assert_eq!(normalized_analysis_split_count(None).unwrap(), 10);
+        assert_eq!(normalized_analysis_split_count(Some(2)).unwrap(), 2);
+        assert_eq!(normalized_analysis_split_count(Some(30)).unwrap(), 30);
+        assert!(normalized_analysis_split_count(Some(1)).is_err());
+        assert!(normalized_analysis_split_count(Some(31)).is_err());
     }
 
     #[test]

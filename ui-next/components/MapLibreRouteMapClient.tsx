@@ -963,8 +963,18 @@ export default function MapLibreRouteMapClient({
     () =>
       new Map(
         overlays
-          .filter((overlay) => overlay.onClick)
-          .map((overlay) => [overlay.id, overlay.onClick as () => void]),
+          .filter(
+            (overlay) =>
+              overlay.onClick || overlay.onMouseEnter || overlay.onMouseLeave,
+          )
+          .map((overlay) => [
+            overlay.id,
+            {
+              onClick: overlay.onClick,
+              onMouseEnter: overlay.onMouseEnter,
+              onMouseLeave: overlay.onMouseLeave,
+            },
+          ]),
       ),
     [overlays],
   );
@@ -1185,19 +1195,24 @@ export default function MapLibreRouteMapClient({
       }
 
       if (overlays.length > 0) {
-        const handleOverlayClick = (event: OverlayLayerEvent) => {
+        const handlerForEvent = (event: OverlayLayerEvent) => {
           const overlayId = event.features?.[0]?.properties?.overlayId;
           if (!overlayId) {
-            return;
+            return null;
           }
 
-          overlayHandlers.get(overlayId)?.();
+          return overlayHandlers.get(overlayId) ?? null;
         };
-        const handleOverlayMouseEnter = (_event: OverlayLayerEvent) => {
+        const handleOverlayClick = (event: OverlayLayerEvent) => {
+          handlerForEvent(event)?.onClick?.();
+        };
+        const handleOverlayMouseEnter = (event: OverlayLayerEvent) => {
           map.getCanvas().style.cursor =
             overlayHandlers.size > 0 ? "pointer" : "";
+          handlerForEvent(event)?.onMouseEnter?.();
         };
         const handleOverlayMouseMove = (event: OverlayLayerEvent) => {
+          handlerForEvent(event)?.onMouseEnter?.();
           const label = event.features?.[0]?.properties?.label;
 
           if (!label || !event.point) {
@@ -1212,6 +1227,9 @@ export default function MapLibreRouteMapClient({
           });
         };
         const handleOverlayMouseLeave = (_event: OverlayLayerEvent) => {
+          for (const handler of overlayHandlers.values()) {
+            handler.onMouseLeave?.();
+          }
           map.getCanvas().style.cursor = "";
           setOverlayTooltip(null);
         };

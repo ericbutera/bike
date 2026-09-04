@@ -242,6 +242,53 @@ export type SegmentYearlyBests = {
   years: SegmentYearlyBest[];
 };
 
+export type SegmentAnalysisEffortSummary = {
+  effort_id: number;
+  activity_id: number;
+  activity_title: string;
+  activity_started_at: string;
+  effort_index: number;
+  duration_seconds: number;
+  delta_from_reference_seconds: number;
+};
+
+export type SegmentAnalysisSectionEffort = {
+  effort_id: number;
+  activity_id: number;
+  activity_title: string;
+  activity_started_at: string;
+  split_seconds: number;
+  delta_from_reference_seconds: number;
+  delta_from_best_seconds: number;
+  average_speed_mps?: number | null;
+};
+
+export type SegmentAnalysisSection = {
+  section_index: number;
+  start_progress_percent: number;
+  end_progress_percent: number;
+  reference_split_seconds: number;
+  best_split_seconds: number;
+  best_effort_id: number;
+  best_activity_id: number;
+  best_activity_title: string;
+  gain_available_seconds: number;
+  top_efforts: SegmentAnalysisSectionEffort[];
+  efforts: SegmentAnalysisSectionEffort[];
+};
+
+export type SegmentEffortAnalysis = {
+  segment_id: number;
+  segment_title: string;
+  split_count: number;
+  route_points: ActivityRoutePoint[];
+  reference_effort: SegmentAnalysisEffortSummary;
+  efforts: SegmentAnalysisEffortSummary[];
+  sections: SegmentAnalysisSection[];
+  theoretical_best_duration_seconds: number;
+  theoretical_best_gain_seconds: number;
+};
+
 export type UserPreferences = {
   unit_system: string;
   estimated_ftp_watts?: number | null;
@@ -1504,6 +1551,32 @@ export function useSegmentYearlyBests(id: number | string | null | undefined) {
   return {
     ...response,
     data: (response.data ?? null) as SegmentYearlyBests | null,
+  };
+}
+
+export function useSegmentEffortAnalysis(
+  id: number | string | null | undefined,
+  opts?: {
+    referenceEffortId?: number | null;
+    splitCount?: number;
+  },
+) {
+  const numericId = Number(id);
+  const enabled = Number.isFinite(numericId) && numericId > 0;
+  const query = {
+    ...(opts?.referenceEffortId
+      ? { reference_effort_id: opts.referenceEffortId }
+      : {}),
+    ...(opts?.splitCount ? { split_count: opts.splitCount } : {}),
+  };
+  const response = $api.useQuery("get", "/segments/{id}/effort-analysis", {
+    params: { path: { id: enabled ? numericId : 0 }, query },
+    options: { enabled },
+  });
+
+  return {
+    ...response,
+    data: (response.data ?? null) as SegmentEffortAnalysis | null,
   };
 }
 

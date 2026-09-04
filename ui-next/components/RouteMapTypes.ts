@@ -16,6 +16,8 @@ export type RouteOverlay = {
   label?: string;
   weight?: number;
   onClick?: () => void;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
 };
 
 export type RouteMovingMarker = {

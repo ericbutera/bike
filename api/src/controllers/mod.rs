@@ -104,6 +104,10 @@ pub fn routes() -> Router<Arc<AppStorage>> {
             axum::routing::get(segments::get_segment_yearly_bests),
         )
         .route(
+            "/api/segments/:id/effort-analysis",
+            axum::routing::get(segments::get_segment_effort_analysis),
+        )
+        .route(
             "/api/preferences",
             axum::routing::get(user_preferences::get_preferences)
                 .put(user_preferences::update_preferences),
