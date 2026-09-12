@@ -30,7 +30,7 @@ describe("api runtime client", () => {
 
   it("creates the client lazily using the resolved runtime api url", async () => {
     window.__APP_CONFIG__ = {
-      API_URL: "https://bike.nibelheim.dev/api",
+      API_URL: "https://bike.example.com/api",
       MAP_STYLE_URL: "topo",
     };
 
@@ -44,7 +44,7 @@ describe("api runtime client", () => {
     (useQuery as (...args: unknown[]) => unknown)();
 
     expect(mocks.createFetchClient).toHaveBeenCalledWith({
-      baseUrl: "https://bike.nibelheim.dev/api",
+      baseUrl: "https://bike.example.com/api",
     });
   });
 });

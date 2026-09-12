@@ -14,18 +14,18 @@ describe("config runtime initialization", () => {
     );
 
     const resolved = configModule.initializeClientConfig({
-      API_URL: "https://bike.nibelheim.dev/api",
+      API_URL: "https://bike.example.com/api",
       MAP_STYLE_URL: "street",
       AUTH_PASSWORD_ENABLED: false,
       AUTH_REGISTRATION_ENABLED: true,
     });
 
-    expect(resolved.API_URL).toBe("https://bike.nibelheim.dev/api");
+    expect(resolved.API_URL).toBe("https://bike.example.com/api");
     expect(resolved.MAP_STYLE_URL).toBe("street");
     expect(resolved.AUTH_PASSWORD_ENABLED).toBe(false);
     expect(resolved.AUTH_REGISTRATION_ENABLED).toBe(true);
     expect(configModule.getClientConfig().API_URL).toBe(
-      "https://bike.nibelheim.dev/api",
+      "https://bike.example.com/api",
     );
   });
 
@@ -37,21 +37,21 @@ describe("config runtime initialization", () => {
     );
 
     window.__APP_CONFIG__ = {
-      API_URL: "https://bike.nibelheim.dev/api",
+      API_URL: "https://bike.example.com/api",
       MAP_STYLE_URL: "topo",
       AUTH_PASSWORD_ENABLED: false,
       AUTH_REGISTRATION_ENABLED: false,
     };
 
     expect(configModule.initializeClientConfig().API_URL).toBe(
-      "https://bike.nibelheim.dev/api",
+      "https://bike.example.com/api",
     );
     expect(configModule.initializeClientConfig().AUTH_PASSWORD_ENABLED).toBe(
       false,
     );
-    expect(configModule.initializeClientConfig().AUTH_REGISTRATION_ENABLED).toBe(
-      false,
-    );
+    expect(
+      configModule.initializeClientConfig().AUTH_REGISTRATION_ENABLED,
+    ).toBe(false);
   });
 
   it("defaults password and registration auth on", async () => {

@@ -11,7 +11,9 @@ use crate::analytics::mark_user_activity_changes;
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::archive_import::{import_activity_archive_from_path, resolve_local_archive_import_path};
 use crate::controllers::activity_imports as activity_imports_controller;
-use crate::entities::{activities, activity_imports, segments, strava_connections};
+use crate::entities::{
+    activities, activity_imports, provider_rate_limit_buckets, segments, strava_connections,
+};
 use crate::integration_events as integration_event_service;
 use crate::storage::AppStorage;
 use crate::xc_goal_backfill::queue_user_xc_goal_backfill;
@@ -293,6 +295,7 @@ async fn bike_metrics(db: &DatabaseConnection) -> Vec<NamedStat> {
         Aggregator::recent_count::<segments::Entity>(db, segments::Column::CreatedAt, 30);
     let total_strava_connections =
         Aggregator::total::<strava_connections::Entity>(db, strava_connections::Column::Id);
+    let provider_rate_limit_stats = provider_rate_limit_bucket_stats(db);
 
     let (
         total_activities,
@@ -302,6 +305,7 @@ async fn bike_metrics(db: &DatabaseConnection) -> Vec<NamedStat> {
         total_segments,
         segments_added_last_30d,
         total_strava_connections,
+        provider_rate_limit_stats,
     ) = tokio::join!(
         total_activities,
         activities_added_last_30d,
@@ -310,9 +314,10 @@ async fn bike_metrics(db: &DatabaseConnection) -> Vec<NamedStat> {
         total_segments,
         segments_added_last_30d,
         total_strava_connections,
+        provider_rate_limit_stats,
     );
 
-    vec![
+    let mut stats = vec![
         NamedStat::new(
             "total_activities",
             "Total Activities",
@@ -355,7 +360,140 @@ async fn bike_metrics(db: &DatabaseConnection) -> Vec<NamedStat> {
             "all time",
             total_strava_connections,
         ),
-    ]
+    ];
+    stats.extend(provider_rate_limit_stats);
+    stats
+}
+
+async fn provider_rate_limit_bucket_stats(db: &DatabaseConnection) -> Vec<NamedStat> {
+    let rows = provider_rate_limit_buckets::Entity::find()
+        .order_by_asc(provider_rate_limit_buckets::Column::Provider)
+        .order_by_asc(provider_rate_limit_buckets::Column::Bucket)
+        .all(db)
+        .await;
+
+    let rows = match rows {
+        Ok(rows) => rows,
+        Err(error) => {
+            tracing::warn!(error = ?error, "failed to load provider rate-limit metrics");
+            return vec![NamedStat {
+                key: "provider_rate_limit_metrics_error".to_string(),
+                label: "Provider Rate Limit Metrics".to_string(),
+                desc: "database query failed".to_string(),
+                value: 0,
+                error: Some(error.to_string()),
+            }];
+        }
+    };
+
+    let now = Utc::now();
+    rows.into_iter()
+        .flat_map(|row| {
+            let effective_used_count = if row.reset_at <= now {
+                0
+            } else {
+                row.used_count
+            };
+            let remaining_count = row.limit_count.saturating_sub(effective_used_count).max(0);
+            let reset_desc = if row.reset_at <= now {
+                "reset is due".to_string()
+            } else {
+                let seconds = (row.reset_at - now).num_seconds().max(0);
+                format!("resets in {}", format_duration_label(seconds))
+            };
+            let prefix = format!(
+                "provider_rate_limit_{}_{}",
+                sanitize_metric_key(&row.provider),
+                sanitize_metric_key(&row.bucket)
+            );
+            let label = format!(
+                "{} {}",
+                provider_label(&row.provider),
+                rate_limit_bucket_label(&row.bucket)
+            );
+
+            [
+                NamedStat {
+                    key: format!("{prefix}_used"),
+                    label: format!("{label} Used"),
+                    desc: format!("{} of {}", reset_desc, row.limit_count),
+                    value: i64::from(effective_used_count),
+                    error: None,
+                },
+                NamedStat {
+                    key: format!("{prefix}_remaining"),
+                    label: format!("{label} Remaining"),
+                    desc: format!("{} of {}", reset_desc, row.limit_count),
+                    value: i64::from(remaining_count),
+                    error: None,
+                },
+            ]
+        })
+        .collect()
+}
+
+fn provider_label(provider: &str) -> String {
+    match provider {
+        "strava" => "Strava".to_string(),
+        value => title_case_identifier(value),
+    }
+}
+
+fn rate_limit_bucket_label(bucket: &str) -> String {
+    match bucket {
+        "overall_15_minute" => "Overall 15m".to_string(),
+        "overall_daily" => "Overall Daily".to_string(),
+        "read_15_minute" => "Read 15m".to_string(),
+        "read_daily" => "Read Daily".to_string(),
+        value => title_case_identifier(value),
+    }
+}
+
+fn sanitize_metric_key(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn title_case_identifier(value: &str) -> String {
+    value
+        .split(['_', '-'])
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => format!("{}{}", first.to_uppercase(), chars.as_str()),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn format_duration_label(seconds: i64) -> String {
+    if seconds < 60 {
+        return format!("{seconds}s");
+    }
+
+    let minutes = seconds / 60;
+    if minutes < 60 {
+        return format!("{minutes}m");
+    }
+
+    let hours = minutes / 60;
+    let remaining_minutes = minutes % 60;
+    if remaining_minutes == 0 {
+        format!("{hours}h")
+    } else {
+        format!("{hours}h {remaining_minutes}m")
+    }
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -988,6 +1126,9 @@ mod tests {
         db.execute(&schema.create_table_from_entity(strava_connections::Entity))
             .await
             .expect("create strava connections table");
+        db.execute(&schema.create_table_from_entity(provider_rate_limit_buckets::Entity))
+            .await
+            .expect("create provider rate limit buckets table");
 
         db
     }
@@ -1123,6 +1264,18 @@ mod tests {
         .await
         .expect("insert strava connection");
 
+        provider_rate_limit_buckets::ActiveModel {
+            provider: Set("strava".to_string()),
+            bucket: Set("read_15_minute".to_string()),
+            limit_count: Set(200),
+            used_count: Set(25),
+            reset_at: Set(now + Duration::minutes(10)),
+            ..Default::default()
+        }
+        .insert(&db)
+        .await
+        .expect("insert provider rate limit bucket");
+
         let stats = bike_metrics(&db).await;
         let values_by_key = stats
             .into_iter()
@@ -1136,5 +1289,13 @@ mod tests {
         assert_eq!(values_by_key.get("total_segments"), Some(&1));
         assert_eq!(values_by_key.get("segments_added_last_30d"), Some(&1));
         assert_eq!(values_by_key.get("total_strava_connections"), Some(&1));
+        assert_eq!(
+            values_by_key.get("provider_rate_limit_strava_read_15_minute_used"),
+            Some(&25)
+        );
+        assert_eq!(
+            values_by_key.get("provider_rate_limit_strava_read_15_minute_remaining"),
+            Some(&175)
+        );
     }
 }

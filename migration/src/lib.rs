@@ -41,6 +41,7 @@ mod m20260722_000001_user_preferences_xc_event_target_details;
 mod m20260816_000001_create_activity_import_artifacts;
 mod m20260816_000002_add_activity_import_version;
 mod m20260816_000003_add_admin_activities_sort_index;
+mod m20260912_000001_create_provider_rate_limit_buckets;
 
 pub struct Migrator;
 
@@ -149,6 +150,9 @@ impl MigratorTrait for Migrator {
         ));
         locals.push(Box::new(
             m20260816_000003_add_admin_activities_sort_index::Migration,
+        ));
+        locals.push(Box::new(
+            m20260912_000001_create_provider_rate_limit_buckets::Migration,
         ));
         locals.sort_by_key(|m| m.name().to_string());
 

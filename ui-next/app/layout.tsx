@@ -16,12 +16,12 @@ function getMetadataBase() {
     process.env.SITE_URL ??
     process.env.NEXT_PUBLIC_SITE_URL ??
     process.env.FRONTEND_URL ??
-    "https://bike.nibelheim.dev";
+    "http://localhost:3001";
 
   try {
     return new URL(rawUrl);
   } catch {
-    return new URL("https://bike.nibelheim.dev");
+    return new URL("http://localhost:3001");
   }
 }
 

@@ -824,5 +824,6 @@ fn unauthorized(message: impl Into<String>) -> AppError {
         status: StatusCode::UNAUTHORIZED,
         message: message.into(),
         errors: None,
+        retry_at: None,
     }
 }

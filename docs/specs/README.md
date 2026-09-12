@@ -17,6 +17,7 @@ The specs are intentionally written as product contracts instead of implementati
 - [XC event readiness](xc-event-readiness.md)
 - [Reassessment report](reassessment-report.md)
 - [Account integrations](account-integrations.md)
+- [Strava integration](strava-integration.md)
 - [Admin operations](admin-operations.md)
 - [Auth configuration](auth-configuration.md)
 

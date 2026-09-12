@@ -282,12 +282,22 @@ impl TaskQueue {
     }
 
     pub async fn sync_strava_connection(&self, connection_id: i32) -> Result<(), String> {
+        self.sync_strava_connection_with_options(connection_id, None, 3)
+            .await
+    }
+
+    pub async fn sync_strava_connection_with_options(
+        &self,
+        connection_id: i32,
+        scheduled_for: Option<chrono::DateTime<Utc>>,
+        max_attempts: i32,
+    ) -> Result<(), String> {
         let task = Task::StravaSync(StravaSyncTask { connection_id });
         let task_type = task.task_type().to_string();
 
         self.auth
             .inner()
-            .enqueue_with_options(task_type, task, None, 3)
+            .enqueue_with_options(task_type, task, scheduled_for, max_attempts)
             .await
             .map(|_| ())
             .map_err(|error| error.to_string())

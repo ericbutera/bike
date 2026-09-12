@@ -1,6 +1,7 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::collections::HashMap;
 use utoipa::ToSchema;
@@ -10,6 +11,8 @@ pub struct ApiErrorResponse {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub errors: Option<HashMap<String, Vec<String>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug)]
@@ -17,6 +20,7 @@ pub struct AppError {
     pub status: StatusCode,
     pub message: String,
     pub errors: Option<HashMap<String, Vec<String>>>,
+    pub retry_at: Option<DateTime<Utc>>,
 }
 
 impl AppError {
@@ -25,6 +29,7 @@ impl AppError {
             status: StatusCode::BAD_REQUEST,
             message: message.into(),
             errors: None,
+            retry_at: None,
         }
     }
 
@@ -33,6 +38,7 @@ impl AppError {
             status: StatusCode::FORBIDDEN,
             message: message.into(),
             errors: None,
+            retry_at: None,
         }
     }
 
@@ -41,6 +47,7 @@ impl AppError {
             status: StatusCode::CONFLICT,
             message: message.into(),
             errors: None,
+            retry_at: None,
         }
     }
 
@@ -49,6 +56,16 @@ impl AppError {
             status: StatusCode::NOT_FOUND,
             message: message.into(),
             errors: None,
+            retry_at: None,
+        }
+    }
+
+    pub fn too_many_requests(message: impl Into<String>, retry_at: Option<DateTime<Utc>>) -> Self {
+        Self {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            message: message.into(),
+            errors: None,
+            retry_at,
         }
     }
 
@@ -65,6 +82,7 @@ impl AppError {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             message: message.into(),
             errors: None,
+            retry_at: None,
         }
     }
 
@@ -77,6 +95,7 @@ impl AppError {
             status,
             message,
             errors: Some(errors),
+            retry_at: None,
         }
     }
 }
@@ -86,6 +105,7 @@ impl IntoResponse for AppError {
         let body = ApiErrorResponse {
             message: self.message,
             errors: self.errors,
+            retry_at: self.retry_at,
         };
 
         (self.status, Json(body)).into_response()

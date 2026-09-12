@@ -38,6 +38,8 @@ Strava integration events should record meaningful connection, sync, webhook, an
 
 Runtime configuration must set `STRAVA_CLIENT_ID` and `STRAVA_CLIENT_SECRET` for both the API and worker. `STRAVA_OAUTH_SCOPES` defaults to `activity:read_all`. The Strava application callback URL should point at `API_URL/api/strava/callback`; in the default local compose setup, that is `http://localhost:3000/api/strava/callback`.
 
+Detailed Strava API isolation, rate-limit, checkpointing, and observability requirements are owned by [Strava Integration](strava-integration.md).
+
 ## Garmin IQ
 
 Garmin IQ linking uses a device pairing flow:

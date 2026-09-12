@@ -36,10 +36,11 @@ The app expects:
 
 ## Configure endpoint
 
-The checked-in app defaults to production:
+The checked-in app uses placeholder production defaults. Release builds should
+replace these values with the deployment-specific host:
 
-- API: `https://bike.nibelheim.dev`
-- approval flow: `https://bike.nibelheim.dev/account`
+- API: `https://bike.example.com`
+- approval flow: `https://bike.example.com/account`
 
 The VS Code debug launch swaps in `resources/strings/strings.debug.xml` for the
 build so the emulator uses:

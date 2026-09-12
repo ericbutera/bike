@@ -18,11 +18,11 @@ class SegmentSyncService {
     // These are fallback defaults only. In normal builds, Rez.Strings values
     // from resources/strings/*.xml are loaded first and take precedence.
     const API_BASE_URL_LOCAL = "http://localhost:3000";
-    const API_BASE_URL_PROD = "https://bike.nibelheim.dev";
+    const API_BASE_URL_PROD = "https://bike.example.com";
     const ACCOUNT_URL_LOCAL = "http://localhost:3001/account";
-    const ACCOUNT_URL_PROD = "https://bike.nibelheim.dev/account";
+    const ACCOUNT_URL_PROD = "https://bike.example.com/account";
     const ACCOUNT_LABEL_LOCAL = "localhost:3001/account";
-    const ACCOUNT_LABEL_PROD = "bike.nibelheim.dev/account";
+    const ACCOUNT_LABEL_PROD = "bike.example.com/account";
 
     const STORAGE_KEYS = {
         :api_base_url => "garmin_iq_api_base_url",
@@ -739,7 +739,7 @@ class SegmentSyncService {
         }
 
         if (stringEquals(apiBaseUrl, API_BASE_URL_PROD)) {
-            return "bike.nibelheim.dev";
+            return "bike.example.com";
         }
 
         return apiBaseUrl;

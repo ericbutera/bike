@@ -20,6 +20,7 @@ pub mod fit_support;
 pub mod integration_events;
 pub mod metrics;
 pub mod openapi;
+pub mod provider_rate_limit;
 pub mod segment_support;
 pub mod storage;
 pub mod strava;
