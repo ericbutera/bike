@@ -1,5 +1,8 @@
-FROM lukemathwalker/cargo-chef:latest-rust-1-bookworm AS chef
+# Keep this Rust version in sync with mise.toml. A floating cargo-chef tag
+# changes the parent image and invalidates Kaniko's cargo-chef cache.
+FROM lukemathwalker/cargo-chef:latest-rust-1.97.1-bookworm AS chef
 WORKDIR /app
+ENV RUSTUP_TOOLCHAIN=1.97.1
 
 FROM chef AS planner
 COPY . .

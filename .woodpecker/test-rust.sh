@@ -19,6 +19,17 @@ if [ -z "$RUST_VERSION" ]; then
   exit 1
 fi
 
+for dockerfile in api/Dockerfile worker/Dockerfile; do
+  if ! grep -Fq "latest-rust-${RUST_VERSION}-bookworm" "$dockerfile"; then
+    echo "$dockerfile cargo-chef image must match mise.toml Rust ${RUST_VERSION}" >&2
+    exit 1
+  fi
+  if ! grep -Fq "RUSTUP_TOOLCHAIN=${RUST_VERSION}" "$dockerfile"; then
+    echo "$dockerfile RUSTUP_TOOLCHAIN must match mise.toml Rust ${RUST_VERSION}" >&2
+    exit 1
+  fi
+done
+
 rustup toolchain install "$RUST_VERSION" --profile minimal --component rustfmt --component clippy
 
 cargo +"$RUST_VERSION" fmt --all --check
