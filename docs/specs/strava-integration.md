@@ -52,6 +52,24 @@ The client boundary should own:
 
 Service code should call high-level methods such as `exchange_authorization_code`, `refresh_access_token`, `list_activities`, `get_activity_streams`, `deauthorize`, `list_push_subscriptions`, and `create_push_subscription`.
 
+## Provider Client Pattern
+
+Future provider clients should follow the Strava boundary instead of adding one-off HTTP behavior in service code.
+
+Each provider client should:
+
+- declare named quota buckets with provider, bucket, limit, window, and request units;
+- classify every operation into the buckets it consumes before the request is sent;
+- reserve all required buckets transactionally through the provider rate limiter;
+- reconcile provider response headers back into local bucket state when the provider reports stricter usage or changed limits;
+- convert remote `429` responses and retry headers into structured retryable errors with `retry_at`;
+- emit provider request and rate-limit metrics with stable provider, operation, request class, bucket, and status labels;
+- expose only high-level domain methods to business flows.
+
+User-supplied archive downloads are not provider API calls. They may need separate host allow/block rules, redirect limits, content-length limits, timeout limits, and download concurrency controls, but they should not consume provider quota buckets.
+
+Before implementation, any future external provider spec should include a provider-client checklist covering API boundary ownership, bucket definitions, operation classification, quota reservation, header reconciliation, retryable error shape, metrics, tracing, webhook behavior if applicable, and disconnect cleanup.
+
 ## Postgres Rate Limiter
 
 Bike should use Postgres for Strava rate-limit coordination. Traffic is expected to be low, Postgres is already required, and adding Redis only for this limiter would add operational complexity without enough benefit.
@@ -131,6 +149,8 @@ Prometheus scrape endpoints should remain internal. Bike's API mounts `/metrics`
 
 Most Strava provider metrics are emitted by the worker, because manual and webhook sync tasks do the outbound Strava calls there. The worker scrape endpoint must therefore include provider metrics in addition to generic task metrics.
 
+The current Prometheus surface includes `bike_provider_api_requests_total`, `bike_provider_rate_limit_pauses_total`, `bike_provider_rate_limit_limit`, `bike_provider_rate_limit_used`, `bike_provider_rate_limit_remaining`, `bike_provider_rate_limit_reset_timestamp_seconds`, and `bike_strava_connected_athletes`. The first Bike Grafana dashboard charts Strava request rate, non-2xx responses, rate-limit pauses, remaining quota, quota usage, reset countdowns, connected athletes, and `strava_sync` task activity.
+
 Strava client spans should include:
 
 - endpoint or operation name;
@@ -165,6 +185,11 @@ Integration events remain the user/admin audit trail. OpenTelemetry and metrics 
 - Task enqueueing: `api/src/tasks/adapter.rs`
 - Activity import pipeline: `api/src/activity_import_pipeline.rs`
 - Integration events: `api/src/integration_events.rs`
+- Prometheus metrics: `api/src/metrics.rs`
+- Observability metric backlog: `docs/observability-metrics.md`
+- Production API `ServiceMonitor`: `../../../pulumi-iac/bike/servicemonitor-bike-api.yaml`
+- Production worker `ServiceMonitor`: `../../../pulumi-iac/bike/servicemonitor-bike-worker.yaml`
+- Bike Grafana dashboard: `../../../pulumi-iac/bike/bike-grafana-dashboard.yaml`
 
 ## Implementation Checklist
 
@@ -203,10 +228,10 @@ Integration events remain the user/admin audit trail. OpenTelemetry and metrics 
 - [x] Confirm production Grafana has Prometheus, Loki, and Tempo datasources provisioned.
 - [x] Emit real Prometheus counters for outbound provider API calls and provider rate-limit pauses.
 - [x] Confirm public ingress does not expose Bike's Prometheus scrape paths.
-- [ ] Add a Bike Grafana dashboard ConfigMap for Strava/provider API request rate, error rate, and rate-limit pauses.
-- [ ] Add a deployment or smoke-test check that fails if `/metrics` becomes reachable through a public ingress host.
+- [x] Add a Bike Grafana dashboard ConfigMap for Strava/provider API request rate, error rate, and rate-limit pauses. See `../../../pulumi-iac/bike/bike-grafana-dashboard.yaml`.
+- [ ] Add a deployment or smoke-test check that fails if `/metrics` becomes reachable through a public ingress host. The check should hit the public API host and reject a successful Prometheus text response from `/metrics`.
 - [ ] Consider moving API metrics to a dedicated internal metrics port if future ingress or gateway routing makes path-level isolation harder to reason about.
-- [ ] Add Prometheus alerts for sustained Strava 429s, exhausted daily quota, sync failure rate, and worker backlog growth.
+- [ ] Add Prometheus alerts for sustained Strava 429s, local provider quota pauses, exhausted daily quota, sync failure rate, and worker backlog growth.
 - [ ] Add OpenTelemetry tracing dependencies and OTLP exporter configuration to API and worker.
 - [ ] Configure API and worker deployments with service name, environment, and OTLP endpoint variables for Tempo.
 - [ ] Propagate trace context through queued worker tasks where useful for long Strava sync workflows.
@@ -243,8 +268,8 @@ Integration events remain the user/admin audit trail. OpenTelemetry and metrics 
 - [x] Audit current backend `reqwest` usage for external API/provider calls.
 - [x] Treat Strava as the first quota-managed cloud provider integration.
 - [ ] Decide whether user-supplied archive URL downloads need separate host/download safety limits rather than provider quota.
-- [ ] Document how future provider clients should declare buckets, classify operations, reserve quota, and reconcile headers.
-- [ ] Add a provider-client checklist to any future external integration spec before implementation.
+- [x] Document how future provider clients should declare buckets, classify operations, reserve quota, and reconcile headers.
+- [x] Add a provider-client checklist to any future external integration spec before implementation.
 
 ### Tests And Verification
 
@@ -253,8 +278,8 @@ Integration events remain the user/admin audit trail. OpenTelemetry and metrics 
 - [x] Add unit tests for Strava `Retry-After` parsing.
 - [x] Run full API tests after AppError and Strava sync behavior changes.
 - [ ] Add tests for concurrent Postgres quota acquisition.
-- [ ] Add tests for Strava `429` response handling and `retry_at` propagation.
-- [ ] Add tests for paused sync requeueing with `scheduled_for`.
+- [x] Add tests for Strava `429` response handling and `retry_at` propagation.
+- [x] Add tests for paused sync requeueing with `scheduled_for`.
 - [ ] Add tests for checkpoint resume after a paused sync.
 - [ ] Add tests for disconnect during a paused checkpointed sync.
 - [ ] Add tests for idempotent duplicate handling across checkpoint resume.

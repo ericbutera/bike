@@ -2,14 +2,19 @@
 // This module is a thin wrapper that initialises the shared registry with the
 // app namespace supplied by the generated project.
 
+use crate::entities::strava_connections;
+use crate::storage::AppStorage;
 use axum::body::Body;
+use axum::extract::State;
 use axum::http::header::CONTENT_TYPE;
 use axum::response::Response;
 use once_cell::sync::Lazy;
 use prometheus::{
-    register_int_counter_vec, register_int_gauge_vec, Encoder, IntCounterVec, IntGaugeVec,
-    TextEncoder,
+    register_int_counter_vec, register_int_gauge, register_int_gauge_vec, Encoder, IntCounterVec,
+    IntGauge, IntGaugeVec, TextEncoder,
 };
+use sea_orm::{DbErr, EntityTrait, PaginatorTrait};
+use std::sync::Arc;
 
 pub use kaleido::glass::api_metrics::metrics_middleware;
 
@@ -67,6 +72,14 @@ static PROVIDER_RATE_LIMIT_RESET_TIMESTAMP: Lazy<IntGaugeVec> = Lazy::new(|| {
     .expect("register provider rate-limit reset timestamp gauge")
 });
 
+static STRAVA_CONNECTED_ATHLETES: Lazy<IntGauge> = Lazy::new(|| {
+    register_int_gauge!(
+        "bike_strava_connected_athletes",
+        "Current number of Strava athletes connected to Bike."
+    )
+    .expect("register Strava connected athletes gauge")
+});
+
 /// Initialize all API metrics.  Must be called once at startup.
 pub fn init_metrics() {
     kaleido::glass::api_metrics::init_api_metrics("bike_api");
@@ -76,9 +89,14 @@ pub fn init_metrics() {
     Lazy::force(&PROVIDER_RATE_LIMIT_USED);
     Lazy::force(&PROVIDER_RATE_LIMIT_REMAINING);
     Lazy::force(&PROVIDER_RATE_LIMIT_RESET_TIMESTAMP);
+    Lazy::force(&STRAVA_CONNECTED_ATHLETES);
 }
 
-pub async fn metrics_route() -> Response {
+pub async fn metrics_route(State(state): State<Arc<AppStorage>>) -> Response {
+    if let Err(error) = refresh_database_metrics(&state).await {
+        tracing::warn!(error = ?error, "failed to refresh database-backed metrics");
+    }
+
     let encoder = TextEncoder::new();
     let mut metric_families = kaleido::glass::api_metrics::registry().gather();
     metric_families.extend(prometheus::gather());
@@ -93,6 +111,17 @@ pub async fn metrics_route() -> Response {
         .header(CONTENT_TYPE, encoder.format_type())
         .body(Body::from(body))
         .expect("failed to build metrics response")
+}
+
+async fn refresh_database_metrics(state: &AppStorage) -> Result<(), DbErr> {
+    let connected_athletes = strava_connections::Entity::find()
+        .count(&state.db)
+        .await?
+        .min(i64::MAX as u64) as i64;
+
+    STRAVA_CONNECTED_ATHLETES.set(connected_athletes);
+
+    Ok(())
 }
 
 pub fn record_provider_api_request(

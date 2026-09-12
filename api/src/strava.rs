@@ -853,13 +853,7 @@ pub async fn process_strava_sync(
             return Err(error);
         }
 
-        let tasks = TaskQueue::new(db.clone());
-        tasks
-            .sync_strava_connection_with_options(connection.id, Some(retry_at), 3)
-            .await
-            .map_err(|message| {
-                AppError::internal(format!("Failed to requeue paused Strava sync: {message}"))
-            })?;
+        requeue_paused_strava_sync(db, connection.id, retry_at).await?;
         return Ok(());
     }
 
@@ -868,6 +862,20 @@ pub async fn process_strava_sync(
         (Ok(_), Err(error)) => Err(error),
         (Ok(_), Ok(())) => Ok(()),
     }
+}
+
+async fn requeue_paused_strava_sync(
+    db: &DatabaseConnection,
+    connection_id: i32,
+    retry_at: DateTime<Utc>,
+) -> Result<(), AppError> {
+    let tasks = TaskQueue::new(db.clone());
+    tasks
+        .sync_strava_connection_with_options(connection_id, Some(retry_at), 3)
+        .await
+        .map_err(|message| {
+            AppError::internal(format!("Failed to requeue paused Strava sync: {message}"))
+        })
 }
 
 impl StravaApiClient {
@@ -1100,23 +1108,17 @@ impl StravaApiClient {
         let retry_after = parse_retry_after_header(response.headers(), Utc::now());
 
         if !status.is_success() {
+            let headers = response.headers().clone();
             let body = response.text().await.unwrap_or_default();
-            let message = serde_json::from_str::<StravaFault>(&body)
-                .ok()
-                .and_then(|fault| fault.message)
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or_else(|| format!("Strava request failed with status {status}"));
-
-            return Err(if status == StatusCode::TOO_MANY_REQUESTS {
-                metrics::record_provider_rate_limit_pause(STRAVA_PROVIDER, "remote_429", operation);
-                let retry_at =
-                    retry_after.unwrap_or_else(|| strava_retry_at_for_class(request_class));
-                AppError::too_many_requests(message, Some(retry_at))
-            } else if status.is_client_error() {
-                AppError::bad_request(message)
-            } else {
-                AppError::internal(message)
-            });
+            return Err(strava_error_from_response(
+                status,
+                &headers,
+                &body,
+                retry_after,
+                request_class,
+                operation,
+                Utc::now(),
+            ));
         }
 
         response.json::<T>().await.map_err(|error| {
@@ -1125,6 +1127,34 @@ impl StravaApiClient {
                 "Failed to parse Strava response while trying to {action}"
             ))
         })
+    }
+}
+
+fn strava_error_from_response(
+    status: StatusCode,
+    headers: &HeaderMap,
+    body: &str,
+    retry_after: Option<DateTime<Utc>>,
+    request_class: StravaRequestClass,
+    operation: &'static str,
+    now: DateTime<Utc>,
+) -> AppError {
+    let message = serde_json::from_str::<StravaFault>(body)
+        .ok()
+        .and_then(|fault| fault.message)
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| format!("Strava request failed with status {status}"));
+
+    if status == StatusCode::TOO_MANY_REQUESTS {
+        metrics::record_provider_rate_limit_pause(STRAVA_PROVIDER, "remote_429", operation);
+        let retry_at = retry_after
+            .or_else(|| parse_retry_after_header(headers, now))
+            .unwrap_or_else(|| strava_retry_at_for_class_at(request_class, now));
+        AppError::too_many_requests(message, Some(retry_at))
+    } else if status.is_client_error() {
+        AppError::bad_request(message)
+    } else {
+        AppError::internal(message)
     }
 }
 
@@ -1276,8 +1306,11 @@ fn parse_retry_after_header(headers: &HeaderMap, now: DateTime<Utc>) -> Option<D
         .filter(|timestamp| *timestamp >= now)
 }
 
-fn strava_retry_at_for_class(_request_class: StravaRequestClass) -> DateTime<Utc> {
-    next_strava_short_window_reset(Utc::now())
+fn strava_retry_at_for_class_at(
+    _request_class: StravaRequestClass,
+    now: DateTime<Utc>,
+) -> DateTime<Utc> {
+    next_strava_short_window_reset(now)
 }
 
 fn next_strava_short_window_reset(now: DateTime<Utc>) -> DateTime<Utc> {
@@ -2767,6 +2800,58 @@ mod tests {
     }
 
     #[test]
+    fn strava_429_error_uses_retry_after_header() {
+        let now = DateTime::parse_from_rfc3339("2026-09-12T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let retry_at = now + Duration::seconds(180);
+        let mut headers = HeaderMap::new();
+        headers.insert(RETRY_AFTER, "180".parse().unwrap());
+
+        let error = strava_error_from_response(
+            StatusCode::TOO_MANY_REQUESTS,
+            &headers,
+            r#"{"message":"Rate Limit Exceeded"}"#,
+            None,
+            StravaRequestClass::Read,
+            "get_activity_streams",
+            now,
+        );
+
+        assert_eq!(error.status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(error.message, "Rate Limit Exceeded");
+        assert_eq!(error.retry_at, Some(retry_at));
+    }
+
+    #[test]
+    fn strava_429_error_falls_back_to_next_short_window() {
+        let now = DateTime::parse_from_rfc3339("2026-09-12T12:07:30Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let retry_at = DateTime::parse_from_rfc3339("2026-09-12T12:15:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let headers = HeaderMap::new();
+
+        let error = strava_error_from_response(
+            StatusCode::TOO_MANY_REQUESTS,
+            &headers,
+            "{}",
+            None,
+            StravaRequestClass::Read,
+            "list_activities",
+            now,
+        );
+
+        assert_eq!(error.status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            error.message,
+            "Strava request failed with status 429 Too Many Requests"
+        );
+        assert_eq!(error.retry_at, Some(retry_at));
+    }
+
+    #[test]
     fn strava_sync_after_started_at_prefers_latest_existing_activity() {
         let last_synced_activity_started_at = DateTime::parse_from_rfc3339("2024-05-01T10:00:00Z")
             .unwrap()
@@ -3068,6 +3153,29 @@ mod tests {
         process_strava_sync(&db, "/tmp", 999)
             .await
             .expect("missing connection should be treated as a no-op");
+    }
+
+    #[tokio::test]
+    async fn requeue_paused_strava_sync_sets_scheduled_for() {
+        let db = test_db().await;
+        let retry_at = DateTime::parse_from_rfc3339("2026-09-12T12:15:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+
+        requeue_paused_strava_sync(&db, 123, retry_at)
+            .await
+            .expect("requeue paused sync");
+
+        let task = background_tasks::Entity::find()
+            .one(&db)
+            .await
+            .expect("load task")
+            .expect("queued task exists");
+        assert_eq!(task.task_type, STRAVA_SYNC_TASK_TYPE);
+        assert_eq!(task.status, background_tasks::TaskStatus::Pending.as_str());
+        assert_eq!(task.max_attempts, 3);
+        assert_eq!(task.scheduled_for, Some(retry_at));
+        assert!(task_targets_connection(&task, 123));
     }
 
     #[tokio::test]
