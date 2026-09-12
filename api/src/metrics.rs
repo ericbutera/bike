@@ -2,10 +2,16 @@
 // This module is a thin wrapper that initialises the shared registry with the
 // app namespace supplied by the generated project.
 
+use axum::body::Body;
+use axum::http::header::CONTENT_TYPE;
+use axum::response::Response;
 use once_cell::sync::Lazy;
-use prometheus::{register_int_counter_vec, register_int_gauge_vec, IntCounterVec, IntGaugeVec};
+use prometheus::{
+    register_int_counter_vec, register_int_gauge_vec, Encoder, IntCounterVec, IntGaugeVec,
+    TextEncoder,
+};
 
-pub use kaleido::glass::api_metrics::{metrics_middleware, metrics_route};
+pub use kaleido::glass::api_metrics::metrics_middleware;
 
 static PROVIDER_API_REQUESTS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
     register_int_counter_vec!(
@@ -70,6 +76,23 @@ pub fn init_metrics() {
     Lazy::force(&PROVIDER_RATE_LIMIT_USED);
     Lazy::force(&PROVIDER_RATE_LIMIT_REMAINING);
     Lazy::force(&PROVIDER_RATE_LIMIT_RESET_TIMESTAMP);
+}
+
+pub async fn metrics_route() -> Response {
+    let encoder = TextEncoder::new();
+    let mut metric_families = kaleido::glass::api_metrics::registry().gather();
+    metric_families.extend(prometheus::gather());
+
+    let mut buffer = Vec::new();
+    encoder
+        .encode(&metric_families, &mut buffer)
+        .unwrap_or_default();
+    let body = String::from_utf8(buffer).unwrap_or_default();
+
+    Response::builder()
+        .header(CONTENT_TYPE, encoder.format_type())
+        .body(Body::from(body))
+        .expect("failed to build metrics response")
 }
 
 pub fn record_provider_api_request(

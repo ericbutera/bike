@@ -67,7 +67,7 @@ Segment correctness should favor transparent user-owned matching and personal co
 - Worker entry points: `worker/src/tasks/processors`
 - Migrations: `migration/src`
 - Frontend routes: `ui-next/app`
-- Local tasks: `Taskfile.yml`
+- Local tasks: `mise.toml` (`mise tasks`)
 - Compose dev environment: `compose.yaml`
 
 ## Open Decisions

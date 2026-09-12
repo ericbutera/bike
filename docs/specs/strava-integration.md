@@ -129,6 +129,8 @@ The production observability stack installs into an `observability` namespace wi
 
 Prometheus scrape endpoints should remain internal. Bike's API mounts `/metrics`, and the worker exposes its own metrics port, but public ingress should only route user/API traffic and should not expose those scrape paths to the internet. The API scrape path is currently reached through the ClusterIP service selected by the `ServiceMonitor`, while public ingress forwards API traffic under `/api`.
 
+Most Strava provider metrics are emitted by the worker, because manual and webhook sync tasks do the outbound Strava calls there. The worker scrape endpoint must therefore include provider metrics in addition to generic task metrics.
+
 Strava client spans should include:
 
 - endpoint or operation name;
@@ -189,6 +191,7 @@ Integration events remain the user/admin audit trail. OpenTelemetry and metrics 
 - [x] Add Prometheus counters for Strava provider API requests by operation, request class, and status.
 - [x] Add Prometheus counters for local and remote Strava rate-limit pauses.
 - [x] Add Prometheus gauges for provider quota bucket limit, usage, remaining quota, and reset timestamp.
+- [x] Expose provider metrics from the worker metrics endpoint where Strava sync tasks run.
 - [ ] Extract the Strava client into a dedicated module separate from sync/business flow code.
 - [ ] Normalize provider errors into typed Strava/client error variants instead of relying only on `AppError`.
 - [ ] Add OpenTelemetry spans around Strava client calls with operation, bucket, status, and retry attributes.

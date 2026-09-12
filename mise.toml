@@ -12,3 +12,89 @@ run = "prek install -f"
 [tasks."format:staged"]
 description = "Run prek on staged files"
 run = "prek run"
+
+[tasks."ui-next:deps"]
+description = "Install ui-next dependencies"
+dir = "ui-next"
+run = "pnpm install"
+
+[tasks."ui-next:dev"]
+description = "Start the bike Next frontend"
+depends = ["ui-next:deps"]
+dir = "ui-next"
+run = "pnpm run dev"
+
+[tasks."ui-next:typecheck"]
+description = "Typecheck the bike Next frontend"
+dir = "ui-next"
+run = "pnpm typecheck"
+
+[tasks."api:dev"]
+description = "Start the bike API"
+run = "cargo run --bin api"
+
+[tasks."api:build"]
+description = "Build the bike API"
+run = "cargo build --release --bin api"
+
+[tasks."worker:dev"]
+description = "Start the bike worker"
+run = "cargo run --bin worker"
+
+[tasks."kaleido:status"]
+description = "Show the Rust and UI Kaleido versions used by Bike"
+run = '''
+echo "Rust Kaleido:"
+cargo tree -i kaleido --depth 0
+echo
+echo "UI Kaleido:"
+pnpm --dir ui-next exec node -p "require('./package.json').dependencies['@ericbutera/kaleido']"
+'''
+
+[tasks."kaleido:update"]
+description = "Update Rust and UI Kaleido packages; run as VERSION=x.y.z mise run kaleido:update"
+run = '''
+VERSION="${VERSION:?Set VERSION=x.y.z}"
+cargo update -p kaleido --precise "$VERSION"
+pnpm --dir ui-next up "@ericbutera/kaleido@$VERSION"
+pnpm --dir ui-next typecheck
+'''
+
+[tasks."migration:up"]
+description = "Run bike database migrations"
+dir = "migration"
+run = "cargo run -- up"
+
+[tasks.test]
+description = "Run bike Rust tests"
+run = "cargo test"
+
+[tasks.fmt]
+description = "Format the Rust workspace"
+run = "cargo fmt --all"
+
+[tasks."fmt:check"]
+description = "Check Rust formatting without writing changes"
+run = "cargo fmt --all --check"
+
+[tasks.lint]
+description = "Run Rust Clippy checks"
+run = "cargo clippy --workspace --all-targets --all-features -- -D warnings"
+
+[tasks."openapi:react-query"]
+description = "Generate OpenAPI TypeScript definitions from a running API"
+run = '''
+echo "Waiting for API to be ready..."
+OPENAPI_URL="${OPENAPI_URL:-http://localhost:3000/openapi.json}"
+for _ in {1..30}; do
+  status=$(curl -s -o /tmp/openapi.json -w "%{http_code}" "$OPENAPI_URL" || echo "000")
+  if [ "$status" = "200" ]; then
+    if node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('/tmp/openapi.json','utf8')); if(!j.openapi) process.exit(2);" >/dev/null 2>&1; then
+      break
+    fi
+  fi
+  sleep 2
+done
+npx openapi-typescript /tmp/openapi.json --output ui-next/lib/openapi/react-query/api.d.ts
+rm -f /tmp/openapi.json
+'''
