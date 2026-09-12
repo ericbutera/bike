@@ -10,9 +10,9 @@ Large initial imports are expected. A rider with years of activity history shoul
 
 ## Current State
 
-All outbound Strava HTTP calls are currently made through `StravaApiClient` in `api/src/strava.rs`. The worker does not call Strava directly; the `strava_sync` processor delegates to `api::strava::process_strava_sync`.
+All outbound Strava HTTP calls are currently made through `StravaApiClient` in `api/src/strava_client.rs`. The worker does not call Strava directly; the `strava_sync` processor delegates to `api::strava::process_strava_sync`.
 
-The existing client is centralized but still lives inside the broader Strava service module. It builds request URLs, sends `reqwest` calls, parses JSON, and converts HTTP failures to `AppError`. Strava calls now reserve provider quota before sending, reconcile Strava rate-limit headers after responses, and treat `429 Too Many Requests` as a structured retryable pause.
+The client is separated from the broader Strava service module. It builds request URLs, sends `reqwest` calls, parses JSON, and converts HTTP failures to `AppError`. Strava calls reserve provider quota before sending, reconcile Strava rate-limit headers after responses, emit OpenTelemetry spans, and treat `429 Too Many Requests` as a structured retryable pause.
 
 The current sync shape is:
 
@@ -176,7 +176,8 @@ Integration events remain the user/admin audit trail. OpenTelemetry and metrics 
 ## Code Anchors
 
 - Strava controller: `api/src/controllers/strava.rs`
-- Current Strava service and client: `api/src/strava.rs`
+- Current Strava service: `api/src/strava.rs`
+- Strava API client: `api/src/strava_client.rs`
 - Strava provider payload parsing: `api/src/strava_provider_payload.rs`
 - Provider rate limiter: `api/src/provider_rate_limit.rs`
 - Provider rate-limit entity: `api/src/entities/provider_rate_limit_buckets.rs`
@@ -186,10 +187,12 @@ Integration events remain the user/admin audit trail. OpenTelemetry and metrics 
 - Activity import pipeline: `api/src/activity_import_pipeline.rs`
 - Integration events: `api/src/integration_events.rs`
 - Prometheus metrics: `api/src/metrics.rs`
+- OpenTelemetry initialization and trace propagation: `api/src/observability.rs`
 - Observability metric backlog: `docs/observability-metrics.md`
 - Production API `ServiceMonitor`: `../../../pulumi-iac/bike/servicemonitor-bike-api.yaml`
 - Production worker `ServiceMonitor`: `../../../pulumi-iac/bike/servicemonitor-bike-worker.yaml`
 - Bike Grafana dashboard: `../../../pulumi-iac/bike/bike-grafana-dashboard.yaml`
+- Grafana Loki/Tempo datasource provisioning: `../../../pulumi-iac/nibelheim/observability/values.yaml`
 
 ## Implementation Checklist
 
@@ -217,9 +220,9 @@ Integration events remain the user/admin audit trail. OpenTelemetry and metrics 
 - [x] Add Prometheus counters for local and remote Strava rate-limit pauses.
 - [x] Add Prometheus gauges for provider quota bucket limit, usage, remaining quota, and reset timestamp.
 - [x] Expose provider metrics from the worker metrics endpoint where Strava sync tasks run.
-- [ ] Extract the Strava client into a dedicated module separate from sync/business flow code.
+- [x] Extract the Strava client into a dedicated module separate from sync/business flow code.
 - [ ] Normalize provider errors into typed Strava/client error variants instead of relying only on `AppError`.
-- [ ] Add OpenTelemetry spans around Strava client calls with operation, bucket, status, and retry attributes.
+- [x] Add OpenTelemetry spans around Strava client calls with operation, bucket, status, and retry attributes.
 
 ### Production Observability
 
@@ -232,12 +235,12 @@ Integration events remain the user/admin audit trail. OpenTelemetry and metrics 
 - [ ] Add a deployment or smoke-test check that fails if `/metrics` becomes reachable through a public ingress host. The check should hit the public API host and reject a successful Prometheus text response from `/metrics`.
 - [ ] Consider moving API metrics to a dedicated internal metrics port if future ingress or gateway routing makes path-level isolation harder to reason about.
 - [ ] Add Prometheus alerts for sustained Strava 429s, local provider quota pauses, exhausted daily quota, sync failure rate, and worker backlog growth.
-- [ ] Add OpenTelemetry tracing dependencies and OTLP exporter configuration to API and worker.
-- [ ] Configure API and worker deployments with service name, environment, and OTLP endpoint variables for Tempo.
-- [ ] Propagate trace context through queued worker tasks where useful for long Strava sync workflows.
-- [ ] Add spans around Strava HTTP calls, quota reservation, checkpoint persistence, activity import persistence, and task requeueing.
-- [ ] Correlate structured logs with trace ids so Loki and Tempo can pivot between logs and traces.
-- [ ] Add a Grafana trace-to-logs configuration if the current Loki/Tempo datasources do not already support it.
+- [x] Add OpenTelemetry tracing dependencies and OTLP exporter configuration to API and worker.
+- [x] Configure API and worker deployments with service name, environment, and OTLP endpoint variables for Tempo.
+- [x] Propagate trace context through queued worker tasks where useful for long Strava sync workflows.
+- [x] Add spans around Strava HTTP calls, quota reservation, checkpoint persistence, activity import persistence, and task requeueing.
+- [x] Correlate structured logs with trace ids so Loki and Tempo can pivot between logs and traces.
+- [x] Add a Grafana trace-to-logs configuration if the current Loki/Tempo datasources do not already support it.
 
 ### Paused Sync Behavior
 

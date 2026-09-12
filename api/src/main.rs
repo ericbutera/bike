@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
-    init_tracing_subscriber().await;
+    let _observability = init_tracing_subscriber();
     metrics::init_metrics();
     let cfg = Config::init_from_env();
 

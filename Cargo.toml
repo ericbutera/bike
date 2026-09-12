@@ -25,6 +25,10 @@ utoipa = { version = "5", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "8", features = ["axum", "vendored"] }
 chrono = { version = "0.4", features = ["serde"] }
 kaleido = "0.8.5"
+opentelemetry = "0.32.0"
+opentelemetry_sdk = { version = "0.32.1", features = ["trace", "rt-tokio"] }
+opentelemetry-otlp = { version = "0.32.0", default-features = false, features = ["trace", "http-proto", "reqwest-blocking-client"] }
+tracing-opentelemetry = "0.33.0"
 
 [workspace.lints.clippy]
 all = "deny"

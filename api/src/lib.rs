@@ -19,11 +19,13 @@ pub mod feature_flags_keys;
 pub mod fit_support;
 pub mod integration_events;
 pub mod metrics;
+pub mod observability;
 pub mod openapi;
 pub mod provider_rate_limit;
 pub mod segment_support;
 pub mod storage;
 pub mod strava;
+pub mod strava_client;
 pub mod strava_provider_payload;
 pub mod tasks;
 pub mod training_profile;
@@ -88,9 +90,6 @@ pub async fn app(app_state: Arc<AppStorage>) -> Router {
         .with_state(app_state)
 }
 
-pub async fn init_tracing_subscriber() {
-    tracing_subscriber::fmt()
-        .json()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
+pub fn init_tracing_subscriber() -> observability::ObservabilityGuard {
+    observability::init_observability("bike-api")
 }

@@ -1,7 +1,7 @@
 use api::config::Config;
+use api::observability;
 use kaleido::background_jobs::worker::{
-    init_json_tracing, spawn_metrics_server, TaskWorker, WorkerConfig, WorkerConfigDefaults,
-    WorkerMetrics,
+    spawn_metrics_server, TaskWorker, WorkerConfig, WorkerConfigDefaults, WorkerMetrics,
 };
 use std::sync::Arc;
 use std::time::Duration;
@@ -9,7 +9,7 @@ use worker::tasks::{register_auth_email_processors, register_default_processors}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    init_json_tracing();
+    let _observability = observability::init_observability("bike-worker");
 
     let cfg = Config::init_from_env();
     let db = sea_orm::Database::connect(&cfg.database_url).await?;

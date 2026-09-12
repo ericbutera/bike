@@ -23,11 +23,8 @@ use crate::integration_events::{
     self, NewIntegrationEvent, INTEGRATION_LEVEL_ERROR, INTEGRATION_LEVEL_INFO,
     INTEGRATION_LEVEL_SUCCESS, INTEGRATION_LEVEL_WARNING, INTEGRATION_PROVIDER_STRAVA,
 };
-use crate::metrics;
-use crate::provider_rate_limit::{
-    reconcile_provider_quota_usage, reserve_provider_quota, ProviderQuotaBucketSpec,
-    ProviderQuotaReservation,
-};
+use crate::observability;
+use crate::strava_client::{StravaApiClient, StravaAuthorizationTokenResponse};
 use crate::strava_provider_payload::{
     StoredStravaProviderPayload, StravaActivityStreams, StravaActivitySummary, StravaStream,
 };
@@ -38,24 +35,20 @@ use chrono::{DateTime, Duration, Utc};
 use hmac::{Hmac, Mac};
 use kaleido::auth::entities::users;
 use kaleido::background_jobs::background_tasks;
-use reqwest::header::{HeaderMap, RETRY_AFTER};
-use reqwest::{Client, RequestBuilder, Url};
+use reqwest::Url;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
 };
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
+use tracing::field;
+use tracing::Instrument;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 type HmacSha256 = Hmac<Sha256>;
 
 pub const STRAVA_AUTHORIZE_URL: &str = "https://www.strava.com/oauth/authorize";
-pub const STRAVA_TOKEN_URL: &str = "https://www.strava.com/api/v3/oauth/token";
-pub const STRAVA_DEAUTHORIZE_URL: &str = "https://www.strava.com/oauth/deauthorize";
-pub const STRAVA_API_BASE_URL: &str = "https://www.strava.com/api/v3";
-pub const STRAVA_PUSH_SUBSCRIPTIONS_URL: &str = "https://www.strava.com/api/v3/push_subscriptions";
 pub const STRAVA_SYNC_STATUS_NEVER: &str = "never";
 pub const STRAVA_SYNC_STATUS_QUEUED: &str = "queued";
 pub const STRAVA_SYNC_STATUS_RUNNING: &str = "running";
@@ -64,15 +57,6 @@ pub const STRAVA_SYNC_STATUS_FAILED: &str = "failed";
 const STRAVA_REQUIRED_ACTIVITY_SCOPE: &str = "activity:read_all";
 const STRAVA_STATE_MAX_AGE_MINUTES: i64 = 10;
 const STRAVA_SYNC_TASK_TYPE: &str = "strava_sync";
-const STRAVA_PROVIDER: &str = "strava";
-const STRAVA_OVERALL_15_MINUTE_BUCKET: &str = "overall_15_minute";
-const STRAVA_OVERALL_DAILY_BUCKET: &str = "overall_daily";
-const STRAVA_READ_15_MINUTE_BUCKET: &str = "read_15_minute";
-const STRAVA_READ_DAILY_BUCKET: &str = "read_daily";
-const STRAVA_OVERALL_15_MINUTE_LIMIT: i32 = 400;
-const STRAVA_OVERALL_DAILY_LIMIT: i32 = 4_000;
-const STRAVA_READ_15_MINUTE_LIMIT: i32 = 200;
-const STRAVA_READ_DAILY_LIMIT: i32 = 2_000;
 
 #[derive(Debug, Clone)]
 pub struct ResolvedStravaConnectionSyncState {
@@ -85,38 +69,6 @@ pub struct VerifiedStravaState {
     pub user_id: i32,
     pub issued_at: DateTime<Utc>,
     pub nonce: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct StravaAuthorizationTokenResponse {
-    access_token: String,
-    refresh_token: String,
-    expires_at: i64,
-    scope: String,
-    athlete: StravaAthleteSummary,
-}
-
-#[derive(Debug, Deserialize)]
-struct StravaRefreshTokenResponse {
-    access_token: String,
-    refresh_token: String,
-    expires_at: i64,
-    scope: Option<String>,
-    athlete: Option<StravaAthleteSummary>,
-}
-
-#[derive(Debug, Deserialize)]
-struct StravaAthleteSummary {
-    id: i64,
-    username: Option<String>,
-    firstname: Option<String>,
-    lastname: Option<String>,
-    profile_medium: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct StravaFault {
-    message: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -144,33 +96,6 @@ pub struct StravaWebhookEvent {
     pub owner_id: i64,
     pub subscription_id: i64,
     pub updates: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Deserialize)]
-struct StravaPushSubscription {
-    id: i64,
-    callback_url: String,
-}
-
-struct StravaApiClient {
-    client: Client,
-    db: DatabaseConnection,
-    config: &'static Config,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum StravaRequestClass {
-    OverallOnly,
-    Read,
-}
-
-impl StravaRequestClass {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::OverallOnly => "overall_only",
-            Self::Read => "read",
-        }
-    }
 }
 
 pub fn build_redirect_uri(config: &Config) -> String {
@@ -643,7 +568,19 @@ pub async fn process_strava_sync(
     )
     .await?;
 
+    let sync_span = tracing::info_span!(
+        "strava.sync.workflow",
+        provider = INTEGRATION_PROVIDER_STRAVA,
+        connection_id = connection.id,
+        user_id = connection.user_id,
+        status = field::Empty,
+        retry_at = field::Empty,
+        trace_id = field::Empty,
+        span_id = field::Empty,
+    );
+
     let result = async {
+        observability::record_current_trace_context();
         let connection = mark_sync_running(db, &connection).await?;
         let client = StravaApiClient::new(db, Config::get())?;
         let connection = ensure_fresh_access_token(db, &client, connection).await?;
@@ -750,7 +687,20 @@ pub async fn process_strava_sync(
                     training_profile: Some(&training_profile),
                 };
 
-                match persist_activity_upload_with_artifacts(db, persist_request).await {
+                let persist_span = tracing::info_span!(
+                    "strava.activity_import.persist",
+                    provider = INTEGRATION_PROVIDER_STRAVA,
+                    connection_id = connection.id,
+                    user_id = connection.user_id,
+                    activity_id = activity.id,
+                    trace_id = field::Empty,
+                    span_id = field::Empty,
+                );
+                let persist_result = persist_activity_upload_with_artifacts(db, persist_request)
+                    .instrument(persist_span)
+                    .await;
+
+                match persist_result {
                     Ok(PersistActivityUploadOutcome::Imported(persisted)) => {
                         imported_count += 1;
                         imported_import_ids.push(persisted.import.id);
@@ -786,6 +736,15 @@ pub async fn process_strava_sync(
         }
 
         if imported_count > 0 {
+            let finalize_span = tracing::info_span!(
+                "strava.activity_import.finalize_batch",
+                provider = INTEGRATION_PROVIDER_STRAVA,
+                connection_id = connection.id,
+                user_id = connection.user_id,
+                imported_count,
+                trace_id = field::Empty,
+                span_id = field::Empty,
+            );
             finalize_activity_import_batch(
                 db,
                 &tasks,
@@ -794,6 +753,7 @@ pub async fn process_strava_sync(
                 fitness_dirty_from_day,
                 Utc::now(),
             )
+            .instrument(finalize_span)
             .await?;
             mark_activity_imports_processed(db, &imported_import_ids).await?;
         }
@@ -826,6 +786,7 @@ pub async fn process_strava_sync(
 
         Ok(())
     }
+    .instrument(sync_span.clone())
     .await;
 
     let mut paused_retry_at = None;
@@ -833,12 +794,17 @@ pub async fn process_strava_sync(
         if is_rate_limit_error(error) {
             if let Some(retry_at) = error.retry_at {
                 paused_retry_at = Some(retry_at);
+                sync_span.record("status", "rate_limited");
+                sync_span.record("retry_at", field::display(retry_at));
                 let _ = mark_sync_paused_by_rate_limit(db, connection.id, &error.message, retry_at)
                     .await;
             }
         } else {
+            sync_span.record("status", "failed");
             let _ = mark_sync_failed_if_running(db, connection.id, &error.message).await;
         }
+    } else {
+        sync_span.record("status", "succeeded");
     }
 
     let release_result = release_user_activity_import_lock(
@@ -869,464 +835,27 @@ async fn requeue_paused_strava_sync(
     connection_id: i32,
     retry_at: DateTime<Utc>,
 ) -> Result<(), AppError> {
-    let tasks = TaskQueue::new(db.clone());
-    tasks
-        .sync_strava_connection_with_options(connection_id, Some(retry_at), 3)
-        .await
-        .map_err(|message| {
-            AppError::internal(format!("Failed to requeue paused Strava sync: {message}"))
-        })
-}
+    let span = tracing::info_span!(
+        "strava.sync.requeue",
+        provider = INTEGRATION_PROVIDER_STRAVA,
+        connection_id,
+        retry_at = %retry_at,
+        trace_id = field::Empty,
+        span_id = field::Empty,
+    );
 
-impl StravaApiClient {
-    fn new(db: &DatabaseConnection, config: &'static Config) -> Result<Self, AppError> {
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(60))
-            .user_agent(format!("{}/strava-sync", config.app_name))
-            .build()
-            .map_err(|error| {
-                tracing::error!(error = ?error, "failed to build Strava HTTP client");
-                AppError::internal("Failed to initialize Strava integration")
-            })?;
-
-        Ok(Self {
-            client,
-            db: db.clone(),
-            config,
-        })
-    }
-
-    async fn exchange_authorization_code(
-        &self,
-        code: &str,
-    ) -> Result<StravaAuthorizationTokenResponse, AppError> {
-        self.send_json(
-            self.client.post(STRAVA_TOKEN_URL).form(&[
-                ("client_id", self.config.strava_client_id.as_str()),
-                ("client_secret", self.config.strava_client_secret.as_str()),
-                ("code", code),
-                ("grant_type", "authorization_code"),
-            ]),
-            StravaRequestClass::OverallOnly,
-            "exchange_authorization_code",
-            "exchange a Strava authorization code",
-        )
-        .await
-    }
-
-    async fn refresh_access_token(
-        &self,
-        refresh_token: &str,
-    ) -> Result<StravaRefreshTokenResponse, AppError> {
-        self.send_json(
-            self.client.post(STRAVA_TOKEN_URL).form(&[
-                ("client_id", self.config.strava_client_id.as_str()),
-                ("client_secret", self.config.strava_client_secret.as_str()),
-                ("refresh_token", refresh_token),
-                ("grant_type", "refresh_token"),
-            ]),
-            StravaRequestClass::OverallOnly,
-            "refresh_access_token",
-            "refresh a Strava access token",
-        )
-        .await
-    }
-
-    async fn list_activities(
-        &self,
-        access_token: &str,
-        after_epoch: Option<i64>,
-        page: usize,
-        per_page: usize,
-    ) -> Result<Vec<StravaActivitySummary>, AppError> {
-        let mut request = self
-            .client
-            .get(format!("{STRAVA_API_BASE_URL}/athlete/activities"))
-            .bearer_auth(access_token)
-            .query(&[("page", page), ("per_page", per_page)]);
-
-        if let Some(after_epoch) = after_epoch {
-            request = request.query(&[("after", after_epoch)]);
-        }
-
-        self.send_json(
-            request,
-            StravaRequestClass::Read,
-            "list_activities",
-            "list Strava activities",
-        )
-        .await
-    }
-
-    async fn get_activity_streams(
-        &self,
-        access_token: &str,
-        activity_id: i64,
-    ) -> Result<StravaActivityStreams, AppError> {
-        self.send_json(
-            self.client
-                .get(format!(
-                    "{STRAVA_API_BASE_URL}/activities/{activity_id}/streams"
-                ))
-                .bearer_auth(access_token)
-                .query(&[
-                    (
-                        "keys",
-                        "time,distance,latlng,altitude,velocity_smooth,heartrate,cadence,watts,temp,moving,grade_smooth",
-                    ),
-                    ("key_by_type", "true"),
-                ]),
-            StravaRequestClass::Read,
-            "get_activity_streams",
-            "fetch Strava activity streams",
-        )
-        .await
-    }
-
-    async fn deauthorize(&self, access_token: &str) -> Result<(), AppError> {
-        self.send_json::<serde_json::Value>(
-            self.client
-                .post(STRAVA_DEAUTHORIZE_URL)
-                .query(&[("access_token", access_token)]),
-            StravaRequestClass::OverallOnly,
-            "deauthorize",
-            "deauthorize the Strava app",
-        )
-        .await
-        .map(|_| ())
-    }
-
-    async fn list_push_subscriptions(&self) -> Result<Vec<StravaPushSubscription>, AppError> {
-        self.send_json(
-            self.client.get(STRAVA_PUSH_SUBSCRIPTIONS_URL).query(&[
-                ("client_id", self.config.strava_client_id.as_str()),
-                ("client_secret", self.config.strava_client_secret.as_str()),
-            ]),
-            StravaRequestClass::Read,
-            "list_push_subscriptions",
-            "list Strava webhook subscriptions",
-        )
-        .await
-    }
-
-    async fn create_push_subscription(&self) -> Result<StravaPushSubscription, AppError> {
-        let callback_url = self.config.strava_webhook_callback_url();
-        self.send_json(
-            self.client.post(STRAVA_PUSH_SUBSCRIPTIONS_URL).form(&[
-                ("client_id", self.config.strava_client_id.as_str()),
-                ("client_secret", self.config.strava_client_secret.as_str()),
-                ("callback_url", callback_url.as_str()),
-                (
-                    "verify_token",
-                    self.config.strava_webhook_verify_token.as_str(),
-                ),
-            ]),
-            StravaRequestClass::OverallOnly,
-            "create_push_subscription",
-            "create a Strava webhook subscription",
-        )
-        .await
-    }
-
-    async fn send_json<T>(
-        &self,
-        request: RequestBuilder,
-        request_class: StravaRequestClass,
-        operation: &'static str,
-        action: &str,
-    ) -> Result<T, AppError>
-    where
-        T: DeserializeOwned,
-    {
-        self.reserve_quota(request_class, operation).await?;
-        let response = request.send().await;
-        self.parse_json_response(response, request_class, operation, action)
+    async move {
+        observability::record_current_trace_context();
+        let tasks = TaskQueue::new(db.clone());
+        tasks
+            .sync_strava_connection_with_options(connection_id, Some(retry_at), 3)
             .await
+            .map_err(|message| {
+                AppError::internal(format!("Failed to requeue paused Strava sync: {message}"))
+            })
     }
-
-    async fn reserve_quota(
-        &self,
-        request_class: StravaRequestClass,
-        operation: &'static str,
-    ) -> Result<(), AppError> {
-        let specs = strava_quota_specs(request_class);
-        match reserve_provider_quota(&self.db, &specs).await? {
-            ProviderQuotaReservation::Reserved => Ok(()),
-            ProviderQuotaReservation::RateLimited(pause) => {
-                metrics::record_provider_rate_limit_pause(
-                    STRAVA_PROVIDER,
-                    &pause.bucket,
-                    operation,
-                );
-                tracing::warn!(
-                    provider = %pause.provider,
-                    bucket = %pause.bucket,
-                    retry_at = %pause.retry_at,
-                    operation,
-                    "Strava request paused by local provider rate limiter"
-                );
-                Err(AppError::too_many_requests(
-                    format!(
-                        "Strava rate limit bucket {} is exhausted. Retry after {}.",
-                        pause.bucket, pause.retry_at
-                    ),
-                    Some(pause.retry_at),
-                ))
-            }
-        }
-    }
-
-    async fn parse_json_response<T>(
-        &self,
-        response: Result<reqwest::Response, reqwest::Error>,
-        request_class: StravaRequestClass,
-        operation: &'static str,
-        action: &str,
-    ) -> Result<T, AppError>
-    where
-        T: DeserializeOwned,
-    {
-        let response = response.map_err(|error| {
-            metrics::record_provider_api_request(
-                STRAVA_PROVIDER,
-                operation,
-                request_class.as_str(),
-                "transport_error",
-            );
-            tracing::error!(error = ?error, action, operation, "Strava request failed");
-            AppError::internal(format!("Failed to {action}"))
-        })?;
-        let status = response.status();
-        let status_label = status.as_u16().to_string();
-        metrics::record_provider_api_request(
-            STRAVA_PROVIDER,
-            operation,
-            request_class.as_str(),
-            &status_label,
-        );
-        reconcile_strava_rate_limit_headers(&self.db, response.headers(), request_class).await;
-        let retry_after = parse_retry_after_header(response.headers(), Utc::now());
-
-        if !status.is_success() {
-            let headers = response.headers().clone();
-            let body = response.text().await.unwrap_or_default();
-            return Err(strava_error_from_response(
-                status,
-                &headers,
-                &body,
-                retry_after,
-                request_class,
-                operation,
-                Utc::now(),
-            ));
-        }
-
-        response.json::<T>().await.map_err(|error| {
-            tracing::error!(error = ?error, action, "failed to parse Strava response");
-            AppError::internal(format!(
-                "Failed to parse Strava response while trying to {action}"
-            ))
-        })
-    }
-}
-
-fn strava_error_from_response(
-    status: StatusCode,
-    headers: &HeaderMap,
-    body: &str,
-    retry_after: Option<DateTime<Utc>>,
-    request_class: StravaRequestClass,
-    operation: &'static str,
-    now: DateTime<Utc>,
-) -> AppError {
-    let message = serde_json::from_str::<StravaFault>(body)
-        .ok()
-        .and_then(|fault| fault.message)
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| format!("Strava request failed with status {status}"));
-
-    if status == StatusCode::TOO_MANY_REQUESTS {
-        metrics::record_provider_rate_limit_pause(STRAVA_PROVIDER, "remote_429", operation);
-        let retry_at = retry_after
-            .or_else(|| parse_retry_after_header(headers, now))
-            .unwrap_or_else(|| strava_retry_at_for_class_at(request_class, now));
-        AppError::too_many_requests(message, Some(retry_at))
-    } else if status.is_client_error() {
-        AppError::bad_request(message)
-    } else {
-        AppError::internal(message)
-    }
-}
-
-fn strava_quota_specs(request_class: StravaRequestClass) -> Vec<ProviderQuotaBucketSpec> {
-    let mut specs = vec![
-        ProviderQuotaBucketSpec {
-            provider: STRAVA_PROVIDER,
-            bucket: STRAVA_OVERALL_15_MINUTE_BUCKET,
-            limit_count: STRAVA_OVERALL_15_MINUTE_LIMIT,
-            window: Duration::minutes(15),
-            units: 1,
-        },
-        ProviderQuotaBucketSpec {
-            provider: STRAVA_PROVIDER,
-            bucket: STRAVA_OVERALL_DAILY_BUCKET,
-            limit_count: STRAVA_OVERALL_DAILY_LIMIT,
-            window: Duration::hours(24),
-            units: 1,
-        },
-    ];
-
-    if matches!(request_class, StravaRequestClass::Read) {
-        specs.push(ProviderQuotaBucketSpec {
-            provider: STRAVA_PROVIDER,
-            bucket: STRAVA_READ_15_MINUTE_BUCKET,
-            limit_count: STRAVA_READ_15_MINUTE_LIMIT,
-            window: Duration::minutes(15),
-            units: 1,
-        });
-        specs.push(ProviderQuotaBucketSpec {
-            provider: STRAVA_PROVIDER,
-            bucket: STRAVA_READ_DAILY_BUCKET,
-            limit_count: STRAVA_READ_DAILY_LIMIT,
-            window: Duration::hours(24),
-            units: 1,
-        });
-    }
-
-    specs
-}
-
-async fn reconcile_strava_rate_limit_headers(
-    db: &DatabaseConnection,
-    headers: &HeaderMap,
-    request_class: StravaRequestClass,
-) {
-    let now = Utc::now();
-    let short_reset_at = next_strava_short_window_reset(now);
-    let daily_reset_at = next_strava_daily_window_reset(now);
-
-    if let (Some((short_limit, daily_limit)), Some((short_used, daily_used))) = (
-        parse_strava_rate_limit_pair(headers, "x-ratelimit-limit"),
-        parse_strava_rate_limit_pair(headers, "x-ratelimit-usage"),
-    ) {
-        reconcile_strava_bucket(
-            db,
-            STRAVA_OVERALL_15_MINUTE_BUCKET,
-            short_limit,
-            short_used,
-            short_reset_at,
-        )
-        .await;
-        reconcile_strava_bucket(
-            db,
-            STRAVA_OVERALL_DAILY_BUCKET,
-            daily_limit,
-            daily_used,
-            daily_reset_at,
-        )
-        .await;
-    }
-
-    if matches!(request_class, StravaRequestClass::Read) {
-        if let (Some((short_limit, daily_limit)), Some((short_used, daily_used))) = (
-            parse_strava_rate_limit_pair(headers, "x-readratelimit-limit"),
-            parse_strava_rate_limit_pair(headers, "x-readratelimit-usage"),
-        ) {
-            reconcile_strava_bucket(
-                db,
-                STRAVA_READ_15_MINUTE_BUCKET,
-                short_limit,
-                short_used,
-                short_reset_at,
-            )
-            .await;
-            reconcile_strava_bucket(
-                db,
-                STRAVA_READ_DAILY_BUCKET,
-                daily_limit,
-                daily_used,
-                daily_reset_at,
-            )
-            .await;
-        }
-    }
-}
-
-async fn reconcile_strava_bucket(
-    db: &DatabaseConnection,
-    bucket: &'static str,
-    limit_count: i32,
-    used_count: i32,
-    reset_at: DateTime<Utc>,
-) {
-    if let Err(error) = reconcile_provider_quota_usage(
-        db,
-        STRAVA_PROVIDER,
-        bucket,
-        limit_count,
-        used_count,
-        reset_at,
-    )
+    .instrument(span)
     .await
-    {
-        tracing::warn!(
-            bucket,
-            message = %error.message,
-            "failed to reconcile Strava rate-limit headers"
-        );
-    }
-}
-
-fn parse_strava_rate_limit_pair(headers: &HeaderMap, header_name: &str) -> Option<(i32, i32)> {
-    let value = headers.get(header_name)?.to_str().ok()?;
-    let mut parts = value.split(',').map(str::trim);
-    let short = parts.next()?.parse::<i32>().ok()?;
-    let daily = parts.next()?.parse::<i32>().ok()?;
-
-    if parts.next().is_some() {
-        return None;
-    }
-
-    Some((short, daily))
-}
-
-fn parse_retry_after_header(headers: &HeaderMap, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
-    let value = headers.get(RETRY_AFTER)?.to_str().ok()?.trim();
-    if value.is_empty() {
-        return None;
-    }
-
-    if let Ok(seconds) = value.parse::<i64>() {
-        return (seconds >= 0).then_some(now + Duration::seconds(seconds));
-    }
-
-    chrono::DateTime::parse_from_rfc2822(value)
-        .ok()
-        .map(|timestamp| timestamp.with_timezone(&Utc))
-        .filter(|timestamp| *timestamp >= now)
-}
-
-fn strava_retry_at_for_class_at(
-    _request_class: StravaRequestClass,
-    now: DateTime<Utc>,
-) -> DateTime<Utc> {
-    next_strava_short_window_reset(now)
-}
-
-fn next_strava_short_window_reset(now: DateTime<Utc>) -> DateTime<Utc> {
-    let window_seconds = Duration::minutes(15).num_seconds();
-    let next_timestamp = ((now.timestamp() / window_seconds) + 1) * window_seconds;
-    DateTime::<Utc>::from_timestamp(next_timestamp, 0).unwrap_or(now + Duration::minutes(15))
-}
-
-fn next_strava_daily_window_reset(now: DateTime<Utc>) -> DateTime<Utc> {
-    let Some(next_day) = now.date_naive().succ_opt() else {
-        return now + Duration::hours(24);
-    };
-    let Some(midnight) = next_day.and_hms_opt(0, 0, 0) else {
-        return now + Duration::hours(24);
-    };
-    DateTime::<Utc>::from_naive_utc_and_offset(midnight, Utc)
 }
 
 async fn ensure_webhook_subscription(
@@ -1757,33 +1286,47 @@ async fn mark_sync_paused_by_rate_limit(
     message: &str,
     retry_at: DateTime<Utc>,
 ) -> Result<(), AppError> {
-    let Some(connection) = strava_connections::Entity::find_by_id(connection_id)
-        .one(db)
-        .await?
-    else {
-        return Ok(());
-    };
+    let span = tracing::info_span!(
+        "strava.sync.pause_checkpoint",
+        provider = INTEGRATION_PROVIDER_STRAVA,
+        connection_id,
+        retry_at = %retry_at,
+        trace_id = field::Empty,
+        span_id = field::Empty,
+    );
 
-    let mut active_model: strava_connections::ActiveModel = connection.clone().into();
-    active_model.last_sync_status = Set(STRAVA_SYNC_STATUS_QUEUED.to_string());
-    active_model.last_sync_message = Set(Some(format!(
-        "Strava rate limit reached. Sync will resume after {retry_at}."
-    )));
-    let connection = active_model.update(db).await.map_err(AppError::from)?;
+    async move {
+        observability::record_current_trace_context();
+        let Some(connection) = strava_connections::Entity::find_by_id(connection_id)
+            .one(db)
+            .await?
+        else {
+            return Ok(());
+        };
 
-    record_connection_strava_event_best_effort(
-        db,
-        &connection,
-        "sync.rate_limit_paused",
-        INTEGRATION_LEVEL_WARNING,
-        message,
-        Some(serde_json::json!({
-            "retry_at": retry_at,
-        })),
-    )
-    .await;
+        let mut active_model: strava_connections::ActiveModel = connection.clone().into();
+        active_model.last_sync_status = Set(STRAVA_SYNC_STATUS_QUEUED.to_string());
+        active_model.last_sync_message = Set(Some(format!(
+            "Strava rate limit reached. Sync will resume after {retry_at}."
+        )));
+        let connection = active_model.update(db).await.map_err(AppError::from)?;
 
-    Ok(())
+        record_connection_strava_event_best_effort(
+            db,
+            &connection,
+            "sync.rate_limit_paused",
+            INTEGRATION_LEVEL_WARNING,
+            message,
+            Some(serde_json::json!({
+                "retry_at": retry_at,
+            })),
+        )
+        .await;
+
+        Ok(())
+    }
+    .instrument(span)
+    .await
 }
 
 async fn set_sync_message(
@@ -2769,89 +2312,6 @@ mod tests {
     }
 
     #[test]
-    fn parses_retry_after_seconds_header() {
-        let now = DateTime::parse_from_rfc3339("2026-09-12T12:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let mut headers = HeaderMap::new();
-        headers.insert(RETRY_AFTER, "120".parse().unwrap());
-
-        assert_eq!(
-            parse_retry_after_header(&headers, now),
-            Some(now + Duration::seconds(120))
-        );
-    }
-
-    #[test]
-    fn parses_retry_after_http_date_header() {
-        let now = DateTime::parse_from_rfc3339("2026-09-12T12:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let retry_at = DateTime::parse_from_rfc3339("2026-09-12T12:03:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            RETRY_AFTER,
-            "Sat, 12 Sep 2026 12:03:00 GMT".parse().unwrap(),
-        );
-
-        assert_eq!(parse_retry_after_header(&headers, now), Some(retry_at));
-    }
-
-    #[test]
-    fn strava_429_error_uses_retry_after_header() {
-        let now = DateTime::parse_from_rfc3339("2026-09-12T12:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let retry_at = now + Duration::seconds(180);
-        let mut headers = HeaderMap::new();
-        headers.insert(RETRY_AFTER, "180".parse().unwrap());
-
-        let error = strava_error_from_response(
-            StatusCode::TOO_MANY_REQUESTS,
-            &headers,
-            r#"{"message":"Rate Limit Exceeded"}"#,
-            None,
-            StravaRequestClass::Read,
-            "get_activity_streams",
-            now,
-        );
-
-        assert_eq!(error.status, StatusCode::TOO_MANY_REQUESTS);
-        assert_eq!(error.message, "Rate Limit Exceeded");
-        assert_eq!(error.retry_at, Some(retry_at));
-    }
-
-    #[test]
-    fn strava_429_error_falls_back_to_next_short_window() {
-        let now = DateTime::parse_from_rfc3339("2026-09-12T12:07:30Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let retry_at = DateTime::parse_from_rfc3339("2026-09-12T12:15:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let headers = HeaderMap::new();
-
-        let error = strava_error_from_response(
-            StatusCode::TOO_MANY_REQUESTS,
-            &headers,
-            "{}",
-            None,
-            StravaRequestClass::Read,
-            "list_activities",
-            now,
-        );
-
-        assert_eq!(error.status, StatusCode::TOO_MANY_REQUESTS);
-        assert_eq!(
-            error.message,
-            "Strava request failed with status 429 Too Many Requests"
-        );
-        assert_eq!(error.retry_at, Some(retry_at));
-    }
-
-    #[test]
     fn strava_sync_after_started_at_prefers_latest_existing_activity() {
         let last_synced_activity_started_at = DateTime::parse_from_rfc3339("2024-05-01T10:00:00Z")
             .unwrap()
@@ -2885,25 +2345,6 @@ mod tests {
             ),
             Some(last_synced_activity_started_at),
         );
-    }
-
-    #[test]
-    fn parses_refresh_token_response_without_scope_or_athlete() {
-        let response = serde_json::from_str::<StravaRefreshTokenResponse>(
-            r#"{
-                "access_token": "refreshed-access",
-                "expires_at": 1760000000,
-                "expires_in": 21600,
-                "refresh_token": "refreshed-refresh"
-            }"#,
-        )
-        .expect("parse refresh response");
-
-        assert_eq!(response.access_token, "refreshed-access");
-        assert_eq!(response.refresh_token, "refreshed-refresh");
-        assert_eq!(response.expires_at, 1_760_000_000);
-        assert_eq!(response.scope, None);
-        assert!(response.athlete.is_none());
     }
 
     #[test]

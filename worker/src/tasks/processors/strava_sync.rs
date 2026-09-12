@@ -1,10 +1,13 @@
 use api::config::Config;
+use api::observability;
 use api::strava::process_strava_sync;
 use api::tasks::StravaSyncTask;
 use async_trait::async_trait;
 use kaleido::background_jobs::worker::TaskProcessor;
 use sea_orm::DatabaseConnection;
 use std::error::Error;
+use tracing::field;
+use tracing::Instrument;
 
 pub struct StravaSync {
     db: DatabaseConnection,
@@ -33,8 +36,18 @@ impl TaskProcessor for StravaSync {
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let data = payload.get("data").unwrap_or(&payload);
         let task: StravaSyncTask = serde_json::from_value(data.clone())?;
+        let span = tracing::info_span!(
+            "worker.strava_sync",
+            task_type = "strava_sync",
+            connection_id = task.connection_id,
+            trace_id = field::Empty,
+            span_id = field::Empty,
+        );
+        observability::set_span_parent_from_carrier(&span, task.trace_context.as_ref());
+        observability::record_span_trace_context(&span);
 
         process_strava_sync(&self.db, &self.uploads_dir, task.connection_id)
+            .instrument(span)
             .await
             .map_err(|error| std::io::Error::other(error.message))?;
 

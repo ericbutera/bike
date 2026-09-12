@@ -1,3 +1,4 @@
+use crate::observability::{self, TraceContextCarrier};
 use chrono::Utc;
 use kaleido::auth::worker::tasks::{
     enqueue_email_notification, EmailNotificationTask, EMAIL_NOTIFICATION_TASK_TYPE,
@@ -5,6 +6,8 @@ use kaleido::auth::worker::tasks::{
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tracing::field;
+use tracing::Instrument;
 
 pub use kaleido::auth::DefaultEnvAuthService as AppAuthService;
 
@@ -79,6 +82,8 @@ pub struct ActivityArchiveImportTask {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StravaSyncTask {
     pub connection_id: i32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trace_context: Option<TraceContextCarrier>,
 }
 
 impl Task {
@@ -292,15 +297,32 @@ impl TaskQueue {
         scheduled_for: Option<chrono::DateTime<Utc>>,
         max_attempts: i32,
     ) -> Result<(), String> {
-        let task = Task::StravaSync(StravaSyncTask { connection_id });
-        let task_type = task.task_type().to_string();
+        let span = tracing::info_span!(
+            "task.enqueue",
+            task_type = "strava_sync",
+            connection_id,
+            scheduled_for = scheduled_for.map(|value| value.to_rfc3339()),
+            trace_id = field::Empty,
+            span_id = field::Empty,
+        );
 
-        self.auth
-            .inner()
-            .enqueue_with_options(task_type, task, scheduled_for, max_attempts)
-            .await
-            .map(|_| ())
-            .map_err(|error| error.to_string())
+        async move {
+            observability::record_current_trace_context();
+            let task = Task::StravaSync(StravaSyncTask {
+                connection_id,
+                trace_context: observability::inject_current_trace_context(),
+            });
+            let task_type = task.task_type().to_string();
+
+            self.auth
+                .inner()
+                .enqueue_with_options(task_type, task, scheduled_for, max_attempts)
+                .await
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        }
+        .instrument(span)
+        .await
     }
 
     pub async fn enqueue(&self, task: Task) {
