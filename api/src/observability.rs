@@ -50,7 +50,11 @@ pub fn init_observability(service_name: &'static str) -> ObservabilityGuard {
             let otel_layer = tracing_opentelemetry::layer()
                 .with_tracer(tracer)
                 .with_filter(dynamic_filter_fn(|metadata, ctx| {
-                    should_export_otel_span(metadata.target(), ctx.lookup_current().is_some())
+                    should_export_otel_span(
+                        metadata.name(),
+                        metadata.target(),
+                        ctx.lookup_current().is_some(),
+                    )
                 }));
             if registry.with(otel_layer).try_init().is_err() {
                 return ObservabilityGuard {
@@ -98,7 +102,11 @@ fn build_tracer_provider(
         .build())
 }
 
-fn should_export_otel_span(target: &str, has_exported_parent: bool) -> bool {
+fn should_export_otel_span(name: &str, target: &str, has_exported_parent: bool) -> bool {
+    if name == "background_task.poll" {
+        return false;
+    }
+
     has_exported_parent || is_application_trace_target(target)
 }
 
@@ -202,41 +210,68 @@ mod tests {
 
     #[test]
     fn otel_filter_allows_application_roots() {
-        assert!(should_export_otel_span("api", false));
+        assert!(should_export_otel_span("request", "api", false));
         assert!(should_export_otel_span(
+            "activity.list",
             "api::controllers::activities",
-            false
+            false,
         ));
-        assert!(should_export_otel_span("worker", false));
+        assert!(should_export_otel_span("worker.run", "worker", false));
         assert!(should_export_otel_span(
+            "worker.strava_sync",
             "worker::tasks::processors::strava_sync",
-            false
+            false,
         ));
         assert!(should_export_otel_span(
+            "background_task.process",
             "kaleido::background_jobs::worker",
-            false
+            false,
         ));
     }
 
     #[test]
     fn otel_filter_drops_parentless_library_roots() {
-        assert!(!should_export_otel_span("sea_orm", false));
+        assert!(!should_export_otel_span("query", "sea_orm", false,));
         assert!(!should_export_otel_span(
+            "query",
             "sea_orm::database::db_connection",
-            false
+            false,
         ));
-        assert!(!should_export_otel_span("sqlx::query", false));
-        assert!(!should_export_otel_span("hyper::proto::h1", false));
+        assert!(!should_export_otel_span("query", "sqlx::query", false));
+        assert!(!should_export_otel_span(
+            "connection",
+            "hyper::proto::h1",
+            false,
+        ));
+    }
+
+    #[test]
+    fn otel_filter_drops_idle_worker_poll_spans() {
+        assert!(!should_export_otel_span(
+            "background_task.poll",
+            "kaleido::background_jobs::worker::task_worker",
+            false,
+        ));
+        assert!(!should_export_otel_span(
+            "background_task.poll",
+            "kaleido::background_jobs::worker::task_worker",
+            true,
+        ));
     }
 
     #[test]
     fn otel_filter_keeps_library_spans_under_exported_parent() {
-        assert!(should_export_otel_span("sea_orm", true));
+        assert!(should_export_otel_span("query", "sea_orm", true,));
         assert!(should_export_otel_span(
+            "query",
             "sea_orm::database::db_connection",
-            true
+            true,
         ));
-        assert!(should_export_otel_span("sqlx::query", true));
-        assert!(should_export_otel_span("hyper::proto::h1", true));
+        assert!(should_export_otel_span("query", "sqlx::query", true));
+        assert!(should_export_otel_span(
+            "connection",
+            "hyper::proto::h1",
+            true,
+        ));
     }
 }

@@ -55,6 +55,8 @@ pnpm --dir ui-next exec node -p "require('./package.json').dependencies['@ericbu
 description = "Update Rust and UI Kaleido packages; run as VERSION=x.y.z mise run kaleido:update"
 run = '''
 VERSION="${VERSION:?Set VERSION=x.y.z}"
+export VERSION
+perl -0pi -e 's/^kaleido = "[^"]+"/kaleido = "$ENV{VERSION}"/m' Cargo.toml
 cargo update -p kaleido --precise "$VERSION"
 pnpm --dir ui-next up "@ericbutera/kaleido@$VERSION"
 pnpm --dir ui-next typecheck
