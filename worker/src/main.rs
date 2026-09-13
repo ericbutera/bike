@@ -12,7 +12,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let _observability = observability::init_observability("bike-worker");
 
     let cfg = Config::init_from_env();
-    let db = sea_orm::Database::connect(&cfg.database_url).await?;
+    let db = api::storage::connect_database(&cfg.database_url).await?;
 
     let worker_config = WorkerConfig::from_env(WorkerConfigDefaults {
         metrics_port: 9091,

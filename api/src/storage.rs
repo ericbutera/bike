@@ -7,7 +7,8 @@ use kaleido::background_jobs::admin::BackgroundTasksStorage;
 use kaleido::glass::feature_flags::{FeatureFlagService, FeatureFlagStorage};
 use kaleido::glass::metrics_controller::MetricsStorage;
 use migration::MigratorTrait;
-use sea_orm::DatabaseConnection;
+use sea_orm::{ConnectOptions, DatabaseConnection};
+use std::time::Duration;
 
 #[derive(Clone)]
 pub struct AppStorage {
@@ -20,7 +21,7 @@ pub struct AppStorage {
 
 impl AppStorage {
     pub async fn new(database_url: &str) -> Self {
-        let db = sea_orm::Database::connect(database_url)
+        let db = connect_database(database_url)
             .await
             .expect("DB connection failed");
 
@@ -48,6 +49,16 @@ impl AppStorage {
             uploads_dir,
         }
     }
+}
+
+pub async fn connect_database(database_url: &str) -> Result<DatabaseConnection, sea_orm::DbErr> {
+    let mut options = ConnectOptions::new(database_url.to_owned());
+    options
+        .sqlx_logging(true)
+        .sqlx_logging_level(log::LevelFilter::Debug)
+        .sqlx_slow_statements_logging_settings(log::LevelFilter::Warn, Duration::from_millis(250));
+
+    sea_orm::Database::connect(options).await
 }
 
 impl FeatureFlagStorage for AppStorage {

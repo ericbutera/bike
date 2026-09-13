@@ -17,7 +17,7 @@ services:
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/bike
       #,hyper=trace,axum_web=trace,tower_http=trace
-      RUST_LOG: info
+      RUST_LOG: info,sea_orm=trace,sqlx=warn
       CORS_ALLOWED_ORIGINS: http://localhost:3001
       FRONTEND_URL: http://localhost:3001
       API_URL: http://localhost:3000
@@ -51,7 +51,7 @@ services:
       dockerfile: worker/Dockerfile.dev
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/bike
-      RUST_LOG: trace
+      RUST_LOG: info,sea_orm=trace,sqlx=warn
       STRAVA_CLIENT_ID: ''
       STRAVA_CLIENT_SECRET: ''
       STRAVA_OAUTH_SCOPES: activity:read_all
