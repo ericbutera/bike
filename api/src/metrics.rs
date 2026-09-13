@@ -15,7 +15,6 @@ use prometheus::{
 };
 use sea_orm::{DbErr, EntityTrait, PaginatorTrait};
 use std::sync::Arc;
-use tracing::Instrument;
 
 pub use kaleido::glass::api_metrics::metrics_middleware;
 
@@ -94,8 +93,7 @@ pub fn init_metrics() {
 }
 
 pub async fn metrics_route(State(state): State<Arc<AppStorage>>) -> Response {
-    let span = tracing::info_span!("metrics.scrape");
-    if let Err(error) = refresh_database_metrics(&state).instrument(span).await {
+    if let Err(error) = refresh_database_metrics(&state).await {
         tracing::warn!(error = ?error, "failed to refresh database-backed metrics");
     }
 

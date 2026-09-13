@@ -34,7 +34,7 @@ pub mod xc_goal_backfill;
 use crate::config::Config;
 use crate::openapi::ApiDoc;
 use crate::storage::AppStorage;
-use axum::http::{HeaderName, HeaderValue, Method};
+use axum::http::{HeaderName, HeaderValue, Method, Request};
 use axum::middleware::from_fn;
 use axum::routing::get;
 use axum::Router;
@@ -79,14 +79,23 @@ pub async fn app(app_state: Arc<AppStorage>) -> Router {
         .route("/metrics", get(metrics::metrics_route))
         .layer(cors)
         .layer(from_fn(metrics::metrics_middleware))
-        .layer(
-            TraceLayer::new_for_http().make_span_with(
-                tower_http::trace::DefaultMakeSpan::new().level(tracing::Level::INFO),
-            ),
-        )
+        .layer(TraceLayer::new_for_http().make_span_with(make_http_trace_span))
         .with_state(app_state)
 }
 
 pub fn init_tracing_subscriber() -> observability::ObservabilityGuard {
     observability::init_observability("bike-api")
+}
+
+fn make_http_trace_span<B>(request: &Request<B>) -> tracing::Span {
+    if request.uri().path() == "/metrics" {
+        tracing::Span::none()
+    } else {
+        tracing::info_span!(
+            "request",
+            method = %request.method(),
+            uri = %request.uri(),
+            version = ?request.version(),
+        )
+    }
 }
