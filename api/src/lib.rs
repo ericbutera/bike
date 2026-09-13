@@ -34,8 +34,10 @@ pub mod xc_goal_backfill;
 use crate::config::Config;
 use crate::openapi::ApiDoc;
 use crate::storage::AppStorage;
-use axum::http::{HeaderName, HeaderValue, Method, Request};
-use axum::middleware::from_fn;
+use axum::body::Body;
+use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, Request};
+use axum::middleware::{from_fn, Next};
+use axum::response::Response;
 use axum::routing::get;
 use axum::Router;
 use std::sync::Arc;
@@ -43,6 +45,8 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
+
+const REQUEST_ID_HEADER: HeaderName = HeaderName::from_static("x-request-id");
 
 pub async fn app(app_state: Arc<AppStorage>) -> Router {
     let cfg = Config::get();
@@ -71,6 +75,7 @@ pub async fn app(app_state: Arc<AppStorage>) -> Router {
             HeaderName::from_static("origin"),
             HeaderName::from_static("traceparent"),
             HeaderName::from_static("tracestate"),
+            REQUEST_ID_HEADER,
             HeaderName::from_static("x-requested-with"),
         ])
         .allow_credentials(true);
@@ -82,6 +87,7 @@ pub async fn app(app_state: Arc<AppStorage>) -> Router {
         .route("/metrics", get(metrics::metrics_route))
         .layer(cors)
         .layer(from_fn(metrics::metrics_middleware))
+        .layer(from_fn(request_id_response_header))
         .layer(TraceLayer::new_for_http().make_span_with(make_http_trace_span))
         .with_state(app_state)
 }
@@ -94,14 +100,40 @@ fn make_http_trace_span<B>(request: &Request<B>) -> tracing::Span {
     let span = if request.uri().path() == "/metrics" {
         tracing::Span::none()
     } else {
+        let request_id = request_id_from_headers(request.headers());
         tracing::info_span!(
             "request",
+            "otel.kind" = "server",
+            request_id = request_id,
+            "http.request.header.x_request_id" = request_id,
             method = %request.method(),
             uri = %request.uri(),
+            "http.request.method" = %request.method(),
+            "url.path" = request.uri().path(),
             version = ?request.version(),
         )
     };
 
     observability::set_span_parent_from_headers(&span, request.headers());
     span
+}
+
+async fn request_id_response_header(request: Request<Body>, next: Next) -> Response {
+    let request_id = request.headers().get(&REQUEST_ID_HEADER).cloned();
+    let mut response = next.run(request).await;
+
+    if let Some(request_id) = request_id {
+        response
+            .headers_mut()
+            .insert(&REQUEST_ID_HEADER, request_id);
+    }
+
+    response
+}
+
+fn request_id_from_headers(headers: &HeaderMap) -> &str {
+    headers
+        .get(&REQUEST_ID_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("")
 }

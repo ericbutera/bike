@@ -1,10 +1,12 @@
 import "../node_modules/maplibre-gl/dist/maplibre-gl.css";
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import Script from "next/script";
 import type { ReactNode } from "react";
 import Providers from "../components/Providers";
 import RuntimeConfigScript from "../components/RuntimeConfigScript";
 import { getServerConfig } from "../lib/config";
+import { requestContextFromHeaders } from "../lib/trace-context";
 import "./globals.css";
 
 const siteName = "bike";
@@ -84,8 +86,15 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
   const config = getServerConfig();
+  const requestContext = requestContextFromHeaders(
+    new Headers(await headers()),
+  );
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -95,7 +104,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         </Script>
       </head>
       <body className="bg-base-200 text-base-content antialiased">
-        <RuntimeConfigScript config={config} />
+        <RuntimeConfigScript config={config} requestContext={requestContext} />
         <Providers config={config}>{children}</Providers>
       </body>
     </html>

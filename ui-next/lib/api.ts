@@ -1,8 +1,24 @@
-import { createClient, createFetchClient } from "@ericbutera/kaleido";
+import {
+  createClient,
+  createFetchClient,
+  fetchWithCredentials,
+} from "@ericbutera/kaleido";
 import { config } from "./config";
+import { headersWithBrowserRequestContext } from "./trace-context";
+
+const fetchWithRequestContext: typeof fetch = (input, init) =>
+  fetchWithCredentials(input, {
+    ...(init ?? {}),
+    headers: headersWithBrowserRequestContext(init?.headers),
+  });
 
 export function createApiClient() {
-  return createClient<any>(createFetchClient({ baseUrl: config.API_URL }));
+  return createClient<any>(
+    createFetchClient({
+      baseUrl: config.API_URL,
+      fetch: fetchWithRequestContext,
+    }),
+  );
 }
 
 let apiClient: ReturnType<typeof createApiClient> | null = null;
@@ -12,7 +28,12 @@ function getApiClient() {
   const baseUrl = config.API_URL;
 
   if (!apiClient || apiBaseUrl !== baseUrl) {
-    apiClient = createClient<any>(createFetchClient({ baseUrl }));
+    apiClient = createClient<any>(
+      createFetchClient({
+        baseUrl,
+        fetch: fetchWithRequestContext,
+      }),
+    );
     apiBaseUrl = baseUrl;
   }
 
