@@ -9,9 +9,11 @@ use opentelemetry_sdk::Resource;
 use std::collections::HashMap;
 use tracing::field;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
+use tracing_subscriber::filter::dynamic_filter_fn;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
+use tracing_subscriber::Layer as _;
 
 pub type TraceContextCarrier = HashMap<String, String>;
 
@@ -44,7 +46,11 @@ pub fn init_observability(service_name: &'static str) -> ObservabilityGuard {
         Ok(provider) => {
             let tracer = provider.tracer(service_name);
             global::set_tracer_provider(provider.clone());
-            let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+            let otel_layer = tracing_opentelemetry::layer()
+                .with_tracer(tracer)
+                .with_filter(dynamic_filter_fn(|metadata, ctx| {
+                    should_export_otel_span(metadata.target(), ctx.lookup_current().is_some())
+                }));
             if registry.with(otel_layer).try_init().is_err() {
                 return ObservabilityGuard {
                     tracer_provider: Some(provider),
@@ -89,6 +95,19 @@ fn build_tracer_provider(
         .with_resource(resource)
         .with_batch_exporter(exporter)
         .build())
+}
+
+fn should_export_otel_span(target: &str, has_exported_parent: bool) -> bool {
+    has_exported_parent || is_application_trace_target(target)
+}
+
+fn is_application_trace_target(target: &str) -> bool {
+    target == "api"
+        || target.starts_with("api::")
+        || target == "worker"
+        || target.starts_with("worker::")
+        || target == "kaleido"
+        || target.starts_with("kaleido::")
 }
 
 pub fn inject_current_trace_context() -> Option<TraceContextCarrier> {
@@ -154,5 +173,50 @@ impl Extractor for TraceContextExtractor<'_> {
 
     fn keys(&self) -> Vec<&str> {
         self.0.keys().map(String::as_str).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_export_otel_span;
+
+    #[test]
+    fn otel_filter_allows_application_roots() {
+        assert!(should_export_otel_span("api", false));
+        assert!(should_export_otel_span(
+            "api::controllers::activities",
+            false
+        ));
+        assert!(should_export_otel_span("worker", false));
+        assert!(should_export_otel_span(
+            "worker::tasks::processors::strava_sync",
+            false
+        ));
+        assert!(should_export_otel_span(
+            "kaleido::background_jobs::worker",
+            false
+        ));
+    }
+
+    #[test]
+    fn otel_filter_drops_parentless_library_roots() {
+        assert!(!should_export_otel_span("sea_orm", false));
+        assert!(!should_export_otel_span(
+            "sea_orm::database::db_connection",
+            false
+        ));
+        assert!(!should_export_otel_span("sqlx::query", false));
+        assert!(!should_export_otel_span("hyper::proto::h1", false));
+    }
+
+    #[test]
+    fn otel_filter_keeps_library_spans_under_exported_parent() {
+        assert!(should_export_otel_span("sea_orm", true));
+        assert!(should_export_otel_span(
+            "sea_orm::database::db_connection",
+            true
+        ));
+        assert!(should_export_otel_span("sqlx::query", true));
+        assert!(should_export_otel_span("hyper::proto::h1", true));
     }
 }
