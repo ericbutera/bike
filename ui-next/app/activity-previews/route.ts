@@ -5,6 +5,7 @@ import {
   ROUTE_PREVIEW_STYLE_VERSION,
 } from "../../lib/routePreview";
 import { getServerConfig } from "../../lib/config";
+import { headersWithTraceContext } from "../../lib/trace-context";
 
 export const runtime = "nodejs";
 
@@ -194,12 +195,18 @@ async function loadActivityRoutePoints(
   for (const apiBaseUrl of resolveActivityApiBaseUrls()) {
     try {
       const response = await fetch(`${apiBaseUrl}/activities/${activityId}`, {
-        headers: {
-          Accept: "application/json",
-          ...(cookie ? { cookie } : {}),
-          ...(authorization ? { authorization } : {}),
-        },
+        headers: headersWithTraceContext(
+          {
+            Accept: "application/json",
+            ...(cookie ? { cookie } : {}),
+            ...(authorization ? { authorization } : {}),
+          },
+          request.headers,
+        ),
         cache: "no-store",
+        opentelemetry: {
+          propagateContext: true,
+        },
       });
 
       if (!response.ok) {

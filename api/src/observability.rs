@@ -1,3 +1,4 @@
+use axum::http::HeaderMap;
 use opentelemetry::global;
 use opentelemetry::propagation::{Extractor, Injector};
 use opentelemetry::trace::{TraceContextExt, TracerProvider as _};
@@ -135,6 +136,13 @@ pub fn set_span_parent_from_carrier(span: &tracing::Span, carrier: Option<&Trace
     let _ = span.set_parent(parent_context);
 }
 
+pub fn set_span_parent_from_headers(span: &tracing::Span, headers: &HeaderMap) {
+    let parent_context = global::get_text_map_propagator(|propagator| {
+        propagator.extract(&TraceHeaderExtractor(headers))
+    });
+    let _ = span.set_parent(parent_context);
+}
+
 pub fn record_span_trace_context(span: &tracing::Span) {
     let context = span.context();
     record_context_fields(span, &context);
@@ -173,6 +181,18 @@ impl Extractor for TraceContextExtractor<'_> {
 
     fn keys(&self) -> Vec<&str> {
         self.0.keys().map(String::as_str).collect()
+    }
+}
+
+struct TraceHeaderExtractor<'a>(&'a HeaderMap);
+
+impl Extractor for TraceHeaderExtractor<'_> {
+    fn get(&self, key: &str) -> Option<&str> {
+        self.0.get(key)?.to_str().ok()
+    }
+
+    fn keys(&self) -> Vec<&str> {
+        self.0.keys().map(|key| key.as_str()).collect()
     }
 }
 

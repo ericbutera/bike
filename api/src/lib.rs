@@ -67,7 +67,10 @@ pub async fn app(app_state: Arc<AppStorage>) -> Router {
             HeaderName::from_static("authorization"),
             HeaderName::from_static("content-type"),
             HeaderName::from_static("accept"),
+            HeaderName::from_static("baggage"),
             HeaderName::from_static("origin"),
+            HeaderName::from_static("traceparent"),
+            HeaderName::from_static("tracestate"),
             HeaderName::from_static("x-requested-with"),
         ])
         .allow_credentials(true);
@@ -88,7 +91,7 @@ pub fn init_tracing_subscriber() -> observability::ObservabilityGuard {
 }
 
 fn make_http_trace_span<B>(request: &Request<B>) -> tracing::Span {
-    if request.uri().path() == "/metrics" {
+    let span = if request.uri().path() == "/metrics" {
         tracing::Span::none()
     } else {
         tracing::info_span!(
@@ -97,5 +100,8 @@ fn make_http_trace_span<B>(request: &Request<B>) -> tracing::Span {
             uri = %request.uri(),
             version = ?request.version(),
         )
-    }
+    };
+
+    observability::set_span_parent_from_headers(&span, request.headers());
+    span
 }

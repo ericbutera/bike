@@ -29,6 +29,12 @@ describe("handlePreviewRequest", () => {
     const response = await handlePreviewRequest(
       new Request(
         "http://localhost:3001/activity-previews/full/6?activityId=7",
+        {
+          headers: {
+            traceparent:
+              "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+          },
+        },
       ),
       "full",
     );
@@ -38,6 +44,10 @@ describe("handlePreviewRequest", () => {
       expect.objectContaining({
         cache: "no-store",
       }),
+    );
+    const fetchInit = fetchMock.mock.calls[0]?.[1];
+    expect(new Headers(fetchInit?.headers).get("traceparent")).toBe(
+      "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
     );
     expect(response.headers.get("Content-Type")).toBe("image/svg+xml");
     expect(response.headers.get("Vary")).toBe("Cookie");
