@@ -2,6 +2,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { ActivityType } from "./activityTypes";
 import { $api } from "./api";
 
+const USER_CONTEXT_STALE_TIME_MS = 30 * 60 * 1000;
+const USER_CONTEXT_GC_TIME_MS = 60 * 60 * 1000;
+
 export type PaginationMetadata = {
   page: number;
   per_page: number;
@@ -2091,7 +2094,12 @@ export function useUserPreferences(opts?: {
   const response = $api.useQuery("get", "/preferences", {
     options: {
       enabled: opts?.enabled ?? true,
+      gcTime: USER_CONTEXT_GC_TIME_MS,
+      refetchOnMount: false,
+      refetchOnReconnect: false,
+      refetchOnWindowFocus: false,
       refetchInterval: opts?.refetchIntervalMs ?? false,
+      staleTime: USER_CONTEXT_STALE_TIME_MS,
     },
   });
 
@@ -2243,6 +2251,7 @@ export function useUpdateUserPreferences() {
     ...mutation,
     updateAsync: async (preferences: UserPreferences) => {
       const result = await mutation.mutateAsync({ body: preferences });
+      queryClient.setQueryData(["get", "/preferences"], result);
 
       await queryClient.invalidateQueries({
         queryKey: ["get", "/preferences"],
