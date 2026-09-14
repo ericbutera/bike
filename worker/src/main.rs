@@ -1,4 +1,5 @@
 use api::config::Config;
+use api::metrics;
 use api::observability;
 use kaleido::background_jobs::worker::{
     spawn_metrics_server, TaskWorker, WorkerConfig, WorkerConfigDefaults, WorkerMetrics,
@@ -10,6 +11,7 @@ use worker::tasks::{register_auth_email_processors, register_default_processors}
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let _observability = observability::init_observability("bike-worker");
+    metrics::init_provider_metrics();
 
     let cfg = Config::init_from_env();
     let db = api::storage::connect_database(&cfg.database_url).await?;

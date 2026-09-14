@@ -149,7 +149,7 @@ Prometheus scrape endpoints should remain internal. Bike's API mounts `/metrics`
 
 Most Strava provider metrics are emitted by the worker, because manual and webhook sync tasks do the outbound Strava calls there. The worker scrape endpoint must therefore include provider metrics in addition to generic task metrics.
 
-The current Prometheus surface includes `bike_provider_api_requests_total`, `bike_provider_api_requests_15_minutes`, `bike_provider_api_requests_daily`, `bike_provider_rate_limit_pauses_total`, `bike_provider_rate_limit_limit`, `bike_provider_rate_limit_used`, `bike_provider_rate_limit_remaining`, `bike_provider_rate_limit_reset_timestamp_seconds`, and `bike_strava_connected_athletes`. The first Bike Grafana dashboard charts Strava request rate, non-2xx responses, active 15-minute and daily request counts, rate-limit pauses, remaining quota, quota usage, reset countdowns, connected athletes, and `strava_sync` task activity.
+The current Prometheus surface includes `bike_provider_api_requests_total`, `bike_provider_api_requests_15_minutes_total`, `bike_provider_api_requests_daily_total`, `bike_provider_rate_limit_pauses_total`, `bike_provider_rate_limit_limit`, `bike_provider_rate_limit_used`, `bike_provider_rate_limit_remaining`, `bike_provider_rate_limit_reset_timestamp_seconds`, and `bike_strava_connected_athletes`. The first Bike Grafana dashboard charts Strava request rate, non-2xx responses, 15-minute and daily request counts from counters, rate-limit pauses, remaining quota, quota usage, reset countdowns, connected athletes, and `strava_sync` task activity.
 
 Strava client spans should include:
 

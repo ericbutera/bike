@@ -2,7 +2,7 @@
 // This module is a thin wrapper that initialises the shared registry with the
 // app namespace supplied by the generated project.
 
-use crate::entities::{provider_rate_limit_buckets, strava_connections};
+use crate::entities::strava_connections;
 use crate::storage::AppStorage;
 use axum::body::Body;
 use axum::extract::State;
@@ -18,6 +18,9 @@ use std::sync::Arc;
 
 pub use kaleido::glass::api_metrics::metrics_middleware;
 
+const STRAVA_PROVIDER: &str = "strava";
+const PROVIDER_API_REQUEST_COUNTER_CLASSES: &[&str] = &["overall", "read"];
+
 static PROVIDER_API_REQUESTS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
     register_int_counter_vec!(
         "bike_provider_api_requests_total",
@@ -27,22 +30,22 @@ static PROVIDER_API_REQUESTS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
     .expect("register provider API request counter")
 });
 
-static PROVIDER_API_REQUESTS_15_MINUTES: Lazy<IntGaugeVec> = Lazy::new(|| {
-    register_int_gauge_vec!(
-        "bike_provider_api_requests_15_minutes",
-        "Current outbound provider API request count in the active 15-minute window.",
+static PROVIDER_API_REQUESTS_15_MINUTES_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
+    register_int_counter_vec!(
+        "bike_provider_api_requests_15_minutes_total",
+        "Total outbound provider API requests counted for 15-minute window queries.",
         &["provider", "request_class"]
     )
-    .expect("register provider 15-minute API request gauge")
+    .expect("register provider 15-minute API request counter")
 });
 
-static PROVIDER_API_REQUESTS_DAILY: Lazy<IntGaugeVec> = Lazy::new(|| {
-    register_int_gauge_vec!(
-        "bike_provider_api_requests_daily",
-        "Current outbound provider API request count in the active daily window.",
+static PROVIDER_API_REQUESTS_DAILY_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
+    register_int_counter_vec!(
+        "bike_provider_api_requests_daily_total",
+        "Total outbound provider API requests counted for daily window queries.",
         &["provider", "request_class"]
     )
-    .expect("register provider daily API request gauge")
+    .expect("register provider daily API request counter")
 });
 
 static PROVIDER_RATE_LIMIT_PAUSES_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
@@ -101,15 +104,20 @@ static STRAVA_CONNECTED_ATHLETES: Lazy<IntGauge> = Lazy::new(|| {
 /// Initialize all API metrics.  Must be called once at startup.
 pub fn init_metrics() {
     kaleido::glass::api_metrics::init_api_metrics("bike_api");
+    init_provider_metrics();
+    Lazy::force(&STRAVA_CONNECTED_ATHLETES);
+}
+
+pub fn init_provider_metrics() {
     Lazy::force(&PROVIDER_API_REQUESTS_TOTAL);
-    Lazy::force(&PROVIDER_API_REQUESTS_15_MINUTES);
-    Lazy::force(&PROVIDER_API_REQUESTS_DAILY);
+    Lazy::force(&PROVIDER_API_REQUESTS_15_MINUTES_TOTAL);
+    Lazy::force(&PROVIDER_API_REQUESTS_DAILY_TOTAL);
+    warmup_provider_api_request_counters();
     Lazy::force(&PROVIDER_RATE_LIMIT_PAUSES_TOTAL);
     Lazy::force(&PROVIDER_RATE_LIMIT_LIMIT);
     Lazy::force(&PROVIDER_RATE_LIMIT_USED);
     Lazy::force(&PROVIDER_RATE_LIMIT_REMAINING);
     Lazy::force(&PROVIDER_RATE_LIMIT_RESET_TIMESTAMP);
-    Lazy::force(&STRAVA_CONNECTED_ATHLETES);
 }
 
 pub async fn metrics_route(State(state): State<Arc<AppStorage>>) -> Response {
@@ -141,19 +149,6 @@ async fn refresh_database_metrics(state: &AppStorage) -> Result<(), DbErr> {
 
     STRAVA_CONNECTED_ATHLETES.set(connected_athletes);
 
-    let provider_rate_limit_rows = provider_rate_limit_buckets::Entity::find()
-        .all(&state.db)
-        .await?;
-
-    for row in provider_rate_limit_rows {
-        set_provider_api_request_window_count(
-            &row.provider,
-            &row.bucket,
-            row.used_count,
-            row.reset_at.timestamp(),
-        );
-    }
-
     Ok(())
 }
 
@@ -166,6 +161,7 @@ pub fn record_provider_api_request(
     PROVIDER_API_REQUESTS_TOTAL
         .with_label_values(&[provider, operation, request_class, status])
         .inc();
+    record_provider_api_request_window_counters(provider, request_class);
 }
 
 pub fn record_provider_rate_limit_pause(provider: &str, bucket: &str, operation: &str) {
@@ -198,76 +194,50 @@ pub fn set_provider_rate_limit_bucket(
     PROVIDER_RATE_LIMIT_RESET_TIMESTAMP
         .with_label_values(labels)
         .set(reset_timestamp);
-
-    set_provider_api_request_window_count(provider, bucket, effective_used, reset_timestamp);
 }
 
-fn set_provider_api_request_window_count(
-    provider: &str,
-    bucket: &str,
-    used_count: i32,
-    reset_timestamp: i64,
-) {
-    let Some((window, request_class)) = provider_api_request_window_labels(bucket) else {
-        return;
-    };
-
-    let active_used_count = if reset_timestamp <= chrono::Utc::now().timestamp() {
-        0
-    } else {
-        i64::from(used_count.max(0))
-    };
-
-    match window {
-        ProviderApiRequestWindow::FifteenMinutes => PROVIDER_API_REQUESTS_15_MINUTES
-            .with_label_values(&[provider, request_class])
-            .set(active_used_count),
-        ProviderApiRequestWindow::Daily => PROVIDER_API_REQUESTS_DAILY
-            .with_label_values(&[provider, request_class])
-            .set(active_used_count),
+fn record_provider_api_request_window_counters(provider: &str, request_class: &str) {
+    for counter_class in provider_api_request_counter_classes(request_class) {
+        PROVIDER_API_REQUESTS_15_MINUTES_TOTAL
+            .with_label_values(&[provider, counter_class])
+            .inc();
+        PROVIDER_API_REQUESTS_DAILY_TOTAL
+            .with_label_values(&[provider, counter_class])
+            .inc();
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ProviderApiRequestWindow {
-    FifteenMinutes,
-    Daily,
+fn warmup_provider_api_request_counters() {
+    for request_class in PROVIDER_API_REQUEST_COUNTER_CLASSES {
+        PROVIDER_API_REQUESTS_15_MINUTES_TOTAL.with_label_values(&[STRAVA_PROVIDER, request_class]);
+        PROVIDER_API_REQUESTS_DAILY_TOTAL.with_label_values(&[STRAVA_PROVIDER, request_class]);
+    }
 }
 
-fn provider_api_request_window_labels(
-    bucket: &str,
-) -> Option<(ProviderApiRequestWindow, &'static str)> {
-    match bucket {
-        "overall_15_minute" => Some((ProviderApiRequestWindow::FifteenMinutes, "overall")),
-        "read_15_minute" => Some((ProviderApiRequestWindow::FifteenMinutes, "read")),
-        "overall_daily" => Some((ProviderApiRequestWindow::Daily, "overall")),
-        "read_daily" => Some((ProviderApiRequestWindow::Daily, "read")),
-        _ => None,
+fn provider_api_request_counter_classes(request_class: &str) -> &'static [&'static str] {
+    match request_class {
+        "read" => &["overall", "read"],
+        _ => &["overall"],
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{provider_api_request_window_labels, ProviderApiRequestWindow};
+    use super::provider_api_request_counter_classes;
 
     #[test]
-    fn maps_provider_rate_limit_buckets_to_request_window_metrics() {
+    fn maps_provider_request_classes_to_counter_labels() {
         assert_eq!(
-            provider_api_request_window_labels("overall_15_minute"),
-            Some((ProviderApiRequestWindow::FifteenMinutes, "overall"))
+            provider_api_request_counter_classes("overall_only"),
+            &["overall"]
         );
         assert_eq!(
-            provider_api_request_window_labels("read_15_minute"),
-            Some((ProviderApiRequestWindow::FifteenMinutes, "read"))
+            provider_api_request_counter_classes("read"),
+            &["overall", "read"]
         );
         assert_eq!(
-            provider_api_request_window_labels("overall_daily"),
-            Some((ProviderApiRequestWindow::Daily, "overall"))
+            provider_api_request_counter_classes("unknown"),
+            &["overall"]
         );
-        assert_eq!(
-            provider_api_request_window_labels("read_daily"),
-            Some((ProviderApiRequestWindow::Daily, "read"))
-        );
-        assert_eq!(provider_api_request_window_labels("remote_429"), None);
     }
 }
