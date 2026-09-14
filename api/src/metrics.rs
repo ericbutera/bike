@@ -2,7 +2,7 @@
 // This module is a thin wrapper that initialises the shared registry with the
 // app namespace supplied by the generated project.
 
-use crate::entities::strava_connections;
+use crate::entities::{provider_rate_limit_buckets, strava_connections};
 use crate::storage::AppStorage;
 use axum::body::Body;
 use axum::extract::State;
@@ -25,6 +25,24 @@ static PROVIDER_API_REQUESTS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
         &["provider", "operation", "request_class", "status"]
     )
     .expect("register provider API request counter")
+});
+
+static PROVIDER_API_REQUESTS_15_MINUTES: Lazy<IntGaugeVec> = Lazy::new(|| {
+    register_int_gauge_vec!(
+        "bike_provider_api_requests_15_minutes",
+        "Current outbound provider API request count in the active 15-minute window.",
+        &["provider", "request_class"]
+    )
+    .expect("register provider 15-minute API request gauge")
+});
+
+static PROVIDER_API_REQUESTS_DAILY: Lazy<IntGaugeVec> = Lazy::new(|| {
+    register_int_gauge_vec!(
+        "bike_provider_api_requests_daily",
+        "Current outbound provider API request count in the active daily window.",
+        &["provider", "request_class"]
+    )
+    .expect("register provider daily API request gauge")
 });
 
 static PROVIDER_RATE_LIMIT_PAUSES_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
@@ -84,6 +102,8 @@ static STRAVA_CONNECTED_ATHLETES: Lazy<IntGauge> = Lazy::new(|| {
 pub fn init_metrics() {
     kaleido::glass::api_metrics::init_api_metrics("bike_api");
     Lazy::force(&PROVIDER_API_REQUESTS_TOTAL);
+    Lazy::force(&PROVIDER_API_REQUESTS_15_MINUTES);
+    Lazy::force(&PROVIDER_API_REQUESTS_DAILY);
     Lazy::force(&PROVIDER_RATE_LIMIT_PAUSES_TOTAL);
     Lazy::force(&PROVIDER_RATE_LIMIT_LIMIT);
     Lazy::force(&PROVIDER_RATE_LIMIT_USED);
@@ -120,6 +140,19 @@ async fn refresh_database_metrics(state: &AppStorage) -> Result<(), DbErr> {
         .min(i64::MAX as u64) as i64;
 
     STRAVA_CONNECTED_ATHLETES.set(connected_athletes);
+
+    let provider_rate_limit_rows = provider_rate_limit_buckets::Entity::find()
+        .all(&state.db)
+        .await?;
+
+    for row in provider_rate_limit_rows {
+        set_provider_api_request_window_count(
+            &row.provider,
+            &row.bucket,
+            row.used_count,
+            row.reset_at.timestamp(),
+        );
+    }
 
     Ok(())
 }
@@ -165,4 +198,76 @@ pub fn set_provider_rate_limit_bucket(
     PROVIDER_RATE_LIMIT_RESET_TIMESTAMP
         .with_label_values(labels)
         .set(reset_timestamp);
+
+    set_provider_api_request_window_count(provider, bucket, effective_used, reset_timestamp);
+}
+
+fn set_provider_api_request_window_count(
+    provider: &str,
+    bucket: &str,
+    used_count: i32,
+    reset_timestamp: i64,
+) {
+    let Some((window, request_class)) = provider_api_request_window_labels(bucket) else {
+        return;
+    };
+
+    let active_used_count = if reset_timestamp <= chrono::Utc::now().timestamp() {
+        0
+    } else {
+        i64::from(used_count.max(0))
+    };
+
+    match window {
+        ProviderApiRequestWindow::FifteenMinutes => PROVIDER_API_REQUESTS_15_MINUTES
+            .with_label_values(&[provider, request_class])
+            .set(active_used_count),
+        ProviderApiRequestWindow::Daily => PROVIDER_API_REQUESTS_DAILY
+            .with_label_values(&[provider, request_class])
+            .set(active_used_count),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProviderApiRequestWindow {
+    FifteenMinutes,
+    Daily,
+}
+
+fn provider_api_request_window_labels(
+    bucket: &str,
+) -> Option<(ProviderApiRequestWindow, &'static str)> {
+    match bucket {
+        "overall_15_minute" => Some((ProviderApiRequestWindow::FifteenMinutes, "overall")),
+        "read_15_minute" => Some((ProviderApiRequestWindow::FifteenMinutes, "read")),
+        "overall_daily" => Some((ProviderApiRequestWindow::Daily, "overall")),
+        "read_daily" => Some((ProviderApiRequestWindow::Daily, "read")),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{provider_api_request_window_labels, ProviderApiRequestWindow};
+
+    #[test]
+    fn maps_provider_rate_limit_buckets_to_request_window_metrics() {
+        assert_eq!(
+            provider_api_request_window_labels("overall_15_minute"),
+            Some((ProviderApiRequestWindow::FifteenMinutes, "overall"))
+        );
+        assert_eq!(
+            provider_api_request_window_labels("read_15_minute"),
+            Some((ProviderApiRequestWindow::FifteenMinutes, "read"))
+        );
+        assert_eq!(
+            provider_api_request_window_labels("overall_daily"),
+            Some((ProviderApiRequestWindow::Daily, "overall"))
+        );
+        assert_eq!(
+            provider_api_request_window_labels("read_daily"),
+            Some((ProviderApiRequestWindow::Daily, "read"))
+        );
+        assert_eq!(provider_api_request_window_labels("remote_429"), None);
+    }
 }

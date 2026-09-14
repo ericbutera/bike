@@ -4,7 +4,7 @@ This dashboard starts with the Prometheus metrics Bike already emits:
 
 - `bike_api_requests_total` and `bike_api_request_duration_seconds_bucket` for RED-style API request rate, errors, and latency.
 - `worker_tasks_completed_total`, `worker_tasks_failed_total`, `worker_task_invocations_total`, `worker_task_processing_lag_seconds_bucket`, and `worker_task_duration_seconds_bucket` for background work.
-- `bike_provider_api_requests_total`, `bike_provider_rate_limit_pauses_total`, `bike_provider_rate_limit_remaining`, `bike_provider_rate_limit_used`, `bike_provider_rate_limit_limit`, and `bike_provider_rate_limit_reset_timestamp_seconds` for Strava provider health.
+- `bike_provider_api_requests_total`, `bike_provider_api_requests_15_minutes`, `bike_provider_api_requests_daily`, `bike_provider_rate_limit_pauses_total`, `bike_provider_rate_limit_remaining`, `bike_provider_rate_limit_used`, `bike_provider_rate_limit_limit`, and `bike_provider_rate_limit_reset_timestamp_seconds` for Strava provider health.
 - `bike_strava_connected_athletes` for the current number of connected Strava athlete accounts.
 - `/api/strava/webhook` request metrics and `strava_sync` task metrics for webhook-triggered sync visibility.
 
