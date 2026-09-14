@@ -204,9 +204,6 @@ async function loadActivityRoutePoints(
           request.headers,
         ),
         cache: "no-store",
-        opentelemetry: {
-          propagateContext: true,
-        },
       });
 
       if (!response.ok) {

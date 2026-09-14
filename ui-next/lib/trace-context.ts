@@ -1,5 +1,3 @@
-import { context, propagation, type TextMapSetter } from "@opentelemetry/api";
-
 const TRACE_CONTEXT_HEADERS = ["traceparent", "tracestate", "baggage"] as const;
 const REQUEST_CONTEXT_HEADERS = ["x-request-id"] as const;
 const CONTEXT_HEADERS = [
@@ -17,19 +15,11 @@ declare global {
   }
 }
 
-const headerSetter: TextMapSetter<Headers> = {
-  set(headers, key, value) {
-    headers.set(key, value);
-  },
-};
-
 export function headersWithTraceContext(
   headers?: HeadersInit,
   fallbackHeaders?: Headers,
 ) {
   const nextHeaders = new Headers(headers);
-
-  propagation.inject(context.active(), nextHeaders, headerSetter);
 
   for (const header of CONTEXT_HEADERS) {
     if (nextHeaders.has(header)) {
@@ -49,10 +39,9 @@ export function requestContextFromHeaders(
   headers: Headers,
 ): RequestContextHeaders {
   const contextHeaders: RequestContextHeaders = {};
-  const nextHeaders = headersWithTraceContext(undefined, headers);
 
   for (const header of CONTEXT_HEADERS) {
-    const value = nextHeaders.get(header);
+    const value = headers.get(header);
     if (value) {
       contextHeaders[header] = value;
     }

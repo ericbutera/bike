@@ -102,6 +102,7 @@ fn make_http_trace_span<B>(request: &Request<B>) -> tracing::Span {
     } else {
         let request_id = request_id_from_headers(request.headers());
         tracing::info_span!(
+            target: "api",
             "request",
             "otel.kind" = "server",
             request_id = request_id,
@@ -115,6 +116,7 @@ fn make_http_trace_span<B>(request: &Request<B>) -> tracing::Span {
     };
 
     observability::set_span_parent_from_headers(&span, request.headers());
+    observability::record_span_trace_context(&span);
     span
 }
 

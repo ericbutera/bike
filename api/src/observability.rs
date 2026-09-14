@@ -61,6 +61,12 @@ pub fn init_observability(service_name: &'static str) -> ObservabilityGuard {
                     tracer_provider: Some(provider),
                 };
             }
+            tracing::info!(
+                service_name,
+                otel_traces_endpoint = %otel_traces_endpoint(),
+                otel_protocol = %otel_protocol_label(otel_protocol()),
+                "OpenTelemetry OTLP tracing exporter enabled"
+            );
             ObservabilityGuard {
                 tracer_provider: Some(provider),
             }
@@ -82,9 +88,12 @@ pub fn init_observability(service_name: &'static str) -> ObservabilityGuard {
 fn build_tracer_provider(
     service_name: &'static str,
 ) -> Result<SdkTracerProvider, Box<dyn std::error::Error + Send + Sync>> {
+    let traces_endpoint = otel_traces_endpoint();
+    let protocol = otel_protocol();
     let exporter = opentelemetry_otlp::SpanExporter::builder()
         .with_http()
-        .with_protocol(Protocol::HttpBinary)
+        .with_endpoint(traces_endpoint)
+        .with_protocol(protocol)
         .build()?;
     let resource = Resource::builder()
         .with_service_name(service_name)
@@ -100,6 +109,39 @@ fn build_tracer_provider(
         .with_resource(resource)
         .with_batch_exporter(exporter)
         .build())
+}
+
+fn otel_traces_endpoint() -> String {
+    if let Some(endpoint) = std::env::var("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+    {
+        return append_otel_traces_path(&endpoint);
+    }
+
+    let base_endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "http://localhost:4318".to_string());
+    append_otel_traces_path(&base_endpoint)
+}
+
+fn append_otel_traces_path(endpoint: &str) -> String {
+    let endpoint = endpoint.trim_end_matches('/');
+
+    if endpoint.ends_with("/v1/traces") {
+        endpoint.to_string()
+    } else {
+        format!("{endpoint}/v1/traces")
+    }
+}
+
+fn otel_protocol() -> Protocol {
+    Protocol::HttpBinary
+}
+
+fn otel_protocol_label(_protocol: Protocol) -> &'static str {
+    "http/protobuf"
 }
 
 fn should_export_otel_span(name: &str, target: &str, has_exported_parent: bool) -> bool {
@@ -206,7 +248,7 @@ impl Extractor for TraceHeaderExtractor<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::should_export_otel_span;
+    use super::{append_otel_traces_path, should_export_otel_span};
 
     #[test]
     fn otel_filter_allows_application_roots() {
@@ -273,5 +315,21 @@ mod tests {
             "hyper::proto::h1",
             true,
         ));
+    }
+
+    #[test]
+    fn otel_traces_endpoint_appends_signal_path() {
+        assert_eq!(
+            append_otel_traces_path("http://tempo.observability.svc.cluster.local:4318"),
+            "http://tempo.observability.svc.cluster.local:4318/v1/traces"
+        );
+        assert_eq!(
+            append_otel_traces_path("http://tempo.observability.svc.cluster.local:4318/"),
+            "http://tempo.observability.svc.cluster.local:4318/v1/traces"
+        );
+        assert_eq!(
+            append_otel_traces_path("http://tempo.observability.svc.cluster.local:4318/v1/traces"),
+            "http://tempo.observability.svc.cluster.local:4318/v1/traces"
+        );
     }
 }
