@@ -1,5 +1,4 @@
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Navigation from "../Navigation";
 
@@ -41,25 +40,42 @@ describe("Navigation", () => {
     });
   });
 
-  it("keeps top-level dropdown menus mutually exclusive", async () => {
-    const user = userEvent.setup();
-    render(<Navigation />);
+  it("renders authenticated navigation as a daisyUI megamenu", () => {
+    const { container } = render(<Navigation />);
 
-    const trainingSummary = screen.getByText("Training");
-    const accountSummary = screen.getAllByText("Account")[0];
-    const trainingMenu = trainingSummary.closest("details");
-    const accountMenu = accountSummary.closest("details");
+    const megamenu = container.querySelector(".megamenu");
+    const trainingButton = screen.getByRole("button", { name: "Training" });
+    const accountButton = screen.getAllByRole("button", {
+      name: "Account",
+    })[0];
+    const trainingMenu = document.getElementById("bike-nav-training-menu");
+    const accountMenu = document.getElementById("bike-nav-account-menu");
 
-    expect(trainingMenu).not.toBeNull();
-    expect(accountMenu).not.toBeNull();
+    expect(megamenu).toHaveAttribute("id", "bike-nav-menu");
+    expect(megamenu).toHaveClass("megamenu-wide");
+    expect(megamenu).toHaveClass("max-sm:megamenu-vertical");
+    expect(megamenu).toHaveAttribute("popover", "auto");
+    expect(container.querySelector("details")).not.toBeInTheDocument();
 
-    await user.click(trainingSummary);
-    expect(trainingMenu).toHaveAttribute("open");
-    expect(accountMenu).not.toHaveAttribute("open");
+    expect(trainingButton).toHaveAttribute(
+      "popovertarget",
+      "bike-nav-training-menu",
+    );
+    expect(trainingMenu).toHaveAttribute("popover", "auto");
+    expect(screen.getByRole("link", { name: "Segments" })).toHaveAttribute(
+      "href",
+      "/segments",
+    );
 
-    await user.click(accountSummary);
-    expect(trainingMenu).not.toHaveAttribute("open");
-    expect(accountMenu).toHaveAttribute("open");
+    expect(accountButton).toHaveAttribute(
+      "popovertarget",
+      "bike-nav-account-menu",
+    );
+    expect(accountMenu).toHaveAttribute("popover", "auto");
+    expect(screen.getByRole("link", { name: "Admin" })).toHaveAttribute(
+      "href",
+      "/admin",
+    );
   });
 
   it("hides protected navigation when signed out", () => {
