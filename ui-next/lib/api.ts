@@ -6,11 +6,57 @@ import {
 import { config } from "./config";
 import { headersWithBrowserRequestContext } from "./trace-context";
 
-const fetchWithRequestContext: typeof fetch = (input, init) =>
-  fetchWithCredentials(input, {
+function shouldDefaultToJson(
+  body: BodyInit | ReadableStream | null | undefined,
+) {
+  if (body == null) {
+    return false;
+  }
+
+  if (
+    (typeof FormData !== "undefined" && body instanceof FormData) ||
+    (typeof URLSearchParams !== "undefined" &&
+      body instanceof URLSearchParams) ||
+    (typeof Blob !== "undefined" && body instanceof Blob)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function headersForRequest(input: RequestInfo | URL, init?: RequestInit) {
+  const headers = new Headers(
+    input instanceof Request ? input.headers : undefined,
+  );
+
+  if (init?.headers) {
+    new Headers(init.headers).forEach((value, key) => {
+      headers.set(key, value);
+    });
+  }
+
+  const headersWithContext = headersWithBrowserRequestContext(headers);
+  if (
+    shouldDefaultToJson(init?.body) &&
+    !headersWithContext.has("Content-Type")
+  ) {
+    headersWithContext.set("Content-Type", "application/json");
+  }
+
+  return headersWithContext;
+}
+
+function requestWithContext(input: RequestInfo | URL, init?: RequestInit) {
+  return new Request(input, {
     ...(init ?? {}),
-    headers: headersWithBrowserRequestContext(init?.headers),
+    headers: headersForRequest(input, init),
   });
+}
+
+const fetchWithRequestContext: typeof fetch = (input, init) => {
+  return fetchWithCredentials(requestWithContext(input, init));
+};
 
 export function createApiClient() {
   return createClient<any>(

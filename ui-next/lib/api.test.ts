@@ -28,6 +28,14 @@ describe("api runtime client", () => {
     }));
   });
 
+  function forwardedRequest() {
+    const input = mocks.fetchWithCredentials.mock.calls[0]?.[0];
+
+    expect(input).toBeInstanceOf(Request);
+
+    return input as Request;
+  }
+
   afterEach(() => {
     vi.resetModules();
     delete window.__APP_CONFIG__;
@@ -74,13 +82,59 @@ describe("api runtime client", () => {
       headers: { Accept: "application/json" },
     });
 
-    const headers = new Headers(
-      mocks.fetchWithCredentials.mock.calls[0]?.[1]?.headers,
-    );
-    expect(headers.get("accept")).toBe("application/json");
-    expect(headers.get("traceparent")).toBe(
+    const request = forwardedRequest();
+
+    expect(request.headers.get("accept")).toBe("application/json");
+    expect(request.headers.get("traceparent")).toBe(
       "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
     );
-    expect(headers.get("x-request-id")).toBe("ingress-request-7");
+    expect(request.headers.get("x-request-id")).toBe("ingress-request-7");
+  });
+
+  it("defaults body requests to json when no content type is provided", async () => {
+    const { createApiClient } = await import("./api");
+
+    createApiClient();
+
+    const fetchWithContext = mocks.createFetchClient.mock.calls[0]?.[0]
+      ?.fetch as typeof fetch;
+
+    await fetchWithContext("https://bike.example.com/api/auth/login", {
+      body: JSON.stringify({
+        email: "rider@example.com",
+        password: "secret-password",
+      }),
+      method: "POST",
+    });
+
+    const request = forwardedRequest();
+
+    expect(request.method).toBe("POST");
+    expect(request.headers.get("content-type")).toBe("application/json");
+  });
+
+  it("preserves headers from Request inputs built by the openapi client", async () => {
+    const { createApiClient } = await import("./api");
+
+    createApiClient();
+
+    const fetchWithContext = mocks.createFetchClient.mock.calls[0]?.[0]
+      ?.fetch as typeof fetch;
+
+    const request = new Request("https://bike.example.com/api/auth/login", {
+      body: JSON.stringify({
+        email: "rider@example.com",
+        password: "secret-password",
+      }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+
+    await fetchWithContext(request);
+
+    const forwarded = forwardedRequest();
+
+    expect(forwarded.method).toBe("POST");
+    expect(forwarded.headers.get("content-type")).toBe("application/json");
   });
 });
