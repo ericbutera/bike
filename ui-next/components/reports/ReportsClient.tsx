@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
@@ -68,8 +67,7 @@ export default function ReportsClient() {
   const [selectedActivityIds, setSelectedActivityIds] = useState<number[]>(
     parseActivityIds(searchParams.get("activity_ids")),
   );
-  const [isReportNavExpanded, setIsReportNavExpanded] = useState(true);
-  const [isMobileReportNavOpen, setIsMobileReportNavOpen] = useState(false);
+  const [isReportDrawerOpen, setIsReportDrawerOpen] = useState(false);
   const [minDurationHours, setMinDurationHours] = useState(
     secondsToHoursInput(searchParams.get("min_duration_seconds")),
   );
@@ -170,77 +168,46 @@ export default function ReportsClient() {
 
   function handleReportSelect(reportId: ReportId) {
     setSelectedReportId(reportId);
-    setIsMobileReportNavOpen(false);
+    setIsReportDrawerOpen(false);
   }
 
   return (
-    <div className="min-h-screen">
-      <div className="flex h-16 items-center justify-between border-b border-base-300 bg-base-100 px-4 lg:hidden">
-        <Link href="/" className="btn btn-ghost px-2 text-lg normal-case">
-          bike
-        </Link>
-        <button
-          type="button"
-          className="btn btn-outline btn-sm"
-          aria-expanded={isMobileReportNavOpen}
-          onClick={() => {
-            setIsMobileReportNavOpen((isOpen) => !isOpen);
-          }}
-        >
-          {isMobileReportNavOpen ? "Close" : "Reports"}
-        </button>
-      </div>
-
-      <div
-        className={
-          "grid min-h-[calc(100vh-4rem)] lg:min-h-screen " +
-          (isReportNavExpanded
-            ? "lg:grid-cols-[20rem_minmax(0,1fr)]"
-            : "lg:grid-cols-[4.75rem_minmax(0,1fr)]")
-        }
-      >
-        <aside
-          className={
-            (isMobileReportNavOpen ? "block" : "hidden") +
-            " border-b border-base-300 bg-base-100 lg:block lg:border-b-0 lg:border-r"
-          }
-        >
-          <div className="lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto">
-            <ReportSidebarHeader
-              expanded={isReportNavExpanded}
-              onDesktopToggle={() => {
-                setIsReportNavExpanded((isExpanded) => !isExpanded);
-              }}
-              onMobileClose={() => {
-                setIsMobileReportNavOpen(false);
-              }}
-            />
-            <ReportAppNav expanded={isReportNavExpanded} />
-            <div
-              className={
-                "border-t border-base-300 " +
-                (isReportNavExpanded ? "" : "lg:hidden")
-              }
-            >
-              <ReportMenu
-                selectedReportId={selectedReport.id}
-                reports={reportDefinitions}
-                onSelect={handleReportSelect}
-              />
-            </div>
-            <CollapsedReportMenu
-              selectedReportId={selectedReport.id}
-              reports={reportDefinitions}
-              onSelect={handleReportSelect}
-              hidden={isReportNavExpanded}
-            />
-          </div>
-        </aside>
-
-        <main className="min-w-0 px-4 py-5 sm:px-6 lg:px-8 xl:px-10">
+    <div className="drawer min-h-[calc(100vh-4rem)] lg:drawer-open">
+      <input
+        id="reports-drawer"
+        type="checkbox"
+        className="drawer-toggle"
+        checked={isReportDrawerOpen}
+        onChange={(event) => {
+          setIsReportDrawerOpen(event.target.checked);
+        }}
+      />
+      <div className="drawer-content min-w-0">
+        <div className="min-w-0 px-4 py-5 sm:px-6 lg:px-8 xl:px-10">
           <div className="grid w-full gap-6">
             <div className="flex flex-wrap items-end justify-between gap-4">
-              <div>
+              <div className="flex items-center gap-3">
+                <label
+                  htmlFor="reports-drawer"
+                  className="btn btn-square btn-ghost lg:hidden"
+                  aria-label="Open reports drawer"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    strokeWidth="2"
+                    fill="none"
+                    stroke="currentColor"
+                    className="size-5"
+                    aria-hidden="true"
+                  >
+                    <path d="M4 4m0 2a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z" />
+                    <path d="M9 4v16" />
+                    <path d="M14 10l2 2l-2 2" />
+                  </svg>
+                </label>
                 <div className="flex items-center gap-2">
                   <h1 className="text-2xl font-semibold">Reports</h1>
                   <InfoTooltip
@@ -417,152 +384,25 @@ export default function ReportsClient() {
               )}
             </section>
           </div>
-        </main>
+        </div>
+      </div>
+
+      <div className="drawer-side z-40">
+        <label
+          htmlFor="reports-drawer"
+          aria-label="Close reports drawer"
+          className="drawer-overlay"
+        />
+        <aside className="min-h-full w-80 max-w-[85vw] border-r border-base-300 bg-base-100">
+          <ReportMenu
+            selectedReportId={selectedReport.id}
+            reports={reportDefinitions}
+            onSelect={handleReportSelect}
+          />
+        </aside>
       </div>
     </div>
   );
-}
-
-function ReportSidebarHeader({
-  expanded,
-  onDesktopToggle,
-  onMobileClose,
-}: {
-  expanded: boolean;
-  onDesktopToggle: () => void;
-  onMobileClose: () => void;
-}) {
-  return (
-    <div className="flex h-16 items-center justify-between gap-2 px-4">
-      <Link
-        href="/training/reports"
-        className={
-          "btn btn-ghost min-w-0 px-2 text-lg normal-case " +
-          (expanded ? "justify-start" : "lg:btn-square lg:justify-center")
-        }
-        title="bike reports"
-      >
-        <span className={expanded ? "truncate" : "lg:sr-only"}>
-          bike reports
-        </span>
-        <span className={expanded ? "hidden" : "hidden lg:inline"}>R</span>
-      </Link>
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm lg:hidden"
-          onClick={onMobileClose}
-        >
-          Close
-        </button>
-        <button
-          type="button"
-          className="btn btn-ghost btn-square btn-sm hidden lg:inline-flex"
-          aria-label={
-            expanded ? "Collapse report navigation" : "Expand report navigation"
-          }
-          aria-expanded={expanded}
-          title={
-            expanded ? "Collapse report navigation" : "Expand report navigation"
-          }
-          onClick={onDesktopToggle}
-        >
-          {expanded ? "<" : ">"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ReportAppNav({ expanded }: { expanded: boolean }) {
-  const links = [
-    { href: "/", label: "Activities", shortLabel: "A" },
-    { href: "/xc", label: "XC", shortLabel: "XC" },
-    { href: "/dh", label: "DH", shortLabel: "DH" },
-    { href: "/segments", label: "Segments", shortLabel: "S" },
-    { href: "/fitness", label: "Fitness", shortLabel: "F" },
-  ];
-
-  return (
-    <nav
-      className={"grid gap-1 px-3 pb-3 " + (expanded ? "" : "lg:px-2")}
-      aria-label="Bike navigation"
-    >
-      {links.map((link) => (
-        <Link
-          key={link.href}
-          href={link.href}
-          className={
-            "btn btn-ghost btn-sm min-h-9 " +
-            (expanded ? "justify-start" : "lg:btn-square lg:justify-center")
-          }
-          title={link.label}
-        >
-          <span className={expanded ? "truncate" : "lg:sr-only"}>
-            {link.label}
-          </span>
-          <span className={expanded ? "hidden" : "hidden lg:inline"}>
-            {link.shortLabel}
-          </span>
-        </Link>
-      ))}
-    </nav>
-  );
-}
-
-function CollapsedReportMenu({
-  selectedReportId,
-  reports,
-  onSelect,
-  hidden,
-}: {
-  selectedReportId: ReportId;
-  reports: ReportDefinition[];
-  onSelect: (reportId: ReportId) => void;
-  hidden: boolean;
-}) {
-  return (
-    <nav
-      className={
-        "hidden border-t border-base-300 p-2 " + (hidden ? "" : "lg:grid gap-2")
-      }
-      aria-label="Report menu"
-    >
-      {reports.map((report) => (
-        <button
-          key={report.id}
-          type="button"
-          className={
-            "btn btn-square btn-sm " +
-            (selectedReportId === report.id ? "btn-primary" : "btn-ghost")
-          }
-          title={report.name}
-          aria-label={report.name}
-          onClick={() => {
-            onSelect(report.id);
-          }}
-        >
-          {reportShortLabel(report.name)}
-        </button>
-      ))}
-    </nav>
-  );
-}
-
-function reportShortLabel(name: string): string {
-  const words = name
-    .split(/\s+/)
-    .map((word) => word.trim())
-    .filter(Boolean);
-
-  if (words.length === 0) {
-    return "?";
-  }
-
-  return words
-    .slice(0, 2)
-    .map((word) => word[0]?.toUpperCase() ?? "")
-    .join("");
 }
 
 function RideSummaryReportView({
