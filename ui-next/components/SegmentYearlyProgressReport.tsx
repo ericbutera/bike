@@ -163,8 +163,6 @@ export default function SegmentYearlyProgressReport() {
 
   return (
     <div className="grid gap-6">
-      <h1 className="text-2xl font-semibold">Segment Progress</h1>
-
       <AppCard as="section" bodyClassName="gap-5">
         <CardHeader
           title="Segment"
@@ -185,12 +183,11 @@ export default function SegmentYearlyProgressReport() {
             <span>No segment efforts found yet.</span>
           </div>
         ) : (
-          <label className="form-control max-w-xl">
-            <div className="label">
-              <span className="label-text font-medium">Choose a segment</span>
-            </div>
+          <fieldset className="fieldset max-w-xl">
+            <legend className="fieldset-legend">Segment</legend>
+            <label className="label">Choose a segment</label>
             <select
-              className="select select-bordered w-full"
+              className="select w-full"
               value={selectedSegmentId}
               onChange={(event) => {
                 setSelectedSegmentId(event.target.value);
@@ -202,7 +199,7 @@ export default function SegmentYearlyProgressReport() {
                 </option>
               ))}
             </select>
-          </label>
+          </fieldset>
         )}
       </AppCard>
 

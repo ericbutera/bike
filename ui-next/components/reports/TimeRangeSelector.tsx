@@ -2,7 +2,14 @@
 
 import React from "react";
 
-export type TimeRange = "day" | "week" | "month" | "3month" | "6month" | "1year" | "2year";
+export type TimeRange =
+  | "day"
+  | "week"
+  | "month"
+  | "3month"
+  | "6month"
+  | "1year"
+  | "2year";
 
 const OPTIONS: { key: TimeRange; label: string }[] = [
   { key: "day", label: "Day" },
@@ -22,13 +29,13 @@ export default function TimeRangeSelector({
   onChange: (v: TimeRange) => void;
 }) {
   return (
-    <div className="flex gap-2">
+    <div className="join">
       {OPTIONS.map((opt) => (
         <button
           key={opt.key}
           type="button"
           className={
-            "btn btn-ghost btn-sm " + (value === opt.key ? "btn-active" : "")
+            "btn btn-sm join-item " + (value === opt.key ? "btn-active" : "")
           }
           onClick={() => onChange(opt.key)}
         >

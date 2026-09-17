@@ -231,83 +231,79 @@ export default function ReportsClient() {
 
             <section className="rounded-lg border border-base-300 bg-base-100 p-4">
               {isReassessment ? (
-                <div className="grid gap-4 sm:grid-cols-[minmax(0,14rem)_minmax(0,14rem)_auto] sm:items-end">
-                  <label className="form-control">
-                    <div className="label">
-                      <span className="label-text font-medium">
-                        Training start
-                      </span>
+                <fieldset className="fieldset">
+                  <legend className="fieldset-legend">Report range</legend>
+                  <div className="grid gap-4 sm:grid-cols-[minmax(0,14rem)_minmax(0,14rem)_auto] sm:items-end">
+                    <div>
+                      <label className="label">Training start</label>
+                      <input
+                        type="date"
+                        className="input w-full"
+                        value={reassessmentStartDate ?? ""}
+                        readOnly
+                      />
                     </div>
-                    <input
-                      type="date"
-                      className="input input-bordered"
-                      value={reassessmentStartDate ?? ""}
-                      readOnly
-                    />
-                  </label>
-                  <label className="form-control">
-                    <div className="label">
-                      <span className="label-text font-medium">Through</span>
+                    <div>
+                      <label className="label">Through</label>
+                      <input
+                        type="date"
+                        className="input w-full"
+                        value={todayDate}
+                        readOnly
+                      />
                     </div>
-                    <input
-                      type="date"
-                      className="input input-bordered"
-                      value={todayDate}
-                      readOnly
-                    />
-                  </label>
-                  <div className="flex items-center gap-2 text-sm text-base-content/60">
-                    <span>Uses the active XC training block</span>
-                    <InfoTooltip
-                      label="Reassessment range details"
-                      tip={REASSESSMENT_DATE_HELP_TEXT}
-                    />
+                    <div className="flex items-center gap-2 text-sm text-base-content/60">
+                      <span>Uses the active XC training block</span>
+                      <InfoTooltip
+                        label="Reassessment range details"
+                        tip={REASSESSMENT_DATE_HELP_TEXT}
+                      />
+                    </div>
+                    {!reassessmentStartDate && !preferencesQuery.isLoading ? (
+                      <div className="alert sm:col-span-3">
+                        <span>
+                          Save an XC training start date before generating a
+                          reassessment.
+                        </span>
+                      </div>
+                    ) : null}
                   </div>
-                  {!reassessmentStartDate && !preferencesQuery.isLoading ? (
-                    <div className="alert sm:col-span-3">
-                      <span>
-                        Save an XC training start date before generating a
-                        reassessment.
-                      </span>
-                    </div>
-                  ) : null}
-                </div>
+                </fieldset>
               ) : (
-                <div className="grid gap-4 sm:grid-cols-[minmax(0,14rem)_minmax(0,14rem)_auto] sm:items-end">
-                  <label className="form-control">
-                    <div className="label">
-                      <span className="label-text font-medium">Start date</span>
+                <fieldset className="fieldset">
+                  <legend className="fieldset-legend">Report range</legend>
+                  <div className="grid gap-4 sm:grid-cols-[minmax(0,14rem)_minmax(0,14rem)_auto] sm:items-end">
+                    <div>
+                      <label className="label">Start date</label>
+                      <input
+                        type="date"
+                        className="input w-full"
+                        value={startDate}
+                        onChange={(event) => {
+                          setStartDate(event.target.value);
+                        }}
+                      />
                     </div>
-                    <input
-                      type="date"
-                      className="input input-bordered"
-                      value={startDate}
-                      onChange={(event) => {
-                        setStartDate(event.target.value);
-                      }}
-                    />
-                  </label>
-                  <label className="form-control">
-                    <div className="label">
-                      <span className="label-text font-medium">End date</span>
+                    <div>
+                      <label className="label">End date</label>
+                      <input
+                        type="date"
+                        className="input w-full"
+                        value={endDate}
+                        onChange={(event) => {
+                          setEndDate(event.target.value);
+                        }}
+                      />
                     </div>
-                    <input
-                      type="date"
-                      className="input input-bordered"
-                      value={endDate}
-                      onChange={(event) => {
-                        setEndDate(event.target.value);
-                      }}
-                    />
-                  </label>
-                  <div className="flex items-center gap-2 text-sm text-base-content/60">
-                    <span>Selected range</span>
-                    <InfoTooltip
-                      label="Report range details"
-                      tip={REPORT_RANGE_HELP_TEXT}
-                    />
+                    <div className="flex items-center gap-2 text-sm text-base-content/60">
+                      <span>Selected range</span>
+                      <InfoTooltip
+                        label="Report range details"
+                        tip={REPORT_RANGE_HELP_TEXT}
+                      />
+                    </div>
                   </div>
-                </div>
+                </fieldset>
               )}
             </section>
 
@@ -1939,55 +1935,50 @@ function ReportFilters({
 
   return (
     <div className="mt-4 rounded-lg border border-base-300 bg-base-200/30 p-4">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,12rem)_minmax(0,12rem)_auto] lg:items-end">
-        {supportsDuration ? (
-          <label className="form-control">
-            <div className="label">
-              <span className="label-text font-medium">Minimum duration</span>
+      <fieldset className="fieldset">
+        <legend className="fieldset-legend">Report filters</legend>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,12rem)_minmax(0,12rem)_auto] lg:items-end">
+          {supportsDuration ? (
+            <div>
+              <label className="label">Minimum duration</label>
+              <input
+                type="number"
+                min="0"
+                step="0.25"
+                className="input w-full"
+                placeholder="Any"
+                value={minDurationHours}
+                onChange={(event) => {
+                  onMinDurationHoursChange(event.target.value);
+                }}
+              />
+              <span className="label">hours</span>
             </div>
-            <input
-              type="number"
-              min="0"
-              step="0.25"
-              className="input input-bordered"
-              placeholder="Any"
-              value={minDurationHours}
-              onChange={(event) => {
-                onMinDurationHoursChange(event.target.value);
-              }}
-            />
-            <div className="label">
-              <span className="label-text-alt text-base-content/60">hours</span>
-            </div>
-          </label>
-        ) : null}
+          ) : null}
 
-        {supportsDistance ? (
-          <label className="form-control">
-            <div className="label">
-              <span className="label-text font-medium">Minimum distance</span>
+          {supportsDistance ? (
+            <div>
+              <label className="label">Minimum distance</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                className="input w-full"
+                placeholder="Any"
+                value={minDistanceMiles}
+                onChange={(event) => {
+                  onMinDistanceMilesChange(event.target.value);
+                }}
+              />
+              <span className="label">miles</span>
             </div>
-            <input
-              type="number"
-              min="0"
-              step="1"
-              className="input input-bordered"
-              placeholder="Any"
-              value={minDistanceMiles}
-              onChange={(event) => {
-                onMinDistanceMilesChange(event.target.value);
-              }}
-            />
-            <div className="label">
-              <span className="label-text-alt text-base-content/60">miles</span>
-            </div>
-          </label>
-        ) : null}
+          ) : null}
 
-        <div className="text-sm text-base-content/60">
-          Filters are applied by the reports API before generating results.
+          <div className="text-sm text-base-content/60">
+            Filters are applied by the reports API before generating results.
+          </div>
         </div>
-      </div>
+      </fieldset>
     </div>
   );
 }

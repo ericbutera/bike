@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -19,17 +19,16 @@ import {
   formatSpeed,
 } from "../../lib/activityFormatting";
 import {
-  type Segment,
   type ActivityRoutePoint,
   type SegmentAnalysisEffortSummary,
   type SegmentAnalysisSection,
   type SegmentAnalysisSectionEffort,
-  useSegmentEffortAnalysis,
+  type SegmentEffortAnalysis,
 } from "../../lib/queries";
 import { interpolateRoutePointByProgress } from "../../lib/segmentDetail";
-import type { RouteMovingMarker, RouteOverlay } from "../RouteMapTypes";
 import MapLibreRouteMap from "../MapLibreRouteMap";
-import { AppCard, CardHeader } from "../ui/Card";
+import type { RouteMovingMarker, RouteOverlay } from "../RouteMapTypes";
+import { CardHeader } from "../ui/Card";
 import InfoTooltip from "../ui/InfoTooltip";
 import { LoadingSpinner } from "../ui/QueryState";
 
@@ -60,10 +59,6 @@ type ChartTooltipEntry = {
 
 function formatSeconds(value: number) {
   return `${value.toFixed(1)}s`;
-}
-
-function effortLabel(effort: SegmentAnalysisEffortSummary) {
-  return `${formatDuration(effort.duration_seconds)} - ${effort.activity_title}`;
 }
 
 function sectionLabel(section: SegmentAnalysisSection) {
@@ -223,20 +218,24 @@ function sectionRoutePoints(
 }
 
 export default function SegmentEffortAnalysisSection({
-  segment,
+  analysis,
+  isAnalysisLoading,
+  selectedEffortId,
+  splitCount,
+  setSplitCount,
 }: {
-  segment: Segment;
+  analysis: SegmentEffortAnalysis | null;
+  isAnalysisLoading: boolean;
+  selectedEffortId: number | null;
+  splitCount: number;
+  setSplitCount: (splitCount: number) => void;
 }) {
-  const [splitCount, setSplitCount] = useState<number>(10);
-  const [selectedEffortId, setSelectedEffortId] = useState<number | null>(null);
   const [selectedSectionIndex, setSelectedSectionIndex] = useState<
     number | null
   >(null);
   const [hoveredSectionIndex, setHoveredSectionIndex] = useState<number | null>(
     null,
   );
-  const analysisQuery = useSegmentEffortAnalysis(segment.id, { splitCount });
-  const analysis = analysisQuery.data;
   const efforts = analysis?.efforts ?? [];
   const referenceEffort = analysis?.reference_effort ?? null;
   const selectedEffort =
@@ -328,75 +327,30 @@ export default function SegmentEffortAnalysisSection({
     );
   }, [activeSectionIndex, analysis?.route_points, analysis?.sections]);
 
-  useEffect(() => {
-    if (!analysis) {
-      return;
-    }
-
-    if (
-      selectedEffortId == null ||
-      !analysis.efforts.some((effort) => effort.effort_id === selectedEffortId)
-    ) {
-      setSelectedEffortId(analysis.reference_effort.effort_id);
-    }
-  }, [analysis, selectedEffortId]);
+  const splitSelector = (
+    <div className="flex justify-end">
+      <div className="join">
+        {SPLIT_COUNT_OPTIONS.map((option) => (
+          <button
+            key={option}
+            type="button"
+            className={`join-item btn btn-sm ${
+              splitCount === option ? "btn-neutral" : "btn-ghost"
+            }`}
+            onClick={() => {
+              setSplitCount(option);
+            }}
+          >
+            {option}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 
   return (
-    <AppCard bodyClassName="gap-5">
-      <CardHeader
-        title="Effort Analysis"
-        titleExtras={
-          <InfoTooltip
-            label="Effort analysis details"
-            tip={ANALYSIS_HELP_TEXT}
-          />
-        }
-      />
-
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-        <div className="grid gap-3">
-          <label className="form-control max-w-xl">
-            <div className="label">
-              <span className="label-text font-medium">Selected ride</span>
-            </div>
-            <select
-              className="select select-bordered"
-              value={selectedEffort?.effort_id ?? ""}
-              disabled={efforts.length === 0}
-              onChange={(event) => {
-                setSelectedEffortId(Number(event.target.value));
-              }}
-            >
-              {efforts.map((effort) => (
-                <option key={effort.effort_id} value={effort.effort_id}>
-                  {effort.effort_id === referenceEffort?.effort_id
-                    ? `PR - ${effortLabel(effort)}`
-                    : effortLabel(effort)}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <div className="join">
-          {SPLIT_COUNT_OPTIONS.map((option) => (
-            <button
-              key={option}
-              type="button"
-              className={`join-item btn btn-sm ${
-                splitCount === option ? "btn-neutral" : "btn-ghost"
-              }`}
-              onClick={() => {
-                setSplitCount(option);
-              }}
-            >
-              {option}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {analysisQuery.isLoading ? (
+    <div className="grid gap-5 border-t border-base-300 pt-5">
+      {isAnalysisLoading ? (
         <div className="flex min-h-40 items-center justify-center">
           <LoadingSpinner size="md" aria-label="Loading segment analysis" />
         </div>
@@ -599,6 +553,8 @@ export default function SegmentEffortAnalysisSection({
           </div>
         </>
       )}
-    </AppCard>
+
+      {splitSelector}
+    </div>
   );
 }

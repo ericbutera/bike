@@ -3,16 +3,33 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { type Segment, useSegments } from "../lib/queries";
+import { formatDuration } from "../lib/activityFormatting";
+import {
+  type Segment,
+  type SegmentAnalysisEffortSummary,
+  useSegmentEffortAnalysis,
+  useSegments,
+} from "../lib/queries";
+import SegmentEffortAnalysisSection from "./segment-detail/SegmentEffortAnalysisSection";
 import { AppCard, CardHeader } from "./ui/Card";
 import InfoTooltip from "./ui/InfoTooltip";
 import { LoadingSpinner } from "./ui/QueryState";
-import SegmentEffortAnalysisSection from "./segment-detail/SegmentEffortAnalysisSection";
 
 function segmentOptionLabel(segment: Segment) {
   const effortLabel =
     segment.effort_count === 1 ? "1 effort" : `${segment.effort_count} efforts`;
   return `${segment.title} (${effortLabel})`;
+}
+
+function effortLabel(effort: SegmentAnalysisEffortSummary) {
+  return `${formatDuration(effort.duration_seconds)} - ${effort.activity_title}`;
+}
+
+function effortById(
+  efforts: SegmentAnalysisEffortSummary[],
+  effortId: number | null,
+) {
+  return efforts.find((effort) => effort.effort_id === effortId) ?? null;
 }
 
 export default function SegmentEffortAnalysisReport() {
@@ -37,6 +54,16 @@ export default function SegmentEffortAnalysisReport() {
   const selectedSegment = eligibleSegments.find(
     (segment) => segment.id.toString() === selectedSegmentId,
   );
+  const [splitCount, setSplitCount] = useState<number>(10);
+  const [selectedEffortId, setSelectedEffortId] = useState<number | null>(null);
+  const analysisQuery = useSegmentEffortAnalysis(selectedSegment?.id, {
+    splitCount,
+  });
+  const analysis = analysisQuery.data;
+  const efforts = analysis?.efforts ?? [];
+  const referenceEffort = analysis?.reference_effort ?? null;
+  const selectedEffort =
+    effortById(efforts, selectedEffortId) ?? referenceEffort;
 
   useEffect(() => {
     if (segmentsQuery.isLoading || eligibleSegments.length === 0) {
@@ -69,13 +96,24 @@ export default function SegmentEffortAnalysisReport() {
     }
   }, [router, searchParams, selectedSegmentId]);
 
+  useEffect(() => {
+    if (!analysis) {
+      return;
+    }
+
+    if (
+      selectedEffortId == null ||
+      !analysis.efforts.some((effort) => effort.effort_id === selectedEffortId)
+    ) {
+      setSelectedEffortId(analysis.reference_effort.effort_id);
+    }
+  }, [analysis, selectedEffortId]);
+
   return (
     <div className="grid gap-6">
-      <h1 className="text-2xl font-semibold">Segment Analysis</h1>
-
       <AppCard as="section" bodyClassName="gap-5">
         <CardHeader
-          title="Segment"
+          title="Segment Analysis"
           titleExtras={
             <InfoTooltip
               label="Segment analysis details"
@@ -94,24 +132,47 @@ export default function SegmentEffortAnalysisReport() {
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-            <label className="form-control max-w-xl">
-              <div className="label">
-                <span className="label-text font-medium">Choose a segment</span>
+            <fieldset className="fieldset max-w-3xl">
+              <legend className="fieldset-legend">Analysis inputs</legend>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div>
+                  <label className="label">Choose a segment</label>
+                  <select
+                    className="select w-full"
+                    value={selectedSegmentId}
+                    onChange={(event) => {
+                      setSelectedSegmentId(event.target.value);
+                    }}
+                  >
+                    {eligibleSegments.map((segment) => (
+                      <option key={segment.id} value={segment.id}>
+                        {segmentOptionLabel(segment)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="label">Selected ride</label>
+                  <select
+                    className="select w-full"
+                    value={selectedEffort?.effort_id ?? ""}
+                    disabled={analysisQuery.isLoading || efforts.length === 0}
+                    onChange={(event) => {
+                      setSelectedEffortId(Number(event.target.value));
+                    }}
+                  >
+                    {efforts.map((effort) => (
+                      <option key={effort.effort_id} value={effort.effort_id}>
+                        {effort.effort_id === referenceEffort?.effort_id
+                          ? `PR - ${effortLabel(effort)}`
+                          : effortLabel(effort)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-              <select
-                className="select select-bordered w-full"
-                value={selectedSegmentId}
-                onChange={(event) => {
-                  setSelectedSegmentId(event.target.value);
-                }}
-              >
-                {eligibleSegments.map((segment) => (
-                  <option key={segment.id} value={segment.id}>
-                    {segmentOptionLabel(segment)}
-                  </option>
-                ))}
-              </select>
-            </label>
+            </fieldset>
             {selectedSegment ? (
               <Link
                 href={`/segments/${selectedSegment.id}`}
@@ -122,11 +183,17 @@ export default function SegmentEffortAnalysisReport() {
             ) : null}
           </div>
         )}
-      </AppCard>
 
-      {selectedSegment ? (
-        <SegmentEffortAnalysisSection segment={selectedSegment} />
-      ) : null}
+        {selectedSegment ? (
+          <SegmentEffortAnalysisSection
+            analysis={analysis}
+            isAnalysisLoading={analysisQuery.isLoading}
+            selectedEffortId={selectedEffortId}
+            splitCount={splitCount}
+            setSplitCount={setSplitCount}
+          />
+        ) : null}
+      </AppCard>
     </div>
   );
 }
