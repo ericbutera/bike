@@ -22,6 +22,11 @@ pub struct ObservabilityGuard {
     tracer_provider: Option<SdkTracerProvider>,
 }
 
+enum TraceExporterConfig {
+    Disabled { reason: &'static str },
+    Otlp { traces_endpoint: String },
+}
+
 impl Drop for ObservabilityGuard {
     fn drop(&mut self) {
         if let Some(provider) = self.tracer_provider.take() {
@@ -43,7 +48,22 @@ pub fn init_observability(service_name: &'static str) -> ObservabilityGuard {
         .with(EnvFilter::from_default_env())
         .with(fmt_layer);
 
-    match build_tracer_provider(service_name) {
+    let traces_endpoint = match trace_exporter_config() {
+        TraceExporterConfig::Otlp { traces_endpoint } => traces_endpoint,
+        TraceExporterConfig::Disabled { reason } => {
+            let _ = registry.try_init();
+            tracing::info!(
+                service_name,
+                reason,
+                "OpenTelemetry OTLP tracing exporter disabled"
+            );
+            return ObservabilityGuard {
+                tracer_provider: None,
+            };
+        }
+    };
+
+    match build_tracer_provider(service_name, &traces_endpoint) {
         Ok(provider) => {
             let tracer = provider.tracer(service_name);
             global::set_tracer_provider(provider.clone());
@@ -63,8 +83,8 @@ pub fn init_observability(service_name: &'static str) -> ObservabilityGuard {
             }
             tracing::info!(
                 service_name,
-                otel_traces_endpoint = %otel_traces_endpoint(),
-                otel_protocol = %otel_protocol_label(otel_protocol()),
+                otel_traces_endpoint = %traces_endpoint,
+                otel_protocol = %otel_protocol_label(),
                 "OpenTelemetry OTLP tracing exporter enabled"
             );
             ObservabilityGuard {
@@ -87,13 +107,12 @@ pub fn init_observability(service_name: &'static str) -> ObservabilityGuard {
 
 fn build_tracer_provider(
     service_name: &'static str,
+    traces_endpoint: &str,
 ) -> Result<SdkTracerProvider, Box<dyn std::error::Error + Send + Sync>> {
-    let traces_endpoint = otel_traces_endpoint();
-    let protocol = otel_protocol();
     let exporter = opentelemetry_otlp::SpanExporter::builder()
         .with_http()
         .with_endpoint(traces_endpoint)
-        .with_protocol(protocol)
+        .with_protocol(otel_protocol())
         .build()?;
     let resource = Resource::builder()
         .with_service_name(service_name)
@@ -111,19 +130,86 @@ fn build_tracer_provider(
         .build())
 }
 
-fn otel_traces_endpoint() -> String {
-    if let Some(endpoint) = std::env::var("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-    {
-        return append_otel_traces_path(&endpoint);
+fn trace_exporter_config() -> TraceExporterConfig {
+    trace_exporter_config_from_values(
+        std::env::var("OTEL_SDK_DISABLED").ok().as_deref(),
+        std::env::var("OTEL_TRACES_EXPORTER").ok().as_deref(),
+        std::env::var("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
+            .ok()
+            .as_deref(),
+        std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok().as_deref(),
+    )
+}
+
+fn trace_exporter_config_from_values(
+    sdk_disabled: Option<&str>,
+    traces_exporter: Option<&str>,
+    traces_endpoint: Option<&str>,
+    otlp_endpoint: Option<&str>,
+) -> TraceExporterConfig {
+    if env_flag_enabled(sdk_disabled) {
+        return TraceExporterConfig::Disabled {
+            reason: "OTEL_SDK_DISABLED=true",
+        };
     }
 
-    let base_endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "http://localhost:4318".to_string());
-    append_otel_traces_path(&base_endpoint)
+    if let Some(exporter) = traces_exporter.and_then(non_empty_env_value) {
+        let exporters: Vec<String> = exporter
+            .split(',')
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty())
+            .collect();
+
+        if exporters.iter().any(|value| value == "none") {
+            return TraceExporterConfig::Disabled {
+                reason: "OTEL_TRACES_EXPORTER=none",
+            };
+        }
+
+        if !exporters.iter().any(|value| value == "otlp") {
+            return TraceExporterConfig::Disabled {
+                reason: "OTEL_TRACES_EXPORTER does not include otlp",
+            };
+        }
+
+        return TraceExporterConfig::Otlp {
+            traces_endpoint: configured_otel_traces_endpoint(traces_endpoint, otlp_endpoint)
+                .unwrap_or_else(|| append_otel_traces_path("http://localhost:4318")),
+        };
+    }
+
+    let Some(traces_endpoint) = configured_otel_traces_endpoint(traces_endpoint, otlp_endpoint)
+    else {
+        return TraceExporterConfig::Disabled {
+            reason: "no OTLP endpoint configured",
+        };
+    };
+
+    TraceExporterConfig::Otlp { traces_endpoint }
+}
+
+fn configured_otel_traces_endpoint(
+    traces_endpoint: Option<&str>,
+    otlp_endpoint: Option<&str>,
+) -> Option<String> {
+    if let Some(endpoint) = traces_endpoint.and_then(non_empty_env_value) {
+        return Some(append_otel_traces_path(endpoint));
+    }
+
+    otlp_endpoint
+        .and_then(non_empty_env_value)
+        .map(append_otel_traces_path)
+}
+
+fn non_empty_env_value(value: &str) -> Option<&str> {
+    let value = value.trim();
+    (!value.is_empty()).then_some(value)
+}
+
+fn env_flag_enabled(value: Option<&str>) -> bool {
+    value
+        .and_then(|value| non_empty_env_value(value).map(str::to_ascii_lowercase))
+        .is_some_and(|value| matches!(value.as_str(), "1" | "true" | "yes"))
 }
 
 fn append_otel_traces_path(endpoint: &str) -> String {
@@ -140,7 +226,7 @@ fn otel_protocol() -> Protocol {
     Protocol::HttpBinary
 }
 
-fn otel_protocol_label(_protocol: Protocol) -> &'static str {
+fn otel_protocol_label() -> &'static str {
     "http/protobuf"
 }
 
@@ -248,7 +334,10 @@ impl Extractor for TraceHeaderExtractor<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::{append_otel_traces_path, should_export_otel_span};
+    use super::TraceExporterConfig;
+    use super::{
+        append_otel_traces_path, should_export_otel_span, trace_exporter_config_from_values,
+    };
 
     #[test]
     fn otel_filter_allows_application_roots() {
@@ -331,5 +420,53 @@ mod tests {
             append_otel_traces_path("http://tempo.observability.svc.cluster.local:4318/v1/traces"),
             "http://tempo.observability.svc.cluster.local:4318/v1/traces"
         );
+    }
+
+    #[test]
+    fn otel_exporter_is_disabled_without_explicit_endpoint_or_exporter() {
+        assert!(matches!(
+            trace_exporter_config_from_values(None, None, None, None),
+            TraceExporterConfig::Disabled {
+                reason: "no OTLP endpoint configured"
+            }
+        ));
+    }
+
+    #[test]
+    fn otel_exporter_honors_standard_disable_flags() {
+        assert!(matches!(
+            trace_exporter_config_from_values(Some("true"), Some("otlp"), None, None),
+            TraceExporterConfig::Disabled {
+                reason: "OTEL_SDK_DISABLED=true"
+            }
+        ));
+        assert!(matches!(
+            trace_exporter_config_from_values(None, Some("none"), None, Some("http://jaeger:4318")),
+            TraceExporterConfig::Disabled {
+                reason: "OTEL_TRACES_EXPORTER=none"
+            }
+        ));
+    }
+
+    #[test]
+    fn otel_exporter_uses_configured_endpoint_when_present() {
+        let TraceExporterConfig::Otlp { traces_endpoint } =
+            trace_exporter_config_from_values(None, None, None, Some("http://jaeger:4318"))
+        else {
+            panic!("expected OTLP exporter to be enabled");
+        };
+
+        assert_eq!(traces_endpoint, "http://jaeger:4318/v1/traces");
+    }
+
+    #[test]
+    fn otel_exporter_uses_localhost_when_otlp_is_explicitly_requested() {
+        let TraceExporterConfig::Otlp { traces_endpoint } =
+            trace_exporter_config_from_values(None, Some("otlp"), None, None)
+        else {
+            panic!("expected OTLP exporter to be enabled");
+        };
+
+        assert_eq!(traces_endpoint, "http://localhost:4318/v1/traces");
     }
 }

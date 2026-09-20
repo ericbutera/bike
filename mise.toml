@@ -41,6 +41,10 @@ run = "cargo build --release --bin api"
 description = "Start the bike worker"
 run = "cargo run --bin worker"
 
+[tasks."tracing:dev"]
+description = "Start lightweight local tracing with Jaeger"
+run = "docker compose --profile tracing up jaeger"
+
 [tasks."kaleido:status"]
 description = "Show the Rust and UI Kaleido versions used by Bike"
 run = '''
