@@ -1,7 +1,10 @@
 "use client";
 
+import { faDownload } from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import toast from "react-hot-toast";
 import {
   formatElevation,
   formatElevationRate,
@@ -27,11 +30,16 @@ import {
   type ReassessmentVerdict,
   type ReassessmentWindow,
   type RideSummaryReport,
+  type TrainingReportBoundary,
+  type TrainingReportPoint,
 } from "../../lib/queries";
 import { useUnitPreferences } from "../../lib/unitPreferences";
 import InfoTooltip from "../ui/InfoTooltip";
-import Charts from "./Charts";
-import TimeRangeSelector, { TimeRange } from "./TimeRangeSelector";
+import Charts, { chartBucketLabel } from "./Charts";
+import TimeRangeSelector, {
+  TIME_RANGE_OPTIONS,
+  TimeRange,
+} from "./TimeRangeSelector";
 import {
   DEFAULT_REPORT_ID,
   findReportDefinition,
@@ -42,25 +50,16 @@ import {
 
 const REPORTS_HELP_TEXT =
   "Generate ad-hoc ride analysis for the selected range.";
-const REPORT_RANGE_HELP_TEXT =
-  "Reports are generated from rides started inside this range.";
-const REASSESSMENT_DATE_HELP_TEXT =
-  "Reassessment uses the saved XC training start date through today and compares that evidence with the spring baseline.";
 const CLIMBS_PER_PAGE = 10;
+const DEFAULT_REPORT_RANGE: TimeRange = "week";
 
 export default function ReportsClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { unitSystem } = useUnitPreferences();
+  const reportRequestLockRef = useRef(false);
   const initialRange = parseTimeRange(searchParams.get("range"));
-  const initialDateRange = dateRangeForTimeRange(initialRange);
   const [range, setRange] = useState<TimeRange>(initialRange);
-  const [startDate, setStartDate] = useState(
-    searchParams.get("start_date") ?? initialDateRange.startDate,
-  );
-  const [endDate, setEndDate] = useState(
-    searchParams.get("end_date") ?? initialDateRange.endDate,
-  );
   const [selectedReportId, setSelectedReportId] = useState<ReportId>(
     findReportDefinition(searchParams.get("report")).id,
   );
@@ -68,12 +67,6 @@ export default function ReportsClient() {
     parseActivityIds(searchParams.get("activity_ids")),
   );
   const [isReportDrawerOpen, setIsReportDrawerOpen] = useState(false);
-  const [minDurationHours, setMinDurationHours] = useState(
-    secondsToHoursInput(searchParams.get("min_duration_seconds")),
-  );
-  const [minDistanceMiles, setMinDistanceMiles] = useState(
-    metersToMilesInput(searchParams.get("min_distance_meters")),
-  );
   const definitionsQuery = useTrainingReportDefinitions();
   const reportDefinitions = toReportDefinitions(definitionsQuery.data?.reports);
   const selectedReport = findReportDefinition(
@@ -81,94 +74,154 @@ export default function ReportsClient() {
     reportDefinitions,
   );
   const isAggregateTrends = selectedReport.id === "aggregate_trends";
+  const focusedBucketReport = focusedBucketReportFor(selectedReport.id);
+  const isBucketReport = isAggregateTrends || focusedBucketReport != null;
   const isRideSummary = selectedReport.id === "ride_summary";
   const isReassessment = selectedReport.id === "reassessment";
   const standaloneReportId = standaloneReportIdFor(selectedReport.id);
   const isStandaloneReport = standaloneReportId != null;
-  const minDurationSeconds = hoursInputToSeconds(minDurationHours);
-  const minDistanceMeters = milesInputToMeters(minDistanceMiles);
   const preferencesQuery = useUserPreferences({ enabled: isReassessment });
   const todayDate = formatDateInput(new Date());
+  const intervalDateRange = dateRangeForTimeRange(range);
+  const startDate = intervalDateRange.startDate;
+  const endDate = intervalDateRange.endDate;
   const reassessmentStartDate =
     preferencesQuery.data.xc_goal_start_date ?? undefined;
   const reportStartDate = isReassessment
     ? (reassessmentStartDate ?? todayDate)
     : startDate;
   const reportEndDate = isReassessment ? todayDate : endDate;
-  const { data, isLoading, isFetching } = useTrainingReports(range, {
-    enabled: isAggregateTrends,
-    startDate,
+  const reportBoundary = reportBoundaryForTimeRange(range);
+  const canonicalQuery = canonicalReportQuery({
+    range,
+    selectedActivityIds,
+    selectedReportId,
+    isReassessment,
+  });
+  const isCanonicalQuery = canonicalQuery === searchParams.toString();
+  const {
+    data,
+    isLoading,
+    isFetching,
+    isError: isReportError,
+    error: reportError,
+  } = useTrainingReports(reportBoundary, {
+    enabled: isBucketReport && isCanonicalQuery,
+    startDate: startDate || undefined,
     endDate,
-    minDurationSeconds,
-    minDistanceMeters,
   });
   const reportQuery = useRideSummaryReport({
     report: standaloneReportId ?? "ride_summary",
-    boundary: range,
-    startDate: reportStartDate,
+    boundary: reportBoundary,
+    startDate: reportStartDate || undefined,
     endDate: reportEndDate,
     activityIds: selectedActivityIds,
-    minDurationSeconds,
-    minDistanceMeters,
-    enabled: isStandaloneReport && (!isReassessment || !!reassessmentStartDate),
+    enabled:
+      isStandaloneReport &&
+      isCanonicalQuery &&
+      (!isReassessment || !!reassessmentStartDate),
   });
 
   const points = data?.points ?? [];
+  const reportErrorMessage = reportGenerationErrorMessage(reportError);
+  const standaloneReportErrorMessage = reportGenerationErrorMessage(
+    reportQuery.error,
+  );
+  const isReportRequestActive =
+    !isCanonicalQuery ||
+    (isBucketReport && (isLoading || isFetching)) ||
+    (isStandaloneReport && (reportQuery.isLoading || reportQuery.isFetching));
 
   useEffect(() => {
-    const params = new URLSearchParams();
-    if (selectedReportId !== DEFAULT_REPORT_ID) {
-      params.set("report", selectedReportId);
-    }
-    if (isReassessment) {
-      if (reassessmentStartDate) {
-        params.set("start_date", reassessmentStartDate);
-      }
-      params.set("end_date", todayDate);
-    } else {
-      params.set("range", range);
-      params.set("start_date", startDate);
-      params.set("end_date", endDate);
-    }
-    if (selectedActivityIds.length > 0) {
-      params.set("activity_ids", selectedActivityIds.join(","));
-    }
-    if (minDurationSeconds != null) {
-      params.set("min_duration_seconds", minDurationSeconds.toString());
-    }
-    if (minDistanceMeters != null) {
-      params.set("min_distance_meters", minDistanceMeters.toString());
+    reportRequestLockRef.current = isReportRequestActive;
+  }, [isReportRequestActive]);
+
+  useEffect(() => {
+    if (
+      !isReportError ||
+      !reportError ||
+      !isBucketReport ||
+      !isReportGenerationInProgressError(reportError, reportErrorMessage)
+    ) {
+      return;
     }
 
-    const nextQuery = params.toString();
-    if (nextQuery !== searchParams.toString()) {
-      router.replace(`/training/reports?${nextQuery}`, { scroll: false });
+    toast.error(reportErrorMessage, {
+      id: "report-generation-in-progress",
+      duration: 7000,
+    });
+  }, [isBucketReport, isReportError, reportError, reportErrorMessage]);
+
+  useEffect(() => {
+    if (
+      !reportQuery.isError ||
+      !reportQuery.error ||
+      !isStandaloneReport ||
+      !isReportGenerationInProgressError(
+        reportQuery.error,
+        standaloneReportErrorMessage,
+      )
+    ) {
+      return;
     }
+
+    toast.error(standaloneReportErrorMessage, {
+      id: "report-generation-in-progress",
+      duration: 7000,
+    });
   }, [
-    endDate,
-    range,
-    router,
-    searchParams,
-    selectedActivityIds,
-    selectedReportId,
-    startDate,
-    minDurationSeconds,
-    minDistanceMeters,
-    isReassessment,
-    reassessmentStartDate,
-    todayDate,
+    isStandaloneReport,
+    reportQuery.error,
+    reportQuery.isError,
+    standaloneReportErrorMessage,
   ]);
 
+  useEffect(() => {
+    if (canonicalQuery !== searchParams.toString()) {
+      router.replace(`/training/reports?${canonicalQuery}`, { scroll: false });
+    }
+  }, [canonicalQuery, router, searchParams]);
+
   function handleRangeChange(nextRange: TimeRange) {
-    const nextDateRange = dateRangeForTimeRange(nextRange);
+    if (nextRange === range) {
+      return;
+    }
+
+    if (isReportRequestActive || reportRequestLockRef.current) {
+      showReportRequestInProgressToast();
+      return;
+    }
+
+    reportRequestLockRef.current = true;
     setRange(nextRange);
-    setStartDate(nextDateRange.startDate);
-    setEndDate(nextDateRange.endDate);
   }
 
   function handleReportSelect(reportId: ReportId) {
+    if (reportId === selectedReportId) {
+      setIsReportDrawerOpen(false);
+      return;
+    }
+
+    if (isReportRequestActive || reportRequestLockRef.current) {
+      showReportRequestInProgressToast();
+      setIsReportDrawerOpen(false);
+      return;
+    }
+
+    reportRequestLockRef.current = true;
+    setRange(DEFAULT_REPORT_RANGE);
     setSelectedReportId(reportId);
     setIsReportDrawerOpen(false);
+  }
+
+  function handleSelectedActivityIdsChange(activityIds: number[]) {
+    if (isReportRequestActive || reportRequestLockRef.current) {
+      showReportRequestInProgressToast();
+      return;
+    }
+
+    reportRequestLockRef.current = true;
+    setSelectedActivityIds(activityIds);
   }
 
   return (
@@ -216,169 +269,110 @@ export default function ReportsClient() {
                   />
                 </div>
               </div>
-              {!isReassessment ? (
-                <div className="min-w-0">
-                  <div className="mb-2 text-xs font-medium uppercase text-base-content/50">
-                    Preset
-                  </div>
-                  <TimeRangeSelector
-                    value={range}
-                    onChange={handleRangeChange}
-                  />
-                </div>
-              ) : null}
             </div>
 
-            <section className="rounded-lg border border-base-300 bg-base-100 p-4">
-              {isReassessment ? (
-                <fieldset className="fieldset">
-                  <legend className="fieldset-legend">Report range</legend>
-                  <div className="grid gap-4 sm:grid-cols-[minmax(0,14rem)_minmax(0,14rem)_auto] sm:items-end">
-                    <div>
-                      <label className="label">Training start</label>
-                      <input
-                        type="date"
-                        className="input w-full"
-                        value={reassessmentStartDate ?? ""}
-                        readOnly
-                      />
-                    </div>
-                    <div>
-                      <label className="label">Through</label>
-                      <input
-                        type="date"
-                        className="input w-full"
-                        value={todayDate}
-                        readOnly
-                      />
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-base-content/60">
-                      <span>Uses the active XC training block</span>
-                      <InfoTooltip
-                        label="Reassessment range details"
-                        tip={REASSESSMENT_DATE_HELP_TEXT}
-                      />
-                    </div>
-                    {!reassessmentStartDate && !preferencesQuery.isLoading ? (
-                      <div className="alert sm:col-span-3">
-                        <span>
-                          Save an XC training start date before generating a
-                          reassessment.
-                        </span>
-                      </div>
-                    ) : null}
-                  </div>
-                </fieldset>
-              ) : (
-                <fieldset className="fieldset">
-                  <legend className="fieldset-legend">Report range</legend>
-                  <div className="grid gap-4 sm:grid-cols-[minmax(0,14rem)_minmax(0,14rem)_auto] sm:items-end">
-                    <div>
-                      <label className="label">Start date</label>
-                      <input
-                        type="date"
-                        className="input w-full"
-                        value={startDate}
-                        onChange={(event) => {
-                          setStartDate(event.target.value);
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <label className="label">End date</label>
-                      <input
-                        type="date"
-                        className="input w-full"
-                        value={endDate}
-                        onChange={(event) => {
-                          setEndDate(event.target.value);
-                        }}
-                      />
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-base-content/60">
-                      <span>Selected range</span>
-                      <InfoTooltip
-                        label="Report range details"
-                        tip={REPORT_RANGE_HELP_TEXT}
-                      />
-                    </div>
-                  </div>
-                </fieldset>
-              )}
-            </section>
-
-            <section className="min-w-0 rounded-lg border border-base-300 bg-base-100 p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-semibold">
-                      {selectedReport.name}
-                    </h2>
-                    <InfoTooltip
-                      label={`${selectedReport.name} details`}
-                      tip={selectedReport.purpose}
-                    />
-                  </div>
-                </div>
+            {isReassessment &&
+            !reassessmentStartDate &&
+            !preferencesQuery.isLoading ? (
+              <div className="alert">
+                <span>
+                  Save an XC training start date before generating a
+                  reassessment.
+                </span>
               </div>
+            ) : null}
 
-              <ReportFilters
+            {focusedBucketReport ? (
+              <FocusedBucketReportView
                 report={selectedReport}
-                minDurationHours={minDurationHours}
-                minDistanceMiles={minDistanceMiles}
-                onMinDurationHoursChange={setMinDurationHours}
-                onMinDistanceMilesChange={setMinDistanceMiles}
+                reportType={focusedBucketReport}
+                points={points}
+                range={range}
+                onRangeChange={handleRangeChange}
+                isLoading={isLoading}
+                isFetching={isFetching}
+                isError={isReportError}
+                errorMessage={reportErrorMessage}
               />
+            ) : (
+              <section className="min-w-0 rounded-lg border border-base-300 bg-base-100 p-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-lg font-semibold">
+                        {selectedReport.name}
+                      </h2>
+                      <InfoTooltip
+                        label={`${selectedReport.name} details`}
+                        tip={selectedReport.purpose}
+                      />
+                    </div>
+                  </div>
+                  {!isReassessment ? (
+                    <form
+                      className="min-w-52"
+                      onSubmit={(event) => event.preventDefault()}
+                    >
+                      <TimeRangeSelector
+                        value={range}
+                        onChange={handleRangeChange}
+                      />
+                    </form>
+                  ) : null}
+                </div>
 
-              {isAggregateTrends ? (
-                <AggregateTrendsReport
-                  points={points}
-                  range={range}
-                  isLoading={isLoading}
-                  isFetching={isFetching}
-                />
-              ) : isRideSummary ? (
-                <RideSummaryReportView
-                  summary={reportQuery.data?.ride_summary ?? null}
-                  startDate={startDate}
-                  endDate={endDate}
-                  isLoading={reportQuery.isLoading}
-                  isFetching={reportQuery.isFetching}
-                />
-              ) : selectedReport.id === "endurance" ? (
-                <EnduranceReportView
-                  report={reportQuery.data?.endurance ?? null}
-                  unitSystem={unitSystem}
-                  isLoading={reportQuery.isLoading}
-                />
-              ) : selectedReport.id === "climbing" ? (
-                <ClimbingReportView
-                  report={reportQuery.data?.climbing ?? null}
-                  unitSystem={unitSystem}
-                  isLoading={reportQuery.isLoading}
-                />
-              ) : selectedReport.id === "fatigue" ? (
-                <FatigueReportView
-                  report={reportQuery.data?.fatigue ?? null}
-                  unitSystem={unitSystem}
-                  isLoading={reportQuery.isLoading}
-                />
-              ) : selectedReport.id === "compare_rides" ? (
-                <CompareRidesReportView
-                  report={reportQuery.data?.compare_rides ?? null}
-                  selectedActivityIds={selectedActivityIds}
-                  onSelectedActivityIdsChange={setSelectedActivityIds}
-                  isLoading={reportQuery.isLoading}
-                />
-              ) : selectedReport.id === "reassessment" ? (
-                <ReassessmentReportView
-                  report={reportQuery.data?.reassessment ?? null}
-                  isLoading={reportQuery.isLoading}
-                />
-              ) : (
-                <PlannedReport report={selectedReport} />
-              )}
-            </section>
+                {isAggregateTrends ? (
+                  <AggregateTrendsReport
+                    points={points}
+                    range={range}
+                    isLoading={isLoading}
+                    isFetching={isFetching}
+                  />
+                ) : isRideSummary ? (
+                  <RideSummaryReportView
+                    summary={reportQuery.data?.ride_summary ?? null}
+                    startDate={startDate}
+                    endDate={endDate}
+                    isLoading={reportQuery.isLoading}
+                    isFetching={reportQuery.isFetching}
+                  />
+                ) : selectedReport.id === "endurance" ? (
+                  <EnduranceReportView
+                    report={reportQuery.data?.endurance ?? null}
+                    unitSystem={unitSystem}
+                    isLoading={reportQuery.isLoading}
+                  />
+                ) : selectedReport.id === "climbing" ? (
+                  <ClimbingReportView
+                    report={reportQuery.data?.climbing ?? null}
+                    unitSystem={unitSystem}
+                    isLoading={reportQuery.isLoading}
+                  />
+                ) : selectedReport.id === "fatigue" ? (
+                  <FatigueReportView
+                    report={reportQuery.data?.fatigue ?? null}
+                    unitSystem={unitSystem}
+                    isLoading={reportQuery.isLoading}
+                  />
+                ) : selectedReport.id === "compare_rides" ? (
+                  <CompareRidesReportView
+                    report={reportQuery.data?.compare_rides ?? null}
+                    selectedActivityIds={selectedActivityIds}
+                    onSelectedActivityIdsChange={
+                      handleSelectedActivityIdsChange
+                    }
+                    isLoading={reportQuery.isLoading}
+                  />
+                ) : selectedReport.id === "reassessment" ? (
+                  <ReassessmentReportView
+                    report={reportQuery.data?.reassessment ?? null}
+                    isLoading={reportQuery.isLoading}
+                  />
+                ) : (
+                  <PlannedReport report={selectedReport} />
+                )}
+              </section>
+            )}
           </div>
         </div>
       </div>
@@ -1913,74 +1907,229 @@ function ReportMenu({
   );
 }
 
-function ReportFilters({
+function FocusedBucketReportView({
   report,
-  minDurationHours,
-  minDistanceMiles,
-  onMinDurationHoursChange,
-  onMinDistanceMilesChange,
+  reportType,
+  points,
+  range,
+  onRangeChange,
+  isLoading,
+  isFetching,
+  isError,
+  errorMessage,
 }: {
   report: ReportDefinition;
-  minDurationHours: string;
-  minDistanceMiles: string;
-  onMinDurationHoursChange: (value: string) => void;
-  onMinDistanceMilesChange: (value: string) => void;
+  reportType: "distance" | "elevation" | "activity_type_time";
+  points: NonNullable<ReturnType<typeof useTrainingReports>["data"]>["points"];
+  range: TimeRange;
+  onRangeChange: (range: TimeRange) => void;
+  isLoading: boolean;
+  isFetching: boolean;
+  isError: boolean;
+  errorMessage: string;
 }) {
-  const supportsDuration = report.supportedFilters.includes("min_duration");
-  const supportsDistance = report.supportedFilters.includes("min_distance");
-
-  if (!supportsDuration && !supportsDistance) {
-    return null;
-  }
+  const config = {
+    distance: {
+      title: "Distance",
+      description: "Total distance in each interval bucket.",
+      chartType: "distance" as const,
+    },
+    elevation: {
+      title: "Elevation",
+      description: "Total elevation gain in each interval bucket.",
+      chartType: "elevation" as const,
+    },
+    activity_type_time: {
+      title: "Time in Activity Type",
+      description: "Moving time split by training and race activities.",
+      chartType: "activity_type_time" as const,
+    },
+  }[reportType];
+  const csvRows = focusedReportCsvRows(reportType, points, range);
+  const showLoading = isLoading || (isFetching && points.length === 0);
 
   return (
-    <div className="mt-4 rounded-lg border border-base-300 bg-base-200/30 p-4">
-      <fieldset className="fieldset">
-        <legend className="fieldset-legend">Report filters</legend>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,12rem)_minmax(0,12rem)_auto] lg:items-end">
-          {supportsDuration ? (
-            <div>
-              <label className="label">Minimum duration</label>
-              <input
-                type="number"
-                min="0"
-                step="0.25"
-                className="input w-full"
-                placeholder="Any"
-                value={minDurationHours}
-                onChange={(event) => {
-                  onMinDurationHoursChange(event.target.value);
-                }}
-              />
-              <span className="label">hours</span>
-            </div>
-          ) : null}
-
-          {supportsDistance ? (
-            <div>
-              <label className="label">Minimum distance</label>
-              <input
-                type="number"
-                min="0"
-                step="1"
-                className="input w-full"
-                placeholder="Any"
-                value={minDistanceMiles}
-                onChange={(event) => {
-                  onMinDistanceMilesChange(event.target.value);
-                }}
-              />
-              <span className="label">miles</span>
-            </div>
-          ) : null}
-
-          <div className="text-sm text-base-content/60">
-            Filters are applied by the reports API before generating results.
+    <section className="min-w-0 rounded-lg border border-base-300 bg-base-100 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold">{config.title}</h2>
+            <InfoTooltip
+              label={`${report.name} details`}
+              tip={report.purpose}
+            />
           </div>
+          <p className="mt-1 text-xs text-base-content/55">
+            {config.description}
+          </p>
         </div>
-      </fieldset>
+        <div className="min-w-52">
+          <form onSubmit={(event) => event.preventDefault()}>
+            <div className="join w-full">
+              <div>
+                <div>
+                  <label
+                    className="input join-item flex items-center text-sm font-medium text-base-content/70"
+                    htmlFor="focused-report-interval"
+                  >
+                    Interval
+                  </label>
+                </div>
+              </div>
+              <select
+                id="focused-report-interval"
+                className="select join-item min-w-0 flex-1"
+                value={range}
+                onChange={(event) =>
+                  onRangeChange(event.target.value as TimeRange)
+                }
+              >
+                {TIME_RANGE_OPTIONS.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="btn btn-outline join-item"
+                disabled={showLoading || csvRows.length === 0}
+                onClick={() => {
+                  downloadCsv(
+                    focusedReportCsvFilename(reportType, range),
+                    csvRows,
+                  );
+                }}
+              >
+                <FontAwesomeIcon icon={faDownload} className="h-3.5 w-3.5" />
+                Export CSV
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {showLoading ? <ReportLoadingSpinner /> : null}
+
+      {!showLoading && isError ? (
+        <div className="alert alert-warning mt-4">
+          <span>{errorMessage}</span>
+        </div>
+      ) : null}
+
+      {!showLoading && !isError && points.length === 0 ? (
+        <div className="alert mt-4">
+          <span>No report data found for this interval.</span>
+        </div>
+      ) : null}
+
+      {!showLoading && !isError && points.length > 0 ? (
+        <div className="mt-4">
+          <Charts type={config.chartType} points={points} range={range} />
+        </div>
+      ) : null}
+
+      {!showLoading && isFetching ? (
+        <p className="mt-3 text-sm opacity-70">Refreshing...</p>
+      ) : null}
+    </section>
+  );
+}
+
+function ReportLoadingSpinner() {
+  return (
+    <div className="mt-4 flex h-72 items-center justify-center rounded border border-dashed border-base-300">
+      <span className="loading loading-spinner loading-lg text-primary" />
+      <span className="sr-only">Loading report data</span>
     </div>
   );
+}
+
+type CsvRow = Record<string, string | number>;
+
+function focusedReportCsvRows(
+  reportType: "distance" | "elevation" | "activity_type_time",
+  points: TrainingReportPoint[],
+  range: TimeRange,
+): CsvRow[] {
+  switch (reportType) {
+    case "distance":
+      return points.map((point) => ({
+        bucket_label: chartBucketLabel(new Date(point.bucket_start), range),
+        bucket_start: point.bucket_start,
+        bucket_end: point.bucket_end,
+        distance_miles: point.distance_miles,
+        distance_meters: point.distance_meters,
+      }));
+    case "elevation":
+      return points.map((point) => ({
+        bucket_label: chartBucketLabel(new Date(point.bucket_start), range),
+        bucket_start: point.bucket_start,
+        bucket_end: point.bucket_end,
+        elevation_gain_feet: point.elevation_gain_feet,
+        elevation_gain_meters: point.elevation_gain_meters,
+      }));
+    case "activity_type_time":
+      return points.map((point) => {
+        const trainingSeconds = activityTypeSeconds(point, "training");
+        const raceSeconds = activityTypeSeconds(point, "race");
+        return {
+          bucket_label: chartBucketLabel(new Date(point.bucket_start), range),
+          bucket_start: point.bucket_start,
+          bucket_end: point.bucket_end,
+          training_hours: roundCsvNumber(trainingSeconds / 3600),
+          training_seconds: trainingSeconds,
+          race_hours: roundCsvNumber(raceSeconds / 3600),
+          race_seconds: raceSeconds,
+          total_hours: roundCsvNumber((trainingSeconds + raceSeconds) / 3600),
+          total_seconds: trainingSeconds + raceSeconds,
+        };
+      });
+  }
+}
+
+function activityTypeSeconds(point: TrainingReportPoint, activityType: string) {
+  return (
+    point.activity_type_times.find((row) => row.activity_type === activityType)
+      ?.seconds ?? 0
+  );
+}
+
+function roundCsvNumber(value: number) {
+  return Number(value.toFixed(3));
+}
+
+function focusedReportCsvFilename(
+  reportType: "distance" | "elevation" | "activity_type_time",
+  range: TimeRange,
+) {
+  return `bike-${reportType.replaceAll("_", "-")}-${range}.csv`;
+}
+
+function downloadCsv(filename: string, rows: CsvRow[]) {
+  if (rows.length === 0) {
+    return;
+  }
+
+  const headers = Object.keys(rows[0]);
+  const csv = [
+    headers.join(","),
+    ...rows.map((row) =>
+      headers.map((header) => csvCell(row[header] ?? "")).join(","),
+    ),
+  ].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function csvCell(value: string | number) {
+  const text = String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
 function AggregateTrendsReport({
@@ -2084,21 +2233,6 @@ function PlannedReport({ report }: { report: ReportDefinition }) {
   );
 }
 
-function parseTimeRange(value: string | null): TimeRange {
-  switch (value) {
-    case "day":
-    case "week":
-    case "month":
-    case "3month":
-    case "6month":
-    case "1year":
-    case "2year":
-      return value;
-    default:
-      return "month";
-  }
-}
-
 function parseActivityIds(value: string | null) {
   if (!value) {
     return [];
@@ -2110,48 +2244,89 @@ function parseActivityIds(value: string | null) {
     .filter((id) => Number.isFinite(id) && id > 0);
 }
 
-function secondsToHoursInput(value: string | null) {
-  if (!value) {
-    return "";
+function canonicalReportQuery({
+  range,
+  selectedActivityIds,
+  selectedReportId,
+  isReassessment,
+}: {
+  range: TimeRange;
+  selectedActivityIds: number[];
+  selectedReportId: ReportId;
+  isReassessment: boolean;
+}) {
+  const params = new URLSearchParams();
+  if (selectedReportId !== DEFAULT_REPORT_ID) {
+    params.set("report", selectedReportId);
   }
-  const seconds = Number(value);
-  if (!Number.isFinite(seconds) || seconds <= 0) {
-    return "";
+  if (!isReassessment) {
+    params.set("range", range);
   }
-  return trimNumericInput(seconds / 3600);
+  if (selectedActivityIds.length > 0) {
+    params.set("activity_ids", selectedActivityIds.join(","));
+  }
+  return params.toString();
 }
 
-function metersToMilesInput(value: string | null) {
-  if (!value) {
-    return "";
-  }
-  const meters = Number(value);
-  if (!Number.isFinite(meters) || meters <= 0) {
-    return "";
-  }
-  return trimNumericInput(meters / 1609.344);
+function reportGenerationErrorMessage(error: unknown) {
+  const fallback =
+    "A report is already generating. Go back to that report, or wait a few seconds before starting another one.";
+  return apiErrorMessage(error, fallback);
 }
 
-function hoursInputToSeconds(value: string) {
-  const hours = Number(value);
-  if (!Number.isFinite(hours) || hours <= 0) {
-    return undefined;
+function apiErrorMessage(error: unknown, fallback: string) {
+  if (!error || typeof error !== "object") {
+    return fallback;
   }
-  return Math.round(hours * 3600);
+
+  const candidates = [
+    (error as { message?: unknown }).message,
+    (error as { data?: { message?: unknown } }).data?.message,
+    (error as { body?: { message?: unknown } }).body?.message,
+    (error as { response?: { data?: { message?: unknown } } }).response?.data
+      ?.message,
+    (error as { error?: { message?: unknown } }).error?.message,
+  ];
+  const message = candidates.find(
+    (candidate): candidate is string =>
+      typeof candidate === "string" && candidate.trim().length > 0,
+  );
+  return message ?? fallback;
 }
 
-function milesInputToMeters(value: string) {
-  const miles = Number(value);
-  if (!Number.isFinite(miles) || miles <= 0) {
-    return undefined;
-  }
-  return Math.round(miles * 1609.344);
+function showReportRequestInProgressToast() {
+  toast.error(
+    "A report is already generating. Stay on this report until it finishes before starting another one.",
+    {
+      id: "report-generation-in-progress",
+      duration: 7000,
+    },
+  );
 }
 
-function trimNumericInput(value: number) {
-  return Number.isInteger(value)
-    ? value.toString()
-    : value.toFixed(2).replace(/\.?0+$/, "");
+function reportErrorStatus(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+
+  const candidates = [
+    (error as { status?: unknown }).status,
+    (error as { data?: { status?: unknown } }).data?.status,
+    (error as { body?: { status?: unknown } }).body?.status,
+    (error as { response?: { status?: unknown } }).response?.status,
+    (error as { error?: { status?: unknown } }).error?.status,
+  ];
+  const status = candidates.find(
+    (candidate): candidate is number => typeof candidate === "number",
+  );
+  return status ?? null;
+}
+
+function isReportGenerationInProgressError(error: unknown, message: string) {
+  return (
+    reportErrorStatus(error) === 429 ||
+    /already .*generating|generation .*in progress/i.test(message)
+  );
 }
 
 function standaloneReportIdFor(
@@ -2177,38 +2352,98 @@ function standaloneReportIdFor(
   }
 }
 
+function focusedBucketReportFor(
+  reportId: ReportId,
+): "distance" | "elevation" | "activity_type_time" | null {
+  switch (reportId) {
+    case "distance":
+    case "elevation":
+    case "activity_type_time":
+      return reportId;
+    default:
+      return null;
+  }
+}
+
+function reportBoundaryForTimeRange(range: TimeRange): TrainingReportBoundary {
+  switch (range) {
+    case "week":
+      return "week";
+    case "month":
+      return "month";
+    case "6month":
+      return "6month";
+    case "ytd":
+    case "1year":
+      return "1year";
+    case "3year":
+      return "3year";
+    case "5year":
+      return "5year";
+    case "all":
+      return "all";
+  }
+}
+
 function dateRangeForTimeRange(range: TimeRange) {
   const end = new Date();
   const start = new Date(end);
 
   switch (range) {
-    case "day":
-      start.setDate(end.getDate() - 1);
-      break;
     case "week":
       start.setDate(end.getDate() - 7);
       break;
     case "month":
       start.setDate(end.getDate() - 30);
       break;
-    case "3month":
-      start.setDate(end.getDate() - 90);
-      break;
     case "6month":
       start.setDate(end.getDate() - 180);
+      break;
+    case "ytd":
+      start.setMonth(0, 1);
       break;
     case "1year":
       start.setDate(end.getDate() - 365);
       break;
-    case "2year":
-      start.setDate(end.getDate() - 730);
+    case "3year":
+      start.setFullYear(end.getFullYear() - 2, 0, 1);
       break;
+    case "5year":
+      start.setFullYear(end.getFullYear() - 4, 0, 1);
+      break;
+    case "all":
+      return {
+        startDate: "",
+        endDate: formatDateInput(end),
+      };
   }
 
   return {
     startDate: formatDateInput(start),
     endDate: formatDateInput(end),
   };
+}
+
+function parseTimeRange(value: string | null): TimeRange {
+  switch (value) {
+    case "week":
+    case "month":
+    case "6month":
+    case "ytd":
+    case "1year":
+    case "3year":
+    case "5year":
+    case "all":
+      return value;
+    case "day":
+      return "week";
+    case "3month":
+      return "6month";
+    case "2year":
+      return "3year";
+    default:
+      return DEFAULT_REPORT_RANGE;
+  }
 }
 
 function formatDateInput(date: Date) {

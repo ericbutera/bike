@@ -2,10 +2,12 @@ use crate::activity_details::{
     deserialize_derived_activity_data, ActivityChartPoint, ActivityRoutePoint,
 };
 use crate::activity_training_analysis::plausible_aerobic_decoupling_percent;
+use crate::activity_type::ActivityType;
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::entities::{
     activities, activity_training_analyses, fitness_freshness_daily, user_preferences,
 };
+use crate::services::cooldown::{CooldownService, CooldownType};
 use crate::storage::AppStorage;
 use crate::training_profile::deserialize_activity_heart_rate_zones;
 use axum::extract::{Query, State};
@@ -16,9 +18,11 @@ use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, Sele
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration as StdDuration;
 use utoipa::{IntoParams, ToSchema};
 
 const FEET_PER_METER: f64 = 3.28084;
+const AGGREGATE_REPORT_BUILD_TIMEOUT: StdDuration = StdDuration::from_secs(20);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -29,7 +33,19 @@ pub enum ReportId {
     Fatigue,
     CompareRides,
     Reassessment,
+    Distance,
+    Elevation,
+    ActivityTypeTime,
     AggregateTrends,
+}
+
+impl ReportId {
+    fn is_aggregate_bucket_report(self) -> bool {
+        matches!(
+            self,
+            Self::Distance | Self::Elevation | Self::ActivityTypeTime | Self::AggregateTrends
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
@@ -62,6 +78,11 @@ pub enum ReportBoundary {
     OneYear,
     #[serde(rename = "2year")]
     TwoYear,
+    #[serde(rename = "3year")]
+    ThreeYear,
+    #[serde(rename = "5year")]
+    FiveYear,
+    All,
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -103,6 +124,8 @@ pub struct TrainingReportMetricDefinitionResponse {
 pub struct TrainingReportPointResponse {
     pub bucket_start: String,
     pub bucket_end: String,
+    pub distance_meters: f64,
+    pub distance_miles: f64,
     pub z2_average_speed_mps: Option<f64>,
     pub average_aerobic_decoupling_percent: Option<f64>,
     pub climbing_pace_feet_per_week: Option<f64>,
@@ -114,6 +137,13 @@ pub struct TrainingReportPointResponse {
     pub z5_seconds: i32,
     pub elevation_gain_meters: f64,
     pub elevation_gain_feet: f64,
+    pub activity_type_times: Vec<ActivityTypeTimeResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ActivityTypeTimeResponse {
+    pub activity_type: ActivityType,
+    pub seconds: i32,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -464,8 +494,10 @@ struct BucketAccumulator {
     climbing_feet_total: f64,
     climb_rate_sum: f64,
     climb_rate_count: i32,
+    distance_meters_total: f64,
     elevation_meters_total: f64,
     zone_seconds: [i32; 5],
+    activity_type_seconds: HashMap<String, i32>,
 }
 
 #[utoipa::path(
@@ -514,9 +546,70 @@ pub async fn get_training_reports(
     let report_id = parse_report_id(query.report.as_deref())?;
     validate_report_filters(&query)?;
 
+    let mut cooldown =
+        CooldownService::acquire(&state.db, CooldownType::ReportGeneration, user.id).await?;
+    let response = build_training_reports(
+        TrainingReportBuildContext {
+            user_id: user.id,
+            state: state.clone(),
+            boundary,
+            now,
+            range_start,
+            range_end,
+        },
+        report_id,
+        query,
+    )
+    .await;
+    if let Err(error) = cooldown.release().await {
+        tracing::error!(error = ?error, "failed to release report generation cooldown");
+        if response.is_ok() {
+            return Err(error);
+        }
+    }
+
+    response.map(Json)
+}
+
+struct TrainingReportBuildContext {
+    user_id: i32,
+    state: Arc<AppStorage>,
+    boundary: ReportBoundary,
+    now: DateTime<Utc>,
+    range_start: DateTime<Utc>,
+    range_end: DateTime<Utc>,
+}
+
+async fn build_training_reports(
+    context: TrainingReportBuildContext,
+    report_id: ReportId,
+    query: TrainingReportsQuery,
+) -> Result<TrainingReportsResponse, AppError> {
+    let TrainingReportBuildContext {
+        user_id,
+        state,
+        boundary,
+        now,
+        range_start,
+        range_end,
+    } = context;
+
+    if report_id.is_aggregate_bucket_report() {
+        return get_aggregate_training_reports(
+            user_id,
+            state,
+            boundary,
+            now,
+            range_start,
+            range_end,
+            query,
+        )
+        .await;
+    }
+
     let activity_models = filter_activities(
         activities::Entity::find()
-            .filter(activities::Column::UserId.eq(user.id))
+            .filter(activities::Column::UserId.eq(user_id))
             .filter(activities::Column::StartedAt.gte(range_start))
             .filter(activities::Column::StartedAt.lte(range_end)),
         &query,
@@ -525,66 +618,58 @@ pub async fn get_training_reports(
     .await?;
 
     match report_id {
-        ReportId::RideSummary => {
-            return Ok(Json(TrainingReportsResponse {
-                generated_at: now,
-                boundary,
-                range_start: range_start.to_rfc3339(),
-                range_end: range_end.to_rfc3339(),
-                points: Vec::new(),
-                ride_summary: Some(build_ride_summary_report(&activity_models)),
-                endurance: None,
-                climbing: None,
-                fatigue: None,
-                compare_rides: None,
-                reassessment: None,
-            }));
-        }
-        ReportId::Endurance => {
-            return Ok(Json(TrainingReportsResponse {
-                generated_at: now,
-                boundary,
-                range_start: range_start.to_rfc3339(),
-                range_end: range_end.to_rfc3339(),
-                points: Vec::new(),
-                ride_summary: None,
-                endurance: Some(build_endurance_report(&activity_models)),
-                climbing: None,
-                fatigue: None,
-                compare_rides: None,
-                reassessment: None,
-            }));
-        }
-        ReportId::Climbing => {
-            return Ok(Json(TrainingReportsResponse {
-                generated_at: now,
-                boundary,
-                range_start: range_start.to_rfc3339(),
-                range_end: range_end.to_rfc3339(),
-                points: Vec::new(),
-                ride_summary: None,
-                endurance: None,
-                climbing: Some(build_climbing_report(&activity_models)),
-                fatigue: None,
-                compare_rides: None,
-                reassessment: None,
-            }));
-        }
-        ReportId::Fatigue => {
-            return Ok(Json(TrainingReportsResponse {
-                generated_at: now,
-                boundary,
-                range_start: range_start.to_rfc3339(),
-                range_end: range_end.to_rfc3339(),
-                points: Vec::new(),
-                ride_summary: None,
-                endurance: None,
-                climbing: None,
-                fatigue: Some(build_fatigue_report(&activity_models)),
-                compare_rides: None,
-                reassessment: None,
-            }));
-        }
+        ReportId::RideSummary => Ok(TrainingReportsResponse {
+            generated_at: now,
+            boundary,
+            range_start: range_start.to_rfc3339(),
+            range_end: range_end.to_rfc3339(),
+            points: Vec::new(),
+            ride_summary: Some(build_ride_summary_report(&activity_models)),
+            endurance: None,
+            climbing: None,
+            fatigue: None,
+            compare_rides: None,
+            reassessment: None,
+        }),
+        ReportId::Endurance => Ok(TrainingReportsResponse {
+            generated_at: now,
+            boundary,
+            range_start: range_start.to_rfc3339(),
+            range_end: range_end.to_rfc3339(),
+            points: Vec::new(),
+            ride_summary: None,
+            endurance: Some(build_endurance_report(&activity_models)),
+            climbing: None,
+            fatigue: None,
+            compare_rides: None,
+            reassessment: None,
+        }),
+        ReportId::Climbing => Ok(TrainingReportsResponse {
+            generated_at: now,
+            boundary,
+            range_start: range_start.to_rfc3339(),
+            range_end: range_end.to_rfc3339(),
+            points: Vec::new(),
+            ride_summary: None,
+            endurance: None,
+            climbing: Some(build_climbing_report(&activity_models)),
+            fatigue: None,
+            compare_rides: None,
+            reassessment: None,
+        }),
+        ReportId::Fatigue => Ok(TrainingReportsResponse {
+            generated_at: now,
+            boundary,
+            range_start: range_start.to_rfc3339(),
+            range_end: range_end.to_rfc3339(),
+            points: Vec::new(),
+            ride_summary: None,
+            endurance: None,
+            climbing: None,
+            fatigue: Some(build_fatigue_report(&activity_models)),
+            compare_rides: None,
+            reassessment: None,
+        }),
         ReportId::CompareRides => {
             let selected_ids = parse_activity_ids(query.activity_ids.as_deref())?;
             let selected_models = if selected_ids.is_empty() {
@@ -592,7 +677,7 @@ pub async fn get_training_reports(
             } else {
                 filter_activities(
                     activities::Entity::find()
-                        .filter(activities::Column::UserId.eq(user.id))
+                        .filter(activities::Column::UserId.eq(user_id))
                         .filter(activities::Column::Id.is_in(selected_ids)),
                     &query,
                 )
@@ -600,7 +685,7 @@ pub async fn get_training_reports(
                 .await?
             };
 
-            return Ok(Json(TrainingReportsResponse {
+            Ok(TrainingReportsResponse {
                 generated_at: now,
                 boundary,
                 range_start: range_start.to_rfc3339(),
@@ -615,11 +700,11 @@ pub async fn get_training_reports(
                     &selected_models,
                 )),
                 reassessment: None,
-            }));
+            })
         }
         ReportId::Reassessment => {
             let preferences = user_preferences::Entity::find()
-                .filter(user_preferences::Column::UserId.eq(user.id))
+                .filter(user_preferences::Column::UserId.eq(user_id))
                 .one(&state.db)
                 .await?;
             let reassessment_range_end = make_utc_datetime(
@@ -662,7 +747,7 @@ pub async fn get_training_reports(
             let analysis_range_start = reassessment_range_start.min(spring_start);
             let reassessment_activity_models = filter_activities(
                 activities::Entity::find()
-                    .filter(activities::Column::UserId.eq(user.id))
+                    .filter(activities::Column::UserId.eq(user_id))
                     .filter(activities::Column::StartedAt.gte(analysis_range_start))
                     .filter(activities::Column::StartedAt.lte(reassessment_range_end)),
                 &query,
@@ -670,7 +755,7 @@ pub async fn get_training_reports(
             .all(&state.db)
             .await?;
             let fitness_rows = fitness_freshness_daily::Entity::find()
-                .filter(fitness_freshness_daily::Column::UserId.eq(user.id))
+                .filter(fitness_freshness_daily::Column::UserId.eq(user_id))
                 .filter(fitness_freshness_daily::Column::Day.gte(analysis_range_start.date_naive()))
                 .filter(
                     fitness_freshness_daily::Column::Day.lte(reassessment_range_end.date_naive()),
@@ -679,7 +764,7 @@ pub async fn get_training_reports(
                 .all(&state.db)
                 .await?;
 
-            return Ok(Json(TrainingReportsResponse {
+            Ok(TrainingReportsResponse {
                 generated_at: now,
                 boundary,
                 range_start: reassessment_range_start.to_rfc3339(),
@@ -697,10 +782,61 @@ pub async fn get_training_reports(
                     reassessment_range_start.date_naive(),
                     reassessment_range_end.date_naive(),
                 )),
-            }));
+            })
         }
-        ReportId::AggregateTrends => {}
+        ReportId::Distance
+        | ReportId::Elevation
+        | ReportId::ActivityTypeTime
+        | ReportId::AggregateTrends => {
+            unreachable!("aggregate reports return before standalone reports")
+        }
     }
+}
+
+async fn get_aggregate_training_reports(
+    user_id: i32,
+    state: Arc<AppStorage>,
+    boundary: ReportBoundary,
+    now: DateTime<Utc>,
+    range_start: DateTime<Utc>,
+    range_end: DateTime<Utc>,
+    query: TrainingReportsQuery,
+) -> Result<TrainingReportsResponse, AppError> {
+    let response = tokio::time::timeout(
+        AGGREGATE_REPORT_BUILD_TIMEOUT,
+        build_aggregate_training_reports(
+            user_id,
+            state,
+            boundary,
+            now,
+            range_start,
+            range_end,
+            &query,
+        ),
+    )
+    .await
+    .map_err(|_| AppError::internal("Report generation timed out"))??;
+    Ok(response)
+}
+
+async fn build_aggregate_training_reports(
+    user_id: i32,
+    state: Arc<AppStorage>,
+    boundary: ReportBoundary,
+    now: DateTime<Utc>,
+    range_start: DateTime<Utc>,
+    range_end: DateTime<Utc>,
+    query: &TrainingReportsQuery,
+) -> Result<TrainingReportsResponse, AppError> {
+    let activity_models = filter_activities(
+        activities::Entity::find()
+            .filter(activities::Column::UserId.eq(user_id))
+            .filter(activities::Column::StartedAt.gte(range_start))
+            .filter(activities::Column::StartedAt.lte(range_end)),
+        query,
+    )
+    .all(&state.db)
+    .await?;
 
     let activity_ids = activity_models
         .iter()
@@ -710,7 +846,7 @@ pub async fn get_training_reports(
         Vec::new()
     } else {
         activity_training_analyses::Entity::find()
-            .filter(activity_training_analyses::Column::UserId.eq(user.id))
+            .filter(activity_training_analyses::Column::UserId.eq(user_id))
             .filter(activity_training_analyses::Column::ActivityId.is_in(activity_ids))
             .all(&state.db)
             .await?
@@ -756,11 +892,24 @@ pub async fn get_training_reports(
             .unwrap_or(0.0);
         bucket.climbing_feet_total += climbing_meters * FEET_PER_METER;
 
+        bucket.distance_meters_total += activity.distance_meters.unwrap_or(0.0);
+
         let elevation_gain_meters = activity
             .elevation_gain_meters
             .or_else(|| analysis.and_then(|model| model.climbing_elevation_gain_meters))
             .unwrap_or(0.0);
         bucket.elevation_meters_total += elevation_gain_meters;
+
+        let activity_type = ActivityType::from_stored(&activity.activity_type);
+        let activity_seconds = activity
+            .moving_time_seconds
+            .or(activity.total_time_seconds)
+            .unwrap_or(0)
+            .max(0);
+        *bucket
+            .activity_type_seconds
+            .entry(activity_type.as_str().to_string())
+            .or_default() += activity_seconds;
 
         let zones = deserialize_activity_heart_rate_zones(activity.heart_rate_zones_json.as_ref());
         for zone in zones {
@@ -770,7 +919,19 @@ pub async fn get_training_reports(
     }
 
     let mut points = Vec::new();
-    let mut cursor = boundary.bucket_start(range_start)?;
+    let effective_range_start = if boundary == ReportBoundary::All
+        && query.start_date.is_none()
+        && !activity_models.is_empty()
+    {
+        activity_models
+            .iter()
+            .map(|activity| activity.started_at)
+            .min()
+            .unwrap_or(range_start)
+    } else {
+        range_start
+    };
+    let mut cursor = boundary.bucket_start(effective_range_start)?;
     while cursor <= range_end {
         let next_cursor = boundary.next_bucket_start(cursor)?;
         let bucket_end = if next_cursor > range_end {
@@ -784,6 +945,8 @@ pub async fn get_training_reports(
         points.push(TrainingReportPointResponse {
             bucket_start: cursor.to_rfc3339(),
             bucket_end: bucket_end.to_rfc3339(),
+            distance_meters: round_metric(accumulator.distance_meters_total),
+            distance_miles: round_metric(accumulator.distance_meters_total / 1609.344),
             z2_average_speed_mps: average_or_none(
                 accumulator.z2_speed_sum,
                 accumulator.z2_speed_count,
@@ -810,15 +973,16 @@ pub async fn get_training_reports(
             z5_seconds: accumulator.zone_seconds[4],
             elevation_gain_meters: round_metric(accumulator.elevation_meters_total),
             elevation_gain_feet: round_metric(accumulator.elevation_meters_total * FEET_PER_METER),
+            activity_type_times: activity_type_time_rows(&accumulator.activity_type_seconds),
         });
 
         cursor = next_cursor;
     }
 
-    Ok(Json(TrainingReportsResponse {
+    Ok(TrainingReportsResponse {
         generated_at: now,
         boundary,
-        range_start: range_start.to_rfc3339(),
+        range_start: effective_range_start.to_rfc3339(),
         range_end: range_end.to_rfc3339(),
         points,
         ride_summary: None,
@@ -827,7 +991,7 @@ pub async fn get_training_reports(
         fatigue: None,
         compare_rides: None,
         reassessment: None,
-    }))
+    })
 }
 
 fn report_definitions() -> Vec<TrainingReportDefinitionResponse> {
@@ -1121,6 +1285,48 @@ fn report_definitions() -> Vec<TrainingReportDefinitionResponse> {
             ],
         },
         TrainingReportDefinitionResponse {
+            id: ReportId::Distance,
+            display_name: "Distance".to_string(),
+            short_purpose: "Distance totals over the selected interval.".to_string(),
+            supported_filters: vec![ReportFilterKey::MinDuration, ReportFilterKey::MinDistance],
+            required_data_quality: vec!["distance".to_string()],
+            result_sections: vec!["bucket_chart".to_string()],
+            metrics: vec![metric_definition(
+                "distance",
+                "Distance",
+                Some("mi"),
+                ReportMetricDirection::Neutral,
+            )],
+        },
+        TrainingReportDefinitionResponse {
+            id: ReportId::Elevation,
+            display_name: "Elevation".to_string(),
+            short_purpose: "Elevation gain totals over the selected interval.".to_string(),
+            supported_filters: vec![ReportFilterKey::MinDuration, ReportFilterKey::MinDistance],
+            required_data_quality: vec!["elevation".to_string()],
+            result_sections: vec!["bucket_chart".to_string()],
+            metrics: vec![metric_definition(
+                "elevation_gain",
+                "Elevation",
+                Some("ft"),
+                ReportMetricDirection::Neutral,
+            )],
+        },
+        TrainingReportDefinitionResponse {
+            id: ReportId::ActivityTypeTime,
+            display_name: "Time in Activity Type".to_string(),
+            short_purpose: "Moving time split between training and race activities.".to_string(),
+            supported_filters: vec![ReportFilterKey::MinDuration, ReportFilterKey::MinDistance],
+            required_data_quality: vec!["time".to_string()],
+            result_sections: vec!["bucket_chart".to_string()],
+            metrics: vec![metric_definition(
+                "activity_type_time",
+                "Activity Type Time",
+                Some("hours"),
+                ReportMetricDirection::Neutral,
+            )],
+        },
+        TrainingReportDefinitionResponse {
             id: ReportId::AggregateTrends,
             display_name: "Aggregate Trends".to_string(),
             short_purpose: "Existing weekly, monthly, zone, climbing, and elevation charts."
@@ -1185,6 +1391,9 @@ fn parse_report_id(raw: Option<&str>) -> Result<ReportId, AppError> {
         Some("fatigue") => Ok(ReportId::Fatigue),
         Some("compare_rides") => Ok(ReportId::CompareRides),
         Some("reassessment") => Ok(ReportId::Reassessment),
+        Some("distance") => Ok(ReportId::Distance),
+        Some("elevation") => Ok(ReportId::Elevation),
+        Some("activity_type_time") => Ok(ReportId::ActivityTypeTime),
         Some(_) => Err(AppError::bad_request("Unknown report id")),
     }
 }
@@ -1262,6 +1471,21 @@ fn parse_activity_ids(raw: Option<&str>) -> Result<Vec<i32>, AppError> {
     Ok(ids)
 }
 
+fn activity_type_time_rows(
+    activity_type_seconds: &HashMap<String, i32>,
+) -> Vec<ActivityTypeTimeResponse> {
+    [ActivityType::Training, ActivityType::Race]
+        .into_iter()
+        .map(|activity_type| ActivityTypeTimeResponse {
+            seconds: activity_type_seconds
+                .get(activity_type.as_str())
+                .copied()
+                .unwrap_or(0),
+            activity_type,
+        })
+        .collect()
+}
+
 fn report_range(
     boundary: ReportBoundary,
     now: DateTime<Utc>,
@@ -1269,6 +1493,7 @@ fn report_range(
 ) -> Result<(DateTime<Utc>, DateTime<Utc>), AppError> {
     let range_start = match query.start_date {
         Some(date) => make_utc_datetime(date.year(), date.month(), date.day(), 0, 0, 0)?,
+        None if boundary == ReportBoundary::All => make_utc_datetime(1970, 1, 1, 0, 0, 0)?,
         None => boundary.range_start(now),
     };
     let range_end = match query.end_date {
@@ -3649,6 +3874,9 @@ impl ReportBoundary {
             Self::SixMonth => now - Duration::days(180),
             Self::OneYear => now - Duration::days(365),
             Self::TwoYear => now - Duration::days(730),
+            Self::ThreeYear => now - Duration::days(365 * 3),
+            Self::FiveYear => now - Duration::days(365 * 5),
+            Self::All => now - Duration::days(365 * 100),
         }
     }
 
@@ -3669,6 +3897,9 @@ impl ReportBoundary {
             Self::OneYear | Self::TwoYear => {
                 make_utc_datetime(value.year(), value.month(), 1, 0, 0, 0)
             }
+            Self::ThreeYear | Self::FiveYear | Self::All => {
+                make_utc_datetime(value.year(), 1, 1, 0, 0, 0)
+            }
         }
     }
 
@@ -3685,6 +3916,9 @@ impl ReportBoundary {
                     (date.year(), date.month() + 1)
                 };
                 make_utc_datetime(year, month, 1, 0, 0, 0)
+            }
+            Self::ThreeYear | Self::FiveYear | Self::All => {
+                make_utc_datetime(value.year() + 1, 1, 1, 0, 0, 0)
             }
         }
     }
@@ -3997,10 +4231,19 @@ mod tests {
     fn report_registry_declares_initial_reports_and_compare_filters() {
         let definitions = report_definitions();
 
-        assert_eq!(definitions.len(), 7);
+        assert_eq!(definitions.len(), 10);
         assert!(definitions
             .iter()
             .any(|definition| definition.id == ReportId::AggregateTrends));
+        assert!(definitions
+            .iter()
+            .any(|definition| definition.id == ReportId::Distance));
+        assert!(definitions
+            .iter()
+            .any(|definition| definition.id == ReportId::Elevation));
+        assert!(definitions
+            .iter()
+            .any(|definition| definition.id == ReportId::ActivityTypeTime));
 
         let compare = definitions
             .iter()
@@ -4045,6 +4288,18 @@ mod tests {
         assert_eq!(
             parse_report_id(Some("reassessment")).unwrap(),
             ReportId::Reassessment
+        );
+        assert_eq!(
+            parse_report_id(Some("distance")).unwrap(),
+            ReportId::Distance
+        );
+        assert_eq!(
+            parse_report_id(Some("elevation")).unwrap(),
+            ReportId::Elevation
+        );
+        assert_eq!(
+            parse_report_id(Some("activity_type_time")).unwrap(),
+            ReportId::ActivityTypeTime
         );
         assert!(parse_report_id(Some("race_readiness")).is_err());
     }

@@ -12,6 +12,9 @@ export type ReportId =
   | "fatigue"
   | "compare_rides"
   | "reassessment"
+  | "distance"
+  | "elevation"
+  | "activity_type_time"
   | "aggregate_trends";
 
 export type ReportDefinition = {
@@ -87,6 +90,30 @@ export const FALLBACK_REPORT_DEFINITIONS: ReportDefinition[] = [
       "Elapsed long-ride pace",
       "Fitness delta",
     ],
+    supportedFilters: ["min_duration", "min_distance"],
+    metricDirections: {},
+  },
+  {
+    id: "distance",
+    name: "Distance",
+    purpose: "Distance totals over the selected interval.",
+    metrics: ["Distance"],
+    supportedFilters: ["min_duration", "min_distance"],
+    metricDirections: {},
+  },
+  {
+    id: "elevation",
+    name: "Elevation",
+    purpose: "Elevation gain totals over the selected interval.",
+    metrics: ["Elevation"],
+    supportedFilters: ["min_duration", "min_distance"],
+    metricDirections: {},
+  },
+  {
+    id: "activity_type_time",
+    name: "Time in Activity Type",
+    purpose: "Moving time split between training and race activities.",
+    metrics: ["Training time", "Race time"],
     supportedFilters: ["min_duration", "min_distance"],
     metricDirections: {},
   },

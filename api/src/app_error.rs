@@ -125,3 +125,16 @@ impl From<std::io::Error> for AppError {
         Self::internal("File storage request failed")
     }
 }
+
+impl From<kaleido::glass::cooldown::CooldownError> for AppError {
+    fn from(error: kaleido::glass::cooldown::CooldownError) -> Self {
+        Self {
+            status: error.code,
+            message: error.message,
+            errors: None,
+            retry_at: error
+                .retry_after_seconds
+                .map(|seconds| Utc::now() + chrono::Duration::seconds(seconds)),
+        }
+    }
+}

@@ -3,22 +3,24 @@
 import React from "react";
 
 export type TimeRange =
-  | "day"
   | "week"
   | "month"
-  | "3month"
   | "6month"
+  | "ytd"
   | "1year"
-  | "2year";
+  | "3year"
+  | "5year"
+  | "all";
 
-const OPTIONS: { key: TimeRange; label: string }[] = [
-  { key: "day", label: "Day" },
+export const TIME_RANGE_OPTIONS: { key: TimeRange; label: string }[] = [
   { key: "week", label: "Week" },
-  { key: "month", label: "Month" },
-  { key: "3month", label: "3 Month" },
-  { key: "6month", label: "6 Month" },
-  { key: "1year", label: "1 Year" },
-  { key: "2year", label: "2 Year" },
+  { key: "month", label: "30 days" },
+  { key: "6month", label: "6 months" },
+  { key: "ytd", label: "Year to Date" },
+  { key: "1year", label: "Year (365 days)" },
+  { key: "3year", label: "3 years" },
+  { key: "5year", label: "5 years" },
+  { key: "all", label: "All" },
 ];
 
 export default function TimeRangeSelector({
@@ -29,19 +31,22 @@ export default function TimeRangeSelector({
   onChange: (v: TimeRange) => void;
 }) {
   return (
-    <div className="join">
-      {OPTIONS.map((opt) => (
-        <button
-          key={opt.key}
-          type="button"
-          className={
-            "btn btn-sm join-item " + (value === opt.key ? "btn-active" : "")
-          }
-          onClick={() => onChange(opt.key)}
-        >
-          {opt.label}
-        </button>
-      ))}
+    <div className="form-control w-full min-w-52">
+      <label className="label" htmlFor="report-interval">
+        Interval
+      </label>
+      <select
+        id="report-interval"
+        className="select w-full"
+        value={value}
+        onChange={(event) => onChange(event.target.value as TimeRange)}
+      >
+        {TIME_RANGE_OPTIONS.map((opt) => (
+          <option key={opt.key} value={opt.key}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

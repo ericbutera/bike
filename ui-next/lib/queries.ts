@@ -675,7 +675,10 @@ export type TrainingReportBoundary =
   | "3month"
   | "6month"
   | "1year"
-  | "2year";
+  | "2year"
+  | "3year"
+  | "5year"
+  | "all";
 
 export type TrainingReportId =
   | "ride_summary"
@@ -684,6 +687,9 @@ export type TrainingReportId =
   | "fatigue"
   | "compare_rides"
   | "reassessment"
+  | "distance"
+  | "elevation"
+  | "activity_type_time"
   | "aggregate_trends";
 
 export type TrainingReportFilterKey =
@@ -717,6 +723,8 @@ export type TrainingReportDefinitionsResponse = {
 export type TrainingReportPoint = {
   bucket_start: string;
   bucket_end: string;
+  distance_meters: number;
+  distance_miles: number;
   z2_average_speed_mps?: number | null;
   average_aerobic_decoupling_percent?: number | null;
   climbing_pace_feet_per_week?: number | null;
@@ -728,6 +736,12 @@ export type TrainingReportPoint = {
   z5_seconds: number;
   elevation_gain_meters: number;
   elevation_gain_feet: number;
+  activity_type_times: ActivityTypeTime[];
+};
+
+export type ActivityTypeTime = {
+  activity_type: ActivityType;
+  seconds: number;
 };
 
 export type TrainingReportsResponse = {
@@ -2185,7 +2199,7 @@ export function useTrainingReports(
         min_distance_meters: opts?.minDistanceMeters,
       },
     },
-    options: { enabled: opts?.enabled ?? true },
+    options: { enabled: opts?.enabled ?? true, retry: false },
   });
 
   return {
@@ -2203,8 +2217,8 @@ export function useRideSummaryReport(opts: {
     | "compare_rides"
     | "reassessment";
   boundary: TrainingReportBoundary;
-  startDate: string;
-  endDate: string;
+  startDate?: string;
+  endDate?: string;
   activityIds?: number[];
   minDurationSeconds?: number;
   minDistanceMeters?: number;
@@ -2225,7 +2239,7 @@ export function useRideSummaryReport(opts: {
             : undefined,
       },
     },
-    options: { enabled: opts.enabled ?? true },
+    options: { enabled: opts.enabled ?? true, retry: false },
   });
 
   return {

@@ -12,6 +12,7 @@ const QUERY_ERROR_TOAST_THROTTLE_MS = 30_000;
 const CURRENT_USER_QUERY_KEY = ["get", "/auth/current"] as const;
 const CURRENT_USER_STALE_TIME_MS = 30 * 60 * 1000;
 const CURRENT_USER_GC_TIME_MS = 60 * 60 * 1000;
+const REPORT_GENERATION_TOAST_ID = "report-generation-in-progress";
 const queryErrorToastTimes = new Map<string, number>();
 
 function getHttpStatus(error: unknown) {
@@ -27,10 +28,20 @@ function showApiErrorToast(error: unknown) {
   const apiError = handleApiError(error);
 
   if (!apiError.errors && apiError.message) {
-    toast.error(apiError.message);
+    toast.error(apiError.message, {
+      id: apiErrorToastId(apiError.message),
+    });
   }
 
   console.error(`[API Error] ${apiError.message}`, apiError.errors);
+}
+
+function apiErrorToastId(message: string) {
+  if (/already .*generating|generation .*in progress/i.test(message)) {
+    return REPORT_GENERATION_TOAST_ID;
+  }
+
+  return undefined;
 }
 
 function mapCurrentUser(rawUser: any) {

@@ -23,6 +23,7 @@ pub mod observability;
 pub mod openapi;
 pub mod provider_rate_limit;
 pub mod segment_support;
+pub mod services;
 pub mod storage;
 pub mod strava;
 pub mod strava_client;
