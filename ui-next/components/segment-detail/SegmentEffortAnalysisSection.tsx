@@ -349,7 +349,7 @@ export default function SegmentEffortAnalysisSection({
   );
 
   return (
-    <div className="grid gap-5 border-t border-base-300 pt-5">
+    <div className="grid gap-5 ">
       {isAnalysisLoading ? (
         <div className="flex min-h-40 items-center justify-center">
           <LoadingSpinner size="md" aria-label="Loading segment analysis" />

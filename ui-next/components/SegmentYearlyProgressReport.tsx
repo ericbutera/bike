@@ -165,7 +165,7 @@ export default function SegmentYearlyProgressReport() {
     <div className="grid gap-6">
       <AppCard as="section" bodyClassName="gap-5">
         <CardHeader
-          title="Segment"
+          title="Segment progress"
           titleExtras={
             <InfoTooltip
               label="Segment progress details"
@@ -183,9 +183,10 @@ export default function SegmentYearlyProgressReport() {
             <span>No segment efforts found yet.</span>
           </div>
         ) : (
-          <fieldset className="fieldset max-w-xl">
-            <legend className="fieldset-legend">Segment</legend>
-            <label className="label">Choose a segment</label>
+          <label className="form-control max-w-xl">
+            <span className="label">
+              <span className="label-text">Choose a segment</span>
+            </span>
             <select
               className="select w-full"
               value={selectedSegmentId}
@@ -199,28 +200,11 @@ export default function SegmentYearlyProgressReport() {
                 </option>
               ))}
             </select>
-          </fieldset>
+          </label>
         )}
-      </AppCard>
 
-      {selectedSegment ? (
-        <AppCard as="section" bodyClassName="gap-6">
-          <CardHeader
-            title={
-              <Link
-                href={`/segments/${selectedSegment.id}`}
-                className="link-hover link text-base-content"
-              >
-                {selectedSegment.title} by year
-              </Link>
-            }
-            description={`${formatDistance(
-              selectedSegment.distance_meters,
-              unitSystem,
-            )} segment. Lower time is faster.`}
-          />
-
-          {yearlyBestsQuery.isLoading ? (
+        {selectedSegment ? (
+          yearlyBestsQuery.isLoading ? (
             <div className="flex justify-center py-12">
               <LoadingSpinner size="md" />
             </div>
@@ -263,7 +247,7 @@ export default function SegmentYearlyProgressReport() {
                 </ResponsiveContainer>
               </div>
 
-              <p className="text-lg leading-8 text-base-content">
+              <p className="max-w-3xl text-sm leading-6 text-base-content/70">
                 {buildSummary(yearlyBests)}
               </p>
 
@@ -314,9 +298,9 @@ export default function SegmentYearlyProgressReport() {
                 </table>
               </div>
             </>
-          )}
-        </AppCard>
-      ) : null}
+          )
+        ) : null}
+      </AppCard>
     </div>
   );
 }

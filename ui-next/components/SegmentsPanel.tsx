@@ -243,7 +243,7 @@ export default function SegmentsPanel() {
               }
             />
             <p className="mt-2 max-w-2xl text-sm text-base-content/70">
-              You can download Strava segment GPX files from
+              You can download Strava segment GPX files from{" "}
               <a
                 href="https://www.doogal.co.uk/SegmentExplorer"
                 target="_blank"
@@ -310,12 +310,6 @@ export default function SegmentsPanel() {
           }
           actions={
             <div className="flex items-center gap-2">
-              <Link
-                href="/segments/progress"
-                className="btn btn-outline btn-sm"
-              >
-                Progress
-              </Link>
               {segmentsQuery.isFetching ? <LoadingSpinner size="xs" /> : null}
             </div>
           }

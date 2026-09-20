@@ -133,7 +133,6 @@ export default function SegmentEffortAnalysisReport() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
             <fieldset className="fieldset max-w-3xl">
-              <legend className="fieldset-legend">Analysis inputs</legend>
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
                   <label className="label">Choose a segment</label>
@@ -173,14 +172,6 @@ export default function SegmentEffortAnalysisReport() {
                 </div>
               </div>
             </fieldset>
-            {selectedSegment ? (
-              <Link
-                href={`/segments/${selectedSegment.id}`}
-                className="btn btn-ghost btn-sm"
-              >
-                Detail
-              </Link>
-            ) : null}
           </div>
         )}
 
