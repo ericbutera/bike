@@ -580,6 +580,10 @@ struct TrainingReportBuildContext {
     range_end: DateTime<Utc>,
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "legacy report dispatcher predates workspace size lint"
+)]
 async fn build_training_reports(
     context: TrainingReportBuildContext,
     report_id: ReportId,
@@ -819,6 +823,10 @@ async fn get_aggregate_training_reports(
     Ok(response)
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "legacy aggregate report loader predates workspace size lint"
+)]
 async fn build_aggregate_training_reports(
     user_id: i32,
     state: Arc<AppStorage>,
@@ -994,6 +1002,10 @@ async fn build_aggregate_training_reports(
     })
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "declarative report catalog is intentionally data-heavy"
+)]
 fn report_definitions() -> Vec<TrainingReportDefinitionResponse> {
     vec![
         TrainingReportDefinitionResponse {
@@ -1508,6 +1520,10 @@ fn report_range(
     Ok((range_start, range_end))
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "legacy report builder predates workspace size lint"
+)]
 fn build_ride_summary_report(activities: &[activities::Model]) -> RideSummaryReportResponse {
     let mut total_distance_meters = 0.0;
     let mut total_elevation_gain_meters = 0.0;
@@ -1769,6 +1785,10 @@ fn build_climbing_report(activities: &[activities::Model]) -> ClimbingReportResp
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "legacy compare-rides report builder predates workspace size lint"
+)]
 fn build_compare_rides_report(
     candidates: &[activities::Model],
     selected: &[activities::Model],
@@ -1931,6 +1951,10 @@ struct ReassessmentWindowMetrics {
     pace_ride: Option<ReassessmentBenchmarkRideResponse>,
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "legacy reassessment report builder predates workspace size lint"
+)]
 fn build_reassessment_report(
     activities: &[activities::Model],
     fitness_rows: &[fitness_freshness_daily::Model],
@@ -2140,6 +2164,10 @@ fn reassessment_target(preferences: Option<&user_preferences::Model>) -> Reasses
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "legacy reassessment metrics builder predates workspace size lint"
+)]
 fn reassessment_window_metrics(
     label: &str,
     start_date: NaiveDate,
@@ -2570,6 +2598,10 @@ fn reassessment_endurance_signal(
     )
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "legacy reassessment signal builder predates workspace size lint"
+)]
 fn reassessment_climbing_density_signal(
     recent: &ReassessmentWindowMetrics,
     spring: &ReassessmentWindowMetrics,
@@ -3428,6 +3460,10 @@ fn fatigue_index_for_row(
     (evidence_count >= 2).then_some(score.clamp(0.0, 100.0))
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "legacy climb detector predates workspace size lint"
+)]
 fn detect_climbs(activity: &activities::Model, samples: &[TrendSample]) -> Vec<ClimbResponse> {
     const MIN_GAIN_METERS: f64 = 20.0;
     const MIN_DURATION_SECONDS: i32 = 90;

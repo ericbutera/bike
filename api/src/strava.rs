@@ -374,6 +374,10 @@ pub fn verify_webhook_subscription(
     })
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "legacy Strava webhook flow predates workspace size lint"
+)]
 pub async fn handle_webhook_event(
     db: &DatabaseConnection,
     tasks: &TaskQueue,
@@ -537,6 +541,11 @@ pub async fn disconnect_connection(db: &DatabaseConnection, user_id: i32) -> Res
     .await
 }
 
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "legacy Strava sync orchestration predates workspace complexity lint"
+)]
 pub async fn process_strava_sync(
     db: &DatabaseConnection,
     uploads_dir: &str,
@@ -1756,6 +1765,10 @@ fn should_attempt_remote_strava_deauthorize() -> bool {
     false
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "legacy generated TCX serializer predates workspace size lint"
+)]
 fn build_tcx_document(activity: &StravaActivitySummary, streams: &StravaActivityStreams) -> String {
     let total_time_seconds = activity
         .elapsed_time

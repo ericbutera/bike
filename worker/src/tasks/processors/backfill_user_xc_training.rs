@@ -17,6 +17,7 @@ use sea_orm::DatabaseConnection;
 use std::error::Error;
 
 const XC_BACKFILL_RETRY_DELAY_SECONDS: i64 = 30;
+type WorkerResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 pub struct BackfillUserXcTraining {
     db: DatabaseConnection,
@@ -38,96 +39,146 @@ impl TaskProcessor for BackfillUserXcTraining {
         "backfill_user_xc_training"
     }
 
-    async fn process(
-        &self,
-        _task_id: i32,
-        payload: serde_json::Value,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+    async fn process(&self, _task_id: i32, payload: serde_json::Value) -> WorkerResult<()> {
         let data = payload.get("data").unwrap_or(&payload);
         let task: BackfillUserXcTrainingTask = serde_json::from_value(data.clone())?;
 
-        if let Some(lock) = load_user_activity_import_lock(&self.db, task.user_id)
-            .await
-            .map_err(|error| std::io::Error::other(error.message))?
-        {
-            if lock.source != ACTIVITY_IMPORT_LOCK_SOURCE_XC_TRAINING_BACKFILL {
-                set_user_xc_goal_backfill_state(
-                    &self.db,
-                    task.user_id,
-                    Some(XC_GOAL_BACKFILL_STATUS_WAITING),
-                    None,
-                )
-                .await
-                .map_err(|error| std::io::Error::other(error.message))?;
-                self.tasks
-                    .backfill_user_xc_training_with_options(
-                        task.user_id,
-                        Some(Utc::now() + Duration::seconds(XC_BACKFILL_RETRY_DELAY_SECONDS)),
-                        1,
-                    )
-                    .await
-                    .map_err(std::io::Error::other)?;
-                return Ok(());
-            }
-        } else {
-            acquire_user_activity_import_lock(
-                &self.db,
-                task.user_id,
-                ACTIVITY_IMPORT_LOCK_SOURCE_XC_TRAINING_BACKFILL,
-                ACTIVITY_IMPORT_LOCK_STAGE_QUEUED,
-            )
-            .await
-            .map_err(|error| std::io::Error::other(error.message))?;
+        if self.ensure_backfill_lock_or_requeue(&task).await? {
+            return Ok(());
         }
 
-        set_user_xc_goal_backfill_state(
+        self.mark_running(task.user_id).await?;
+
+        let backfill_result =
+            backfill_user_activity_training_analysis_cache(&self.db, task.user_id).await;
+        let status_result = self
+            .record_backfill_status(task.user_id, &backfill_result)
+            .await;
+        let release_result = self.release_backfill_lock(task.user_id).await;
+
+        finish_backfill_task(backfill_result, status_result, release_result)
+    }
+}
+
+impl BackfillUserXcTraining {
+    async fn ensure_backfill_lock_or_requeue(
+        &self,
+        task: &BackfillUserXcTrainingTask,
+    ) -> WorkerResult<bool> {
+        if let Some(lock) = load_user_activity_import_lock(&self.db, task.user_id)
+            .await
+            .map_err(worker_app_error)?
+        {
+            if lock.source != ACTIVITY_IMPORT_LOCK_SOURCE_XC_TRAINING_BACKFILL {
+                self.mark_waiting_and_requeue(task.user_id).await?;
+                return Ok(true);
+            }
+            return Ok(false);
+        }
+
+        acquire_user_activity_import_lock(
             &self.db,
             task.user_id,
+            ACTIVITY_IMPORT_LOCK_SOURCE_XC_TRAINING_BACKFILL,
+            ACTIVITY_IMPORT_LOCK_STAGE_QUEUED,
+        )
+        .await
+        .map_err(worker_app_error)?;
+
+        Ok(false)
+    }
+
+    async fn mark_waiting_and_requeue(&self, user_id: i32) -> WorkerResult<()> {
+        set_user_xc_goal_backfill_state(
+            &self.db,
+            user_id,
+            Some(XC_GOAL_BACKFILL_STATUS_WAITING),
+            None,
+        )
+        .await
+        .map_err(worker_app_error)?;
+        self.tasks
+            .backfill_user_xc_training_with_options(
+                user_id,
+                Some(Utc::now() + Duration::seconds(XC_BACKFILL_RETRY_DELAY_SECONDS)),
+                1,
+            )
+            .await
+            .map_err(std::io::Error::other)?;
+
+        Ok(())
+    }
+
+    async fn mark_running(&self, user_id: i32) -> WorkerResult<()> {
+        set_user_xc_goal_backfill_state(
+            &self.db,
+            user_id,
             Some(XC_GOAL_BACKFILL_STATUS_RUNNING),
             None,
         )
         .await
-        .map_err(|error| std::io::Error::other(error.message))?;
+        .map_err(worker_app_error)
+    }
 
-        let backfill_result =
-            backfill_user_activity_training_analysis_cache(&self.db, task.user_id).await;
-        let status_result = match &backfill_result {
+    async fn record_backfill_status(
+        &self,
+        user_id: i32,
+        backfill_result: &Result<usize, api::app_error::AppError>,
+    ) -> Result<(), std::io::Error> {
+        match backfill_result {
             Ok(rebuilt_activity_count) => {
                 tracing::info!(
-                    user_id = task.user_id,
+                    user_id,
                     rebuilt_activity_count,
                     "completed XC training analysis backfill"
                 );
-                mark_user_xc_goal_backfill_completed(&self.db, task.user_id, Utc::now())
+                mark_user_xc_goal_backfill_completed(&self.db, user_id, Utc::now())
                     .await
-                    .map_err(|error| std::io::Error::other(error.message))
+                    .map_err(status_io_error)
             }
             Err(error) => {
                 let error_message = error.message.clone();
                 set_user_xc_goal_backfill_state(
                     &self.db,
-                    task.user_id,
+                    user_id,
                     Some(XC_GOAL_BACKFILL_STATUS_FAILED),
                     None,
                 )
                 .await
-                .map_err(|status_error| std::io::Error::other(status_error.message))?;
+                .map_err(status_io_error)?;
                 Err(std::io::Error::other(error_message))
             }
-        };
-        let release_result = release_user_activity_import_lock(
+        }
+    }
+
+    async fn release_backfill_lock(&self, user_id: i32) -> Result<(), std::io::Error> {
+        release_user_activity_import_lock(
             &self.db,
-            task.user_id,
+            user_id,
             ACTIVITY_IMPORT_LOCK_SOURCE_XC_TRAINING_BACKFILL,
         )
         .await
-        .map_err(|error| std::io::Error::other(error.message));
-
-        match (backfill_result, status_result, release_result) {
-            (Ok(_), Ok(()), Ok(())) => Ok(()),
-            (Err(error), _, _) => Err(std::io::Error::other(error.message).into()),
-            (Ok(_), Err(error), _) => Err(error.into()),
-            (Ok(_), Ok(()), Err(error)) => Err(error.into()),
-        }
+        .map_err(status_io_error)
     }
+}
+
+fn finish_backfill_task(
+    backfill_result: Result<usize, api::app_error::AppError>,
+    status_result: Result<(), std::io::Error>,
+    release_result: Result<(), std::io::Error>,
+) -> WorkerResult<()> {
+    match (backfill_result, status_result, release_result) {
+        (Ok(_), Ok(()), Ok(())) => Ok(()),
+        (Err(error), _, _) => Err(worker_app_error(error)),
+        (Ok(_), Err(error), _) => Err(error.into()),
+        (Ok(_), Ok(()), Err(error)) => Err(error.into()),
+    }
+}
+
+fn worker_app_error(error: api::app_error::AppError) -> Box<dyn Error + Send + Sync> {
+    std::io::Error::other(error.message).into()
+}
+
+fn status_io_error(error: api::app_error::AppError) -> std::io::Error {
+    std::io::Error::other(error.message)
 }

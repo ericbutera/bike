@@ -794,6 +794,10 @@ fn decay_fitness_freshness_snapshot_to_day(
     snapshot
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "legacy XC goal response builder predates workspace size lint"
+)]
 fn build_xc_goal_progress_response(
     mut rides: Vec<XcRideProgressResponse>,
     goal: Option<XcEventGoal>,
@@ -1005,6 +1009,10 @@ fn build_xc_event_goal_response(
     })
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "legacy XC readiness builder predates workspace size lint"
+)]
 fn build_xc_readiness(
     rides: &[XcRideProgressResponse],
     goal: &XcEventGoal,
@@ -1737,6 +1745,10 @@ fn deficit_rank(key: XcTrainingDeficitKey) -> i32 {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "legacy XC race result builder predates workspace size lint"
+)]
 fn build_xc_race_results(rides: &[XcRideProgressResponse]) -> Vec<XcRaceResultResponse> {
     let mut races = rides
         .iter()

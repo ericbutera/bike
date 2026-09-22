@@ -294,6 +294,10 @@ pub async fn complete_link(
     ),
     tag = "garmin-iq"
 )]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "legacy Garmin IQ reset flow predates workspace complexity lint"
+)]
 pub async fn reset_link(
     Query(params): Query<GarminIqBeginLinkParams>,
     State(state): State<Arc<AppStorage>>,
@@ -343,6 +347,10 @@ pub async fn reset_link(
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     ),
     tag = "garmin-iq"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "legacy Garmin IQ polling flow predates workspace complexity lint"
 )]
 pub async fn poll_link(
     Query(params): Query<GarminIqPollLinkParams>,
@@ -591,6 +599,10 @@ pub async fn unlink_device(
     ),
     tag = "garmin-iq",
     security(("bearer_auth" = []))
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "legacy Garmin IQ segment sync response assembly predates workspace size lint"
 )]
 pub async fn sync_segments(
     headers: HeaderMap,

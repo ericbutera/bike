@@ -879,6 +879,10 @@ mod tests {
         assert_eq!(response.error_samples, vec!["bad.fit: parse failed"]);
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "fixture covers the full activity import response mapping"
+    )]
     #[test]
     fn activity_import_response_maps_model_fields() {
         let now = Utc::now();

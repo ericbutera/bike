@@ -9,7 +9,10 @@ use crate::activity_import_pipeline::ACTIVITY_PROCESSING_PROVIDER;
 use crate::activity_lifecycle::cleanup_duplicate_activities_for_user;
 use crate::analytics::mark_user_activity_changes;
 use crate::app_error::{ApiErrorResponse, AppError};
-use crate::archive_import::{import_activity_archive_from_path, resolve_local_archive_import_path};
+use crate::archive_import::{
+    import_activity_archive_from_path, resolve_local_archive_import_path,
+    ImportActivityArchiveRequest,
+};
 use crate::controllers::activity_imports as activity_imports_controller;
 use crate::entities::{
     activities, activity_imports, provider_rate_limit_buckets, segments, strava_connections,
@@ -339,6 +342,10 @@ async fn load_activity_for_admin_import_trace(
         .map_err(AppError::from)
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "legacy admin metrics aggregation predates workspace size lint"
+)]
 async fn bike_metrics(db: &DatabaseConnection) -> Vec<NamedStat> {
     let total_activities = Aggregator::total::<activities::Entity>(db, activities::Column::Id);
     let activities_added_last_30d =
@@ -1085,12 +1092,14 @@ pub async fn import_activity_archive(
     let result = import_activity_archive_from_path(
         &state.db,
         &state.tasks,
-        &state.uploads_dir,
-        &user_storage_key,
-        admin.user.id,
-        "archive_import",
-        archive_path.display().to_string(),
-        &archive_path,
+        ImportActivityArchiveRequest {
+            uploads_dir: &state.uploads_dir,
+            user_storage_key: &user_storage_key,
+            user_id: admin.user.id,
+            activity_source: "archive_import",
+            display_source: archive_path.display().to_string(),
+            archive_path: &archive_path,
+        },
     )
     .await
     .map(|summary| {
@@ -1221,6 +1230,10 @@ mod tests {
         assert_eq!(enqueue_segment_backfill_tasks(&state, &[]).await, 0);
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "fixture covers the full admin metrics response"
+    )]
     #[tokio::test]
     async fn bike_metrics_returns_expected_named_stats() {
         let db = test_db().await;

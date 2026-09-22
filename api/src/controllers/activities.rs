@@ -342,6 +342,10 @@ async fn load_activity_segment_efforts(
     Ok(efforts_by_activity.remove(&activity_id).unwrap_or_default())
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "legacy response assembly helper predates workspace size lint"
+)]
 async fn load_activity_segment_efforts_by_activity_ids(
     db: &sea_orm::DatabaseConnection,
     user_id: i32,
@@ -916,6 +920,10 @@ mod tests {
     use crate::activity_training_analysis::ActivityTrainingAnalysisResponse;
     use kaleido::glass::data::pagination::PaginatedResponse;
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "fixture covers the full activity response mapping"
+    )]
     #[test]
     fn activity_response_maps_model_fields() {
         let now = Utc::now();

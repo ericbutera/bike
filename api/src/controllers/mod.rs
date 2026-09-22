@@ -21,6 +21,10 @@ use kaleido::glass::metrics_controller;
 use serde_json::json;
 use std::sync::Arc;
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "central route table is intentionally declarative"
+)]
 pub fn routes() -> Router<Arc<AppStorage>> {
     Router::new()
         .nest("/api", auth::routes())

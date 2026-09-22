@@ -20,6 +20,7 @@ The specs are intentionally written as product contracts instead of implementati
 - [Strava integration](strava-integration.md)
 - [Admin operations](admin-operations.md)
 - [Auth configuration](auth-configuration.md)
+- [Clippy refactor todo](clippy-refactor-todo.md)
 
 ## Spec Rules
 

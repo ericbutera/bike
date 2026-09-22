@@ -867,6 +867,10 @@ mod tests {
         route_point(elapsed_seconds, latitude, longitude, distance_meters)
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "fixture covers favorite segment matching cases"
+    )]
     #[test]
     fn favorite_segment_fixtures_match_expected_activity_files() {
         let cases = [

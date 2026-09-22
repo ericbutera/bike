@@ -333,6 +333,10 @@ where
     Ok(())
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "legacy analytics rebuild predates workspace size lint"
+)]
 pub async fn rebuild_fitness_freshness_cache(
     db: &DatabaseConnection,
     user_id: i32,
@@ -459,6 +463,10 @@ pub async fn rebuild_fitness_freshness_cache(
     txn.commit().await
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "legacy analytics rebuild predates workspace size lint"
+)]
 pub async fn rebuild_segment_analytics_cache<C>(
     db: &C,
     segment_ids: &[i32],
@@ -610,6 +618,10 @@ where
     txn.commit().await
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "legacy analytics rebuild predates workspace size lint"
+)]
 pub async fn rebuild_activity_analytics_cache<C>(
     db: &C,
     activity_ids: &[i32],

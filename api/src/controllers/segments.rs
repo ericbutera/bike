@@ -339,6 +339,10 @@ pub struct UpdateSegmentRequest {
         ("bearer_auth" = [])
     )
 )]
+#[expect(
+    clippy::too_many_lines,
+    reason = "legacy segment listing response assembly predates workspace size lint"
+)]
 pub async fn list_segments(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
@@ -778,6 +782,10 @@ pub async fn delete_segment(
     security(
         ("bearer_auth" = [])
     )
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "legacy segment creation endpoint predates workspace size lint"
 )]
 pub async fn create_segment_from_activity(
     UserContext { user, .. }: UserContext<AppStorage>,
@@ -1443,6 +1451,10 @@ fn normalized_analysis_split_count(value: Option<usize>) -> Result<usize, AppErr
     Ok(split_count)
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "legacy segment analysis builder predates workspace size lint"
+)]
 fn segment_effort_analysis_from_sources(
     segment_id: i32,
     segment_title: String,

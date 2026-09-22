@@ -30,6 +30,10 @@ pub enum ProviderQuotaReservation {
     RateLimited(ProviderRateLimitPause),
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "legacy provider quota reservation predates workspace size lint"
+)]
 pub async fn reserve_provider_quota(
     db: &DatabaseConnection,
     specs: &[ProviderQuotaBucketSpec],

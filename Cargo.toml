@@ -33,3 +33,6 @@ tracing-opentelemetry = "0.33.0"
 
 [workspace.lints.clippy]
 all = "deny"
+cognitive_complexity = "deny"
+too_many_arguments = "deny"
+too_many_lines = "deny"

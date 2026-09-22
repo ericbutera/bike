@@ -92,6 +92,17 @@ pub struct PersistActivityUploadWithArtifactsRequest<'a> {
     pub training_profile: Option<&'a TrainingProfile>,
 }
 
+pub struct StoreActivityUploadImportRequest<'a> {
+    pub uploads_dir: &'a str,
+    pub user_storage_key: &'a str,
+    pub user_id: i32,
+    pub upload: ActivityUploadPayload,
+    pub primary_artifact_kind: &'a str,
+    pub primary_source_quality: &'a str,
+    pub additional_artifacts: Vec<ActivityImportArtifactPayload>,
+    pub source: &'a str,
+}
+
 pub enum PersistActivityUploadOutcome {
     Imported(PersistedActivityImport),
     Duplicate(DeduplicatedActivityImport),
@@ -1283,14 +1294,16 @@ pub async fn persist_activity_upload_with_artifacts(
 
     let import_model = store_activity_upload_import_with_artifacts(
         db,
-        request.uploads_dir,
-        request.user_storage_key,
-        request.user_id,
-        request.upload,
-        request.primary_artifact_kind,
-        request.primary_source_quality,
-        request.additional_artifacts,
-        request.source,
+        StoreActivityUploadImportRequest {
+            uploads_dir: request.uploads_dir,
+            user_storage_key: request.user_storage_key,
+            user_id: request.user_id,
+            upload: request.upload,
+            primary_artifact_kind: request.primary_artifact_kind,
+            primary_source_quality: request.primary_source_quality,
+            additional_artifacts: request.additional_artifacts,
+            source: request.source,
+        },
     )
     .await?;
 
@@ -1330,33 +1343,34 @@ pub async fn store_activity_upload_import(
     let source_quality = original_source_quality_for_format(&upload.format);
     store_activity_upload_import_with_artifacts(
         db,
-        uploads_dir,
-        user_storage_key,
-        user_id,
-        upload,
-        ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL,
-        source_quality,
-        Vec::new(),
-        source,
+        StoreActivityUploadImportRequest {
+            uploads_dir,
+            user_storage_key,
+            user_id,
+            upload,
+            primary_artifact_kind: ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL,
+            primary_source_quality: source_quality,
+            additional_artifacts: Vec::new(),
+            source,
+        },
     )
     .await
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "shared persistence bridge keeps legacy import row and artifact rows consistent"
-)]
 pub async fn store_activity_upload_import_with_artifacts(
     db: &DatabaseConnection,
-    uploads_dir: &str,
-    user_storage_key: &str,
-    user_id: i32,
-    upload: ActivityUploadPayload,
-    primary_artifact_kind: &str,
-    primary_source_quality: &str,
-    additional_artifacts: Vec<ActivityImportArtifactPayload>,
-    source: &str,
+    request: StoreActivityUploadImportRequest<'_>,
 ) -> Result<activity_imports::Model, AppError> {
+    let StoreActivityUploadImportRequest {
+        uploads_dir,
+        user_storage_key,
+        user_id,
+        upload,
+        primary_artifact_kind,
+        primary_source_quality,
+        additional_artifacts,
+        source,
+    } = request;
     let relative_path = activity_import_storage_path(user_storage_key, &upload.format, Utc::now());
     let full_path = Path::new(uploads_dir).join(&relative_path);
 

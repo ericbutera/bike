@@ -35,6 +35,31 @@ struct TrackPointSample {
     cadence_rpm: Option<i32>,
 }
 
+#[derive(Debug, Clone, Default)]
+struct TcxLapSummary {
+    total_seconds: f64,
+    total_distance_meters: f64,
+    calories: i32,
+    calories_found: bool,
+    weighted_heart_rate_sum: f64,
+    weighted_heart_rate_seconds: f64,
+    weighted_cadence_sum: f64,
+    weighted_cadence_seconds: f64,
+    max_speed_mps: Option<f64>,
+    max_heart_rate_bpm: Option<i32>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct TcxPointSummary {
+    elevation_gain_meters: Option<f64>,
+    elevation_loss_meters: Option<f64>,
+    average_heart_rate_bpm: Option<i32>,
+    max_heart_rate_bpm: Option<i32>,
+    average_cadence_rpm: Option<i32>,
+    max_cadence_rpm: Option<i32>,
+    max_speed_mps: Option<f64>,
+}
+
 pub fn summarize_activity_upload(
     filename: &str,
     format: &str,
@@ -125,76 +150,105 @@ fn parse_gpx_activity(filename: &str, bytes: &[u8]) -> Result<ActivityDraft, Str
 
 fn parse_tcx_activity(filename: &str, bytes: &[u8]) -> Result<ActivityDraft, String> {
     let document = parse_xml_document(bytes, "TCX")?;
-    let activity = document
-        .descendants()
-        .find(|node| is_element_named(*node, "Activity"))
-        .ok_or_else(|| "TCX file is missing an <Activity> element".to_string())?;
-    let laps = activity
-        .children()
-        .filter(|node| is_element_named(*node, "Lap"))
-        .collect::<Vec<_>>();
-    let points = activity
-        .descendants()
-        .filter(|node| is_element_named(*node, "Trackpoint"))
-        .map(parse_tcx_track_point)
-        .collect::<Result<Vec<_>, _>>()?;
+    let activity = tcx_activity_node(&document)?;
+    let laps = tcx_lap_nodes(activity);
+    let points = parse_tcx_activity_track_points(activity)?;
 
     if laps.is_empty() && points.is_empty() {
         return Err("TCX file does not contain any laps or track points".to_string());
     }
 
-    let mut lap_total_seconds = 0.0;
-    let mut lap_total_distance_meters = 0.0;
-    let mut lap_calories = 0i32;
-    let mut calories_found = false;
-    let mut weighted_lap_heart_rate_sum = 0.0;
-    let mut weighted_lap_heart_rate_seconds = 0.0;
-    let mut weighted_lap_cadence_sum = 0.0;
-    let mut weighted_lap_cadence_seconds = 0.0;
-    let mut lap_max_speed_mps = None;
-    let mut lap_max_heart_rate_bpm = None;
+    let lap_summary = summarize_tcx_laps(&laps);
+    Ok(build_tcx_activity_draft(
+        filename,
+        activity,
+        &points,
+        &lap_summary,
+    ))
+}
 
-    for lap in &laps {
-        let lap_seconds = child_text(*lap, "TotalTimeSeconds")
-            .and_then(parse_f64)
-            .unwrap_or(0.0)
-            .max(0.0);
-        lap_total_seconds += lap_seconds;
+fn tcx_activity_node<'a>(document: &'a Document<'a>) -> Result<Node<'a, 'a>, String> {
+    document
+        .descendants()
+        .find(|node| is_element_named(*node, "Activity"))
+        .ok_or_else(|| "TCX file is missing an <Activity> element".to_string())
+}
 
-        if let Some(distance) = child_text(*lap, "DistanceMeters").and_then(parse_f64) {
-            lap_total_distance_meters += distance.max(0.0);
-        }
+fn tcx_lap_nodes<'a>(activity: Node<'a, 'a>) -> Vec<Node<'a, 'a>> {
+    activity
+        .children()
+        .filter(|node| is_element_named(*node, "Lap"))
+        .collect()
+}
 
-        if let Some(calories) = child_text(*lap, "Calories").and_then(parse_i32) {
-            calories_found = true;
-            lap_calories += calories.max(0);
-        }
+fn parse_tcx_activity_track_points(
+    activity: Node<'_, '_>,
+) -> Result<Vec<TrackPointSample>, String> {
+    activity
+        .descendants()
+        .filter(|node| is_element_named(*node, "Trackpoint"))
+        .map(parse_tcx_track_point)
+        .collect()
+}
 
-        update_max_option(
-            &mut lap_max_speed_mps,
-            child_text(*lap, "MaximumSpeed").and_then(parse_f64),
-        );
-        update_max_option(
-            &mut lap_max_heart_rate_bpm,
-            child_element(*lap, "MaximumHeartRateBpm")
-                .and_then(|node| child_text(node, "Value"))
-                .and_then(parse_i32),
-        );
+fn summarize_tcx_laps(laps: &[Node<'_, '_>]) -> TcxLapSummary {
+    let mut summary = TcxLapSummary::default();
 
-        if let Some(average_heart_rate) = child_element(*lap, "AverageHeartRateBpm")
-            .and_then(|node| child_text(node, "Value"))
-            .and_then(parse_i32)
-        {
-            weighted_lap_heart_rate_sum += f64::from(average_heart_rate) * lap_seconds;
-            weighted_lap_heart_rate_seconds += lap_seconds;
-        }
-
-        if let Some(cadence) = child_text(*lap, "Cadence").and_then(parse_i32) {
-            weighted_lap_cadence_sum += f64::from(cadence) * lap_seconds;
-            weighted_lap_cadence_seconds += lap_seconds;
-        }
+    for lap in laps {
+        summarize_tcx_lap(*lap, &mut summary);
     }
 
+    summary
+}
+
+fn summarize_tcx_lap(lap: Node<'_, '_>, summary: &mut TcxLapSummary) {
+    let lap_seconds = child_text(lap, "TotalTimeSeconds")
+        .and_then(parse_f64)
+        .unwrap_or(0.0)
+        .max(0.0);
+    summary.total_seconds += lap_seconds;
+
+    if let Some(distance) = child_text(lap, "DistanceMeters").and_then(parse_f64) {
+        summary.total_distance_meters += distance.max(0.0);
+    }
+
+    if let Some(calories) = child_text(lap, "Calories").and_then(parse_i32) {
+        summary.calories_found = true;
+        summary.calories += calories.max(0);
+    }
+
+    update_max_option(
+        &mut summary.max_speed_mps,
+        child_text(lap, "MaximumSpeed").and_then(parse_f64),
+    );
+    update_max_option(
+        &mut summary.max_heart_rate_bpm,
+        tcx_lap_heart_rate(lap, "MaximumHeartRateBpm"),
+    );
+
+    if let Some(average_heart_rate) = tcx_lap_heart_rate(lap, "AverageHeartRateBpm") {
+        summary.weighted_heart_rate_sum += f64::from(average_heart_rate) * lap_seconds;
+        summary.weighted_heart_rate_seconds += lap_seconds;
+    }
+
+    if let Some(cadence) = child_text(lap, "Cadence").and_then(parse_i32) {
+        summary.weighted_cadence_sum += f64::from(cadence) * lap_seconds;
+        summary.weighted_cadence_seconds += lap_seconds;
+    }
+}
+
+fn tcx_lap_heart_rate(lap: Node<'_, '_>, name: &str) -> Option<i32> {
+    child_element(lap, name)
+        .and_then(|node| child_text(node, "Value"))
+        .and_then(parse_i32)
+}
+
+fn build_tcx_activity_draft(
+    filename: &str,
+    activity: Node<'_, '_>,
+    points: &[TrackPointSample],
+    lap_summary: &TcxLapSummary,
+) -> ActivityDraft {
     let started_at = child_text(activity, "Id")
         .and_then(parse_datetime)
         .or_else(|| points.iter().find_map(|point| point.time))
@@ -204,59 +258,34 @@ fn parse_tcx_activity(filename: &str, bytes: &[u8]) -> Result<ActivityDraft, Str
         .rev()
         .find_map(|point| point.time)
         .or_else(|| {
-            seconds_from_f64(lap_total_seconds)
+            seconds_from_f64(lap_summary.total_seconds)
                 .map(|seconds| started_at + Duration::seconds(i64::from(seconds)))
         });
-    let total_time_seconds = seconds_from_f64(lap_total_seconds)
+    let total_time_seconds = seconds_from_f64(lap_summary.total_seconds)
         .or_else(|| ended_at.and_then(|end| seconds_between(started_at, end)));
     let fallback_distance_meters = points
         .iter()
         .filter_map(|point| point.distance_meters)
         .reduce(f64::max);
-    let distance_meters = metric_from_f64(if lap_total_distance_meters > 0.0 {
-        Some(lap_total_distance_meters)
+    let distance_meters = metric_from_f64(if lap_summary.total_distance_meters > 0.0 {
+        Some(lap_summary.total_distance_meters)
     } else {
         fallback_distance_meters
     });
-    let (elevation_gain_meters, elevation_loss_meters) = summarize_elevation(&points);
-    let point_heart_rates = points
-        .iter()
-        .filter_map(|point| point.heart_rate_bpm)
-        .collect::<Vec<_>>();
-    let point_cadences = points
-        .iter()
-        .filter_map(|point| point.cadence_rpm)
-        .collect::<Vec<_>>();
-    let average_heart_rate_bpm = average_metric(&point_heart_rates).or_else(|| {
-        if weighted_lap_heart_rate_seconds > 0.0 {
-            Some((weighted_lap_heart_rate_sum / weighted_lap_heart_rate_seconds).round() as i32)
-        } else {
-            None
-        }
-    });
-    let max_heart_rate_bpm = max_metric(&point_heart_rates).or(lap_max_heart_rate_bpm);
-    let average_cadence_rpm = average_metric(&point_cadences).or_else(|| {
-        if weighted_lap_cadence_seconds > 0.0 {
-            Some((weighted_lap_cadence_sum / weighted_lap_cadence_seconds).round() as i32)
-        } else {
-            None
-        }
-    });
-    let max_cadence_rpm = max_metric(&point_cadences);
-    let point_max_speed_mps = summarize_distance_samples(&points);
+    let point_summary = summarize_tcx_points(points, lap_summary);
     let average_speed_mps = match (distance_meters, total_time_seconds) {
         (Some(distance), Some(total_seconds)) if total_seconds > 0 => {
             Some(distance / f64::from(total_seconds))
         }
         _ => None,
     };
-    let calories = if calories_found {
-        Some(lap_calories)
+    let calories = if lap_summary.calories_found {
+        Some(lap_summary.calories)
     } else {
         None
     };
 
-    Ok(ActivityDraft {
+    ActivityDraft {
         title: humanize_filename(filename),
         sport: normalize_sport(activity.attribute("Sport")),
         started_at,
@@ -264,16 +293,58 @@ fn parse_tcx_activity(filename: &str, bytes: &[u8]) -> Result<ActivityDraft, Str
         distance_meters,
         moving_time_seconds: total_time_seconds,
         total_time_seconds,
+        elevation_gain_meters: point_summary.elevation_gain_meters,
+        elevation_loss_meters: point_summary.elevation_loss_meters,
+        average_speed_mps,
+        max_speed_mps: merge_max(point_summary.max_speed_mps, lap_summary.max_speed_mps),
+        average_heart_rate_bpm: point_summary.average_heart_rate_bpm,
+        max_heart_rate_bpm: merge_max(
+            point_summary.max_heart_rate_bpm,
+            lap_summary.max_heart_rate_bpm,
+        ),
+        average_cadence_rpm: point_summary.average_cadence_rpm,
+        max_cadence_rpm: point_summary.max_cadence_rpm,
+        calories,
+    }
+}
+
+fn summarize_tcx_points(
+    points: &[TrackPointSample],
+    lap_summary: &TcxLapSummary,
+) -> TcxPointSummary {
+    let (elevation_gain_meters, elevation_loss_meters) = summarize_elevation(points);
+    let heart_rates = points
+        .iter()
+        .filter_map(|point| point.heart_rate_bpm)
+        .collect::<Vec<_>>();
+    let cadences = points
+        .iter()
+        .filter_map(|point| point.cadence_rpm)
+        .collect::<Vec<_>>();
+
+    TcxPointSummary {
         elevation_gain_meters,
         elevation_loss_meters,
-        average_speed_mps,
-        max_speed_mps: merge_max(point_max_speed_mps, lap_max_speed_mps),
-        average_heart_rate_bpm,
-        max_heart_rate_bpm: merge_max(max_heart_rate_bpm, lap_max_heart_rate_bpm),
-        average_cadence_rpm,
-        max_cadence_rpm,
-        calories,
-    })
+        average_heart_rate_bpm: average_metric(&heart_rates).or_else(|| {
+            weighted_average_i32(
+                lap_summary.weighted_heart_rate_sum,
+                lap_summary.weighted_heart_rate_seconds,
+            )
+        }),
+        max_heart_rate_bpm: max_metric(&heart_rates).or(lap_summary.max_heart_rate_bpm),
+        average_cadence_rpm: average_metric(&cadences).or_else(|| {
+            weighted_average_i32(
+                lap_summary.weighted_cadence_sum,
+                lap_summary.weighted_cadence_seconds,
+            )
+        }),
+        max_cadence_rpm: max_metric(&cadences),
+        max_speed_mps: summarize_distance_samples(points),
+    }
+}
+
+fn weighted_average_i32(weighted_sum: f64, weight: f64) -> Option<i32> {
+    (weight > 0.0).then(|| (weighted_sum / weight).round() as i32)
 }
 
 fn parse_xml_document<'a>(bytes: &'a [u8], format_name: &str) -> Result<Document<'a>, String> {

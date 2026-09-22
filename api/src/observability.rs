@@ -37,6 +37,10 @@ impl Drop for ObservabilityGuard {
     }
 }
 
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "legacy observability bootstrap predates workspace complexity lint"
+)]
 pub fn init_observability(service_name: &'static str) -> ObservabilityGuard {
     global::set_text_map_propagator(TraceContextPropagator::new());
 

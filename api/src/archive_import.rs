@@ -13,7 +13,7 @@ use crate::app_error::AppError;
 use crate::config::Config;
 use crate::entities::activity_archive_import_jobs;
 use crate::tasks::TaskQueue;
-use crate::training_profile::load_training_profile;
+use crate::training_profile::{load_training_profile, TrainingProfile};
 use chrono::Utc;
 use reqwest::{header, redirect::Policy, Client, Url};
 use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, Set};
@@ -51,6 +51,15 @@ pub struct ActivityArchiveImportResponse {
 pub struct DownloadedArchive {
     pub archive_path: PathBuf,
     pub final_url: String,
+}
+
+pub struct ImportActivityArchiveRequest<'a> {
+    pub uploads_dir: &'a str,
+    pub user_storage_key: &'a str,
+    pub user_id: i32,
+    pub activity_source: &'a str,
+    pub display_source: String,
+    pub archive_path: &'a Path,
 }
 
 pub async fn enqueue_activity_archive_import_job(
@@ -153,12 +162,14 @@ pub async fn process_activity_archive_import_job(
     let result = import_activity_archive_from_path(
         db,
         &TaskQueue::new(db.clone()),
-        uploads_dir,
-        &running_job.user_storage_key,
-        running_job.user_id,
-        "archive_url_import",
-        downloaded.final_url.clone(),
-        &downloaded.archive_path,
+        ImportActivityArchiveRequest {
+            uploads_dir,
+            user_storage_key: &running_job.user_storage_key,
+            user_id: running_job.user_id,
+            activity_source: "archive_url_import",
+            display_source: downloaded.final_url.clone(),
+            archive_path: &downloaded.archive_path,
+        },
     )
     .await;
 
@@ -293,64 +304,24 @@ struct ArchiveScanResult {
     supported_entries: Vec<IndexedArchiveActivityEntry>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ArchiveScanMode {
-    Generic,
-    StravaExport,
+struct ActivityArchiveImportRun<'a> {
+    db: &'a DatabaseConnection,
+    uploads_dir: &'a str,
+    user_storage_key: &'a str,
+    user_id: i32,
+    activity_source: &'a str,
+    training_profile: &'a TrainingProfile,
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "archive import entrypoint is shared by admin, worker, and URL flows"
-)]
-pub async fn import_activity_archive_from_path(
-    db: &sea_orm::DatabaseConnection,
-    tasks: &TaskQueue,
-    uploads_dir: &str,
-    user_storage_key: &str,
-    user_id: i32,
-    activity_source: &str,
-    display_source: String,
-    archive_path: &Path,
-) -> Result<ActivityArchiveImportResponse, AppError> {
-    resume_incomplete_activity_imports_for_user(db, uploads_dir, tasks, user_id).await?;
-
-    let scan = scan_archive_entries(archive_path)?;
-    let training_profile = load_training_profile(db, user_id).await?;
-    let mut imported_count = 0i32;
-    let mut duplicate_count = 0i32;
-    let mut affected_segment_ids = Vec::new();
-    let mut imported_import_ids = Vec::new();
-    let mut fitness_dirty_from_day: Option<chrono::NaiveDate> = None;
-    let mut error_samples = Vec::new();
-
-    // TODO: Very large archives can still put many files in one monthly bucket; add
-    // finer-grained sharding if that becomes an operational problem.
-    let mut supported_entries = scan.supported_entries.clone();
-    supported_entries
-        .sort_by_key(|entry| archive_activity_entry_fidelity_rank(&entry.activity_entry));
-    supported_entries.reverse();
-
-    for indexed_entry in &supported_entries {
-        let bytes = match read_archive_entry_bytes(archive_path, &indexed_entry.source) {
-            Ok(value) => value,
-            Err(error) => {
-                error_samples.push(format!(
-                    "{}: failed to read archive entry: {}",
-                    indexed_entry.entry_name, error.message
-                ));
-                continue;
-            }
-        };
-
-        let bytes = match maybe_decode_archive_entry(&indexed_entry.activity_entry, bytes) {
-            Ok(value) => value,
-            Err(message) => {
-                error_samples.push(format!("{}: {}", indexed_entry.entry_name, message));
-                continue;
-            }
-        };
-
+impl ActivityArchiveImportRun<'_> {
+    async fn import_entry(
+        &self,
+        archive_path: &Path,
+        indexed_entry: &IndexedArchiveActivityEntry,
+    ) -> Result<PersistActivityUploadOutcome, AppError> {
+        let bytes = read_archive_entry_bytes(archive_path, &indexed_entry.source)?;
+        let bytes = maybe_decode_archive_entry(&indexed_entry.activity_entry, bytes)
+            .map_err(AppError::bad_request)?;
         let upload = ActivityUploadPayload {
             original_filename: indexed_entry.activity_entry.original_filename.clone(),
             format: indexed_entry.activity_entry.format.clone(),
@@ -359,37 +330,90 @@ pub async fn import_activity_archive_from_path(
             bytes,
         };
 
-        match persist_activity_upload(
-            db,
+        persist_activity_upload(
+            self.db,
             PersistActivityUploadRequest {
-                uploads_dir,
-                user_storage_key,
-                user_id,
+                uploads_dir: self.uploads_dir,
+                user_storage_key: self.user_storage_key,
+                user_id: self.user_id,
                 upload,
-                source: activity_source,
+                source: self.activity_source,
                 deduplication: ActivityUploadDeduplication::Enabled,
-                training_profile: Some(&training_profile),
+                training_profile: Some(self.training_profile),
             },
         )
         .await
-        {
-            Ok(PersistActivityUploadOutcome::Imported(persisted)) => {
-                imported_count += 1;
-                imported_import_ids.push(persisted.import.id);
-                affected_segment_ids.extend(persisted.affected_segment_ids);
-                fitness_dirty_from_day = Some(match fitness_dirty_from_day {
-                    Some(current) => current.min(persisted.fitness_dirty_from_day),
-                    None => persisted.fitness_dirty_from_day,
-                });
-            }
-            Ok(PersistActivityUploadOutcome::Duplicate(_)) => {
-                duplicate_count += 1;
-            }
-            Err(error) => {
-                error_samples.push(format!("{}: {}", indexed_entry.entry_name, error.message));
-            }
-        }
     }
+}
+
+#[derive(Default)]
+struct ActivityArchiveImportProgress {
+    imported_count: i32,
+    duplicate_count: i32,
+    affected_segment_ids: Vec<i32>,
+    imported_import_ids: Vec<i32>,
+    fitness_dirty_from_day: Option<chrono::NaiveDate>,
+    error_samples: Vec<String>,
+}
+
+impl ActivityArchiveImportProgress {
+    fn record_imported(
+        &mut self,
+        persisted: crate::activity_import_pipeline::PersistedActivityImport,
+    ) {
+        self.imported_count += 1;
+        self.imported_import_ids.push(persisted.import.id);
+        self.affected_segment_ids
+            .extend(persisted.affected_segment_ids);
+        self.fitness_dirty_from_day = Some(match self.fitness_dirty_from_day {
+            Some(current) => current.min(persisted.fitness_dirty_from_day),
+            None => persisted.fitness_dirty_from_day,
+        });
+    }
+
+    fn record_duplicate(&mut self) {
+        self.duplicate_count += 1;
+    }
+
+    fn record_error(&mut self, entry_name: &str, message: impl Into<String>) {
+        self.error_samples
+            .push(format!("{}: {}", entry_name, message.into()));
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ArchiveScanMode {
+    Generic,
+    StravaExport,
+}
+
+pub async fn import_activity_archive_from_path(
+    db: &sea_orm::DatabaseConnection,
+    tasks: &TaskQueue,
+    request: ImportActivityArchiveRequest<'_>,
+) -> Result<ActivityArchiveImportResponse, AppError> {
+    let ImportActivityArchiveRequest {
+        uploads_dir,
+        user_storage_key,
+        user_id,
+        activity_source,
+        display_source,
+        archive_path,
+    } = request;
+    resume_incomplete_activity_imports_for_user(db, uploads_dir, tasks, user_id).await?;
+
+    let scan = scan_archive_entries(archive_path)?;
+    let training_profile = load_training_profile(db, user_id).await?;
+    let run = ActivityArchiveImportRun {
+        db,
+        uploads_dir,
+        user_storage_key,
+        user_id,
+        activity_source,
+        training_profile: &training_profile,
+    };
+
+    let progress = import_supported_archive_entries(&run, archive_path, &scan).await;
 
     if scan.supported_entry_count == 0 {
         return Err(AppError::validation_field(
@@ -397,6 +421,17 @@ pub async fn import_activity_archive_from_path(
             "Archive did not contain any supported .fit, .tcx, or .gpx files",
         ));
     }
+
+    let ActivityArchiveImportProgress {
+        imported_count,
+        duplicate_count,
+        affected_segment_ids,
+        imported_import_ids,
+        fitness_dirty_from_day,
+        error_samples,
+    } = progress;
+    let failed_count = error_samples.len() as i32;
+    let error_samples = error_samples.into_iter().take(10).collect::<Vec<_>>();
 
     if imported_count > 0 {
         finalize_activity_import_batch(
@@ -411,9 +446,6 @@ pub async fn import_activity_archive_from_path(
         mark_activity_imports_processed(db, &imported_import_ids).await?;
     }
 
-    let failed_count = error_samples.len() as i32;
-    let error_samples = error_samples.into_iter().take(10).collect::<Vec<_>>();
-
     Ok(ActivityArchiveImportResponse {
         source: display_source,
         total_entries: scan.total_entries,
@@ -424,6 +456,41 @@ pub async fn import_activity_archive_from_path(
         failed_count,
         error_samples,
     })
+}
+
+async fn import_supported_archive_entries(
+    run: &ActivityArchiveImportRun<'_>,
+    archive_path: &Path,
+    scan: &ArchiveScanResult,
+) -> ActivityArchiveImportProgress {
+    let mut progress = ActivityArchiveImportProgress::default();
+    let supported_entries = sorted_supported_archive_entries(scan);
+
+    for indexed_entry in &supported_entries {
+        match run.import_entry(archive_path, indexed_entry).await {
+            Ok(PersistActivityUploadOutcome::Imported(persisted)) => {
+                progress.record_imported(persisted);
+            }
+            Ok(PersistActivityUploadOutcome::Duplicate(_)) => {
+                progress.record_duplicate();
+            }
+            Err(error) => {
+                progress.record_error(&indexed_entry.entry_name, error.message);
+            }
+        }
+    }
+
+    progress
+}
+
+fn sorted_supported_archive_entries(scan: &ArchiveScanResult) -> Vec<IndexedArchiveActivityEntry> {
+    // TODO: Very large archives can still put many files in one monthly bucket; add
+    // finer-grained sharding if that becomes an operational problem.
+    let mut supported_entries = scan.supported_entries.clone();
+    supported_entries
+        .sort_by_key(|entry| archive_activity_entry_fidelity_rank(&entry.activity_entry));
+    supported_entries.reverse();
+    supported_entries
 }
 
 fn archive_activity_entry_fidelity_rank(entry: &ArchiveActivityEntry) -> i32 {
@@ -440,6 +507,20 @@ pub async fn download_archive_from_url(
     archive_url: &str,
 ) -> Result<DownloadedArchive, AppError> {
     let cfg = Config::get();
+    let client = build_archive_fetch_client(cfg)?;
+    let (final_url, response) = fetch_archive_response(&client, archive_url).await?;
+    ensure_archive_response_size(&response, cfg.max_archive_fetch_bytes)?;
+    let archive_path =
+        write_archive_response_to_temp_file(uploads_dir, response, cfg.max_archive_fetch_bytes)
+            .await?;
+
+    Ok(DownloadedArchive {
+        archive_path,
+        final_url: final_url.to_string(),
+    })
+}
+
+fn build_archive_fetch_client(cfg: &Config) -> Result<Client, AppError> {
     let client = Client::builder()
         .redirect(Policy::none())
         .timeout(Duration::from_secs(cfg.archive_fetch_timeout_seconds))
@@ -447,6 +528,14 @@ pub async fn download_archive_from_url(
         .map_err(|error| {
             AppError::internal(format!("Failed to build archive fetch client: {error}"))
         })?;
+
+    Ok(client)
+}
+
+async fn fetch_archive_response(
+    client: &Client,
+    archive_url: &str,
+) -> Result<(Url, reqwest::Response), AppError> {
     let mut current_url = parse_archive_url(archive_url)?;
 
     for _ in 0..=MAX_ARCHIVE_REDIRECTS {
@@ -461,16 +550,7 @@ pub async fn download_archive_from_url(
             })?;
 
         if response.status().is_redirection() {
-            let location = response
-                .headers()
-                .get(header::LOCATION)
-                .and_then(|value| value.to_str().ok())
-                .ok_or_else(|| {
-                    AppError::bad_request("Archive URL redirected without a valid Location header")
-                })?;
-            current_url = current_url.join(location).map_err(|error| {
-                AppError::bad_request(format!("Archive URL redirect was invalid: {error}"))
-            })?;
+            current_url = archive_redirect_url(&current_url, &response)?;
             continue;
         }
 
@@ -481,67 +561,107 @@ pub async fn download_archive_from_url(
             )));
         }
 
-        if response
-            .content_length()
-            .is_some_and(|length| length as usize > cfg.max_archive_fetch_bytes)
-        {
-            return Err(AppError::payload_too_large(
-                "archive_url",
-                format!(
-                    "Archive exceeds the {} byte fetch limit",
-                    cfg.max_archive_fetch_bytes
-                ),
-            ));
-        }
-
-        let temp_path = Path::new(uploads_dir)
-            .join("archive-fetches")
-            .join(format!("{}.zip", Uuid::new_v4()));
-
-        if let Some(parent) = temp_path.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-
-        let mut file = tokio::fs::File::create(&temp_path).await?;
-        let mut total_bytes = 0usize;
-        let mut response = response;
-
-        while let Some(chunk) = response.chunk().await.map_err(|error| {
-            AppError::bad_request(format!("Failed to download archive URL: {error}"))
-        })? {
-            total_bytes += chunk.len();
-            if total_bytes > cfg.max_archive_fetch_bytes {
-                let _ = tokio::fs::remove_file(&temp_path).await;
-                return Err(AppError::payload_too_large(
-                    "archive_url",
-                    format!(
-                        "Archive exceeds the {} byte fetch limit",
-                        cfg.max_archive_fetch_bytes
-                    ),
-                ));
-            }
-            file.write_all(&chunk).await?;
-        }
-
-        file.flush().await?;
-
-        if total_bytes == 0 {
-            let _ = tokio::fs::remove_file(&temp_path).await;
-            return Err(AppError::validation_field(
-                "archive_url",
-                "Archive URL returned an empty response",
-            ));
-        }
-
-        return Ok(DownloadedArchive {
-            archive_path: temp_path,
-            final_url: current_url.to_string(),
-        });
+        return Ok((current_url, response));
     }
 
     Err(AppError::bad_request(
         "Archive URL redirected too many times",
     ))
+}
+
+fn archive_redirect_url(current_url: &Url, response: &reqwest::Response) -> Result<Url, AppError> {
+    let location = response
+        .headers()
+        .get(header::LOCATION)
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| {
+            AppError::bad_request("Archive URL redirected without a valid Location header")
+        })?;
+
+    current_url.join(location).map_err(|error| {
+        AppError::bad_request(format!("Archive URL redirect was invalid: {error}"))
+    })
+}
+
+fn ensure_archive_response_size(
+    response: &reqwest::Response,
+    max_archive_fetch_bytes: usize,
+) -> Result<(), AppError> {
+    if response
+        .content_length()
+        .is_some_and(|length| length as usize > max_archive_fetch_bytes)
+    {
+        return Err(archive_payload_too_large(max_archive_fetch_bytes));
+    }
+
+    Ok(())
+}
+
+async fn write_archive_response_to_temp_file(
+    uploads_dir: &str,
+    mut response: reqwest::Response,
+    max_archive_fetch_bytes: usize,
+) -> Result<PathBuf, AppError> {
+    let temp_path = archive_fetch_temp_path(uploads_dir);
+
+    if let Some(parent) = temp_path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+
+    let mut file = tokio::fs::File::create(&temp_path).await?;
+    let total_bytes = write_archive_response_chunks(
+        &mut response,
+        &mut file,
+        &temp_path,
+        max_archive_fetch_bytes,
+    )
+    .await?;
+    file.flush().await?;
+
+    if total_bytes == 0 {
+        let _ = tokio::fs::remove_file(&temp_path).await;
+        return Err(AppError::validation_field(
+            "archive_url",
+            "Archive URL returned an empty response",
+        ));
+    }
+
+    Ok(temp_path)
+}
+
+fn archive_fetch_temp_path(uploads_dir: &str) -> PathBuf {
+    Path::new(uploads_dir)
+        .join("archive-fetches")
+        .join(format!("{}.zip", Uuid::new_v4()))
+}
+
+async fn write_archive_response_chunks(
+    response: &mut reqwest::Response,
+    file: &mut tokio::fs::File,
+    temp_path: &Path,
+    max_archive_fetch_bytes: usize,
+) -> Result<usize, AppError> {
+    let mut total_bytes = 0usize;
+
+    while let Some(chunk) = response.chunk().await.map_err(|error| {
+        AppError::bad_request(format!("Failed to download archive URL: {error}"))
+    })? {
+        total_bytes += chunk.len();
+        if total_bytes > max_archive_fetch_bytes {
+            let _ = tokio::fs::remove_file(temp_path).await;
+            return Err(archive_payload_too_large(max_archive_fetch_bytes));
+        }
+        file.write_all(&chunk).await?;
+    }
+
+    Ok(total_bytes)
+}
+
+fn archive_payload_too_large(max_archive_fetch_bytes: usize) -> AppError {
+    AppError::payload_too_large(
+        "archive_url",
+        format!("Archive exceeds the {max_archive_fetch_bytes} byte fetch limit"),
+    )
 }
 
 fn parse_archive_url(raw: &str) -> Result<Url, AppError> {
@@ -1143,12 +1263,14 @@ mod tests {
         let first = import_activity_archive_from_path(
             &db,
             &tasks,
-            &uploads_dir,
-            "test-user",
-            1,
-            "archive_import",
-            archive_path.display().to_string(),
-            &archive_path,
+            ImportActivityArchiveRequest {
+                uploads_dir: &uploads_dir,
+                user_storage_key: "test-user",
+                user_id: 1,
+                activity_source: "archive_import",
+                display_source: archive_path.display().to_string(),
+                archive_path: &archive_path,
+            },
         )
         .await
         .expect("import first archive");
@@ -1158,12 +1280,14 @@ mod tests {
         let second = import_activity_archive_from_path(
             &db,
             &tasks,
-            &uploads_dir,
-            "test-user",
-            1,
-            "archive_import",
-            archive_path.display().to_string(),
-            &archive_path,
+            ImportActivityArchiveRequest {
+                uploads_dir: &uploads_dir,
+                user_storage_key: "test-user",
+                user_id: 1,
+                activity_source: "archive_import",
+                display_source: archive_path.display().to_string(),
+                archive_path: &archive_path,
+            },
         )
         .await
         .expect("import second archive");

@@ -419,104 +419,11 @@ fn derive_tcx_activity_detail(filename: &str, bytes: &[u8]) -> Result<ActivityDe
     let summary =
         summarize_activity_upload(filename, "tcx", bytes).map_err(|error| error.message)?;
     let document = parse_xml_document(bytes, "TCX")?;
-    let activity = document
-        .descendants()
-        .find(|node| is_element_named(*node, "Activity"))
-        .ok_or_else(|| "TCX file is missing an <Activity> element".to_string())?;
-    let laps = activity
-        .children()
-        .filter(|node| is_element_named(*node, "Lap"))
-        .collect::<Vec<_>>();
-    let points = activity
-        .descendants()
-        .filter(|node| is_element_named(*node, "Trackpoint"))
-        .map(parse_tcx_track_point)
-        .collect::<Result<Vec<_>, _>>()?;
+    let activity = tcx_activity_node(&document)?;
+    let laps = tcx_lap_nodes(activity);
+    let points = parse_tcx_activity_track_points(activity)?;
 
-    let mut detail_laps = Vec::new();
-    let mut fallback_start_offset_seconds = 0;
-
-    for (index, lap) in laps.iter().enumerate() {
-        let lap_points = lap
-            .descendants()
-            .filter(|node| is_element_named(*node, "Trackpoint"))
-            .map(parse_tcx_track_point)
-            .collect::<Result<Vec<_>, _>>()?;
-        let lap_duration_seconds = child_text(*lap, "TotalTimeSeconds")
-            .and_then(parse_f64)
-            .and_then(seconds_from_f64);
-        let lap_distance_meters =
-            metric_from_f64(child_text(*lap, "DistanceMeters").and_then(parse_f64)).or_else(|| {
-                lap_points
-                    .iter()
-                    .filter_map(|point| point.distance_meters)
-                    .reduce(f64::max)
-                    .and_then(|distance| metric_from_f64(Some(distance)))
-            });
-        let (lap_elevation_gain_meters, lap_elevation_loss_meters) =
-            summarize_elevation(&lap_points);
-        let lap_heart_rates = lap_points
-            .iter()
-            .filter_map(|point| point.heart_rate_bpm)
-            .collect::<Vec<_>>();
-        let lap_cadences = lap_points
-            .iter()
-            .filter_map(|point| point.cadence_rpm)
-            .collect::<Vec<_>>();
-        let lap_average_heart_rate_bpm = average_metric(&lap_heart_rates).or_else(|| {
-            child_element(*lap, "AverageHeartRateBpm")
-                .and_then(|node| child_text(node, "Value"))
-                .and_then(parse_i32)
-        });
-        let lap_max_heart_rate_bpm = merge_max(
-            max_metric(&lap_heart_rates),
-            child_element(*lap, "MaximumHeartRateBpm")
-                .and_then(|node| child_text(node, "Value"))
-                .and_then(parse_i32),
-        );
-        let lap_average_cadence_rpm = average_metric(&lap_cadences)
-            .or_else(|| child_text(*lap, "Cadence").and_then(parse_i32));
-        let lap_max_cadence_rpm = max_metric(&lap_cadences);
-        let lap_average_speed_mps = match (lap_distance_meters, lap_duration_seconds) {
-            (Some(distance), Some(duration)) if duration > 0 => {
-                Some(distance / f64::from(duration))
-            }
-            _ => None,
-        };
-        let lap_max_speed_mps = merge_max(
-            summarize_distance_samples(&lap_points),
-            child_text(*lap, "MaximumSpeed").and_then(parse_f64),
-        );
-        let start_offset_seconds = lap
-            .attribute("StartTime")
-            .and_then(parse_datetime)
-            .and_then(|lap_start| elapsed_seconds_from(summary.started_at, lap_start))
-            .or(Some(fallback_start_offset_seconds));
-
-        detail_laps.push(ActivityLap {
-            lap_index: (index + 1) as i32,
-            title: format!("Lap {}", index + 1),
-            start_offset_seconds,
-            duration_seconds: lap_duration_seconds,
-            distance_meters: lap_distance_meters,
-            elevation_gain_meters: lap_elevation_gain_meters,
-            elevation_loss_meters: lap_elevation_loss_meters,
-            average_speed_mps: lap_average_speed_mps,
-            max_speed_mps: lap_max_speed_mps,
-            average_heart_rate_bpm: lap_average_heart_rate_bpm,
-            max_heart_rate_bpm: lap_max_heart_rate_bpm,
-            average_cadence_rpm: lap_average_cadence_rpm,
-            max_cadence_rpm: lap_max_cadence_rpm,
-            calories: child_text(*lap, "Calories").and_then(parse_i32),
-        });
-
-        fallback_start_offset_seconds =
-            fallback_start_offset_seconds.saturating_add(lap_duration_seconds.unwrap_or_default());
-    }
-
-    if detail_laps.is_empty() {
-        detail_laps.push(full_activity_lap(&summary));
-    }
+    let detail_laps = build_tcx_activity_laps(&summary, &laps)?;
 
     Ok(ActivityDerivedData {
         laps: detail_laps,
@@ -526,6 +433,130 @@ fn derive_tcx_activity_detail(filename: &str, bytes: &[u8]) -> Result<ActivityDe
         ),
         route_points: build_tcx_route_points(&points, summary.started_at),
     })
+}
+
+fn tcx_activity_node<'a>(document: &'a Document<'a>) -> Result<Node<'a, 'a>, String> {
+    document
+        .descendants()
+        .find(|node| is_element_named(*node, "Activity"))
+        .ok_or_else(|| "TCX file is missing an <Activity> element".to_string())
+}
+
+fn tcx_lap_nodes<'a>(activity: Node<'a, 'a>) -> Vec<Node<'a, 'a>> {
+    activity
+        .children()
+        .filter(|node| is_element_named(*node, "Lap"))
+        .collect()
+}
+
+fn parse_tcx_activity_track_points(
+    activity: Node<'_, '_>,
+) -> Result<Vec<TrackPointSample>, String> {
+    activity
+        .descendants()
+        .filter(|node| is_element_named(*node, "Trackpoint"))
+        .map(parse_tcx_track_point)
+        .collect()
+}
+
+fn build_tcx_activity_laps(
+    summary: &ActivityDraft,
+    laps: &[Node<'_, '_>],
+) -> Result<Vec<ActivityLap>, String> {
+    let mut activity_laps = Vec::new();
+    let mut fallback_start_offset_seconds = 0;
+
+    for (index, lap) in laps.iter().enumerate() {
+        let activity_lap =
+            build_tcx_activity_lap(summary, *lap, index, fallback_start_offset_seconds)?;
+        fallback_start_offset_seconds = fallback_start_offset_seconds
+            .saturating_add(activity_lap.duration_seconds.unwrap_or_default());
+        activity_laps.push(activity_lap);
+    }
+
+    if activity_laps.is_empty() {
+        activity_laps.push(full_activity_lap(summary));
+    }
+
+    Ok(activity_laps)
+}
+
+fn build_tcx_activity_lap(
+    summary: &ActivityDraft,
+    lap: Node<'_, '_>,
+    index: usize,
+    fallback_start_offset_seconds: i32,
+) -> Result<ActivityLap, String> {
+    let lap_points = lap
+        .descendants()
+        .filter(|node| is_element_named(*node, "Trackpoint"))
+        .map(parse_tcx_track_point)
+        .collect::<Result<Vec<_>, _>>()?;
+    let lap_duration_seconds = child_text(lap, "TotalTimeSeconds")
+        .and_then(parse_f64)
+        .and_then(seconds_from_f64);
+    let lap_distance_meters =
+        metric_from_f64(child_text(lap, "DistanceMeters").and_then(parse_f64)).or_else(|| {
+            lap_points
+                .iter()
+                .filter_map(|point| point.distance_meters)
+                .reduce(f64::max)
+                .and_then(|distance| metric_from_f64(Some(distance)))
+        });
+    let (lap_elevation_gain_meters, lap_elevation_loss_meters) = summarize_elevation(&lap_points);
+    let lap_heart_rates = lap_points
+        .iter()
+        .filter_map(|point| point.heart_rate_bpm)
+        .collect::<Vec<_>>();
+    let lap_cadences = lap_points
+        .iter()
+        .filter_map(|point| point.cadence_rpm)
+        .collect::<Vec<_>>();
+    let lap_average_heart_rate_bpm =
+        average_metric(&lap_heart_rates).or_else(|| tcx_lap_heart_rate(lap, "AverageHeartRateBpm"));
+    let lap_max_heart_rate_bpm = merge_max(
+        max_metric(&lap_heart_rates),
+        tcx_lap_heart_rate(lap, "MaximumHeartRateBpm"),
+    );
+    let lap_average_cadence_rpm =
+        average_metric(&lap_cadences).or_else(|| child_text(lap, "Cadence").and_then(parse_i32));
+    let lap_max_cadence_rpm = max_metric(&lap_cadences);
+    let lap_average_speed_mps = match (lap_distance_meters, lap_duration_seconds) {
+        (Some(distance), Some(duration)) if duration > 0 => Some(distance / f64::from(duration)),
+        _ => None,
+    };
+    let lap_max_speed_mps = merge_max(
+        summarize_distance_samples(&lap_points),
+        child_text(lap, "MaximumSpeed").and_then(parse_f64),
+    );
+    let start_offset_seconds = lap
+        .attribute("StartTime")
+        .and_then(parse_datetime)
+        .and_then(|lap_start| elapsed_seconds_from(summary.started_at, lap_start))
+        .or(Some(fallback_start_offset_seconds));
+
+    Ok(ActivityLap {
+        lap_index: (index + 1) as i32,
+        title: format!("Lap {}", index + 1),
+        start_offset_seconds,
+        duration_seconds: lap_duration_seconds,
+        distance_meters: lap_distance_meters,
+        elevation_gain_meters: lap_elevation_gain_meters,
+        elevation_loss_meters: lap_elevation_loss_meters,
+        average_speed_mps: lap_average_speed_mps,
+        max_speed_mps: lap_max_speed_mps,
+        average_heart_rate_bpm: lap_average_heart_rate_bpm,
+        max_heart_rate_bpm: lap_max_heart_rate_bpm,
+        average_cadence_rpm: lap_average_cadence_rpm,
+        max_cadence_rpm: lap_max_cadence_rpm,
+        calories: child_text(lap, "Calories").and_then(parse_i32),
+    })
+}
+
+fn tcx_lap_heart_rate(lap: Node<'_, '_>, name: &str) -> Option<i32> {
+    child_element(lap, name)
+        .and_then(|node| child_text(node, "Value"))
+        .and_then(parse_i32)
 }
 
 fn derive_fit_activity_detail(filename: &str, bytes: &[u8]) -> Result<ActivityDerivedData, String> {
@@ -1264,47 +1295,63 @@ mod tests {
         assert_eq!(detail.laps[0].duration_seconds, Some(14));
     }
 
+    fn full_shape_derived_data_fixture() -> ActivityDerivedData {
+        ActivityDerivedData {
+            laps: vec![full_shape_lap_fixture()],
+            chart_points: vec![full_shape_chart_point_fixture()],
+            route_points: vec![full_shape_route_point_fixture()],
+        }
+    }
+
+    fn full_shape_lap_fixture() -> ActivityLap {
+        ActivityLap {
+            lap_index: 0,
+            title: "Lap 1".to_string(),
+            start_offset_seconds: Some(5),
+            duration_seconds: Some(90),
+            distance_meters: Some(1234.5),
+            elevation_gain_meters: Some(12.3),
+            elevation_loss_meters: Some(4.5),
+            average_speed_mps: Some(6.78),
+            max_speed_mps: Some(9.01),
+            average_heart_rate_bpm: Some(140),
+            max_heart_rate_bpm: Some(171),
+            average_cadence_rpm: Some(88),
+            max_cadence_rpm: Some(102),
+            calories: Some(77),
+        }
+    }
+
+    fn full_shape_chart_point_fixture() -> ActivityChartPoint {
+        ActivityChartPoint {
+            elapsed_seconds: 15,
+            distance_meters: Some(25.4),
+            elevation_meters: Some(8.2),
+            speed_mps: Some(7.65),
+            heart_rate_bpm: Some(145),
+            cadence_rpm: Some(91),
+            power_watts: Some(210),
+        }
+    }
+
+    fn full_shape_route_point_fixture() -> ActivityRoutePoint {
+        ActivityRoutePoint {
+            elapsed_seconds: 15,
+            latitude: 45.1234567,
+            longitude: -122.7654321,
+            distance_meters: Some(25.4),
+            elevation_meters: Some(8.2),
+            speed_mps: Some(7.65),
+            heart_rate_bpm: Some(145),
+            cadence_rpm: Some(91),
+            power_watts: Some(210),
+        }
+    }
+
     #[test]
     fn serializes_activity_derived_data_to_compact_shape() {
-        let stored = serialize_derived_activity_data(&ActivityDerivedData {
-            laps: vec![ActivityLap {
-                lap_index: 0,
-                title: "Lap 1".to_string(),
-                start_offset_seconds: Some(5),
-                duration_seconds: Some(90),
-                distance_meters: Some(1234.5),
-                elevation_gain_meters: Some(12.3),
-                elevation_loss_meters: Some(4.5),
-                average_speed_mps: Some(6.78),
-                max_speed_mps: Some(9.01),
-                average_heart_rate_bpm: Some(140),
-                max_heart_rate_bpm: Some(171),
-                average_cadence_rpm: Some(88),
-                max_cadence_rpm: Some(102),
-                calories: Some(77),
-            }],
-            chart_points: vec![ActivityChartPoint {
-                elapsed_seconds: 15,
-                distance_meters: Some(25.4),
-                elevation_meters: Some(8.2),
-                speed_mps: Some(7.65),
-                heart_rate_bpm: Some(145),
-                cadence_rpm: Some(91),
-                power_watts: Some(210),
-            }],
-            route_points: vec![ActivityRoutePoint {
-                elapsed_seconds: 15,
-                latitude: 45.1234567,
-                longitude: -122.7654321,
-                distance_meters: Some(25.4),
-                elevation_meters: Some(8.2),
-                speed_mps: Some(7.65),
-                heart_rate_bpm: Some(145),
-                cadence_rpm: Some(91),
-                power_watts: Some(210),
-            }],
-        })
-        .expect("serialized activity derived data");
+        let stored = serialize_derived_activity_data(&full_shape_derived_data_fixture())
+            .expect("serialized activity derived data");
 
         let value = serde_json::to_value(stored).expect("json value");
 
