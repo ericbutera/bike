@@ -1,8 +1,8 @@
-use api::config::Config;
-use api::observability;
 use api::strava::process_strava_sync;
-use api::tasks::StravaSyncTask;
 use async_trait::async_trait;
+use bike_core::config::Config;
+use bike_core::jobs::StravaSyncTask;
+use bike_core::observability;
 use kaleido::background_jobs::worker::TaskProcessor;
 use sea_orm::DatabaseConnection;
 use std::error::Error;

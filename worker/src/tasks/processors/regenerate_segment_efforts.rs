@@ -4,8 +4,8 @@ use api::analytics::{
 };
 use api::entities::segments;
 use api::segment_support::{deserialize_segment_route_points, replace_segment_efforts_for_segment};
-use api::tasks::RegenerateSegmentEffortsTask;
 use async_trait::async_trait;
+use bike_core::jobs::RegenerateSegmentEffortsTask;
 use chrono::Utc;
 use kaleido::background_jobs::worker::TaskProcessor;
 use sea_orm::{DatabaseConnection, EntityTrait};

@@ -34,6 +34,7 @@ prometheus = { workspace = true }
 tower-http = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
+bike-core = { path = "../bike-core" }
 migration = { path = "../migration" }
 async-trait = "0.1"
 utoipa = { workspace = true }

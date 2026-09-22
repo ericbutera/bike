@@ -1,6 +1,6 @@
 use api::analytics::rebuild_segment_analytics_cache;
-use api::tasks::RebuildSegmentAnalyticsTask;
 use async_trait::async_trait;
+use bike_core::jobs::RebuildSegmentAnalyticsTask;
 use kaleido::background_jobs::worker::TaskProcessor;
 use sea_orm::DatabaseConnection;
 use std::error::Error;

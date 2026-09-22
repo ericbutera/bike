@@ -1,6 +1,6 @@
 use api::activity_import_pipeline::recover_abandoned_manual_activity_imports_after_worker_start;
-use api::tasks::TaskQueue;
 use async_trait::async_trait;
+use bike_core::jobs::JobQueue;
 use chrono::Utc;
 use kaleido::background_jobs::worker::{WorkerError, WorkerStartupHook};
 use sea_orm::DatabaseConnection;
@@ -14,7 +14,7 @@ impl WorkerStartupHook for RecoverManualActivityImportsOnStartup {
     }
 
     async fn run(&self, db: &DatabaseConnection) -> Result<(), WorkerError> {
-        let task_queue = TaskQueue::new(db.clone());
+        let task_queue = JobQueue::new(db.clone());
         let recovered_count = recover_abandoned_manual_activity_imports_after_worker_start(
             db,
             &task_queue,

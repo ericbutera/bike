@@ -1,6 +1,6 @@
 use crate::email::EmailTemplate;
-use api::config::Config;
 use async_trait::async_trait;
+use bike_core::config::Config;
 use kaleido::auth::worker::tasks::EmailNotificationTask;
 use kaleido::background_jobs::worker::TaskProcessor;
 use kaleido::glass::email::{EmailService, SmtpConfig};

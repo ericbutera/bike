@@ -1,7 +1,7 @@
 pub mod processors;
 mod startup;
 
-use api::config::Config;
+use bike_core::config::Config;
 use kaleido::auth::worker::{AuthWorkerConfig, AuthWorkerSmtpConfig};
 use kaleido::background_jobs::worker::{TaskWorker, WorkerError};
 use sea_orm::DatabaseConnection;

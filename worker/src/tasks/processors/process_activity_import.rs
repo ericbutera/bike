@@ -3,10 +3,10 @@ use api::activity_import_pipeline::{
     process_stored_activity_import, reprocess_activity_from_import, ActivityUploadDeduplication,
     PersistActivityUploadOutcome, ACTIVITY_IMPORT_STATUS_PROCESSING,
 };
-use api::config::Config;
 use api::entities::{activities, activity_imports};
-use api::tasks::{ProcessActivityImportTask, TaskQueue};
 use async_trait::async_trait;
+use bike_core::config::Config;
+use bike_core::jobs::{JobQueue, ProcessActivityImportTask};
 use chrono::{NaiveDate, Utc};
 use kaleido::background_jobs::worker::TaskProcessor;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
@@ -16,14 +16,14 @@ type WorkerResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 pub struct ProcessActivityImport {
     db: DatabaseConnection,
-    tasks: TaskQueue,
+    tasks: JobQueue,
     uploads_dir: String,
 }
 
 impl ProcessActivityImport {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
-            tasks: TaskQueue::new(db.clone()),
+            tasks: JobQueue::new(db.clone()),
             db,
             uploads_dir: Config::get().uploads_dir.clone(),
         }

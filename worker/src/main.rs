@@ -1,6 +1,6 @@
-use api::config::Config;
 use api::metrics;
-use api::observability;
+use bike_core::config::Config;
+use bike_core::observability;
 use kaleido::background_jobs::worker::{
     spawn_metrics_server, TaskWorker, WorkerConfig, WorkerConfigDefaults, WorkerMetrics,
 };
@@ -14,7 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     metrics::init_provider_metrics();
 
     let cfg = Config::init_from_env();
-    let db = api::storage::connect_database(&cfg.database_url).await?;
+    let db = bike_core::db::connect_database(&cfg.database_url).await?;
 
     let worker_config = WorkerConfig::from_env(WorkerConfigDefaults {
         metrics_port: 9091,

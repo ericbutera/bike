@@ -1,7 +1,7 @@
 use api::archive_import::process_activity_archive_import_job;
-use api::config::Config;
-use api::tasks::ActivityArchiveImportTask;
 use async_trait::async_trait;
+use bike_core::config::Config;
+use bike_core::jobs::ActivityArchiveImportTask;
 use kaleido::background_jobs::worker::TaskProcessor;
 use sea_orm::DatabaseConnection;
 use std::error::Error;

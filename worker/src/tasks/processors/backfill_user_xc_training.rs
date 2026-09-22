@@ -4,13 +4,13 @@ use api::activity_import_lock::{
     ACTIVITY_IMPORT_LOCK_STAGE_QUEUED,
 };
 use api::activity_training_analysis::backfill_user_activity_training_analysis_cache;
-use api::tasks::{BackfillUserXcTrainingTask, TaskQueue};
 use api::xc_goal_backfill::{
     mark_user_xc_goal_backfill_completed, set_user_xc_goal_backfill_state,
     XC_GOAL_BACKFILL_STATUS_FAILED, XC_GOAL_BACKFILL_STATUS_RUNNING,
     XC_GOAL_BACKFILL_STATUS_WAITING,
 };
 use async_trait::async_trait;
+use bike_core::jobs::{BackfillUserXcTrainingTask, JobQueue};
 use chrono::{Duration, Utc};
 use kaleido::background_jobs::worker::TaskProcessor;
 use sea_orm::DatabaseConnection;
@@ -21,13 +21,13 @@ type WorkerResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 pub struct BackfillUserXcTraining {
     db: DatabaseConnection,
-    tasks: TaskQueue,
+    tasks: JobQueue,
 }
 
 impl BackfillUserXcTraining {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
-            tasks: TaskQueue::new(db.clone()),
+            tasks: JobQueue::new(db.clone()),
             db,
         }
     }

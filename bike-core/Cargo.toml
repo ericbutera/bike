@@ -1,0 +1,28 @@
+[package]
+name = "bike-core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "bike_core"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+axum = { workspace = true }
+chrono = { workspace = true }
+dotenvy = { workspace = true }
+kaleido = { workspace = true }
+log = { workspace = true }
+once_cell = { workspace = true }
+opentelemetry = { workspace = true }
+opentelemetry-otlp = { workspace = true }
+opentelemetry_sdk = { workspace = true }
+sea-orm = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-opentelemetry = { workspace = true }
+tracing-subscriber = { workspace = true }

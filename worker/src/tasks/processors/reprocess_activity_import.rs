@@ -1,21 +1,21 @@
 use api::activity_lifecycle::process_single_activity_import_reprocessing;
-use api::config::Config;
-use api::tasks::{ReprocessActivityImportTask, TaskQueue};
 use async_trait::async_trait;
+use bike_core::config::Config;
+use bike_core::jobs::{JobQueue, ReprocessActivityImportTask};
 use kaleido::background_jobs::worker::TaskProcessor;
 use sea_orm::DatabaseConnection;
 use std::error::Error;
 
 pub struct ReprocessActivityImport {
     db: DatabaseConnection,
-    tasks: TaskQueue,
+    tasks: JobQueue,
     uploads_dir: String,
 }
 
 impl ReprocessActivityImport {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
-            tasks: TaskQueue::new(db.clone()),
+            tasks: JobQueue::new(db.clone()),
             db,
             uploads_dir: Config::get().uploads_dir.clone(),
         }
