@@ -20,11 +20,19 @@ use kaleido::glass::metrics_controller;
 use serde_json::json;
 use std::sync::Arc;
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "central route table is intentionally declarative"
-)]
 pub fn routes() -> Router<Arc<AppStorage>> {
+    Router::new()
+        .merge(platform_routes())
+        .merge(activity_routes())
+        .merge(training_routes())
+        .merge(segment_routes())
+        .merge(preference_routes())
+        .merge(integration_routes())
+        .route("/api/health", get(health))
+        .route("/", get(root))
+}
+
+fn platform_routes() -> Router<Arc<AppStorage>> {
     Router::new()
         .nest("/api", auth::routes())
         .nest("/api/oauth", auth::oauth_routes())
@@ -40,6 +48,14 @@ pub fn routes() -> Router<Arc<AppStorage>> {
             background_jobs::admin::api_routes::<AppStorage, AdminUserContext<AppStorage>>(),
         )
         .nest("/api/admin/users", auth::admin_routes())
+        .nest(
+            "/api/admin/metrics",
+            metrics_controller::admin_routes::<AppStorage>(),
+        )
+}
+
+fn activity_routes() -> Router<Arc<AppStorage>> {
+    Router::new()
         .route(
             "/api/activities",
             axum::routing::get(activities::list_activities),
@@ -63,6 +79,40 @@ pub fn routes() -> Router<Arc<AppStorage>> {
             axum::routing::get(fitness::get_fitness_freshness),
         )
         .route(
+            "/api/activity-imports",
+            axum::routing::get(activity_imports::list_activity_imports)
+                .post(activity_imports::upload_activity_import)
+                .layer(DefaultBodyLimit::max(Config::get().max_upload_bytes)),
+        )
+        .route(
+            "/api/activity-imports/archive-url",
+            axum::routing::post(activity_imports::import_activity_archive_from_url),
+        )
+        .route(
+            "/api/activity-imports/archive-jobs",
+            axum::routing::get(activity_imports::list_activity_archive_import_jobs),
+        )
+        .route(
+            "/api/activity-imports/processing-state",
+            axum::routing::get(activity_imports::get_activity_processing_state),
+        )
+        .route(
+            "/api/activity-imports/processing-graph",
+            axum::routing::get(activity_imports::get_activity_processing_graph),
+        )
+        .route(
+            "/api/activity-imports/:id/trace",
+            axum::routing::get(activity_imports::get_activity_import_trace),
+        )
+        .route(
+            "/api/activity-imports/archive-jobs/:id",
+            axum::routing::get(activity_imports::get_activity_archive_import_job),
+        )
+}
+
+fn training_routes() -> Router<Arc<AppStorage>> {
+    Router::new()
+        .route(
             "/api/training/xc-progress",
             axum::routing::get(training_goals::get_xc_goal_progress),
         )
@@ -78,6 +128,10 @@ pub fn routes() -> Router<Arc<AppStorage>> {
             "/api/training/reports/definitions",
             axum::routing::get(reports::get_training_report_definitions),
         )
+}
+
+fn segment_routes() -> Router<Arc<AppStorage>> {
+    Router::new()
         .route(
             "/api/segments",
             axum::routing::get(segments::list_segments)
@@ -110,49 +164,20 @@ pub fn routes() -> Router<Arc<AppStorage>> {
             "/api/segments/:id/effort-analysis",
             axum::routing::get(segments::get_segment_effort_analysis),
         )
-        .route(
-            "/api/preferences",
-            axum::routing::get(user_preferences::get_preferences)
-                .put(user_preferences::update_preferences),
-        )
-        .route(
-            "/api/activity-imports",
-            axum::routing::get(activity_imports::list_activity_imports)
-                .post(activity_imports::upload_activity_import)
-                .layer(DefaultBodyLimit::max(Config::get().max_upload_bytes)),
-        )
-        .route(
-            "/api/activity-imports/archive-url",
-            axum::routing::post(activity_imports::import_activity_archive_from_url),
-        )
-        .route(
-            "/api/activity-imports/archive-jobs",
-            axum::routing::get(activity_imports::list_activity_archive_import_jobs),
-        )
-        .route(
-            "/api/activity-imports/processing-state",
-            axum::routing::get(activity_imports::get_activity_processing_state),
-        )
-        .route(
-            "/api/activity-imports/processing-graph",
-            axum::routing::get(activity_imports::get_activity_processing_graph),
-        )
-        .route(
-            "/api/activity-imports/:id/trace",
-            axum::routing::get(activity_imports::get_activity_import_trace),
-        )
-        .route(
-            "/api/activity-imports/archive-jobs/:id",
-            axum::routing::get(activity_imports::get_activity_archive_import_job),
-        )
+}
+
+fn preference_routes() -> Router<Arc<AppStorage>> {
+    Router::new().route(
+        "/api/preferences",
+        axum::routing::get(user_preferences::get_preferences)
+            .put(user_preferences::update_preferences),
+    )
+}
+
+fn integration_routes() -> Router<Arc<AppStorage>> {
+    Router::new()
         .nest("/api/integration-events", integration_events::routes())
         .nest("/api/strava", strava::routes())
-        .nest(
-            "/api/admin/metrics",
-            metrics_controller::admin_routes::<AppStorage>(),
-        )
-        .route("/api/health", get(health))
-        .route("/", get(root))
 }
 
 async fn root() -> Json<serde_json::Value> {

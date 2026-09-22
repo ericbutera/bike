@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ConnectionTrait, DbErr, Set};
+use sea_orm::{ColumnTrait, ConnectionTrait, DbErr, QueryFilter, Set};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "segment_user_summaries")]
@@ -32,5 +32,45 @@ impl ActiveModelBehavior for ActiveModel {
         }
         self.updated_at = Set(now);
         Ok(self)
+    }
+}
+
+impl Model {
+    pub async fn list_by_user_segment_ids<C>(
+        db: &C,
+        user_id: i32,
+        segment_ids: &[i32],
+    ) -> Result<Vec<Model>, DbErr>
+    where
+        C: ConnectionTrait,
+    {
+        if segment_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        Entity::find()
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::SegmentId.is_in(segment_ids.iter().copied()))
+            .all(db)
+            .await
+    }
+
+    pub async fn list_by_segment_and_user_ids<C>(
+        db: &C,
+        segment_ids: &[i32],
+        user_ids: &[i32],
+    ) -> Result<Vec<Model>, DbErr>
+    where
+        C: ConnectionTrait,
+    {
+        if segment_ids.is_empty() || user_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        Entity::find()
+            .filter(Column::SegmentId.is_in(segment_ids.iter().copied()))
+            .filter(Column::UserId.is_in(user_ids.iter().copied()))
+            .all(db)
+            .await
     }
 }

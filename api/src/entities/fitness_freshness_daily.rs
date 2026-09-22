@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ConnectionTrait, DbErr, Set};
+use sea_orm::{ColumnTrait, ConnectionTrait, DbErr, QueryFilter, QueryOrder, Set};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "fitness_freshness_daily")]
@@ -34,5 +34,48 @@ impl ActiveModelBehavior for ActiveModel {
         }
         self.updated_at = Set(now);
         Ok(self)
+    }
+}
+
+impl Model {
+    pub async fn latest_before_day<C>(
+        db: &C,
+        user_id: i32,
+        day: NaiveDate,
+    ) -> Result<Option<Model>, DbErr>
+    where
+        C: ConnectionTrait,
+    {
+        Entity::find()
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::Day.lt(day))
+            .order_by_desc(Column::Day)
+            .one(db)
+            .await
+    }
+
+    pub async fn replace_user_rows_from_day<C>(
+        db: &C,
+        user_id: i32,
+        rebuild_from_day: Option<NaiveDate>,
+        rows: impl IntoIterator<Item = ActiveModel>,
+    ) -> Result<(), DbErr>
+    where
+        C: ConnectionTrait,
+    {
+        let mut delete_query = Entity::delete_many().filter(Column::UserId.eq(user_id));
+
+        if let Some(rebuild_from_day) = rebuild_from_day {
+            delete_query = delete_query.filter(Column::Day.gte(rebuild_from_day));
+        }
+
+        delete_query.exec(db).await?;
+
+        let rows = rows.into_iter().collect::<Vec<_>>();
+        for chunk in rows.chunks(200) {
+            Entity::insert_many(chunk.iter().cloned()).exec(db).await?;
+        }
+
+        Ok(())
     }
 }

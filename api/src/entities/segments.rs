@@ -2,7 +2,7 @@ use crate::activity_details::StoredRoutePointSeries;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ConnectionTrait, DbErr, Set};
+use sea_orm::{ColumnTrait, ConnectionTrait, DbErr, QueryFilter, Set};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "segments")]
@@ -41,5 +41,21 @@ impl ActiveModelBehavior for ActiveModel {
         }
         self.updated_at = Set(now);
         Ok(self)
+    }
+}
+
+impl Model {
+    pub async fn list_by_ids<C>(db: &C, segment_ids: &[i32]) -> Result<Vec<Model>, DbErr>
+    where
+        C: ConnectionTrait,
+    {
+        if segment_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        Entity::find()
+            .filter(Column::Id.is_in(segment_ids.iter().copied()))
+            .all(db)
+            .await
     }
 }

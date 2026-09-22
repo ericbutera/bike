@@ -2,7 +2,7 @@ use crate::activity_analytics::StoredActivityAchievementHighlights;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ConnectionTrait, DbErr, Set};
+use sea_orm::{ColumnTrait, ConnectionTrait, DbErr, QueryFilter, Set};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "activity_analytics")]
@@ -35,5 +35,42 @@ impl ActiveModelBehavior for ActiveModel {
         }
         self.updated_at = Set(now);
         Ok(self)
+    }
+}
+
+impl Model {
+    pub async fn delete_by_activity_ids<C>(db: &C, activity_ids: &[i32]) -> Result<(), DbErr>
+    where
+        C: ConnectionTrait,
+    {
+        if activity_ids.is_empty() {
+            return Ok(());
+        }
+
+        Entity::delete_many()
+            .filter(Column::ActivityId.is_in(activity_ids.iter().copied()))
+            .exec(db)
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn list_by_user_activity_ids<C>(
+        db: &C,
+        user_id: i32,
+        activity_ids: &[i32],
+    ) -> Result<Vec<Model>, DbErr>
+    where
+        C: ConnectionTrait,
+    {
+        if activity_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        Entity::find()
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::ActivityId.is_in(activity_ids.iter().copied()))
+            .all(db)
+            .await
     }
 }

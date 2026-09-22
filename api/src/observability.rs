@@ -37,66 +37,37 @@ impl Drop for ObservabilityGuard {
     }
 }
 
-#[expect(
-    clippy::cognitive_complexity,
-    reason = "legacy observability bootstrap predates workspace complexity lint"
-)]
 pub fn init_observability(service_name: &'static str) -> ObservabilityGuard {
     global::set_text_map_propagator(TraceContextPropagator::new());
 
-    let fmt_layer = tracing_subscriber::fmt::layer()
-        .json()
-        .with_current_span(true)
-        .with_span_list(true);
-    let registry = tracing_subscriber::registry()
-        .with(EnvFilter::from_default_env())
-        .with(fmt_layer);
-
-    let traces_endpoint = match trace_exporter_config() {
-        TraceExporterConfig::Otlp { traces_endpoint } => traces_endpoint,
-        TraceExporterConfig::Disabled { reason } => {
-            let _ = registry.try_init();
-            tracing::info!(
-                service_name,
-                reason,
-                "OpenTelemetry OTLP tracing exporter disabled"
-            );
-            return ObservabilityGuard {
-                tracer_provider: None,
-            };
+    match trace_exporter_config() {
+        TraceExporterConfig::Disabled { reason } => init_logs_only(service_name, reason),
+        TraceExporterConfig::Otlp { traces_endpoint } => {
+            init_otel_or_log_fallback(service_name, &traces_endpoint)
         }
-    };
+    }
+}
 
-    match build_tracer_provider(service_name, &traces_endpoint) {
-        Ok(provider) => {
-            let tracer = provider.tracer(service_name);
-            global::set_tracer_provider(provider.clone());
-            let otel_layer = tracing_opentelemetry::layer()
-                .with_tracer(tracer)
-                .with_filter(dynamic_filter_fn(|metadata, ctx| {
-                    should_export_otel_span(
-                        metadata.name(),
-                        metadata.target(),
-                        ctx.lookup_current().is_some(),
-                    )
-                }));
-            if registry.with(otel_layer).try_init().is_err() {
-                return ObservabilityGuard {
-                    tracer_provider: Some(provider),
-                };
-            }
-            tracing::info!(
-                service_name,
-                otel_traces_endpoint = %traces_endpoint,
-                otel_protocol = %otel_protocol_label(),
-                "OpenTelemetry OTLP tracing exporter enabled"
-            );
-            ObservabilityGuard {
-                tracer_provider: Some(provider),
-            }
-        }
+fn init_logs_only(service_name: &'static str, reason: &'static str) -> ObservabilityGuard {
+    let _ = init_log_subscriber();
+    tracing::info!(
+        service_name,
+        reason,
+        "OpenTelemetry OTLP tracing exporter disabled"
+    );
+    ObservabilityGuard {
+        tracer_provider: None,
+    }
+}
+
+fn init_otel_or_log_fallback(
+    service_name: &'static str,
+    traces_endpoint: &str,
+) -> ObservabilityGuard {
+    match init_otel_subscriber(service_name, traces_endpoint) {
+        Ok(guard) => guard,
         Err(error) => {
-            let _ = registry.try_init();
+            let _ = init_log_subscriber();
             tracing::warn!(
                 error = %error,
                 service_name,
@@ -107,6 +78,62 @@ pub fn init_observability(service_name: &'static str) -> ObservabilityGuard {
             }
         }
     }
+}
+
+fn init_log_subscriber() -> Result<(), tracing_subscriber::util::TryInitError> {
+    let fmt_layer = tracing_subscriber::fmt::layer()
+        .json()
+        .with_current_span(true)
+        .with_span_list(true);
+
+    tracing_subscriber::registry()
+        .with(EnvFilter::from_default_env())
+        .with(fmt_layer)
+        .try_init()
+}
+
+fn init_otel_subscriber(
+    service_name: &'static str,
+    traces_endpoint: &str,
+) -> Result<ObservabilityGuard, Box<dyn std::error::Error + Send + Sync>> {
+    let provider = build_tracer_provider(service_name, traces_endpoint)?;
+    let tracer = provider.tracer(service_name);
+    global::set_tracer_provider(provider.clone());
+
+    let fmt_layer = tracing_subscriber::fmt::layer()
+        .json()
+        .with_current_span(true)
+        .with_span_list(true);
+    let otel_layer = tracing_opentelemetry::layer()
+        .with_tracer(tracer)
+        .with_filter(dynamic_filter_fn(|metadata, ctx| {
+            should_export_otel_span(
+                metadata.name(),
+                metadata.target(),
+                ctx.lookup_current().is_some(),
+            )
+        }));
+    if tracing_subscriber::registry()
+        .with(EnvFilter::from_default_env())
+        .with(fmt_layer)
+        .with(otel_layer)
+        .try_init()
+        .is_err()
+    {
+        return Ok(ObservabilityGuard {
+            tracer_provider: Some(provider),
+        });
+    }
+
+    tracing::info!(
+        service_name,
+        otel_traces_endpoint = %traces_endpoint,
+        otel_protocol = %otel_protocol_label(),
+        "OpenTelemetry OTLP tracing exporter enabled"
+    );
+    Ok(ObservabilityGuard {
+        tracer_provider: Some(provider),
+    })
 }
 
 fn build_tracer_provider(

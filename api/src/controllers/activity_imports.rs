@@ -770,7 +770,9 @@ fn map_multipart_error(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::activity_details::serialize_derived_activity_data;
+    use crate::activity_details::{
+        serialize_derived_activity_data, ActivityDerivedData, ActivityRoutePoint,
+    };
     use chrono::Utc;
 
     #[test]
@@ -879,14 +881,34 @@ mod tests {
         assert_eq!(response.error_samples, vec!["bad.fit: parse failed"]);
     }
 
-    #[expect(
-        clippy::too_many_lines,
-        reason = "fixture covers the full activity import response mapping"
-    )]
     #[test]
     fn activity_import_response_maps_model_fields() {
         let now = Utc::now();
-        let activity = activities::Model {
+        let activity = activity_import_activity_fixture(now);
+        let response =
+            ActivityImportResponse::from_model(activity_import_fixture(now), Some(&activity));
+
+        assert_eq!(response.id, 7);
+        assert_eq!(
+            response.import_version,
+            crate::entities::activity_imports::ACTIVITY_IMPORT_VERSION_CURRENT
+        );
+        assert_eq!(response.activity_id, Some(21));
+        assert_eq!(response.original_filename, "ride.gpx");
+        assert_eq!(response.format, "gpx");
+        assert_eq!(response.status, "uploaded");
+        assert_eq!(response.processing_stage, "complete");
+        assert_eq!(response.processing_error, None);
+        assert_eq!(response.size_bytes, 8192);
+        assert_eq!(response.mime_type.as_deref(), Some("application/gpx+xml"));
+        assert_eq!(response.created_at, now);
+        assert_eq!(response.activity_started_at, Some(now));
+        assert_eq!(response.activity_duration_seconds, Some(3600));
+        assert!(response.activity_location.is_some());
+    }
+
+    fn activity_import_activity_fixture(now: DateTime<Utc>) -> activities::Model {
+        activities::Model {
             id: 21,
             user_id: 12,
             activity_import_id: Some(7),
@@ -915,67 +937,51 @@ mod tests {
             calories: Some(650),
             estimated_ftp_watts: None,
             heart_rate_zones_json: None,
-            derived_data_json: Some(
-                serialize_derived_activity_data(&crate::activity_details::ActivityDerivedData {
-                    laps: Vec::new(),
-                    chart_points: Vec::new(),
-                    route_points: vec![crate::activity_details::ActivityRoutePoint {
-                        elapsed_seconds: 0,
-                        latitude: 45.523,
-                        longitude: -122.676,
-                        distance_meters: Some(0.0),
-                        elevation_meters: Some(100.0),
-                        speed_mps: Some(0.0),
-                        heart_rate_bpm: Some(130),
-                        cadence_rpm: Some(82),
-                        power_watts: None,
-                    }],
-                })
-                .expect("serialize derived activity data"),
-            ),
+            derived_data_json: Some(activity_import_derived_data_json()),
             created_at: now,
             updated_at: now,
-        };
-        let response = ActivityImportResponse::from_model(
-            activity_imports::Model {
-                id: 7,
-                user_id: 12,
-                import_version: crate::entities::activity_imports::ACTIVITY_IMPORT_VERSION_CURRENT,
-                source: "manual_upload".to_string(),
-                format: "gpx".to_string(),
-                status: "uploaded".to_string(),
-                activity_id: Some(99),
-                processing_stage: "complete".to_string(),
-                processing_error: None,
-                processing_attempts: 0,
-                processed_at: Some(now),
-                last_processing_event_at: Some(now),
-                original_filename: "ride.gpx".to_string(),
-                storage_path: "activity-imports/user/ride.gpx".to_string(),
-                size_bytes: 8192,
-                mime_type: Some("application/gpx+xml".to_string()),
-                created_at: now,
-                updated_at: now,
-            },
-            Some(&activity),
-        );
+        }
+    }
 
-        assert_eq!(response.id, 7);
-        assert_eq!(
-            response.import_version,
-            crate::entities::activity_imports::ACTIVITY_IMPORT_VERSION_CURRENT
-        );
-        assert_eq!(response.activity_id, Some(21));
-        assert_eq!(response.original_filename, "ride.gpx");
-        assert_eq!(response.format, "gpx");
-        assert_eq!(response.status, "uploaded");
-        assert_eq!(response.processing_stage, "complete");
-        assert_eq!(response.processing_error, None);
-        assert_eq!(response.size_bytes, 8192);
-        assert_eq!(response.mime_type.as_deref(), Some("application/gpx+xml"));
-        assert_eq!(response.created_at, now);
-        assert_eq!(response.activity_started_at, Some(now));
-        assert_eq!(response.activity_duration_seconds, Some(3600));
-        assert!(response.activity_location.is_some());
+    fn activity_import_derived_data_json() -> crate::activity_details::StoredActivityDerivedData {
+        serialize_derived_activity_data(&ActivityDerivedData {
+            laps: Vec::new(),
+            chart_points: Vec::new(),
+            route_points: vec![ActivityRoutePoint {
+                elapsed_seconds: 0,
+                latitude: 45.523,
+                longitude: -122.676,
+                distance_meters: Some(0.0),
+                elevation_meters: Some(100.0),
+                speed_mps: Some(0.0),
+                heart_rate_bpm: Some(130),
+                cadence_rpm: Some(82),
+                power_watts: None,
+            }],
+        })
+        .expect("serialize derived activity data")
+    }
+
+    fn activity_import_fixture(now: DateTime<Utc>) -> activity_imports::Model {
+        activity_imports::Model {
+            id: 7,
+            user_id: 12,
+            import_version: crate::entities::activity_imports::ACTIVITY_IMPORT_VERSION_CURRENT,
+            source: "manual_upload".to_string(),
+            format: "gpx".to_string(),
+            status: "uploaded".to_string(),
+            activity_id: Some(99),
+            processing_stage: "complete".to_string(),
+            processing_error: None,
+            processing_attempts: 0,
+            processed_at: Some(now),
+            last_processing_event_at: Some(now),
+            original_filename: "ride.gpx".to_string(),
+            storage_path: "activity-imports/user/ride.gpx".to_string(),
+            size_bytes: 8192,
+            mime_type: Some("application/gpx+xml".to_string()),
+            created_at: now,
+            updated_at: now,
+        }
     }
 }

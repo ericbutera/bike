@@ -1,9 +1,12 @@
 use crate::activity_details::StoredActivityDerivedData;
 use crate::training_profile::StoredActivityHeartRateZones;
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ConnectionTrait, DbErr, Set};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DbErr, FromQueryResult, QueryFilter, QueryOrder, QuerySelect, Set,
+};
+use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "activities")]
@@ -55,5 +58,82 @@ impl ActiveModelBehavior for ActiveModel {
         }
         self.updated_at = Set(now);
         Ok(self)
+    }
+}
+
+#[derive(Clone, Debug, FromQueryResult)]
+pub struct ActivityStartedAtRow {
+    pub id: i32,
+    pub started_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, FromQueryResult)]
+pub struct ActivityTrainingLoadRow {
+    pub started_at: DateTime<Utc>,
+    pub moving_time_seconds: Option<i32>,
+    pub total_time_seconds: Option<i32>,
+    pub average_heart_rate_bpm: Option<i32>,
+    pub max_heart_rate_bpm: Option<i32>,
+    pub heart_rate_zones_json: Option<StoredActivityHeartRateZones>,
+}
+
+impl Model {
+    pub async fn list_training_loads_for_fitness_rebuild<C>(
+        db: &C,
+        user_id: i32,
+        rebuild_from_day: Option<NaiveDate>,
+    ) -> Result<Vec<ActivityTrainingLoadRow>, DbErr>
+    where
+        C: ConnectionTrait,
+    {
+        let mut query = Entity::find()
+            .filter(Column::UserId.eq(user_id))
+            .order_by_asc(Column::StartedAt);
+
+        if let Some(rebuild_from_day) = rebuild_from_day {
+            let start_bound = DateTime::<Utc>::from_naive_utc_and_offset(
+                rebuild_from_day
+                    .and_hms_opt(0, 0, 0)
+                    .expect("valid start of day"),
+                Utc,
+            );
+            query = query.filter(Column::StartedAt.gte(start_bound));
+        }
+
+        query
+            .select_only()
+            .column(Column::StartedAt)
+            .column(Column::MovingTimeSeconds)
+            .column(Column::TotalTimeSeconds)
+            .column(Column::AverageHeartRateBpm)
+            .column(Column::MaxHeartRateBpm)
+            .column(Column::HeartRateZonesJson)
+            .into_model::<ActivityTrainingLoadRow>()
+            .all(db)
+            .await
+    }
+
+    pub async fn started_at_by_ids<C>(
+        db: &C,
+        activity_ids: &[i32],
+    ) -> Result<HashMap<i32, DateTime<Utc>>, DbErr>
+    where
+        C: ConnectionTrait,
+    {
+        if activity_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        Ok(Entity::find()
+            .select_only()
+            .column(Column::Id)
+            .column(Column::StartedAt)
+            .filter(Column::Id.is_in(activity_ids.iter().copied()))
+            .into_model::<ActivityStartedAtRow>()
+            .all(db)
+            .await?
+            .into_iter()
+            .map(|activity| (activity.id, activity.started_at))
+            .collect())
     }
 }

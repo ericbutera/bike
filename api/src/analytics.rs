@@ -10,9 +10,8 @@ use crate::training_profile::{
 };
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
-    FromQueryResult, QueryFilter, QueryOrder, QuerySelect, Set, TransactionSession,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    Set, TransactionSession, TransactionTrait,
 };
 use std::collections::{BTreeMap, HashMap};
 
@@ -59,23 +58,15 @@ struct ActivityAnalyticsAccumulator {
     achievement_highlights: Vec<ActivityAchievementHighlight>,
 }
 
-#[derive(Clone, Debug, FromQueryResult)]
-struct ActivityStartedAtRow {
-    id: i32,
-    started_at: DateTime<Utc>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActivityAchievementKind {
+    Kom,
+    Top10,
+    Pr,
+    PersonalPodium,
 }
 
-#[derive(Clone, Debug, FromQueryResult)]
-struct ActivityTrainingLoadRow {
-    started_at: DateTime<Utc>,
-    moving_time_seconds: Option<i32>,
-    total_time_seconds: Option<i32>,
-    average_heart_rate_bpm: Option<i32>,
-    max_heart_rate_bpm: Option<i32>,
-    heart_rate_zones_json: Option<StoredActivityHeartRateZones>,
-}
-
-impl ActivityTrainingLoadRow {
+impl activities::ActivityTrainingLoadRow {
     fn training_load(&self) -> Option<f64> {
         estimated_training_load_from_fields(
             self.moving_time_seconds,
@@ -85,27 +76,6 @@ impl ActivityTrainingLoadRow {
             self.heart_rate_zones_json.as_ref(),
         )
     }
-}
-
-#[derive(Clone, Debug, FromQueryResult)]
-struct SegmentTitleRow {
-    id: i32,
-    title: String,
-}
-
-#[derive(Clone, Debug, FromQueryResult)]
-struct SegmentPersonalBestRow {
-    segment_id: i32,
-    user_id: i32,
-    personal_best_duration_seconds: Option<i32>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ActivityAchievementKind {
-    Kom,
-    Top10,
-    Pr,
-    PersonalPodium,
 }
 
 pub fn default_fitness_rebuild_start_date(
@@ -333,56 +303,48 @@ where
     Ok(())
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "legacy analytics rebuild predates workspace size lint"
-)]
 pub async fn rebuild_fitness_freshness_cache(
     db: &DatabaseConnection,
     user_id: i32,
 ) -> Result<(), sea_orm::DbErr> {
     let end_date = Utc::now().date_naive();
-    let freshness_state = analytics_user_states::Entity::find_by_id(user_id)
+    let input = load_fitness_freshness_rebuild_input(db, user_id, end_date).await?;
+    let rows = build_fitness_freshness_rows_for_rebuild(&input);
+    let rebuilt_at = Utc::now();
+
+    let txn = db.begin().await?;
+    persist_fitness_freshness_rebuild(&txn, user_id, input, rows, rebuilt_at).await?;
+    txn.commit().await
+}
+
+struct FitnessFreshnessRebuildInput {
+    state: Option<analytics_user_states::Model>,
+    dirty_from_day: Option<NaiveDate>,
+    activity_rows: Vec<activities::ActivityTrainingLoadRow>,
+    checkpoint_row: Option<fitness_freshness_daily::Model>,
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+}
+
+async fn load_fitness_freshness_rebuild_input(
+    db: &DatabaseConnection,
+    user_id: i32,
+    end_date: NaiveDate,
+) -> Result<FitnessFreshnessRebuildInput, sea_orm::DbErr> {
+    let state = analytics_user_states::Entity::find_by_id(user_id)
         .one(db)
         .await?;
-    let dirty_from_day = freshness_state
+    let dirty_from_day = state
         .as_ref()
         .and_then(|state| state.fitness_dirty_from_day);
-
-    let mut activity_query = activities::Entity::find()
-        .filter(activities::Column::UserId.eq(user_id))
-        .order_by_asc(activities::Column::StartedAt);
-
-    if let Some(rebuild_from_day) = dirty_from_day {
-        let start_bound = DateTime::<Utc>::from_naive_utc_and_offset(
-            rebuild_from_day
-                .and_hms_opt(0, 0, 0)
-                .expect("valid start of day"),
-            Utc,
-        );
-        activity_query = activity_query.filter(activities::Column::StartedAt.gte(start_bound));
-    }
-
-    let activity_rows = activity_query
-        .select_only()
-        .column(activities::Column::StartedAt)
-        .column(activities::Column::MovingTimeSeconds)
-        .column(activities::Column::TotalTimeSeconds)
-        .column(activities::Column::AverageHeartRateBpm)
-        .column(activities::Column::MaxHeartRateBpm)
-        .column(activities::Column::HeartRateZonesJson)
-        .into_model::<ActivityTrainingLoadRow>()
-        .all(db)
-        .await?;
-    let checkpoint_row = if let Some(rebuild_from_day) = dirty_from_day {
-        fitness_freshness_daily::Entity::find()
-            .filter(fitness_freshness_daily::Column::UserId.eq(user_id))
-            .filter(fitness_freshness_daily::Column::Day.lt(rebuild_from_day))
-            .order_by_desc(fitness_freshness_daily::Column::Day)
-            .one(db)
-            .await?
-    } else {
-        None
+    let activity_rows =
+        activities::Model::list_training_loads_for_fitness_rebuild(db, user_id, dirty_from_day)
+            .await?;
+    let checkpoint_row = match dirty_from_day {
+        Some(rebuild_from_day) => {
+            fitness_freshness_daily::Model::latest_before_day(db, user_id, rebuild_from_day).await?
+        }
+        None => None,
     };
     let start_date = dirty_from_day.unwrap_or_else(|| {
         activity_rows
@@ -390,39 +352,68 @@ pub async fn rebuild_fitness_freshness_cache(
             .map(|activity| activity.started_at.date_naive())
             .unwrap_or(end_date)
     });
-    let rows = build_fitness_freshness_rows_from_loads(
-        activity_rows.iter().filter_map(|activity| {
+
+    Ok(FitnessFreshnessRebuildInput {
+        state,
+        dirty_from_day,
+        activity_rows,
+        checkpoint_row,
+        start_date,
+        end_date,
+    })
+}
+
+fn build_fitness_freshness_rows_for_rebuild(
+    input: &FitnessFreshnessRebuildInput,
+) -> Vec<FitnessFreshnessDay> {
+    build_fitness_freshness_rows_from_loads(
+        input.activity_rows.iter().filter_map(|activity| {
             activity
                 .training_load()
                 .map(|training_load| (activity.started_at.date_naive(), training_load))
         }),
-        start_date,
-        end_date,
-        checkpoint_row
+        input.start_date,
+        input.end_date,
+        input
+            .checkpoint_row
             .as_ref()
             .map(|row| row.fitness)
             .unwrap_or(0.0),
-        checkpoint_row
+        input
+            .checkpoint_row
             .as_ref()
             .map(|row| row.fatigue)
             .unwrap_or(0.0),
-    );
-    let rebuilt_at = Utc::now();
+    )
+}
 
-    let txn = db.begin().await?;
+async fn persist_fitness_freshness_rebuild<C>(
+    db: &C,
+    user_id: i32,
+    input: FitnessFreshnessRebuildInput,
+    rows: Vec<FitnessFreshnessDay>,
+    rebuilt_at: DateTime<Utc>,
+) -> Result<(), sea_orm::DbErr>
+where
+    C: ConnectionTrait,
+{
+    let row_models = fitness_freshness_active_models(user_id, rows, rebuilt_at);
+    fitness_freshness_daily::Model::replace_user_rows_from_day(
+        db,
+        user_id,
+        input.dirty_from_day,
+        row_models,
+    )
+    .await?;
+    mark_fitness_rebuild_complete(db, user_id, input.state, rebuilt_at).await
+}
 
-    let mut delete_query = fitness_freshness_daily::Entity::delete_many()
-        .filter(fitness_freshness_daily::Column::UserId.eq(user_id));
-
-    if let Some(rebuild_from_day) = dirty_from_day {
-        delete_query =
-            delete_query.filter(fitness_freshness_daily::Column::Day.gte(rebuild_from_day));
-    }
-
-    delete_query.exec(&txn).await?;
-
-    let row_models = rows
-        .into_iter()
+fn fitness_freshness_active_models(
+    user_id: i32,
+    rows: Vec<FitnessFreshnessDay>,
+    rebuilt_at: DateTime<Utc>,
+) -> Vec<fitness_freshness_daily::ActiveModel> {
+    rows.into_iter()
         .map(|row| fitness_freshness_daily::ActiveModel {
             user_id: Set(user_id),
             day: Set(row.day),
@@ -435,38 +426,39 @@ pub async fn rebuild_fitness_freshness_cache(
             updated_at: Set(rebuilt_at),
             ..Default::default()
         })
-        .collect::<Vec<_>>();
+        .collect()
+}
 
-    for chunk in row_models.chunks(200) {
-        fitness_freshness_daily::Entity::insert_many(chunk.iter().cloned())
-            .exec(&txn)
-            .await?;
-    }
-
-    if let Some(model) = freshness_state {
+async fn mark_fitness_rebuild_complete<C>(
+    db: &C,
+    user_id: i32,
+    state: Option<analytics_user_states::Model>,
+    rebuilt_at: DateTime<Utc>,
+) -> Result<(), sea_orm::DbErr>
+where
+    C: ConnectionTrait,
+{
+    if let Some(model) = state {
         let mut active_model: analytics_user_states::ActiveModel = model.into();
         active_model.fitness_dirty_from_day = Set(None);
         active_model.last_fitness_rebuild_at = Set(Some(rebuilt_at));
-        active_model.update(&txn).await?;
-    } else {
-        analytics_user_states::ActiveModel {
-            user_id: Set(user_id),
-            last_activity_change_at: Set(rebuilt_at),
-            fitness_dirty_from_day: Set(None),
-            last_fitness_rebuild_at: Set(Some(rebuilt_at)),
-            ..Default::default()
-        }
-        .insert(&txn)
-        .await?;
+        active_model.update(db).await?;
+        return Ok(());
     }
 
-    txn.commit().await
+    analytics_user_states::ActiveModel {
+        user_id: Set(user_id),
+        last_activity_change_at: Set(rebuilt_at),
+        fitness_dirty_from_day: Set(None),
+        last_fitness_rebuild_at: Set(Some(rebuilt_at)),
+        ..Default::default()
+    }
+    .insert(db)
+    .await?;
+
+    Ok(())
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "legacy analytics rebuild predates workspace size lint"
-)]
 pub async fn rebuild_segment_analytics_cache<C>(
     db: &C,
     segment_ids: &[i32],
@@ -474,114 +466,180 @@ pub async fn rebuild_segment_analytics_cache<C>(
 where
     C: ConnectionTrait + TransactionTrait,
 {
-    let mut segment_ids = segment_ids
-        .iter()
-        .copied()
-        .filter(|segment_id| *segment_id > 0)
-        .collect::<Vec<_>>();
-    segment_ids.sort_unstable();
-    segment_ids.dedup();
-
+    let segment_ids = normalized_positive_ids(segment_ids);
     if segment_ids.is_empty() {
         return Ok(());
     }
 
-    let efforts = segment_efforts::Entity::find()
-        .filter(segment_efforts::Column::SegmentId.is_in(segment_ids.iter().copied()))
-        .order_by_asc(segment_efforts::Column::SegmentId)
-        .order_by_asc(segment_efforts::Column::DurationSeconds)
-        .order_by_asc(segment_efforts::Column::Id)
-        .all(db)
-        .await?;
-    let mut activity_ids = efforts
-        .iter()
-        .map(|effort| effort.activity_id)
-        .collect::<Vec<_>>();
-    activity_ids.sort_unstable();
-    activity_ids.dedup();
-    let activity_started_at_by_id = activities::Entity::find()
-        .select_only()
-        .column(activities::Column::Id)
-        .column(activities::Column::StartedAt)
-        .filter(activities::Column::Id.is_in(activity_ids.iter().copied()))
-        .into_model::<ActivityStartedAtRow>()
-        .all(db)
-        .await?
-        .into_iter()
-        .map(|activity| (activity.id, activity.started_at))
-        .collect::<HashMap<_, _>>();
-
-    let mut overall_ranks = HashMap::<i32, i32>::new();
-    let mut user_ranks = HashMap::<(i32, i32), i32>::new();
-    let mut segment_summary_by_id = HashMap::<i32, SegmentSummaryAccumulator>::new();
-    let mut segment_user_summary_by_key =
-        HashMap::<(i32, i32), SegmentUserSummaryAccumulator>::new();
-    let mut effort_updates = Vec::with_capacity(efforts.len());
-
-    for effort in efforts {
-        let overall_rank = overall_ranks
-            .entry(effort.segment_id)
-            .and_modify(|rank| *rank += 1)
-            .or_insert(1);
-        let user_rank = user_ranks
-            .entry((effort.segment_id, effort.user_id))
-            .and_modify(|rank| *rank += 1)
-            .or_insert(1);
-
-        let segment_summary = segment_summary_by_id.entry(effort.segment_id).or_default();
-        segment_summary.effort_count += 1;
-        if segment_summary.best_duration_seconds.is_none() {
-            segment_summary.best_duration_seconds = Some(effort.duration_seconds);
-            segment_summary.leader_user_id = Some(effort.user_id);
-            segment_summary.leader_effort_id = Some(effort.id);
-        }
-        if let Some(started_at) = activity_started_at_by_id.get(&effort.activity_id).copied() {
-            match segment_summary.latest_activity_started_at {
-                Some(current) if current >= started_at => {}
-                _ => {
-                    segment_summary.latest_activity_started_at = Some(started_at);
-                    segment_summary.latest_activity_id = Some(effort.activity_id);
-                    segment_summary.latest_effort_id = Some(effort.id);
-                }
-            }
-        }
-
-        let segment_user_summary = segment_user_summary_by_key
-            .entry((effort.segment_id, effort.user_id))
-            .or_default();
-        segment_user_summary.effort_count += 1;
-        if segment_user_summary
-            .personal_best_duration_seconds
-            .is_none()
-        {
-            segment_user_summary.personal_best_duration_seconds = Some(effort.duration_seconds);
-            segment_user_summary.personal_best_effort_id = Some(effort.id);
-        }
-
-        effort_updates.push((effort, *overall_rank, *user_rank));
-    }
+    let input = load_segment_analytics_input(db, &segment_ids).await?;
+    let activity_ids = input.activity_ids.clone();
+    let rebuild = build_segment_analytics(input);
 
     let txn = db.begin().await?;
+    persist_segment_analytics_rebuild(&txn, &segment_ids, rebuild).await?;
+    rebuild_activity_analytics_cache(&txn, &activity_ids).await?;
+    txn.commit().await
+}
 
+struct SegmentAnalyticsInput {
+    efforts: Vec<segment_efforts::Model>,
+    activity_ids: Vec<i32>,
+    activity_started_at_by_id: HashMap<i32, DateTime<Utc>>,
+}
+
+struct SegmentEffortRankUpdate {
+    effort: segment_efforts::Model,
+    overall_rank: i32,
+    user_rank: i32,
+}
+
+struct SegmentAnalyticsRebuild {
+    segment_summary_by_id: HashMap<i32, SegmentSummaryAccumulator>,
+    segment_user_summary_by_key: HashMap<(i32, i32), SegmentUserSummaryAccumulator>,
+    effort_updates: Vec<SegmentEffortRankUpdate>,
+}
+
+async fn load_segment_analytics_input<C>(
+    db: &C,
+    segment_ids: &[i32],
+) -> Result<SegmentAnalyticsInput, sea_orm::DbErr>
+where
+    C: ConnectionTrait,
+{
+    let efforts = segment_efforts::Model::list_for_segment_analytics(db, segment_ids).await?;
+    let activity_ids = unique_effort_activity_ids(&efforts);
+    let activity_started_at_by_id = activities::Model::started_at_by_ids(db, &activity_ids).await?;
+
+    Ok(SegmentAnalyticsInput {
+        efforts,
+        activity_ids,
+        activity_started_at_by_id,
+    })
+}
+
+fn build_segment_analytics(input: SegmentAnalyticsInput) -> SegmentAnalyticsRebuild {
+    let mut rebuild = SegmentAnalyticsRebuild {
+        segment_summary_by_id: HashMap::new(),
+        segment_user_summary_by_key: HashMap::new(),
+        effort_updates: Vec::with_capacity(input.efforts.len()),
+    };
+    let mut overall_ranks = HashMap::<i32, i32>::new();
+    let mut user_ranks = HashMap::<(i32, i32), i32>::new();
+
+    for effort in input.efforts {
+        let overall_rank = next_rank(&mut overall_ranks, effort.segment_id);
+        let user_rank = next_rank(&mut user_ranks, (effort.segment_id, effort.user_id));
+        apply_segment_effort_to_rebuild(
+            &mut rebuild,
+            &input.activity_started_at_by_id,
+            effort,
+            overall_rank,
+            user_rank,
+        );
+    }
+
+    rebuild
+}
+
+fn next_rank<T>(ranks: &mut HashMap<T, i32>, key: T) -> i32
+where
+    T: Eq + std::hash::Hash,
+{
+    *ranks.entry(key).and_modify(|rank| *rank += 1).or_insert(1)
+}
+
+fn apply_segment_effort_to_rebuild(
+    rebuild: &mut SegmentAnalyticsRebuild,
+    activity_started_at_by_id: &HashMap<i32, DateTime<Utc>>,
+    effort: segment_efforts::Model,
+    overall_rank: i32,
+    user_rank: i32,
+) {
+    update_segment_summary(
+        rebuild
+            .segment_summary_by_id
+            .entry(effort.segment_id)
+            .or_default(),
+        &effort,
+        activity_started_at_by_id.get(&effort.activity_id).copied(),
+    );
+    update_segment_user_summary(
+        rebuild
+            .segment_user_summary_by_key
+            .entry((effort.segment_id, effort.user_id))
+            .or_default(),
+        &effort,
+    );
+    rebuild.effort_updates.push(SegmentEffortRankUpdate {
+        effort,
+        overall_rank,
+        user_rank,
+    });
+}
+
+fn update_segment_summary(
+    summary: &mut SegmentSummaryAccumulator,
+    effort: &segment_efforts::Model,
+    activity_started_at: Option<DateTime<Utc>>,
+) {
+    summary.effort_count += 1;
+    if summary.best_duration_seconds.is_none() {
+        summary.best_duration_seconds = Some(effort.duration_seconds);
+        summary.leader_user_id = Some(effort.user_id);
+        summary.leader_effort_id = Some(effort.id);
+    }
+
+    let Some(started_at) = activity_started_at else {
+        return;
+    };
+    if summary
+        .latest_activity_started_at
+        .is_some_and(|current| current >= started_at)
+    {
+        return;
+    }
+
+    summary.latest_activity_started_at = Some(started_at);
+    summary.latest_activity_id = Some(effort.activity_id);
+    summary.latest_effort_id = Some(effort.id);
+}
+
+fn update_segment_user_summary(
+    summary: &mut SegmentUserSummaryAccumulator,
+    effort: &segment_efforts::Model,
+) {
+    summary.effort_count += 1;
+    if summary.personal_best_duration_seconds.is_none() {
+        summary.personal_best_duration_seconds = Some(effort.duration_seconds);
+        summary.personal_best_effort_id = Some(effort.id);
+    }
+}
+
+async fn persist_segment_analytics_rebuild<C>(
+    db: &C,
+    segment_ids: &[i32],
+    mut rebuild: SegmentAnalyticsRebuild,
+) -> Result<(), sea_orm::DbErr>
+where
+    C: ConnectionTrait,
+{
     segment_user_summaries::Entity::delete_many()
         .filter(segment_user_summaries::Column::SegmentId.is_in(segment_ids.iter().copied()))
-        .exec(&txn)
+        .exec(db)
         .await?;
 
     segment_summaries::Entity::delete_many()
         .filter(segment_summaries::Column::SegmentId.is_in(segment_ids.iter().copied()))
-        .exec(&txn)
+        .exec(db)
         .await?;
 
-    for (effort, overall_rank, user_rank) in effort_updates {
-        let mut active_model: segment_efforts::ActiveModel = effort.into();
-        active_model.overall_rank = Set(Some(overall_rank));
-        active_model.user_rank = Set(Some(user_rank));
-        active_model.update(&txn).await?;
+    for update in rebuild.effort_updates {
+        update_segment_effort_ranks(db, update).await?;
     }
 
     for segment_id in segment_ids.iter().copied() {
-        let summary = segment_summary_by_id
+        let summary = rebuild
+            .segment_summary_by_id
             .remove(&segment_id)
             .unwrap_or_default();
 
@@ -596,11 +654,11 @@ where
             latest_effort_id: Set(summary.latest_effort_id),
             ..Default::default()
         }
-        .insert(&txn)
+        .insert(db)
         .await?;
     }
 
-    for ((segment_id, user_id), summary) in segment_user_summary_by_key {
+    for ((segment_id, user_id), summary) in rebuild.segment_user_summary_by_key {
         segment_user_summaries::ActiveModel {
             segment_id: Set(segment_id),
             user_id: Set(user_id),
@@ -609,19 +667,27 @@ where
             personal_best_duration_seconds: Set(summary.personal_best_duration_seconds),
             ..Default::default()
         }
-        .insert(&txn)
+        .insert(db)
         .await?;
     }
 
-    rebuild_activity_analytics_cache(&txn, &activity_ids).await?;
-
-    txn.commit().await
+    Ok(())
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "legacy analytics rebuild predates workspace size lint"
-)]
+async fn update_segment_effort_ranks<C>(
+    db: &C,
+    update: SegmentEffortRankUpdate,
+) -> Result<(), sea_orm::DbErr>
+where
+    C: ConnectionTrait,
+{
+    let mut active_model: segment_efforts::ActiveModel = update.effort.into();
+    active_model.overall_rank = Set(Some(update.overall_rank));
+    active_model.user_rank = Set(Some(update.user_rank));
+    active_model.update(db).await?;
+    Ok(())
+}
+
 pub async fn rebuild_activity_analytics_cache<C>(
     db: &C,
     activity_ids: &[i32],
@@ -629,118 +695,131 @@ pub async fn rebuild_activity_analytics_cache<C>(
 where
     C: ConnectionTrait,
 {
-    let mut activity_ids = activity_ids
-        .iter()
-        .copied()
-        .filter(|activity_id| *activity_id > 0)
-        .collect::<Vec<_>>();
-    activity_ids.sort_unstable();
-    activity_ids.dedup();
-
+    let activity_ids = normalized_positive_ids(activity_ids);
     if activity_ids.is_empty() {
         return Ok(());
     }
 
-    activity_analytics::Entity::delete_many()
-        .filter(activity_analytics::Column::ActivityId.is_in(activity_ids.iter().copied()))
-        .exec(db)
-        .await?;
-
-    let efforts = segment_efforts::Entity::find()
-        .filter(segment_efforts::Column::ActivityId.is_in(activity_ids.iter().copied()))
-        .order_by_asc(segment_efforts::Column::ActivityId)
-        .order_by_asc(segment_efforts::Column::DurationSeconds)
-        .order_by_asc(segment_efforts::Column::Id)
-        .all(db)
-        .await?;
-
-    if efforts.is_empty() {
+    activity_analytics::Model::delete_by_activity_ids(db, &activity_ids).await?;
+    let input = load_activity_analytics_input(db, &activity_ids).await?;
+    if input.efforts.is_empty() {
         return Ok(());
     }
 
-    let mut segment_ids = efforts
-        .iter()
-        .map(|effort| effort.segment_id)
-        .collect::<Vec<_>>();
-    segment_ids.sort_unstable();
-    segment_ids.dedup();
+    let analytics_by_activity_id = build_activity_analytics(input);
+    persist_activity_analytics(db, analytics_by_activity_id).await
+}
 
-    let mut user_ids = efforts
-        .iter()
-        .map(|effort| effort.user_id)
-        .collect::<Vec<_>>();
-    user_ids.sort_unstable();
-    user_ids.dedup();
+struct ActivityAnalyticsInput {
+    efforts: Vec<segment_efforts::Model>,
+    segment_title_by_id: HashMap<i32, String>,
+    personal_best_by_key: HashMap<(i32, i32), Option<i32>>,
+}
 
-    let segment_title_by_id = segments::Entity::find()
-        .select_only()
-        .column(segments::Column::Id)
-        .column(segments::Column::Title)
-        .filter(segments::Column::Id.is_in(segment_ids.iter().copied()))
-        .into_model::<SegmentTitleRow>()
-        .all(db)
-        .await?
-        .into_iter()
-        .map(|segment| (segment.id, segment.title))
-        .collect::<HashMap<_, _>>();
-    let personal_best_by_key = segment_user_summaries::Entity::find()
-        .select_only()
-        .column(segment_user_summaries::Column::SegmentId)
-        .column(segment_user_summaries::Column::UserId)
-        .column(segment_user_summaries::Column::PersonalBestDurationSeconds)
-        .filter(segment_user_summaries::Column::SegmentId.is_in(segment_ids.iter().copied()))
-        .filter(segment_user_summaries::Column::UserId.is_in(user_ids.iter().copied()))
-        .into_model::<SegmentPersonalBestRow>()
-        .all(db)
-        .await?
-        .into_iter()
-        .map(|summary| {
-            (
-                (summary.segment_id, summary.user_id),
-                summary.personal_best_duration_seconds,
-            )
-        })
-        .collect::<HashMap<_, _>>();
+async fn load_activity_analytics_input<C>(
+    db: &C,
+    activity_ids: &[i32],
+) -> Result<ActivityAnalyticsInput, sea_orm::DbErr>
+where
+    C: ConnectionTrait,
+{
+    let efforts = segment_efforts::Model::list_for_activity_analytics(db, activity_ids).await?;
+    let segment_ids = unique_effort_segment_ids(&efforts);
+    let user_ids = unique_effort_user_ids(&efforts);
+    let segment_title_by_id = segment_titles_by_id(db, &segment_ids).await?;
+    let personal_best_by_key = segment_personal_bests_by_key(db, &segment_ids, &user_ids).await?;
 
+    Ok(ActivityAnalyticsInput {
+        efforts,
+        segment_title_by_id,
+        personal_best_by_key,
+    })
+}
+
+fn build_activity_analytics(
+    input: ActivityAnalyticsInput,
+) -> HashMap<i32, ActivityAnalyticsAccumulator> {
     let mut analytics_by_activity_id = HashMap::<i32, ActivityAnalyticsAccumulator>::new();
 
-    for effort in efforts {
-        let analytics = analytics_by_activity_id
-            .entry(effort.activity_id)
-            .or_default();
-        analytics.user_id = Some(effort.user_id);
-        analytics.segment_effort_count += 1;
-
-        let Some(kind) = activity_achievement_kind(effort.overall_rank, effort.user_rank) else {
-            continue;
-        };
-
-        analytics.achievement_count += 1;
-        match kind {
-            ActivityAchievementKind::Kom => analytics.kom_count += 1,
-            ActivityAchievementKind::Top10 => analytics.top_10_count += 1,
-            ActivityAchievementKind::Pr => analytics.pr_count += 1,
-            ActivityAchievementKind::PersonalPodium => {}
-        }
-
-        analytics
-            .achievement_highlights
-            .push(ActivityAchievementHighlight {
-                segment_id: effort.segment_id,
-                segment_title: segment_title_by_id
-                    .get(&effort.segment_id)
-                    .cloned()
-                    .unwrap_or_else(|| format!("Segment {}", effort.segment_id)),
-                effort_index: effort.effort_index,
-                overall_rank: effort.overall_rank,
-                personal_rank: effort.user_rank,
-                personal_best_duration_seconds: personal_best_by_key
-                    .get(&(effort.segment_id, effort.user_id))
-                    .copied()
-                    .flatten(),
-            });
+    for effort in input.efforts {
+        apply_effort_to_activity_analytics(
+            &mut analytics_by_activity_id,
+            &input.segment_title_by_id,
+            &input.personal_best_by_key,
+            effort,
+        );
     }
 
+    analytics_by_activity_id
+}
+
+fn apply_effort_to_activity_analytics(
+    analytics_by_activity_id: &mut HashMap<i32, ActivityAnalyticsAccumulator>,
+    segment_title_by_id: &HashMap<i32, String>,
+    personal_best_by_key: &HashMap<(i32, i32), Option<i32>>,
+    effort: segment_efforts::Model,
+) {
+    let analytics = analytics_by_activity_id
+        .entry(effort.activity_id)
+        .or_default();
+    analytics.user_id = Some(effort.user_id);
+    analytics.segment_effort_count += 1;
+
+    let Some(kind) = activity_achievement_kind(effort.overall_rank, effort.user_rank) else {
+        return;
+    };
+
+    analytics.achievement_count += 1;
+    apply_achievement_count(analytics, kind);
+    analytics
+        .achievement_highlights
+        .push(activity_achievement_highlight(
+            &effort,
+            segment_title_by_id,
+            personal_best_by_key,
+        ));
+}
+
+fn apply_achievement_count(
+    analytics: &mut ActivityAnalyticsAccumulator,
+    kind: ActivityAchievementKind,
+) {
+    match kind {
+        ActivityAchievementKind::Kom => analytics.kom_count += 1,
+        ActivityAchievementKind::Top10 => analytics.top_10_count += 1,
+        ActivityAchievementKind::Pr => analytics.pr_count += 1,
+        ActivityAchievementKind::PersonalPodium => {}
+    }
+}
+
+fn activity_achievement_highlight(
+    effort: &segment_efforts::Model,
+    segment_title_by_id: &HashMap<i32, String>,
+    personal_best_by_key: &HashMap<(i32, i32), Option<i32>>,
+) -> ActivityAchievementHighlight {
+    ActivityAchievementHighlight {
+        segment_id: effort.segment_id,
+        segment_title: segment_title_by_id
+            .get(&effort.segment_id)
+            .cloned()
+            .unwrap_or_else(|| format!("Segment {}", effort.segment_id)),
+        effort_index: effort.effort_index,
+        overall_rank: effort.overall_rank,
+        personal_rank: effort.user_rank,
+        personal_best_duration_seconds: personal_best_by_key
+            .get(&(effort.segment_id, effort.user_id))
+            .copied()
+            .flatten(),
+    }
+}
+
+async fn persist_activity_analytics<C>(
+    db: &C,
+    analytics_by_activity_id: HashMap<i32, ActivityAnalyticsAccumulator>,
+) -> Result<(), sea_orm::DbErr>
+where
+    C: ConnectionTrait,
+{
     for (activity_id, analytics) in analytics_by_activity_id {
         let Some(user_id) = analytics.user_id else {
             continue;
@@ -764,6 +843,73 @@ where
     }
 
     Ok(())
+}
+
+async fn segment_titles_by_id<C>(
+    db: &C,
+    segment_ids: &[i32],
+) -> Result<HashMap<i32, String>, sea_orm::DbErr>
+where
+    C: ConnectionTrait,
+{
+    Ok(segments::Model::list_by_ids(db, segment_ids)
+        .await?
+        .into_iter()
+        .map(|segment| (segment.id, segment.title))
+        .collect())
+}
+
+async fn segment_personal_bests_by_key<C>(
+    db: &C,
+    segment_ids: &[i32],
+    user_ids: &[i32],
+) -> Result<HashMap<(i32, i32), Option<i32>>, sea_orm::DbErr>
+where
+    C: ConnectionTrait,
+{
+    Ok(
+        segment_user_summaries::Model::list_by_segment_and_user_ids(db, segment_ids, user_ids)
+            .await?
+            .into_iter()
+            .map(|summary| {
+                (
+                    (summary.segment_id, summary.user_id),
+                    summary.personal_best_duration_seconds,
+                )
+            })
+            .collect(),
+    )
+}
+
+fn normalized_positive_ids(ids: &[i32]) -> Vec<i32> {
+    let mut ids = ids.iter().copied().filter(|id| *id > 0).collect::<Vec<_>>();
+    ids.sort_unstable();
+    ids.dedup();
+    ids
+}
+
+fn unique_effort_activity_ids(efforts: &[segment_efforts::Model]) -> Vec<i32> {
+    let ids = efforts
+        .iter()
+        .map(|effort| effort.activity_id)
+        .collect::<Vec<_>>();
+    normalized_positive_ids(&ids)
+}
+
+fn unique_effort_segment_ids(efforts: &[segment_efforts::Model]) -> Vec<i32> {
+    let ids = efforts
+        .iter()
+        .map(|effort| effort.segment_id)
+        .collect::<Vec<_>>();
+    normalized_positive_ids(&ids)
+}
+
+fn unique_effort_user_ids(efforts: &[segment_efforts::Model]) -> Vec<i32> {
+    let ids = efforts
+        .iter()
+        .map(|effort| effort.user_id)
+        .collect::<Vec<_>>();
+    normalized_positive_ids(&ids)
 }
 
 fn activity_achievement_kind(

@@ -342,49 +342,38 @@ async fn load_activity_for_admin_import_trace(
         .map_err(AppError::from)
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "legacy admin metrics aggregation predates workspace size lint"
-)]
 async fn bike_metrics(db: &DatabaseConnection) -> Vec<NamedStat> {
+    let activity_stats = activity_metric_stats(db);
+    let import_stats = activity_import_metric_stats(db);
+    let segment_stats = segment_metric_stats(db);
+    let integration_stats = integration_metric_stats(db);
+    let provider_rate_limit_stats = provider_rate_limit_bucket_stats(db);
+
+    let (activity_stats, import_stats, segment_stats, integration_stats, provider_rate_limit_stats) = tokio::join!(
+        activity_stats,
+        import_stats,
+        segment_stats,
+        integration_stats,
+        provider_rate_limit_stats,
+    );
+
+    let mut stats = Vec::new();
+    stats.extend(activity_stats);
+    stats.extend(import_stats);
+    stats.extend(segment_stats);
+    stats.extend(integration_stats);
+    stats.extend(provider_rate_limit_stats);
+    stats
+}
+
+async fn activity_metric_stats(db: &DatabaseConnection) -> Vec<NamedStat> {
     let total_activities = Aggregator::total::<activities::Entity>(db, activities::Column::Id);
     let activities_added_last_30d =
         Aggregator::recent_count::<activities::Entity>(db, activities::Column::CreatedAt, 30);
-    let total_activity_imports =
-        Aggregator::total::<activity_imports::Entity>(db, activity_imports::Column::Id);
-    let activity_imports_last_30d = Aggregator::recent_count::<activity_imports::Entity>(
-        db,
-        activity_imports::Column::CreatedAt,
-        30,
-    );
-    let total_segments = Aggregator::total::<segments::Entity>(db, segments::Column::Id);
-    let segments_added_last_30d =
-        Aggregator::recent_count::<segments::Entity>(db, segments::Column::CreatedAt, 30);
-    let total_strava_connections =
-        Aggregator::total::<strava_connections::Entity>(db, strava_connections::Column::Id);
-    let provider_rate_limit_stats = provider_rate_limit_bucket_stats(db);
+    let (total_activities, activities_added_last_30d) =
+        tokio::join!(total_activities, activities_added_last_30d);
 
-    let (
-        total_activities,
-        activities_added_last_30d,
-        total_activity_imports,
-        activity_imports_last_30d,
-        total_segments,
-        segments_added_last_30d,
-        total_strava_connections,
-        provider_rate_limit_stats,
-    ) = tokio::join!(
-        total_activities,
-        activities_added_last_30d,
-        total_activity_imports,
-        activity_imports_last_30d,
-        total_segments,
-        segments_added_last_30d,
-        total_strava_connections,
-        provider_rate_limit_stats,
-    );
-
-    let mut stats = vec![
+    vec![
         NamedStat::new(
             "total_activities",
             "Total Activities",
@@ -397,6 +386,21 @@ async fn bike_metrics(db: &DatabaseConnection) -> Vec<NamedStat> {
             "last 30 days",
             activities_added_last_30d,
         ),
+    ]
+}
+
+async fn activity_import_metric_stats(db: &DatabaseConnection) -> Vec<NamedStat> {
+    let total_activity_imports =
+        Aggregator::total::<activity_imports::Entity>(db, activity_imports::Column::Id);
+    let activity_imports_last_30d = Aggregator::recent_count::<activity_imports::Entity>(
+        db,
+        activity_imports::Column::CreatedAt,
+        30,
+    );
+    let (total_activity_imports, activity_imports_last_30d) =
+        tokio::join!(total_activity_imports, activity_imports_last_30d);
+
+    vec![
         NamedStat::new(
             "total_activity_imports",
             "Stored Activity Imports",
@@ -409,6 +413,17 @@ async fn bike_metrics(db: &DatabaseConnection) -> Vec<NamedStat> {
             "last 30 days",
             activity_imports_last_30d,
         ),
+    ]
+}
+
+async fn segment_metric_stats(db: &DatabaseConnection) -> Vec<NamedStat> {
+    let total_segments = Aggregator::total::<segments::Entity>(db, segments::Column::Id);
+    let segments_added_last_30d =
+        Aggregator::recent_count::<segments::Entity>(db, segments::Column::CreatedAt, 30);
+    let (total_segments, segments_added_last_30d) =
+        tokio::join!(total_segments, segments_added_last_30d);
+
+    vec![
         NamedStat::new(
             "total_segments",
             "Tracked Segments",
@@ -421,23 +436,23 @@ async fn bike_metrics(db: &DatabaseConnection) -> Vec<NamedStat> {
             "last 30 days",
             segments_added_last_30d,
         ),
-        NamedStat::new(
-            "total_strava_connections",
-            "Connected Strava Accounts",
-            "all time",
-            total_strava_connections,
-        ),
-    ];
-    stats.extend(provider_rate_limit_stats);
-    stats
+    ]
+}
+
+async fn integration_metric_stats(db: &DatabaseConnection) -> Vec<NamedStat> {
+    let total_strava_connections =
+        Aggregator::total::<strava_connections::Entity>(db, strava_connections::Column::Id).await;
+
+    vec![NamedStat::new(
+        "total_strava_connections",
+        "Connected Strava Accounts",
+        "all time",
+        total_strava_connections,
+    )]
 }
 
 async fn provider_rate_limit_bucket_stats(db: &DatabaseConnection) -> Vec<NamedStat> {
-    let rows = provider_rate_limit_buckets::Entity::find()
-        .order_by_asc(provider_rate_limit_buckets::Column::Provider)
-        .order_by_asc(provider_rate_limit_buckets::Column::Bucket)
-        .all(db)
-        .await;
+    let rows = provider_rate_limit_buckets::Model::list_ordered(db).await;
 
     let rows = match rows {
         Ok(rows) => rows,
@@ -1230,16 +1245,30 @@ mod tests {
         assert_eq!(enqueue_segment_backfill_tasks(&state, &[]).await, 0);
     }
 
-    #[expect(
-        clippy::too_many_lines,
-        reason = "fixture covers the full admin metrics response"
-    )]
     #[tokio::test]
     async fn bike_metrics_returns_expected_named_stats() {
         let db = test_db().await;
         let now = Utc::now();
 
-        let activity = activities::ActiveModel {
+        insert_admin_metric_fixtures(&db, now).await;
+
+        let stats = bike_metrics(&db).await;
+        assert_admin_metric_values(stats);
+    }
+
+    async fn insert_admin_metric_fixtures(db: &DatabaseConnection, now: DateTime<Utc>) {
+        let activity = insert_metric_activity(db, now).await;
+        insert_metric_activity_import(db, activity.id, now).await;
+        insert_metric_segment(db, now).await;
+        insert_metric_strava_connection(db, now).await;
+        insert_metric_provider_rate_limit_bucket(db, now).await;
+    }
+
+    async fn insert_metric_activity(
+        db: &DatabaseConnection,
+        now: DateTime<Utc>,
+    ) -> activities::Model {
+        activities::ActiveModel {
             user_id: Set(1),
             activity_import_id: Set(None),
             title: Set("Lunch Ride".to_string()),
@@ -1270,16 +1299,22 @@ mod tests {
             derived_data_json: Set(None),
             ..Default::default()
         }
-        .insert(&db)
+        .insert(db)
         .await
-        .expect("insert activity");
+        .expect("insert activity")
+    }
 
+    async fn insert_metric_activity_import(
+        db: &DatabaseConnection,
+        activity_id: i32,
+        now: DateTime<Utc>,
+    ) {
         activity_imports::ActiveModel {
             user_id: Set(1),
             source: Set("manual_upload".to_string()),
             format: Set("gpx".to_string()),
             status: Set("processed".to_string()),
-            activity_id: Set(Some(activity.id)),
+            activity_id: Set(Some(activity_id)),
             processing_stage: Set("complete".to_string()),
             processing_error: Set(None),
             processing_attempts: Set(0),
@@ -1291,10 +1326,12 @@ mod tests {
             mime_type: Set(Some("application/gpx+xml".to_string())),
             ..Default::default()
         }
-        .insert(&db)
+        .insert(db)
         .await
         .expect("insert activity import");
+    }
 
+    async fn insert_metric_segment(db: &DatabaseConnection, now: DateTime<Utc>) {
         segments::ActiveModel {
             user_id: Set(1),
             title: Set("North Climb".to_string()),
@@ -1308,10 +1345,12 @@ mod tests {
             last_activity_change_at: Set(now),
             ..Default::default()
         }
-        .insert(&db)
+        .insert(db)
         .await
         .expect("insert segment");
+    }
 
+    async fn insert_metric_strava_connection(db: &DatabaseConnection, now: DateTime<Utc>) {
         strava_connections::ActiveModel {
             user_id: Set(1),
             athlete_id: Set(35_999_641),
@@ -1333,10 +1372,12 @@ mod tests {
             last_sync_failed_count: Set(0),
             ..Default::default()
         }
-        .insert(&db)
+        .insert(db)
         .await
         .expect("insert strava connection");
+    }
 
+    async fn insert_metric_provider_rate_limit_bucket(db: &DatabaseConnection, now: DateTime<Utc>) {
         provider_rate_limit_buckets::ActiveModel {
             provider: Set("strava".to_string()),
             bucket: Set("read_15_minute".to_string()),
@@ -1345,11 +1386,12 @@ mod tests {
             reset_at: Set(now + Duration::minutes(10)),
             ..Default::default()
         }
-        .insert(&db)
+        .insert(db)
         .await
         .expect("insert provider rate limit bucket");
+    }
 
-        let stats = bike_metrics(&db).await;
+    fn assert_admin_metric_values(stats: Vec<NamedStat>) {
         let values_by_key = stats
             .into_iter()
             .map(|stat| (stat.key, stat.value))
