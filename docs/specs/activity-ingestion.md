@@ -42,7 +42,7 @@ The processing graph is observable. `GET /api/activity-imports/processing-graph`
 
 Raw storage intentionally precedes activity parsing for all retained file imports. This means fingerprint duplicates can leave a duplicate import row that points at the duplicate raw source and the existing activity. Provider-correlation duplicates, such as already-seen Strava activity IDs, may still short-circuit before raw storage when no new source artifact would be retained.
 
-The activity import pipeline is guarded by Clippy size and complexity lints. `activity_import_pipeline.rs` denies oversized functions, excessive argument lists, and excessive cognitive complexity, with thresholds configured in `clippy.toml`. Pipeline changes should split graph node behavior into named helpers instead of growing the executor match arms.
+The activity import pipeline is guarded by workspace Clippy size and complexity lints. `Cargo.toml` denies oversized functions, excessive argument lists, and excessive cognitive complexity, with thresholds configured in `clippy.toml`. Pipeline changes should split graph node behavior into named helpers instead of growing executor match arms or lifecycle orchestration functions.
 
 Provider-specific fields may be kept as metadata, but user-facing activity behavior should come from the normalized model.
 

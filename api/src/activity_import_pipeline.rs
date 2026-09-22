@@ -1,9 +1,3 @@
-#![deny(
-    clippy::cognitive_complexity,
-    clippy::too_many_arguments,
-    clippy::too_many_lines
-)]
-
 use crate::activity_details::serialize_derived_activity_data;
 use crate::activity_lifecycle::refresh_activity_derived_state_without_cache_rebuilds;
 use crate::activity_parser::{parse_activity_artifact, ActivityParserArtifact, ParsedActivityData};
