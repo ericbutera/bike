@@ -29,7 +29,7 @@ use crate::strava_provider_payload::{
     StoredStravaProviderPayload, StravaActivityStreams, StravaActivitySummary, StravaStream,
 };
 use crate::tasks::{StravaSyncTask, TaskQueue};
-use crate::training_profile::load_training_profile;
+use crate::training_profile::{load_training_profile, TrainingProfile};
 use axum::http::StatusCode;
 use chrono::{DateTime, Duration, Utc};
 use hmac::{Hmac, Mac};
@@ -374,15 +374,23 @@ pub fn verify_webhook_subscription(
     })
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "legacy Strava webhook flow predates workspace size lint"
-)]
 pub async fn handle_webhook_event(
     db: &DatabaseConnection,
     tasks: &TaskQueue,
     event: &StravaWebhookEvent,
 ) -> Result<(), AppError> {
+    record_webhook_received(db, event).await;
+
+    match event.object_type.as_str() {
+        "athlete" => handle_athlete_webhook_event(db, event).await?,
+        "activity" => handle_activity_webhook_event(db, tasks, event).await?,
+        _ => {}
+    }
+
+    Ok(())
+}
+
+async fn record_webhook_received(db: &DatabaseConnection, event: &StravaWebhookEvent) {
     record_strava_event_best_effort(
         db,
         None,
@@ -396,111 +404,181 @@ pub async fn handle_webhook_event(
         Some(serde_json::json!(event)),
     )
     .await;
+}
 
-    match event.object_type.as_str() {
-        "athlete" => {
-            if event.aspect_type == "update" && athlete_update_revokes_access(event) {
-                disconnect_connection_by_athlete_id(db, event.owner_id).await?;
-            }
-        }
-        "activity" => {
-            if let Some(connection) = load_connection_by_athlete_id(db, event.owner_id).await? {
-                let resolved = resolve_connection_sync_state(db, &connection).await?;
-                if event.aspect_type == "delete" {
-                    let deleted = delete_strava_activity_by_correlation_id(
-                        db,
-                        &Config::get().uploads_dir,
-                        tasks,
-                        resolved.connection.user_id,
-                        event.object_id,
-                    )
-                    .await?;
-                    record_connection_strava_event_best_effort(
-                        db,
-                        &resolved.connection,
-                        "webhook.activity_delete",
-                        if deleted {
-                            INTEGRATION_LEVEL_SUCCESS
-                        } else {
-                            INTEGRATION_LEVEL_WARNING
-                        },
-                        if deleted {
-                            format!(
-                                "Strava webhook deleted imported activity {}.",
-                                event.object_id
-                            )
-                        } else {
-                            format!(
-                                "Strava webhook delete for activity {} did not match an imported Bike activity.",
-                                event.object_id
-                            )
-                        },
-                        Some(serde_json::json!({
-                            "activity_id": event.object_id,
-                            "aspect_type": event.aspect_type,
-                        })),
-                    )
-                    .await;
-                } else if resolved.active_sync_status.is_none() {
-                    if !scopes_allow_activity_import(&resolved.connection.scopes) {
-                        record_connection_strava_event_best_effort(
-                            db,
-                            &resolved.connection,
-                            "webhook.activity_ignored",
-                            INTEGRATION_LEVEL_WARNING,
-                            &missing_activity_scope_message(),
-                            Some(serde_json::json!({
-                                "activity_id": event.object_id,
-                                "aspect_type": event.aspect_type,
-                                "granted_scopes": parse_scope_list(&resolved.connection.scopes),
-                            })),
-                        )
-                        .await;
-                    } else {
-                        let _ = queue_sync_task_for_connection(
-                            db,
-                            tasks,
-                            &resolved.connection,
-                            "Strava webhook update queued a sync.",
-                        )
-                        .await;
-                    }
-                } else {
-                    record_connection_strava_event_best_effort(
-                        db,
-                        &resolved.connection,
-                        "webhook.activity_ignored",
-                        INTEGRATION_LEVEL_WARNING,
-                        "Ignored Strava activity webhook because a sync is already active.",
-                        Some(serde_json::json!({
-                            "activity_id": event.object_id,
-                            "aspect_type": event.aspect_type,
-                            "active_sync_status": resolved.active_sync_status,
-                        })),
-                    )
-                    .await;
-                }
-            } else {
-                record_strava_event_best_effort(
-                    db,
-                    None,
-                    None,
-                    "webhook.activity_ignored",
-                    INTEGRATION_LEVEL_WARNING,
-                    "Ignored Strava activity webhook because no Bike connection matched the athlete.",
-                    Some(serde_json::json!({
-                        "owner_id": event.owner_id,
-                        "activity_id": event.object_id,
-                        "aspect_type": event.aspect_type,
-                    })),
-                )
-                .await;
-            }
-        }
-        _ => {}
+async fn handle_athlete_webhook_event(
+    db: &DatabaseConnection,
+    event: &StravaWebhookEvent,
+) -> Result<(), AppError> {
+    if event.aspect_type == "update" && athlete_update_revokes_access(event) {
+        disconnect_connection_by_athlete_id(db, event.owner_id).await?;
     }
 
     Ok(())
+}
+
+async fn handle_activity_webhook_event(
+    db: &DatabaseConnection,
+    tasks: &TaskQueue,
+    event: &StravaWebhookEvent,
+) -> Result<(), AppError> {
+    let Some(connection) = load_connection_by_athlete_id(db, event.owner_id).await? else {
+        record_activity_webhook_missing_connection(db, event).await;
+        return Ok(());
+    };
+
+    let resolved = resolve_connection_sync_state(db, &connection).await?;
+    if event.aspect_type == "delete" {
+        handle_activity_delete_webhook(db, tasks, event, &resolved.connection).await
+    } else {
+        handle_activity_update_webhook(db, tasks, event, &resolved).await
+    }
+}
+
+async fn handle_activity_delete_webhook(
+    db: &DatabaseConnection,
+    tasks: &TaskQueue,
+    event: &StravaWebhookEvent,
+    connection: &strava_connections::Model,
+) -> Result<(), AppError> {
+    let deleted = delete_strava_activity_by_correlation_id(
+        db,
+        &Config::get().uploads_dir,
+        tasks,
+        connection.user_id,
+        event.object_id,
+    )
+    .await?;
+
+    record_activity_delete_webhook_result(db, connection, event, deleted).await;
+    Ok(())
+}
+
+async fn handle_activity_update_webhook(
+    db: &DatabaseConnection,
+    tasks: &TaskQueue,
+    event: &StravaWebhookEvent,
+    resolved: &ResolvedStravaConnectionSyncState,
+) -> Result<(), AppError> {
+    if let Some(active_sync_status) = resolved.active_sync_status {
+        record_activity_webhook_active_sync(db, event, &resolved.connection, active_sync_status)
+            .await;
+        return Ok(());
+    }
+
+    if !scopes_allow_activity_import(&resolved.connection.scopes) {
+        record_activity_webhook_missing_scope(db, event, &resolved.connection).await;
+        return Ok(());
+    }
+
+    let _ = queue_sync_task_for_connection(
+        db,
+        tasks,
+        &resolved.connection,
+        "Strava webhook update queued a sync.",
+    )
+    .await;
+
+    Ok(())
+}
+
+async fn record_activity_delete_webhook_result(
+    db: &DatabaseConnection,
+    connection: &strava_connections::Model,
+    event: &StravaWebhookEvent,
+    deleted: bool,
+) {
+    let (level, message) = if deleted {
+        (
+            INTEGRATION_LEVEL_SUCCESS,
+            format!(
+                "Strava webhook deleted imported activity {}.",
+                event.object_id
+            ),
+        )
+    } else {
+        (
+            INTEGRATION_LEVEL_WARNING,
+            format!(
+                "Strava webhook delete for activity {} did not match an imported Bike activity.",
+                event.object_id
+            ),
+        )
+    };
+
+    record_connection_strava_event_best_effort(
+        db,
+        connection,
+        "webhook.activity_delete",
+        level,
+        message,
+        Some(serde_json::json!({
+            "activity_id": event.object_id,
+            "aspect_type": event.aspect_type,
+        })),
+    )
+    .await;
+}
+
+async fn record_activity_webhook_active_sync(
+    db: &DatabaseConnection,
+    event: &StravaWebhookEvent,
+    connection: &strava_connections::Model,
+    active_sync_status: &str,
+) {
+    record_connection_strava_event_best_effort(
+        db,
+        connection,
+        "webhook.activity_ignored",
+        INTEGRATION_LEVEL_WARNING,
+        "Ignored Strava activity webhook because a sync is already active.",
+        Some(serde_json::json!({
+            "activity_id": event.object_id,
+            "aspect_type": event.aspect_type,
+            "active_sync_status": active_sync_status,
+        })),
+    )
+    .await;
+}
+
+async fn record_activity_webhook_missing_scope(
+    db: &DatabaseConnection,
+    event: &StravaWebhookEvent,
+    connection: &strava_connections::Model,
+) {
+    record_connection_strava_event_best_effort(
+        db,
+        connection,
+        "webhook.activity_ignored",
+        INTEGRATION_LEVEL_WARNING,
+        &missing_activity_scope_message(),
+        Some(serde_json::json!({
+            "activity_id": event.object_id,
+            "aspect_type": event.aspect_type,
+            "granted_scopes": parse_scope_list(&connection.scopes),
+        })),
+    )
+    .await;
+}
+
+async fn record_activity_webhook_missing_connection(
+    db: &DatabaseConnection,
+    event: &StravaWebhookEvent,
+) {
+    record_strava_event_best_effort(
+        db,
+        None,
+        None,
+        "webhook.activity_ignored",
+        INTEGRATION_LEVEL_WARNING,
+        "Ignored Strava activity webhook because no Bike connection matched the athlete.",
+        Some(serde_json::json!({
+            "owner_id": event.owner_id,
+            "activity_id": event.object_id,
+            "aspect_type": event.aspect_type,
+        })),
+    )
+    .await;
 }
 
 pub async fn queue_connection_sync(
@@ -541,20 +619,12 @@ pub async fn disconnect_connection(db: &DatabaseConnection, user_id: i32) -> Res
     .await
 }
 
-#[expect(
-    clippy::cognitive_complexity,
-    clippy::too_many_lines,
-    reason = "legacy Strava sync orchestration predates workspace complexity lint"
-)]
 pub async fn process_strava_sync(
     db: &DatabaseConnection,
     uploads_dir: &str,
     connection_id: i32,
 ) -> Result<(), AppError> {
-    let Some(connection) = strava_connections::Entity::find_by_id(connection_id)
-        .one(db)
-        .await?
-    else {
+    let Some(connection) = load_sync_connection(db, connection_id).await? else {
         tracing::info!(
             connection_id,
             "skipping Strava sync because the connection no longer exists"
@@ -569,7 +639,92 @@ pub async fn process_strava_sync(
     )
     .await?;
 
-    let sync_span = tracing::info_span!(
+    let sync_span = strava_sync_span(&connection);
+    let result = run_strava_sync_workflow(db, uploads_dir, connection.clone())
+        .instrument(sync_span.clone())
+        .await;
+
+    finish_strava_sync_attempt(db, &connection, &sync_span, result).await
+}
+
+struct StravaSyncRunContext {
+    connection: strava_connections::Model,
+    client: StravaApiClient,
+    tasks: TaskQueue,
+    user_storage_key: String,
+    training_profile: TrainingProfile,
+    after_epoch: Option<i64>,
+}
+
+struct StravaSyncProgress {
+    imported_count: i32,
+    duplicate_count: i32,
+    failed_count: i32,
+    affected_segment_ids: Vec<i32>,
+    imported_import_ids: Vec<i32>,
+    fitness_dirty_from_day: Option<chrono::NaiveDate>,
+    latest_started_at: Option<DateTime<Utc>>,
+}
+
+enum StravaActivityImportOutcome {
+    Imported {
+        import_id: i32,
+        affected_segment_ids: Vec<i32>,
+        fitness_dirty_from_day: chrono::NaiveDate,
+    },
+    Duplicate,
+    Failed,
+    ConnectionRemoved,
+}
+
+impl StravaSyncProgress {
+    fn new(connection: &strava_connections::Model) -> Self {
+        Self {
+            imported_count: 0,
+            duplicate_count: 0,
+            failed_count: 0,
+            affected_segment_ids: Vec::new(),
+            imported_import_ids: Vec::new(),
+            fitness_dirty_from_day: None,
+            latest_started_at: connection.last_synced_activity_started_at,
+        }
+    }
+
+    fn record_activity_seen(&mut self, activity: &StravaActivitySummary) {
+        self.latest_started_at = Some(match self.latest_started_at {
+            Some(current) if current >= activity.start_date => current,
+            _ => activity.start_date,
+        });
+    }
+
+    fn record_imported(
+        &mut self,
+        import_id: i32,
+        affected_segment_ids: Vec<i32>,
+        fitness_dirty_from_day: chrono::NaiveDate,
+    ) {
+        self.imported_count += 1;
+        self.imported_import_ids.push(import_id);
+        self.affected_segment_ids.extend(affected_segment_ids);
+        self.fitness_dirty_from_day = Some(match self.fitness_dirty_from_day {
+            Some(current) => current.min(fitness_dirty_from_day),
+            None => fitness_dirty_from_day,
+        });
+    }
+}
+
+async fn load_sync_connection(
+    db: &DatabaseConnection,
+    connection_id: i32,
+) -> Result<Option<strava_connections::Model>, AppError> {
+    strava_connections::Entity::find_by_id(connection_id)
+        .one(db)
+        .await
+        .map_err(AppError::from)
+}
+
+fn strava_sync_span(connection: &strava_connections::Model) -> tracing::Span {
+    tracing::info_span!(
         "strava.sync.workflow",
         provider = INTEGRATION_PROVIDER_STRAVA,
         connection_id = connection.id,
@@ -578,236 +733,324 @@ pub async fn process_strava_sync(
         retry_at = field::Empty,
         trace_id = field::Empty,
         span_id = field::Empty,
-    );
+    )
+}
 
-    let result = async {
-        observability::record_current_trace_context();
-        let connection = mark_sync_running(db, &connection).await?;
-        let client = StravaApiClient::new(db, Config::get())?;
-        let connection = ensure_fresh_access_token(db, &client, connection).await?;
-        ensure_connection_scopes_allow_activity_import(&connection)?;
-        let user = users::Entity::find_by_id(connection.user_id)
-            .one(db)
-            .await?
-            .ok_or_else(|| AppError::internal(format!("User {} for Strava sync was not found", connection.user_id)))?;
-        let user_storage_key = user.pid.to_string();
-        let tasks = TaskQueue::new(db.clone());
-        resume_incomplete_activity_imports_for_user(db, uploads_dir, &tasks, connection.user_id)
-            .await?;
-        let training_profile = load_training_profile(db, connection.user_id).await?;
-        let latest_user_activity_started_at =
-            load_latest_user_activity_started_at(db, connection.user_id).await?;
-        let after_epoch = strava_sync_after_epoch(
-            connection.last_synced_activity_started_at,
-            latest_user_activity_started_at,
-        );
+async fn run_strava_sync_workflow(
+    db: &DatabaseConnection,
+    uploads_dir: &str,
+    connection: strava_connections::Model,
+) -> Result<(), AppError> {
+    observability::record_current_trace_context();
+    let context = prepare_strava_sync_context(db, uploads_dir, connection).await?;
+    let Some(progress) = import_strava_activity_pages(db, uploads_dir, &context).await? else {
+        return Ok(());
+    };
 
-        let mut page = 1usize;
-        let mut imported_count = 0i32;
-        let mut duplicate_count = 0i32;
-        let mut failed_count = 0i32;
-        let mut affected_segment_ids = Vec::new();
-        let mut imported_import_ids = Vec::new();
-        let mut fitness_dirty_from_day: Option<chrono::NaiveDate> = None;
-        let mut latest_started_at = connection.last_synced_activity_started_at;
+    complete_strava_sync(db, &context, progress).await
+}
 
-        // TODO: Large initial syncs can still put many generated files in one monthly
-        // bucket; add finer-grained sharding if that becomes an operational problem.
-        loop {
-            if stop_if_connection_removed(db, &connection).await? {
-                return Ok(());
-            }
+async fn prepare_strava_sync_context(
+    db: &DatabaseConnection,
+    uploads_dir: &str,
+    connection: strava_connections::Model,
+) -> Result<StravaSyncRunContext, AppError> {
+    let connection = mark_sync_running(db, &connection).await?;
+    let client = StravaApiClient::new(db, Config::get())?;
+    let connection = ensure_fresh_access_token(db, &client, connection).await?;
+    ensure_connection_scopes_allow_activity_import(&connection)?;
 
-            let activities = client
-                .list_activities(&connection.access_token, after_epoch, page, 100)
-                .await
-                .inspect_err(|error| {
-                    tracing::error!(message = %error.message, page, "failed to list Strava activities");
-                })?;
-
-            if activities.is_empty() {
-                break;
-            }
-
-            for activity in activities.iter().rev() {
-                if stop_if_connection_removed(db, &connection).await? {
-                    return Ok(());
-                }
-
-                latest_started_at = Some(match latest_started_at {
-                    Some(current) if current >= activity.start_date => current,
-                    _ => activity.start_date,
-                });
-
-                let streams = match client
-                    .get_activity_streams(&connection.access_token, activity.id)
-                    .await
-                {
-                    Ok(value) => value,
-                    Err(error) => {
-                        if is_rate_limit_error(&error) {
-                            return Err(error);
-                        }
-                        failed_count += 1;
-                        tracing::warn!(
-                            activity_id = activity.id,
-                            message = %error.message,
-                            "failed to fetch Strava activity streams"
-                        );
-                        continue;
-                    }
-                };
-
-                let import_payload = match build_activity_upload(activity, &streams) {
-                    Ok(value) => value,
-                    Err(error) => {
-                        failed_count += 1;
-                        tracing::warn!(
-                            activity_id = activity.id,
-                            message = %error.message,
-                            "failed to build synthetic Strava activity upload"
-                        );
-                        continue;
-                    }
-                };
-
-                if stop_if_connection_removed(db, &connection).await? {
-                    return Ok(());
-                }
-
-                let persist_request = PersistActivityUploadWithArtifactsRequest {
-                    uploads_dir,
-                    user_storage_key: &user_storage_key,
-                    user_id: connection.user_id,
-                    upload: import_payload.generated_tcx_upload,
-                    primary_artifact_kind: ACTIVITY_IMPORT_ARTIFACT_KIND_GENERATED_EXPORT,
-                    primary_source_quality: ACTIVITY_IMPORT_SOURCE_QUALITY_GENERATED_TCX,
-                    additional_artifacts: vec![import_payload.provider_payload_artifact],
-                    source: "strava_sync",
-                    deduplication: ActivityUploadDeduplication::Enabled,
-                    training_profile: Some(&training_profile),
-                };
-
-                let persist_span = tracing::info_span!(
-                    "strava.activity_import.persist",
-                    provider = INTEGRATION_PROVIDER_STRAVA,
-                    connection_id = connection.id,
-                    user_id = connection.user_id,
-                    activity_id = activity.id,
-                    trace_id = field::Empty,
-                    span_id = field::Empty,
-                );
-                let persist_result = persist_activity_upload_with_artifacts(db, persist_request)
-                    .instrument(persist_span)
-                    .await;
-
-                match persist_result {
-                    Ok(PersistActivityUploadOutcome::Imported(persisted)) => {
-                        imported_count += 1;
-                        imported_import_ids.push(persisted.import.id);
-                        affected_segment_ids.extend(persisted.affected_segment_ids);
-                        fitness_dirty_from_day = Some(match fitness_dirty_from_day {
-                            Some(current) => current.min(persisted.fitness_dirty_from_day),
-                            None => persisted.fitness_dirty_from_day,
-                        });
-                    }
-                    Ok(PersistActivityUploadOutcome::Duplicate(_)) => {
-                        duplicate_count += 1;
-                    }
-                    Err(error) => {
-                        failed_count += 1;
-                        tracing::warn!(
-                            activity_id = activity.id,
-                            message = %error.message,
-                            "failed to persist Strava activity upload"
-                        );
-                    }
-                }
-            }
-
-            if activities.len() < 100 {
-                break;
-            }
-
-            page += 1;
-        }
-
-        if stop_if_connection_removed(db, &connection).await? {
-            return Ok(());
-        }
-
-        if imported_count > 0 {
-            let finalize_span = tracing::info_span!(
-                "strava.activity_import.finalize_batch",
-                provider = INTEGRATION_PROVIDER_STRAVA,
-                connection_id = connection.id,
-                user_id = connection.user_id,
-                imported_count,
-                trace_id = field::Empty,
-                span_id = field::Empty,
-            );
-            finalize_activity_import_batch(
-                db,
-                &tasks,
-                connection.user_id,
-                affected_segment_ids,
-                fitness_dirty_from_day,
-                Utc::now(),
-            )
-            .instrument(finalize_span)
-            .await?;
-            mark_activity_imports_processed(db, &imported_import_ids).await?;
-        }
-
-        if failed_count > 0 && imported_count == 0 && duplicate_count == 0 {
-            let message = "Strava sync could not import any activities".to_string();
-            mark_sync_failed(
-                db,
-                &connection,
-                &message,
-                imported_count,
-                duplicate_count,
-                failed_count,
-            )
-            .await?;
-            return Err(AppError::internal(message));
-        }
-
-        let message = build_sync_summary_message(imported_count, duplicate_count, failed_count);
-        mark_sync_succeeded(
-            db,
-            &connection,
-            latest_started_at,
-            imported_count,
-            duplicate_count,
-            failed_count,
-            &message,
-        )
+    let user = users::Entity::find_by_id(connection.user_id)
+        .one(db)
+        .await?
+        .ok_or_else(|| {
+            AppError::internal(format!(
+                "User {} for Strava sync was not found",
+                connection.user_id
+            ))
+        })?;
+    let tasks = TaskQueue::new(db.clone());
+    resume_incomplete_activity_imports_for_user(db, uploads_dir, &tasks, connection.user_id)
         .await?;
 
-        Ok(())
-    }
-    .instrument(sync_span.clone())
-    .await;
+    let training_profile = load_training_profile(db, connection.user_id).await?;
+    let latest_user_activity_started_at =
+        load_latest_user_activity_started_at(db, connection.user_id).await?;
+    let after_epoch = strava_sync_after_epoch(
+        connection.last_synced_activity_started_at,
+        latest_user_activity_started_at,
+    );
 
-    let mut paused_retry_at = None;
-    if let Err(error) = &result {
-        if is_rate_limit_error(error) {
-            if let Some(retry_at) = error.retry_at {
-                paused_retry_at = Some(retry_at);
-                sync_span.record("status", "rate_limited");
-                sync_span.record("retry_at", field::display(retry_at));
-                let _ = mark_sync_paused_by_rate_limit(db, connection.id, &error.message, retry_at)
-                    .await;
-            }
-        } else {
-            sync_span.record("status", "failed");
-            let _ = mark_sync_failed_if_running(db, connection.id, &error.message).await;
+    Ok(StravaSyncRunContext {
+        connection,
+        client,
+        tasks,
+        user_storage_key: user.pid.to_string(),
+        training_profile,
+        after_epoch,
+    })
+}
+
+async fn import_strava_activity_pages(
+    db: &DatabaseConnection,
+    uploads_dir: &str,
+    context: &StravaSyncRunContext,
+) -> Result<Option<StravaSyncProgress>, AppError> {
+    let mut page = 1usize;
+    let mut progress = StravaSyncProgress::new(&context.connection);
+
+    // TODO: Large initial syncs can still put many generated files in one monthly
+    // bucket; add finer-grained sharding if that becomes an operational problem.
+    loop {
+        if stop_if_connection_removed(db, &context.connection).await? {
+            return Ok(None);
         }
-    } else {
-        sync_span.record("status", "succeeded");
+
+        let activities = list_strava_sync_page(context, page).await?;
+        if activities.is_empty() {
+            break;
+        }
+
+        if !import_strava_activity_page(db, uploads_dir, context, &mut progress, &activities)
+            .await?
+        {
+            return Ok(None);
+        }
+
+        if activities.len() < 100 {
+            break;
+        }
+
+        page += 1;
     }
 
+    if stop_if_connection_removed(db, &context.connection).await? {
+        Ok(None)
+    } else {
+        Ok(Some(progress))
+    }
+}
+
+async fn list_strava_sync_page(
+    context: &StravaSyncRunContext,
+    page: usize,
+) -> Result<Vec<StravaActivitySummary>, AppError> {
+    context
+        .client
+        .list_activities(
+            &context.connection.access_token,
+            context.after_epoch,
+            page,
+            100,
+        )
+        .await
+        .inspect_err(|error| {
+            tracing::error!(message = %error.message, page, "failed to list Strava activities");
+        })
+}
+
+async fn import_strava_activity_page(
+    db: &DatabaseConnection,
+    uploads_dir: &str,
+    context: &StravaSyncRunContext,
+    progress: &mut StravaSyncProgress,
+    activities: &[StravaActivitySummary],
+) -> Result<bool, AppError> {
+    for activity in activities.iter().rev() {
+        if stop_if_connection_removed(db, &context.connection).await? {
+            return Ok(false);
+        }
+
+        progress.record_activity_seen(activity);
+        match import_strava_activity(db, uploads_dir, context, activity).await? {
+            StravaActivityImportOutcome::Imported {
+                import_id,
+                affected_segment_ids,
+                fitness_dirty_from_day,
+            } => progress.record_imported(import_id, affected_segment_ids, fitness_dirty_from_day),
+            StravaActivityImportOutcome::Duplicate => progress.duplicate_count += 1,
+            StravaActivityImportOutcome::Failed => progress.failed_count += 1,
+            StravaActivityImportOutcome::ConnectionRemoved => return Ok(false),
+        }
+    }
+
+    Ok(true)
+}
+
+async fn import_strava_activity(
+    db: &DatabaseConnection,
+    uploads_dir: &str,
+    context: &StravaSyncRunContext,
+    activity: &StravaActivitySummary,
+) -> Result<StravaActivityImportOutcome, AppError> {
+    let streams = match context
+        .client
+        .get_activity_streams(&context.connection.access_token, activity.id)
+        .await
+    {
+        Ok(value) => value,
+        Err(error) if is_rate_limit_error(&error) => return Err(error),
+        Err(error) => {
+            tracing::warn!(
+                activity_id = activity.id,
+                message = %error.message,
+                "failed to fetch Strava activity streams"
+            );
+            return Ok(StravaActivityImportOutcome::Failed);
+        }
+    };
+    let import_payload = match build_activity_upload(activity, &streams) {
+        Ok(value) => value,
+        Err(error) => {
+            tracing::warn!(
+                activity_id = activity.id,
+                message = %error.message,
+                "failed to build synthetic Strava activity upload"
+            );
+            return Ok(StravaActivityImportOutcome::Failed);
+        }
+    };
+
+    if stop_if_connection_removed(db, &context.connection).await? {
+        return Ok(StravaActivityImportOutcome::ConnectionRemoved);
+    }
+
+    persist_strava_activity_upload(db, uploads_dir, context, activity, import_payload).await
+}
+
+async fn persist_strava_activity_upload(
+    db: &DatabaseConnection,
+    uploads_dir: &str,
+    context: &StravaSyncRunContext,
+    activity: &StravaActivitySummary,
+    import_payload: StravaActivityImportPayload,
+) -> Result<StravaActivityImportOutcome, AppError> {
+    let persist_request = PersistActivityUploadWithArtifactsRequest {
+        uploads_dir,
+        user_storage_key: &context.user_storage_key,
+        user_id: context.connection.user_id,
+        upload: import_payload.generated_tcx_upload,
+        primary_artifact_kind: ACTIVITY_IMPORT_ARTIFACT_KIND_GENERATED_EXPORT,
+        primary_source_quality: ACTIVITY_IMPORT_SOURCE_QUALITY_GENERATED_TCX,
+        additional_artifacts: vec![import_payload.provider_payload_artifact],
+        source: "strava_sync",
+        deduplication: ActivityUploadDeduplication::Enabled,
+        training_profile: Some(&context.training_profile),
+    };
+
+    let persist_span = tracing::info_span!(
+        "strava.activity_import.persist",
+        provider = INTEGRATION_PROVIDER_STRAVA,
+        connection_id = context.connection.id,
+        user_id = context.connection.user_id,
+        activity_id = activity.id,
+        trace_id = field::Empty,
+        span_id = field::Empty,
+    );
+    let persist_result = persist_activity_upload_with_artifacts(db, persist_request)
+        .instrument(persist_span)
+        .await;
+
+    match persist_result {
+        Ok(PersistActivityUploadOutcome::Imported(persisted)) => {
+            Ok(StravaActivityImportOutcome::Imported {
+                import_id: persisted.import.id,
+                affected_segment_ids: persisted.affected_segment_ids,
+                fitness_dirty_from_day: persisted.fitness_dirty_from_day,
+            })
+        }
+        Ok(PersistActivityUploadOutcome::Duplicate(_)) => {
+            Ok(StravaActivityImportOutcome::Duplicate)
+        }
+        Err(error) => {
+            tracing::warn!(
+                activity_id = activity.id,
+                message = %error.message,
+                "failed to persist Strava activity upload"
+            );
+            Ok(StravaActivityImportOutcome::Failed)
+        }
+    }
+}
+
+async fn complete_strava_sync(
+    db: &DatabaseConnection,
+    context: &StravaSyncRunContext,
+    progress: StravaSyncProgress,
+) -> Result<(), AppError> {
+    finalize_strava_imported_activities(db, context, &progress).await?;
+    if progress.failed_count > 0 && progress.imported_count == 0 && progress.duplicate_count == 0 {
+        let message = "Strava sync could not import any activities".to_string();
+        mark_sync_failed(
+            db,
+            &context.connection,
+            &message,
+            progress.imported_count,
+            progress.duplicate_count,
+            progress.failed_count,
+        )
+        .await?;
+        return Err(AppError::internal(message));
+    }
+
+    let message = build_sync_summary_message(
+        progress.imported_count,
+        progress.duplicate_count,
+        progress.failed_count,
+    );
+    mark_sync_succeeded(
+        db,
+        &context.connection,
+        progress.latest_started_at,
+        progress.imported_count,
+        progress.duplicate_count,
+        progress.failed_count,
+        &message,
+    )
+    .await?;
+
+    Ok(())
+}
+
+async fn finalize_strava_imported_activities(
+    db: &DatabaseConnection,
+    context: &StravaSyncRunContext,
+    progress: &StravaSyncProgress,
+) -> Result<(), AppError> {
+    if progress.imported_count == 0 {
+        return Ok(());
+    }
+
+    let finalize_span = tracing::info_span!(
+        "strava.activity_import.finalize_batch",
+        provider = INTEGRATION_PROVIDER_STRAVA,
+        connection_id = context.connection.id,
+        user_id = context.connection.user_id,
+        imported_count = progress.imported_count,
+        trace_id = field::Empty,
+        span_id = field::Empty,
+    );
+    finalize_activity_import_batch(
+        db,
+        &context.tasks,
+        context.connection.user_id,
+        progress.affected_segment_ids.clone(),
+        progress.fitness_dirty_from_day,
+        Utc::now(),
+    )
+    .instrument(finalize_span)
+    .await?;
+    mark_activity_imports_processed(db, &progress.imported_import_ids).await
+}
+
+async fn finish_strava_sync_attempt(
+    db: &DatabaseConnection,
+    connection: &strava_connections::Model,
+    sync_span: &tracing::Span,
+    result: Result<(), AppError>,
+) -> Result<(), AppError> {
+    let paused_retry_at =
+        record_strava_sync_attempt_status(db, connection, sync_span, &result).await;
     let release_result = release_user_activity_import_lock(
         db,
         connection.user_id,
@@ -816,10 +1059,7 @@ pub async fn process_strava_sync(
     .await;
 
     if let Some(retry_at) = paused_retry_at {
-        if let Err(error) = release_result {
-            return Err(error);
-        }
-
+        release_result?;
         requeue_paused_strava_sync(db, connection.id, retry_at).await?;
         return Ok(());
     }
@@ -829,6 +1069,41 @@ pub async fn process_strava_sync(
         (Ok(_), Err(error)) => Err(error),
         (Ok(_), Ok(())) => Ok(()),
     }
+}
+
+async fn record_strava_sync_attempt_status(
+    db: &DatabaseConnection,
+    connection: &strava_connections::Model,
+    sync_span: &tracing::Span,
+    result: &Result<(), AppError>,
+) -> Option<DateTime<Utc>> {
+    match result {
+        Ok(()) => {
+            sync_span.record("status", "succeeded");
+            None
+        }
+        Err(error) if is_rate_limit_error(error) => {
+            record_strava_rate_limited_sync(db, connection, sync_span, error).await
+        }
+        Err(error) => {
+            sync_span.record("status", "failed");
+            let _ = mark_sync_failed_if_running(db, connection.id, &error.message).await;
+            None
+        }
+    }
+}
+
+async fn record_strava_rate_limited_sync(
+    db: &DatabaseConnection,
+    connection: &strava_connections::Model,
+    sync_span: &tracing::Span,
+    error: &AppError,
+) -> Option<DateTime<Utc>> {
+    let retry_at = error.retry_at?;
+    sync_span.record("status", "rate_limited");
+    sync_span.record("retry_at", field::display(retry_at));
+    let _ = mark_sync_paused_by_rate_limit(db, connection.id, &error.message, retry_at).await;
+    Some(retry_at)
 }
 
 async fn requeue_paused_strava_sync(
@@ -1765,11 +2040,44 @@ fn should_attempt_remote_strava_deauthorize() -> bool {
     false
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "legacy generated TCX serializer predates workspace size lint"
-)]
 fn build_tcx_document(activity: &StravaActivitySummary, streams: &StravaActivityStreams) -> String {
+    let summary = summarize_tcx_document(activity, streams);
+    let mut xml = String::from(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<TrainingCenterDatabase xmlns=\"http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2\" xmlns:ns3=\"http://www.garmin.com/xmlschemas/ActivityExtension/v2\">\n  <Activities>\n",
+    );
+
+    append_tcx_activity(&mut xml, activity, streams, &summary);
+    xml.push_str("  </Activities>\n</TrainingCenterDatabase>\n");
+    xml
+}
+
+struct TcxDocumentSummary {
+    total_time_seconds: i32,
+    distance_meters: f64,
+    max_speed_mps: Option<f64>,
+    average_heart_rate_bpm: Option<i32>,
+    max_heart_rate_bpm: Option<i32>,
+    average_cadence_rpm: Option<i32>,
+    calories: i32,
+    trackpoint_count: usize,
+    start_date: String,
+    sport: String,
+}
+
+struct TcxTrackpoint {
+    timestamp: String,
+    latlng: Option<[f64; 2]>,
+    altitude: Option<f64>,
+    distance: Option<f64>,
+    heart_rate: Option<i32>,
+    cadence: Option<f64>,
+    watts: Option<i32>,
+}
+
+fn summarize_tcx_document(
+    activity: &StravaActivitySummary,
+    streams: &StravaActivityStreams,
+) -> TcxDocumentSummary {
     let total_time_seconds = activity
         .elapsed_time
         .or(activity.moving_time)
@@ -1806,117 +2114,180 @@ fn build_tcx_document(activity: &StravaActivitySummary, streams: &StravaActivity
         .calories
         .map(|value| value.round() as i32)
         .unwrap_or_default();
-    let trackpoint_count = max_trackpoint_count(streams);
-    let start_date = activity.start_date.to_rfc3339();
-    let sport = tcx_sport(activity);
-    let mut xml = String::from(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<TrainingCenterDatabase xmlns=\"http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2\" xmlns:ns3=\"http://www.garmin.com/xmlschemas/ActivityExtension/v2\">\n  <Activities>\n",
-    );
 
-    xml.push_str(&format!(
-        "    <Activity Sport=\"{}\">\n      <Id>{}</Id>\n      <Lap StartTime=\"{}\">\n        <TotalTimeSeconds>{}</TotalTimeSeconds>\n        <DistanceMeters>{:.3}</DistanceMeters>\n",
-        escape_xml_text(sport),
-        escape_xml_text(&start_date),
-        escape_xml_text(&start_date),
+    TcxDocumentSummary {
         total_time_seconds,
         distance_meters,
+        max_speed_mps,
+        average_heart_rate_bpm,
+        max_heart_rate_bpm,
+        average_cadence_rpm,
+        calories,
+        trackpoint_count: max_trackpoint_count(streams),
+        start_date: activity.start_date.to_rfc3339(),
+        sport: tcx_sport(activity).to_string(),
+    }
+}
+
+fn append_tcx_activity(
+    xml: &mut String,
+    activity: &StravaActivitySummary,
+    streams: &StravaActivityStreams,
+    summary: &TcxDocumentSummary,
+) {
+    xml.push_str(&format!(
+        "    <Activity Sport=\"{}\">\n      <Id>{}</Id>\n      <Lap StartTime=\"{}\">\n        <TotalTimeSeconds>{}</TotalTimeSeconds>\n        <DistanceMeters>{:.3}</DistanceMeters>\n",
+        escape_xml_text(&summary.sport),
+        escape_xml_text(&summary.start_date),
+        escape_xml_text(&summary.start_date),
+        summary.total_time_seconds,
+        summary.distance_meters,
     ));
 
-    if let Some(max_speed_mps) = max_speed_mps {
+    append_tcx_lap_metrics(xml, summary);
+    append_tcx_track(xml, activity, streams, summary);
+    xml.push_str("      </Lap>\n    </Activity>\n");
+}
+
+fn append_tcx_lap_metrics(xml: &mut String, summary: &TcxDocumentSummary) {
+    if let Some(max_speed_mps) = summary.max_speed_mps {
         xml.push_str(&format!(
             "        <MaximumSpeed>{:.3}</MaximumSpeed>\n",
             max_speed_mps
         ));
     }
-    if average_heart_rate_bpm.is_some() || max_heart_rate_bpm.is_some() {
-        if let Some(value) = average_heart_rate_bpm {
-            xml.push_str(&format!(
-                "        <AverageHeartRateBpm><Value>{}</Value></AverageHeartRateBpm>\n",
-                value
-            ));
-        }
-        if let Some(value) = max_heart_rate_bpm {
-            xml.push_str(&format!(
-                "        <MaximumHeartRateBpm><Value>{}</Value></MaximumHeartRateBpm>\n",
-                value
-            ));
-        }
+
+    if let Some(value) = summary.average_heart_rate_bpm {
+        xml.push_str(&format!(
+            "        <AverageHeartRateBpm><Value>{}</Value></AverageHeartRateBpm>\n",
+            value
+        ));
     }
-    if let Some(cadence) = average_cadence_rpm {
+    if let Some(value) = summary.max_heart_rate_bpm {
+        xml.push_str(&format!(
+            "        <MaximumHeartRateBpm><Value>{}</Value></MaximumHeartRateBpm>\n",
+            value
+        ));
+    }
+
+    if let Some(cadence) = summary.average_cadence_rpm {
         xml.push_str(&format!("        <Cadence>{}</Cadence>\n", cadence));
     }
-    if calories > 0 {
-        xml.push_str(&format!("        <Calories>{}</Calories>\n", calories));
+    if summary.calories > 0 {
+        xml.push_str(&format!(
+            "        <Calories>{}</Calories>\n",
+            summary.calories
+        ));
+    }
+}
+
+fn append_tcx_track(
+    xml: &mut String,
+    activity: &StravaActivitySummary,
+    streams: &StravaActivityStreams,
+    summary: &TcxDocumentSummary,
+) {
+    if summary.trackpoint_count == 0 {
+        return;
     }
 
-    if trackpoint_count > 0 {
-        xml.push_str("        <Track>\n");
-        for index in 0..trackpoint_count {
-            let elapsed_seconds = stream_time_value(streams, index)
-                .or_else(|| {
-                    interpolate_elapsed_seconds(index, trackpoint_count, total_time_seconds)
-                })
-                .unwrap_or(index as i32)
-                .max(0);
-            let timestamp =
-                (activity.start_date + Duration::seconds(i64::from(elapsed_seconds))).to_rfc3339();
-            let distance = stream_f64_value(streams.distance.as_ref(), index)
-                .or_else(|| interpolate_distance(index, trackpoint_count, distance_meters));
-
-            xml.push_str("          <Trackpoint>\n");
-            xml.push_str(&format!(
-                "            <Time>{}</Time>\n",
-                escape_xml_text(&timestamp)
-            ));
-            if let Some([latitude, longitude]) = stream_latlng_value(streams, index) {
-                xml.push_str("            <Position>\n");
-                xml.push_str(&format!(
-                    "              <LatitudeDegrees>{:.7}</LatitudeDegrees>\n              <LongitudeDegrees>{:.7}</LongitudeDegrees>\n",
-                    latitude, longitude
-                ));
-                xml.push_str("            </Position>\n");
-            }
-            if let Some(altitude) = stream_f64_value(streams.altitude.as_ref(), index) {
-                xml.push_str(&format!(
-                    "            <AltitudeMeters>{:.3}</AltitudeMeters>\n",
-                    altitude
-                ));
-            }
-            if let Some(distance) = distance {
-                xml.push_str(&format!(
-                    "            <DistanceMeters>{:.3}</DistanceMeters>\n",
-                    distance
-                ));
-            }
-            if let Some(heart_rate) = stream_i32_value(streams.heartrate.as_ref(), index) {
-                xml.push_str(&format!(
-                    "            <HeartRateBpm><Value>{}</Value></HeartRateBpm>\n",
-                    heart_rate
-                ));
-            }
-            if let Some(cadence) = stream_f64_value(streams.cadence.as_ref(), index) {
-                xml.push_str(&format!(
-                    "            <Cadence>{}</Cadence>\n",
-                    cadence.round() as i32
-                ));
-            }
-            if let Some(watts) = stream_i32_value(streams.watts.as_ref(), index) {
-                xml.push_str("            <Extensions>\n");
-                xml.push_str("              <ns3:TPX>\n");
-                xml.push_str(&format!(
-                    "                <ns3:Watts>{}</ns3:Watts>\n",
-                    watts
-                ));
-                xml.push_str("              </ns3:TPX>\n");
-                xml.push_str("            </Extensions>\n");
-            }
-            xml.push_str("          </Trackpoint>\n");
-        }
-        xml.push_str("        </Track>\n");
+    xml.push_str("        <Track>\n");
+    for index in 0..summary.trackpoint_count {
+        append_tcx_trackpoint(xml, &tcx_trackpoint(activity, streams, summary, index));
     }
+    xml.push_str("        </Track>\n");
+}
 
-    xml.push_str("      </Lap>\n    </Activity>\n  </Activities>\n</TrainingCenterDatabase>\n");
-    xml
+fn tcx_trackpoint(
+    activity: &StravaActivitySummary,
+    streams: &StravaActivityStreams,
+    summary: &TcxDocumentSummary,
+    index: usize,
+) -> TcxTrackpoint {
+    let elapsed_seconds = stream_time_value(streams, index)
+        .or_else(|| {
+            interpolate_elapsed_seconds(index, summary.trackpoint_count, summary.total_time_seconds)
+        })
+        .unwrap_or(index as i32)
+        .max(0);
+
+    TcxTrackpoint {
+        timestamp: (activity.start_date + Duration::seconds(i64::from(elapsed_seconds)))
+            .to_rfc3339(),
+        latlng: stream_latlng_value(streams, index),
+        altitude: stream_f64_value(streams.altitude.as_ref(), index),
+        distance: stream_f64_value(streams.distance.as_ref(), index).or_else(|| {
+            interpolate_distance(index, summary.trackpoint_count, summary.distance_meters)
+        }),
+        heart_rate: stream_i32_value(streams.heartrate.as_ref(), index),
+        cadence: stream_f64_value(streams.cadence.as_ref(), index),
+        watts: stream_i32_value(streams.watts.as_ref(), index),
+    }
+}
+
+fn append_tcx_trackpoint(xml: &mut String, trackpoint: &TcxTrackpoint) {
+    xml.push_str("          <Trackpoint>\n");
+    xml.push_str(&format!(
+        "            <Time>{}</Time>\n",
+        escape_xml_text(&trackpoint.timestamp)
+    ));
+    append_tcx_position(xml, trackpoint.latlng);
+    append_tcx_trackpoint_scalar(xml, "AltitudeMeters", trackpoint.altitude);
+    append_tcx_trackpoint_scalar(xml, "DistanceMeters", trackpoint.distance);
+    append_tcx_trackpoint_heart_rate(xml, trackpoint.heart_rate);
+    append_tcx_trackpoint_cadence(xml, trackpoint.cadence);
+    append_tcx_trackpoint_watts(xml, trackpoint.watts);
+    xml.push_str("          </Trackpoint>\n");
+}
+
+fn append_tcx_position(xml: &mut String, latlng: Option<[f64; 2]>) {
+    let Some([latitude, longitude]) = latlng else {
+        return;
+    };
+
+    xml.push_str("            <Position>\n");
+    xml.push_str(&format!(
+        "              <LatitudeDegrees>{:.7}</LatitudeDegrees>\n              <LongitudeDegrees>{:.7}</LongitudeDegrees>\n",
+        latitude, longitude
+    ));
+    xml.push_str("            </Position>\n");
+}
+
+fn append_tcx_trackpoint_scalar(xml: &mut String, name: &str, value: Option<f64>) {
+    if let Some(value) = value {
+        xml.push_str(&format!("            <{name}>{value:.3}</{name}>\n"));
+    }
+}
+
+fn append_tcx_trackpoint_heart_rate(xml: &mut String, heart_rate: Option<i32>) {
+    if let Some(heart_rate) = heart_rate {
+        xml.push_str(&format!(
+            "            <HeartRateBpm><Value>{}</Value></HeartRateBpm>\n",
+            heart_rate
+        ));
+    }
+}
+
+fn append_tcx_trackpoint_cadence(xml: &mut String, cadence: Option<f64>) {
+    if let Some(cadence) = cadence {
+        xml.push_str(&format!(
+            "            <Cadence>{}</Cadence>\n",
+            cadence.round() as i32
+        ));
+    }
+}
+
+fn append_tcx_trackpoint_watts(xml: &mut String, watts: Option<i32>) {
+    if let Some(watts) = watts {
+        xml.push_str("            <Extensions>\n");
+        xml.push_str("              <ns3:TPX>\n");
+        xml.push_str(&format!(
+            "                <ns3:Watts>{}</ns3:Watts>\n",
+            watts
+        ));
+        xml.push_str("              </ns3:TPX>\n");
+        xml.push_str("            </Extensions>\n");
+    }
 }
 
 fn build_sync_summary_message(

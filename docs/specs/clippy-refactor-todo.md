@@ -32,14 +32,6 @@ Thresholds live in `clippy.toml`. Existing exceptions must stay local with a rea
 - `migration/src/lib.rs`: crate-level migration registration allows `too_many_lines`.
   - Todo: evaluate whether migration registration can be grouped without hiding migration order.
 
-## Provider Integrations
-
-- `api/src/strava.rs`: `handle_webhook_event` allows `too_many_lines`.
-  - Todo: split event classification, connection lookup, and queued task creation.
-- `api/src/strava.rs`: `process_strava_sync` allows `cognitive_complexity` and `too_many_lines`.
-  - Todo: extract sync context, page processing, activity import attempt, and event recording.
-- `api/src/strava.rs`: `build_tcx_document` allows `too_many_lines`.
-  - Todo: replace string assembly with smaller serializers for activity, lap, track, and trackpoints.
 ## Reports And Training Goals
 
 - `api/src/controllers/reports.rs`: `build_training_reports` allows `too_many_lines`.
