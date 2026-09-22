@@ -40,13 +40,6 @@ Thresholds live in `clippy.toml`. Existing exceptions must stay local with a rea
   - Todo: extract sync context, page processing, activity import attempt, and event recording.
 - `api/src/strava.rs`: `build_tcx_document` allows `too_many_lines`.
   - Todo: replace string assembly with smaller serializers for activity, lap, track, and trackpoints.
-- `api/src/controllers/garmin_iq.rs`: `reset_link` allows `cognitive_complexity`.
-  - Todo: extract device revocation into a service helper.
-- `api/src/controllers/garmin_iq.rs`: `poll_link` allows `cognitive_complexity`.
-  - Todo: extract polling state resolution from response construction.
-- `api/src/controllers/garmin_iq.rs`: `sync_segments` allows `too_many_lines`.
-  - Todo: split authentication, segment loading, and Garmin response mapping.
-
 ## Reports And Training Goals
 
 - `api/src/controllers/reports.rs`: `build_training_reports` allows `too_many_lines`.

@@ -4,7 +4,7 @@ The account area manages rider preferences and external connections. Preferences
 
 ## Product Intent
 
-The rider should understand which services are connected, which devices are linked, and which personal settings affect training analysis. Connection state should be explicit and recoverable.
+The rider should understand which services are connected and which personal settings affect training analysis. Connection state should be explicit and recoverable.
 
 ## User Preferences
 
@@ -40,23 +40,9 @@ Runtime configuration must set `STRAVA_CLIENT_ID` and `STRAVA_CLIENT_SECRET` for
 
 Detailed Strava API isolation, rate-limit, checkpointing, and observability requirements are owned by [Strava Integration](strava-integration.md).
 
-## Garmin IQ
-
-Garmin IQ linking uses a device pairing flow:
-
-1. the watch requests a pairing code with its install id;
-2. Bike shows a verification URL and short-lived code;
-3. the rider approves the code from the account page;
-4. the watch polls for linked state and receives refresh/access tokens once;
-5. the watch refreshes access tokens and syncs segment data with Bike.
-
-Pairing codes are short-lived. Reset and unlink flows revoke device credentials and clear token material.
-
-Garmin IQ segment sync returns a bounded set of segment data with route points and timing goals such as PR, KOM, and last attempt when available. Sync should favor compact, watch-appropriate payloads.
-
 ## Security And Ownership
 
-Account preferences, Strava connection state, and Garmin IQ devices are scoped to the authenticated user. Device install ids, access tokens, refresh tokens, and pairing codes must not create cross-user access.
+Account preferences and Strava connection state are scoped to the authenticated user.
 
 Secrets and token material are configuration or database concerns, not frontend environment values.
 
@@ -66,12 +52,9 @@ Secrets and token material are configuration or database concerns, not frontend 
 - Training profile validation: `api/src/training_profile.rs`
 - Strava API: `api/src/controllers/strava.rs`
 - Strava service: `api/src/strava.rs`
-- Garmin IQ API: `api/src/controllers/garmin_iq.rs`
 - Account UI: `ui-next/app/account/page.tsx`
-- Garmin IQ watch contract: `garmin-iq/docs/bike-garmin-iq-sync-contract.json`
 
 ## Open Gaps
 
 - Decide whether user-created event templates belong in preferences or a separate event-target table.
 - Keep reconnect guidance clear when Strava scopes are insufficient.
-- Keep Garmin IQ payload limits explicit as segment sync grows.

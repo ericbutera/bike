@@ -3,7 +3,6 @@ use crate::controllers::activities;
 use crate::controllers::activity_imports;
 use crate::controllers::admin;
 use crate::controllers::fitness;
-use crate::controllers::garmin_iq;
 use crate::controllers::integration_events;
 use crate::controllers::reports;
 use crate::controllers::segments;
@@ -61,13 +60,6 @@ use utoipa::OpenApi;
         activity_imports::import_activity_archive_from_url,
         integration_events::list_strava_history,
         integration_events::list_admin_integration_events,
-        garmin_iq::begin_link,
-        garmin_iq::complete_link,
-        garmin_iq::poll_link,
-        garmin_iq::refresh_access_token,
-        garmin_iq::list_linked_devices,
-        garmin_iq::unlink_device,
-        garmin_iq::sync_segments,
         strava::begin_connect,
         strava::get_connection,
         strava::queue_sync,
@@ -189,15 +181,6 @@ use utoipa::OpenApi;
             activity_imports::ArchiveUrlImportRequest,
             activity_imports::ActivityArchiveImportJobResponse,
             integration_events::IntegrationEventResponse,
-            garmin_iq::GarminIqBeginLinkResponse,
-            garmin_iq::GarminIqCompleteLinkRequest,
-            garmin_iq::GarminIqCompleteLinkResponse,
-            garmin_iq::GarminIqPollLinkResponse,
-            garmin_iq::GarminIqRefreshResponse,
-            garmin_iq::GarminIqLinkedDeviceResponse,
-            garmin_iq::GarminIqSegmentSyncResponse,
-            garmin_iq::GarminIqSegmentSyncItem,
-            garmin_iq::GarminIqRoutePoint,
             strava::StravaAuthorizeResponse,
             strava::StravaConnectionResponse,
             crate::strava::StravaWebhookChallengeResponse,
@@ -249,7 +232,6 @@ use utoipa::OpenApi;
         (name = "training", description = "XC and DH goals/progress analytics"),
         (name = "activity-imports", description = "Manual activity upload endpoints"),
         (name = "strava", description = "Strava OAuth connection and activity sync endpoints"),
-        (name = "garmin-iq", description = "Garmin Connect IQ link, auth refresh, and segment sync endpoints"),
         (name = "segments", description = "Manual segment import and effort comparison endpoints"),
         (name = "preferences", description = "Authenticated Bike user preferences"),
         (name = "admin", description = "Admin-only endpoints"),

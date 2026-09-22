@@ -1,6 +1,6 @@
 # Segment Specification
 
-Segments let a rider define a route slice, match it against uploaded activities, compare repeated efforts, and optionally use the segment as input to DH analytics or Garmin IQ sync.
+Segments let a rider define a route slice, match it against uploaded activities, compare repeated efforts, and optionally use the segment as input to DH analytics.
 
 ## Product Intent
 

@@ -16,7 +16,6 @@ The current Bike product includes:
 - user-managed heart-rate zones, estimated FTP, and unit preferences;
 - fitness/fatigue/form analytics;
 - XC and DH training progress screens with deterministic recommendations;
-- Garmin IQ device pairing and segment sync to the watch;
 - admin metrics, backfill, task, and integration-event tooling.
 
 The current product does not treat training plans, Garmin cloud activity sync, Garmin workout push, multi-target event history, or power-zone planning as shipped behavior. Those ideas may become future features, but specs should not describe them as current functionality until implementation lands.
@@ -25,11 +24,10 @@ The current product does not treat training plans, Garmin cloud activity sync, G
 
 Bike follows the repo shape used by the surrounding workspace:
 
-- `api`: Rust Axum API for auth integration, preferences, Strava and Garmin IQ connections, activity import endpoints, activity/segment/training read APIs, and admin operations.
+- `api`: Rust Axum API for auth integration, preferences, Strava connections, activity import endpoints, activity/segment/training read APIs, and admin operations.
 - `worker`: background processors for activity import, archive import, Strava sync, segment effort regeneration, analytics rebuilds, XC backfills, and email notifications.
 - `migration`: SeaORM migrations for Bike-owned schema.
 - `ui-next`: Next.js frontend for rider and admin workflows.
-- `garmin-iq`: Garmin Connect IQ companion app and watch-facing sync docs.
 
 Kaleido supplies shared scaffolding for auth, database wiring, background jobs, feature flags, metrics, and common UI/API patterns. Postgres is the normalized system of record.
 
@@ -46,8 +44,6 @@ Derived outputs such as heart-rate zones, segment efforts, activity analytics, f
 Strava is the first live cloud activity integration. It uses OAuth with refresh tokens, imports through worker jobs, handles webhooks, records integration events, and respects user-scoped activity import locks.
 
 Manual Garmin export import is a first-class ingestion path. Official Garmin cloud activity sync is additive if it becomes available; Bike should not depend on private or reverse-engineered Garmin Connect endpoints for core behavior.
-
-Garmin IQ is a watch companion integration for pairing a device and syncing compact segment data to the watch. It is separate from Garmin cloud activity acquisition.
 
 ## Product Risks
 

@@ -359,20 +359,6 @@ export type StravaConnection = {
   last_sync_failed_count: number;
 };
 
-export type GarminIqCompleteLinkResponse = {
-  message: string;
-  install_id: string;
-  device_name?: string | null;
-};
-
-export type GarminIqLinkedDevice = {
-  id: number;
-  install_id: string;
-  device_name?: string | null;
-  linked_at?: string | null;
-  last_seen_at?: string | null;
-};
-
 export type IntegrationEvent = {
   id: number;
   user_id?: number | null;
@@ -2101,69 +2087,6 @@ export function useDisconnectStrava() {
           queryKey: ["get", "/activity-imports"],
         }),
       ]);
-
-      return result as { message: string };
-    },
-  };
-}
-
-export function useGarminIqLinkedDevices(opts?: {
-  enabled?: boolean;
-  refetchIntervalMs?: number | false;
-}) {
-  const response = $api.useQuery("get", "/garmin-iq/devices", {
-    options: {
-      enabled: opts?.enabled ?? true,
-      refetchInterval: opts?.refetchIntervalMs ?? false,
-    },
-  });
-
-  return {
-    ...response,
-    data: response.data as GarminIqLinkedDevice[] | undefined,
-  };
-}
-
-export function useCompleteGarminIqLink() {
-  const queryClient = useQueryClient();
-  const mutation = $api.useMutation("post", "/garmin-iq/link/complete");
-
-  return {
-    ...mutation,
-    completeAsync: async (pairingCode: string) => {
-      const result = await mutation.mutateAsync({
-        body: {
-          pairing_code: pairingCode,
-        },
-      });
-
-      await queryClient.invalidateQueries({
-        queryKey: ["get", "/garmin-iq/devices"],
-      });
-
-      return result as GarminIqCompleteLinkResponse;
-    },
-  };
-}
-
-export function useUnlinkGarminIqDevice() {
-  const queryClient = useQueryClient();
-  const mutation = $api.useMutation("delete", "/garmin-iq/devices/{id}");
-
-  return {
-    ...mutation,
-    unlinkAsync: async (id: number) => {
-      const result = await mutation.mutateAsync({
-        params: {
-          path: {
-            id,
-          },
-        },
-      });
-
-      await queryClient.invalidateQueries({
-        queryKey: ["get", "/garmin-iq/devices"],
-      });
 
       return result as { message: string };
     },
