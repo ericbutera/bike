@@ -173,6 +173,31 @@ export type ActivityProcessingGraph = {
   mermaid: string;
 };
 
+export type ActivityImportTraceNode = ActivityProcessingGraphNode & {
+  status: "completed" | "failed" | "pending" | string;
+  completed_at?: string | null;
+};
+
+export type ActivityImportTraceEvent = {
+  id: number;
+  event_type: string;
+  level: string;
+  message: string;
+  payload?: unknown;
+  created_at: string;
+};
+
+export type ActivityImportTrace = {
+  import: ActivityImport;
+  graph: ActivityProcessingGraph;
+  nodes: ActivityImportTraceNode[];
+  events: ActivityImportTraceEvent[];
+};
+
+export type AdminActivityImportTraceResponse = {
+  trace?: ActivityImportTrace | null;
+};
+
 export type UpdateActivityInput = {
   title?: string | null;
   activity_type?: ActivityType | null;
@@ -1113,12 +1138,12 @@ export type ActivityImport = {
   id: number;
   import_version: number;
   activity_id?: number | null;
-  original_filename: string;
-  format: string;
+  original_filename?: string | null;
+  format?: string | null;
   status: string;
   processing_stage: string;
   processing_error?: string | null;
-  size_bytes: number;
+  size_bytes?: number | null;
   mime_type?: string | null;
   created_at: string;
   activity_started_at?: string | null;
@@ -1411,6 +1436,50 @@ export function useActivityProcessingGraph(opts?: { enabled?: boolean }) {
   return {
     ...response,
     data: (response.data ?? null) as ActivityProcessingGraph | null,
+  };
+}
+
+export function useActivityImportTrace(
+  importId: number | string | null | undefined,
+  opts?: { admin?: boolean; enabled?: boolean },
+) {
+  const numericImportId = Number(importId);
+  const enabled =
+    (opts?.enabled ?? true) &&
+    Number.isFinite(numericImportId) &&
+    numericImportId > 0;
+  const path = opts?.admin
+    ? "/admin/activity-imports/{id}/trace"
+    : "/activity-imports/{id}/trace";
+  const response = $api.useQuery("get", path, {
+    params: { path: { id: enabled ? numericImportId : 0 } },
+    options: { enabled },
+  });
+
+  return {
+    ...response,
+    data: (response.data ?? null) as ActivityImportTrace | null,
+  };
+}
+
+export function useAdminActivityImportTrace(
+  activityId: number | string | null | undefined,
+  opts?: { enabled?: boolean },
+) {
+  const numericActivityId = Number(activityId);
+  const enabled =
+    (opts?.enabled ?? true) &&
+    Number.isFinite(numericActivityId) &&
+    numericActivityId > 0;
+  const response = $api.useQuery("get", "/admin/activities/{id}/import-trace", {
+    params: { path: { id: enabled ? numericActivityId : 0 } },
+    options: { enabled },
+  });
+  const data = response.data as AdminActivityImportTraceResponse | undefined;
+
+  return {
+    ...response,
+    data: data?.trace ?? null,
   };
 }
 

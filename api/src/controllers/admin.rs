@@ -53,6 +53,11 @@ pub struct AdminActivityResponse {
     pub import_processing_stage: Option<String>,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminActivityImportTraceResponse {
+    pub trace: Option<activity_imports_controller::ActivityImportTraceResponse>,
+}
+
 #[derive(Debug, FromQueryResult)]
 struct AdminActivityListRow {
     id: i32,
@@ -104,6 +109,10 @@ pub fn routes() -> Router<Arc<AppStorage>> {
         .route(
             "/activity-imports/:id/trace",
             get(get_admin_activity_import_trace),
+        )
+        .route(
+            "/activities/:id/import-trace",
+            get(get_admin_activity_import_trace_for_activity),
         )
         .route(
             "/activity-imports/reprocess-activity",
@@ -230,9 +239,62 @@ pub async fn get_admin_activity_import_trace(
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::not_found("Activity import not found"))?;
-    let activity = load_activity_for_admin_import_trace(&state.db, &import).await?;
+    let trace = build_admin_activity_import_trace(&state.db, import, None).await?;
+
+    Ok(Json(trace))
+}
+
+#[utoipa::path(
+    get,
+    path = "/admin/activities/{id}/import-trace",
+    operation_id = "admin_get_activity_import_trace_for_activity",
+    params(
+        ("id" = i32, Path, description = "Activity id"),
+    ),
+    responses(
+        (status = 200, description = "Activity import processing DAG and event trace for administrators when the activity has a linked import", body = AdminActivityImportTraceResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "Activity not found", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "admin",
+)]
+pub async fn get_admin_activity_import_trace_for_activity(
+    _admin: AdminUserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+    Path(activity_id): Path<i32>,
+) -> Result<Json<AdminActivityImportTraceResponse>, AppError> {
+    let activity = activities::Entity::find_by_id(activity_id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found("Activity not found"))?;
+    let Some(import_id) = activity.activity_import_id else {
+        return Ok(Json(AdminActivityImportTraceResponse { trace: None }));
+    };
+    let import = activity_imports::Entity::find_by_id(import_id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found("Activity import not found"))?;
+    let trace = build_admin_activity_import_trace(&state.db, import, Some(activity)).await?;
+
+    Ok(Json(AdminActivityImportTraceResponse {
+        trace: Some(trace),
+    }))
+}
+
+async fn build_admin_activity_import_trace(
+    db: &DatabaseConnection,
+    import: activity_imports::Model,
+    activity: Option<activities::Model>,
+) -> Result<activity_imports_controller::ActivityImportTraceResponse, AppError> {
+    let activity = match activity {
+        Some(activity) => Some(activity),
+        None => load_activity_for_admin_import_trace(db, &import).await?,
+    };
     let events = integration_event_service::list_recent_events(
-        &state.db,
+        db,
         integration_event_service::IntegrationEventListOptions {
             provider: Some(ACTIVITY_PROCESSING_PROVIDER.to_string()),
             user_id: Some(import.user_id),
@@ -248,17 +310,15 @@ pub async fn get_admin_activity_import_trace(
         .collect::<Vec<_>>();
     let trace_nodes = activity_imports_controller::build_trace_nodes(&import, &trace_events)?;
 
-    Ok(Json(
-        activity_imports_controller::ActivityImportTraceResponse {
-            import: activity_imports_controller::ActivityImportResponse::from_model(
-                import,
-                activity.as_ref(),
-            ),
-            graph: activity_imports_controller::ActivityProcessingGraphResponse::from_graph(),
-            nodes: trace_nodes,
-            events: trace_events,
-        },
-    ))
+    Ok(activity_imports_controller::ActivityImportTraceResponse {
+        import: activity_imports_controller::ActivityImportResponse::from_model(
+            import,
+            activity.as_ref(),
+        ),
+        graph: activity_imports_controller::ActivityProcessingGraphResponse::from_graph(),
+        nodes: trace_nodes,
+        events: trace_events,
+    })
 }
 
 async fn load_activity_for_admin_import_trace(

@@ -1,18 +1,15 @@
 "use client";
 
-import { LoadingSpinner } from "@/components/ui/QueryState";
+import ActivityImportTracePanel from "@/components/activity-detail/ActivityImportTracePanel";
 import {
   type AdminActivity,
-  type ActivityProcessingGraph,
-  type IntegrationEvent,
   useAdminActivities,
-  useAdminIntegrationEvents,
-  useActivityProcessingGraph,
+  useActivityImportTrace,
 } from "@/lib/queries";
 import { type Column, GenericList, admin } from "@ericbutera/kaleido";
 import { faGear } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { Suspense, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import AuthRouter from "../../../components/AuthRouter";
 
 const ADMIN_ACTIVITIES_PAGE_SIZE = 25;
@@ -38,15 +35,13 @@ export default function AdminActivitiesPage() {
 function AdminActivitiesContent() {
   const [selectedActivity, setSelectedActivity] =
     useState<AdminActivity | null>(null);
-  const graphQuery = useActivityProcessingGraph({
-    enabled: selectedActivity !== null,
-  });
-  const eventsQuery = useAdminIntegrationEvents({
-    provider: "activity_processing",
-    importId: selectedActivity?.activity_import_id ?? null,
-    limit: 100,
-    enabled: !!selectedActivity?.activity_import_id,
-  });
+  const traceQuery = useActivityImportTrace(
+    selectedActivity?.activity_import_id ?? null,
+    {
+      admin: true,
+      enabled: !!selectedActivity?.activity_import_id,
+    },
+  );
   const columns = useMemo<Column<AdminActivity, AdminActivitiesGridParams>[]>(
     () => [
       {
@@ -162,10 +157,9 @@ function AdminActivitiesContent() {
 
       <ActivityImportTraceModal
         activity={selectedActivity}
-        graph={graphQuery.data}
-        events={eventsQuery.data ?? []}
-        isLoading={graphQuery.isLoading || eventsQuery.isLoading}
-        error={graphQuery.error ?? eventsQuery.error}
+        trace={traceQuery.data}
+        isLoading={traceQuery.isLoading}
+        error={traceQuery.error}
         onClose={() => {
           setSelectedActivity(null);
         }}
@@ -176,23 +170,18 @@ function AdminActivitiesContent() {
 
 function ActivityImportTraceModal({
   activity,
-  graph,
-  events,
+  trace,
   isLoading,
   error,
   onClose,
 }: {
   activity: AdminActivity | null;
-  graph: ActivityProcessingGraph | null;
-  events: IntegrationEvent[];
+  trace: ReturnType<typeof useActivityImportTrace>["data"];
   isLoading: boolean;
   error: Error | null;
   onClose: () => void;
 }) {
   const isOpen = !!activity;
-  const nodes =
-    activity && graph ? buildTraceNodes(activity, graph, events) : [];
-  const chart = graph ? buildStatusMermaidChart(graph.mermaid, nodes) : "";
 
   if (!isOpen) {
     return null;
@@ -222,65 +211,13 @@ function ActivityImportTraceModal({
           </button>
         </div>
 
-        {isLoading ? (
-          <div className="mt-8 flex items-center gap-3 text-sm text-base-content/70">
-            <LoadingSpinner size="sm" />
-            Loading import trace
-          </div>
-        ) : null}
-
-        {error ? (
-          <div className="alert alert-error mt-6">
-            <span>{error.message}</span>
-          </div>
-        ) : null}
-
-        {activity && graph ? (
-          <div className="mt-6 grid gap-6">
-            <section>
-              <h3 className="text-sm font-semibold uppercase text-base-content/60">
-                DAG
-              </h3>
-              <MermaidFlowchart chart={chart} />
-            </section>
-
-            <section>
-              <h3 className="text-sm font-semibold uppercase text-base-content/60">
-                Integration events
-              </h3>
-              <div className="mt-3 overflow-x-auto">
-                <table className="table table-sm">
-                  <thead>
-                    <tr>
-                      <th>Time</th>
-                      <th>Type</th>
-                      <th>Level</th>
-                      <th>Message</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {events.map((event) => (
-                      <tr key={event.id}>
-                        <td className="whitespace-nowrap">
-                          {formatDateTime(event.created_at)}
-                        </td>
-                        <td className="font-mono text-xs">
-                          {event.event_type}
-                        </td>
-                        <td>
-                          <span className={eventLevelClass(event.level)}>
-                            {event.level}
-                          </span>
-                        </td>
-                        <td>{event.message}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          </div>
-        ) : null}
+        <div className="mt-6">
+          <ActivityImportTracePanel
+            trace={trace}
+            isLoading={isLoading}
+            error={error}
+          />
+        </div>
       </div>
       <form method="dialog" className="modal-backdrop">
         <button type="button" onClick={onClose}>
@@ -291,136 +228,9 @@ function ActivityImportTraceModal({
   );
 }
 
-function MermaidFlowchart({ chart }: { chart: string }) {
-  const id = useId().replace(/[^a-zA-Z0-9_-]/g, "");
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let isCancelled = false;
-
-    async function renderChart() {
-      try {
-        setError(null);
-        if (containerRef.current) {
-          containerRef.current.innerHTML = "";
-        }
-
-        const mermaid = (await import("mermaid")).default;
-        mermaid.initialize({
-          startOnLoad: false,
-          securityLevel: "strict",
-          theme: "base",
-          themeVariables: {
-            fontFamily: "inherit",
-            primaryColor: "#ecfdf5",
-            primaryBorderColor: "#10b981",
-            primaryTextColor: "#111827",
-            lineColor: "#64748b",
-            tertiaryColor: "#f8fafc",
-          },
-        });
-
-        const renderId = `activity-import-${id}-${Date.now()}`;
-        const { svg } = await mermaid.render(renderId, chart);
-        if (!isCancelled && containerRef.current) {
-          containerRef.current.innerHTML = svg;
-        }
-      } catch (err) {
-        if (!isCancelled) {
-          setError(
-            err instanceof Error
-              ? err.message
-              : "Failed to render import graph",
-          );
-        }
-      }
-    }
-
-    void renderChart();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [chart, id]);
-
-  return (
-    <div className="mt-4 rounded-lg border border-base-300 bg-base-100 p-4">
-      <div
-        ref={containerRef}
-        className="max-w-full overflow-auto [&_svg]:max-w-none"
-      />
-      {error ? (
-        <div className="alert alert-error mt-3">
-          <span>{error}</span>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function positiveNumber(value: number | string | undefined, fallback: number) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-function buildTraceNodes(
-  activity: AdminActivity,
-  graph: ActivityProcessingGraph,
-  events: IntegrationEvent[],
-) {
-  const ranks = new Map(graph.nodes.map((node, index) => [node.stage, index]));
-  const currentStage = activity.import_processing_stage ?? "";
-  const currentRank =
-    currentStage === "complete"
-      ? Number.POSITIVE_INFINITY
-      : (ranks.get(currentStage) ?? -1);
-
-  return graph.nodes.map((node, index) => {
-    const completedAt = events.find((event) => {
-      const payload = event.payload ?? {};
-      return (
-        event.event_type === "stage_completed" &&
-        typeof payload === "object" &&
-        "stage" in payload &&
-        payload.stage === node.stage
-      );
-    })?.created_at;
-
-    return {
-      ...node,
-      status:
-        activity.import_status === "failed" && currentStage === node.stage
-          ? "failed"
-          : index <= currentRank
-            ? "completed"
-            : "pending",
-      completed_at: completedAt ?? null,
-    };
-  });
-}
-
-function buildStatusMermaidChart(
-  chart: string,
-  nodes: ReturnType<typeof buildTraceNodes>,
-) {
-  const classes = new Map<string, string[]>();
-  for (const node of nodes) {
-    classes.set(node.status, [...(classes.get(node.status) ?? []), node.id]);
-  }
-
-  const lines = [
-    chart,
-    "classDef completed fill:#ecfdf5,stroke:#10b981,color:#111827;",
-    "classDef failed fill:#fef2f2,stroke:#ef4444,color:#111827;",
-    "classDef pending fill:#f8fafc,stroke:#cbd5e1,color:#475569;",
-  ];
-
-  for (const [status, nodeIds] of classes) {
-    lines.push(`class ${nodeIds.join(",")} ${status};`);
-  }
-
-  return lines.join("\n");
 }
 
 function formatDateTime(value: string) {
@@ -438,19 +248,6 @@ function importStatusClass(status: string | null | undefined) {
     return "badge badge-error badge-outline";
   }
   if (status === "duplicate") {
-    return "badge badge-warning badge-outline";
-  }
-  return "badge badge-info badge-outline";
-}
-
-function eventLevelClass(level: string) {
-  if (level === "success") {
-    return "badge badge-success badge-outline";
-  }
-  if (level === "error") {
-    return "badge badge-error badge-outline";
-  }
-  if (level === "warning") {
     return "badge badge-warning badge-outline";
   }
   return "badge badge-info badge-outline";

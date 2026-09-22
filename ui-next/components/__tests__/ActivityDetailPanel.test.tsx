@@ -31,6 +31,7 @@ vi.mock("recharts", async (importOriginal) => {
 const mocks = vi.hoisted(() => ({
   useCurrentUser: vi.fn(),
   useActivity: vi.fn(),
+  useAdminActivityImportTrace: vi.fn(),
   useRegenerateActivity: vi.fn(),
   useUpdateActivity: vi.fn(),
   useDeleteActivity: vi.fn(),
@@ -57,6 +58,7 @@ vi.mock("../../lib/activitySourceFiles", () => ({
 
 vi.mock("../../lib/queries", () => ({
   useActivity: mocks.useActivity,
+  useAdminActivityImportTrace: mocks.useAdminActivityImportTrace,
   useRegenerateActivity: mocks.useRegenerateActivity,
   useUpdateActivity: mocks.useUpdateActivity,
   useDeleteActivity: mocks.useDeleteActivity,
@@ -83,6 +85,15 @@ vi.mock("../MapLibreRouteMap", () => ({
     mocks.renderMapLibreRouteMap(props);
     return <div role="img" aria-label={props.ariaLabel} />;
   },
+}));
+
+vi.mock("../activity-detail/ActivityImportTracePanel", () => ({
+  default: ({ trace, isLoading, error }: any) => (
+    <div data-testid="activity-import-trace-panel">
+      {isLoading ? "Loading" : trace?.import.id}
+      {error ? error.message : null}
+    </div>
+  ),
 }));
 
 function makeActivity(
@@ -451,6 +462,12 @@ describe("ActivityDetailPanel", () => {
       isError: false,
       error: null,
     });
+    mocks.useAdminActivityImportTrace.mockReturnValue({
+      data: null,
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
     mocks.useRegenerateActivity.mockReturnValue({
       regenerateAsync: vi.fn().mockResolvedValue(makeActivity()),
       isPending: false,
@@ -600,6 +617,83 @@ describe("ActivityDetailPanel", () => {
     );
     expect(
       screen.queryByRole("link", { name: "Back to activities" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Import trace")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "View import trace" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("opens the activity import trace from the actions menu for admins", async () => {
+    const user = userEvent.setup();
+
+    mocks.useCurrentUser.mockReturnValue({
+      user: { id: 1, email: "admin@example.com", is_admin: true },
+      isLoading: false,
+    });
+    mocks.useAdminActivityImportTrace.mockReturnValue({
+      data: {
+        import: {
+          id: 42,
+          import_version: 1,
+          activity_id: 7,
+          original_filename: "lunch-ride.tcx",
+          format: "tcx",
+          status: "processed",
+          processing_stage: "complete",
+          processing_error: null,
+          size_bytes: 1024,
+          mime_type: "application/xml",
+          created_at: "2026-05-06T12:00:00Z",
+          activity_started_at: "2026-05-06T12:00:00Z",
+          activity_duration_seconds: 3200,
+          activity_location: null,
+        },
+        graph: {
+          nodes: [],
+          edges: [],
+          mermaid: "flowchart TD",
+        },
+        nodes: [],
+        events: [],
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+
+    render(<ActivityDetailPanel activityId={7} />);
+
+    expect(mocks.useAdminActivityImportTrace).toHaveBeenCalledWith(7, {
+      enabled: true,
+    });
+    expect(screen.queryByText("Import trace")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "View import trace" }));
+
+    expect(screen.getByText("Import trace")).toBeInTheDocument();
+    expect(
+      screen.getByText((_content, element) => {
+        return (
+          element?.tagName.toLowerCase() === "p" &&
+          element.textContent === "Import #42 · version 1"
+        );
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("activity-import-trace-panel")).toHaveTextContent(
+      "42",
+    );
+  });
+
+  it("does not enable the import trace for non-admin users", () => {
+    render(<ActivityDetailPanel activityId={7} />);
+
+    expect(mocks.useAdminActivityImportTrace).toHaveBeenCalledWith(7, {
+      enabled: false,
+    });
+    expect(screen.queryByText("Import trace")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "View import trace" }),
     ).not.toBeInTheDocument();
   });
 

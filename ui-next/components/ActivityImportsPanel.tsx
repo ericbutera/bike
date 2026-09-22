@@ -282,7 +282,7 @@ export default function ActivityImportsPanel() {
                             ? "h-12 cursor-pointer transition hover:bg-base-100"
                             : "h-12"
                         }
-                        title={activityImport.original_filename}
+                        title={activityImport.original_filename ?? undefined}
                         onClick={() => {
                           if (href) {
                             router.push(href);

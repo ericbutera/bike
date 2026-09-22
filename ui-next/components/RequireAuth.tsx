@@ -9,6 +9,7 @@ type AuthenticatedUser = {
   id?: number;
   name?: string | null;
   email?: string | null;
+  is_admin?: boolean;
 };
 
 const AuthenticatedUserContext = createContext<AuthenticatedUser | null>(null);

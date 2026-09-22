@@ -33,6 +33,7 @@ use utoipa::OpenApi;
         auth_openapi::paths::oauth_callback,
         admin::list_admin_activities,
         admin::get_admin_activity_import_trace,
+        admin::get_admin_activity_import_trace_for_activity,
         admin::backfill_analytics,
         admin::backfill_user_xc_training,
         admin::regenerate_segment_efforts,

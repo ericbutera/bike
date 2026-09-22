@@ -13,14 +13,18 @@ export function ActivityHeaderActions({
   activity,
   isRegenerating,
   isDeleting,
+  canViewImportTrace,
   onOpenEditDialog,
+  onViewImportTrace,
   onRegenerate,
   onDelete,
 }: {
   activity: Activity;
   isRegenerating: boolean;
   isDeleting: boolean;
+  canViewImportTrace?: boolean;
   onOpenEditDialog: () => void;
+  onViewImportTrace?: () => void;
   onRegenerate: () => void;
   onDelete: () => void;
 }) {
@@ -60,6 +64,13 @@ export function ActivityHeaderActions({
                 Edit activity
               </button>
             </li>
+            {canViewImportTrace ? (
+              <li>
+                <button type="button" onClick={onViewImportTrace}>
+                  View import trace
+                </button>
+              </li>
+            ) : null}
 
             {activity.can_regenerate ? (
               <li>
