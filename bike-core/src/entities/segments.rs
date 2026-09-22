@@ -1,4 +1,4 @@
-use crate::activity_details::StoredRoutePointSeries;
+use crate::activity_data::StoredRoutePointSeries;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;

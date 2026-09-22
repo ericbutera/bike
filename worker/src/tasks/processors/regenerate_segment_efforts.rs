@@ -1,10 +1,10 @@
-use api::analytics::{
+use api::segment_support::{deserialize_segment_route_points, replace_segment_efforts_for_segment};
+use async_trait::async_trait;
+use bike_core::analytics::{
     mark_segment_activity_changes, rebuild_activity_analytics_cache,
     rebuild_segment_analytics_cache,
 };
-use api::entities::segments;
-use api::segment_support::{deserialize_segment_route_points, replace_segment_efforts_for_segment};
-use async_trait::async_trait;
+use bike_core::entities::segments;
 use bike_core::jobs::RegenerateSegmentEffortsTask;
 use chrono::Utc;
 use kaleido::background_jobs::worker::TaskProcessor;

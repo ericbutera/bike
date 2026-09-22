@@ -1,0 +1,17 @@
+pub mod activities;
+pub mod activity_analytics;
+pub mod activity_archive_import_jobs;
+pub mod activity_import_artifacts;
+pub mod activity_import_locks;
+pub mod activity_imports;
+pub mod activity_training_analyses;
+pub mod analytics_user_states;
+pub mod fitness_freshness_daily;
+pub mod integration_events;
+pub mod provider_rate_limit_buckets;
+pub mod segment_efforts;
+pub mod segment_summaries;
+pub mod segment_user_summaries;
+pub mod segments;
+pub mod strava_connections;
+pub mod user_preferences;

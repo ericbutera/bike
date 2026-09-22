@@ -343,38 +343,74 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn regenerate_segment_efforts_job_serializes_for_worker() {
-        let job = Job::RegenerateSegmentEfforts(RegenerateSegmentEffortsTask { segment_id: 51 });
+    fn bike_jobs_serialize_for_worker_payload_contract() {
+        let jobs = [
+            (
+                Job::RebuildFitnessFreshness(RebuildFitnessFreshnessTask { user_id: 12 }),
+                "rebuild_fitness_freshness",
+                json!({"type": "RebuildFitnessFreshness", "data": {"user_id": 12}}),
+            ),
+            (
+                Job::RebuildSegmentAnalytics(RebuildSegmentAnalyticsTask {
+                    segment_ids: vec![1, 2],
+                }),
+                "rebuild_segment_analytics",
+                json!({"type": "RebuildSegmentAnalytics", "data": {"segment_ids": [1, 2]}}),
+            ),
+            (
+                Job::RegenerateSegmentEfforts(RegenerateSegmentEffortsTask { segment_id: 51 }),
+                "regenerate_segment_efforts",
+                json!({"type": "RegenerateSegmentEfforts", "data": {"segment_id": 51}}),
+            ),
+            (
+                Job::ProcessActivityImport(ProcessActivityImportTask {
+                    user_id: 12,
+                    import_id: 34,
+                }),
+                "process_activity_import",
+                json!({"type": "ProcessActivityImport", "data": {"user_id": 12, "import_id": 34}}),
+            ),
+            (
+                Job::ReprocessUserActivityImports(ReprocessUserActivityImportsTask { user_id: 12 }),
+                "reprocess_user_activity_imports",
+                json!({"type": "ReprocessUserActivityImports", "data": {"user_id": 12}}),
+            ),
+            (
+                Job::ReprocessActivityImport(ReprocessActivityImportTask { activity_id: 34 }),
+                "reprocess_activity_import",
+                json!({"type": "ReprocessActivityImport", "data": {"activity_id": 34}}),
+            ),
+            (
+                Job::BackfillUserXcTraining(BackfillUserXcTrainingTask { user_id: 12 }),
+                "backfill_user_xc_training",
+                json!({"type": "BackfillUserXcTraining", "data": {"user_id": 12}}),
+            ),
+            (
+                Job::RegenerateUserSegments(RegenerateUserSegmentsTask { user_id: 12 }),
+                "regenerate_user_segments",
+                json!({"type": "RegenerateUserSegments", "data": {"user_id": 12}}),
+            ),
+            (
+                Job::ActivityArchiveImport(ActivityArchiveImportTask { job_id: 77 }),
+                "activity_archive_import",
+                json!({"type": "ActivityArchiveImport", "data": {"job_id": 77}}),
+            ),
+            (
+                Job::StravaSync(StravaSyncTask {
+                    connection_id: 99,
+                    trace_context: None,
+                }),
+                "strava_sync",
+                json!({"type": "StravaSync", "data": {"connection_id": 99}}),
+            ),
+        ];
 
-        assert_eq!(job.task_type(), "regenerate_segment_efforts");
-        assert_eq!(
-            serde_json::to_value(job).expect("serialize job"),
-            json!({
-                "type": "RegenerateSegmentEfforts",
-                "data": {
-                    "segment_id": 51,
-                },
-            }),
-        );
-    }
-
-    #[test]
-    fn process_activity_import_job_serializes_for_worker() {
-        let job = Job::ProcessActivityImport(ProcessActivityImportTask {
-            user_id: 12,
-            import_id: 34,
-        });
-
-        assert_eq!(job.task_type(), "process_activity_import");
-        assert_eq!(
-            serde_json::to_value(job).expect("serialize job"),
-            json!({
-                "type": "ProcessActivityImport",
-                "data": {
-                    "user_id": 12,
-                    "import_id": 34,
-                },
-            }),
-        );
+        for (job, task_type, expected_payload) in jobs {
+            assert_eq!(job.task_type(), task_type);
+            assert_eq!(
+                serde_json::to_value(job).expect("serialize job"),
+                expected_payload
+            );
+        }
     }
 }

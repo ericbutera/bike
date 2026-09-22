@@ -530,12 +530,14 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
+ "prometheus",
  "sea-orm",
  "serde",
  "serde_json",
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
+ "utoipa",
 ]
 
 [[package]]

@@ -1,4 +1,4 @@
-use crate::training_profile::StoredHeartRateZoneBounds;
+use crate::training_data::StoredHeartRateZoneBounds;
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::entity::prelude::*;

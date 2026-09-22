@@ -3,9 +3,9 @@ use api::activity_import_pipeline::{
     process_stored_activity_import, reprocess_activity_from_import, ActivityUploadDeduplication,
     PersistActivityUploadOutcome, ACTIVITY_IMPORT_STATUS_PROCESSING,
 };
-use api::entities::{activities, activity_imports};
 use async_trait::async_trait;
 use bike_core::config::Config;
+use bike_core::entities::{activities, activity_imports};
 use bike_core::jobs::{JobQueue, ProcessActivityImportTask};
 use chrono::{NaiveDate, Utc};
 use kaleido::background_jobs::worker::TaskProcessor;

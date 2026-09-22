@@ -1,10 +1,12 @@
 use crate::activity_details::{ActivityChartPoint, ActivityRoutePoint};
 use crate::app_error::AppError;
 use crate::entities::user_preferences;
-use sea_orm::FromJsonQueryResult;
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
-use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
+
+pub use bike_core::training_data::{
+    ActivityHeartRateZoneSummary, StoredActivityHeartRateZoneSummary, StoredActivityHeartRateZones,
+    StoredHeartRateZoneBounds,
+};
 
 const HEART_RATE_ZONE_BOUNDARY_COUNT: usize = 4;
 const HEART_RATE_ZONE_LABELS: [&str; 5] = ["Z1", "Z2", "Z3", "Z4", "Z5"];
@@ -12,38 +14,12 @@ const MIN_HEART_RATE_BPM: i32 = 40;
 const MAX_HEART_RATE_BPM: i32 = 240;
 const MIN_ESTIMATED_FTP_WATTS: i32 = 80;
 const MAX_ESTIMATED_FTP_WATTS: i32 = 600;
-const HEART_RATE_ZONE_SHARE_PERCENT_SCALE: f64 = 1000.0;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TrainingProfile {
     pub estimated_ftp_watts: Option<i32>,
     pub heart_rate_zone_bounds_bpm: Option<Vec<i32>>,
 }
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
-pub struct ActivityHeartRateZoneSummary {
-    pub zone: i32,
-    pub label: String,
-    pub min_bpm: Option<i32>,
-    pub max_bpm: Option<i32>,
-    pub duration_seconds: i32,
-    pub share_percent: f64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, FromJsonQueryResult)]
-pub struct StoredHeartRateZoneBounds(pub Vec<i32>);
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, FromJsonQueryResult)]
-pub struct StoredActivityHeartRateZones(pub Vec<StoredActivityHeartRateZoneSummary>);
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct StoredActivityHeartRateZoneSummary(
-    pub i32,
-    pub Option<i32>,
-    pub Option<i32>,
-    pub i32,
-    pub i32,
-);
 
 #[derive(Debug, Clone, Copy)]
 struct HeartRateSample {
@@ -171,46 +147,6 @@ pub fn deserialize_activity_heart_rate_zones(
             .collect()
     })
     .unwrap_or_default()
-}
-
-impl From<&ActivityHeartRateZoneSummary> for StoredActivityHeartRateZoneSummary {
-    fn from(value: &ActivityHeartRateZoneSummary) -> Self {
-        Self(
-            value.zone,
-            value.min_bpm,
-            value.max_bpm,
-            value.duration_seconds,
-            encode_share_percent(value.share_percent),
-        )
-    }
-}
-
-impl From<StoredActivityHeartRateZoneSummary> for ActivityHeartRateZoneSummary {
-    fn from(value: StoredActivityHeartRateZoneSummary) -> Self {
-        Self {
-            zone: value.0,
-            label: heart_rate_zone_label(value.0),
-            min_bpm: value.1,
-            max_bpm: value.2,
-            duration_seconds: value.3,
-            share_percent: decode_share_percent(value.4),
-        }
-    }
-}
-
-fn heart_rate_zone_label(zone: i32) -> String {
-    HEART_RATE_ZONE_LABELS
-        .get(zone.saturating_sub(1) as usize)
-        .map(|value| (*value).to_string())
-        .unwrap_or_else(|| format!("Z{zone}"))
-}
-
-fn encode_share_percent(value: f64) -> i32 {
-    (value * HEART_RATE_ZONE_SHARE_PERCENT_SCALE).round() as i32
-}
-
-fn decode_share_percent(value: i32) -> f64 {
-    f64::from(value) / HEART_RATE_ZONE_SHARE_PERCENT_SCALE
 }
 
 pub fn summarize_heart_rate_zones(

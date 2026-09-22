@@ -1,5 +1,5 @@
-use crate::activity_details::StoredActivityDerivedData;
-use crate::training_profile::StoredActivityHeartRateZones;
+use crate::activity_data::StoredActivityDerivedData;
+use crate::training_data::StoredActivityHeartRateZones;
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::entity::prelude::*;

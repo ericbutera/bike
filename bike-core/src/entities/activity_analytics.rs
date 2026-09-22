@@ -1,4 +1,4 @@
-use crate::activity_analytics::StoredActivityAchievementHighlights;
+use crate::activity_achievements::StoredActivityAchievementHighlights;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;

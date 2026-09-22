@@ -9,15 +9,25 @@ Treat Bike as a coordinated Rust application with two binaries, not as microserv
 - [x] Release guardrails prevent API/worker tag drift.
 - [ ] Worker no longer depends on the `api` crate.
 - [ ] Shared `bike-core` crate owns entities, services, durable job payloads, and shared domain helpers.
+  - [x] Shared config, observability, and database connection helpers live in `bike-core`.
+  - [x] Durable job payloads and queue facade live in `bike-core::jobs`; worker processors stay in `worker`.
+  - [x] SeaORM entities live in `bike-core::entities`; `api::entities` is a compatibility re-export.
+  - [x] Provider API metrics live in `bike-core::provider_metrics`; API keeps only HTTP/database metrics.
+  - [x] Shared activity import lock policy lives in `bike-core::activity_import_lock`; API maps it to HTTP errors.
+  - [x] XC goal backfill state and queue coordination live in `bike-core::xc_goal_backfill`; API maps it to HTTP errors.
+  - [x] Training analysis backfill/rebuild workflows live in `bike-core::activity_training_analysis`; API keeps a compatibility re-export.
+  - [x] Fitness freshness, segment analytics, and activity analytics workflows live in `bike-core::analytics`; API keeps a compatibility re-export.
+  - [ ] Activity import lifecycle, archive import, Strava sync, and segment regeneration workflows move behind `bike-core` boundaries.
+  - [ ] Domain services/workflows move behind `bike-core` boundaries.
 - [ ] API is only the HTTP adapter.
 - [ ] Worker is only the task adapter.
 - [ ] Migrations run as an explicit release step, not implicitly from API startup.
 - [ ] API and worker both enforce a startup schema guard.
-- [ ] Durable task payload compatibility is covered by tests.
+- [x] Durable task payload compatibility is covered by tests.
 - [ ] Architecture checks prevent `worker -> api` dependencies from returning.
 - [ ] Full workspace tests and Clippy pass.
 
-Current progress: `bike-core` has been introduced for shared config, observability, database connection setup, and durable job contracts. Worker processors stay in the `worker` crate; API keeps compatibility re-exports during the broader boundary migration.
+Current progress: `bike-core` has been introduced for shared config, observability, database connection setup, durable job contracts, storage JSON value types, SeaORM entities, provider API metrics, activity import locks, XC goal backfill coordination, training-analysis cache workflows, and analytics rebuild workflows. Worker processors stay in the `worker` crate; API keeps compatibility re-exports during the broader boundary migration.
 
 ## Key Changes
 

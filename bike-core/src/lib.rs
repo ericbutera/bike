@@ -1,4 +1,13 @@
+pub mod activity_achievements;
+pub mod activity_data;
+pub mod activity_import_lock;
+pub mod activity_training_analysis;
+pub mod analytics;
 pub mod config;
 pub mod db;
+pub mod entities;
 pub mod jobs;
 pub mod observability;
+pub mod provider_metrics;
+pub mod training_data;
+pub mod xc_goal_backfill;
