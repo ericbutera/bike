@@ -376,48 +376,18 @@ fn match_segment_efforts_with_profile(
     profile: MatchProfile,
     search_mode: MatchSearchMode,
 ) -> Vec<MatchedSegmentEffort> {
-    let segment_distance_meters = route_distance_meters(segment_route_points);
-    let segment_start = &segment_route_points[0];
-    let segment_end = &segment_route_points[segment_route_points.len() - 1];
-    let endpoint_threshold_meters =
-        derive_endpoint_threshold_meters(segment_route_points, activity_route_points, profile);
-    let start_candidate_indices = endpoint_candidate_indices(
-        activity_route_points,
-        segment_start,
-        endpoint_threshold_meters,
-    );
-    let end_candidate_indices = endpoint_candidate_indices(
-        activity_route_points,
-        segment_end,
-        endpoint_threshold_meters,
-    );
+    let context = MatchContext::new(segment_route_points, activity_route_points, profile);
     let mut matches = Vec::new();
     let mut start_index = 0usize;
 
     while start_index + 1 < activity_route_points.len() {
         let best_match = match search_mode {
-            MatchSearchMode::FirstPassingStart => find_best_match_for_first_passing_start(
-                segment_route_points,
-                activity_route_points,
-                segment_start,
-                segment_end,
-                segment_distance_meters,
-                profile,
-                start_index,
-                &start_candidate_indices,
-                &end_candidate_indices,
-            ),
-            MatchSearchMode::BestPassingStart => find_best_match_across_starts(
-                segment_route_points,
-                activity_route_points,
-                segment_start,
-                segment_end,
-                segment_distance_meters,
-                profile,
-                start_index,
-                &start_candidate_indices,
-                &end_candidate_indices,
-            ),
+            MatchSearchMode::FirstPassingStart => {
+                find_best_match_for_first_passing_start(&context, start_index)
+            }
+            MatchSearchMode::BestPassingStart => {
+                find_best_match_across_starts(&context, start_index)
+            }
         };
 
         if let Some(best_match) = best_match {
@@ -452,39 +422,79 @@ struct MatchCandidate {
     score: f64,
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "segment matcher carries precomputed route anchors for hot-path matching"
-)]
-fn find_best_match_for_first_passing_start(
-    segment_route_points: &[ActivityRoutePoint],
-    activity_route_points: &[ActivityRoutePoint],
-    segment_start: &ActivityRoutePoint,
-    segment_end: &ActivityRoutePoint,
+#[derive(Debug)]
+struct MatchContext<'a> {
+    segment_route_points: &'a [ActivityRoutePoint],
+    activity_route_points: &'a [ActivityRoutePoint],
+    segment_start: &'a ActivityRoutePoint,
+    segment_end: &'a ActivityRoutePoint,
     segment_distance_meters: Option<f64>,
     profile: MatchProfile,
-    search_start_index: usize,
-    start_candidate_indices: &[usize],
-    end_candidate_indices: &[usize],
-) -> Option<MatchCandidate> {
-    for start_index in start_candidate_indices
-        .iter()
-        .copied()
-        .filter(|index| *index >= search_start_index)
-    {
-        let start_error_meters =
-            endpoint_error_meters(&activity_route_points[start_index], segment_start);
+    start_candidate_indices: Vec<usize>,
+    end_candidate_indices: Vec<usize>,
+}
 
-        if let Some(best_match) = find_best_match_for_start(
+impl<'a> MatchContext<'a> {
+    fn new(
+        segment_route_points: &'a [ActivityRoutePoint],
+        activity_route_points: &'a [ActivityRoutePoint],
+        profile: MatchProfile,
+    ) -> Self {
+        let segment_start = &segment_route_points[0];
+        let segment_end = &segment_route_points[segment_route_points.len() - 1];
+        let endpoint_threshold_meters =
+            derive_endpoint_threshold_meters(segment_route_points, activity_route_points, profile);
+
+        Self {
             segment_route_points,
             activity_route_points,
+            segment_start,
             segment_end,
-            segment_distance_meters,
+            segment_distance_meters: route_distance_meters(segment_route_points),
             profile,
-            start_index,
-            start_error_meters,
-            end_candidate_indices,
-        ) {
+            start_candidate_indices: endpoint_candidate_indices(
+                activity_route_points,
+                segment_start,
+                endpoint_threshold_meters,
+            ),
+            end_candidate_indices: endpoint_candidate_indices(
+                activity_route_points,
+                segment_end,
+                endpoint_threshold_meters,
+            ),
+        }
+    }
+
+    fn start_candidates_from(
+        &self,
+        search_start_index: usize,
+    ) -> impl Iterator<Item = StartCandidate> + '_ {
+        self.start_candidate_indices
+            .iter()
+            .copied()
+            .filter(move |index| *index >= search_start_index)
+            .map(|index| StartCandidate {
+                index,
+                start_error_meters: endpoint_error_meters(
+                    &self.activity_route_points[index],
+                    self.segment_start,
+                ),
+            })
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct StartCandidate {
+    index: usize,
+    start_error_meters: f64,
+}
+
+fn find_best_match_for_first_passing_start(
+    context: &MatchContext<'_>,
+    search_start_index: usize,
+) -> Option<MatchCandidate> {
+    for start_candidate in context.start_candidates_from(search_start_index) {
+        if let Some(best_match) = find_best_match_for_start(context, start_candidate) {
             return Some(best_match);
         }
     }
@@ -492,42 +502,14 @@ fn find_best_match_for_first_passing_start(
     None
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "segment matcher carries precomputed route anchors for hot-path matching"
-)]
 fn find_best_match_across_starts(
-    segment_route_points: &[ActivityRoutePoint],
-    activity_route_points: &[ActivityRoutePoint],
-    segment_start: &ActivityRoutePoint,
-    segment_end: &ActivityRoutePoint,
-    segment_distance_meters: Option<f64>,
-    profile: MatchProfile,
+    context: &MatchContext<'_>,
     search_start_index: usize,
-    start_candidate_indices: &[usize],
-    end_candidate_indices: &[usize],
 ) -> Option<MatchCandidate> {
     let mut best_match: Option<MatchCandidate> = None;
 
-    for start_index in start_candidate_indices
-        .iter()
-        .copied()
-        .filter(|index| *index >= search_start_index)
-    {
-        let start_error_meters =
-            endpoint_error_meters(&activity_route_points[start_index], segment_start);
-
-        let next_match = find_best_match_for_start(
-            segment_route_points,
-            activity_route_points,
-            segment_end,
-            segment_distance_meters,
-            profile,
-            start_index,
-            start_error_meters,
-            end_candidate_indices,
-        );
-
+    for start_candidate in context.start_candidates_from(search_start_index) {
+        let next_match = find_best_match_for_start(context, start_candidate);
         match (best_match.as_ref(), next_match) {
             (Some(current), Some(next)) if current.score <= next.score => {}
             (_, Some(next)) => best_match = Some(next),
@@ -538,40 +520,35 @@ fn find_best_match_across_starts(
     best_match
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "segment matcher carries precomputed route anchors for hot-path matching"
-)]
 fn find_best_match_for_start(
-    segment_route_points: &[ActivityRoutePoint],
-    activity_route_points: &[ActivityRoutePoint],
-    segment_end: &ActivityRoutePoint,
-    segment_distance_meters: Option<f64>,
-    profile: MatchProfile,
-    start_index: usize,
-    start_error_meters: f64,
-    end_candidate_indices: &[usize],
+    context: &MatchContext<'_>,
+    start_candidate: StartCandidate,
 ) -> Option<MatchCandidate> {
-    let candidate_start = &activity_route_points[start_index];
+    let candidate_start = &context.activity_route_points[start_candidate.index];
     let mut best_match: Option<MatchCandidate> = None;
-    let maximum_candidate_distance_meters =
-        segment_distance_meters.map(|distance| distance * DISTANCE_RATIO_MAX);
+    let maximum_candidate_distance_meters = context
+        .segment_distance_meters
+        .map(|distance| distance * DISTANCE_RATIO_MAX);
 
-    for end_index in end_candidate_indices
+    for end_index in context
+        .end_candidate_indices
         .iter()
         .copied()
-        .filter(|index| *index > start_index)
+        .filter(|index| *index > start_candidate.index)
     {
-        let candidate_end = &activity_route_points[end_index];
-        let end_error_meters = endpoint_error_meters(candidate_end, segment_end);
+        let candidate_end = &context.activity_route_points[end_index];
+        let end_error_meters = endpoint_error_meters(candidate_end, context.segment_end);
 
         let duration_seconds = candidate_end.elapsed_seconds - candidate_start.elapsed_seconds;
         if duration_seconds <= 0 {
             continue;
         }
 
-        let candidate_distance_meters =
-            route_distance_between(activity_route_points, start_index, end_index);
+        let candidate_distance_meters = route_distance_between(
+            context.activity_route_points,
+            start_candidate.index,
+            end_index,
+        );
         if let (Some(candidate_distance), Some(maximum_candidate_distance)) =
             (candidate_distance_meters, maximum_candidate_distance_meters)
         {
@@ -579,28 +556,33 @@ fn find_best_match_for_start(
                 break;
             }
         }
-        if !distance_ratio_within_bounds(segment_distance_meters, candidate_distance_meters) {
+        if !distance_ratio_within_bounds(context.segment_distance_meters, candidate_distance_meters)
+        {
             continue;
         }
 
-        let activity_slice = &activity_route_points[start_index..=end_index];
+        let activity_slice = &context.activity_route_points[start_candidate.index..=end_index];
         let (average_shape_error_meters, max_shape_error_meters) =
-            shape_error_meters(segment_route_points, activity_slice);
-        if average_shape_error_meters > profile.shape_average_threshold_meters
-            || max_shape_error_meters > profile.shape_max_threshold_meters
+            shape_error_meters(context.segment_route_points, activity_slice);
+        if average_shape_error_meters > context.profile.shape_average_threshold_meters
+            || max_shape_error_meters > context.profile.shape_max_threshold_meters
         {
             continue;
         }
 
         let distance_penalty =
-            distance_ratio_penalty(segment_distance_meters, candidate_distance_meters);
+            distance_ratio_penalty(context.segment_distance_meters, candidate_distance_meters);
         let score = average_shape_error_meters
             + max_shape_error_meters * 0.15
-            + start_error_meters * 0.35
+            + start_candidate.start_error_meters * 0.35
             + end_error_meters * 0.35
             + distance_penalty;
 
-        if profile.max_score.is_some_and(|max_score| score > max_score) {
+        if context
+            .profile
+            .max_score
+            .is_some_and(|max_score| score > max_score)
+        {
             continue;
         }
 
@@ -608,7 +590,7 @@ fn find_best_match_for_start(
             Some(ref best_match) if best_match.score <= score => {}
             _ => {
                 best_match = Some(MatchCandidate {
-                    start_index,
+                    start_index: start_candidate.index,
                     end_index,
                     distance_meters: candidate_distance_meters,
                     score,
@@ -867,145 +849,12 @@ mod tests {
         route_point(elapsed_seconds, latitude, longitude, distance_meters)
     }
 
-    #[expect(
-        clippy::too_many_lines,
-        reason = "fixture covers favorite segment matching cases"
-    )]
     #[test]
     fn favorite_segment_fixtures_match_expected_activity_files() {
-        let cases = [
-            FavoriteSegmentCase {
-                activity_file: "unmarked_01.fit",
-                segment_file: "Segment - F-BOMB OUT.gpx",
-                segment_title: "F-BOMB OUT",
-                minimum_match_count: 1,
-            },
-            FavoriteSegmentCase {
-                activity_file: "unmarked_01.fit",
-                segment_file: "Segment - Jam Sesh.gpx",
-                segment_title: "Jam Sesh",
-                minimum_match_count: 1,
-            },
-            FavoriteSegmentCase {
-                activity_file: "unmarked_01.fit",
-                segment_file: "Segment - Adderall in Reverse.gpx",
-                segment_title: "Adderall in Reverse",
-                minimum_match_count: 1,
-            },
-            FavoriteSegmentCase {
-                activity_file: "unmarked_01.fit",
-                segment_file: "Not-So Holy Grail (EB).gpx",
-                segment_title: "Not-So Holy Grail (EB)",
-                minimum_match_count: 1,
-            },
-            FavoriteSegmentCase {
-                activity_file: "unmarked_01.fit",
-                segment_file: "Segment - The Holy Grail Single Track.gpx",
-                segment_title: "The Holy Grail Single Track",
-                minimum_match_count: 1,
-            },
-            FavoriteSegmentCase {
-                activity_file: "unmarked_02.fit",
-                segment_file: "VST Clockwise 2020 (6 to 5 - Saplings).gpx",
-                segment_title: "VST Clockwise 2020 (6 to 5 - Saplings)",
-                minimum_match_count: 1,
-            },
-            FavoriteSegmentCase {
-                activity_file: "unmarked_02.fit",
-                segment_file: "Segment - F-BOMB IN.gpx",
-                segment_title: "F-BOMB IN",
-                minimum_match_count: 1,
-            },
-            FavoriteSegmentCase {
-                activity_file: "unmarked_02.fit",
-                segment_file: "Segment - Rally Back CBS Rework.gpx",
-                segment_title: "Rally Back CBS Rework",
-                minimum_match_count: 1,
-            },
-            FavoriteSegmentCase {
-                activity_file: "commons_01.fit",
-                segment_file: "Segment - Breakin The Law.gpx",
-                segment_title: "Breakin The Law",
-                minimum_match_count: 1,
-            },
-            FavoriteSegmentCase {
-                activity_file: "commons_01.fit",
-                segment_file: "Segment - FMR.gpx",
-                segment_title: "FMR",
-                minimum_match_count: 1,
-            },
-            FavoriteSegmentCase {
-                activity_file: "commons_01.fit",
-                segment_file: "Segment - FMR Full.gpx",
-                segment_title: "FMR Full",
-                minimum_match_count: 1,
-            },
-            FavoriteSegmentCase {
-                activity_file: "commons_01.fit",
-                segment_file: "Log Jam.gpx",
-                segment_title: "Log Jam",
-                minimum_match_count: 1,
-            },
-            FavoriteSegmentCase {
-                activity_file: "city_01.fit",
-                segment_file: "Segment - Breakin The Law.gpx",
-                segment_title: "Breakin The Law",
-                minimum_match_count: 1,
-            },
-            FavoriteSegmentCase {
-                activity_file: "city_01.fit",
-                segment_file: "Segment - -g.gpx",
-                segment_title: "-g",
-                minimum_match_count: 1,
-            },
-            FavoriteSegmentCase {
-                activity_file: "city_01.fit",
-                segment_file: "Segment - The Hick's Descent.gpx",
-                segment_title: "The Hick's Descent",
-                minimum_match_count: 1,
-            },
-            FavoriteSegmentCase {
-                activity_file: "city_01.fit",
-                segment_file: "Segment - Hickory Hills To Hickory Meadows.gpx",
-                segment_title: "Hickory Hills To Hickory Meadows",
-                minimum_match_count: 1,
-            },
-            FavoriteSegmentCase {
-                activity_file: "city_02.fit",
-                segment_file: "East Side Flow.gpx",
-                segment_title: "East Side Flow",
-                minimum_match_count: 1,
-            },
-            FavoriteSegmentCase {
-                activity_file: "city_02.fit",
-                segment_file: "Country Club Boys.gpx",
-                segment_title: "Country Club Boys",
-                minimum_match_count: 1,
-            },
-            FavoriteSegmentCase {
-                activity_file: "city_02.fit",
-                segment_file: "Segment - -g.gpx",
-                segment_title: "-g",
-                minimum_match_count: 1,
-            },
-            FavoriteSegmentCase {
-                activity_file: "city_02.fit",
-                segment_file: "Segment - The Hick's Descent.gpx",
-                segment_title: "The Hick's Descent",
-                minimum_match_count: 1,
-            },
-            FavoriteSegmentCase {
-                activity_file: "city_02.fit",
-                segment_file: "Segment - Breakin The Law.gpx",
-                segment_title: "Breakin The Law",
-                minimum_match_count: 1,
-            },
-        ];
-
         let mut activity_route_points_by_file = HashMap::new();
         let mut segment_route_points_by_file = HashMap::new();
 
-        for case in cases {
+        for case in FAVORITE_SEGMENT_CASES {
             let segment_route_points = segment_route_points_by_file
                 .entry(case.segment_file)
                 .or_insert_with(|| load_segment_fixture_route_points(case.segment_file));
@@ -1039,6 +888,135 @@ mod tests {
         segment_title: &'static str,
         minimum_match_count: usize,
     }
+
+    const FAVORITE_SEGMENT_CASES: &[FavoriteSegmentCase] = &[
+        FavoriteSegmentCase {
+            activity_file: "unmarked_01.fit",
+            segment_file: "Segment - F-BOMB OUT.gpx",
+            segment_title: "F-BOMB OUT",
+            minimum_match_count: 1,
+        },
+        FavoriteSegmentCase {
+            activity_file: "unmarked_01.fit",
+            segment_file: "Segment - Jam Sesh.gpx",
+            segment_title: "Jam Sesh",
+            minimum_match_count: 1,
+        },
+        FavoriteSegmentCase {
+            activity_file: "unmarked_01.fit",
+            segment_file: "Segment - Adderall in Reverse.gpx",
+            segment_title: "Adderall in Reverse",
+            minimum_match_count: 1,
+        },
+        FavoriteSegmentCase {
+            activity_file: "unmarked_01.fit",
+            segment_file: "Not-So Holy Grail (EB).gpx",
+            segment_title: "Not-So Holy Grail (EB)",
+            minimum_match_count: 1,
+        },
+        FavoriteSegmentCase {
+            activity_file: "unmarked_01.fit",
+            segment_file: "Segment - The Holy Grail Single Track.gpx",
+            segment_title: "The Holy Grail Single Track",
+            minimum_match_count: 1,
+        },
+        FavoriteSegmentCase {
+            activity_file: "unmarked_02.fit",
+            segment_file: "VST Clockwise 2020 (6 to 5 - Saplings).gpx",
+            segment_title: "VST Clockwise 2020 (6 to 5 - Saplings)",
+            minimum_match_count: 1,
+        },
+        FavoriteSegmentCase {
+            activity_file: "unmarked_02.fit",
+            segment_file: "Segment - F-BOMB IN.gpx",
+            segment_title: "F-BOMB IN",
+            minimum_match_count: 1,
+        },
+        FavoriteSegmentCase {
+            activity_file: "unmarked_02.fit",
+            segment_file: "Segment - Rally Back CBS Rework.gpx",
+            segment_title: "Rally Back CBS Rework",
+            minimum_match_count: 1,
+        },
+        FavoriteSegmentCase {
+            activity_file: "commons_01.fit",
+            segment_file: "Segment - Breakin The Law.gpx",
+            segment_title: "Breakin The Law",
+            minimum_match_count: 1,
+        },
+        FavoriteSegmentCase {
+            activity_file: "commons_01.fit",
+            segment_file: "Segment - FMR.gpx",
+            segment_title: "FMR",
+            minimum_match_count: 1,
+        },
+        FavoriteSegmentCase {
+            activity_file: "commons_01.fit",
+            segment_file: "Segment - FMR Full.gpx",
+            segment_title: "FMR Full",
+            minimum_match_count: 1,
+        },
+        FavoriteSegmentCase {
+            activity_file: "commons_01.fit",
+            segment_file: "Log Jam.gpx",
+            segment_title: "Log Jam",
+            minimum_match_count: 1,
+        },
+        FavoriteSegmentCase {
+            activity_file: "city_01.fit",
+            segment_file: "Segment - Breakin The Law.gpx",
+            segment_title: "Breakin The Law",
+            minimum_match_count: 1,
+        },
+        FavoriteSegmentCase {
+            activity_file: "city_01.fit",
+            segment_file: "Segment - -g.gpx",
+            segment_title: "-g",
+            minimum_match_count: 1,
+        },
+        FavoriteSegmentCase {
+            activity_file: "city_01.fit",
+            segment_file: "Segment - The Hick's Descent.gpx",
+            segment_title: "The Hick's Descent",
+            minimum_match_count: 1,
+        },
+        FavoriteSegmentCase {
+            activity_file: "city_01.fit",
+            segment_file: "Segment - Hickory Hills To Hickory Meadows.gpx",
+            segment_title: "Hickory Hills To Hickory Meadows",
+            minimum_match_count: 1,
+        },
+        FavoriteSegmentCase {
+            activity_file: "city_02.fit",
+            segment_file: "East Side Flow.gpx",
+            segment_title: "East Side Flow",
+            minimum_match_count: 1,
+        },
+        FavoriteSegmentCase {
+            activity_file: "city_02.fit",
+            segment_file: "Country Club Boys.gpx",
+            segment_title: "Country Club Boys",
+            minimum_match_count: 1,
+        },
+        FavoriteSegmentCase {
+            activity_file: "city_02.fit",
+            segment_file: "Segment - -g.gpx",
+            segment_title: "-g",
+            minimum_match_count: 1,
+        },
+        FavoriteSegmentCase {
+            activity_file: "city_02.fit",
+            segment_file: "Segment - The Hick's Descent.gpx",
+            segment_title: "The Hick's Descent",
+            minimum_match_count: 1,
+        },
+        FavoriteSegmentCase {
+            activity_file: "city_02.fit",
+            segment_file: "Segment - Breakin The Law.gpx",
+            segment_title: "Breakin The Law",
+            minimum_match_count: 1,
+        },
+    ];
 
     fn load_activity_fixture_route_points(filename: &str) -> Vec<ActivityRoutePoint> {
         load_route_fixture(

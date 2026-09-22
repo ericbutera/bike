@@ -226,6 +226,22 @@ struct SegmentAnalysisEffortSource {
 }
 
 #[derive(Clone, Debug)]
+struct ActivitySegmentBuilderSource {
+    activity: activities::Model,
+    title: String,
+    route_points: Vec<ActivityRoutePoint>,
+    distance_meters: Option<f64>,
+    start_route_point_index: i32,
+    end_route_point_index: i32,
+}
+
+#[derive(Clone, Debug)]
+struct SampledAnalysisEffort {
+    source: SegmentAnalysisEffortSource,
+    samples: Vec<SegmentAnalysisSample>,
+}
+
+#[derive(Clone, Debug)]
 struct SegmentAnalysisSample {
     elapsed_seconds: f64,
 }
@@ -339,34 +355,11 @@ pub struct UpdateSegmentRequest {
         ("bearer_auth" = [])
     )
 )]
-#[expect(
-    clippy::too_many_lines,
-    reason = "legacy segment listing response assembly predates workspace size lint"
-)]
 pub async fn list_segments(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<Vec<SegmentResponse>>, AppError> {
-    let mut segment_rows = segments::Entity::find()
-        .select_only()
-        .column(segments::Column::Id)
-        .column(segments::Column::Title)
-        .column(segments::Column::Source)
-        .column(segments::Column::Mode)
-        .column(segments::Column::Starred)
-        .column(segments::Column::OriginalFilename)
-        .column(segments::Column::Format)
-        .column(segments::Column::DistanceMeters)
-        .column(segments::Column::SourceActivityId)
-        .column(segments::Column::SourceStartRoutePointIndex)
-        .column(segments::Column::SourceEndRoutePointIndex)
-        .column(segments::Column::LastActivityChangeAt)
-        .column(segments::Column::CreatedAt)
-        .filter(segments::Column::UserId.eq(user.id))
-        .into_model::<SegmentListRow>()
-        .all(&state.db)
-        .await?;
-
+    let mut segment_rows = load_segment_list_rows(&state.db, user.id).await?;
     let segment_ids = segment_rows
         .iter()
         .map(|segment| segment.id)
@@ -375,26 +368,11 @@ pub async fn list_segments(
     sort_segment_rows_by_latest_activity_started_at(&mut segment_rows, &summary_by_segment_id);
     let user_summary_by_segment_id =
         load_segment_user_summaries(&state.db, user.id, &segment_ids).await?;
-    let stale_segment_ids = segment_rows
-        .iter()
-        .filter_map(|segment| {
-            let summary = summary_by_segment_id.get(&segment.id);
-            let user_summary = user_summary_by_segment_id.get(&segment.id);
-
-            match (summary, user_summary) {
-                (Some(summary), Some(user_summary))
-                    if summary.updated_at >= segment.last_activity_change_at
-                        && user_summary.updated_at >= segment.last_activity_change_at =>
-                {
-                    None
-                }
-                (Some(summary), None) if summary.updated_at >= segment.last_activity_change_at => {
-                    None
-                }
-                _ => Some(segment.id),
-            }
-        })
-        .collect::<Vec<_>>();
+    let stale_segment_ids = stale_list_segment_ids(
+        &segment_rows,
+        &summary_by_segment_id,
+        &user_summary_by_segment_id,
+    );
 
     if !stale_segment_ids.is_empty() {
         state
@@ -403,41 +381,11 @@ pub async fn list_segments(
             .await;
     }
 
-    Ok(Json(
-        segment_rows
-            .into_iter()
-            .map(|segment| {
-                let summary = summary_by_segment_id.get(&segment.id);
-                let user_summary = user_summary_by_segment_id.get(&segment.id);
-                let builder_source = segment_builder_source_from_values(
-                    segment.source_activity_id,
-                    segment.source_start_route_point_index,
-                    segment.source_end_route_point_index,
-                );
-
-                SegmentResponse {
-                    id: segment.id,
-                    title: segment.title,
-                    source: segment.source,
-                    mode: SegmentMode::from_stored(&segment.mode),
-                    starred: segment.starred,
-                    original_filename: segment.original_filename,
-                    format: segment.format,
-                    distance_meters: segment.distance_meters,
-                    effort_count: summary.map(|value| value.effort_count).unwrap_or_default(),
-                    best_duration_seconds: summary.and_then(|value| value.best_duration_seconds),
-                    current_user_pr_duration_seconds: user_summary
-                        .and_then(|value| value.personal_best_duration_seconds),
-                    created_at: segment.created_at,
-                    processing_task_id: None,
-                    processing_task_status: None,
-                    builder_source,
-                    route_points: Vec::new(),
-                    efforts: Vec::new(),
-                }
-            })
-            .collect(),
-    ))
+    Ok(Json(segment_list_responses(
+        segment_rows,
+        &summary_by_segment_id,
+        &user_summary_by_segment_id,
+    )))
 }
 
 #[utoipa::path(
@@ -783,71 +731,23 @@ pub async fn delete_segment(
         ("bearer_auth" = [])
     )
 )]
-#[expect(
-    clippy::too_many_lines,
-    reason = "legacy segment creation endpoint predates workspace size lint"
-)]
 pub async fn create_segment_from_activity(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
     Json(payload): Json<CreateSegmentFromActivityRequest>,
 ) -> Result<(StatusCode, Json<SegmentResponse>), AppError> {
-    let activity = activities::Entity::find()
-        .filter(activities::Column::Id.eq(payload.activity_id))
-        .filter(activities::Column::UserId.eq(user.id))
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| AppError::not_found("Activity not found"))?;
-    let title = normalize_segment_title(&payload.title)?;
-    let activity_route_points =
-        deserialize_derived_activity_data(activity.derived_data_json.as_ref()).route_points;
-    let segment_route_points = slice_builder_route_points(
-        &activity_route_points,
-        payload.start_route_point_index,
-        payload.end_route_point_index,
-    )?;
-    let distance_meters = segment_route_points
-        .last()
-        .and_then(|point| point.distance_meters);
+    let source = load_activity_segment_builder_source(&state.db, user.id, payload).await?;
 
-    if let Some(existing_segment) =
-        find_duplicate_segment(&state.db, user.id, distance_meters, &segment_route_points).await?
+    if let Some(existing_segment) = find_duplicate_segment(
+        &state.db,
+        user.id,
+        source.distance_meters,
+        &source.route_points,
+    )
+    .await?
     {
-        let should_update_title = existing_segment.title != title;
-        let should_update_builder_source = existing_segment.source_activity_id != Some(activity.id)
-            || existing_segment.source_start_route_point_index
-                != Some(payload.start_route_point_index)
-            || existing_segment.source_end_route_point_index != Some(payload.end_route_point_index);
-        let existing_segment = if should_update_title || should_update_builder_source {
-            let activity_ids = if should_update_title {
-                load_activity_ids_for_segments(&state.db, &[existing_segment.id]).await?
-            } else {
-                Vec::new()
-            };
-            let txn = state.db.begin().await?;
-            let mut active_segment = existing_segment.into_active_model();
-
-            if should_update_title {
-                active_segment.title = Set(title.clone());
-            }
-
-            active_segment.source_activity_id = Set(Some(activity.id));
-            active_segment.source_start_route_point_index =
-                Set(Some(payload.start_route_point_index));
-            active_segment.source_end_route_point_index = Set(Some(payload.end_route_point_index));
-
-            let updated_segment = active_segment.update(&txn).await?;
-
-            if !activity_ids.is_empty() {
-                rebuild_activity_analytics_cache(&txn, &activity_ids).await?;
-            }
-
-            txn.commit().await?;
-
-            updated_segment
-        } else {
-            existing_segment
-        };
+        let existing_segment =
+            update_duplicate_activity_segment(&state.db, existing_segment, &source).await?;
 
         return Ok((
             StatusCode::OK,
@@ -855,24 +755,7 @@ pub async fn create_segment_from_activity(
         ));
     }
 
-    let segment = segments::ActiveModel {
-        user_id: Set(user.id),
-        title: Set(title),
-        source: Set("activity_segment_builder".to_string()),
-        mode: Set(SegmentMode::Xc.as_str().to_string()),
-        starred: Set(false),
-        original_filename: Set(None),
-        format: Set(activity.format.clone()),
-        distance_meters: Set(distance_meters),
-        route_data_json: Set(Some(serialize_segment_route_points(&segment_route_points)?)),
-        source_activity_id: Set(Some(activity.id)),
-        source_start_route_point_index: Set(Some(payload.start_route_point_index)),
-        source_end_route_point_index: Set(Some(payload.end_route_point_index)),
-        ..Default::default()
-    }
-    .insert(&state.db)
-    .await?;
-
+    let segment = insert_activity_segment(&state.db, user.id, &source).await?;
     let processing_task = enqueue_segment_effort_regeneration(&state, segment.id).await?;
 
     Ok((
@@ -1094,6 +977,103 @@ fn slice_builder_route_points(
         start_route_point_index,
         end_route_point_index,
     ))
+}
+
+async fn load_activity_segment_builder_source(
+    db: &sea_orm::DatabaseConnection,
+    user_id: i32,
+    payload: CreateSegmentFromActivityRequest,
+) -> Result<ActivitySegmentBuilderSource, AppError> {
+    let activity = activities::Entity::find()
+        .filter(activities::Column::Id.eq(payload.activity_id))
+        .filter(activities::Column::UserId.eq(user_id))
+        .one(db)
+        .await?
+        .ok_or_else(|| AppError::not_found("Activity not found"))?;
+    let title = normalize_segment_title(&payload.title)?;
+    let activity_route_points =
+        deserialize_derived_activity_data(activity.derived_data_json.as_ref()).route_points;
+    let route_points = slice_builder_route_points(
+        &activity_route_points,
+        payload.start_route_point_index,
+        payload.end_route_point_index,
+    )?;
+    let distance_meters = route_points.last().and_then(|point| point.distance_meters);
+
+    Ok(ActivitySegmentBuilderSource {
+        activity,
+        title,
+        route_points,
+        distance_meters,
+        start_route_point_index: payload.start_route_point_index,
+        end_route_point_index: payload.end_route_point_index,
+    })
+}
+
+async fn update_duplicate_activity_segment(
+    db: &sea_orm::DatabaseConnection,
+    existing_segment: segments::Model,
+    source: &ActivitySegmentBuilderSource,
+) -> Result<segments::Model, AppError> {
+    let should_update_title = existing_segment.title != source.title;
+    let should_update_builder_source = existing_segment.source_activity_id
+        != Some(source.activity.id)
+        || existing_segment.source_start_route_point_index != Some(source.start_route_point_index)
+        || existing_segment.source_end_route_point_index != Some(source.end_route_point_index);
+
+    if !should_update_title && !should_update_builder_source {
+        return Ok(existing_segment);
+    }
+
+    let activity_ids = if should_update_title {
+        load_activity_ids_for_segments(db, &[existing_segment.id]).await?
+    } else {
+        Vec::new()
+    };
+    let txn = db.begin().await?;
+    let mut active_segment = existing_segment.into_active_model();
+
+    if should_update_title {
+        active_segment.title = Set(source.title.clone());
+    }
+
+    active_segment.source_activity_id = Set(Some(source.activity.id));
+    active_segment.source_start_route_point_index = Set(Some(source.start_route_point_index));
+    active_segment.source_end_route_point_index = Set(Some(source.end_route_point_index));
+
+    let updated_segment = active_segment.update(&txn).await?;
+
+    if !activity_ids.is_empty() {
+        rebuild_activity_analytics_cache(&txn, &activity_ids).await?;
+    }
+
+    txn.commit().await?;
+
+    Ok(updated_segment)
+}
+
+async fn insert_activity_segment(
+    db: &sea_orm::DatabaseConnection,
+    user_id: i32,
+    source: &ActivitySegmentBuilderSource,
+) -> Result<segments::Model, AppError> {
+    Ok(segments::ActiveModel {
+        user_id: Set(user_id),
+        title: Set(source.title.clone()),
+        source: Set("activity_segment_builder".to_string()),
+        mode: Set(SegmentMode::Xc.as_str().to_string()),
+        starred: Set(false),
+        original_filename: Set(None),
+        format: Set(source.activity.format.clone()),
+        distance_meters: Set(source.distance_meters),
+        route_data_json: Set(Some(serialize_segment_route_points(&source.route_points)?)),
+        source_activity_id: Set(Some(source.activity.id)),
+        source_start_route_point_index: Set(Some(source.start_route_point_index)),
+        source_end_route_point_index: Set(Some(source.end_route_point_index)),
+        ..Default::default()
+    }
+    .insert(db)
+    .await?)
 }
 
 async fn find_duplicate_segment(
@@ -1451,10 +1431,6 @@ fn normalized_analysis_split_count(value: Option<usize>) -> Result<usize, AppErr
     Ok(split_count)
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "legacy segment analysis builder predates workspace size lint"
-)]
 fn segment_effort_analysis_from_sources(
     segment_id: i32,
     segment_title: String,
@@ -1464,6 +1440,32 @@ fn segment_effort_analysis_from_sources(
     split_count: usize,
 ) -> Result<SegmentEffortAnalysisResponse, AppError> {
     efforts.sort_by_key(|effort| (effort.duration_seconds, effort.effort_id));
+    let reference_effort = select_analysis_reference_effort(&efforts, reference_effort_id)?;
+    let sampled_efforts = sampled_analysis_efforts(&efforts, split_count);
+    let reference_samples = reference_analysis_samples(&sampled_efforts, &reference_effort)?;
+    let summaries = analysis_effort_summaries(&sampled_efforts, &reference_effort);
+    let (sections, theoretical_best_duration_seconds) =
+        analysis_sections(&sampled_efforts, reference_samples, split_count);
+
+    Ok(SegmentEffortAnalysisResponse {
+        segment_id,
+        segment_title,
+        split_count,
+        route_points,
+        reference_effort: reference_effort_summary(reference_effort.clone()),
+        efforts: summaries,
+        sections,
+        theoretical_best_duration_seconds,
+        theoretical_best_gain_seconds: round_seconds(
+            reference_effort.duration_seconds as f64 - theoretical_best_duration_seconds,
+        ),
+    })
+}
+
+fn select_analysis_reference_effort(
+    efforts: &[SegmentAnalysisEffortSource],
+    reference_effort_id: Option<i32>,
+) -> Result<SegmentAnalysisEffortSource, AppError> {
     let reference_index = match reference_effort_id {
         Some(effort_id) => efforts
             .iter()
@@ -1471,95 +1473,120 @@ fn segment_effort_analysis_from_sources(
             .ok_or_else(|| AppError::not_found("Reference effort not found"))?,
         None => 0,
     };
-    let reference_effort = efforts
+
+    efforts
         .get(reference_index)
         .cloned()
-        .ok_or_else(|| AppError::not_found("No analyzable efforts found for this segment"))?;
-    let sampled_efforts = efforts
+        .ok_or_else(|| AppError::not_found("No analyzable efforts found for this segment"))
+}
+
+fn sampled_analysis_efforts(
+    efforts: &[SegmentAnalysisEffortSource],
+    split_count: usize,
+) -> Vec<SampledAnalysisEffort> {
+    efforts
         .iter()
         .filter_map(|effort| {
             let samples = analysis_samples_for_effort(effort, split_count)?;
-            Some((effort, samples))
+            Some(SampledAnalysisEffort {
+                source: effort.clone(),
+                samples,
+            })
         })
-        .collect::<Vec<_>>();
-    let reference_samples = sampled_efforts
+        .collect()
+}
+
+fn reference_analysis_samples<'a>(
+    sampled_efforts: &'a [SampledAnalysisEffort],
+    reference_effort: &SegmentAnalysisEffortSource,
+) -> Result<&'a [SegmentAnalysisSample], AppError> {
+    sampled_efforts
         .iter()
-        .find(|(effort, _)| effort.effort_id == reference_effort.effort_id)
-        .map(|(_, samples)| samples)
-        .ok_or_else(|| AppError::not_found("Reference effort is not analyzable"))?;
+        .find(|sampled| sampled.source.effort_id == reference_effort.effort_id)
+        .map(|sampled| sampled.samples.as_slice())
+        .ok_or_else(|| AppError::not_found("Reference effort is not analyzable"))
+}
 
-    let summaries = sampled_efforts
+fn analysis_effort_summaries(
+    sampled_efforts: &[SampledAnalysisEffort],
+    reference_effort: &SegmentAnalysisEffortSource,
+) -> Vec<SegmentAnalysisEffortSummaryResponse> {
+    sampled_efforts
         .iter()
-        .map(|(effort, _)| SegmentAnalysisEffortSummaryResponse {
-            effort_id: effort.effort_id,
-            activity_id: effort.activity_id,
-            activity_title: effort.activity_title.clone(),
-            activity_started_at: effort.activity_started_at,
-            effort_index: effort.effort_index,
-            duration_seconds: effort.duration_seconds,
-            delta_from_reference_seconds: round_seconds(
-                effort.duration_seconds as f64 - reference_effort.duration_seconds as f64,
-            ),
-        })
-        .collect::<Vec<_>>();
-
-    let mut sections = Vec::with_capacity(split_count);
-    let mut theoretical_best_duration_seconds = 0.0;
-
-    for section_index in 0..split_count {
-        let reference_split_seconds =
-            split_seconds(reference_samples, section_index).unwrap_or_default();
-        let mut section_efforts = Vec::new();
-        let mut best_split: Option<(&SegmentAnalysisEffortSource, f64)> = None;
-
-        for (effort, samples) in &sampled_efforts {
-            let Some(split_seconds) = split_seconds(samples, section_index) else {
-                continue;
-            };
-            let average_speed_mps = section_distance_meters(effort, split_count)
-                .and_then(|distance| (split_seconds > 0.0).then_some(distance / split_seconds));
-
-            if best_split
-                .as_ref()
-                .is_none_or(|(best_effort, best_seconds)| {
-                    (split_seconds, effort.effort_id) < (*best_seconds, best_effort.effort_id)
-                })
-            {
-                best_split = Some((effort, split_seconds));
-            }
-
-            section_efforts.push(SegmentAnalysisSectionEffortResponse {
+        .map(|sampled| {
+            let effort = &sampled.source;
+            SegmentAnalysisEffortSummaryResponse {
                 effort_id: effort.effort_id,
                 activity_id: effort.activity_id,
                 activity_title: effort.activity_title.clone(),
                 activity_started_at: effort.activity_started_at,
-                split_seconds: round_seconds(split_seconds),
+                effort_index: effort.effort_index,
+                duration_seconds: effort.duration_seconds,
                 delta_from_reference_seconds: round_seconds(
-                    split_seconds - reference_split_seconds,
+                    effort.duration_seconds as f64 - reference_effort.duration_seconds as f64,
                 ),
-                delta_from_best_seconds: 0.0,
-                average_speed_mps: average_speed_mps.map(round_metric),
-            });
+            }
+        })
+        .collect()
+}
+
+fn reference_effort_summary(
+    reference_effort: SegmentAnalysisEffortSource,
+) -> SegmentAnalysisEffortSummaryResponse {
+    SegmentAnalysisEffortSummaryResponse {
+        effort_id: reference_effort.effort_id,
+        activity_id: reference_effort.activity_id,
+        activity_title: reference_effort.activity_title,
+        activity_started_at: reference_effort.activity_started_at,
+        effort_index: reference_effort.effort_index,
+        duration_seconds: reference_effort.duration_seconds,
+        delta_from_reference_seconds: 0.0,
+    }
+}
+
+fn analysis_sections(
+    sampled_efforts: &[SampledAnalysisEffort],
+    reference_samples: &[SegmentAnalysisSample],
+    split_count: usize,
+) -> (Vec<SegmentAnalysisSectionResponse>, f64) {
+    let mut sections = Vec::with_capacity(split_count);
+    let mut theoretical_best_duration_seconds = 0.0;
+
+    for section_index in 0..split_count {
+        if let Some((section, best_split_seconds)) = analysis_section(
+            sampled_efforts,
+            reference_samples,
+            section_index,
+            split_count,
+        ) {
+            theoretical_best_duration_seconds += best_split_seconds;
+            sections.push(section);
         }
+    }
 
-        let Some((best_effort, best_split_seconds)) = best_split else {
-            continue;
-        };
+    (sections, round_seconds(theoretical_best_duration_seconds))
+}
 
-        for effort in &mut section_efforts {
-            effort.delta_from_best_seconds =
-                round_seconds(effort.split_seconds - best_split_seconds);
-        }
-        let mut top_efforts = section_efforts.clone();
-        top_efforts.sort_by(|left, right| {
-            left.split_seconds
-                .total_cmp(&right.split_seconds)
-                .then_with(|| left.effort_id.cmp(&right.effort_id))
-        });
-        top_efforts.truncate(TOP_ANALYSIS_SECTION_EFFORT_COUNT);
+fn analysis_section(
+    sampled_efforts: &[SampledAnalysisEffort],
+    reference_samples: &[SegmentAnalysisSample],
+    section_index: usize,
+    split_count: usize,
+) -> Option<(SegmentAnalysisSectionResponse, f64)> {
+    let reference_split_seconds =
+        split_seconds(reference_samples, section_index).unwrap_or_default();
+    let section_splits = analysis_section_splits(sampled_efforts, section_index);
+    let (best_effort, best_split_seconds) = best_analysis_section_split(&section_splits)?;
+    let section_efforts = analysis_section_efforts(
+        &section_splits,
+        reference_split_seconds,
+        best_split_seconds,
+        split_count,
+    );
+    let top_efforts = top_analysis_section_efforts(&section_efforts);
 
-        theoretical_best_duration_seconds += best_split_seconds;
-        sections.push(SegmentAnalysisSectionResponse {
+    Some((
+        SegmentAnalysisSectionResponse {
             section_index: section_index + 1,
             start_progress_percent: round_metric(section_index as f64 * 100.0 / split_count as f64),
             end_progress_percent: round_metric(
@@ -1573,32 +1600,75 @@ fn segment_effort_analysis_from_sources(
             gain_available_seconds: round_seconds(reference_split_seconds - best_split_seconds),
             top_efforts,
             efforts: section_efforts,
-        });
-    }
-
-    let theoretical_best_duration_seconds = round_seconds(theoretical_best_duration_seconds);
-
-    Ok(SegmentEffortAnalysisResponse {
-        segment_id,
-        segment_title,
-        split_count,
-        route_points,
-        reference_effort: SegmentAnalysisEffortSummaryResponse {
-            effort_id: reference_effort.effort_id,
-            activity_id: reference_effort.activity_id,
-            activity_title: reference_effort.activity_title,
-            activity_started_at: reference_effort.activity_started_at,
-            effort_index: reference_effort.effort_index,
-            duration_seconds: reference_effort.duration_seconds,
-            delta_from_reference_seconds: 0.0,
         },
-        efforts: summaries,
-        sections,
-        theoretical_best_duration_seconds,
-        theoretical_best_gain_seconds: round_seconds(
-            reference_effort.duration_seconds as f64 - theoretical_best_duration_seconds,
-        ),
-    })
+        best_split_seconds,
+    ))
+}
+
+fn analysis_section_splits(
+    sampled_efforts: &[SampledAnalysisEffort],
+    section_index: usize,
+) -> Vec<(&SegmentAnalysisEffortSource, f64)> {
+    sampled_efforts
+        .iter()
+        .filter_map(|sampled| {
+            split_seconds(&sampled.samples, section_index)
+                .map(|split_seconds| (&sampled.source, split_seconds))
+        })
+        .collect()
+}
+
+fn best_analysis_section_split<'a>(
+    section_splits: &'a [(&'a SegmentAnalysisEffortSource, f64)],
+) -> Option<(&'a SegmentAnalysisEffortSource, f64)> {
+    section_splits.iter().copied().min_by(
+        |(left_effort, left_seconds), (right_effort, right_seconds)| {
+            left_seconds
+                .total_cmp(right_seconds)
+                .then_with(|| left_effort.effort_id.cmp(&right_effort.effort_id))
+        },
+    )
+}
+
+fn analysis_section_efforts(
+    section_splits: &[(&SegmentAnalysisEffortSource, f64)],
+    reference_split_seconds: f64,
+    best_split_seconds: f64,
+    split_count: usize,
+) -> Vec<SegmentAnalysisSectionEffortResponse> {
+    section_splits
+        .iter()
+        .map(|(effort, split_seconds)| {
+            let average_speed_mps = section_distance_meters(effort, split_count)
+                .and_then(|distance| (*split_seconds > 0.0).then_some(distance / *split_seconds));
+
+            SegmentAnalysisSectionEffortResponse {
+                effort_id: effort.effort_id,
+                activity_id: effort.activity_id,
+                activity_title: effort.activity_title.clone(),
+                activity_started_at: effort.activity_started_at,
+                split_seconds: round_seconds(*split_seconds),
+                delta_from_reference_seconds: round_seconds(
+                    *split_seconds - reference_split_seconds,
+                ),
+                delta_from_best_seconds: round_seconds(*split_seconds - best_split_seconds),
+                average_speed_mps: average_speed_mps.map(round_metric),
+            }
+        })
+        .collect()
+}
+
+fn top_analysis_section_efforts(
+    section_efforts: &[SegmentAnalysisSectionEffortResponse],
+) -> Vec<SegmentAnalysisSectionEffortResponse> {
+    let mut top_efforts = section_efforts.to_vec();
+    top_efforts.sort_by(|left, right| {
+        left.split_seconds
+            .total_cmp(&right.split_seconds)
+            .then_with(|| left.effort_id.cmp(&right.effort_id))
+    });
+    top_efforts.truncate(TOP_ANALYSIS_SECTION_EFFORT_COUNT);
+    top_efforts
 }
 
 fn analysis_samples_for_effort(
@@ -1871,6 +1941,104 @@ fn sort_segment_rows_by_latest_activity_started_at(
             .then_with(|| right.created_at.cmp(&left.created_at))
             .then_with(|| right.id.cmp(&left.id))
     });
+}
+
+async fn load_segment_list_rows(
+    db: &sea_orm::DatabaseConnection,
+    user_id: i32,
+) -> Result<Vec<SegmentListRow>, AppError> {
+    Ok(segments::Entity::find()
+        .select_only()
+        .column(segments::Column::Id)
+        .column(segments::Column::Title)
+        .column(segments::Column::Source)
+        .column(segments::Column::Mode)
+        .column(segments::Column::Starred)
+        .column(segments::Column::OriginalFilename)
+        .column(segments::Column::Format)
+        .column(segments::Column::DistanceMeters)
+        .column(segments::Column::SourceActivityId)
+        .column(segments::Column::SourceStartRoutePointIndex)
+        .column(segments::Column::SourceEndRoutePointIndex)
+        .column(segments::Column::LastActivityChangeAt)
+        .column(segments::Column::CreatedAt)
+        .filter(segments::Column::UserId.eq(user_id))
+        .into_model::<SegmentListRow>()
+        .all(db)
+        .await?)
+}
+
+fn stale_list_segment_ids(
+    segment_rows: &[SegmentListRow],
+    summary_by_segment_id: &HashMap<i32, segment_summaries::Model>,
+    user_summary_by_segment_id: &HashMap<i32, segment_user_summaries::Model>,
+) -> Vec<i32> {
+    segment_rows
+        .iter()
+        .filter_map(|segment| {
+            let summary = summary_by_segment_id.get(&segment.id);
+            let user_summary = user_summary_by_segment_id.get(&segment.id);
+
+            match (summary, user_summary) {
+                (Some(summary), Some(user_summary))
+                    if summary.updated_at >= segment.last_activity_change_at
+                        && user_summary.updated_at >= segment.last_activity_change_at =>
+                {
+                    None
+                }
+                (Some(summary), None) if summary.updated_at >= segment.last_activity_change_at => {
+                    None
+                }
+                _ => Some(segment.id),
+            }
+        })
+        .collect()
+}
+
+fn segment_list_responses(
+    segment_rows: Vec<SegmentListRow>,
+    summary_by_segment_id: &HashMap<i32, segment_summaries::Model>,
+    user_summary_by_segment_id: &HashMap<i32, segment_user_summaries::Model>,
+) -> Vec<SegmentResponse> {
+    segment_rows
+        .into_iter()
+        .map(|segment| {
+            let summary = summary_by_segment_id.get(&segment.id);
+            let user_summary = user_summary_by_segment_id.get(&segment.id);
+            segment_list_response_from_row(segment, summary, user_summary)
+        })
+        .collect()
+}
+
+fn segment_list_response_from_row(
+    segment: SegmentListRow,
+    summary: Option<&segment_summaries::Model>,
+    user_summary: Option<&segment_user_summaries::Model>,
+) -> SegmentResponse {
+    SegmentResponse {
+        id: segment.id,
+        title: segment.title,
+        source: segment.source,
+        mode: SegmentMode::from_stored(&segment.mode),
+        starred: segment.starred,
+        original_filename: segment.original_filename,
+        format: segment.format,
+        distance_meters: segment.distance_meters,
+        effort_count: summary.map(|value| value.effort_count).unwrap_or_default(),
+        best_duration_seconds: summary.and_then(|value| value.best_duration_seconds),
+        current_user_pr_duration_seconds: user_summary
+            .and_then(|value| value.personal_best_duration_seconds),
+        created_at: segment.created_at,
+        processing_task_id: None,
+        processing_task_status: None,
+        builder_source: segment_builder_source_from_values(
+            segment.source_activity_id,
+            segment.source_start_route_point_index,
+            segment.source_end_route_point_index,
+        ),
+        route_points: Vec::new(),
+        efforts: Vec::new(),
+    }
 }
 
 async fn load_segment_summaries(

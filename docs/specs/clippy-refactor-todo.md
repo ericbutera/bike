@@ -67,23 +67,6 @@ Thresholds live in `clippy.toml`. Existing exceptions must stay local with a rea
 - `api/src/controllers/training_goals.rs`: `build_xc_race_results` allows `too_many_lines`.
   - Todo: extract race grouping and result row mapping.
 
-## Segment And Route Work
-
-- `api/src/segment_support.rs`: `find_best_match_for_first_passing_start` allows `too_many_arguments`.
-  - Todo: group segment route, activity route, endpoint anchors, profile, and candidate indices into a match context.
-- `api/src/segment_support.rs`: `find_best_match_across_starts` allows `too_many_arguments`.
-  - Todo: reuse the match context.
-- `api/src/segment_support.rs`: `find_best_match_for_start` allows `too_many_arguments`.
-  - Todo: reuse the match context plus a start candidate value.
-- `api/src/segment_support.rs`: `favorite_segment_fixtures_match_expected_activity_files` allows `too_many_lines`.
-  - Todo: move fixture cases to compact builders or table helpers.
-- `api/src/controllers/segments.rs`: `list_segments` allows `too_many_lines`.
-  - Todo: extract segment query, favorite lookup, and response mapping.
-- `api/src/controllers/segments.rs`: `create_segment_from_activity` allows `too_many_lines`.
-  - Todo: split source activity validation, route extraction, segment persistence, and response mapping.
-- `api/src/controllers/segments.rs`: `segment_effort_analysis_from_sources` allows `too_many_lines`.
-  - Todo: extract split construction, effort metrics, and response assembly.
-
 ## Route Tables, Admin, And Response Fixtures
 
 - `api/src/controllers/mod.rs`: `routes` allows `too_many_lines`.
