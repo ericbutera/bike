@@ -6,7 +6,6 @@ use kaleido::auth::{AuthRouteStorage, AuthStorage};
 use kaleido::background_jobs::admin::BackgroundTasksStorage;
 use kaleido::glass::feature_flags::{FeatureFlagService, FeatureFlagStorage};
 use kaleido::glass::metrics_controller::MetricsStorage;
-use migration::MigratorTrait;
 use sea_orm::DatabaseConnection;
 
 #[derive(Clone)]
@@ -23,10 +22,6 @@ impl AppStorage {
         let db = connect_database(database_url)
             .await
             .expect("DB connection failed");
-
-        migration::Migrator::up(&db, None)
-            .await
-            .expect("Migration failed");
 
         let tasks = TaskQueue::new(db.clone());
 

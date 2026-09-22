@@ -24,7 +24,7 @@ Treat Bike as a coordinated Rust application with two binaries, not as microserv
   - [x] Domain services/workflows move behind `bike-core` boundaries.
 - [ ] API is only the HTTP adapter.
 - [ ] Worker is only the task adapter.
-- [ ] Migrations run as an explicit release step, not implicitly from API startup.
+- [x] Migrations run as an explicit release step, not implicitly from API startup.
 - [ ] API and worker both enforce a startup schema guard.
 - [x] Durable task payload compatibility is covered by tests.
 - [ ] Architecture checks prevent `worker -> api` dependencies from returning.

@@ -15,21 +15,17 @@ else
   FALLBACK_DEPLOY_ALL=true
 fi
 
-API_TAG=""
-WORKER_TAG=""
+APP_TAG=""
 UI_TAG=""
 
-if [ "$MANUAL" = "manual" ] || [ "$FALLBACK_DEPLOY_ALL" = "true" ] || echo "$CHANGED" | grep -qE "^(api/|migration/|Cargo\.toml|Cargo\.lock|\.woodpecker/)"; then
-  API_TAG="${CI_COMMIT_SHA}"
-fi
-if [ "$MANUAL" = "manual" ] || [ "$FALLBACK_DEPLOY_ALL" = "true" ] || echo "$CHANGED" | grep -qE "^(api/|worker/|migration/|Cargo\.toml|Cargo\.lock|\.woodpecker/)"; then
-  WORKER_TAG="${CI_COMMIT_SHA}"
+if [ "$MANUAL" = "manual" ] || [ "$FALLBACK_DEPLOY_ALL" = "true" ] || echo "$CHANGED" | grep -qE "^(api/|worker/|bike-core/|migration/|Cargo\.toml|Cargo\.lock|\.woodpecker/)"; then
+  APP_TAG="${CI_COMMIT_SHA}"
 fi
 if [ "$MANUAL" = "manual" ] || [ "$FALLBACK_DEPLOY_ALL" = "true" ] || echo "$CHANGED" | grep -qE "^(ui-next/|\.woodpecker/)"; then
   UI_TAG="${CI_COMMIT_SHA}"
 fi
 
-if [ -z "$API_TAG" ] && [ -z "$WORKER_TAG" ] && [ -z "$UI_TAG" ]; then
+if [ -z "$APP_TAG" ] && [ -z "$UI_TAG" ]; then
   echo "No deployable changes detected, skipping deploy"
   exit 0
 fi
@@ -38,8 +34,7 @@ git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/${PULUMI_IAC_REPO}"
 cd /tmp/pulumi-iac/bike
 pulumi stack select ericbutera/bike/bike --non-interactive
 
-if [ -n "$API_TAG" ];    then pulumi config set bike:apiTag    "$API_TAG";    fi
-if [ -n "$WORKER_TAG" ]; then pulumi config set bike:workerTag "$WORKER_TAG"; fi
-if [ -n "$UI_TAG" ];     then pulumi config set bike:uiTag     "$UI_TAG";     fi
+if [ -n "$APP_TAG" ]; then pulumi config set bike:appTag "$APP_TAG"; fi
+if [ -n "$UI_TAG" ];  then pulumi config set bike:uiTag  "$UI_TAG";  fi
 
 pulumi up --yes --skip-preview

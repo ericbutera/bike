@@ -12,12 +12,13 @@ FROM chef AS builder
 COPY --from=planner /app/recipe.json recipe.json
 RUN cargo chef cook --locked --release --recipe-path recipe.json
 COPY . .
-RUN cargo build --locked --release --bin api --bin worker
+RUN cargo build --locked --release --bin api --bin worker --bin migration
 
 FROM debian:bookworm-slim
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/api /app/api
+COPY --from=builder /app/target/release/migration /app/migration
 USER nobody
 
 EXPOSE 3000

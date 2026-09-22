@@ -134,7 +134,6 @@ dependencies = [
  "hmac",
  "kaleido",
  "log",
- "migration",
  "once_cell",
  "opentelemetry",
  "opentelemetry-otlp",
