@@ -1,4 +1,4 @@
-use crate::activity_details::{
+use bike_core::activity_details::{
     deserialize_derived_activity_data, ActivityRoutePoint, StoredActivityDerivedData,
 };
 use once_cell::sync::Lazy;

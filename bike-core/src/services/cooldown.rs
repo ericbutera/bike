@@ -1,4 +1,4 @@
-use crate::app_error::AppError;
+use crate::errors::BikeCoreError;
 use kaleido::glass::cooldown::{
     BackoffStrategy as CooldownBackoffStrategy, CooldownService as SharedCooldownService,
 };
@@ -60,7 +60,7 @@ impl CooldownService {
         db: &DatabaseConnection,
         cooldown_type: CooldownType,
         subject_id: i32,
-    ) -> Result<CooldownLease, AppError> {
+    ) -> Result<CooldownLease, BikeCoreError> {
         SharedCooldownService::check_and_update(
             db,
             Self::subject_type(Some(subject_id)),
@@ -71,7 +71,7 @@ impl CooldownService {
             |retry_after| cooldown_type.message(retry_after),
         )
         .await
-        .map_err(AppError::from)?;
+        .map_err(BikeCoreError::from)?;
 
         Ok(CooldownLease {
             db: db.clone(),
@@ -90,7 +90,7 @@ pub struct CooldownLease {
 }
 
 impl CooldownLease {
-    pub async fn release(&mut self) -> Result<(), AppError> {
+    pub async fn release(&mut self) -> Result<(), BikeCoreError> {
         SharedCooldownService::reset(
             &self.db,
             CooldownService::subject_type(Some(self.subject_id)),
@@ -98,7 +98,7 @@ impl CooldownLease {
             self.cooldown_type.action(),
         )
         .await
-        .map_err(AppError::from)?;
+        .map_err(BikeCoreError::from)?;
         self.released = true;
         Ok(())
     }

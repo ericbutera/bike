@@ -3,7 +3,7 @@ use crate::activity_details::{
 };
 use crate::activity_parser::ParsedActivityData;
 use crate::activity_summary::ActivityDraft;
-use crate::app_error::AppError;
+use crate::workflow_error::WorkflowError as AppError;
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 

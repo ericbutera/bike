@@ -16,7 +16,6 @@ path = "src/lib.rs"
 workspace = true
 
 [dependencies]
-api = { path = "../api" }
 bike-core = { path = "../bike-core" }
 tokio = { workspace = true }
 tracing = { workspace = true }

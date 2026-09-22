@@ -1,27 +1,478 @@
-use crate::activity_details::{
+use crate::activity_data::{
     deserialize_derived_activity_data, ActivityChartPoint, ActivityRoutePoint,
 };
 use crate::activity_training_analysis::plausible_aerobic_decoupling_percent;
 use crate::activity_type::ActivityType;
-use crate::app_error::AppError;
-use crate::controllers::reports::*;
 use crate::entities::{
     activities, activity_training_analyses, fitness_freshness_daily, user_preferences,
 };
-use crate::storage::AppStorage;
-use crate::training_profile::deserialize_activity_heart_rate_zones;
+use crate::errors::BikeCoreError;
+use crate::training_data::deserialize_activity_heart_rate_zones;
 use chrono::{DateTime, Datelike, Duration, NaiveDate, TimeZone, Timelike, Utc};
-use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, Select};
+use sea_orm::{
+    ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Select,
+};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::time::Duration as StdDuration;
+use utoipa::{IntoParams, ToSchema};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ReportId {
+    RideSummary,
+    Endurance,
+    Climbing,
+    Fatigue,
+    CompareRides,
+    Reassessment,
+    Distance,
+    Elevation,
+    ActivityTypeTime,
+    AggregateTrends,
+}
+
+impl ReportId {
+    pub(crate) fn is_aggregate_bucket_report(self) -> bool {
+        matches!(
+            self,
+            Self::Distance | Self::Elevation | Self::ActivityTypeTime | Self::AggregateTrends
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ReportFilterKey {
+    ActivityIds,
+    MinDuration,
+    MinDistance,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ReportMetricDirection {
+    Higher,
+    Lower,
+    Neutral,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ReportBoundary {
+    Day,
+    Week,
+    Month,
+    #[serde(rename = "3month")]
+    ThreeMonth,
+    #[serde(rename = "6month")]
+    SixMonth,
+    #[serde(rename = "1year")]
+    OneYear,
+    #[serde(rename = "2year")]
+    TwoYear,
+    #[serde(rename = "3year")]
+    ThreeYear,
+    #[serde(rename = "5year")]
+    FiveYear,
+    All,
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct TrainingReportsQuery {
+    pub boundary: Option<ReportBoundary>,
+    pub report: Option<String>,
+    pub start_date: Option<NaiveDate>,
+    pub end_date: Option<NaiveDate>,
+    pub activity_ids: Option<String>,
+    pub min_duration_seconds: Option<i32>,
+    pub min_distance_meters: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct TrainingReportDefinitionsResponse {
+    pub reports: Vec<TrainingReportDefinitionResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct TrainingReportDefinitionResponse {
+    pub id: ReportId,
+    pub display_name: String,
+    pub short_purpose: String,
+    pub supported_filters: Vec<ReportFilterKey>,
+    pub required_data_quality: Vec<String>,
+    pub result_sections: Vec<String>,
+    pub metrics: Vec<TrainingReportMetricDefinitionResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct TrainingReportMetricDefinitionResponse {
+    pub key: String,
+    pub label: String,
+    pub unit: Option<String>,
+    pub direction: ReportMetricDirection,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct TrainingReportPointResponse {
+    pub bucket_start: String,
+    pub bucket_end: String,
+    pub distance_meters: f64,
+    pub distance_miles: f64,
+    pub z2_average_speed_mps: Option<f64>,
+    pub average_aerobic_decoupling_percent: Option<f64>,
+    pub climbing_pace_feet_per_week: Option<f64>,
+    pub climbing_vertical_rate_feet_per_hour: Option<f64>,
+    pub z1_seconds: i32,
+    pub z2_seconds: i32,
+    pub z3_seconds: i32,
+    pub z4_seconds: i32,
+    pub z5_seconds: i32,
+    pub elevation_gain_meters: f64,
+    pub elevation_gain_feet: f64,
+    pub activity_type_times: Vec<ActivityTypeTimeResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ActivityTypeTimeResponse {
+    pub activity_type: ActivityType,
+    pub seconds: i32,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct TrainingReportsResponse {
+    pub generated_at: DateTime<Utc>,
+    pub boundary: ReportBoundary,
+    pub range_start: String,
+    pub range_end: String,
+    pub points: Vec<TrainingReportPointResponse>,
+    pub ride_summary: Option<RideSummaryReportResponse>,
+    pub endurance: Option<EnduranceReportResponse>,
+    pub climbing: Option<ClimbingReportResponse>,
+    pub fatigue: Option<FatigueReportResponse>,
+    pub compare_rides: Option<CompareRidesReportResponse>,
+    pub reassessment: Option<ReassessmentReportResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ReassessmentReportResponse {
+    pub verdict: ReassessmentVerdict,
+    pub verdict_title: String,
+    pub verdict_detail: String,
+    pub target: ReassessmentTargetResponse,
+    pub ability_estimate: ReassessmentAbilityEstimateResponse,
+    pub recent_window: ReassessmentWindowResponse,
+    pub spring_baseline_window: ReassessmentWindowResponse,
+    pub improvement: ReassessmentImprovementResponse,
+    pub endurance_progression: ReassessmentSignalResponse,
+    pub climbing_density: ReassessmentSignalResponse,
+    pub long_ride_pace: ReassessmentSignalResponse,
+    pub fitness_delta: ReassessmentSignalResponse,
+    pub benchmark_rides: Vec<ReassessmentBenchmarkRideResponse>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ReassessmentVerdict {
+    OnTrack,
+    PlausibleButRisky,
+    NeedsMoreEvidence,
+    MissingData,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ReassessmentTargetResponse {
+    pub event_name: String,
+    pub target_source: ReassessmentTargetSource,
+    pub target_source_detail: String,
+    pub target_date: Option<String>,
+    pub event_profile: Option<String>,
+    pub target_finish_seconds: Option<i32>,
+    pub target_distance_meters: Option<f64>,
+    pub target_elevation_gain_meters: Option<f64>,
+    pub target_speed_mps: Option<f64>,
+    pub target_speed_mph: Option<f64>,
+    pub target_climb_density_feet_per_hour: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ReassessmentAbilityEstimateResponse {
+    pub estimated_finish_seconds: Option<i32>,
+    pub estimated_speed_mph: Option<f64>,
+    pub pace_limited_finish_seconds: Option<i32>,
+    pub climbing_limited_finish_seconds: Option<i32>,
+    pub current_long_ride_speed_mph: Option<f64>,
+    pub current_climb_density_feet_per_hour: Option<f64>,
+    pub limiter: Option<String>,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ReassessmentTargetSource {
+    SavedGoal,
+    MissingGoal,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ReassessmentWindowResponse {
+    pub label: String,
+    pub start_date: String,
+    pub end_date: String,
+    pub activity_count: i32,
+    pub long_ride_count: i32,
+    pub total_distance_miles: f64,
+    pub total_elevation_gain_feet: f64,
+    pub best_long_ride_distance_miles: Option<f64>,
+    pub best_long_ride_duration_seconds: Option<i32>,
+    pub best_long_ride_speed_mph: Option<f64>,
+    pub best_long_ride_climbing_density_feet_per_hour: Option<f64>,
+    pub aggregate_long_ride_climbing_density_feet_per_hour: Option<f64>,
+    pub median_long_ride_decoupling_percent: Option<f64>,
+    pub median_long_ride_late_speed_change_percent: Option<f64>,
+    pub median_long_ride_fatigue_index: Option<f64>,
+    pub average_fitness: Option<f64>,
+    pub latest_fitness: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ReassessmentImprovementResponse {
+    pub fitness_change: Option<f64>,
+    pub fitness_change_percent: Option<f64>,
+    pub long_ride_speed_change_mph: Option<f64>,
+    pub long_ride_speed_change_percent: Option<f64>,
+    pub long_ride_distance_change_miles: Option<f64>,
+    pub long_ride_distance_change_percent: Option<f64>,
+    pub climbing_density_change_feet_per_hour: Option<f64>,
+    pub climbing_density_change_percent: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ReassessmentSignalResponse {
+    pub status: ReassessmentVerdict,
+    pub title: String,
+    pub detail: String,
+    pub current_value: Option<f64>,
+    pub projected_current_value: Option<f64>,
+    pub baseline_value: Option<f64>,
+    pub target_value: Option<f64>,
+    pub unit: String,
+    pub current_source_activity_id: Option<i32>,
+    pub current_source_title: Option<String>,
+    pub current_source_started_at: Option<DateTime<Utc>>,
+    pub last_known_value: Option<f64>,
+    pub last_known_source_activity_id: Option<i32>,
+    pub last_known_source_title: Option<String>,
+    pub last_known_source_started_at: Option<DateTime<Utc>>,
+    pub last_known_days_old: Option<i64>,
+    pub projection_detail: Option<String>,
+    pub baseline_source_activity_id: Option<i32>,
+    pub baseline_source_title: Option<String>,
+    pub baseline_source_started_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ReassessmentBenchmarkRideResponse {
+    pub activity_id: i32,
+    pub title: String,
+    pub started_at: DateTime<Utc>,
+    pub distance_miles: Option<f64>,
+    pub elevation_gain_feet: Option<f64>,
+    pub elapsed_seconds: i32,
+    pub moving_seconds: Option<i32>,
+    pub elapsed_speed_mph: Option<f64>,
+    pub moving_speed_mph: Option<f64>,
+    pub climbing_density_feet_per_hour: Option<f64>,
+    pub aerobic_decoupling_percent: Option<f64>,
+    pub late_speed_change_percent: Option<f64>,
+    pub fatigue_index: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct RideSummaryReportResponse {
+    pub activity_count: i32,
+    pub total_distance_meters: f64,
+    pub total_distance_miles: f64,
+    pub total_elevation_gain_meters: f64,
+    pub total_elevation_gain_feet: f64,
+    pub total_elapsed_seconds: i32,
+    pub total_moving_seconds: i32,
+    pub total_stopped_seconds: i32,
+    pub average_speed_mps: Option<f64>,
+    pub average_speed_mph: Option<f64>,
+    pub average_heart_rate_bpm: Option<f64>,
+    pub max_heart_rate_bpm: Option<i32>,
+    pub climbing_density_feet_per_hour: Option<f64>,
+    pub z1_seconds: i32,
+    pub z2_seconds: i32,
+    pub z3_seconds: i32,
+    pub z4_seconds: i32,
+    pub z5_seconds: i32,
+    pub data_quality_flags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct EnduranceReportResponse {
+    pub activity_count: i32,
+    pub median_aerobic_decoupling_percent: Option<f64>,
+    pub median_late_speed_change_percent: Option<f64>,
+    pub median_fatigue_index: Option<f64>,
+    pub rides: Vec<EnduranceRideResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct EnduranceRideResponse {
+    pub activity_id: i32,
+    pub title: String,
+    pub started_at: DateTime<Utc>,
+    pub elapsed_seconds: i32,
+    pub first_half_efficiency_mps_per_bpm: Option<f64>,
+    pub second_half_efficiency_mps_per_bpm: Option<f64>,
+    pub aerobic_decoupling_percent: Option<f64>,
+    pub late_speed_change_percent: Option<f64>,
+    pub late_heart_rate_change_percent: Option<f64>,
+    pub fatigue_index: Option<f64>,
+    pub hourly: Vec<HourlyDurabilityResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct FatigueReportResponse {
+    pub activity_count: i32,
+    pub rides: Vec<FatigueRideResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct FatigueRideResponse {
+    pub activity_id: i32,
+    pub title: String,
+    pub started_at: DateTime<Utc>,
+    pub elapsed_seconds: i32,
+    pub fatigue_start_hour: Option<i32>,
+    pub worst_fatigue_index: Option<f64>,
+    pub hourly: Vec<HourlyDurabilityResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct HourlyDurabilityResponse {
+    pub hour: i32,
+    pub elapsed_start_seconds: i32,
+    pub elapsed_end_seconds: i32,
+    pub distance_meters: Option<f64>,
+    pub average_speed_mps: Option<f64>,
+    pub average_heart_rate_bpm: Option<f64>,
+    pub max_heart_rate_bpm: Option<i32>,
+    pub ascent_meters: f64,
+    pub climb_rate_meters_per_hour: Option<f64>,
+    pub moving_seconds: i32,
+    pub stopped_seconds: i32,
+    pub stop_count: i32,
+    pub stop_frequency_per_hour: f64,
+    pub efficiency_mps_per_bpm: Option<f64>,
+    pub fatigue_index: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ClimbingReportResponse {
+    pub activity_count: i32,
+    pub climb_count: i32,
+    pub longest_climb: Option<ClimbResponse>,
+    pub fastest_vertical_rate: Option<ClimbResponse>,
+    pub median_climb: Option<ClimbResponse>,
+    pub percentile_95_climb: Option<ClimbResponse>,
+    pub first_half_median: Option<ClimbResponse>,
+    pub second_half_median: Option<ClimbResponse>,
+    pub best_climb: Option<ClimbResponse>,
+    pub worst_climb: Option<ClimbResponse>,
+    pub climbs: Vec<ClimbResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ClimbResponse {
+    pub activity_id: i32,
+    pub activity_title: String,
+    pub climb_number: i32,
+    pub start_seconds: i32,
+    pub summit_seconds: i32,
+    pub duration_seconds: i32,
+    pub distance_meters: f64,
+    pub gain_meters: f64,
+    pub average_grade_percent: Option<f64>,
+    pub vertical_rate_meters_per_hour: f64,
+    pub average_speed_mps: Option<f64>,
+    pub average_heart_rate_bpm: Option<f64>,
+    pub peak_heart_rate_bpm: Option<i32>,
+    pub average_cadence_rpm: Option<f64>,
+    pub average_power_watts: Option<f64>,
+    pub heart_rate_recovery_30_seconds_bpm: Option<i32>,
+    pub heart_rate_recovery_60_seconds_bpm: Option<i32>,
+    pub seconds_to_drop_10_bpm: Option<i32>,
+    pub seconds_to_drop_15_bpm: Option<i32>,
+    pub summit_immediately_enters_descent: bool,
+    pub first_or_second_half: String,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct CompareRidesReportResponse {
+    pub candidates: Vec<CompareRideCandidateResponse>,
+    pub selected_rides: Vec<CompareRideColumnResponse>,
+    pub metrics: Vec<CompareRideMetricResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct CompareRideCandidateResponse {
+    pub activity_id: i32,
+    pub title: String,
+    pub started_at: DateTime<Utc>,
+    pub distance_meters: Option<f64>,
+    pub elevation_gain_meters: Option<f64>,
+    pub moving_time_seconds: Option<i32>,
+    pub total_time_seconds: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct CompareRideColumnResponse {
+    pub activity_id: i32,
+    pub title: String,
+    pub started_at: DateTime<Utc>,
+    pub distance_meters: Option<f64>,
+    pub elevation_gain_meters: Option<f64>,
+    pub elapsed_seconds: i32,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct CompareRideMetricResponse {
+    pub key: String,
+    pub label: String,
+    pub unit: Option<String>,
+    pub direction: String,
+    pub trend: Option<CompareRideMetricTrendResponse>,
+    pub values: Vec<CompareRideMetricValueResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct CompareRideMetricTrendResponse {
+    pub first_activity_id: i32,
+    pub latest_activity_id: i32,
+    pub change: Option<f64>,
+    pub change_percent: Option<f64>,
+    pub display: String,
+    pub interpretation: String,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct CompareRideMetricValueResponse {
+    pub activity_id: i32,
+    pub value: Option<f64>,
+    pub display: String,
+}
 
 const FEET_PER_METER: f64 = 3.28084;
 const AGGREGATE_REPORT_BUILD_TIMEOUT: StdDuration = StdDuration::from_secs(20);
 
 pub struct PreparedTrainingReportRequest {
     pub user_id: i32,
-    pub state: Arc<AppStorage>,
+    pub db: DatabaseConnection,
     pub query: TrainingReportsQuery,
     pub now: DateTime<Utc>,
 }
@@ -43,7 +494,7 @@ impl ReportsService {
 
     pub fn prepare_training_report_request(
         request: PreparedTrainingReportRequest,
-    ) -> Result<TrainingReportPreparedRequest, AppError> {
+    ) -> Result<TrainingReportPreparedRequest, BikeCoreError> {
         let boundary = request.query.boundary.unwrap_or(ReportBoundary::Month);
         let (range_start, range_end) = report_range(boundary, request.now, &request.query)?;
         let report_id = parse_report_id(request.query.report.as_deref())?;
@@ -52,7 +503,7 @@ impl ReportsService {
         Ok(TrainingReportPreparedRequest {
             context: TrainingReportBuildContext {
                 user_id: request.user_id,
-                state: request.state,
+                db: request.db,
                 boundary,
                 now: request.now,
                 range_start,
@@ -65,7 +516,7 @@ impl ReportsService {
 
     pub async fn build_training_report(
         request: TrainingReportPreparedRequest,
-    ) -> Result<TrainingReportsResponse, AppError> {
+    ) -> Result<TrainingReportsResponse, BikeCoreError> {
         build_training_reports(request.context, request.report_id, request.query).await
     }
 }
@@ -346,7 +797,7 @@ impl BucketAccumulator {
 
 struct TrainingReportBuildContext {
     user_id: i32,
-    state: Arc<AppStorage>,
+    db: DatabaseConnection,
     boundary: ReportBoundary,
     now: DateTime<Utc>,
     range_start: DateTime<Utc>,
@@ -392,7 +843,7 @@ async fn build_training_reports(
     context: TrainingReportBuildContext,
     report_id: ReportId,
     query: TrainingReportsQuery,
-) -> Result<TrainingReportsResponse, AppError> {
+) -> Result<TrainingReportsResponse, BikeCoreError> {
     if report_id.is_aggregate_bucket_report() {
         return get_aggregate_training_reports(context, query).await;
     }
@@ -405,7 +856,7 @@ async fn build_training_reports(
             .filter(activities::Column::StartedAt.lte(context.range_end)),
         &query,
     )
-    .all(&context.state.db)
+    .all(&context.db)
     .await?;
 
     match report_id {
@@ -429,13 +880,13 @@ async fn build_training_reports(
 async fn get_aggregate_training_reports(
     context: TrainingReportBuildContext,
     query: TrainingReportsQuery,
-) -> Result<TrainingReportsResponse, AppError> {
+) -> Result<TrainingReportsResponse, BikeCoreError> {
     let response = tokio::time::timeout(
         AGGREGATE_REPORT_BUILD_TIMEOUT,
         build_aggregate_training_reports(context, &query),
     )
     .await
-    .map_err(|_| AppError::internal("Report generation timed out"))??;
+    .map_err(|_| BikeCoreError::internal("Report generation timed out"))??;
     Ok(response)
 }
 
@@ -480,7 +931,7 @@ async fn compare_rides_response(
     context: &TrainingReportBuildContext,
     query: &TrainingReportsQuery,
     candidates: &[activities::Model],
-) -> Result<TrainingReportsResponse, AppError> {
+) -> Result<TrainingReportsResponse, BikeCoreError> {
     let selected_ids = parse_activity_ids(query.activity_ids.as_deref())?;
     let selected_models = if selected_ids.is_empty() {
         Vec::new()
@@ -491,7 +942,7 @@ async fn compare_rides_response(
                 .filter(activities::Column::Id.is_in(selected_ids)),
             query,
         )
-        .all(&context.state.db)
+        .all(&context.db)
         .await?
     };
 
@@ -503,15 +954,14 @@ async fn compare_rides_response(
 async fn reassessment_response(
     context: &TrainingReportBuildContext,
     query: &TrainingReportsQuery,
-) -> Result<TrainingReportsResponse, AppError> {
+) -> Result<TrainingReportsResponse, BikeCoreError> {
     let preferences = user_preferences::Entity::find()
         .filter(user_preferences::Column::UserId.eq(context.user_id))
-        .one(&context.state.db)
+        .one(&context.db)
         .await?;
     let range = reassessment_analysis_range(context, preferences.as_ref())?;
     let activities = load_reassessment_activities(context, query, &range).await?;
-    let fitness_rows =
-        load_reassessment_fitness_rows(context.user_id, &context.state, &range).await?;
+    let fitness_rows = load_reassessment_fitness_rows(context.user_id, &context.db, &range).await?;
     let mut response = TrainingReportEnvelope {
         generated_at: context.now,
         boundary: context.boundary,
@@ -540,7 +990,7 @@ struct ReassessmentAnalysisRange {
 fn reassessment_analysis_range(
     context: &TrainingReportBuildContext,
     preferences: Option<&user_preferences::Model>,
-) -> Result<ReassessmentAnalysisRange, AppError> {
+) -> Result<ReassessmentAnalysisRange, BikeCoreError> {
     let reassessment_end = make_utc_datetime(
         context.now.date_naive().year(),
         context.now.date_naive().month(),
@@ -569,14 +1019,14 @@ fn reassessment_analysis_range(
     })
 }
 
-fn spring_baseline_start(range_end: NaiveDate) -> Result<DateTime<Utc>, AppError> {
+fn spring_baseline_start(range_end: NaiveDate) -> Result<DateTime<Utc>, BikeCoreError> {
     let spring_year = if range_end.month() < 6 {
         range_end.year() - 1
     } else {
         range_end.year()
     };
     let spring_start_date = NaiveDate::from_ymd_opt(spring_year, 3, 1)
-        .ok_or_else(|| AppError::bad_request("Invalid spring baseline date"))?;
+        .ok_or_else(|| BikeCoreError::bad_request("Invalid spring baseline date"))?;
 
     make_utc_datetime(
         spring_start_date.year(),
@@ -592,7 +1042,7 @@ async fn load_reassessment_activities(
     context: &TrainingReportBuildContext,
     query: &TrainingReportsQuery,
     range: &ReassessmentAnalysisRange,
-) -> Result<Vec<activities::Model>, AppError> {
+) -> Result<Vec<activities::Model>, BikeCoreError> {
     filter_activities(
         activities::Entity::find()
             .filter(activities::Column::UserId.eq(context.user_id))
@@ -600,30 +1050,30 @@ async fn load_reassessment_activities(
             .filter(activities::Column::StartedAt.lte(range.reassessment_end)),
         query,
     )
-    .all(&context.state.db)
+    .all(&context.db)
     .await
-    .map_err(AppError::from)
+    .map_err(BikeCoreError::from)
 }
 
 async fn load_reassessment_fitness_rows(
     user_id: i32,
-    state: &AppStorage,
+    db: &DatabaseConnection,
     range: &ReassessmentAnalysisRange,
-) -> Result<Vec<fitness_freshness_daily::Model>, AppError> {
+) -> Result<Vec<fitness_freshness_daily::Model>, BikeCoreError> {
     fitness_freshness_daily::Entity::find()
         .filter(fitness_freshness_daily::Column::UserId.eq(user_id))
         .filter(fitness_freshness_daily::Column::Day.gte(range.analysis_start.date_naive()))
         .filter(fitness_freshness_daily::Column::Day.lte(range.reassessment_end.date_naive()))
         .order_by_asc(fitness_freshness_daily::Column::Day)
-        .all(&state.db)
+        .all(db)
         .await
-        .map_err(AppError::from)
+        .map_err(BikeCoreError::from)
 }
 
 async fn build_aggregate_training_reports(
     context: TrainingReportBuildContext,
     query: &TrainingReportsQuery,
-) -> Result<TrainingReportsResponse, AppError> {
+) -> Result<TrainingReportsResponse, BikeCoreError> {
     let activities = load_report_activities(&context, query).await?;
     let analysis_by_activity = load_report_training_analysis(&context, &activities).await?;
     let buckets = aggregate_report_buckets(&context, &activities, &analysis_by_activity)?;
@@ -648,7 +1098,7 @@ async fn build_aggregate_training_reports(
 async fn load_report_activities(
     context: &TrainingReportBuildContext,
     query: &TrainingReportsQuery,
-) -> Result<Vec<activities::Model>, AppError> {
+) -> Result<Vec<activities::Model>, BikeCoreError> {
     filter_activities(
         activities::Entity::find()
             .filter(activities::Column::UserId.eq(context.user_id))
@@ -656,15 +1106,15 @@ async fn load_report_activities(
             .filter(activities::Column::StartedAt.lte(context.range_end)),
         query,
     )
-    .all(&context.state.db)
+    .all(&context.db)
     .await
-    .map_err(AppError::from)
+    .map_err(BikeCoreError::from)
 }
 
 async fn load_report_training_analysis(
     context: &TrainingReportBuildContext,
     activities: &[activities::Model],
-) -> Result<HashMap<i32, activity_training_analyses::Model>, AppError> {
+) -> Result<HashMap<i32, activity_training_analyses::Model>, BikeCoreError> {
     let activity_ids = activities
         .iter()
         .map(|activity| activity.id)
@@ -676,7 +1126,7 @@ async fn load_report_training_analysis(
     Ok(activity_training_analyses::Entity::find()
         .filter(activity_training_analyses::Column::UserId.eq(context.user_id))
         .filter(activity_training_analyses::Column::ActivityId.is_in(activity_ids))
-        .all(&context.state.db)
+        .all(&context.db)
         .await?
         .into_iter()
         .map(|analysis| (analysis.activity_id, analysis))
@@ -687,7 +1137,7 @@ fn aggregate_report_buckets(
     context: &TrainingReportBuildContext,
     activities: &[activities::Model],
     analysis_by_activity: &HashMap<i32, activity_training_analyses::Model>,
-) -> Result<HashMap<DateTime<Utc>, BucketAccumulator>, AppError> {
+) -> Result<HashMap<DateTime<Utc>, BucketAccumulator>, BikeCoreError> {
     let mut buckets = HashMap::<DateTime<Utc>, BucketAccumulator>::new();
     for activity in activities {
         let bucket_start = context.boundary.bucket_start(activity.started_at)?;
@@ -723,7 +1173,7 @@ fn aggregate_report_points(
     context: &TrainingReportBuildContext,
     effective_range_start: DateTime<Utc>,
     buckets: &HashMap<DateTime<Utc>, BucketAccumulator>,
-) -> Result<Vec<TrainingReportPointResponse>, AppError> {
+) -> Result<Vec<TrainingReportPointResponse>, BikeCoreError> {
     let mut points = Vec::new();
     let mut cursor = context.boundary.bucket_start(effective_range_start)?;
     while cursor <= context.range_end {
@@ -1181,7 +1631,7 @@ fn metric_definition(
     }
 }
 
-fn parse_report_id(raw: Option<&str>) -> Result<ReportId, AppError> {
+fn parse_report_id(raw: Option<&str>) -> Result<ReportId, BikeCoreError> {
     match raw {
         None | Some("") | Some("aggregate_trends") => Ok(ReportId::AggregateTrends),
         Some("ride_summary") => Ok(ReportId::RideSummary),
@@ -1193,16 +1643,16 @@ fn parse_report_id(raw: Option<&str>) -> Result<ReportId, AppError> {
         Some("distance") => Ok(ReportId::Distance),
         Some("elevation") => Ok(ReportId::Elevation),
         Some("activity_type_time") => Ok(ReportId::ActivityTypeTime),
-        Some(_) => Err(AppError::bad_request("Unknown report id")),
+        Some(_) => Err(BikeCoreError::bad_request("Unknown report id")),
     }
 }
 
-fn validate_report_filters(query: &TrainingReportsQuery) -> Result<(), AppError> {
+fn validate_report_filters(query: &TrainingReportsQuery) -> Result<(), BikeCoreError> {
     if query
         .min_duration_seconds
         .is_some_and(|seconds| seconds < 0)
     {
-        return Err(AppError::bad_request(
+        return Err(BikeCoreError::bad_request(
             "min_duration_seconds must be greater than or equal to zero",
         ));
     }
@@ -1211,7 +1661,7 @@ fn validate_report_filters(query: &TrainingReportsQuery) -> Result<(), AppError>
         .min_distance_meters
         .is_some_and(|meters| meters < 0.0 || !meters.is_finite())
     {
-        return Err(AppError::bad_request(
+        return Err(BikeCoreError::bad_request(
             "min_distance_meters must be a finite non-negative number",
         ));
     }
@@ -1245,7 +1695,7 @@ fn filter_activities(
     query_builder
 }
 
-fn parse_activity_ids(raw: Option<&str>) -> Result<Vec<i32>, AppError> {
+fn parse_activity_ids(raw: Option<&str>) -> Result<Vec<i32>, BikeCoreError> {
     let Some(raw) = raw else {
         return Ok(Vec::new());
     };
@@ -1255,11 +1705,11 @@ fn parse_activity_ids(raw: Option<&str>) -> Result<Vec<i32>, AppError> {
         .map(str::trim)
         .filter(|part| !part.is_empty())
     {
-        let id = part
-            .parse::<i32>()
-            .map_err(|_| AppError::bad_request("activity_ids must be comma-separated integers"))?;
+        let id = part.parse::<i32>().map_err(|_| {
+            BikeCoreError::bad_request("activity_ids must be comma-separated integers")
+        })?;
         if id <= 0 {
-            return Err(AppError::bad_request(
+            return Err(BikeCoreError::bad_request(
                 "activity_ids must be positive integers",
             ));
         }
@@ -1289,7 +1739,7 @@ fn report_range(
     boundary: ReportBoundary,
     now: DateTime<Utc>,
     query: &TrainingReportsQuery,
-) -> Result<(DateTime<Utc>, DateTime<Utc>), AppError> {
+) -> Result<(DateTime<Utc>, DateTime<Utc>), BikeCoreError> {
     let range_start = match query.start_date {
         Some(date) => make_utc_datetime(date.year(), date.month(), date.day(), 0, 0, 0)?,
         None if boundary == ReportBoundary::All => make_utc_datetime(1970, 1, 1, 0, 0, 0)?,
@@ -1301,7 +1751,9 @@ fn report_range(
     };
 
     if range_start > range_end {
-        return Err(AppError::bad_request("start_date must be before end_date"));
+        return Err(BikeCoreError::bad_request(
+            "start_date must be before end_date",
+        ));
     }
 
     Ok((range_start, range_end))
@@ -3768,7 +4220,7 @@ impl ReportBoundary {
         }
     }
 
-    fn bucket_start(self, value: DateTime<Utc>) -> Result<DateTime<Utc>, AppError> {
+    fn bucket_start(self, value: DateTime<Utc>) -> Result<DateTime<Utc>, BikeCoreError> {
         match self {
             Self::Day => {
                 make_utc_datetime(value.year(), value.month(), value.day(), value.hour(), 0, 0)
@@ -3791,7 +4243,7 @@ impl ReportBoundary {
         }
     }
 
-    fn next_bucket_start(self, value: DateTime<Utc>) -> Result<DateTime<Utc>, AppError> {
+    fn next_bucket_start(self, value: DateTime<Utc>) -> Result<DateTime<Utc>, BikeCoreError> {
         match self {
             Self::Day => Ok(value + Duration::hours(1)),
             Self::Week | Self::Month => Ok(value + Duration::days(1)),
@@ -3819,10 +4271,10 @@ fn make_utc_datetime(
     hour: u32,
     minute: u32,
     second: u32,
-) -> Result<DateTime<Utc>, AppError> {
+) -> Result<DateTime<Utc>, BikeCoreError> {
     Utc.with_ymd_and_hms(year, month, day, hour, minute, second)
         .single()
-        .ok_or_else(|| AppError::bad_request("Invalid boundary date"))
+        .ok_or_else(|| BikeCoreError::bad_request("Invalid boundary date"))
 }
 
 fn average_or_none(sum: f64, count: i32) -> Option<f64> {
@@ -3840,10 +4292,8 @@ fn round_metric(value: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::activity_details::{serialize_derived_activity_data, ActivityDerivedData};
-    use crate::training_profile::{
-        serialize_activity_heart_rate_zones, ActivityHeartRateZoneSummary,
-    };
+    use crate::activity_data::{serialize_derived_activity_data, ActivityDerivedData};
+    use crate::training_data::{serialize_activity_heart_rate_zones, ActivityHeartRateZoneSummary};
 
     fn test_activity() -> activities::Model {
         let now = Utc::now();
@@ -3913,34 +4363,30 @@ mod tests {
                 duration_seconds: moving_time_seconds,
                 share_percent: 100.0,
             },
-        ])
-        .unwrap();
-        activity.derived_data_json = Some(
-            serialize_derived_activity_data(&ActivityDerivedData {
-                chart_points: vec![
-                    ActivityChartPoint {
-                        elapsed_seconds: 0,
-                        distance_meters: Some(0.0),
-                        elevation_meters: Some(100.0),
-                        speed_mps: None,
-                        heart_rate_bpm: Some(130),
-                        cadence_rpm: None,
-                        power_watts: None,
-                    },
-                    ActivityChartPoint {
-                        elapsed_seconds: moving_time_seconds,
-                        distance_meters: Some(z2_distance_meters),
-                        elevation_meters: Some(100.0),
-                        speed_mps: None,
-                        heart_rate_bpm: Some(130),
-                        cadence_rpm: None,
-                        power_watts: None,
-                    },
-                ],
-                ..ActivityDerivedData::default()
-            })
-            .unwrap(),
-        );
+        ]);
+        activity.derived_data_json = Some(serialize_derived_activity_data(&ActivityDerivedData {
+            chart_points: vec![
+                ActivityChartPoint {
+                    elapsed_seconds: 0,
+                    distance_meters: Some(0.0),
+                    elevation_meters: Some(100.0),
+                    speed_mps: None,
+                    heart_rate_bpm: Some(130),
+                    cadence_rpm: None,
+                    power_watts: None,
+                },
+                ActivityChartPoint {
+                    elapsed_seconds: moving_time_seconds,
+                    distance_meters: Some(z2_distance_meters),
+                    elevation_meters: Some(100.0),
+                    speed_mps: None,
+                    heart_rate_bpm: Some(130),
+                    cadence_rpm: None,
+                    power_watts: None,
+                },
+            ],
+            ..ActivityDerivedData::default()
+        }));
         activity
     }
 

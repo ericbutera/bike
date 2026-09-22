@@ -1,5 +1,5 @@
-use crate::app_error::AppError;
 use crate::fit_support::parse_fit_activity;
+use crate::workflow_error::WorkflowError as AppError;
 use chrono::{DateTime, Duration, Utc};
 use roxmltree::{Document, Node};
 use std::path::Path;
@@ -844,7 +844,7 @@ mod tests {
 
     #[test]
     fn summarizes_fit_uploads_into_activity_metrics() {
-        let fit = include_bytes!("../tests/fixtures/activity.fit");
+        let fit = include_bytes!("../../api/tests/fixtures/activity.fit");
         let summary = summarize_activity_upload("activity.fit", "fit", fit).expect("fit summary");
 
         assert_eq!(summary.title, "Activity");

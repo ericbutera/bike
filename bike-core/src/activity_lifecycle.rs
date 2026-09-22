@@ -1,8 +1,7 @@
 use crate::activity_details::ActivityRoutePoint;
 use crate::activity_import_lock::{
-    ensure_user_activity_import_lock_stage, mark_user_activity_import_lock_stage,
-    release_user_activity_import_lock, ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING,
-    ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
+    ensure_user_activity_import_lock_stage, release_user_activity_import_lock,
+    ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
 };
 use crate::activity_import_pipeline::{
     finalize_activity_import_batch, mark_activity_import_failed,
@@ -18,16 +17,16 @@ use crate::analytics::{
     mark_segment_activity_changes, mark_user_activity_change, mark_user_fitness_dirty,
 };
 use crate::analytics::{rebuild_activity_analytics_cache, rebuild_segment_analytics_cache};
-use crate::app_error::AppError;
 use crate::dedupe::{activity_duplicate_candidate_key, activity_models_match_for_dedupe};
 use crate::entities::{
     activities, activity_analytics, activity_imports, activity_training_analyses, segment_efforts,
 };
+use crate::jobs::JobQueue as TaskQueue;
 use crate::segment_support::{
     clear_segment_efforts_for_activity, replace_segment_efforts_for_activity,
 };
-use crate::tasks::TaskQueue;
 use crate::training_profile::{load_training_profile, TrainingProfile};
+use crate::workflow_error::WorkflowError as AppError;
 use chrono::{NaiveDate, Utc};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
@@ -527,57 +526,18 @@ pub async fn regenerate_segments_for_user(
     db: &DatabaseConnection,
     user_id: i32,
 ) -> Result<Vec<i32>, AppError> {
-    let activities = activities::Entity::find()
-        .filter(activities::Column::UserId.eq(user_id))
-        .all(db)
-        .await?;
-    let mut affected_segment_ids = Vec::new();
-
-    for activity in activities {
-        let route_points = crate::activity_details::deserialize_derived_activity_data(
-            activity.derived_data_json.as_ref(),
-        )
-        .route_points;
-
-        affected_segment_ids
-            .extend(refresh_activity_derived_state(db, user_id, activity.id, &route_points).await?);
-    }
-
-    affected_segment_ids.sort_unstable();
-    affected_segment_ids.dedup();
-
-    if !affected_segment_ids.is_empty() {
-        mark_segment_activity_changes(db, &affected_segment_ids, Utc::now()).await?;
-    }
-
-    Ok(affected_segment_ids)
+    crate::segment_regeneration::regenerate_segments_for_user(db, user_id)
+        .await
+        .map_err(|error| AppError::internal(error.message))
 }
 
 pub async fn process_user_segment_regeneration(
     db: &DatabaseConnection,
     user_id: i32,
 ) -> Result<(), AppError> {
-    mark_user_activity_import_lock_stage(
-        db,
-        user_id,
-        ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION,
-        ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
-    )
-    .await?;
-
-    let result = regenerate_segments_for_user(db, user_id).await;
-    let release_result = release_user_activity_import_lock(
-        db,
-        user_id,
-        ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION,
-    )
-    .await;
-
-    match (result, release_result) {
-        (Err(error), _) => Err(error),
-        (Ok(_), Err(error)) => Err(error),
-        (Ok(_), Ok(())) => Ok(()),
-    }
+    crate::segment_regeneration::process_user_segment_regeneration(db, user_id)
+        .await
+        .map_err(|error| AppError::internal(error.message))
 }
 
 pub async fn reprocess_imported_activities_for_user(
@@ -1031,7 +991,7 @@ pub async fn process_single_activity_import_reprocessing(
 
     match (result, release_result) {
         (Err(error), _) => Err(error),
-        (Ok(_), Err(error)) => Err(error),
+        (Ok(_), Err(error)) => Err(error.into()),
         (Ok(summary), Ok(())) => Ok(summary),
     }
 }
@@ -1198,7 +1158,7 @@ pub async fn process_user_activity_import_reprocessing(
 
     match (result, release_result) {
         (Err(error), _) => Err(error),
-        (Ok(_), Err(error)) => Err(error),
+        (Ok(_), Err(error)) => Err(error.into()),
         (Ok((reprocessed_count, failed_count)), Ok(())) => {
             tracing::info!(
                 user_id,

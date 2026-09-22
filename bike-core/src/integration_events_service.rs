@@ -1,5 +1,5 @@
-use crate::app_error::AppError;
 use crate::entities::integration_events as integration_event_entity;
+use crate::workflow_error::WorkflowError as AppError;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,

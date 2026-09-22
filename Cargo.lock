@@ -524,20 +524,31 @@ dependencies = [
  "axum",
  "chrono",
  "dotenvy",
+ "fitparser",
+ "flate2",
+ "hex",
+ "hmac",
  "kaleido",
  "log",
  "once_cell",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
+ "petgraph",
  "prometheus",
+ "reqwest 0.12.28",
+ "roxmltree",
  "sea-orm",
  "serde",
  "serde_json",
+ "sha2",
+ "tokio",
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
  "utoipa",
+ "uuid",
+ "zip",
 ]
 
 [[package]]
@@ -5674,7 +5685,6 @@ dependencies = [
 name = "worker"
 version = "0.1.0"
 dependencies = [
- "api",
  "async-trait",
  "bike-core",
  "chrono",

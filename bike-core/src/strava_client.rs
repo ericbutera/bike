@@ -1,12 +1,12 @@
-use crate::app_error::AppError;
 use crate::config::Config;
-use crate::metrics;
 use crate::observability;
+use crate::provider_metrics as metrics;
 use crate::provider_rate_limit::{
     reconcile_provider_quota_usage, reserve_provider_quota, ProviderQuotaBucketSpec,
     ProviderQuotaReservation,
 };
 use crate::strava_provider_payload::{StravaActivityStreams, StravaActivitySummary};
+use crate::workflow_error::WorkflowError as AppError;
 use axum::http::StatusCode;
 use chrono::{DateTime, Duration, Utc};
 use reqwest::header::{HeaderMap, RETRY_AFTER};

@@ -1,13 +1,13 @@
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::entities::user_preferences;
 use crate::storage::AppStorage;
-use crate::training_profile::{
-    deserialize_heart_rate_zone_bounds, serialize_heart_rate_zone_bounds,
-    validate_estimated_ftp_watts, validate_heart_rate_zone_bounds_bpm,
-};
 use crate::xc_goal_backfill::{clear_user_xc_goal_backfill_state, queue_user_xc_goal_backfill};
 use axum::extract::State;
 use axum::Json;
+use bike_core::training_profile::{
+    deserialize_heart_rate_zone_bounds, serialize_heart_rate_zone_bounds,
+    validate_estimated_ftp_watts, validate_heart_rate_zone_bounds_bpm,
+};
 use chrono::{DateTime, NaiveDate, Utc};
 use kaleido::auth::UserContext;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
@@ -415,9 +415,9 @@ mod tests {
             user_id: 3,
             unit_system: "mixed".to_string(),
             estimated_ftp_watts: Some(265),
-            heart_rate_zone_bounds_json: Some(crate::training_profile::StoredHeartRateZoneBounds(
-                vec![120, 140, 155, 170],
-            )),
+            heart_rate_zone_bounds_json: Some(
+                bike_core::training_profile::StoredHeartRateZoneBounds(vec![120, 140, 155, 170]),
+            ),
             xc_goal_start_date: Some(NaiveDate::from_ymd_opt(2026, 6, 1).unwrap()),
             xc_goal_target_date: Some(NaiveDate::from_ymd_opt(2026, 9, 20).unwrap()),
             xc_goal_target_distance_meters: Some(160_934.4),

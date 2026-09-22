@@ -1,0 +1,922 @@
+use crate::activity_data::{
+    deserialize_derived_activity_data, deserialize_route_point_series,
+    serialize_route_point_series, ActivityRoutePoint, StoredRoutePointSeries,
+};
+use crate::entities::{activities, segment_efforts, segments};
+use sea_orm::DbErr;
+use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set};
+use std::fmt;
+
+#[derive(Debug)]
+pub struct SegmentSupportError {
+    pub message: String,
+}
+
+impl fmt::Display for SegmentSupportError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for SegmentSupportError {}
+
+impl From<DbErr> for SegmentSupportError {
+    fn from(error: DbErr) -> Self {
+        Self {
+            message: error.to_string(),
+        }
+    }
+}
+
+const MIN_ENDPOINT_THRESHOLD_METERS: f64 = 50.0;
+const MAX_ENDPOINT_THRESHOLD_METERS: f64 = 140.0;
+const ENDPOINT_THRESHOLD_SPACING_MULTIPLIER: f64 = 0.7;
+const SHAPE_AVERAGE_THRESHOLD_METERS: f64 = 55.0;
+const SHAPE_MAX_THRESHOLD_METERS: f64 = 110.0;
+const FALLBACK_MIN_ENDPOINT_THRESHOLD_METERS: f64 = 100.0;
+const FALLBACK_MAX_ENDPOINT_THRESHOLD_METERS: f64 = 180.0;
+const FALLBACK_SHAPE_AVERAGE_THRESHOLD_METERS: f64 = 72.0;
+const FALLBACK_SHAPE_MAX_THRESHOLD_METERS: f64 = 155.0;
+const FALLBACK_SCORE_THRESHOLD: f64 = 120.0;
+const REWORKED_MIN_ENDPOINT_THRESHOLD_METERS: f64 = 120.0;
+const REWORKED_MAX_ENDPOINT_THRESHOLD_METERS: f64 = 260.0;
+const REWORKED_SHAPE_AVERAGE_THRESHOLD_METERS: f64 = 180.0;
+const REWORKED_SHAPE_MAX_THRESHOLD_METERS: f64 = 360.0;
+const REWORKED_SCORE_THRESHOLD: f64 = 320.0;
+const REWORKED_MIN_SEGMENT_DISTANCE_METERS: f64 = 1_500.0;
+const DISTANCE_RATIO_MIN: f64 = 0.65;
+const DISTANCE_RATIO_MAX: f64 = 1.35;
+const SHAPE_SAMPLE_POINTS: usize = 12;
+
+#[derive(Debug, Clone, Copy)]
+struct MatchProfile {
+    min_endpoint_threshold_meters: f64,
+    max_endpoint_threshold_meters: f64,
+    shape_average_threshold_meters: f64,
+    shape_max_threshold_meters: f64,
+    max_score: Option<f64>,
+}
+
+const STRICT_MATCH_PROFILE: MatchProfile = MatchProfile {
+    min_endpoint_threshold_meters: MIN_ENDPOINT_THRESHOLD_METERS,
+    max_endpoint_threshold_meters: MAX_ENDPOINT_THRESHOLD_METERS,
+    shape_average_threshold_meters: SHAPE_AVERAGE_THRESHOLD_METERS,
+    shape_max_threshold_meters: SHAPE_MAX_THRESHOLD_METERS,
+    max_score: None,
+};
+
+const FALLBACK_MATCH_PROFILE: MatchProfile = MatchProfile {
+    min_endpoint_threshold_meters: FALLBACK_MIN_ENDPOINT_THRESHOLD_METERS,
+    max_endpoint_threshold_meters: FALLBACK_MAX_ENDPOINT_THRESHOLD_METERS,
+    shape_average_threshold_meters: FALLBACK_SHAPE_AVERAGE_THRESHOLD_METERS,
+    shape_max_threshold_meters: FALLBACK_SHAPE_MAX_THRESHOLD_METERS,
+    max_score: Some(FALLBACK_SCORE_THRESHOLD),
+};
+
+const REWORKED_TRAIL_MATCH_PROFILE: MatchProfile = MatchProfile {
+    min_endpoint_threshold_meters: REWORKED_MIN_ENDPOINT_THRESHOLD_METERS,
+    max_endpoint_threshold_meters: REWORKED_MAX_ENDPOINT_THRESHOLD_METERS,
+    shape_average_threshold_meters: REWORKED_SHAPE_AVERAGE_THRESHOLD_METERS,
+    shape_max_threshold_meters: REWORKED_SHAPE_MAX_THRESHOLD_METERS,
+    max_score: Some(REWORKED_SCORE_THRESHOLD),
+};
+
+#[derive(Debug, Clone, PartialEq)]
+struct MatchedSegmentEffort {
+    start_route_point_index: i32,
+    end_route_point_index: i32,
+    start_elapsed_seconds: i32,
+    end_elapsed_seconds: i32,
+    duration_seconds: i32,
+    distance_meters: Option<f64>,
+}
+
+pub fn serialize_segment_route_points(
+    route_points: &[ActivityRoutePoint],
+) -> StoredRoutePointSeries {
+    serialize_route_point_series(route_points)
+}
+
+pub fn deserialize_segment_route_points(
+    raw: Option<&StoredRoutePointSeries>,
+) -> Vec<ActivityRoutePoint> {
+    deserialize_route_point_series(raw)
+}
+
+pub fn slice_effort_route_points(
+    route_points: &[ActivityRoutePoint],
+    start_route_point_index: i32,
+    end_route_point_index: i32,
+) -> Vec<ActivityRoutePoint> {
+    let start_index = usize::try_from(start_route_point_index).ok();
+    let end_index = usize::try_from(end_route_point_index).ok();
+    let (Some(start_index), Some(end_index)) = (start_index, end_index) else {
+        return Vec::new();
+    };
+
+    if start_index >= route_points.len()
+        || end_index >= route_points.len()
+        || start_index > end_index
+    {
+        return Vec::new();
+    }
+
+    let start_elapsed_seconds = route_points[start_index].elapsed_seconds;
+    let start_distance_meters = route_points[start_index].distance_meters;
+
+    route_points[start_index..=end_index]
+        .iter()
+        .map(|point| ActivityRoutePoint {
+            elapsed_seconds: point.elapsed_seconds.saturating_sub(start_elapsed_seconds),
+            latitude: point.latitude,
+            longitude: point.longitude,
+            distance_meters: normalize_distance(point.distance_meters, start_distance_meters),
+            elevation_meters: point.elevation_meters,
+            speed_mps: point.speed_mps,
+            heart_rate_bpm: point.heart_rate_bpm,
+            cadence_rpm: point.cadence_rpm,
+            power_watts: point.power_watts,
+        })
+        .collect()
+}
+
+pub async fn clear_segment_efforts_for_activity<C>(
+    db: &C,
+    user_id: i32,
+    activity_id: i32,
+) -> Result<(), SegmentSupportError>
+where
+    C: ConnectionTrait,
+{
+    segment_efforts::Entity::delete_many()
+        .filter(segment_efforts::Column::UserId.eq(user_id))
+        .filter(segment_efforts::Column::ActivityId.eq(activity_id))
+        .exec(db)
+        .await?;
+
+    Ok(())
+}
+
+pub async fn replace_segment_efforts_for_activity<C>(
+    db: &C,
+    user_id: i32,
+    activity_id: i32,
+    activity_route_points: &[ActivityRoutePoint],
+) -> Result<(), SegmentSupportError>
+where
+    C: ConnectionTrait,
+{
+    clear_segment_efforts_for_activity(db, user_id, activity_id).await?;
+
+    if activity_route_points.len() < 2 {
+        return Ok(());
+    }
+
+    let segments = segments::Entity::find().all(db).await?;
+
+    for segment in segments {
+        let segment_route_points =
+            deserialize_segment_route_points(segment.route_data_json.as_ref());
+        if segment_route_points.len() < 2 {
+            continue;
+        }
+
+        if !activity_may_contain_segment(&segment_route_points, activity_route_points) {
+            continue;
+        }
+
+        let matches = match_segment_efforts(&segment_route_points, activity_route_points);
+        insert_matches(db, user_id, segment.id, activity_id, &matches).await?;
+    }
+
+    Ok(())
+}
+
+pub async fn replace_segment_efforts_for_segment<C>(
+    db: &C,
+    user_id: i32,
+    segment_id: i32,
+    segment_route_points: &[ActivityRoutePoint],
+) -> Result<Vec<i32>, SegmentSupportError>
+where
+    C: ConnectionTrait,
+{
+    if segment_route_points.len() < 2 {
+        let affected_activity_ids = load_activity_ids_for_segment(db, segment_id).await?;
+        segment_efforts::Entity::delete_many()
+            .filter(segment_efforts::Column::SegmentId.eq(segment_id))
+            .exec(db)
+            .await?;
+        return Ok(affected_activity_ids);
+    }
+
+    let mut affected_activity_ids = load_activity_ids_for_segment(db, segment_id).await?;
+    let activities = activities::Entity::find()
+        .filter(activities::Column::UserId.eq(user_id))
+        .all(db)
+        .await?;
+    let mut replacements = Vec::new();
+
+    for activity in activities {
+        let route_points =
+            deserialize_derived_activity_data(activity.derived_data_json.as_ref()).route_points;
+        if route_points.len() < 2 {
+            continue;
+        }
+
+        if !activity_may_contain_segment(segment_route_points, &route_points) {
+            continue;
+        }
+
+        let matches = match_segment_efforts(segment_route_points, &route_points);
+        if matches.is_empty() {
+            continue;
+        }
+
+        replacements.push((activity.user_id, activity.id, matches));
+        affected_activity_ids.push(activity.id);
+    }
+
+    segment_efforts::Entity::delete_many()
+        .filter(segment_efforts::Column::SegmentId.eq(segment_id))
+        .exec(db)
+        .await?;
+
+    for (user_id, activity_id, matches) in replacements {
+        insert_matches(db, user_id, segment_id, activity_id, &matches).await?;
+    }
+
+    affected_activity_ids.sort_unstable();
+    affected_activity_ids.dedup();
+
+    Ok(affected_activity_ids)
+}
+
+async fn load_activity_ids_for_segment<C>(
+    db: &C,
+    segment_id: i32,
+) -> Result<Vec<i32>, SegmentSupportError>
+where
+    C: ConnectionTrait,
+{
+    let mut activity_ids = segment_efforts::Entity::find()
+        .filter(segment_efforts::Column::SegmentId.eq(segment_id))
+        .all(db)
+        .await?
+        .into_iter()
+        .map(|effort| effort.activity_id)
+        .collect::<Vec<_>>();
+    activity_ids.sort_unstable();
+    activity_ids.dedup();
+
+    Ok(activity_ids)
+}
+
+fn activity_may_contain_segment(
+    segment_route_points: &[ActivityRoutePoint],
+    activity_route_points: &[ActivityRoutePoint],
+) -> bool {
+    if segment_route_points.len() < 2 || activity_route_points.len() < 2 {
+        return false;
+    }
+
+    let segment_start = &segment_route_points[0];
+    let segment_end = &segment_route_points[segment_route_points.len() - 1];
+    let endpoint_threshold_meters = derive_endpoint_threshold_meters(
+        segment_route_points,
+        activity_route_points,
+        REWORKED_TRAIL_MATCH_PROFILE,
+    );
+    let mut has_start_before_end = false;
+
+    for point in activity_route_points {
+        if !has_start_before_end
+            && endpoint_error_meters(point, segment_start) <= endpoint_threshold_meters
+        {
+            has_start_before_end = true;
+        }
+
+        if has_start_before_end
+            && endpoint_error_meters(point, segment_end) <= endpoint_threshold_meters
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+async fn insert_matches<C>(
+    db: &C,
+    user_id: i32,
+    segment_id: i32,
+    activity_id: i32,
+    matches: &[MatchedSegmentEffort],
+) -> Result<(), SegmentSupportError>
+where
+    C: ConnectionTrait,
+{
+    if matches.is_empty() {
+        return Ok(());
+    }
+
+    let efforts =
+        matches
+            .iter()
+            .enumerate()
+            .map(|(index, matched_effort)| segment_efforts::ActiveModel {
+                user_id: Set(user_id),
+                segment_id: Set(segment_id),
+                activity_id: Set(activity_id),
+                effort_index: Set((index + 1) as i32),
+                start_route_point_index: Set(matched_effort.start_route_point_index),
+                end_route_point_index: Set(matched_effort.end_route_point_index),
+                start_elapsed_seconds: Set(matched_effort.start_elapsed_seconds),
+                end_elapsed_seconds: Set(matched_effort.end_elapsed_seconds),
+                duration_seconds: Set(matched_effort.duration_seconds),
+                distance_meters: Set(matched_effort.distance_meters),
+                ..Default::default()
+            });
+    segment_efforts::Entity::insert_many(efforts)
+        .exec(db)
+        .await?;
+
+    Ok(())
+}
+
+fn match_segment_efforts(
+    segment_route_points: &[ActivityRoutePoint],
+    activity_route_points: &[ActivityRoutePoint],
+) -> Vec<MatchedSegmentEffort> {
+    if segment_route_points.len() < 2 || activity_route_points.len() < 2 {
+        return Vec::new();
+    }
+
+    let strict_matches = match_segment_efforts_with_profile(
+        segment_route_points,
+        activity_route_points,
+        STRICT_MATCH_PROFILE,
+        MatchSearchMode::FirstPassingStart,
+    );
+
+    if !strict_matches.is_empty() {
+        return strict_matches;
+    }
+
+    let fallback_matches = match_segment_efforts_with_profile(
+        segment_route_points,
+        activity_route_points,
+        FALLBACK_MATCH_PROFILE,
+        MatchSearchMode::BestPassingStart,
+    );
+
+    if !fallback_matches.is_empty() {
+        return fallback_matches;
+    }
+
+    let Some(segment_distance_meters) = route_distance_meters(segment_route_points) else {
+        return Vec::new();
+    };
+    if segment_distance_meters < REWORKED_MIN_SEGMENT_DISTANCE_METERS {
+        return Vec::new();
+    }
+
+    match_segment_efforts_with_profile(
+        segment_route_points,
+        activity_route_points,
+        REWORKED_TRAIL_MATCH_PROFILE,
+        MatchSearchMode::BestPassingStart,
+    )
+}
+
+#[derive(Debug, Clone, Copy)]
+enum MatchSearchMode {
+    FirstPassingStart,
+    BestPassingStart,
+}
+
+fn match_segment_efforts_with_profile(
+    segment_route_points: &[ActivityRoutePoint],
+    activity_route_points: &[ActivityRoutePoint],
+    profile: MatchProfile,
+    search_mode: MatchSearchMode,
+) -> Vec<MatchedSegmentEffort> {
+    let context = MatchContext::new(segment_route_points, activity_route_points, profile);
+    let mut matches = Vec::new();
+    let mut start_index = 0usize;
+
+    while start_index + 1 < activity_route_points.len() {
+        let best_match = match search_mode {
+            MatchSearchMode::FirstPassingStart => {
+                find_best_match_for_first_passing_start(&context, start_index)
+            }
+            MatchSearchMode::BestPassingStart => {
+                find_best_match_across_starts(&context, start_index)
+            }
+        };
+
+        if let Some(best_match) = best_match {
+            let candidate_start = &activity_route_points[best_match.start_index];
+            let candidate_end = &activity_route_points[best_match.end_index];
+            matches.push(MatchedSegmentEffort {
+                start_route_point_index: best_match.start_index as i32,
+                end_route_point_index: best_match.end_index as i32,
+                start_elapsed_seconds: candidate_start.elapsed_seconds,
+                end_elapsed_seconds: candidate_end.elapsed_seconds,
+                duration_seconds: candidate_end.elapsed_seconds - candidate_start.elapsed_seconds,
+                distance_meters: best_match.distance_meters,
+            });
+            start_index = best_match.end_index.saturating_add(1);
+        } else {
+            if matches!(search_mode, MatchSearchMode::BestPassingStart) {
+                break;
+            }
+
+            start_index += 1;
+        }
+    }
+
+    matches
+}
+
+#[derive(Debug, Clone)]
+struct MatchCandidate {
+    start_index: usize,
+    end_index: usize,
+    distance_meters: Option<f64>,
+    score: f64,
+}
+
+#[derive(Debug)]
+struct MatchContext<'a> {
+    segment_route_points: &'a [ActivityRoutePoint],
+    activity_route_points: &'a [ActivityRoutePoint],
+    segment_start: &'a ActivityRoutePoint,
+    segment_end: &'a ActivityRoutePoint,
+    segment_distance_meters: Option<f64>,
+    profile: MatchProfile,
+    start_candidate_indices: Vec<usize>,
+    end_candidate_indices: Vec<usize>,
+}
+
+impl<'a> MatchContext<'a> {
+    fn new(
+        segment_route_points: &'a [ActivityRoutePoint],
+        activity_route_points: &'a [ActivityRoutePoint],
+        profile: MatchProfile,
+    ) -> Self {
+        let segment_start = &segment_route_points[0];
+        let segment_end = &segment_route_points[segment_route_points.len() - 1];
+        let endpoint_threshold_meters =
+            derive_endpoint_threshold_meters(segment_route_points, activity_route_points, profile);
+
+        Self {
+            segment_route_points,
+            activity_route_points,
+            segment_start,
+            segment_end,
+            segment_distance_meters: route_distance_meters(segment_route_points),
+            profile,
+            start_candidate_indices: endpoint_candidate_indices(
+                activity_route_points,
+                segment_start,
+                endpoint_threshold_meters,
+            ),
+            end_candidate_indices: endpoint_candidate_indices(
+                activity_route_points,
+                segment_end,
+                endpoint_threshold_meters,
+            ),
+        }
+    }
+
+    fn start_candidates_from(
+        &self,
+        search_start_index: usize,
+    ) -> impl Iterator<Item = StartCandidate> + '_ {
+        self.start_candidate_indices
+            .iter()
+            .copied()
+            .filter(move |index| *index >= search_start_index)
+            .map(|index| StartCandidate {
+                index,
+                start_error_meters: endpoint_error_meters(
+                    &self.activity_route_points[index],
+                    self.segment_start,
+                ),
+            })
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct StartCandidate {
+    index: usize,
+    start_error_meters: f64,
+}
+
+fn find_best_match_for_first_passing_start(
+    context: &MatchContext<'_>,
+    search_start_index: usize,
+) -> Option<MatchCandidate> {
+    for start_candidate in context.start_candidates_from(search_start_index) {
+        if let Some(best_match) = find_best_match_for_start(context, start_candidate) {
+            return Some(best_match);
+        }
+    }
+
+    None
+}
+
+fn find_best_match_across_starts(
+    context: &MatchContext<'_>,
+    search_start_index: usize,
+) -> Option<MatchCandidate> {
+    let mut best_match: Option<MatchCandidate> = None;
+
+    for start_candidate in context.start_candidates_from(search_start_index) {
+        let next_match = find_best_match_for_start(context, start_candidate);
+        match (best_match.as_ref(), next_match) {
+            (Some(current), Some(next)) if current.score <= next.score => {}
+            (_, Some(next)) => best_match = Some(next),
+            _ => {}
+        }
+    }
+
+    best_match
+}
+
+fn find_best_match_for_start(
+    context: &MatchContext<'_>,
+    start_candidate: StartCandidate,
+) -> Option<MatchCandidate> {
+    let candidate_start = &context.activity_route_points[start_candidate.index];
+    let mut best_match: Option<MatchCandidate> = None;
+    let maximum_candidate_distance_meters = context
+        .segment_distance_meters
+        .map(|distance| distance * DISTANCE_RATIO_MAX);
+
+    for end_index in context
+        .end_candidate_indices
+        .iter()
+        .copied()
+        .filter(|index| *index > start_candidate.index)
+    {
+        let candidate_end = &context.activity_route_points[end_index];
+        let end_error_meters = endpoint_error_meters(candidate_end, context.segment_end);
+
+        let duration_seconds = candidate_end.elapsed_seconds - candidate_start.elapsed_seconds;
+        if duration_seconds <= 0 {
+            continue;
+        }
+
+        let candidate_distance_meters = route_distance_between(
+            context.activity_route_points,
+            start_candidate.index,
+            end_index,
+        );
+        if let (Some(candidate_distance), Some(maximum_candidate_distance)) =
+            (candidate_distance_meters, maximum_candidate_distance_meters)
+        {
+            if candidate_distance > maximum_candidate_distance {
+                break;
+            }
+        }
+        if !distance_ratio_within_bounds(context.segment_distance_meters, candidate_distance_meters)
+        {
+            continue;
+        }
+
+        let activity_slice = &context.activity_route_points[start_candidate.index..=end_index];
+        let (average_shape_error_meters, max_shape_error_meters) =
+            shape_error_meters(context.segment_route_points, activity_slice);
+        if average_shape_error_meters > context.profile.shape_average_threshold_meters
+            || max_shape_error_meters > context.profile.shape_max_threshold_meters
+        {
+            continue;
+        }
+
+        let distance_penalty =
+            distance_ratio_penalty(context.segment_distance_meters, candidate_distance_meters);
+        let score = average_shape_error_meters
+            + max_shape_error_meters * 0.15
+            + start_candidate.start_error_meters * 0.35
+            + end_error_meters * 0.35
+            + distance_penalty;
+
+        if context
+            .profile
+            .max_score
+            .is_some_and(|max_score| score > max_score)
+        {
+            continue;
+        }
+
+        match best_match {
+            Some(ref best_match) if best_match.score <= score => {}
+            _ => {
+                best_match = Some(MatchCandidate {
+                    start_index: start_candidate.index,
+                    end_index,
+                    distance_meters: candidate_distance_meters,
+                    score,
+                })
+            }
+        }
+    }
+
+    best_match
+}
+
+fn endpoint_candidate_indices(
+    activity_route_points: &[ActivityRoutePoint],
+    segment_endpoint: &ActivityRoutePoint,
+    endpoint_threshold_meters: f64,
+) -> Vec<usize> {
+    activity_route_points
+        .iter()
+        .enumerate()
+        .filter_map(|(index, point)| {
+            (endpoint_error_meters(point, segment_endpoint) <= endpoint_threshold_meters)
+                .then_some(index)
+        })
+        .collect()
+}
+
+fn endpoint_error_meters(
+    candidate_point: &ActivityRoutePoint,
+    segment_endpoint: &ActivityRoutePoint,
+) -> f64 {
+    haversine_distance_meters(
+        candidate_point.latitude,
+        candidate_point.longitude,
+        segment_endpoint.latitude,
+        segment_endpoint.longitude,
+    )
+}
+
+fn derive_endpoint_threshold_meters(
+    segment_route_points: &[ActivityRoutePoint],
+    activity_route_points: &[ActivityRoutePoint],
+    profile: MatchProfile,
+) -> f64 {
+    let segment_spacing_meters = average_point_spacing_meters(segment_route_points);
+    let activity_spacing_meters = average_point_spacing_meters(activity_route_points);
+    let scaled_threshold_meters =
+        segment_spacing_meters.max(activity_spacing_meters) * ENDPOINT_THRESHOLD_SPACING_MULTIPLIER;
+
+    scaled_threshold_meters.clamp(
+        profile.min_endpoint_threshold_meters,
+        profile.max_endpoint_threshold_meters,
+    )
+}
+
+fn average_point_spacing_meters(route_points: &[ActivityRoutePoint]) -> f64 {
+    if route_points.len() < 2 {
+        return 0.0;
+    }
+
+    route_distance_meters(route_points)
+        .map(|distance_meters| distance_meters / (route_points.len() - 1) as f64)
+        .unwrap_or(0.0)
+}
+
+fn shape_error_meters(
+    segment_route_points: &[ActivityRoutePoint],
+    activity_slice: &[ActivityRoutePoint],
+) -> (f64, f64) {
+    let sample_count = SHAPE_SAMPLE_POINTS
+        .min(segment_route_points.len())
+        .min(activity_slice.len());
+
+    if sample_count < 2 {
+        return (f64::INFINITY, f64::INFINITY);
+    }
+
+    let mut total_error_meters = 0.0_f64;
+    let mut max_error_meters = 0.0_f64;
+
+    for sample_index in 0..sample_count {
+        let segment_index =
+            distribute_index(sample_index, sample_count, segment_route_points.len());
+        let activity_index = distribute_index(sample_index, sample_count, activity_slice.len());
+        let segment_point = &segment_route_points[segment_index];
+        let activity_point = &activity_slice[activity_index];
+        let error_meters = haversine_distance_meters(
+            segment_point.latitude,
+            segment_point.longitude,
+            activity_point.latitude,
+            activity_point.longitude,
+        );
+
+        total_error_meters += error_meters;
+        max_error_meters = max_error_meters.max(error_meters);
+    }
+
+    (total_error_meters / sample_count as f64, max_error_meters)
+}
+
+fn distribute_index(sample_index: usize, sample_count: usize, point_count: usize) -> usize {
+    if sample_count <= 1 || point_count <= 1 {
+        return 0;
+    }
+
+    sample_index * (point_count - 1) / (sample_count - 1)
+}
+
+fn distance_ratio_within_bounds(
+    segment_distance_meters: Option<f64>,
+    candidate_distance_meters: Option<f64>,
+) -> bool {
+    let (Some(segment_distance_meters), Some(candidate_distance_meters)) =
+        (segment_distance_meters, candidate_distance_meters)
+    else {
+        return true;
+    };
+
+    if segment_distance_meters <= 0.0 {
+        return true;
+    }
+
+    let ratio = candidate_distance_meters / segment_distance_meters;
+    (DISTANCE_RATIO_MIN..=DISTANCE_RATIO_MAX).contains(&ratio)
+}
+
+fn distance_ratio_penalty(
+    segment_distance_meters: Option<f64>,
+    candidate_distance_meters: Option<f64>,
+) -> f64 {
+    let (Some(segment_distance_meters), Some(candidate_distance_meters)) =
+        (segment_distance_meters, candidate_distance_meters)
+    else {
+        return 0.0;
+    };
+
+    if segment_distance_meters <= 0.0 {
+        return 0.0;
+    }
+
+    ((candidate_distance_meters / segment_distance_meters) - 1.0).abs() * 40.0
+}
+
+fn route_distance_meters(route_points: &[ActivityRoutePoint]) -> Option<f64> {
+    route_distance_between(route_points, 0, route_points.len().saturating_sub(1))
+}
+
+fn route_distance_between(
+    route_points: &[ActivityRoutePoint],
+    start_index: usize,
+    end_index: usize,
+) -> Option<f64> {
+    if route_points.is_empty()
+        || start_index >= route_points.len()
+        || end_index >= route_points.len()
+        || start_index >= end_index
+    {
+        return None;
+    }
+
+    let start_distance_meters = route_points[start_index].distance_meters;
+    let end_distance_meters = route_points[end_index].distance_meters;
+    if let (Some(start_distance_meters), Some(end_distance_meters)) =
+        (start_distance_meters, end_distance_meters)
+    {
+        if end_distance_meters >= start_distance_meters {
+            return Some(end_distance_meters - start_distance_meters);
+        }
+    }
+
+    let mut total_distance_meters = 0.0;
+    for window in route_points[start_index..=end_index].windows(2) {
+        total_distance_meters += haversine_distance_meters(
+            window[0].latitude,
+            window[0].longitude,
+            window[1].latitude,
+            window[1].longitude,
+        );
+    }
+
+    Some(total_distance_meters)
+}
+
+fn normalize_distance(
+    distance_meters: Option<f64>,
+    start_distance_meters: Option<f64>,
+) -> Option<f64> {
+    match (distance_meters, start_distance_meters) {
+        (Some(distance_meters), Some(start_distance_meters))
+            if distance_meters >= start_distance_meters =>
+        {
+            Some(distance_meters - start_distance_meters)
+        }
+        (Some(distance_meters), _) => Some(distance_meters),
+        _ => None,
+    }
+}
+
+fn haversine_distance_meters(
+    start_latitude: f64,
+    start_longitude: f64,
+    end_latitude: f64,
+    end_longitude: f64,
+) -> f64 {
+    let earth_radius_meters = 6_371_000.0;
+    let latitude_delta = (end_latitude - start_latitude).to_radians();
+    let longitude_delta = (end_longitude - start_longitude).to_radians();
+    let start_latitude_radians = start_latitude.to_radians();
+    let end_latitude_radians = end_latitude.to_radians();
+    let a = (latitude_delta / 2.0).sin().powi(2)
+        + start_latitude_radians.cos()
+            * end_latitude_radians.cos()
+            * (longitude_delta / 2.0).sin().powi(2);
+    let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
+
+    earth_radius_meters * c
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn route_point(
+        elapsed_seconds: i32,
+        latitude: f64,
+        longitude: f64,
+        distance_meters: f64,
+    ) -> ActivityRoutePoint {
+        ActivityRoutePoint {
+            elapsed_seconds,
+            latitude,
+            longitude,
+            distance_meters: Some(distance_meters),
+            elevation_meters: Some(100.0),
+            speed_mps: Some(5.0),
+            heart_rate_bpm: Some(140),
+            cadence_rpm: Some(88),
+            power_watts: None,
+        }
+    }
+
+    fn route_point_at_offsets(
+        elapsed_seconds: i32,
+        east_meters: f64,
+        north_meters: f64,
+        distance_meters: f64,
+    ) -> ActivityRoutePoint {
+        let base_latitude = 35.0_f64;
+        let base_longitude = -120.0_f64;
+        let latitude = base_latitude + north_meters / 111_320.0;
+        let longitude =
+            base_longitude + east_meters / (111_320.0 * base_latitude.to_radians().cos());
+
+        route_point(elapsed_seconds, latitude, longitude, distance_meters)
+    }
+
+    #[test]
+    fn matches_repeated_segment_efforts_within_one_activity() {
+        let segment_route_points = vec![
+            route_point(0, 35.0000, -120.0000, 0.0),
+            route_point(30, 35.0004, -120.0004, 60.0),
+            route_point(60, 35.0008, -120.0008, 120.0),
+        ];
+        let activity_route_points = vec![
+            route_point(0, 34.9995, -119.9995, 0.0),
+            route_point(30, 35.0000, -120.0000, 40.0),
+            route_point(60, 35.0004, -120.0004, 100.0),
+            route_point(90, 35.0008, -120.0008, 160.0),
+            route_point(120, 35.0012, -120.0012, 220.0),
+            route_point(150, 35.0000, -120.0000, 260.0),
+            route_point(180, 35.0004, -120.0004, 320.0),
+            route_point(210, 35.0008, -120.0008, 380.0),
+        ];
+
+        let matches = match_segment_efforts(&segment_route_points, &activity_route_points);
+
+        assert_eq!(matches.len(), 2);
+        assert_eq!(matches[0].duration_seconds, 60);
+        assert_eq!(matches[1].start_route_point_index, 5);
+    }
+
+    #[test]
+    fn matches_rerouted_segments_when_current_trail_joins_after_original_start() {
+        let segment_route_points = vec![
+            route_point_at_offsets(0, 0.0, 0.0, 0.0),
+            route_point_at_offsets(60, 250.0, 0.0, 250.0),
+            route_point_at_offsets(120, 500.0, 0.0, 500.0),
+            route_point_at_offsets(180, 750.0, 0.0, 750.0),
+            route_point_at_offsets(240, 1000.0, 0.0, 1000.0),
+        ];
+        let activity_route_points = vec![
+            route_point_at_offsets(0, 70.0, 0.0, 0.0),
+            route_point_at_offsets(60, 302.5, 0.0, 232.5),
+            route_point_at_offsets(120, 535.0, 0.0, 465.0),
+            route_point_at_offsets(180, 767.5, 0.0, 697.5),
+            route_point_at_offsets(240, 1000.0, 0.0, 930.0),
+        ];
+
+        let matches = match_segment_efforts(&segment_route_points, &activity_route_points);
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].start_route_point_index, 0);
+        assert_eq!(matches[0].end_route_point_index, 4);
+    }
+}

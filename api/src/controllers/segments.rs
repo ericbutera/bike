@@ -1,10 +1,5 @@
-use crate::activity_details::{
-    derive_activity_detail_data, deserialize_derived_activity_data, ActivityRoutePoint,
-};
-use crate::activity_summary::summarize_activity_upload;
 use crate::analytics::rebuild_activity_analytics_cache;
 use crate::app_error::{ApiErrorResponse, AppError};
-use crate::dedupe::segment_dedupe_key;
 use crate::entities::{
     activities, segment_efforts, segment_summaries, segment_user_summaries, segments,
 };
@@ -16,6 +11,11 @@ use crate::tasks::QueuedTaskReference;
 use axum::extract::{Multipart, Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
+use bike_core::activity_details::{
+    derive_activity_detail_data, deserialize_derived_activity_data, ActivityRoutePoint,
+};
+use bike_core::activity_summary::summarize_activity_upload;
+use bike_core::dedupe::segment_dedupe_key;
 use chrono::{DateTime, Datelike, Utc};
 use kaleido::auth::entities::users;
 use kaleido::auth::UserContext;
@@ -196,7 +196,7 @@ struct SegmentListRow {
 struct SegmentDedupeCandidateRow {
     id: i32,
     distance_meters: Option<f64>,
-    route_data_json: Option<crate::activity_details::StoredRoutePointSeries>,
+    route_data_json: Option<bike_core::activity_details::StoredRoutePointSeries>,
 }
 
 #[derive(Clone, Debug, FromQueryResult)]
@@ -204,7 +204,7 @@ struct EffortActivityRow {
     id: i32,
     title: String,
     started_at: DateTime<Utc>,
-    derived_data_json: Option<crate::activity_details::StoredActivityDerivedData>,
+    derived_data_json: Option<bike_core::activity_details::StoredActivityDerivedData>,
 }
 
 #[derive(Clone, Debug, FromQueryResult)]

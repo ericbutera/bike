@@ -1,12 +1,16 @@
-use api::activity_import_pipeline::{
-    finalize_activity_import_batch, mark_activity_import_failed, mark_activity_imports_processed,
-    process_stored_activity_import, reprocess_activity_from_import, ActivityUploadDeduplication,
-    PersistActivityUploadOutcome, ACTIVITY_IMPORT_STATUS_PROCESSING,
-};
 use async_trait::async_trait;
+use bike_core::activity_import_lifecycle::{
+    finalize_activity_import_batch, mark_activity_import_failed, mark_activity_imports_processed,
+    ACTIVITY_IMPORT_STATUS_PROCESSING,
+};
+use bike_core::activity_import_pipeline::{
+    process_stored_activity_import, reprocess_activity_from_import, ActivityUploadDeduplication,
+    PersistActivityUploadOutcome,
+};
 use bike_core::config::Config;
 use bike_core::entities::{activities, activity_imports};
 use bike_core::jobs::{JobQueue, ProcessActivityImportTask};
+use bike_core::workflow_error::WorkflowError;
 use chrono::{NaiveDate, Utc};
 use kaleido::background_jobs::worker::TaskProcessor;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
@@ -135,10 +139,10 @@ impl ProcessActivityImport {
             Utc::now(),
         )
         .await
-        .map_err(worker_app_error)?;
+        .map_err(worker_core_error)?;
         mark_activity_imports_processed(&self.db, &[import_id])
             .await
-            .map_err(worker_app_error)
+            .map_err(worker_core_error)
     }
 }
 
@@ -150,13 +154,8 @@ async fn load_import_for_task(
         .filter(activity_imports::Column::UserId.eq(task.user_id))
         .one(db)
         .await
-        .map_err(|error| worker_app_error(api::app_error::AppError::from(error)))?
-        .ok_or_else(|| {
-            worker_app_error(api::app_error::AppError::not_found(format!(
-                "Activity import {} was not found",
-                task.import_id
-            )))
-        })
+        .map_err(worker_db_error)?
+        .ok_or_else(|| worker_error(format!("Activity import {} was not found", task.import_id)))
 }
 
 fn should_skip_import_task(import: &activity_imports::Model) -> bool {
@@ -175,16 +174,30 @@ fn should_skip_import_task(import: &activity_imports::Model) -> bool {
 async fn fail_activity_import<T>(
     db: &DatabaseConnection,
     import: &activity_imports::Model,
-    error: api::app_error::AppError,
+    error: WorkflowError,
 ) -> WorkerResult<T> {
-    mark_activity_import_failed(db, import, &import.processing_stage, &error)
+    mark_activity_import_failed(db, import, &import.processing_stage, &error.message)
         .await
-        .map_err(worker_app_error)?;
-    Err(worker_app_error(error))
+        .map_err(worker_core_error)?;
+    Err(worker_workflow_error(error))
 }
 
-fn worker_app_error(error: api::app_error::AppError) -> Box<dyn Error + Send + Sync> {
-    std::io::Error::other(error.message).into()
+fn worker_workflow_error(error: WorkflowError) -> Box<dyn Error + Send + Sync> {
+    worker_error(error.message)
+}
+
+fn worker_db_error(error: sea_orm::DbErr) -> Box<dyn Error + Send + Sync> {
+    worker_error(format!("database request failed: {error}"))
+}
+
+fn worker_core_error(
+    error: bike_core::activity_import_lifecycle::ActivityImportLifecycleError,
+) -> Box<dyn Error + Send + Sync> {
+    worker_error(error.message)
+}
+
+fn worker_error(message: impl Into<String>) -> Box<dyn Error + Send + Sync> {
+    std::io::Error::other(message.into()).into()
 }
 
 async fn load_activity_for_import(
@@ -197,7 +210,7 @@ async fn load_activity_for_import(
             .filter(activities::Column::UserId.eq(user_id))
             .one(db)
             .await
-            .map_err(|error| worker_app_error(api::app_error::AppError::from(error)))?;
+            .map_err(worker_db_error)?;
 
         if activity.is_some() {
             return Ok(activity);
@@ -209,5 +222,5 @@ async fn load_activity_for_import(
         .filter(activities::Column::ActivityImportId.eq(Some(import.id)))
         .one(db)
         .await
-        .map_err(|error| worker_app_error(api::app_error::AppError::from(error)))
+        .map_err(worker_db_error)
 }

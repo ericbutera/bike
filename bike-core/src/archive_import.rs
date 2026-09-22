@@ -9,11 +9,11 @@ use crate::activity_import_pipeline::{
     PersistActivityUploadRequest,
 };
 use crate::activity_lifecycle::resume_incomplete_activity_imports_for_user;
-use crate::app_error::AppError;
 use crate::config::Config;
 use crate::entities::activity_archive_import_jobs;
-use crate::tasks::TaskQueue;
+use crate::jobs::JobQueue as TaskQueue;
 use crate::training_profile::{load_training_profile, TrainingProfile};
+use crate::workflow_error::WorkflowError as AppError;
 use chrono::Utc;
 use reqwest::{header, redirect::Policy, Client, Url};
 use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, Set};
@@ -1257,7 +1257,7 @@ mod tests {
         let uploads_dir = test_uploads_dir();
         let archive_path = write_test_archive(&[(
             "activities/activity.fit",
-            include_bytes!("../tests/fixtures/activity.fit").as_slice(),
+            include_bytes!("../../api/tests/fixtures/activity.fit").as_slice(),
         )]);
 
         let first = import_activity_archive_from_path(

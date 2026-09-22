@@ -1,14 +1,8 @@
-use api::segment_support::{deserialize_segment_route_points, replace_segment_efforts_for_segment};
 use async_trait::async_trait;
-use bike_core::analytics::{
-    mark_segment_activity_changes, rebuild_activity_analytics_cache,
-    rebuild_segment_analytics_cache,
-};
-use bike_core::entities::segments;
 use bike_core::jobs::RegenerateSegmentEffortsTask;
-use chrono::Utc;
+use bike_core::segment_regeneration::regenerate_segment_efforts;
 use kaleido::background_jobs::worker::TaskProcessor;
-use sea_orm::{DatabaseConnection, EntityTrait};
+use sea_orm::DatabaseConnection;
 use std::error::Error;
 
 pub struct RegenerateSegmentEfforts {
@@ -34,28 +28,10 @@ impl TaskProcessor for RegenerateSegmentEfforts {
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let data = payload.get("data").unwrap_or(&payload);
         let task: RegenerateSegmentEffortsTask = serde_json::from_value(data.clone())?;
-        let segment = segments::Entity::find_by_id(task.segment_id)
-            .one(&self.db)
-            .await?
-            .ok_or_else(|| {
-                std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    format!("segment {} was not found", task.segment_id),
-                )
-            })?;
-        let route_points = deserialize_segment_route_points(segment.route_data_json.as_ref());
 
-        let affected_activity_ids = replace_segment_efforts_for_segment(
-            &self.db,
-            segment.user_id,
-            segment.id,
-            &route_points,
-        )
-        .await
-        .map_err(|error| std::io::Error::other(error.message))?;
-        mark_segment_activity_changes(&self.db, &[segment.id], Utc::now()).await?;
-        rebuild_segment_analytics_cache(&self.db, &[segment.id]).await?;
-        rebuild_activity_analytics_cache(&self.db, &affected_activity_ids).await?;
+        regenerate_segment_efforts(&self.db, task.segment_id)
+            .await
+            .map_err(|error| std::io::Error::other(error.message))?;
 
         Ok(())
     }

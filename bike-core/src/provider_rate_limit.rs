@@ -1,6 +1,6 @@
-use crate::app_error::AppError;
 use crate::entities::provider_rate_limit_buckets;
-use crate::metrics;
+use crate::provider_metrics as metrics;
+use crate::workflow_error::WorkflowError as AppError;
 use chrono::{DateTime, Duration, Utc};
 use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, Set, TransactionTrait};
 use std::collections::HashMap;

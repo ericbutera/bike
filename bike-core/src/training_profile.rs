@@ -1,9 +1,9 @@
 use crate::activity_details::{ActivityChartPoint, ActivityRoutePoint};
-use crate::app_error::AppError;
 use crate::entities::user_preferences;
+use crate::workflow_error::WorkflowError as AppError;
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
 
-pub use bike_core::training_data::{
+pub use crate::training_data::{
     ActivityHeartRateZoneSummary, StoredActivityHeartRateZoneSummary, StoredActivityHeartRateZones,
     StoredHeartRateZoneBounds,
 };

@@ -1,7 +1,7 @@
 use crate::activity_details::{derive_activity_detail_data, ActivityDerivedData};
 use crate::activity_summary::{summarize_activity_upload, ActivityDraft};
-use crate::app_error::AppError;
 use crate::strava_provider_payload::parse_strava_provider_payload;
+use crate::workflow_error::WorkflowError as AppError;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParsedActivityData {

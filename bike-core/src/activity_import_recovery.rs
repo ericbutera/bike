@@ -1,3 +1,7 @@
+use crate::activity_import_lifecycle::{
+    ACTIVITY_IMPORT_STAGE_RAW_STORED, ACTIVITY_IMPORT_STALE_PROCESSING_SECONDS,
+    ACTIVITY_IMPORT_STATUS_PROCESSING,
+};
 use crate::entities::activity_imports;
 use crate::jobs::{JobQueue, ProcessActivityImportTask};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
@@ -7,10 +11,6 @@ use sea_orm::{
     QuerySelect, Set,
 };
 use std::fmt;
-
-pub const ACTIVITY_IMPORT_STATUS_PROCESSING: &str = "processing";
-pub const ACTIVITY_IMPORT_STAGE_RAW_STORED: &str = "raw_stored";
-pub const ACTIVITY_IMPORT_STALE_PROCESSING_SECONDS: i64 = 300;
 
 const MANUAL_UPLOAD_SOURCE: &str = "manual_upload";
 

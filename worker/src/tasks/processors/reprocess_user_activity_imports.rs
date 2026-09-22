@@ -1,5 +1,5 @@
-use api::activity_lifecycle::process_user_activity_import_reprocessing;
 use async_trait::async_trait;
+use bike_core::activity_lifecycle::process_user_activity_import_reprocessing;
 use bike_core::config::Config;
 use bike_core::jobs::{JobQueue, ReprocessUserActivityImportsTask};
 use kaleido::background_jobs::worker::TaskProcessor;

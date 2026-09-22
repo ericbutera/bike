@@ -16,20 +16,20 @@ use crate::activity_lifecycle::{
     delete_activity_with_derived_state, resume_incomplete_activity_imports_for_user,
 };
 use crate::analytics::{mark_segment_activity_changes, mark_user_fitness_dirty};
-use crate::app_error::AppError;
 use crate::config::Config;
 use crate::entities::{activities, strava_connections};
-use crate::integration_events::{
+use crate::integration_events_service::{
     self, NewIntegrationEvent, INTEGRATION_LEVEL_ERROR, INTEGRATION_LEVEL_INFO,
     INTEGRATION_LEVEL_SUCCESS, INTEGRATION_LEVEL_WARNING, INTEGRATION_PROVIDER_STRAVA,
 };
+use crate::jobs::{JobQueue as TaskQueue, StravaSyncTask};
 use crate::observability;
 use crate::strava_client::{StravaApiClient, StravaAuthorizationTokenResponse};
 use crate::strava_provider_payload::{
     StoredStravaProviderPayload, StravaActivityStreams, StravaActivitySummary, StravaStream,
 };
-use crate::tasks::{StravaSyncTask, TaskQueue};
 use crate::training_profile::{load_training_profile, TrainingProfile};
+use crate::workflow_error::WorkflowError as AppError;
 use axum::http::StatusCode;
 use chrono::{DateTime, Duration, Utc};
 use hmac::{Hmac, Mac};
@@ -1066,7 +1066,7 @@ async fn finish_strava_sync_attempt(
 
     match (result, release_result) {
         (Err(error), _) => Err(error),
-        (Ok(_), Err(error)) => Err(error),
+        (Ok(_), Err(error)) => Err(error.into()),
         (Ok(_), Ok(())) => Ok(()),
     }
 }
@@ -2005,7 +2005,7 @@ async fn record_strava_event_best_effort(
 ) {
     let message = message.into();
 
-    if let Err(error) = integration_events::record_event(
+    if let Err(error) = integration_events_service::record_event(
         db,
         NewIntegrationEvent {
             user_id,

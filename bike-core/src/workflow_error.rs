@@ -1,31 +1,16 @@
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
-use axum::Json;
-use bike_core::errors::BikeCoreError;
-use bike_core::workflow_error::WorkflowError;
 use chrono::{DateTime, Utc};
-use serde::Serialize;
 use std::collections::HashMap;
-use utoipa::ToSchema;
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct ApiErrorResponse {
-    pub message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub errors: Option<HashMap<String, Vec<String>>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub retry_at: Option<DateTime<Utc>>,
-}
 
 #[derive(Debug)]
-pub struct AppError {
+pub struct WorkflowError {
     pub status: StatusCode,
     pub message: String,
     pub errors: Option<HashMap<String, Vec<String>>>,
     pub retry_at: Option<DateTime<Utc>>,
 }
 
-impl AppError {
+impl WorkflowError {
     pub fn bad_request(message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::BAD_REQUEST,
@@ -102,75 +87,58 @@ impl AppError {
     }
 }
 
-impl IntoResponse for AppError {
-    fn into_response(self) -> Response {
-        let body = ApiErrorResponse {
-            message: self.message,
-            errors: self.errors,
-            retry_at: self.retry_at,
-        };
-
-        (self.status, Json(body)).into_response()
+impl std::fmt::Display for WorkflowError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.message)
     }
 }
 
-impl From<sea_orm::DbErr> for AppError {
+impl std::error::Error for WorkflowError {}
+
+impl From<sea_orm::DbErr> for WorkflowError {
     fn from(error: sea_orm::DbErr) -> Self {
         tracing::error!(error = ?error, "database request failed");
         Self::internal("Database request failed")
     }
 }
 
-impl From<std::io::Error> for AppError {
+impl From<std::io::Error> for WorkflowError {
     fn from(error: std::io::Error) -> Self {
         tracing::error!(error = ?error, "file storage request failed");
         Self::internal("File storage request failed")
     }
 }
 
-impl From<kaleido::glass::cooldown::CooldownError> for AppError {
-    fn from(error: kaleido::glass::cooldown::CooldownError) -> Self {
-        Self {
-            status: error.code,
-            message: error.message,
-            errors: None,
-            retry_at: error
-                .retry_after_seconds
-                .map(|seconds| Utc::now() + chrono::Duration::seconds(seconds)),
-        }
-    }
-}
-
-impl From<BikeCoreError> for AppError {
-    fn from(error: BikeCoreError) -> Self {
+impl From<crate::activity_import_lock::ActivityImportLockError> for WorkflowError {
+    fn from(error: crate::activity_import_lock::ActivityImportLockError) -> Self {
         match error {
-            BikeCoreError::BadRequest(message) => Self::bad_request(message),
-            BikeCoreError::ValidationField { field, message } => {
-                Self::validation_field(&field, message)
+            crate::activity_import_lock::ActivityImportLockError::Conflict(message) => {
+                Self::conflict(message)
             }
-            BikeCoreError::Internal(message) => Self::internal(message),
-            BikeCoreError::Database(error) => Self::from(error),
-            BikeCoreError::Cooldown {
-                message,
-                retry_after_seconds,
-            } => Self {
-                status: StatusCode::TOO_MANY_REQUESTS,
-                message,
-                errors: None,
-                retry_at: retry_after_seconds
-                    .map(|seconds| Utc::now() + chrono::Duration::seconds(seconds)),
-            },
+            crate::activity_import_lock::ActivityImportLockError::Internal(message) => {
+                Self::internal(message)
+            }
+            crate::activity_import_lock::ActivityImportLockError::Database(error) => {
+                Self::from(error)
+            }
         }
     }
 }
 
-impl From<WorkflowError> for AppError {
-    fn from(error: WorkflowError) -> Self {
-        Self {
-            status: error.status,
-            message: error.message,
-            errors: error.errors,
-            retry_at: error.retry_at,
-        }
+impl From<crate::activity_import_lifecycle::ActivityImportLifecycleError> for WorkflowError {
+    fn from(error: crate::activity_import_lifecycle::ActivityImportLifecycleError) -> Self {
+        Self::internal(error.message)
+    }
+}
+
+impl From<crate::segment_support::SegmentSupportError> for WorkflowError {
+    fn from(error: crate::segment_support::SegmentSupportError) -> Self {
+        Self::internal(error.message)
+    }
+}
+
+impl From<crate::segment_regeneration::SegmentRegenerationError> for WorkflowError {
+    fn from(error: crate::segment_regeneration::SegmentRegenerationError) -> Self {
+        Self::internal(error.message)
     }
 }

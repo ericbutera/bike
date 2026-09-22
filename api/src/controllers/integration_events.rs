@@ -1,10 +1,10 @@
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::entities::integration_events;
-use crate::integration_events as integration_event_service;
 use crate::storage::AppStorage;
 use axum::extract::{Query, State};
 use axum::routing::get;
 use axum::{Json, Router};
+use bike_core::integration_events_service as integration_event_service;
 use chrono::{DateTime, Utc};
 use kaleido::auth::{AdminUserContext, UserContext};
 use serde::{Deserialize, Serialize};

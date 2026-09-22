@@ -7,7 +7,7 @@ Treat Bike as a coordinated Rust application with two binaries, not as microserv
 ## Progress Checklist
 
 - [x] Release guardrails prevent API/worker tag drift.
-- [ ] Worker no longer depends on the `api` crate.
+- [x] Worker no longer depends on the `api` crate.
 - [ ] Shared `bike-core` crate owns entities, services, durable job payloads, and shared domain helpers.
   - [x] Shared config, observability, and database connection helpers live in `bike-core`.
   - [x] Durable job payloads and queue facade live in `bike-core::jobs`; worker processors stay in `worker`.
@@ -18,8 +18,10 @@ Treat Bike as a coordinated Rust application with two binaries, not as microserv
   - [x] Training analysis backfill/rebuild workflows live in `bike-core::activity_training_analysis`; API keeps a compatibility re-export.
   - [x] Fitness freshness, segment analytics, and activity analytics workflows live in `bike-core::analytics`; API keeps a compatibility re-export.
   - [x] Manual activity import recovery policy lives in `bike-core::activity_import_recovery`; API keeps compatibility wrappers and worker startup calls core directly.
-  - [ ] Activity import lifecycle, archive import, Strava sync, and segment regeneration workflows move behind `bike-core` boundaries.
-  - [ ] Domain services/workflows move behind `bike-core` boundaries.
+  - [x] Activity import status/stage transitions, processing events, duplicate/failure marking, and batch finalization live in `bike-core::activity_import_lifecycle`; API keeps compatibility wrappers.
+  - [x] Segment effort matching and segment regeneration workflows live in `bike-core::segment_support` and `bike-core::segment_regeneration`; API keeps compatibility wrappers.
+  - [x] Activity import lifecycle, archive import, and Strava sync workflows move behind `bike-core` boundaries.
+  - [x] Domain services/workflows move behind `bike-core` boundaries.
 - [ ] API is only the HTTP adapter.
 - [ ] Worker is only the task adapter.
 - [ ] Migrations run as an explicit release step, not implicitly from API startup.
@@ -28,7 +30,7 @@ Treat Bike as a coordinated Rust application with two binaries, not as microserv
 - [ ] Architecture checks prevent `worker -> api` dependencies from returning.
 - [ ] Full workspace tests and Clippy pass.
 
-Current progress: `bike-core` has been introduced for shared config, observability, database connection setup, durable job contracts, storage JSON value types, SeaORM entities, provider API metrics, activity import locks, manual activity import recovery, XC goal backfill coordination, training-analysis cache workflows, and analytics rebuild workflows. Worker processors stay in the `worker` crate; API keeps compatibility re-exports during the broader boundary migration.
+Current progress: `bike-core` has been introduced for shared config, observability, database connection setup, durable job contracts, storage JSON value types, SeaORM entities, provider API metrics, activity import locks, activity import lifecycle bookkeeping, manual activity import recovery, full activity import processing/reprocessing, archive import, Strava sync workflows, segment effort matching and regeneration, XC goal backfill coordination, training-analysis cache workflows, analytics rebuild workflows, and training report/goal/cooldown domain services. Worker processors stay in the `worker` crate and call `bike-core` directly; API keeps compatibility re-exports during the broader boundary migration.
 
 ## Key Changes
 

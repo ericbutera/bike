@@ -1,15 +1,15 @@
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::entities::strava_connections;
-use crate::integration_events::{
-    self, NewIntegrationEvent, INTEGRATION_LEVEL_ERROR, INTEGRATION_LEVEL_INFO,
-    INTEGRATION_PROVIDER_STRAVA,
-};
 use crate::storage::AppStorage;
-use crate::strava;
 use axum::extract::{Query, State};
 use axum::response::Redirect;
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use bike_core::integration_events_service::{
+    self as integration_events, NewIntegrationEvent, INTEGRATION_LEVEL_ERROR,
+    INTEGRATION_LEVEL_INFO, INTEGRATION_PROVIDER_STRAVA,
+};
+use bike_core::strava;
 use kaleido::auth::openapi as auth_openapi;
 use kaleido::auth::UserContext;
 use sea_orm::DatabaseConnection;
@@ -108,7 +108,7 @@ pub async fn begin_connect(
                 })),
             )
             .await;
-            return Err(error);
+            return Err(error.into());
         }
     };
 
@@ -221,7 +221,9 @@ pub async fn handle_callback(
             .as_deref()
             .ok_or_else(|| AppError::bad_request("Missing Strava authorization state"))?;
 
-        strava::exchange_code_for_connection(&state.db, &state.tasks, code, state_token).await
+        strava::exchange_code_for_connection(&state.db, &state.tasks, code, state_token)
+            .await
+            .map_err(AppError::from)
     }
     .await;
 
@@ -303,7 +305,7 @@ pub async fn handle_webhook_verification(
             )
             .await;
 
-            Err(error)
+            Err(error.into())
         }
     }
 }

@@ -3,22 +3,16 @@ use crate::activity_lifecycle::refresh_activity_derived_state_without_cache_rebu
 use crate::activity_parser::{parse_activity_artifact, ActivityParserArtifact, ParsedActivityData};
 use crate::activity_training_analysis::rebuild_activity_training_analysis_cache;
 use crate::activity_type::ActivityType;
-use crate::analytics::{
-    mark_segment_activity_changes, mark_user_activity_change, mark_user_fitness_dirty,
-    rebuild_activity_analytics_cache, rebuild_segment_analytics_cache,
-};
-use crate::app_error::AppError;
+use crate::analytics::{rebuild_activity_analytics_cache, rebuild_segment_analytics_cache};
 use crate::dedupe::activity_dedupe_matches_model;
 use crate::entities::{activities, activity_import_artifacts, activity_imports};
-use crate::integration_events::{
-    record_event, NewIntegrationEvent, INTEGRATION_LEVEL_ERROR, INTEGRATION_LEVEL_INFO,
-    INTEGRATION_LEVEL_SUCCESS,
-};
-use crate::tasks::TaskQueue;
+use crate::integration_events_service::INTEGRATION_LEVEL_INFO;
+use crate::jobs::JobQueue as TaskQueue;
 use crate::training_profile::{
     load_training_profile, serialize_activity_heart_rate_zones, summarize_heart_rate_zones,
     TrainingProfile,
 };
+use crate::workflow_error::WorkflowError as AppError;
 use chrono::{DateTime, NaiveDate, Utc};
 use petgraph::algo::toposort;
 use petgraph::graphmap::DiGraphMap;
@@ -104,19 +98,15 @@ pub enum PersistActivityUploadOutcome {
     Duplicate(DeduplicatedActivityImport),
 }
 
-pub const ACTIVITY_IMPORT_STATUS_PROCESSING: &str = "processing";
-pub const ACTIVITY_IMPORT_STATUS_PROCESSED: &str = "processed";
-pub const ACTIVITY_IMPORT_STATUS_FAILED: &str = "failed";
-pub const ACTIVITY_IMPORT_STATUS_DUPLICATE: &str = "duplicate";
-pub const ACTIVITY_IMPORT_STAGE_RAW_STORED: &str = "raw_stored";
-pub const ACTIVITY_IMPORT_STAGE_ACTIVITY_PARSED: &str = "activity_parsed";
-pub const ACTIVITY_IMPORT_STAGE_ACTIVITY_SAVED: &str = "activity_saved";
-pub const ACTIVITY_IMPORT_STAGE_SEGMENTS_BUILT: &str = "segments_built";
-pub const ACTIVITY_IMPORT_STAGE_SEGMENT_ANALYTICS_BUILT: &str = "segment_analytics_built";
-pub const ACTIVITY_IMPORT_STAGE_ACTIVITY_ANALYTICS_BUILT: &str = "activity_analytics_built";
-pub const ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT: &str = "training_analysis_built";
-pub const ACTIVITY_IMPORT_STAGE_COMPLETE: &str = "complete";
-pub const ACTIVITY_IMPORT_STALE_PROCESSING_SECONDS: i64 = 300;
+pub use crate::activity_import_lifecycle::{
+    ACTIVITY_IMPORT_STAGE_ACTIVITY_ANALYTICS_BUILT, ACTIVITY_IMPORT_STAGE_ACTIVITY_PARSED,
+    ACTIVITY_IMPORT_STAGE_ACTIVITY_SAVED, ACTIVITY_IMPORT_STAGE_COMPLETE,
+    ACTIVITY_IMPORT_STAGE_RAW_STORED, ACTIVITY_IMPORT_STAGE_SEGMENTS_BUILT,
+    ACTIVITY_IMPORT_STAGE_SEGMENT_ANALYTICS_BUILT, ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT,
+    ACTIVITY_IMPORT_STALE_PROCESSING_SECONDS, ACTIVITY_IMPORT_STATUS_DUPLICATE,
+    ACTIVITY_IMPORT_STATUS_FAILED, ACTIVITY_IMPORT_STATUS_PROCESSED,
+    ACTIVITY_IMPORT_STATUS_PROCESSING, ACTIVITY_PROCESSING_PROVIDER,
+};
 pub const ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL: &str = "original";
 pub const ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD: &str = "provider_payload";
 pub const ACTIVITY_IMPORT_ARTIFACT_KIND_GENERATED_EXPORT: &str = "generated_export";
@@ -129,7 +119,6 @@ pub const ACTIVITY_IMPORT_VERSION_LEGACY: i32 = activity_imports::ACTIVITY_IMPOR
 pub const ACTIVITY_IMPORT_VERSION_ARTIFACT_AWARE: i32 =
     activity_imports::ACTIVITY_IMPORT_VERSION_ARTIFACT_AWARE;
 pub const ACTIVITY_IMPORT_VERSION_CURRENT: i32 = activity_imports::ACTIVITY_IMPORT_VERSION_CURRENT;
-pub const ACTIVITY_PROCESSING_PROVIDER: &str = "activity_processing";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ActivityProcessingNode {
     RawStored,
@@ -294,7 +283,7 @@ pub async fn recover_stale_manual_activity_imports(
     tasks: &TaskQueue,
     now: DateTime<Utc>,
 ) -> Result<usize, AppError> {
-    bike_core::activity_import_recovery::recover_stale_manual_activity_imports(db, tasks, now)
+    crate::activity_import_recovery::recover_stale_manual_activity_imports(db, tasks, now)
         .await
         .map_err(|error| AppError::internal(error.message))
 }
@@ -304,7 +293,7 @@ pub async fn recover_abandoned_manual_activity_imports_after_worker_start(
     tasks: &TaskQueue,
     now: DateTime<Utc>,
 ) -> Result<usize, AppError> {
-    bike_core::activity_import_recovery::recover_abandoned_manual_activity_imports_after_worker_start(
+    crate::activity_import_recovery::recover_abandoned_manual_activity_imports_after_worker_start(
         db, tasks, now,
     )
     .await
@@ -317,7 +306,7 @@ pub async fn recover_stale_manual_activity_imports_for_user(
     user_id: i32,
     now: DateTime<Utc>,
 ) -> Result<usize, AppError> {
-    bike_core::activity_import_recovery::recover_stale_manual_activity_imports_for_user(
+    crate::activity_import_recovery::recover_stale_manual_activity_imports_for_user(
         db, tasks, user_id, now,
     )
     .await
@@ -396,80 +385,23 @@ pub async fn mark_activity_import_processing_stage(
     stage: &str,
     activity_id: Option<i32>,
 ) -> Result<activity_imports::Model, AppError> {
-    let mut active_model: activity_imports::ActiveModel = import.clone().into();
-    active_model.status = Set(ACTIVITY_IMPORT_STATUS_PROCESSING.to_string());
-    active_model.processing_stage = Set(stage.to_string());
-    active_model.processing_error = Set(None);
-    active_model.last_processing_event_at = Set(Some(Utc::now()));
-    if let Some(activity_id) = activity_id {
-        active_model.activity_id = Set(Some(activity_id));
-    }
-
-    let updated = active_model.update(db).await?;
-    record_activity_processing_event(
+    crate::activity_import_lifecycle::mark_activity_import_processing_stage(
         db,
-        &updated,
-        "stage_completed",
-        INTEGRATION_LEVEL_INFO,
-        format!("Activity import {} reached {stage}", updated.id),
-        Some(serde_json::json!({
-            "import_id": updated.id,
-            "activity_id": updated.activity_id,
-            "source": updated.source,
-            "stage": stage,
-        })),
+        import,
+        stage,
+        activity_id,
     )
-    .await;
-
-    Ok(updated)
+    .await
+    .map_err(|error| AppError::internal(error.message))
 }
 
 pub async fn mark_activity_imports_processed(
     db: &DatabaseConnection,
     import_ids: &[i32],
 ) -> Result<(), AppError> {
-    let mut import_ids = import_ids
-        .iter()
-        .copied()
-        .filter(|import_id| *import_id > 0)
-        .collect::<Vec<_>>();
-    import_ids.sort_unstable();
-    import_ids.dedup();
-
-    if import_ids.is_empty() {
-        return Ok(());
-    }
-
-    let imports = activity_imports::Entity::find()
-        .filter(activity_imports::Column::Id.is_in(import_ids.iter().copied()))
-        .all(db)
-        .await?;
-
-    for import in imports {
-        let mut active_model: activity_imports::ActiveModel = import.into();
-        active_model.status = Set(ACTIVITY_IMPORT_STATUS_PROCESSED.to_string());
-        active_model.processing_stage = Set(ACTIVITY_IMPORT_STAGE_COMPLETE.to_string());
-        active_model.processing_error = Set(None);
-        active_model.processed_at = Set(Some(Utc::now()));
-        active_model.last_processing_event_at = Set(Some(Utc::now()));
-        let updated = active_model.update(db).await?;
-        record_activity_processing_event(
-            db,
-            &updated,
-            "import_processed",
-            INTEGRATION_LEVEL_SUCCESS,
-            format!("Activity import {} completed processing", updated.id),
-            Some(serde_json::json!({
-                "import_id": updated.id,
-                "activity_id": updated.activity_id,
-                "source": updated.source,
-                "stage": ACTIVITY_IMPORT_STAGE_COMPLETE,
-            })),
-        )
-        .await;
-    }
-
-    Ok(())
+    crate::activity_import_lifecycle::mark_activity_imports_processed(db, import_ids)
+        .await
+        .map_err(|error| AppError::internal(error.message))
 }
 
 pub async fn mark_activity_import_failed(
@@ -478,34 +410,9 @@ pub async fn mark_activity_import_failed(
     stage: &str,
     error: &AppError,
 ) -> Result<(), AppError> {
-    let mut active_model: activity_imports::ActiveModel = import.clone().into();
-    active_model.status = Set(ACTIVITY_IMPORT_STATUS_FAILED.to_string());
-    active_model.processing_stage = Set(stage.to_string());
-    active_model.processing_error = Set(Some(error.message.clone()));
-    active_model.processing_attempts = Set(import.processing_attempts.saturating_add(1));
-    active_model.last_processing_event_at = Set(Some(Utc::now()));
-    let updated = active_model.update(db).await?;
-
-    record_activity_processing_event(
-        db,
-        &updated,
-        "import_failed",
-        INTEGRATION_LEVEL_ERROR,
-        format!(
-            "Activity import {} failed at {stage}: {}",
-            updated.id, error.message
-        ),
-        Some(serde_json::json!({
-            "import_id": updated.id,
-            "activity_id": updated.activity_id,
-            "source": updated.source,
-            "stage": stage,
-            "error": error.message,
-        })),
-    )
-    .await;
-
-    Ok(())
+    crate::activity_import_lifecycle::mark_activity_import_failed(db, import, stage, &error.message)
+        .await
+        .map_err(|error| AppError::internal(error.message))
 }
 
 pub async fn mark_activity_import_duplicate(
@@ -513,34 +420,13 @@ pub async fn mark_activity_import_duplicate(
     import: &activity_imports::Model,
     duplicate_activity_id: i32,
 ) -> Result<activity_imports::Model, AppError> {
-    let mut active_model: activity_imports::ActiveModel = import.clone().into();
-    active_model.status = Set(ACTIVITY_IMPORT_STATUS_DUPLICATE.to_string());
-    active_model.activity_id = Set(Some(duplicate_activity_id));
-    active_model.processing_stage = Set(ACTIVITY_IMPORT_STAGE_COMPLETE.to_string());
-    active_model.processing_error = Set(None);
-    active_model.processed_at = Set(Some(Utc::now()));
-    active_model.last_processing_event_at = Set(Some(Utc::now()));
-    let updated = active_model.update(db).await?;
-
-    record_activity_processing_event(
+    crate::activity_import_lifecycle::mark_activity_import_duplicate(
         db,
-        &updated,
-        "import_duplicate",
-        INTEGRATION_LEVEL_INFO,
-        format!(
-            "Activity import {} matched existing activity {}",
-            updated.id, duplicate_activity_id
-        ),
-        Some(serde_json::json!({
-            "import_id": updated.id,
-            "activity_id": duplicate_activity_id,
-            "source": updated.source,
-            "stage": ACTIVITY_IMPORT_STAGE_COMPLETE,
-        })),
+        import,
+        duplicate_activity_id,
     )
-    .await;
-
-    Ok(updated)
+    .await
+    .map_err(|error| AppError::internal(error.message))
 }
 
 async fn record_activity_processing_event(
@@ -551,26 +437,10 @@ async fn record_activity_processing_event(
     message: String,
     payload: Option<serde_json::Value>,
 ) {
-    if let Err(error) = record_event(
-        db,
-        NewIntegrationEvent {
-            user_id: Some(import.user_id),
-            provider: ACTIVITY_PROCESSING_PROVIDER.to_string(),
-            event_type: event_type.to_string(),
-            level: level.to_string(),
-            message,
-            connection_id: None,
-            payload,
-        },
+    crate::activity_import_lifecycle::record_activity_processing_event(
+        db, import, event_type, level, message, payload,
     )
-    .await
-    {
-        tracing::warn!(
-            import_id = import.id,
-            error = %error.message,
-            "failed to record activity processing event"
-        );
-    }
+    .await;
 }
 
 async fn run_activity_processing_graph(
@@ -1360,25 +1230,20 @@ pub async fn finalize_activity_import_batch(
     db: &DatabaseConnection,
     tasks: &TaskQueue,
     user_id: i32,
-    mut affected_segment_ids: Vec<i32>,
+    affected_segment_ids: Vec<i32>,
     fitness_dirty_from_day: Option<NaiveDate>,
     changed_at: DateTime<Utc>,
 ) -> Result<(), AppError> {
-    affected_segment_ids.sort_unstable();
-    affected_segment_ids.dedup();
-
-    if let Some(dirty_from_day) = fitness_dirty_from_day {
-        mark_user_fitness_dirty(db, user_id, dirty_from_day, changed_at).await?;
-    } else {
-        mark_user_activity_change(db, user_id, changed_at).await?;
-    }
-    if !affected_segment_ids.is_empty() {
-        mark_segment_activity_changes(db, &affected_segment_ids, changed_at).await?;
-    }
-
-    tasks.rebuild_fitness_freshness(user_id).await;
-
-    Ok(())
+    crate::activity_import_lifecycle::finalize_activity_import_batch(
+        db,
+        tasks,
+        user_id,
+        affected_segment_ids,
+        fitness_dirty_from_day,
+        changed_at,
+    )
+    .await
+    .map_err(|error| AppError::internal(error.message))
 }
 
 async fn reprocess_activity_from_import_with_cache_refresh(
@@ -1548,7 +1413,8 @@ mod tests {
         activities, activity_analytics, activity_import_artifacts, activity_imports,
         activity_training_analyses, integration_events, segment_efforts, segments,
     };
-    use crate::tasks::{ProcessActivityImportTask, Task};
+    use crate::jobs::ProcessActivityImportTask;
+    use crate::tasks::Task;
     use crate::training_profile::TrainingProfile;
     use chrono::Duration as ChronoDuration;
     use kaleido::background_jobs::background_tasks;
@@ -1609,7 +1475,7 @@ mod tests {
             format: "fit".to_string(),
             mime_type: Some("application/octet-stream".to_string()),
             source_correlation_id: source_correlation_id.map(str::to_string),
-            bytes: include_bytes!("../tests/fixtures/activity.fit").to_vec(),
+            bytes: include_bytes!("../../api/tests/fixtures/activity.fit").to_vec(),
         }
     }
 

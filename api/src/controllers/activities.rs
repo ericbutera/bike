@@ -1,17 +1,8 @@
 use crate::activity_analytics::ActivityAchievementHighlight;
-use crate::activity_details::{
-    deserialize_derived_activity_data, ActivityChartPoint, ActivityDerivedData, ActivityLap,
-    ActivityRoutePoint,
-};
-use crate::activity_import_pipeline::{
-    finalize_activity_import_batch, mark_activity_imports_processed, reprocess_activity_from_import,
-};
-use crate::activity_lifecycle::delete_activity_with_derived_state;
 use crate::activity_location::location_from_derived_json;
 use crate::activity_training_analysis::{
     load_activity_training_analysis_by_activity_id, ActivityTrainingAnalysisResponse,
 };
-use crate::activity_type::ActivityType;
 use crate::analytics::{
     estimated_training_load, mark_segment_activity_changes, mark_user_fitness_dirty,
 };
@@ -21,14 +12,23 @@ use crate::entities::{
     segment_user_summaries, segments,
 };
 use crate::storage::AppStorage;
-use crate::training_profile::{
-    deserialize_activity_heart_rate_zones, ActivityHeartRateZoneSummary,
-};
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use bike_core::activity_details::{
+    deserialize_derived_activity_data, ActivityChartPoint, ActivityDerivedData, ActivityLap,
+    ActivityRoutePoint,
+};
+use bike_core::activity_import_pipeline::{
+    finalize_activity_import_batch, mark_activity_imports_processed, reprocess_activity_from_import,
+};
+use bike_core::activity_lifecycle::delete_activity_with_derived_state;
+use bike_core::activity_type::ActivityType;
+use bike_core::training_profile::{
+    deserialize_activity_heart_rate_zones, ActivityHeartRateZoneSummary,
+};
 use chrono::{DateTime, Utc};
 use kaleido::auth::UserContext;
 use kaleido::glass::data::pagination::{Paginatable, PaginatedResponse, PaginationParams};
@@ -194,7 +194,7 @@ impl ActivityResponse {
 }
 
 fn summary_derived_data(
-    raw: Option<&crate::activity_details::StoredActivityDerivedData>,
+    raw: Option<&bike_core::activity_details::StoredActivityDerivedData>,
 ) -> ActivityDerivedData {
     let derived_data = deserialize_derived_activity_data(raw);
 
@@ -976,8 +976,8 @@ fn resolve_activity_import_storage_path(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::activity_details::{serialize_derived_activity_data, StoredActivityDerivedData};
     use crate::activity_training_analysis::ActivityTrainingAnalysisResponse;
+    use bike_core::activity_details::{serialize_derived_activity_data, StoredActivityDerivedData};
     use kaleido::glass::data::pagination::PaginatedResponse;
 
     #[test]
@@ -1024,7 +1024,7 @@ mod tests {
             source_correlation_id: None,
             original_filename: Some("evening-ride.gpx".to_string()),
             format: Some("gpx".to_string()),
-            activity_type: crate::activity_type::ActivityType::Training
+            activity_type: bike_core::activity_type::ActivityType::Training
                 .as_str()
                 .to_string(),
             started_at: now,
@@ -1131,7 +1131,7 @@ mod tests {
                 source_correlation_id: None,
                 original_filename: Some("evening-ride.gpx".to_string()),
                 format: Some("gpx".to_string()),
-                activity_type: crate::activity_type::ActivityType::Training
+                activity_type: bike_core::activity_type::ActivityType::Training
                     .as_str()
                     .to_string(),
                 started_at: now,
@@ -1315,7 +1315,7 @@ mod tests {
                 source_correlation_id: None,
                 original_filename: Some("morning-ride.gpx".to_string()),
                 format: Some("gpx".to_string()),
-                activity_type: crate::activity_type::ActivityType::Training
+                activity_type: bike_core::activity_type::ActivityType::Training
                     .as_str()
                     .to_string(),
                 started_at: now,
@@ -1397,7 +1397,7 @@ mod tests {
                 source_correlation_id: None,
                 original_filename: Some("morning-ride.gpx".to_string()),
                 format: Some("gpx".to_string()),
-                activity_type: crate::activity_type::ActivityType::Training
+                activity_type: bike_core::activity_type::ActivityType::Training
                     .as_str()
                     .to_string(),
                 started_at: now,
@@ -1483,7 +1483,7 @@ mod tests {
                 source_correlation_id: None,
                 original_filename: Some("morning-ride.gpx".to_string()),
                 format: Some("gpx".to_string()),
-                activity_type: crate::activity_type::ActivityType::Training
+                activity_type: bike_core::activity_type::ActivityType::Training
                     .as_str()
                     .to_string(),
                 started_at: now,

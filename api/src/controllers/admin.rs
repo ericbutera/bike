@@ -5,19 +5,12 @@ use crate::activity_import_lock::{
     ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION, ACTIVITY_IMPORT_LOCK_STAGE_QUEUED,
     ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
 };
-use crate::activity_import_pipeline::ACTIVITY_PROCESSING_PROVIDER;
-use crate::activity_lifecycle::cleanup_duplicate_activities_for_user;
 use crate::analytics::mark_user_activity_changes;
 use crate::app_error::{ApiErrorResponse, AppError};
-use crate::archive_import::{
-    import_activity_archive_from_path, resolve_local_archive_import_path,
-    ImportActivityArchiveRequest,
-};
 use crate::controllers::activity_imports as activity_imports_controller;
 use crate::entities::{
     activities, activity_imports, provider_rate_limit_buckets, segments, strava_connections,
 };
-use crate::integration_events as integration_event_service;
 use crate::storage::AppStorage;
 use crate::xc_goal_backfill::queue_user_xc_goal_backfill;
 use axum::{
@@ -26,6 +19,13 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use bike_core::activity_import_pipeline::ACTIVITY_PROCESSING_PROVIDER;
+use bike_core::activity_lifecycle::cleanup_duplicate_activities_for_user;
+use bike_core::archive_import::{
+    import_activity_archive_from_path, resolve_local_archive_import_path,
+    ImportActivityArchiveRequest,
+};
+use bike_core::integration_events_service as integration_event_service;
 use chrono::{DateTime, Utc};
 use kaleido::auth::entities::users;
 use kaleido::auth::AdminUserContext;
@@ -1065,7 +1065,7 @@ pub async fn cleanup_user_duplicate_activities(
     .await;
 
     match (result, release_result) {
-        (Err(error), _) => Err(error),
+        (Err(error), _) => Err(error.into()),
         (Ok(_), Err(error)) => Err(error),
         (Ok(response), Ok(())) => Ok(response),
     }
@@ -1141,7 +1141,7 @@ pub async fn import_activity_archive(
     .await;
 
     match (result, release_result) {
-        (Err(error), _) => Err(error),
+        (Err(error), _) => Err(error.into()),
         (Ok(_), Err(error)) => Err(error),
         (Ok(response), Ok(())) => Ok(response),
     }
@@ -1277,7 +1277,7 @@ mod tests {
             source_correlation_id: Set(None),
             original_filename: Set(None),
             format: Set(Some("gpx".to_string())),
-            activity_type: Set(crate::activity_type::ActivityType::Training
+            activity_type: Set(bike_core::activity_type::ActivityType::Training
                 .as_str()
                 .to_string()),
             started_at: Set(now - Duration::hours(2)),

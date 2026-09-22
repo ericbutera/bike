@@ -2,25 +2,25 @@ use crate::activity_import_lock::{
     describe_source, describe_stage, load_user_activity_import_lock,
     release_user_activity_import_lock, ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD,
 };
-use crate::activity_import_pipeline::{
+use crate::activity_location::location_from_derived_json;
+use crate::app_error::{ApiErrorResponse, AppError};
+use crate::config::Config;
+use crate::entities::{activities, activity_archive_import_jobs, activity_imports};
+use crate::storage::AppStorage;
+use axum::extract::{Multipart, Path, State};
+use axum::http::StatusCode;
+use axum::Json;
+use bike_core::activity_import_pipeline::{
     activity_processing_graph_mermaid, activity_processing_graph_nodes,
     activity_processing_topological_order, mark_activity_import_failed,
     store_activity_upload_import, validate_activity_format, ActivityProcessingGraphNode,
     ActivityProcessingNode, ActivityUploadPayload, ACTIVITY_IMPORT_STAGE_COMPLETE,
     ACTIVITY_PROCESSING_PROVIDER,
 };
-use crate::activity_location::location_from_derived_json;
-use crate::app_error::{ApiErrorResponse, AppError};
-use crate::archive_import::{
+use bike_core::archive_import::{
     decode_error_samples, enqueue_activity_archive_import_job, normalize_archive_url,
 };
-use crate::config::Config;
-use crate::entities::{activities, activity_archive_import_jobs, activity_imports};
-use crate::integration_events as integration_event_service;
-use crate::storage::AppStorage;
-use axum::extract::{Multipart, Path, State};
-use axum::http::StatusCode;
-use axum::Json;
+use bike_core::integration_events_service as integration_event_service;
 use chrono::{DateTime, Utc};
 use kaleido::auth::UserContext;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
@@ -268,7 +268,7 @@ fn trace_node_status(
     rank: usize,
     current_rank: usize,
 ) -> &'static str {
-    if import.status == crate::activity_import_pipeline::ACTIVITY_IMPORT_STATUS_FAILED
+    if import.status == bike_core::activity_import_pipeline::ACTIVITY_IMPORT_STATUS_FAILED
         && import.processing_stage == node.id()
     {
         "failed"
@@ -623,7 +623,7 @@ pub async fn upload_activity_import(
     .await
     {
         Ok(import) => import,
-        Err(error) => return Err(error),
+        Err(error) => return Err(error.into()),
     };
 
     if let Err(message) = state
@@ -632,7 +632,16 @@ pub async fn upload_activity_import(
         .await
     {
         let error = AppError::internal(format!("Failed to queue activity import: {message}"));
-        mark_activity_import_failed(&state.db, &import, &import.processing_stage, &error).await?;
+        let workflow_error =
+            bike_core::workflow_error::WorkflowError::internal(error.message.clone());
+        mark_activity_import_failed(
+            &state.db,
+            &import,
+            &import.processing_stage,
+            &workflow_error,
+        )
+        .await
+        .map_err(AppError::from)?;
         return Err(error);
     }
 
@@ -770,7 +779,7 @@ fn map_multipart_error(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::activity_details::{
+    use bike_core::activity_details::{
         serialize_derived_activity_data, ActivityDerivedData, ActivityRoutePoint,
     };
     use chrono::Utc;
@@ -918,7 +927,7 @@ mod tests {
             source_correlation_id: None,
             original_filename: Some("ride.gpx".to_string()),
             format: Some("gpx".to_string()),
-            activity_type: crate::activity_type::ActivityType::Training
+            activity_type: bike_core::activity_type::ActivityType::Training
                 .as_str()
                 .to_string(),
             started_at: now,
@@ -943,7 +952,8 @@ mod tests {
         }
     }
 
-    fn activity_import_derived_data_json() -> crate::activity_details::StoredActivityDerivedData {
+    fn activity_import_derived_data_json() -> bike_core::activity_details::StoredActivityDerivedData
+    {
         serialize_derived_activity_data(&ActivityDerivedData {
             laps: Vec::new(),
             chart_points: Vec::new(),

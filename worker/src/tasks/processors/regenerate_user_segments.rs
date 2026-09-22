@@ -1,6 +1,6 @@
-use api::activity_lifecycle::process_user_segment_regeneration;
 use async_trait::async_trait;
 use bike_core::jobs::RegenerateUserSegmentsTask;
+use bike_core::segment_regeneration::process_user_segment_regeneration;
 use kaleido::background_jobs::worker::TaskProcessor;
 use sea_orm::DatabaseConnection;
 use std::error::Error;

@@ -1,10 +1,10 @@
 use crate::activity_summary::{summarize_activity_upload, ActivityDraft};
-use crate::app_error::AppError;
 use crate::fit_support::parse_fit_activity;
+use crate::workflow_error::WorkflowError as AppError;
 use chrono::{DateTime, Utc};
 use roxmltree::{Document, Node};
 
-pub use bike_core::activity_data::{
+pub use crate::activity_data::{
     ActivityChartPoint, ActivityDerivedData, ActivityLap, ActivityRoutePoint,
     StoredActivityDerivedData, StoredRoutePointSeries,
 };
@@ -959,7 +959,7 @@ mod tests {
 
     #[test]
     fn derives_fit_laps_and_chart_points() {
-        let fit = include_bytes!("../tests/fixtures/activity.fit");
+        let fit = include_bytes!("../../api/tests/fixtures/activity.fit");
         let detail = derive_activity_detail_data("activity.fit", "fit", fit).expect("fit detail");
 
         assert_eq!(detail.laps.len(), 1);
