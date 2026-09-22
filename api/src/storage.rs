@@ -1,6 +1,6 @@
-use crate::config::Config;
 use crate::tasks::TaskQueue;
 use crate::tasks::{create_auth_service, AppAuthService};
+use bike_core::config::Config;
 use kaleido::auth::controllers::oauth::OAuthRouteStorage;
 use kaleido::auth::{AuthRouteStorage, AuthStorage};
 use kaleido::background_jobs::admin::BackgroundTasksStorage;

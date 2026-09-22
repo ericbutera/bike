@@ -1,9 +1,11 @@
-use crate::analytics::{rebuild_fitness_freshness_cache, FATIGUE_WINDOW_DAYS, FITNESS_WINDOW_DAYS};
 use crate::app_error::{ApiErrorResponse, AppError};
-use crate::entities::{analytics_user_states, fitness_freshness_daily};
 use crate::storage::AppStorage;
 use axum::extract::{Query, State};
 use axum::Json;
+use bike_core::analytics::{
+    rebuild_fitness_freshness_cache, FATIGUE_WINDOW_DAYS, FITNESS_WINDOW_DAYS,
+};
+use bike_core::entities::{analytics_user_states, fitness_freshness_daily};
 use chrono::{Duration, NaiveDate, Utc};
 use kaleido::auth::UserContext;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
@@ -218,7 +220,7 @@ fn round_metric(value: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::{activities, analytics_user_states, fitness_freshness_daily};
+    use bike_core::entities::{activities, analytics_user_states, fitness_freshness_daily};
     use chrono::DateTime;
     use sea_orm::{
         ActiveModelTrait, ConnectionTrait, Database, DatabaseConnection, EntityTrait, Schema, Set,

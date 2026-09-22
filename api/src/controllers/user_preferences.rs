@@ -1,9 +1,9 @@
 use crate::app_error::{ApiErrorResponse, AppError};
-use crate::entities::user_preferences;
 use crate::storage::AppStorage;
 use crate::xc_goal_backfill::{clear_user_xc_goal_backfill_state, queue_user_xc_goal_backfill};
 use axum::extract::State;
 use axum::Json;
+use bike_core::entities::user_preferences;
 use bike_core::training_profile::{
     deserialize_heart_rate_zone_bounds, serialize_heart_rate_zone_bounds,
     validate_estimated_ftp_watts, validate_heart_rate_zone_bounds_bpm,

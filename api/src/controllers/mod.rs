@@ -1,4 +1,4 @@
-use crate::config::Config;
+use bike_core::config::Config;
 pub mod activities;
 pub mod activity_imports;
 pub mod admin;

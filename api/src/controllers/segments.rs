@@ -1,8 +1,4 @@
-use crate::analytics::rebuild_activity_analytics_cache;
 use crate::app_error::{ApiErrorResponse, AppError};
-use crate::entities::{
-    activities, segment_efforts, segment_summaries, segment_user_summaries, segments,
-};
 use crate::segment_support::{
     deserialize_segment_route_points, serialize_segment_route_points, slice_effort_route_points,
 };
@@ -15,7 +11,11 @@ use bike_core::activity_details::{
     derive_activity_detail_data, deserialize_derived_activity_data, ActivityRoutePoint,
 };
 use bike_core::activity_summary::summarize_activity_upload;
+use bike_core::analytics::rebuild_activity_analytics_cache;
 use bike_core::dedupe::segment_dedupe_key;
+use bike_core::entities::{
+    activities, segment_efforts, segment_summaries, segment_user_summaries, segments,
+};
 use chrono::{DateTime, Datelike, Utc};
 use kaleido::auth::entities::users;
 use kaleido::auth::UserContext;

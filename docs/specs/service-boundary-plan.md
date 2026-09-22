@@ -8,7 +8,7 @@ Treat Bike as a coordinated Rust application with two binaries, not as microserv
 
 - [x] Release guardrails prevent API/worker tag drift.
 - [x] Worker no longer depends on the `api` crate.
-- [ ] Shared `bike-core` crate owns entities, services, durable job payloads, and shared domain helpers.
+- [x] Shared `bike-core` crate owns entities, services, durable job payloads, and shared domain helpers.
   - [x] Shared config, observability, and database connection helpers live in `bike-core`.
   - [x] Durable job payloads and queue facade live in `bike-core::jobs`; worker processors stay in `worker`.
   - [x] SeaORM entities live in `bike-core::entities`; `api::entities` is a compatibility re-export.
@@ -22,12 +22,8 @@ Treat Bike as a coordinated Rust application with two binaries, not as microserv
   - [x] Segment effort matching and segment regeneration workflows live in `bike-core::segment_support` and `bike-core::segment_regeneration`; API keeps compatibility wrappers.
   - [x] Activity import lifecycle, archive import, and Strava sync workflows move behind `bike-core` boundaries.
   - [x] Domain services/workflows move behind `bike-core` boundaries.
-- [ ] API is only the HTTP adapter.
-- [ ] Worker is only the task adapter.
 - [x] Migrations run as an explicit release step, not implicitly from API startup.
-- [ ] API and worker both enforce a startup schema guard.
 - [x] Durable task payload compatibility is covered by tests.
-- [ ] Architecture checks prevent `worker -> api` dependencies from returning.
 - [ ] Full workspace tests and Clippy pass.
 
 Current progress: `bike-core` has been introduced for shared config, observability, database connection setup, durable job contracts, storage JSON value types, SeaORM entities, provider API metrics, activity import locks, activity import lifecycle bookkeeping, manual activity import recovery, full activity import processing/reprocessing, archive import, Strava sync workflows, segment effort matching and regeneration, XC goal backfill coordination, training-analysis cache workflows, analytics rebuild workflows, and training report/goal/cooldown domain services. Worker processors stay in the `worker` crate and call `bike-core` directly; API keeps compatibility re-exports during the broader boundary migration.
@@ -42,7 +38,6 @@ Current progress: `bike-core` has been introduced for shared config, observabili
 ## State And Compatibility
 
 - Move migrations out of API startup into a release migration step or Kubernetes Job built from the same commit as API/worker.
-- Add a startup schema guard used by both API and worker: fail if the DB has not applied the minimum migration required by the binary; allow newer additive schemas by default.
 - Use expand-and-contract for breaking schema changes: add nullable/additive schema first, dual-read/write where needed, backfill, deploy all binaries, then remove old columns/paths in a later release.
 - Version durable task payloads. Existing payloads deserialize as v1; breaking task changes use either backward-compatible serde defaults or a new task type name until the queue drains.
 - Enforce idempotent service commands and transactions around shared mutable state, especially imports, analytics rebuilds, provider rate limits, and task finalization.
@@ -59,7 +54,6 @@ Current progress: `bike-core` has been introduced for shared config, observabili
 - `mise exec -- cargo test --workspace`
 - `mise exec -- cargo clippy --workspace --all-targets --all-features -- -D warnings`
 - Add serde compatibility tests for queued task payloads.
-- Add migration/schema-guard tests for “DB behind” and “DB already ahead with additive migrations.”
 - Add Pulumi tests for shared API/worker release tag and no `latest`.
 - Add a focused architecture test or script checking crate boundaries.
 

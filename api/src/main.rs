@@ -1,6 +1,6 @@
-use api::config::Config;
 use api::storage::AppStorage;
 use api::{app, init_tracing_subscriber, metrics};
+use bike_core::config::Config;
 use std::sync::Arc;
 
 #[tokio::main]

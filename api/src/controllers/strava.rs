@@ -1,10 +1,11 @@
 use crate::app_error::{ApiErrorResponse, AppError};
-use crate::entities::strava_connections;
 use crate::storage::AppStorage;
 use axum::extract::{Query, State};
 use axum::response::Redirect;
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use bike_core::config::Config;
+use bike_core::entities::strava_connections;
 use bike_core::integration_events_service::{
     self as integration_events, NewIntegrationEvent, INTEGRATION_LEVEL_ERROR,
     INTEGRATION_LEVEL_INFO, INTEGRATION_PROVIDER_STRAVA,
@@ -82,8 +83,7 @@ pub async fn begin_connect(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<StravaAuthorizeResponse>, AppError> {
-    let url = match strava::create_authorization_url_for_user(crate::config::Config::get(), user.id)
-    {
+    let url = match strava::create_authorization_url_for_user(Config::get(), user.id) {
         Ok(url) => {
             record_strava_event_best_effort(
                 &state.db,
@@ -229,7 +229,7 @@ pub async fn handle_callback(
 
     match result {
         Ok(connection) => Redirect::to(&strava::build_frontend_account_redirect(
-            crate::config::Config::get(),
+            Config::get(),
             "connected",
             connection.last_sync_message.as_deref(),
         )),
@@ -252,7 +252,7 @@ pub async fn handle_callback(
             }
 
             Redirect::to(&strava::build_frontend_account_redirect(
-                crate::config::Config::get(),
+                Config::get(),
                 "error",
                 Some(&error.message),
             ))
@@ -273,7 +273,7 @@ pub async fn handle_webhook_verification(
     State(state): State<Arc<AppStorage>>,
     Query(query): Query<strava::StravaWebhookSubscriptionQuery>,
 ) -> Result<Json<strava::StravaWebhookChallengeResponse>, AppError> {
-    match strava::verify_webhook_subscription(crate::config::Config::get(), &query) {
+    match strava::verify_webhook_subscription(Config::get(), &query) {
         Ok(response) => {
             record_strava_event_best_effort(
                 &state.db,
@@ -334,7 +334,7 @@ async fn response_from_model(
     db: &DatabaseConnection,
     model: Option<&strava_connections::Model>,
 ) -> Result<StravaConnectionResponse, AppError> {
-    let config = crate::config::Config::get();
+    let config = Config::get();
     let resolved = match model {
         Some(connection) => Some(strava::resolve_connection_sync_state(db, connection).await?),
         None => None,

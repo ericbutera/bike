@@ -1,22 +1,12 @@
-use crate::activity_analytics::ActivityAchievementHighlight;
 use crate::activity_location::location_from_derived_json;
-use crate::activity_training_analysis::{
-    load_activity_training_analysis_by_activity_id, ActivityTrainingAnalysisResponse,
-};
-use crate::analytics::{
-    estimated_training_load, mark_segment_activity_changes, mark_user_fitness_dirty,
-};
 use crate::app_error::{ApiErrorResponse, AppError};
-use crate::entities::{
-    activities, activity_analytics, activity_import_artifacts, activity_imports, segment_efforts,
-    segment_user_summaries, segments,
-};
 use crate::storage::AppStorage;
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use bike_core::activity_achievements::ActivityAchievementHighlight;
 use bike_core::activity_details::{
     deserialize_derived_activity_data, ActivityChartPoint, ActivityDerivedData, ActivityLap,
     ActivityRoutePoint,
@@ -25,7 +15,17 @@ use bike_core::activity_import_pipeline::{
     finalize_activity_import_batch, mark_activity_imports_processed, reprocess_activity_from_import,
 };
 use bike_core::activity_lifecycle::delete_activity_with_derived_state;
+use bike_core::activity_training_analysis::{
+    load_activity_training_analysis_by_activity_id, ActivityTrainingAnalysisResponse,
+};
 use bike_core::activity_type::ActivityType;
+use bike_core::analytics::{
+    estimated_training_load, mark_segment_activity_changes, mark_user_fitness_dirty,
+};
+use bike_core::entities::{
+    activities, activity_analytics, activity_import_artifacts, activity_imports, segment_efforts,
+    segment_user_summaries, segments,
+};
 use bike_core::training_profile::{
     deserialize_activity_heart_rate_zones, ActivityHeartRateZoneSummary,
 };
@@ -976,8 +976,8 @@ fn resolve_activity_import_storage_path(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::activity_training_analysis::ActivityTrainingAnalysisResponse;
     use bike_core::activity_details::{serialize_derived_activity_data, StoredActivityDerivedData};
+    use bike_core::activity_training_analysis::ActivityTrainingAnalysisResponse;
     use kaleido::glass::data::pagination::PaginatedResponse;
 
     #[test]
@@ -1158,7 +1158,7 @@ mod tests {
         );
 
         response.training_analysis = Some(ActivityTrainingAnalysisResponse {
-            ride_focus: crate::activity_training_analysis::ActivityRideFocus::MixedXc,
+            ride_focus: bike_core::activity_training_analysis::ActivityRideFocus::MixedXc,
             route_family_key: Some("post-canyon".to_string()),
             comparable_distance_bucket_meters: Some(30_000),
             comparable_elevation_gain_bucket_meters: Some(400),

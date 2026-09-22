@@ -5,12 +5,8 @@ use crate::activity_import_lock::{
     ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION, ACTIVITY_IMPORT_LOCK_STAGE_QUEUED,
     ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
 };
-use crate::analytics::mark_user_activity_changes;
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::controllers::activity_imports as activity_imports_controller;
-use crate::entities::{
-    activities, activity_imports, provider_rate_limit_buckets, segments, strava_connections,
-};
 use crate::storage::AppStorage;
 use crate::xc_goal_backfill::queue_user_xc_goal_backfill;
 use axum::{
@@ -21,9 +17,13 @@ use axum::{
 };
 use bike_core::activity_import_pipeline::ACTIVITY_PROCESSING_PROVIDER;
 use bike_core::activity_lifecycle::cleanup_duplicate_activities_for_user;
+use bike_core::analytics::mark_user_activity_changes;
 use bike_core::archive_import::{
     import_activity_archive_from_path, resolve_local_archive_import_path,
     ImportActivityArchiveRequest,
+};
+use bike_core::entities::{
+    activities, activity_imports, provider_rate_limit_buckets, segments, strava_connections,
 };
 use bike_core::integration_events_service as integration_event_service;
 use chrono::{DateTime, Utc};

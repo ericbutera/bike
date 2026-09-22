@@ -2,12 +2,12 @@
 // This module is a thin wrapper that initialises the shared registry with the
 // app namespace supplied by the generated project.
 
-use crate::entities::strava_connections;
 use crate::storage::AppStorage;
 use axum::body::Body;
 use axum::extract::State;
 use axum::http::header::CONTENT_TYPE;
 use axum::response::Response;
+use bike_core::entities::strava_connections;
 use once_cell::sync::Lazy;
 use prometheus::{register_int_gauge, Encoder, IntGauge, TextEncoder};
 use sea_orm::{DbErr, EntityTrait, PaginatorTrait};

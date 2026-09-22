@@ -4,8 +4,6 @@ use crate::activity_import_lock::{
 };
 use crate::activity_location::location_from_derived_json;
 use crate::app_error::{ApiErrorResponse, AppError};
-use crate::config::Config;
-use crate::entities::{activities, activity_archive_import_jobs, activity_imports};
 use crate::storage::AppStorage;
 use axum::extract::{Multipart, Path, State};
 use axum::http::StatusCode;
@@ -20,6 +18,8 @@ use bike_core::activity_import_pipeline::{
 use bike_core::archive_import::{
     decode_error_samples, enqueue_activity_archive_import_job, normalize_archive_url,
 };
+use bike_core::config::Config;
+use bike_core::entities::{activities, activity_archive_import_jobs, activity_imports};
 use bike_core::integration_events_service as integration_event_service;
 use chrono::{DateTime, Utc};
 use kaleido::auth::UserContext;
@@ -195,7 +195,7 @@ impl ActivityProcessingGraphNodeResponse {
 }
 
 impl ActivityImportTraceEventResponse {
-    pub(crate) fn from_model(model: crate::entities::integration_events::Model) -> Self {
+    pub(crate) fn from_model(model: bike_core::entities::integration_events::Model) -> Self {
         Self {
             id: model.id,
             event_type: model.event_type,
@@ -900,7 +900,7 @@ mod tests {
         assert_eq!(response.id, 7);
         assert_eq!(
             response.import_version,
-            crate::entities::activity_imports::ACTIVITY_IMPORT_VERSION_CURRENT
+            bike_core::entities::activity_imports::ACTIVITY_IMPORT_VERSION_CURRENT
         );
         assert_eq!(response.activity_id, Some(21));
         assert_eq!(response.original_filename, "ride.gpx");
@@ -976,7 +976,7 @@ mod tests {
         activity_imports::Model {
             id: 7,
             user_id: 12,
-            import_version: crate::entities::activity_imports::ACTIVITY_IMPORT_VERSION_CURRENT,
+            import_version: bike_core::entities::activity_imports::ACTIVITY_IMPORT_VERSION_CURRENT,
             source: "manual_upload".to_string(),
             format: "gpx".to_string(),
             status: "uploaded".to_string(),
