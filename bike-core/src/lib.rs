@@ -1,6 +1,7 @@
 pub mod activity_achievements;
 pub mod activity_data;
 pub mod activity_import_lock;
+pub mod activity_import_recovery;
 pub mod activity_training_analysis;
 pub mod analytics;
 pub mod config;

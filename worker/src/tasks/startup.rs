@@ -1,5 +1,5 @@
-use api::activity_import_pipeline::recover_abandoned_manual_activity_imports_after_worker_start;
 use async_trait::async_trait;
+use bike_core::activity_import_recovery::recover_abandoned_manual_activity_imports_after_worker_start;
 use bike_core::jobs::JobQueue;
 use chrono::Utc;
 use kaleido::background_jobs::worker::{WorkerError, WorkerStartupHook};

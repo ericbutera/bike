@@ -17,6 +17,7 @@ Treat Bike as a coordinated Rust application with two binaries, not as microserv
   - [x] XC goal backfill state and queue coordination live in `bike-core::xc_goal_backfill`; API maps it to HTTP errors.
   - [x] Training analysis backfill/rebuild workflows live in `bike-core::activity_training_analysis`; API keeps a compatibility re-export.
   - [x] Fitness freshness, segment analytics, and activity analytics workflows live in `bike-core::analytics`; API keeps a compatibility re-export.
+  - [x] Manual activity import recovery policy lives in `bike-core::activity_import_recovery`; API keeps compatibility wrappers and worker startup calls core directly.
   - [ ] Activity import lifecycle, archive import, Strava sync, and segment regeneration workflows move behind `bike-core` boundaries.
   - [ ] Domain services/workflows move behind `bike-core` boundaries.
 - [ ] API is only the HTTP adapter.
@@ -27,7 +28,7 @@ Treat Bike as a coordinated Rust application with two binaries, not as microserv
 - [ ] Architecture checks prevent `worker -> api` dependencies from returning.
 - [ ] Full workspace tests and Clippy pass.
 
-Current progress: `bike-core` has been introduced for shared config, observability, database connection setup, durable job contracts, storage JSON value types, SeaORM entities, provider API metrics, activity import locks, XC goal backfill coordination, training-analysis cache workflows, and analytics rebuild workflows. Worker processors stay in the `worker` crate; API keeps compatibility re-exports during the broader boundary migration.
+Current progress: `bike-core` has been introduced for shared config, observability, database connection setup, durable job contracts, storage JSON value types, SeaORM entities, provider API metrics, activity import locks, manual activity import recovery, XC goal backfill coordination, training-analysis cache workflows, and analytics rebuild workflows. Worker processors stay in the `worker` crate; API keeps compatibility re-exports during the broader boundary migration.
 
 ## Key Changes
 

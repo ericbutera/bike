@@ -14,19 +14,15 @@ use crate::integration_events::{
     record_event, NewIntegrationEvent, INTEGRATION_LEVEL_ERROR, INTEGRATION_LEVEL_INFO,
     INTEGRATION_LEVEL_SUCCESS,
 };
-use crate::tasks::{ProcessActivityImportTask, TaskQueue};
+use crate::tasks::TaskQueue;
 use crate::training_profile::{
     load_training_profile, serialize_activity_heart_rate_zones, summarize_heart_rate_zones,
     TrainingProfile,
 };
-use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, Utc};
-use kaleido::background_jobs::background_tasks;
+use chrono::{DateTime, NaiveDate, Utc};
 use petgraph::algo::toposort;
 use petgraph::graphmap::DiGraphMap;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, Set,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::Path;
@@ -134,9 +130,6 @@ pub const ACTIVITY_IMPORT_VERSION_ARTIFACT_AWARE: i32 =
     activity_imports::ACTIVITY_IMPORT_VERSION_ARTIFACT_AWARE;
 pub const ACTIVITY_IMPORT_VERSION_CURRENT: i32 = activity_imports::ACTIVITY_IMPORT_VERSION_CURRENT;
 pub const ACTIVITY_PROCESSING_PROVIDER: &str = "activity_processing";
-const PROCESS_ACTIVITY_IMPORT_TASK_TYPE: &str = "process_activity_import";
-const MANUAL_UPLOAD_SOURCE: &str = "manual_upload";
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ActivityProcessingNode {
     RawStored,
@@ -301,25 +294,9 @@ pub async fn recover_stale_manual_activity_imports(
     tasks: &TaskQueue,
     now: DateTime<Utc>,
 ) -> Result<usize, AppError> {
-    let stale_before = now - ChronoDuration::seconds(ACTIVITY_IMPORT_STALE_PROCESSING_SECONDS);
-    let user_ids = activity_imports::Entity::find()
-        .select_only()
-        .column(activity_imports::Column::UserId)
-        .distinct()
-        .filter(activity_imports::Column::Source.eq(MANUAL_UPLOAD_SOURCE))
-        .filter(activity_imports::Column::Status.eq(ACTIVITY_IMPORT_STATUS_PROCESSING))
-        .filter(activity_imports::Column::LastProcessingEventAt.lte(stale_before))
-        .into_tuple::<i32>()
-        .all(db)
-        .await?;
-
-    let mut recovered_count = 0usize;
-    for user_id in user_ids {
-        recovered_count +=
-            recover_stale_manual_activity_imports_for_user(db, tasks, user_id, now).await?;
-    }
-
-    Ok(recovered_count)
+    bike_core::activity_import_recovery::recover_stale_manual_activity_imports(db, tasks, now)
+        .await
+        .map_err(|error| AppError::internal(error.message))
 }
 
 pub async fn recover_abandoned_manual_activity_imports_after_worker_start(
@@ -327,23 +304,11 @@ pub async fn recover_abandoned_manual_activity_imports_after_worker_start(
     tasks: &TaskQueue,
     now: DateTime<Utc>,
 ) -> Result<usize, AppError> {
-    let user_ids = activity_imports::Entity::find()
-        .select_only()
-        .column(activity_imports::Column::UserId)
-        .distinct()
-        .filter(activity_imports::Column::Source.eq(MANUAL_UPLOAD_SOURCE))
-        .filter(activity_imports::Column::Status.eq(ACTIVITY_IMPORT_STATUS_PROCESSING))
-        .into_tuple::<i32>()
-        .all(db)
-        .await?;
-
-    let mut recovered_count = 0usize;
-    for user_id in user_ids {
-        recovered_count +=
-            recover_manual_activity_imports_for_user(db, tasks, user_id, now, None).await?;
-    }
-
-    Ok(recovered_count)
+    bike_core::activity_import_recovery::recover_abandoned_manual_activity_imports_after_worker_start(
+        db, tasks, now,
+    )
+    .await
+    .map_err(|error| AppError::internal(error.message))
 }
 
 pub async fn recover_stale_manual_activity_imports_for_user(
@@ -352,148 +317,11 @@ pub async fn recover_stale_manual_activity_imports_for_user(
     user_id: i32,
     now: DateTime<Utc>,
 ) -> Result<usize, AppError> {
-    let stale_before = now - ChronoDuration::seconds(ACTIVITY_IMPORT_STALE_PROCESSING_SECONDS);
-    recover_manual_activity_imports_for_user(db, tasks, user_id, now, Some(stale_before)).await
-}
-
-async fn recover_manual_activity_imports_for_user(
-    db: &DatabaseConnection,
-    tasks: &TaskQueue,
-    user_id: i32,
-    now: DateTime<Utc>,
-    stale_before: Option<DateTime<Utc>>,
-) -> Result<usize, AppError> {
-    let imports = activity_imports::Entity::find()
-        .filter(activity_imports::Column::UserId.eq(user_id))
-        .filter(activity_imports::Column::Source.eq(MANUAL_UPLOAD_SOURCE))
-        .filter(activity_imports::Column::Status.eq(ACTIVITY_IMPORT_STATUS_PROCESSING))
-        .order_by_asc(activity_imports::Column::CreatedAt)
-        .all(db)
-        .await?;
-
-    let mut recovered_count = 0usize;
-
-    for import in imports {
-        if let Some(stale_before) = stale_before {
-            let last_event_at = import.last_processing_event_at.unwrap_or(import.updated_at);
-            if last_event_at > stale_before {
-                continue;
-            }
-        }
-
-        let active_tasks =
-            find_active_process_activity_import_tasks(db, user_id, import.id).await?;
-        let has_fresh_processing_task = active_tasks.iter().any(|task| {
-            stale_before.is_some_and(|stale_before| {
-                task.status == background_tasks::TaskStatus::Processing.as_str()
-                    && task.updated_at > stale_before
-            })
-        });
-
-        if has_fresh_processing_task {
-            continue;
-        }
-
-        let mut recovered_this_import = false;
-        for task in active_tasks
-            .iter()
-            .filter(|task| task.status == background_tasks::TaskStatus::Processing.as_str())
-        {
-            reset_background_task_to_pending(db, task).await?;
-            recovered_this_import = true;
-        }
-
-        let has_pending_task = active_tasks
-            .iter()
-            .any(|task| task.status == background_tasks::TaskStatus::Pending.as_str());
-
-        if !has_pending_task && !recovered_this_import {
-            tasks
-                .process_activity_import(user_id, import.id)
-                .await
-                .map_err(|message| {
-                    AppError::internal(format!(
-                        "Failed to requeue stale activity import {}: {message}",
-                        import.id
-                    ))
-                })?;
-            recovered_this_import = true;
-        }
-
-        if has_pending_task || recovered_this_import {
-            mark_activity_import_requeued(db, &import, now).await?;
-            recovered_count += 1;
-        }
-    }
-
-    Ok(recovered_count)
-}
-
-async fn find_active_process_activity_import_tasks(
-    db: &DatabaseConnection,
-    user_id: i32,
-    import_id: i32,
-) -> Result<Vec<background_tasks::Model>, AppError> {
-    let tasks = background_tasks::Entity::find()
-        .filter(background_tasks::Column::TaskType.eq(PROCESS_ACTIVITY_IMPORT_TASK_TYPE))
-        .filter(background_tasks::Column::Status.is_in([
-            background_tasks::TaskStatus::Pending.as_str(),
-            background_tasks::TaskStatus::Processing.as_str(),
-        ]))
-        .order_by_desc(background_tasks::Column::CreatedAt)
-        .all(db)
-        .await?;
-
-    Ok(tasks
-        .into_iter()
-        .filter(|task| task_targets_activity_import(task, user_id, import_id))
-        .collect())
-}
-
-fn task_targets_activity_import(
-    task: &background_tasks::Model,
-    user_id: i32,
-    import_id: i32,
-) -> bool {
-    serde_json::from_value::<ProcessActivityImportTask>(
-        task.payload
-            .get("data")
-            .cloned()
-            .unwrap_or_else(|| task.payload.clone()),
+    bike_core::activity_import_recovery::recover_stale_manual_activity_imports_for_user(
+        db, tasks, user_id, now,
     )
-    .map(|task| task.user_id == user_id && task.import_id == import_id)
-    .unwrap_or(false)
-}
-
-async fn reset_background_task_to_pending(
-    db: &DatabaseConnection,
-    task: &background_tasks::Model,
-) -> Result<(), AppError> {
-    let mut active: background_tasks::ActiveModel = task.clone().into();
-    active.status = Set(background_tasks::TaskStatus::Pending.as_str().to_string());
-    active.attempts = Set(0);
-    active.error = Set(None);
-    active.scheduled_for = Set(None);
-    active.started_at = Set(None);
-    active.completed_at = Set(None);
-    active.result = Set(None);
-    active.updated_at = Set(Utc::now());
-    active.update(db).await?;
-
-    Ok(())
-}
-
-async fn mark_activity_import_requeued(
-    db: &DatabaseConnection,
-    import: &activity_imports::Model,
-    now: DateTime<Utc>,
-) -> Result<activity_imports::Model, AppError> {
-    let mut active_model: activity_imports::ActiveModel = import.clone().into();
-    active_model.status = Set(ACTIVITY_IMPORT_STATUS_PROCESSING.to_string());
-    active_model.processing_stage = Set(ACTIVITY_IMPORT_STAGE_RAW_STORED.to_string());
-    active_model.processing_error = Set(None);
-    active_model.last_processing_event_at = Set(Some(now));
-    active_model.update(db).await.map_err(AppError::from)
+    .await
+    .map_err(|error| AppError::internal(error.message))
 }
 
 pub fn infer_activity_type(title: &str, original_filename: &str) -> ActivityType {
@@ -1722,9 +1550,14 @@ mod tests {
     };
     use crate::tasks::{ProcessActivityImportTask, Task};
     use crate::training_profile::TrainingProfile;
+    use chrono::Duration as ChronoDuration;
+    use kaleido::background_jobs::background_tasks;
     use sea_orm::{
         ColumnTrait, ConnectionTrait, Database, EntityTrait, PaginatorTrait, QueryFilter, Schema,
     };
+
+    const PROCESS_ACTIVITY_IMPORT_TASK_TYPE: &str = "process_activity_import";
+    const MANUAL_UPLOAD_SOURCE: &str = "manual_upload";
 
     async fn test_db() -> DatabaseConnection {
         let db = Database::connect("sqlite::memory:")
@@ -2046,7 +1879,15 @@ mod tests {
             .expect("load task")
             .expect("task exists");
         assert_eq!(task.status, background_tasks::TaskStatus::Pending.as_str());
-        assert!(task_targets_activity_import(&task, 1, import.id));
+        let queued_task = serde_json::from_value::<ProcessActivityImportTask>(
+            task.payload
+                .get("data")
+                .cloned()
+                .unwrap_or_else(|| task.payload.clone()),
+        )
+        .expect("deserialize process import task");
+        assert_eq!(queued_task.user_id, 1);
+        assert_eq!(queued_task.import_id, import.id);
     }
 
     #[tokio::test]
