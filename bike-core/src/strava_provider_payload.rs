@@ -10,6 +10,14 @@ use serde::{Deserialize, Serialize};
 const STRAVA_PROVIDER_PAYLOAD_VERSION: u8 = 1;
 const MAX_STRAVA_CHART_POINTS: usize = 180;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StravaSportKind {
+    Bike,
+    Run,
+    Swim,
+    Other,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct StoredStravaProviderPayload {
     #[serde(default = "default_payload_version")]
@@ -100,6 +108,15 @@ pub fn parse_strava_provider_payload(bytes: &[u8]) -> Result<ParsedActivityData,
         return Err(AppError::validation_field(
             "file",
             format!("Unsupported Strava provider payload version: {}", payload.v),
+        ));
+    }
+    if !strava_activity_is_bike(&payload.activity) {
+        return Err(AppError::validation_field(
+            "file",
+            format!(
+                "Strava activity {} is not a supported cycling activity",
+                payload.provider_activity_id.unwrap_or(payload.activity.id)
+            ),
         ));
     }
 
@@ -311,23 +328,55 @@ fn downsample_chart_points(
         .collect()
 }
 
+pub fn strava_activity_is_bike(activity: &StravaActivitySummary) -> bool {
+    strava_activity_sport_kind(activity) == StravaSportKind::Bike
+}
+
+pub fn strava_activity_sport_kind(activity: &StravaActivitySummary) -> StravaSportKind {
+    match normalized_strava_sport_token(activity).as_str() {
+        "ride" | "virtualride" | "mountainbikeride" | "gravelride" | "ebikeride"
+        | "emountainbikeride" | "velomobile" | "handcycle" => StravaSportKind::Bike,
+        "run" | "virtualrun" | "trailrun" | "walk" | "hike" => StravaSportKind::Run,
+        "swim" => StravaSportKind::Swim,
+        _ => StravaSportKind::Other,
+    }
+}
+
+pub fn strava_activity_sport_label(activity: &StravaActivitySummary) -> String {
+    activity
+        .sport_type
+        .as_deref()
+        .or(activity.legacy_type.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("Activity")
+        .to_string()
+}
+
 fn normalize_strava_sport(activity: &StravaActivitySummary) -> String {
-    match activity
+    match strava_activity_sport_kind(activity) {
+        StravaSportKind::Bike => "ride".to_string(),
+        StravaSportKind::Run => "run".to_string(),
+        StravaSportKind::Swim => "swim".to_string(),
+        StravaSportKind::Other => {
+            let token = normalized_strava_sport_token(activity);
+            if token.is_empty() {
+                "activity".to_string()
+            } else {
+                token
+            }
+        }
+    }
+}
+
+fn normalized_strava_sport_token(activity: &StravaActivitySummary) -> String {
+    activity
         .sport_type
         .as_deref()
         .or(activity.legacy_type.as_deref())
         .unwrap_or("activity")
         .trim()
         .to_ascii_lowercase()
-        .as_str()
-    {
-        "ride" | "virtualride" | "mountainbikeride" | "gravelride" | "ebikeride"
-        | "emountainbikeride" | "velomobile" | "handcycle" => "ride".to_string(),
-        "run" | "virtualrun" | "trailrun" => "run".to_string(),
-        "swim" => "swim".to_string(),
-        "" => "activity".to_string(),
-        other => other.to_string(),
-    }
 }
 
 fn summarize_elevation(values: &[f64]) -> (Option<f64>, Option<f64>) {
@@ -426,44 +475,55 @@ impl StravaActivitySummaryExt for StravaActivitySummary {
 mod tests {
     use super::*;
 
+    fn test_activity_with_sport(
+        sport_type: Option<&str>,
+        legacy_type: Option<&str>,
+    ) -> StravaActivitySummary {
+        StravaActivitySummary {
+            id: 99,
+            name: "Lunch Ride".to_string(),
+            distance: Some(1000.0),
+            moving_time: Some(300),
+            elapsed_time: Some(320),
+            max_speed: Some(6.2),
+            average_heartrate: Some(145.0),
+            max_heartrate: Some(162.0),
+            average_cadence: Some(88.0),
+            calories: Some(120.0),
+            sport_type: sport_type.map(ToOwned::to_owned),
+            legacy_type: legacy_type.map(ToOwned::to_owned),
+            start_date: DateTime::parse_from_rfc3339("2026-05-12T12:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
+        }
+    }
+
+    fn test_streams() -> StravaActivityStreams {
+        StravaActivityStreams {
+            time: Some(test_stream(vec![0, 160, 320])),
+            distance: Some(test_stream(vec![0.0, 500.0, 1000.0])),
+            latlng: Some(StravaLatLngStream {
+                data: vec![[35.0, -82.0], [35.0005, -82.0005], [35.001, -82.001]],
+                original_size: Some(3),
+                resolution: Some("high".to_string()),
+                series_type: Some("distance".to_string()),
+            }),
+            altitude: Some(test_stream(vec![700.0, 720.0, 725.0])),
+            velocity_smooth: Some(test_stream(vec![3.0, 4.0, 5.0])),
+            heartrate: Some(test_stream(vec![140, 145, 150])),
+            cadence: Some(test_stream(vec![86.0, 88.0, 90.0])),
+            watts: Some(test_stream(vec![205, 220, 235])),
+            temp: None,
+            moving: None,
+            grade_smooth: None,
+        }
+    }
+
     #[test]
     fn parses_strava_provider_payload_directly() {
         let payload = StoredStravaProviderPayload::new(
-            StravaActivitySummary {
-                id: 99,
-                name: "Lunch Ride".to_string(),
-                distance: Some(1000.0),
-                moving_time: Some(300),
-                elapsed_time: Some(320),
-                max_speed: Some(6.2),
-                average_heartrate: Some(145.0),
-                max_heartrate: Some(162.0),
-                average_cadence: Some(88.0),
-                calories: Some(120.0),
-                sport_type: Some("Ride".to_string()),
-                legacy_type: Some("Ride".to_string()),
-                start_date: DateTime::parse_from_rfc3339("2026-05-12T12:00:00Z")
-                    .unwrap()
-                    .with_timezone(&Utc),
-            },
-            StravaActivityStreams {
-                time: Some(test_stream(vec![0, 160, 320])),
-                distance: Some(test_stream(vec![0.0, 500.0, 1000.0])),
-                latlng: Some(StravaLatLngStream {
-                    data: vec![[35.0, -82.0], [35.0005, -82.0005], [35.001, -82.001]],
-                    original_size: Some(3),
-                    resolution: Some("high".to_string()),
-                    series_type: Some("distance".to_string()),
-                }),
-                altitude: Some(test_stream(vec![700.0, 720.0, 725.0])),
-                velocity_smooth: Some(test_stream(vec![3.0, 4.0, 5.0])),
-                heartrate: Some(test_stream(vec![140, 145, 150])),
-                cadence: Some(test_stream(vec![86.0, 88.0, 90.0])),
-                watts: Some(test_stream(vec![205, 220, 235])),
-                temp: None,
-                moving: None,
-                grade_smooth: None,
-            },
+            test_activity_with_sport(Some("Ride"), Some("Ride")),
+            test_streams(),
         );
 
         let parsed = parse_strava_provider_payload(&serde_json::to_vec(&payload).unwrap()).unwrap();
@@ -475,6 +535,52 @@ mod tests {
         assert_eq!(parsed.derived_data.route_points[0].power_watts, Some(205));
         assert_eq!(parsed.derived_data.chart_points[1].cadence_rpm, Some(88));
         assert_eq!(parsed.derived_data.laps[0].duration_seconds, Some(320));
+    }
+
+    #[test]
+    fn maps_strava_cycling_variants_to_bike_ride_sport() {
+        for sport_type in [
+            "Ride",
+            "VirtualRide",
+            "MountainBikeRide",
+            "GravelRide",
+            "EBikeRide",
+            "EMountainBikeRide",
+        ] {
+            let activity = test_activity_with_sport(Some(sport_type), None);
+
+            assert!(strava_activity_is_bike(&activity));
+            assert_eq!(normalize_strava_sport(&activity), "ride");
+        }
+    }
+
+    #[test]
+    fn sport_type_takes_precedence_over_legacy_type() {
+        let activity = test_activity_with_sport(Some("Run"), Some("Ride"));
+
+        assert!(!strava_activity_is_bike(&activity));
+        assert_eq!(normalize_strava_sport(&activity), "run");
+    }
+
+    #[test]
+    fn rejects_non_cycling_provider_payloads() {
+        for sport_type in ["Run", "TrailRun", "Walk", "Hike"] {
+            let payload = StoredStravaProviderPayload::new(
+                test_activity_with_sport(Some(sport_type), Some(sport_type)),
+                test_streams(),
+            );
+
+            let error =
+                parse_strava_provider_payload(&serde_json::to_vec(&payload).unwrap()).unwrap_err();
+
+            assert!(
+                error
+                    .message
+                    .contains("is not a supported cycling activity"),
+                "{}",
+                error.message
+            );
+        }
     }
 
     fn test_stream<T>(data: Vec<T>) -> StravaStream<T> {

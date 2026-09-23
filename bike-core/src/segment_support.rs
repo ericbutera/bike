@@ -213,6 +213,7 @@ where
     let mut affected_activity_ids = load_activity_ids_for_segment(db, segment_id).await?;
     let activities = activities::Entity::find()
         .filter(activities::Column::UserId.eq(user_id))
+        .filter(activities::Column::Sport.eq(activities::BIKE_ACTIVITY_SPORT))
         .all(db)
         .await?;
     let mut replacements = Vec::new();

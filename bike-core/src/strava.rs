@@ -26,7 +26,8 @@ use crate::jobs::{JobQueue as TaskQueue, StravaSyncTask};
 use crate::observability;
 use crate::strava_client::{StravaApiClient, StravaAuthorizationTokenResponse};
 use crate::strava_provider_payload::{
-    StoredStravaProviderPayload, StravaActivityStreams, StravaActivitySummary, StravaStream,
+    strava_activity_is_bike, strava_activity_sport_label, StoredStravaProviderPayload,
+    StravaActivityStreams, StravaActivitySummary, StravaStream,
 };
 use crate::training_profile::{load_training_profile, TrainingProfile};
 use crate::workflow_error::WorkflowError as AppError;
@@ -660,6 +661,7 @@ struct StravaSyncProgress {
     imported_count: i32,
     duplicate_count: i32,
     failed_count: i32,
+    skipped_count: i32,
     affected_segment_ids: Vec<i32>,
     imported_import_ids: Vec<i32>,
     fitness_dirty_from_day: Option<chrono::NaiveDate>,
@@ -674,6 +676,7 @@ enum StravaActivityImportOutcome {
     },
     Duplicate,
     Failed,
+    SkippedUnsupportedSport,
     ConnectionRemoved,
 }
 
@@ -683,6 +686,7 @@ impl StravaSyncProgress {
             imported_count: 0,
             duplicate_count: 0,
             failed_count: 0,
+            skipped_count: 0,
             affected_segment_ids: Vec::new(),
             imported_import_ids: Vec::new(),
             fitness_dirty_from_day: None,
@@ -870,6 +874,7 @@ async fn import_strava_activity_page(
             } => progress.record_imported(import_id, affected_segment_ids, fitness_dirty_from_day),
             StravaActivityImportOutcome::Duplicate => progress.duplicate_count += 1,
             StravaActivityImportOutcome::Failed => progress.failed_count += 1,
+            StravaActivityImportOutcome::SkippedUnsupportedSport => progress.skipped_count += 1,
             StravaActivityImportOutcome::ConnectionRemoved => return Ok(false),
         }
     }
@@ -883,32 +888,16 @@ async fn import_strava_activity(
     context: &StravaSyncRunContext,
     activity: &StravaActivitySummary,
 ) -> Result<StravaActivityImportOutcome, AppError> {
-    let streams = match context
-        .client
-        .get_activity_streams(&context.connection.access_token, activity.id)
-        .await
-    {
-        Ok(value) => value,
-        Err(error) if is_rate_limit_error(&error) => return Err(error),
-        Err(error) => {
-            tracing::warn!(
-                activity_id = activity.id,
-                message = %error.message,
-                "failed to fetch Strava activity streams"
-            );
-            return Ok(StravaActivityImportOutcome::Failed);
-        }
+    if !strava_activity_is_bike(activity) {
+        record_skipped_strava_activity(activity);
+        return Ok(StravaActivityImportOutcome::SkippedUnsupportedSport);
+    }
+
+    let Some(streams) = fetch_strava_activity_streams(context, activity).await? else {
+        return Ok(StravaActivityImportOutcome::Failed);
     };
-    let import_payload = match build_activity_upload(activity, &streams) {
-        Ok(value) => value,
-        Err(error) => {
-            tracing::warn!(
-                activity_id = activity.id,
-                message = %error.message,
-                "failed to build synthetic Strava activity upload"
-            );
-            return Ok(StravaActivityImportOutcome::Failed);
-        }
+    let Some(import_payload) = build_strava_activity_import_payload(activity, &streams) else {
+        return Ok(StravaActivityImportOutcome::Failed);
     };
 
     if stop_if_connection_removed(db, &context.connection).await? {
@@ -916,6 +905,53 @@ async fn import_strava_activity(
     }
 
     persist_strava_activity_upload(db, uploads_dir, context, activity, import_payload).await
+}
+
+fn record_skipped_strava_activity(activity: &StravaActivitySummary) {
+    tracing::info!(
+        activity_id = activity.id,
+        sport = %strava_activity_sport_label(activity),
+        "skipping Strava activity because Bike only imports cycling activities"
+    );
+}
+
+async fn fetch_strava_activity_streams(
+    context: &StravaSyncRunContext,
+    activity: &StravaActivitySummary,
+) -> Result<Option<StravaActivityStreams>, AppError> {
+    match context
+        .client
+        .get_activity_streams(&context.connection.access_token, activity.id)
+        .await
+    {
+        Ok(value) => Ok(Some(value)),
+        Err(error) if is_rate_limit_error(&error) => Err(error),
+        Err(error) => {
+            tracing::warn!(
+                activity_id = activity.id,
+                message = %error.message,
+                "failed to fetch Strava activity streams"
+            );
+            Ok(None)
+        }
+    }
+}
+
+fn build_strava_activity_import_payload(
+    activity: &StravaActivitySummary,
+    streams: &StravaActivityStreams,
+) -> Option<StravaActivityImportPayload> {
+    match build_activity_upload(activity, streams) {
+        Ok(value) => Some(value),
+        Err(error) => {
+            tracing::warn!(
+                activity_id = activity.id,
+                message = %error.message,
+                "failed to build synthetic Strava activity upload"
+            );
+            None
+        }
+    }
 }
 
 async fn persist_strava_activity_upload(
@@ -979,7 +1015,11 @@ async fn complete_strava_sync(
     progress: StravaSyncProgress,
 ) -> Result<(), AppError> {
     finalize_strava_imported_activities(db, context, &progress).await?;
-    if progress.failed_count > 0 && progress.imported_count == 0 && progress.duplicate_count == 0 {
+    if progress.failed_count > 0
+        && progress.imported_count == 0
+        && progress.duplicate_count == 0
+        && progress.skipped_count == 0
+    {
         let message = "Strava sync could not import any activities".to_string();
         mark_sync_failed(
             db,
@@ -997,6 +1037,7 @@ async fn complete_strava_sync(
         progress.imported_count,
         progress.duplicate_count,
         progress.failed_count,
+        progress.skipped_count,
     );
     mark_sync_succeeded(
         db,
@@ -2294,8 +2335,9 @@ fn build_sync_summary_message(
     imported_count: i32,
     duplicate_count: i32,
     failed_count: i32,
+    skipped_count: i32,
 ) -> String {
-    if imported_count == 0 && duplicate_count == 0 && failed_count == 0 {
+    if imported_count == 0 && duplicate_count == 0 && failed_count == 0 && skipped_count == 0 {
         return "No new Strava activities found.".to_string();
     }
 
@@ -2308,6 +2350,9 @@ fn build_sync_summary_message(
     }
     if failed_count > 0 {
         parts.push(format!("{failed_count} failed"));
+    }
+    if skipped_count > 0 {
+        parts.push(format!("Skipped {skipped_count} non-cycling"));
     }
 
     if parts.is_empty() {

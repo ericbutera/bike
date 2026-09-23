@@ -14,11 +14,14 @@ All outbound Strava HTTP calls are currently made through `StravaApiClient` in `
 
 The client is separated from the broader Strava service module. It builds request URLs, sends `reqwest` calls, parses JSON, and converts HTTP failures to `AppError`. Strava calls reserve provider quota before sending, reconcile Strava rate-limit headers after responses, emit OpenTelemetry spans, and treat `429 Too Many Requests` as a structured retryable pause.
 
+Strava activity kind is provider metadata, not Bike's training/race classification. Bike imports only Strava cycling-family activities into the app's ride domain: `Ride`, `VirtualRide`, `MountainBikeRide`, `GravelRide`, `EBikeRide`, and `EMountainBikeRide` normalize to stored `sport = ride`; non-cycling kinds such as `Run`, `TrailRun`, `Walk`, and `Hike` are skipped and must not contribute to segment, fitness, training, or report analytics. The Bike `activity_type` remains app-owned (`training` or `race`) and is inferred from the title/filename or changed by the user, not from Strava road/gravel/mountain labels.
+
 The current sync shape is:
 
 - refresh the access token if needed;
 - list athlete activities in pages of up to 100;
-- request streams for each activity;
+- skip non-cycling activities before requesting streams;
+- request streams for each supported cycling activity;
 - persist each activity through the normal activity import pipeline;
 - mark the whole sync succeeded or failed at the end.
 

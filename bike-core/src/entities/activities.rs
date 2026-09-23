@@ -8,6 +8,8 @@ use sea_orm::{
 };
 use std::collections::HashMap;
 
+pub const BIKE_ACTIVITY_SPORT: &str = "ride";
+
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "activities")]
 pub struct Model {
@@ -88,6 +90,7 @@ impl Model {
     {
         let mut query = Entity::find()
             .filter(Column::UserId.eq(user_id))
+            .filter(Column::Sport.eq(BIKE_ACTIVITY_SPORT))
             .order_by_asc(Column::StartedAt);
 
         if let Some(rebuild_from_day) = rebuild_from_day {
@@ -135,5 +138,9 @@ impl Model {
             .into_iter()
             .map(|activity| (activity.id, activity.started_at))
             .collect())
+    }
+
+    pub fn is_bike_activity(&self) -> bool {
+        self.sport == BIKE_ACTIVITY_SPORT
     }
 }

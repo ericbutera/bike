@@ -231,6 +231,7 @@ where
 
     let activity_models = activities::Entity::find()
         .filter(activities::Column::Id.is_in(activity_ids.iter().copied()))
+        .filter(activities::Column::Sport.eq(activities::BIKE_ACTIVITY_SPORT))
         .all(db)
         .await?;
     let existing_models_by_activity_id = activity_training_analyses::Entity::find()
@@ -301,6 +302,7 @@ pub async fn backfill_user_activity_training_analysis_cache(
 ) -> Result<usize, sea_orm::DbErr> {
     let activity_ids = activities::Entity::find()
         .filter(activities::Column::UserId.eq(user_id))
+        .filter(activities::Column::Sport.eq(activities::BIKE_ACTIVITY_SPORT))
         .all(db)
         .await?
         .into_iter()

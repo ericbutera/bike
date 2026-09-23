@@ -5,9 +5,12 @@ use crate::activity_training_analysis::rebuild_activity_training_analysis_cache;
 use crate::activity_type::ActivityType;
 use crate::analytics::{rebuild_activity_analytics_cache, rebuild_segment_analytics_cache};
 use crate::dedupe::activity_dedupe_matches_model;
-use crate::entities::{activities, activity_import_artifacts, activity_imports};
+use crate::entities::{
+    activities, activity_import_artifacts, activity_imports, activity_training_analyses,
+};
 use crate::integration_events_service::INTEGRATION_LEVEL_INFO;
 use crate::jobs::JobQueue as TaskQueue;
+use crate::segment_support::clear_segment_efforts_for_activity;
 use crate::training_profile::{
     load_training_profile, serialize_activity_heart_rate_zones, summarize_heart_rate_zones,
     TrainingProfile,
@@ -867,14 +870,20 @@ async fn build_segments_node(
     stage: &str,
 ) -> Result<(), AppError> {
     let parsed = parsed_activity_ref(state)?;
-    let activity_id = activity_model_ref(state)?.id;
-    state.affected_segment_ids = refresh_activity_derived_state_without_cache_rebuilds(
-        run.db,
-        run.user_id,
-        activity_id,
-        &parsed.derived_data.route_points,
-    )
-    .await?;
+    let activity = activity_model_ref(state)?;
+    let activity_id = activity.id;
+    state.affected_segment_ids = if activity.is_bike_activity() {
+        refresh_activity_derived_state_without_cache_rebuilds(
+            run.db,
+            run.user_id,
+            activity_id,
+            &parsed.derived_data.route_points,
+        )
+        .await?
+    } else {
+        clear_segment_efforts_for_activity(run.db, run.user_id, activity_id).await?;
+        Vec::new()
+    };
     state.import_model = mark_activity_import_processing_stage(
         run.db,
         &state.import_model,
@@ -925,6 +934,20 @@ async fn build_training_analysis_node(
     stage: &str,
 ) -> Result<(), AppError> {
     let activity_id = activity_model_ref(state)?.id;
+    if !activity_model_ref(state)?.is_bike_activity() {
+        activity_training_analyses::Entity::delete_by_id(activity_id)
+            .exec(run.db)
+            .await?;
+        state.import_model = mark_activity_import_processing_stage(
+            run.db,
+            &state.import_model,
+            stage,
+            Some(activity_id),
+        )
+        .await?;
+        return Ok(());
+    }
+
     rebuild_activity_training_analysis_cache(run.db, &[activity_id]).await?;
     state.import_model = mark_activity_import_processing_stage(
         run.db,

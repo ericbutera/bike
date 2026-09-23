@@ -83,6 +83,7 @@ pub async fn regenerate_segments_for_user(
 ) -> Result<Vec<i32>, SegmentRegenerationError> {
     let activities = activities::Entity::find()
         .filter(activities::Column::UserId.eq(user_id))
+        .filter(activities::Column::Sport.eq(activities::BIKE_ACTIVITY_SPORT))
         .all(db)
         .await?;
     let mut affected_segment_ids = Vec::new();

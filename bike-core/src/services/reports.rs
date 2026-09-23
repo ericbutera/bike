@@ -852,6 +852,7 @@ async fn build_training_reports(
     let activity_models = filter_activities(
         activities::Entity::find()
             .filter(activities::Column::UserId.eq(context.user_id))
+            .filter(activities::Column::Sport.eq(activities::BIKE_ACTIVITY_SPORT))
             .filter(activities::Column::StartedAt.gte(context.range_start))
             .filter(activities::Column::StartedAt.lte(context.range_end)),
         &query,
@@ -939,6 +940,7 @@ async fn compare_rides_response(
         filter_activities(
             activities::Entity::find()
                 .filter(activities::Column::UserId.eq(context.user_id))
+                .filter(activities::Column::Sport.eq(activities::BIKE_ACTIVITY_SPORT))
                 .filter(activities::Column::Id.is_in(selected_ids)),
             query,
         )
@@ -1046,6 +1048,7 @@ async fn load_reassessment_activities(
     filter_activities(
         activities::Entity::find()
             .filter(activities::Column::UserId.eq(context.user_id))
+            .filter(activities::Column::Sport.eq(activities::BIKE_ACTIVITY_SPORT))
             .filter(activities::Column::StartedAt.gte(range.analysis_start))
             .filter(activities::Column::StartedAt.lte(range.reassessment_end)),
         query,
@@ -1102,6 +1105,7 @@ async fn load_report_activities(
     filter_activities(
         activities::Entity::find()
             .filter(activities::Column::UserId.eq(context.user_id))
+            .filter(activities::Column::Sport.eq(activities::BIKE_ACTIVITY_SPORT))
             .filter(activities::Column::StartedAt.gte(context.range_start))
             .filter(activities::Column::StartedAt.lte(context.range_end)),
         query,
