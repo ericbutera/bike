@@ -344,7 +344,7 @@ pub struct UpdateSegmentRequest {
 
 #[utoipa::path(
     get,
-    path = "/api/segments",
+    path = "/segments",
     responses(
         (status = 200, description = "Recent segments for the authenticated user", body = [SegmentResponse]),
         (status = 401, description = "Not authenticated"),
@@ -390,7 +390,7 @@ pub async fn list_segments(
 
 #[utoipa::path(
     get,
-    path = "/api/segments/{id}",
+    path = "/segments/{id}",
     params(
         ("id" = i32, Path, description = "Segment ID")
     ),
@@ -423,7 +423,7 @@ pub async fn get_segment(
 
 #[utoipa::path(
     get,
-    path = "/api/segments/{id}/comparison",
+    path = "/segments/{id}/comparison",
     params(
         ("id" = i32, Path, description = "Segment ID")
     ),
@@ -457,7 +457,7 @@ pub async fn get_segment_comparison(
 
 #[utoipa::path(
     get,
-    path = "/api/segments/{id}/yearly-bests",
+    path = "/segments/{id}/yearly-bests",
     params(
         ("id" = i32, Path, description = "Segment ID")
     ),
@@ -491,7 +491,7 @@ pub async fn get_segment_yearly_bests(
 
 #[utoipa::path(
     get,
-    path = "/api/segments/{id}/effort-analysis",
+    path = "/segments/{id}/effort-analysis",
     params(
         ("id" = i32, Path, description = "Segment ID"),
         SegmentEffortAnalysisQuery
@@ -528,7 +528,7 @@ pub async fn get_segment_effort_analysis(
 
 #[utoipa::path(
     put,
-    path = "/api/segments/{id}",
+    path = "/segments/{id}",
     params(
         ("id" = i32, Path, description = "Segment ID")
     ),
@@ -600,7 +600,7 @@ pub async fn update_segment(
 
 #[utoipa::path(
     put,
-    path = "/api/segments/{id}/from-activity",
+    path = "/segments/{id}/from-activity",
     params(
         ("id" = i32, Path, description = "Segment ID")
     ),
@@ -682,7 +682,7 @@ pub async fn update_segment_from_activity(
 
 #[utoipa::path(
     delete,
-    path = "/api/segments/{id}",
+    path = "/segments/{id}",
     params(
         ("id" = i32, Path, description = "Segment ID")
     ),
@@ -716,7 +716,7 @@ pub async fn delete_segment(
 
 #[utoipa::path(
     post,
-    path = "/api/segments/from-activity",
+    path = "/segments/from-activity",
     request_body = CreateSegmentFromActivityRequest,
     responses(
         (status = 201, description = "Segment created from an activity route slice", body = SegmentResponse),
@@ -769,7 +769,7 @@ pub async fn create_segment_from_activity(
 
 #[utoipa::path(
     post,
-    path = "/api/segments",
+    path = "/segments",
     request_body(content_type = "multipart/form-data"),
     responses(
         (status = 201, description = "Segment imported and matched to recent activities", body = SegmentResponse),

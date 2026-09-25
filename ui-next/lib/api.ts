@@ -4,6 +4,7 @@ import {
   fetchWithCredentials,
 } from "@ericbutera/kaleido";
 import { config } from "./config";
+import type { paths } from "./openapi/react-query/api";
 import { headersWithBrowserRequestContext } from "./trace-context";
 
 function shouldDefaultToJson(
@@ -54,12 +55,28 @@ function requestWithContext(input: RequestInfo | URL, init?: RequestInit) {
   });
 }
 
+export function normalizeApiError(error: unknown): Error | null {
+  if (!error) {
+    return null;
+  }
+  if (error instanceof Error) {
+    return error;
+  }
+  if (typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string") {
+      return new Error(message);
+    }
+  }
+  return new Error("Request failed");
+}
+
 const fetchWithRequestContext: typeof fetch = (input, init) => {
   return fetchWithCredentials(requestWithContext(input, init));
 };
 
 export function createApiClient() {
-  return createClient<any>(
+  return createClient<paths>(
     createFetchClient({
       baseUrl: config.API_URL,
       fetch: fetchWithRequestContext,
@@ -74,7 +91,7 @@ function getApiClient() {
   const baseUrl = config.API_URL;
 
   if (!apiClient || apiBaseUrl !== baseUrl) {
-    apiClient = createClient<any>(
+    apiClient = createClient<paths>(
       createFetchClient({
         baseUrl,
         fetch: fetchWithRequestContext,

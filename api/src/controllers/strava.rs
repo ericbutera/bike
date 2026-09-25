@@ -67,7 +67,7 @@ pub fn routes() -> Router<Arc<AppStorage>> {
 
 #[utoipa::path(
     post,
-    path = "/api/strava/connect",
+    path = "/strava/connect",
     responses(
         (status = 200, description = "Strava authorization URL for the authenticated user", body = StravaAuthorizeResponse),
         (status = 400, description = "Strava integration is not configured", body = ApiErrorResponse),
@@ -119,7 +119,7 @@ pub async fn begin_connect(
 
 #[utoipa::path(
     get,
-    path = "/api/strava/connection",
+    path = "/strava/connection",
     responses(
         (status = 200, description = "Current Strava connection state for the authenticated user", body = StravaConnectionResponse),
         (status = 401, description = "Not authenticated"),
@@ -143,7 +143,7 @@ pub async fn get_connection(
 
 #[utoipa::path(
     post,
-    path = "/api/strava/sync",
+    path = "/strava/sync",
     responses(
         (status = 200, description = "Queued a Strava sync for the authenticated user", body = StravaConnectionResponse),
         (status = 400, description = "Strava integration is not configured", body = ApiErrorResponse),
@@ -170,7 +170,7 @@ pub async fn queue_sync(
 
 #[utoipa::path(
     delete,
-    path = "/api/strava/connection",
+    path = "/strava/connection",
     responses(
         (status = 200, description = "Removed the authenticated user's Strava connection", body = auth_openapi::schemas::MessageResponse),
         (status = 409, description = "The user's Strava sync is queued or running", body = ApiErrorResponse),
@@ -195,7 +195,7 @@ pub async fn disconnect_connection(
 
 #[utoipa::path(
     get,
-    path = "/api/strava/callback",
+    path = "/strava/callback",
     responses(
         (status = 303, description = "Redirects the browser back to the account page after handling the Strava callback"),
     ),
@@ -262,7 +262,7 @@ pub async fn handle_callback(
 
 #[utoipa::path(
     get,
-    path = "/api/strava/webhook",
+    path = "/strava/webhook",
     responses(
         (status = 200, description = "Verifies the Strava webhook subscription handshake", body = strava::StravaWebhookChallengeResponse),
         (status = 400, description = "Invalid handshake query", body = ApiErrorResponse),
@@ -312,7 +312,7 @@ pub async fn handle_webhook_verification(
 
 #[utoipa::path(
     post,
-    path = "/api/strava/webhook",
+    path = "/strava/webhook",
     request_body = strava::StravaWebhookEvent,
     responses(
         (status = 200, description = "Accepted a Strava webhook event"),

@@ -63,7 +63,7 @@ impl IntegrationEventResponse {
 
 #[utoipa::path(
     get,
-    path = "/api/integration-events/strava",
+    path = "/integration-events/strava",
     responses(
         (status = 200, description = "Recent Strava integration history for the authenticated user", body = [IntegrationEventResponse]),
         (status = 401, description = "Not authenticated"),
@@ -100,7 +100,7 @@ pub async fn list_strava_history(
 
 #[utoipa::path(
     get,
-    path = "/api/admin/integration-events",
+    path = "/admin/integration-events",
     params(
         ("provider" = Option<String>, Query, description = "Optional integration provider filter"),
         ("user_id" = Option<i32>, Query, description = "Optional Bike user id filter"),

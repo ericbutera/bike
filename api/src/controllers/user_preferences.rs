@@ -61,7 +61,7 @@ pub struct UpdateUserPreferencesRequest {
 
 #[utoipa::path(
     get,
-    path = "/api/preferences",
+    path = "/preferences",
     responses(
         (status = 200, description = "User preferences for the authenticated Bike account", body = UserPreferencesResponse),
         (status = 401, description = "Not authenticated"),
@@ -86,7 +86,7 @@ pub async fn get_preferences(
 
 #[utoipa::path(
     put,
-    path = "/api/preferences",
+    path = "/preferences",
     request_body = UpdateUserPreferencesRequest,
     responses(
         (status = 200, description = "Updated Bike user preferences", body = UserPreferencesResponse),

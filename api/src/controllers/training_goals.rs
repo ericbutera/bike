@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 #[utoipa::path(
     get,
-    path = "/api/training/xc-progress",
+    path = "/training/xc-progress",
     responses(
         (status = 200, description = "XC goals and progress summary for the authenticated user", body = XcGoalProgressResponse),
         (status = 401, description = "Not authenticated"),
@@ -31,7 +31,7 @@ pub async fn get_xc_goal_progress(
 
 #[utoipa::path(
     get,
-    path = "/api/training/dh-progress",
+    path = "/training/dh-progress",
     responses(
         (status = 200, description = "DH goals and progress summary for the authenticated user", body = DhGoalProgressResponse),
         (status = 401, description = "Not authenticated"),

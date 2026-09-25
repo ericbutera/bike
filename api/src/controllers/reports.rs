@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 #[utoipa::path(
     get,
-    path = "/api/training/reports/definitions",
+    path = "/training/reports/definitions",
     responses(
         (status = 200, description = "Training report definitions", body = TrainingReportDefinitionsResponse),
         (status = 401, description = "Not authenticated"),
@@ -28,7 +28,7 @@ pub async fn get_training_report_definitions(
 
 #[utoipa::path(
     get,
-    path = "/api/training/reports",
+    path = "/training/reports",
     params(TrainingReportsQuery),
     responses(
         (status = 200, description = "Training reports over a selected boundary for the authenticated user", body = TrainingReportsResponse),

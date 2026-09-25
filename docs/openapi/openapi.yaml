@@ -1,0 +1,7013 @@
+openapi: 3.1.0
+info:
+  title: api
+  description: ''
+  license:
+    name: ''
+  version: 0.1.0
+servers:
+- url: /api
+paths:
+  /activities:
+    get:
+      tags:
+      - activities
+      operationId: list_activities
+      parameters:
+      - name: page
+        in: query
+        description: Page number (1-based)
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: per_page
+        in: query
+        description: Number of items per page
+        required: false
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: Recent activities for the authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse_ActivityResponse'
+        '401':
+          description: Not authenticated
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /activities/{id}:
+    get:
+      tags:
+      - activities
+      operationId: get_activity
+      parameters:
+      - name: id
+        in: path
+        description: Activity ID
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        '200':
+          description: Activity detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityResponse'
+        '401':
+          description: Not authenticated
+        '404':
+          description: Activity not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+    delete:
+      tags:
+      - activities
+      operationId: delete_activity
+      parameters:
+      - name: id
+        in: path
+        description: Activity ID
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        '204':
+          description: Activity deleted
+        '401':
+          description: Not authenticated
+        '404':
+          description: Activity not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+    patch:
+      tags:
+      - activities
+      operationId: update_activity
+      parameters:
+      - name: id
+        in: path
+        description: Activity ID
+        required: true
+        schema:
+          type: integer
+          format: int32
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateActivityRequest'
+        required: true
+      responses:
+        '200':
+          description: Updated activity detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityResponse'
+        '400':
+          description: Invalid activity update
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '401':
+          description: Not authenticated
+        '404':
+          description: Activity not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /activities/{id}/regenerate:
+    post:
+      tags:
+      - activities
+      operationId: regenerate_activity
+      parameters:
+      - name: id
+        in: path
+        description: Activity ID
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        '200':
+          description: Regenerated activity detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityResponse'
+        '400':
+          description: Activity cannot be regenerated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '401':
+          description: Not authenticated
+        '404':
+          description: Activity not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /activities/{id}/source-file:
+    get:
+      tags:
+      - activities
+      operationId: download_activity_source_file
+      parameters:
+      - name: id
+        in: path
+        description: Activity ID
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        '200':
+          description: Original retained source file for the activity
+        '401':
+          description: Not authenticated
+        '404':
+          description: Activity source file not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /activity-imports:
+    get:
+      tags:
+      - activity-imports
+      operationId: list_activity_imports
+      responses:
+        '200':
+          description: Recent activity imports for the authenticated user
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ActivityImportResponse'
+        '401':
+          description: Not authenticated
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+    post:
+      tags:
+      - activity-imports
+      operationId: upload_activity_import
+      requestBody:
+        content:
+          multipart/form-data: {}
+      responses:
+        '200':
+          description: Activity was already imported and the existing record was returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityImportResponse'
+        '202':
+          description: Activity import queued for worker processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityImportResponse'
+        '400':
+          description: Invalid upload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '401':
+          description: Not authenticated
+        '413':
+          description: Payload too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /activity-imports/archive-jobs:
+    get:
+      tags:
+      - activity-imports
+      operationId: list_activity_archive_import_jobs
+      responses:
+        '200':
+          description: Recent archive import jobs for the authenticated user
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ActivityArchiveImportJobResponse'
+        '401':
+          description: Not authenticated
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /activity-imports/archive-jobs/{id}:
+    get:
+      tags:
+      - activity-imports
+      operationId: get_activity_archive_import_job
+      parameters:
+      - name: id
+        in: path
+        description: Archive import job id
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        '200':
+          description: Archive import job status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityArchiveImportJobResponse'
+        '401':
+          description: Not authenticated
+        '404':
+          description: Archive import job not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /activity-imports/archive-url:
+    post:
+      tags:
+      - activity-imports
+      operationId: import_activity_archive_from_url
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArchiveUrlImportRequest'
+        required: true
+      responses:
+        '202':
+          description: Archive import job queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityArchiveImportJobResponse'
+        '400':
+          description: Invalid archive URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '401':
+          description: Not authenticated
+        '409':
+          description: Another activity import is already running or queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /activity-imports/processing-graph:
+    get:
+      tags:
+      - activity-imports
+      operationId: get_activity_processing_graph
+      responses:
+        '200':
+          description: Activity import processing DAG
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityProcessingGraphResponse'
+        '401':
+          description: Not authenticated
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /activity-imports/processing-state:
+    get:
+      tags:
+      - activity-imports
+      operationId: get_activity_processing_state
+      responses:
+        '200':
+          description: Current activity processing state for the authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityProcessingStateResponse'
+        '401':
+          description: Not authenticated
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /activity-imports/{id}/trace:
+    get:
+      tags:
+      - activity-imports
+      operationId: get_activity_import_trace
+      parameters:
+      - name: id
+        in: path
+        description: Activity import id
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        '200':
+          description: Activity import processing DAG and event trace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityImportTraceResponse'
+        '401':
+          description: Not authenticated
+        '404':
+          description: Activity import not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /admin/activities:
+    get:
+      tags:
+      - admin
+      operationId: admin_list_activities
+      parameters:
+      - name: page
+        in: query
+        description: Page number (1-based)
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: per_page
+        in: query
+        description: Number of items per page
+        required: false
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: Paginated activities for administrators
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse_AdminActivityResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /admin/activities/{id}/import-trace:
+    get:
+      tags:
+      - admin
+      operationId: admin_get_activity_import_trace_for_activity
+      parameters:
+      - name: id
+        in: path
+        description: Activity id
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        '200':
+          description: Activity import processing DAG and event trace for administrators when the activity has a linked import
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminActivityImportTraceResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Activity not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /admin/activity-imports/archive:
+    post:
+      tags:
+      - admin
+      operationId: admin_import_activity_archive
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArchiveImportRequest'
+        required: true
+      responses:
+        '200':
+          description: Imported activities from an archive on the server
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArchiveImportResponse'
+        '400':
+          description: Invalid archive request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Archive not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '409':
+          description: Another activity import is already running or queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /admin/activity-imports/cleanup-duplicates:
+    post:
+      tags:
+      - admin
+      operationId: admin_cleanup_user_duplicate_activities
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CleanupUserDuplicateActivitiesRequest'
+        required: true
+      responses:
+        '200':
+          description: Removed duplicate activities for one user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CleanupUserDuplicateActivitiesResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '409':
+          description: Another activity import is already running or queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /admin/activity-imports/reprocess:
+    post:
+      tags:
+      - admin
+      operationId: admin_reprocess_user_activity_imports
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReprocessUserActivityImportsRequest'
+        required: true
+      responses:
+        '202':
+          description: Queued stored-file activity reprocessing for one user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReprocessUserActivityImportsResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '409':
+          description: Another activity import is already running or queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /admin/activity-imports/reprocess-activity:
+    post:
+      tags:
+      - admin
+      operationId: admin_reprocess_activity_import
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReprocessActivityImportRequest'
+        required: true
+      responses:
+        '202':
+          description: Queued stored-file activity reprocessing for one activity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReprocessActivityImportResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Activity not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '409':
+          description: Another activity import is already running or queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /admin/activity-imports/{id}/trace:
+    get:
+      tags:
+      - admin
+      operationId: admin_get_activity_import_trace
+      parameters:
+      - name: id
+        in: path
+        description: Activity import id
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        '200':
+          description: Activity import processing DAG and event trace for administrators
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityImportTraceResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Activity import not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /admin/analytics/backfill:
+    post:
+      tags:
+      - admin
+      operationId: admin_backfill_analytics
+      responses:
+        '202':
+          description: Enqueued analytics backfill tasks
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsBackfillResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /admin/feature-flags:
+    get:
+      tags:
+      - admin
+      summary: List all feature flags
+      operationId: list_flags
+      responses:
+        '200':
+          description: List of feature flags
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse_FeatureFlagResponse'
+      security:
+      - bearer_auth: []
+  /admin/feature-flags/{key}:
+    post:
+      tags:
+      - admin
+      summary: Update a single feature flag
+      operationId: update_flag
+      parameters:
+      - name: key
+        in: path
+        description: Feature flag key
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFlagRequest'
+        required: true
+      responses:
+        '200':
+          description: Flag updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeatureFlagResponse'
+      security:
+      - bearer_auth: []
+  /admin/integration-events:
+    get:
+      tags:
+      - admin
+      operationId: list_admin_integration_events
+      parameters:
+      - name: provider
+        in: query
+        description: Optional integration provider filter
+        required: false
+        schema:
+          type: string
+      - name: user_id
+        in: query
+        description: Optional Bike user id filter
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - name: activity_id
+        in: query
+        description: Optional activity id filter against event payload
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - name: import_id
+        in: query
+        description: Optional activity import id filter against event payload
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - name: limit
+        in: query
+        description: Maximum number of rows to return
+        required: false
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      responses:
+        '200':
+          description: Recent integration events for administrators
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IntegrationEventResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /admin/metrics:
+    get:
+      tags:
+      - admin
+      summary: Get glass-managed system metrics (auth, background tasks, etc.)
+      description: Glass automatically expands this response as new subsystems are added.
+      operationId: admin_get_metrics
+      responses:
+        '200':
+          description: Glass system metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemMetrics'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+      security:
+      - bearer_auth: []
+  /admin/metrics/app:
+    get:
+      tags:
+      - admin
+      operationId: admin_app_metrics
+      responses:
+        '200':
+          description: Bike app metrics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NamedStat'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+      security:
+      - bearer_auth: []
+  /admin/segments/regenerate:
+    post:
+      tags:
+      - admin
+      operationId: admin_regenerate_user_segments
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegenerateUserSegmentsRequest'
+        required: true
+      responses:
+        '202':
+          description: Queued segment regeneration for one user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegenerateUserSegmentsResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '409':
+          description: Another activity import is already running or queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /admin/segments/regenerate-efforts:
+    post:
+      tags:
+      - admin
+      operationId: admin_regenerate_segment_efforts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegenerateSegmentEffortsRequest'
+        required: true
+      responses:
+        '202':
+          description: Queued effort regeneration for one segment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegenerateSegmentEffortsResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Segment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /admin/tasks:
+    get:
+      tags:
+      - admin
+      operationId: admin_list_tasks
+      parameters:
+      - name: task_type
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: error
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: from_date
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: to_date
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: per_page
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      responses:
+        '200':
+          description: Admin list of background tasks
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse_TaskResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+      security:
+      - bearer_auth: []
+  /admin/tasks/{id}:
+    get:
+      tags:
+      - admin
+      operationId: admin_get_task
+      parameters:
+      - name: id
+        in: path
+        description: Task ID
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        '200':
+          description: Background task detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskDetailResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Task not found
+      security:
+      - bearer_auth: []
+  /admin/tasks/{id}/cancel:
+    post:
+      tags:
+      - admin
+      operationId: admin_cancel_task
+      parameters:
+      - name: id
+        in: path
+        description: Task ID
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        '200':
+          description: Task canceled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+        '400':
+          description: Task is not processing
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Task not found
+      security:
+      - bearer_auth: []
+  /admin/tasks/{id}/rerun:
+    post:
+      tags:
+      - admin
+      operationId: admin_rerun_task
+      parameters:
+      - name: id
+        in: path
+        description: Task ID
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        '200':
+          description: Task queued again
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Task not found
+      security:
+      - bearer_auth: []
+  /admin/training/xc-backfill:
+    post:
+      tags:
+      - admin
+      operationId: admin_backfill_user_xc_training
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReprocessUserActivityImportsRequest'
+        required: true
+      responses:
+        '202':
+          description: Queued XC training backfill for one user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReprocessUserActivityImportsResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /admin/users:
+    get:
+      tags:
+      - admin
+      operationId: list_users
+      parameters:
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: per_page
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUsersListResponse'
+        '403':
+          description: Forbidden
+      security:
+      - bearer_auth: []
+  /admin/users/{id}:
+    get:
+      tags:
+      - admin
+      operationId: get_user
+      parameters:
+      - name: id
+        in: path
+        description: User ID
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        '200':
+          description: User detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUserResponse'
+        '403':
+          description: Forbidden
+        '404':
+          description: User not found
+      security:
+      - bearer_auth: []
+    patch:
+      tags:
+      - admin
+      operationId: update_user
+      parameters:
+      - name: id
+        in: path
+        description: User ID
+        required: true
+        schema:
+          type: integer
+          format: int32
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+        required: true
+      responses:
+        '200':
+          description: User updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUserResponse'
+        '403':
+          description: Forbidden
+        '404':
+          description: User not found
+      security:
+      - bearer_auth: []
+  /admin/users/{id}/disable:
+    post:
+      tags:
+      - admin
+      operationId: disable_user
+      parameters:
+      - name: id
+        in: path
+        description: User ID
+        required: true
+        schema:
+          type: integer
+          format: int32
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DisableUserRequest'
+        required: true
+      responses:
+        '200':
+          description: User disable status toggled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUserResponse'
+        '403':
+          description: Forbidden
+        '404':
+          description: User not found
+      security:
+      - bearer_auth: []
+  /auth/current:
+    get:
+      tags:
+      - auth
+      operationId: current
+      responses:
+        '200':
+          description: Current user info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: Not authenticated
+      security:
+      - bearer_auth: []
+  /auth/forgot:
+    post:
+      tags:
+      - auth
+      operationId: forgot_password
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+        required: true
+      responses:
+        '200':
+          description: Password reset email sent if user exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '422':
+          description: Validation error
+  /auth/login:
+    post:
+      tags:
+      - auth
+      operationId: login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      responses:
+        '200':
+          description: Login successful
+        '401':
+          description: Invalid credentials
+        '422':
+          description: Validation error
+        '429':
+          description: Too many login attempts
+  /auth/logout:
+    get:
+      tags:
+      - auth
+      operationId: logout
+      responses:
+        '200':
+          description: Logout successful
+        '401':
+          description: Not authenticated
+      security:
+      - bearer_auth: []
+  /auth/refresh:
+    post:
+      tags:
+      - auth
+      operationId: refresh
+      requestBody:
+        description: Optional refresh token in body or cookie
+        content:
+          application/json:
+            schema:
+              type: string
+        required: true
+      responses:
+        '200':
+          description: Token refreshed successfully
+        '401':
+          description: Invalid refresh token
+  /auth/register:
+    post:
+      tags:
+      - auth
+      operationId: register
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+        required: true
+      responses:
+        '200':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+        '422':
+          description: Validation error
+  /auth/resend-confirmation:
+    post:
+      tags:
+      - auth
+      operationId: resend_confirmation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResendConfirmationRequest'
+        required: true
+      responses:
+        '200':
+          description: Confirmation email sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '422':
+          description: Validation error
+  /auth/reset:
+    post:
+      tags:
+      - auth
+      operationId: reset_password
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+        required: true
+      responses:
+        '200':
+          description: Password reset successful
+        '422':
+          description: Invalid or expired token
+  /auth/verify/{token}:
+    get:
+      tags:
+      - auth
+      operationId: verify_email
+      parameters:
+      - name: token
+        in: path
+        description: Email verification token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Email verified successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '422':
+          description: Invalid or expired token
+  /feature-flags:
+    get:
+      tags:
+      - flags
+      summary: Public endpoint returning all feature flags (safe subset) for clients.
+      operationId: public_flags
+      responses:
+        '200':
+          description: List of feature flags
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse_PublicFlagResponse'
+  /fitness:
+    get:
+      tags:
+      - fitness
+      operationId: get_fitness_freshness
+      parameters:
+      - name: start_date
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: end_date
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      responses:
+        '200':
+          description: Daily fitness, fatigue, and form data for the authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FitnessFreshnessResponse'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '401':
+          description: Not authenticated
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /health:
+    get:
+      tags:
+      - system
+      operationId: health
+      responses:
+        '200':
+          description: API health status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /integration-events/strava:
+    get:
+      tags:
+      - strava
+      operationId: list_strava_history
+      responses:
+        '200':
+          description: Recent Strava integration history for the authenticated user
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IntegrationEventResponse'
+        '401':
+          description: Not authenticated
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /oauth/providers:
+    get:
+      tags:
+      - oauth
+      summary: List OAuth providers enabled by environment configuration
+      operationId: oauth_providers
+      responses:
+        '200':
+          description: Configured OAuth providers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthProvidersResponse'
+  /oauth/{provider}:
+    get:
+      tags:
+      - oauth
+      summary: Initiate provider OAuth flow - redirect user to provider login
+      operationId: oauth_authorize
+      parameters:
+      - name: provider
+        in: path
+        description: OAuth provider name
+        required: true
+        schema:
+          type: string
+      responses:
+        '302':
+          description: Redirect to provider
+  /oauth/{provider}/callback:
+    get:
+      tags:
+      - oauth
+      summary: Handle OAuth callback for generic provider
+      operationId: oauth_callback
+      parameters:
+      - name: provider
+        in: path
+        description: OAuth provider name
+        required: true
+        schema:
+          type: string
+      - name: code
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: state
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      responses:
+        '302':
+          description: Redirect to frontend
+  /preferences:
+    get:
+      tags:
+      - preferences
+      operationId: get_preferences
+      responses:
+        '200':
+          description: User preferences for the authenticated Bike account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPreferencesResponse'
+        '401':
+          description: Not authenticated
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+    put:
+      tags:
+      - preferences
+      operationId: update_preferences
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserPreferencesRequest'
+        required: true
+      responses:
+        '200':
+          description: Updated Bike user preferences
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPreferencesResponse'
+        '400':
+          description: Invalid preferences payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '401':
+          description: Not authenticated
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /segments:
+    get:
+      tags:
+      - segments
+      operationId: list_segments
+      responses:
+        '200':
+          description: Recent segments for the authenticated user
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SegmentResponse'
+        '401':
+          description: Not authenticated
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+    post:
+      tags:
+      - segments
+      operationId: import_segment
+      requestBody:
+        content:
+          multipart/form-data: {}
+      responses:
+        '201':
+          description: Segment imported and matched to recent activities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SegmentResponse'
+        '400':
+          description: Invalid upload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '401':
+          description: Not authenticated
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /segments/from-activity:
+    post:
+      tags:
+      - segments
+      operationId: create_segment_from_activity
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSegmentFromActivityRequest'
+        required: true
+      responses:
+        '200':
+          description: Matching segment already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SegmentResponse'
+        '201':
+          description: Segment created from an activity route slice
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SegmentResponse'
+        '400':
+          description: Invalid activity slice
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '401':
+          description: Not authenticated
+        '404':
+          description: Activity not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /segments/{id}:
+    get:
+      tags:
+      - segments
+      operationId: get_segment
+      parameters:
+      - name: id
+        in: path
+        description: Segment ID
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        '200':
+          description: Segment metadata and summary data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SegmentResponse'
+        '401':
+          description: Not authenticated
+        '404':
+          description: Segment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+    put:
+      tags:
+      - segments
+      operationId: update_segment
+      parameters:
+      - name: id
+        in: path
+        description: Segment ID
+        required: true
+        schema:
+          type: integer
+          format: int32
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSegmentRequest'
+        required: true
+      responses:
+        '200':
+          description: Updated segment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SegmentResponse'
+        '400':
+          description: Invalid segment update
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '401':
+          description: Not authenticated
+        '404':
+          description: Segment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+    delete:
+      tags:
+      - segments
+      operationId: delete_segment
+      parameters:
+      - name: id
+        in: path
+        description: Segment ID
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        '204':
+          description: Segment deleted
+        '401':
+          description: Not authenticated
+        '404':
+          description: Segment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /segments/{id}/comparison:
+    get:
+      tags:
+      - segments
+      operationId: get_segment_comparison
+      parameters:
+      - name: id
+        in: path
+        description: Segment ID
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        '200':
+          description: Segment route and effort comparison samples
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SegmentComparisonResponse'
+        '401':
+          description: Not authenticated
+        '404':
+          description: Segment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /segments/{id}/effort-analysis:
+    get:
+      tags:
+      - segments
+      operationId: get_segment_effort_analysis
+      parameters:
+      - name: id
+        in: path
+        description: Segment ID
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: reference_effort_id
+        in: query
+        required: false
+        schema:
+          type:
+          - integer
+          - 'null'
+          format: int32
+      - name: split_count
+        in: query
+        required: false
+        schema:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+      responses:
+        '200':
+          description: Distance-normalized effort split analysis for one segment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SegmentEffortAnalysisResponse'
+        '400':
+          description: Invalid analysis options
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '401':
+          description: Not authenticated
+        '404':
+          description: Segment or reference effort not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /segments/{id}/from-activity:
+    put:
+      tags:
+      - segments
+      operationId: update_segment_from_activity
+      parameters:
+      - name: id
+        in: path
+        description: Segment ID
+        required: true
+        schema:
+          type: integer
+          format: int32
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSegmentFromActivityRequest'
+        required: true
+      responses:
+        '200':
+          description: Updated segment route from an activity slice
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SegmentResponse'
+        '400':
+          description: Invalid activity slice
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '401':
+          description: Not authenticated
+        '404':
+          description: Segment or activity not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /segments/{id}/yearly-bests:
+    get:
+      tags:
+      - segments
+      operationId: get_segment_yearly_bests
+      parameters:
+      - name: id
+        in: path
+        description: Segment ID
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        '200':
+          description: Fastest authenticated rider effort per year for one segment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SegmentYearlyBestsResponse'
+        '401':
+          description: Not authenticated
+        '404':
+          description: Segment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /strava/callback:
+    get:
+      tags:
+      - strava
+      operationId: handle_callback
+      responses:
+        '303':
+          description: Redirects the browser back to the account page after handling the Strava callback
+  /strava/connect:
+    post:
+      tags:
+      - strava
+      operationId: begin_connect
+      responses:
+        '200':
+          description: Strava authorization URL for the authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StravaAuthorizeResponse'
+        '400':
+          description: Strava integration is not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '401':
+          description: Not authenticated
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /strava/connection:
+    get:
+      tags:
+      - strava
+      operationId: get_connection
+      responses:
+        '200':
+          description: Current Strava connection state for the authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StravaConnectionResponse'
+        '401':
+          description: Not authenticated
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+    delete:
+      tags:
+      - strava
+      operationId: disconnect_connection
+      responses:
+        '200':
+          description: Removed the authenticated user's Strava connection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          description: Not authenticated
+        '409':
+          description: The user's Strava sync is queued or running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /strava/sync:
+    post:
+      tags:
+      - strava
+      operationId: queue_sync
+      responses:
+        '200':
+          description: Queued a Strava sync for the authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StravaConnectionResponse'
+        '400':
+          description: Strava integration is not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '401':
+          description: Not authenticated
+        '404':
+          description: No Strava connection exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '409':
+          description: Another activity import is already running or queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /strava/webhook:
+    get:
+      tags:
+      - strava
+      operationId: handle_webhook_verification
+      responses:
+        '200':
+          description: Verifies the Strava webhook subscription handshake
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StravaWebhookChallengeResponse'
+        '400':
+          description: Invalid handshake query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+    post:
+      tags:
+      - strava
+      operationId: handle_webhook_event
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StravaWebhookEvent'
+        required: true
+      responses:
+        '200':
+          description: Accepted a Strava webhook event
+  /training/dh-progress:
+    get:
+      tags:
+      - training
+      operationId: get_dh_goal_progress
+      responses:
+        '200':
+          description: DH goals and progress summary for the authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DhGoalProgressResponse'
+        '401':
+          description: Not authenticated
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /training/reports:
+    get:
+      tags:
+      - training
+      operationId: get_training_reports
+      parameters:
+      - name: boundary
+        in: query
+        required: false
+        schema:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ReportBoundary'
+      - name: report
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: start_date
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+          format: date
+      - name: end_date
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+          format: date
+      - name: activity_ids
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: min_duration_seconds
+        in: query
+        required: false
+        schema:
+          type:
+          - integer
+          - 'null'
+          format: int32
+      - name: min_distance_meters
+        in: query
+        required: false
+        schema:
+          type:
+          - number
+          - 'null'
+          format: double
+      responses:
+        '200':
+          description: Training reports over a selected boundary for the authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingReportsResponse'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '401':
+          description: Not authenticated
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /training/reports/definitions:
+    get:
+      tags:
+      - training
+      operationId: get_training_report_definitions
+      responses:
+        '200':
+          description: Training report definitions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingReportDefinitionsResponse'
+        '401':
+          description: Not authenticated
+      security:
+      - bearer_auth: []
+  /training/xc-progress:
+    get:
+      tags:
+      - training
+      operationId: get_xc_goal_progress
+      responses:
+        '200':
+          description: XC goals and progress summary for the authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/XcGoalProgressResponse'
+        '401':
+          description: Not authenticated
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+components:
+  schemas:
+    ActivityAchievementHighlight:
+      type: object
+      required:
+      - segment_id
+      - segment_title
+      - effort_index
+      properties:
+        effort_index:
+          type: integer
+          format: int32
+        overall_rank:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        personal_best_duration_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        personal_rank:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        segment_id:
+          type: integer
+          format: int32
+        segment_title:
+          type: string
+    ActivityArchiveImportJobResponse:
+      type: object
+      required:
+      - id
+      - archive_url
+      - status
+      - total_entries
+      - supported_entry_count
+      - imported_count
+      - duplicate_count
+      - skipped_unsupported_count
+      - failed_count
+      - created_at
+      - updated_at
+      properties:
+        archive_url:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        duplicate_count:
+          type: integer
+          format: int32
+        error_samples:
+          type: array
+          items:
+            type: string
+        failed_count:
+          type: integer
+          format: int32
+        failure_message:
+          type:
+          - string
+          - 'null'
+        finished_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        id:
+          type: integer
+          format: int32
+        imported_count:
+          type: integer
+          format: int32
+        resolved_url:
+          type:
+          - string
+          - 'null'
+        skipped_unsupported_count:
+          type: integer
+          format: int32
+        started_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        status:
+          type: string
+        supported_entry_count:
+          type: integer
+          format: int32
+        total_entries:
+          type: integer
+          format: int32
+        updated_at:
+          type: string
+          format: date-time
+    ActivityArchiveImportResponse:
+      type: object
+      required:
+      - source
+      - total_entries
+      - supported_entry_count
+      - imported_count
+      - duplicate_count
+      - skipped_unsupported_count
+      - failed_count
+      properties:
+        duplicate_count:
+          type: integer
+          format: int32
+        error_samples:
+          type: array
+          items:
+            type: string
+        failed_count:
+          type: integer
+          format: int32
+        imported_count:
+          type: integer
+          format: int32
+        skipped_unsupported_count:
+          type: integer
+          format: int32
+        source:
+          type: string
+        supported_entry_count:
+          type: integer
+          format: int32
+        total_entries:
+          type: integer
+          format: int32
+    ActivityChartPoint:
+      type: object
+      required:
+      - elapsed_seconds
+      properties:
+        cadence_rpm:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        distance_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        elapsed_seconds:
+          type: integer
+          format: int32
+        elevation_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        heart_rate_bpm:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        power_watts:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        speed_mps:
+          type:
+          - number
+          - 'null'
+          format: double
+    ActivityHeartRateZoneSummary:
+      type: object
+      required:
+      - zone
+      - label
+      - duration_seconds
+      - share_percent
+      properties:
+        duration_seconds:
+          type: integer
+          format: int32
+        label:
+          type: string
+        max_bpm:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        min_bpm:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        share_percent:
+          type: number
+          format: double
+        zone:
+          type: integer
+          format: int32
+    ActivityImportResponse:
+      type: object
+      required:
+      - id
+      - import_version
+      - original_filename
+      - format
+      - status
+      - processing_stage
+      - size_bytes
+      - created_at
+      properties:
+        activity_duration_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        activity_id:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        activity_location:
+          type:
+          - string
+          - 'null'
+        activity_started_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        format:
+          type: string
+        id:
+          type: integer
+          format: int32
+        import_version:
+          type: integer
+          format: int32
+        mime_type:
+          type:
+          - string
+          - 'null'
+        original_filename:
+          type: string
+        processing_error:
+          type:
+          - string
+          - 'null'
+        processing_stage:
+          type: string
+        size_bytes:
+          type: integer
+          format: int64
+        status:
+          type: string
+    ActivityImportTraceEventResponse:
+      type: object
+      required:
+      - id
+      - event_type
+      - level
+      - message
+      - created_at
+      properties:
+        created_at:
+          type: string
+          format: date-time
+        event_type:
+          type: string
+        id:
+          type: integer
+          format: int32
+        level:
+          type: string
+        message:
+          type: string
+        payload: {}
+    ActivityImportTraceNodeResponse:
+      type: object
+      required:
+      - id
+      - label
+      - stage
+      - status
+      properties:
+        completed_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        id:
+          type: string
+        label:
+          type: string
+        stage:
+          type: string
+        status:
+          type: string
+    ActivityImportTraceResponse:
+      type: object
+      required:
+      - import
+      - graph
+      - nodes
+      - events
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActivityImportTraceEventResponse'
+        graph:
+          $ref: '#/components/schemas/ActivityProcessingGraphResponse'
+        import:
+          $ref: '#/components/schemas/ActivityImportResponse'
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActivityImportTraceNodeResponse'
+    ActivityLap:
+      type: object
+      required:
+      - lap_index
+      - title
+      properties:
+        average_cadence_rpm:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        average_heart_rate_bpm:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        average_speed_mps:
+          type:
+          - number
+          - 'null'
+          format: double
+        calories:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        distance_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        duration_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        elevation_gain_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        elevation_loss_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        lap_index:
+          type: integer
+          format: int32
+        max_cadence_rpm:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        max_heart_rate_bpm:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        max_speed_mps:
+          type:
+          - number
+          - 'null'
+          format: double
+        start_offset_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        title:
+          type: string
+    ActivityProcessingGraphEdgeResponse:
+      type: object
+      required:
+      - from
+      - to
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+    ActivityProcessingGraphNodeResponse:
+      type: object
+      required:
+      - id
+      - label
+      - stage
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        stage:
+          type: string
+    ActivityProcessingGraphResponse:
+      type: object
+      required:
+      - nodes
+      - edges
+      - mermaid
+      properties:
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActivityProcessingGraphEdgeResponse'
+        mermaid:
+          type: string
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActivityProcessingGraphNodeResponse'
+    ActivityProcessingStateResponse:
+      type: object
+      required:
+      - is_active
+      properties:
+        is_active:
+          type: boolean
+        message:
+          type:
+          - string
+          - 'null'
+        source:
+          type:
+          - string
+          - 'null'
+        source_label:
+          type:
+          - string
+          - 'null'
+        stage:
+          type:
+          - string
+          - 'null'
+        stage_label:
+          type:
+          - string
+          - 'null'
+    ActivityResponse:
+      type: object
+      required:
+      - id
+      - title
+      - sport
+      - source
+      - activity_type
+      - started_at
+      properties:
+        achievement_highlights:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActivityAchievementHighlight'
+        activity_type:
+          $ref: '#/components/schemas/ActivityType'
+        average_cadence_rpm:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        average_heart_rate_bpm:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        average_speed_mps:
+          type:
+          - number
+          - 'null'
+          format: double
+        calories:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        can_download_source_file:
+          type: boolean
+        can_regenerate:
+          type: boolean
+        chart_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActivityChartPoint'
+        distance_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        elevation_gain_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        elevation_loss_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        ended_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        estimated_ftp_watts:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        format:
+          type:
+          - string
+          - 'null'
+        heart_rate_zones:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActivityHeartRateZoneSummary'
+        id:
+          type: integer
+          format: int32
+        laps:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActivityLap'
+        location:
+          type:
+          - string
+          - 'null'
+        max_cadence_rpm:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        max_heart_rate_bpm:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        max_speed_mps:
+          type:
+          - number
+          - 'null'
+          format: double
+        moving_time_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        original_filename:
+          type:
+          - string
+          - 'null'
+        relative_effort:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        route_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActivityRoutePoint'
+        segment_efforts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActivitySegmentEffort'
+        source:
+          type: string
+        sport:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        title:
+          type: string
+        total_time_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        training_analysis:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ActivityTrainingAnalysisResponse'
+    ActivityRideFocus:
+      type: string
+      enum:
+      - xc_endurance
+      - mixed_xc
+      - dh_session
+      - other
+    ActivityRoutePoint:
+      type: object
+      required:
+      - elapsed_seconds
+      - latitude
+      - longitude
+      properties:
+        cadence_rpm:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        distance_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        elapsed_seconds:
+          type: integer
+          format: int32
+        elevation_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        heart_rate_bpm:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        power_watts:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        speed_mps:
+          type:
+          - number
+          - 'null'
+          format: double
+    ActivitySegmentEffort:
+      type: object
+      required:
+      - segment_id
+      - segment_title
+      - effort_index
+      - duration_seconds
+      - start_route_point_index
+      - end_route_point_index
+      properties:
+        duration_seconds:
+          type: integer
+          format: int32
+        effort_index:
+          type: integer
+          format: int32
+        end_route_point_index:
+          type: integer
+          format: int32
+        overall_rank:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        personal_best_duration_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        personal_rank:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        segment_id:
+          type: integer
+          format: int32
+        segment_title:
+          type: string
+        start_route_point_index:
+          type: integer
+          format: int32
+    ActivityTrainingAnalysisResponse:
+      type: object
+      required:
+      - ride_focus
+      - z2_time_seconds
+      - climbing_time_seconds
+      - sustained_climb_count
+      properties:
+        aerobic_decoupling_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        climbing_elevation_gain_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        climbing_time_seconds:
+          type: integer
+          format: int32
+        comparable_distance_bucket_meters:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        comparable_elevation_gain_bucket_meters:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        ride_focus:
+          $ref: '#/components/schemas/ActivityRideFocus'
+        route_family_key:
+          type:
+          - string
+          - 'null'
+        sustained_climb_count:
+          type: integer
+          format: int32
+        z2_average_speed_mps:
+          type:
+          - number
+          - 'null'
+          format: double
+        z2_distance_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        z2_time_seconds:
+          type: integer
+          format: int32
+    ActivityType:
+      type: string
+      enum:
+      - training
+      - race
+    ActivityTypeTimeResponse:
+      type: object
+      required:
+      - activity_type
+      - seconds
+      properties:
+        activity_type:
+          $ref: '#/components/schemas/ActivityType'
+        seconds:
+          type: integer
+          format: int32
+    AdminActivityImportTraceResponse:
+      type: object
+      properties:
+        trace:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ActivityImportTraceResponse'
+    AdminActivityResponse:
+      type: object
+      required:
+      - id
+      - user_id
+      - title
+      - sport
+      - source
+      - started_at
+      properties:
+        activity_import_id:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        format:
+          type:
+          - string
+          - 'null'
+        id:
+          type: integer
+          format: int32
+        import_processing_stage:
+          type:
+          - string
+          - 'null'
+        import_status:
+          type:
+          - string
+          - 'null'
+        import_version:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        source:
+          type: string
+        sport:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        title:
+          type: string
+        user_id:
+          type: integer
+          format: int32
+    AdminUserResponse:
+      type: object
+      required:
+      - id
+      - pid
+      - email
+      - name
+      - is_admin
+      - email_verified
+      - created_at
+      - updated_at
+      properties:
+        created_at:
+          type: string
+        email:
+          type: string
+        email_verified:
+          type: boolean
+        id:
+          type: integer
+          format: int32
+        is_admin:
+          type: boolean
+        name:
+          type: string
+        pid:
+          type: string
+        updated_at:
+          type: string
+    AdminUsersListResponse:
+      type: object
+      required:
+      - data
+      - page
+      - per_page
+      - total
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminUserResponse'
+        page:
+          type: integer
+          format: int64
+          minimum: 0
+        per_page:
+          type: integer
+          format: int64
+          minimum: 0
+        total:
+          type: integer
+          format: int64
+          minimum: 0
+    AnalyticsBackfillResponse:
+      type: object
+      required:
+      - user_count
+      - segment_count
+      - fitness_task_count
+      - segment_task_count
+      - total_tasks_enqueued
+      - segment_chunk_size
+      properties:
+        fitness_task_count:
+          type: integer
+          format: int32
+        segment_chunk_size:
+          type: integer
+          format: int32
+        segment_count:
+          type: integer
+          format: int32
+        segment_task_count:
+          type: integer
+          format: int32
+        total_tasks_enqueued:
+          type: integer
+          format: int32
+        user_count:
+          type: integer
+          format: int32
+    ApiErrorResponse:
+      type: object
+      required:
+      - message
+      properties:
+        errors:
+          type:
+          - object
+          - 'null'
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          propertyNames:
+            type: string
+        message:
+          type: string
+        retry_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+    ArchiveImportRequest:
+      type: object
+      required:
+      - archive_path
+      properties:
+        archive_path:
+          type: string
+    ArchiveImportResponse:
+      type: object
+      required:
+      - archive_path
+      - total_entries
+      - supported_entry_count
+      - imported_count
+      - duplicate_count
+      - skipped_unsupported_count
+      - failed_count
+      properties:
+        archive_path:
+          type: string
+        duplicate_count:
+          type: integer
+          format: int32
+        error_samples:
+          type: array
+          items:
+            type: string
+        failed_count:
+          type: integer
+          format: int32
+        imported_count:
+          type: integer
+          format: int32
+        skipped_unsupported_count:
+          type: integer
+          format: int32
+        supported_entry_count:
+          type: integer
+          format: int32
+        total_entries:
+          type: integer
+          format: int32
+    ArchiveUrlImportRequest:
+      type: object
+      required:
+      - archive_url
+      properties:
+        archive_url:
+          type: string
+    CleanupUserDuplicateActivitiesRequest:
+      type: object
+      required:
+      - user_id
+      properties:
+        user_id:
+          type: integer
+          format: int32
+    CleanupUserDuplicateActivitiesResponse:
+      type: object
+      required:
+      - user_id
+      - status
+      - message
+      - duplicate_group_count
+      - deleted_activity_count
+      - retained_activity_count
+      properties:
+        deleted_activity_count:
+          type: integer
+          format: int32
+        duplicate_group_count:
+          type: integer
+          format: int32
+        message:
+          type: string
+        retained_activity_count:
+          type: integer
+          format: int32
+        status:
+          type: string
+        user_id:
+          type: integer
+          format: int32
+    ClimbResponse:
+      type: object
+      required:
+      - activity_id
+      - activity_title
+      - climb_number
+      - start_seconds
+      - summit_seconds
+      - duration_seconds
+      - distance_meters
+      - gain_meters
+      - vertical_rate_meters_per_hour
+      - summit_immediately_enters_descent
+      - first_or_second_half
+      properties:
+        activity_id:
+          type: integer
+          format: int32
+        activity_title:
+          type: string
+        average_cadence_rpm:
+          type:
+          - number
+          - 'null'
+          format: double
+        average_grade_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        average_heart_rate_bpm:
+          type:
+          - number
+          - 'null'
+          format: double
+        average_power_watts:
+          type:
+          - number
+          - 'null'
+          format: double
+        average_speed_mps:
+          type:
+          - number
+          - 'null'
+          format: double
+        climb_number:
+          type: integer
+          format: int32
+        distance_meters:
+          type: number
+          format: double
+        duration_seconds:
+          type: integer
+          format: int32
+        first_or_second_half:
+          type: string
+        gain_meters:
+          type: number
+          format: double
+        heart_rate_recovery_30_seconds_bpm:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        heart_rate_recovery_60_seconds_bpm:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        peak_heart_rate_bpm:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        seconds_to_drop_10_bpm:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        seconds_to_drop_15_bpm:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        start_seconds:
+          type: integer
+          format: int32
+        summit_immediately_enters_descent:
+          type: boolean
+        summit_seconds:
+          type: integer
+          format: int32
+        vertical_rate_meters_per_hour:
+          type: number
+          format: double
+    ClimbingReportResponse:
+      type: object
+      required:
+      - activity_count
+      - climb_count
+      - climbs
+      properties:
+        activity_count:
+          type: integer
+          format: int32
+        best_climb:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ClimbResponse'
+        climb_count:
+          type: integer
+          format: int32
+        climbs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClimbResponse'
+        fastest_vertical_rate:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ClimbResponse'
+        first_half_median:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ClimbResponse'
+        longest_climb:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ClimbResponse'
+        median_climb:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ClimbResponse'
+        percentile_95_climb:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ClimbResponse'
+        second_half_median:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ClimbResponse'
+        worst_climb:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ClimbResponse'
+    CompareRideCandidateResponse:
+      type: object
+      required:
+      - activity_id
+      - title
+      - started_at
+      properties:
+        activity_id:
+          type: integer
+          format: int32
+        distance_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        elevation_gain_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        moving_time_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        started_at:
+          type: string
+          format: date-time
+        title:
+          type: string
+        total_time_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+    CompareRideColumnResponse:
+      type: object
+      required:
+      - activity_id
+      - title
+      - started_at
+      - elapsed_seconds
+      properties:
+        activity_id:
+          type: integer
+          format: int32
+        distance_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        elapsed_seconds:
+          type: integer
+          format: int32
+        elevation_gain_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        started_at:
+          type: string
+          format: date-time
+        title:
+          type: string
+    CompareRideMetricResponse:
+      type: object
+      required:
+      - key
+      - label
+      - direction
+      - values
+      properties:
+        direction:
+          type: string
+        key:
+          type: string
+        label:
+          type: string
+        trend:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/CompareRideMetricTrendResponse'
+        unit:
+          type:
+          - string
+          - 'null'
+        values:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompareRideMetricValueResponse'
+    CompareRideMetricTrendResponse:
+      type: object
+      required:
+      - first_activity_id
+      - latest_activity_id
+      - display
+      - interpretation
+      properties:
+        change:
+          type:
+          - number
+          - 'null'
+          format: double
+        change_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        display:
+          type: string
+        first_activity_id:
+          type: integer
+          format: int32
+        interpretation:
+          type: string
+        latest_activity_id:
+          type: integer
+          format: int32
+    CompareRideMetricValueResponse:
+      type: object
+      required:
+      - activity_id
+      - display
+      properties:
+        activity_id:
+          type: integer
+          format: int32
+        display:
+          type: string
+        value:
+          type:
+          - number
+          - 'null'
+          format: double
+    CompareRidesReportResponse:
+      type: object
+      required:
+      - candidates
+      - selected_rides
+      - metrics
+      properties:
+        candidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompareRideCandidateResponse'
+        metrics:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompareRideMetricResponse'
+        selected_rides:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompareRideColumnResponse'
+    CreateSegmentFromActivityRequest:
+      type: object
+      required:
+      - activity_id
+      - title
+      - start_route_point_index
+      - end_route_point_index
+      properties:
+        activity_id:
+          type: integer
+          format: int32
+        end_route_point_index:
+          type: integer
+          format: int32
+        start_route_point_index:
+          type: integer
+          format: int32
+        title:
+          type: string
+    DhGoalProgressResponse:
+      type: object
+      required:
+      - generated_at
+      - summary
+      - goals
+      - recommendations
+      - segments
+      - recent_sessions
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        goals:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrainingGoalMetricResponse'
+        recent_sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/DhSessionSummaryResponse'
+        recommendations:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrainingRecommendationResponse'
+        segments:
+          type: array
+          items:
+            $ref: '#/components/schemas/DhSegmentProgressResponse'
+        summary:
+          $ref: '#/components/schemas/DhProgressSummaryResponse'
+    DhProgressSummaryResponse:
+      type: object
+      required:
+      - segment_count
+      - session_count
+      - effort_count
+      properties:
+        average_efforts_per_session:
+          type:
+          - number
+          - 'null'
+          format: double
+        average_repeat_fade_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        average_top_3_gap_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        effort_count:
+          type: integer
+          format: int32
+        segment_count:
+          type: integer
+          format: int32
+        session_count:
+          type: integer
+          format: int32
+    DhSegmentProgressResponse:
+      type: object
+      required:
+      - segment_id
+      - segment_title
+      - effort_count
+      properties:
+        effort_count:
+          type: integer
+          format: int32
+        latest_activity_id:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        latest_activity_started_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        latest_activity_title:
+          type:
+          - string
+          - 'null'
+        personal_record_duration_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        recent_best_duration_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        repeat_fade_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        rolling_top_3_average_duration_seconds:
+          type:
+          - number
+          - 'null'
+          format: double
+        segment_id:
+          type: integer
+          format: int32
+        segment_title:
+          type: string
+        top_3_pr_gap_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+    DhSessionSummaryResponse:
+      type: object
+      required:
+      - activity_id
+      - activity_title
+      - started_at
+      - segment_count
+      - effort_count
+      properties:
+        activity_id:
+          type: integer
+          format: int32
+        activity_title:
+          type: string
+        average_repeat_fade_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        effort_count:
+          type: integer
+          format: int32
+        fastest_effort_duration_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        segment_count:
+          type: integer
+          format: int32
+        started_at:
+          type: string
+          format: date-time
+    DisableUserRequest:
+      type: object
+      properties:
+        disabled:
+          type:
+          - boolean
+          - 'null'
+    EnduranceReportResponse:
+      type: object
+      required:
+      - activity_count
+      - rides
+      properties:
+        activity_count:
+          type: integer
+          format: int32
+        median_aerobic_decoupling_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        median_fatigue_index:
+          type:
+          - number
+          - 'null'
+          format: double
+        median_late_speed_change_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        rides:
+          type: array
+          items:
+            $ref: '#/components/schemas/EnduranceRideResponse'
+    EnduranceRideResponse:
+      type: object
+      required:
+      - activity_id
+      - title
+      - started_at
+      - elapsed_seconds
+      - hourly
+      properties:
+        activity_id:
+          type: integer
+          format: int32
+        aerobic_decoupling_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        elapsed_seconds:
+          type: integer
+          format: int32
+        fatigue_index:
+          type:
+          - number
+          - 'null'
+          format: double
+        first_half_efficiency_mps_per_bpm:
+          type:
+          - number
+          - 'null'
+          format: double
+        hourly:
+          type: array
+          items:
+            $ref: '#/components/schemas/HourlyDurabilityResponse'
+        late_heart_rate_change_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        late_speed_change_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        second_half_efficiency_mps_per_bpm:
+          type:
+          - number
+          - 'null'
+          format: double
+        started_at:
+          type: string
+          format: date-time
+        title:
+          type: string
+    FatigueReportResponse:
+      type: object
+      required:
+      - activity_count
+      - rides
+      properties:
+        activity_count:
+          type: integer
+          format: int32
+        rides:
+          type: array
+          items:
+            $ref: '#/components/schemas/FatigueRideResponse'
+    FatigueRideResponse:
+      type: object
+      required:
+      - activity_id
+      - title
+      - started_at
+      - elapsed_seconds
+      - hourly
+      properties:
+        activity_id:
+          type: integer
+          format: int32
+        elapsed_seconds:
+          type: integer
+          format: int32
+        fatigue_start_hour:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        hourly:
+          type: array
+          items:
+            $ref: '#/components/schemas/HourlyDurabilityResponse'
+        started_at:
+          type: string
+          format: date-time
+        title:
+          type: string
+        worst_fatigue_index:
+          type:
+          - number
+          - 'null'
+          format: double
+    FeatureFlagResponse:
+      type: object
+      required:
+      - feature_key
+      - enabled
+      properties:
+        description:
+          type:
+          - string
+          - 'null'
+        enabled:
+          type: boolean
+        feature_key:
+          type: string
+    FitnessFreshnessPoint:
+      type: object
+      required:
+      - date
+      - training_load
+      - fitness
+      - fatigue
+      - form
+      properties:
+        date:
+          type: string
+        fatigue:
+          type: number
+          format: double
+        fitness:
+          type: number
+          format: double
+        form:
+          type: number
+          format: double
+        training_load:
+          type: number
+          format: double
+    FitnessFreshnessResponse:
+      type: object
+      required:
+      - start_date
+      - end_date
+      - fitness_window_days
+      - fatigue_window_days
+      - points
+      properties:
+        end_date:
+          type: string
+        fatigue_window_days:
+          type: integer
+          format: int32
+        fitness_window_days:
+          type: integer
+          format: int32
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/FitnessFreshnessPoint'
+        start_date:
+          type: string
+    ForgotPasswordRequest:
+      type: object
+      required:
+      - email
+      properties:
+        email:
+          type: string
+    HealthResponse:
+      type: object
+      required:
+      - status
+      properties:
+        status:
+          type: string
+    HourlyDurabilityResponse:
+      type: object
+      required:
+      - hour
+      - elapsed_start_seconds
+      - elapsed_end_seconds
+      - ascent_meters
+      - moving_seconds
+      - stopped_seconds
+      - stop_count
+      - stop_frequency_per_hour
+      properties:
+        ascent_meters:
+          type: number
+          format: double
+        average_heart_rate_bpm:
+          type:
+          - number
+          - 'null'
+          format: double
+        average_speed_mps:
+          type:
+          - number
+          - 'null'
+          format: double
+        climb_rate_meters_per_hour:
+          type:
+          - number
+          - 'null'
+          format: double
+        distance_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        efficiency_mps_per_bpm:
+          type:
+          - number
+          - 'null'
+          format: double
+        elapsed_end_seconds:
+          type: integer
+          format: int32
+        elapsed_start_seconds:
+          type: integer
+          format: int32
+        fatigue_index:
+          type:
+          - number
+          - 'null'
+          format: double
+        hour:
+          type: integer
+          format: int32
+        max_heart_rate_bpm:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        moving_seconds:
+          type: integer
+          format: int32
+        stop_count:
+          type: integer
+          format: int32
+        stop_frequency_per_hour:
+          type: number
+          format: double
+        stopped_seconds:
+          type: integer
+          format: int32
+    IntegrationEventResponse:
+      type: object
+      required:
+      - id
+      - provider
+      - event_type
+      - level
+      - message
+      - created_at
+      properties:
+        connection_id:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        created_at:
+          type: string
+          format: date-time
+        event_type:
+          type: string
+        id:
+          type: integer
+          format: int32
+        level:
+          type: string
+        message:
+          type: string
+        payload: {}
+        provider:
+          type: string
+        user_id:
+          type:
+          - integer
+          - 'null'
+          format: int32
+    LoginRequest:
+      type: object
+      required:
+      - email
+      - password
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+    MessageResponse:
+      type: object
+      required:
+      - message
+      properties:
+        message:
+          type: string
+    NamedStat:
+      type: object
+      description: |-
+        A named, displayable metric with a machine-readable key and human-readable label.
+        Used in sectioned admin metrics responses so the UI can map keys to icons/links.
+      required:
+      - key
+      - label
+      - desc
+      - value
+      properties:
+        desc:
+          type: string
+          description: Short time-range description, e.g. "last 30 days".
+        error:
+          type:
+          - string
+          - 'null'
+        key:
+          type: string
+          description: Machine-readable identifier — used by the UI to look up icons and links.
+        label:
+          type: string
+          description: Human-readable display label.
+        value:
+          type: integer
+          format: int64
+    OAuthProviderMetadata:
+      type: object
+      required:
+      - id
+      - label
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+    OAuthProvidersResponse:
+      type: object
+      required:
+      - providers
+      properties:
+        providers:
+          type: array
+          items:
+            $ref: '#/components/schemas/OAuthProviderMetadata'
+    PaginatedResponse_ActivityResponse:
+      type: object
+      description: Standard paginated response wrapper
+      required:
+      - data
+      - metadata
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            required:
+            - id
+            - title
+            - sport
+            - source
+            - activity_type
+            - started_at
+            properties:
+              achievement_highlights:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ActivityAchievementHighlight'
+              activity_type:
+                $ref: '#/components/schemas/ActivityType'
+              average_cadence_rpm:
+                type:
+                - integer
+                - 'null'
+                format: int32
+              average_heart_rate_bpm:
+                type:
+                - integer
+                - 'null'
+                format: int32
+              average_speed_mps:
+                type:
+                - number
+                - 'null'
+                format: double
+              calories:
+                type:
+                - integer
+                - 'null'
+                format: int32
+              can_download_source_file:
+                type: boolean
+              can_regenerate:
+                type: boolean
+              chart_points:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ActivityChartPoint'
+              distance_meters:
+                type:
+                - number
+                - 'null'
+                format: double
+              elevation_gain_meters:
+                type:
+                - number
+                - 'null'
+                format: double
+              elevation_loss_meters:
+                type:
+                - number
+                - 'null'
+                format: double
+              ended_at:
+                type:
+                - string
+                - 'null'
+                format: date-time
+              estimated_ftp_watts:
+                type:
+                - integer
+                - 'null'
+                format: int32
+              format:
+                type:
+                - string
+                - 'null'
+              heart_rate_zones:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ActivityHeartRateZoneSummary'
+              id:
+                type: integer
+                format: int32
+              laps:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ActivityLap'
+              location:
+                type:
+                - string
+                - 'null'
+              max_cadence_rpm:
+                type:
+                - integer
+                - 'null'
+                format: int32
+              max_heart_rate_bpm:
+                type:
+                - integer
+                - 'null'
+                format: int32
+              max_speed_mps:
+                type:
+                - number
+                - 'null'
+                format: double
+              moving_time_seconds:
+                type:
+                - integer
+                - 'null'
+                format: int32
+              original_filename:
+                type:
+                - string
+                - 'null'
+              relative_effort:
+                type:
+                - integer
+                - 'null'
+                format: int32
+              route_points:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ActivityRoutePoint'
+              segment_efforts:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ActivitySegmentEffort'
+              source:
+                type: string
+              sport:
+                type: string
+              started_at:
+                type: string
+                format: date-time
+              title:
+                type: string
+              total_time_seconds:
+                type:
+                - integer
+                - 'null'
+                format: int32
+              training_analysis:
+                oneOf:
+                - type: 'null'
+                - $ref: '#/components/schemas/ActivityTrainingAnalysisResponse'
+          description: Recordset
+        metadata:
+          $ref: '#/components/schemas/PaginationMetadata'
+          description: Pagination metadata
+    PaginatedResponse_AdminActivityResponse:
+      type: object
+      description: Standard paginated response wrapper
+      required:
+      - data
+      - metadata
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            required:
+            - id
+            - user_id
+            - title
+            - sport
+            - source
+            - started_at
+            properties:
+              activity_import_id:
+                type:
+                - integer
+                - 'null'
+                format: int32
+              format:
+                type:
+                - string
+                - 'null'
+              id:
+                type: integer
+                format: int32
+              import_processing_stage:
+                type:
+                - string
+                - 'null'
+              import_status:
+                type:
+                - string
+                - 'null'
+              import_version:
+                type:
+                - integer
+                - 'null'
+                format: int32
+              source:
+                type: string
+              sport:
+                type: string
+              started_at:
+                type: string
+                format: date-time
+              title:
+                type: string
+              user_id:
+                type: integer
+                format: int32
+          description: Recordset
+        metadata:
+          $ref: '#/components/schemas/PaginationMetadata'
+          description: Pagination metadata
+    PaginatedResponse_FeatureFlagResponse:
+      type: object
+      description: Standard paginated response wrapper
+      required:
+      - data
+      - metadata
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            required:
+            - feature_key
+            - enabled
+            properties:
+              description:
+                type:
+                - string
+                - 'null'
+              enabled:
+                type: boolean
+              feature_key:
+                type: string
+          description: Recordset
+        metadata:
+          $ref: '#/components/schemas/PaginationMetadata'
+          description: Pagination metadata
+    PaginatedResponse_PublicFlagResponse:
+      type: object
+      description: Standard paginated response wrapper
+      required:
+      - data
+      - metadata
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            required:
+            - feature_key
+            - enabled
+            properties:
+              enabled:
+                type: boolean
+              feature_key:
+                type: string
+          description: Recordset
+        metadata:
+          $ref: '#/components/schemas/PaginationMetadata'
+          description: Pagination metadata
+    PaginatedResponse_TaskResponse:
+      type: object
+      required:
+      - data
+      - metadata
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            required:
+            - id
+            - task_type
+            - status
+            - attempts
+            - max_attempts
+            - created_at
+            - updated_at
+            properties:
+              attempts:
+                type: integer
+                format: int32
+              completed_at:
+                type:
+                - string
+                - 'null'
+              created_at:
+                type: string
+              error:
+                type:
+                - string
+                - 'null'
+              id:
+                type: integer
+                format: int32
+              max_attempts:
+                type: integer
+                format: int32
+              result:
+                type:
+                - string
+                - 'null'
+              scheduled_for:
+                type:
+                - string
+                - 'null'
+              started_at:
+                type:
+                - string
+                - 'null'
+              status:
+                type: string
+              task_type:
+                type: string
+              updated_at:
+                type: string
+        metadata:
+          $ref: '#/components/schemas/PaginationMetadata'
+    PaginationMetadata:
+      type: object
+      required:
+      - page
+      - per_page
+      - total
+      - total_pages
+      properties:
+        page:
+          type: integer
+          format: int64
+        per_page:
+          type: integer
+          format: int64
+        total:
+          type: integer
+          format: int64
+        total_pages:
+          type: integer
+          format: int64
+    PaginationParams:
+      type: object
+      description: Standard pagination query parameters
+      properties:
+        page:
+          type: integer
+          format: int64
+          description: Page number (1-based)
+        per_page:
+          type: integer
+          format: int64
+          description: Number of items per page
+    PublicFlagResponse:
+      type: object
+      required:
+      - feature_key
+      - enabled
+      properties:
+        enabled:
+          type: boolean
+        feature_key:
+          type: string
+    ReassessmentAbilityEstimateResponse:
+      type: object
+      required:
+      - detail
+      properties:
+        climbing_limited_finish_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        current_climb_density_feet_per_hour:
+          type:
+          - number
+          - 'null'
+          format: double
+        current_long_ride_speed_mph:
+          type:
+          - number
+          - 'null'
+          format: double
+        detail:
+          type: string
+        estimated_finish_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        estimated_speed_mph:
+          type:
+          - number
+          - 'null'
+          format: double
+        limiter:
+          type:
+          - string
+          - 'null'
+        pace_limited_finish_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+    ReassessmentBenchmarkRideResponse:
+      type: object
+      required:
+      - activity_id
+      - title
+      - started_at
+      - elapsed_seconds
+      properties:
+        activity_id:
+          type: integer
+          format: int32
+        aerobic_decoupling_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        climbing_density_feet_per_hour:
+          type:
+          - number
+          - 'null'
+          format: double
+        distance_miles:
+          type:
+          - number
+          - 'null'
+          format: double
+        elapsed_seconds:
+          type: integer
+          format: int32
+        elapsed_speed_mph:
+          type:
+          - number
+          - 'null'
+          format: double
+        elevation_gain_feet:
+          type:
+          - number
+          - 'null'
+          format: double
+        fatigue_index:
+          type:
+          - number
+          - 'null'
+          format: double
+        late_speed_change_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        moving_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        moving_speed_mph:
+          type:
+          - number
+          - 'null'
+          format: double
+        started_at:
+          type: string
+          format: date-time
+        title:
+          type: string
+    ReassessmentImprovementResponse:
+      type: object
+      properties:
+        climbing_density_change_feet_per_hour:
+          type:
+          - number
+          - 'null'
+          format: double
+        climbing_density_change_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        fitness_change:
+          type:
+          - number
+          - 'null'
+          format: double
+        fitness_change_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        long_ride_distance_change_miles:
+          type:
+          - number
+          - 'null'
+          format: double
+        long_ride_distance_change_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        long_ride_speed_change_mph:
+          type:
+          - number
+          - 'null'
+          format: double
+        long_ride_speed_change_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+    ReassessmentReportResponse:
+      type: object
+      required:
+      - verdict
+      - verdict_title
+      - verdict_detail
+      - target
+      - ability_estimate
+      - recent_window
+      - spring_baseline_window
+      - improvement
+      - endurance_progression
+      - climbing_density
+      - long_ride_pace
+      - fitness_delta
+      - benchmark_rides
+      - notes
+      properties:
+        ability_estimate:
+          $ref: '#/components/schemas/ReassessmentAbilityEstimateResponse'
+        benchmark_rides:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReassessmentBenchmarkRideResponse'
+        climbing_density:
+          $ref: '#/components/schemas/ReassessmentSignalResponse'
+        endurance_progression:
+          $ref: '#/components/schemas/ReassessmentSignalResponse'
+        fitness_delta:
+          $ref: '#/components/schemas/ReassessmentSignalResponse'
+        improvement:
+          $ref: '#/components/schemas/ReassessmentImprovementResponse'
+        long_ride_pace:
+          $ref: '#/components/schemas/ReassessmentSignalResponse'
+        notes:
+          type: array
+          items:
+            type: string
+        recent_window:
+          $ref: '#/components/schemas/ReassessmentWindowResponse'
+        spring_baseline_window:
+          $ref: '#/components/schemas/ReassessmentWindowResponse'
+        target:
+          $ref: '#/components/schemas/ReassessmentTargetResponse'
+        verdict:
+          $ref: '#/components/schemas/ReassessmentVerdict'
+        verdict_detail:
+          type: string
+        verdict_title:
+          type: string
+    ReassessmentSignalResponse:
+      type: object
+      required:
+      - status
+      - title
+      - detail
+      - unit
+      properties:
+        baseline_source_activity_id:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        baseline_source_started_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        baseline_source_title:
+          type:
+          - string
+          - 'null'
+        baseline_value:
+          type:
+          - number
+          - 'null'
+          format: double
+        current_source_activity_id:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        current_source_started_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        current_source_title:
+          type:
+          - string
+          - 'null'
+        current_value:
+          type:
+          - number
+          - 'null'
+          format: double
+        detail:
+          type: string
+        last_known_days_old:
+          type:
+          - integer
+          - 'null'
+          format: int64
+        last_known_source_activity_id:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        last_known_source_started_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        last_known_source_title:
+          type:
+          - string
+          - 'null'
+        last_known_value:
+          type:
+          - number
+          - 'null'
+          format: double
+        projected_current_value:
+          type:
+          - number
+          - 'null'
+          format: double
+        projection_detail:
+          type:
+          - string
+          - 'null'
+        status:
+          $ref: '#/components/schemas/ReassessmentVerdict'
+        target_value:
+          type:
+          - number
+          - 'null'
+          format: double
+        title:
+          type: string
+        unit:
+          type: string
+    ReassessmentTargetResponse:
+      type: object
+      required:
+      - event_name
+      - target_source
+      - target_source_detail
+      properties:
+        event_name:
+          type: string
+        event_profile:
+          type:
+          - string
+          - 'null'
+        target_climb_density_feet_per_hour:
+          type:
+          - number
+          - 'null'
+          format: double
+        target_date:
+          type:
+          - string
+          - 'null'
+        target_distance_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        target_elevation_gain_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        target_finish_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        target_source:
+          $ref: '#/components/schemas/ReassessmentTargetSource'
+        target_source_detail:
+          type: string
+        target_speed_mph:
+          type:
+          - number
+          - 'null'
+          format: double
+        target_speed_mps:
+          type:
+          - number
+          - 'null'
+          format: double
+    ReassessmentTargetSource:
+      type: string
+      enum:
+      - saved_goal
+      - missing_goal
+    ReassessmentVerdict:
+      type: string
+      enum:
+      - on_track
+      - plausible_but_risky
+      - needs_more_evidence
+      - missing_data
+    ReassessmentWindowResponse:
+      type: object
+      required:
+      - label
+      - start_date
+      - end_date
+      - activity_count
+      - long_ride_count
+      - total_distance_miles
+      - total_elevation_gain_feet
+      properties:
+        activity_count:
+          type: integer
+          format: int32
+        aggregate_long_ride_climbing_density_feet_per_hour:
+          type:
+          - number
+          - 'null'
+          format: double
+        average_fitness:
+          type:
+          - number
+          - 'null'
+          format: double
+        best_long_ride_climbing_density_feet_per_hour:
+          type:
+          - number
+          - 'null'
+          format: double
+        best_long_ride_distance_miles:
+          type:
+          - number
+          - 'null'
+          format: double
+        best_long_ride_duration_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        best_long_ride_speed_mph:
+          type:
+          - number
+          - 'null'
+          format: double
+        end_date:
+          type: string
+        label:
+          type: string
+        latest_fitness:
+          type:
+          - number
+          - 'null'
+          format: double
+        long_ride_count:
+          type: integer
+          format: int32
+        median_long_ride_decoupling_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        median_long_ride_fatigue_index:
+          type:
+          - number
+          - 'null'
+          format: double
+        median_long_ride_late_speed_change_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        start_date:
+          type: string
+        total_distance_miles:
+          type: number
+          format: double
+        total_elevation_gain_feet:
+          type: number
+          format: double
+    RegenerateSegmentEffortsRequest:
+      type: object
+      required:
+      - segment_id
+      properties:
+        segment_id:
+          type: integer
+          format: int32
+    RegenerateSegmentEffortsResponse:
+      type: object
+      required:
+      - segment_id
+      - status
+      - message
+      - task_id
+      - task_status
+      properties:
+        message:
+          type: string
+        segment_id:
+          type: integer
+          format: int32
+        status:
+          type: string
+        task_id:
+          type: string
+        task_status:
+          type: string
+    RegenerateUserSegmentsRequest:
+      type: object
+      required:
+      - user_id
+      properties:
+        user_id:
+          type: integer
+          format: int32
+    RegenerateUserSegmentsResponse:
+      type: object
+      required:
+      - user_id
+      - status
+      - message
+      properties:
+        message:
+          type: string
+        status:
+          type: string
+        user_id:
+          type: integer
+          format: int32
+    RegisterRequest:
+      type: object
+      required:
+      - email
+      - name
+      - password
+      properties:
+        email:
+          type: string
+        name:
+          type: string
+        password:
+          type: string
+    RegisterResponse:
+      type: object
+      required:
+      - pid
+      properties:
+        pid:
+          type: string
+    ReportBoundary:
+      type: string
+      enum:
+      - day
+      - week
+      - month
+      - 3month
+      - 6month
+      - 1year
+      - 2year
+      - 3year
+      - 5year
+      - all
+    ReportFilterKey:
+      type: string
+      enum:
+      - activity_ids
+      - min_duration
+      - min_distance
+    ReportId:
+      type: string
+      enum:
+      - ride_summary
+      - endurance
+      - climbing
+      - fatigue
+      - compare_rides
+      - reassessment
+      - distance
+      - elevation
+      - activity_type_time
+      - aggregate_trends
+    ReportMetricDirection:
+      type: string
+      enum:
+      - higher
+      - lower
+      - neutral
+    ReprocessActivityImportRequest:
+      type: object
+      required:
+      - activity_id
+      properties:
+        activity_id:
+          type: integer
+          format: int32
+    ReprocessActivityImportResponse:
+      type: object
+      required:
+      - activity_id
+      - activity_import_id
+      - user_id
+      - status
+      - message
+      - task_id
+      - task_status
+      properties:
+        activity_id:
+          type: integer
+          format: int32
+        activity_import_id:
+          type: integer
+          format: int32
+        message:
+          type: string
+        status:
+          type: string
+        task_id:
+          type: string
+        task_status:
+          type: string
+        user_id:
+          type: integer
+          format: int32
+    ReprocessUserActivityImportsRequest:
+      type: object
+      required:
+      - user_id
+      properties:
+        user_id:
+          type: integer
+          format: int32
+    ReprocessUserActivityImportsResponse:
+      type: object
+      required:
+      - user_id
+      - status
+      - message
+      properties:
+        message:
+          type: string
+        status:
+          type: string
+        user_id:
+          type: integer
+          format: int32
+    ResendConfirmationRequest:
+      type: object
+      required:
+      - email
+      properties:
+        email:
+          type: string
+    ResetPasswordRequest:
+      type: object
+      required:
+      - token
+      - password
+      properties:
+        password:
+          type: string
+        token:
+          type: string
+    RideSummaryReportResponse:
+      type: object
+      required:
+      - activity_count
+      - total_distance_meters
+      - total_distance_miles
+      - total_elevation_gain_meters
+      - total_elevation_gain_feet
+      - total_elapsed_seconds
+      - total_moving_seconds
+      - total_stopped_seconds
+      - z1_seconds
+      - z2_seconds
+      - z3_seconds
+      - z4_seconds
+      - z5_seconds
+      - data_quality_flags
+      properties:
+        activity_count:
+          type: integer
+          format: int32
+        average_heart_rate_bpm:
+          type:
+          - number
+          - 'null'
+          format: double
+        average_speed_mph:
+          type:
+          - number
+          - 'null'
+          format: double
+        average_speed_mps:
+          type:
+          - number
+          - 'null'
+          format: double
+        climbing_density_feet_per_hour:
+          type:
+          - number
+          - 'null'
+          format: double
+        data_quality_flags:
+          type: array
+          items:
+            type: string
+        max_heart_rate_bpm:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        total_distance_meters:
+          type: number
+          format: double
+        total_distance_miles:
+          type: number
+          format: double
+        total_elapsed_seconds:
+          type: integer
+          format: int32
+        total_elevation_gain_feet:
+          type: number
+          format: double
+        total_elevation_gain_meters:
+          type: number
+          format: double
+        total_moving_seconds:
+          type: integer
+          format: int32
+        total_stopped_seconds:
+          type: integer
+          format: int32
+        z1_seconds:
+          type: integer
+          format: int32
+        z2_seconds:
+          type: integer
+          format: int32
+        z3_seconds:
+          type: integer
+          format: int32
+        z4_seconds:
+          type: integer
+          format: int32
+        z5_seconds:
+          type: integer
+          format: int32
+    SegmentAnalysisEffortSummaryResponse:
+      type: object
+      required:
+      - effort_id
+      - activity_id
+      - activity_title
+      - activity_started_at
+      - effort_index
+      - duration_seconds
+      - delta_from_reference_seconds
+      properties:
+        activity_id:
+          type: integer
+          format: int32
+        activity_started_at:
+          type: string
+          format: date-time
+        activity_title:
+          type: string
+        delta_from_reference_seconds:
+          type: number
+          format: double
+        duration_seconds:
+          type: integer
+          format: int32
+        effort_id:
+          type: integer
+          format: int32
+        effort_index:
+          type: integer
+          format: int32
+    SegmentAnalysisSectionEffortResponse:
+      type: object
+      required:
+      - effort_id
+      - activity_id
+      - activity_title
+      - activity_started_at
+      - split_seconds
+      - delta_from_reference_seconds
+      - delta_from_best_seconds
+      properties:
+        activity_id:
+          type: integer
+          format: int32
+        activity_started_at:
+          type: string
+          format: date-time
+        activity_title:
+          type: string
+        average_speed_mps:
+          type:
+          - number
+          - 'null'
+          format: double
+        delta_from_best_seconds:
+          type: number
+          format: double
+        delta_from_reference_seconds:
+          type: number
+          format: double
+        effort_id:
+          type: integer
+          format: int32
+        split_seconds:
+          type: number
+          format: double
+    SegmentAnalysisSectionResponse:
+      type: object
+      required:
+      - section_index
+      - start_progress_percent
+      - end_progress_percent
+      - reference_split_seconds
+      - best_split_seconds
+      - best_effort_id
+      - best_activity_id
+      - best_activity_title
+      - gain_available_seconds
+      properties:
+        best_activity_id:
+          type: integer
+          format: int32
+        best_activity_title:
+          type: string
+        best_effort_id:
+          type: integer
+          format: int32
+        best_split_seconds:
+          type: number
+          format: double
+        efforts:
+          type: array
+          items:
+            $ref: '#/components/schemas/SegmentAnalysisSectionEffortResponse'
+        end_progress_percent:
+          type: number
+          format: double
+        gain_available_seconds:
+          type: number
+          format: double
+        reference_split_seconds:
+          type: number
+          format: double
+        section_index:
+          type: integer
+          minimum: 0
+        start_progress_percent:
+          type: number
+          format: double
+        top_efforts:
+          type: array
+          items:
+            $ref: '#/components/schemas/SegmentAnalysisSectionEffortResponse'
+    SegmentBuilderSourceResponse:
+      type: object
+      required:
+      - activity_id
+      - start_route_point_index
+      - end_route_point_index
+      properties:
+        activity_id:
+          type: integer
+          format: int32
+        end_route_point_index:
+          type: integer
+          format: int32
+        start_route_point_index:
+          type: integer
+          format: int32
+    SegmentComparisonResponse:
+      type: object
+      required:
+      - segment_id
+      properties:
+        efforts:
+          type: array
+          items:
+            $ref: '#/components/schemas/SegmentEffortResponse'
+        route_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/SegmentRoutePointResponse'
+        segment_id:
+          type: integer
+          format: int32
+    SegmentEffortAnalysisQuery:
+      type: object
+      properties:
+        reference_effort_id:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        split_count:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+    SegmentEffortAnalysisResponse:
+      type: object
+      required:
+      - segment_id
+      - segment_title
+      - split_count
+      - reference_effort
+      - theoretical_best_duration_seconds
+      - theoretical_best_gain_seconds
+      properties:
+        efforts:
+          type: array
+          items:
+            $ref: '#/components/schemas/SegmentAnalysisEffortSummaryResponse'
+        reference_effort:
+          $ref: '#/components/schemas/SegmentAnalysisEffortSummaryResponse'
+        route_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/SegmentRoutePointResponse'
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/SegmentAnalysisSectionResponse'
+        segment_id:
+          type: integer
+          format: int32
+        segment_title:
+          type: string
+        split_count:
+          type: integer
+          minimum: 0
+        theoretical_best_duration_seconds:
+          type: number
+          format: double
+        theoretical_best_gain_seconds:
+          type: number
+          format: double
+    SegmentEffortResponse:
+      type: object
+      required:
+      - id
+      - rider_user_id
+      - activity_id
+      - activity_title
+      - rider_name
+      - activity_started_at
+      - effort_index
+      - duration_seconds
+      - start_elapsed_seconds
+      - end_elapsed_seconds
+      properties:
+        activity_id:
+          type: integer
+          format: int32
+        activity_started_at:
+          type: string
+          format: date-time
+        activity_title:
+          type: string
+        distance_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        duration_seconds:
+          type: integer
+          format: int32
+        effort_index:
+          type: integer
+          format: int32
+        end_elapsed_seconds:
+          type: integer
+          format: int32
+        id:
+          type: integer
+          format: int32
+        rider_name:
+          type: string
+        rider_user_id:
+          type: integer
+          format: int32
+        route_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/SegmentRoutePointResponse'
+        start_elapsed_seconds:
+          type: integer
+          format: int32
+    SegmentMode:
+      type: string
+      enum:
+      - xc
+      - dh
+    SegmentResponse:
+      type: object
+      required:
+      - id
+      - title
+      - source
+      - mode
+      - starred
+      - effort_count
+      - created_at
+      properties:
+        best_duration_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        builder_source:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/SegmentBuilderSourceResponse'
+        created_at:
+          type: string
+          format: date-time
+        current_user_pr_duration_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        distance_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        effort_count:
+          type: integer
+          format: int32
+        efforts:
+          type: array
+          items:
+            $ref: '#/components/schemas/SegmentEffortResponse'
+        format:
+          type:
+          - string
+          - 'null'
+        id:
+          type: integer
+          format: int32
+        mode:
+          $ref: '#/components/schemas/SegmentMode'
+        original_filename:
+          type:
+          - string
+          - 'null'
+        processing_task_id:
+          type:
+          - string
+          - 'null'
+        processing_task_status:
+          type:
+          - string
+          - 'null'
+        route_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/SegmentRoutePointResponse'
+        source:
+          type: string
+        starred:
+          type: boolean
+        title:
+          type: string
+    SegmentRoutePointResponse:
+      type: object
+      required:
+      - elapsed_seconds
+      - latitude
+      - longitude
+      properties:
+        distance_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        elapsed_seconds:
+          type: integer
+          format: int32
+        elevation_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        heart_rate_bpm:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        speed_mps:
+          type:
+          - number
+          - 'null'
+          format: double
+    SegmentYearlyBestResponse:
+      type: object
+      required:
+      - year
+      - effort_id
+      - activity_id
+      - activity_title
+      - activity_started_at
+      - effort_index
+      - duration_seconds
+      properties:
+        activity_id:
+          type: integer
+          format: int32
+        activity_started_at:
+          type: string
+          format: date-time
+        activity_title:
+          type: string
+        duration_seconds:
+          type: integer
+          format: int32
+        effort_id:
+          type: integer
+          format: int32
+        effort_index:
+          type: integer
+          format: int32
+        improvement_from_first_year_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        improvement_from_previous_year_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        year:
+          type: integer
+          format: int32
+    SegmentYearlyBestsResponse:
+      type: object
+      required:
+      - segment_id
+      - segment_title
+      properties:
+        segment_id:
+          type: integer
+          format: int32
+        segment_title:
+          type: string
+        years:
+          type: array
+          items:
+            $ref: '#/components/schemas/SegmentYearlyBestResponse'
+    StravaAuthorizeResponse:
+      type: object
+      required:
+      - authorization_url
+      properties:
+        authorization_url:
+          type: string
+    StravaConnectionResponse:
+      type: object
+      required:
+      - configured
+      - connected
+      - scopes
+      - last_sync_status
+      - last_sync_imported_count
+      - last_sync_duplicate_count
+      - last_sync_failed_count
+      properties:
+        athlete_id:
+          type:
+          - integer
+          - 'null'
+          format: int64
+        athlete_name:
+          type:
+          - string
+          - 'null'
+        athlete_profile_medium_url:
+          type:
+          - string
+          - 'null'
+        athlete_username:
+          type:
+          - string
+          - 'null'
+        configured:
+          type: boolean
+        connected:
+          type: boolean
+        last_sync_duplicate_count:
+          type: integer
+          format: int32
+        last_sync_failed_count:
+          type: integer
+          format: int32
+        last_sync_finished_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        last_sync_imported_count:
+          type: integer
+          format: int32
+        last_sync_message:
+          type:
+          - string
+          - 'null'
+        last_sync_started_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        last_sync_status:
+          type: string
+        last_synced_activity_started_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        scopes:
+          type: array
+          items:
+            type: string
+    StravaWebhookChallengeResponse:
+      type: object
+      required:
+      - hub.challenge
+      properties:
+        hub.challenge:
+          type: string
+    StravaWebhookEvent:
+      type: object
+      required:
+      - aspect_type
+      - event_time
+      - object_id
+      - object_type
+      - owner_id
+      - subscription_id
+      properties:
+        aspect_type:
+          type: string
+        event_time:
+          type: integer
+          format: int64
+        object_id:
+          type: integer
+          format: int64
+        object_type:
+          type: string
+        owner_id:
+          type: integer
+          format: int64
+        subscription_id:
+          type: integer
+          format: int64
+        updates: {}
+    SystemMetrics:
+      type: object
+      description: |-
+        System-wide metrics automatically aggregated from all glass subsystems.
+
+        Add new subsystem fields here (and populate them in `collect`) when new
+        system-level metric categories are added to glass. Consuming controllers
+        embed this via `#[serde(flatten)]` so new sections appear in the JSON
+        response without any controller changes.
+      required:
+      - auth
+      - background_tasks
+      properties:
+        auth:
+          type: array
+          items:
+            $ref: '#/components/schemas/NamedStat'
+        background_tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/NamedStat'
+    TaskDetailResponse:
+      type: object
+      required:
+      - id
+      - task_type
+      - status
+      - attempts
+      - max_attempts
+      - created_at
+      - updated_at
+      properties:
+        attempts:
+          type: integer
+          format: int32
+        completed_at:
+          type:
+          - string
+          - 'null'
+        created_at:
+          type: string
+        error:
+          type:
+          - string
+          - 'null'
+        id:
+          type: integer
+          format: int32
+        max_attempts:
+          type: integer
+          format: int32
+        payload:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/Value'
+        result:
+          type:
+          - string
+          - 'null'
+        scheduled_for:
+          type:
+          - string
+          - 'null'
+        started_at:
+          type:
+          - string
+          - 'null'
+        status:
+          type: string
+        task_type:
+          type: string
+        updated_at:
+          type: string
+    TaskResponse:
+      type: object
+      required:
+      - id
+      - task_type
+      - status
+      - attempts
+      - max_attempts
+      - created_at
+      - updated_at
+      properties:
+        attempts:
+          type: integer
+          format: int32
+        completed_at:
+          type:
+          - string
+          - 'null'
+        created_at:
+          type: string
+        error:
+          type:
+          - string
+          - 'null'
+        id:
+          type: integer
+          format: int32
+        max_attempts:
+          type: integer
+          format: int32
+        result:
+          type:
+          - string
+          - 'null'
+        scheduled_for:
+          type:
+          - string
+          - 'null'
+        started_at:
+          type:
+          - string
+          - 'null'
+        status:
+          type: string
+        task_type:
+          type: string
+        updated_at:
+          type: string
+    TrainingGoalDirection:
+      type: string
+      enum:
+      - at_least
+      - at_most
+    TrainingGoalKey:
+      type: string
+      enum:
+      - weekly_z2_average
+      - weekly_climbing_average
+      - aerobic_decoupling
+      - dh_laps_per_session
+      - dh_repeat_fade
+      - dh_rolling_top3_gap
+    TrainingGoalMetricResponse:
+      type: object
+      required:
+      - key
+      - label
+      - unit
+      - direction
+      - target_value
+      properties:
+        current_value:
+          type:
+          - number
+          - 'null'
+          format: double
+        direction:
+          $ref: '#/components/schemas/TrainingGoalDirection'
+        key:
+          $ref: '#/components/schemas/TrainingGoalKey'
+        label:
+          type: string
+        progress_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        target_value:
+          type: number
+          format: double
+        unit:
+          $ref: '#/components/schemas/TrainingMetricUnit'
+    TrainingMetricUnit:
+      type: string
+      enum:
+      - seconds
+      - meters
+      - percent
+      - count
+      - meters_per_second
+      - meters_per_kilometer
+      - meters_per_hour
+    TrainingRecommendationKey:
+      type: string
+      enum:
+      - build_xc_baseline
+      - repeat_comparable_endurance_ride
+      - increase_endurance_volume
+      - add_climbing_endurance
+      - hold_steady_endurance
+      - maintain_endurance_rhythm
+      - recover_before_next_xc_ride
+      - use_positive_form_for_xc_benchmark
+      - mark_dh_segments
+      - add_dh_repeats
+      - reduce_dh_fade
+      - chase_dh_consistency
+      - maintain_dh_momentum
+      - recover_before_next_dh_session
+      - use_positive_form_for_dh_benchmark
+    TrainingRecommendationPriority:
+      type: string
+      enum:
+      - high
+      - medium
+      - low
+    TrainingRecommendationResponse:
+      type: object
+      required:
+      - key
+      - priority
+      - title
+      - detail
+      properties:
+        detail:
+          type: string
+        gap_unit:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/TrainingMetricUnit'
+        gap_value:
+          type:
+          - number
+          - 'null'
+          format: double
+        key:
+          $ref: '#/components/schemas/TrainingRecommendationKey'
+        limiter:
+          type:
+          - string
+          - 'null'
+        priority:
+          $ref: '#/components/schemas/TrainingRecommendationPriority'
+        purpose:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/XcTrainingPurpose'
+        suggested_ride:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/XcSuggestedRideResponse'
+        title:
+          type: string
+    TrainingReportDefinitionResponse:
+      type: object
+      required:
+      - id
+      - display_name
+      - short_purpose
+      - supported_filters
+      - required_data_quality
+      - result_sections
+      - metrics
+      properties:
+        display_name:
+          type: string
+        id:
+          $ref: '#/components/schemas/ReportId'
+        metrics:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrainingReportMetricDefinitionResponse'
+        required_data_quality:
+          type: array
+          items:
+            type: string
+        result_sections:
+          type: array
+          items:
+            type: string
+        short_purpose:
+          type: string
+        supported_filters:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReportFilterKey'
+    TrainingReportDefinitionsResponse:
+      type: object
+      required:
+      - reports
+      properties:
+        reports:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrainingReportDefinitionResponse'
+    TrainingReportMetricDefinitionResponse:
+      type: object
+      required:
+      - key
+      - label
+      - direction
+      properties:
+        direction:
+          $ref: '#/components/schemas/ReportMetricDirection'
+        key:
+          type: string
+        label:
+          type: string
+        unit:
+          type:
+          - string
+          - 'null'
+    TrainingReportPointResponse:
+      type: object
+      required:
+      - bucket_start
+      - bucket_end
+      - distance_meters
+      - distance_miles
+      - z1_seconds
+      - z2_seconds
+      - z3_seconds
+      - z4_seconds
+      - z5_seconds
+      - elevation_gain_meters
+      - elevation_gain_feet
+      - activity_type_times
+      properties:
+        activity_type_times:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActivityTypeTimeResponse'
+        average_aerobic_decoupling_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        bucket_end:
+          type: string
+        bucket_start:
+          type: string
+        climbing_pace_feet_per_week:
+          type:
+          - number
+          - 'null'
+          format: double
+        climbing_vertical_rate_feet_per_hour:
+          type:
+          - number
+          - 'null'
+          format: double
+        distance_meters:
+          type: number
+          format: double
+        distance_miles:
+          type: number
+          format: double
+        elevation_gain_feet:
+          type: number
+          format: double
+        elevation_gain_meters:
+          type: number
+          format: double
+        z1_seconds:
+          type: integer
+          format: int32
+        z2_average_speed_mps:
+          type:
+          - number
+          - 'null'
+          format: double
+        z2_seconds:
+          type: integer
+          format: int32
+        z3_seconds:
+          type: integer
+          format: int32
+        z4_seconds:
+          type: integer
+          format: int32
+        z5_seconds:
+          type: integer
+          format: int32
+    TrainingReportsResponse:
+      type: object
+      required:
+      - generated_at
+      - boundary
+      - range_start
+      - range_end
+      - points
+      properties:
+        boundary:
+          $ref: '#/components/schemas/ReportBoundary'
+        climbing:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ClimbingReportResponse'
+        compare_rides:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/CompareRidesReportResponse'
+        endurance:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/EnduranceReportResponse'
+        fatigue:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/FatigueReportResponse'
+        generated_at:
+          type: string
+          format: date-time
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrainingReportPointResponse'
+        range_end:
+          type: string
+        range_start:
+          type: string
+        reassessment:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ReassessmentReportResponse'
+        ride_summary:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/RideSummaryReportResponse'
+    UpdateActivityRequest:
+      type: object
+      properties:
+        activity_type:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ActivityType'
+        title:
+          type:
+          - string
+          - 'null'
+    UpdateFlagRequest:
+      type: object
+      required:
+      - enabled
+      properties:
+        enabled:
+          type: boolean
+    UpdateSegmentRequest:
+      type: object
+      properties:
+        mode:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/SegmentMode'
+        starred:
+          type:
+          - boolean
+          - 'null'
+        title:
+          type:
+          - string
+          - 'null'
+    UpdateUserPreferencesRequest:
+      type: object
+      required:
+      - unit_system
+      properties:
+        estimated_ftp_watts:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        heart_rate_zone_bounds_bpm:
+          type:
+          - array
+          - 'null'
+          items:
+            type: integer
+            format: int32
+        unit_system:
+          type: string
+        xc_goal_event_name:
+          type:
+          - string
+          - 'null'
+        xc_goal_event_profile:
+          type:
+          - string
+          - 'null'
+        xc_goal_start_date:
+          type:
+          - string
+          - 'null'
+        xc_goal_target_date:
+          type:
+          - string
+          - 'null'
+        xc_goal_target_distance_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        xc_goal_target_elevation_gain_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        xc_goal_target_finish_time_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+    UpdateUserRequest:
+      type: object
+      properties:
+        is_admin:
+          type:
+          - boolean
+          - 'null'
+        name:
+          type:
+          - string
+          - 'null'
+    UserPreferencesResponse:
+      type: object
+      required:
+      - unit_system
+      properties:
+        estimated_ftp_watts:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        heart_rate_zone_bounds_bpm:
+          type:
+          - array
+          - 'null'
+          items:
+            type: integer
+            format: int32
+        unit_system:
+          type: string
+        xc_goal_backfill_completed_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        xc_goal_backfill_status:
+          type:
+          - string
+          - 'null'
+        xc_goal_event_name:
+          type:
+          - string
+          - 'null'
+        xc_goal_event_profile:
+          type:
+          - string
+          - 'null'
+        xc_goal_start_date:
+          type:
+          - string
+          - 'null'
+        xc_goal_target_date:
+          type:
+          - string
+          - 'null'
+        xc_goal_target_distance_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        xc_goal_target_elevation_gain_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        xc_goal_target_finish_time_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+    UserResponse:
+      type: object
+      required:
+      - pid
+      - name
+      - email
+      - is_admin
+      - verified
+      properties:
+        email:
+          type: string
+        is_admin:
+          type: boolean
+        name:
+          type: string
+        pid:
+          type: string
+        verified:
+          type: boolean
+    Value: {}
+    XcEventGoalResponse:
+      type: object
+      required:
+      - start_date
+      - target_date
+      - days_remaining
+      - target_distance_meters
+      - target_elevation_gain_meters
+      - target_climb_density_meters_per_kilometer
+      - training_window_days
+      - counted_ride_count
+      - counted_distance_meters
+      - counted_elevation_gain_meters
+      properties:
+        counted_distance_meters:
+          type: number
+          format: double
+        counted_elevation_gain_meters:
+          type: number
+          format: double
+        counted_ride_count:
+          type: integer
+          format: int32
+        days_remaining:
+          type: integer
+          format: int64
+        event_name:
+          type:
+          - string
+          - 'null'
+        event_profile:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/XcEventProfile'
+        start_date:
+          type: string
+        target_climb_density_meters_per_kilometer:
+          type: number
+          format: double
+        target_date:
+          type: string
+        target_distance_meters:
+          type: number
+          format: double
+        target_elevation_gain_meters:
+          type: number
+          format: double
+        target_finish_speed_mps:
+          type:
+          - number
+          - 'null'
+          format: double
+        target_finish_time_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        training_window_days:
+          type: integer
+          format: int32
+    XcEventProfile:
+      type: string
+      enum:
+      - xc_marathon
+      - technical_singletrack
+      - endurance_mtb
+      - ultra_mtb
+      - custom
+    XcGoalProgressResponse:
+      type: object
+      required:
+      - generated_at
+      - deficits
+      - summary
+      - race_results
+      - goals
+      - recommendations
+      - weekly_progress
+      - recent_rides
+      properties:
+        deficits:
+          type: array
+          items:
+            $ref: '#/components/schemas/XcTrainingDeficitResponse'
+        event_goal:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/XcEventGoalResponse'
+        generated_at:
+          type: string
+          format: date-time
+        goals:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrainingGoalMetricResponse'
+        race_results:
+          type: array
+          items:
+            $ref: '#/components/schemas/XcRaceResultResponse'
+        readiness:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/XcReadinessSummaryResponse'
+        recent_rides:
+          type: array
+          items:
+            $ref: '#/components/schemas/XcRideProgressResponse'
+        recommendations:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrainingRecommendationResponse'
+        summary:
+          $ref: '#/components/schemas/XcProgressSummaryResponse'
+        weekly_progress:
+          type: array
+          items:
+            $ref: '#/components/schemas/XcWeeklyProgressPointResponse'
+    XcProgressSummaryResponse:
+      type: object
+      required:
+      - recent_window_days
+      - recent_ride_count
+      - comparable_ride_count
+      - total_z2_time_seconds
+      - total_climbing_time_seconds
+      - total_climbing_elevation_gain_meters
+      properties:
+        average_aerobic_decoupling_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        comparable_ride_count:
+          type: integer
+          format: int32
+        recent_ride_count:
+          type: integer
+          format: int32
+        recent_window_days:
+          type: integer
+          format: int32
+        total_climbing_elevation_gain_meters:
+          type: number
+          format: double
+        total_climbing_time_seconds:
+          type: integer
+          format: int32
+        total_z2_time_seconds:
+          type: integer
+          format: int32
+    XcRaceResultResponse:
+      type: object
+      required:
+      - activity_id
+      - activity_title
+      - started_at
+      - z2_time_seconds
+      - climbing_time_seconds
+      - prior_training_ride_count
+      - prior_training_z2_time_seconds
+      - prior_training_climbing_elevation_gain_meters
+      - insight_title
+      - insight_detail
+      properties:
+        activity_id:
+          type: integer
+          format: int32
+        activity_title:
+          type: string
+        aerobic_decoupling_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        average_speed_mps:
+          type:
+          - number
+          - 'null'
+          format: double
+        climb_density_meters_per_kilometer:
+          type:
+          - number
+          - 'null'
+          format: double
+        climbing_elevation_gain_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        climbing_time_seconds:
+          type: integer
+          format: int32
+        distance_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        elevation_gain_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        insight_detail:
+          type: string
+        insight_title:
+          type: string
+        moving_time_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        prior_training_average_aerobic_decoupling_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        prior_training_average_z2_speed_mps:
+          type:
+          - number
+          - 'null'
+          format: double
+        prior_training_climbing_elevation_gain_meters:
+          type: number
+          format: double
+        prior_training_ride_count:
+          type: integer
+          format: int32
+        prior_training_z2_time_seconds:
+          type: integer
+          format: int32
+        race_vs_best_training_distance_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        race_vs_best_training_elevation_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        started_at:
+          type: string
+          format: date-time
+        z2_time_seconds:
+          type: integer
+          format: int32
+    XcReadinessGateKey:
+      type: string
+      enum:
+      - long_ride_distance
+      - big_climb_day
+      - climb_density
+      - target_finish_pace
+      - aerobic_decoupling
+      - recovery
+    XcReadinessGateResponse:
+      type: object
+      required:
+      - key
+      - label
+      - status
+      - unit
+      - direction
+      - detail
+      properties:
+        current_value:
+          type:
+          - number
+          - 'null'
+          format: double
+        detail:
+          type: string
+        direction:
+          $ref: '#/components/schemas/TrainingGoalDirection'
+        gap_value:
+          type:
+          - number
+          - 'null'
+          format: double
+        key:
+          $ref: '#/components/schemas/XcReadinessGateKey'
+        label:
+          type: string
+        progress_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        status:
+          $ref: '#/components/schemas/XcReadinessStatus'
+        target_value:
+          type:
+          - number
+          - 'null'
+          format: double
+        unit:
+          $ref: '#/components/schemas/TrainingMetricUnit'
+    XcReadinessStatus:
+      type: string
+      enum:
+      - on_track
+      - watch
+      - falling_behind
+      - missing_data
+    XcReadinessSummaryResponse:
+      type: object
+      required:
+      - status
+      - title
+      - reason
+      - gates
+      properties:
+        gates:
+          type: array
+          items:
+            $ref: '#/components/schemas/XcReadinessGateResponse'
+        missing_most:
+          type:
+          - string
+          - 'null'
+        reason:
+          type: string
+        status:
+          $ref: '#/components/schemas/XcReadinessStatus'
+        title:
+          type: string
+    XcRideProgressResponse:
+      type: object
+      required:
+      - activity_id
+      - activity_title
+      - started_at
+      - activity_type
+      - ride_focus
+      - z2_time_seconds
+      - climbing_time_seconds
+      - z1_seconds
+      - z2_zone_seconds
+      - z3_seconds
+      - z4_seconds
+      - z5_seconds
+      - training_purpose
+      - training_purpose_detail
+      properties:
+        activity_id:
+          type: integer
+          format: int32
+        activity_title:
+          type: string
+        activity_type:
+          $ref: '#/components/schemas/ActivityType'
+        aerobic_decoupling_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        climbing_elevation_gain_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        climbing_time_seconds:
+          type: integer
+          format: int32
+        distance_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        elevation_gain_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        moving_time_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        ride_focus:
+          $ref: '#/components/schemas/ActivityRideFocus'
+        route_family_key:
+          type:
+          - string
+          - 'null'
+        started_at:
+          type: string
+          format: date-time
+        training_purpose:
+          $ref: '#/components/schemas/XcTrainingPurpose'
+        training_purpose_detail:
+          type: string
+        z1_seconds:
+          type: integer
+          format: int32
+        z2_average_speed_mps:
+          type:
+          - number
+          - 'null'
+          format: double
+        z2_distance_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        z2_time_seconds:
+          type: integer
+          format: int32
+        z2_zone_seconds:
+          type: integer
+          format: int32
+        z3_seconds:
+          type: integer
+          format: int32
+        z4_seconds:
+          type: integer
+          format: int32
+        z5_seconds:
+          type: integer
+          format: int32
+    XcSuggestedRideResponse:
+      type: object
+      required:
+      - purpose
+      - intensity
+      - terrain
+      - detail
+      properties:
+        climbing_elevation_gain_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        detail:
+          type: string
+        distance_meters_max:
+          type:
+          - number
+          - 'null'
+          format: double
+        distance_meters_min:
+          type:
+          - number
+          - 'null'
+          format: double
+        duration_seconds_max:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        duration_seconds_min:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        intensity:
+          type: string
+        purpose:
+          $ref: '#/components/schemas/XcTrainingPurpose'
+        terrain:
+          type: string
+    XcTrainingDeficitKey:
+      type: string
+      enum:
+      - long_ride
+      - big_climb_day
+      - event_specificity
+      - finish_pace
+      - aerobic_durability
+      - recovery
+    XcTrainingDeficitResponse:
+      type: object
+      required:
+      - key
+      - priority
+      - title
+      - detail
+      - suggested_ride
+      properties:
+        detail:
+          type: string
+        gap_unit:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/TrainingMetricUnit'
+        gap_value:
+          type:
+          - number
+          - 'null'
+          format: double
+        key:
+          $ref: '#/components/schemas/XcTrainingDeficitKey'
+        priority:
+          $ref: '#/components/schemas/TrainingRecommendationPriority'
+        suggested_ride:
+          $ref: '#/components/schemas/XcSuggestedRideResponse'
+        title:
+          type: string
+    XcTrainingPurpose:
+      type: string
+      enum:
+      - base_endurance
+      - climb_durability
+      - tempo
+      - threshold
+      - punch_vo2
+      - technical_fatigue
+      - recovery
+      - data_quality
+    XcWeeklyProgressPointResponse:
+      type: object
+      required:
+      - week_start
+      - ride_count
+      - comparable_ride_count
+      - distance_meters
+      - z2_time_seconds
+      - z2_distance_meters
+      - climbing_time_seconds
+      - climbing_elevation_gain_meters
+      - z1_seconds
+      - z2_zone_seconds
+      - z3_seconds
+      - z4_seconds
+      - z5_seconds
+      properties:
+        average_aerobic_decoupling_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        average_z2_speed_mps:
+          type:
+          - number
+          - 'null'
+          format: double
+        climbing_elevation_gain_meters:
+          type: number
+          format: double
+        climbing_time_seconds:
+          type: integer
+          format: int32
+        climbing_vertical_rate_meters_per_hour:
+          type:
+          - number
+          - 'null'
+          format: double
+        comparable_ride_count:
+          type: integer
+          format: int32
+        distance_meters:
+          type: number
+          format: double
+        ride_count:
+          type: integer
+          format: int32
+        week_start:
+          type: string
+        z1_seconds:
+          type: integer
+          format: int32
+        z2_distance_meters:
+          type: number
+          format: double
+        z2_time_seconds:
+          type: integer
+          format: int32
+        z2_zone_seconds:
+          type: integer
+          format: int32
+        z3_seconds:
+          type: integer
+          format: int32
+        z4_seconds:
+          type: integer
+          format: int32
+        z5_seconds:
+          type: integer
+          format: int32
+  securitySchemes:
+    bearer_auth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+tags:
+- name: activities
+  description: Normalized activity list and detail endpoints
+- name: fitness
+  description: Training load, fitness, fatigue, and form analytics
+- name: training
+  description: XC and DH goals/progress analytics
+- name: activity-imports
+  description: Manual activity upload endpoints
+- name: strava
+  description: Strava OAuth connection and activity sync endpoints
+- name: segments
+  description: Manual segment import and effort comparison endpoints
+- name: preferences
+  description: Authenticated Bike user preferences
+- name: admin
+  description: Admin-only endpoints
+- name: auth
+  description: Authentication and user management
+- name: flags
+  description: Feature flags
+- name: oauth
+  description: OAuth authentication

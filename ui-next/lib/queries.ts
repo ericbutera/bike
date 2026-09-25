@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import type { ActivityType } from "./activityTypes";
-import { $api } from "./api";
+import { $api, normalizeApiError } from "./api";
 
 const USER_CONTEXT_STALE_TIME_MS = 30 * 60 * 1000;
 const USER_CONTEXT_GC_TIME_MS = 60 * 60 * 1000;
@@ -1445,6 +1445,7 @@ export function useActivityImportTrace(
   return {
     ...response,
     data: (response.data ?? null) as ActivityImportTrace | null,
+    error: normalizeApiError(response.error),
   };
 }
 
@@ -1466,6 +1467,7 @@ export function useAdminActivityImportTrace(
   return {
     ...response,
     data: data?.trace ?? null,
+    error: normalizeApiError(response.error),
   };
 }
 

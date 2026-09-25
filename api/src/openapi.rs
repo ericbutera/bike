@@ -1,4 +1,5 @@
 use crate::app_error;
+use crate::controllers;
 use crate::controllers::activities;
 use crate::controllers::activity_imports;
 use crate::controllers::admin;
@@ -30,6 +31,12 @@ use utoipa::OpenApi;
         auth_openapi::paths::oauth_providers,
         auth_openapi::paths::oauth_authorize,
         auth_openapi::paths::oauth_callback,
+        auth_openapi::paths::list_users,
+        auth_openapi::paths::get_user,
+        auth_openapi::paths::update_user,
+        auth_openapi::paths::disable_user,
+        controllers::health,
+        admin::app_metrics,
         admin::list_admin_activities,
         admin::get_admin_activity_import_trace,
         admin::get_admin_activity_import_trace_for_activity,
@@ -39,6 +46,8 @@ use utoipa::OpenApi;
         admin::regenerate_user_segments,
         admin::reprocess_activity_import,
         admin::reprocess_user_activity_imports,
+        admin::cleanup_user_duplicate_activities,
+        admin::import_activity_archive,
         activities::list_activities,
         activities::get_activity,
         activities::update_activity,
@@ -82,6 +91,7 @@ use utoipa::OpenApi;
         glass_openapi::paths::public_flags,
         glass_openapi::paths::list_flags,
         glass_openapi::paths::update_flag,
+        glass_openapi::paths::get_metrics,
         background_jobs_openapi::paths::list_tasks,
         background_jobs_openapi::paths::get_task,
         background_jobs_openapi::paths::rerun_task,
@@ -90,6 +100,7 @@ use utoipa::OpenApi;
     components(
         schemas(
             app_error::ApiErrorResponse,
+            controllers::HealthResponse,
             admin::AdminActivityResponse,
             admin::AnalyticsBackfillResponse,
             admin::RegenerateSegmentEffortsRequest,
@@ -100,6 +111,10 @@ use utoipa::OpenApi;
             admin::ReprocessActivityImportResponse,
             admin::ReprocessUserActivityImportsRequest,
             admin::ReprocessUserActivityImportsResponse,
+            admin::ArchiveImportRequest,
+            admin::ArchiveImportResponse,
+            admin::CleanupUserDuplicateActivitiesRequest,
+            admin::CleanupUserDuplicateActivitiesResponse,
             bike_core::activity_type::ActivityType,
             bike_core::activity_training_analysis::ActivityRideFocus,
             bike_core::activity_training_analysis::ActivityTrainingAnalysisResponse,
@@ -213,9 +228,14 @@ use utoipa::OpenApi;
             auth_openapi::schemas::UserResponse,
             auth_openapi::schemas::OAuthProviderMetadata,
             auth_openapi::schemas::OAuthProvidersResponse,
+            auth_openapi::schemas::AdminUserResponse,
+            auth_openapi::schemas::AdminUsersListResponse,
+            auth_openapi::schemas::UpdateUserRequest,
+            auth_openapi::schemas::DisableUserRequest,
             glass_openapi::schemas::PublicFlagResponse,
             glass_openapi::schemas::FeatureFlagResponse,
             glass_openapi::schemas::UpdateFlagRequest,
+            glass_openapi::schemas::SystemMetrics,
             glass_openapi::schemas::PaginatedResponse<activities::ActivityResponse>,
             glass_openapi::schemas::PaginatedResponse<glass_openapi::schemas::FeatureFlagResponse>,
             glass_openapi::schemas::PaginatedResponse<glass_openapi::schemas::PublicFlagResponse>,

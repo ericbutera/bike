@@ -39,7 +39,7 @@ pub struct FitnessFreshnessResponse {
 
 #[utoipa::path(
     get,
-    path = "/api/fitness",
+    path = "/fitness",
     params(FitnessQuery),
     responses(
         (status = 200, description = "Daily fitness, fatigue, and form data for the authenticated user", body = FitnessFreshnessResponse),

@@ -19,6 +19,12 @@ use kaleido::glass::feature_flags;
 use kaleido::glass::metrics_controller;
 use serde_json::json;
 use std::sync::Arc;
+use utoipa::ToSchema;
+
+#[derive(Debug, serde::Serialize, ToSchema)]
+pub struct HealthResponse {
+    pub status: &'static str,
+}
 
 pub fn routes() -> Router<Arc<AppStorage>> {
     Router::new()
@@ -184,6 +190,14 @@ async fn root() -> Json<serde_json::Value> {
     Json(json!({ "service": "api", "status": "ok" }))
 }
 
-async fn health() -> Json<serde_json::Value> {
-    Json(json!({ "status": "healthy" }))
+#[utoipa::path(
+    get,
+    path = "/health",
+    responses(
+        (status = 200, description = "API health status", body = HealthResponse)
+    ),
+    tag = "system"
+)]
+pub async fn health() -> Json<HealthResponse> {
+    Json(HealthResponse { status: "healthy" })
 }

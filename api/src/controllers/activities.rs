@@ -561,7 +561,7 @@ async fn load_activity_achievement_highlights_by_activity_ids(
 
 #[utoipa::path(
     get,
-    path = "/api/activities",
+    path = "/activities",
     params(PaginationParams),
     responses(
         (status = 200, description = "Recent activities for the authenticated user", body = PaginatedResponse<ActivityResponse>),
@@ -605,7 +605,7 @@ pub async fn list_activities(
 
 #[utoipa::path(
     get,
-    path = "/api/activities/{id}",
+    path = "/activities/{id}",
     params(
         ("id" = i32, Path, description = "Activity ID")
     ),
@@ -679,7 +679,7 @@ async fn load_downloadable_original_source_artifact(
 
 #[utoipa::path(
     get,
-    path = "/api/activities/{id}/source-file",
+    path = "/activities/{id}/source-file",
     params(
         ("id" = i32, Path, description = "Activity ID")
     ),
@@ -744,7 +744,7 @@ pub async fn download_activity_source_file(
 
 #[utoipa::path(
     patch,
-    path = "/api/activities/{id}",
+    path = "/activities/{id}",
     params(
         ("id" = i32, Path, description = "Activity ID")
     ),
@@ -794,7 +794,7 @@ pub async fn update_activity(
 
 #[utoipa::path(
     delete,
-    path = "/api/activities/{id}",
+    path = "/activities/{id}",
     params(
         ("id" = i32, Path, description = "Activity ID")
     ),
@@ -839,7 +839,7 @@ pub async fn delete_activity(
 
 #[utoipa::path(
     post,
-    path = "/api/activities/{id}/regenerate",
+    path = "/activities/{id}/regenerate",
     params(
         ("id" = i32, Path, description = "Activity ID")
     ),

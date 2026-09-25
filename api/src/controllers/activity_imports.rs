@@ -335,7 +335,7 @@ impl ActivityProcessingStateResponse {
 
 #[utoipa::path(
     get,
-    path = "/api/activity-imports",
+    path = "/activity-imports",
     responses(
         (status = 200, description = "Recent activity imports for the authenticated user", body = [ActivityImportResponse]),
         (status = 401, description = "Not authenticated"),
@@ -416,7 +416,7 @@ pub async fn list_activity_imports(
 
 #[utoipa::path(
     get,
-    path = "/api/activity-imports/processing-graph",
+    path = "/activity-imports/processing-graph",
     responses(
         (status = 200, description = "Activity import processing DAG", body = ActivityProcessingGraphResponse),
         (status = 401, description = "Not authenticated"),
@@ -435,7 +435,7 @@ pub async fn get_activity_processing_graph(
 
 #[utoipa::path(
     get,
-    path = "/api/activity-imports/{id}/trace",
+    path = "/activity-imports/{id}/trace",
     params(
         ("id" = i32, Path, description = "Activity import id"),
     ),
@@ -489,7 +489,7 @@ pub async fn get_activity_import_trace(
 
 #[utoipa::path(
     get,
-    path = "/api/activity-imports/archive-jobs",
+    path = "/activity-imports/archive-jobs",
     responses(
         (status = 200, description = "Recent archive import jobs for the authenticated user", body = [ActivityArchiveImportJobResponse]),
         (status = 401, description = "Not authenticated"),
@@ -520,7 +520,7 @@ pub async fn list_activity_archive_import_jobs(
 
 #[utoipa::path(
     get,
-    path = "/api/activity-imports/processing-state",
+    path = "/activity-imports/processing-state",
     responses(
         (status = 200, description = "Current activity processing state for the authenticated user", body = ActivityProcessingStateResponse),
         (status = 401, description = "Not authenticated"),
@@ -560,7 +560,7 @@ pub async fn get_activity_processing_state(
 
 #[utoipa::path(
     get,
-    path = "/api/activity-imports/archive-jobs/{id}",
+    path = "/activity-imports/archive-jobs/{id}",
     params(("id" = i32, Path, description = "Archive import job id")),
     responses(
         (status = 200, description = "Archive import job status", body = ActivityArchiveImportJobResponse),
@@ -589,7 +589,7 @@ pub async fn get_activity_archive_import_job(
 
 #[utoipa::path(
     post,
-    path = "/api/activity-imports",
+    path = "/activity-imports",
     request_body(content_type = "multipart/form-data"),
     responses(
         (status = 200, description = "Activity was already imported and the existing record was returned", body = ActivityImportResponse),
@@ -653,7 +653,7 @@ pub async fn upload_activity_import(
 
 #[utoipa::path(
     post,
-    path = "/api/activity-imports/archive-url",
+    path = "/activity-imports/archive-url",
     request_body = ArchiveUrlImportRequest,
     responses(
         (status = 202, description = "Archive import job queued", body = ActivityArchiveImportJobResponse),

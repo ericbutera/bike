@@ -141,7 +141,9 @@ export const authApiClient = {
     });
 
     const isLoading = response.isLoading && !response.isError;
-    const status = response.error?.response?.status;
+    const status = (
+      response.error as { response?: { status?: number } } | undefined
+    )?.response?.status;
     const rawUser =
       response.isError && status === 401 ? null : (response.data ?? null);
 

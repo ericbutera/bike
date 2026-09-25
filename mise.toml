@@ -88,19 +88,23 @@ description = "Run Rust Clippy checks"
 run = "cargo clippy --workspace --all-targets --all-features -- -D warnings"
 
 [tasks."openapi:react-query"]
-description = "Generate OpenAPI TypeScript definitions from a running API"
+description = "Generate the TypeScript API definitions from the checked-in OpenAPI spec"
+depends = ["generate:openapi"]
+run = "mise run generate:typescript"
+
+[tasks."generate:openapi"]
+description = "Generate the checked-in OpenAPI JSON and YAML documents from Utopia"
+run = "cargo run -p api --bin openapi"
+
+[tasks."generate:typescript"]
+description = "Generate the frontend TypeScript API contract from OpenAPI"
+run = "npx --yes openapi-typescript@7.13.0 docs/openapi/openapi.yaml --output ui-next/lib/openapi/react-query/api.d.ts"
+
+[tasks."openapi:typescript:check"]
+description = "Check the generated frontend TypeScript API contract is fresh"
 run = '''
-echo "Waiting for API to be ready..."
-OPENAPI_URL="${OPENAPI_URL:-http://localhost:3000/openapi.json}"
-for _ in {1..30}; do
-  status=$(curl -s -o /tmp/openapi.json -w "%{http_code}" "$OPENAPI_URL" || echo "000")
-  if [ "$status" = "200" ]; then
-    if node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('/tmp/openapi.json','utf8')); if(!j.openapi) process.exit(2);" >/dev/null 2>&1; then
-      break
-    fi
-  fi
-  sleep 2
-done
-npx openapi-typescript /tmp/openapi.json --output ui-next/lib/openapi/react-query/api.d.ts
-rm -f /tmp/openapi.json
+GENERATED_TYPES="$(mktemp)"
+trap 'rm -f "$GENERATED_TYPES"' EXIT
+npx --yes openapi-typescript@7.13.0 docs/openapi/openapi.yaml --output "$GENERATED_TYPES"
+cmp -- "$GENERATED_TYPES" ui-next/lib/openapi/react-query/api.d.ts
 '''
