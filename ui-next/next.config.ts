@@ -55,6 +55,7 @@ const turbopackAlias = (() => {
 })();
 
 const nextConfig: NextConfig = {
+  devIndicators: false,
   output: "standalone",
   transpilePackages: ["@ericbutera/kaleido"],
   experimental: {

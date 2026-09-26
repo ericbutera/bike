@@ -240,7 +240,7 @@ function RaceViewerMap({
       followViewportPreserveUserZoom
       ariaLabel="Segment race viewer map"
       emptyMessage="Segment route geometry is not available yet."
-      className="absolute inset-0 border-0"
+      className="race-viewer-map absolute inset-0 border-0"
       basemapOptions={["topo", "street", "satellite"]}
       defaultBasemap="topo"
       selectedBasemap={selectedBasemap}

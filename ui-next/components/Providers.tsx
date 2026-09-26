@@ -1,20 +1,13 @@
 "use client";
 
-import {
-  admin,
-  auth,
-  QueryClientProvider,
-} from "@ericbutera/kaleido";
-import {
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { admin, auth, QueryClientProvider } from "@ericbutera/kaleido";
+import type { ReactNode } from "react";
 import { Toaster } from "react-hot-toast";
 import type { AppConfig } from "../lib/config";
 import { ConfigProvider } from "../lib/config-context";
+import { $api } from "../lib/api";
 import { authApiClient, queryClient } from "../lib/kaleido";
+import type { components } from "../lib/openapi/react-query/api";
 import { UnitPreferencesProvider } from "../lib/unitPreferences";
 import AdminNav from "./admin/Nav";
 import Navigation from "./Navigation";
@@ -51,14 +44,7 @@ export default function Providers({
   );
 }
 
-type OAuthProviderOption = {
-  id: string;
-  label: string;
-};
-
-type ProvidersResponse = {
-  providers?: OAuthProviderOption[];
-};
+type OAuthProviderOption = components["schemas"]["OAuthProviderMetadata"];
 
 function buttonClassName(provider: string): string {
   if (provider === "dev") {
@@ -80,7 +66,7 @@ function createOAuthProviderButtons(apiUrl: string) {
     prefix?: ReactNode;
     unavailable?: ReactNode;
   }) {
-    const visibleProviders = useDiscoveredProviders(`${baseUrl}/oauth/providers`);
+    const visibleProviders = useDiscoveredProviders();
 
     if (!visibleProviders) {
       return null;
@@ -112,46 +98,18 @@ function createOAuthProviderButtons(apiUrl: string) {
   };
 }
 
-function useDiscoveredProviders(
-  providersUrl: string,
-): OAuthProviderOption[] | null {
-  const [discoveredProviders, setDiscoveredProviders] = useState<
-    OAuthProviderOption[] | null
-  >(null);
+function useDiscoveredProviders(): OAuthProviderOption[] | null {
+  const response = $api.useQuery("get", "/oauth/providers", {});
 
-  useEffect(() => {
-    let active = true;
+  if (response.isLoading) {
+    return null;
+  }
 
-    fetch(providersUrl, {
-      credentials: "include",
-      headers: { Accept: "application/json" },
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`OAuth provider discovery failed: ${response.status}`);
-        }
-        return response.json() as Promise<ProvidersResponse>;
-      })
-      .then((body) => {
-        if (active) {
-          setDiscoveredProviders(normalizeProviders(body.providers ?? []));
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setDiscoveredProviders([]);
-        }
-      });
+  if (response.isError || !response.data) {
+    return [];
+  }
 
-    return () => {
-      active = false;
-    };
-  }, [providersUrl]);
-
-  return useMemo(
-    () => discoveredProviders,
-    [discoveredProviders],
-  );
+  return normalizeProviders(response.data.providers);
 }
 
 function normalizeProviders(

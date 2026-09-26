@@ -121,7 +121,7 @@ export default function SegmentDetailEffortsSection({
       ) : paginatedEfforts.length > 0 ? (
         <div aria-label="Segment efforts table" className="mt-5 space-y-4">
           <div className="overflow-x-auto bg-base-100">
-            <table className="table table-pin-rows table-sm">
+            <table className="table table-pin-rows table-sm min-w-[44rem]">
               <thead>
                 <tr>
                   <th className="w-14">Place</th>

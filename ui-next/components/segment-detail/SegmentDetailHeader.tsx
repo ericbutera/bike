@@ -63,7 +63,7 @@ export default function SegmentDetailHeader({
 
   return (
     <AppCard bodyClassName="gap-6">
-      <div className="flex flex-wrap items-start justify-between gap-6">
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1">
           {isEditingTitle ? (
             <form
@@ -159,7 +159,7 @@ export default function SegmentDetailHeader({
           </div>
         </div>
 
-        <div className="flex min-w-[16rem] flex-col gap-3 sm:items-end">
+        <div className="flex min-w-0 flex-col gap-3 sm:items-end lg:min-w-[16rem]">
           <div className="join self-start sm:self-end">
             <select
               aria-label="Segment mode"

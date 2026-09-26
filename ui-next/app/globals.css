@@ -17,3 +17,8 @@ body {
   width: 100%;
   font: inherit;
 }
+
+.race-viewer-map .maplibregl-ctrl-bottom-right {
+  bottom: auto;
+  top: 9rem;
+}

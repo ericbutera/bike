@@ -88,7 +88,6 @@ fn make_http_trace_span<B>(request: &Request<B>) -> tracing::Span {
             request_id = request_id,
             "http.request.header.x_request_id" = request_id,
             method = %request.method(),
-            uri = %request.uri(),
             "http.request.method" = %request.method(),
             "url.path" = request.uri().path(),
             version = ?request.version(),

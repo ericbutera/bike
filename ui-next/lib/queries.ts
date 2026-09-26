@@ -1589,10 +1589,14 @@ export function useSegments(opts?: { enabled?: boolean }) {
 export function useSegment(id: number | string | null | undefined) {
   const numericId = Number(id);
   const enabled = Number.isFinite(numericId) && numericId > 0;
-  const response = $api.useQuery("get", "/segments/{id}", {
-    params: { path: { id: enabled ? numericId : 0 } },
-    options: { enabled },
-  });
+  const response = $api.useQuery(
+    "get",
+    "/segments/{id}",
+    {
+      params: { path: { id: enabled ? numericId : 0 } },
+    },
+    { enabled },
+  );
 
   return {
     ...response,
@@ -1603,10 +1607,14 @@ export function useSegment(id: number | string | null | undefined) {
 export function useSegmentComparison(id: number | string | null | undefined) {
   const numericId = Number(id);
   const enabled = Number.isFinite(numericId) && numericId > 0;
-  const response = $api.useQuery("get", "/segments/{id}/comparison", {
-    params: { path: { id: enabled ? numericId : 0 } },
-    options: { enabled },
-  });
+  const response = $api.useQuery(
+    "get",
+    "/segments/{id}/comparison",
+    {
+      params: { path: { id: enabled ? numericId : 0 } },
+    },
+    { enabled },
+  );
 
   return {
     ...response,
@@ -1617,10 +1625,14 @@ export function useSegmentComparison(id: number | string | null | undefined) {
 export function useSegmentYearlyBests(id: number | string | null | undefined) {
   const numericId = Number(id);
   const enabled = Number.isFinite(numericId) && numericId > 0;
-  const response = $api.useQuery("get", "/segments/{id}/yearly-bests", {
-    params: { path: { id: enabled ? numericId : 0 } },
-    options: { enabled },
-  });
+  const response = $api.useQuery(
+    "get",
+    "/segments/{id}/yearly-bests",
+    {
+      params: { path: { id: enabled ? numericId : 0 } },
+    },
+    { enabled },
+  );
 
   return {
     ...response,
@@ -1643,10 +1655,14 @@ export function useSegmentEffortAnalysis(
       : {}),
     ...(opts?.splitCount ? { split_count: opts.splitCount } : {}),
   };
-  const response = $api.useQuery("get", "/segments/{id}/effort-analysis", {
-    params: { path: { id: enabled ? numericId : 0 }, query },
-    options: { enabled },
-  });
+  const response = $api.useQuery(
+    "get",
+    "/segments/{id}/effort-analysis",
+    {
+      params: { path: { id: enabled ? numericId : 0 }, query },
+    },
+    { enabled },
+  );
 
   return {
     ...response,
