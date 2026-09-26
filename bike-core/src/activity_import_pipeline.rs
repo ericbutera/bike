@@ -1502,6 +1502,27 @@ mod tests {
         }
     }
 
+    fn cycling_gpx_upload() -> ActivityUploadPayload {
+        ActivityUploadPayload {
+            original_filename: "cycling-activity.gpx".to_string(),
+            format: "gpx".to_string(),
+            mime_type: Some("application/gpx+xml".to_string()),
+            source_correlation_id: None,
+            bytes: br#"<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="bike test" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>Test Cycling Activity</name>
+    <type>cycling</type>
+    <trkseg>
+      <trkpt lat="44.7680" lon="-85.6597"><ele>242.8</ele><time>2026-01-01T12:00:00Z</time></trkpt>
+      <trkpt lat="44.7681" lon="-85.6596"><ele>243.1</ele><time>2026-01-01T12:01:00Z</time></trkpt>
+    </trkseg>
+  </trk>
+</gpx>"#
+                .to_vec(),
+        }
+    }
+
     #[test]
     fn activity_import_storage_path_buckets_files_by_month() {
         let bucket_at = DateTime::parse_from_rfc3339("2026-07-13T12:00:00Z")
@@ -2206,7 +2227,7 @@ mod tests {
         let imported = match persist_test_activity_upload(
             &db,
             &uploads_dir,
-            fit_upload(None),
+            cycling_gpx_upload(),
             "manual_upload",
             &training_profile,
         )
@@ -2255,7 +2276,7 @@ mod tests {
         let imported = match persist_test_activity_upload(
             &db,
             &uploads_dir,
-            fit_upload(None),
+            cycling_gpx_upload(),
             "manual_upload",
             &training_profile,
         )
