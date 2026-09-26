@@ -6,7 +6,8 @@ use kaleido::auth::{AuthRouteStorage, AuthStorage};
 use kaleido::background_jobs::admin::BackgroundTasksStorage;
 use kaleido::glass::feature_flags::{FeatureFlagService, FeatureFlagStorage};
 use kaleido::glass::metrics_controller::MetricsStorage;
-use sea_orm::DatabaseConnection;
+use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct AppStorage {
@@ -15,6 +16,7 @@ pub struct AppStorage {
     pub feature_flags: FeatureFlagService,
     pub auth_service: AppAuthService,
     pub uploads_dir: String,
+    pub local_admin_user_pid: Option<Uuid>,
 }
 
 impl AppStorage {
@@ -32,6 +34,12 @@ impl AppStorage {
 
         let auth_service = create_auth_service(db.clone(), tasks.clone());
 
+        let local_admin_user_pid = if Config::get().local_admin_enabled {
+            Some(ensure_local_admin(&db).await)
+        } else {
+            None
+        };
+
         let uploads_dir = Config::get().uploads_dir.clone();
         std::fs::create_dir_all(&uploads_dir).expect("Failed to create uploads directory");
 
@@ -41,8 +49,30 @@ impl AppStorage {
             feature_flags,
             auth_service,
             uploads_dir,
+            local_admin_user_pid,
         }
     }
+}
+
+async fn ensure_local_admin(db: &DatabaseConnection) -> Uuid {
+    let user = kaleido::auth::OAuthService::find_or_create_provider_user(
+        db,
+        kaleido::auth::PROVIDER_DEV,
+        kaleido::auth::OAuthService::local_dev_user_info(),
+    )
+    .await
+    .expect("failed to initialize the local development admin user");
+
+    if user.is_admin != Some(true) {
+        let mut active_user: kaleido::auth::entities::users::ActiveModel = user.clone().into();
+        active_user.is_admin = Set(Some(true));
+        active_user
+            .update(db)
+            .await
+            .expect("failed to grant local development admin access");
+    }
+
+    user.pid
 }
 
 pub use bike_core::db::connect_database;
@@ -70,6 +100,10 @@ impl AuthStorage for AppStorage {
 
     fn jwt_secret(&self) -> &str {
         &Config::get().jwt_secret
+    }
+
+    fn local_admin_user_pid(&self) -> Option<Uuid> {
+        self.local_admin_user_pid
     }
 }
 

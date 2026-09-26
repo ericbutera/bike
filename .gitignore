@@ -38,3 +38,5 @@ data/
 uploads/
 
 __pycache__
+
+.cache

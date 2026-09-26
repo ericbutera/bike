@@ -45,6 +45,10 @@ run = "cargo run --bin worker"
 description = "Start lightweight local tracing with Jaeger"
 run = "docker compose --profile tracing up jaeger"
 
+[tasks."compose:up"]
+description = "Start the Rust Bike Compose stack"
+run = "docker compose up"
+
 [tasks."kaleido:status"]
 description = "Show the Rust and UI Kaleido versions used by Bike"
 run = '''
@@ -98,13 +102,13 @@ run = "cargo run -p api --bin openapi"
 
 [tasks."generate:typescript"]
 description = "Generate the frontend TypeScript API contract from OpenAPI"
-run = "npx --yes openapi-typescript@7.13.0 docs/openapi/openapi.yaml --output ui-next/lib/openapi/react-query/api.d.ts"
+run = "NPM_CONFIG_CACHE=\"${NPM_CONFIG_CACHE:-.cache/npm}\" npx --yes openapi-typescript@7.13.0 docs/openapi/openapi.yaml --output ui-next/lib/openapi/react-query/api.d.ts"
 
 [tasks."openapi:typescript:check"]
 description = "Check the generated frontend TypeScript API contract is fresh"
 run = '''
 GENERATED_TYPES="$(mktemp)"
 trap 'rm -f "$GENERATED_TYPES"' EXIT
-npx --yes openapi-typescript@7.13.0 docs/openapi/openapi.yaml --output "$GENERATED_TYPES"
+NPM_CONFIG_CACHE="${NPM_CONFIG_CACHE:-.cache/npm}" npx --yes openapi-typescript@7.13.0 docs/openapi/openapi.yaml --output "$GENERATED_TYPES"
 cmp -- "$GENERATED_TYPES" ui-next/lib/openapi/react-query/api.d.ts
 '''

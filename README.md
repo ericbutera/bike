@@ -14,6 +14,11 @@ docker compose up
 
 View the [UI](http://localhost:3001/) in a browser.
 
+The Rust Compose project is `bike-rust`. Its default host bindings are API
+`3000`, UI `3001`, and Postgres `5432`; optional Jaeger bindings are `16686`,
+`4317`, and `4318`. The Go and C# stacks use separate defaults so all three
+projects can run together.
+
 ## Local Development
 
 This project uses mise to manage dependencies and act as the task runner. Available tasks can be discovered using:

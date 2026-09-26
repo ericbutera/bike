@@ -2651,6 +2651,7 @@ mod tests {
 
     fn test_config() -> Config {
         Config {
+            environment: "test".to_string(),
             database_url: "postgres://localhost/test".to_string(),
             frontend_url: "http://localhost:3001".to_string(),
             cors_allowed_origins: vec!["http://localhost:3001".to_string()],
@@ -2667,6 +2668,7 @@ mod tests {
             jwt_secret: "test-secret".to_string(),
             auth_password_enabled: true,
             auth_registration_enabled: true,
+            local_admin_enabled: false,
             app_name: "Bike".to_string(),
             smtp_host: "localhost".to_string(),
             smtp_port: 1025,

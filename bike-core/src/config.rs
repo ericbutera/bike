@@ -3,6 +3,7 @@ use std::env;
 
 #[derive(Debug, Clone)]
 pub struct Config {
+    pub environment: String,
     pub database_url: String,
     pub frontend_url: String,
     pub cors_allowed_origins: Vec<String>,
@@ -19,6 +20,7 @@ pub struct Config {
     pub jwt_secret: String,
     pub auth_password_enabled: bool,
     pub auth_registration_enabled: bool,
+    pub local_admin_enabled: bool,
     pub app_name: String,
     pub smtp_host: String,
     pub smtp_port: u16,
@@ -34,7 +36,15 @@ impl Config {
     pub fn init_from_env() -> &'static Config {
         dotenvy::dotenv().ok();
 
+        let environment = env::var("APP_ENV").unwrap_or_else(|_| "local".to_string());
+        let local_admin_enabled = env_bool("LOCAL_ADMIN_ENABLED", !is_production(&environment));
+        assert!(
+            !(local_admin_enabled && is_production(&environment)),
+            "LOCAL_ADMIN_ENABLED must be false in production"
+        );
+
         let cfg = Config {
+            environment,
             database_url: env::var("DATABASE_URL")
                 .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/app".to_string()),
             frontend_url: env::var("FRONTEND_URL")
@@ -72,6 +82,7 @@ impl Config {
             jwt_secret: env::var("JWT_SECRET").unwrap_or_else(|_| "change_me_in_dev".to_string()),
             auth_password_enabled: env_bool("AUTH_PASSWORD_ENABLED", true),
             auth_registration_enabled: env_bool("AUTH_REGISTRATION_ENABLED", true),
+            local_admin_enabled,
             app_name: env::var("APP_NAME").unwrap_or_else(|_| "App".to_string()),
             smtp_host: env::var("SMTP_HOST").unwrap_or_else(|_| "localhost".to_string()),
             smtp_port: env::var("SMTP_PORT")
@@ -125,4 +136,11 @@ fn env_bool(name: &str, default: bool) -> bool {
             _ => default,
         })
         .unwrap_or(default)
+}
+
+fn is_production(environment: &str) -> bool {
+    matches!(
+        environment.trim().to_ascii_lowercase().as_str(),
+        "production" | "prod"
+    )
 }

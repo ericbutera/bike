@@ -8,8 +8,8 @@ importers:
   .:
     dependencies:
       "@ericbutera/kaleido":
-        specifier: 0.10.0
-        version: 0.10.0(@fortawesome/fontawesome-svg-core@7.2.0)(@fortawesome/free-solid-svg-icons@7.2.0)(@fortawesome/react-fontawesome@3.3.1(@fortawesome/fontawesome-svg-core@7.2.0)(react@19.2.3))(@tanstack/react-query@5.100.9(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react-hook-form@7.75.0(react@19.2.3))(react-hot-toast@2.6.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-router-dom@7.15.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)
+        specifier: 0.10.1
+        version: 0.10.1(@fortawesome/fontawesome-svg-core@7.2.0)(@fortawesome/free-solid-svg-icons@7.2.0)(@fortawesome/react-fontawesome@3.3.1(@fortawesome/fontawesome-svg-core@7.2.0)(react@19.2.3))(@tanstack/react-query@5.100.9(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react-hook-form@7.75.0(react@19.2.3))(react-hot-toast@2.6.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-router-dom@7.15.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)
       "@fortawesome/fontawesome-svg-core":
         specifier: ^7.2.0
         version: 7.2.0
@@ -168,10 +168,10 @@ packages:
         integrity: sha512-uTII7OYF+/Mes/MrcIOYp5yOtSMLBWSIoLPpcgwipoiKbli6k322tcoFsxoIIxPDqW01SQGAgko4EzZi2BNv2w==,
       }
 
-  "@ericbutera/kaleido@0.10.0":
+  "@ericbutera/kaleido@0.10.1":
     resolution:
       {
-        integrity: sha512-9Vu8rTKBdg7G4Uo917M44Cu+61m+z/U9Pbmh+1xhGT28moH87VMnLjm28M6xOtx9p+JnAN5aFPd1MXjEzihzRA==,
+        integrity: sha512-TvyWdgDl8k2LZJaX3rr28rX/eQh1XqpBrIm5QErLTH00+9a1eKgkDvHxJlcNjdX0UWsWCgrgHSubu+DLPU2EMw==,
       }
     peerDependencies:
       "@fortawesome/fontawesome-svg-core": ">=6.0.0"
@@ -3018,7 +3018,7 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
-  "@ericbutera/kaleido@0.10.0(@fortawesome/fontawesome-svg-core@7.2.0)(@fortawesome/free-solid-svg-icons@7.2.0)(@fortawesome/react-fontawesome@3.3.1(@fortawesome/fontawesome-svg-core@7.2.0)(react@19.2.3))(@tanstack/react-query@5.100.9(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react-hook-form@7.75.0(react@19.2.3))(react-hot-toast@2.6.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-router-dom@7.15.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)":
+  "@ericbutera/kaleido@0.10.1(@fortawesome/fontawesome-svg-core@7.2.0)(@fortawesome/free-solid-svg-icons@7.2.0)(@fortawesome/react-fontawesome@3.3.1(@fortawesome/fontawesome-svg-core@7.2.0)(react@19.2.3))(@tanstack/react-query@5.100.9(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react-hook-form@7.75.0(react@19.2.3))(react-hot-toast@2.6.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-router-dom@7.15.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)":
     dependencies:
       "@fortawesome/fontawesome-svg-core": 7.2.0
       "@fortawesome/free-solid-svg-icons": 7.2.0

@@ -64,18 +64,24 @@ export default function ThemeToggle() {
   const nextTheme = theme === "dark" ? "light" : "dark";
 
   return (
-    <button
-      type="button"
-      className="w-full text-left"
-      aria-label={`Switch to ${nextTheme} mode`}
-      title={`Switch to ${nextTheme} mode`}
-      onClick={() => {
-        window.localStorage.setItem(STORAGE_KEY, nextTheme);
-        setTheme(nextTheme);
-        applyTheme(nextTheme);
-      }}
-    >
-      Theme: {theme === "dark" ? "Light mode" : "Dark mode"}
-    </button>
+    <label className="flex w-full cursor-pointer items-center justify-between gap-3">
+      <span>Theme: {theme === "dark" ? "Dark mode" : "Light mode"}</span>
+      <input
+        type="checkbox"
+        value="dark"
+        className="toggle toggle-sm theme-controller"
+        checked={theme === "dark"}
+        aria-label={`Switch to ${nextTheme} mode`}
+        title={`Switch to ${nextTheme} mode`}
+        onChange={(event) => {
+          const selectedTheme: ThemeMode = event.target.checked
+            ? "dark"
+            : "light";
+          window.localStorage.setItem(STORAGE_KEY, selectedTheme);
+          setTheme(selectedTheme);
+          applyTheme(selectedTheme);
+        }}
+      />
+    </label>
   );
 }

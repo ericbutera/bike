@@ -35,6 +35,8 @@ Required base settings:
 | `CORS_ALLOWED_ORIGINS` | yes | Must include Bike's frontend origin. |
 | `AUTH_PASSWORD_ENABLED` | no | Defaults to `true`. Set `false` to disable password login/recovery. |
 | `AUTH_REGISTRATION_ENABLED` | no | Defaults to `true`. Set `false` to disable new password registrations. |
+| `APP_ENV` | no | Defaults to `local`; `production` and `prod` disable local-admin defaults. |
+| `LOCAL_ADMIN_ENABLED` | no | Defaults to `true` outside production. When enabled, protected API requests use the seeded local development user without a session cookie. It is rejected in production. |
 
 Local development:
 
@@ -45,6 +47,7 @@ JWT_SECRET: change_me_in_dev
 CORS_ALLOWED_ORIGINS: http://localhost:3001
 AUTH_PASSWORD_ENABLED: "true"
 AUTH_REGISTRATION_ENABLED: "true"
+LOCAL_ADMIN_ENABLED: "true"
 ```
 
 ## OAuth Provider Configuration
@@ -67,6 +70,12 @@ OAUTH_DEV_EMAIL: developer@bike.local
 OAUTH_DEV_NAME: Local Developer
 OAUTH_DEV_SUBJECT: bike-local-dev
 ```
+
+When `LOCAL_ADMIN_ENABLED` is true, the API creates or reuses the local dev
+provider user, grants that user admin access, and resolves protected requests
+as that user without requiring a browser session. This is intended for local
+development and parity testing only. Set `LOCAL_ADMIN_ENABLED=false` when
+testing real session authentication.
 
 ### OIDC Discovery Provider
 
@@ -130,6 +139,8 @@ ui-next:
 - Set backend `API_URL` to the public Bike API origin without `/api`.
 - Set frontend `API_URL` to the public Bike API prefix with `/api`.
 - Set `JWT_SECRET` to a stable secret.
+- Keep `LOCAL_ADMIN_ENABLED=false` in every production environment; the API
+  rejects production startup when it is enabled.
 - Keep `AUTH_PASSWORD_ENABLED=true` for the first OAuth rollout.
 - Configure at least one `OAUTH_<PROVIDER>_*` provider in the API environment.
 - Confirm `GET /api/oauth/providers` returns the expected provider list.
