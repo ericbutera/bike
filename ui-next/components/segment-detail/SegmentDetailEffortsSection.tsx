@@ -1,6 +1,5 @@
 "use client";
 
-import { Pagination } from "@ericbutera/kaleido";
 import {
   faCrown,
   faMinus,
@@ -23,6 +22,7 @@ import {
 } from "../../lib/segmentDetail";
 import { AppCard, CardHeader } from "../ui/Card";
 import { LoadingSpinner } from "../ui/QueryState";
+import Pagination from "../ui/Pagination";
 import type {
   SegmentEffortListState,
   SegmentPerformanceSummary,

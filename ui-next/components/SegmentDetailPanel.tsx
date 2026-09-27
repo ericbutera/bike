@@ -25,6 +25,7 @@ import {
   useSegmentTitleEditor,
   useSegmentWithComparison,
 } from "./segment-detail/useSegmentDetailState";
+import { ErrorCard, LoadingCard } from "./ui/QueryState";
 
 export default function SegmentDetailPanel({
   segmentId,
@@ -121,8 +122,20 @@ export default function SegmentDetailPanel({
     }
   }
 
+  if (segmentQuery.isLoading) {
+    return <LoadingCard size="lg" />;
+  }
+
+  if (segmentQuery.isError) {
+    return <ErrorCard fallback="Unable to load segment." />;
+  }
+
   if (!segment) {
-    return null;
+    return <ErrorCard fallback="Segment not found." />;
+  }
+
+  if (comparisonQuery.isError) {
+    return <ErrorCard fallback="Unable to load segment comparison." />;
   }
 
   return (

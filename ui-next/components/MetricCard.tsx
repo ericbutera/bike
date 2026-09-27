@@ -53,9 +53,7 @@ export default function MetricCard({
     >
       <div className={`stat ${statPaddingClassNames[size]}`}>
         <div className="stat-title">{label}</div>
-        <div className={`stat-value ${statValueClassNames[size]}`}>
-          {value}
-        </div>
+        <div className={`stat-value ${statValueClassNames[size]}`}>{value}</div>
       </div>
     </div>
   );

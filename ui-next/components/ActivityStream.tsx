@@ -1,9 +1,6 @@
 "use client";
 
-import {
-  Pagination,
-  featureFlags,
-} from "@ericbutera/kaleido";
+import { featureFlags } from "@ericbutera/kaleido";
 import { faUpload } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
@@ -13,7 +10,8 @@ import { FLAG_ACTIVITY_LIST_FULL_MAPS } from "../lib/featureFlags";
 import { useActivities } from "../lib/queries";
 import { useUnitPreferences } from "../lib/unitPreferences";
 import ActivityStreamCard from "./activity-stream/ActivityStreamCard";
-import { LoadingSpinner } from "./ui/QueryState";
+import Pagination from "./ui/Pagination";
+import { ErrorCard, LoadingCard, LoadingSpinner } from "./ui/QueryState";
 
 export default function ActivityStream() {
   const { unitSystem } = useUnitPreferences();
@@ -55,9 +53,7 @@ export default function ActivityStream() {
         <h2 className="text-3xl font-semibold text-base-content">
           Recent activities
         </h2>
-        {activitiesQuery.isFetching ? (
-          <LoadingSpinner size="sm" />
-        ) : null}
+        {activitiesQuery.isFetching ? <LoadingSpinner size="sm" /> : null}
 
         <Link href="/upload" className="btn btn-ghost btn-sm">
           <FontAwesomeIcon icon={faUpload} className="h-8 w-8" />
@@ -65,7 +61,15 @@ export default function ActivityStream() {
         </Link>
       </div>
 
-      {activitiesQuery.data?.length === 0 ? (
+      {activitiesQuery.isLoading ? <LoadingCard /> : null}
+
+      {activitiesQuery.isError ? (
+        <ErrorCard fallback="Unable to load activities." />
+      ) : null}
+
+      {!activitiesQuery.isLoading &&
+      !activitiesQuery.isError &&
+      activitiesQuery.data?.length === 0 ? (
         <div className="alert bg-base-100 shadow-sm">
           <span>
             No activities yet. Upload a GPX, TCX, or FIT file below to seed your
@@ -75,17 +79,22 @@ export default function ActivityStream() {
       ) : null}
 
       <div className="space-y-3">
-        {activitiesQuery.data?.map((activity) => (
-          <ActivityStreamCard
-            key={activity.id}
-            activity={activity}
-            unitSystem={unitSystem}
-            showFullRouteMaps={showFullRouteMaps}
-          />
-        ))}
+        {!activitiesQuery.isLoading && !activitiesQuery.isError
+          ? activitiesQuery.data?.map((activity) => (
+              <ActivityStreamCard
+                key={activity.id}
+                activity={activity}
+                unitSystem={unitSystem}
+                showFullRouteMaps={showFullRouteMaps}
+              />
+            ))
+          : null}
       </div>
 
-      {activitiesQuery.metadata && activitiesQuery.metadata.total > perPage ? (
+      {!activitiesQuery.isLoading &&
+      !activitiesQuery.isError &&
+      activitiesQuery.metadata &&
+      activitiesQuery.metadata.total > perPage ? (
         <Pagination
           page={activitiesQuery.metadata.page}
           perPage={activitiesQuery.metadata.per_page}

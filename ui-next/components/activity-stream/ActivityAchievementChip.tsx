@@ -1,8 +1,4 @@
-import {
-  faCrown,
-  faMedal,
-  faTrophy,
-} from "@fortawesome/free-solid-svg-icons";
+import { faCrown, faMedal, faTrophy } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { type StreamAchievement } from "./activityAchievements";
 

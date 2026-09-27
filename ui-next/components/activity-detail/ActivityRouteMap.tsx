@@ -101,6 +101,7 @@ export default function ActivityRouteMap({
                         : segmentGroup.tone.outlineButtonClassName
                     }`}
                     aria-label={`Jump to ${segmentGroup.segmentTitle} matches`}
+                    aria-pressed={isSelected}
                     onClick={() => {
                       onSelectSegment(segmentGroup.segmentId);
                     }}

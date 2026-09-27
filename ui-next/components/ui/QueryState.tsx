@@ -35,7 +35,7 @@ function CenteredLoading({
 }) {
   return (
     <div className={cx("flex justify-center py-8", className)}>
-      <LoadingSpinner size={size} />
+      <LoadingSpinner size={size} role="status" aria-label="Loading" />
     </div>
   );
 }
@@ -67,7 +67,7 @@ function LoadingCard({
 }) {
   return (
     <QueryStateCard className={className} bodyClassName={bodyClassName}>
-      <LoadingSpinner size={size} />
+      <LoadingSpinner size={size} role="status" aria-label="Loading" />
     </QueryStateCard>
   );
 }
@@ -84,7 +84,7 @@ function ErrorCard({
 }) {
   return (
     <QueryStateCard className={className} bodyClassName={bodyClassName}>
-      <div className="alert alert-error">
+      <div className="alert alert-error" role="alert">
         <span>{fallback}</span>
       </div>
     </QueryStateCard>

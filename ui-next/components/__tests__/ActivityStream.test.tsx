@@ -33,6 +33,17 @@ vi.mock("@ericbutera/kaleido", () => ({
   ),
 }));
 
+vi.mock("../ui/Pagination", () => ({
+  default: ({ page, perPage, total, onPageChange }: any) => (
+    <div>
+      <span>{`pagination:${page}:${perPage}:${total}`}</span>
+      <button type="button" onClick={() => onPageChange(page + 1)}>
+        Next page
+      </button>
+    </div>
+  ),
+}));
+
 vi.mock("../../lib/queries", () => ({
   useActivities: mocks.useActivities,
 }));

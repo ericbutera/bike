@@ -13,7 +13,10 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { formatActivityTimestamp, formatDuration } from "../lib/activityFormatting";
+import {
+  formatActivityTimestamp,
+  formatDuration,
+} from "../lib/activityFormatting";
 import {
   type DhSegmentProgress,
   type DhSessionSummary,
@@ -434,9 +437,7 @@ export default function DhGoalsProgressPanel() {
             <span className="badge badge-outline gap-2 px-3 py-3">
               Updated {formatActivityTimestamp(progress.generated_at)}
             </span>
-            {progressQuery.isFetching ? (
-              <LoadingSpinner size="sm" />
-            ) : null}
+            {progressQuery.isFetching ? <LoadingSpinner size="sm" /> : null}
           </div>
         </div>
 

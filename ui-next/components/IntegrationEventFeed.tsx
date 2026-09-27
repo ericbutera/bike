@@ -1,8 +1,6 @@
 "use client";
 
-import {
-  formatActivityTimestamp,
-} from "@/lib/activityFormatting";
+import { formatActivityTimestamp } from "@/lib/activityFormatting";
 import type { IntegrationEvent } from "@/lib/queries";
 import { CenteredLoading } from "./ui/QueryState";
 
@@ -57,7 +55,8 @@ export default function IntegrationEventFeed({
           {events.map((event) => {
             const payload = event.payload ?? null;
             const payloadMetrics = buildPayloadMetrics(payload);
-            const hasPayload = payload != null && Object.keys(payload).length > 0;
+            const hasPayload =
+              payload != null && Object.keys(payload).length > 0;
 
             return (
               <tr key={event.id} className="align-top">

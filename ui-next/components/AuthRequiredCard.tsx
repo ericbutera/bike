@@ -11,7 +11,9 @@ export default function AuthRequiredCard() {
         />
       </figure>
       <div className="card-body">
-        <h2 className="card-title text-3xl">all vibes bike analytic platform</h2>
+        <h2 className="card-title text-3xl">
+          all vibes bike analytic platform
+        </h2>
         <p className="max-w-2xl text-base-content/70">
           Sign in to view activities, training progress, and account details.
         </p>

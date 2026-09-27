@@ -81,11 +81,14 @@ run = "cargo test"
 
 [tasks.fmt]
 description = "Format the Rust workspace"
-run = "cargo fmt --all"
+run = ["cargo fmt --all", "prettier ui-next --config ../bike-ui/.prettierrc.json --write"]
 
 [tasks."fmt:check"]
-description = "Check Rust formatting without writing changes"
-run = "cargo fmt --all --check"
+description = "Check Rust and UI formatting without writing changes"
+run = [
+  "cargo fmt --all --check",
+  "prettier ui-next --config ../bike-ui/.prettierrc.json --check",
+]
 
 [tasks.lint]
 description = "Run Rust Clippy checks"
@@ -102,7 +105,10 @@ run = "cargo run -p api --bin openapi"
 
 [tasks."generate:typescript"]
 description = "Generate the frontend TypeScript API contract from OpenAPI"
-run = "NPM_CONFIG_CACHE=\"${NPM_CONFIG_CACHE:-.cache/npm}\" npx --yes openapi-typescript@7.13.0 docs/openapi/openapi.yaml --output ui-next/lib/openapi/react-query/api.d.ts"
+run = '''
+NPM_CONFIG_CACHE="${NPM_CONFIG_CACHE:-.cache/npm}" npx --yes openapi-typescript@7.13.0 docs/openapi/openapi.yaml --output ui-next/lib/openapi/react-query/api.d.ts
+prettier ui-next/lib/openapi/react-query/api.d.ts --config ../bike-ui/.prettierrc.json --write
+'''
 
 [tasks."openapi:typescript:check"]
 description = "Check the generated frontend TypeScript API contract is fresh"
@@ -110,5 +116,6 @@ run = '''
 GENERATED_TYPES="$(mktemp)"
 trap 'rm -f "$GENERATED_TYPES"' EXIT
 NPM_CONFIG_CACHE="${NPM_CONFIG_CACHE:-.cache/npm}" npx --yes openapi-typescript@7.13.0 docs/openapi/openapi.yaml --output "$GENERATED_TYPES"
+prettier "$GENERATED_TYPES" --parser typescript --config ../bike-ui/.prettierrc.json --write
 cmp -- "$GENERATED_TYPES" ui-next/lib/openapi/react-query/api.d.ts
 '''

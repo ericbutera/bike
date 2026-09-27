@@ -135,11 +135,15 @@ describe("AdminTaskTools", () => {
       expect(screen.getByText("Queued activity reprocess")).toBeInTheDocument();
     });
 
-    expect(screen.getByRole("link", { name: /trace activity events/i })).toHaveAttribute(
+    expect(
+      screen.getByRole("link", { name: /trace activity events/i }),
+    ).toHaveAttribute(
       "href",
       "/admin/integrations?provider=activity_processing&user_id=1&activity_id=1647",
     );
-    expect(screen.getByRole("link", { name: /trace import events/i })).toHaveAttribute(
+    expect(
+      screen.getByRole("link", { name: /trace import events/i }),
+    ).toHaveAttribute(
       "href",
       "/admin/integrations?provider=activity_processing&user_id=1&import_id=88",
     );

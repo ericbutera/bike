@@ -146,7 +146,11 @@ function climbMaxGradePercent(points: ActivityRoutePoint[]) {
       continue;
     }
 
-    for (let endIndex = startIndex + 1; endIndex < points.length; endIndex += 1) {
+    for (
+      let endIndex = startIndex + 1;
+      endIndex < points.length;
+      endIndex += 1
+    ) {
       const end = points[endIndex];
 
       if (

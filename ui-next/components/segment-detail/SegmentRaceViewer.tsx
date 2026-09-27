@@ -14,7 +14,7 @@ import { useMemo, useState } from "react";
 import { formatDuration } from "../../lib/activityFormatting";
 import { config } from "../../lib/config";
 import { type ActivityRoutePoint } from "../../lib/queries";
-import { LoadingSpinner } from "../ui/QueryState";
+import { ErrorCard, LoadingSpinner } from "../ui/QueryState";
 import {
   RACE_PLAYBACK_SPEED_OPTIONS,
   buildLiveLeaderComparisonRows,
@@ -331,13 +331,43 @@ export default function SegmentRaceViewer({
   ) {
     return (
       <section className="flex min-h-screen items-center justify-center bg-base-200 px-6 py-10">
-        <LoadingSpinner size="lg" />
+        <LoadingSpinner
+          size="lg"
+          role="status"
+          aria-label="Loading segment race viewer"
+        />
+      </section>
+    );
+  }
+
+  if (segmentQuery.isError) {
+    return (
+      <section className="flex min-h-screen items-center justify-center bg-base-200 px-6 py-10">
+        <ErrorCard
+          fallback="Unable to load segment."
+          className="w-full max-w-xl"
+        />
       </section>
     );
   }
 
   if (!segment) {
-    return null;
+    return (
+      <section className="flex min-h-screen items-center justify-center bg-base-200 px-6 py-10">
+        <ErrorCard fallback="Segment not found." className="w-full max-w-xl" />
+      </section>
+    );
+  }
+
+  if (comparisonQuery.isError) {
+    return (
+      <section className="flex min-h-screen items-center justify-center bg-base-200 px-6 py-10">
+        <ErrorCard
+          fallback="Unable to load segment comparison."
+          className="w-full max-w-xl"
+        />
+      </section>
+    );
   }
 
   return (

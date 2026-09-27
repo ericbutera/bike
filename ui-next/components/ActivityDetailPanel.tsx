@@ -24,6 +24,7 @@ import MatchedSegmentsSection from "./MatchedSegmentsSection";
 import TrainingProfileSnapshot from "./TrainingProfileSnapshot";
 import { AppCard, CardHeader } from "./ui/Card";
 import InfoTooltip from "./ui/InfoTooltip";
+import { ErrorCard, LoadingCard } from "./ui/QueryState";
 
 const LAP_SPLITS_HELP_TEXT =
   "These lap rollups come from the upload-time read side and can be regenerated when the development flag is enabled.";
@@ -131,8 +132,16 @@ export default function ActivityDetailPanel({
     }
   }
 
+  if (activityQuery.isLoading) {
+    return <LoadingCard size="lg" />;
+  }
+
+  if (activityQuery.isError) {
+    return <ErrorCard fallback="Unable to load activity." />;
+  }
+
   if (!activity) {
-    return null;
+    return <ErrorCard fallback="Activity not found." />;
   }
 
   return (

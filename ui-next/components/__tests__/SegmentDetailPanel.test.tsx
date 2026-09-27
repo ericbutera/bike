@@ -91,6 +91,45 @@ vi.mock("@ericbutera/kaleido", async () => {
   };
 });
 
+vi.mock("../ui/Pagination", () => ({
+  default: ({
+    page,
+    perPage,
+    total,
+    onPageChange,
+  }: {
+    page: number;
+    perPage: number;
+    total: number;
+    onPageChange: (page: number) => void;
+  }) => {
+    const totalPages = Math.max(1, Math.ceil(total / perPage));
+
+    if (totalPages <= 1) {
+      return null;
+    }
+
+    return (
+      <div>
+        {Array.from({ length: totalPages }, (_, index) => index + 1).map(
+          (pageNumber) => (
+            <button
+              key={pageNumber}
+              type="button"
+              aria-current={pageNumber === page ? "page" : undefined}
+              onClick={() => {
+                onPageChange(pageNumber);
+              }}
+            >
+              {pageNumber}
+            </button>
+          ),
+        )}
+      </div>
+    );
+  },
+}));
+
 vi.mock("../../lib/queries", () => ({
   useSegment: mocks.useSegment,
   useSegmentComparison: mocks.useSegmentComparison,

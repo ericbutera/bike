@@ -94,7 +94,8 @@ function AdminIntegrationsContent() {
       hasInvalidActivityId || !trimmedActivityIdFilter
         ? null
         : parsedActivityId,
-    importId: hasInvalidImportId || !trimmedImportIdFilter ? null : parsedImportId,
+    importId:
+      hasInvalidImportId || !trimmedImportIdFilter ? null : parsedImportId,
     limit: 100,
     refetchIntervalMs: 5000,
   });
@@ -172,7 +173,9 @@ function AdminIntegrationsContent() {
             />
             <div className="label min-h-6">
               <span className="label-text-alt text-error">
-                {hasInvalidActivityId ? "Enter a positive integer activity id." : ""}
+                {hasInvalidActivityId
+                  ? "Enter a positive integer activity id."
+                  : ""}
               </span>
             </div>
           </label>
@@ -193,7 +196,9 @@ function AdminIntegrationsContent() {
             />
             <div className="label min-h-6">
               <span className="label-text-alt text-error">
-                {hasInvalidImportId ? "Enter a positive integer import id." : ""}
+                {hasInvalidImportId
+                  ? "Enter a positive integer import id."
+                  : ""}
               </span>
             </div>
           </label>

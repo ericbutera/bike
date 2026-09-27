@@ -236,9 +236,7 @@ export default function AdminTaskTools() {
         <div className="mt-5 flex flex-wrap gap-3">
           <button
             className="btn btn-primary"
-            disabled={
-              !activityReprocessId.trim() || isActivityReprocessPending
-            }
+            disabled={!activityReprocessId.trim() || isActivityReprocessPending}
             onClick={handleActivityReprocess}
           >
             {isActivityReprocessPending
@@ -333,8 +331,8 @@ export default function AdminTaskTools() {
           />
           <div className="label">
             <span className="label-text-alt text-base-content/60">
-              This queues a targeted worker task and refreshes analytics for
-              the affected segment.
+              This queues a targeted worker task and refreshes analytics for the
+              affected segment.
             </span>
           </div>
         </label>
@@ -383,8 +381,8 @@ export default function AdminTaskTools() {
       <section className="rounded-2xl border border-base-300 bg-base-100 p-6 shadow-sm">
         <h2 className="text-lg font-semibold">Regenerate user segments</h2>
         <p className="mt-2 max-w-3xl text-sm text-base-content/70">
-          Rebuild segment matching for one rider from stored activities. This
-          is broader than the targeted segment tool and should be used when one
+          Rebuild segment matching for one rider from stored activities. This is
+          broader than the targeted segment tool and should be used when one
           rider needs all effort matches refreshed.
         </p>
 
@@ -800,7 +798,6 @@ export default function AdminTaskTools() {
             View background tasks
           </Link>
         </div>
-
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
