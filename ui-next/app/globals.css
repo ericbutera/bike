@@ -18,7 +18,33 @@ body {
   font: inherit;
 }
 
-.race-viewer-map .maplibregl-ctrl-bottom-right {
+.maplibregl-map .maplibregl-ctrl-attrib {
+  max-width: calc(100% - 12px);
+  margin: 0 0 5px 6px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  color: white;
+  font-size: 11px;
+  line-height: 1.25;
+  text-shadow: none;
+}
+
+.maplibregl-map .maplibregl-ctrl-attrib a {
+  color: inherit;
+}
+
+.race-viewer-map .maplibregl-ctrl-bottom-left {
   bottom: auto;
   top: 9rem;
+}
+
+@media (forced-colors: active) {
+  .maplibregl-map .maplibregl-ctrl-attrib {
+    background: Canvas;
+    color: CanvasText;
+    text-shadow: none;
+  }
 }

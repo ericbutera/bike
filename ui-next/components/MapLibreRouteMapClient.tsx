@@ -1056,14 +1056,9 @@ export default function MapLibreRouteMapClient({
 
     if (showBaseTiles) {
       map.addControl(
-        new maplibregl.AttributionControl({ compact: true }),
-        "bottom-right",
+        new maplibregl.AttributionControl({ compact: false }),
+        "bottom-left",
       );
-      requestAnimationFrame(() => {
-        containerRef.current
-          ?.querySelector(".maplibregl-ctrl-attrib")
-          ?.classList.remove("maplibregl-compact-show");
-      });
     }
 
     if (interactive && showZoomControls) {

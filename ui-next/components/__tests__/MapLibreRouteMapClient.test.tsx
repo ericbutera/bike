@@ -98,7 +98,9 @@ vi.mock("maplibre-gl", () => {
   }
 
   class MockNavigationControl {}
-  class MockAttributionControl {}
+  class MockAttributionControl {
+    constructor(public options: { compact: boolean }) {}
+  }
 
   return {
     default: {
@@ -117,6 +119,24 @@ describe("MapLibreRouteMapClient", () => {
     mapMocks.sources.clear();
     mapMocks.handlers.clear();
     mapMocks.zoom = 13;
+  });
+
+  it("shows full map attribution at the lower left", () => {
+    render(
+      <MapLibreRouteMapClient
+        routePoints={[
+          { elapsed_seconds: 0, latitude: 45, longitude: -85 },
+          { elapsed_seconds: 60, latitude: 45.01, longitude: -85.01 },
+        ]}
+        ariaLabel="Activity route map"
+        emptyMessage="No route"
+      />,
+    );
+
+    expect(mapMocks.addControl).toHaveBeenCalledWith(
+      expect.objectContaining({ options: { compact: false } }),
+      "bottom-left",
+    );
   });
 
   it("switches the activity map to Fiord and restores its route and camera", async () => {
