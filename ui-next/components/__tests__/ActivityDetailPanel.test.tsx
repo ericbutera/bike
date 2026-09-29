@@ -48,6 +48,9 @@ vi.mock("@ericbutera/kaleido", () => ({
       useCurrentUser: mocks.useCurrentUser,
     }),
   },
+  featureFlags: {
+    useFeatureFlag: () => true,
+  },
   LoadingCard: () => <div aria-label="Loading" />,
 }));
 

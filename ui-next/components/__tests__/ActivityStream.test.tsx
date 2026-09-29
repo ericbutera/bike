@@ -157,6 +157,7 @@ describe("ActivityStream", () => {
   });
 
   it("renders activities in the order returned by the query", () => {
+    mocks.useFeatureFlag.mockImplementation((flag) => flag === "enhanced_maps");
     mocks.useActivities.mockReturnValue({
       data: [
         makeActivity({ id: 2, title: "Latest Effort" }),
