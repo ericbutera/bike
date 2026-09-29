@@ -13,6 +13,7 @@ describe("activity map images", () => {
 
   it("passes only API-authorized geometry to the renderer", async () => {
     vi.stubEnv("INTERNAL_API_URL", "http://api:8080/api");
+    vi.stubEnv("MAP_SERVICE_TOKEN", "test-map-token");
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(
@@ -46,17 +47,20 @@ describe("activity map images", () => {
       new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("authorization"),
     ).toBe("Bearer owner");
     const renderBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
+    expect(
+      new Headers(fetchMock.mock.calls[1]?.[1]?.headers).get("authorization"),
+    ).toBe("Bearer test-map-token");
     expect(renderBody).toMatchObject({
+      profile: "rust",
       theme: "dark",
       dpr: 2,
       variant: "full",
-      activityRevision: "2026-09-28T12:00:00Z",
       points: [
         { latitude: 45, longitude: -85 },
         { latitude: 45.01, longitude: -85.01 },
       ],
     });
-    expect(renderBody.scope).toMatch(/^[0-9a-f]{64}$/);
+    expect(renderBody).not.toHaveProperty("scope");
     expect(renderBody.points[0]).toEqual({ latitude: 45, longitude: -85 });
     expect(response.headers.get("Content-Type")).toBe("image/png");
     expect(response.headers.get("Cache-Control")).toBe("private, no-cache");

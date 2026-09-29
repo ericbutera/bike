@@ -47,7 +47,12 @@ run = "docker compose --profile tracing up jaeger"
 
 [tasks."compose:up"]
 description = "Start the Rust Bike Compose stack"
+depends = ["services:up"]
 run = "docker compose up"
+
+[tasks."services:up"]
+description = "Start the shared Bike map service"
+run = "docker compose -f ../bike-services/compose.yaml up -d --build bike-maps"
 
 [tasks."kaleido:status"]
 description = "Show the Rust and UI Kaleido versions used by Bike"

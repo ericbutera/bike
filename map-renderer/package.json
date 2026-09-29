@@ -1,8 +1,0 @@
-{
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "maplibre-gl": "6.11.2",
-    "playwright": "1.63.0"
-  }
-}

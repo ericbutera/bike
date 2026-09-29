@@ -82,27 +82,20 @@ services:
       AUTH_PASSWORD_ENABLED: 'true'
       AUTH_REGISTRATION_ENABLED: 'true'
       USE_LOCAL_KALEIDO: 'true'
-      MAP_RENDERER_URL: http://map-renderer:3100
+      MAP_RENDERER_URL: http://bike-maps:3100
+      MAP_SERVICE_TOKEN: ${MAP_SERVICE_TOKEN:-}
     depends_on:
       api:
         condition: service_started
-      map-renderer:
-        condition: service_healthy
+    networks:
+      - default
+      - bike_services
     ports:
       - '${BIKE_RUST_UI_PORT:-3001}:3000'
     volumes:
       - ./ui-next:/app
       - ../kaleido:/app/kaleido:ro
       - ui_next_node_modules:/app/node_modules
-
-  map-renderer:
-    build:
-      context: .
-      dockerfile: map-renderer/Dockerfile
-    environment:
-      MAP_IMAGE_CACHE_TTL_SECONDS: ${MAP_IMAGE_CACHE_TTL_SECONDS:-604800}
-    volumes:
-      - map_image_cache:/cache
 
   jaeger:
     image: jaegertracing/all-in-one:latest
@@ -116,7 +109,11 @@ services:
       - '${BIKE_RUST_JAEGER_HTTP_PORT:-4318}:4318'
 
 volumes:
-  map_image_cache:
   postgres_data:
     name: ${BIKE_RUST_POSTGRES_VOLUME:-bike_postgres_data}
   ui_next_node_modules:
+
+networks:
+  bike_services:
+    external: true
+    name: bike_services

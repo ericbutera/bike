@@ -9,7 +9,7 @@ Bike is an app that is Strava-esque, but focuses specifically on cross-country (
 Run the development environment:
 
 ```sh
-docker compose up
+mise run compose:up
 ```
 
 View the [UI](http://localhost:3001/) in a browser.
@@ -17,7 +17,8 @@ View the [UI](http://localhost:3001/) in a browser.
 The Rust Compose project is `bike-rust`. Its default host bindings are API
 `3000`, UI `3001`, and Postgres `5432`; optional Jaeger bindings are `16686`,
 `4317`, and `4318`. The Go and C# stacks use separate defaults so all three
-projects can run together.
+projects can run together. The task starts the shared `bike-services` map
+renderer before the Bike stack; its image cache is shared with Go and C#.
 
 ## Local Development
 

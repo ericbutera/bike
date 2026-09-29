@@ -75,7 +75,6 @@ export async function GET(
 
   const activity = (await activityResponse.json()) as {
     route_points?: Array<{ latitude: number; longitude: number }> | null;
-    updated_at?: string;
   };
   const points = (activity.route_points ?? [])
     .filter(
@@ -92,20 +91,20 @@ export async function GET(
     }));
   if (points.length < 2) return imageError(404);
 
-  const scope = createHash("sha256")
-    .update(JSON.stringify([cookie, authorization]))
-    .digest("hex");
   let imageResponse: Response;
   try {
     imageResponse = await fetch(
-      `${process.env.MAP_RENDERER_URL ?? "http://map-renderer:3100"}/render`,
+      `${process.env.MAP_RENDERER_URL ?? "http://bike-maps:3100"}/render`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(process.env.MAP_SERVICE_TOKEN
+            ? { Authorization: `Bearer ${process.env.MAP_SERVICE_TOKEN}` }
+            : {}),
+        },
         body: JSON.stringify({
-          activityId,
-          activityRevision: activity.updated_at ?? null,
-          scope,
+          profile: "rust",
           points,
           theme,
           variant,
