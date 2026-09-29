@@ -50,9 +50,13 @@ description = "Start the Rust Bike Compose stack"
 depends = ["services:up"]
 run = "docker compose up"
 
+[tasks."compose:config"]
+description = "Validate the Rust Bike Compose stack"
+run = "docker compose config"
+
 [tasks."services:up"]
 description = "Start the shared Bike map service"
-run = "docker compose -f ../bike-services/compose.yaml up -d --build bike-maps"
+run = "mise --cd ../bike-services run compose:up"
 
 [tasks."kaleido:status"]
 description = "Show the Rust and UI Kaleido versions used by Bike"

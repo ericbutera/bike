@@ -104,7 +104,6 @@ export async function GET(
             : {}),
         },
         body: JSON.stringify({
-          profile: "rust",
           points,
           theme,
           variant,

@@ -51,7 +51,6 @@ describe("activity map images", () => {
       new Headers(fetchMock.mock.calls[1]?.[1]?.headers).get("authorization"),
     ).toBe("Bearer test-map-token");
     expect(renderBody).toMatchObject({
-      profile: "rust",
       theme: "dark",
       dpr: 2,
       variant: "full",
