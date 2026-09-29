@@ -30,6 +30,8 @@ use utoipa::{IntoParams, ToSchema};
 
 const SEGMENT_DEDUPE_DISTANCE_BUCKET_METERS: f64 = 5.0;
 const DEFAULT_ANALYSIS_SPLIT_COUNT: usize = 10;
+const DEFAULT_ANALYSIS_EFFORT_LIMIT: usize = 50;
+const MAX_ANALYSIS_EFFORT_LIMIT: usize = 1000;
 const MIN_ANALYSIS_SPLIT_COUNT: usize = 2;
 const MAX_ANALYSIS_SPLIT_COUNT: usize = 30;
 const TOP_ANALYSIS_SECTION_EFFORT_COUNT: usize = 5;
@@ -146,10 +148,13 @@ pub struct SegmentEffortAnalysisQuery {
     pub reference_effort_id: Option<i32>,
     #[param(example = 10)]
     pub split_count: Option<usize>,
+    /// Maximum efforts in the response (0 returns all). Defaults to 50.
+    #[param(example = 50)]
+    pub effort_limit: Option<usize>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-#[schema(example = json!({"segment_id": 7,"segment_title": "Riverfront climb","split_count": 10,"route_points": [],"reference_effort": {"effort_id": 90,"activity_id": 42,"activity_title": "Saturday hill repeats","activity_started_at": "2026-09-26T13:00:00Z","effort_index": 1,"duration_seconds": 355,"delta_from_reference_seconds": 0.0},"efforts": [],"sections": [],"theoretical_best_duration_seconds": 340.0,"theoretical_best_gain_seconds": 15.0}))]
+#[schema(example = json!({"segment_id": 7,"segment_title": "Riverfront climb","split_count": 10,"total_effort_count": 1,"route_points": [],"reference_effort": {"effort_id": 90,"activity_id": 42,"activity_title": "Saturday hill repeats","activity_started_at": "2026-09-26T13:00:00Z","effort_index": 1,"duration_seconds": 355,"delta_from_reference_seconds": 0.0},"efforts": [],"sections": [],"theoretical_best_duration_seconds": 340.0,"theoretical_best_gain_seconds": 15.0}))]
 pub struct SegmentEffortAnalysisResponse {
     #[schema(example = 7)]
     pub segment_id: i32,
@@ -157,6 +162,7 @@ pub struct SegmentEffortAnalysisResponse {
     pub segment_title: String,
     #[schema(example = 10)]
     pub split_count: usize,
+    pub total_effort_count: usize,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schema(example = json!([]))]
     pub route_points: Vec<SegmentRoutePointResponse>,
@@ -585,7 +591,7 @@ pub async fn get_segment_yearly_bests(
         SegmentEffortAnalysisQuery
     ),
     responses(
-        (status = 200, description = "Distance-normalized effort split analysis for one segment", body = SegmentEffortAnalysisResponse, example = json!({"segment_id": 7,"segment_title": "Riverfront climb","split_count": 10,"route_points": [],"reference_effort": {"effort_id": 90,"activity_id": 42,"activity_title": "Saturday hill repeats","activity_started_at": "2026-09-26T13:00:00Z","effort_index": 1,"duration_seconds": 355,"delta_from_reference_seconds": 0.0},"efforts": [],"sections": [],"theoretical_best_duration_seconds": 340.0,"theoretical_best_gain_seconds": 15.0})),
+        (status = 200, description = "Distance-normalized effort split analysis for one segment", body = SegmentEffortAnalysisResponse, example = json!({"segment_id": 7,"segment_title": "Riverfront climb","split_count": 10,"total_effort_count": 1,"route_points": [],"reference_effort": {"effort_id": 90,"activity_id": 42,"activity_title": "Saturday hill repeats","activity_started_at": "2026-09-26T13:00:00Z","effort_index": 1,"duration_seconds": 355,"delta_from_reference_seconds": 0.0},"efforts": [],"sections": [],"theoretical_best_duration_seconds": 340.0,"theoretical_best_gain_seconds": 15.0})),
         (status = 400, description = "Invalid analysis options", body = ApiErrorResponse),
         (status = 401, description = "Not authenticated"),
         (status = 404, description = "Segment or reference effort not found", body = ApiErrorResponse),
@@ -1434,6 +1440,7 @@ async fn load_segment_effort_analysis_response(
     query: SegmentEffortAnalysisQuery,
 ) -> Result<SegmentEffortAnalysisResponse, AppError> {
     let split_count = normalized_analysis_split_count(query.split_count)?;
+    let effort_limit = normalized_analysis_effort_limit(query.effort_limit)?;
     let efforts = segment_efforts::Entity::find()
         .filter(segment_efforts::Column::SegmentId.eq(segment.id))
         .filter(segment_efforts::Column::UserId.eq(user_id))
@@ -1501,6 +1508,7 @@ async fn load_segment_effort_analysis_response(
         effort_sources,
         query.reference_effort_id,
         split_count,
+        effort_limit,
     )
 }
 
@@ -1519,6 +1527,17 @@ fn normalized_analysis_split_count(value: Option<usize>) -> Result<usize, AppErr
     Ok(split_count)
 }
 
+fn normalized_analysis_effort_limit(value: Option<usize>) -> Result<usize, AppError> {
+    let limit = value.unwrap_or(DEFAULT_ANALYSIS_EFFORT_LIMIT);
+    if limit > MAX_ANALYSIS_EFFORT_LIMIT {
+        return Err(AppError::validation_field(
+            "effort_limit",
+            format!("Effort limit must be between 0 and {MAX_ANALYSIS_EFFORT_LIMIT}"),
+        ));
+    }
+    Ok(limit)
+}
+
 fn segment_effort_analysis_from_sources(
     segment_id: i32,
     segment_title: String,
@@ -1526,19 +1545,40 @@ fn segment_effort_analysis_from_sources(
     mut efforts: Vec<SegmentAnalysisEffortSource>,
     reference_effort_id: Option<i32>,
     split_count: usize,
+    effort_limit: usize,
 ) -> Result<SegmentEffortAnalysisResponse, AppError> {
     efforts.sort_by_key(|effort| (effort.duration_seconds, effort.effort_id));
     let reference_effort = select_analysis_reference_effort(&efforts, reference_effort_id)?;
     let sampled_efforts = sampled_analysis_efforts(&efforts, split_count);
     let reference_samples = reference_analysis_samples(&sampled_efforts, &reference_effort)?;
-    let summaries = analysis_effort_summaries(&sampled_efforts, &reference_effort);
-    let (sections, theoretical_best_duration_seconds) =
+    let total_effort_count = sampled_efforts.len();
+    let (mut sections, theoretical_best_duration_seconds) =
         analysis_sections(&sampled_efforts, reference_samples, split_count);
+    let visible_efforts = if effort_limit == 0 {
+        &sampled_efforts[..]
+    } else {
+        &sampled_efforts[..sampled_efforts.len().min(effort_limit)]
+    };
+    let visible_ids = visible_efforts
+        .iter()
+        .map(|effort| effort.source.effort_id)
+        .chain(std::iter::once(reference_effort.effort_id))
+        .collect::<std::collections::HashSet<_>>();
+    let summaries = analysis_effort_summaries(&sampled_efforts, &reference_effort)
+        .into_iter()
+        .filter(|summary| visible_ids.contains(&summary.effort_id))
+        .collect();
+    for section in &mut sections {
+        section
+            .efforts
+            .retain(|effort| visible_ids.contains(&effort.effort_id));
+    }
 
     Ok(SegmentEffortAnalysisResponse {
         segment_id,
         segment_title,
         split_count,
+        total_effort_count,
         route_points,
         reference_effort: reference_effort_summary(reference_effort.clone()),
         efforts: summaries,
@@ -2694,6 +2734,7 @@ mod tests {
             efforts,
             None,
             3,
+            0,
         )
         .unwrap();
 
@@ -2730,6 +2771,7 @@ mod tests {
             efforts,
             Some(2),
             3,
+            0,
         )
         .unwrap();
 
@@ -2745,6 +2787,50 @@ mod tests {
         assert_eq!(normalized_analysis_split_count(Some(30)).unwrap(), 30);
         assert!(normalized_analysis_split_count(Some(1)).is_err());
         assert!(normalized_analysis_split_count(Some(31)).is_err());
+    }
+
+    #[test]
+    fn effort_analysis_limits_response_but_preserves_best_and_reference() {
+        let efforts = vec![
+            build_analysis_effort(1, 101, "PR", 100, &[0, 30, 60, 100]),
+            build_analysis_effort(2, 102, "Fast first", 103, &[0, 25, 65, 103]),
+            build_analysis_effort(3, 103, "Fast second", 105, &[0, 35, 58, 105]),
+        ];
+        let analysis = segment_effort_analysis_from_sources(
+            10,
+            "Climb".to_string(),
+            Vec::new(),
+            efforts,
+            Some(3),
+            3,
+            1,
+        )
+        .unwrap();
+
+        assert_eq!(analysis.total_effort_count, 3);
+        assert_eq!(
+            analysis
+                .efforts
+                .iter()
+                .map(|effort| effort.effort_id)
+                .collect::<Vec<_>>(),
+            vec![1, 3]
+        );
+        assert_eq!(analysis.sections[0].efforts.len(), 2);
+        assert_eq!(analysis.sections[0].best_effort_id, 2);
+        assert_eq!(analysis.theoretical_best_duration_seconds, 86.0);
+        assert_eq!(normalized_analysis_effort_limit(None).unwrap(), 50);
+        assert!(normalized_analysis_effort_limit(Some(1001)).is_err());
+    }
+
+    #[test]
+    fn effort_analysis_uses_point_index_when_distance_is_not_finite() {
+        let mut effort = build_analysis_effort(1, 101, "Ride", 30, &[0, 4, 30]);
+        effort.route_points[1].distance_meters = Some(f64::INFINITY);
+
+        let samples = analysis_samples_for_effort(&effort, 2).unwrap();
+
+        assert_eq!(samples[1].elapsed_seconds, 4.0);
     }
 
     #[test]

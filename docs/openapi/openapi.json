@@ -4213,6 +4213,20 @@
               "minimum": 0
             },
             "example": 10
+          },
+          {
+            "name": "effort_limit",
+            "in": "query",
+            "description": "Maximum efforts in the response (0 returns all). Defaults to 50.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "example": 50
           }
         ],
         "responses": {
@@ -4240,7 +4254,8 @@
                   "segment_title": "Riverfront climb",
                   "split_count": 10,
                   "theoretical_best_duration_seconds": 340.0,
-                  "theoretical_best_gain_seconds": 15.0
+                  "theoretical_best_gain_seconds": 15.0,
+                  "total_effort_count": 1
                 }
               }
             }
@@ -10466,6 +10481,14 @@
       "SegmentEffortAnalysisQuery": {
         "type": "object",
         "properties": {
+          "effort_limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Maximum efforts in the response (0 returns all). Defaults to 50.",
+            "minimum": 0
+          },
           "reference_effort_id": {
             "type": [
               "integer",
@@ -10488,6 +10511,7 @@
           "segment_id",
           "segment_title",
           "split_count",
+          "total_effort_count",
           "reference_effort",
           "theoretical_best_duration_seconds",
           "theoretical_best_gain_seconds"
@@ -10540,6 +10564,10 @@
             "type": "number",
             "format": "double",
             "example": 15.0
+          },
+          "total_effort_count": {
+            "type": "integer",
+            "minimum": 0
           }
         },
         "example": {
@@ -10559,7 +10587,8 @@
           "segment_title": "Riverfront climb",
           "split_count": 10,
           "theoretical_best_duration_seconds": 340.0,
-          "theoretical_best_gain_seconds": 15.0
+          "theoretical_best_gain_seconds": 15.0,
+          "total_effort_count": 1
         }
       },
       "SegmentEffortResponse": {

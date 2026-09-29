@@ -65,6 +65,7 @@ describe("SegmentEffortAnalysisSection", () => {
       segment_id: 14,
       segment_title: "North Climb",
       split_count: 10,
+      total_effort_count: 1,
       route_points: routePoints,
       reference_effort: {
         effort_id: 1,

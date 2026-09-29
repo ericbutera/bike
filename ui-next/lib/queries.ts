@@ -309,6 +309,7 @@ export type SegmentEffortAnalysis = {
   segment_id: number;
   segment_title: string;
   split_count: number;
+  total_effort_count: number;
   route_points: ActivityRoutePoint[];
   reference_effort: SegmentAnalysisEffortSummary;
   efforts: SegmentAnalysisEffortSummary[];
@@ -1671,6 +1672,7 @@ export function useSegmentEffortAnalysis(
   opts?: {
     referenceEffortId?: number | null;
     splitCount?: number;
+    effortLimit?: number;
   },
 ) {
   const numericId = Number(id);
@@ -1680,6 +1682,9 @@ export function useSegmentEffortAnalysis(
       ? { reference_effort_id: opts.referenceEffortId }
       : {}),
     ...(opts?.splitCount ? { split_count: opts.splitCount } : {}),
+    ...(opts?.effortLimit !== undefined
+      ? { effort_limit: opts.effortLimit }
+      : {}),
   };
   const response = $api.useQuery(
     "get",

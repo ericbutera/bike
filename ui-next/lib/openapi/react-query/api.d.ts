@@ -3778,6 +3778,8 @@ export interface components {
       segment_id: number;
     };
     SegmentEffortAnalysisQuery: {
+      /** @description Maximum efforts in the response (0 returns all). Defaults to 50. */
+      effort_limit?: number | null;
       /** Format: int32 */
       reference_effort_id?: number | null;
       split_count?: number | null;
@@ -3800,7 +3802,8 @@ export interface components {
      *       "segment_title": "Riverfront climb",
      *       "split_count": 10,
      *       "theoretical_best_duration_seconds": 340,
-     *       "theoretical_best_gain_seconds": 15
+     *       "theoretical_best_gain_seconds": 15,
+     *       "total_effort_count": 1
      *     }
      */
     SegmentEffortAnalysisResponse: {
@@ -3830,6 +3833,7 @@ export interface components {
        * @example 15
        */
       theoretical_best_gain_seconds: number;
+      total_effort_count: number;
     };
     /**
      * @example {
@@ -9013,6 +9017,11 @@ export interface operations {
         reference_effort_id?: number | null;
         /** @example 10 */
         split_count?: number | null;
+        /**
+         * @description Maximum efforts in the response (0 returns all). Defaults to 50.
+         * @example 50
+         */
+        effort_limit?: number | null;
       };
       header?: never;
       path: {
@@ -9050,7 +9059,8 @@ export interface operations {
            *       "segment_title": "Riverfront climb",
            *       "split_count": 10,
            *       "theoretical_best_duration_seconds": 340,
-           *       "theoretical_best_gain_seconds": 15
+           *       "theoretical_best_gain_seconds": 15,
+           *       "total_effort_count": 1
            *     }
            */
           "application/json": components["schemas"]["SegmentEffortAnalysisResponse"];

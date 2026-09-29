@@ -55,9 +55,11 @@ export default function SegmentEffortAnalysisReport() {
     (segment) => segment.id.toString() === selectedSegmentId,
   );
   const [splitCount, setSplitCount] = useState<number>(10);
+  const [showAllEfforts, setShowAllEfforts] = useState(false);
   const [selectedEffortId, setSelectedEffortId] = useState<number | null>(null);
   const analysisQuery = useSegmentEffortAnalysis(selectedSegment?.id, {
     splitCount,
+    effortLimit: showAllEfforts ? 0 : undefined,
   });
   const analysis = analysisQuery.data;
   const efforts = analysis?.efforts ?? [];
@@ -149,6 +151,17 @@ export default function SegmentEffortAnalysisReport() {
                       </option>
                     ))}
                   </select>
+                  {analysis && analysis.total_effort_count > 50 ? (
+                    <button
+                      type="button"
+                      className="btn btn-link btn-sm px-0"
+                      onClick={() => setShowAllEfforts((current) => !current)}
+                    >
+                      {showAllEfforts
+                        ? "Show fastest 50"
+                        : `Show all ${analysis.total_effort_count} efforts`}
+                    </button>
+                  ) : null}
                 </div>
 
                 <div>
