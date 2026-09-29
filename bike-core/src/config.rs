@@ -13,6 +13,8 @@ pub struct Config {
     pub strava_oauth_scopes: String,
     pub strava_webhook_verify_token: String,
     pub strava_webhook_callback_url: Option<String>,
+    pub strava_gateway_url: Option<String>,
+    pub strava_gateway_shared_secret: String,
     pub uploads_dir: String,
     pub max_upload_bytes: usize,
     pub max_archive_fetch_bytes: usize,
@@ -66,6 +68,12 @@ impl Config {
                 .ok()
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty()),
+            strava_gateway_url: env::var("STRAVA_GATEWAY_URL")
+                .ok()
+                .map(|value| value.trim().trim_end_matches('/').to_string())
+                .filter(|value| !value.is_empty()),
+            strava_gateway_shared_secret: env::var("STRAVA_GATEWAY_SHARED_SECRET")
+                .unwrap_or_default(),
             uploads_dir: env::var("UPLOADS_DIR").unwrap_or_else(|_| "./uploads".to_string()),
             max_upload_bytes: env::var("MAX_UPLOAD_BYTES")
                 .ok()
@@ -100,7 +108,7 @@ impl Config {
     }
 
     pub fn get() -> &'static Config {
-        CONFIG.get_or_init(|| Self::init_from_env().clone())
+        Self::init_from_env()
     }
 
     pub fn strava_enabled(&self) -> bool {

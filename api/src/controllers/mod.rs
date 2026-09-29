@@ -7,6 +7,7 @@ pub mod integration_events;
 pub mod reports;
 pub mod segments;
 pub mod strava;
+pub mod strava_gateway;
 pub mod training_goals;
 pub mod user_preferences;
 
@@ -36,6 +37,7 @@ pub fn routes() -> Router<Arc<AppStorage>> {
         .merge(segment_routes())
         .merge(preference_routes())
         .merge(integration_routes())
+        .merge(strava_gateway::routes())
         .route("/api/health", get(health))
         .route("/", get(root))
 }

@@ -354,6 +354,9 @@ pub async fn exchange_code_for_connection(
 pub async fn ensure_webhook_subscription_registered(
     db: &DatabaseConnection,
 ) -> Result<(), AppError> {
+    if Config::get().strava_gateway_url.is_some() {
+        return Ok(());
+    }
     ensure_webhook_subscription(db, Config::get()).await
 }
 
@@ -630,11 +633,35 @@ pub async fn disconnect_connection(db: &DatabaseConnection, user_id: i32) -> Res
     .await
 }
 
+pub async fn forget_local_connection(
+    db: &DatabaseConnection,
+    user_id: i32,
+) -> Result<(), AppError> {
+    let Some(connection) = load_connection(db, user_id).await? else {
+        return Ok(());
+    };
+    disconnect_connection_internal(
+        db,
+        &connection,
+        false,
+        "Gateway removed the local Strava connection mirror.",
+        Some(serde_json::json!({ "trigger": "gateway" })),
+    )
+    .await
+}
+
 pub async fn process_strava_sync(
     db: &DatabaseConnection,
     uploads_dir: &str,
     connection_id: i32,
 ) -> Result<(), AppError> {
+    if Config::get().strava_gateway_url.is_some() {
+        tracing::info!(
+            connection_id,
+            "skipping legacy Strava sync: gateway owns provider API"
+        );
+        return Ok(());
+    }
     let Some(connection) = load_sync_connection(db, connection_id).await? else {
         tracing::info!(
             connection_id,
@@ -1713,12 +1740,12 @@ fn is_rate_limit_error(error: &AppError) -> bool {
     error.status == StatusCode::TOO_MANY_REQUESTS
 }
 
-struct StravaActivityImportPayload {
-    generated_tcx_upload: ActivityUploadPayload,
-    provider_payload_artifact: ActivityImportArtifactPayload,
+pub(crate) struct StravaActivityImportPayload {
+    pub(crate) generated_tcx_upload: ActivityUploadPayload,
+    pub(crate) provider_payload_artifact: ActivityImportArtifactPayload,
 }
 
-fn build_activity_upload(
+pub(crate) fn build_activity_upload(
     activity: &StravaActivitySummary,
     streams: &StravaActivityStreams,
 ) -> Result<StravaActivityImportPayload, AppError> {
@@ -1757,7 +1784,7 @@ fn build_activity_upload(
     })
 }
 
-async fn delete_strava_activity_by_correlation_id(
+pub(crate) async fn delete_strava_activity_by_correlation_id(
     db: &DatabaseConnection,
     uploads_dir: &str,
     tasks: &TaskQueue,
@@ -1774,6 +1801,17 @@ async fn delete_strava_activity_by_correlation_id(
         return Ok(false);
     };
 
+    delete_strava_activity(db, uploads_dir, tasks, user_id, activity).await?;
+    Ok(true)
+}
+
+pub(crate) async fn delete_strava_activity(
+    db: &DatabaseConnection,
+    uploads_dir: &str,
+    tasks: &TaskQueue,
+    user_id: i32,
+    activity: activities::Model,
+) -> Result<(), AppError> {
     let fitness_dirty_from_day = activity.started_at.date_naive();
     let affected_segment_ids =
         delete_activity_with_derived_state(db, uploads_dir, user_id, activity).await?;
@@ -1783,7 +1821,7 @@ async fn delete_strava_activity_by_correlation_id(
     tasks.rebuild_fitness_freshness(user_id).await;
     tasks.rebuild_segment_analytics(affected_segment_ids).await;
 
-    Ok(true)
+    Ok(())
 }
 
 pub async fn resolve_connection_sync_state(
@@ -2671,6 +2709,8 @@ mod tests {
             strava_oauth_scopes: "activity:read_all profile:read_all".to_string(),
             strava_webhook_verify_token: "verify-token".to_string(),
             strava_webhook_callback_url: None,
+            strava_gateway_url: None,
+            strava_gateway_shared_secret: String::new(),
             uploads_dir: "./uploads".to_string(),
             max_upload_bytes: 1024,
             max_archive_fetch_bytes: 1024,

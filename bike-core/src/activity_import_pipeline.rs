@@ -811,8 +811,10 @@ async fn update_activity_from_parsed(
     parsed: &ParsedActivityData,
     save_data: ActivitySaveData,
 ) -> Result<activities::Model, AppError> {
+    let activity_type = activity.activity_type.clone();
     let mut active_model: activities::ActiveModel = activity.into();
     apply_common_activity_fields(&mut active_model, parsing_artifact, parsed, save_data);
+    active_model.activity_type = Set(activity_type);
     active_model.update(db).await.map_err(AppError::from)
 }
 

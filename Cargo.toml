@@ -11,7 +11,7 @@ resolver = "2"
 axum = { version = "0.7", features = ["macros", "multipart"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde_json = { version = "1.0", features = ["raw_value"] }
 sea-orm = { version = "2.0.0-rc.27", features = ["sqlx-postgres", "runtime-tokio-rustls", "tracing-spans"] }
 sea-orm-migration = { version = "2.0.0-rc.27", features = ["runtime-tokio-rustls", "sqlx-postgres"] }
 tracing = "0.1"

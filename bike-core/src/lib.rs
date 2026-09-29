@@ -28,6 +28,8 @@ pub mod segment_support;
 pub mod services;
 pub mod strava;
 pub mod strava_client;
+pub mod strava_gateway_client;
+pub mod strava_gateway_delivery;
 pub mod strava_provider_payload;
 pub mod tasks;
 pub mod training_data;
