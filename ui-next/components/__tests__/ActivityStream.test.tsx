@@ -191,7 +191,7 @@ describe("ActivityStream", () => {
     });
     expect(routeThumbnail).toHaveAttribute("src");
     expect(routeThumbnail.getAttribute("src")).toContain(
-      "/activity-map-images/thumbnail/1?",
+      "/activity-previews/thumbnail/6?",
     );
     expect(routeThumbnail.getAttribute("src")).toContain("activityId=2");
     expect(routeThumbnail.getAttribute("src")).not.toContain("points=");

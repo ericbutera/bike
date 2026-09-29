@@ -14,6 +14,7 @@ pub struct Config {
     pub strava_webhook_verify_token: String,
     pub strava_webhook_callback_url: Option<String>,
     pub strava_gateway_url: Option<String>,
+    pub strava_gateway_grpc_address: Option<String>,
     pub strava_gateway_shared_secret: String,
     pub uploads_dir: String,
     pub max_upload_bytes: usize,
@@ -69,6 +70,10 @@ impl Config {
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty()),
             strava_gateway_url: env::var("STRAVA_GATEWAY_URL")
+                .ok()
+                .map(|value| value.trim().trim_end_matches('/').to_string())
+                .filter(|value| !value.is_empty()),
+            strava_gateway_grpc_address: env::var("STRAVA_GATEWAY_GRPC_ADDRESS")
                 .ok()
                 .map(|value| value.trim().trim_end_matches('/').to_string())
                 .filter(|value| !value.is_empty()),

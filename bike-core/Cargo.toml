@@ -37,5 +37,12 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 hmac = "0.12"
 sha2 = "0.10"
 hex = "0.4"
+prost = "0.14.4"
+tonic = { version = "0.14.6", features = ["transport"] }
+tonic-prost = "0.14.6"
 petgraph = "0.8.3"
 uuid = { workspace = true }
+
+[build-dependencies]
+protoc-bin-vendored = "3"
+tonic-prost-build = "0.14.6"

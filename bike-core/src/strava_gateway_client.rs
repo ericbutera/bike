@@ -1,4 +1,5 @@
 use crate::config::Config;
+use crate::strava_gateway_grpc::GatewayGrpcClient;
 use crate::workflow_error::WorkflowError as AppError;
 use hmac::{Hmac, Mac};
 use reqwest::StatusCode;
@@ -38,6 +39,7 @@ pub struct StravaGatewayClient {
     base_url: String,
     shared_secret: String,
     http: reqwest::Client,
+    grpc: Option<GatewayGrpcClient>,
 }
 
 impl StravaGatewayClient {
@@ -59,10 +61,20 @@ impl StravaGatewayClient {
             base_url: base_url.clone(),
             shared_secret: config.strava_gateway_shared_secret.clone(),
             http,
+            grpc: config
+                .strava_gateway_grpc_address
+                .as_deref()
+                .map(|address| {
+                    GatewayGrpcClient::new(address, &config.strava_gateway_shared_secret)
+                })
+                .transpose()?,
         })
     }
 
     pub async fn begin_connect(&self, user_id: i32) -> Result<String, AppError> {
+        if let Some(grpc) = &self.grpc {
+            return grpc.begin_connect(user_id).await;
+        }
         let body = self.post("/v1/oauth/intents", user_id, None).await?;
         let response: AuthorizationResponse = serde_json::from_slice(&body)
             .map_err(|_| AppError::internal("Invalid Strava gateway authorization response"))?;
@@ -75,18 +87,27 @@ impl StravaGatewayClient {
     }
 
     pub async fn connection(&self, user_id: i32) -> Result<GatewayConnection, AppError> {
+        if let Some(grpc) = &self.grpc {
+            return grpc.connection(user_id).await;
+        }
         let body = self.post("/v1/connections/status", user_id, None).await?;
         serde_json::from_slice(&body)
             .map_err(|_| AppError::internal("Invalid Strava gateway connection response"))
     }
 
     pub async fn queue_sync(&self, user_id: i32) -> Result<(), AppError> {
+        if let Some(grpc) = &self.grpc {
+            return grpc.queue_sync(user_id).await;
+        }
         self.post("/v1/sync", user_id, Some("incremental"))
             .await
             .map(|_| ())
     }
 
     pub async fn disconnect(&self, user_id: i32) -> Result<(), AppError> {
+        if let Some(grpc) = &self.grpc {
+            return grpc.disconnect(user_id).await;
+        }
         self.post("/v1/connections/disconnect", user_id, None)
             .await
             .map(|_| ())

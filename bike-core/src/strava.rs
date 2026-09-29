@@ -2710,6 +2710,7 @@ mod tests {
             strava_webhook_verify_token: "verify-token".to_string(),
             strava_webhook_callback_url: None,
             strava_gateway_url: None,
+            strava_gateway_grpc_address: None,
             strava_gateway_shared_secret: String::new(),
             uploads_dir: "./uploads".to_string(),
             max_upload_bytes: 1024,
