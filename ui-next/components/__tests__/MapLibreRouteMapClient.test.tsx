@@ -1,4 +1,4 @@
-import { render, waitFor } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import MapLibreRouteMapClient from "../MapLibreRouteMapClient";
 
@@ -112,10 +112,58 @@ vi.mock("maplibre-gl", () => {
 
 describe("MapLibreRouteMapClient", () => {
   beforeEach(() => {
+    document.documentElement.setAttribute("data-theme", "light");
     vi.clearAllMocks();
     mapMocks.sources.clear();
     mapMocks.handlers.clear();
     mapMocks.zoom = 13;
+  });
+
+  it("switches the activity map to Fiord and restores its route and camera", async () => {
+    const routePoints = [
+      { elapsed_seconds: 0, latitude: 45, longitude: -85 },
+      { elapsed_seconds: 60, latitude: 45.01, longitude: -85.01 },
+    ];
+    let resolveStyleLoad: () => void = () => {};
+    const styleLoaded = new Promise<void>((resolve) => {
+      resolveStyleLoad = resolve;
+    });
+    mapMocks.setStyle.mockImplementation(() => {
+      setTimeout(() => {
+        mapMocks.sources.clear();
+        for (const handler of mapMocks.handlers.get("style.load") ?? []) {
+          handler();
+        }
+        resolveStyleLoad();
+      }, 0);
+    });
+    render(
+      <MapLibreRouteMapClient
+        routePoints={routePoints}
+        overlays={[{ id: "segment", points: routePoints, color: "#e11d48" }]}
+        defaultBasemap="route-light"
+        ariaLabel="Activity route map"
+        emptyMessage="No route"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mapMocks.sources.has("activity-route")).toBe(true);
+    });
+    expect(mapMocks.sources.has("cycling-trails")).toBe(false);
+
+    act(() => document.documentElement.setAttribute("data-theme", "dark"));
+    await styleLoaded;
+    await waitFor(() => {
+      expect(mapMocks.setStyle).toHaveBeenCalledWith(
+        "/map-styles/fiord-v1.json",
+      );
+      expect(mapMocks.sources.has("activity-route")).toBe(true);
+      expect(mapMocks.sources.has("activity-route-overlays")).toBe(true);
+      expect(mapMocks.sources.has("activity-route-endpoints")).toBe(true);
+      expect(mapMocks.sources.has("cycling-trails")).toBe(false);
+      expect(mapMocks.jumpTo).toHaveBeenCalled();
+    });
   });
 
   it("does not refit bounds when only playback markers change", async () => {
@@ -145,6 +193,7 @@ describe("MapLibreRouteMapClient", () => {
     await waitFor(() => {
       expect(mapMocks.fitBounds).toHaveBeenCalledTimes(1);
     });
+    expect(mapMocks.sources.has("cycling-trails")).toBe(true);
 
     expect(mapMocks.fitBounds).toHaveBeenLastCalledWith(
       expect.any(Object),

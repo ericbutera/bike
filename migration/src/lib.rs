@@ -42,6 +42,7 @@ mod m20260816_000001_create_activity_import_artifacts;
 mod m20260816_000002_add_activity_import_version;
 mod m20260816_000003_add_admin_activities_sort_index;
 mod m20260912_000001_create_provider_rate_limit_buckets;
+mod m20260928_000001_activity_maps_feature_flag;
 
 pub struct Migrator;
 
@@ -90,6 +91,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260816_000002_add_activity_import_version::Migration),
             Box::new(m20260816_000003_add_admin_activities_sort_index::Migration),
             Box::new(m20260912_000001_create_provider_rate_limit_buckets::Migration),
+            Box::new(m20260928_000001_activity_maps_feature_flag::Migration),
         ];
         locals.sort_by_key(|m| m.name().to_string());
 

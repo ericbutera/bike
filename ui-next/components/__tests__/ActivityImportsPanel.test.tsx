@@ -177,7 +177,12 @@ describe("ActivityImportsPanel", () => {
       importAsync: mocks.importArchiveAsync,
       isPending: false,
     });
-    mocks.uploadAsync.mockResolvedValue(makeActivityImport());
+    mocks.uploadAsync.mockResolvedValue(
+      makeActivityImport({
+        status: "processing",
+        processing_stage: "raw_stored",
+      }),
+    );
     mocks.importArchiveAsync.mockResolvedValue(makeArchiveImportJob());
   });
 
@@ -273,7 +278,12 @@ describe("ActivityImportsPanel", () => {
       screen.getByRole("button", { name: "Queueing activity..." }),
     ).toBeDisabled();
 
-    resolveUpload?.(makeActivityImport());
+    resolveUpload?.(
+      makeActivityImport({
+        status: "processing",
+        processing_stage: "raw_stored",
+      }),
+    );
 
     await waitFor(() => {
       expect(mocks.toastSuccess).toHaveBeenCalledWith(
@@ -282,31 +292,32 @@ describe("ActivityImportsPanel", () => {
     });
   });
 
-  it("surfaces duplicate single uploads without creating a second activity", async () => {
-    const user = userEvent.setup();
+  it.each(["duplicate", "processed"])(
+    "surfaces an existing %s upload without saying it was queued",
+    async (status) => {
+      const user = userEvent.setup();
 
-    mocks.uploadAsync.mockResolvedValue(
-      makeActivityImport({ status: "duplicate" }),
-    );
+      mocks.uploadAsync.mockResolvedValue(makeActivityImport({ status }));
 
-    render(<ActivityImportsPanel />);
+      render(<ActivityImportsPanel />);
 
-    const input = screen.getByLabelText("Activity file") as HTMLInputElement;
-    const file = new File(["gpx-data"], "ride.gpx", {
-      type: "application/gpx+xml",
-    });
+      const input = screen.getByLabelText("Activity file") as HTMLInputElement;
+      const file = new File(["gpx-data"], "ride.gpx", {
+        type: "application/gpx+xml",
+      });
 
-    await user.upload(input, file);
-    await user.click(screen.getByRole("button", { name: "Upload activity" }));
+      await user.upload(input, file);
+      await user.click(screen.getByRole("button", { name: "Upload activity" }));
 
-    await waitFor(() => {
-      expect(mocks.uploadAsync).toHaveBeenCalledWith(file);
-    });
+      await waitFor(() => {
+        expect(mocks.uploadAsync).toHaveBeenCalledWith(file);
+      });
 
-    expect(mocks.toastSuccess).toHaveBeenCalledWith(
-      "Already had ride.gpx in your activity feed.",
-    );
-  });
+      expect(mocks.toastSuccess).toHaveBeenCalledWith(
+        "Already had ride.gpx in your activity feed.",
+      );
+    },
+  );
 
   it("uploads multiple selected activities in sequence", async () => {
     const user = userEvent.setup();
@@ -321,13 +332,19 @@ describe("ActivityImportsPanel", () => {
 
     mocks.uploadAsync
       .mockResolvedValueOnce(
-        makeActivityImport({ original_filename: "ride-1.gpx" }),
+        makeActivityImport({
+          original_filename: "ride-1.gpx",
+          status: "processing",
+          processing_stage: "raw_stored",
+        }),
       )
       .mockResolvedValueOnce(
         makeActivityImport({
           id: 2,
           original_filename: "ride-2.tcx",
           format: "tcx",
+          status: "processing",
+          processing_stage: "raw_stored",
         }),
       );
 

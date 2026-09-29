@@ -30,32 +30,54 @@ const XC_GOAL_EVENT_PROFILES: &[&str] = &[
 ];
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"unit_system": "metric","estimated_ftp_watts": 245,"heart_rate_zone_bounds_bpm": [110,130,150,170],"xc_goal_event_name": "Autumn 100 km","xc_goal_event_profile": "xc_marathon","xc_goal_start_date": "2026-09-01","xc_goal_target_date": "2026-10-31","xc_goal_target_distance_meters": 100000.0,"xc_goal_target_elevation_gain_meters": 1500.0,"xc_goal_target_finish_time_seconds": 21600}))]
 pub struct UserPreferencesResponse {
+    #[schema(example = "metric")]
     pub unit_system: String,
+    #[schema(example = 245)]
     pub estimated_ftp_watts: Option<i32>,
+    #[schema(example = json!([110,130,150,170]))]
     pub heart_rate_zone_bounds_bpm: Option<Vec<i32>>,
+    #[schema(example = "2026-09-01")]
     pub xc_goal_start_date: Option<String>,
+    #[schema(example = "2026-10-31")]
     pub xc_goal_target_date: Option<String>,
+    #[schema(example = 100000.0)]
     pub xc_goal_target_distance_meters: Option<f64>,
+    #[schema(example = 1500.0)]
     pub xc_goal_target_elevation_gain_meters: Option<f64>,
+    #[schema(example = "Autumn 100 km")]
     pub xc_goal_event_name: Option<String>,
+    #[schema(example = 21600)]
     pub xc_goal_target_finish_time_seconds: Option<i32>,
+    #[schema(example = "xc_marathon")]
     pub xc_goal_event_profile: Option<String>,
     pub xc_goal_backfill_status: Option<String>,
     pub xc_goal_backfill_completed_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[schema(example = json!({"unit_system": "metric","estimated_ftp_watts": 245,"heart_rate_zone_bounds_bpm": [110,130,150,170],"xc_goal_event_name": "Autumn 100 km","xc_goal_event_profile": "xc_marathon","xc_goal_start_date": "2026-09-01","xc_goal_target_date": "2026-10-31","xc_goal_target_distance_meters": 100000.0,"xc_goal_target_elevation_gain_meters": 1500.0,"xc_goal_target_finish_time_seconds": 21600}))]
 pub struct UpdateUserPreferencesRequest {
+    #[schema(example = "metric")]
     pub unit_system: String,
+    #[schema(example = 245)]
     pub estimated_ftp_watts: Option<i32>,
+    #[schema(example = json!([110,130,150,170]))]
     pub heart_rate_zone_bounds_bpm: Option<Vec<i32>>,
+    #[schema(example = "2026-09-01")]
     pub xc_goal_start_date: Option<String>,
+    #[schema(example = "2026-10-31")]
     pub xc_goal_target_date: Option<String>,
+    #[schema(example = 100000.0)]
     pub xc_goal_target_distance_meters: Option<f64>,
+    #[schema(example = 1500.0)]
     pub xc_goal_target_elevation_gain_meters: Option<f64>,
+    #[schema(example = "Autumn 100 km")]
     pub xc_goal_event_name: Option<String>,
+    #[schema(example = 21600)]
     pub xc_goal_target_finish_time_seconds: Option<i32>,
+    #[schema(example = "xc_marathon")]
     pub xc_goal_event_profile: Option<String>,
 }
 
@@ -63,7 +85,7 @@ pub struct UpdateUserPreferencesRequest {
     get,
     path = "/preferences",
     responses(
-        (status = 200, description = "User preferences for the authenticated Bike account", body = UserPreferencesResponse),
+        (status = 200, description = "User preferences for the authenticated Bike account", body = UserPreferencesResponse, example = json!({"unit_system": "metric","estimated_ftp_watts": 245,"heart_rate_zone_bounds_bpm": [110,130,150,170],"xc_goal_event_name": "Autumn 100 km","xc_goal_event_profile": "xc_marathon","xc_goal_start_date": "2026-09-01","xc_goal_target_date": "2026-10-31","xc_goal_target_distance_meters": 100000.0,"xc_goal_target_elevation_gain_meters": 1500.0,"xc_goal_target_finish_time_seconds": 21600})),
         (status = 401, description = "Not authenticated"),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     ),
@@ -87,9 +109,9 @@ pub async fn get_preferences(
 #[utoipa::path(
     put,
     path = "/preferences",
-    request_body = UpdateUserPreferencesRequest,
+    request_body(content = UpdateUserPreferencesRequest, example = json!({"unit_system": "metric","estimated_ftp_watts": 245,"heart_rate_zone_bounds_bpm": [110,130,150,170],"xc_goal_event_name": "Autumn 100 km","xc_goal_event_profile": "xc_marathon","xc_goal_start_date": "2026-09-01","xc_goal_target_date": "2026-10-31","xc_goal_target_distance_meters": 100000.0,"xc_goal_target_elevation_gain_meters": 1500.0,"xc_goal_target_finish_time_seconds": 21600})),
     responses(
-        (status = 200, description = "Updated Bike user preferences", body = UserPreferencesResponse),
+        (status = 200, description = "Updated Bike user preferences", body = UserPreferencesResponse, example = json!({"unit_system": "metric","estimated_ftp_watts": 245,"heart_rate_zone_bounds_bpm": [110,130,150,170],"xc_goal_event_name": "Autumn 100 km","xc_goal_event_profile": "xc_marathon","xc_goal_start_date": "2026-09-01","xc_goal_target_date": "2026-10-31","xc_goal_target_distance_meters": 100000.0,"xc_goal_target_elevation_gain_meters": 1500.0,"xc_goal_target_finish_time_seconds": 21600})),
         (status = 400, description = "Invalid preferences payload", body = ApiErrorResponse),
         (status = 401, description = "Not authenticated"),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),

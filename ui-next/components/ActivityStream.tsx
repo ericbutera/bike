@@ -6,7 +6,10 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { FLAG_ACTIVITY_LIST_FULL_MAPS } from "../lib/featureFlags";
+import {
+  FLAG_ACTIVITY_LIST_FULL_MAPS,
+  FLAG_ENHANCED_MAPS,
+} from "../lib/featureFlags";
 import { useActivities } from "../lib/queries";
 import { useUnitPreferences } from "../lib/unitPreferences";
 import ActivityStreamCard from "./activity-stream/ActivityStreamCard";
@@ -18,6 +21,7 @@ export default function ActivityStream() {
   const showFullRouteMaps = featureFlags.useFeatureFlag(
     FLAG_ACTIVITY_LIST_FULL_MAPS,
   );
+  const showEnhancedMaps = featureFlags.useFeatureFlag(FLAG_ENHANCED_MAPS);
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -86,6 +90,7 @@ export default function ActivityStream() {
                 activity={activity}
                 unitSystem={unitSystem}
                 showFullRouteMaps={showFullRouteMaps}
+                showEnhancedMaps={showEnhancedMaps}
               />
             ))
           : null}

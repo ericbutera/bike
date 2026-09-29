@@ -283,6 +283,9 @@ function ComparisonChart({
   unitSystem: UnitSystem;
 }) {
   const [hoveredRow, setHoveredRow] = useState<GapChartRow | null>(null);
+  const animateCharts =
+    typeof window !== "undefined" &&
+    !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const chartRows = useMemo(
     () =>
       buildEffortOverlayChartRows(
@@ -380,6 +383,7 @@ function ComparisonChart({
           <Area
             type="linear"
             dataKey="elevation"
+            isAnimationActive={animateCharts}
             yAxisId="elevation"
             stroke="#9ca3af"
             fill="#d1d5db"
@@ -395,6 +399,7 @@ function ComparisonChart({
                 key={selectedRow.effort.id}
                 type="linear"
                 dataKey={effortSeriesDataKey(selectedRow.effort.id)}
+                isAnimationActive={animateCharts}
                 yAxisId="elapsed"
                 stroke={selectedRow.color}
                 strokeWidth={2.4}

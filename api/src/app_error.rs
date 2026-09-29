@@ -9,9 +9,12 @@ use std::collections::HashMap;
 use utoipa::ToSchema;
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"message": "Invalid request","errors": {"title": ["Title cannot be empty"]}}))]
 pub struct ApiErrorResponse {
+    #[schema(example = "Invalid request")]
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!({"title": ["Title cannot be empty"]}))]
     pub errors: Option<HashMap<String, Vec<String>>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retry_at: Option<DateTime<Utc>>,

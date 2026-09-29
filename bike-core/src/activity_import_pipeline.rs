@@ -1053,6 +1053,20 @@ pub async fn persist_activity_upload_with_artifacts(
     result
 }
 
+pub async fn find_stored_activity_import(
+    db: &DatabaseConnection,
+    user_id: i32,
+    bytes: &[u8],
+) -> Result<Option<activity_imports::Model>, AppError> {
+    activity_import_artifacts::Entity::find_existing_original_by_checksum(
+        db,
+        user_id,
+        &checksum_sha256_hex(bytes),
+    )
+    .await
+    .map_err(AppError::from)
+}
+
 pub async fn store_activity_upload_import(
     db: &DatabaseConnection,
     uploads_dir: &str,

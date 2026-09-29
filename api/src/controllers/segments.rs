@@ -34,8 +34,16 @@ const MIN_ANALYSIS_SPLIT_COUNT: usize = 2;
 const MAX_ANALYSIS_SPLIT_COUNT: usize = 30;
 const TOP_ANALYSIS_SECTION_EFFORT_COUNT: usize = 5;
 
+#[derive(ToSchema)]
+struct SegmentUploadForm {
+    #[schema(value_type = String, format = Binary)]
+    #[expect(dead_code, reason = "documents the multipart field consumed by Axum")]
+    file: Vec<u8>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
+#[schema(example = "xc")]
 pub enum SegmentMode {
     Xc,
     Dh,
@@ -58,24 +66,35 @@ impl SegmentMode {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"id": 7,"title": "Riverfront climb","source": "activity_segment_builder","mode": "xc","starred": true,"distance_meters": 1500.5,"effort_count": 8,"best_duration_seconds": 340,"current_user_pr_duration_seconds": 355,"created_at": "2026-09-26T14:25:00Z","builder_source": {"activity_id": 42,"start_route_point_index": 120,"end_route_point_index": 280}}))]
 pub struct SegmentResponse {
+    #[schema(example = 7)]
     pub id: i32,
+    #[schema(example = "Riverfront climb")]
     pub title: String,
+    #[schema(example = "activity_segment_builder")]
     pub source: String,
     pub mode: SegmentMode,
+    #[schema(example = true)]
     pub starred: bool,
     pub original_filename: Option<String>,
     pub format: Option<String>,
+    #[schema(example = 1500.5)]
     pub distance_meters: Option<f64>,
+    #[schema(example = 8)]
     pub effort_count: i32,
+    #[schema(example = 340)]
     pub best_duration_seconds: Option<i32>,
+    #[schema(example = 355)]
     pub current_user_pr_duration_seconds: Option<i32>,
+    #[schema(example = "2026-09-26T14:25:00Z")]
     pub created_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub processing_task_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub processing_task_status: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!({"activity_id": 42,"start_route_point_index": 120,"end_route_point_index": 280}))]
     pub builder_source: Option<SegmentBuilderSourceResponse>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub route_points: Vec<SegmentRoutePointResponse>,
@@ -84,19 +103,27 @@ pub struct SegmentResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"segment_id": 7,"route_points": [{"elapsed_seconds": 900,"latitude": 42.3314,"longitude": -83.0458}],"efforts": []}))]
 pub struct SegmentComparisonResponse {
+    #[schema(example = 7)]
     pub segment_id: i32,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[schema(example = json!([{"elapsed_seconds": 900,"latitude": 42.3314,"longitude": -83.0458}]))]
     pub route_points: Vec<SegmentRoutePointResponse>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[schema(example = json!([]))]
     pub efforts: Vec<SegmentEffortResponse>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"segment_id": 7,"segment_title": "Riverfront climb","years": [{"year": 2026,"effort_id": 90,"activity_id": 42,"activity_title": "Saturday hill repeats","activity_started_at": "2026-09-26T13:00:00Z","effort_index": 1,"duration_seconds": 355}]}))]
 pub struct SegmentYearlyBestsResponse {
+    #[schema(example = 7)]
     pub segment_id: i32,
+    #[schema(example = "Riverfront climb")]
     pub segment_title: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[schema(example = json!([{"year": 2026,"effort_id": 90,"activity_id": 42,"activity_title": "Saturday hill repeats","activity_started_at": "2026-09-26T13:00:00Z","effort_index": 1,"duration_seconds": 355}]))]
     pub years: Vec<SegmentYearlyBestResponse>,
 }
 
@@ -115,23 +142,34 @@ pub struct SegmentYearlyBestResponse {
 
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct SegmentEffortAnalysisQuery {
+    #[param(example = 90)]
     pub reference_effort_id: Option<i32>,
+    #[param(example = 10)]
     pub split_count: Option<usize>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"segment_id": 7,"segment_title": "Riverfront climb","split_count": 10,"route_points": [],"reference_effort": {"effort_id": 90,"activity_id": 42,"activity_title": "Saturday hill repeats","activity_started_at": "2026-09-26T13:00:00Z","effort_index": 1,"duration_seconds": 355,"delta_from_reference_seconds": 0.0},"efforts": [],"sections": [],"theoretical_best_duration_seconds": 340.0,"theoretical_best_gain_seconds": 15.0}))]
 pub struct SegmentEffortAnalysisResponse {
+    #[schema(example = 7)]
     pub segment_id: i32,
+    #[schema(example = "Riverfront climb")]
     pub segment_title: String,
+    #[schema(example = 10)]
     pub split_count: usize,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[schema(example = json!([]))]
     pub route_points: Vec<SegmentRoutePointResponse>,
     pub reference_effort: SegmentAnalysisEffortSummaryResponse,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[schema(example = json!([]))]
     pub efforts: Vec<SegmentAnalysisEffortSummaryResponse>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[schema(example = json!([]))]
     pub sections: Vec<SegmentAnalysisSectionResponse>,
+    #[schema(example = 340.0)]
     pub theoretical_best_duration_seconds: f64,
+    #[schema(example = 15.0)]
     pub theoretical_best_gain_seconds: f64,
 }
 
@@ -147,31 +185,52 @@ pub struct SegmentAnalysisEffortSummaryResponse {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, ToSchema)]
+#[schema(example = json!({"section_index": 1,"start_progress_percent": 0.0,"end_progress_percent": 10.0,"reference_split_seconds": 35.5,"best_split_seconds": 34.3,"best_effort_id": 91,"best_activity_id": 43,"best_activity_title": "Sunday tempo","gain_available_seconds": 1.2,"top_efforts": [],"efforts": []}))]
 pub struct SegmentAnalysisSectionResponse {
+    #[schema(example = 1)]
     pub section_index: usize,
+    #[schema(example = 0.0)]
     pub start_progress_percent: f64,
+    #[schema(example = 10.0)]
     pub end_progress_percent: f64,
+    #[schema(example = 35.5)]
     pub reference_split_seconds: f64,
+    #[schema(example = 34.3)]
     pub best_split_seconds: f64,
+    #[schema(example = 91)]
     pub best_effort_id: i32,
+    #[schema(example = 43)]
     pub best_activity_id: i32,
+    #[schema(example = "Sunday tempo")]
     pub best_activity_title: String,
+    #[schema(example = 1.2)]
     pub gain_available_seconds: f64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[schema(example = json!([]))]
     pub top_efforts: Vec<SegmentAnalysisSectionEffortResponse>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[schema(example = json!([]))]
     pub efforts: Vec<SegmentAnalysisSectionEffortResponse>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, ToSchema)]
+#[schema(example = json!({"effort_id": 90,"activity_id": 42,"activity_title": "Saturday hill repeats","activity_started_at": "2026-09-26T13:00:00Z","split_seconds": 35.5,"delta_from_reference_seconds": 0.0,"delta_from_best_seconds": 1.2,"average_speed_mps": 6.4}))]
 pub struct SegmentAnalysisSectionEffortResponse {
+    #[schema(example = 90)]
     pub effort_id: i32,
+    #[schema(example = 42)]
     pub activity_id: i32,
+    #[schema(example = "Saturday hill repeats")]
     pub activity_title: String,
+    #[schema(example = "2026-09-26T13:00:00Z")]
     pub activity_started_at: DateTime<Utc>,
+    #[schema(example = 35.5)]
     pub split_seconds: f64,
+    #[schema(example = 0.0)]
     pub delta_from_reference_seconds: f64,
+    #[schema(example = 1.2)]
     pub delta_from_best_seconds: f64,
+    #[schema(example = 6.4)]
     pub average_speed_mps: Option<f64>,
 }
 
@@ -296,49 +355,78 @@ fn segment_builder_source_from_values(
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"id": 90,"rider_user_id": 12,"rider_name": "Alex Rider","activity_id": 42,"activity_title": "Saturday hill repeats","activity_started_at": "2026-09-26T13:00:00Z","effort_index": 1,"duration_seconds": 355,"start_elapsed_seconds": 900,"end_elapsed_seconds": 1255,"distance_meters": 1500.5}))]
 pub struct SegmentEffortResponse {
+    #[schema(example = 90)]
     pub id: i32,
+    #[schema(example = 12)]
     pub rider_user_id: i32,
+    #[schema(example = 42)]
     pub activity_id: i32,
+    #[schema(example = "Saturday hill repeats")]
     pub activity_title: String,
+    #[schema(example = "Alex Rider")]
     pub rider_name: String,
+    #[schema(example = "2026-09-26T13:00:00Z")]
     pub activity_started_at: DateTime<Utc>,
+    #[schema(example = 1)]
     pub effort_index: i32,
+    #[schema(example = 355)]
     pub duration_seconds: i32,
+    #[schema(example = 900)]
     pub start_elapsed_seconds: i32,
+    #[schema(example = 1255)]
     pub end_elapsed_seconds: i32,
+    #[schema(example = 1500.5)]
     pub distance_meters: Option<f64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub route_points: Vec<SegmentRoutePointResponse>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
+#[schema(example = json!({"elapsed_seconds": 900,"latitude": 42.3314,"longitude": -83.0458,"distance_meters": 4200.5,"elevation_meters": 183.2,"speed_mps": 6.4,"heart_rate_bpm": 148}))]
 pub struct SegmentRoutePointResponse {
+    #[schema(example = 900)]
     pub elapsed_seconds: i32,
+    #[schema(example = 42.3314)]
     pub latitude: f64,
+    #[schema(example = -83.0458)]
     pub longitude: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 4200.5)]
     pub distance_meters: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 183.2)]
     pub elevation_meters: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 6.4)]
     pub speed_mps: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 148)]
     pub heart_rate_bpm: Option<i32>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[schema(example = json!({"activity_id": 42,"title": "Riverfront climb","start_route_point_index": 120,"end_route_point_index": 280}))]
 pub struct CreateSegmentFromActivityRequest {
+    #[schema(example = 42)]
     pub activity_id: i32,
+    #[schema(example = "Riverfront climb")]
     pub title: String,
+    #[schema(example = 120)]
     pub start_route_point_index: i32,
+    #[schema(example = 280)]
     pub end_route_point_index: i32,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[schema(example = json!({"title": "Riverfront climb","mode": "xc","starred": true}))]
 pub struct UpdateSegmentRequest {
+    #[schema(example = "Riverfront climb")]
     pub title: Option<String>,
+    #[schema(example = "xc")]
     pub mode: Option<SegmentMode>,
+    #[schema(example = true)]
     pub starred: Option<bool>,
 }
 
@@ -346,7 +434,7 @@ pub struct UpdateSegmentRequest {
     get,
     path = "/segments",
     responses(
-        (status = 200, description = "Recent segments for the authenticated user", body = [SegmentResponse]),
+        (status = 200, description = "Recent segments for the authenticated user", body = [SegmentResponse], example = json!([{"id": 7,"title": "Riverfront climb","source": "activity_segment_builder","mode": "xc","starred": true,"distance_meters": 1500.5,"effort_count": 8,"best_duration_seconds": 340,"current_user_pr_duration_seconds": 355,"created_at": "2026-09-26T14:25:00Z","builder_source": {"activity_id": 42,"start_route_point_index": 120,"end_route_point_index": 280}}])),
         (status = 401, description = "Not authenticated"),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     ),
@@ -392,10 +480,10 @@ pub async fn list_segments(
     get,
     path = "/segments/{id}",
     params(
-        ("id" = i32, Path, description = "Segment ID")
+        ("id" = i32, Path, description = "Segment ID", example = 7)
     ),
     responses(
-        (status = 200, description = "Segment metadata and summary data", body = SegmentResponse),
+        (status = 200, description = "Segment metadata and summary data", body = SegmentResponse, example = json!({"id": 7,"title": "Riverfront climb","source": "activity_segment_builder","mode": "xc","starred": true,"distance_meters": 1500.5,"effort_count": 8,"best_duration_seconds": 340,"current_user_pr_duration_seconds": 355,"created_at": "2026-09-26T14:25:00Z","builder_source": {"activity_id": 42,"start_route_point_index": 120,"end_route_point_index": 280}})),
         (status = 401, description = "Not authenticated"),
         (status = 404, description = "Segment not found", body = ApiErrorResponse),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
@@ -425,10 +513,10 @@ pub async fn get_segment(
     get,
     path = "/segments/{id}/comparison",
     params(
-        ("id" = i32, Path, description = "Segment ID")
+        ("id" = i32, Path, description = "Segment ID", example = 7)
     ),
     responses(
-        (status = 200, description = "Segment route and effort comparison samples", body = SegmentComparisonResponse),
+        (status = 200, description = "Segment route and effort comparison samples", body = SegmentComparisonResponse, example = json!({"segment_id": 7,"route_points": [{"elapsed_seconds": 900,"latitude": 42.3314,"longitude": -83.0458}],"efforts": []})),
         (status = 401, description = "Not authenticated"),
         (status = 404, description = "Segment not found", body = ApiErrorResponse),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
@@ -459,10 +547,10 @@ pub async fn get_segment_comparison(
     get,
     path = "/segments/{id}/yearly-bests",
     params(
-        ("id" = i32, Path, description = "Segment ID")
+        ("id" = i32, Path, description = "Segment ID", example = 7)
     ),
     responses(
-        (status = 200, description = "Fastest authenticated rider effort per year for one segment", body = SegmentYearlyBestsResponse),
+        (status = 200, description = "Fastest authenticated rider effort per year for one segment", body = SegmentYearlyBestsResponse, example = json!({"segment_id": 7,"segment_title": "Riverfront climb","years": [{"year": 2026,"effort_id": 90,"activity_id": 42,"activity_title": "Saturday hill repeats","activity_started_at": "2026-09-26T13:00:00Z","effort_index": 1,"duration_seconds": 355}]})),
         (status = 401, description = "Not authenticated"),
         (status = 404, description = "Segment not found", body = ApiErrorResponse),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
@@ -493,11 +581,11 @@ pub async fn get_segment_yearly_bests(
     get,
     path = "/segments/{id}/effort-analysis",
     params(
-        ("id" = i32, Path, description = "Segment ID"),
+        ("id" = i32, Path, description = "Segment ID", example = 7),
         SegmentEffortAnalysisQuery
     ),
     responses(
-        (status = 200, description = "Distance-normalized effort split analysis for one segment", body = SegmentEffortAnalysisResponse),
+        (status = 200, description = "Distance-normalized effort split analysis for one segment", body = SegmentEffortAnalysisResponse, example = json!({"segment_id": 7,"segment_title": "Riverfront climb","split_count": 10,"route_points": [],"reference_effort": {"effort_id": 90,"activity_id": 42,"activity_title": "Saturday hill repeats","activity_started_at": "2026-09-26T13:00:00Z","effort_index": 1,"duration_seconds": 355,"delta_from_reference_seconds": 0.0},"efforts": [],"sections": [],"theoretical_best_duration_seconds": 340.0,"theoretical_best_gain_seconds": 15.0})),
         (status = 400, description = "Invalid analysis options", body = ApiErrorResponse),
         (status = 401, description = "Not authenticated"),
         (status = 404, description = "Segment or reference effort not found", body = ApiErrorResponse),
@@ -530,11 +618,11 @@ pub async fn get_segment_effort_analysis(
     put,
     path = "/segments/{id}",
     params(
-        ("id" = i32, Path, description = "Segment ID")
+        ("id" = i32, Path, description = "Segment ID", example = 7)
     ),
-    request_body = UpdateSegmentRequest,
+    request_body(content = UpdateSegmentRequest, example = json!({"title": "Riverfront climb","mode": "xc","starred": true})),
     responses(
-        (status = 200, description = "Updated segment", body = SegmentResponse),
+        (status = 200, description = "Updated segment", body = SegmentResponse, example = json!({"id": 7,"title": "Riverfront climb","source": "activity_segment_builder","mode": "xc","starred": true,"distance_meters": 1500.5,"effort_count": 8,"best_duration_seconds": 340,"current_user_pr_duration_seconds": 355,"created_at": "2026-09-26T14:25:00Z","builder_source": {"activity_id": 42,"start_route_point_index": 120,"end_route_point_index": 280}})),
         (status = 400, description = "Invalid segment update", body = ApiErrorResponse),
         (status = 401, description = "Not authenticated"),
         (status = 404, description = "Segment not found", body = ApiErrorResponse),
@@ -602,11 +690,11 @@ pub async fn update_segment(
     put,
     path = "/segments/{id}/from-activity",
     params(
-        ("id" = i32, Path, description = "Segment ID")
+        ("id" = i32, Path, description = "Segment ID", example = 7)
     ),
-    request_body = CreateSegmentFromActivityRequest,
+    request_body(content = CreateSegmentFromActivityRequest, example = json!({"activity_id": 42,"title": "Riverfront climb","start_route_point_index": 120,"end_route_point_index": 280})),
     responses(
-        (status = 200, description = "Updated segment route from an activity slice", body = SegmentResponse),
+        (status = 200, description = "Updated segment route from an activity slice", body = SegmentResponse, example = json!({"id": 7,"title": "Riverfront climb","source": "activity_segment_builder","mode": "xc","starred": true,"distance_meters": 1500.5,"effort_count": 8,"best_duration_seconds": 340,"current_user_pr_duration_seconds": 355,"created_at": "2026-09-26T14:25:00Z","builder_source": {"activity_id": 42,"start_route_point_index": 120,"end_route_point_index": 280}})),
         (status = 400, description = "Invalid activity slice", body = ApiErrorResponse),
         (status = 401, description = "Not authenticated"),
         (status = 404, description = "Segment or activity not found", body = ApiErrorResponse),
@@ -684,7 +772,7 @@ pub async fn update_segment_from_activity(
     delete,
     path = "/segments/{id}",
     params(
-        ("id" = i32, Path, description = "Segment ID")
+        ("id" = i32, Path, description = "Segment ID", example = 7)
     ),
     responses(
         (status = 204, description = "Segment deleted"),
@@ -717,10 +805,10 @@ pub async fn delete_segment(
 #[utoipa::path(
     post,
     path = "/segments/from-activity",
-    request_body = CreateSegmentFromActivityRequest,
+    request_body(content = CreateSegmentFromActivityRequest, example = json!({"activity_id": 42,"title": "Riverfront climb","start_route_point_index": 120,"end_route_point_index": 280})),
     responses(
-        (status = 201, description = "Segment created from an activity route slice", body = SegmentResponse),
-        (status = 200, description = "Matching segment already exists", body = SegmentResponse),
+        (status = 201, description = "Segment created from an activity route slice", body = SegmentResponse, example = json!({"id": 7,"title": "Riverfront climb","source": "activity_segment_builder","mode": "xc","starred": true,"distance_meters": 1500.5,"effort_count": 8,"best_duration_seconds": 340,"current_user_pr_duration_seconds": 355,"created_at": "2026-09-26T14:25:00Z","builder_source": {"activity_id": 42,"start_route_point_index": 120,"end_route_point_index": 280}})),
+        (status = 200, description = "Matching segment already exists", body = SegmentResponse, example = json!({"id": 7,"title": "Riverfront climb","source": "activity_segment_builder","mode": "xc","starred": true,"distance_meters": 1500.5,"effort_count": 8,"best_duration_seconds": 340,"current_user_pr_duration_seconds": 355,"created_at": "2026-09-26T14:25:00Z","builder_source": {"activity_id": 42,"start_route_point_index": 120,"end_route_point_index": 280}})),
         (status = 400, description = "Invalid activity slice", body = ApiErrorResponse),
         (status = 401, description = "Not authenticated"),
         (status = 404, description = "Activity not found", body = ApiErrorResponse),
@@ -770,9 +858,9 @@ pub async fn create_segment_from_activity(
 #[utoipa::path(
     post,
     path = "/segments",
-    request_body(content_type = "multipart/form-data"),
+    request_body(content = inline(SegmentUploadForm), content_type = "multipart/form-data"),
     responses(
-        (status = 201, description = "Segment imported and matched to recent activities", body = SegmentResponse),
+        (status = 201, description = "Segment imported and matched to recent activities", body = SegmentResponse, example = json!({"id": 7,"title": "Riverfront climb","source": "manual_segment_import","mode": "xc","starred": false,"original_filename": "riverfront.gpx","format": "gpx","distance_meters": 1500.5,"effort_count": 8,"best_duration_seconds": 340,"created_at": "2026-09-26T14:25:00Z"})),
         (status = 400, description = "Invalid upload", body = ApiErrorResponse),
         (status = 401, description = "Not authenticated"),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),

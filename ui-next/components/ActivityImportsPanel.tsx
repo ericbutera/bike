@@ -460,17 +460,15 @@ export default function ActivityImportsPanel() {
 }
 
 function buildUploadSuccessMessage(results: ActivityImport[]) {
-  const importedCount = results.filter(
-    (result) => result.status !== "duplicate",
-  ).length;
-  const duplicateCount = results.filter(
-    (result) => result.status === "duplicate",
-  ).length;
+  const isExisting = (result: ActivityImport) =>
+    result.status === "duplicate" || result.status === "processed";
+  const importedCount = results.filter((result) => !isExisting(result)).length;
+  const duplicateCount = results.filter(isExisting).length;
 
   if (results.length === 1) {
     const [result] = results;
 
-    return result.status === "duplicate"
+    return isExisting(result)
       ? `Already had ${result.original_filename} in your activity feed.`
       : `Queued ${result.original_filename} for processing.`;
   }
@@ -487,12 +485,16 @@ function buildUploadSuccessMessage(results: ActivityImport[]) {
 }
 
 function isActivityImportActive(activityImport: ActivityImport) {
-  return activityImport.status === "processing";
+  return (
+    activityImport.status === "pending" ||
+    activityImport.status === "processing"
+  );
 }
 
 function formatActivityImportStatus(activityImport: ActivityImport) {
   if (
-    activityImport.status === "processing" &&
+    (activityImport.status === "pending" ||
+      activityImport.status === "processing") &&
     activityImport.processing_stage === "raw_stored"
   ) {
     return "queued";
@@ -531,7 +533,10 @@ function formatActivityImportDetail(activityImport: ActivityImport) {
     return "Duplicate of existing activity";
   }
 
-  if (activityImport.status === "processing") {
+  if (
+    activityImport.status === "pending" ||
+    activityImport.status === "processing"
+  ) {
     return formatActivityImportStage(activityImport.processing_stage);
   }
 

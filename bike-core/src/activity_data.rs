@@ -19,16 +19,24 @@ pub struct ActivityDerivedData {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+#[schema(example = json!({"lap_index": 1,"title": "Warmup","start_offset_seconds": 0,"duration_seconds": 900,"distance_meters": 4200.5,"average_heart_rate_bpm": 132,"average_speed_mps": 4.67}))]
 pub struct ActivityLap {
+    #[schema(example = 1)]
     pub lap_index: i32,
+    #[schema(example = "Warmup")]
     pub title: String,
+    #[schema(example = 0)]
     pub start_offset_seconds: Option<i32>,
+    #[schema(example = 900)]
     pub duration_seconds: Option<i32>,
+    #[schema(example = 4200.5)]
     pub distance_meters: Option<f64>,
     pub elevation_gain_meters: Option<f64>,
     pub elevation_loss_meters: Option<f64>,
+    #[schema(example = 4.67)]
     pub average_speed_mps: Option<f64>,
     pub max_speed_mps: Option<f64>,
+    #[schema(example = 132)]
     pub average_heart_rate_bpm: Option<i32>,
     pub max_heart_rate_bpm: Option<i32>,
     pub average_cadence_rpm: Option<i32>,
@@ -37,26 +45,44 @@ pub struct ActivityLap {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+#[schema(example = json!({"elapsed_seconds": 900,"distance_meters": 4200.5,"heart_rate_bpm": 148,"power_watts": 235,"cadence_rpm": 82,"speed_mps": 6.4,"elevation_meters": 183.2}))]
 pub struct ActivityChartPoint {
+    #[schema(example = 900)]
     pub elapsed_seconds: i32,
+    #[schema(example = 4200.5)]
     pub distance_meters: Option<f64>,
+    #[schema(example = 183.2)]
     pub elevation_meters: Option<f64>,
+    #[schema(example = 6.4)]
     pub speed_mps: Option<f64>,
+    #[schema(example = 148)]
     pub heart_rate_bpm: Option<i32>,
+    #[schema(example = 82)]
     pub cadence_rpm: Option<i32>,
+    #[schema(example = 235)]
     pub power_watts: Option<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+#[schema(example = json!({"elapsed_seconds": 900,"latitude": 42.3314,"longitude": -83.0458,"distance_meters": 4200.5,"elevation_meters": 183.2,"heart_rate_bpm": 148,"power_watts": 235,"cadence_rpm": 82,"speed_mps": 6.4}))]
 pub struct ActivityRoutePoint {
+    #[schema(example = 900)]
     pub elapsed_seconds: i32,
+    #[schema(example = 42.3314)]
     pub latitude: f64,
+    #[schema(example = -83.0458)]
     pub longitude: f64,
+    #[schema(example = 4200.5)]
     pub distance_meters: Option<f64>,
+    #[schema(example = 183.2)]
     pub elevation_meters: Option<f64>,
+    #[schema(example = 6.4)]
     pub speed_mps: Option<f64>,
+    #[schema(example = 148)]
     pub heart_rate_bpm: Option<i32>,
+    #[schema(example = 82)]
     pub cadence_rpm: Option<i32>,
+    #[schema(example = 235)]
     pub power_watts: Option<i32>,
 }
 

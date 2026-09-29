@@ -1090,114 +1090,318 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    /**
+     * @example {
+     *       "effort_index": 1,
+     *       "overall_rank": 3,
+     *       "personal_best_duration_seconds": 355,
+     *       "personal_rank": 1,
+     *       "segment_id": 7,
+     *       "segment_title": "Riverfront climb"
+     *     }
+     */
     ActivityAchievementHighlight: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 1
+       */
       effort_index: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 3
+       */
       overall_rank?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 355
+       */
       personal_best_duration_seconds?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 1
+       */
       personal_rank?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 7
+       */
       segment_id: number;
+      /** @example Riverfront climb */
       segment_title: string;
     };
+    /**
+     * @example {
+     *       "archive_url": "https://example.com/exports/activities.zip",
+     *       "created_at": "2026-09-27T12:00:00Z",
+     *       "duplicate_count": 0,
+     *       "error_samples": [],
+     *       "failed_count": 0,
+     *       "id": 18,
+     *       "imported_count": 0,
+     *       "skipped_unsupported_count": 0,
+     *       "status": "queued",
+     *       "supported_entry_count": 0,
+     *       "total_entries": 0,
+     *       "updated_at": "2026-09-27T12:00:00Z"
+     *     }
+     */
     ActivityArchiveImportJobResponse: {
+      /** @example https://example.com/exports/activities.zip */
       archive_url: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @example 2026-09-27T12:00:00Z
+       */
       created_at: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 0
+       */
       duplicate_count: number;
+      /** @example [] */
       error_samples?: string[];
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 0
+       */
       failed_count: number;
       failure_message?: string | null;
       /** Format: date-time */
       finished_at?: string | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 18
+       */
       id: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 0
+       */
       imported_count: number;
       resolved_url?: string | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 0
+       */
       skipped_unsupported_count: number;
       /** Format: date-time */
       started_at?: string | null;
+      /** @example queued */
       status: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 0
+       */
       supported_entry_count: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 0
+       */
       total_entries: number;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @example 2026-09-27T12:00:00Z
+       */
       updated_at: string;
     };
+    /**
+     * @example {
+     *       "duplicate_count": 6,
+     *       "error_samples": [],
+     *       "failed_count": 0,
+     *       "imported_count": 110,
+     *       "skipped_unsupported_count": 4,
+     *       "source": "strava_archive",
+     *       "supported_entry_count": 116,
+     *       "total_entries": 120
+     *     }
+     */
     ActivityArchiveImportResponse: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 6
+       */
       duplicate_count: number;
+      /** @example [] */
       error_samples?: string[];
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 0
+       */
       failed_count: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 110
+       */
       imported_count: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 4
+       */
       skipped_unsupported_count: number;
+      /** @example strava_archive */
       source: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 116
+       */
       supported_entry_count: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 120
+       */
       total_entries: number;
     };
+    /**
+     * @example {
+     *       "cadence_rpm": 82,
+     *       "distance_meters": 4200.5,
+     *       "elapsed_seconds": 900,
+     *       "elevation_meters": 183.2,
+     *       "heart_rate_bpm": 148,
+     *       "power_watts": 235,
+     *       "speed_mps": 6.4
+     *     }
+     */
     ActivityChartPoint: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 82
+       */
       cadence_rpm?: number | null;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 4200.5
+       */
       distance_meters?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 900
+       */
       elapsed_seconds: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 183.2
+       */
       elevation_meters?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 148
+       */
       heart_rate_bpm?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 235
+       */
       power_watts?: number | null;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 6.4
+       */
       speed_mps?: number | null;
     };
+    /**
+     * @example {
+     *       "duration_seconds": 1800,
+     *       "label": "Zone 2",
+     *       "max_bpm": 149,
+     *       "min_bpm": 130,
+     *       "share_percent": 42.9,
+     *       "zone": 2
+     *     }
+     */
     ActivityHeartRateZoneSummary: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 1800
+       */
       duration_seconds: number;
+      /** @example Zone 2 */
       label: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 149
+       */
       max_bpm?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 130
+       */
       min_bpm?: number | null;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 42.9
+       */
       share_percent: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 2
+       */
       zone: number;
     };
+    /**
+     * @example {
+     *       "activity_duration_seconds": 4320,
+     *       "activity_id": 42,
+     *       "activity_location": "Detroit, Michigan",
+     *       "activity_started_at": "2026-09-26T13:00:00Z",
+     *       "created_at": "2026-09-26T14:20:00Z",
+     *       "format": "fit",
+     *       "id": 17,
+     *       "import_version": 1,
+     *       "original_filename": "saturday-hills.fit",
+     *       "processing_stage": "complete",
+     *       "size_bytes": 184320,
+     *       "status": "processed"
+     *     }
+     */
     ActivityImportResponse: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 4320
+       */
       activity_duration_seconds?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 42
+       */
       activity_id?: number | null;
+      /** @example Detroit, Michigan */
       activity_location?: string | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @example 2026-09-26T13:00:00Z
+       */
       activity_started_at?: string | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @example 2026-09-26T14:20:00Z
+       */
       created_at: string;
+      /** @example fit */
       format: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 17
+       */
       id: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 1
+       */
       import_version: number;
       mime_type?: string | null;
+      /** @example saturday-hills.fit */
       original_filename: string;
       processing_error?: string | null;
+      /** @example complete */
       processing_stage: string;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @example 184320
+       */
       size_bytes: number;
+      /** @example processed */
       status: string;
     };
     ActivityImportTraceEventResponse: {
@@ -1218,30 +1422,101 @@ export interface components {
       stage: string;
       status: string;
     };
+    /**
+     * @example {
+     *       "events": [],
+     *       "graph": {
+     *         "edges": [],
+     *         "mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]",
+     *         "nodes": [
+     *           {
+     *             "id": "raw_stored",
+     *             "label": "Raw stored",
+     *             "stage": "raw_stored"
+     *           }
+     *         ]
+     *       },
+     *       "import": {
+     *         "created_at": "2026-09-26T14:20:00Z",
+     *         "format": "fit",
+     *         "id": 17,
+     *         "import_version": 1,
+     *         "original_filename": "saturday-hills.fit",
+     *         "processing_stage": "complete",
+     *         "size_bytes": 184320,
+     *         "status": "processed"
+     *       },
+     *       "nodes": [
+     *         {
+     *           "id": "raw_stored",
+     *           "label": "Raw stored",
+     *           "stage": "raw_stored",
+     *           "status": "completed"
+     *         }
+     *       ]
+     *     }
+     */
     ActivityImportTraceResponse: {
+      /** @example [] */
       events: components["schemas"]["ActivityImportTraceEventResponse"][];
       graph: components["schemas"]["ActivityProcessingGraphResponse"];
       import: components["schemas"]["ActivityImportResponse"];
+      /**
+       * @example [
+       *       {
+       *         "id": "raw_stored",
+       *         "label": "Raw stored",
+       *         "stage": "raw_stored",
+       *         "status": "completed"
+       *       }
+       *     ]
+       */
       nodes: components["schemas"]["ActivityImportTraceNodeResponse"][];
     };
+    /**
+     * @example {
+     *       "average_heart_rate_bpm": 132,
+     *       "average_speed_mps": 4.67,
+     *       "distance_meters": 4200.5,
+     *       "duration_seconds": 900,
+     *       "lap_index": 1,
+     *       "start_offset_seconds": 0,
+     *       "title": "Warmup"
+     *     }
+     */
     ActivityLap: {
       /** Format: int32 */
       average_cadence_rpm?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 132
+       */
       average_heart_rate_bpm?: number | null;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 4.67
+       */
       average_speed_mps?: number | null;
       /** Format: int32 */
       calories?: number | null;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 4200.5
+       */
       distance_meters?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 900
+       */
       duration_seconds?: number | null;
       /** Format: double */
       elevation_gain_meters?: number | null;
       /** Format: double */
       elevation_loss_meters?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 1
+       */
       lap_index: number;
       /** Format: int32 */
       max_cadence_rpm?: number | null;
@@ -1249,8 +1524,12 @@ export interface components {
       max_heart_rate_bpm?: number | null;
       /** Format: double */
       max_speed_mps?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 0
+       */
       start_offset_seconds?: number | null;
+      /** @example Warmup */
       title: string;
     };
     ActivityProcessingGraphEdgeResponse: {
@@ -1262,48 +1541,272 @@ export interface components {
       label: string;
       stage: string;
     };
+    /**
+     * @example {
+     *       "edges": [
+     *         {
+     *           "from": "raw_stored",
+     *           "to": "activity_parsed"
+     *         },
+     *         {
+     *           "from": "activity_parsed",
+     *           "to": "activity_saved"
+     *         },
+     *         {
+     *           "from": "activity_saved",
+     *           "to": "segments_built"
+     *         },
+     *         {
+     *           "from": "segments_built",
+     *           "to": "segment_analytics_built"
+     *         },
+     *         {
+     *           "from": "segment_analytics_built",
+     *           "to": "activity_analytics_built"
+     *         },
+     *         {
+     *           "from": "activity_analytics_built",
+     *           "to": "training_analysis_built"
+     *         }
+     *       ],
+     *       "mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]\n  activity_parsed[\"Activity parsed\"]\n  activity_saved[\"Activity saved\"]\n  segments_built[\"Segments built\"]\n  segment_analytics_built[\"Segment analytics built\"]\n  activity_analytics_built[\"Activity analytics built\"]\n  training_analysis_built[\"Training analysis built\"]\n  raw_stored --> activity_parsed\n  activity_parsed --> activity_saved\n  activity_saved --> segments_built\n  segments_built --> segment_analytics_built\n  segment_analytics_built --> activity_analytics_built\n  activity_analytics_built --> training_analysis_built",
+     *       "nodes": [
+     *         {
+     *           "id": "raw_stored",
+     *           "label": "Raw stored",
+     *           "stage": "raw_stored"
+     *         },
+     *         {
+     *           "id": "activity_parsed",
+     *           "label": "Activity parsed",
+     *           "stage": "activity_parsed"
+     *         },
+     *         {
+     *           "id": "activity_saved",
+     *           "label": "Activity saved",
+     *           "stage": "activity_saved"
+     *         },
+     *         {
+     *           "id": "segments_built",
+     *           "label": "Segments built",
+     *           "stage": "segments_built"
+     *         },
+     *         {
+     *           "id": "segment_analytics_built",
+     *           "label": "Segment analytics built",
+     *           "stage": "segment_analytics_built"
+     *         },
+     *         {
+     *           "id": "activity_analytics_built",
+     *           "label": "Activity analytics built",
+     *           "stage": "activity_analytics_built"
+     *         },
+     *         {
+     *           "id": "training_analysis_built",
+     *           "label": "Training analysis built",
+     *           "stage": "training_analysis_built"
+     *         }
+     *       ]
+     *     }
+     */
     ActivityProcessingGraphResponse: {
+      /**
+       * @example [
+       *       {
+       *         "from": "raw_stored",
+       *         "to": "activity_parsed"
+       *       },
+       *       {
+       *         "from": "activity_parsed",
+       *         "to": "activity_saved"
+       *       },
+       *       {
+       *         "from": "activity_saved",
+       *         "to": "segments_built"
+       *       },
+       *       {
+       *         "from": "segments_built",
+       *         "to": "segment_analytics_built"
+       *       },
+       *       {
+       *         "from": "segment_analytics_built",
+       *         "to": "activity_analytics_built"
+       *       },
+       *       {
+       *         "from": "activity_analytics_built",
+       *         "to": "training_analysis_built"
+       *       }
+       *     ]
+       */
       edges: components["schemas"]["ActivityProcessingGraphEdgeResponse"][];
+      /**
+       * @example flowchart LR
+       *       raw_stored["Raw stored"]
+       *       activity_parsed["Activity parsed"]
+       *       activity_saved["Activity saved"]
+       *       segments_built["Segments built"]
+       *       segment_analytics_built["Segment analytics built"]
+       *       activity_analytics_built["Activity analytics built"]
+       *       training_analysis_built["Training analysis built"]
+       *       raw_stored --> activity_parsed
+       *       activity_parsed --> activity_saved
+       *       activity_saved --> segments_built
+       *       segments_built --> segment_analytics_built
+       *       segment_analytics_built --> activity_analytics_built
+       *       activity_analytics_built --> training_analysis_built
+       */
       mermaid: string;
+      /**
+       * @example [
+       *       {
+       *         "id": "raw_stored",
+       *         "label": "Raw stored",
+       *         "stage": "raw_stored"
+       *       },
+       *       {
+       *         "id": "activity_parsed",
+       *         "label": "Activity parsed",
+       *         "stage": "activity_parsed"
+       *       },
+       *       {
+       *         "id": "activity_saved",
+       *         "label": "Activity saved",
+       *         "stage": "activity_saved"
+       *       },
+       *       {
+       *         "id": "segments_built",
+       *         "label": "Segments built",
+       *         "stage": "segments_built"
+       *       },
+       *       {
+       *         "id": "segment_analytics_built",
+       *         "label": "Segment analytics built",
+       *         "stage": "segment_analytics_built"
+       *       },
+       *       {
+       *         "id": "activity_analytics_built",
+       *         "label": "Activity analytics built",
+       *         "stage": "activity_analytics_built"
+       *       },
+       *       {
+       *         "id": "training_analysis_built",
+       *         "label": "Training analysis built",
+       *         "stage": "training_analysis_built"
+       *       }
+       *     ]
+       */
       nodes: components["schemas"]["ActivityProcessingGraphNodeResponse"][];
     };
+    /**
+     * @example {
+     *       "is_active": true,
+     *       "message": "Strava sync is currently running.",
+     *       "source": "strava_sync",
+     *       "source_label": "Strava sync",
+     *       "stage": "running",
+     *       "stage_label": "running"
+     *     }
+     */
     ActivityProcessingStateResponse: {
+      /** @example true */
       is_active: boolean;
+      /** @example Strava sync is currently running. */
       message?: string | null;
+      /** @example strava_sync */
       source?: string | null;
+      /** @example Strava sync */
       source_label?: string | null;
+      /** @example running */
       stage?: string | null;
+      /** @example running */
       stage_label?: string | null;
     };
+    /**
+     * @example {
+     *       "activity_type": "training",
+     *       "average_heart_rate_bpm": 148,
+     *       "average_speed_mps": 6.05,
+     *       "can_download_source_file": true,
+     *       "can_regenerate": true,
+     *       "distance_meters": 25430.5,
+     *       "elevation_gain_meters": 312.4,
+     *       "ended_at": "2026-09-26T14:12:00Z",
+     *       "estimated_ftp_watts": 245,
+     *       "format": "fit",
+     *       "id": 42,
+     *       "location": "Detroit, Michigan",
+     *       "moving_time_seconds": 4200,
+     *       "original_filename": "saturday-hills.fit",
+     *       "route_points": [
+     *         {
+     *           "distance_meters": 4200.5,
+     *           "elapsed_seconds": 900,
+     *           "elevation_meters": 183.2,
+     *           "latitude": 42.3314,
+     *           "longitude": -83.0458
+     *         }
+     *       ],
+     *       "source": "manual_upload",
+     *       "sport": "ride",
+     *       "started_at": "2026-09-26T13:00:00Z",
+     *       "title": "Saturday hill repeats",
+     *       "total_time_seconds": 4320
+     *     }
+     */
     ActivityResponse: {
       achievement_highlights?: components["schemas"]["ActivityAchievementHighlight"][];
       activity_type: components["schemas"]["ActivityType"];
       /** Format: int32 */
       average_cadence_rpm?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 148
+       */
       average_heart_rate_bpm?: number | null;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 6.05
+       */
       average_speed_mps?: number | null;
       /** Format: int32 */
       calories?: number | null;
+      /** @example true */
       can_download_source_file?: boolean;
+      /** @example true */
       can_regenerate?: boolean;
       chart_points?: components["schemas"]["ActivityChartPoint"][];
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 25430.5
+       */
       distance_meters?: number | null;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 312.4
+       */
       elevation_gain_meters?: number | null;
       /** Format: double */
       elevation_loss_meters?: number | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @example 2026-09-26T14:12:00Z
+       */
       ended_at?: string | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 245
+       */
       estimated_ftp_watts?: number | null;
+      /** @example fit */
       format?: string | null;
       heart_rate_zones?: components["schemas"]["ActivityHeartRateZoneSummary"][];
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 42
+       */
       id: number;
       laps?: components["schemas"]["ActivityLap"][];
+      /** @example Detroit, Michigan */
       location?: string | null;
       /** Format: int32 */
       max_cadence_rpm?: number | null;
@@ -1311,19 +1814,43 @@ export interface components {
       max_heart_rate_bpm?: number | null;
       /** Format: double */
       max_speed_mps?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 4200
+       */
       moving_time_seconds?: number | null;
+      /** @example saturday-hills.fit */
       original_filename?: string | null;
       /** Format: int32 */
       relative_effort?: number | null;
+      /**
+       * @example [
+       *       {
+       *         "distance_meters": 4200.5,
+       *         "elapsed_seconds": 900,
+       *         "elevation_meters": 183.2,
+       *         "latitude": 42.3314,
+       *         "longitude": -83.0458
+       *       }
+       *     ]
+       */
       route_points?: components["schemas"]["ActivityRoutePoint"][];
       segment_efforts?: components["schemas"]["ActivitySegmentEffort"][];
+      /** @example manual_upload */
       source: string;
+      /** @example ride */
       sport: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @example 2026-09-26T13:00:00Z
+       */
       started_at: string;
+      /** @example Saturday hill repeats */
       title: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 4320
+       */
       total_time_seconds?: number | null;
       training_analysis?:
         | null
@@ -1331,43 +1858,117 @@ export interface components {
     };
     /** @enum {string} */
     ActivityRideFocus: "xc_endurance" | "mixed_xc" | "dh_session" | "other";
+    /**
+     * @example {
+     *       "cadence_rpm": 82,
+     *       "distance_meters": 4200.5,
+     *       "elapsed_seconds": 900,
+     *       "elevation_meters": 183.2,
+     *       "heart_rate_bpm": 148,
+     *       "latitude": 42.3314,
+     *       "longitude": -83.0458,
+     *       "power_watts": 235,
+     *       "speed_mps": 6.4
+     *     }
+     */
     ActivityRoutePoint: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 82
+       */
       cadence_rpm?: number | null;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 4200.5
+       */
       distance_meters?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 900
+       */
       elapsed_seconds: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 183.2
+       */
       elevation_meters?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 148
+       */
       heart_rate_bpm?: number | null;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 42.3314
+       */
       latitude: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example -83.0458
+       */
       longitude: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 235
+       */
       power_watts?: number | null;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 6.4
+       */
       speed_mps?: number | null;
     };
+    /**
+     * @example {
+     *       "duration_seconds": 355,
+     *       "effort_index": 1,
+     *       "end_route_point_index": 280,
+     *       "overall_rank": 3,
+     *       "personal_rank": 1,
+     *       "segment_id": 7,
+     *       "segment_title": "Riverfront climb",
+     *       "start_route_point_index": 120
+     *     }
+     */
     ActivitySegmentEffort: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 355
+       */
       duration_seconds: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 1
+       */
       effort_index: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 280
+       */
       end_route_point_index: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 3
+       */
       overall_rank?: number | null;
       /** Format: int32 */
       personal_best_duration_seconds?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 1
+       */
       personal_rank?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 7
+       */
       segment_id: number;
+      /** @example Riverfront climb */
       segment_title: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 120
+       */
       start_route_point_index: number;
     };
     ActivityTrainingAnalysisResponse: {
@@ -1392,112 +1993,350 @@ export interface components {
       /** Format: int32 */
       z2_time_seconds: number;
     };
-    /** @enum {string} */
+    /**
+     * @example training
+     * @enum {string}
+     */
     ActivityType: "training" | "race";
+    /**
+     * @example {
+     *       "activity_type": "training",
+     *       "seconds": 8400
+     *     }
+     */
     ActivityTypeTimeResponse: {
       activity_type: components["schemas"]["ActivityType"];
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 8400
+       */
       seconds: number;
     };
+    /**
+     * @example {
+     *       "trace": null
+     *     }
+     */
     AdminActivityImportTraceResponse: {
       trace?: null | components["schemas"]["ActivityImportTraceResponse"];
     };
+    /**
+     * @example {
+     *       "activity_import_id": 17,
+     *       "id": 42,
+     *       "import_processing_stage": "complete",
+     *       "import_status": "processed",
+     *       "source": "manual_upload",
+     *       "sport": "ride",
+     *       "started_at": "2026-09-26T13:00:00Z",
+     *       "title": "Saturday hill repeats",
+     *       "user_id": 12
+     *     }
+     */
     AdminActivityResponse: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 17
+       */
       activity_import_id?: number | null;
       format?: string | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 42
+       */
       id: number;
+      /** @example complete */
       import_processing_stage?: string | null;
+      /** @example processed */
       import_status?: string | null;
       /** Format: int32 */
       import_version?: number | null;
+      /** @example manual_upload */
       source: string;
+      /** @example ride */
       sport: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @example 2026-09-26T13:00:00Z
+       */
       started_at: string;
+      /** @example Saturday hill repeats */
       title: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 12
+       */
       user_id: number;
     };
+    /**
+     * @example {
+     *       "created_at": "2026-09-01T12:00:00Z",
+     *       "disabled": false,
+     *       "email": "alex@example.com",
+     *       "email_verified": true,
+     *       "id": 12,
+     *       "is_admin": false,
+     *       "name": "Alex Rider",
+     *       "pid": "a1b2c3d4-0000-4000-8000-000000000012",
+     *       "updated_at": "2026-09-27T12:00:00Z"
+     *     }
+     */
     AdminUserResponse: {
+      /** @example 2026-09-01T12:00:00Z */
       created_at: string;
+      /** @example false */
+      disabled: boolean;
+      /** @example alex@example.com */
       email: string;
+      /** @example true */
       email_verified: boolean;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 12
+       */
       id: number;
+      /** @example false */
       is_admin: boolean;
+      /** @example Alex Rider */
       name: string;
+      /** @example a1b2c3d4-0000-4000-8000-000000000012 */
       pid: string;
+      /** @example 2026-09-27T12:00:00Z */
       updated_at: string;
     };
+    /**
+     * @example {
+     *       "data": [
+     *         {
+     *           "created_at": "2026-09-01T12:00:00Z",
+     *           "disabled": false,
+     *           "email": "alex@example.com",
+     *           "email_verified": true,
+     *           "id": 12,
+     *           "is_admin": false,
+     *           "name": "Alex Rider",
+     *           "pid": "a1b2c3d4-0000-4000-8000-000000000012",
+     *           "updated_at": "2026-09-27T12:00:00Z"
+     *         }
+     *       ],
+     *       "page": 1,
+     *       "per_page": 20,
+     *       "total": 1
+     *     }
+     */
     AdminUsersListResponse: {
+      /**
+       * @example [
+       *       {
+       *         "created_at": "2026-09-01T12:00:00Z",
+       *         "disabled": false,
+       *         "email": "alex@example.com",
+       *         "email_verified": true,
+       *         "id": 12,
+       *         "is_admin": false,
+       *         "name": "Alex Rider",
+       *         "pid": "a1b2c3d4-0000-4000-8000-000000000012",
+       *         "updated_at": "2026-09-27T12:00:00Z"
+       *       }
+       *     ]
+       */
       data: components["schemas"]["AdminUserResponse"][];
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @example 1
+       */
       page: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @example 20
+       */
       per_page: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @example 1
+       */
       total: number;
     };
+    /**
+     * @example {
+     *       "fitness_task_count": 12,
+     *       "segment_chunk_size": 20,
+     *       "segment_count": 35,
+     *       "segment_task_count": 2,
+     *       "total_tasks_enqueued": 14,
+     *       "user_count": 12
+     *     }
+     */
     AnalyticsBackfillResponse: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 12
+       */
       fitness_task_count: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 20
+       */
       segment_chunk_size: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 35
+       */
       segment_count: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 2
+       */
       segment_task_count: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 14
+       */
       total_tasks_enqueued: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 12
+       */
       user_count: number;
     };
+    /**
+     * @example {
+     *       "errors": {
+     *         "title": [
+     *           "Title cannot be empty"
+     *         ]
+     *       },
+     *       "message": "Invalid request"
+     *     }
+     */
     ApiErrorResponse: {
+      /**
+       * @example {
+       *       "title": [
+       *         "Title cannot be empty"
+       *       ]
+       *     }
+       */
       errors?: {
         [key: string]: string[];
       } | null;
+      /** @example Invalid request */
       message: string;
       /** Format: date-time */
       retry_at?: string | null;
     };
+    /**
+     * @example {
+     *       "archive_path": "/data/imports/activities.zip"
+     *     }
+     */
     ArchiveImportRequest: {
+      /** @example /data/imports/activities.zip */
       archive_path: string;
     };
+    /**
+     * @example {
+     *       "archive_path": "/data/imports/activities.zip",
+     *       "duplicate_count": 6,
+     *       "error_samples": [],
+     *       "failed_count": 0,
+     *       "imported_count": 110,
+     *       "skipped_unsupported_count": 4,
+     *       "supported_entry_count": 116,
+     *       "total_entries": 120
+     *     }
+     */
     ArchiveImportResponse: {
+      /** @example /data/imports/activities.zip */
       archive_path: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 6
+       */
       duplicate_count: number;
+      /** @example [] */
       error_samples?: string[];
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 0
+       */
       failed_count: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 110
+       */
       imported_count: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 4
+       */
       skipped_unsupported_count: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 116
+       */
       supported_entry_count: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 120
+       */
       total_entries: number;
     };
+    /**
+     * @example {
+     *       "archive_url": "https://example.com/exports/activities.zip"
+     *     }
+     */
     ArchiveUrlImportRequest: {
+      /** @example https://example.com/exports/activities.zip */
       archive_url: string;
     };
+    /**
+     * @example {
+     *       "user_id": 12
+     *     }
+     */
     CleanupUserDuplicateActivitiesRequest: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 12
+       */
       user_id: number;
     };
+    /**
+     * @example {
+     *       "deleted_activity_count": 2,
+     *       "duplicate_group_count": 2,
+     *       "message": "Removed 2 duplicate activities across 2 duplicate groups.",
+     *       "retained_activity_count": 2,
+     *       "status": "completed",
+     *       "user_id": 12
+     *     }
+     */
     CleanupUserDuplicateActivitiesResponse: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 2
+       */
       deleted_activity_count: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 2
+       */
       duplicate_group_count: number;
+      /** @example Removed 2 duplicate activities across 2 duplicate groups. */
       message: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 2
+       */
       retained_activity_count: number;
+      /** @example completed */
       status: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 12
+       */
       user_id: number;
     };
     ClimbResponse: {
@@ -1616,36 +2455,100 @@ export interface components {
       metrics: components["schemas"]["CompareRideMetricResponse"][];
       selected_rides: components["schemas"]["CompareRideColumnResponse"][];
     };
+    /**
+     * @example {
+     *       "activity_id": 42,
+     *       "end_route_point_index": 280,
+     *       "start_route_point_index": 120,
+     *       "title": "Riverfront climb"
+     *     }
+     */
     CreateSegmentFromActivityRequest: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 42
+       */
       activity_id: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 280
+       */
       end_route_point_index: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 120
+       */
       start_route_point_index: number;
+      /** @example Riverfront climb */
       title: string;
     };
+    /**
+     * @example {
+     *       "generated_at": "2026-09-27T12:00:00Z",
+     *       "goals": [],
+     *       "recent_sessions": [],
+     *       "recommendations": [],
+     *       "segments": [],
+     *       "summary": {
+     *         "average_efforts_per_session": 4.5,
+     *         "effort_count": 18,
+     *         "segment_count": 2,
+     *         "session_count": 4
+     *       }
+     *     }
+     */
     DhGoalProgressResponse: {
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @example 2026-09-27T12:00:00Z
+       */
       generated_at: string;
+      /** @example [] */
       goals: components["schemas"]["TrainingGoalMetricResponse"][];
+      /** @example [] */
       recent_sessions: components["schemas"]["DhSessionSummaryResponse"][];
+      /** @example [] */
       recommendations: components["schemas"]["TrainingRecommendationResponse"][];
+      /** @example [] */
       segments: components["schemas"]["DhSegmentProgressResponse"][];
       summary: components["schemas"]["DhProgressSummaryResponse"];
     };
+    /**
+     * @example {
+     *       "average_efforts_per_session": 4.5,
+     *       "average_repeat_fade_percent": 3.8,
+     *       "effort_count": 18,
+     *       "segment_count": 2,
+     *       "session_count": 4
+     *     }
+     */
     DhProgressSummaryResponse: {
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 4.5
+       */
       average_efforts_per_session?: number | null;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 3.8
+       */
       average_repeat_fade_percent?: number | null;
       /** Format: double */
       average_top_3_gap_percent?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 18
+       */
       effort_count: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 2
+       */
       segment_count: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 4
+       */
       session_count: number;
     };
     DhSegmentProgressResponse: {
@@ -1685,7 +2588,13 @@ export interface components {
       /** Format: date-time */
       started_at: string;
     };
+    /**
+     * @example {
+     *       "disabled": true
+     *     }
+     */
     DisableUserRequest: {
+      /** @example true */
       disabled?: boolean | null;
     };
     EnduranceReportResponse: {
@@ -1740,35 +2649,115 @@ export interface components {
       /** Format: double */
       worst_fatigue_index?: number | null;
     };
+    /**
+     * @example {
+     *       "description": "Show the activity stream",
+     *       "enabled": true,
+     *       "feature_key": "activity-stream"
+     *     }
+     */
     FeatureFlagResponse: {
+      /** @example Show the activity stream */
       description?: string | null;
+      /** @example true */
       enabled: boolean;
+      /** @example activity-stream */
       feature_key: string;
     };
+    /**
+     * @example {
+     *       "date": "2026-09-26",
+     *       "fatigue": 56.1,
+     *       "fitness": 48.2,
+     *       "form": -7.9,
+     *       "training_load": 72.5
+     *     }
+     */
     FitnessFreshnessPoint: {
+      /** @example 2026-09-26 */
       date: string;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 56.1
+       */
       fatigue: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 48.2
+       */
       fitness: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example -7.9
+       */
       form: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 72.5
+       */
       training_load: number;
     };
+    /**
+     * @example {
+     *       "end_date": "2026-09-27",
+     *       "fatigue_window_days": 7,
+     *       "fitness_window_days": 42,
+     *       "points": [
+     *         {
+     *           "date": "2026-09-26",
+     *           "fatigue": 56.1,
+     *           "fitness": 48.2,
+     *           "form": -7.9,
+     *           "training_load": 72.5
+     *         }
+     *       ],
+     *       "start_date": "2026-09-20"
+     *     }
+     */
     FitnessFreshnessResponse: {
+      /** @example 2026-09-27 */
       end_date: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 7
+       */
       fatigue_window_days: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 42
+       */
       fitness_window_days: number;
+      /**
+       * @example [
+       *       {
+       *         "date": "2026-09-26",
+       *         "fatigue": 56.1,
+       *         "fitness": 48.2,
+       *         "form": -7.9,
+       *         "training_load": 72.5
+       *       }
+       *     ]
+       */
       points: components["schemas"]["FitnessFreshnessPoint"][];
+      /** @example 2026-09-20 */
       start_date: string;
     };
+    /**
+     * @example {
+     *       "email": "alex@example.com"
+     *     }
+     */
     ForgotPasswordRequest: {
+      /** @example alex@example.com */
       email: string;
     };
+    /**
+     * @example {
+     *       "status": "ok"
+     *     }
+     */
     HealthResponse: {
+      /** @example ok */
       status: string;
     };
     HourlyDurabilityResponse: {
@@ -1803,48 +2792,129 @@ export interface components {
       /** Format: int32 */
       stopped_seconds: number;
     };
+    /**
+     * @example {
+     *       "connection_id": 5,
+     *       "created_at": "2026-09-27T12:00:00Z",
+     *       "event_type": "sync_completed",
+     *       "id": 31,
+     *       "level": "info",
+     *       "message": "Imported 3 activities",
+     *       "payload": {
+     *         "imported_count": 3
+     *       },
+     *       "provider": "strava",
+     *       "user_id": 12
+     *     }
+     */
     IntegrationEventResponse: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 5
+       */
       connection_id?: number | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @example 2026-09-27T12:00:00Z
+       */
       created_at: string;
+      /** @example sync_completed */
       event_type: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 31
+       */
       id: number;
+      /** @example info */
       level: string;
+      /** @example Imported 3 activities */
       message: string;
       payload?: unknown;
+      /** @example strava */
       provider: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 12
+       */
       user_id?: number | null;
     };
+    /**
+     * @example {
+     *       "email": "alex@example.com",
+     *       "password": "example-password-123"
+     *     }
+     */
     LoginRequest: {
+      /** @example alex@example.com */
       email: string;
+      /** @example example-password-123 */
       password: string;
     };
+    /**
+     * @example {
+     *       "message": "Confirmation email sent successfully"
+     *     }
+     */
     MessageResponse: {
+      /** @example Confirmation email sent successfully */
       message: string;
     };
     /**
      * @description A named, displayable metric with a machine-readable key and human-readable label.
      *     Used in sectioned admin metrics responses so the UI can map keys to icons/links.
+     * @example {
+     *       "desc": "last 30 days",
+     *       "key": "active_users",
+     *       "label": "Active users",
+     *       "value": 12
+     *     }
      */
     NamedStat: {
-      /** @description Short time-range description, e.g. "last 30 days". */
+      /**
+       * @description Short time-range description, e.g. "last 30 days".
+       * @example last 30 days
+       */
       desc: string;
       error?: string | null;
-      /** @description Machine-readable identifier — used by the UI to look up icons and links. */
+      /**
+       * @description Machine-readable identifier — used by the UI to look up icons and links.
+       * @example active_users
+       */
       key: string;
-      /** @description Human-readable display label. */
+      /**
+       * @description Human-readable display label.
+       * @example Active users
+       */
       label: string;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @example 12
+       */
       value: number;
     };
     OAuthProviderMetadata: {
       id: string;
       label: string;
     };
+    /**
+     * @example {
+     *       "providers": [
+     *         {
+     *           "id": "google",
+     *           "label": "Google"
+     *         }
+     *       ]
+     *     }
+     */
     OAuthProvidersResponse: {
+      /**
+       * @example [
+       *       {
+       *         "id": "google",
+       *         "label": "Google"
+       *       }
+       *     ]
+       */
       providers: components["schemas"]["OAuthProviderMetadata"][];
     };
     /** @description Standard paginated response wrapper */
@@ -1855,30 +2925,55 @@ export interface components {
         activity_type: components["schemas"]["ActivityType"];
         /** Format: int32 */
         average_cadence_rpm?: number | null;
-        /** Format: int32 */
+        /**
+         * Format: int32
+         * @example 148
+         */
         average_heart_rate_bpm?: number | null;
-        /** Format: double */
+        /**
+         * Format: double
+         * @example 6.05
+         */
         average_speed_mps?: number | null;
         /** Format: int32 */
         calories?: number | null;
+        /** @example true */
         can_download_source_file?: boolean;
+        /** @example true */
         can_regenerate?: boolean;
         chart_points?: components["schemas"]["ActivityChartPoint"][];
-        /** Format: double */
+        /**
+         * Format: double
+         * @example 25430.5
+         */
         distance_meters?: number | null;
-        /** Format: double */
+        /**
+         * Format: double
+         * @example 312.4
+         */
         elevation_gain_meters?: number | null;
         /** Format: double */
         elevation_loss_meters?: number | null;
-        /** Format: date-time */
+        /**
+         * Format: date-time
+         * @example 2026-09-26T14:12:00Z
+         */
         ended_at?: string | null;
-        /** Format: int32 */
+        /**
+         * Format: int32
+         * @example 245
+         */
         estimated_ftp_watts?: number | null;
+        /** @example fit */
         format?: string | null;
         heart_rate_zones?: components["schemas"]["ActivityHeartRateZoneSummary"][];
-        /** Format: int32 */
+        /**
+         * Format: int32
+         * @example 42
+         */
         id: number;
         laps?: components["schemas"]["ActivityLap"][];
+        /** @example Detroit, Michigan */
         location?: string | null;
         /** Format: int32 */
         max_cadence_rpm?: number | null;
@@ -1886,19 +2981,43 @@ export interface components {
         max_heart_rate_bpm?: number | null;
         /** Format: double */
         max_speed_mps?: number | null;
-        /** Format: int32 */
+        /**
+         * Format: int32
+         * @example 4200
+         */
         moving_time_seconds?: number | null;
+        /** @example saturday-hills.fit */
         original_filename?: string | null;
         /** Format: int32 */
         relative_effort?: number | null;
+        /**
+         * @example [
+         *       {
+         *         "distance_meters": 4200.5,
+         *         "elapsed_seconds": 900,
+         *         "elevation_meters": 183.2,
+         *         "latitude": 42.3314,
+         *         "longitude": -83.0458
+         *       }
+         *     ]
+         */
         route_points?: components["schemas"]["ActivityRoutePoint"][];
         segment_efforts?: components["schemas"]["ActivitySegmentEffort"][];
+        /** @example manual_upload */
         source: string;
+        /** @example ride */
         sport: string;
-        /** Format: date-time */
+        /**
+         * Format: date-time
+         * @example 2026-09-26T13:00:00Z
+         */
         started_at: string;
+        /** @example Saturday hill repeats */
         title: string;
-        /** Format: int32 */
+        /**
+         * Format: int32
+         * @example 4320
+         */
         total_time_seconds?: number | null;
         training_analysis?:
           | null
@@ -1911,21 +3030,38 @@ export interface components {
     PaginatedResponse_AdminActivityResponse: {
       /** @description Recordset */
       data: {
-        /** Format: int32 */
+        /**
+         * Format: int32
+         * @example 17
+         */
         activity_import_id?: number | null;
         format?: string | null;
-        /** Format: int32 */
+        /**
+         * Format: int32
+         * @example 42
+         */
         id: number;
+        /** @example complete */
         import_processing_stage?: string | null;
+        /** @example processed */
         import_status?: string | null;
         /** Format: int32 */
         import_version?: number | null;
+        /** @example manual_upload */
         source: string;
+        /** @example ride */
         sport: string;
-        /** Format: date-time */
+        /**
+         * Format: date-time
+         * @example 2026-09-26T13:00:00Z
+         */
         started_at: string;
+        /** @example Saturday hill repeats */
         title: string;
-        /** Format: int32 */
+        /**
+         * Format: int32
+         * @example 12
+         */
         user_id: number;
       }[];
       /** @description Pagination metadata */
@@ -1935,8 +3071,11 @@ export interface components {
     PaginatedResponse_FeatureFlagResponse: {
       /** @description Recordset */
       data: {
+        /** @example Show the activity stream */
         description?: string | null;
+        /** @example true */
         enabled: boolean;
+        /** @example activity-stream */
         feature_key: string;
       }[];
       /** @description Pagination metadata */
@@ -1946,7 +3085,9 @@ export interface components {
     PaginatedResponse_PublicFlagResponse: {
       /** @description Recordset */
       data: {
+        /** @example true */
         enabled: boolean;
+        /** @example activity-stream */
         feature_key: string;
       }[];
       /** @description Pagination metadata */
@@ -1954,32 +3095,65 @@ export interface components {
     };
     PaginatedResponse_TaskResponse: {
       data: {
-        /** Format: int32 */
+        /**
+         * Format: int32
+         * @example 0
+         */
         attempts: number;
         completed_at?: string | null;
+        /** @example 2026-09-27T12:00:00Z */
         created_at: string;
         error?: string | null;
-        /** Format: int32 */
+        /**
+         * Format: int32
+         * @example 43
+         */
         id: number;
-        /** Format: int32 */
+        /**
+         * Format: int32
+         * @example 3
+         */
         max_attempts: number;
         result?: string | null;
         scheduled_for?: string | null;
         started_at?: string | null;
+        /** @example queued */
         status: string;
+        /** @example regenerate_segment_efforts */
         task_type: string;
+        /** @example 2026-09-27T12:00:00Z */
         updated_at: string;
       }[];
       metadata: components["schemas"]["PaginationMetadata"];
     };
+    /**
+     * @example {
+     *       "page": 1,
+     *       "per_page": 20,
+     *       "total": 1,
+     *       "total_pages": 1
+     *     }
+     */
     PaginationMetadata: {
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @example 1
+       */
       page: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @example 20
+       */
       per_page: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @example 1
+       */
       total: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @example 1
+       */
       total_pages: number;
     };
     /** @description Standard pagination query parameters */
@@ -1995,8 +3169,16 @@ export interface components {
        */
       per_page?: number;
     };
+    /**
+     * @example {
+     *       "enabled": true,
+     *       "feature_key": "activity-stream"
+     *     }
+     */
     PublicFlagResponse: {
+      /** @example true */
       enabled: boolean;
+      /** @example activity-stream */
       feature_key: string;
     };
     ReassessmentAbilityEstimateResponse: {
@@ -2170,37 +3352,100 @@ export interface components {
       /** Format: double */
       total_elevation_gain_feet: number;
     };
+    /**
+     * @example {
+     *       "segment_id": 7
+     *     }
+     */
     RegenerateSegmentEffortsRequest: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 7
+       */
       segment_id: number;
     };
+    /**
+     * @example {
+     *       "message": "Segment effort regeneration queued.",
+     *       "segment_id": 7,
+     *       "status": "queued",
+     *       "task_id": "43",
+     *       "task_status": "pending"
+     *     }
+     */
     RegenerateSegmentEffortsResponse: {
+      /** @example Segment effort regeneration queued. */
       message: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 7
+       */
       segment_id: number;
+      /** @example queued */
       status: string;
+      /** @example 43 */
       task_id: string;
+      /** @example pending */
       task_status: string;
     };
+    /**
+     * @example {
+     *       "user_id": 12
+     *     }
+     */
     RegenerateUserSegmentsRequest: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 12
+       */
       user_id: number;
     };
+    /**
+     * @example {
+     *       "message": "Segment regeneration queued.",
+     *       "status": "queued",
+     *       "user_id": 12
+     *     }
+     */
     RegenerateUserSegmentsResponse: {
+      /** @example Segment regeneration queued. */
       message: string;
+      /** @example queued */
       status: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 12
+       */
       user_id: number;
     };
+    /**
+     * @example {
+     *       "email": "alex@example.com",
+     *       "name": "Alex Rider",
+     *       "password": "example-password-123"
+     *     }
+     */
     RegisterRequest: {
+      /** @example alex@example.com */
       email: string;
+      /** @example Alex Rider */
       name: string;
+      /** @example example-password-123 */
       password: string;
     };
+    /**
+     * @example {
+     *       "pid": "a1b2c3d4-0000-4000-8000-000000000012"
+     *     }
+     */
     RegisterResponse: {
+      /** @example a1b2c3d4-0000-4000-8000-000000000012 */
       pid: string;
     };
-    /** @enum {string} */
+    /**
+     * @example week
+     * @enum {string}
+     */
     ReportBoundary:
       | "day"
       | "week"
@@ -2228,37 +3473,103 @@ export interface components {
       | "aggregate_trends";
     /** @enum {string} */
     ReportMetricDirection: "higher" | "lower" | "neutral";
+    /**
+     * @example {
+     *       "activity_id": 42
+     *     }
+     */
     ReprocessActivityImportRequest: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 42
+       */
       activity_id: number;
     };
+    /**
+     * @example {
+     *       "activity_id": 42,
+     *       "activity_import_id": 17,
+     *       "message": "Activity reprocessing queued.",
+     *       "status": "queued",
+     *       "task_id": "42",
+     *       "task_status": "pending",
+     *       "user_id": 12
+     *     }
+     */
     ReprocessActivityImportResponse: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 42
+       */
       activity_id: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 17
+       */
       activity_import_id: number;
+      /** @example Activity reprocessing queued. */
       message: string;
+      /** @example queued */
       status: string;
+      /** @example 42 */
       task_id: string;
+      /** @example pending */
       task_status: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 12
+       */
       user_id: number;
     };
+    /**
+     * @example {
+     *       "user_id": 12
+     *     }
+     */
     ReprocessUserActivityImportsRequest: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 12
+       */
       user_id: number;
     };
+    /**
+     * @example {
+     *       "message": "Activity reprocessing queued.",
+     *       "status": "queued",
+     *       "user_id": 12
+     *     }
+     */
     ReprocessUserActivityImportsResponse: {
+      /** @example Activity reprocessing queued. */
       message: string;
+      /** @example queued */
       status: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 12
+       */
       user_id: number;
     };
+    /**
+     * @example {
+     *       "email": "alex@example.com"
+     *     }
+     */
     ResendConfirmationRequest: {
+      /** @example alex@example.com */
       email: string;
     };
+    /**
+     * @example {
+     *       "password": "new-example-password-123",
+     *       "token": "reset-token-from-email"
+     *     }
+     */
     ResetPasswordRequest: {
+      /** @example new-example-password-123 */
       password: string;
+      /** @example reset-token-from-email */
       token: string;
     };
     RideSummaryReportResponse: {
@@ -2315,41 +3626,115 @@ export interface components {
       /** Format: int32 */
       effort_index: number;
     };
+    /**
+     * @example {
+     *       "activity_id": 42,
+     *       "activity_started_at": "2026-09-26T13:00:00Z",
+     *       "activity_title": "Saturday hill repeats",
+     *       "average_speed_mps": 6.4,
+     *       "delta_from_best_seconds": 1.2,
+     *       "delta_from_reference_seconds": 0,
+     *       "effort_id": 90,
+     *       "split_seconds": 35.5
+     *     }
+     */
     SegmentAnalysisSectionEffortResponse: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 42
+       */
       activity_id: number;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @example 2026-09-26T13:00:00Z
+       */
       activity_started_at: string;
+      /** @example Saturday hill repeats */
       activity_title: string;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 6.4
+       */
       average_speed_mps?: number | null;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 1.2
+       */
       delta_from_best_seconds: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 0
+       */
       delta_from_reference_seconds: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 90
+       */
       effort_id: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 35.5
+       */
       split_seconds: number;
     };
+    /**
+     * @example {
+     *       "best_activity_id": 43,
+     *       "best_activity_title": "Sunday tempo",
+     *       "best_effort_id": 91,
+     *       "best_split_seconds": 34.3,
+     *       "efforts": [],
+     *       "end_progress_percent": 10,
+     *       "gain_available_seconds": 1.2,
+     *       "reference_split_seconds": 35.5,
+     *       "section_index": 1,
+     *       "start_progress_percent": 0,
+     *       "top_efforts": []
+     *     }
+     */
     SegmentAnalysisSectionResponse: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 43
+       */
       best_activity_id: number;
+      /** @example Sunday tempo */
       best_activity_title: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 91
+       */
       best_effort_id: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 34.3
+       */
       best_split_seconds: number;
+      /** @example [] */
       efforts?: components["schemas"]["SegmentAnalysisSectionEffortResponse"][];
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 10
+       */
       end_progress_percent: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 1.2
+       */
       gain_available_seconds: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 35.5
+       */
       reference_split_seconds: number;
+      /** @example 1 */
       section_index: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 0
+       */
       start_progress_percent: number;
+      /** @example [] */
       top_efforts?: components["schemas"]["SegmentAnalysisSectionEffortResponse"][];
     };
     SegmentBuilderSourceResponse: {
@@ -2360,10 +3745,36 @@ export interface components {
       /** Format: int32 */
       start_route_point_index: number;
     };
+    /**
+     * @example {
+     *       "efforts": [],
+     *       "route_points": [
+     *         {
+     *           "elapsed_seconds": 900,
+     *           "latitude": 42.3314,
+     *           "longitude": -83.0458
+     *         }
+     *       ],
+     *       "segment_id": 7
+     *     }
+     */
     SegmentComparisonResponse: {
+      /** @example [] */
       efforts?: components["schemas"]["SegmentEffortResponse"][];
+      /**
+       * @example [
+       *       {
+       *         "elapsed_seconds": 900,
+       *         "latitude": 42.3314,
+       *         "longitude": -83.0458
+       *       }
+       *     ]
+       */
       route_points?: components["schemas"]["SegmentRoutePointResponse"][];
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 7
+       */
       segment_id: number;
     };
     SegmentEffortAnalysisQuery: {
@@ -2371,86 +3782,240 @@ export interface components {
       reference_effort_id?: number | null;
       split_count?: number | null;
     };
+    /**
+     * @example {
+     *       "efforts": [],
+     *       "reference_effort": {
+     *         "activity_id": 42,
+     *         "activity_started_at": "2026-09-26T13:00:00Z",
+     *         "activity_title": "Saturday hill repeats",
+     *         "delta_from_reference_seconds": 0,
+     *         "duration_seconds": 355,
+     *         "effort_id": 90,
+     *         "effort_index": 1
+     *       },
+     *       "route_points": [],
+     *       "sections": [],
+     *       "segment_id": 7,
+     *       "segment_title": "Riverfront climb",
+     *       "split_count": 10,
+     *       "theoretical_best_duration_seconds": 340,
+     *       "theoretical_best_gain_seconds": 15
+     *     }
+     */
     SegmentEffortAnalysisResponse: {
+      /** @example [] */
       efforts?: components["schemas"]["SegmentAnalysisEffortSummaryResponse"][];
       reference_effort: components["schemas"]["SegmentAnalysisEffortSummaryResponse"];
+      /** @example [] */
       route_points?: components["schemas"]["SegmentRoutePointResponse"][];
+      /** @example [] */
       sections?: components["schemas"]["SegmentAnalysisSectionResponse"][];
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 7
+       */
       segment_id: number;
+      /** @example Riverfront climb */
       segment_title: string;
+      /** @example 10 */
       split_count: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 340
+       */
       theoretical_best_duration_seconds: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 15
+       */
       theoretical_best_gain_seconds: number;
     };
+    /**
+     * @example {
+     *       "activity_id": 42,
+     *       "activity_started_at": "2026-09-26T13:00:00Z",
+     *       "activity_title": "Saturday hill repeats",
+     *       "distance_meters": 1500.5,
+     *       "duration_seconds": 355,
+     *       "effort_index": 1,
+     *       "end_elapsed_seconds": 1255,
+     *       "id": 90,
+     *       "rider_name": "Alex Rider",
+     *       "rider_user_id": 12,
+     *       "start_elapsed_seconds": 900
+     *     }
+     */
     SegmentEffortResponse: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 42
+       */
       activity_id: number;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @example 2026-09-26T13:00:00Z
+       */
       activity_started_at: string;
+      /** @example Saturday hill repeats */
       activity_title: string;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 1500.5
+       */
       distance_meters?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 355
+       */
       duration_seconds: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 1
+       */
       effort_index: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 1255
+       */
       end_elapsed_seconds: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 90
+       */
       id: number;
+      /** @example Alex Rider */
       rider_name: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 12
+       */
       rider_user_id: number;
       route_points?: components["schemas"]["SegmentRoutePointResponse"][];
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 900
+       */
       start_elapsed_seconds: number;
     };
-    /** @enum {string} */
+    /**
+     * @example xc
+     * @enum {string}
+     */
     SegmentMode: "xc" | "dh";
+    /**
+     * @example {
+     *       "best_duration_seconds": 340,
+     *       "builder_source": {
+     *         "activity_id": 42,
+     *         "end_route_point_index": 280,
+     *         "start_route_point_index": 120
+     *       },
+     *       "created_at": "2026-09-26T14:25:00Z",
+     *       "current_user_pr_duration_seconds": 355,
+     *       "distance_meters": 1500.5,
+     *       "effort_count": 8,
+     *       "id": 7,
+     *       "mode": "xc",
+     *       "source": "activity_segment_builder",
+     *       "starred": true,
+     *       "title": "Riverfront climb"
+     *     }
+     */
     SegmentResponse: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 340
+       */
       best_duration_seconds?: number | null;
       builder_source?:
         | null
         | components["schemas"]["SegmentBuilderSourceResponse"];
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @example 2026-09-26T14:25:00Z
+       */
       created_at: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 355
+       */
       current_user_pr_duration_seconds?: number | null;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 1500.5
+       */
       distance_meters?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 8
+       */
       effort_count: number;
       efforts?: components["schemas"]["SegmentEffortResponse"][];
       format?: string | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 7
+       */
       id: number;
       mode: components["schemas"]["SegmentMode"];
       original_filename?: string | null;
       processing_task_id?: string | null;
       processing_task_status?: string | null;
       route_points?: components["schemas"]["SegmentRoutePointResponse"][];
+      /** @example activity_segment_builder */
       source: string;
+      /** @example true */
       starred: boolean;
+      /** @example Riverfront climb */
       title: string;
     };
+    /**
+     * @example {
+     *       "distance_meters": 4200.5,
+     *       "elapsed_seconds": 900,
+     *       "elevation_meters": 183.2,
+     *       "heart_rate_bpm": 148,
+     *       "latitude": 42.3314,
+     *       "longitude": -83.0458,
+     *       "speed_mps": 6.4
+     *     }
+     */
     SegmentRoutePointResponse: {
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 4200.5
+       */
       distance_meters?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 900
+       */
       elapsed_seconds: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 183.2
+       */
       elevation_meters?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 148
+       */
       heart_rate_bpm?: number | null;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 42.3314
+       */
       latitude: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example -83.0458
+       */
       longitude: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 6.4
+       */
       speed_mps?: number | null;
     };
     SegmentYearlyBestResponse: {
@@ -2472,52 +4037,167 @@ export interface components {
       /** Format: int32 */
       year: number;
     };
+    /**
+     * @example {
+     *       "segment_id": 7,
+     *       "segment_title": "Riverfront climb",
+     *       "years": [
+     *         {
+     *           "activity_id": 42,
+     *           "activity_started_at": "2026-09-26T13:00:00Z",
+     *           "activity_title": "Saturday hill repeats",
+     *           "duration_seconds": 355,
+     *           "effort_id": 90,
+     *           "effort_index": 1,
+     *           "year": 2026
+     *         }
+     *       ]
+     *     }
+     */
     SegmentYearlyBestsResponse: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 7
+       */
       segment_id: number;
+      /** @example Riverfront climb */
       segment_title: string;
+      /**
+       * @example [
+       *       {
+       *         "activity_id": 42,
+       *         "activity_started_at": "2026-09-26T13:00:00Z",
+       *         "activity_title": "Saturday hill repeats",
+       *         "duration_seconds": 355,
+       *         "effort_id": 90,
+       *         "effort_index": 1,
+       *         "year": 2026
+       *       }
+       *     ]
+       */
       years?: components["schemas"]["SegmentYearlyBestResponse"][];
     };
+    /**
+     * @example {
+     *       "authorization_url": "https://www.strava.com/oauth/authorize?client_id=12345&response_type=code"
+     *     }
+     */
     StravaAuthorizeResponse: {
+      /** @example https://www.strava.com/oauth/authorize?client_id=12345&response_type=code */
       authorization_url: string;
     };
+    /**
+     * @example {
+     *       "athlete_id": 12345678,
+     *       "athlete_name": "Alex Rider",
+     *       "athlete_username": "alex-rider",
+     *       "configured": true,
+     *       "connected": true,
+     *       "last_sync_duplicate_count": 1,
+     *       "last_sync_failed_count": 0,
+     *       "last_sync_finished_at": "2026-09-27T12:00:00Z",
+     *       "last_sync_imported_count": 3,
+     *       "last_sync_status": "succeeded",
+     *       "scopes": [
+     *         "read",
+     *         "activity:read_all"
+     *       ]
+     *     }
+     */
     StravaConnectionResponse: {
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @example 12345678
+       */
       athlete_id?: number | null;
+      /** @example Alex Rider */
       athlete_name?: string | null;
       athlete_profile_medium_url?: string | null;
+      /** @example alex-rider */
       athlete_username?: string | null;
+      /** @example true */
       configured: boolean;
+      /** @example true */
       connected: boolean;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 1
+       */
       last_sync_duplicate_count: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 0
+       */
       last_sync_failed_count: number;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @example 2026-09-27T12:00:00Z
+       */
       last_sync_finished_at?: string | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 3
+       */
       last_sync_imported_count: number;
       last_sync_message?: string | null;
       /** Format: date-time */
       last_sync_started_at?: string | null;
+      /** @example succeeded */
       last_sync_status: string;
       /** Format: date-time */
       last_synced_activity_started_at?: string | null;
+      /**
+       * @example [
+       *       "read",
+       *       "activity:read_all"
+       *     ]
+       */
       scopes: string[];
     };
+    /**
+     * @example {
+     *       "hub.challenge": "strava-verification-challenge"
+     *     }
+     */
     StravaWebhookChallengeResponse: {
+      /** @example strava-verification-challenge */
       "hub.challenge": string;
     };
+    /**
+     * @example {
+     *       "aspect_type": "create",
+     *       "event_time": 1790500000,
+     *       "object_id": 1234567890,
+     *       "object_type": "activity",
+     *       "owner_id": 12345678,
+     *       "subscription_id": 12345,
+     *       "updates": {}
+     *     }
+     */
     StravaWebhookEvent: {
+      /** @example create */
       aspect_type: string;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @example 1790500000
+       */
       event_time: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @example 1234567890
+       */
       object_id: number;
+      /** @example activity */
       object_type: string;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @example 12345678
+       */
       owner_id: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @example 12345
+       */
       subscription_id: number;
       updates?: unknown;
     };
@@ -2528,44 +4208,117 @@ export interface components {
      *     system-level metric categories are added to glass. Consuming controllers
      *     embed this via `#[serde(flatten)]` so new sections appear in the JSON
      *     response without any controller changes.
+     * @example {
+     *       "auth": [
+     *         {
+     *           "desc": "last 30 days",
+     *           "key": "active_users",
+     *           "label": "Active users",
+     *           "value": 12
+     *         }
+     *       ],
+     *       "background_tasks": []
+     *     }
      */
     SystemMetrics: {
+      /**
+       * @example [
+       *       {
+       *         "desc": "last 30 days",
+       *         "key": "active_users",
+       *         "label": "Active users",
+       *         "value": 12
+       *       }
+       *     ]
+       */
       auth: components["schemas"]["NamedStat"][];
+      /** @example [] */
       background_tasks: components["schemas"]["NamedStat"][];
     };
+    /**
+     * @example {
+     *       "attempts": 0,
+     *       "created_at": "2026-09-27T12:00:00Z",
+     *       "id": 43,
+     *       "max_attempts": 3,
+     *       "payload": {
+     *         "segment_id": 7
+     *       },
+     *       "status": "queued",
+     *       "task_type": "regenerate_segment_efforts",
+     *       "updated_at": "2026-09-27T12:00:00Z"
+     *     }
+     */
     TaskDetailResponse: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 0
+       */
       attempts: number;
       completed_at?: string | null;
+      /** @example 2026-09-27T12:00:00Z */
       created_at: string;
       error?: string | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 43
+       */
       id: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 3
+       */
       max_attempts: number;
       payload?: null | components["schemas"]["Value"];
       result?: string | null;
       scheduled_for?: string | null;
       started_at?: string | null;
+      /** @example queued */
       status: string;
+      /** @example regenerate_segment_efforts */
       task_type: string;
+      /** @example 2026-09-27T12:00:00Z */
       updated_at: string;
     };
+    /**
+     * @example {
+     *       "attempts": 0,
+     *       "created_at": "2026-09-27T12:00:00Z",
+     *       "id": 43,
+     *       "max_attempts": 3,
+     *       "status": "queued",
+     *       "task_type": "regenerate_segment_efforts",
+     *       "updated_at": "2026-09-27T12:00:00Z"
+     *     }
+     */
     TaskResponse: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 0
+       */
       attempts: number;
       completed_at?: string | null;
+      /** @example 2026-09-27T12:00:00Z */
       created_at: string;
       error?: string | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 43
+       */
       id: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 3
+       */
       max_attempts: number;
       result?: string | null;
       scheduled_for?: string | null;
       started_at?: string | null;
+      /** @example queued */
       status: string;
+      /** @example regenerate_segment_efforts */
       task_type: string;
+      /** @example 2026-09-27T12:00:00Z */
       updated_at: string;
     };
     /** @enum {string} */
@@ -2578,15 +4331,36 @@ export interface components {
       | "dh_laps_per_session"
       | "dh_repeat_fade"
       | "dh_rolling_top3_gap";
+    /**
+     * @example {
+     *       "current_value": 4500,
+     *       "direction": "at_least",
+     *       "key": "weekly_z2_average",
+     *       "label": "Weekly zone 2 time",
+     *       "progress_percent": 62.5,
+     *       "target_value": 7200,
+     *       "unit": "seconds"
+     *     }
+     */
     TrainingGoalMetricResponse: {
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 4500
+       */
       current_value?: number | null;
       direction: components["schemas"]["TrainingGoalDirection"];
       key: components["schemas"]["TrainingGoalKey"];
+      /** @example Weekly zone 2 time */
       label: string;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 62.5
+       */
       progress_percent?: number | null;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 7200
+       */
       target_value: number;
       unit: components["schemas"]["TrainingMetricUnit"];
     };
@@ -2639,7 +4413,61 @@ export interface components {
       short_purpose: string;
       supported_filters: components["schemas"]["ReportFilterKey"][];
     };
+    /**
+     * @example {
+     *       "reports": [
+     *         {
+     *           "display_name": "Ride summary",
+     *           "id": "ride_summary",
+     *           "metrics": [
+     *             {
+     *               "direction": "higher",
+     *               "key": "distance_meters",
+     *               "label": "Distance",
+     *               "unit": "m"
+     *             }
+     *           ],
+     *           "required_data_quality": [
+     *             "distance"
+     *           ],
+     *           "result_sections": [
+     *             "ride_summary"
+     *           ],
+     *           "short_purpose": "Summarize distance, time, and climbing",
+     *           "supported_filters": [
+     *             "min_distance"
+     *           ]
+     *         }
+     *       ]
+     *     }
+     */
     TrainingReportDefinitionsResponse: {
+      /**
+       * @example [
+       *       {
+       *         "display_name": "Ride summary",
+       *         "id": "ride_summary",
+       *         "metrics": [
+       *           {
+       *             "direction": "higher",
+       *             "key": "distance_meters",
+       *             "label": "Distance",
+       *             "unit": "m"
+       *           }
+       *         ],
+       *         "required_data_quality": [
+       *           "distance"
+       *         ],
+       *         "result_sections": [
+       *           "ride_summary"
+       *         ],
+       *         "short_purpose": "Summarize distance, time, and climbing",
+       *         "supported_filters": [
+       *           "min_distance"
+       *         ]
+       *       }
+       *     ]
+       */
       reports: components["schemas"]["TrainingReportDefinitionResponse"][];
     };
     TrainingReportMetricDefinitionResponse: {
@@ -2648,37 +4476,124 @@ export interface components {
       label: string;
       unit?: string | null;
     };
+    /**
+     * @example {
+     *       "activity_type_times": [
+     *         {
+     *           "activity_type": "training",
+     *           "seconds": 8400
+     *         }
+     *       ],
+     *       "bucket_end": "2026-09-27",
+     *       "bucket_start": "2026-09-20",
+     *       "distance_meters": 75000,
+     *       "distance_miles": 46.6,
+     *       "elevation_gain_feet": 2952.8,
+     *       "elevation_gain_meters": 900,
+     *       "z1_seconds": 1200,
+     *       "z2_seconds": 6000,
+     *       "z3_seconds": 900,
+     *       "z4_seconds": 300,
+     *       "z5_seconds": 0
+     *     }
+     */
     TrainingReportPointResponse: {
+      /**
+       * @example [
+       *       {
+       *         "activity_type": "training",
+       *         "seconds": 8400
+       *       }
+       *     ]
+       */
       activity_type_times: components["schemas"]["ActivityTypeTimeResponse"][];
       /** Format: double */
       average_aerobic_decoupling_percent?: number | null;
+      /** @example 2026-09-27 */
       bucket_end: string;
+      /** @example 2026-09-20 */
       bucket_start: string;
       /** Format: double */
       climbing_pace_feet_per_week?: number | null;
       /** Format: double */
       climbing_vertical_rate_feet_per_hour?: number | null;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 75000
+       */
       distance_meters: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 46.6
+       */
       distance_miles: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 2952.8
+       */
       elevation_gain_feet: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 900
+       */
       elevation_gain_meters: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 1200
+       */
       z1_seconds: number;
       /** Format: double */
       z2_average_speed_mps?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 6000
+       */
       z2_seconds: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 900
+       */
       z3_seconds: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 300
+       */
       z4_seconds: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 0
+       */
       z5_seconds: number;
     };
+    /**
+     * @example {
+     *       "boundary": "week",
+     *       "generated_at": "2026-09-27T12:00:00Z",
+     *       "points": [
+     *         {
+     *           "activity_type_times": [
+     *             {
+     *               "activity_type": "training",
+     *               "seconds": 8400
+     *             }
+     *           ],
+     *           "bucket_end": "2026-09-27",
+     *           "bucket_start": "2026-09-20",
+     *           "distance_meters": 75000,
+     *           "distance_miles": 46.6,
+     *           "elevation_gain_feet": 2952.8,
+     *           "elevation_gain_meters": 900,
+     *           "z1_seconds": 1200,
+     *           "z2_seconds": 6000,
+     *           "z3_seconds": 900,
+     *           "z4_seconds": 300,
+     *           "z5_seconds": 0
+     *         }
+     *       ],
+     *       "range_end": "2026-09-27",
+     *       "range_start": "2026-09-20"
+     *     }
+     */
     TrainingReportsResponse: {
       boundary: components["schemas"]["ReportBoundary"];
       climbing?: null | components["schemas"]["ClimbingReportResponse"];
@@ -2687,70 +4602,230 @@ export interface components {
         | components["schemas"]["CompareRidesReportResponse"];
       endurance?: null | components["schemas"]["EnduranceReportResponse"];
       fatigue?: null | components["schemas"]["FatigueReportResponse"];
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @example 2026-09-27T12:00:00Z
+       */
       generated_at: string;
+      /**
+       * @example [
+       *       {
+       *         "activity_type_times": [
+       *           {
+       *             "activity_type": "training",
+       *             "seconds": 8400
+       *           }
+       *         ],
+       *         "bucket_end": "2026-09-27",
+       *         "bucket_start": "2026-09-20",
+       *         "distance_meters": 75000,
+       *         "distance_miles": 46.6,
+       *         "elevation_gain_feet": 2952.8,
+       *         "elevation_gain_meters": 900,
+       *         "z1_seconds": 1200,
+       *         "z2_seconds": 6000,
+       *         "z3_seconds": 900,
+       *         "z4_seconds": 300,
+       *         "z5_seconds": 0
+       *       }
+       *     ]
+       */
       points: components["schemas"]["TrainingReportPointResponse"][];
+      /** @example 2026-09-27 */
       range_end: string;
+      /** @example 2026-09-20 */
       range_start: string;
       reassessment?: null | components["schemas"]["ReassessmentReportResponse"];
       ride_summary?: null | components["schemas"]["RideSummaryReportResponse"];
     };
+    /**
+     * @example {
+     *       "activity_type": "training",
+     *       "title": "Saturday hill repeats"
+     *     }
+     */
     UpdateActivityRequest: {
       activity_type?: null | components["schemas"]["ActivityType"];
+      /** @example Saturday hill repeats */
       title?: string | null;
     };
+    /**
+     * @example {
+     *       "enabled": true
+     *     }
+     */
     UpdateFlagRequest: {
+      /** @example true */
       enabled: boolean;
     };
+    /**
+     * @example {
+     *       "mode": "xc",
+     *       "starred": true,
+     *       "title": "Riverfront climb"
+     *     }
+     */
     UpdateSegmentRequest: {
       mode?: null | components["schemas"]["SegmentMode"];
+      /** @example true */
       starred?: boolean | null;
+      /** @example Riverfront climb */
       title?: string | null;
     };
+    /**
+     * @example {
+     *       "estimated_ftp_watts": 245,
+     *       "heart_rate_zone_bounds_bpm": [
+     *         110,
+     *         130,
+     *         150,
+     *         170
+     *       ],
+     *       "unit_system": "metric",
+     *       "xc_goal_event_name": "Autumn 100 km",
+     *       "xc_goal_event_profile": "xc_marathon",
+     *       "xc_goal_start_date": "2026-09-01",
+     *       "xc_goal_target_date": "2026-10-31",
+     *       "xc_goal_target_distance_meters": 100000,
+     *       "xc_goal_target_elevation_gain_meters": 1500,
+     *       "xc_goal_target_finish_time_seconds": 21600
+     *     }
+     */
     UpdateUserPreferencesRequest: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 245
+       */
       estimated_ftp_watts?: number | null;
+      /**
+       * @example [
+       *       110,
+       *       130,
+       *       150,
+       *       170
+       *     ]
+       */
       heart_rate_zone_bounds_bpm?: number[] | null;
+      /** @example metric */
       unit_system: string;
+      /** @example Autumn 100 km */
       xc_goal_event_name?: string | null;
+      /** @example xc_marathon */
       xc_goal_event_profile?: string | null;
+      /** @example 2026-09-01 */
       xc_goal_start_date?: string | null;
+      /** @example 2026-10-31 */
       xc_goal_target_date?: string | null;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 100000
+       */
       xc_goal_target_distance_meters?: number | null;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 1500
+       */
       xc_goal_target_elevation_gain_meters?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 21600
+       */
       xc_goal_target_finish_time_seconds?: number | null;
     };
+    /**
+     * @example {
+     *       "is_admin": false,
+     *       "name": "Alex Rider"
+     *     }
+     */
     UpdateUserRequest: {
+      /** @example false */
       is_admin?: boolean | null;
+      /** @example Alex Rider */
       name?: string | null;
     };
+    /**
+     * @example {
+     *       "estimated_ftp_watts": 245,
+     *       "heart_rate_zone_bounds_bpm": [
+     *         110,
+     *         130,
+     *         150,
+     *         170
+     *       ],
+     *       "unit_system": "metric",
+     *       "xc_goal_event_name": "Autumn 100 km",
+     *       "xc_goal_event_profile": "xc_marathon",
+     *       "xc_goal_start_date": "2026-09-01",
+     *       "xc_goal_target_date": "2026-10-31",
+     *       "xc_goal_target_distance_meters": 100000,
+     *       "xc_goal_target_elevation_gain_meters": 1500,
+     *       "xc_goal_target_finish_time_seconds": 21600
+     *     }
+     */
     UserPreferencesResponse: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 245
+       */
       estimated_ftp_watts?: number | null;
+      /**
+       * @example [
+       *       110,
+       *       130,
+       *       150,
+       *       170
+       *     ]
+       */
       heart_rate_zone_bounds_bpm?: number[] | null;
+      /** @example metric */
       unit_system: string;
       /** Format: date-time */
       xc_goal_backfill_completed_at?: string | null;
       xc_goal_backfill_status?: string | null;
+      /** @example Autumn 100 km */
       xc_goal_event_name?: string | null;
+      /** @example xc_marathon */
       xc_goal_event_profile?: string | null;
+      /** @example 2026-09-01 */
       xc_goal_start_date?: string | null;
+      /** @example 2026-10-31 */
       xc_goal_target_date?: string | null;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 100000
+       */
       xc_goal_target_distance_meters?: number | null;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 1500
+       */
       xc_goal_target_elevation_gain_meters?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 21600
+       */
       xc_goal_target_finish_time_seconds?: number | null;
     };
+    /**
+     * @example {
+     *       "email": "alex@example.com",
+     *       "is_admin": false,
+     *       "name": "Alex Rider",
+     *       "pid": "a1b2c3d4-0000-4000-8000-000000000012",
+     *       "verified": true
+     *     }
+     */
     UserResponse: {
+      /** @example alex@example.com */
       email: string;
+      /** @example false */
       is_admin: boolean;
+      /** @example Alex Rider */
       name: string;
+      /** @example a1b2c3d4-0000-4000-8000-000000000012 */
       pid: string;
+      /** @example true */
       verified: boolean;
     };
     Value: unknown;
@@ -2787,33 +4862,93 @@ export interface components {
       | "endurance_mtb"
       | "ultra_mtb"
       | "custom";
+    /**
+     * @example {
+     *       "deficits": [],
+     *       "generated_at": "2026-09-27T12:00:00Z",
+     *       "goals": [],
+     *       "race_results": [],
+     *       "recent_rides": [],
+     *       "recommendations": [],
+     *       "summary": {
+     *         "comparable_ride_count": 5,
+     *         "recent_ride_count": 8,
+     *         "recent_window_days": 28,
+     *         "total_climbing_elevation_gain_meters": 1200,
+     *         "total_climbing_time_seconds": 4200,
+     *         "total_z2_time_seconds": 18000
+     *       },
+     *       "weekly_progress": []
+     *     }
+     */
     XcGoalProgressResponse: {
+      /** @example [] */
       deficits: components["schemas"]["XcTrainingDeficitResponse"][];
       event_goal?: null | components["schemas"]["XcEventGoalResponse"];
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @example 2026-09-27T12:00:00Z
+       */
       generated_at: string;
+      /** @example [] */
       goals: components["schemas"]["TrainingGoalMetricResponse"][];
+      /** @example [] */
       race_results: components["schemas"]["XcRaceResultResponse"][];
       readiness?: null | components["schemas"]["XcReadinessSummaryResponse"];
+      /** @example [] */
       recent_rides: components["schemas"]["XcRideProgressResponse"][];
+      /** @example [] */
       recommendations: components["schemas"]["TrainingRecommendationResponse"][];
       summary: components["schemas"]["XcProgressSummaryResponse"];
+      /** @example [] */
       weekly_progress: components["schemas"]["XcWeeklyProgressPointResponse"][];
     };
+    /**
+     * @example {
+     *       "average_aerobic_decoupling_percent": 4.2,
+     *       "comparable_ride_count": 5,
+     *       "recent_ride_count": 8,
+     *       "recent_window_days": 28,
+     *       "total_climbing_elevation_gain_meters": 1200,
+     *       "total_climbing_time_seconds": 4200,
+     *       "total_z2_time_seconds": 18000
+     *     }
+     */
     XcProgressSummaryResponse: {
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 4.2
+       */
       average_aerobic_decoupling_percent?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 5
+       */
       comparable_ride_count: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 8
+       */
       recent_ride_count: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 28
+       */
       recent_window_days: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 1200
+       */
       total_climbing_elevation_gain_meters: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 4200
+       */
       total_climbing_time_seconds: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @example 18000
+       */
       total_z2_time_seconds: number;
     };
     XcRaceResultResponse: {
@@ -3019,9 +5154,15 @@ export interface operations {
   list_activities: {
     parameters: {
       query?: {
-        /** @description Page number (1-based) */
+        /**
+         * @description Page number (1-based)
+         * @example 1
+         */
         page?: number;
-        /** @description Number of items per page */
+        /**
+         * @description Number of items per page
+         * @example 20
+         */
         per_page?: number;
       };
       header?: never;
@@ -3036,6 +5177,27 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "data": [
+           *         {
+           *           "activity_type": "training",
+           *           "distance_meters": 25430.5,
+           *           "id": 42,
+           *           "source": "manual_upload",
+           *           "sport": "ride",
+           *           "started_at": "2026-09-26T13:00:00Z",
+           *           "title": "Saturday hill repeats"
+           *         }
+           *       ],
+           *       "metadata": {
+           *         "page": 1,
+           *         "per_page": 20,
+           *         "total": 1,
+           *         "total_pages": 1
+           *       }
+           *     }
+           */
           "application/json": components["schemas"]["PaginatedResponse_ActivityResponse"];
         };
       };
@@ -3062,7 +5224,10 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description Activity ID */
+        /**
+         * @description Activity ID
+         * @example 42
+         */
         id: number;
       };
       cookie?: never;
@@ -3075,6 +5240,38 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "activity_type": "training",
+           *       "average_heart_rate_bpm": 148,
+           *       "average_speed_mps": 6.05,
+           *       "can_download_source_file": true,
+           *       "can_regenerate": true,
+           *       "distance_meters": 25430.5,
+           *       "elevation_gain_meters": 312.4,
+           *       "ended_at": "2026-09-26T14:12:00Z",
+           *       "estimated_ftp_watts": 245,
+           *       "format": "fit",
+           *       "id": 42,
+           *       "location": "Detroit, Michigan",
+           *       "moving_time_seconds": 4200,
+           *       "original_filename": "saturday-hills.fit",
+           *       "route_points": [
+           *         {
+           *           "distance_meters": 4200.5,
+           *           "elapsed_seconds": 900,
+           *           "elevation_meters": 183.2,
+           *           "latitude": 42.3314,
+           *           "longitude": -83.0458
+           *         }
+           *       ],
+           *       "source": "manual_upload",
+           *       "sport": "ride",
+           *       "started_at": "2026-09-26T13:00:00Z",
+           *       "title": "Saturday hill repeats",
+           *       "total_time_seconds": 4320
+           *     }
+           */
           "application/json": components["schemas"]["ActivityResponse"];
         };
       };
@@ -3110,7 +5307,10 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description Activity ID */
+        /**
+         * @description Activity ID
+         * @example 42
+         */
         id: number;
       };
       cookie?: never;
@@ -3156,13 +5356,22 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description Activity ID */
+        /**
+         * @description Activity ID
+         * @example 42
+         */
         id: number;
       };
       cookie?: never;
     };
     requestBody: {
       content: {
+        /**
+         * @example {
+         *       "activity_type": "training",
+         *       "title": "Saturday hill repeats"
+         *     }
+         */
         "application/json": components["schemas"]["UpdateActivityRequest"];
       };
     };
@@ -3173,6 +5382,38 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "activity_type": "training",
+           *       "average_heart_rate_bpm": 148,
+           *       "average_speed_mps": 6.05,
+           *       "can_download_source_file": true,
+           *       "can_regenerate": true,
+           *       "distance_meters": 25430.5,
+           *       "elevation_gain_meters": 312.4,
+           *       "ended_at": "2026-09-26T14:12:00Z",
+           *       "estimated_ftp_watts": 245,
+           *       "format": "fit",
+           *       "id": 42,
+           *       "location": "Detroit, Michigan",
+           *       "moving_time_seconds": 4200,
+           *       "original_filename": "saturday-hills.fit",
+           *       "route_points": [
+           *         {
+           *           "distance_meters": 4200.5,
+           *           "elapsed_seconds": 900,
+           *           "elevation_meters": 183.2,
+           *           "latitude": 42.3314,
+           *           "longitude": -83.0458
+           *         }
+           *       ],
+           *       "source": "manual_upload",
+           *       "sport": "ride",
+           *       "started_at": "2026-09-26T13:00:00Z",
+           *       "title": "Saturday hill repeats",
+           *       "total_time_seconds": 4320
+           *     }
+           */
           "application/json": components["schemas"]["ActivityResponse"];
         };
       };
@@ -3217,7 +5458,10 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description Activity ID */
+        /**
+         * @description Activity ID
+         * @example 42
+         */
         id: number;
       };
       cookie?: never;
@@ -3230,6 +5474,38 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "activity_type": "training",
+           *       "average_heart_rate_bpm": 148,
+           *       "average_speed_mps": 6.05,
+           *       "can_download_source_file": true,
+           *       "can_regenerate": true,
+           *       "distance_meters": 25430.5,
+           *       "elevation_gain_meters": 312.4,
+           *       "ended_at": "2026-09-26T14:12:00Z",
+           *       "estimated_ftp_watts": 245,
+           *       "format": "fit",
+           *       "id": 42,
+           *       "location": "Detroit, Michigan",
+           *       "moving_time_seconds": 4200,
+           *       "original_filename": "saturday-hills.fit",
+           *       "route_points": [
+           *         {
+           *           "distance_meters": 4200.5,
+           *           "elapsed_seconds": 900,
+           *           "elevation_meters": 183.2,
+           *           "latitude": 42.3314,
+           *           "longitude": -83.0458
+           *         }
+           *       ],
+           *       "source": "manual_upload",
+           *       "sport": "ride",
+           *       "started_at": "2026-09-26T13:00:00Z",
+           *       "title": "Saturday hill repeats",
+           *       "total_time_seconds": 4320
+           *     }
+           */
           "application/json": components["schemas"]["ActivityResponse"];
         };
       };
@@ -3274,7 +5550,10 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description Activity ID */
+        /**
+         * @description Activity ID
+         * @example 42
+         */
         id: number;
       };
       cookie?: never;
@@ -3330,6 +5609,24 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example [
+           *       {
+           *         "activity_duration_seconds": 4320,
+           *         "activity_id": 42,
+           *         "activity_location": "Detroit, Michigan",
+           *         "activity_started_at": "2026-09-26T13:00:00Z",
+           *         "created_at": "2026-09-26T14:20:00Z",
+           *         "format": "fit",
+           *         "id": 17,
+           *         "import_version": 1,
+           *         "original_filename": "saturday-hills.fit",
+           *         "processing_stage": "complete",
+           *         "size_bytes": 184320,
+           *         "status": "processed"
+           *       }
+           *     ]
+           */
           "application/json": components["schemas"]["ActivityImportResponse"][];
         };
       };
@@ -3358,9 +5655,12 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody?: {
+    requestBody: {
       content: {
-        "multipart/form-data": unknown;
+        "multipart/form-data": {
+          /** Format: binary */
+          file: string;
+        };
       };
     };
     responses: {
@@ -3370,6 +5670,22 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "activity_duration_seconds": 4320,
+           *       "activity_id": 42,
+           *       "activity_location": "Detroit, Michigan",
+           *       "activity_started_at": "2026-09-26T13:00:00Z",
+           *       "created_at": "2026-09-26T14:20:00Z",
+           *       "format": "fit",
+           *       "id": 17,
+           *       "import_version": 1,
+           *       "original_filename": "saturday-hills.fit",
+           *       "processing_stage": "complete",
+           *       "size_bytes": 184320,
+           *       "status": "processed"
+           *     }
+           */
           "application/json": components["schemas"]["ActivityImportResponse"];
         };
       };
@@ -3379,6 +5695,18 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "created_at": "2026-09-26T14:20:00Z",
+           *       "format": "fit",
+           *       "id": 17,
+           *       "import_version": 1,
+           *       "original_filename": "saturday-hills.fit",
+           *       "processing_stage": "raw_stored",
+           *       "size_bytes": 184320,
+           *       "status": "processing"
+           *     }
+           */
           "application/json": components["schemas"]["ActivityImportResponse"];
         };
       };
@@ -3433,6 +5761,24 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example [
+           *       {
+           *         "archive_url": "https://example.com/exports/activities.zip",
+           *         "created_at": "2026-09-27T12:00:00Z",
+           *         "duplicate_count": 0,
+           *         "error_samples": [],
+           *         "failed_count": 0,
+           *         "id": 18,
+           *         "imported_count": 0,
+           *         "skipped_unsupported_count": 0,
+           *         "status": "queued",
+           *         "supported_entry_count": 0,
+           *         "total_entries": 0,
+           *         "updated_at": "2026-09-27T12:00:00Z"
+           *       }
+           *     ]
+           */
           "application/json": components["schemas"]["ActivityArchiveImportJobResponse"][];
         };
       };
@@ -3459,7 +5805,10 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description Archive import job id */
+        /**
+         * @description Archive import job id
+         * @example 17
+         */
         id: number;
       };
       cookie?: never;
@@ -3472,6 +5821,22 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "archive_url": "https://example.com/exports/activities.zip",
+           *       "created_at": "2026-09-27T12:00:00Z",
+           *       "duplicate_count": 0,
+           *       "error_samples": [],
+           *       "failed_count": 0,
+           *       "id": 18,
+           *       "imported_count": 0,
+           *       "skipped_unsupported_count": 0,
+           *       "status": "queued",
+           *       "supported_entry_count": 0,
+           *       "total_entries": 0,
+           *       "updated_at": "2026-09-27T12:00:00Z"
+           *     }
+           */
           "application/json": components["schemas"]["ActivityArchiveImportJobResponse"];
         };
       };
@@ -3511,6 +5876,11 @@ export interface operations {
     };
     requestBody: {
       content: {
+        /**
+         * @example {
+         *       "archive_url": "https://example.com/exports/activities.zip"
+         *     }
+         */
         "application/json": components["schemas"]["ArchiveUrlImportRequest"];
       };
     };
@@ -3521,6 +5891,22 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "archive_url": "https://example.com/exports/activities.zip",
+           *       "created_at": "2026-09-27T12:00:00Z",
+           *       "duplicate_count": 0,
+           *       "error_samples": [],
+           *       "failed_count": 0,
+           *       "id": 18,
+           *       "imported_count": 0,
+           *       "skipped_unsupported_count": 0,
+           *       "status": "queued",
+           *       "supported_entry_count": 0,
+           *       "total_entries": 0,
+           *       "updated_at": "2026-09-27T12:00:00Z"
+           *     }
+           */
           "application/json": components["schemas"]["ActivityArchiveImportJobResponse"];
         };
       };
@@ -3575,6 +5961,74 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "edges": [
+           *         {
+           *           "from": "raw_stored",
+           *           "to": "activity_parsed"
+           *         },
+           *         {
+           *           "from": "activity_parsed",
+           *           "to": "activity_saved"
+           *         },
+           *         {
+           *           "from": "activity_saved",
+           *           "to": "segments_built"
+           *         },
+           *         {
+           *           "from": "segments_built",
+           *           "to": "segment_analytics_built"
+           *         },
+           *         {
+           *           "from": "segment_analytics_built",
+           *           "to": "activity_analytics_built"
+           *         },
+           *         {
+           *           "from": "activity_analytics_built",
+           *           "to": "training_analysis_built"
+           *         }
+           *       ],
+           *       "mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]\n  activity_parsed[\"Activity parsed\"]\n  activity_saved[\"Activity saved\"]\n  segments_built[\"Segments built\"]\n  segment_analytics_built[\"Segment analytics built\"]\n  activity_analytics_built[\"Activity analytics built\"]\n  training_analysis_built[\"Training analysis built\"]\n  raw_stored --> activity_parsed\n  activity_parsed --> activity_saved\n  activity_saved --> segments_built\n  segments_built --> segment_analytics_built\n  segment_analytics_built --> activity_analytics_built\n  activity_analytics_built --> training_analysis_built",
+           *       "nodes": [
+           *         {
+           *           "id": "raw_stored",
+           *           "label": "Raw stored",
+           *           "stage": "raw_stored"
+           *         },
+           *         {
+           *           "id": "activity_parsed",
+           *           "label": "Activity parsed",
+           *           "stage": "activity_parsed"
+           *         },
+           *         {
+           *           "id": "activity_saved",
+           *           "label": "Activity saved",
+           *           "stage": "activity_saved"
+           *         },
+           *         {
+           *           "id": "segments_built",
+           *           "label": "Segments built",
+           *           "stage": "segments_built"
+           *         },
+           *         {
+           *           "id": "segment_analytics_built",
+           *           "label": "Segment analytics built",
+           *           "stage": "segment_analytics_built"
+           *         },
+           *         {
+           *           "id": "activity_analytics_built",
+           *           "label": "Activity analytics built",
+           *           "stage": "activity_analytics_built"
+           *         },
+           *         {
+           *           "id": "training_analysis_built",
+           *           "label": "Training analysis built",
+           *           "stage": "training_analysis_built"
+           *         }
+           *       ]
+           *     }
+           */
           "application/json": components["schemas"]["ActivityProcessingGraphResponse"];
         };
       };
@@ -3611,6 +6065,16 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "is_active": true,
+           *       "message": "Strava sync is currently running.",
+           *       "source": "strava_sync",
+           *       "source_label": "Strava sync",
+           *       "stage": "running",
+           *       "stage_label": "running"
+           *     }
+           */
           "application/json": components["schemas"]["ActivityProcessingStateResponse"];
         };
       };
@@ -3637,7 +6101,10 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description Activity import id */
+        /**
+         * @description Activity import id
+         * @example 17
+         */
         id: number;
       };
       cookie?: never;
@@ -3650,6 +6117,40 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "events": [],
+           *       "graph": {
+           *         "edges": [],
+           *         "mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]",
+           *         "nodes": [
+           *           {
+           *             "id": "raw_stored",
+           *             "label": "Raw stored",
+           *             "stage": "raw_stored"
+           *           }
+           *         ]
+           *       },
+           *       "import": {
+           *         "created_at": "2026-09-26T14:20:00Z",
+           *         "format": "fit",
+           *         "id": 17,
+           *         "import_version": 1,
+           *         "original_filename": "saturday-hills.fit",
+           *         "processing_stage": "complete",
+           *         "size_bytes": 184320,
+           *         "status": "processed"
+           *       },
+           *       "nodes": [
+           *         {
+           *           "id": "raw_stored",
+           *           "label": "Raw stored",
+           *           "stage": "raw_stored",
+           *           "status": "completed"
+           *         }
+           *       ]
+           *     }
+           */
           "application/json": components["schemas"]["ActivityImportTraceResponse"];
         };
       };
@@ -3683,9 +6184,15 @@ export interface operations {
   admin_list_activities: {
     parameters: {
       query?: {
-        /** @description Page number (1-based) */
+        /**
+         * @description Page number (1-based)
+         * @example 1
+         */
         page?: number;
-        /** @description Number of items per page */
+        /**
+         * @description Number of items per page
+         * @example 20
+         */
         per_page?: number;
       };
       header?: never;
@@ -3700,6 +6207,26 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "data": [
+           *         {
+           *           "id": 42,
+           *           "source": "manual_upload",
+           *           "sport": "ride",
+           *           "started_at": "2026-09-26T13:00:00Z",
+           *           "title": "Saturday hill repeats",
+           *           "user_id": 12
+           *         }
+           *       ],
+           *       "metadata": {
+           *         "page": 1,
+           *         "per_page": 20,
+           *         "total": 1,
+           *         "total_pages": 1
+           *       }
+           *     }
+           */
           "application/json": components["schemas"]["PaginatedResponse_AdminActivityResponse"];
         };
       };
@@ -3733,7 +6260,10 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description Activity id */
+        /**
+         * @description Activity id
+         * @example 42
+         */
         id: number;
       };
       cookie?: never;
@@ -3746,6 +6276,11 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "trace": null
+           *     }
+           */
           "application/json": components["schemas"]["AdminActivityImportTraceResponse"];
         };
       };
@@ -3792,6 +6327,11 @@ export interface operations {
     };
     requestBody: {
       content: {
+        /**
+         * @example {
+         *       "archive_path": "/data/imports/activities.zip"
+         *     }
+         */
         "application/json": components["schemas"]["ArchiveImportRequest"];
       };
     };
@@ -3802,6 +6342,18 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "archive_path": "/data/imports/activities.zip",
+           *       "duplicate_count": 6,
+           *       "error_samples": [],
+           *       "failed_count": 0,
+           *       "imported_count": 110,
+           *       "skipped_unsupported_count": 4,
+           *       "supported_entry_count": 116,
+           *       "total_entries": 120
+           *     }
+           */
           "application/json": components["schemas"]["ArchiveImportResponse"];
         };
       };
@@ -3866,6 +6418,11 @@ export interface operations {
     };
     requestBody: {
       content: {
+        /**
+         * @example {
+         *       "user_id": 12
+         *     }
+         */
         "application/json": components["schemas"]["CleanupUserDuplicateActivitiesRequest"];
       };
     };
@@ -3876,6 +6433,16 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "deleted_activity_count": 2,
+           *       "duplicate_group_count": 2,
+           *       "message": "Removed 2 duplicate activities across 2 duplicate groups.",
+           *       "retained_activity_count": 2,
+           *       "status": "completed",
+           *       "user_id": 12
+           *     }
+           */
           "application/json": components["schemas"]["CleanupUserDuplicateActivitiesResponse"];
         };
       };
@@ -3931,6 +6498,11 @@ export interface operations {
     };
     requestBody: {
       content: {
+        /**
+         * @example {
+         *       "user_id": 12
+         *     }
+         */
         "application/json": components["schemas"]["ReprocessUserActivityImportsRequest"];
       };
     };
@@ -3941,6 +6513,13 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "message": "Activity reprocessing queued.",
+           *       "status": "queued",
+           *       "user_id": 12
+           *     }
+           */
           "application/json": components["schemas"]["ReprocessUserActivityImportsResponse"];
         };
       };
@@ -3996,6 +6575,11 @@ export interface operations {
     };
     requestBody: {
       content: {
+        /**
+         * @example {
+         *       "activity_id": 42
+         *     }
+         */
         "application/json": components["schemas"]["ReprocessActivityImportRequest"];
       };
     };
@@ -4006,6 +6590,17 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "activity_id": 42,
+           *       "activity_import_id": 17,
+           *       "message": "Activity reprocessing queued.",
+           *       "status": "queued",
+           *       "task_id": "42",
+           *       "task_status": "pending",
+           *       "user_id": 12
+           *     }
+           */
           "application/json": components["schemas"]["ReprocessActivityImportResponse"];
         };
       };
@@ -4057,7 +6652,10 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description Activity import id */
+        /**
+         * @description Activity import id
+         * @example 17
+         */
         id: number;
       };
       cookie?: never;
@@ -4070,6 +6668,40 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "events": [],
+           *       "graph": {
+           *         "edges": [],
+           *         "mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]",
+           *         "nodes": [
+           *           {
+           *             "id": "raw_stored",
+           *             "label": "Raw stored",
+           *             "stage": "raw_stored"
+           *           }
+           *         ]
+           *       },
+           *       "import": {
+           *         "created_at": "2026-09-26T14:20:00Z",
+           *         "format": "fit",
+           *         "id": 17,
+           *         "import_version": 1,
+           *         "original_filename": "saturday-hills.fit",
+           *         "processing_stage": "complete",
+           *         "size_bytes": 184320,
+           *         "status": "processed"
+           *       },
+           *       "nodes": [
+           *         {
+           *           "id": "raw_stored",
+           *           "label": "Raw stored",
+           *           "stage": "raw_stored",
+           *           "status": "completed"
+           *         }
+           *       ]
+           *     }
+           */
           "application/json": components["schemas"]["ActivityImportTraceResponse"];
         };
       };
@@ -4122,6 +6754,16 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "fitness_task_count": 12,
+           *       "segment_chunk_size": 20,
+           *       "segment_count": 35,
+           *       "segment_task_count": 2,
+           *       "total_tasks_enqueued": 14,
+           *       "user_count": 12
+           *     }
+           */
           "application/json": components["schemas"]["AnalyticsBackfillResponse"];
         };
       };
@@ -4165,6 +6807,23 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "data": [
+           *         {
+           *           "description": "Show the activity stream",
+           *           "enabled": true,
+           *           "feature_key": "activity-stream"
+           *         }
+           *       ],
+           *       "metadata": {
+           *         "page": 1,
+           *         "per_page": 20,
+           *         "total": 1,
+           *         "total_pages": 1
+           *       }
+           *     }
+           */
           "application/json": components["schemas"]["PaginatedResponse_FeatureFlagResponse"];
         };
       };
@@ -4175,13 +6834,21 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description Feature flag key */
+        /**
+         * @description Feature flag key
+         * @example activity-stream
+         */
         key: string;
       };
       cookie?: never;
     };
     requestBody: {
       content: {
+        /**
+         * @example {
+         *       "enabled": true
+         *     }
+         */
         "application/json": components["schemas"]["UpdateFlagRequest"];
       };
     };
@@ -4192,6 +6859,13 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "description": "Show the activity stream",
+           *       "enabled": true,
+           *       "feature_key": "activity-stream"
+           *     }
+           */
           "application/json": components["schemas"]["FeatureFlagResponse"];
         };
       };
@@ -4200,15 +6874,30 @@ export interface operations {
   list_admin_integration_events: {
     parameters: {
       query?: {
-        /** @description Optional integration provider filter */
+        /**
+         * @description Optional integration provider filter
+         * @example google
+         */
         provider?: string;
-        /** @description Optional Bike user id filter */
+        /**
+         * @description Optional Bike user id filter
+         * @example 12
+         */
         user_id?: number;
-        /** @description Optional activity id filter against event payload */
+        /**
+         * @description Optional activity id filter against event payload
+         * @example 42
+         */
         activity_id?: number;
-        /** @description Optional activity import id filter against event payload */
+        /**
+         * @description Optional activity import id filter against event payload
+         * @example 17
+         */
         import_id?: number;
-        /** @description Maximum number of rows to return */
+        /**
+         * @description Maximum number of rows to return
+         * @example 20
+         */
         limit?: number;
       };
       header?: never;
@@ -4223,6 +6912,23 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example [
+           *       {
+           *         "connection_id": 5,
+           *         "created_at": "2026-09-27T12:00:00Z",
+           *         "event_type": "sync_completed",
+           *         "id": 31,
+           *         "level": "info",
+           *         "message": "Imported 3 activities",
+           *         "payload": {
+           *           "imported_count": 3
+           *         },
+           *         "provider": "strava",
+           *         "user_id": 12
+           *       }
+           *     ]
+           */
           "application/json": components["schemas"]["IntegrationEventResponse"][];
         };
       };
@@ -4266,6 +6972,19 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "auth": [
+           *         {
+           *           "desc": "last 30 days",
+           *           "key": "active_users",
+           *           "label": "Active users",
+           *           "value": 12
+           *         }
+           *       ],
+           *       "background_tasks": []
+           *     }
+           */
           "application/json": components["schemas"]["SystemMetrics"];
         };
       };
@@ -4300,6 +7019,16 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example [
+           *       {
+           *         "desc": "last 30 days",
+           *         "key": "active_users",
+           *         "label": "Active users",
+           *         "value": 12
+           *       }
+           *     ]
+           */
           "application/json": components["schemas"]["NamedStat"][];
         };
       };
@@ -4328,6 +7057,11 @@ export interface operations {
     };
     requestBody: {
       content: {
+        /**
+         * @example {
+         *       "user_id": 12
+         *     }
+         */
         "application/json": components["schemas"]["RegenerateUserSegmentsRequest"];
       };
     };
@@ -4338,6 +7072,13 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "message": "Segment regeneration queued.",
+           *       "status": "queued",
+           *       "user_id": 12
+           *     }
+           */
           "application/json": components["schemas"]["RegenerateUserSegmentsResponse"];
         };
       };
@@ -4393,6 +7134,11 @@ export interface operations {
     };
     requestBody: {
       content: {
+        /**
+         * @example {
+         *       "segment_id": 7
+         *     }
+         */
         "application/json": components["schemas"]["RegenerateSegmentEffortsRequest"];
       };
     };
@@ -4403,6 +7149,15 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "message": "Segment effort regeneration queued.",
+           *       "segment_id": 7,
+           *       "status": "queued",
+           *       "task_id": "43",
+           *       "task_status": "pending"
+           *     }
+           */
           "application/json": components["schemas"]["RegenerateSegmentEffortsResponse"];
         };
       };
@@ -4443,12 +7198,19 @@ export interface operations {
   admin_list_tasks: {
     parameters: {
       query?: {
+        /** @example regenerate_segment_efforts */
         task_type?: string;
+        /** @example queued */
         status?: string;
+        /** @example access_denied */
         error?: string;
+        /** @example 2026-09-20 */
         from_date?: string;
+        /** @example 2026-09-27 */
         to_date?: string;
+        /** @example 1 */
         page?: number;
+        /** @example 20 */
         per_page?: number;
       };
       header?: never;
@@ -4463,6 +7225,27 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "data": [
+           *         {
+           *           "attempts": 0,
+           *           "created_at": "2026-09-27T12:00:00Z",
+           *           "id": 43,
+           *           "max_attempts": 3,
+           *           "status": "queued",
+           *           "task_type": "regenerate_segment_efforts",
+           *           "updated_at": "2026-09-27T12:00:00Z"
+           *         }
+           *       ],
+           *       "metadata": {
+           *         "page": 1,
+           *         "per_page": 20,
+           *         "total": 1,
+           *         "total_pages": 1
+           *       }
+           *     }
+           */
           "application/json": components["schemas"]["PaginatedResponse_TaskResponse"];
         };
       };
@@ -4487,7 +7270,10 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description Task ID */
+        /**
+         * @description Task ID
+         * @example 43
+         */
         id: number;
       };
       cookie?: never;
@@ -4500,6 +7286,20 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "attempts": 0,
+           *       "created_at": "2026-09-27T12:00:00Z",
+           *       "id": 43,
+           *       "max_attempts": 3,
+           *       "payload": {
+           *         "segment_id": 7
+           *       },
+           *       "status": "queued",
+           *       "task_type": "regenerate_segment_efforts",
+           *       "updated_at": "2026-09-27T12:00:00Z"
+           *     }
+           */
           "application/json": components["schemas"]["TaskDetailResponse"];
         };
       };
@@ -4531,7 +7331,10 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description Task ID */
+        /**
+         * @description Task ID
+         * @example 43
+         */
         id: number;
       };
       cookie?: never;
@@ -4544,6 +7347,17 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "attempts": 0,
+           *       "created_at": "2026-09-27T12:00:00Z",
+           *       "id": 43,
+           *       "max_attempts": 3,
+           *       "status": "queued",
+           *       "task_type": "regenerate_segment_efforts",
+           *       "updated_at": "2026-09-27T12:00:00Z"
+           *     }
+           */
           "application/json": components["schemas"]["TaskResponse"];
         };
       };
@@ -4582,7 +7396,10 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description Task ID */
+        /**
+         * @description Task ID
+         * @example 43
+         */
         id: number;
       };
       cookie?: never;
@@ -4595,6 +7412,17 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "attempts": 0,
+           *       "created_at": "2026-09-27T12:00:00Z",
+           *       "id": 43,
+           *       "max_attempts": 3,
+           *       "status": "queued",
+           *       "task_type": "regenerate_segment_efforts",
+           *       "updated_at": "2026-09-27T12:00:00Z"
+           *     }
+           */
           "application/json": components["schemas"]["TaskResponse"];
         };
       };
@@ -4630,6 +7458,11 @@ export interface operations {
     };
     requestBody: {
       content: {
+        /**
+         * @example {
+         *       "user_id": 12
+         *     }
+         */
         "application/json": components["schemas"]["ReprocessUserActivityImportsRequest"];
       };
     };
@@ -4640,6 +7473,13 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "message": "XC training backfill queued. Historical rides will repopulate in the background.",
+           *       "status": "queued",
+           *       "user_id": 12
+           *     }
+           */
           "application/json": components["schemas"]["ReprocessUserActivityImportsResponse"];
         };
       };
@@ -4680,9 +7520,14 @@ export interface operations {
   list_users: {
     parameters: {
       query?: {
+        /** @example Alex */
         q?: string;
+        /** @example 1 */
         page?: number;
+        /** @example 20 */
         per_page?: number;
+        /** @example false */
+        disabled?: boolean;
       };
       header?: never;
       path?: never;
@@ -4696,6 +7541,26 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "data": [
+           *         {
+           *           "created_at": "2026-09-01T12:00:00Z",
+           *           "disabled": false,
+           *           "email": "alex@example.com",
+           *           "email_verified": true,
+           *           "id": 12,
+           *           "is_admin": false,
+           *           "name": "Alex Rider",
+           *           "pid": "a1b2c3d4-0000-4000-8000-000000000012",
+           *           "updated_at": "2026-09-27T12:00:00Z"
+           *         }
+           *       ],
+           *       "page": 1,
+           *       "per_page": 20,
+           *       "total": 1
+           *     }
+           */
           "application/json": components["schemas"]["AdminUsersListResponse"];
         };
       };
@@ -4713,7 +7578,10 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description User ID */
+        /**
+         * @description User ID
+         * @example 12
+         */
         id: number;
       };
       cookie?: never;
@@ -4726,6 +7594,19 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "created_at": "2026-09-01T12:00:00Z",
+           *       "disabled": false,
+           *       "email": "alex@example.com",
+           *       "email_verified": true,
+           *       "id": 12,
+           *       "is_admin": false,
+           *       "name": "Alex Rider",
+           *       "pid": "a1b2c3d4-0000-4000-8000-000000000012",
+           *       "updated_at": "2026-09-27T12:00:00Z"
+           *     }
+           */
           "application/json": components["schemas"]["AdminUserResponse"];
         };
       };
@@ -4750,13 +7631,22 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description User ID */
+        /**
+         * @description User ID
+         * @example 12
+         */
         id: number;
       };
       cookie?: never;
     };
     requestBody: {
       content: {
+        /**
+         * @example {
+         *       "is_admin": false,
+         *       "name": "Alex Rider"
+         *     }
+         */
         "application/json": components["schemas"]["UpdateUserRequest"];
       };
     };
@@ -4767,6 +7657,19 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "created_at": "2026-09-01T12:00:00Z",
+           *       "disabled": false,
+           *       "email": "alex@example.com",
+           *       "email_verified": true,
+           *       "id": 12,
+           *       "is_admin": false,
+           *       "name": "Alex Rider",
+           *       "pid": "a1b2c3d4-0000-4000-8000-000000000012",
+           *       "updated_at": "2026-09-27T12:00:00Z"
+           *     }
+           */
           "application/json": components["schemas"]["AdminUserResponse"];
         };
       };
@@ -4791,23 +7694,44 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description User ID */
+        /**
+         * @description User ID
+         * @example 12
+         */
         id: number;
       };
       cookie?: never;
     };
     requestBody: {
       content: {
+        /**
+         * @example {
+         *       "disabled": true
+         *     }
+         */
         "application/json": components["schemas"]["DisableUserRequest"];
       };
     };
     responses: {
-      /** @description User disable status toggled */
+      /** @description User disable status updated */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "created_at": "2026-09-01T12:00:00Z",
+           *       "disabled": true,
+           *       "email": "alex@example.com",
+           *       "email_verified": true,
+           *       "id": 12,
+           *       "is_admin": false,
+           *       "name": "Alex Rider",
+           *       "pid": "a1b2c3d4-0000-4000-8000-000000000012",
+           *       "updated_at": "2026-09-27T12:00:00Z"
+           *     }
+           */
           "application/json": components["schemas"]["AdminUserResponse"];
         };
       };
@@ -4842,6 +7766,15 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "email": "alex@example.com",
+           *       "is_admin": false,
+           *       "name": "Alex Rider",
+           *       "pid": "a1b2c3d4-0000-4000-8000-000000000012",
+           *       "verified": true
+           *     }
+           */
           "application/json": components["schemas"]["UserResponse"];
         };
       };
@@ -4863,6 +7796,11 @@ export interface operations {
     };
     requestBody: {
       content: {
+        /**
+         * @example {
+         *       "email": "alex@example.com"
+         *     }
+         */
         "application/json": components["schemas"]["ForgotPasswordRequest"];
       };
     };
@@ -4873,6 +7811,11 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "message": "If the email exists, a password reset link has been sent"
+           *     }
+           */
           "application/json": components["schemas"]["MessageResponse"];
         };
       };
@@ -4894,6 +7837,12 @@ export interface operations {
     };
     requestBody: {
       content: {
+        /**
+         * @example {
+         *       "email": "alex@example.com",
+         *       "password": "example-password-123"
+         *     }
+         */
         "application/json": components["schemas"]["LoginRequest"];
       };
     };
@@ -4963,6 +7912,7 @@ export interface operations {
     /** @description Optional refresh token in body or cookie */
     requestBody: {
       content: {
+        /** @example refresh-token-from-login */
         "application/json": string;
       };
     };
@@ -4992,6 +7942,13 @@ export interface operations {
     };
     requestBody: {
       content: {
+        /**
+         * @example {
+         *       "email": "alex@example.com",
+         *       "name": "Alex Rider",
+         *       "password": "example-password-123"
+         *     }
+         */
         "application/json": components["schemas"]["RegisterRequest"];
       };
     };
@@ -5002,6 +7959,11 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "pid": "a1b2c3d4-0000-4000-8000-000000000012"
+           *     }
+           */
           "application/json": components["schemas"]["RegisterResponse"];
         };
       };
@@ -5023,6 +7985,11 @@ export interface operations {
     };
     requestBody: {
       content: {
+        /**
+         * @example {
+         *       "email": "alex@example.com"
+         *     }
+         */
         "application/json": components["schemas"]["ResendConfirmationRequest"];
       };
     };
@@ -5033,6 +8000,11 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "message": "Confirmation email sent successfully"
+           *     }
+           */
           "application/json": components["schemas"]["MessageResponse"];
         };
       };
@@ -5054,6 +8026,12 @@ export interface operations {
     };
     requestBody: {
       content: {
+        /**
+         * @example {
+         *       "password": "new-example-password-123",
+         *       "token": "reset-token-from-email"
+         *     }
+         */
         "application/json": components["schemas"]["ResetPasswordRequest"];
       };
     };
@@ -5079,7 +8057,10 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description Email verification token */
+        /**
+         * @description Email verification token
+         * @example email-verification-token
+         */
         token: string;
       };
       cookie?: never;
@@ -5092,6 +8073,11 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "message": "Email verified successfully"
+           *     }
+           */
           "application/json": components["schemas"]["MessageResponse"];
         };
       };
@@ -5119,6 +8105,22 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "data": [
+           *         {
+           *           "enabled": true,
+           *           "feature_key": "activity-stream"
+           *         }
+           *       ],
+           *       "metadata": {
+           *         "page": 1,
+           *         "per_page": 20,
+           *         "total": 1,
+           *         "total_pages": 1
+           *       }
+           *     }
+           */
           "application/json": components["schemas"]["PaginatedResponse_PublicFlagResponse"];
         };
       };
@@ -5127,7 +8129,9 @@ export interface operations {
   get_fitness_freshness: {
     parameters: {
       query?: {
+        /** @example 2026-09-20 */
         start_date?: string | null;
+        /** @example 2026-09-27 */
         end_date?: string | null;
       };
       header?: never;
@@ -5142,6 +8146,23 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "end_date": "2026-09-27",
+           *       "fatigue_window_days": 7,
+           *       "fitness_window_days": 42,
+           *       "points": [
+           *         {
+           *           "date": "2026-09-26",
+           *           "fatigue": 56.1,
+           *           "fitness": 48.2,
+           *           "form": -7.9,
+           *           "training_load": 72.5
+           *         }
+           *       ],
+           *       "start_date": "2026-09-20"
+           *     }
+           */
           "application/json": components["schemas"]["FitnessFreshnessResponse"];
         };
       };
@@ -5187,6 +8208,11 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "status": "ok"
+           *     }
+           */
           "application/json": components["schemas"]["HealthResponse"];
         };
       };
@@ -5207,6 +8233,23 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example [
+           *       {
+           *         "connection_id": 5,
+           *         "created_at": "2026-09-27T12:00:00Z",
+           *         "event_type": "sync_completed",
+           *         "id": 31,
+           *         "level": "info",
+           *         "message": "Imported 3 activities",
+           *         "payload": {
+           *           "imported_count": 3
+           *         },
+           *         "provider": "strava",
+           *         "user_id": 12
+           *       }
+           *     ]
+           */
           "application/json": components["schemas"]["IntegrationEventResponse"][];
         };
       };
@@ -5243,6 +8286,16 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "providers": [
+           *         {
+           *           "id": "google",
+           *           "label": "Google"
+           *         }
+           *       ]
+           *     }
+           */
           "application/json": components["schemas"]["OAuthProvidersResponse"];
         };
       };
@@ -5253,7 +8306,10 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description OAuth provider name */
+        /**
+         * @description OAuth provider name
+         * @example google
+         */
         provider: string;
       };
       cookie?: never;
@@ -5272,12 +8328,17 @@ export interface operations {
   oauth_callback: {
     parameters: {
       query: {
+        /** @example oauth-code-from-provider */
         code: string;
+        /** @example oauth-state-from-redirect */
         state?: string | null;
       };
       header?: never;
       path: {
-        /** @description OAuth provider name */
+        /**
+         * @description OAuth provider name
+         * @example google
+         */
         provider: string;
       };
       cookie?: never;
@@ -5308,6 +8369,25 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "estimated_ftp_watts": 245,
+           *       "heart_rate_zone_bounds_bpm": [
+           *         110,
+           *         130,
+           *         150,
+           *         170
+           *       ],
+           *       "unit_system": "metric",
+           *       "xc_goal_event_name": "Autumn 100 km",
+           *       "xc_goal_event_profile": "xc_marathon",
+           *       "xc_goal_start_date": "2026-09-01",
+           *       "xc_goal_target_date": "2026-10-31",
+           *       "xc_goal_target_distance_meters": 100000,
+           *       "xc_goal_target_elevation_gain_meters": 1500,
+           *       "xc_goal_target_finish_time_seconds": 21600
+           *     }
+           */
           "application/json": components["schemas"]["UserPreferencesResponse"];
         };
       };
@@ -5338,6 +8418,25 @@ export interface operations {
     };
     requestBody: {
       content: {
+        /**
+         * @example {
+         *       "estimated_ftp_watts": 245,
+         *       "heart_rate_zone_bounds_bpm": [
+         *         110,
+         *         130,
+         *         150,
+         *         170
+         *       ],
+         *       "unit_system": "metric",
+         *       "xc_goal_event_name": "Autumn 100 km",
+         *       "xc_goal_event_profile": "xc_marathon",
+         *       "xc_goal_start_date": "2026-09-01",
+         *       "xc_goal_target_date": "2026-10-31",
+         *       "xc_goal_target_distance_meters": 100000,
+         *       "xc_goal_target_elevation_gain_meters": 1500,
+         *       "xc_goal_target_finish_time_seconds": 21600
+         *     }
+         */
         "application/json": components["schemas"]["UpdateUserPreferencesRequest"];
       };
     };
@@ -5348,6 +8447,25 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "estimated_ftp_watts": 245,
+           *       "heart_rate_zone_bounds_bpm": [
+           *         110,
+           *         130,
+           *         150,
+           *         170
+           *       ],
+           *       "unit_system": "metric",
+           *       "xc_goal_event_name": "Autumn 100 km",
+           *       "xc_goal_event_profile": "xc_marathon",
+           *       "xc_goal_start_date": "2026-09-01",
+           *       "xc_goal_target_date": "2026-10-31",
+           *       "xc_goal_target_distance_meters": 100000,
+           *       "xc_goal_target_elevation_gain_meters": 1500,
+           *       "xc_goal_target_finish_time_seconds": 21600
+           *     }
+           */
           "application/json": components["schemas"]["UserPreferencesResponse"];
         };
       };
@@ -5393,6 +8511,27 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example [
+           *       {
+           *         "best_duration_seconds": 340,
+           *         "builder_source": {
+           *           "activity_id": 42,
+           *           "end_route_point_index": 280,
+           *           "start_route_point_index": 120
+           *         },
+           *         "created_at": "2026-09-26T14:25:00Z",
+           *         "current_user_pr_duration_seconds": 355,
+           *         "distance_meters": 1500.5,
+           *         "effort_count": 8,
+           *         "id": 7,
+           *         "mode": "xc",
+           *         "source": "activity_segment_builder",
+           *         "starred": true,
+           *         "title": "Riverfront climb"
+           *       }
+           *     ]
+           */
           "application/json": components["schemas"]["SegmentResponse"][];
         };
       };
@@ -5421,9 +8560,12 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody?: {
+    requestBody: {
       content: {
-        "multipart/form-data": unknown;
+        "multipart/form-data": {
+          /** Format: binary */
+          file: string;
+        };
       };
     };
     responses: {
@@ -5433,6 +8575,21 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "best_duration_seconds": 340,
+           *       "created_at": "2026-09-26T14:25:00Z",
+           *       "distance_meters": 1500.5,
+           *       "effort_count": 8,
+           *       "format": "gpx",
+           *       "id": 7,
+           *       "mode": "xc",
+           *       "original_filename": "riverfront.gpx",
+           *       "source": "manual_segment_import",
+           *       "starred": false,
+           *       "title": "Riverfront climb"
+           *     }
+           */
           "application/json": components["schemas"]["SegmentResponse"];
         };
       };
@@ -5472,6 +8629,14 @@ export interface operations {
     };
     requestBody: {
       content: {
+        /**
+         * @example {
+         *       "activity_id": 42,
+         *       "end_route_point_index": 280,
+         *       "start_route_point_index": 120,
+         *       "title": "Riverfront climb"
+         *     }
+         */
         "application/json": components["schemas"]["CreateSegmentFromActivityRequest"];
       };
     };
@@ -5482,6 +8647,25 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "best_duration_seconds": 340,
+           *       "builder_source": {
+           *         "activity_id": 42,
+           *         "end_route_point_index": 280,
+           *         "start_route_point_index": 120
+           *       },
+           *       "created_at": "2026-09-26T14:25:00Z",
+           *       "current_user_pr_duration_seconds": 355,
+           *       "distance_meters": 1500.5,
+           *       "effort_count": 8,
+           *       "id": 7,
+           *       "mode": "xc",
+           *       "source": "activity_segment_builder",
+           *       "starred": true,
+           *       "title": "Riverfront climb"
+           *     }
+           */
           "application/json": components["schemas"]["SegmentResponse"];
         };
       };
@@ -5491,6 +8675,25 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "best_duration_seconds": 340,
+           *       "builder_source": {
+           *         "activity_id": 42,
+           *         "end_route_point_index": 280,
+           *         "start_route_point_index": 120
+           *       },
+           *       "created_at": "2026-09-26T14:25:00Z",
+           *       "current_user_pr_duration_seconds": 355,
+           *       "distance_meters": 1500.5,
+           *       "effort_count": 8,
+           *       "id": 7,
+           *       "mode": "xc",
+           *       "source": "activity_segment_builder",
+           *       "starred": true,
+           *       "title": "Riverfront climb"
+           *     }
+           */
           "application/json": components["schemas"]["SegmentResponse"];
         };
       };
@@ -5535,7 +8738,10 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description Segment ID */
+        /**
+         * @description Segment ID
+         * @example 7
+         */
         id: number;
       };
       cookie?: never;
@@ -5548,6 +8754,25 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "best_duration_seconds": 340,
+           *       "builder_source": {
+           *         "activity_id": 42,
+           *         "end_route_point_index": 280,
+           *         "start_route_point_index": 120
+           *       },
+           *       "created_at": "2026-09-26T14:25:00Z",
+           *       "current_user_pr_duration_seconds": 355,
+           *       "distance_meters": 1500.5,
+           *       "effort_count": 8,
+           *       "id": 7,
+           *       "mode": "xc",
+           *       "source": "activity_segment_builder",
+           *       "starred": true,
+           *       "title": "Riverfront climb"
+           *     }
+           */
           "application/json": components["schemas"]["SegmentResponse"];
         };
       };
@@ -5583,13 +8808,23 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description Segment ID */
+        /**
+         * @description Segment ID
+         * @example 7
+         */
         id: number;
       };
       cookie?: never;
     };
     requestBody: {
       content: {
+        /**
+         * @example {
+         *       "mode": "xc",
+         *       "starred": true,
+         *       "title": "Riverfront climb"
+         *     }
+         */
         "application/json": components["schemas"]["UpdateSegmentRequest"];
       };
     };
@@ -5600,6 +8835,25 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "best_duration_seconds": 340,
+           *       "builder_source": {
+           *         "activity_id": 42,
+           *         "end_route_point_index": 280,
+           *         "start_route_point_index": 120
+           *       },
+           *       "created_at": "2026-09-26T14:25:00Z",
+           *       "current_user_pr_duration_seconds": 355,
+           *       "distance_meters": 1500.5,
+           *       "effort_count": 8,
+           *       "id": 7,
+           *       "mode": "xc",
+           *       "source": "activity_segment_builder",
+           *       "starred": true,
+           *       "title": "Riverfront climb"
+           *     }
+           */
           "application/json": components["schemas"]["SegmentResponse"];
         };
       };
@@ -5644,7 +8898,10 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description Segment ID */
+        /**
+         * @description Segment ID
+         * @example 7
+         */
         id: number;
       };
       cookie?: never;
@@ -5690,7 +8947,10 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description Segment ID */
+        /**
+         * @description Segment ID
+         * @example 7
+         */
         id: number;
       };
       cookie?: never;
@@ -5703,6 +8963,19 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "efforts": [],
+           *       "route_points": [
+           *         {
+           *           "elapsed_seconds": 900,
+           *           "latitude": 42.3314,
+           *           "longitude": -83.0458
+           *         }
+           *       ],
+           *       "segment_id": 7
+           *     }
+           */
           "application/json": components["schemas"]["SegmentComparisonResponse"];
         };
       };
@@ -5736,12 +9009,17 @@ export interface operations {
   get_segment_effort_analysis: {
     parameters: {
       query?: {
+        /** @example 90 */
         reference_effort_id?: number | null;
+        /** @example 10 */
         split_count?: number | null;
       };
       header?: never;
       path: {
-        /** @description Segment ID */
+        /**
+         * @description Segment ID
+         * @example 7
+         */
         id: number;
       };
       cookie?: never;
@@ -5754,6 +9032,27 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "efforts": [],
+           *       "reference_effort": {
+           *         "activity_id": 42,
+           *         "activity_started_at": "2026-09-26T13:00:00Z",
+           *         "activity_title": "Saturday hill repeats",
+           *         "delta_from_reference_seconds": 0,
+           *         "duration_seconds": 355,
+           *         "effort_id": 90,
+           *         "effort_index": 1
+           *       },
+           *       "route_points": [],
+           *       "sections": [],
+           *       "segment_id": 7,
+           *       "segment_title": "Riverfront climb",
+           *       "split_count": 10,
+           *       "theoretical_best_duration_seconds": 340,
+           *       "theoretical_best_gain_seconds": 15
+           *     }
+           */
           "application/json": components["schemas"]["SegmentEffortAnalysisResponse"];
         };
       };
@@ -5798,13 +9097,24 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description Segment ID */
+        /**
+         * @description Segment ID
+         * @example 7
+         */
         id: number;
       };
       cookie?: never;
     };
     requestBody: {
       content: {
+        /**
+         * @example {
+         *       "activity_id": 42,
+         *       "end_route_point_index": 280,
+         *       "start_route_point_index": 120,
+         *       "title": "Riverfront climb"
+         *     }
+         */
         "application/json": components["schemas"]["CreateSegmentFromActivityRequest"];
       };
     };
@@ -5815,6 +9125,25 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "best_duration_seconds": 340,
+           *       "builder_source": {
+           *         "activity_id": 42,
+           *         "end_route_point_index": 280,
+           *         "start_route_point_index": 120
+           *       },
+           *       "created_at": "2026-09-26T14:25:00Z",
+           *       "current_user_pr_duration_seconds": 355,
+           *       "distance_meters": 1500.5,
+           *       "effort_count": 8,
+           *       "id": 7,
+           *       "mode": "xc",
+           *       "source": "activity_segment_builder",
+           *       "starred": true,
+           *       "title": "Riverfront climb"
+           *     }
+           */
           "application/json": components["schemas"]["SegmentResponse"];
         };
       };
@@ -5859,7 +9188,10 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description Segment ID */
+        /**
+         * @description Segment ID
+         * @example 7
+         */
         id: number;
       };
       cookie?: never;
@@ -5872,6 +9204,23 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "segment_id": 7,
+           *       "segment_title": "Riverfront climb",
+           *       "years": [
+           *         {
+           *           "activity_id": 42,
+           *           "activity_started_at": "2026-09-26T13:00:00Z",
+           *           "activity_title": "Saturday hill repeats",
+           *           "duration_seconds": 355,
+           *           "effort_id": 90,
+           *           "effort_index": 1,
+           *           "year": 2026
+           *         }
+           *       ]
+           *     }
+           */
           "application/json": components["schemas"]["SegmentYearlyBestsResponse"];
         };
       };
@@ -5935,6 +9284,11 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "authorization_url": "https://www.strava.com/oauth/authorize?client_id=12345&response_type=code"
+           *     }
+           */
           "application/json": components["schemas"]["StravaAuthorizeResponse"];
         };
       };
@@ -5980,6 +9334,24 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "athlete_id": 12345678,
+           *       "athlete_name": "Alex Rider",
+           *       "athlete_username": "alex-rider",
+           *       "configured": true,
+           *       "connected": true,
+           *       "last_sync_duplicate_count": 1,
+           *       "last_sync_failed_count": 0,
+           *       "last_sync_finished_at": "2026-09-27T12:00:00Z",
+           *       "last_sync_imported_count": 3,
+           *       "last_sync_status": "succeeded",
+           *       "scopes": [
+           *         "read",
+           *         "activity:read_all"
+           *       ]
+           *     }
+           */
           "application/json": components["schemas"]["StravaConnectionResponse"];
         };
       };
@@ -6016,6 +9388,11 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "message": "Strava connection removed."
+           *     }
+           */
           "application/json": components["schemas"]["MessageResponse"];
         };
       };
@@ -6061,6 +9438,22 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "athlete_id": 12345678,
+           *       "athlete_name": "Alex Rider",
+           *       "configured": true,
+           *       "connected": true,
+           *       "last_sync_duplicate_count": 1,
+           *       "last_sync_failed_count": 0,
+           *       "last_sync_imported_count": 3,
+           *       "last_sync_status": "queued",
+           *       "scopes": [
+           *         "read",
+           *         "activity:read_all"
+           *       ]
+           *     }
+           */
           "application/json": components["schemas"]["StravaConnectionResponse"];
         };
       };
@@ -6124,6 +9517,11 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "hub.challenge": "strava-verification-challenge"
+           *     }
+           */
           "application/json": components["schemas"]["StravaWebhookChallengeResponse"];
         };
       };
@@ -6147,6 +9545,17 @@ export interface operations {
     };
     requestBody: {
       content: {
+        /**
+         * @example {
+         *       "aspect_type": "create",
+         *       "event_time": 1790500000,
+         *       "object_id": 1234567890,
+         *       "object_type": "activity",
+         *       "owner_id": 12345678,
+         *       "subscription_id": 12345,
+         *       "updates": {}
+         *     }
+         */
         "application/json": components["schemas"]["StravaWebhookEvent"];
       };
     };
@@ -6156,7 +9565,14 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          /**
+           * @example {
+           *       "message": "ok"
+           *     }
+           */
+          "application/json": components["schemas"]["MessageResponse"];
+        };
       };
     };
   };
@@ -6175,6 +9591,21 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "generated_at": "2026-09-27T12:00:00Z",
+           *       "goals": [],
+           *       "recent_sessions": [],
+           *       "recommendations": [],
+           *       "segments": [],
+           *       "summary": {
+           *         "average_efforts_per_session": 4.5,
+           *         "effort_count": 18,
+           *         "segment_count": 2,
+           *         "session_count": 4
+           *       }
+           *     }
+           */
           "application/json": components["schemas"]["DhGoalProgressResponse"];
         };
       };
@@ -6199,12 +9630,19 @@ export interface operations {
   get_training_reports: {
     parameters: {
       query?: {
+        /** @example week */
         boundary?: null | components["schemas"]["ReportBoundary"];
+        /** @example ride_summary */
         report?: string | null;
+        /** @example 2026-09-20 */
         start_date?: string | null;
+        /** @example 2026-09-27 */
         end_date?: string | null;
+        /** @example 42,43 */
         activity_ids?: string | null;
+        /** @example 1800 */
         min_duration_seconds?: number | null;
+        /** @example 10000 */
         min_distance_meters?: number | null;
       };
       header?: never;
@@ -6219,6 +9657,35 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "boundary": "week",
+           *       "generated_at": "2026-09-27T12:00:00Z",
+           *       "points": [
+           *         {
+           *           "activity_type_times": [
+           *             {
+           *               "activity_type": "training",
+           *               "seconds": 8400
+           *             }
+           *           ],
+           *           "bucket_end": "2026-09-27",
+           *           "bucket_start": "2026-09-20",
+           *           "distance_meters": 75000,
+           *           "distance_miles": 46.6,
+           *           "elevation_gain_feet": 2952.8,
+           *           "elevation_gain_meters": 900,
+           *           "z1_seconds": 1200,
+           *           "z2_seconds": 6000,
+           *           "z3_seconds": 900,
+           *           "z4_seconds": 300,
+           *           "z5_seconds": 0
+           *         }
+           *       ],
+           *       "range_end": "2026-09-27",
+           *       "range_start": "2026-09-20"
+           *     }
+           */
           "application/json": components["schemas"]["TrainingReportsResponse"];
         };
       };
@@ -6237,6 +9704,21 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description A report is already generating */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          /**
+           * @example {
+           *       "message": "A report is already generating. Stay on that report until it finishes before starting another one. Try again in 30 seconds.",
+           *       "retry_at": "2026-09-27T12:00:30Z"
+           *     }
+           */
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
       };
       /** @description Internal server error */
       500: {
@@ -6264,6 +9746,34 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "reports": [
+           *         {
+           *           "display_name": "Ride summary",
+           *           "id": "ride_summary",
+           *           "metrics": [
+           *             {
+           *               "direction": "higher",
+           *               "key": "distance_meters",
+           *               "label": "Distance",
+           *               "unit": "m"
+           *             }
+           *           ],
+           *           "required_data_quality": [
+           *             "distance"
+           *           ],
+           *           "result_sections": [
+           *             "ride_summary"
+           *           ],
+           *           "short_purpose": "Summarize distance, time, and climbing",
+           *           "supported_filters": [
+           *             "min_distance"
+           *           ]
+           *         }
+           *       ]
+           *     }
+           */
           "application/json": components["schemas"]["TrainingReportDefinitionsResponse"];
         };
       };
@@ -6291,6 +9801,25 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          /**
+           * @example {
+           *       "deficits": [],
+           *       "generated_at": "2026-09-27T12:00:00Z",
+           *       "goals": [],
+           *       "race_results": [],
+           *       "recent_rides": [],
+           *       "recommendations": [],
+           *       "summary": {
+           *         "comparable_ride_count": 5,
+           *         "recent_ride_count": 8,
+           *         "recent_window_days": 28,
+           *         "total_climbing_elevation_gain_meters": 1200,
+           *         "total_climbing_time_seconds": 4200,
+           *         "total_z2_time_seconds": 18000
+           *       },
+           *       "weekly_progress": []
+           *     }
+           */
           "application/json": components["schemas"]["XcGoalProgressResponse"];
         };
       };

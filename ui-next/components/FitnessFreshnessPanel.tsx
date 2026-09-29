@@ -28,6 +28,13 @@ const FITNESS_COLOR = "#2563eb";
 const FATIGUE_COLOR = "#7c3aed";
 const FORM_COLOR = "#059669";
 
+function chartAnimationsEnabled() {
+  return (
+    typeof window !== "undefined" &&
+    !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
 const RANGE_PRESETS = [
   { key: "all", label: "All time" },
   { key: "3m", label: "3 months", months: 3 },
@@ -287,6 +294,7 @@ function SummaryMetric({
 }
 
 export default function FitnessFreshnessPanel() {
+  const animateCharts = chartAnimationsEnabled();
   const [selectedRange, setSelectedRange] = useState<RangePresetKey>("6m");
   const [showFitness, setShowFitness] = useState(true);
   const [showFatigue, setShowFatigue] = useState(true);
@@ -517,6 +525,7 @@ export default function FitnessFreshnessPanel() {
                     ) : null}
                     <Bar
                       dataKey="training_load"
+                      isAnimationActive={animateCharts}
                       yAxisId="load"
                       fill={LOAD_COLOR}
                       fillOpacity={0.35}
@@ -526,6 +535,7 @@ export default function FitnessFreshnessPanel() {
                     <Line
                       type="monotone"
                       dataKey="fitness"
+                      isAnimationActive={animateCharts}
                       hide={!showFitness}
                       stroke={FITNESS_COLOR}
                       strokeWidth={3}
@@ -540,6 +550,7 @@ export default function FitnessFreshnessPanel() {
                     <Line
                       type="monotone"
                       dataKey="fatigue"
+                      isAnimationActive={animateCharts}
                       hide={!showFatigue}
                       stroke={FATIGUE_COLOR}
                       strokeWidth={3}
@@ -668,6 +679,7 @@ export default function FitnessFreshnessPanel() {
                     <Line
                       type="monotone"
                       dataKey="form"
+                      isAnimationActive={animateCharts}
                       stroke={FORM_COLOR}
                       strokeWidth={3}
                       dot={false}

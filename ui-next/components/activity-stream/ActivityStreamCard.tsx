@@ -18,10 +18,12 @@ export default function ActivityStreamCard({
   activity,
   unitSystem,
   showFullRouteMaps,
+  showEnhancedMaps,
 }: {
   activity: Activity;
   unitSystem: UnitSystem;
   showFullRouteMaps: boolean;
+  showEnhancedMaps: boolean;
 }) {
   const achievements = activityAchievements(activity);
   const activityCardLayoutClassName = showFullRouteMaps
@@ -36,6 +38,7 @@ export default function ActivityStreamCard({
           title={activity.title}
           routePoints={activity.route_points}
           showFullMap={showFullRouteMaps}
+          showEnhancedMaps={showEnhancedMaps}
         />
 
         <div>

@@ -1,25 +1,31 @@
+"use client";
+
 import { type ActivityRoutePoint } from "../../lib/queries";
+import { useEffect, useState } from "react";
+import { activityMapImageUrl } from "../../lib/activityMapImages";
 import {
   buildActivityRoutePreviewUrl,
   type RoutePreviewVariant,
 } from "../../lib/routePreview";
+import { useBikeTheme } from "../../lib/useBikeTheme";
 
 function ActivityRouteImage({
   activityId,
   title,
-  routePoints,
   variant,
 }: {
   activityId: number;
   title: string;
-  routePoints: ActivityRoutePoint[] | null | undefined;
   variant: RoutePreviewVariant;
 }) {
-  const src = buildActivityRoutePreviewUrl({
-    activityId,
-    routePoints,
-    variant,
-  });
+  const theme = useBikeTheme();
+  const [dpr, setDpr] = useState<1 | 2>(1);
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    setDpr(window.devicePixelRatio >= 1.5 ? 2 : 1);
+    setReady(true);
+  }, []);
+  const src = activityMapImageUrl({ activityId, variant, theme, dpr });
   const alt =
     variant === "full"
       ? `Route map for ${title}`
@@ -33,16 +39,54 @@ function ActivityRouteImage({
       ? "h-full w-full object-contain"
       : "h-24 w-full object-contain";
 
+  return (
+    <div className={wrapperClassName}>
+      {ready ? (
+        <img
+          src={src}
+          alt={alt}
+          className={imageClassName}
+          loading="lazy"
+          decoding="async"
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function LegacyActivityRouteImage({
+  activityId,
+  title,
+  variant,
+}: {
+  activityId: number;
+  title: string;
+  variant: RoutePreviewVariant;
+}) {
+  const src = buildActivityRoutePreviewUrl({
+    activityId,
+    variant,
+  });
+  const isFull = variant === "full";
+
   if (!src) {
     return null;
   }
 
   return (
-    <div className={wrapperClassName}>
+    <div
+      className={
+        isFull
+          ? "grid h-[300px] w-full place-items-center overflow-hidden rounded-box border border-base-300 bg-base-200"
+          : "grid place-items-center overflow-hidden rounded-box border border-base-300 bg-base-200 p-1.5"
+      }
+    >
       <img
         src={src}
-        alt={alt}
-        className={imageClassName}
+        alt={isFull ? `Route map for ${title}` : `Route thumbnail for ${title}`}
+        className={
+          isFull ? "h-full w-full object-contain" : "h-24 w-full object-contain"
+        }
         loading="lazy"
         decoding="async"
       />
@@ -55,11 +99,13 @@ export default function ActivityRoutePreview({
   title,
   routePoints,
   showFullMap,
+  showEnhancedMaps = true,
 }: {
   activityId: number;
   title: string;
   routePoints: ActivityRoutePoint[] | null | undefined;
   showFullMap: boolean;
+  showEnhancedMaps?: boolean;
 }) {
   const points = routePoints ?? [];
   const emptyStateClassName = showFullMap
@@ -70,13 +116,14 @@ export default function ActivityRoutePreview({
     return <div className={emptyStateClassName}>No route</div>;
   }
 
-  if (!showFullMap) {
+  const variant = showFullMap ? "full" : "thumbnail";
+
+  if (!showEnhancedMaps) {
     return (
-      <ActivityRouteImage
+      <LegacyActivityRouteImage
         activityId={activityId}
         title={title}
-        routePoints={routePoints}
-        variant="thumbnail"
+        variant={variant}
       />
     );
   }
@@ -85,8 +132,7 @@ export default function ActivityRoutePreview({
     <ActivityRouteImage
       activityId={activityId}
       title={title}
-      routePoints={points}
-      variant="full"
+      variant={variant}
     />
   );
 }

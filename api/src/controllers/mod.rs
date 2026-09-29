@@ -22,7 +22,9 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 #[derive(Debug, serde::Serialize, ToSchema)]
+#[schema(example = json!({"status": "ok"}))]
 pub struct HealthResponse {
+    #[schema(example = "ok")]
     pub status: &'static str,
 }
 
@@ -194,7 +196,7 @@ async fn root() -> Json<serde_json::Value> {
     get,
     path = "/health",
     responses(
-        (status = 200, description = "API health status", body = HealthResponse)
+        (status = 200, description = "API health status", body = HealthResponse, example = json!({"status": "ok"}))
     ),
     tag = "system"
 )]

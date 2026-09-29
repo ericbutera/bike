@@ -2,6 +2,8 @@
 
 import { useMemo } from "react";
 import { buildActivityClimbs } from "../../lib/activityClimbs";
+import { featureFlags } from "@ericbutera/kaleido";
+import { FLAG_ENHANCED_MAPS } from "../../lib/featureFlags";
 import { useActivity } from "../../lib/queries";
 import MapLibreRouteMap from "../MapLibreRouteMap";
 import { AppCard, CardHeader } from "../ui/Card";
@@ -24,6 +26,7 @@ export default function ActivityRouteMap({
   selectedClimbId: string | null;
 }) {
   const activityQuery = useActivity(activityId);
+  const showNewActivityMaps = featureFlags.useFeatureFlag(FLAG_ENHANCED_MAPS);
   const activity = activityQuery.data;
   const routePoints = activity?.route_points;
   const segmentGroups = useMatchedSegmentGroups(activity);
@@ -76,9 +79,13 @@ export default function ActivityRouteMap({
               ariaLabel="Activity route map"
               emptyMessage="This activity does not have enough stored route points for the map yet."
               showZoomControls
-              showLayerPicker
-              defaultBasemap="topo"
-              basemapOptions={["topo", "street", "satellite"]}
+              showLayerPicker={!showNewActivityMaps}
+              defaultBasemap={showNewActivityMaps ? "route-light" : "topo"}
+              basemapOptions={
+                showNewActivityMaps
+                  ? undefined
+                  : ["topo", "street", "satellite"]
+              }
               fitBoundsPoints={selectedClimb?.routePoints ?? null}
               fitBoundsKey={selectedClimb ? selectedClimb.id : "activity"}
               fitBoundsMaxZoom={selectedClimb ? 15 : undefined}

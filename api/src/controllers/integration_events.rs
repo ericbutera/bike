@@ -24,15 +24,25 @@ pub fn admin_routes() -> Router<Arc<AppStorage>> {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"id": 31,"provider": "strava","event_type": "sync_completed","level": "info","message": "Imported 3 activities","created_at": "2026-09-27T12:00:00Z","user_id": 12,"connection_id": 5,"payload": {"imported_count": 3}}))]
 pub struct IntegrationEventResponse {
+    #[schema(example = 31)]
     pub id: i32,
+    #[schema(example = 12)]
     pub user_id: Option<i32>,
+    #[schema(example = "strava")]
     pub provider: String,
+    #[schema(example = "sync_completed")]
     pub event_type: String,
+    #[schema(example = "info")]
     pub level: String,
+    #[schema(example = "Imported 3 activities")]
     pub message: String,
+    #[schema(example = 5)]
     pub connection_id: Option<i32>,
+    #[schema(example = json!({"imported_count": 3}))]
     pub payload: Option<serde_json::Value>,
+    #[schema(example = "2026-09-27T12:00:00Z")]
     pub created_at: DateTime<Utc>,
 }
 
@@ -65,7 +75,7 @@ impl IntegrationEventResponse {
     get,
     path = "/integration-events/strava",
     responses(
-        (status = 200, description = "Recent Strava integration history for the authenticated user", body = [IntegrationEventResponse]),
+        (status = 200, description = "Recent Strava integration history for the authenticated user", body = [IntegrationEventResponse], example = json!([{"id": 31,"provider": "strava","event_type": "sync_completed","level": "info","message": "Imported 3 activities","created_at": "2026-09-27T12:00:00Z","user_id": 12,"connection_id": 5,"payload": {"imported_count": 3}}])),
         (status = 401, description = "Not authenticated"),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     ),
@@ -102,14 +112,14 @@ pub async fn list_strava_history(
     get,
     path = "/admin/integration-events",
     params(
-        ("provider" = Option<String>, Query, description = "Optional integration provider filter"),
-        ("user_id" = Option<i32>, Query, description = "Optional Bike user id filter"),
-        ("activity_id" = Option<i32>, Query, description = "Optional activity id filter against event payload"),
-        ("import_id" = Option<i32>, Query, description = "Optional activity import id filter against event payload"),
-        ("limit" = Option<u64>, Query, description = "Maximum number of rows to return"),
+        ("provider" = Option<String>, Query, description = "Optional integration provider filter", example = "google"),
+        ("user_id" = Option<i32>, Query, description = "Optional Bike user id filter", example = 12),
+        ("activity_id" = Option<i32>, Query, description = "Optional activity id filter against event payload", example = 42),
+        ("import_id" = Option<i32>, Query, description = "Optional activity import id filter against event payload", example = 17),
+        ("limit" = Option<u64>, Query, description = "Maximum number of rows to return", example = 20),
     ),
     responses(
-        (status = 200, description = "Recent integration events for administrators", body = [IntegrationEventResponse]),
+        (status = 200, description = "Recent integration events for administrators", body = [IntegrationEventResponse], example = json!([{"id": 31,"provider": "strava","event_type": "sync_completed","level": "info","message": "Imported 3 activities","created_at": "2026-09-27T12:00:00Z","user_id": 12,"connection_id": 5,"payload": {"imported_count": 3}}])),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),

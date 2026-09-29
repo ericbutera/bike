@@ -129,13 +129,18 @@ pub enum XcTrainingPurpose {
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
+#[schema(example = json!({"key": "weekly_z2_average","label": "Weekly zone 2 time","unit": "seconds","direction": "at_least","current_value": 4500.0,"target_value": 7200.0,"progress_percent": 62.5}))]
 pub struct TrainingGoalMetricResponse {
     pub key: TrainingGoalKey,
+    #[schema(example = "Weekly zone 2 time")]
     pub label: String,
     pub unit: TrainingMetricUnit,
     pub direction: TrainingGoalDirection,
+    #[schema(example = 4500.0)]
     pub current_value: Option<f64>,
+    #[schema(example = 7200.0)]
     pub target_value: f64,
+    #[schema(example = 62.5)]
     pub progress_percent: Option<f64>,
 }
 
@@ -153,13 +158,21 @@ pub struct TrainingRecommendationResponse {
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
+#[schema(example = json!({"recent_window_days": 28,"recent_ride_count": 8,"comparable_ride_count": 5,"total_z2_time_seconds": 18000,"total_climbing_time_seconds": 4200,"total_climbing_elevation_gain_meters": 1200.0,"average_aerobic_decoupling_percent": 4.2}))]
 pub struct XcProgressSummaryResponse {
+    #[schema(example = 28)]
     pub recent_window_days: i32,
+    #[schema(example = 8)]
     pub recent_ride_count: i32,
+    #[schema(example = 5)]
     pub comparable_ride_count: i32,
+    #[schema(example = 18000)]
     pub total_z2_time_seconds: i32,
+    #[schema(example = 4200)]
     pub total_climbing_time_seconds: i32,
+    #[schema(example = 1200.0)]
     pub total_climbing_elevation_gain_meters: f64,
+    #[schema(example = 4.2)]
     pub average_aerobic_decoupling_percent: Option<f64>,
 }
 
@@ -235,16 +248,24 @@ pub struct XcWeeklyProgressPointResponse {
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
+#[schema(example = json!({"generated_at": "2026-09-27T12:00:00Z","summary": {"recent_window_days": 28,"recent_ride_count": 8,"comparable_ride_count": 5,"total_z2_time_seconds": 18000,"total_climbing_time_seconds": 4200,"total_climbing_elevation_gain_meters": 1200.0},"deficits": [],"race_results": [],"goals": [],"recommendations": [],"weekly_progress": [],"recent_rides": []}))]
 pub struct XcGoalProgressResponse {
+    #[schema(example = "2026-09-27T12:00:00Z")]
     pub generated_at: DateTime<Utc>,
     pub event_goal: Option<XcEventGoalResponse>,
     pub readiness: Option<XcReadinessSummaryResponse>,
+    #[schema(example = json!([]))]
     pub deficits: Vec<XcTrainingDeficitResponse>,
     pub summary: XcProgressSummaryResponse,
+    #[schema(example = json!([]))]
     pub race_results: Vec<XcRaceResultResponse>,
+    #[schema(example = json!([]))]
     pub goals: Vec<TrainingGoalMetricResponse>,
+    #[schema(example = json!([]))]
     pub recommendations: Vec<TrainingRecommendationResponse>,
+    #[schema(example = json!([]))]
     pub weekly_progress: Vec<XcWeeklyProgressPointResponse>,
+    #[schema(example = json!([]))]
     pub recent_rides: Vec<XcRideProgressResponse>,
 }
 
@@ -314,11 +335,17 @@ pub struct XcSuggestedRideResponse {
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
+#[schema(example = json!({"segment_count": 2,"session_count": 4,"effort_count": 18,"average_efforts_per_session": 4.5,"average_repeat_fade_percent": 3.8}))]
 pub struct DhProgressSummaryResponse {
+    #[schema(example = 2)]
     pub segment_count: i32,
+    #[schema(example = 4)]
     pub session_count: i32,
+    #[schema(example = 18)]
     pub effort_count: i32,
+    #[schema(example = 4.5)]
     pub average_efforts_per_session: Option<f64>,
+    #[schema(example = 3.8)]
     pub average_repeat_fade_percent: Option<f64>,
     pub average_top_3_gap_percent: Option<f64>,
 }
@@ -350,12 +377,18 @@ pub struct DhSessionSummaryResponse {
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
+#[schema(example = json!({"generated_at": "2026-09-27T12:00:00Z","summary": {"segment_count": 2,"session_count": 4,"effort_count": 18,"average_efforts_per_session": 4.5},"goals": [],"recommendations": [],"segments": [],"recent_sessions": []}))]
 pub struct DhGoalProgressResponse {
+    #[schema(example = "2026-09-27T12:00:00Z")]
     pub generated_at: DateTime<Utc>,
     pub summary: DhProgressSummaryResponse,
+    #[schema(example = json!([]))]
     pub goals: Vec<TrainingGoalMetricResponse>,
+    #[schema(example = json!([]))]
     pub recommendations: Vec<TrainingRecommendationResponse>,
+    #[schema(example = json!([]))]
     pub segments: Vec<DhSegmentProgressResponse>,
+    #[schema(example = json!([]))]
     pub recent_sessions: Vec<DhSessionSummaryResponse>,
 }
 

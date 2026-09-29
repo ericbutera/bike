@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="/vendor/maplibre-gl.css" />
+    <style>
+      html,
+      body,
+      #map {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+      }
+      .maplibregl-ctrl-attrib {
+        font:
+          10px Arial,
+          sans-serif !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <script type="module">
+      import * as maplibregl from "/vendor/maplibre-gl.mjs";
+
+      window.renderMap = ({ points, theme }) =>
+        new Promise((resolve, reject) => {
+          const style = theme === "dark" ? "fiord-v1" : "route-light-v1";
+          const map = new maplibregl.Map({
+            container: "map",
+            style: `/styles/${style}.json`,
+            interactive: false,
+            attributionControl: false,
+            fadeDuration: 0,
+          });
+          map.addControl(
+            new maplibregl.AttributionControl({ compact: false }),
+            "bottom-right",
+          );
+          map.on("error", (event) =>
+            reject(new Error(String(event.error?.message ?? event.error))),
+          );
+          map.once("load", () => {
+            const before = map
+              .getStyle()
+              .layers.find((layer) => layer.type === "symbol")?.id;
+            map.addSource("route", {
+              type: "geojson",
+              data: {
+                type: "Feature",
+                properties: {},
+                geometry: {
+                  type: "LineString",
+                  coordinates: points.map((point) => [
+                    point.longitude,
+                    point.latitude,
+                  ]),
+                },
+              },
+            });
+            const layout = { "line-cap": "round", "line-join": "round" };
+            map.addLayer(
+              {
+                id: "route-casing",
+                type: "line",
+                source: "route",
+                layout,
+                paint: { "line-color": "#ffffff", "line-width": 5 },
+              },
+              before,
+            );
+            map.addLayer(
+              {
+                id: "route-line",
+                type: "line",
+                source: "route",
+                layout,
+                paint: { "line-color": "#fc5200", "line-width": 3 },
+              },
+              before,
+            );
+            const bounds = new maplibregl.LngLatBounds(
+              [points[0].longitude, points[0].latitude],
+              [points[0].longitude, points[0].latitude],
+            );
+            for (const point of points)
+              bounds.extend([point.longitude, point.latitude]);
+            map.fitBounds(bounds, { padding: 32, maxZoom: 14, duration: 0 });
+            map.on("idle", () => {
+              if (map.areTilesLoaded()) resolve(true);
+            });
+          });
+        });
+    </script>
+  </body>
+</html>

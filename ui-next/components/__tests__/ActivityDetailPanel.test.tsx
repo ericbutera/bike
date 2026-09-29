@@ -528,8 +528,7 @@ describe("ActivityDetailPanel", () => {
       expect.objectContaining({
         ariaLabel: "Activity route map",
         showZoomControls: true,
-        showLayerPicker: true,
-        defaultBasemap: "topo",
+        defaultBasemap: "route-light",
       }),
     );
     expect(screen.getByText("Matched segments")).toBeInTheDocument();

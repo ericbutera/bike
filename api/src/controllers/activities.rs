@@ -42,30 +42,47 @@ use utoipa::ToSchema;
 const MAX_ACTIVITY_STREAM_ROUTE_POINTS: usize = 24;
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"id": 42,"title": "Saturday hill repeats","sport": "ride","source": "manual_upload","activity_type": "training","original_filename": "saturday-hills.fit","format": "fit","started_at": "2026-09-26T13:00:00Z","ended_at": "2026-09-26T14:12:00Z","location": "Detroit, Michigan","distance_meters": 25430.5,"moving_time_seconds": 4200,"total_time_seconds": 4320,"elevation_gain_meters": 312.4,"average_speed_mps": 6.05,"average_heart_rate_bpm": 148,"estimated_ftp_watts": 245,"route_points": [{"elapsed_seconds": 900,"latitude": 42.3314,"longitude": -83.0458,"distance_meters": 4200.5,"elevation_meters": 183.2}],"can_regenerate": true,"can_download_source_file": true}))]
 pub struct ActivityResponse {
+    #[schema(example = 42)]
     pub id: i32,
+    #[schema(example = "Saturday hill repeats")]
     pub title: String,
+    #[schema(example = "ride")]
     pub sport: String,
+    #[schema(example = "manual_upload")]
     pub source: String,
     pub activity_type: ActivityType,
+    #[schema(example = "saturday-hills.fit")]
     pub original_filename: Option<String>,
+    #[schema(example = "fit")]
     pub format: Option<String>,
+    #[schema(example = "2026-09-26T13:00:00Z")]
     pub started_at: DateTime<Utc>,
+    #[schema(example = "2026-09-26T14:12:00Z")]
     pub ended_at: Option<DateTime<Utc>>,
+    #[schema(example = "Detroit, Michigan")]
     pub location: Option<String>,
+    #[schema(example = 25430.5)]
     pub distance_meters: Option<f64>,
+    #[schema(example = 4200)]
     pub moving_time_seconds: Option<i32>,
+    #[schema(example = 4320)]
     pub total_time_seconds: Option<i32>,
+    #[schema(example = 312.4)]
     pub elevation_gain_meters: Option<f64>,
     pub elevation_loss_meters: Option<f64>,
+    #[schema(example = 6.05)]
     pub average_speed_mps: Option<f64>,
     pub max_speed_mps: Option<f64>,
+    #[schema(example = 148)]
     pub average_heart_rate_bpm: Option<i32>,
     pub max_heart_rate_bpm: Option<i32>,
     pub average_cadence_rpm: Option<i32>,
     pub max_cadence_rpm: Option<i32>,
     pub calories: Option<i32>,
     pub relative_effort: Option<i32>,
+    #[schema(example = 245)]
     pub estimated_ftp_watts: Option<i32>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub heart_rate_zones: Vec<ActivityHeartRateZoneSummary>,
@@ -74,6 +91,7 @@ pub struct ActivityResponse {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub chart_points: Vec<ActivityChartPoint>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[schema(example = json!([{"elapsed_seconds": 900,"latitude": 42.3314,"longitude": -83.0458,"distance_meters": 4200.5,"elevation_meters": 183.2}]))]
     pub route_points: Vec<ActivityRoutePoint>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub achievement_highlights: Vec<ActivityAchievementHighlight>,
@@ -82,26 +100,40 @@ pub struct ActivityResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub training_analysis: Option<ActivityTrainingAnalysisResponse>,
     #[serde(default, skip_serializing_if = "is_false")]
+    #[schema(example = true)]
     pub can_regenerate: bool,
     #[serde(default, skip_serializing_if = "is_false")]
+    #[schema(example = true)]
     pub can_download_source_file: bool,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[schema(example = json!({"title": "Saturday hill repeats","activity_type": "training"}))]
 pub struct UpdateActivityRequest {
+    #[schema(example = "Saturday hill repeats")]
     pub title: Option<String>,
+    #[schema(example = "training")]
     pub activity_type: Option<ActivityType>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"segment_id": 7,"segment_title": "Riverfront climb","effort_index": 1,"duration_seconds": 355,"start_route_point_index": 120,"end_route_point_index": 280,"overall_rank": 3,"personal_rank": 1}))]
 pub struct ActivitySegmentEffort {
+    #[schema(example = 7)]
     pub segment_id: i32,
+    #[schema(example = "Riverfront climb")]
     pub segment_title: String,
+    #[schema(example = 1)]
     pub effort_index: i32,
+    #[schema(example = 355)]
     pub duration_seconds: i32,
+    #[schema(example = 120)]
     pub start_route_point_index: i32,
+    #[schema(example = 280)]
     pub end_route_point_index: i32,
+    #[schema(example = 3)]
     pub overall_rank: Option<i32>,
+    #[schema(example = 1)]
     pub personal_rank: Option<i32>,
     pub personal_best_duration_seconds: Option<i32>,
 }
@@ -564,7 +596,7 @@ async fn load_activity_achievement_highlights_by_activity_ids(
     path = "/activities",
     params(PaginationParams),
     responses(
-        (status = 200, description = "Recent activities for the authenticated user", body = PaginatedResponse<ActivityResponse>),
+        (status = 200, description = "Recent activities for the authenticated user", body = PaginatedResponse<ActivityResponse>, example = json!({"data": [{"id": 42,"title": "Saturday hill repeats","sport": "ride","source": "manual_upload","activity_type": "training","started_at": "2026-09-26T13:00:00Z","distance_meters": 25430.5}],"metadata": {"page": 1,"per_page": 20,"total": 1,"total_pages": 1}})),
         (status = 401, description = "Not authenticated"),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     ),
@@ -607,10 +639,10 @@ pub async fn list_activities(
     get,
     path = "/activities/{id}",
     params(
-        ("id" = i32, Path, description = "Activity ID")
+        ("id" = i32, Path, description = "Activity ID", example = 42)
     ),
     responses(
-        (status = 200, description = "Activity detail", body = ActivityResponse),
+        (status = 200, description = "Activity detail", body = ActivityResponse, example = json!({"id": 42,"title": "Saturday hill repeats","sport": "ride","source": "manual_upload","activity_type": "training","original_filename": "saturday-hills.fit","format": "fit","started_at": "2026-09-26T13:00:00Z","ended_at": "2026-09-26T14:12:00Z","location": "Detroit, Michigan","distance_meters": 25430.5,"moving_time_seconds": 4200,"total_time_seconds": 4320,"elevation_gain_meters": 312.4,"average_speed_mps": 6.05,"average_heart_rate_bpm": 148,"estimated_ftp_watts": 245,"route_points": [{"elapsed_seconds": 900,"latitude": 42.3314,"longitude": -83.0458,"distance_meters": 4200.5,"elevation_meters": 183.2}],"can_regenerate": true,"can_download_source_file": true})),
         (status = 401, description = "Not authenticated"),
         (status = 404, description = "Activity not found", body = ApiErrorResponse),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
@@ -681,7 +713,7 @@ async fn load_downloadable_original_source_artifact(
     get,
     path = "/activities/{id}/source-file",
     params(
-        ("id" = i32, Path, description = "Activity ID")
+        ("id" = i32, Path, description = "Activity ID", example = 42)
     ),
     responses(
         (status = 200, description = "Original retained source file for the activity"),
@@ -746,11 +778,11 @@ pub async fn download_activity_source_file(
     patch,
     path = "/activities/{id}",
     params(
-        ("id" = i32, Path, description = "Activity ID")
+        ("id" = i32, Path, description = "Activity ID", example = 42)
     ),
-    request_body = UpdateActivityRequest,
+    request_body(content = UpdateActivityRequest, example = json!({"title": "Saturday hill repeats","activity_type": "training"})),
     responses(
-        (status = 200, description = "Updated activity detail", body = ActivityResponse),
+        (status = 200, description = "Updated activity detail", body = ActivityResponse, example = json!({"id": 42,"title": "Saturday hill repeats","sport": "ride","source": "manual_upload","activity_type": "training","original_filename": "saturday-hills.fit","format": "fit","started_at": "2026-09-26T13:00:00Z","ended_at": "2026-09-26T14:12:00Z","location": "Detroit, Michigan","distance_meters": 25430.5,"moving_time_seconds": 4200,"total_time_seconds": 4320,"elevation_gain_meters": 312.4,"average_speed_mps": 6.05,"average_heart_rate_bpm": 148,"estimated_ftp_watts": 245,"route_points": [{"elapsed_seconds": 900,"latitude": 42.3314,"longitude": -83.0458,"distance_meters": 4200.5,"elevation_meters": 183.2}],"can_regenerate": true,"can_download_source_file": true})),
         (status = 400, description = "Invalid activity update", body = ApiErrorResponse),
         (status = 401, description = "Not authenticated"),
         (status = 404, description = "Activity not found", body = ApiErrorResponse),
@@ -796,7 +828,7 @@ pub async fn update_activity(
     delete,
     path = "/activities/{id}",
     params(
-        ("id" = i32, Path, description = "Activity ID")
+        ("id" = i32, Path, description = "Activity ID", example = 42)
     ),
     responses(
         (status = 204, description = "Activity deleted"),
@@ -841,10 +873,10 @@ pub async fn delete_activity(
     post,
     path = "/activities/{id}/regenerate",
     params(
-        ("id" = i32, Path, description = "Activity ID")
+        ("id" = i32, Path, description = "Activity ID", example = 42)
     ),
     responses(
-        (status = 200, description = "Regenerated activity detail", body = ActivityResponse),
+        (status = 200, description = "Regenerated activity detail", body = ActivityResponse, example = json!({"id": 42,"title": "Saturday hill repeats","sport": "ride","source": "manual_upload","activity_type": "training","original_filename": "saturday-hills.fit","format": "fit","started_at": "2026-09-26T13:00:00Z","ended_at": "2026-09-26T14:12:00Z","location": "Detroit, Michigan","distance_meters": 25430.5,"moving_time_seconds": 4200,"total_time_seconds": 4320,"elevation_gain_meters": 312.4,"average_speed_mps": 6.05,"average_heart_rate_bpm": 148,"estimated_ftp_watts": 245,"route_points": [{"elapsed_seconds": 900,"latitude": 42.3314,"longitude": -83.0458,"distance_meters": 4200.5,"elevation_meters": 183.2}],"can_regenerate": true,"can_download_source_file": true})),
         (status = 400, description = "Activity cannot be regenerated", body = ApiErrorResponse),
         (status = 401, description = "Not authenticated"),
         (status = 404, description = "Activity not found", body = ApiErrorResponse),

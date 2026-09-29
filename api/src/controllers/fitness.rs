@@ -15,25 +15,39 @@ use utoipa::{IntoParams, ToSchema};
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct FitnessQuery {
+    #[param(example = "2026-09-20")]
     pub start_date: Option<String>,
+    #[param(example = "2026-09-27")]
     pub end_date: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"date": "2026-09-26","training_load": 72.5,"fitness": 48.2,"fatigue": 56.1,"form": -7.9}))]
 pub struct FitnessFreshnessPoint {
+    #[schema(example = "2026-09-26")]
     pub date: String,
+    #[schema(example = 72.5)]
     pub training_load: f64,
+    #[schema(example = 48.2)]
     pub fitness: f64,
+    #[schema(example = 56.1)]
     pub fatigue: f64,
+    #[schema(example = -7.9)]
     pub form: f64,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"start_date": "2026-09-20","end_date": "2026-09-27","fitness_window_days": 42,"fatigue_window_days": 7,"points": [{"date": "2026-09-26","training_load": 72.5,"fitness": 48.2,"fatigue": 56.1,"form": -7.9}]}))]
 pub struct FitnessFreshnessResponse {
+    #[schema(example = "2026-09-20")]
     pub start_date: String,
+    #[schema(example = "2026-09-27")]
     pub end_date: String,
+    #[schema(example = 42)]
     pub fitness_window_days: i32,
+    #[schema(example = 7)]
     pub fatigue_window_days: i32,
+    #[schema(example = json!([{"date": "2026-09-26","training_load": 72.5,"fitness": 48.2,"fatigue": 56.1,"form": -7.9}]))]
     pub points: Vec<FitnessFreshnessPoint>,
 }
 
@@ -42,7 +56,7 @@ pub struct FitnessFreshnessResponse {
     path = "/fitness",
     params(FitnessQuery),
     responses(
-        (status = 200, description = "Daily fitness, fatigue, and form data for the authenticated user", body = FitnessFreshnessResponse),
+        (status = 200, description = "Daily fitness, fatigue, and form data for the authenticated user", body = FitnessFreshnessResponse, example = json!({"start_date": "2026-09-20","end_date": "2026-09-27","fitness_window_days": 42,"fatigue_window_days": 7,"points": [{"date": "2026-09-26","training_load": 72.5,"fitness": 48.2,"fatigue": 56.1,"form": -7.9}]})),
         (status = 400, description = "Invalid query parameters", body = ApiErrorResponse),
         (status = 401, description = "Not authenticated"),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),

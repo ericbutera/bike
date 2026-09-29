@@ -10,9 +10,10 @@ const MPH_PER_MPS = 2.236936;
 const KPH_PER_MPS = 3.6;
 
 function formatRoundedInteger(value: number) {
+  const rounded = Math.round(value);
   return new Intl.NumberFormat(undefined, {
     maximumFractionDigits: 0,
-  }).format(Math.round(value));
+  }).format(Object.is(rounded, -0) ? 0 : rounded);
 }
 
 export function normalizeUnitSystem(value?: string | null): UnitSystem {

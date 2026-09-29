@@ -36,15 +36,24 @@ pub const ACTIVITY_ARCHIVE_IMPORT_STATUS_SUCCEEDED: &str = "succeeded";
 pub const ACTIVITY_ARCHIVE_IMPORT_STATUS_FAILED: &str = "failed";
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
+#[schema(example = json!({"source": "strava_archive","total_entries": 120,"supported_entry_count": 116,"imported_count": 110,"duplicate_count": 6,"skipped_unsupported_count": 4,"failed_count": 0,"error_samples": []}))]
 pub struct ActivityArchiveImportResponse {
+    #[schema(example = "strava_archive")]
     pub source: String,
+    #[schema(example = 120)]
     pub total_entries: i32,
+    #[schema(example = 116)]
     pub supported_entry_count: i32,
+    #[schema(example = 110)]
     pub imported_count: i32,
+    #[schema(example = 6)]
     pub duplicate_count: i32,
+    #[schema(example = 4)]
     pub skipped_unsupported_count: i32,
+    #[schema(example = 0)]
     pub failed_count: i32,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[schema(example = json!([]))]
     pub error_samples: Vec<String>,
 }
 

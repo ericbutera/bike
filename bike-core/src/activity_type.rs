@@ -3,6 +3,7 @@ use utoipa::ToSchema;
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
+#[schema(example = "training")]
 pub enum ActivityType {
     Training,
     Race,

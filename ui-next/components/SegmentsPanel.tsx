@@ -228,7 +228,7 @@ export default function SegmentsPanel() {
   };
 
   return (
-    <section className="grid gap-6">
+    <section className="grid min-w-0 grid-cols-1 gap-6">
       <AppCard>
         <div className="flex items-start justify-between gap-4">
           <div>

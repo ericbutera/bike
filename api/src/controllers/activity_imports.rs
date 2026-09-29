@@ -10,10 +10,10 @@ use axum::http::StatusCode;
 use axum::Json;
 use bike_core::activity_import_pipeline::{
     activity_processing_graph_mermaid, activity_processing_graph_nodes,
-    activity_processing_topological_order, mark_activity_import_failed,
-    store_activity_upload_import, validate_activity_format, ActivityProcessingGraphNode,
-    ActivityProcessingNode, ActivityUploadPayload, ACTIVITY_IMPORT_STAGE_COMPLETE,
-    ACTIVITY_PROCESSING_PROVIDER,
+    activity_processing_topological_order, find_stored_activity_import,
+    mark_activity_import_failed, store_activity_upload_import, validate_activity_format,
+    ActivityProcessingGraphNode, ActivityProcessingNode, ActivityUploadPayload,
+    ACTIVITY_IMPORT_STAGE_COMPLETE, ACTIVITY_PROCESSING_PROVIDER,
 };
 use bike_core::archive_import::{
     decode_error_samples, enqueue_activity_archive_import_job, normalize_archive_url,
@@ -31,54 +31,95 @@ use utoipa::ToSchema;
 
 const ACTIVITY_IMPORT_LIST_LIMIT: u64 = 25;
 
+#[derive(ToSchema)]
+struct ActivityImportUploadForm {
+    #[schema(value_type = String, format = Binary)]
+    #[expect(dead_code, reason = "documents the multipart field consumed by Axum")]
+    file: Vec<u8>,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"id": 17,"import_version": 1,"original_filename": "saturday-hills.fit","format": "fit","status": "processed","processing_stage": "complete","size_bytes": 184320,"created_at": "2026-09-26T14:20:00Z","activity_id": 42,"activity_started_at": "2026-09-26T13:00:00Z","activity_location": "Detroit, Michigan","activity_duration_seconds": 4320}))]
 pub struct ActivityImportResponse {
+    #[schema(example = 17)]
     pub id: i32,
+    #[schema(example = 1)]
     pub import_version: i32,
+    #[schema(example = 42)]
     pub activity_id: Option<i32>,
+    #[schema(example = "saturday-hills.fit")]
     pub original_filename: String,
+    #[schema(example = "fit")]
     pub format: String,
+    #[schema(example = "processed")]
     pub status: String,
+    #[schema(example = "complete")]
     pub processing_stage: String,
     pub processing_error: Option<String>,
+    #[schema(example = 184320)]
     pub size_bytes: i64,
     pub mime_type: Option<String>,
+    #[schema(example = "2026-09-26T14:20:00Z")]
     pub created_at: DateTime<Utc>,
+    #[schema(example = "2026-09-26T13:00:00Z")]
     pub activity_started_at: Option<DateTime<Utc>>,
+    #[schema(example = 4320)]
     pub activity_duration_seconds: Option<i32>,
+    #[schema(example = "Detroit, Michigan")]
     pub activity_location: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, ToSchema)]
+#[schema(example = json!({"archive_url": "https://example.com/exports/activities.zip"}))]
 pub struct ArchiveUrlImportRequest {
+    #[schema(example = "https://example.com/exports/activities.zip")]
     pub archive_url: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"id": 18,"archive_url": "https://example.com/exports/activities.zip","status": "queued","total_entries": 0,"supported_entry_count": 0,"imported_count": 0,"duplicate_count": 0,"skipped_unsupported_count": 0,"failed_count": 0,"created_at": "2026-09-27T12:00:00Z","updated_at": "2026-09-27T12:00:00Z","error_samples": []}))]
 pub struct ActivityArchiveImportJobResponse {
+    #[schema(example = 18)]
     pub id: i32,
+    #[schema(example = "https://example.com/exports/activities.zip")]
     pub archive_url: String,
     pub resolved_url: Option<String>,
+    #[schema(example = "queued")]
     pub status: String,
     pub failure_message: Option<String>,
+    #[schema(example = 0)]
     pub total_entries: i32,
+    #[schema(example = 0)]
     pub supported_entry_count: i32,
+    #[schema(example = 0)]
     pub imported_count: i32,
+    #[schema(example = 0)]
     pub duplicate_count: i32,
+    #[schema(example = 0)]
     pub skipped_unsupported_count: i32,
+    #[schema(example = 0)]
     pub failed_count: i32,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[schema(example = json!([]))]
     pub error_samples: Vec<String>,
+    #[schema(example = "2026-09-27T12:00:00Z")]
     pub created_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
+    #[schema(example = "2026-09-27T12:00:00Z")]
     pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"nodes": [{"id": "raw_stored","label": "Raw stored","stage": "raw_stored"},{"id": "activity_parsed","label": "Activity parsed","stage": "activity_parsed"},{"id": "activity_saved","label": "Activity saved","stage": "activity_saved"},{"id": "segments_built","label": "Segments built","stage": "segments_built"},{"id": "segment_analytics_built","label": "Segment analytics built","stage": "segment_analytics_built"},{"id": "activity_analytics_built","label": "Activity analytics built","stage": "activity_analytics_built"},{"id": "training_analysis_built","label": "Training analysis built","stage": "training_analysis_built"}],"edges": [{"from": "raw_stored","to": "activity_parsed"},{"from": "activity_parsed","to": "activity_saved"},{"from": "activity_saved","to": "segments_built"},{"from": "segments_built","to": "segment_analytics_built"},{"from": "segment_analytics_built","to": "activity_analytics_built"},{"from": "activity_analytics_built","to": "training_analysis_built"}],"mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]\n  activity_parsed[\"Activity parsed\"]\n  activity_saved[\"Activity saved\"]\n  segments_built[\"Segments built\"]\n  segment_analytics_built[\"Segment analytics built\"]\n  activity_analytics_built[\"Activity analytics built\"]\n  training_analysis_built[\"Training analysis built\"]\n  raw_stored --> activity_parsed\n  activity_parsed --> activity_saved\n  activity_saved --> segments_built\n  segments_built --> segment_analytics_built\n  segment_analytics_built --> activity_analytics_built\n  activity_analytics_built --> training_analysis_built"}))]
 pub struct ActivityProcessingGraphResponse {
+    #[schema(example = json!([{"id": "raw_stored","label": "Raw stored","stage": "raw_stored"},{"id": "activity_parsed","label": "Activity parsed","stage": "activity_parsed"},{"id": "activity_saved","label": "Activity saved","stage": "activity_saved"},{"id": "segments_built","label": "Segments built","stage": "segments_built"},{"id": "segment_analytics_built","label": "Segment analytics built","stage": "segment_analytics_built"},{"id": "activity_analytics_built","label": "Activity analytics built","stage": "activity_analytics_built"},{"id": "training_analysis_built","label": "Training analysis built","stage": "training_analysis_built"}]))]
     pub nodes: Vec<ActivityProcessingGraphNodeResponse>,
+    #[schema(example = json!([{"from": "raw_stored","to": "activity_parsed"},{"from": "activity_parsed","to": "activity_saved"},{"from": "activity_saved","to": "segments_built"},{"from": "segments_built","to": "segment_analytics_built"},{"from": "segment_analytics_built","to": "activity_analytics_built"},{"from": "activity_analytics_built","to": "training_analysis_built"}]))]
     pub edges: Vec<ActivityProcessingGraphEdgeResponse>,
+    #[schema(
+        example = "flowchart LR\n  raw_stored[\"Raw stored\"]\n  activity_parsed[\"Activity parsed\"]\n  activity_saved[\"Activity saved\"]\n  segments_built[\"Segments built\"]\n  segment_analytics_built[\"Segment analytics built\"]\n  activity_analytics_built[\"Activity analytics built\"]\n  training_analysis_built[\"Training analysis built\"]\n  raw_stored --> activity_parsed\n  activity_parsed --> activity_saved\n  activity_saved --> segments_built\n  segments_built --> segment_analytics_built\n  segment_analytics_built --> activity_analytics_built\n  activity_analytics_built --> training_analysis_built"
+    )]
     pub mermaid: String,
 }
 
@@ -96,10 +137,13 @@ pub struct ActivityProcessingGraphEdgeResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"import": {"id": 17,"import_version": 1,"original_filename": "saturday-hills.fit","format": "fit","status": "processed","processing_stage": "complete","size_bytes": 184320,"created_at": "2026-09-26T14:20:00Z"},"graph": {"nodes": [{"id": "raw_stored","label": "Raw stored","stage": "raw_stored"}],"edges": [],"mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]"},"nodes": [{"id": "raw_stored","label": "Raw stored","stage": "raw_stored","status": "completed"}],"events": []}))]
 pub struct ActivityImportTraceResponse {
     pub import: ActivityImportResponse,
     pub graph: ActivityProcessingGraphResponse,
+    #[schema(example = json!([{"id": "raw_stored","label": "Raw stored","stage": "raw_stored","status": "completed"}]))]
     pub nodes: Vec<ActivityImportTraceNodeResponse>,
+    #[schema(example = json!([]))]
     pub events: Vec<ActivityImportTraceEventResponse>,
 }
 
@@ -123,12 +167,19 @@ pub struct ActivityImportTraceEventResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"is_active": true,"source": "strava_sync","source_label": "Strava sync","stage": "running","stage_label": "running","message": "Strava sync is currently running."}))]
 pub struct ActivityProcessingStateResponse {
+    #[schema(example = true)]
     pub is_active: bool,
+    #[schema(example = "strava_sync")]
     pub source: Option<String>,
+    #[schema(example = "Strava sync")]
     pub source_label: Option<String>,
+    #[schema(example = "running")]
     pub stage: Option<String>,
+    #[schema(example = "running")]
     pub stage_label: Option<String>,
+    #[schema(example = "Strava sync is currently running.")]
     pub message: Option<String>,
 }
 
@@ -337,7 +388,7 @@ impl ActivityProcessingStateResponse {
     get,
     path = "/activity-imports",
     responses(
-        (status = 200, description = "Recent activity imports for the authenticated user", body = [ActivityImportResponse]),
+        (status = 200, description = "Recent activity imports for the authenticated user", body = [ActivityImportResponse], example = json!([{"id": 17,"import_version": 1,"original_filename": "saturday-hills.fit","format": "fit","status": "processed","processing_stage": "complete","size_bytes": 184320,"created_at": "2026-09-26T14:20:00Z","activity_id": 42,"activity_started_at": "2026-09-26T13:00:00Z","activity_location": "Detroit, Michigan","activity_duration_seconds": 4320}])),
         (status = 401, description = "Not authenticated"),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     ),
@@ -418,7 +469,7 @@ pub async fn list_activity_imports(
     get,
     path = "/activity-imports/processing-graph",
     responses(
-        (status = 200, description = "Activity import processing DAG", body = ActivityProcessingGraphResponse),
+        (status = 200, description = "Activity import processing DAG", body = ActivityProcessingGraphResponse, example = json!({"nodes": [{"id": "raw_stored","label": "Raw stored","stage": "raw_stored"},{"id": "activity_parsed","label": "Activity parsed","stage": "activity_parsed"},{"id": "activity_saved","label": "Activity saved","stage": "activity_saved"},{"id": "segments_built","label": "Segments built","stage": "segments_built"},{"id": "segment_analytics_built","label": "Segment analytics built","stage": "segment_analytics_built"},{"id": "activity_analytics_built","label": "Activity analytics built","stage": "activity_analytics_built"},{"id": "training_analysis_built","label": "Training analysis built","stage": "training_analysis_built"}],"edges": [{"from": "raw_stored","to": "activity_parsed"},{"from": "activity_parsed","to": "activity_saved"},{"from": "activity_saved","to": "segments_built"},{"from": "segments_built","to": "segment_analytics_built"},{"from": "segment_analytics_built","to": "activity_analytics_built"},{"from": "activity_analytics_built","to": "training_analysis_built"}],"mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]\n  activity_parsed[\"Activity parsed\"]\n  activity_saved[\"Activity saved\"]\n  segments_built[\"Segments built\"]\n  segment_analytics_built[\"Segment analytics built\"]\n  activity_analytics_built[\"Activity analytics built\"]\n  training_analysis_built[\"Training analysis built\"]\n  raw_stored --> activity_parsed\n  activity_parsed --> activity_saved\n  activity_saved --> segments_built\n  segments_built --> segment_analytics_built\n  segment_analytics_built --> activity_analytics_built\n  activity_analytics_built --> training_analysis_built"})),
         (status = 401, description = "Not authenticated"),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     ),
@@ -437,10 +488,10 @@ pub async fn get_activity_processing_graph(
     get,
     path = "/activity-imports/{id}/trace",
     params(
-        ("id" = i32, Path, description = "Activity import id"),
+        ("id" = i32, Path, description = "Activity import id", example = 17),
     ),
     responses(
-        (status = 200, description = "Activity import processing DAG and event trace", body = ActivityImportTraceResponse),
+        (status = 200, description = "Activity import processing DAG and event trace", body = ActivityImportTraceResponse, example = json!({"import": {"id": 17,"import_version": 1,"original_filename": "saturday-hills.fit","format": "fit","status": "processed","processing_stage": "complete","size_bytes": 184320,"created_at": "2026-09-26T14:20:00Z"},"graph": {"nodes": [{"id": "raw_stored","label": "Raw stored","stage": "raw_stored"}],"edges": [],"mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]"},"nodes": [{"id": "raw_stored","label": "Raw stored","stage": "raw_stored","status": "completed"}],"events": []})),
         (status = 401, description = "Not authenticated"),
         (status = 404, description = "Activity import not found", body = ApiErrorResponse),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
@@ -491,7 +542,7 @@ pub async fn get_activity_import_trace(
     get,
     path = "/activity-imports/archive-jobs",
     responses(
-        (status = 200, description = "Recent archive import jobs for the authenticated user", body = [ActivityArchiveImportJobResponse]),
+        (status = 200, description = "Recent archive import jobs for the authenticated user", body = [ActivityArchiveImportJobResponse], example = json!([{"id": 18,"archive_url": "https://example.com/exports/activities.zip","status": "queued","total_entries": 0,"supported_entry_count": 0,"imported_count": 0,"duplicate_count": 0,"skipped_unsupported_count": 0,"failed_count": 0,"created_at": "2026-09-27T12:00:00Z","updated_at": "2026-09-27T12:00:00Z","error_samples": []}])),
         (status = 401, description = "Not authenticated"),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     ),
@@ -522,7 +573,7 @@ pub async fn list_activity_archive_import_jobs(
     get,
     path = "/activity-imports/processing-state",
     responses(
-        (status = 200, description = "Current activity processing state for the authenticated user", body = ActivityProcessingStateResponse),
+        (status = 200, description = "Current activity processing state for the authenticated user", body = ActivityProcessingStateResponse, example = json!({"is_active": true,"source": "strava_sync","source_label": "Strava sync","stage": "running","stage_label": "running","message": "Strava sync is currently running."})),
         (status = 401, description = "Not authenticated"),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     ),
@@ -561,9 +612,9 @@ pub async fn get_activity_processing_state(
 #[utoipa::path(
     get,
     path = "/activity-imports/archive-jobs/{id}",
-    params(("id" = i32, Path, description = "Archive import job id")),
+    params(("id" = i32, Path, description = "Archive import job id", example = 17)),
     responses(
-        (status = 200, description = "Archive import job status", body = ActivityArchiveImportJobResponse),
+        (status = 200, description = "Archive import job status", body = ActivityArchiveImportJobResponse, example = json!({"id": 18,"archive_url": "https://example.com/exports/activities.zip","status": "queued","total_entries": 0,"supported_entry_count": 0,"imported_count": 0,"duplicate_count": 0,"skipped_unsupported_count": 0,"failed_count": 0,"created_at": "2026-09-27T12:00:00Z","updated_at": "2026-09-27T12:00:00Z","error_samples": []})),
         (status = 401, description = "Not authenticated"),
         (status = 404, description = "Archive import job not found", body = ApiErrorResponse),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
@@ -590,10 +641,10 @@ pub async fn get_activity_archive_import_job(
 #[utoipa::path(
     post,
     path = "/activity-imports",
-    request_body(content_type = "multipart/form-data"),
+    request_body(content = inline(ActivityImportUploadForm), content_type = "multipart/form-data"),
     responses(
-        (status = 200, description = "Activity was already imported and the existing record was returned", body = ActivityImportResponse),
-        (status = 202, description = "Activity import queued for worker processing", body = ActivityImportResponse),
+        (status = 200, description = "Activity was already imported and the existing record was returned", body = ActivityImportResponse, example = json!({"id": 17,"import_version": 1,"original_filename": "saturday-hills.fit","format": "fit","status": "processed","processing_stage": "complete","size_bytes": 184320,"created_at": "2026-09-26T14:20:00Z","activity_id": 42,"activity_started_at": "2026-09-26T13:00:00Z","activity_location": "Detroit, Michigan","activity_duration_seconds": 4320})),
+        (status = 202, description = "Activity import queued for worker processing", body = ActivityImportResponse, example = json!({"id": 17,"import_version": 1,"original_filename": "saturday-hills.fit","format": "fit","status": "processing","processing_stage": "raw_stored","size_bytes": 184320,"created_at": "2026-09-26T14:20:00Z"})),
         (status = 400, description = "Invalid upload", body = ApiErrorResponse),
         (status = 401, description = "Not authenticated"),
         (status = 413, description = "Payload too large", body = ApiErrorResponse),
@@ -610,6 +661,13 @@ pub async fn upload_activity_import(
     multipart: Multipart,
 ) -> Result<(StatusCode, Json<ActivityImportResponse>), AppError> {
     let upload = read_uploaded_activity_file(multipart).await?;
+    if let Some(existing) = find_stored_activity_import(&state.db, user.id, &upload.bytes).await? {
+        return Ok((
+            StatusCode::OK,
+            Json(ActivityImportResponse::from_model(existing, None)),
+        ));
+    }
+
     let user_storage_key = user.pid.to_string();
 
     let import = match store_activity_upload_import(
@@ -654,9 +712,9 @@ pub async fn upload_activity_import(
 #[utoipa::path(
     post,
     path = "/activity-imports/archive-url",
-    request_body = ArchiveUrlImportRequest,
+    request_body(content = ArchiveUrlImportRequest, example = json!({"archive_url": "https://example.com/exports/activities.zip"})),
     responses(
-        (status = 202, description = "Archive import job queued", body = ActivityArchiveImportJobResponse),
+        (status = 202, description = "Archive import job queued", body = ActivityArchiveImportJobResponse, example = json!({"id": 18,"archive_url": "https://example.com/exports/activities.zip","status": "queued","total_entries": 0,"supported_entry_count": 0,"imported_count": 0,"duplicate_count": 0,"skipped_unsupported_count": 0,"failed_count": 0,"created_at": "2026-09-27T12:00:00Z","updated_at": "2026-09-27T12:00:00Z","error_samples": []})),
         (status = 400, description = "Invalid archive URL", body = ApiErrorResponse),
         (status = 409, description = "Another activity import is already running or queued", body = ApiErrorResponse),
         (status = 401, description = "Not authenticated"),

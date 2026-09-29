@@ -42,22 +42,34 @@ use utoipa::ToSchema;
 const SEGMENT_BACKFILL_CHUNK_SIZE: usize = 250;
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"id": 42,"user_id": 12,"title": "Saturday hill repeats","sport": "ride","source": "manual_upload","started_at": "2026-09-26T13:00:00Z","activity_import_id": 17,"import_status": "processed","import_processing_stage": "complete"}))]
 pub struct AdminActivityResponse {
+    #[schema(example = 42)]
     pub id: i32,
+    #[schema(example = 12)]
     pub user_id: i32,
+    #[schema(example = "Saturday hill repeats")]
     pub title: String,
+    #[schema(example = "ride")]
     pub sport: String,
+    #[schema(example = "manual_upload")]
     pub source: String,
+    #[schema(example = "2026-09-26T13:00:00Z")]
     pub started_at: chrono::DateTime<Utc>,
     pub format: Option<String>,
+    #[schema(example = 17)]
     pub activity_import_id: Option<i32>,
     pub import_version: Option<i32>,
+    #[schema(example = "processed")]
     pub import_status: Option<String>,
+    #[schema(example = "complete")]
     pub import_processing_stage: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"trace": null}))]
 pub struct AdminActivityImportTraceResponse {
+    #[schema(example = json!(null))]
     pub trace: Option<activity_imports_controller::ActivityImportTraceResponse>,
 }
 
@@ -133,7 +145,7 @@ pub fn routes() -> Router<Arc<AppStorage>> {
     path = "/admin/metrics/app",
     operation_id = "admin_app_metrics",
     responses(
-        (status = 200, description = "Bike app metrics", body = [NamedStat]),
+        (status = 200, description = "Bike app metrics", body = [NamedStat], example = json!([{"key": "active_users","label": "Active users","desc": "last 30 days","value": 12}])),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
     ),
@@ -153,7 +165,7 @@ pub async fn app_metrics(
     operation_id = "admin_list_activities",
     params(PaginationParams),
     responses(
-        (status = 200, description = "Paginated activities for administrators", body = PaginatedResponse<AdminActivityResponse>),
+        (status = 200, description = "Paginated activities for administrators", body = PaginatedResponse<AdminActivityResponse>, example = json!({"data": [{"id": 42,"user_id": 12,"title": "Saturday hill repeats","sport": "ride","source": "manual_upload","started_at": "2026-09-26T13:00:00Z"}],"metadata": {"page": 1,"per_page": 20,"total": 1,"total_pages": 1}})),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
@@ -221,10 +233,10 @@ pub async fn list_admin_activities(
     path = "/admin/activity-imports/{id}/trace",
     operation_id = "admin_get_activity_import_trace",
     params(
-        ("id" = i32, Path, description = "Activity import id"),
+        ("id" = i32, Path, description = "Activity import id", example = 17),
     ),
     responses(
-        (status = 200, description = "Activity import processing DAG and event trace for administrators", body = activity_imports_controller::ActivityImportTraceResponse),
+        (status = 200, description = "Activity import processing DAG and event trace for administrators", body = activity_imports_controller::ActivityImportTraceResponse, example = json!({"import": {"id": 17,"import_version": 1,"original_filename": "saturday-hills.fit","format": "fit","status": "processed","processing_stage": "complete","size_bytes": 184320,"created_at": "2026-09-26T14:20:00Z"},"graph": {"nodes": [{"id": "raw_stored","label": "Raw stored","stage": "raw_stored"}],"edges": [],"mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]"},"nodes": [{"id": "raw_stored","label": "Raw stored","stage": "raw_stored","status": "completed"}],"events": []})),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "Activity import not found", body = ApiErrorResponse),
@@ -252,10 +264,10 @@ pub async fn get_admin_activity_import_trace(
     path = "/admin/activities/{id}/import-trace",
     operation_id = "admin_get_activity_import_trace_for_activity",
     params(
-        ("id" = i32, Path, description = "Activity id"),
+        ("id" = i32, Path, description = "Activity id", example = 42),
     ),
     responses(
-        (status = 200, description = "Activity import processing DAG and event trace for administrators when the activity has a linked import", body = AdminActivityImportTraceResponse),
+        (status = 200, description = "Activity import processing DAG and event trace for administrators when the activity has a linked import", body = AdminActivityImportTraceResponse, example = json!({"trace": null})),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "Activity not found", body = ApiErrorResponse),
@@ -579,99 +591,156 @@ fn format_duration_label(seconds: i64) -> String {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"user_count": 12,"segment_count": 35,"fitness_task_count": 12,"segment_task_count": 2,"total_tasks_enqueued": 14,"segment_chunk_size": 20}))]
 pub struct AnalyticsBackfillResponse {
+    #[schema(example = 12)]
     pub user_count: i32,
+    #[schema(example = 35)]
     pub segment_count: i32,
+    #[schema(example = 12)]
     pub fitness_task_count: i32,
+    #[schema(example = 2)]
     pub segment_task_count: i32,
+    #[schema(example = 14)]
     pub total_tasks_enqueued: i32,
+    #[schema(example = 20)]
     pub segment_chunk_size: i32,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[schema(example = json!({"archive_path": "/data/imports/activities.zip"}))]
 pub struct ArchiveImportRequest {
+    #[schema(example = "/data/imports/activities.zip")]
     pub archive_path: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[schema(example = json!({"user_id": 12}))]
 pub struct RegenerateUserSegmentsRequest {
+    #[schema(example = 12)]
     pub user_id: i32,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[schema(example = json!({"segment_id": 7}))]
 pub struct RegenerateSegmentEffortsRequest {
+    #[schema(example = 7)]
     pub segment_id: i32,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"archive_path": "/data/imports/activities.zip","total_entries": 120,"supported_entry_count": 116,"imported_count": 110,"duplicate_count": 6,"skipped_unsupported_count": 4,"failed_count": 0,"error_samples": []}))]
 pub struct ArchiveImportResponse {
+    #[schema(example = "/data/imports/activities.zip")]
     pub archive_path: String,
+    #[schema(example = 120)]
     pub total_entries: i32,
+    #[schema(example = 116)]
     pub supported_entry_count: i32,
+    #[schema(example = 110)]
     pub imported_count: i32,
+    #[schema(example = 6)]
     pub duplicate_count: i32,
+    #[schema(example = 4)]
     pub skipped_unsupported_count: i32,
+    #[schema(example = 0)]
     pub failed_count: i32,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[schema(example = json!([]))]
     pub error_samples: Vec<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"user_id": 12,"status": "queued","message": "Segment regeneration queued."}))]
 pub struct RegenerateUserSegmentsResponse {
+    #[schema(example = 12)]
     pub user_id: i32,
+    #[schema(example = "queued")]
     pub status: String,
+    #[schema(example = "Segment regeneration queued.")]
     pub message: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"segment_id": 7,"status": "queued","message": "Segment effort regeneration queued.","task_id": "43","task_status": "pending"}))]
 pub struct RegenerateSegmentEffortsResponse {
+    #[schema(example = 7)]
     pub segment_id: i32,
+    #[schema(example = "queued")]
     pub status: String,
+    #[schema(example = "Segment effort regeneration queued.")]
     pub message: String,
+    #[schema(example = "43")]
     pub task_id: String,
+    #[schema(example = "pending")]
     pub task_status: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[schema(example = json!({"user_id": 12}))]
 pub struct ReprocessUserActivityImportsRequest {
+    #[schema(example = 12)]
     pub user_id: i32,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"user_id": 12,"status": "queued","message": "Activity reprocessing queued."}))]
 pub struct ReprocessUserActivityImportsResponse {
+    #[schema(example = 12)]
     pub user_id: i32,
+    #[schema(example = "queued")]
     pub status: String,
+    #[schema(example = "Activity reprocessing queued.")]
     pub message: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[schema(example = json!({"activity_id": 42}))]
 pub struct ReprocessActivityImportRequest {
+    #[schema(example = 42)]
     pub activity_id: i32,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"activity_id": 42,"activity_import_id": 17,"user_id": 12,"status": "queued","message": "Activity reprocessing queued.","task_id": "42","task_status": "pending"}))]
 pub struct ReprocessActivityImportResponse {
+    #[schema(example = 42)]
     pub activity_id: i32,
+    #[schema(example = 17)]
     pub activity_import_id: i32,
+    #[schema(example = 12)]
     pub user_id: i32,
+    #[schema(example = "queued")]
     pub status: String,
+    #[schema(example = "Activity reprocessing queued.")]
     pub message: String,
+    #[schema(example = "42")]
     pub task_id: String,
+    #[schema(example = "pending")]
     pub task_status: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[schema(example = json!({"user_id": 12}))]
 pub struct CleanupUserDuplicateActivitiesRequest {
+    #[schema(example = 12)]
     pub user_id: i32,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"user_id": 12,"status": "completed","message": "Removed 2 duplicate activities across 2 duplicate groups.","duplicate_group_count": 2,"deleted_activity_count": 2,"retained_activity_count": 2}))]
 pub struct CleanupUserDuplicateActivitiesResponse {
+    #[schema(example = 12)]
     pub user_id: i32,
+    #[schema(example = "completed")]
     pub status: String,
+    #[schema(example = "Removed 2 duplicate activities across 2 duplicate groups.")]
     pub message: String,
+    #[schema(example = 2)]
     pub duplicate_group_count: i32,
+    #[schema(example = 2)]
     pub deleted_activity_count: i32,
+    #[schema(example = 2)]
     pub retained_activity_count: i32,
 }
 
@@ -680,7 +749,7 @@ pub struct CleanupUserDuplicateActivitiesResponse {
     path = "/admin/analytics/backfill",
     operation_id = "admin_backfill_analytics",
     responses(
-        (status = 202, description = "Enqueued analytics backfill tasks", body = AnalyticsBackfillResponse),
+        (status = 202, description = "Enqueued analytics backfill tasks", body = AnalyticsBackfillResponse, example = json!({"user_count": 12,"segment_count": 35,"fitness_task_count": 12,"segment_task_count": 2,"total_tasks_enqueued": 14,"segment_chunk_size": 20})),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
@@ -722,9 +791,9 @@ pub async fn backfill_analytics(
     post,
     path = "/admin/training/xc-backfill",
     operation_id = "admin_backfill_user_xc_training",
-    request_body = ReprocessUserActivityImportsRequest,
+    request_body(content = ReprocessUserActivityImportsRequest, example = json!({"user_id": 12})),
     responses(
-        (status = 202, description = "Queued XC training backfill for one user", body = ReprocessUserActivityImportsResponse),
+        (status = 202, description = "Queued XC training backfill for one user", body = ReprocessUserActivityImportsResponse, example = json!({"user_id": 12,"status": "queued","message": "XC training backfill queued. Historical rides will repopulate in the background."})),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "User not found", body = ApiErrorResponse),
@@ -760,9 +829,9 @@ pub async fn backfill_user_xc_training(
     post,
     path = "/admin/segments/regenerate",
     operation_id = "admin_regenerate_user_segments",
-    request_body = RegenerateUserSegmentsRequest,
+    request_body(content = RegenerateUserSegmentsRequest, example = json!({"user_id": 12})),
     responses(
-        (status = 202, description = "Queued segment regeneration for one user", body = RegenerateUserSegmentsResponse),
+        (status = 202, description = "Queued segment regeneration for one user", body = RegenerateUserSegmentsResponse, example = json!({"user_id": 12,"status": "queued","message": "Segment regeneration queued."})),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "User not found", body = ApiErrorResponse),
@@ -816,9 +885,9 @@ pub async fn regenerate_user_segments(
     post,
     path = "/admin/segments/regenerate-efforts",
     operation_id = "admin_regenerate_segment_efforts",
-    request_body = RegenerateSegmentEffortsRequest,
+    request_body(content = RegenerateSegmentEffortsRequest, example = json!({"segment_id": 7})),
     responses(
-        (status = 202, description = "Queued effort regeneration for one segment", body = RegenerateSegmentEffortsResponse),
+        (status = 202, description = "Queued effort regeneration for one segment", body = RegenerateSegmentEffortsResponse, example = json!({"segment_id": 7,"status": "queued","message": "Segment effort regeneration queued.","task_id": "43","task_status": "pending"})),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "Segment not found", body = ApiErrorResponse),
@@ -865,9 +934,9 @@ pub async fn regenerate_segment_efforts(
     post,
     path = "/admin/activity-imports/reprocess",
     operation_id = "admin_reprocess_user_activity_imports",
-    request_body = ReprocessUserActivityImportsRequest,
+    request_body(content = ReprocessUserActivityImportsRequest, example = json!({"user_id": 12})),
     responses(
-        (status = 202, description = "Queued stored-file activity reprocessing for one user", body = ReprocessUserActivityImportsResponse),
+        (status = 202, description = "Queued stored-file activity reprocessing for one user", body = ReprocessUserActivityImportsResponse, example = json!({"user_id": 12,"status": "queued","message": "Activity reprocessing queued."})),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "User not found", body = ApiErrorResponse),
@@ -925,9 +994,9 @@ pub async fn reprocess_user_activity_imports(
     post,
     path = "/admin/activity-imports/reprocess-activity",
     operation_id = "admin_reprocess_activity_import",
-    request_body = ReprocessActivityImportRequest,
+    request_body(content = ReprocessActivityImportRequest, example = json!({"activity_id": 42})),
     responses(
-        (status = 202, description = "Queued stored-file activity reprocessing for one activity", body = ReprocessActivityImportResponse),
+        (status = 202, description = "Queued stored-file activity reprocessing for one activity", body = ReprocessActivityImportResponse, example = json!({"activity_id": 42,"activity_import_id": 17,"user_id": 12,"status": "queued","message": "Activity reprocessing queued.","task_id": "42","task_status": "pending"})),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "Activity not found", body = ApiErrorResponse),
@@ -997,9 +1066,9 @@ pub async fn reprocess_activity_import(
     post,
     path = "/admin/activity-imports/cleanup-duplicates",
     operation_id = "admin_cleanup_user_duplicate_activities",
-    request_body = CleanupUserDuplicateActivitiesRequest,
+    request_body(content = CleanupUserDuplicateActivitiesRequest, example = json!({"user_id": 12})),
     responses(
-        (status = 200, description = "Removed duplicate activities for one user", body = CleanupUserDuplicateActivitiesResponse),
+        (status = 200, description = "Removed duplicate activities for one user", body = CleanupUserDuplicateActivitiesResponse, example = json!({"user_id": 12,"status": "completed","message": "Removed 2 duplicate activities across 2 duplicate groups.","duplicate_group_count": 2,"deleted_activity_count": 2,"retained_activity_count": 2})),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "User not found", body = ApiErrorResponse),
@@ -1075,9 +1144,9 @@ pub async fn cleanup_user_duplicate_activities(
     post,
     path = "/admin/activity-imports/archive",
     operation_id = "admin_import_activity_archive",
-    request_body = ArchiveImportRequest,
+    request_body(content = ArchiveImportRequest, example = json!({"archive_path": "/data/imports/activities.zip"})),
     responses(
-        (status = 200, description = "Imported activities from an archive on the server", body = ArchiveImportResponse),
+        (status = 200, description = "Imported activities from an archive on the server", body = ArchiveImportResponse, example = json!({"archive_path": "/data/imports/activities.zip","total_entries": 120,"supported_entry_count": 116,"imported_count": 110,"duplicate_count": 6,"skipped_unsupported_count": 4,"failed_count": 0,"error_samples": []})),
         (status = 400, description = "Invalid archive request", body = ApiErrorResponse),
         (status = 409, description = "Another activity import is already running or queued", body = ApiErrorResponse),
         (status = 401, description = "Unauthorized"),

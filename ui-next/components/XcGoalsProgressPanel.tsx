@@ -441,10 +441,12 @@ function formatGoalElevation(
   }
 
   if (unit === "ft") {
-    return `${formatNumber(Math.round(value * FEET_PER_METER), 0)} ft`;
+    const rounded = Math.round(value * FEET_PER_METER);
+    return `${formatNumber(Object.is(rounded, -0) ? 0 : rounded, 0)} ft`;
   }
 
-  return `${formatNumber(Math.round(value), 0)} m`;
+  const rounded = Math.round(value);
+  return `${formatNumber(Object.is(rounded, -0) ? 0 : rounded, 0)} m`;
 }
 
 function distanceToMeters(value: number, unit: GoalDistanceUnit) {
@@ -1706,6 +1708,9 @@ function EmptyTrendState({ message }: { message: string }) {
 }
 
 export default function XcGoalsProgressPanel() {
+  const animateCharts =
+    typeof window !== "undefined" &&
+    !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const queryClient = useQueryClient();
   const preferencesQuery = useUserPreferences({
     refetchIntervalMs: 5000,
@@ -2544,6 +2549,7 @@ export default function XcGoalsProgressPanel() {
                   />
                   <Bar
                     dataKey="distanceChartValue"
+                    isAnimationActive={animateCharts}
                     fill={DISTANCE_COLOR}
                     fillOpacity={0.72}
                     radius={[5, 5, 0, 0]}
@@ -2552,6 +2558,7 @@ export default function XcGoalsProgressPanel() {
                   <Line
                     type="monotone"
                     dataKey="climbingGainChartValue"
+                    isAnimationActive={animateCharts}
                     yAxisId="climbing"
                     stroke={CLIMB_COLOR}
                     strokeWidth={3}
@@ -2657,6 +2664,7 @@ export default function XcGoalsProgressPanel() {
                     <Line
                       type="monotone"
                       dataKey="averageZ2SpeedIndex"
+                      isAnimationActive={animateCharts}
                       stroke={Z2_COLOR}
                       strokeWidth={3}
                       dot={{ r: 3, fill: Z2_COLOR, strokeWidth: 0 }}
@@ -2666,6 +2674,7 @@ export default function XcGoalsProgressPanel() {
                     <Line
                       type="monotone"
                       dataKey="climbingVerticalRateIndex"
+                      isAnimationActive={animateCharts}
                       stroke={CLIMB_COLOR}
                       strokeWidth={3}
                       dot={{ r: 3, fill: CLIMB_COLOR, strokeWidth: 0 }}
@@ -2675,6 +2684,7 @@ export default function XcGoalsProgressPanel() {
                     <Line
                       type="monotone"
                       dataKey="aerobicDecouplingIndex"
+                      isAnimationActive={animateCharts}
                       stroke={DECOUPLING_COLOR}
                       strokeWidth={3}
                       dot={{ r: 3, fill: DECOUPLING_COLOR, strokeWidth: 0 }}
@@ -2753,6 +2763,7 @@ export default function XcGoalsProgressPanel() {
                   <Tooltip content={<ZoneTrendTooltip />} />
                   <Bar
                     dataKey="z1Hours"
+                    isAnimationActive={animateCharts}
                     stackId="zones"
                     fill={ZONE_COLORS.z1}
                     fillOpacity={0.86}
@@ -2760,6 +2771,7 @@ export default function XcGoalsProgressPanel() {
                   />
                   <Bar
                     dataKey="z2ZoneHours"
+                    isAnimationActive={animateCharts}
                     stackId="zones"
                     fill={ZONE_COLORS.z2}
                     fillOpacity={0.86}
@@ -2767,6 +2779,7 @@ export default function XcGoalsProgressPanel() {
                   />
                   <Bar
                     dataKey="z3Hours"
+                    isAnimationActive={animateCharts}
                     stackId="zones"
                     fill={ZONE_COLORS.z3}
                     fillOpacity={0.86}
@@ -2774,6 +2787,7 @@ export default function XcGoalsProgressPanel() {
                   />
                   <Bar
                     dataKey="z4Hours"
+                    isAnimationActive={animateCharts}
                     stackId="zones"
                     fill={ZONE_COLORS.z4}
                     fillOpacity={0.86}
@@ -2781,6 +2795,7 @@ export default function XcGoalsProgressPanel() {
                   />
                   <Bar
                     dataKey="z5Hours"
+                    isAnimationActive={animateCharts}
                     stackId="zones"
                     fill={ZONE_COLORS.z5}
                     fillOpacity={0.86}

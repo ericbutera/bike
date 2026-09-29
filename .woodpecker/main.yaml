@@ -67,9 +67,23 @@ steps:
       context: ui-next
       dockerfile: ui-next/Dockerfile
 
+  - name: build-map-renderer
+    image: woodpeckerci/plugin-kaniko
+    depends_on: [build-ui]
+    settings:
+      registry: registry.registry:5000
+      repo: bike-map-renderer
+      tags: ${CI_COMMIT_SHA},latest
+      insecure: true
+      skip_tls_verify: true
+      insecure-pull: true
+      insecure-registry: true
+      context: .
+      dockerfile: map-renderer/Dockerfile
+
   - name: deploy
     image: pulumi/pulumi-go:latest
-    depends_on: [build-api, build-worker, build-ui]
+    depends_on: [build-api, build-worker, build-ui, build-map-renderer]
     environment:
       PULUMI_ACCESS_TOKEN:
         from_secret: pulumi_access_token

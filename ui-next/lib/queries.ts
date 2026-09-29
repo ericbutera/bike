@@ -1377,10 +1377,14 @@ export function useActivities(opts?: {
 }) {
   const page = Math.max(1, opts?.page ?? 1);
   const perPage = Math.max(1, opts?.perPage ?? 10);
-  const response = $api.useQuery("get", "/activities", {
-    params: { query: { page, per_page: perPage } },
-    options: { enabled: opts?.enabled ?? true },
-  });
+  const response = $api.useQuery(
+    "get",
+    "/activities",
+    {
+      params: { query: { page, per_page: perPage } },
+    },
+    { enabled: opts?.enabled ?? true },
+  );
 
   const pageData = response.data as PaginatedResponse<Activity> | undefined;
 
@@ -1398,10 +1402,14 @@ export function useAdminActivities(opts?: {
 }) {
   const page = Math.max(1, opts?.page ?? 1);
   const perPage = Math.max(1, opts?.perPage ?? 25);
-  const response = $api.useQuery("get", "/admin/activities", {
-    params: { query: { page, per_page: perPage } },
-    options: { enabled: opts?.enabled ?? true },
-  });
+  const response = $api.useQuery(
+    "get",
+    "/admin/activities",
+    {
+      params: { query: { page, per_page: perPage } },
+    },
+    { enabled: opts?.enabled ?? true },
+  );
 
   const pageData = response.data as
     | PaginatedResponse<AdminActivity>
@@ -1415,9 +1423,12 @@ export function useAdminActivities(opts?: {
 }
 
 export function useActivityProcessingGraph(opts?: { enabled?: boolean }) {
-  const response = $api.useQuery("get", "/activity-imports/processing-graph", {
-    options: { enabled: opts?.enabled ?? true },
-  });
+  const response = $api.useQuery(
+    "get",
+    "/activity-imports/processing-graph",
+    {},
+    { enabled: opts?.enabled ?? true },
+  );
 
   return {
     ...response,
@@ -1437,10 +1448,14 @@ export function useActivityImportTrace(
   const path = opts?.admin
     ? "/admin/activity-imports/{id}/trace"
     : "/activity-imports/{id}/trace";
-  const response = $api.useQuery("get", path, {
-    params: { path: { id: enabled ? numericImportId : 0 } },
-    options: { enabled },
-  });
+  const response = $api.useQuery(
+    "get",
+    path,
+    {
+      params: { path: { id: enabled ? numericImportId : 0 } },
+    },
+    { enabled },
+  );
 
   return {
     ...response,
@@ -1458,10 +1473,14 @@ export function useAdminActivityImportTrace(
     (opts?.enabled ?? true) &&
     Number.isFinite(numericActivityId) &&
     numericActivityId > 0;
-  const response = $api.useQuery("get", "/admin/activities/{id}/import-trace", {
-    params: { path: { id: enabled ? numericActivityId : 0 } },
-    options: { enabled },
-  });
+  const response = $api.useQuery(
+    "get",
+    "/admin/activities/{id}/import-trace",
+    {
+      params: { path: { id: enabled ? numericActivityId : 0 } },
+    },
+    { enabled },
+  );
   const data = response.data as AdminActivityImportTraceResponse | undefined;
 
   return {
@@ -1474,10 +1493,14 @@ export function useAdminActivityImportTrace(
 export function useActivity(id: number | string | null | undefined) {
   const numericId = Number(id);
   const enabled = Number.isFinite(numericId) && numericId > 0;
-  const response = $api.useQuery("get", "/activities/{id}", {
-    params: { path: { id: enabled ? numericId : 0 } },
-    options: { enabled },
-  });
+  const response = $api.useQuery(
+    "get",
+    "/activities/{id}",
+    {
+      params: { path: { id: enabled ? numericId : 0 } },
+    },
+    { enabled },
+  );
 
   return {
     ...response,
@@ -1576,9 +1599,12 @@ export function useDeleteActivity() {
 }
 
 export function useSegments(opts?: { enabled?: boolean }) {
-  const response = $api.useQuery("get", "/segments", {
-    options: { enabled: opts?.enabled ?? true },
-  });
+  const response = $api.useQuery(
+    "get",
+    "/segments",
+    {},
+    { enabled: opts?.enabled ?? true },
+  );
 
   return {
     ...response,
@@ -1680,7 +1706,10 @@ export function useUploadSegment() {
       const form = new FormData();
       form.append("file", file);
 
-      const result = await mutation.mutateAsync({ body: form });
+      // OpenAPI describes the multipart fields; the fetch client sends FormData.
+      const result = await mutation.mutateAsync({
+        body: form as unknown as { file: string },
+      });
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["get", "/segments"] }),
@@ -1869,12 +1898,15 @@ export function useActivityImports(opts?: {
   enabled?: boolean;
   refetchIntervalMs?: number | false;
 }) {
-  const response = $api.useQuery("get", "/activity-imports", {
-    options: {
+  const response = $api.useQuery(
+    "get",
+    "/activity-imports",
+    {},
+    {
       enabled: opts?.enabled ?? true,
       refetchInterval: opts?.refetchIntervalMs ?? false,
     },
-  });
+  );
 
   return {
     ...response,
@@ -1886,12 +1918,15 @@ export function useActivityArchiveImportJobs(opts?: {
   enabled?: boolean;
   refetchIntervalMs?: number | false;
 }) {
-  const response = $api.useQuery("get", "/activity-imports/archive-jobs", {
-    options: {
+  const response = $api.useQuery(
+    "get",
+    "/activity-imports/archive-jobs",
+    {},
+    {
       enabled: opts?.enabled ?? true,
       refetchInterval: opts?.refetchIntervalMs ?? false,
     },
-  });
+  );
 
   return {
     ...response,
@@ -1903,12 +1938,15 @@ export function useActivityProcessingState(opts?: {
   enabled?: boolean;
   refetchIntervalMs?: number | false;
 }) {
-  const response = $api.useQuery("get", "/activity-imports/processing-state", {
-    options: {
+  const response = $api.useQuery(
+    "get",
+    "/activity-imports/processing-state",
+    {},
+    {
       enabled: opts?.enabled ?? true,
       refetchInterval: opts?.refetchIntervalMs ?? false,
     },
-  });
+  );
 
   return {
     ...response,
@@ -1934,7 +1972,10 @@ export function useUploadActivityImport() {
       form.append("file", file);
 
       try {
-        const result = await mutation.mutateAsync({ body: form });
+        // OpenAPI describes the multipart fields; the fetch client sends FormData.
+        const result = await mutation.mutateAsync({
+          body: form as unknown as { file: string },
+        });
 
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["get", "/activities"] }),
@@ -1967,12 +2008,15 @@ export function useStravaConnection(opts?: {
   enabled?: boolean;
   refetchIntervalMs?: number | false;
 }) {
-  const response = $api.useQuery("get", "/strava/connection", {
-    options: {
+  const response = $api.useQuery(
+    "get",
+    "/strava/connection",
+    {},
+    {
       enabled: opts?.enabled ?? true,
       refetchInterval: opts?.refetchIntervalMs ?? false,
     },
-  });
+  );
 
   return {
     ...response,
@@ -2000,12 +2044,15 @@ export function useStravaIntegrationEvents(opts?: {
   enabled?: boolean;
   refetchIntervalMs?: number | false;
 }) {
-  const response = $api.useQuery("get", "/integration-events/strava", {
-    options: {
+  const response = $api.useQuery(
+    "get",
+    "/integration-events/strava",
+    {},
+    {
       enabled: opts?.enabled ?? true,
       refetchInterval: opts?.refetchIntervalMs ?? false,
     },
-  });
+  );
 
   return {
     ...response,
@@ -2022,21 +2069,25 @@ export function useAdminIntegrationEvents(opts?: {
   limit?: number;
   refetchIntervalMs?: number | false;
 }) {
-  const response = $api.useQuery("get", "/admin/integration-events", {
-    params: {
-      query: {
-        provider: opts?.provider,
-        user_id: opts?.userId ?? undefined,
-        activity_id: opts?.activityId ?? undefined,
-        import_id: opts?.importId ?? undefined,
-        limit: opts?.limit,
+  const response = $api.useQuery(
+    "get",
+    "/admin/integration-events",
+    {
+      params: {
+        query: {
+          provider: opts?.provider,
+          user_id: opts?.userId ?? undefined,
+          activity_id: opts?.activityId ?? undefined,
+          import_id: opts?.importId ?? undefined,
+          limit: opts?.limit,
+        },
       },
     },
-    options: {
+    {
       enabled: opts?.enabled ?? true,
       refetchInterval: opts?.refetchIntervalMs ?? false,
     },
-  });
+  );
 
   return {
     ...response,
@@ -2115,8 +2166,11 @@ export function useUserPreferences(opts?: {
   enabled?: boolean;
   refetchIntervalMs?: number | false;
 }) {
-  const response = $api.useQuery("get", "/preferences", {
-    options: {
+  const response = $api.useQuery(
+    "get",
+    "/preferences",
+    {},
+    {
       enabled: opts?.enabled ?? true,
       gcTime: USER_CONTEXT_GC_TIME_MS,
       refetchOnMount: false,
@@ -2125,7 +2179,7 @@ export function useUserPreferences(opts?: {
       refetchInterval: opts?.refetchIntervalMs ?? false,
       staleTime: USER_CONTEXT_STALE_TIME_MS,
     },
-  });
+  );
 
   return {
     ...response,
@@ -2151,15 +2205,19 @@ export function useFitnessFreshness(opts?: {
   startDate?: string;
   endDate?: string;
 }) {
-  const response = $api.useQuery("get", "/fitness", {
-    params: {
-      query: {
-        start_date: opts?.startDate,
-        end_date: opts?.endDate,
+  const response = $api.useQuery(
+    "get",
+    "/fitness",
+    {
+      params: {
+        query: {
+          start_date: opts?.startDate,
+          end_date: opts?.endDate,
+        },
       },
     },
-    options: { enabled: opts?.enabled ?? true },
-  });
+    { enabled: opts?.enabled ?? true },
+  );
 
   return {
     ...response,
@@ -2168,9 +2226,12 @@ export function useFitnessFreshness(opts?: {
 }
 
 export function useXcGoalProgress(opts?: { enabled?: boolean }) {
-  const response = $api.useQuery("get", "/training/xc-progress", {
-    options: { enabled: opts?.enabled ?? true },
-  });
+  const response = $api.useQuery(
+    "get",
+    "/training/xc-progress",
+    {},
+    { enabled: opts?.enabled ?? true },
+  );
 
   return {
     ...response,
@@ -2179,9 +2240,12 @@ export function useXcGoalProgress(opts?: { enabled?: boolean }) {
 }
 
 export function useDhGoalProgress(opts?: { enabled?: boolean }) {
-  const response = $api.useQuery("get", "/training/dh-progress", {
-    options: { enabled: opts?.enabled ?? true },
-  });
+  const response = $api.useQuery(
+    "get",
+    "/training/dh-progress",
+    {},
+    { enabled: opts?.enabled ?? true },
+  );
 
   return {
     ...response,
@@ -2199,18 +2263,22 @@ export function useTrainingReports(
     minDistanceMeters?: number;
   },
 ) {
-  const response = $api.useQuery("get", "/training/reports", {
-    params: {
-      query: {
-        boundary,
-        start_date: opts?.startDate,
-        end_date: opts?.endDate,
-        min_duration_seconds: opts?.minDurationSeconds,
-        min_distance_meters: opts?.minDistanceMeters,
+  const response = $api.useQuery(
+    "get",
+    "/training/reports",
+    {
+      params: {
+        query: {
+          boundary,
+          start_date: opts?.startDate,
+          end_date: opts?.endDate,
+          min_duration_seconds: opts?.minDurationSeconds,
+          min_distance_meters: opts?.minDistanceMeters,
+        },
       },
     },
-    options: { enabled: opts?.enabled ?? true, retry: false },
-  });
+    { enabled: opts?.enabled ?? true, retry: false },
+  );
 
   return {
     ...response,
@@ -2234,23 +2302,27 @@ export function useRideSummaryReport(opts: {
   minDistanceMeters?: number;
   enabled?: boolean;
 }) {
-  const response = $api.useQuery("get", "/training/reports", {
-    params: {
-      query: {
-        boundary: opts.boundary,
-        report: opts.report ?? "ride_summary",
-        start_date: opts.startDate,
-        end_date: opts.endDate,
-        min_duration_seconds: opts.minDurationSeconds,
-        min_distance_meters: opts.minDistanceMeters,
-        activity_ids:
-          opts.activityIds && opts.activityIds.length > 0
-            ? opts.activityIds.join(",")
-            : undefined,
+  const response = $api.useQuery(
+    "get",
+    "/training/reports",
+    {
+      params: {
+        query: {
+          boundary: opts.boundary,
+          report: opts.report ?? "ride_summary",
+          start_date: opts.startDate,
+          end_date: opts.endDate,
+          min_duration_seconds: opts.minDurationSeconds,
+          min_distance_meters: opts.minDistanceMeters,
+          activity_ids:
+            opts.activityIds && opts.activityIds.length > 0
+              ? opts.activityIds.join(",")
+              : undefined,
+        },
       },
     },
-    options: { enabled: opts.enabled ?? true, retry: false },
-  });
+    { enabled: opts.enabled ?? true, retry: false },
+  );
 
   return {
     ...response,

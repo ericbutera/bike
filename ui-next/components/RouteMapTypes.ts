@@ -1,6 +1,11 @@
 import { type ActivityRoutePoint } from "../lib/queries";
 
-export type RouteMapBasemap = "topo" | "street" | "satellite";
+export type RouteMapBasemap =
+  | "topo"
+  | "street"
+  | "satellite"
+  | "route-light"
+  | "fiord";
 
 export type RouteMapFollowViewport = {
   point: ActivityRoutePoint;

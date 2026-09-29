@@ -59,6 +59,7 @@ pub enum ReportMetricDirection {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
+#[schema(example = "week")]
 pub enum ReportBoundary {
     Day,
     Week,
@@ -80,17 +81,26 @@ pub enum ReportBoundary {
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct TrainingReportsQuery {
+    #[param(example = "week")]
     pub boundary: Option<ReportBoundary>,
+    #[param(example = "ride_summary")]
     pub report: Option<String>,
+    #[param(example = "2026-09-20")]
     pub start_date: Option<NaiveDate>,
+    #[param(example = "2026-09-27")]
     pub end_date: Option<NaiveDate>,
+    #[param(example = "42,43")]
     pub activity_ids: Option<String>,
+    #[param(example = 1800)]
     pub min_duration_seconds: Option<i32>,
+    #[param(example = 10000.0)]
     pub min_distance_meters: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
+#[schema(example = json!({"reports": [{"id": "ride_summary","display_name": "Ride summary","short_purpose": "Summarize distance, time, and climbing","supported_filters": ["min_distance"],"required_data_quality": ["distance"],"result_sections": ["ride_summary"],"metrics": [{"key": "distance_meters","label": "Distance","direction": "higher","unit": "m"}]}]}))]
 pub struct TrainingReportDefinitionsResponse {
+    #[schema(example = json!([{"id": "ride_summary","display_name": "Ride summary","short_purpose": "Summarize distance, time, and climbing","supported_filters": ["min_distance"],"required_data_quality": ["distance"],"result_sections": ["ride_summary"],"metrics": [{"key": "distance_meters","label": "Distance","direction": "higher","unit": "m"}]}]))]
     pub reports: Vec<TrainingReportDefinitionResponse>,
 }
 
@@ -114,37 +124,57 @@ pub struct TrainingReportMetricDefinitionResponse {
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
+#[schema(example = json!({"bucket_start": "2026-09-20","bucket_end": "2026-09-27","distance_meters": 75000.0,"distance_miles": 46.6,"z1_seconds": 1200,"z2_seconds": 6000,"z3_seconds": 900,"z4_seconds": 300,"z5_seconds": 0,"elevation_gain_meters": 900.0,"elevation_gain_feet": 2952.8,"activity_type_times": [{"activity_type": "training","seconds": 8400}]}))]
 pub struct TrainingReportPointResponse {
+    #[schema(example = "2026-09-20")]
     pub bucket_start: String,
+    #[schema(example = "2026-09-27")]
     pub bucket_end: String,
+    #[schema(example = 75000.0)]
     pub distance_meters: f64,
+    #[schema(example = 46.6)]
     pub distance_miles: f64,
     pub z2_average_speed_mps: Option<f64>,
     pub average_aerobic_decoupling_percent: Option<f64>,
     pub climbing_pace_feet_per_week: Option<f64>,
     pub climbing_vertical_rate_feet_per_hour: Option<f64>,
+    #[schema(example = 1200)]
     pub z1_seconds: i32,
+    #[schema(example = 6000)]
     pub z2_seconds: i32,
+    #[schema(example = 900)]
     pub z3_seconds: i32,
+    #[schema(example = 300)]
     pub z4_seconds: i32,
+    #[schema(example = 0)]
     pub z5_seconds: i32,
+    #[schema(example = 900.0)]
     pub elevation_gain_meters: f64,
+    #[schema(example = 2952.8)]
     pub elevation_gain_feet: f64,
+    #[schema(example = json!([{"activity_type": "training","seconds": 8400}]))]
     pub activity_type_times: Vec<ActivityTypeTimeResponse>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
+#[schema(example = json!({"activity_type": "training","seconds": 8400}))]
 pub struct ActivityTypeTimeResponse {
     pub activity_type: ActivityType,
+    #[schema(example = 8400)]
     pub seconds: i32,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
+#[schema(example = json!({"generated_at": "2026-09-27T12:00:00Z","boundary": "week","range_start": "2026-09-20","range_end": "2026-09-27","points": [{"bucket_start": "2026-09-20","bucket_end": "2026-09-27","distance_meters": 75000.0,"distance_miles": 46.6,"z1_seconds": 1200,"z2_seconds": 6000,"z3_seconds": 900,"z4_seconds": 300,"z5_seconds": 0,"elevation_gain_meters": 900.0,"elevation_gain_feet": 2952.8,"activity_type_times": [{"activity_type": "training","seconds": 8400}]}]}))]
 pub struct TrainingReportsResponse {
+    #[schema(example = "2026-09-27T12:00:00Z")]
     pub generated_at: DateTime<Utc>,
     pub boundary: ReportBoundary,
+    #[schema(example = "2026-09-20")]
     pub range_start: String,
+    #[schema(example = "2026-09-27")]
     pub range_end: String,
+    #[schema(example = json!([{"bucket_start": "2026-09-20","bucket_end": "2026-09-27","distance_meters": 75000.0,"distance_miles": 46.6,"z1_seconds": 1200,"z2_seconds": 6000,"z3_seconds": 900,"z4_seconds": 300,"z5_seconds": 0,"elevation_gain_meters": 900.0,"elevation_gain_feet": 2952.8,"activity_type_times": [{"activity_type": "training","seconds": 8400}]}]))]
     pub points: Vec<TrainingReportPointResponse>,
     pub ride_summary: Option<RideSummaryReportResponse>,
     pub endurance: Option<EnduranceReportResponse>,

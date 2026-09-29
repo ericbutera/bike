@@ -1,4 +1,4 @@
-import kaleido, { handleApiError } from "@ericbutera/kaleido";
+import kaleido, { handleApiError, openapi, users } from "@ericbutera/kaleido";
 import {
   MutationCache,
   QueryCache,
@@ -95,6 +95,28 @@ kaleido.configure({
   useQueryClient,
   toast,
 });
+
+const adminUserAdapters = openapi.createKaleidoOpenApiAdapters({
+  api: $api,
+  useQueryClient,
+  toast,
+  users: {
+    extractListData: (responseData) =>
+      (responseData?.data ?? []).map(
+        (user: users.User & { email_verified?: boolean }) => ({
+          ...user,
+          verified: user.email_verified ?? user.verified,
+        }),
+      ),
+    extractDetailData: (responseData) => {
+      if (!responseData) return null;
+      const user = responseData as users.User & { email_verified?: boolean };
+      return { ...user, verified: user.email_verified ?? user.verified };
+    },
+  },
+});
+
+if (adminUserAdapters.users) users.configureUsers(adminUserAdapters.users);
 
 const baseAuthApiClient = kaleido.createAuthApiClient();
 

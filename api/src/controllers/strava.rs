@@ -19,26 +19,42 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"authorization_url": "https://www.strava.com/oauth/authorize?client_id=12345&response_type=code"}))]
 pub struct StravaAuthorizeResponse {
+    #[schema(
+        example = "https://www.strava.com/oauth/authorize?client_id=12345&response_type=code"
+    )]
     pub authorization_url: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"configured": true,"connected": true,"athlete_id": 12345678,"athlete_name": "Alex Rider","athlete_username": "alex-rider","scopes": ["read","activity:read_all"],"last_sync_status": "succeeded","last_sync_imported_count": 3,"last_sync_duplicate_count": 1,"last_sync_failed_count": 0,"last_sync_finished_at": "2026-09-27T12:00:00Z"}))]
 pub struct StravaConnectionResponse {
+    #[schema(example = true)]
     pub configured: bool,
+    #[schema(example = true)]
     pub connected: bool,
+    #[schema(example = 12345678)]
     pub athlete_id: Option<i64>,
+    #[schema(example = "Alex Rider")]
     pub athlete_name: Option<String>,
+    #[schema(example = "alex-rider")]
     pub athlete_username: Option<String>,
     pub athlete_profile_medium_url: Option<String>,
+    #[schema(example = json!(["read","activity:read_all"]))]
     pub scopes: Vec<String>,
+    #[schema(example = "succeeded")]
     pub last_sync_status: String,
     pub last_sync_message: Option<String>,
     pub last_sync_started_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[schema(example = "2026-09-27T12:00:00Z")]
     pub last_sync_finished_at: Option<chrono::DateTime<chrono::Utc>>,
     pub last_synced_activity_started_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[schema(example = 3)]
     pub last_sync_imported_count: i32,
+    #[schema(example = 1)]
     pub last_sync_duplicate_count: i32,
+    #[schema(example = 0)]
     pub last_sync_failed_count: i32,
 }
 
@@ -69,7 +85,7 @@ pub fn routes() -> Router<Arc<AppStorage>> {
     post,
     path = "/strava/connect",
     responses(
-        (status = 200, description = "Strava authorization URL for the authenticated user", body = StravaAuthorizeResponse),
+        (status = 200, description = "Strava authorization URL for the authenticated user", body = StravaAuthorizeResponse, example = json!({"authorization_url": "https://www.strava.com/oauth/authorize?client_id=12345&response_type=code"})),
         (status = 400, description = "Strava integration is not configured", body = ApiErrorResponse),
         (status = 401, description = "Not authenticated"),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
@@ -121,7 +137,7 @@ pub async fn begin_connect(
     get,
     path = "/strava/connection",
     responses(
-        (status = 200, description = "Current Strava connection state for the authenticated user", body = StravaConnectionResponse),
+        (status = 200, description = "Current Strava connection state for the authenticated user", body = StravaConnectionResponse, example = json!({"configured": true,"connected": true,"athlete_id": 12345678,"athlete_name": "Alex Rider","athlete_username": "alex-rider","scopes": ["read","activity:read_all"],"last_sync_status": "succeeded","last_sync_imported_count": 3,"last_sync_duplicate_count": 1,"last_sync_failed_count": 0,"last_sync_finished_at": "2026-09-27T12:00:00Z"})),
         (status = 401, description = "Not authenticated"),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     ),
@@ -145,7 +161,7 @@ pub async fn get_connection(
     post,
     path = "/strava/sync",
     responses(
-        (status = 200, description = "Queued a Strava sync for the authenticated user", body = StravaConnectionResponse),
+        (status = 200, description = "Queued a Strava sync for the authenticated user", body = StravaConnectionResponse, example = json!({"configured": true,"connected": true,"athlete_id": 12345678,"athlete_name": "Alex Rider","scopes": ["read","activity:read_all"],"last_sync_status": "queued","last_sync_imported_count": 3,"last_sync_duplicate_count": 1,"last_sync_failed_count": 0})),
         (status = 400, description = "Strava integration is not configured", body = ApiErrorResponse),
         (status = 409, description = "Another activity import is already running or queued", body = ApiErrorResponse),
         (status = 401, description = "Not authenticated"),
@@ -172,7 +188,7 @@ pub async fn queue_sync(
     delete,
     path = "/strava/connection",
     responses(
-        (status = 200, description = "Removed the authenticated user's Strava connection", body = auth_openapi::schemas::MessageResponse),
+        (status = 200, description = "Removed the authenticated user's Strava connection", body = auth_openapi::schemas::MessageResponse, example = json!({"message": "Strava connection removed."})),
         (status = 409, description = "The user's Strava sync is queued or running", body = ApiErrorResponse),
         (status = 401, description = "Not authenticated"),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
@@ -264,7 +280,7 @@ pub async fn handle_callback(
     get,
     path = "/strava/webhook",
     responses(
-        (status = 200, description = "Verifies the Strava webhook subscription handshake", body = strava::StravaWebhookChallengeResponse),
+        (status = 200, description = "Verifies the Strava webhook subscription handshake", body = strava::StravaWebhookChallengeResponse, example = json!({"hub.challenge": "strava-verification-challenge"})),
         (status = 400, description = "Invalid handshake query", body = ApiErrorResponse),
     ),
     tag = "strava"
@@ -313,9 +329,9 @@ pub async fn handle_webhook_verification(
 #[utoipa::path(
     post,
     path = "/strava/webhook",
-    request_body = strava::StravaWebhookEvent,
+    request_body(content = strava::StravaWebhookEvent, example = json!({"aspect_type": "create","event_time": 1790500000,"object_id": 1234567890,"object_type": "activity","owner_id": 12345678,"subscription_id": 12345,"updates": {}})),
     responses(
-        (status = 200, description = "Accepted a Strava webhook event"),
+        (status = 200, description = "Accepted a Strava webhook event", body = auth_openapi::schemas::MessageResponse, example = json!({"message": "ok"})),
     ),
     tag = "strava"
 )]

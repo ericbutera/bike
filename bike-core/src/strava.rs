@@ -83,19 +83,29 @@ pub struct StravaWebhookSubscriptionQuery {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"hub.challenge": "strava-verification-challenge"}))]
 pub struct StravaWebhookChallengeResponse {
     #[serde(rename = "hub.challenge")]
+    #[schema(example = "strava-verification-challenge")]
     pub challenge: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+#[schema(example = json!({"aspect_type": "create","event_time": 1790500000,"object_id": 1234567890,"object_type": "activity","owner_id": 12345678,"subscription_id": 12345,"updates": {}}))]
 pub struct StravaWebhookEvent {
+    #[schema(example = "create")]
     pub aspect_type: String,
+    #[schema(example = 1790500000)]
     pub event_time: i64,
+    #[schema(example = 1234567890)]
     pub object_id: i64,
+    #[schema(example = "activity")]
     pub object_type: String,
+    #[schema(example = 12345678)]
     pub owner_id: i64,
+    #[schema(example = 12345)]
     pub subscription_id: i64,
+    #[schema(example = json!({}))]
     pub updates: Option<serde_json::Value>,
 }
 

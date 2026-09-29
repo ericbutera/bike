@@ -6,12 +6,19 @@ const HEART_RATE_ZONE_LABELS: [&str; 5] = ["Z1", "Z2", "Z3", "Z4", "Z5"];
 const HEART_RATE_ZONE_SHARE_PERCENT_SCALE: f64 = 1000.0;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+#[schema(example = json!({"zone": 2,"label": "Zone 2","min_bpm": 130,"max_bpm": 149,"duration_seconds": 1800,"share_percent": 42.9}))]
 pub struct ActivityHeartRateZoneSummary {
+    #[schema(example = 2)]
     pub zone: i32,
+    #[schema(example = "Zone 2")]
     pub label: String,
+    #[schema(example = 130)]
     pub min_bpm: Option<i32>,
+    #[schema(example = 149)]
     pub max_bpm: Option<i32>,
+    #[schema(example = 1800)]
     pub duration_seconds: i32,
+    #[schema(example = 42.9)]
     pub share_percent: f64,
 }
 

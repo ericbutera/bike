@@ -21,7 +21,7 @@ UI_TAG=""
 if [ "$MANUAL" = "manual" ] || [ "$FALLBACK_DEPLOY_ALL" = "true" ] || echo "$CHANGED" | grep -qE "^(api/|worker/|bike-core/|migration/|Cargo\.toml|Cargo\.lock|\.woodpecker/)"; then
   APP_TAG="${CI_COMMIT_SHA}"
 fi
-if [ "$MANUAL" = "manual" ] || [ "$FALLBACK_DEPLOY_ALL" = "true" ] || echo "$CHANGED" | grep -qE "^(ui-next/|\.woodpecker/)"; then
+if [ "$MANUAL" = "manual" ] || [ "$FALLBACK_DEPLOY_ALL" = "true" ] || echo "$CHANGED" | grep -qE "^(ui-next/|map-renderer/|\.woodpecker/)"; then
   UI_TAG="${CI_COMMIT_SHA}"
 fi
 
