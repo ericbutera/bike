@@ -28,6 +28,10 @@ This project uses mise to manage dependencies and act as the task runner. Availa
 mise tasks
 ```
 
+`mise run generate:protobuf` rebuilds the Strava gateway Rust client bindings
+in Cargo's build directory. The checked-in OpenAPI and TypeScript contracts
+have `generate:openapi` and `generate:typescript` tasks.
+
 Span export is disabled by default for local development with `OTEL_TRACES_EXPORTER=none`. To inspect traces without the full Grafana stack, start Jaeger:
 
 ```sh

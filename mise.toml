@@ -108,6 +108,10 @@ run = "mise run generate:typescript"
 description = "Generate the checked-in OpenAPI JSON and YAML documents from Utopia"
 run = "cargo run -p api --bin openapi"
 
+[tasks."generate:protobuf"]
+description = "Regenerate Strava gateway Rust protobuf client bindings in the Cargo build directory"
+run = "cargo check -p bike-core"
+
 [tasks."generate:typescript"]
 description = "Generate the frontend TypeScript API contract from OpenAPI"
 run = '''
