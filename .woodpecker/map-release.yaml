@@ -1,0 +1,23 @@
+when:
+  - event: push
+    branch: codex/shared-bike-maps
+
+steps:
+  - name: test-ui
+    image: node:25-alpine
+    commands:
+      - sh .woodpecker/test-ui.sh
+
+  - name: build-ui
+    image: woodpeckerci/plugin-kaniko
+    depends_on: [test-ui]
+    settings:
+      registry: registry.registry:5000
+      repo: bike-ui
+      tags: ${CI_COMMIT_SHA}
+      insecure: true
+      skip_tls_verify: true
+      insecure-pull: true
+      insecure-registry: true
+      context: ui-next
+      dockerfile: ui-next/Dockerfile
