@@ -77,9 +77,7 @@ pub fn init_tracing_subscriber() -> observability::ObservabilityGuard {
 }
 
 fn make_http_trace_span<B>(request: &Request<B>) -> tracing::Span {
-    let span = if request.uri().path() == "/metrics" {
-        tracing::Span::none()
-    } else {
+    let span = if should_trace_http_path(request.uri().path()) {
         let request_id = request_id_from_headers(request.headers());
         tracing::info_span!(
             target: "api",
@@ -92,11 +90,27 @@ fn make_http_trace_span<B>(request: &Request<B>) -> tracing::Span {
             "url.path" = request.uri().path(),
             version = ?request.version(),
         )
+    } else {
+        tracing::Span::none()
     };
 
     observability::set_span_parent_from_headers(&span, request.headers());
     observability::record_span_trace_context(&span);
     span
+}
+
+fn should_trace_http_path(path: &str) -> bool {
+    !matches!(
+        path,
+        "/metrics"
+            | "/api/health"
+            | "/api/ready"
+            | "/health"
+            | "/healthz"
+            | "/ready"
+            | "/readyz"
+            | "/openapi.json"
+    ) && !path.starts_with("/swagger-ui/")
 }
 
 async fn request_id_response_header(request: Request<Body>, next: Next) -> Response {
@@ -117,4 +131,29 @@ fn request_id_from_headers(headers: &HeaderMap) -> &str {
         .get(&REQUEST_ID_HEADER)
         .and_then(|value| value.to_str().ok())
         .unwrap_or("")
+}
+
+#[cfg(test)]
+mod tracing_filter_tests {
+    use super::should_trace_http_path;
+
+    #[test]
+    fn filters_health_scrape_and_static_documentation_paths() {
+        for path in [
+            "/metrics",
+            "/api/health",
+            "/api/ready",
+            "/healthz",
+            "/readyz",
+            "/openapi.json",
+            "/swagger-ui/index.html",
+        ] {
+            assert!(!should_trace_http_path(path), "unexpected trace for {path}");
+        }
+    }
+
+    #[test]
+    fn retains_application_routes() {
+        assert!(should_trace_http_path("/api/segments"));
+    }
 }
