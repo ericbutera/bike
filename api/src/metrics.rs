@@ -21,7 +21,7 @@ pub use kaleido::glass::api_metrics::metrics_middleware;
 
 static STRAVA_CONNECTED_ATHLETES: Lazy<IntGauge> = Lazy::new(|| {
     register_int_gauge!(
-        "bike_strava_connected_athletes",
+        "bike_rust_strava_connected_athletes",
         "Current number of Strava athletes connected to Bike."
     )
     .expect("register Strava connected athletes gauge")
@@ -29,8 +29,9 @@ static STRAVA_CONNECTED_ATHLETES: Lazy<IntGauge> = Lazy::new(|| {
 
 /// Initialize all API metrics.  Must be called once at startup.
 pub fn init_metrics() {
-    kaleido::glass::api_metrics::init_api_metrics("bike_api");
+    kaleido::glass::api_metrics::init_api_metrics("bike_rust_api");
     init_provider_metrics();
+    bike_core::strava_gateway_metrics::init();
     Lazy::force(&STRAVA_CONNECTED_ATHLETES);
 }
 

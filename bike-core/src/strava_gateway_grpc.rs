@@ -153,6 +153,24 @@ impl GatewayGrpcClient {
                 .parse()
                 .map_err(|_| AppError::internal("Invalid Strava gateway signature"))?,
         );
+        if let Some(carrier) = crate::observability::inject_current_trace_context() {
+            if let Some(value) = carrier.get("traceparent") {
+                request.metadata_mut().insert(
+                    "traceparent",
+                    value
+                        .parse()
+                        .map_err(|_| AppError::internal("Invalid traceparent metadata"))?,
+                );
+            }
+            if let Some(value) = carrier.get("tracestate") {
+                request.metadata_mut().insert(
+                    "tracestate",
+                    value
+                        .parse()
+                        .map_err(|_| AppError::internal("Invalid tracestate metadata"))?,
+                );
+            }
+        }
         Ok(request)
     }
 }

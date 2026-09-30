@@ -31,6 +31,7 @@ pub mod strava_client;
 pub mod strava_gateway_client;
 pub mod strava_gateway_delivery;
 mod strava_gateway_grpc;
+pub mod strava_gateway_metrics;
 pub mod strava_provider_payload;
 pub mod tasks;
 pub mod training_data;

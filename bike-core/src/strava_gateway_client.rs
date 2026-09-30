@@ -5,7 +5,9 @@ use hmac::{Hmac, Mac};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
+use std::future::Future;
 use std::time::Duration;
+use std::time::Instant;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -72,45 +74,71 @@ impl StravaGatewayClient {
     }
 
     pub async fn begin_connect(&self, user_id: i32) -> Result<String, AppError> {
-        if let Some(grpc) = &self.grpc {
-            return grpc.begin_connect(user_id).await;
-        }
-        let body = self.post("/v1/oauth/intents", user_id, None).await?;
-        let response: AuthorizationResponse = serde_json::from_slice(&body)
-            .map_err(|_| AppError::internal("Invalid Strava gateway authorization response"))?;
-        if response.authorization_url.is_empty() {
-            return Err(AppError::internal(
-                "Strava gateway returned no authorization URL",
-            ));
-        }
-        Ok(response.authorization_url)
+        self.observe_gateway_call("begin_connect", async {
+            if let Some(grpc) = &self.grpc {
+                return grpc.begin_connect(user_id).await;
+            }
+            let body = self.post("/v1/oauth/intents", user_id, None).await?;
+            let response: AuthorizationResponse = serde_json::from_slice(&body)
+                .map_err(|_| AppError::internal("Invalid Strava gateway authorization response"))?;
+            if response.authorization_url.is_empty() {
+                return Err(AppError::internal(
+                    "Strava gateway returned no authorization URL",
+                ));
+            }
+            Ok(response.authorization_url)
+        })
+        .await
     }
 
     pub async fn connection(&self, user_id: i32) -> Result<GatewayConnection, AppError> {
-        if let Some(grpc) = &self.grpc {
-            return grpc.connection(user_id).await;
-        }
-        let body = self.post("/v1/connections/status", user_id, None).await?;
-        serde_json::from_slice(&body)
-            .map_err(|_| AppError::internal("Invalid Strava gateway connection response"))
+        self.observe_gateway_call("connection_status", async {
+            if let Some(grpc) = &self.grpc {
+                return grpc.connection(user_id).await;
+            }
+            let body = self.post("/v1/connections/status", user_id, None).await?;
+            serde_json::from_slice(&body)
+                .map_err(|_| AppError::internal("Invalid Strava gateway connection response"))
+        })
+        .await
     }
 
     pub async fn queue_sync(&self, user_id: i32) -> Result<(), AppError> {
-        if let Some(grpc) = &self.grpc {
-            return grpc.queue_sync(user_id).await;
-        }
-        self.post("/v1/sync", user_id, Some("incremental"))
-            .await
-            .map(|_| ())
+        self.observe_gateway_call("queue_sync", async {
+            if let Some(grpc) = &self.grpc {
+                return grpc.queue_sync(user_id).await;
+            }
+            self.post("/v1/sync", user_id, Some("incremental"))
+                .await
+                .map(|_| ())
+        })
+        .await
     }
 
     pub async fn disconnect(&self, user_id: i32) -> Result<(), AppError> {
-        if let Some(grpc) = &self.grpc {
-            return grpc.disconnect(user_id).await;
-        }
-        self.post("/v1/connections/disconnect", user_id, None)
-            .await
-            .map(|_| ())
+        self.observe_gateway_call("disconnect", async {
+            if let Some(grpc) = &self.grpc {
+                return grpc.disconnect(user_id).await;
+            }
+            self.post("/v1/connections/disconnect", user_id, None)
+                .await
+                .map(|_| ())
+        })
+        .await
+    }
+
+    async fn observe_gateway_call<T, F>(
+        &self,
+        operation: &'static str,
+        request: F,
+    ) -> Result<T, AppError>
+    where
+        F: Future<Output = Result<T, AppError>>,
+    {
+        let started = Instant::now();
+        let result = request.await;
+        crate::strava_gateway_metrics::record_request(operation, result.is_ok(), started.elapsed());
+        result
     }
 
     async fn post(
@@ -130,13 +158,19 @@ impl StravaGatewayClient {
         .map_err(|error| AppError::internal(format!("Strava gateway request: {error}")))?;
         let timestamp = chrono::Utc::now().timestamp().to_string();
         let signature = sign_request(&self.shared_secret, &timestamp, path, &body)?;
-        let response = self
+        let mut request = self
             .http
             .post(format!("{}{path}", self.base_url))
             .header("X-Bike-Request-Timestamp", timestamp)
             .header("X-Bike-Request-Signature", signature)
             .header("Content-Type", "application/json")
-            .body(body)
+            .body(body);
+        if let Some(carrier) = crate::observability::inject_current_trace_context() {
+            for (name, value) in carrier {
+                request = request.header(name, value);
+            }
+        }
+        let response = request
             .send()
             .await
             .map_err(|error| AppError::internal(format!("Strava gateway unavailable: {error}")))?;

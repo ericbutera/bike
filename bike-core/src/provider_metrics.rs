@@ -6,7 +6,7 @@ const PROVIDER_API_REQUEST_COUNTER_CLASSES: &[&str] = &["overall", "read"];
 
 static PROVIDER_API_REQUESTS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
     register_int_counter_vec!(
-        "bike_provider_api_requests_total",
+        "bike_rust_provider_api_requests_total",
         "Total outbound provider API requests by provider, operation, request class, and status.",
         &["provider", "operation", "request_class", "status"]
     )
@@ -15,7 +15,7 @@ static PROVIDER_API_REQUESTS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
 
 static PROVIDER_API_REQUESTS_15_MINUTES_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
     register_int_counter_vec!(
-        "bike_provider_api_requests_15_minutes_total",
+        "bike_rust_provider_api_requests_15_minutes_total",
         "Total outbound provider API requests counted for 15-minute window queries.",
         &["provider", "request_class"]
     )
@@ -24,7 +24,7 @@ static PROVIDER_API_REQUESTS_15_MINUTES_TOTAL: Lazy<IntCounterVec> = Lazy::new(|
 
 static PROVIDER_API_REQUESTS_DAILY_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
     register_int_counter_vec!(
-        "bike_provider_api_requests_daily_total",
+        "bike_rust_provider_api_requests_daily_total",
         "Total outbound provider API requests counted for daily window queries.",
         &["provider", "request_class"]
     )
@@ -33,7 +33,7 @@ static PROVIDER_API_REQUESTS_DAILY_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
 
 static PROVIDER_RATE_LIMIT_PAUSES_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
     register_int_counter_vec!(
-        "bike_provider_rate_limit_pauses_total",
+        "bike_rust_provider_rate_limit_pauses_total",
         "Total outbound provider API pauses caused by local or remote provider rate limits.",
         &["provider", "bucket", "operation"]
     )
@@ -42,7 +42,7 @@ static PROVIDER_RATE_LIMIT_PAUSES_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
 
 static PROVIDER_RATE_LIMIT_LIMIT: Lazy<IntGaugeVec> = Lazy::new(|| {
     register_int_gauge_vec!(
-        "bike_provider_rate_limit_limit",
+        "bike_rust_provider_rate_limit_limit",
         "Current provider API quota limit by provider and bucket.",
         &["provider", "bucket"]
     )
@@ -51,7 +51,7 @@ static PROVIDER_RATE_LIMIT_LIMIT: Lazy<IntGaugeVec> = Lazy::new(|| {
 
 static PROVIDER_RATE_LIMIT_USED: Lazy<IntGaugeVec> = Lazy::new(|| {
     register_int_gauge_vec!(
-        "bike_provider_rate_limit_used",
+        "bike_rust_provider_rate_limit_used",
         "Current provider API quota used count by provider and bucket.",
         &["provider", "bucket"]
     )
@@ -60,7 +60,7 @@ static PROVIDER_RATE_LIMIT_USED: Lazy<IntGaugeVec> = Lazy::new(|| {
 
 static PROVIDER_RATE_LIMIT_REMAINING: Lazy<IntGaugeVec> = Lazy::new(|| {
     register_int_gauge_vec!(
-        "bike_provider_rate_limit_remaining",
+        "bike_rust_provider_rate_limit_remaining",
         "Current provider API quota remaining count by provider and bucket.",
         &["provider", "bucket"]
     )
@@ -69,7 +69,7 @@ static PROVIDER_RATE_LIMIT_REMAINING: Lazy<IntGaugeVec> = Lazy::new(|| {
 
 static PROVIDER_RATE_LIMIT_RESET_TIMESTAMP: Lazy<IntGaugeVec> = Lazy::new(|| {
     register_int_gauge_vec!(
-        "bike_provider_rate_limit_reset_timestamp_seconds",
+        "bike_rust_provider_rate_limit_reset_timestamp_seconds",
         "Provider API quota reset time as a Unix timestamp by provider and bucket.",
         &["provider", "bucket"]
     )

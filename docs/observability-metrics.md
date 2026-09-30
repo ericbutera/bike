@@ -2,7 +2,7 @@
 
 This dashboard starts with the Prometheus metrics Bike already emits:
 
-- `bike_api_requests_total` and `bike_api_request_duration_seconds_bucket` for RED-style API request rate, errors, and latency.
+- `bike_rust_api_requests_total` and `bike_rust_api_request_duration_seconds_bucket` for API request rate, errors, and latency. Labels are `method`, `route`, and `status_code`.
 - `worker_tasks_completed_total`, `worker_tasks_failed_total`, `worker_task_invocations_total`, `worker_task_processing_lag_seconds_bucket`, and `worker_task_duration_seconds_bucket` for background work.
 - `bike_provider_api_requests_total`, `bike_provider_api_requests_15_minutes_total`, `bike_provider_api_requests_daily_total`, `bike_provider_rate_limit_pauses_total`, `bike_provider_rate_limit_remaining`, `bike_provider_rate_limit_used`, `bike_provider_rate_limit_limit`, and `bike_provider_rate_limit_reset_timestamp_seconds` for Strava provider health.
 - `bike_strava_connected_athletes` for the current number of connected Strava athlete accounts.
@@ -15,7 +15,7 @@ This dashboard starts with the Prometheus metrics Bike already emits:
 - `bike_strava_sync_activities_total{mode, outcome}`: Count imported, duplicate, skipped, deleted, and failed activities.
 - `bike_strava_webhook_events_total{aspect_type, object_type, outcome}`: Count accepted, ignored, rejected, and failed webhook events without depending only on HTTP status.
 - `bike_strava_webhook_event_lag_seconds{aspect_type}`: Time from Strava `event_time` to Bike processing time.
-- `bike_provider_api_request_duration_seconds{provider, operation, request_class, status}`: Histogram outbound provider latency so provider slowness is distinct from app request latency.
+- `bike_rust_provider_api_request_duration_seconds{provider, operation, request_class, status}`: Histogram outbound provider latency so direct provider calls are distinct from app request latency. Production gateway-owned calls are charted separately by the gateway.
 - `bike_provider_quota_reservations_total{provider, bucket, outcome}`: Count reserved, exhausted, reconciled, and reset quota decisions.
 - `bike_provider_quota_wait_seconds{provider, bucket}`: Histogram wait time implied by local or remote rate limiting.
 - `bike_strava_token_refreshes_total{status}`: Track token refresh failures before they become sync failures.

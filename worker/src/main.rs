@@ -10,7 +10,7 @@ use worker::tasks::{register_auth_email_processors, register_default_processors}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let _observability = observability::init_observability("bike-worker");
+    let _observability = observability::init_observability("bike-rust-worker");
     provider_metrics::init_provider_metrics();
 
     let cfg = Config::init_from_env();
@@ -29,7 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let worker = register_auth_email_processors(worker, cfg)?;
     let worker = register_default_processors(worker, db.clone()).await?;
 
-    let metrics = Arc::new(WorkerMetrics::new("bike_worker"));
+    let metrics = Arc::new(WorkerMetrics::new("bike_rust_worker"));
     let task_types = worker.registered_task_types();
     let task_type_refs: Vec<&str> = task_types.iter().map(String::as_str).collect();
     metrics.warmup_task_types(&task_type_refs);

@@ -73,7 +73,7 @@ pub async fn app(app_state: Arc<AppStorage>) -> Router {
 }
 
 pub fn init_tracing_subscriber() -> observability::ObservabilityGuard {
-    observability::init_observability("bike-api")
+    observability::init_observability("bike-rust-api")
 }
 
 fn make_http_trace_span<B>(request: &Request<B>) -> tracing::Span {

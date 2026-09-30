@@ -5,7 +5,7 @@ use opentelemetry::trace::{TraceContextExt, TracerProvider as _};
 use opentelemetry::{Context, KeyValue};
 use opentelemetry_otlp::{Protocol, WithExportConfig};
 use opentelemetry_sdk::propagation::TraceContextPropagator;
-use opentelemetry_sdk::trace::SdkTracerProvider;
+use opentelemetry_sdk::trace::{Sampler, SdkTracerProvider};
 use opentelemetry_sdk::Resource;
 use std::collections::HashMap;
 use tracing::field;
@@ -147,16 +147,25 @@ fn build_tracer_provider(
         .build()?;
     let resource = Resource::builder()
         .with_service_name(service_name)
-        .with_attributes(vec![KeyValue::new(
-            "deployment.environment",
-            std::env::var("APP_ENV")
-                .or_else(|_| std::env::var("ENVIRONMENT"))
-                .unwrap_or_else(|_| "development".to_string()),
-        )])
+        .with_attributes(vec![
+            KeyValue::new(
+                "deployment.environment.name",
+                std::env::var("APP_ENV")
+                    .or_else(|_| std::env::var("ENVIRONMENT"))
+                    .unwrap_or_else(|_| "development".to_string()),
+            ),
+            KeyValue::new(
+                "service.version",
+                std::env::var("BIKE_VERSION").unwrap_or_else(|_| "unknown".to_string()),
+            ),
+        ])
         .build();
 
     Ok(SdkTracerProvider::builder()
         .with_resource(resource)
+        // Keep successful spans available for downstream tail sampling, including
+        // requests whose remote parent did not set the sampled flag.
+        .with_sampler(Sampler::AlwaysOn)
         .with_batch_exporter(exporter)
         .build())
 }
