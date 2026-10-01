@@ -1,3 +1,5 @@
+> Archived: active development moved to [`bike-services/bike-rs`](https://github.com/ericbutera/bike-services/tree/main/bike-rs). This repository preserves its history; use the consolidated repository for changes and issues.
+
 # Bike
 
 ![all vibes bike analytic platform](ui-next/public/social-preview.jpg)
