@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1">
+  <trk><name>Analytics Ridge Ride</name><type>cycling</type><trkseg>
+    <trkpt lat="44.0000" lon="-85.0000"><ele>100</ele><time>2026-09-30T12:00:00Z</time><extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>120</gpxtpx:hr><gpxtpx:cad>80</gpxtpx:cad></gpxtpx:TrackPointExtension></extensions></trkpt>
+    <trkpt lat="44.0005" lon="-85.0000"><ele>110</ele><time>2026-09-30T12:05:00Z</time><extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>125</gpxtpx:hr><gpxtpx:cad>82</gpxtpx:cad></gpxtpx:TrackPointExtension></extensions></trkpt>
+    <trkpt lat="44.0010" lon="-85.0000"><ele>120</ele><time>2026-09-30T12:10:00Z</time><extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>130</gpxtpx:hr><gpxtpx:cad>84</gpxtpx:cad></gpxtpx:TrackPointExtension></extensions></trkpt>
+    <trkpt lat="44.0015" lon="-85.0000"><ele>130</ele><time>2026-09-30T12:15:00Z</time><extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>132</gpxtpx:hr><gpxtpx:cad>86</gpxtpx:cad></gpxtpx:TrackPointExtension></extensions></trkpt>
+    <trkpt lat="44.0020" lon="-85.0000"><ele>140</ele><time>2026-09-30T12:20:00Z</time><extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>134</gpxtpx:hr><gpxtpx:cad>88</gpxtpx:cad></gpxtpx:TrackPointExtension></extensions></trkpt>
+    <trkpt lat="44.0025" lon="-85.0000"><ele>150</ele><time>2026-09-30T12:25:00Z</time><extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>136</gpxtpx:hr><gpxtpx:cad>90</gpxtpx:cad></gpxtpx:TrackPointExtension></extensions></trkpt>
+    <trkpt lat="44.0030" lon="-85.0000"><ele>160</ele><time>2026-09-30T12:30:00Z</time><extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>138</gpxtpx:hr><gpxtpx:cad>92</gpxtpx:cad></gpxtpx:TrackPointExtension></extensions></trkpt>
+  </trkseg></trk>
+</gpx>

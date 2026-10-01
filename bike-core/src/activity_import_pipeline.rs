@@ -2284,6 +2284,86 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn shared_analytics_gpx_reaches_training_stage_and_replays() {
+        let db = test_db().await;
+        let uploads_dir = test_uploads_dir();
+        let training_profile = TrainingProfile::default();
+        let upload = ActivityUploadPayload {
+            original_filename: "import-analytics-ride.gpx".to_string(),
+            format: "gpx".to_string(),
+            mime_type: Some("application/gpx+xml".to_string()),
+            source_correlation_id: None,
+            bytes: include_bytes!("../../api/tests/fixtures/import-analytics-ride.gpx").to_vec(),
+        };
+
+        let imported = match persist_test_activity_upload(
+            &db,
+            &uploads_dir,
+            upload,
+            MANUAL_UPLOAD_SOURCE,
+            &training_profile,
+        )
+        .await
+        .expect("process shared analytics fixture")
+        {
+            PersistActivityUploadOutcome::Imported(imported) => imported,
+            PersistActivityUploadOutcome::Duplicate(_) => panic!("expected a new activity"),
+        };
+
+        assert_eq!(imported.activity.title, "Analytics Ridge Ride");
+        assert_eq!(imported.activity.sport, "ride");
+        assert_eq!(imported.activity.total_time_seconds, Some(1800));
+        assert_eq!(imported.activity.average_heart_rate_bpm, Some(131));
+        assert_eq!(imported.activity.average_cadence_rpm, Some(86));
+        assert_eq!(imported.activity.elevation_gain_meters, Some(60.0));
+        assert_eq!(
+            imported.import.processing_stage,
+            ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT
+        );
+        let detail = crate::activity_details::deserialize_derived_activity_data(
+            imported.activity.derived_data_json.as_ref(),
+        );
+        assert_eq!(detail.route_points.len(), 7);
+        assert_eq!(detail.route_points[0].heart_rate_bpm, Some(120));
+        assert_eq!(
+            activity_training_analyses::Entity::find()
+                .filter(activity_training_analyses::Column::ActivityId.eq(imported.activity.id))
+                .count(&db)
+                .await
+                .expect("count training analyses"),
+            1,
+        );
+
+        reprocess_activity_from_import(
+            &db,
+            &uploads_dir,
+            1,
+            imported.activity.clone(),
+            imported.import.clone(),
+            Some(&training_profile),
+        )
+        .await
+        .expect("replay shared analytics fixture");
+        assert_eq!(
+            activities::Entity::find()
+                .count(&db)
+                .await
+                .expect("count activities"),
+            1
+        );
+        assert_eq!(
+            activity_training_analyses::Entity::find()
+                .filter(activity_training_analyses::Column::ActivityId.eq(imported.activity.id))
+                .count(&db)
+                .await
+                .expect("count replayed training analyses"),
+            1,
+        );
+
+        let _ = std::fs::remove_dir_all(&uploads_dir);
+    }
+
+    #[tokio::test]
     async fn deferred_reprocess_skips_immediate_training_analysis_rebuild() {
         let db = test_db().await;
         let uploads_dir = test_uploads_dir();

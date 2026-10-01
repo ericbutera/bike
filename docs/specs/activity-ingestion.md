@@ -40,6 +40,18 @@ The `segments_built` stage delegates to the segment processing contract. Activit
 
 The processing graph is observable. `GET /api/activity-imports/processing-graph` returns the canonical DAG as nodes, edges, and Mermaid `flowchart TD` text derived from the same graph definition used by the executor. `GET /api/activity-imports/{id}/trace` overlays a specific import's current stage and `activity_processing` integration events on that graph so operators can see which stages completed, failed, or remain pending.
 
+### Cross-implementation regression data
+
+The Rust, Go, and C# test suites use identical `import-analytics-ride.gpx` bytes: a seven-point, 30-minute ride with heart-rate and cadence samples and 60 meters of elevation gain. The fixture gives each implementation the same input for checking normalization and downstream analytics.
+
+| Implementation | Regression test | Covered path |
+| --- | --- | --- |
+| Rust | `bike-core/src/activity_import_pipeline.rs`: `shared_analytics_gpx_reaches_training_stage_and_replays` | Stored upload through the processing graph, normalized route and telemetry, training-analysis row, final training stage, and replay without duplicate activity or training rows. Existing graph tests validate node and edge generation. |
+| Go | `internal/worker/activity_workflow_test.go`: `TestGPXWorkerWorkflowBuildsAnalyticsAndReplays` | Durable queue and worker processors through import, segment matching, segment/activity analytics, training and fitness jobs; activity list/detail read models; replay without duplicate rows. Parser and activity-service tests separately verify telemetry and fitness invalidation. |
+| C# | `tests/Bike.Integration.Tests/ActivityWorkflowTests.cs`: `UploadedRideReachesWorkerAnalyticsTraceAndUiReadModels` | HTTP upload, queued worker processing, all seven trace stages, segment/activity analytics, training and fitness jobs, HTTP activity and fitness read models, and replay without duplicate rows. |
+
+Go currently records import progress only through `segments_built` and `complete`; its training and fitness work runs as separate queued jobs. The Go regression checks their results but does not establish seven-stage trace parity with Rust and C#.
+
 Raw storage intentionally precedes activity parsing for all retained file imports. This means fingerprint duplicates can leave a duplicate import row that points at the duplicate raw source and the existing activity. Provider-correlation duplicates, such as already-seen Strava activity IDs, may still short-circuit before raw storage when no new source artifact would be retained.
 
 The activity import pipeline is guarded by workspace Clippy size and complexity lints. `Cargo.toml` denies oversized functions, excessive argument lists, and excessive cognitive complexity, with thresholds configured in `clippy.toml`. Pipeline changes should split graph node behavior into named helpers instead of growing executor match arms or lifecycle orchestration functions.
