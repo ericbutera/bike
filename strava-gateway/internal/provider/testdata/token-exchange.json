@@ -1,0 +1,9 @@
+{
+  "token_type": "Bearer",
+  "expires_at": 1893456000,
+  "expires_in": 21600,
+  "access_token": "fixture-access",
+  "refresh_token": "fixture-refresh",
+  "scope": "read,activity:read_all",
+  "athlete": { "id": 887654321, "resource_state": 2 }
+}

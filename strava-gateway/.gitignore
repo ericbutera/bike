@@ -1,0 +1,13 @@
+.cache/
+.env
+/gateway
+/migrate
+/worker
+/admin
+/import_rust
+/export_rust
+
+# Local runtime files
+/uploads/
+/data/
+/artifacts/

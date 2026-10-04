@@ -1,0 +1,65 @@
+# Serialize updates to the shared Pulumi stack when both services change.
+depends_on: [map-renderer]
+
+when:
+  - event: [push, pull_request]
+    branch: main
+    path: &owned_paths
+      include:
+        - strava-gateway/**
+        - proto/bike/strava/**
+        - mise.toml
+        - .woodpecker/deploy.sh
+        - .woodpecker/strava-gateway.yaml
+      on_empty: false
+  - event: manual
+    evaluate: 'MANUAL_COMPONENT == "strava-gateway"'
+
+clone:
+  git:
+    image: docker.io/woodpeckerci/plugin-git
+    settings:
+      partial: false
+      depth: 0
+
+steps:
+  - name: test
+    image: golang:1.25.1-bookworm
+    commands:
+      - cd strava-gateway && go vet ./... && go test ./...
+
+  - name: build
+    when: &release
+      - event: push
+        branch: main
+        path: *owned_paths
+      - event: manual
+        evaluate: 'MANUAL_COMPONENT == "strava-gateway"'
+    image: woodpeckerci/plugin-kaniko
+    depends_on: [test]
+    settings:
+      registry: registry.registry:5000
+      repo: bike-services-strava-gateway
+      tags: ${CI_COMMIT_SHA}
+      insecure: true
+      skip_tls_verify: true
+      insecure-pull: true
+      insecure-registry: true
+      context: strava-gateway
+      dockerfile: strava-gateway/Dockerfile
+
+  - name: deploy
+    when: *release
+    image: pulumi/pulumi-go:latest
+    depends_on: [build]
+    environment:
+      PULUMI_ACCESS_TOKEN:
+        from_secret: pulumi_access_token
+      GITHUB_TOKEN:
+        from_secret: github_token
+      PULUMI_IAC_REPO:
+        from_secret: pulumi_iac_repo
+      IAC_DEPLOY_SSH_KEY:
+        from_secret: iac_deploy_ssh_key
+    commands:
+      - sh .woodpecker/deploy.sh strava-gateway

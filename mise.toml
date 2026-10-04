@@ -28,7 +28,7 @@ run = ["mise --cd bike-ui run lint", "mise --cd bike-ui run typecheck", "mise --
 
 [tasks.lint]
 description = "Run Rust, UI, and gateway linters and renderer formatting"
-run = ["mise --cd bike-rs run fmt:check", "mise --cd bike-rs run lint", "mise --cd bike-ui run lint", "mise run format:check"]
+run = ["mise --cd bike-rs run fmt:check", "mise --cd bike-rs run lint", "mise --cd bike-ui run lint", "mise --cd strava-gateway run lint", "mise run format:check"]
 
 [tasks."hooks:install"]
 description = "Install the repository-root prek pre-commit hook"
@@ -44,10 +44,24 @@ run = "prek run"
 
 [tasks.check]
 description = "Run Rust, shared UI, service, and contract checks"
-run = ["mise run rust:check", "mise run ui:check", "mise run test", "mise run contracts:check"]
+run = ["mise run rust:check", "mise run ui:check", "mise run test", "mise run strava:test", "mise run generate:protobuf:check", "mise run contracts:check"]
 
 [tasks.test]
 run = "node --test map-renderer/*.test.mjs"
+
+[tasks."strava:test"]
+run = "mise --cd strava-gateway run test"
+
+[tasks."strava:build"]
+run = "mise --cd strava-gateway run build"
+
+[tasks."generate:protobuf"]
+description = "Regenerate the checked-in Strava gateway Go protobuf and gRPC bindings"
+run = "sh scripts/generate-protobuf.sh"
+
+[tasks."generate:protobuf:check"]
+description = "Check that the Strava gateway Go protobuf and gRPC bindings are current"
+run = "sh scripts/generate-protobuf.sh --check"
 
 [tasks."assets:sync"]
 description = "Synchronize intentional build-context mirrors from their canonical owners"
