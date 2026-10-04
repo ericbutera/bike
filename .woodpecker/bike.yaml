@@ -1,0 +1,230 @@
+# One monorepo checkout feeds every check, image build, and IaC apply below.
+when:
+  - event: [push, pull_request]
+    branch: main
+    path:
+      include:
+        - bike-rs/**
+        - bike-ui/**
+        - contracts/**
+        - proto/**
+        - map-renderer/**
+        - integration-tests/**
+        - Dockerfile
+        - .dockerignore
+        - strava-gateway/**
+        - scripts/check-contracts.rb
+        - scripts/audit-api-routes.rb
+        - scripts/test-production.sh
+        - docs/shared-assets.json
+        - docs/api-route-audit.json
+        - mise.toml
+        - .woodpecker/**
+      on_empty: false
+  - event: manual
+
+# Release ancestry requires complete source history. Woodpecker mounts this
+# checkout into every step in the workflow.
+clone:
+  git:
+    image: docker.io/woodpeckerci/plugin-git
+    settings:
+      partial: false
+      depth: 0
+
+steps:
+  - name: test-contracts
+    image: ruby:3.4.11-bookworm
+    depends_on: []
+    commands:
+      - ruby scripts/check-contracts.rb
+      - ruby scripts/audit-api-routes.rb
+
+  - name: test-rust
+    image: rust:1-bookworm
+    depends_on: []
+    environment:
+      TEST_MODE: "1"
+      CARGO_HOME: /cache/bike/cargo
+      RUSTUP_HOME: /cache/bike/rustup
+      CARGO_TARGET_DIR: /cache/bike/target
+    volumes:
+      - woodpecker-cache:/cache
+    commands:
+      - cd bike-rs && sh .woodpecker/test-rust.sh
+
+  - name: test-ui
+    image: node:25.2.1-alpine
+    depends_on: []
+    commands:
+      - cd bike-ui && npm install -g pnpm@9.15.9 && pnpm install --frozen-lockfile && pnpm run lint && pnpm run typecheck && pnpm run test
+
+  - name: test-map-renderer
+    image: node:25.2.1-alpine
+    depends_on: []
+    commands:
+      - node --test map-renderer/*.test.mjs
+
+  - name: test-strava-gateway
+    image: golang:1.25.1-bookworm
+    depends_on: []
+    commands:
+      - cd strava-gateway && go vet ./... && go test ./...
+
+  - name: build-api
+    image: woodpeckerci/plugin-kaniko
+    depends_on:
+      [
+        test-contracts,
+        test-rust,
+        test-ui,
+        test-map-renderer,
+        test-strava-gateway,
+      ]
+    backend_options:
+      kubernetes:
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+    settings:
+      registry: registry.registry:5000
+      repo: bike-api
+      tags: ${CI_COMMIT_SHA},latest
+      insecure: true
+      skip_tls_verify: true
+      insecure-pull: true
+      insecure-registry: true
+      context: bike-rs
+      dockerfile: bike-rs/api/Dockerfile
+      cache: true
+      cache_repo: bike-rust-cache
+
+  - name: build-worker
+    image: woodpeckerci/plugin-kaniko
+    depends_on: [build-api, build-ui, build-map-renderer, build-strava-gateway]
+    backend_options:
+      kubernetes:
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+    settings:
+      registry: registry.registry:5000
+      repo: bike-worker
+      tags: ${CI_COMMIT_SHA},latest
+      insecure: true
+      skip_tls_verify: true
+      insecure-pull: true
+      insecure-registry: true
+      context: bike-rs
+      dockerfile: bike-rs/worker/Dockerfile
+      cache: true
+      cache_repo: bike-rust-cache
+
+  - name: build-ui
+    image: woodpeckerci/plugin-kaniko
+    depends_on:
+      [
+        test-contracts,
+        test-rust,
+        test-ui,
+        test-map-renderer,
+        test-strava-gateway,
+      ]
+    settings:
+      registry: registry.registry:5000
+      repo: bike-ui
+      tags: ${CI_COMMIT_SHA}
+      insecure: true
+      skip_tls_verify: true
+      insecure-pull: true
+      insecure-registry: true
+      context: bike-ui
+      dockerfile: bike-ui/Dockerfile
+
+  - name: build-map-renderer
+    image: woodpeckerci/plugin-kaniko
+    depends_on:
+      [
+        test-contracts,
+        test-rust,
+        test-ui,
+        test-map-renderer,
+        test-strava-gateway,
+      ]
+    settings:
+      registry: registry.registry:5000
+      repo: bike-services
+      tags: ${CI_COMMIT_SHA}
+      insecure: true
+      skip_tls_verify: true
+      insecure-pull: true
+      insecure-registry: true
+      context: .
+      dockerfile: Dockerfile
+
+  - name: build-strava-gateway
+    image: woodpeckerci/plugin-kaniko
+    depends_on:
+      [
+        test-contracts,
+        test-rust,
+        test-ui,
+        test-map-renderer,
+        test-strava-gateway,
+      ]
+    settings:
+      registry: registry.registry:5000
+      repo: bike-services-strava-gateway
+      tags: ${CI_COMMIT_SHA}
+      insecure: true
+      skip_tls_verify: true
+      insecure-pull: true
+      insecure-registry: true
+      context: strava-gateway
+      dockerfile: strava-gateway/Dockerfile
+
+  - name: deploy
+    when:
+      - event: [push, manual]
+        branch: main
+    image: pulumi/pulumi-go:latest
+    depends_on:
+      [
+        build-api,
+        build-worker,
+        build-ui,
+        build-map-renderer,
+        build-strava-gateway,
+      ]
+    environment:
+      PULUMI_ACCESS_TOKEN:
+        from_secret: pulumi_access_token
+      GITHUB_TOKEN:
+        from_secret: github_token
+      PULUMI_IAC_REPO:
+        from_secret: pulumi_iac_repo
+      IAC_DEPLOY_SSH_KEY:
+        from_secret: iac_deploy_ssh_key
+    commands:
+      - sh .woodpecker/deploy.sh bike-rs
+      - sh .woodpecker/deploy.sh map-renderer
+      - sh .woodpecker/deploy.sh strava-gateway
+      - sh .woodpecker/deploy.sh bike-ui
+
+  - name: test-k6
+    when:
+      - event: [push, manual]
+        branch: main
+    image: grafana/k6:2.3.0
+    depends_on: [deploy]
+    environment:
+      BIKE_SYNTHETIC_KEY:
+        from_secret: bike_synthetic_key
+      BIKE_UI_URL: http://ui.bike.svc.cluster.local:3000
+      BIKE_API_URL: http://api.bike.svc.cluster.local:3000/api
+      BIKE_PUBLIC_URL:
+        from_secret: bike_public_url
+    commands:
+      - k6 run integration-tests/production.js

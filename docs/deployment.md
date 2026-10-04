@@ -6,43 +6,52 @@ infrastructure is managed by
 Local development uses [Docker Compose](development.md); production runs on
 Kubernetes.
 
-## Component workflows
+## Continuous integration
 
-Woodpecker reads [`.woodpecker/`](../.woodpecker). Main-branch pushes and pull
-requests select workflows by their changed paths. Tests run before image
-publication; main-branch pushes publish and deploy the affected components.
+Woodpecker reads [`.woodpecker/bike.yaml`](../.woodpecker/bike.yaml). Each run
+uses one monorepo checkout, then follows **checkout → checks → image builds →
+Pulumi apply → production k6 checks**. All five checks run in parallel; every
+image build waits for them. Matching main-branch pushes and manual runs build
+all five images, deploy them, then verify the running services. Pull requests
+run the checks and builds without applying changes or receiving the production
+synthetic credential.
 Documentation-only changes do not release images.
 
 The [production verification record](production-verification.md) documents
 the current development, CI, deployment, monitoring, and synthetic checks.
 
-| Workflow         | Checks                                                                      | Release ownership                                                |
-| ---------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `bike-rs`        | Rust formatting, Clippy, workspace tests including native HTTP integrations | API and worker images; `bike:appTag`                             |
-| `bike-ui`        | ESLint, TypeScript and UI unit tests; image build                           | UI image; `bike:uiTag`                                           |
-| `map-renderer`   | Renderer Node tests                                                         | Renderer image; `bike-services:imageTag`                         |
-| `strava-gateway` | Go vet and gateway tests                                                    | Gateway and gateway-worker image; `bike-services:stravaImageTag` |
-| `contracts`      | HTTP contracts, shared assets, UI inventory, route inventory                | Checks only                                                      |
+| Check                 | Coverage                                                                    |
+| --------------------- | --------------------------------------------------------------------------- |
+| `test-contracts`      | HTTP contracts, shared assets, UI inventory, route inventory                |
+| `test-rust`           | Rust formatting, Clippy, workspace tests including native HTTP integrations |
+| `test-ui`             | ESLint, TypeScript, UI unit tests                                           |
+| `test-map-renderer`   | Renderer Node tests                                                         |
+| `test-strava-gateway` | Go vet and gateway tests                                                    |
 
 Database-dependent gateway cases need `TEST_DATABASE_URL`; the regular CI test
 step has no test database. UI browser tests remain available through the
 [UI integration guide](../bike-ui/tests/e2e/README.md).
 
-The UI workflow waits for the Rust workflow when both participate in a release.
-API and worker images share a commit tag and the infrastructure stack runs its
-migration Job before updating them. Renderer and gateway workflows publish and
-promote their own images; gateway promotion waits for the renderer workflow
-when both participate so their shared Pulumi stack updates in sequence.
-For gateway-only changes the renderer workflow keeps that dependency present
-and skips its renderer test, image build, and promotion steps.
+The API, UI, renderer, and gateway builds run in parallel. The worker build
+follows that wave so the two Rust builds remain separate. Rust Kaniko steps
+request four CPUs and 8 GiB of memory each and reuse the registry build cache.
 
-For an explicit Woodpecker manual run, set `MANUAL_COMPONENT` to `bike-rs`,
-`bike-ui`, `map-renderer`, `strava-gateway`, or `contracts`. A UI selection does
-not publish a backend image.
+One deployment step invokes the Pulumi helper in order: Bike Rust, map
+renderer, Strava gateway, then Bike UI.
+API and worker images share a commit tag; the infrastructure stack runs its
+migration Job before updating them. The map renderer and gateway share a Pulumi
+stack, so their applies run one after the other.
+
+After deployment, `test-k6` runs the [k6 journey](../integration-tests/README.md)
+against the internal API and UI services, with separate public availability and
+credential-rejection checks. Every assertion must pass for the pipeline to
+succeed. Manual runs on `main` use the same sequence.
+
+The root prek hook validates the k6 script with `k6 inspect` before commit.
 
 ## Image promotion
 
-Release workflows clone complete source history and publish images tagged with
+The CI workflow clones complete source history and publishes images tagged with
 the full source commit SHA. The [deployment wrapper](../.woodpecker/deploy.sh)
 clones IaC, then invokes its `scripts/deploy-bike-image.sh` helper.
 
@@ -91,12 +100,8 @@ behavior without deploying infrastructure.
 Alert validation uses pinned Prometheus and Alertmanager tools against local
 fixtures and routing configuration; it sends no notifications.
 
-CI activation and secrets belong to the
+CI activation, repository configuration, and secrets belong to the
 [infrastructure repository](https://github.com/ericbutera/pulumi-iac).
-For an initial repository move, publish the IaC release helper, apply the
-Woodpecker repository configuration, then push Bike workflow changes. The CI
-synchronization Job configures the replacement repository before deactivating
-the previous release source.
 
 Use the [production failure runbook](production-failures.md) for retained task
 failures and the

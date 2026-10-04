@@ -12,5 +12,7 @@ if [ "$(git -C "$BIKE_SOURCE_DIR" rev-parse --is-shallow-repository)" = true ]; 
   exit 1
 fi
 
-git clone --quiet "https://x-access-token:${GITHUB_TOKEN}@github.com/${PULUMI_IAC_REPO}" /tmp/pulumi-iac
-sh /tmp/pulumi-iac/scripts/deploy-bike-image.sh "$component"
+deploy_dir="$(mktemp -d "${TMPDIR:-/tmp}/bike-iac.XXXXXX")"
+trap 'rm -rf "$deploy_dir"' EXIT
+git clone --quiet "https://x-access-token:${GITHUB_TOKEN}@github.com/${PULUMI_IAC_REPO}" "$deploy_dir/pulumi-iac"
+sh "$deploy_dir/pulumi-iac/scripts/deploy-bike-image.sh" "$component"
