@@ -2,3 +2,16 @@ name: bike
 
 include:
   - path: bike-rs/compose.yaml
+
+services:
+  bike-maps:
+    build: .
+    environment:
+      MAP_IMAGE_CACHE_DIR: /cache
+      MAP_IMAGE_CACHE_TTL_SECONDS: ${MAP_IMAGE_CACHE_TTL_SECONDS:-604800}
+      MAP_SERVICE_TOKEN: ${MAP_SERVICE_TOKEN:-}
+    volumes:
+      - map_image_cache:/cache
+
+volumes:
+  map_image_cache:
