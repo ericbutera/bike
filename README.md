@@ -9,7 +9,7 @@ progress into one place. Import recordings from your cycling computer or connect
 Strava, then explore the data behind your rides.
 
 [Quickstart](#quickstart) · [Development](docs/development.md) ·
-[Architecture](docs/architecture.md) · [Specifications](bike-rs/docs/specs/README.md)
+[Architecture](#architecture) · [Specifications](bike-rs/docs/specs/README.md)
 
 ## What you can do
 
@@ -72,6 +72,57 @@ mise run compose:down
 
 See the [development guide](docs/development.md) for port overrides, tracing,
 focused checks, contract generation, and startup troubleshooting.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Client
+        Browser
+    end
+
+    subgraph Frontend["Next.js"]
+        UI
+    end
+
+    subgraph Backend["Rust"]
+        API
+        Worker
+    end
+
+    subgraph Integration["Strava integration (Go)"]
+        Gateway["Strava gateway"]
+        GatewayWorker["Gateway worker"]
+    end
+
+    subgraph Storage
+        DB[(Bike PostgreSQL)]
+        Files["Activity files"]
+        GatewayDB[(Gateway PostgreSQL)]
+        Artifacts["Provider artifacts"]
+    end
+
+    Browser -->|HTTP| UI
+    Browser -->|HTTP| API
+    UI -->|HTTP| API
+    UI -->|PNG rendering| Maps["Map renderer"]
+    API --> DB
+    Worker --> DB
+    API --> Files
+    Worker --> Files
+    API -->|gRPC / HTTP commands| Gateway
+    Strava -->|OAuth / webhooks| Gateway
+    Gateway --> GatewayDB
+    GatewayWorker --> GatewayDB
+    GatewayWorker -->|Provider API| Strava
+    GatewayWorker --> Artifacts
+    GatewayWorker -->|Signed HTTP delivery| API
+```
+
+The Rust API and worker share PostgreSQL-backed jobs and retained activity files.
+Strava integration has its own database and artifact storage and runs separately
+from the local Quickstart stack. See the [architecture guide](docs/architecture.md)
+for service responsibilities, privacy boundaries, and data flow.
 
 ## Built with
 
