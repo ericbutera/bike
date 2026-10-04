@@ -146,13 +146,7 @@ Existing fields should stay backward-compatible where practical.
 - XC UI: `bike-ui/components/XcGoalsProgressPanel.tsx`
 - Preferences UI: `bike-ui/app/account/page.tsx`
 
-## Open Gaps
+## Follow-up tracking
 
-- Add expected stop budget, or derive it from target elapsed time vs training moving pace.
-- Add terrain specificity fields only when they materially improve advice.
-- Consider course route or GPX target comparison after the app can compare ride profiles against an actual course.
-- Add event-phase awareness: base/build, specificity, and taper.
-- Decide whether guidance should be grouped into "Next ride", "This week", and "Do not do yet".
-- Decide whether target finish time should use moving time, elapsed time, or both.
-- Decide how trainer and road rides count toward technical MTB event specificity.
-- Add backend tests for event target math, readiness statuses, ride-purpose classification, and event-aware recommendation branches.
+Follow-up status and priority live only in the [Bike TODO](../../../docs/TODO.md).
+This specification is the behavior reference for XC01.

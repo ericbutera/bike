@@ -20,7 +20,7 @@ export default defineConfig({
     locale: "en-US",
     timezoneId: "America/Detroit",
     reducedMotion: "reduce",
-    trace: "retain-on-failure",
+    trace: process.env.BIKE_SYNTHETIC_KEY ? "off" : "retain-on-failure",
   },
   snapshotPathTemplate: "{testDir}/snapshots/{arg}{ext}",
 });

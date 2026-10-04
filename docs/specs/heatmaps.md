@@ -358,41 +358,12 @@ Register Rust Utoipa endpoints/schemas and regenerate the canonical OpenAPI plus
 the shared TypeScript client with the existing mise tasks. Keep the Rust source-route inventory and distributed contracts current.
 Do not add contract-harness dependencies to component CI/deployment.
 
-## Work enumeration and order
+## Implementation detail
 
-These are build deliverables, not a second status checklist; track completion
-only in [docs/TODO.md](../TODO.md#personal-heatmaps).
-
-1. **MAPS01 — Spec:** capture scope, counting/filter semantics, architecture,
-   performance alternatives, lifecycle behavior, and acceptance criteria.
-2. **MAPS02 — Flags in all three apps:** append native migrations seeding
-   `heatmaps=false` with the same description and idempotent insertion. Register
-   the Rust/UI key, reuse public/admin flag APIs, and verify effective flag state
-   agrees with API gating. Inspect existing process-local flag caching so turning
-   off the feature reaches every serving process.
-3. **MAPS03 — Bounded rendering spike:** use one relevant original ride plus
-   small deterministic variants to compare one/many activities, repeated laps,
-   GPS offsets, parallel paths, and tile borders. Measure local and overview
-   output quality, cold latency, and projected bytes per activity. Set tile/LOD
-   layout, tolerance, opacity curve, and budgets before schema commitment.
-   Confirm a Rust raster/PNG library and projection library at the owned seam.
-4. **MAPS04 — Rust projections and lifecycle:** append migrations/entities;
-   implement geometry preparation, durable dirty/enqueue/reconciliation,
-   idempotent worker publication, deletion/reprocessing/dedupe invalidation,
-   bounded owner-specific historical backfill, and preparation status.
-5. **MAPS05 — Rust APIs and cache:** add thin controllers, model queries and
-   service, streaming per-activity coverage aggregation, private tile serving,
-   revision/cache handling, input validation, trace context, and contract output.
-6. **MAPS06 — Shared `/maps` UI:** add the page and navigation gate, URL-backed
-   filters and timezone conversion, React Query metadata hook, same-origin tile
-   proxy, dedicated MapLibre overlay component, fit/legend/summary, responsive
-   controls, and required states. Prevent all heatmap requests while disabled.
-7. **MAPS07 — Local acceptance:** run focused owning checks and one browser happy
-   path, backfill isolated historical data, and record performance evidence.
-8. **MAPS08 — Production rollout:** deploy the Rust migration/API/worker and shared
-   UI, backfill production history with the flag disabled, then enable Rust after
-   verification. Production deployment is separate from the authorized local
-   implementation;
+Implementation status, priority, and rollout ownership live only in the
+[Bike TODO](../TODO.md#personal-heatmaps). This specification holds the scope,
+architecture, rendering and lifecycle constraints, and acceptance criteria for
+those entries.
 
 ## Verification and rollout criteria
 
@@ -441,18 +412,15 @@ failed work, tile generation latency, cache hit/bytes, and render failures.
 Do not label metrics with user IDs, coordinates, date ranges, or tile keys, or
 log private route geometry. Avoid adding new infrastructure for hypothetical load.
 
-## Decisions to confirm before implementation
+## Rendering design choices
 
-The proposed defaults above allow the next phase to start without reopening
-scope. Confirm or revise these during the rendering spike:
-
-1. Raster overlays provide continuous, thin blue lines with progressive opacity;
-   otherwise compare weighted vector geometry before shipping.
-2. The GPS tolerance/LOD choices preserve neighboring local trails and tile edges.
-3. Per-activity geometry/chunks meet cold-tile targets; persist masks or add
-   daily rollups only where measurements show a need.
-4. Indoor/virtual routes stay excluded, date filters use start time, and timezone
-   is explicit. Exact road identities and hover counts remain future features.
+The MAPS03 rendering spike in the [Bike TODO](../TODO.md#personal-heatmaps)
+owns validation of these design choices: raster overlays use continuous thin
+blue lines with progressive opacity; GPS tolerance and LOD preserve nearby
+trails and tile edges; per-activity geometry meets cold-tile targets before
+adding masks or rollups; indoor/virtual routes remain excluded; dates use
+activity start time with an explicit timezone. Exact road identities and hover
+counts remain outside the current scope.
 
 ## Implementation evidence, 2026-10-03
 

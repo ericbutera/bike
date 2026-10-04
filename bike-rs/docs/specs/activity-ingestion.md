@@ -77,38 +77,11 @@ Strava sync stores the raw provider summary and stream payload as a versioned `p
 
 The activity-processing graph chooses the richest parsable artifact for normalization: original FIT first, original TCX/GPX next, Strava provider payload next, and generated TCX only as a last-resort compatibility artifact. The source-file endpoint returns retained original artifacts only. Provider payload and generated export downloads should remain separate concepts.
 
-## Remaining Gaps
-
-- `api/src/strava.rs`: `build_tcx_document` still serializes Strava summary and stream data into `TrainingCenterDatabase` XML as a compatibility export/fallback. This generated TCX is correctly labeled as lossy and should not regain priority over retained provider payload parsing.
-- `api/src/activity_details.rs` and `api/src/fit_support.rs`: FIT parsing exists, but the normalized derived data currently keeps common route/chart/lap fields only: distance, elevation, speed, heart rate, cadence, power, calories, ascent/descent, and timing. FIT fields for grit, flow, jumps, hang time, jump distance, event records, developer data, device metadata, and raw message coverage are not persisted in the normalized model.
-- `migration/src/m20260512_000014_add_activity_source_correlation_id.rs`: historical Strava correlation backfill extracts IDs from `.tcx` filenames such as `Morning_Mountain_Bike_Ride_18468904796.tcx`. Future data should store provider correlation IDs independently from filenames and formats.
-- `bike-ui/components/ActivityImportsPanel.tsx`, `bike-ui/components/ActivityStream.tsx`, and related tests: upload copy presents FIT, TCX, and GPX as equal choices. UI copy should steer riders toward FIT for full telemetry and present TCX/GPX as fallback formats.
-- `bike-ui/components/activity-detail/ActivityHeaderActions.tsx` and `bike-ui/components/__tests__/ActivityDetailPanel.test.tsx`: the detail action now says "Download original source", but the UI still does not expose provider-payload or generated-export downloads as separate actions.
-- `api/src/controllers/segments.rs`, `bike-ui/components/SegmentsPanel.tsx`, and `docs/specs/segment-processing.md`: segment import is GPX/TCX-only. This is acceptable for route-only segment definitions, but it should stay separate from activity source fidelity and should not imply TCX is preferred for activity ingestion.
-
 ## Native Strava Provider Parsing
 
-Implemented in `api/src/strava_provider_payload.rs` and the artifact-aware parser path in `api/src/activity_parser.rs`.
+`api/src/strava_provider_payload.rs` defines the versioned `StoredStravaProviderPayload`, including the activity summary, streams keyed by type, and provider stream metadata. The artifact-aware `parse_activity_artifact` path dispatches between file formats and provider payloads; `parse_strava_provider_payload` maps summary and stream data directly into `ActivityDraft` and `ActivityDerivedData`, including route points, chart points, and a full-activity lap.
 
-1. Define a stored Strava provider payload shape.
-
-   Done. `StoredStravaProviderPayload` includes a version, provider name, Strava activity ID, activity summary fields, streams keyed by stream type, and stream metadata such as `original_size`, `resolution`, and `series_type`.
-
-2. Extend the parser interface to be artifact-aware.
-
-   Done for the activity-processing graph. `parse_activity_artifact` dispatches between file artifacts (`fit`, `tcx`, `gpx`) and provider artifacts such as `strava_streams` without requiring provider data to masquerade as a file format.
-
-3. Implement `parse_strava_provider_payload`.
-
-   Done. The parser builds an `ActivityDraft` from Strava summary fields and `ActivityDerivedData` from Strava streams, including route points, chart points, and a full-activity lap. Stream arrays map directly without serializing through generated TCX first.
-
-4. Change artifact selection priority once native parsing exists.
-
-   Done. The activity-processing graph chooses artifacts in this order: original FIT, original TCX/GPX, Strava provider payload, and generated TCX only as a legacy fallback. Provider payload selection is covered by regression tests so generated TCX cannot regain priority over retained provider data.
-
-5. Keep generated TCX as optional export or legacy fallback only.
-
-   Done for parsing priority. New Strava imports still retain generated TCX as a compatibility export/fallback, but native provider payload parsing is the normal Strava path and generated TCX stays labeled as lossy/generated.
+Processing prefers original FIT, then original TCX/GPX, then the retained Strava provider payload, with generated TCX as a compatibility fallback. Regression tests protect this priority. Generated TCX remains labeled as lossy/generated and available for export or legacy fallback.
 
 ## Deduplication
 
@@ -149,10 +122,9 @@ Every activity-processing graph stage should emit an `activity_processing` integ
 - Upload UI: `bike-ui/components/ActivityImportsPanel.tsx`
 - Activity source download UI: `bike-ui/components/activity-detail/ActivityHeaderActions.tsx`
 
-## Open Gaps
+## Follow-up tracking
 
-- Keep improving duplicate detection across mirrored Garmin and Strava sources.
-- Keep large archive imports observable without overloading a single response or UI table.
-- Preserve raw source replay as parser support grows.
-- Decide whether Strava raw payload downloads should be exposed to riders or treated only as an internal replay artifact.
-- Define the normalized storage shape for FIT developer fields and MTB dynamics before adding UI and analytics that depend on grit, flow, jumps, hang time, or jump distance.
+Follow-up status and priority live only in the [Bike TODO](../../../docs/TODO.md).
+This specification is the behavior reference for DATA04, DATA12–14, DATA17,
+and ACT04. Generated TCX remains a lossy compatibility fallback, and segment
+imports remain route-only.

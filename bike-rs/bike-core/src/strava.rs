@@ -2717,6 +2717,7 @@ mod tests {
             max_archive_fetch_bytes: 1024,
             archive_fetch_timeout_seconds: 60,
             jwt_secret: "test-secret".to_string(),
+            synthetic_key: None,
             local_admin_enabled: false,
             app_name: "Bike".to_string(),
             smtp_host: "localhost".to_string(),

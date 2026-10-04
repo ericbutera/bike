@@ -53,7 +53,7 @@ where
                 client,
                 _phantom: PhantomData,
             }),
-            Some(AuthIdentity::User(_)) => {
+            Some(AuthIdentity::User(_) | AuthIdentity::Synthetic(_)) => {
                 Err(AuthError::unauthorized("API client token required"))
             }
             None => Err(AuthError::unauthorized("Missing authentication")),
@@ -80,8 +80,9 @@ where
         let storage: Arc<T> = FromRef::from_ref(state);
         let auth = AuthInfo::<T>::from_request_parts(parts, state).await?;
 
-        let user_pid = match auth.identity {
-            Some(AuthIdentity::User(identity)) => identity.user_pid,
+        let (user_pid, synthetic) = match auth.identity {
+            Some(AuthIdentity::User(identity)) => (identity.user_pid, false),
+            Some(AuthIdentity::Synthetic(identity)) => (identity.user_pid, true),
             Some(AuthIdentity::ApiClient(_)) => {
                 return Err(AuthError::unauthorized("User token required"))
             }
@@ -95,7 +96,15 @@ where
             .map_err(|e| AuthError::internal_error(format!("Failed to query user: {}", e)))?
             .ok_or_else(|| AuthError::unauthorized("User not found"))?;
 
-        user.ensure_enabled()?;
+        if synthetic {
+            if !user.is_synthetic() || !user.disabled || user.is_admin.unwrap_or(false) {
+                return Err(AuthError::forbidden(
+                    "Synthetic account isolation is invalid",
+                ));
+            }
+        } else {
+            user.ensure_enabled()?;
+        }
         Ok(Self {
             user,
             _phantom: PhantomData,
@@ -124,7 +133,7 @@ where
 
         let user_pid = match auth.identity {
             Some(AuthIdentity::User(identity)) => identity.user_pid,
-            Some(AuthIdentity::ApiClient(_)) => {
+            Some(AuthIdentity::ApiClient(_) | AuthIdentity::Synthetic(_)) => {
                 return Err(AuthError::unauthorized("User token required"))
             }
             None => return Err(AuthError::unauthorized("Missing authentication")),
@@ -170,7 +179,7 @@ where
 
         let user_pid = match auth.identity {
             Some(AuthIdentity::User(identity)) => identity.user_pid,
-            Some(AuthIdentity::ApiClient(_)) => {
+            Some(AuthIdentity::ApiClient(_) | AuthIdentity::Synthetic(_)) => {
                 return Err(AuthError::unauthorized("User token required"))
             }
             None => return Err(AuthError::unauthorized("Missing authentication")),

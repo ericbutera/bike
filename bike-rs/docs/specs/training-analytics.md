@@ -86,11 +86,9 @@ The Reports page is a supporting trend view. Core XC readiness signals that affe
 - XC UI: `bike-ui/components/XcGoalsProgressPanel.tsx`
 - DH UI: `bike-ui/components/DhGoalsProgressPanel.tsx`
 
-## Open Gaps
+## Follow-up tracking
 
-- Add edge-case XC tests for noisy rides, short rides, and route-family comparability boundaries.
-- Add focused DH tests proving only `dh` segments participate in DH analytics.
-- Decide whether `/xc` and `/dh` should expose the latest fitness/fatigue/form snapshot directly or keep it recommendation-only.
-- Add climb-density and temperature context where they explain durability and event specificity.
-- Decide whether HRV status should become optional recovery context.
-- Treat Garmin training-effect fields as supplemental metadata, not as core planning inputs, unless the product decision changes.
+Follow-up status and priority live only in the [Bike TODO](../../../docs/TODO.md).
+This specification is the training behavior reference for TRAIN01. Garmin
+training-effect fields remain supplemental metadata, not core planning inputs,
+unless a product decision changes.

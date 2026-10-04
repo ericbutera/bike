@@ -120,6 +120,9 @@ mise run strava:test        # Gateway tests.
 `mise run test:integration` runs the native API integration suite with an isolated
 SQLite fixture. `mise run contracts:check` verifies contract and route wiring.
 `mise run check` runs the combined component, protobuf, and contract checks.
+
+Production synthetics use k6 with an internal-only credential and automatically
+discovered fixture IDs. See the [production check instructions](integration-tests/README.md).
 Browser regressions live with the [UI](bike-ui/tests/e2e/README.md).
 
 ## Documentation

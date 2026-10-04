@@ -35,7 +35,13 @@ describe("activity map images", () => {
     const response = await GET(
       new Request(
         "http://localhost/activity-map-images/full/1?activityId=7&theme=dark&dpr=2",
-        { headers: { authorization: "Bearer owner" } },
+        {
+          headers: {
+            authorization: "Bearer owner",
+            "x-bike-synthetic-key": "internal-test-key",
+            "x-forwarded-for": "10.1.2.3",
+          },
+        },
       ),
       context,
     );
@@ -46,6 +52,16 @@ describe("activity map images", () => {
     expect(
       new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("authorization"),
     ).toBe("Bearer owner");
+    expect(
+      new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get(
+        "x-bike-synthetic-key",
+      ),
+    ).toBe("internal-test-key");
+    expect(
+      new Headers(fetchMock.mock.calls[1]?.[1]?.headers).has(
+        "x-bike-synthetic-key",
+      ),
+    ).toBe(false);
     const renderBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
     expect(
       new Headers(fetchMock.mock.calls[1]?.[1]?.headers).get("authorization"),
@@ -79,5 +95,23 @@ describe("activity map images", () => {
     );
     expect(response.status).toBe(403);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a synthetic credential from a forwarded public request before fetching", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const response = await GET(
+      new Request(
+        "http://localhost/activity-map-images/full/1?activityId=7&theme=light&dpr=1",
+        {
+          headers: {
+            "x-bike-synthetic-key": "internal-test-key",
+            forwarded: "",
+          },
+        },
+      ),
+      context,
+    );
+    expect(response.status).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

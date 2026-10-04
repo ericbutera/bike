@@ -15,4 +15,5 @@ pub mod segment_user_summaries;
 pub mod segments;
 pub mod strava_connections;
 pub mod strava_gateway;
+pub mod synthetic_scenarios;
 pub mod user_preferences;

@@ -82,7 +82,7 @@ a separate database development stack. Production definitions and release
 promotion live in
 [`ericbutera/pulumi-iac`](https://github.com/ericbutera/pulumi-iac).
 
-Woodpecker workflows run checks for the owning component, publish images with
+Woodpecker jobs run checks for the owning component, publish images with
 immutable commit tags, and call the Pulumi release helper. Backend promotion
 runs migrations before API/worker rollout; the UI, renderer, and gateway have
 their own image boundaries. Existing namespace and image names are deployment

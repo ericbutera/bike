@@ -71,14 +71,16 @@ Gap labels on cards should be derived from the current live leader even though t
 - Race viewer tests: `bike-ui/components/__tests__/SegmentRaceViewer.test.tsx`
 - Segment detail comparison tests: `bike-ui/components/__tests__/SegmentDetailPanel.test.tsx`
 
-## Implementation Notes
+## Playback constraints
 
-- Replace `PLAYBACK_PACE_OPTIONS` with a multiplier-based speed model or add a separate race-viewer speed model if the embedded segment-detail comparison should keep its current automatic pace behavior.
-- Keep a sorted live-comparison collection for calculations, but render cards from the stable selected-row order.
-- Keep race-viewer zoom fixed unless the rider changes it manually.
-- Use direct follow-camera updates during race playback rather than long `easeTo` animations that can overlap at high playback speeds.
+RACE01 in the [Bike TODO](../../../docs/TODO.md) owns any future playback
+changes. This specification records the behavior constraints: use a
+multiplier-based race-viewer speed model without changing embedded comparison
+behavior, calculate live positions separately from stable card order, preserve
+manually selected zoom, and avoid overlapping long camera animations during
+leader-follow.
 
-## Open Decisions
+## Follow-up tracking
 
-- Decide whether race speed should be persisted in the URL, local storage, or only component state.
-- Decide whether zoom should be persisted per segment, per viewer session, or globally for the race viewer.
+The [Bike TODO](../../../docs/TODO.md) is the sole status and priority record;
+this specification retains playback behavior and interaction details.

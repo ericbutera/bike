@@ -4,6 +4,14 @@ minimum_prek_version = "0.4.0"
 repo = "local"
 
 [[repos.hooks]]
+id = "synthetics-check"
+name = "k6 synthetic configuration"
+language = "system"
+entry = "mise run synthetics:check"
+files = "^integration-tests/.*\\.js$"
+pass_filenames = false
+
+[[repos.hooks]]
 id = "cargo-fmt-check"
 name = "Rust formatting"
 language = "system"

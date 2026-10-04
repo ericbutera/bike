@@ -25,6 +25,7 @@ pub struct UserIdentity {
 #[derive(Debug, Clone)]
 pub enum AuthIdentity {
     User(UserIdentity),
+    Synthetic(UserIdentity),
     ApiClient(ApiClientIdentity),
 }
 
@@ -65,6 +66,10 @@ pub trait AuthStorage: Send + Sync {
     fn local_admin_user_pid(&self) -> Option<Uuid> {
         None
     }
+
+    fn synthetic_auth(&self) -> Option<&crate::synthetics::SyntheticAuth> {
+        None
+    }
 }
 
 fn extract_cookie(headers: &axum::http::HeaderMap, name: &str) -> Result<String, AuthError> {
@@ -96,6 +101,19 @@ where
         let storage: Arc<T> = FromRef::from_ref(state);
         let headers = &parts.headers;
         let mut cookie_error: Option<AuthError> = None;
+
+        if let Some(value) = headers.get(crate::synthetics::AUTH_HEADER) {
+            let config = storage
+                .synthetic_auth()
+                .ok_or_else(|| AuthError::unauthorized("Synthetic authentication is disabled"))?;
+            verify_synthetic_request(parts, value, &config.key)?;
+            return Ok(AuthInfo::new(
+                Some(AuthIdentity::Synthetic(UserIdentity {
+                    user_pid: config.user_pid,
+                })),
+                None,
+            ));
+        }
 
         if let Some(user_pid) = storage.local_admin_user_pid() {
             return Ok(AuthInfo::new(
@@ -163,6 +181,60 @@ where
 
         Ok(AuthInfo::new(None, None))
     }
+}
+
+fn verify_synthetic_request(
+    parts: &Parts,
+    supplied: &axum::http::HeaderValue,
+    expected: &str,
+) -> Result<(), AuthError> {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    // Public ingress strips the synthetic header. Also reject forwarded traffic
+    // here so a public request cannot become an internal request through a proxy.
+    if parts.headers.contains_key("x-forwarded-for") || parts.headers.contains_key("forwarded") {
+        return Err(AuthError::forbidden(
+            "Synthetic authentication is internal only",
+        ));
+    }
+    let mut expected_mac = Hmac::<Sha256>::new_from_slice(expected.as_bytes()).expect("HMAC key");
+    let mut supplied_mac = Hmac::<Sha256>::new_from_slice(supplied.as_bytes()).expect("HMAC key");
+    expected_mac.update(b"bike synthetic request");
+    supplied_mac.update(b"bike synthetic request");
+    expected_mac
+        .verify_slice(&supplied_mac.finalize().into_bytes())
+        .map_err(|_| AuthError::unauthorized("Invalid synthetic credential"))?;
+    let path = parts
+        .extensions
+        .get::<axum::extract::OriginalUri>()
+        .map_or(parts.uri.path(), |original| original.0.path());
+    if !synthetic_read_allowed(&parts.method, path) {
+        return Err(AuthError::forbidden(
+            "Synthetic requests are limited to the browser read journey",
+        ));
+    }
+    Ok(())
+}
+
+fn synthetic_read_allowed(method: &axum::http::Method, path: &str) -> bool {
+    if *method != axum::http::Method::GET {
+        return false;
+    }
+    if matches!(
+        path,
+        "/api/auth/current"
+            | "/api/preferences"
+            | "/api/activities"
+            | "/api/segments"
+            | "/api/synthetics/scenario"
+            | "/api/activity-imports"
+            | "/api/activity-imports/processing-state"
+    ) {
+        return true;
+    }
+    let pieces = path.trim_start_matches('/').split('/').collect::<Vec<_>>();
+    matches!(pieces.as_slice(), ["api", "activities" | "segments", id] if id.parse::<i32>().is_ok_and(|id| id > 0))
+        || matches!(pieces.as_slice(), ["api", "segments", id, "comparison"] if id.parse::<i32>().is_ok_and(|id| id > 0))
 }
 
 async fn verify_refresh_token(db: &DatabaseConnection, token: &str) -> Result<Uuid, AuthError> {

@@ -5,7 +5,7 @@ deployment is authorized by this experiment. Work and results belong under
 [`experiments/postgis`](../../experiments/postgis/README.md); completion status
 belongs in [the Bike backlog](../TODO.md#personal-heatmaps).
 
-## Decision to make
+## Evaluation question
 
 Measure whether Rust with PostGIS provides enough benefit over Rust with vanilla
 PostgreSQL to justify spatial projections and their operational/storage cost.

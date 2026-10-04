@@ -2,6 +2,8 @@
 //! The real Axum router and SeaORM queries run against an isolated SQLite fixture.
 
 mod support;
+#[path = "support/synthetics.rs"]
+mod synthetic_tests;
 
 use axum::{body::Body, http::Request, Router};
 use serde_json::Value;

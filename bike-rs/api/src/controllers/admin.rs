@@ -1323,6 +1323,7 @@ mod tests {
             ),
             uploads_dir: "/tmp".to_string(),
             local_admin_user_pid: None,
+            synthetic_auth: None,
         });
 
         assert_eq!(enqueue_segment_backfill_tasks(&state, &[]).await, 0);

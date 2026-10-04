@@ -247,6 +247,7 @@ Frontend examples:
 - Report definitions UI fallback: `bike-ui/components/reports/reportDefinitions.ts`
 - Frontend API types: `bike-ui/lib/queries.ts`
 
-## Open Gaps
+## Follow-up tracking
 
-- Decide whether technical terrain specificity should use route family, event profile, activity type, or explicit user labeling.
+Follow-up status and priority live only in the [Bike TODO](../../../docs/TODO.md).
+This report records the inputs and tradeoffs relevant to XC01.

@@ -229,6 +229,11 @@
       },
       {
         "method": "GET",
+        "path": "/api/synthetics/scenario",
+        "source": "bike-rs/api/src/controllers/mod.rs#synthetics::scenario"
+      },
+      {
+        "method": "GET",
         "path": "/api/training/dh-progress",
         "source": "bike-rs/api/src/controllers/mod.rs#training_goals::get_dh_goal_progress"
       },
@@ -390,6 +395,7 @@
     ]
   },
   "rust_routes_outside_openapi": [
+    ["GET", "/api/synthetics/scenario"],
     ["POST", "/internal/strava-deliveries"],
     ["GET", "/"],
     ["GET", "/metrics"]

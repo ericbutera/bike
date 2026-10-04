@@ -69,9 +69,7 @@ The route preview path and detailed map path have different payload expectations
 - Activity detail UI: `bike-ui/components/ActivityDetailPanel.tsx`
 - Route map UI: `bike-ui/components/MapLibreRouteMapClient.tsx`
 
-## Open Gaps
+## Follow-up tracking
 
-- Continue distinguishing unavailable telemetry from failed parsing in UI copy.
-- Keep list payloads compact as derived data grows.
-- Add focused regression coverage when activity type changes affect training analytics or segment summaries.
-- Consider 3D terrain map support where it improves route inspection rather than becoming decorative.
+Follow-up status and priority live only in the [Bike TODO](../../../docs/TODO.md).
+This specification is the design reference for ACT03, DATA05, and MAPS11.

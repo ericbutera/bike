@@ -4,6 +4,7 @@ ruby = "3.4.11"
 go = "1.25.1"
 prek = "0.4.12"
 protoc = "36.2"
+k6 = "2.3.0"
 "npm:prettier" = "3.7.4"
 
 [tasks."compose:config"]
@@ -83,13 +84,13 @@ description = "Run native Rust API integration tests"
 run = "mise --cd bike-rs run test:integration"
 
 [tasks."test:production"]
-description = "Run the read-only production activity, segment, and race journey"
-run = '''
-: "${BIKE_TEST_AUTH_FILE:?Provide a private short-lived test token file}"
-: "${BIKE_UI_URL:?Provide the deployed Bike UI origin}"
-: "${BIKE_API_URL:?Provide the deployed Bike API origin}"
-: "${BIKE_TEST_ACTIVITY_ID:?Select an existing activity with GPS}"
-: "${BIKE_TEST_SEGMENT_ID:?Select an existing segment}"
-: "${BIKE_TEST_RACE_EFFORT_IDS:?Select existing race effort IDs}"
-mise --cd bike-ui run test:e2e
-'''
+description = "Run the k6 production activity, segment, race, and rendered-image checks"
+run = "sh scripts/test-production.sh"
+
+[tasks."test:production:browser"]
+description = "Run the separate authenticated production browser e2e journey"
+run = "sh scripts/test-production.sh browser"
+
+[tasks."synthetics:check"]
+description = "Validate the k6 production runner configuration"
+run = "k6 inspect integration-tests/production.js"

@@ -58,8 +58,7 @@ Feature flags are operational switches. They should not become hidden product re
 - Admin metrics UI: `bike-ui/components/admin/BikeMetricsSection.tsx`
 - Admin navigation: `bike-ui/components/admin/Nav.tsx`
 
-## Open Gaps
+## Follow-up tracking
 
-- Keep admin task responses consistent as more background jobs are added.
-- Add focused tests for admin authorization on high-impact operations.
-- Keep integration event metadata structured enough for filtering without exposing token or secret material.
+Follow-up status and priority live only in the [Bike TODO](../../../docs/TODO.md).
+This specification is the behavior reference for OPS02.

@@ -54,7 +54,7 @@ Secrets and token material are configuration or database concerns, not frontend 
 - Strava service: `api/src/strava.rs`
 - Account UI: `bike-ui/app/account/page.tsx`
 
-## Open Gaps
+## Follow-up tracking
 
-- Decide whether user-created event templates belong in preferences or a separate event-target table.
-- Keep reconnect guidance clear when Strava scopes are insufficient.
+Follow-up status and priority live only in the [Bike TODO](../../../docs/TODO.md).
+This specification is the behavior reference for AUTH05.

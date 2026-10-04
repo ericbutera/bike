@@ -4,10 +4,9 @@ Task status is maintained only in [the Bike backlog](../../../docs/TODO.md).
 The old story checklist is preserved at `200921f` in Git in Git history. This document describes the delivery contract
 and recorded rollout evidence; it does not create additional acceptance gates.
 
-Status: **live, with remaining validation work**. The gateway owns the live
-Strava subscription and provider credentials. The Rust receiver accepts
-signed delivery from the gateway. Current scope is STRAVA16/STRAVA11 and REC08/REC09
-in the backlog; wider lifecycle and failure drills are deferred.
+The gateway owns the live Strava subscription and provider credentials. The
+Rust receiver accepts signed delivery from the gateway. Current and deferred
+work is tracked only in the [Bike TODO](../../../docs/TODO.md).
 
 ## Goal
 

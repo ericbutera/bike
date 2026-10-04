@@ -26,9 +26,50 @@ pub async fn protected_platform_app() -> Router {
     build_platform_app(false).await
 }
 
+pub const SYNTHETIC_KEY: &str = "internal-synthetic-test-credential-32chars";
+
+pub async fn synthetic_platform_app() -> (Router, DatabaseConnection, users::Model) {
+    init_test_metrics();
+    // Keep an existing rider and records in the database to prove provisioning
+    // allocates IDs and never adopts or edits a real owner's data.
+    let db = platform_database().await;
+    let now = Utc::now();
+    users::ActiveModel {
+        id: Set(1),
+        pid: Set(Uuid::parse_str(USER_PID).unwrap()),
+        email: Set("developer@bike.local".into()),
+        api_key: Set("existing-key".into()),
+        name: Set("Existing Rider".into()),
+        disabled: Set(false),
+        created_at: Set(now),
+        updated_at: Set(now),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+    db.execute_unprepared(include_str!("../fixtures/platform/read-models.sql"))
+        .await
+        .unwrap();
+    let user = bike_core::synthetics::ensure_scenario(&db).await.unwrap();
+    let state = Arc::new(AppStorage {
+        heatmaps: Arc::new(bike_core::heatmaps::service::HeatmapService::default()),
+        tasks: tasks::TaskQueue::new(db.clone()),
+        feature_flags: bike_core::platform::feature_flags::FeatureFlagService::new(),
+        session_service: tasks::create_session_service(db.clone()),
+        db: db.clone(),
+        uploads_dir: String::new(),
+        local_admin_user_pid: None,
+        synthetic_auth: Some(bike_core::synthetics::SyntheticAuth {
+            key: SYNTHETIC_KEY.into(),
+            user_pid: user.pid,
+        }),
+    });
+    (api::app(state).await, db, user)
+}
+
 async fn build_platform_app(local_admin: bool) -> Router {
-    static METRICS: Once = Once::new();
-    METRICS.call_once(api::metrics::init_metrics);
+    init_test_metrics();
     let db = platform_database().await;
     let user_pid = Uuid::parse_str(USER_PID).unwrap();
     let now = Utc::now();
@@ -59,6 +100,7 @@ async fn build_platform_app(local_admin: bool) -> Router {
         db,
         uploads_dir: String::new(),
         local_admin_user_pid: local_admin.then_some(user_pid),
+        synthetic_auth: None,
     });
     api::app(state).await
 }
@@ -86,6 +128,7 @@ async fn platform_database() -> DatabaseConnection {
         segment_efforts::Entity,
         segment_summaries::Entity,
         segment_user_summaries::Entity,
+        bike_core::entities::synthetic_scenarios::Entity,
     );
     // No worker or external provider runs against this isolated fixture.
     db.execute_raw(Statement::from_string(
@@ -95,4 +138,9 @@ async fn platform_database() -> DatabaseConnection {
     .await
     .unwrap();
     db
+}
+
+fn init_test_metrics() {
+    static METRICS: Once = Once::new();
+    METRICS.call_once(api::metrics::init_metrics);
 }

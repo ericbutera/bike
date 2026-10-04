@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { ACTIVITY_MAP_STYLE_REVISION } from "../../../../lib/activityMapImages";
-import { apiBaseUrls } from "../../../../lib/serverApi";
+import {
+  apiBaseUrls,
+  syntheticRequestHeaders,
+} from "../../../../lib/serverApi";
 import { headersWithTraceContext } from "../../../../lib/trace-context";
 
 export const runtime = "nodejs";
@@ -33,6 +36,8 @@ export async function GET(
 
   const cookie = request.headers.get("cookie");
   const authorization = request.headers.get("authorization");
+  const syntheticHeaders = syntheticRequestHeaders(request.headers);
+  if (syntheticHeaders === null) return imageError(403);
   let activityResponse: Response | null = null;
   for (const baseUrl of apiBaseUrls()) {
     try {
@@ -42,6 +47,7 @@ export async function GET(
             Accept: "application/json",
             ...(cookie ? { cookie } : {}),
             ...(authorization ? { authorization } : {}),
+            ...syntheticHeaders,
           },
           request.headers,
         ),

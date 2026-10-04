@@ -2,9 +2,9 @@ import { test, expect } from "@playwright/test";
 import { PNG } from "pngjs";
 import fs from "node:fs/promises";
 import {
-  activityId,
-  segmentId,
-  raceEffortIds,
+  activityId as defaultActivityId,
+  segmentId as defaultSegmentId,
+  raceEffortIds as defaultRaceEffortIds,
   targets,
 } from "./helpers/targets.mjs";
 import { openRoute } from "./helpers/ui.mjs";
@@ -15,23 +15,114 @@ const selectedTargets = process.env.PLAYWRIGHT_TARGET
 if (selectedTargets.length === 0) throw new Error("Unknown PLAYWRIGHT_TARGET");
 
 async function testAuthentication(page, target) {
+  const key = process.env.BIKE_SYNTHETIC_KEY;
   const file = process.env.BIKE_TEST_AUTH_FILE;
-  if (!file) return {};
-  const { token } = JSON.parse(await fs.readFile(file, "utf8"));
-  if (typeof token !== "string" || !token)
+  const token = file ? JSON.parse(await fs.readFile(file, "utf8")).token : null;
+  if (file && (typeof token !== "string" || !token))
     throw new Error("Missing test token");
-  const headers = { authorization: `Bearer ${token}` };
+  const headers = key
+    ? { "x-bike-synthetic-key": key }
+    : token
+      ? { authorization: `Bearer ${token}` }
+      : {};
+  const apiUrl = process.env.BIKE_API_URL;
+  const publicUrl = process.env.BIKE_PUBLIC_URL;
+  let ids = {
+    activityId: defaultActivityId,
+    segmentId: defaultSegmentId,
+    raceEffortIds: defaultRaceEffortIds,
+  };
+  if (key) {
+    if (!apiUrl || !publicUrl)
+      throw new Error(
+        "Synthetic checks require internal API and public origins",
+      );
+    const manifestResponse = await page.request.get(
+      `${apiUrl.replace(/\/$/, "")}/synthetics/scenario`,
+      { headers, maxRedirects: 0 },
+    );
+    expect(manifestResponse.status(), "internal scenario discovery").toBe(200);
+    const manifest = await manifestResponse.json();
+    expect(manifest.name).toBe("platform-smoke/v1");
+    expect(
+      Number.isSafeInteger(manifest.activity_id) && manifest.activity_id > 0,
+    ).toBe(true);
+    expect(
+      Number.isSafeInteger(manifest.segment_id) && manifest.segment_id > 0,
+    ).toBe(true);
+    expect(manifest.race_effort_ids).toHaveLength(2);
+    for (const id of manifest.race_effort_ids)
+      expect(Number.isSafeInteger(id) && id > 0).toBe(true);
+    expect(new Set(manifest.race_effort_ids).size).toBe(2);
+    ids = {
+      activityId: String(manifest.activity_id),
+      segmentId: String(manifest.segment_id),
+      raceEffortIds: manifest.race_effort_ids.join(","),
+    };
+    // Prove the credential is unusable through both public entrypoints.
+    for (const path of [
+      "/api/auth/current",
+      "/api/synthetics/scenario",
+      `/activity-map-images/thumbnail/1?activityId=${ids.activityId}&theme=light&dpr=1`,
+      `/activity-previews?activityId=${ids.activityId}`,
+    ]) {
+      const response = await page.request.get(
+        new URL(path, publicUrl).toString(),
+        { headers, maxRedirects: 0 },
+      );
+      expect(
+        [401, 403],
+        `synthetic credential rejected publicly at ${path}`,
+      ).toContain(response.status());
+    }
+  }
   const origins = new Set([
     new URL(target.url).origin,
     new URL(process.env.BIKE_API_URL ?? target.url).origin,
   ]);
   // Forward credentials only to the explicitly selected application origins.
   await page.route(
-    (url) => origins.has(url.origin),
-    (route) =>
-      route.continue({ headers: { ...route.request().headers(), ...headers } }),
+    (url) =>
+      origins.has(url.origin) ||
+      (key &&
+        url.origin === new URL(publicUrl).origin &&
+        url.pathname.startsWith("/api/")),
+    async (route) => {
+      const url = new URL(route.request().url());
+      const requestHeaders = { ...route.request().headers(), ...headers };
+      if (
+        key &&
+        url.origin === new URL(publicUrl).origin &&
+        url.pathname.startsWith("/api/")
+      ) {
+        const corsHeaders = {
+          "access-control-allow-origin": new URL(target.url).origin,
+          "access-control-allow-credentials": "true",
+          "access-control-allow-methods": "GET, OPTIONS",
+          "access-control-allow-headers":
+            "Authorization, Content-Type, X-Request-ID, Traceparent, Tracestate, Baggage, X-Bike-Synthetic-Key",
+        };
+        if (route.request().method() === "OPTIONS") {
+          await route.fulfill({ status: 204, headers: corsHeaders });
+          return;
+        }
+        // The deployed UI advertises its public API. Route that transport to the
+        // same production API internally, preserving real responses and SQL.
+        const response = await route.fetch({
+          url: `${apiUrl.replace(/\/$/, "")}${url.pathname.slice(4)}${url.search}`,
+          headers: requestHeaders,
+          maxRedirects: 0,
+        });
+        await route.fulfill({
+          response,
+          headers: { ...response.headers(), ...corsHeaders },
+        });
+      } else {
+        await route.continue({ headers: requestHeaders });
+      }
+    },
   );
-  return headers;
+  return { headers, ...ids };
 }
 
 async function fakeExternalBasemaps(page) {
@@ -85,7 +176,12 @@ for (const target of selectedTargets) {
     page,
   }) => {
     test.setTimeout(90_000);
-    const authHeaders = await testAuthentication(page, target);
+    const {
+      headers: authHeaders,
+      activityId,
+      segmentId,
+      raceEffortIds,
+    } = await testAuthentication(page, target);
     // External tiles are faked. Product APIs, SQL and the owned map renderer are real.
     await fakeExternalBasemaps(page);
     await openRoute(page, target);

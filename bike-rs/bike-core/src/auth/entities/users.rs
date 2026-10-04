@@ -5,6 +5,8 @@ use sea_orm::{Condition, DatabaseConnection, DbErr};
 use sea_orm::{IntoActiveModel, PaginatorTrait, QueryOrder, Set};
 use uuid::Uuid;
 
+pub const SYNTHETIC_PROVIDER: &str = "bike-synthetics";
+
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "users")]
 pub struct Model {
@@ -36,8 +38,12 @@ pub enum Relation {}
 impl ActiveModelBehavior for ActiveModel {}
 
 impl Model {
+    pub fn is_synthetic(&self) -> bool {
+        self.oauth_provider.as_deref() == Some(SYNTHETIC_PROVIDER)
+    }
+
     pub fn ensure_enabled(&self) -> Result<(), AuthError> {
-        if self.disabled {
+        if self.disabled || self.is_synthetic() {
             return Err(AuthError::forbidden("this account is disabled"));
         }
         Ok(())

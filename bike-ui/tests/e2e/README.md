@@ -26,26 +26,20 @@ For another prepared dataset, set `BIKE_TEST_ACTIVITY_ID`,
 the UI address, which defaults to `http://localhost:3001`. Browser tests do not
 start or stop the application.
 
-For a production smoke check, select an existing GPS activity and segment/effort IDs and
-provide a short-lived authenticated test token in a private JSON file containing
-`{"token":"<access-token>"}`:
+Production HTTP synthetics use [k6](../../../integration-tests/README.md).
+`mise run test:production` runs that suite. The browser journey remains a
+separate e2e check: `mise run test:production:browser` opens the same temporary
+production port forwards and discovers its dataset automatically. Install the
+browser with the setup task above first.
 
-```sh
-BIKE_UI_URL=https://bike.example.com \
-BIKE_API_URL=https://api.bike.example.com \
-BIKE_TEST_AUTH_FILE=/private/path/test-auth.json \
-BIKE_TEST_ACTIVITY_ID='<existing-gps-activity-id>' \
-BIKE_TEST_SEGMENT_ID='<existing-segment-id>' \
-BIKE_TEST_RACE_EFFORT_IDS='<effort-id>,<effort-id>' \
-  mise run test:production
-```
-
-This journey reads real application data and renders through the production map
-service. It does not load fixtures or edit production activities. Credentials
-are attached only to the selected Bike UI and API origins; external basemaps
-remain faked. Delete the private credential file after the run. Synthetic token
-authentication does not verify the identity provider or Strava login flow.
-Use the segment's initially selected efforts, which can contain up to three riders.
+For an internal browser run, set `BIKE_SYNTHETIC_KEY`, `BIKE_UI_URL`,
+`BIKE_API_URL` (including `/api`), and `BIKE_PUBLIC_URL`, then run the owning
+`test:e2e` task. The runner discovers the scenario's activity, segment, and
+effort IDs and verifies public credential rejection before navigating. It
+redirects the deployed UI's public API transport to the existing internal API;
+application responses, SQL, and owned rendering remain real. External basemaps
+remain fixtures. Synthetic runs disable credential-bearing traces and do not
+verify live identity-provider or Strava authorization.
 
 Other individual suites can run directly:
 

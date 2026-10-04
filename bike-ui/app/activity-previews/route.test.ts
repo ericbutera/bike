@@ -54,7 +54,9 @@ describe("handlePreviewRequest", () => {
       "ingress-request-7",
     );
     expect(response.headers.get("Content-Type")).toBe("image/svg+xml");
-    expect(response.headers.get("Vary")).toBe("Cookie");
+    expect(response.headers.get("Vary")).toBe(
+      "Cookie, Authorization, X-Bike-Synthetic-Key",
+    );
 
     const body = await response.text();
 
@@ -62,5 +64,19 @@ describe("handlePreviewRequest", () => {
     expect(body).toContain('transform="translate(');
     expect(body).not.toContain('fill-opacity="0.75"');
     expect(body).toContain('viewBox="0 0 1000 300"');
+  });
+
+  it("returns the API authentication rejection without rendering a fallback image", async () => {
+    vi.stubEnv("INTERNAL_API_URL", "http://api:3000/api");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 401 }));
+    const response = await handlePreviewRequest(
+      new Request("http://localhost/activity-previews?activityId=7"),
+    );
+    expect(response.status).toBe(401);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(await response.text()).toBe("");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

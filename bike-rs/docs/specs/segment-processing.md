@@ -164,12 +164,7 @@ Older activities uploaded before route-point persistence or before a parser fix 
 - Segment detail UI: `bike-ui/components/SegmentDetailPanel.tsx`
 - Segment builder UI: `bike-ui/components/SegmentBuilderWorkspace.tsx`
 
-## Open Gaps
+## Follow-up tracking
 
-- Poll and display full queued/running/succeeded/failed task state for segment processing.
-- Page worker-side candidate activity scans.
-- Query only required activity columns in all worker-side matching paths.
-- Consider a compact stored dedupe key for segment routes.
-- Add handler-level tests proving upload and builder paths enqueue matching instead of executing it inline.
-- Add worker tests for regeneration and analytics completion.
-- Add UI tests for queued/running/completed states.
+Follow-up status and priority live only in the [Bike TODO](../../../docs/TODO.md).
+This specification is the processing reference for DATA05, DATA16, and SEG01.

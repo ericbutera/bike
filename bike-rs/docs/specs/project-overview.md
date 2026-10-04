@@ -66,9 +66,6 @@ Segment correctness should favor transparent user-owned matching and personal co
 - Local tasks: `mise.toml` (`mise tasks`)
 - Compose dev environment: `compose.yaml`
 
-## Open Decisions
+## Potential product directions
 
-- Whether training plans become a first-class feature or remain outside the current product.
-- Whether official Garmin cloud sync is worth adding if API access is approved.
-- Whether power zones become first-class planning inputs when enough activities contain power data.
-- Whether future segment leaderboards should remain personal/user-owned or introduce explicit cross-user competition semantics.
+Training plans, official Garmin cloud sync, power-zone planning, and cross-user segment leaderboards are uncommitted product directions, not active work. If one is requested or becomes viable, record its scope once in the [Bike TODO](../../../docs/TODO.md) and use this overview for architecture context.

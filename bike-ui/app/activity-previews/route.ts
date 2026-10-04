@@ -5,6 +5,7 @@ import {
   ROUTE_PREVIEW_STYLE_VERSION,
 } from "../../lib/routePreview";
 import { getServerConfig } from "../../lib/config";
+import { syntheticRequestHeaders } from "../../lib/serverApi";
 import { headersWithTraceContext } from "../../lib/trace-context";
 
 export const runtime = "nodejs";
@@ -188,9 +189,11 @@ function buildPreviewSvg(
 async function loadActivityRoutePoints(
   request: Request,
   activityId: number,
-): Promise<RoutePreviewCoordinate[]> {
+): Promise<{ points: RoutePreviewCoordinate[]; denied?: number }> {
   const cookie = request.headers.get("cookie");
   const authorization = request.headers.get("authorization");
+  const syntheticHeaders = syntheticRequestHeaders(request.headers);
+  if (syntheticHeaders === null) return { points: [], denied: 403 };
 
   for (const apiBaseUrl of resolveActivityApiBaseUrls()) {
     try {
@@ -200,41 +203,44 @@ async function loadActivityRoutePoints(
             Accept: "application/json",
             ...(cookie ? { cookie } : {}),
             ...(authorization ? { authorization } : {}),
+            ...syntheticHeaders,
           },
           request.headers,
         ),
         cache: "no-store",
       });
 
-      if (!response.ok) {
-        continue;
-      }
+      if ([401, 403].includes(response.status))
+        return { points: [], denied: response.status };
+      if (!response.ok) continue;
 
       const payload = (await response.json()) as {
         route_points?: Array<Partial<RoutePreviewCoordinate>> | null;
       };
 
-      return (payload.route_points ?? []).flatMap((point) => {
-        if (
-          !Number.isFinite(point.latitude) ||
-          !Number.isFinite(point.longitude)
-        ) {
-          return [];
-        }
+      return {
+        points: (payload.route_points ?? []).flatMap((point) => {
+          if (
+            !Number.isFinite(point.latitude) ||
+            !Number.isFinite(point.longitude)
+          ) {
+            return [];
+          }
 
-        return [
-          {
-            latitude: Number(point.latitude),
-            longitude: Number(point.longitude),
-          },
-        ];
-      });
+          return [
+            {
+              latitude: Number(point.latitude),
+              longitude: Number(point.longitude),
+            },
+          ];
+        }),
+      };
     } catch {
       continue;
     }
   }
 
-  return [];
+  return { points: [] };
 }
 
 export async function handlePreviewRequest(
@@ -248,10 +254,18 @@ export async function handlePreviewRequest(
   const requestedActivityId = Number(searchParams.get("activityId"));
   const usesActivityGeometry =
     Number.isFinite(requestedActivityId) && requestedActivityId > 0;
-  const routePoints = usesActivityGeometry
+  const loaded = usesActivityGeometry
     ? await loadActivityRoutePoints(request, requestedActivityId)
-    : parseRoutePreviewCoordinates(searchParams.get("points"));
-  const svg = buildPreviewSvg(routePoints, variant);
+    : {
+        points: parseRoutePreviewCoordinates(searchParams.get("points")),
+        denied: undefined,
+      };
+  if (loaded.denied)
+    return new Response(null, {
+      status: loaded.denied,
+      headers: { "Cache-Control": "no-store" },
+    });
+  const svg = buildPreviewSvg(loaded.points, variant);
 
   const headers = new Headers({
     "Content-Type": "image/svg+xml",
@@ -261,7 +275,7 @@ export async function handlePreviewRequest(
   });
 
   if (usesActivityGeometry) {
-    headers.set("Vary", "Cookie");
+    headers.set("Vary", "Cookie, Authorization, X-Bike-Synthetic-Key");
   }
 
   if (requestedVersion !== ROUTE_PREVIEW_STYLE_VERSION) {

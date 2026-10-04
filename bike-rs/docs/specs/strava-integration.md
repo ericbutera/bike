@@ -204,21 +204,6 @@ Integration events remain the user/admin audit trail. OpenTelemetry and metrics 
 - Bike Grafana dashboard: `../../../pulumi-iac/bike/bike-grafana-dashboard.yaml`
 - Grafana Loki/Tempo datasource provisioning: [infrastructure repository](https://github.com/ericbutera/pulumi-iac)
 
-## Implementation and verification status
+## Verification reference
 
-Use [the backlog](../../../docs/TODO.md) for current status. Gateway quota/provider and
-checkpoint/lease verification is recorded as STRAVA01–08; public metrics
-isolation is STRAVA14. These completed items do not require duplicate Rust tests
-or a second checkpoint table.
-
-Today's provider checks are STRAVA16 and STRAVA11: verify exchange/refresh and
-sync through provider seams with supported response fixtures, then verify a
-derived real-ride artifact and list/detail independently. Prefer fakes and the
-existing Playwright harness; a full live SSO/provider chain is not required. The wider lifecycle,
-outage/replay, and rollback scenarios are deferred as STRAVA09, STRAVA10, and
-STRAVA13. Provider-alert follow-up is STRAVA15; large-batch and archive-limit
-work is LATER08/LATER06. Local database/file recovery belongs to REC08/REC09.
-
-Run the existing owning tests when changing provider behavior; add a regression
-for a demonstrated gap. The historical concurrency, pause/disconnect, and
-resume matrices are not extra acceptance gates for today's work.
+Current and deferred status is maintained only in the [Bike TODO](../../../docs/TODO.md). Use provider fakes and the existing Playwright harness for the owning behavior; a full live SSO/provider chain is not required. When provider behavior changes, run the existing owning tests and add a regression for a demonstrated gap. Historical concurrency, pause/disconnect, and resume matrices are not extra acceptance gates.
