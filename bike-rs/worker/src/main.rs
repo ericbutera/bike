@@ -38,6 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         "Current number of pending background tasks ready to be claimed."
     )?;
     spawn_queue_depth_sampler(db.clone(), queue_depth);
+    worker::tasks::spawn_heatmap_reconciliation(db.clone());
     let task_types = worker.registered_task_types();
     let task_type_refs: Vec<&str> = task_types.iter().map(String::as_str).collect();
     metrics.warmup_task_types(&task_type_refs);

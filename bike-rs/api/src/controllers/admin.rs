@@ -1306,6 +1306,7 @@ mod tests {
     #[tokio::test]
     async fn empty_segment_backfill_enqueues_no_tasks() {
         let state = Arc::new(AppStorage {
+            heatmaps: Arc::new(bike_core::heatmaps::service::HeatmapService::default()),
             db: sea_orm::Database::connect("sqlite::memory:")
                 .await
                 .expect("in-memory db"),

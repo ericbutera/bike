@@ -32,6 +32,7 @@ pub async fn register_default_processors(
         Arc::new(ReprocessUserActivityImports::archive_fits_only(db.clone()));
     let regenerate_user_segments = Arc::new(RegenerateUserSegments::new(db.clone()));
     let activity_archive_import = Arc::new(ActivityArchiveImport::new(db.clone()));
+    let prepare_heatmap = Arc::new(PrepareHeatmap::new(db.clone()));
     let strava_sync = Arc::new(StravaSync::new(db));
     let recover_manual_imports = Arc::new(RecoverManualActivityImportsOnStartup);
 
@@ -47,5 +48,6 @@ pub async fn register_default_processors(
         .register_processor(reprocess_archive_fit_activity_imports)
         .register_processor(regenerate_user_segments)
         .register_processor(activity_archive_import)
-        .register_processor(strava_sync))
+        .register_processor(strava_sync)
+        .register_processor(prepare_heatmap))
 }

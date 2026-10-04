@@ -19,6 +19,7 @@ pub mod dedupe;
 pub mod entities;
 pub mod errors;
 pub mod fit_support;
+pub mod heatmaps;
 pub mod integration_events_service;
 pub mod jobs;
 pub mod observability;

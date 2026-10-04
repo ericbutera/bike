@@ -5,6 +5,7 @@ import Navigation from "../Navigation";
 const mocks = vi.hoisted(() => ({
   logoutAsync: vi.fn(),
   useCurrentUser: vi.fn(),
+  heatmaps: false,
 }));
 
 vi.mock("../../lib/auth", () => ({
@@ -29,9 +30,15 @@ vi.mock("../ThemeToggle", () => ({
   default: () => <button type="button">Theme</button>,
 }));
 
+vi.mock("../../lib/featureFlags", () => ({
+  FLAG_HEATMAPS: "heatmaps",
+  useFeatureFlag: () => mocks.heatmaps,
+}));
+
 describe("Navigation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.heatmaps = false;
     mocks.useCurrentUser.mockReturnValue({
       user: { id: 1, email: "rider@example.com", is_admin: true },
       isLoading: false,
@@ -91,6 +98,19 @@ describe("Navigation", () => {
     expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
       "href",
       "/login",
+    );
+  });
+
+  it("shows Maps only when heatmaps are enabled", () => {
+    const view = render(<Navigation />);
+    expect(
+      screen.queryByRole("link", { name: "Maps" }),
+    ).not.toBeInTheDocument();
+    mocks.heatmaps = true;
+    view.rerender(<Navigation />);
+    expect(screen.getByRole("link", { name: "Maps" })).toHaveAttribute(
+      "href",
+      "/maps",
     );
   });
 });

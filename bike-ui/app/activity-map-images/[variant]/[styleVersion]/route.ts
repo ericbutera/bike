@@ -1,21 +1,9 @@
 import { createHash } from "node:crypto";
 import { ACTIVITY_MAP_STYLE_REVISION } from "../../../../lib/activityMapImages";
-import { getServerConfig } from "../../../../lib/config";
+import { apiBaseUrls } from "../../../../lib/serverApi";
 import { headersWithTraceContext } from "../../../../lib/trace-context";
 
 export const runtime = "nodejs";
-
-function apiBaseUrls() {
-  const configured = process.env.INTERNAL_API_URL?.trim();
-  if (configured) return [configured.replace(/\/$/, "")];
-  const url = new URL(getServerConfig().API_URL);
-  if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
-    const publicUrl = url.toString().replace(/\/$/, "");
-    url.hostname = "api";
-    return [url.toString().replace(/\/$/, ""), publicUrl];
-  }
-  return [url.toString().replace(/\/$/, "")];
-}
 
 function imageError(status: number) {
   return new Response(null, {

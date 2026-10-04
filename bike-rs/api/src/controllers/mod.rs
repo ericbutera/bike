@@ -3,6 +3,7 @@ pub mod activities;
 pub mod activity_imports;
 pub mod admin;
 pub mod fitness;
+pub mod heatmaps;
 pub mod integration_events;
 pub mod reports;
 pub mod segments;
@@ -38,6 +39,9 @@ pub fn routes() -> Router<Arc<AppStorage>> {
         .merge(preference_routes())
         .merge(integration_routes())
         .merge(strava_gateway::routes())
+        .route("/api/maps/heatmap", get(heatmaps::metadata))
+        .route("/api/maps/heatmap/zones", get(heatmaps::zones))
+        .route("/api/maps/heatmap/tiles/:z/:x/:y", get(heatmaps::tile))
         .route("/api/health", get(health))
         .route("/", get(root))
 }

@@ -1893,6 +1893,226 @@ paths:
                 $ref: '#/components/schemas/ApiErrorResponse'
       security:
       - bearer_auth: []
+  /maps/heatmap:
+    get:
+      tags:
+      - maps
+      operationId: metadata
+      parameters:
+      - name: sport
+        in: query
+        required: false
+        schema:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ActivitySport'
+      - name: from
+        in: query
+        description: Activity start, inclusive, as an RFC3339 instant.
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+          format: date-time
+      - name: to
+        in: query
+        description: Activity start, exclusive, as an RFC3339 instant.
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+          format: date-time
+      - name: revision
+        in: query
+        description: Required on tile and zone requests; use the revision returned by metadata.
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      responses:
+        '200':
+          description: Private heatmap filters, bounds and preparation progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HeatmapMetadata'
+        '400':
+          description: Invalid filters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '401':
+          description: Not authenticated
+        '404':
+          description: Heatmaps disabled
+      security:
+      - bearer_auth: []
+  /maps/heatmap/tiles/{z}/{x}/{y}.png:
+    get:
+      tags:
+      - maps
+      operationId: tile
+      parameters:
+      - name: sport
+        in: query
+        required: false
+        schema:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ActivitySport'
+      - name: from
+        in: query
+        description: Activity start, inclusive, as an RFC3339 instant.
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+          format: date-time
+      - name: to
+        in: query
+        description: Activity start, exclusive, as an RFC3339 instant.
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+          format: date-time
+      - name: revision
+        in: query
+        description: Required on tile and zone requests; use the revision returned by metadata.
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: z
+        in: path
+        description: Zoom 0 through 18
+        required: true
+        schema:
+          type: integer
+          format: int32
+          minimum: 0
+      - name: x
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int32
+          minimum: 0
+      - name: y
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int32
+          minimum: 0
+      responses:
+        '200':
+          description: Transparent private 512-pixel heatmap PNG
+          content:
+            image/png:
+              schema:
+                type: array
+                items:
+                  type: integer
+                  format: int32
+                  minimum: 0
+        '304':
+          description: Authorized tile unchanged
+        '400':
+          description: Invalid filters or tile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '401':
+          description: Not authenticated
+        '404':
+          description: Heatmaps disabled
+        '409':
+          description: Refresh metadata revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '503':
+          description: Render deadline exceeded; retry shortly
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
+  /maps/heatmap/zones:
+    get:
+      tags:
+      - maps
+      operationId: zones
+      parameters:
+      - name: sport
+        in: query
+        required: false
+        schema:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ActivitySport'
+      - name: from
+        in: query
+        description: Activity start, inclusive, as an RFC3339 instant.
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+          format: date-time
+      - name: to
+        in: query
+        description: Activity start, exclusive, as an RFC3339 instant.
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+          format: date-time
+      - name: revision
+        in: query
+        description: Required on tile and zone requests; use the revision returned by metadata.
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      responses:
+        '200':
+          description: Private route centers for zoomed-out heatmap zones
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HeatmapZones'
+        '400':
+          description: Invalid filters or missing revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '401':
+          description: Not authenticated
+        '404':
+          description: Heatmaps disabled
+        '409':
+          description: Refresh metadata revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
   /oauth/providers:
     get:
       tags:
@@ -5264,6 +5484,109 @@ components:
           example: ok
       example:
         status: ok
+    HeatmapMetadata:
+      type: object
+      required:
+      - revision
+      - filters
+      - ready
+      - pending
+      - failed
+      - skipped
+      - preparing
+      - tile_size
+      - min_zoom
+      - max_zoom
+      - style_version
+      properties:
+        bounds:
+          type:
+          - array
+          - 'null'
+          items:
+            type: number
+            format: double
+          description: '[west, south, east, north] for ready routes, or null when there are none.'
+        failed:
+          type: integer
+          format: int64
+        filters:
+          $ref: '#/components/schemas/HeatmapQuery'
+        max_zoom:
+          type: integer
+          format: int32
+          minimum: 0
+        min_zoom:
+          type: integer
+          format: int32
+          minimum: 0
+        pending:
+          type: integer
+          format: int64
+        preparing:
+          type: boolean
+        ready:
+          type: integer
+          format: int64
+        revision:
+          type: string
+        skipped:
+          type: integer
+          format: int64
+        style_version:
+          type: string
+        tile_size:
+          type: integer
+          format: int32
+          minimum: 0
+    HeatmapQuery:
+      type: object
+      properties:
+        from:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Activity start, inclusive, as an RFC3339 instant.
+        revision:
+          type:
+          - string
+          - 'null'
+          description: Required on tile and zone requests; use the revision returned by metadata.
+        sport:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ActivitySport'
+        to:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Activity start, exclusive, as an RFC3339 instant.
+    HeatmapZonePoint:
+      type: object
+      required:
+      - longitude
+      - latitude
+      properties:
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+    HeatmapZones:
+      type: object
+      required:
+      - revision
+      - zones
+      properties:
+        revision:
+          type: string
+        zones:
+          type: array
+          items:
+            $ref: '#/components/schemas/HeatmapZonePoint'
     HourlyDurabilityResponse:
       type: object
       required:

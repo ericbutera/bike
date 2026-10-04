@@ -26,7 +26,12 @@ end
 def normalized(path)
   path = "/#{path}" unless path.start_with?("/")
   path.gsub(%r{/+}, "/").gsub(/:([a-z_]+)(?=\/|$)/, '{\1}')
-      .gsub(/\{(\w+):[^}]+\}/, '{\1}').sub(%r{/$}, "").then { |value| value.empty? ? "/" : value }
+      .gsub(/\{(\w+):[^}]+\}/, '{\1}').sub(%r{/$}, "").then do |value|
+        # Axum captures the whole filename; the heatmap controller validates
+        # and strips .png before interpreting the numeric tile coordinate.
+        value += ".png" if value == "/api/maps/heatmap/tiles/{z}/{x}/{y}"
+        value.empty? ? "/" : value
+      end
 end
 
 # Route expressions contain nested method/layer calls; a non-greedy regex

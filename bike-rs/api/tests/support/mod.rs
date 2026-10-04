@@ -52,6 +52,7 @@ async fn build_platform_app(local_admin: bool) -> Router {
         .await
         .unwrap();
     let state = Arc::new(AppStorage {
+        heatmaps: Arc::new(bike_core::heatmaps::service::HeatmapService::default()),
         tasks: tasks::TaskQueue::new(db.clone()),
         feature_flags: bike_core::platform::feature_flags::FeatureFlagService::new(),
         session_service: tasks::create_session_service(db.clone()),

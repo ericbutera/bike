@@ -4,6 +4,7 @@ use crate::controllers::activities;
 use crate::controllers::activity_imports;
 use crate::controllers::admin;
 use crate::controllers::fitness;
+use crate::controllers::heatmaps;
 use crate::controllers::integration_events;
 use crate::controllers::reports;
 use crate::controllers::segments;
@@ -49,6 +50,9 @@ use utoipa::OpenApi;
         activities::regenerate_activity,
         activities::download_activity_source_file,
         fitness::get_fitness_freshness,
+        heatmaps::metadata,
+        heatmaps::zones,
+        heatmaps::tile,
         training_goals::get_xc_goal_progress,
         training_goals::get_dh_goal_progress,
         reports::get_training_report_definitions,
@@ -119,6 +123,10 @@ use utoipa::OpenApi;
             activities::UpdateActivityRequest,
             fitness::FitnessFreshnessPoint,
             fitness::FitnessFreshnessResponse,
+            bike_core::heatmaps::types::HeatmapMetadata,
+            bike_core::heatmaps::types::HeatmapZonePoint,
+            bike_core::heatmaps::types::HeatmapZones,
+            bike_core::heatmaps::types::HeatmapQuery,
             bike_core::services::reports::ReportBoundary,
             bike_core::services::reports::ReportFilterKey,
             bike_core::services::reports::ReportId,

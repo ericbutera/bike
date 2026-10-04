@@ -48,6 +48,8 @@ mod m20260929_000001_strava_gateway_receipts;
 mod m20260929_000002_strava_gateway_revocations;
 mod m20260929_000003_strava_gateway_binding_leases;
 mod m20261001_000001_create_oauth_states;
+mod m20261003_000001_heatmaps_feature_flag;
+mod m20261003_000002_heatmap_projections;
 
 pub struct Migrator;
 
@@ -101,6 +103,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260929_000002_strava_gateway_revocations::Migration),
             Box::new(m20260929_000003_strava_gateway_binding_leases::Migration),
             Box::new(m20261001_000001_create_oauth_states::Migration),
+            Box::new(m20261003_000001_heatmaps_feature_flag::Migration),
+            Box::new(m20261003_000002_heatmap_projections::Migration),
         ];
         locals.sort_by_key(|m| m.name().to_string());
 

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { authApiClient, useAuth } from "../lib/auth";
 import ThemeToggle from "./ThemeToggle";
+import { FLAG_HEATMAPS, useFeatureFlag } from "../lib/featureFlags";
 
 const NAV_MENU_ID = "bike-nav-menu";
 const TRAINING_MENU_ID = "bike-nav-training-menu";
@@ -39,6 +40,7 @@ export default function Navigation() {
   const { user, isLoading } = useAuth();
   const logout = authApiClient.useLogout();
   const isAuthenticated = Boolean(user);
+  const heatmaps = useFeatureFlag(FLAG_HEATMAPS);
 
   return (
     <div className="navbar bg-base-100 shadow-sm">
@@ -52,6 +54,12 @@ export default function Navigation() {
               <Link href="/" className="btn btn-ghost btn-sm">
                 Activities
               </Link>
+
+              {heatmaps && (
+                <Link href="/maps" className="btn btn-ghost btn-sm">
+                  Maps
+                </Link>
+              )}
 
               <button
                 type="button"

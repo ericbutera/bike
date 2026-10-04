@@ -18,6 +18,7 @@ pub struct QueuedJobReference {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum Job {
+    PrepareHeatmap(PrepareHeatmapTask),
     EmailNotification(EmailNotificationTask),
     RebuildFitnessFreshness(RebuildFitnessFreshnessTask),
     RebuildSegmentAnalytics(RebuildSegmentAnalyticsTask),
@@ -35,6 +36,12 @@ pub enum Job {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RebuildFitnessFreshnessTask {
     pub user_id: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrepareHeatmapTask {
+    pub activity_id: i32,
+    pub generation: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,6 +100,7 @@ pub struct StravaSyncTask {
 impl Job {
     pub fn task_type(&self) -> &'static str {
         match self {
+            Job::PrepareHeatmap(_) => "prepare_heatmap",
             Job::EmailNotification(_) => EMAIL_NOTIFICATION_TASK_TYPE,
             Job::RebuildFitnessFreshness(_) => "rebuild_fitness_freshness",
             Job::RebuildSegmentAnalytics(_) => "rebuild_segment_analytics",

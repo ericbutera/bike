@@ -154,6 +154,21 @@
       },
       {
         "method": "GET",
+        "path": "/api/maps/heatmap",
+        "source": "bike-rs/api/src/controllers/mod.rs#heatmaps::metadata"
+      },
+      {
+        "method": "GET",
+        "path": "/api/maps/heatmap/tiles/{z}/{x}/{y}.png",
+        "source": "bike-rs/api/src/controllers/mod.rs#heatmaps::tile"
+      },
+      {
+        "method": "GET",
+        "path": "/api/maps/heatmap/zones",
+        "source": "bike-rs/api/src/controllers/mod.rs#heatmaps::zones"
+      },
+      {
+        "method": "GET",
         "path": "/api/oauth/providers",
         "source": "bike-rs/bike-core/src/auth/controllers/oauth.rs#oauth_providers"
       },

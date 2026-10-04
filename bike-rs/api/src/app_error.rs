@@ -122,7 +122,13 @@ impl IntoResponse for AppError {
             retry_at: self.retry_at,
         };
 
-        (self.status, Json(body)).into_response()
+        let mut response = (self.status, Json(body)).into_response();
+        if self.status == StatusCode::SERVICE_UNAVAILABLE {
+            response
+                .headers_mut()
+                .insert(axum::http::header::RETRY_AFTER, "2".parse().unwrap());
+        }
+        response
     }
 }
 
@@ -130,6 +136,25 @@ impl From<sea_orm::DbErr> for AppError {
     fn from(error: sea_orm::DbErr) -> Self {
         tracing::error!(error = ?error, "database request failed");
         Self::internal("Database request failed")
+    }
+}
+
+impl From<bike_core::heatmaps::types::HeatmapError> for AppError {
+    fn from(error: bike_core::heatmaps::types::HeatmapError) -> Self {
+        use bike_core::heatmaps::types::HeatmapError;
+        match error {
+            HeatmapError::Disabled => Self::not_found(error.to_string()),
+            HeatmapError::Invalid(message) => Self::bad_request(message),
+            HeatmapError::Stale => Self::conflict(error.to_string()),
+            HeatmapError::Busy => Self {
+                status: StatusCode::SERVICE_UNAVAILABLE,
+                message: error.to_string(),
+                errors: None,
+                retry_at: Some(Utc::now() + chrono::Duration::seconds(2)),
+            },
+            HeatmapError::Database(error) => error.into(),
+            HeatmapError::Render => Self::internal(error.to_string()),
+        }
     }
 }
 

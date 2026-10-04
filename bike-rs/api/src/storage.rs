@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct AppStorage {
+    pub heatmaps: std::sync::Arc<bike_core::heatmaps::service::HeatmapService>,
     pub db: DatabaseConnection,
     pub tasks: TaskQueue,
     pub feature_flags: FeatureFlagService,
@@ -44,6 +45,7 @@ impl AppStorage {
         std::fs::create_dir_all(&uploads_dir).expect("Failed to create uploads directory");
 
         Self {
+            heatmaps: std::sync::Arc::new(bike_core::heatmaps::service::HeatmapService::default()),
             db,
             tasks,
             feature_flags,

@@ -667,6 +667,54 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/maps/heatmap": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["metadata"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/maps/heatmap/tiles/{z}/{x}/{y}.png": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["tile"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/maps/heatmap/zones": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["zones"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/oauth/providers": {
     parameters: {
       query?: never;
@@ -2599,6 +2647,53 @@ export interface components {
     HealthResponse: {
       /** @example ok */
       status: string;
+    };
+    HeatmapMetadata: {
+      /** @description [west, south, east, north] for ready routes, or null when there are none. */
+      bounds?: number[] | null;
+      /** Format: int64 */
+      failed: number;
+      filters: components["schemas"]["HeatmapQuery"];
+      /** Format: int32 */
+      max_zoom: number;
+      /** Format: int32 */
+      min_zoom: number;
+      /** Format: int64 */
+      pending: number;
+      preparing: boolean;
+      /** Format: int64 */
+      ready: number;
+      revision: string;
+      /** Format: int64 */
+      skipped: number;
+      style_version: string;
+      /** Format: int32 */
+      tile_size: number;
+    };
+    HeatmapQuery: {
+      /**
+       * Format: date-time
+       * @description Activity start, inclusive, as an RFC3339 instant.
+       */
+      from?: string | null;
+      /** @description Required on tile and zone requests; use the revision returned by metadata. */
+      revision?: string | null;
+      sport?: null | components["schemas"]["ActivitySport"];
+      /**
+       * Format: date-time
+       * @description Activity start, exclusive, as an RFC3339 instant.
+       */
+      to?: string | null;
+    };
+    HeatmapZonePoint: {
+      /** Format: double */
+      latitude: number;
+      /** Format: double */
+      longitude: number;
+    };
+    HeatmapZones: {
+      revision: string;
+      zones: components["schemas"]["HeatmapZonePoint"][];
     };
     HourlyDurabilityResponse: {
       /** Format: double */
@@ -7407,6 +7502,198 @@ export interface operations {
       };
       /** @description Internal server error */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+    };
+  };
+  metadata: {
+    parameters: {
+      query?: {
+        sport?: null | components["schemas"]["ActivitySport"];
+        /** @description Activity start, inclusive, as an RFC3339 instant. */
+        from?: string | null;
+        /** @description Activity start, exclusive, as an RFC3339 instant. */
+        to?: string | null;
+        /** @description Required on tile and zone requests; use the revision returned by metadata. */
+        revision?: string | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Private heatmap filters, bounds and preparation progress */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HeatmapMetadata"];
+        };
+      };
+      /** @description Invalid filters */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+      /** @description Not authenticated */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Heatmaps disabled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  tile: {
+    parameters: {
+      query?: {
+        sport?: null | components["schemas"]["ActivitySport"];
+        /** @description Activity start, inclusive, as an RFC3339 instant. */
+        from?: string | null;
+        /** @description Activity start, exclusive, as an RFC3339 instant. */
+        to?: string | null;
+        /** @description Required on tile and zone requests; use the revision returned by metadata. */
+        revision?: string | null;
+      };
+      header?: never;
+      path: {
+        /** @description Zoom 0 through 18 */
+        z: number;
+        x: number;
+        y: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Transparent private 512-pixel heatmap PNG */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "image/png": number[];
+        };
+      };
+      /** @description Authorized tile unchanged */
+      304: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid filters or tile */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+      /** @description Not authenticated */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Heatmaps disabled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Refresh metadata revision */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+      /** @description Render deadline exceeded; retry shortly */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+    };
+  };
+  zones: {
+    parameters: {
+      query?: {
+        sport?: null | components["schemas"]["ActivitySport"];
+        /** @description Activity start, inclusive, as an RFC3339 instant. */
+        from?: string | null;
+        /** @description Activity start, exclusive, as an RFC3339 instant. */
+        to?: string | null;
+        /** @description Required on tile and zone requests; use the revision returned by metadata. */
+        revision?: string | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Private route centers for zoomed-out heatmap zones */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HeatmapZones"];
+        };
+      };
+      /** @description Invalid filters or missing revision */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+      /** @description Not authenticated */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Heatmaps disabled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Refresh metadata revision */
+      409: {
         headers: {
           [name: string]: unknown;
         };
