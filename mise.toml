@@ -1,102 +1,75 @@
 [tools]
 node = "25.2.1"
-pnpm = "10.30.1"
+ruby = "3.4.11"
+go = "1.25.1"
 prek = "0.4.12"
-rust = "1.97.1"
+protoc = "36.2"
 "npm:prettier" = "3.7.4"
 
-[tasks."hooks:install"]
-description = "Install prek Git hooks for this repository"
-run = "prek install -f"
+[tasks."compose:config"]
+description = "Validate the shared Bike services Compose stack"
+run = "COMPOSE_PROJECT_NAME=bike docker compose config"
 
-[tasks."format:staged"]
-description = "Run prek on staged files"
-run = "prek run"
+[tasks."compose:up"]
+description = "Start Bike Rust, the shared UI, PostgreSQL, and map renderer"
+run = "COMPOSE_PROJECT_NAME=bike docker compose up -d --build"
 
-[tasks."ui-next:deps"]
-description = "Install ui-next dependencies"
-dir = "ui-next"
-run = "pnpm install"
+[tasks."compose:down"]
+description = "Stop the shared Bike services Compose stack"
+run = "COMPOSE_PROJECT_NAME=bike docker compose down"
 
-[tasks."ui-next:dev"]
-description = "Start the bike Next frontend"
-depends = ["ui-next:deps"]
-dir = "ui-next"
-run = "pnpm run dev"
+[tasks."rust:check"]
+description = "Run Rust backend formatting, lint, and tests"
+run = ["mise --cd bike-rs run fmt:check", "mise --cd bike-rs run lint", "mise --cd bike-rs run test"]
 
-[tasks."ui-next:typecheck"]
-description = "Typecheck the bike Next frontend"
-dir = "ui-next"
-run = "pnpm typecheck"
-
-[tasks."api:dev"]
-description = "Start the bike API"
-run = "cargo run --bin api"
-
-[tasks."api:build"]
-description = "Build the bike API"
-run = "cargo build --release --bin api"
-
-[tasks."worker:dev"]
-description = "Start the bike worker"
-run = "cargo run --bin worker"
-
-[tasks."kaleido:status"]
-description = "Show the Rust and UI Kaleido versions used by Bike"
-run = '''
-echo "Rust Kaleido:"
-cargo tree -i kaleido --depth 0
-echo
-echo "UI Kaleido:"
-pnpm --dir ui-next exec node -p "require('./package.json').dependencies['@ericbutera/kaleido']"
-'''
-
-[tasks."kaleido:update"]
-description = "Update Rust and UI Kaleido packages; run as VERSION=x.y.z mise run kaleido:update"
-run = '''
-VERSION="${VERSION:?Set VERSION=x.y.z}"
-export VERSION
-perl -0pi -e 's/^kaleido = "[^"]+"/kaleido = "$ENV{VERSION}"/m' Cargo.toml
-cargo update -p kaleido --precise "$VERSION"
-pnpm --dir ui-next up "@ericbutera/kaleido@$VERSION"
-pnpm --dir ui-next typecheck
-'''
-
-[tasks."migration:up"]
-description = "Run bike database migrations"
-dir = "migration"
-run = "cargo run -- up"
-
-[tasks.test]
-description = "Run bike Rust tests"
-run = "cargo test"
-
-[tasks.fmt]
-description = "Format the Rust workspace"
-run = "cargo fmt --all"
-
-[tasks."fmt:check"]
-description = "Check Rust formatting without writing changes"
-run = "cargo fmt --all --check"
+[tasks."ui:check"]
+description = "Run shared UI type, test, build, and format checks"
+run = ["mise --cd bike-ui run lint", "mise --cd bike-ui run typecheck", "mise --cd bike-ui run test", "mise --cd bike-ui run build", "mise --cd bike-ui run format:check", "mise --cd bike-ui run openapi:check"]
 
 [tasks.lint]
-description = "Run Rust Clippy checks"
-run = "cargo clippy --workspace --all-targets --all-features -- -D warnings"
+description = "Run Rust, UI, and gateway linters and renderer formatting"
+run = ["mise --cd bike-rs run fmt:check", "mise --cd bike-rs run lint", "mise --cd bike-ui run lint"]
 
-[tasks."openapi:react-query"]
-description = "Generate OpenAPI TypeScript definitions from a running API"
+[tasks."hooks:install"]
+description = "Install the repository-root prek pre-commit hook"
+run = "prek install -f"
+
+[tasks."hooks:check"]
+description = "Run every pre-commit check against tracked files"
+run = "prek run --all-files"
+
+[tasks."format:staged"]
+description = "Run prek checks for staged files"
+run = "prek run"
+
+[tasks.check]
+description = "Run Rust, shared UI, service, and contract checks"
+run = ["mise run rust:check", "mise run ui:check", "mise run contracts:check"]
+
+[tasks."assets:sync"]
+description = "Synchronize intentional build-context mirrors from their canonical owners"
+run = "node scripts/sync-shared-assets.mjs"
+
+[tasks."contracts:check"]
+description = "Check Rust HTTP contracts, asset copies, UI inventory, and routes"
+run = ["ruby scripts/check-contracts.rb", "ruby scripts/audit-api-routes.rb"]
+
+[tasks."audit:api:write"]
+description = "Refresh the reviewed Rust source-route inventory"
+run = "ruby scripts/audit-api-routes.rb --write"
+
+[tasks."test:integration"]
+description = "Run native Rust API integration tests"
+run = "mise --cd bike-rs run test:integration"
+
+[tasks."test:production"]
+description = "Run the read-only production activity, segment, and race journey"
 run = '''
-echo "Waiting for API to be ready..."
-OPENAPI_URL="${OPENAPI_URL:-http://localhost:3000/openapi.json}"
-for _ in {1..30}; do
-  status=$(curl -s -o /tmp/openapi.json -w "%{http_code}" "$OPENAPI_URL" || echo "000")
-  if [ "$status" = "200" ]; then
-    if node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('/tmp/openapi.json','utf8')); if(!j.openapi) process.exit(2);" >/dev/null 2>&1; then
-      break
-    fi
-  fi
-  sleep 2
-done
-npx openapi-typescript /tmp/openapi.json --output ui-next/lib/openapi/react-query/api.d.ts
-rm -f /tmp/openapi.json
+: "${BIKE_TEST_AUTH_FILE:?Provide a private short-lived test token file}"
+: "${BIKE_UI_URL:?Provide the deployed Bike UI origin}"
+: "${BIKE_API_URL:?Provide the deployed Bike API origin}"
+: "${BIKE_TEST_ACTIVITY_ID:?Select an existing activity with GPS}"
+: "${BIKE_TEST_SEGMENT_ID:?Select an existing segment}"
+: "${BIKE_TEST_RACE_EFFORT_IDS:?Select existing race effort IDs}"
+mise --cd bike-ui run test:e2e
 '''

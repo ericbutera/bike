@@ -1,0 +1,5 @@
+fixtures/source.ndjson.gz*
+fixtures/*.sql.gz
+fixtures/private-cases.json
+results/
+probe/target/

@@ -1,0 +1,40 @@
+[tools]
+node = "25.2.1"
+rust = "1.93.0"
+"npm:prettier" = "3.7.4"
+
+[tasks."fixtures:prepare"]
+description = "Read the Rust ride snapshot and create isolated 1x/3x SQL fixtures"
+run = "node prepare-fixtures.mjs"
+
+[tasks."fixtures:verify"]
+description = "Verify compressed fixture hashes and relational counts after preparation"
+run = "node prepare-fixtures.mjs --verify"
+
+[tasks."format:check"]
+run = "prettier *.md *.mjs *.json compose.yaml experiments/*.json reports/*.md reports/*.json --check"
+
+[tasks."fixtures:restore-check"]
+description = "Restore/verify both dumps in the network-isolated fixture-check container"
+run = "node verify-restores.mjs"
+
+[tasks.experiment]
+description = "Run an isolated Compose experiment, report results, and remove its containers/volumes"
+run = "node run.mjs"
+
+[tasks."experiment:smoke"]
+run = "node run.mjs --experiment experiments/EXP001-smoke.json"
+
+[tasks."experiment:cleanup-check"]
+description = "Interrupt a fixture restore and verify durable identity, actual limits and project-only cleanup"
+run = "node verify-cleanup.mjs"
+
+[tasks."experiment:compare"]
+description = "Compare two saved runs after checking environment/fixture/workload compatibility"
+run = "node compare.mjs"
+
+[tasks."probe:check"]
+run = ["cargo fmt --manifest-path probe/Cargo.toml --check", "cargo test --manifest-path probe/Cargo.toml --locked"]
+
+[tasks.test]
+run = "node --test harness.test.mjs"

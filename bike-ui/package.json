@@ -1,0 +1,53 @@
+{
+  "name": "bike-ui-next",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "next dev --turbopack --hostname 0.0.0.0 --port 3000",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test tests/e2e/platform-synthetic.spec.mjs",
+    "test:e2e:all": "playwright test"
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-svg-core": "^7.2.0",
+    "@fortawesome/free-solid-svg-icons": "^7.2.0",
+    "@fortawesome/react-fontawesome": "^3.3.1",
+    "@tailwindcss/postcss": "^4.2.0",
+    "@tanstack/react-query": "^5.90.21",
+    "@types/geojson": "^7946.0.16",
+    "daisyui": "^5.7.37",
+    "maplibre-gl": "^5.24.0",
+    "mermaid": "^11.12.1",
+    "next": "16.1.6",
+    "openapi-fetch": "0.17.0",
+    "openapi-react-query": "0.5.4",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-hot-toast": "^2.6.0",
+    "recharts": "^3.8.1",
+    "tailwindcss": "^4.2.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^6.0.1",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "16.1.6",
+    "happy-dom": "^20.8.9",
+    "openapi-typescript": "7.13.0",
+    "pixelmatch": "7.1.0",
+    "pngjs": "7.0.0",
+    "typescript": "^5",
+    "vitest": "^4.1.2"
+  }
+}

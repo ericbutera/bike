@@ -1,0 +1,27 @@
+{
+  "id": "EXP001",
+  "revision": 3,
+  "title": "Spatial projections versus current data access",
+  "ideas": ["IDEA001", "IDEA002", "IDEA003"],
+  "change": "Precision correction: prepare V1 binary coordinate/bounds and P1 geometry projections through the owning Rust decoder; PostGIS endpoint candidate filtering.",
+  "corpora": ["history-1x", "history-3x"],
+  "arms": ["V0", "V1", "P0", "P1"],
+  "warmups": 1,
+  "samples_per_batch": 5,
+  "batches": 2,
+  "endpoint_radius_meters": 263,
+  "tile_size": 256,
+  "tile_gutter": 8,
+  "tile_zoom": 16,
+  "cache": "post-restore state plus configured per-case warmup; fresh Rust process per case/batch; no application cache",
+  "limitations": [
+    "Pilot sampling: report actual observation counts and median/range; no p95 adoption claim below 100 observations.",
+    "Data-access probes use the synchronous postgres driver with Bike's owning decoder/matcher; SeaORM pool, HTTP/auth and complete endpoint DTO costs are excluded.",
+    "Both optimized arms preserve current Rust-decoded coordinate bits through WKB; SQL-only JSON-to-geometry preparation failed output equality and was rejected.",
+    "Detail excludes training-analysis/source-artifact lookups, which are absent from these data-access fixtures.",
+    "Median/p95 detail and map cases are selected among route-bearing activities; manifests' global quantiles also include route-free activities.",
+    "Map input only: proxy HTTP/auth, renderer queue/Chromium/basemap/screenshot costs remain unmeasured.",
+    "Heatmaps are a coordinate-gap-aware raster prototype; gaps over approximately 5 km break lines, with temporal-gap policy, overview/LOD, additional zooms/sport filters and tile caches still unevaluated.",
+    "No cold-cache, concurrency, write/WAL or backfill-lifecycle measurements in this initial experiment."
+  ]
+}

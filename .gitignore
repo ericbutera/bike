@@ -1,40 +1,16 @@
-# Rust
-/target/
-**/target/
-**/*.rs.bk
-.cargo/
-/kaleido/
-
-# TypeScript / Node
+.cache/
 node_modules/
-**/node_modules/
-dist/
-**/dist/
-build/
-**/build/
-.next/
-**/.next/
-.turbo/
-.pnpm-store/
-coverage/
-*.tsbuildinfo
 
-# Env / local
+# Local configuration, credentials and verification output in every component
 .env
-.env.local
-.env.*.local
-
-# Logs
-*.log
-npm-debug.log*
-pnpm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# OS/editor
-.DS_Store
-
-data/
-uploads/
-
-__pycache__
+.env.*
+!.env.example
+.mise.local.toml
+secrets/
+*.dump
+*.dump.gz
+*.backup
+*.sql.gz
+.artifacts/
+playwright-report/
+test-results/

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="bike" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk><name>Synthetic northbound B</name><type>cycling</type><trkseg>
+    <trkpt lat="42.0000" lon="-83.0000"><ele>200</ele><time>2025-06-02T12:00:00Z</time></trkpt>
+    <trkpt lat="42.0010" lon="-83.0000"><ele>202</ele><time>2025-06-02T12:00:10Z</time></trkpt>
+    <trkpt lat="42.0020" lon="-83.0000"><ele>204</ele><time>2025-06-02T12:00:20Z</time></trkpt>
+    <trkpt lat="42.0030" lon="-83.0000"><ele>206</ele><time>2025-06-02T12:00:30Z</time></trkpt>
+    <trkpt lat="42.0040" lon="-83.0000"><ele>208</ele><time>2025-06-02T12:00:40Z</time></trkpt>
+    <trkpt lat="42.0050" lon="-83.0000"><ele>210</ele><time>2025-06-02T12:00:50Z</time></trkpt>
+    <trkpt lat="42.0060" lon="-83.0000"><ele>212</ele><time>2025-06-02T12:01:00Z</time></trkpt>
+    <trkpt lat="42.0070" lon="-83.0000"><ele>214</ele><time>2025-06-02T12:01:10Z</time></trkpt>
+    <trkpt lat="42.0080" lon="-83.0000"><ele>216</ele><time>2025-06-02T12:01:20Z</time></trkpt>
+    <trkpt lat="42.0090" lon="-83.0000"><ele>218</ele><time>2025-06-02T12:01:30Z</time></trkpt>
+    <trkpt lat="42.0100" lon="-83.0000"><ele>220</ele><time>2025-06-02T12:01:40Z</time></trkpt>
+  </trkseg></trk>
+</gpx>

@@ -1,0 +1,7 @@
+{
+  "type": "process_activity_import",
+  "data": {
+    "user_id": 7,
+    "import_id": 42
+  }
+}

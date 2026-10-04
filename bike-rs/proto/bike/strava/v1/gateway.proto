@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package bike.strava.v1;
+
+option go_package = "github.com/ericbutera/bike-services/strava-gateway/gen/bike/strava/v1;stravav1";
+
+// Site commands stay inside the cluster. Strava OAuth and webhook callbacks
+// remain HTTP because those are public provider callbacks.
+service GatewayService {
+  rpc BeginConnect(SiteRequest) returns (BeginConnectResponse);
+  rpc GetConnection(SiteRequest) returns (ConnectionResponse);
+  rpc QueueSync(SyncRequest) returns (CommandResponse);
+  rpc Disconnect(SiteRequest) returns (CommandResponse);
+}
+
+message SiteRequest {
+  string target = 1; // rust
+  int64 site_user_id = 2;
+}
+
+message SyncRequest {
+  string target = 1;
+  int64 site_user_id = 2;
+  string mode = 3; // initial, incremental, or full
+}
+
+message BeginConnectResponse { string authorization_url = 1; }
+
+message ConnectionResponse {
+  bool configured = 1;
+  bool connected = 2;
+  optional int64 athlete_id = 3;
+  repeated string scopes = 4;
+  string last_sync_status = 5;
+  int32 last_sync_imported_count = 6;
+  int32 last_sync_duplicate_count = 7;
+  int32 last_sync_failed_count = 8;
+  optional string last_sync_wait_reason = 9;
+  optional string last_sync_next_attempt_at = 10;
+}
+
+message CommandResponse { string status = 1; }

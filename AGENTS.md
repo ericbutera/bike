@@ -1,31 +1,40 @@
-# Agent Instructions
+# Bike monorepo
 
-## Tooling
+## Overview
 
-This project uses `mise` as the task runner and tool version manager.
+`bike-rs` is the Bike backend and source of truth for business behavior and
+data handling. `bike-ui` is the shared Next.js and React Query frontend.
+`strava-gateway` owns the provider callback, inbox, credentials, and delivery
+to Bike Rust. The map renderer is a separate shared service.
 
-Before running Rust, Node, pnpm, npm, cargo, test, lint, build, or project
-maintenance commands, check `mise.toml` and prefer the existing mise tasks.
+Use each project's `mise.toml` for language and package-manager versions and
+tasks. Root tasks delegate to their owning projects. Preserve unrelated work
+in other checkouts.
 
-Examples:
+Keep controllers thin: adapt HTTP input/output and call a service. Services
+compose application workflows and delegate meaningful steps to named helpers.
+Put database queries on their owning entity/model modules. Prefer mature,
+type-safe frameworks and ORMs when they reduce duplicated infrastructure.
+Historical migrations are append-only; preserve their order and contents.
 
-- `mise tasks`
-- `VERSION=x.y.z mise run kaleido:update`
-- `mise run test`
-- `mise run lint`
-- `mise run ui-next:typecheck`
+Track active Bike work in `docs/TODO.md`. Work one bounded task at a time and
+commit its result with a conventional commit message. Preserve historical
+operational evidence unless a task explicitly retires it.
 
-If a task exists for the workflow, use that task instead of spelling out the
-underlying commands manually.
+Use focused checks through the relevant mise task. Keep provider calls behind
+the gateway seam and use fixtures/fakes for ordinary workflow checks. Native
+HTTP integration tests live in `bike-rs/api/tests`; browser tests belong to
+`bike-ui/tests/e2e`. Reserve Playwright for focused activity, segment, and
+race-viewer flows; use owning unit, functional, or SQL suites for workflow rules.
 
-## Verification
+## Git
 
-Add or update happy-path test coverage for every feature change.
+Always use conventional commit format:
 
-Do not start dev servers or Next.js services. If browser/manual verification is
-useful, ask the user to run the service locally.
-
-Prefer targeted local checks for the code touched. The project CI is configured
-to fail on tests, lint, and formatting, so do not spend quota repeatedly polling
-for CI completion. Before starting any long-running verification, CI watch, or
-status polling loop, ask the user whether to proceed.
+- `feat`
+- `fix`
+- `perf`
+- `style`
+- `ops`
+- `docs`
+- `test`

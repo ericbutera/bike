@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package bike.maps.v1;
+
+service MapService {
+  rpc Render(RenderMapRequest) returns (RenderMapResponse);
+}
+
+message RoutePoint {
+  double latitude = 1;
+  double longitude = 2;
+}
+
+message RenderMapRequest {
+  repeated RoutePoint points = 1;
+  string variant = 2;
+  string theme = 3;
+  uint32 dpr = 4;
+  reserved 5;
+}
+
+message RenderMapResponse {
+  bytes png = 1;
+  bool cache_hit = 2;
+}

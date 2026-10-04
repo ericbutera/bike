@@ -1,0 +1,6 @@
+{
+  "extends": "EXP001-smoke.json",
+  "id": "EXP001-GROWTH-SMOKE",
+  "title": "Threefold history growth: harness correctness and resource smoke check",
+  "corpora": ["history-3x"]
+}

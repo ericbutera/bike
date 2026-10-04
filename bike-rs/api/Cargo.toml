@@ -1,0 +1,59 @@
+[package]
+name = "api"
+version = "0.1.0"
+edition = "2021"
+autobins = false
+
+[[bin]]
+name = "api"
+path = "src/main.rs"
+
+[[bin]]
+name = "openapi"
+path = "src/bin/openapi.rs"
+
+[lib]
+name = "api"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+axum = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sea-orm = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+log = { workspace = true }
+opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true }
+opentelemetry-otlp = { workspace = true }
+tracing-opentelemetry = { workspace = true }
+dotenvy = { workspace = true }
+once_cell = { workspace = true }
+prometheus = { workspace = true }
+tower-http = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+bike-core = { path = "../bike-core" }
+async-trait = "0.1"
+utoipa = { workspace = true }
+utoipa-swagger-ui = { workspace = true }
+roxmltree = "0.20"
+reverse_geocoder = "4.1.1"
+fitparser = "0.11"
+flate2 = "1.1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+petgraph = "0.8.3"
+
+[dev-dependencies]
+sea-orm = { workspace = true, features = ["sqlx-sqlite", "mock"] }
+opentelemetry_sdk = { workspace = true, features = ["testing"] }
+tower = { version = "0.5", features = ["util"] }

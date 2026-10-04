@@ -1,0 +1,117 @@
+{
+  "v": 1,
+  "provider": "strava",
+  "provider_activity_id": 887654322,
+  "activity": {
+    "id": 887654322,
+    "name": "Morning Ride fixture",
+    "sport_type": "Ride",
+    "type": "Ride",
+    "start_date": "2026-10-02T12:00:00Z",
+    "distance": 67.637657,
+    "moving_time": 70,
+    "elapsed_time": 70,
+    "max_speed": 3
+  },
+  "streams": {
+    "time": {
+      "data": [
+        0,
+        10,
+        20,
+        30,
+        40,
+        50,
+        60,
+        70
+      ],
+      "original_size": 8,
+      "resolution": "high",
+      "series_type": "distance"
+    },
+    "distance": {
+      "data": [
+        0,
+        16.689348,
+        22.019891,
+        27.842554,
+        49.235462,
+        54.06394,
+        58.931847,
+        67.637657
+      ],
+      "original_size": 8,
+      "resolution": "high",
+      "series_type": "distance"
+    },
+    "latlng": {
+      "data": [
+        [
+          44.742805,
+          -85.514065
+        ],
+        [
+          44.742659,
+          -85.514016
+        ],
+        [
+          44.742613,
+          -85.513997
+        ],
+        [
+          44.742564,
+          -85.513971
+        ],
+        [
+          44.742396,
+          -85.513839
+        ],
+        [
+          44.742359,
+          -85.513807
+        ],
+        [
+          44.74232,
+          -85.513779
+        ],
+        [
+          44.742246,
+          -85.513743
+        ]
+      ],
+      "original_size": 8,
+      "resolution": "high",
+      "series_type": "distance"
+    },
+    "altitude": {
+      "data": [
+        211.2,
+        212,
+        212.2,
+        212.6,
+        213.4,
+        213.6,
+        214,
+        214.6
+      ],
+      "original_size": 8,
+      "resolution": "high",
+      "series_type": "distance"
+    },
+    "velocity_smooth": {
+      "data": [
+        0,
+        1.668935,
+        0.533054,
+        0.582266,
+        2.139291,
+        0.482848,
+        0.486791,
+        0.870581
+      ],
+      "original_size": 8,
+      "resolution": "high",
+      "series_type": "distance"
+    }
+  }
+}

@@ -1,0 +1,383 @@
+{
+  "scope": "Rust source registrations; not runtime or behavior verification. Swagger/OpenAPI documentation mounts are excluded.",
+  "routes": {
+    "rust": [
+      {
+        "method": "DELETE",
+        "path": "/api/activities/{id}",
+        "source": "bike-rs/api/src/controllers/mod.rs#activities::delete_activity"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/segments/{id}",
+        "source": "bike-rs/api/src/controllers/mod.rs#segments::delete_segment"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/strava/connection",
+        "source": "bike-rs/api/src/controllers/strava.rs#disconnect_connection"
+      },
+      {
+        "method": "GET",
+        "path": "/",
+        "source": "bike-rs/api/src/controllers/mod.rs#root"
+      },
+      {
+        "method": "GET",
+        "path": "/api/activities",
+        "source": "bike-rs/api/src/controllers/mod.rs#activities::list_activities"
+      },
+      {
+        "method": "GET",
+        "path": "/api/activities/{id}",
+        "source": "bike-rs/api/src/controllers/mod.rs#activities::get_activity"
+      },
+      {
+        "method": "GET",
+        "path": "/api/activities/{id}/source-file",
+        "source": "bike-rs/api/src/controllers/mod.rs#activities::download_activity_source_file"
+      },
+      {
+        "method": "GET",
+        "path": "/api/activity-imports",
+        "source": "bike-rs/api/src/controllers/mod.rs#activity_imports::list_activity_imports"
+      },
+      {
+        "method": "GET",
+        "path": "/api/activity-imports/archive-jobs",
+        "source": "bike-rs/api/src/controllers/mod.rs#activity_imports::list_activity_archive_import_jobs"
+      },
+      {
+        "method": "GET",
+        "path": "/api/activity-imports/archive-jobs/{id}",
+        "source": "bike-rs/api/src/controllers/mod.rs#activity_imports::get_activity_archive_import_job"
+      },
+      {
+        "method": "GET",
+        "path": "/api/activity-imports/processing-graph",
+        "source": "bike-rs/api/src/controllers/mod.rs#activity_imports::get_activity_processing_graph"
+      },
+      {
+        "method": "GET",
+        "path": "/api/activity-imports/processing-state",
+        "source": "bike-rs/api/src/controllers/mod.rs#activity_imports::get_activity_processing_state"
+      },
+      {
+        "method": "GET",
+        "path": "/api/activity-imports/{id}/trace",
+        "source": "bike-rs/api/src/controllers/mod.rs#activity_imports::get_activity_import_trace"
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/activities",
+        "source": "bike-rs/api/src/controllers/admin.rs#list_admin_activities"
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/activities/{id}/import-trace",
+        "source": "bike-rs/api/src/controllers/admin.rs#get_admin_activity_import_trace_for_activity"
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/activity-imports/{id}/trace",
+        "source": "bike-rs/api/src/controllers/admin.rs#get_admin_activity_import_trace"
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/feature-flags",
+        "source": "bike-rs/bike-core/src/platform/feature_flags/admin_controller.rs#list_flags"
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/integration-events",
+        "source": "bike-rs/api/src/controllers/integration_events.rs#list_admin_integration_events"
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/metrics",
+        "source": "bike-rs/bike-core/src/platform/metrics_controller.rs#get_metrics"
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/metrics/app",
+        "source": "bike-rs/api/src/controllers/admin.rs#app_metrics"
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/tasks",
+        "source": "bike-rs/bike-core/src/background_jobs/admin.rs#list_tasks"
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/tasks/{id}",
+        "source": "bike-rs/bike-core/src/background_jobs/admin.rs#get_task"
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/users",
+        "source": "bike-rs/bike-core/src/auth/controllers/admin.rs#list_users"
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/users/{id}",
+        "source": "bike-rs/bike-core/src/auth/controllers/admin.rs#get_user"
+      },
+      {
+        "method": "GET",
+        "path": "/api/auth/current",
+        "source": "bike-rs/bike-core/src/auth/controllers/auth.rs#current"
+      },
+      {
+        "method": "GET",
+        "path": "/api/auth/logout",
+        "source": "bike-rs/bike-core/src/auth/controllers/auth.rs#logout"
+      },
+      {
+        "method": "GET",
+        "path": "/api/feature-flags",
+        "source": "bike-rs/bike-core/src/platform/feature_flags/controller.rs#public_flags"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fitness",
+        "source": "bike-rs/api/src/controllers/mod.rs#fitness::get_fitness_freshness"
+      },
+      {
+        "method": "GET",
+        "path": "/api/health",
+        "source": "bike-rs/api/src/controllers/mod.rs#health"
+      },
+      {
+        "method": "GET",
+        "path": "/api/integration-events/strava",
+        "source": "bike-rs/api/src/controllers/integration_events.rs#list_strava_history"
+      },
+      {
+        "method": "GET",
+        "path": "/api/oauth/providers",
+        "source": "bike-rs/bike-core/src/auth/controllers/oauth.rs#oauth_providers"
+      },
+      {
+        "method": "GET",
+        "path": "/api/oauth/{provider}",
+        "source": "bike-rs/bike-core/src/auth/controllers/oauth.rs#oauth_authorize"
+      },
+      {
+        "method": "GET",
+        "path": "/api/oauth/{provider}/callback",
+        "source": "bike-rs/bike-core/src/auth/controllers/oauth.rs#oauth_callback"
+      },
+      {
+        "method": "GET",
+        "path": "/api/preferences",
+        "source": "bike-rs/api/src/controllers/mod.rs#user_preferences::get_preferences"
+      },
+      {
+        "method": "GET",
+        "path": "/api/segments",
+        "source": "bike-rs/api/src/controllers/mod.rs#segments::list_segments"
+      },
+      {
+        "method": "GET",
+        "path": "/api/segments/{id}",
+        "source": "bike-rs/api/src/controllers/mod.rs#segments::get_segment"
+      },
+      {
+        "method": "GET",
+        "path": "/api/segments/{id}/comparison",
+        "source": "bike-rs/api/src/controllers/mod.rs#segments::get_segment_comparison"
+      },
+      {
+        "method": "GET",
+        "path": "/api/segments/{id}/effort-analysis",
+        "source": "bike-rs/api/src/controllers/mod.rs#segments::get_segment_effort_analysis"
+      },
+      {
+        "method": "GET",
+        "path": "/api/segments/{id}/yearly-bests",
+        "source": "bike-rs/api/src/controllers/mod.rs#segments::get_segment_yearly_bests"
+      },
+      {
+        "method": "GET",
+        "path": "/api/strava/callback",
+        "source": "bike-rs/api/src/controllers/strava.rs#handle_callback"
+      },
+      {
+        "method": "GET",
+        "path": "/api/strava/connection",
+        "source": "bike-rs/api/src/controllers/strava.rs#get_connection"
+      },
+      {
+        "method": "GET",
+        "path": "/api/strava/webhook",
+        "source": "bike-rs/api/src/controllers/strava.rs#handle_webhook_verification"
+      },
+      {
+        "method": "GET",
+        "path": "/api/training/dh-progress",
+        "source": "bike-rs/api/src/controllers/mod.rs#training_goals::get_dh_goal_progress"
+      },
+      {
+        "method": "GET",
+        "path": "/api/training/reports",
+        "source": "bike-rs/api/src/controllers/mod.rs#reports::get_training_reports"
+      },
+      {
+        "method": "GET",
+        "path": "/api/training/reports/definitions",
+        "source": "bike-rs/api/src/controllers/mod.rs#reports::get_training_report_definitions"
+      },
+      {
+        "method": "GET",
+        "path": "/api/training/xc-progress",
+        "source": "bike-rs/api/src/controllers/mod.rs#training_goals::get_xc_goal_progress"
+      },
+      {
+        "method": "GET",
+        "path": "/metrics",
+        "source": "bike-rs/api/src/lib.rs#metrics::metrics_route"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/activities/{id}",
+        "source": "bike-rs/api/src/controllers/mod.rs#activities::update_activity"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/admin/users/{id}",
+        "source": "bike-rs/bike-core/src/auth/controllers/admin.rs#update_user"
+      },
+      {
+        "method": "POST",
+        "path": "/api/activities/{id}/regenerate",
+        "source": "bike-rs/api/src/controllers/mod.rs#activities::regenerate_activity"
+      },
+      {
+        "method": "POST",
+        "path": "/api/activity-imports",
+        "source": "bike-rs/api/src/controllers/mod.rs#activity_imports::upload_activity_import"
+      },
+      {
+        "method": "POST",
+        "path": "/api/activity-imports/archive-url",
+        "source": "bike-rs/api/src/controllers/mod.rs#activity_imports::import_activity_archive_from_url"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/activity-imports/archive",
+        "source": "bike-rs/api/src/controllers/admin.rs#import_activity_archive"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/activity-imports/cleanup-duplicates",
+        "source": "bike-rs/api/src/controllers/admin.rs#cleanup_user_duplicate_activities"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/activity-imports/reprocess",
+        "source": "bike-rs/api/src/controllers/admin.rs#reprocess_user_activity_imports"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/activity-imports/reprocess-activity",
+        "source": "bike-rs/api/src/controllers/admin.rs#reprocess_activity_import"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/analytics/backfill",
+        "source": "bike-rs/api/src/controllers/admin.rs#backfill_analytics"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/feature-flags/{key}",
+        "source": "bike-rs/bike-core/src/platform/feature_flags/admin_controller.rs#update_flag"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/segments/regenerate",
+        "source": "bike-rs/api/src/controllers/admin.rs#regenerate_user_segments"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/segments/regenerate-efforts",
+        "source": "bike-rs/api/src/controllers/admin.rs#regenerate_segment_efforts"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/tasks/{id}/cancel",
+        "source": "bike-rs/bike-core/src/background_jobs/admin.rs#cancel_task"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/tasks/{id}/rerun",
+        "source": "bike-rs/bike-core/src/background_jobs/admin.rs#rerun_task"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/training/xc-backfill",
+        "source": "bike-rs/api/src/controllers/admin.rs#backfill_user_xc_training"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/users/{id}/disable",
+        "source": "bike-rs/bike-core/src/auth/controllers/admin.rs#disable_user"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh",
+        "source": "bike-rs/bike-core/src/auth/controllers/auth.rs#refresh"
+      },
+      {
+        "method": "POST",
+        "path": "/api/segments",
+        "source": "bike-rs/api/src/controllers/mod.rs#segments::import_segment"
+      },
+      {
+        "method": "POST",
+        "path": "/api/segments/from-activity",
+        "source": "bike-rs/api/src/controllers/mod.rs#segments::create_segment_from_activity"
+      },
+      {
+        "method": "POST",
+        "path": "/api/strava/connect",
+        "source": "bike-rs/api/src/controllers/strava.rs#begin_connect"
+      },
+      {
+        "method": "POST",
+        "path": "/api/strava/sync",
+        "source": "bike-rs/api/src/controllers/strava.rs#queue_sync"
+      },
+      {
+        "method": "POST",
+        "path": "/api/strava/webhook",
+        "source": "bike-rs/api/src/controllers/strava.rs#handle_webhook_event"
+      },
+      {
+        "method": "POST",
+        "path": "/internal/strava-deliveries",
+        "source": "bike-rs/api/src/controllers/strava_gateway.rs#deliver"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/preferences",
+        "source": "bike-rs/api/src/controllers/mod.rs#user_preferences::update_preferences"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/segments/{id}",
+        "source": "bike-rs/api/src/controllers/mod.rs#segments::update_segment"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/segments/{id}/from-activity",
+        "source": "bike-rs/api/src/controllers/mod.rs#segments::update_segment_from_activity"
+      }
+    ]
+  },
+  "rust_routes_outside_openapi": [
+    ["POST", "/internal/strava-deliveries"],
+    ["GET", "/"],
+    ["GET", "/metrics"]
+  ],
+  "openapi_without_rust_route": []
+}

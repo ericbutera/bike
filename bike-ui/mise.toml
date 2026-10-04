@@ -1,0 +1,66 @@
+[tools]
+node = "25.2.1"
+pnpm = "9.15.9"
+"npm:prettier" = "3.7.4"
+
+[tasks.deps]
+run = "pnpm install --frozen-lockfile"
+
+[tasks.dev]
+description = "Start the shared Next.js frontend"
+run = "pnpm run dev"
+
+[tasks.typecheck]
+run = "pnpm run typecheck"
+
+[tasks.lint]
+description = "Run Next.js and React ESLint checks"
+run = "pnpm run lint"
+
+[tasks.build]
+run = "pnpm run build"
+
+[tasks.test]
+run = "pnpm run test"
+
+[tasks.format]
+description = "Format the shared Bike UI with the pinned Prettier config"
+run = "prettier . --write"
+
+[tasks."format:check"]
+description = "Check formatting for the shared Bike UI"
+run = "prettier . --check"
+
+[tasks."generate:typescript"]
+description = "Generate the Bike UI client from Rust's pinned OpenAPI contract"
+run = '''
+pnpm exec openapi-typescript ../contracts/openapi/openapi.yaml --output lib/openapi/react-query/api.d.ts
+prettier lib/openapi/react-query/api.d.ts --config .prettierrc.json --write
+'''
+
+[tasks."openapi:check"]
+description = "Check the generated UI client against Rust's pinned OpenAPI contract"
+run = '''
+GENERATED_TYPES="$(mktemp)"
+trap 'rm -f "$GENERATED_TYPES"' EXIT
+pnpm exec openapi-typescript ../contracts/openapi/openapi.yaml --output "$GENERATED_TYPES"
+prettier "$GENERATED_TYPES" --parser typescript --config .prettierrc.json --write
+cmp -- "$GENERATED_TYPES" lib/openapi/react-query/api.d.ts
+'''
+
+[tasks."test:e2e"]
+description = "Run the connected activity, segment, and race browser check"
+run = "pnpm run test:e2e"
+
+[tasks."test:e2e:all"]
+description = "Run browser regressions against the configured Bike UI"
+run = "pnpm run test:e2e:all"
+
+[tasks."test:e2e:heatmaps"]
+description = "Verify personal heatmap tiles, filters, and controls"
+run = "pnpm exec playwright test tests/e2e/heatmap.spec.mjs"
+
+[tasks."test:e2e:install"]
+description = "Install the browser used by UI integration checks"
+depends = ["deps"]
+run = "pnpm exec playwright install chromium"

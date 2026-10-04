@@ -1,0 +1,99 @@
+[tools]
+node = "25.2.1"
+pnpm = "10.30.1"
+prek = "0.4.12"
+rust = "1.97.1"
+"npm:prettier" = "3.7.4"
+
+[tasks."hooks:install"]
+description = "Install prek Git hooks for this repository"
+run = "mise --cd .. run hooks:install"
+
+[tasks."format:staged"]
+description = "Run prek on staged files"
+run = "mise --cd .. run format:staged"
+
+[tasks."ui:dev"]
+description = "Start the shared Bike Next frontend"
+run = "mise --cd ../bike-ui run dev"
+
+[tasks."api:dev"]
+description = "Start the bike API"
+run = "cargo run --bin api"
+
+[tasks."api:build"]
+description = "Build the bike API"
+run = "cargo build --release --bin api"
+
+[tasks."worker:dev"]
+description = "Start the bike worker"
+run = "cargo run --bin worker"
+
+[tasks."tracing:dev"]
+description = "Start lightweight local tracing with Jaeger"
+run = "docker compose --profile tracing up jaeger"
+
+[tasks."compose:up"]
+description = "Start the Rust Bike Compose stack"
+depends = ["services:up"]
+run = "docker compose up --build"
+
+[tasks."compose:config"]
+description = "Validate the Rust Bike Compose stack"
+run = "docker compose config"
+
+[tasks."services:up"]
+description = "Start the shared Bike map service"
+run = "mise --cd .. run compose:up"
+
+[tasks."migration:up"]
+description = "Run bike database migrations"
+dir = "migration"
+run = "cargo run -- up"
+
+[tasks.test]
+description = "Run bike Rust tests"
+run = "cargo test"
+
+[tasks.fmt]
+description = "Format the Rust workspace"
+run = "cargo fmt --all"
+
+[tasks."fmt:check"]
+description = "Check Rust formatting without writing changes"
+run = [
+  "cargo fmt --all --check",
+]
+
+[tasks.lint]
+description = "Run Rust Clippy checks"
+run = "cargo clippy --workspace --all-targets --all-features -- -D warnings"
+
+[tasks."openapi:react-query"]
+description = "Generate the shared UI TypeScript client from the common OpenAPI contract"
+depends = ["generate:openapi"]
+run = "mise --cd ../bike-ui run generate:typescript"
+
+[tasks."generate:openapi"]
+description = "Generate the common OpenAPI contract from Rust Utoipa"
+run = '''
+cargo run -p api --bin openapi
+cp docs/openapi/openapi.json ../contracts/openapi/openapi.json
+cp docs/openapi/openapi.yaml ../contracts/openapi/openapi.yaml
+'''
+
+[tasks."generate:protobuf"]
+description = "Regenerate Strava gateway Rust protobuf client bindings in the Cargo build directory"
+run = "cargo check -p bike-core"
+
+[tasks."generate:typescript"]
+description = "Generate the frontend TypeScript API contract from OpenAPI"
+run = "mise --cd ../bike-ui run generate:typescript"
+
+[tasks."openapi:typescript:check"]
+description = "Check the generated frontend TypeScript API contract is fresh"
+run = "mise --cd ../bike-ui run openapi:check"
+
+[tasks."test:integration"]
+description = "Run native API integration tests with isolated fixtures"
+run = "cargo test -p api --test platform"

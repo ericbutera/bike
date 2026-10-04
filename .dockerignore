@@ -1,34 +1,31 @@
-# Git metadata
-.git
-**/.git
+# This context owns only the map service and its protocol.
+**
+!Dockerfile
+!map-renderer
+!map-renderer/**
+!proto
+!proto/**
+map-renderer/node_modules
+map-renderer/.cache
+map-renderer/.env
+map-renderer/.env.*
+map-renderer/*.log
 
-# Rust build artifacts
-target
-**/target
-.cargo
-kaleido
-
-# Node artifacts and UI-only sources
-ui-next
-node_modules
-**/node_modules
-.pnpm-store
-**/.pnpm-store
-
-# Non-Rust service sources
-.woodpecker
-docs
-garmin-iq
-scripts
-.copier-answers.yml
-README.md
-Taskfile.yml
-compose.yaml
-
-# Local data
-data
-uploads
-
-# Editor / OS files
-.DS_Store
-.vscode
+# Private local inputs and generated diagnostics are never image inputs
+.env
+.env.*
+**/.env
+**/.env.*
+.mise.local.toml
+.cache
+**/.cache
+tmp
+.artifacts
+playwright-report
+test-results
+secrets
+*.dump
+*.dump.gz
+*.backup
+*.sql.gz
+*.log

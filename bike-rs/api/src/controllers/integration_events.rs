@@ -1,0 +1,156 @@
+use crate::app_error::{ApiErrorResponse, AppError};
+use crate::storage::AppStorage;
+use axum::extract::{Query, State};
+use axum::routing::get;
+use axum::{Json, Router};
+use bike_core::auth::{AdminUserContext, UserContext};
+use bike_core::entities::integration_events;
+use bike_core::integration_events_service as integration_event_service;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use utoipa::ToSchema;
+
+const USER_HISTORY_LIMIT: u64 = 25;
+const DEFAULT_ADMIN_LIMIT: u64 = 100;
+const MAX_ADMIN_LIMIT: u64 = 200;
+
+pub fn routes() -> Router<Arc<AppStorage>> {
+    Router::new().route("/strava", get(list_strava_history))
+}
+
+pub fn admin_routes() -> Router<Arc<AppStorage>> {
+    Router::new().route("/", get(list_admin_integration_events))
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"id": 31,"provider": "strava","event_type": "sync_completed","level": "info","message": "Imported 3 activities","created_at": "2026-09-27T12:00:00Z","user_id": 12,"connection_id": 5,"payload": {"imported_count": 3}}))]
+pub struct IntegrationEventResponse {
+    #[schema(example = 31)]
+    pub id: i32,
+    #[schema(example = 12)]
+    pub user_id: Option<i32>,
+    #[schema(example = "strava")]
+    pub provider: String,
+    #[schema(example = "sync_completed")]
+    pub event_type: String,
+    #[schema(example = "info")]
+    pub level: String,
+    #[schema(example = "Imported 3 activities")]
+    pub message: String,
+    #[schema(example = 5)]
+    pub connection_id: Option<i32>,
+    #[schema(example = json!({"imported_count": 3}))]
+    pub payload: Option<serde_json::Value>,
+    #[schema(example = "2026-09-27T12:00:00Z")]
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct IntegrationEventsQuery {
+    pub provider: Option<String>,
+    pub user_id: Option<i32>,
+    pub activity_id: Option<i32>,
+    pub import_id: Option<i32>,
+    pub limit: Option<u64>,
+}
+
+impl IntegrationEventResponse {
+    fn from_model(model: integration_events::Model) -> Self {
+        Self {
+            id: model.id,
+            user_id: model.user_id,
+            provider: model.provider,
+            event_type: model.event_type,
+            level: model.level,
+            message: model.message,
+            connection_id: model.connection_id,
+            payload: model.payload,
+            created_at: model.created_at,
+        }
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/integration-events/strava",
+    responses(
+        (status = 200, description = "Recent Strava integration history for the authenticated user", body = [IntegrationEventResponse], example = json!([{"id": 31,"provider": "strava","event_type": "sync_completed","level": "info","message": "Imported 3 activities","created_at": "2026-09-27T12:00:00Z","user_id": 12,"connection_id": 5,"payload": {"imported_count": 3}}])),
+        (status = 401, description = "Not authenticated"),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    tag = "strava",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn list_strava_history(
+    UserContext { user, .. }: UserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+) -> Result<Json<Vec<IntegrationEventResponse>>, AppError> {
+    let events = integration_event_service::list_recent_events(
+        &state.db,
+        integration_event_service::IntegrationEventListOptions {
+            provider: Some(integration_event_service::INTEGRATION_PROVIDER_STRAVA.to_string()),
+            user_id: Some(user.id),
+            activity_id: None,
+            import_id: None,
+            limit: USER_HISTORY_LIMIT,
+        },
+    )
+    .await?;
+
+    Ok(Json(
+        events
+            .into_iter()
+            .map(IntegrationEventResponse::from_model)
+            .collect(),
+    ))
+}
+
+#[utoipa::path(
+    get,
+    path = "/admin/integration-events",
+    params(
+        ("provider" = Option<String>, Query, description = "Optional integration provider filter", example = "google"),
+        ("user_id" = Option<i32>, Query, description = "Optional Bike user id filter", example = 12),
+        ("activity_id" = Option<i32>, Query, description = "Optional activity id filter against event payload", example = 42),
+        ("import_id" = Option<i32>, Query, description = "Optional activity import id filter against event payload", example = 17),
+        ("limit" = Option<u64>, Query, description = "Maximum number of rows to return", example = 20),
+    ),
+    responses(
+        (status = 200, description = "Recent integration events for administrators", body = [IntegrationEventResponse], example = json!([{"id": 31,"provider": "strava","event_type": "sync_completed","level": "info","message": "Imported 3 activities","created_at": "2026-09-27T12:00:00Z","user_id": 12,"connection_id": 5,"payload": {"imported_count": 3}}])),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    ),
+    tag = "admin",
+    security(("bearer_auth" = [])),
+)]
+pub async fn list_admin_integration_events(
+    _admin: AdminUserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+    Query(query): Query<IntegrationEventsQuery>,
+) -> Result<Json<Vec<IntegrationEventResponse>>, AppError> {
+    let events = integration_event_service::list_recent_events(
+        &state.db,
+        integration_event_service::IntegrationEventListOptions {
+            provider: query.provider,
+            user_id: query.user_id,
+            activity_id: query.activity_id,
+            import_id: query.import_id,
+            limit: query
+                .limit
+                .unwrap_or(DEFAULT_ADMIN_LIMIT)
+                .clamp(1, MAX_ADMIN_LIMIT),
+        },
+    )
+    .await?;
+
+    Ok(Json(
+        events
+            .into_iter()
+            .map(IntegrationEventResponse::from_model)
+            .collect(),
+    ))
+}

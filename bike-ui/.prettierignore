@@ -1,0 +1,8 @@
+node_modules/
+.next/
+coverage/
+.artifacts/
+dist/
+pnpm-lock.yaml
+public/map-styles/*.json
+tests/e2e/fixtures/strava-real-ride.json

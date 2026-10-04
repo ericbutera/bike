@@ -1,0 +1,188 @@
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::Json;
+use bike_core::errors::BikeCoreError;
+use bike_core::workflow_error::WorkflowError;
+use chrono::{DateTime, Utc};
+use serde::Serialize;
+use std::collections::HashMap;
+use utoipa::ToSchema;
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"message": "Invalid request","errors": {"title": ["Title cannot be empty"]}}))]
+pub struct ApiErrorResponse {
+    #[schema(example = "Invalid request")]
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!({"title": ["Title cannot be empty"]}))]
+    pub errors: Option<HashMap<String, Vec<String>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug)]
+pub struct AppError {
+    pub status: StatusCode,
+    pub message: String,
+    pub errors: Option<HashMap<String, Vec<String>>>,
+    pub retry_at: Option<DateTime<Utc>>,
+}
+
+impl AppError {
+    pub fn unauthorized(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::UNAUTHORIZED,
+            message: message.into(),
+            errors: None,
+            retry_at: None,
+        }
+    }
+
+    pub fn bad_request(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::BAD_REQUEST,
+            message: message.into(),
+            errors: None,
+            retry_at: None,
+        }
+    }
+
+    pub fn forbidden(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::FORBIDDEN,
+            message: message.into(),
+            errors: None,
+            retry_at: None,
+        }
+    }
+
+    pub fn conflict(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::CONFLICT,
+            message: message.into(),
+            errors: None,
+            retry_at: None,
+        }
+    }
+
+    pub fn not_found(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::NOT_FOUND,
+            message: message.into(),
+            errors: None,
+            retry_at: None,
+        }
+    }
+
+    pub fn too_many_requests(message: impl Into<String>, retry_at: Option<DateTime<Utc>>) -> Self {
+        Self {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            message: message.into(),
+            errors: None,
+            retry_at,
+        }
+    }
+
+    pub fn payload_too_large(field: &str, message: impl Into<String>) -> Self {
+        Self::field_error(StatusCode::PAYLOAD_TOO_LARGE, field, message)
+    }
+
+    pub fn validation_field(field: &str, message: impl Into<String>) -> Self {
+        Self::field_error(StatusCode::BAD_REQUEST, field, message)
+    }
+
+    pub fn internal(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: message.into(),
+            errors: None,
+            retry_at: None,
+        }
+    }
+
+    fn field_error(status: StatusCode, field: &str, message: impl Into<String>) -> Self {
+        let message = message.into();
+        let mut errors = HashMap::new();
+        errors.insert(field.to_string(), vec![message.clone()]);
+
+        Self {
+            status,
+            message,
+            errors: Some(errors),
+            retry_at: None,
+        }
+    }
+}
+
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        let body = ApiErrorResponse {
+            message: self.message,
+            errors: self.errors,
+            retry_at: self.retry_at,
+        };
+
+        (self.status, Json(body)).into_response()
+    }
+}
+
+impl From<sea_orm::DbErr> for AppError {
+    fn from(error: sea_orm::DbErr) -> Self {
+        tracing::error!(error = ?error, "database request failed");
+        Self::internal("Database request failed")
+    }
+}
+
+impl From<std::io::Error> for AppError {
+    fn from(error: std::io::Error) -> Self {
+        tracing::error!(error = ?error, "file storage request failed");
+        Self::internal("File storage request failed")
+    }
+}
+
+impl From<bike_core::platform::cooldown::CooldownError> for AppError {
+    fn from(error: bike_core::platform::cooldown::CooldownError) -> Self {
+        Self {
+            status: error.code,
+            message: error.message,
+            errors: None,
+            retry_at: error
+                .retry_after_seconds
+                .map(|seconds| Utc::now() + chrono::Duration::seconds(seconds)),
+        }
+    }
+}
+
+impl From<BikeCoreError> for AppError {
+    fn from(error: BikeCoreError) -> Self {
+        match error {
+            BikeCoreError::BadRequest(message) => Self::bad_request(message),
+            BikeCoreError::ValidationField { field, message } => {
+                Self::validation_field(&field, message)
+            }
+            BikeCoreError::Internal(message) => Self::internal(message),
+            BikeCoreError::Database(error) => Self::from(error),
+            BikeCoreError::Cooldown {
+                message,
+                retry_after_seconds,
+            } => Self {
+                status: StatusCode::TOO_MANY_REQUESTS,
+                message,
+                errors: None,
+                retry_at: retry_after_seconds
+                    .map(|seconds| Utc::now() + chrono::Duration::seconds(seconds)),
+            },
+        }
+    }
+}
+
+impl From<WorkflowError> for AppError {
+    fn from(error: WorkflowError) -> Self {
+        Self {
+            status: error.status,
+            message: error.message,
+            errors: error.errors,
+            retry_at: error.retry_at,
+        }
+    }
+}

@@ -1,0 +1,60 @@
+services:
+  database:
+    build:
+      context: .
+      dockerfile: database.Dockerfile
+    image: bike-postgis-eval-database:${POSTGIS_IMAGE_TAG:?Use mise run experiment}
+    environment:
+      POSTGRES_PASSWORD: experiment-only
+      POSTGRES_DB: experiment
+      POSTGRES_INITDB_ARGS: --data-checksums
+    command:
+      [
+        postgres,
+        -c,
+        shared_buffers=256MB,
+        -c,
+        work_mem=16MB,
+        -c,
+        jit=off,
+        -c,
+        max_parallel_workers_per_gather=0,
+        -c,
+        track_io_timing=on,
+        -c,
+        autovacuum=off,
+      ]
+    cpus: 2
+    mem_limit: 3g
+    shm_size: 512m
+    volumes:
+      - database:/var/lib/postgresql/data
+    networks: [experiment]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U postgres -d experiment]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+
+  probe:
+    build:
+      context: ../..
+      dockerfile: experiments/postgis/probe.Dockerfile
+    image: bike-postgis-eval-probe:${POSTGIS_IMAGE_TAG:?Use mise run experiment}
+    environment:
+      DATABASE_URL: host=database user=postgres password=experiment-only dbname=experiment
+    cpus: 2
+    mem_limit: 3g
+    volumes:
+      - ${POSTGIS_RUN_DIR:?Use mise run experiment}:/output
+    networks: [experiment]
+    depends_on:
+      database:
+        condition: service_healthy
+
+networks:
+  experiment:
+    internal: true
+
+volumes:
+  database:

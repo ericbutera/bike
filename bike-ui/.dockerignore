@@ -1,0 +1,55 @@
+# Dependencies and package manager caches
+node_modules
+.pnpm-store
+.npm
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Next/build outputs
+.next
+.next-*
+out
+dist
+coverage
+*.tsbuildinfo
+
+# Local environment and editor files
+.env
+.env.*
+!.env.example
+.DS_Store
+.vscode
+.idea
+.git
+migration
+
+# Generated local diagnostics
+typecheck_output.txt
+
+# Private local inputs and generated diagnostics are never image inputs
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+.mise.local.toml
+.cache
+**/.cache
+tmp
+.artifacts
+playwright-report
+test-results
+secrets
+*.dump
+*.dump.gz
+*.backup
+*.sql.gz
+*.log
+
+/uploads
+/data
+/artifacts

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="bike" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk><name>Parity imported segment</name><type>cycling</type><trkseg>
+    <trkpt lat="43.1200" lon="-83.5000"><ele>180</ele><time>2025-06-10T12:00:00Z</time></trkpt>
+    <trkpt lat="43.1205" lon="-83.4998"><ele>182</ele><time>2025-06-10T12:00:12Z</time></trkpt>
+    <trkpt lat="43.1210" lon="-83.4996"><ele>184</ele><time>2025-06-10T12:00:24Z</time></trkpt>
+    <trkpt lat="43.1215" lon="-83.4994"><ele>186</ele><time>2025-06-10T12:00:36Z</time></trkpt>
+    <trkpt lat="43.1220" lon="-83.4992"><ele>188</ele><time>2025-06-10T12:00:48Z</time></trkpt>
+    <trkpt lat="43.1225" lon="-83.4990"><ele>190</ele><time>2025-06-10T12:01:00Z</time></trkpt>
+    <trkpt lat="43.1230" lon="-83.4988"><ele>192</ele><time>2025-06-10T12:01:12Z</time></trkpt>
+  </trkseg></trk>
+</gpx>

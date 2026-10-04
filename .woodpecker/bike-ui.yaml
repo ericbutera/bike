@@ -1,0 +1,88 @@
+# UI checks belong to this component; publish and deploy only for owned changes
+# or an explicit manual component selection.
+# Rust backend releases finish before the UI updates the Bike stack.
+depends_on: [bike-rs]
+
+when:
+  - event: [push, pull_request]
+    branch: main
+    path:
+      include:
+        - bike-ui/**
+        - contracts/**
+        - proto/**
+        - mise.toml
+        - .woodpecker/deploy.sh
+        - .woodpecker/bike-ui.yaml
+      on_empty: false
+  - event: manual
+    evaluate: 'MANUAL_COMPONENT == "bike-ui"'
+
+# Release ancestry uses the trusted clone plugin; deploy credentials are IaC-only.
+clone:
+  git:
+    image: docker.io/woodpeckerci/plugin-git
+    settings:
+      partial: false
+      depth: 0
+
+steps:
+  - name: test
+    when: &native_changes
+      - event: [push, pull_request]
+        branch: main
+        path:
+          include:
+            - bike-ui/**
+            - contracts/**
+            - proto/**
+            - mise.toml
+            - .woodpecker/deploy.sh
+            - .woodpecker/bike-ui.yaml
+          on_empty: false
+      - event: manual
+        evaluate: 'MANUAL_COMPONENT == "bike-ui"'
+    image: node:25.2.1-alpine
+    commands:
+      - cd bike-ui && npm install -g pnpm@9.15.9 && pnpm install --frozen-lockfile && pnpm run lint && pnpm run typecheck && pnpm run test
+
+  - name: build-ui
+    when: &publish_changes
+      - event: push
+        branch: main
+        path:
+          include:
+            - bike-ui/**
+            - .woodpecker/deploy.sh
+            - .woodpecker/bike-ui.yaml
+          on_empty: false
+      - event: manual
+        evaluate: 'MANUAL_COMPONENT == "bike-ui"'
+    image: woodpeckerci/plugin-kaniko
+    depends_on: [test]
+    settings:
+      registry: registry.registry:5000
+      repo: bike-ui
+      tags: ${CI_COMMIT_SHA}
+      insecure: true
+      skip_tls_verify: true
+      insecure-pull: true
+      insecure-registry: true
+      context: bike-ui
+      dockerfile: bike-ui/Dockerfile
+
+  - name: deploy
+    when: *publish_changes
+    image: pulumi/pulumi-go:latest
+    depends_on: [build-ui]
+    environment:
+      PULUMI_ACCESS_TOKEN:
+        from_secret: pulumi_access_token
+      GITHUB_TOKEN:
+        from_secret: github_token
+      PULUMI_IAC_REPO:
+        from_secret: pulumi_iac_repo
+      IAC_DEPLOY_SSH_KEY:
+        from_secret: iac_deploy_ssh_key
+    commands:
+      - sh .woodpecker/deploy.sh bike-ui
