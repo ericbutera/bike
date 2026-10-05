@@ -40,6 +40,11 @@ pub struct RebuildFitnessFreshnessTask {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrepareHeatmapTask {
+    pub activities: Vec<PrepareHeatmapActivity>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrepareHeatmapActivity {
     pub activity_id: i32,
     pub generation: i64,
 }

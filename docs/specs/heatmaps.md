@@ -149,13 +149,80 @@ while clearly labeled as updating; once filters change, never present old heat a
 the new result. Provide Retry for recoverable errors. Controls need accessible
 labels, keyboard operation, visible focus, and a textual summary.
 
+### Heatmap request and data flow
+
+1. **Open and filter.** The signed-in rider's `/maps` page checks the `heatmaps`
+   feature flag. The UI keeps sport and date filters in the URL and requests Rust
+   metadata for that owner and filter set. The API returns preparation counts,
+   a data revision, and bounds for ready routes. Viewport movement does not
+   change these counts.
+2. **Prepare routes.** The migration creates one projection status row for each
+   existing activity. A database trigger marks an activity's projection pending
+   when its route, sport, start time, source, or owner changes. When the feature
+   is enabled, a reconciler leases up to 16 pending activities every 15 seconds
+   and queues one durable job containing their activity IDs and generations.
+   The job carries identities only, not route samples. The worker prepares its
+   entries sequentially: it reads one activity's stored `derived_data_json`,
+   checks route eligibility, simplifies the route for four zoom bands, and
+   stores bounded coordinate chunks with spatial bounds in PostgreSQL. A usable
+   route becomes `ready`; missing or excluded geometry becomes `skipped`; a
+   preparation error becomes `failed`. Original activity data remains the
+   source of truth.
+3. **Draw the map.** For zoomed-out views, the Rust zones endpoint returns one
+   center per ready activity for MapLibre to cluster. For visible route detail,
+   the UI requests private PNG tiles through its server route. Rust filters
+   projection chunks by owner, sport, date, zoom band, and tile bounds, then
+   reads them in pages of at most 64 chunks. The renderer rasterizes each
+   activity's coverage once before combining activities into per-pixel visit
+   counts, so repeated loops within one ride count once. It returns transparent
+   512-pixel tiles for MapLibre to overlay on the basemap. Heatmap tiles use this
+   Rust path; the separate map renderer serves route-preview images.
+4. **Keep results current.** Publishing a projection or changing/deleting an
+   activity advances that owner's data revision. Tile and zone requests must
+   present the revision returned by metadata, so stale results are rejected and
+   the UI can refresh. Database ownership and API authentication scope results
+   to one user. Tile cache keys include owner, revision, filters, tile, and style.
+
+### Reading preparation status and resource use
+
+The summary below the map comes from the authenticated user's metadata request
+and counts activities matching the selected sport/date filters. “148 activities
+with routes · Preparing 1,141 activities” means 148 matching projections are
+ready with routes and 1,141 are still pending. These are activity counts, not
+route-segment or GPS-point counts. Pending rows have not been checked for usable
+geometry, so some may finish as skipped. The UI reports failures separately;
+skipped activities are not included in the displayed ready or pending counts.
+“Preparing” describes the pending status, not the number of jobs currently
+running: pending rows may still be waiting for the reconciler to queue them.
+One queued job can represent up to 16 pending activities, so the job count is
+lower than the number of activities being prepared.
+
+Opening `/maps` does not download all route history into browser memory. A
+worker job carries only activity IDs and generations, then prepares its batch
+sequentially while holding one activity's route at a time. This keeps batch
+size from multiplying route memory. A backlog increases wait time and eventual
+database storage; preparation memory depends on the largest individual route
+and the number of worker replicas processing jobs concurrently. At overview
+zoom, the API also materializes one small center point per ready activity for
+clustering; that response grows with the owner's route count but does not include
+full routes.
+Tile rendering is capped at two concurrent renders per API process, with a
+10-second deadline and a 64 MiB per-process tile cache. These limits do not
+establish a multi-user capacity guarantee.
+
+The local history backfill below processed 1,189 activities one at a time; its
+19.27 MiB memory measurement is for tile requests, not the worker backfill. Peak
+worker memory and concurrent multi-user load have not been measured. Production
+deployment and backfill verification remain open in MAPS08.
+
 ## Recommended architecture and performance strategy
 
-**Yes: build denormalized route data as a consequence of import.** Keep the
-original activity/source as truth, and make the heatmap projection disposable and
-rebuildable. Prepare reusable geometry and indexed bounds once per activity;
-aggregate only the requested tiles and filters. Do not pre-render images for
-every possible date/sport combination during import.
+Build denormalized route projections asynchronously from durable dirty records.
+Keep the original activity/source as truth, and make the heatmap projection
+disposable and rebuildable. Prepare reusable geometry and indexed bounds once
+per activity; aggregate only the requested tiles and filters. Activity import
+does not wait for heatmap preparation. Do not pre-render images for every
+possible date/sport combination.
 
 Recommend **transparent raster overlay tiles for the first release**, generated
 in Rust over the existing MapLibre basemap. The browser receives bounded images,
@@ -182,16 +249,17 @@ the built-in heatmap would weight recording density instead of distinct
 activities. These capabilities support the design choices above; they do not
 establish Bike's actual performance.
 
-### Import-time projection
+### Asynchronous projection preparation
 
 Use the existing durable Rust worker. Saving or changing relevant activity data
-records a dirty projection durably; a separate task builds it without delaying
-successful activity import or failing the import if heatmap preparation fails.
-Record dirty state in the same transaction as the source mutation. Recover
-unqueued dirty records through the existing worker/reconciliation mechanism so
-a crash between save and enqueue cannot permanently lose the update.
+records a dirty projection durably in the same transaction as the source
+mutation. A reconciler leases up to 16 pending `(activity_id, generation)`
+identities and inserts one durable task for the batch every 15 seconds; queue
+payloads do not include route samples. Activity persistence and import success
+do not wait for heatmap preparation. Reconciliation recovers dirty records if a
+process stops between the source mutation and job execution.
 
-The worker processes one activity at a time:
+The worker processes one activity at a time within each batch:
 
 1. Load the owned activity's complete ordered route once. Validate coordinate
    ranges/finite values, remove duplicate adjacent points, and preserve track
@@ -210,6 +278,11 @@ The worker processes one activity at a time:
 5. Atomically replace the activity's projection and publish its revision only
    if the source version still matches. A concurrent edit or deletion makes a
    stale worker result discardable. Release full samples before the next activity.
+
+If one activity fails, record its failed projection and continue through the
+rest of the batch. Return a task error after processing the batch so the durable
+worker retries it; already published or stale entries safely become no-ops on
+retry because publication is generation-checked.
 
 Selected physical records:
 
@@ -383,8 +456,9 @@ different owner/date/sport, plus one original ride for the projection happy path
    cache hits, or conditional responses. Disabled/unauthenticated access cannot
    read old tiles. Deleting/reprocessing an activity removes old contributions;
    a racing worker cannot resurrect them.
-4. Preparation: import succeeds independently of a heatmap failure; dirty records
-   survive retries/crashes; bounded historical backfill matches normal preparation.
+4. Preparation: activity import succeeds independently of heatmap preparation;
+   dirty records survive retries/crashes; a bounded batch prepares activities
+   sequentially, and historical backfill uses the same per-activity builder.
    Partial history is labeled and advances to ready after publication.
 5. UI: shared navigation/page gates, filter URL restoration, fit/camera retention,
    theme switching and attribution work. Exercise a Rust-backed happy path with
@@ -392,7 +466,7 @@ different owner/date/sport, plus one original ride for the projection happy path
 6. Performance: measure current history and a proportionate larger fixture,
    including its busiest local tile and an all-time overview. Record activity/
    vertex counts, bytes read/returned, query plans, peak memory, cold/warm timing,
-   import preparation time/storage, and browser responsiveness. Proposed initial
+   worker preparation time/storage, and browser responsiveness. Proposed initial
    targets: metadata p95 <300 ms, warm tile p95 <200 ms, cold tile p95 <1 s,
    useful first overlay <2 s excluding basemap fetches, and no filter-driven
    main-thread pause >100 ms. These are targets, not measurements. A suggested

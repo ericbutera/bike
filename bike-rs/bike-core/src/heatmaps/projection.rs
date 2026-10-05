@@ -51,8 +51,12 @@ impl Projection {
                 RETURNING p.activity_id, p.generation
             )
             INSERT INTO background_tasks(task_type, payload, status, attempts, max_attempts, created_at, updated_at)
-            SELECT 'prepare_heatmap', jsonb_build_object('type','PrepareHeatmap','data',jsonb_build_object('activity_id',activity_id,'generation',generation)),
-                'pending', 0, 3, now(), now() FROM leased
+            SELECT 'prepare_heatmap',
+                jsonb_build_object('type', 'PrepareHeatmap', 'data', jsonb_build_object('activities',
+                    jsonb_agg(jsonb_build_object('activity_id', activity_id, 'generation', generation) ORDER BY activity_id))),
+                'pending', 0, 3, now(), now()
+            FROM leased
+            HAVING count(*) > 0
         "#.to_owned())).await?;
         Ok(result.rows_affected())
     }

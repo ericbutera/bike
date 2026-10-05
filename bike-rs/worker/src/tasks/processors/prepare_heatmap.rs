@@ -4,8 +4,9 @@ use bike_core::heatmaps::{
     preparation::prepare_activity,
     projection::{PendingProjection, Projection},
 };
-use bike_core::jobs::adapter::PrepareHeatmapTask;
+use bike_core::jobs::adapter::{PrepareHeatmapActivity, PrepareHeatmapTask};
 use sea_orm::DatabaseConnection;
+use serde::Deserialize;
 use std::error::Error;
 
 pub struct PrepareHeatmap {
@@ -15,6 +16,22 @@ pub struct PrepareHeatmap {
 impl PrepareHeatmap {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum PrepareHeatmapPayload {
+    Batch(PrepareHeatmapTask),
+    LegacySingle(PrepareHeatmapActivity),
+}
+
+impl PrepareHeatmapPayload {
+    fn activities(self) -> Vec<PrepareHeatmapActivity> {
+        match self {
+            Self::Batch(task) => task.activities,
+            Self::LegacySingle(activity) => vec![activity],
+        }
     }
 }
 
@@ -29,24 +46,42 @@ impl TaskProcessor for PrepareHeatmap {
         _task_id: i32,
         payload: serde_json::Value,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let task: PrepareHeatmapTask =
+        let task: PrepareHeatmapPayload =
             serde_json::from_value(payload.get("data").unwrap_or(&payload).clone())?;
-        let pending = PendingProjection {
-            activity_id: task.activity_id,
-            generation: task.generation,
-        };
-        if let Err(error) = prepare_activity(&self.db, pending).await {
-            Projection::record_failure(
-                &self.db,
-                &PendingProjection {
-                    activity_id: task.activity_id,
-                    generation: task.generation,
-                },
-            )
-            .await?;
-            return Err(error.into());
+        let activities = task.activities();
+        if activities.is_empty() {
+            return Err(std::io::Error::other("PrepareHeatmap task contains no activities").into());
         }
-        Ok(())
+
+        let mut failures = Vec::new();
+        for activity in activities {
+            let pending = PendingProjection {
+                activity_id: activity.activity_id,
+                generation: activity.generation,
+            };
+            if let Err(error) = prepare_activity(&self.db, pending).await {
+                Projection::record_failure(
+                    &self.db,
+                    &PendingProjection {
+                        activity_id: activity.activity_id,
+                        generation: activity.generation,
+                    },
+                )
+                .await?;
+                failures.push(format!("{}: {error}", activity.activity_id));
+            }
+        }
+
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(std::io::Error::other(format!(
+                "Heatmap preparation failed for {} activities: {}",
+                failures.len(),
+                failures.join("; ")
+            ))
+            .into())
+        }
     }
 }
 
