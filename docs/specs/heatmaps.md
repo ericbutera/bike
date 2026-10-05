@@ -163,11 +163,12 @@ labels, keyboard operation, visible focus, and a textual summary.
    and queues one durable job containing their activity IDs and generations.
    The job carries identities only, not route samples. The worker prepares its
    entries sequentially: it reads one activity's stored `derived_data_json`,
-   checks route eligibility, simplifies the route for four zoom bands, and
-   stores bounded coordinate chunks with spatial bounds in PostgreSQL. A usable
-   route becomes `ready`; missing or excluded geometry becomes `skipped`; a
-   preparation error becomes `failed`. Original activity data remains the
-   source of truth.
+   excludes impossible point-to-point movements above 45 m/s, simplifies the
+   remaining route for four zoom bands, and stores bounded coordinate chunks
+   with spatial bounds in PostgreSQL. The suspect endpoint is dropped so neither
+   adjacent edge paints a straight line to or from the GPS spike. A usable route
+   becomes `ready`; missing or excluded geometry becomes `skipped`; a preparation
+   error becomes `failed`. Original activity data remains the source of truth.
 3. **Draw the map.** For zoomed-out views, the Rust zones endpoint returns one
    center per ready activity for MapLibre to cluster. For visible route detail,
    the UI requests private PNG tiles through its server route. Rust filters
@@ -262,12 +263,13 @@ process stops between the source mutation and job execution.
 The worker processes one activity at a time within each batch:
 
 1. Load the owned activity's complete ordered route once. Validate coordinate
-   ranges/finite values, remove duplicate adjacent points, and preserve track
-   breaks. Audit whether current stored routes preserve source breaks; use
-   elapsed-time/distance checks to split discontinuities rather than drawing
-   bridges over missing GPS, source track boundaries, or implausible jumps.
-   If source break information is required but absent, recover it from the
-   retained source during projection preparation, not during tile requests.
+   ranges/finite values and remove duplicate adjacent points. Preserve track
+   breaks, and split on reversed time, jumps over 5 km, gaps over 120 seconds
+   with over 200 m of movement, or computed point-to-point speed above 45 m/s.
+   For an impossible-speed jump, drop the suspect endpoint too, then start a new
+   path at the following point so neither adjacent edge draws through the GPS
+   spike. If source break information is required but absent, recover it from
+   the retained source during projection preparation, not during tile requests.
 2. Split antimeridian crossings and handle Web Mercator latitude limits without
    introducing world-spanning lines. Preserve unchanged analytical route samples.
 3. Create compact coordinate-only geometry at a few zoom/detail levels. Simplify
@@ -283,6 +285,11 @@ If one activity fails, record its failed projection and continue through the
 rest of the batch. Return a task error after processing the batch so the durable
 worker retries it; already published or stale entries safely become no-ops on
 retry because publication is generation-checked.
+
+The speed filter changes projection geometry. Projection version 2 invalidates
+the previous chunks and marks existing projections pending in a migration, so
+historical routes are rebuilt with the filter instead of continuing to display
+old GPS spikes.
 
 Selected physical records:
 

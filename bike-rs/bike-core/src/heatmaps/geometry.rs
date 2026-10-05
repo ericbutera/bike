@@ -2,6 +2,7 @@ use crate::activity_data::ActivityRoutePoint;
 
 pub type Point = [f64; 2];
 pub const WORLD_METERS: f64 = 40_075_016.686;
+const MAX_PLAUSIBLE_SPEED_MPS: f64 = 45.0;
 
 #[derive(Debug)]
 pub struct Chunk {
@@ -121,11 +122,15 @@ fn continuous_paths(route: &[ActivityRoutePoint]) -> Vec<Vec<Point>> {
             let meters =
                 dx.hypot(next[1] - a[1]) * WORLD_METERS * p.latitude.to_radians().cos().abs();
             let dt = p.elapsed_seconds - prev.elapsed_seconds;
-            if dt < 0
-                || meters > 5_000.0
-                || (dt > 120 && meters > 200.0)
-                || (meters > 100.0 && (dt <= 0 || meters / f64::from(dt) > 90.0))
-            {
+            if dt < 0 {
+                finish(&mut path, &mut paths);
+            } else if meters / f64::from(dt.max(1)) > MAX_PLAUSIBLE_SPEED_MPS {
+                // Drop the suspect endpoint as well as the impossible segment. It may be a
+                // single bad GPS fix; starting again at the next point avoids drawing from it.
+                finish(&mut path, &mut paths);
+                previous = None;
+                continue;
+            } else if meters > 5_000.0 || (dt > 120 && meters > 200.0) {
                 finish(&mut path, &mut paths);
             } else if (next[0] - a[0]).abs() > 0.5 {
                 let wrapped = next[0] + if next[0] < a[0] { 1.0 } else { -1.0 };
@@ -218,6 +223,27 @@ mod tests {
         assert!(chunks.iter().any(|c| c.bounds[2] == 1.0));
         assert!(chunks.iter().any(|c| c.bounds[0] == 0.0));
     }
+
+    #[test]
+    fn drops_impossible_speed_jumps_and_resumes_after_them() {
+        let spike = point(-84.998, 11);
+        let paths = continuous_paths(&[
+            point(-85.001, 0),
+            point(-85.0009, 10),
+            spike.clone(),
+            point(-85.0008, 12),
+            point(-85.0007, 22),
+        ]);
+
+        assert_eq!(paths.len(), 2);
+        assert!(paths
+            .iter()
+            .flatten()
+            .all(|p| *p != project(spike.longitude, spike.latitude)));
+        assert_eq!(paths[0].last(), Some(&project(-85.0009, 45.0)));
+        assert_eq!(paths[1].first(), Some(&project(-85.0008, 45.0)));
+    }
+
     #[test]
     fn binary_projection_roundtrips_and_simplifies_straight_routes() {
         let route: Vec<_> = (0..1000)

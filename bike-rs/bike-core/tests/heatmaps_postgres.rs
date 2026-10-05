@@ -85,6 +85,68 @@ async fn prepares_backfills_and_invalidates_activity_generations() {
         .unwrap();
 }
 
+#[tokio::test]
+#[ignore = "Set BIKE_HEATMAP_TEST_DATABASE_URL to a disposable PostgreSQL database"]
+async fn upgrades_existing_heatmap_projections_for_speed_filter() {
+    let (db, schema) = fixture().await;
+    db.execute_unprepared(
+        "UPDATE heatmap_projections SET status='ready', min_x=0.1, min_y=0.1, max_x=0.2, max_y=0.2 WHERE activity_id=1;
+         INSERT INTO heatmap_chunks(activity_id,band,chunk_index,min_x,min_y,max_x,max_y,points)
+         VALUES (1,0,0,0.1,0.1,0.2,0.2,decode(repeat('00',32),'hex'));",
+    )
+    .await
+    .unwrap();
+
+    db.execute_unprepared(include_str!(
+        "../../migration/src/heatmap_projection_speed_filter.sql"
+    ))
+    .await
+    .unwrap();
+
+    let projection = db
+        .query_one_raw(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT generation, projection_version, status, min_x FROM heatmap_projections WHERE activity_id=1"
+                .to_owned(),
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(projection.try_get::<i64>("", "generation").unwrap(), 2);
+    assert_eq!(
+        projection.try_get::<i32>("", "projection_version").unwrap(),
+        2
+    );
+    assert_eq!(
+        projection.try_get::<String>("", "status").unwrap(),
+        "pending"
+    );
+    assert_eq!(
+        projection.try_get::<Option<f64>>("", "min_x").unwrap(),
+        None
+    );
+
+    let counts = db
+        .query_one_raw(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT (SELECT count(*)::bigint FROM heatmap_chunks) AS chunks, (SELECT revision FROM heatmap_user_states WHERE user_id=1) AS revision, (SELECT column_default FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='heatmap_projections' AND column_name='projection_version') AS version_default"
+                .to_owned(),
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(counts.try_get::<i64>("", "chunks").unwrap(), 0);
+    assert_eq!(counts.try_get::<i64>("", "revision").unwrap(), 2);
+    assert_eq!(
+        counts.try_get::<String>("", "version_default").unwrap(),
+        "2"
+    );
+
+    db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
+        .await
+        .unwrap();
+}
+
 async fn assert_batched_prepare_task(db: &sea_orm::DatabaseConnection) {
     let task = db
         .query_one_raw(Statement::from_string(
