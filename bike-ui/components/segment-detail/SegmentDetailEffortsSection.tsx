@@ -8,7 +8,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   formatActivityTimestamp,
   formatDuration,
@@ -21,6 +21,7 @@ import {
   segmentEffortDayAttemptSummaries,
 } from "../../lib/segmentDetail";
 import { AppCard, CardHeader } from "../ui/Card";
+import { useKeyedState } from "../../lib/useKeyedState";
 import { LoadingSpinner } from "../ui/QueryState";
 import Pagination from "../ui/Pagination";
 import type {
@@ -41,7 +42,6 @@ export default function SegmentDetailEffortsSection({
   performance,
   isLoading,
 }: SegmentDetailEffortsSectionProps) {
-  const [page, setPage] = useState(1);
   const {
     visibleEfforts,
     selectedEffortIds,
@@ -60,14 +60,11 @@ export default function SegmentDetailEffortsSection({
     1,
     Math.ceil(visibleEfforts.length / EFFORTS_PER_PAGE),
   );
-
-  useEffect(() => {
-    setPage(1);
-  }, [segment.id, effortTimeFilter]);
-
-  useEffect(() => {
-    setPage((currentPage) => Math.min(currentPage, totalPages));
-  }, [totalPages]);
+  const [requestedPage, setPage] = useKeyedState(
+    `${segment.id}:${effortTimeFilter}`,
+    1,
+  );
+  const page = Math.min(requestedPage, totalPages);
 
   const paginatedEfforts = useMemo(() => {
     const startIndex = (page - 1) * EFFORTS_PER_PAGE;

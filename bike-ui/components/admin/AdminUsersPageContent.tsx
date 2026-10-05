@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import toast from "react-hot-toast";
 import GenericList, { type Column } from "../ui/GenericList";
 import {
@@ -10,6 +10,7 @@ import {
   useUpdateAdminUser,
   type AdminUser,
 } from "../../lib/queries";
+import { useKeyedState } from "../../lib/useKeyedState";
 
 type AdminUsersGridParams = {
   q?: string;
@@ -162,20 +163,28 @@ function AdminUserModal({
   const updateUser = useUpdateAdminUser();
   const disableUser = useDisableAdminUser();
   const detailUser = detailQuery.data ?? user;
-  const [name, setName] = useState(user?.name ?? "");
-  const [isAdmin, setIsAdmin] = useState(user?.is_admin ?? false);
-  const [accountDisabled, setAccountDisabled] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const draftKey = [
+    user?.id ?? "none",
+    detailUser?.name ?? "",
+    detailUser?.is_admin ?? false,
+    detailUser ? userDisabled(detailUser) : false,
+  ].join(":");
+  const [draft, setDraft] = useKeyedState(draftKey, {
+    name: detailUser?.name ?? "",
+    isAdmin: detailUser?.is_admin ?? false,
+    accountDisabled: detailUser ? userDisabled(detailUser) : false,
+    saveError: null as string | null,
+  });
+  const { name, isAdmin, accountDisabled, saveError } = draft;
+  const setName = (value: string) =>
+    setDraft((current) => ({ ...current, name: value }));
+  const setIsAdmin = (value: boolean) =>
+    setDraft((current) => ({ ...current, isAdmin: value }));
+  const setAccountDisabled = (value: boolean) =>
+    setDraft((current) => ({ ...current, accountDisabled: value }));
+  const setSaveError = (value: string | null) =>
+    setDraft((current) => ({ ...current, saveError: value }));
   const isBusy = updateUser.isPending || disableUser.isPending;
-
-  useEffect(() => {
-    if (detailUser) {
-      setName(detailUser.name ?? "");
-      setIsAdmin(detailUser.is_admin);
-      setAccountDisabled(userDisabled(detailUser));
-      setSaveError(null);
-    }
-  }, [detailUser, user?.id]);
 
   if (!user) return null;
   const selectedUser = user;

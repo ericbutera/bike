@@ -481,6 +481,13 @@ function SelectedEffortsPanel({
         .join(","),
     [sortedComparisonRows],
   );
+  const sortedComparisonEffortIds = useMemo(
+    () =>
+      sortedComparisonRowOrder
+        ? sortedComparisonRowOrder.split(",").map(Number)
+        : [],
+    [sortedComparisonRowOrder],
+  );
 
   function formatRideDateLabel(value: string) {
     const date = new Date(value);
@@ -496,8 +503,8 @@ function SelectedEffortsPanel({
       animationFrameRef.current = null;
     }
 
-    for (const comparisonRow of sortedComparisonRows) {
-      const row = rowRefs.current.get(comparisonRow.effort.id);
+    for (const effortId of sortedComparisonEffortIds) {
+      const row = rowRefs.current.get(effortId);
 
       if (!row) {
         continue;
@@ -509,19 +516,17 @@ function SelectedEffortsPanel({
 
     const nextRowTopByEffortId = new Map<number, number>();
 
-    for (const comparisonRow of sortedComparisonRows) {
-      const row = rowRefs.current.get(comparisonRow.effort.id);
+    for (const effortId of sortedComparisonEffortIds) {
+      const row = rowRefs.current.get(effortId);
 
       if (!row) {
         continue;
       }
 
       const nextTop = row.getBoundingClientRect().top;
-      nextRowTopByEffortId.set(comparisonRow.effort.id, nextTop);
+      nextRowTopByEffortId.set(effortId, nextTop);
 
-      const previousTop = previousRowTopByEffortIdRef.current.get(
-        comparisonRow.effort.id,
-      );
+      const previousTop = previousRowTopByEffortIdRef.current.get(effortId);
 
       if (previousTop == null) {
         continue;
@@ -538,8 +543,8 @@ function SelectedEffortsPanel({
     }
 
     animationFrameRef.current = window.requestAnimationFrame(() => {
-      for (const comparisonRow of sortedComparisonRows) {
-        const row = rowRefs.current.get(comparisonRow.effort.id);
+      for (const effortId of sortedComparisonEffortIds) {
+        const row = rowRefs.current.get(effortId);
 
         if (!row || !row.style.transform) {
           continue;
@@ -560,7 +565,7 @@ function SelectedEffortsPanel({
         animationFrameRef.current = null;
       }
     };
-  }, [sortedComparisonRowOrder]);
+  }, [sortedComparisonEffortIds]);
 
   return sortedComparisonRows.length > 0 ? (
     <div className="flex bg-base-100 xl:h-full xl:min-h-[24rem] xl:flex-col">

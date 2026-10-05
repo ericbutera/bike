@@ -48,12 +48,13 @@ export default function SegmentEffortAnalysisReport() {
         ),
     [segmentsQuery.data],
   );
-  const [selectedSegmentId, setSelectedSegmentId] = useState(
-    searchParams.get("segment_id") ?? "",
-  );
-  const selectedSegment = eligibleSegments.find(
-    (segment) => segment.id.toString() === selectedSegmentId,
-  );
+  const requestedSegmentId = searchParams.get("segment_id") ?? "";
+  const selectedSegment =
+    eligibleSegments.find(
+      (segment) => segment.id.toString() === requestedSegmentId,
+    ) ?? eligibleSegments[0];
+  const selectedSegmentId =
+    selectedSegment?.id.toString() ?? requestedSegmentId;
   const [splitCount, setSplitCount] = useState<number>(10);
   const [showAllEfforts, setShowAllEfforts] = useState(false);
   const [selectedEffortId, setSelectedEffortId] = useState<number | null>(null);
@@ -64,52 +65,41 @@ export default function SegmentEffortAnalysisReport() {
   const analysis = analysisQuery.data;
   const efforts = analysis?.efforts ?? [];
   const referenceEffort = analysis?.reference_effort ?? null;
-  const selectedEffort =
-    effortById(efforts, selectedEffortId) ?? referenceEffort;
+  const effectiveSelectedEffortId =
+    selectedEffortId != null &&
+    efforts.some((effort) => effort.effort_id === selectedEffortId)
+      ? selectedEffortId
+      : (referenceEffort?.effort_id ?? null);
+  const selectedEffort = effortById(efforts, effectiveSelectedEffortId);
+
+  function selectSegment(segmentId: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("segment_id", segmentId);
+    router.replace(`/segments/analysis?${params.toString()}`, {
+      scroll: false,
+    });
+  }
 
   useEffect(() => {
-    if (segmentsQuery.isLoading || eligibleSegments.length === 0) {
+    if (segmentsQuery.isLoading || !selectedSegment) {
       return;
     }
 
-    if (
-      !selectedSegmentId ||
-      !eligibleSegments.some(
-        (segment) => segment.id.toString() === selectedSegmentId,
-      )
-    ) {
-      setSelectedSegmentId(eligibleSegments[0].id.toString());
-    }
-  }, [eligibleSegments, segmentsQuery.isLoading, selectedSegmentId]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(searchParams);
-    if (selectedSegmentId) {
+    if (requestedSegmentId !== selectedSegmentId) {
+      const params = new URLSearchParams(searchParams.toString());
       params.set("segment_id", selectedSegmentId);
-    } else {
-      params.delete("segment_id");
-    }
-
-    const nextQuery = params.toString();
-    if (nextQuery !== searchParams.toString()) {
-      router.replace(`/segments/analysis${nextQuery ? `?${nextQuery}` : ""}`, {
+      router.replace(`/segments/analysis?${params.toString()}`, {
         scroll: false,
       });
     }
-  }, [router, searchParams, selectedSegmentId]);
-
-  useEffect(() => {
-    if (!analysis) {
-      return;
-    }
-
-    if (
-      selectedEffortId == null ||
-      !analysis.efforts.some((effort) => effort.effort_id === selectedEffortId)
-    ) {
-      setSelectedEffortId(analysis.reference_effort.effort_id);
-    }
-  }, [analysis, selectedEffortId]);
+  }, [
+    router,
+    searchParams,
+    segmentsQuery.isLoading,
+    requestedSegmentId,
+    selectedSegment,
+    selectedSegmentId,
+  ]);
 
   return (
     <div className="grid gap-6">
@@ -142,7 +132,7 @@ export default function SegmentEffortAnalysisReport() {
                     className="select w-full"
                     value={selectedSegmentId}
                     onChange={(event) => {
-                      setSelectedSegmentId(event.target.value);
+                      selectSegment(event.target.value);
                     }}
                   >
                     {eligibleSegments.map((segment) => (
@@ -192,7 +182,7 @@ export default function SegmentEffortAnalysisReport() {
           <SegmentEffortAnalysisSection
             analysis={analysis}
             isAnalysisLoading={analysisQuery.isLoading}
-            selectedEffortId={selectedEffortId}
+            selectedEffortId={effectiveSelectedEffortId}
             splitCount={splitCount}
             setSplitCount={setSplitCount}
           />

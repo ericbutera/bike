@@ -1,11 +1,25 @@
 "use client";
 
 import { type ActivityRoutePoint } from "../../lib/queries";
+import Image from "next/image";
+import { useSyncExternalStore } from "react";
 import { buildActivityRoutePreviewUrl } from "../../lib/routePreview";
-import { useEffect, useState } from "react";
 import { activityMapImageUrl } from "../../lib/activityMapImages";
 import { type RoutePreviewVariant } from "../../lib/routePreview";
 import { useBikeTheme } from "../../lib/useBikeTheme";
+
+function subscribeToWindowResize(onChange: () => void) {
+  window.addEventListener("resize", onChange);
+  return () => window.removeEventListener("resize", onChange);
+}
+
+function getDevicePixelRatio(): 1 | 2 {
+  return window.devicePixelRatio >= 1.5 ? 2 : 1;
+}
+
+function getServerDevicePixelRatio(): 1 {
+  return 1;
+}
 
 function ActivityRouteImage({
   activityId,
@@ -17,12 +31,11 @@ function ActivityRouteImage({
   variant: RoutePreviewVariant;
 }) {
   const theme = useBikeTheme();
-  const [dpr, setDpr] = useState<1 | 2>(1);
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    setDpr(window.devicePixelRatio >= 1.5 ? 2 : 1);
-    setReady(true);
-  }, []);
+  const dpr = useSyncExternalStore(
+    subscribeToWindowResize,
+    getDevicePixelRatio,
+    getServerDevicePixelRatio,
+  );
   const src = activityMapImageUrl({ activityId, variant, theme, dpr });
   const alt =
     variant === "full"
@@ -36,18 +49,22 @@ function ActivityRouteImage({
     variant === "full"
       ? "h-full w-full object-contain"
       : "h-24 w-full object-contain";
+  const dimensions =
+    variant === "full"
+      ? { width: 1000, height: 300 }
+      : { width: 288, height: 192 };
 
   return (
     <div className={wrapperClassName}>
-      {ready ? (
-        <img
-          src={src}
-          alt={alt}
-          className={imageClassName}
-          loading="lazy"
-          decoding="async"
-        />
-      ) : null}
+      <Image
+        src={src}
+        alt={alt}
+        width={dimensions.width}
+        height={dimensions.height}
+        className={imageClassName}
+        loading="lazy"
+        unoptimized
+      />
     </div>
   );
 }
@@ -66,6 +83,9 @@ function LegacyActivityRouteImage({
     variant,
   });
   const isFull = variant === "full";
+  const dimensions = isFull
+    ? { width: 1000, height: 300 }
+    : { width: 288, height: 192 };
 
   if (!src) {
     return null;
@@ -79,14 +99,16 @@ function LegacyActivityRouteImage({
           : "grid place-items-center overflow-hidden rounded-box border border-base-300 bg-base-200 p-1.5"
       }
     >
-      <img
+      <Image
         src={src}
         alt={isFull ? `Route map for ${title}` : `Route thumbnail for ${title}`}
+        width={dimensions.width}
+        height={dimensions.height}
         className={
           isFull ? "h-full w-full object-contain" : "h-24 w-full object-contain"
         }
         loading="lazy"
-        decoding="async"
+        unoptimized
       />
     </div>
   );

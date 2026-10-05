@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 const STORAGE_KEY = "bike-theme";
 const DARK_MEDIA_QUERY = "(prefers-color-scheme: dark)";
+const THEME_CHANGE_EVENT = "bike:theme-change";
 
 type ThemeMode = "light" | "dark";
 
@@ -34,31 +35,37 @@ function applyTheme(theme: ThemeMode) {
   document.documentElement.style.colorScheme = theme;
 }
 
+function getThemeSnapshot(): ThemeMode {
+  return getAppliedTheme() ?? resolveTheme();
+}
+
+function subscribeToTheme(onChange: () => void) {
+  const mediaQueryList = window.matchMedia(DARK_MEDIA_QUERY);
+  const handleChange = () => {
+    applyTheme(resolveTheme());
+    onChange();
+  };
+
+  mediaQueryList.addEventListener("change", handleChange);
+  window.addEventListener("storage", handleChange);
+  window.addEventListener(THEME_CHANGE_EVENT, handleChange);
+
+  return () => {
+    mediaQueryList.removeEventListener("change", handleChange);
+    window.removeEventListener("storage", handleChange);
+    window.removeEventListener(THEME_CHANGE_EVENT, handleChange);
+  };
+}
+
 export default function ThemeToggle() {
-  const [theme, setTheme] = useState<ThemeMode>("light");
+  const theme = useSyncExternalStore(
+    subscribeToTheme,
+    getThemeSnapshot,
+    () => "light",
+  );
 
   useEffect(() => {
-    const nextTheme = getAppliedTheme() ?? resolveTheme();
-    setTheme(nextTheme);
-    applyTheme(nextTheme);
-
-    const mediaQueryList = window.matchMedia(DARK_MEDIA_QUERY);
-
-    const handleSystemThemeChange = () => {
-      if (getStoredTheme()) {
-        return;
-      }
-
-      const systemTheme = getSystemTheme();
-      setTheme(systemTheme);
-      applyTheme(systemTheme);
-    };
-
-    mediaQueryList.addEventListener("change", handleSystemThemeChange);
-
-    return () => {
-      mediaQueryList.removeEventListener("change", handleSystemThemeChange);
-    };
+    applyTheme(getAppliedTheme() ?? resolveTheme());
   }, []);
 
   const nextTheme = theme === "dark" ? "light" : "dark";
@@ -78,8 +85,8 @@ export default function ThemeToggle() {
             ? "dark"
             : "light";
           window.localStorage.setItem(STORAGE_KEY, selectedTheme);
-          setTheme(selectedTheme);
           applyTheme(selectedTheme);
+          window.dispatchEvent(new Event(THEME_CHANGE_EVENT));
         }}
       />
     </label>

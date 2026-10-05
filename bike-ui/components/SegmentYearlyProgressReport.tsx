@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import {
   CartesianGrid,
   Line,
@@ -116,12 +116,13 @@ export default function SegmentYearlyProgressReport() {
         ),
     [segmentsQuery.data],
   );
-  const [selectedSegmentId, setSelectedSegmentId] = useState(
-    searchParams.get("segment_id") ?? "",
-  );
-  const selectedSegment = eligibleSegments.find(
-    (segment) => segment.id.toString() === selectedSegmentId,
-  );
+  const requestedSegmentId = searchParams.get("segment_id") ?? "";
+  const selectedSegment =
+    eligibleSegments.find(
+      (segment) => segment.id.toString() === requestedSegmentId,
+    ) ?? eligibleSegments[0];
+  const selectedSegmentId =
+    selectedSegment?.id.toString() ?? requestedSegmentId;
   const yearlyBestsQuery = useSegmentYearlyBests(selectedSegment?.id);
   const yearlyBests = yearlyBestsQuery.data?.years ?? [];
   const chartData = yearlyBests.map<ChartPoint>((best) => ({
@@ -131,35 +132,25 @@ export default function SegmentYearlyProgressReport() {
   }));
 
   useEffect(() => {
-    if (segmentsQuery.isLoading || eligibleSegments.length === 0) {
+    if (segmentsQuery.isLoading || !selectedSegment) {
       return;
     }
 
-    if (
-      !selectedSegmentId ||
-      !eligibleSegments.some(
-        (segment) => segment.id.toString() === selectedSegmentId,
-      )
-    ) {
-      setSelectedSegmentId(eligibleSegments[0].id.toString());
-    }
-  }, [eligibleSegments, segmentsQuery.isLoading, selectedSegmentId]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(searchParams);
-    if (selectedSegmentId) {
+    if (requestedSegmentId !== selectedSegmentId) {
+      const params = new URLSearchParams(searchParams.toString());
       params.set("segment_id", selectedSegmentId);
-    } else {
-      params.delete("segment_id");
-    }
-
-    const nextQuery = params.toString();
-    if (nextQuery !== searchParams.toString()) {
-      router.replace(`/segments/progress${nextQuery ? `?${nextQuery}` : ""}`, {
+      router.replace(`/segments/progress?${params.toString()}`, {
         scroll: false,
       });
     }
-  }, [router, searchParams, selectedSegmentId]);
+  }, [
+    router,
+    searchParams,
+    segmentsQuery.isLoading,
+    requestedSegmentId,
+    selectedSegment,
+    selectedSegmentId,
+  ]);
 
   return (
     <div className="grid gap-6">
@@ -191,7 +182,11 @@ export default function SegmentYearlyProgressReport() {
               className="select w-full"
               value={selectedSegmentId}
               onChange={(event) => {
-                setSelectedSegmentId(event.target.value);
+                const params = new URLSearchParams(searchParams.toString());
+                params.set("segment_id", event.target.value);
+                router.replace(`/segments/progress?${params.toString()}`, {
+                  scroll: false,
+                });
               }}
             >
               {eligibleSegments.map((segment) => (

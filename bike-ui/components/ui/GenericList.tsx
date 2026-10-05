@@ -5,11 +5,11 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
 import Pagination from "./Pagination";
+import { useKeyedState } from "../../lib/useKeyedState";
 
 export type Column<T, P extends object> = {
   key: string;
@@ -76,8 +76,11 @@ export default function GenericList<T, P extends object>({
   const searchParams = useSearchParams();
   const search = searchParams.toString();
   const queryParams = useMemo(() => paramsFromSearch<P>(search), [search]);
-  const [localParams, setLocalParams] = useState<P>(queryParams);
-  const pendingNavigation = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [localParams, setLocalParams] = useKeyedState(search, queryParams);
+  const [pendingNavigation, setPendingNavigation] = useState<{
+    search: string;
+    href: string;
+  } | null>(null);
 
   const result = useQuery(queryParams);
   const rows = result.data ?? [];
@@ -98,51 +101,45 @@ export default function GenericList<T, P extends object>({
     [pathname],
   );
 
-  const cancelPendingNavigation = useCallback(() => {
-    if (pendingNavigation.current !== null) {
-      clearTimeout(pendingNavigation.current);
-      pendingNavigation.current = null;
+  useEffect(() => {
+    if (!pendingNavigation || pendingNavigation.search !== search) {
+      return undefined;
     }
-  }, []);
 
-  useEffect(() => {
-    cancelPendingNavigation();
-    setLocalParams(queryParams);
-  }, [cancelPendingNavigation, queryParams]);
-
-  useEffect(() => {
-    return () => cancelPendingNavigation();
-  }, [cancelPendingNavigation]);
-
-  const setFilter = (key: string, value: unknown) => {
-    const updated = {
-      ...localParams,
-      [key]: value === "" ? undefined : value,
-    } as P & { page?: number };
-    if (key !== "page") updated.page = 1;
-
-    setLocalParams(updated);
-    cancelPendingNavigation();
-    pendingNavigation.current = setTimeout(() => {
-      router.replace(hrefFor(updated), { scroll: false });
-      pendingNavigation.current = null;
+    const timeout = setTimeout(() => {
+      router.replace(pendingNavigation.href, { scroll: false });
     }, 300);
-  };
+    return () => clearTimeout(timeout);
+  }, [pendingNavigation, router, search]);
+
+  const setFilter = useCallback(
+    (key: string, value: unknown) => {
+      const updated = {
+        ...localParams,
+        [key]: value === "" ? undefined : value,
+      } as P & { page?: number };
+      if (key !== "page") updated.page = 1;
+
+      setLocalParams(updated);
+      setPendingNavigation({ search, href: hrefFor(updated) });
+    },
+    [hrefFor, localParams, search, setLocalParams],
+  );
 
   const handleSearch = () => {
-    cancelPendingNavigation();
+    setPendingNavigation(null);
     router.push(hrefFor(localParams), { scroll: false });
   };
 
   const handleClear = () => {
-    cancelPendingNavigation();
+    setPendingNavigation(null);
     const cleared = {} as P;
     setLocalParams(cleared);
     router.push(pathname, { scroll: false });
   };
 
   const handlePageChange = (nextPage: number) => {
-    cancelPendingNavigation();
+    setPendingNavigation(null);
     const updated = {
       ...localParams,
       page: nextPage,

@@ -34,6 +34,7 @@ import {
   type TrainingReportPoint,
 } from "../../lib/queries";
 import { useUnitPreferences } from "../../lib/unitPreferences";
+import { useKeyedState } from "../../lib/useKeyedState";
 import InfoTooltip from "../ui/InfoTooltip";
 import Charts, { chartBucketLabel } from "./Charts";
 import TimeRangeSelector, {
@@ -771,11 +772,10 @@ function ClimbingReportView({
   unitSystem: UnitSystem;
   isLoading: boolean;
 }) {
-  const [climbPage, setClimbPage] = useState(1);
-
-  useEffect(() => {
-    setClimbPage(1);
-  }, [report?.climb_count]);
+  const [climbPage, setClimbPage] = useKeyedState(
+    String(report?.climb_count ?? 0),
+    1,
+  );
 
   if (isLoading) return <LoadingReport label="Generating climbing report..." />;
   if (!report || report.climb_count === 0)

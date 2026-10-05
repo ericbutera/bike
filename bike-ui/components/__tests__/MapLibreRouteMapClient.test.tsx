@@ -130,11 +130,13 @@ describe("MapLibreRouteMapClient", () => {
     });
     mapMocks.setStyle.mockImplementation(() => {
       setTimeout(() => {
-        mapMocks.sources.clear();
-        for (const handler of mapMocks.handlers.get("style.load") ?? []) {
-          handler();
-        }
-        resolveStyleLoad();
+        act(() => {
+          mapMocks.sources.clear();
+          for (const handler of mapMocks.handlers.get("style.load") ?? []) {
+            handler();
+          }
+          resolveStyleLoad();
+        });
       }, 0);
     });
     render(

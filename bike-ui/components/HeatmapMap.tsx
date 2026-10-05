@@ -74,7 +74,18 @@ export default function HeatmapMap({
     onLocationError,
     onMapMoveStart,
   });
-  current.current = {
+  useEffect(() => {
+    current.current = {
+      metadata,
+      tileUrl,
+      zones,
+      paletteId,
+      onStale,
+      onTileError,
+      onLocationError,
+      onMapMoveStart,
+    };
+  }, [
     metadata,
     tileUrl,
     zones,
@@ -83,7 +94,7 @@ export default function HeatmapMap({
     onTileError,
     onLocationError,
     onMapMoveStart,
-  };
+  ]);
   const fitted = useRef(false);
   const zoneInteractionBound = useRef(false);
   const styleReady = useRef(false);

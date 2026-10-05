@@ -4,7 +4,6 @@ import { faUpload } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
 import {
   FLAG_ACTIVITY_LIST_FULL_MAPS,
   FLAG_ENHANCED_MAPS,
@@ -17,6 +16,7 @@ import {
   type ActivitySport,
 } from "../lib/activitySports";
 import { useUnitPreferences } from "../lib/unitPreferences";
+import { useKeyedState } from "../lib/useKeyedState";
 import ActivityStreamCard from "./activity-stream/ActivityStreamCard";
 import { ErrorCard, LoadingCard, LoadingSpinner } from "./ui/QueryState";
 import Pagination from "./ui/Pagination";
@@ -28,12 +28,12 @@ export default function ActivityStream() {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const currentUrlPage = parsePageParam(searchParams.get("page"));
-  const currentUrlSport = parseActivitySport(searchParams.get("sport"));
-  const [page, setPage] = useState(currentUrlPage);
-  const [sport, setSport] = useState<ActivitySport | undefined>(
-    currentUrlSport,
-  );
+  const search = searchParams.toString();
+  const [selection, setSelection] = useKeyedState(search, {
+    page: parsePageParam(searchParams.get("page")),
+    sport: parseActivitySport(searchParams.get("sport")),
+  });
+  const { page, sport } = selection;
   const perPage = 10;
   const activitiesQuery = useActivities({
     page,
@@ -41,19 +41,11 @@ export default function ActivityStream() {
     ...(sport ? { sport } : {}),
   });
 
-  useEffect(() => {
-    setPage(currentUrlPage);
-  }, [currentUrlPage]);
-
-  useEffect(() => {
-    setSport(currentUrlSport);
-  }, [currentUrlSport]);
-
   const handlePageChange = (nextPage: number) => {
     const normalizedPage = Math.max(1, nextPage);
+    setSelection((current) => ({ ...current, page: normalizedPage }));
     const nextSearchParams = new URLSearchParams(searchParams.toString());
 
-    setPage(normalizedPage);
     if (normalizedPage === 1) {
       nextSearchParams.delete("page");
     } else {
@@ -68,10 +60,9 @@ export default function ActivityStream() {
 
   const handleSportChange = (value: string) => {
     const nextSport = parseActivitySport(value);
+    setSelection({ page: 1, sport: nextSport });
     const nextSearchParams = new URLSearchParams(searchParams.toString());
 
-    setSport(nextSport);
-    setPage(1);
     nextSearchParams.delete("page");
     if (nextSport) {
       nextSearchParams.set("sport", nextSport);

@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import {
   ACTIVITY_TYPE_OPTIONS,
   normalizeActivityType,
   type ActivityType,
 } from "../../lib/activityTypes";
 import { useUpdateActivity } from "../../lib/queries";
+import { useKeyedState } from "../../lib/useKeyedState";
 
 export default function ActivityModal({
   activityId,
@@ -19,21 +19,15 @@ export default function ActivityModal({
   initialActivityType: string | null | undefined;
   onClose: () => void;
 }) {
-  const [titleDraft, setTitleDraft] = useState(initialTitle);
-  const [activityTypeDraft, setActivityTypeDraft] = useState<ActivityType>(
-    normalizeActivityType(initialActivityType),
-  );
+  const draftKey = `${activityId}:${initialTitle}:${initialActivityType ?? ""}`;
+  const [draft, setDraft] = useKeyedState(draftKey, {
+    title: initialTitle,
+    activityType: normalizeActivityType(initialActivityType),
+  });
+  const { title: titleDraft, activityType: activityTypeDraft } = draft;
   const updateActivityMutation = useUpdateActivity();
   const isSaving = updateActivityMutation.isPending;
   const canSave = titleDraft.trim().length > 0 && !isSaving;
-
-  useEffect(() => {
-    setTitleDraft(initialTitle);
-  }, [initialTitle]);
-
-  useEffect(() => {
-    setActivityTypeDraft(normalizeActivityType(initialActivityType));
-  }, [initialActivityType]);
 
   async function handleSaveActivity() {
     try {
@@ -71,7 +65,12 @@ export default function ActivityModal({
               className="input input-bordered w-full"
               value={titleDraft}
               disabled={isSaving}
-              onChange={(event) => setTitleDraft(event.target.value)}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  title: event.target.value,
+                }))
+              }
               autoFocus
             />
           </label>
@@ -97,9 +96,10 @@ export default function ActivityModal({
                   checked={activityTypeDraft === option.value}
                   disabled={isSaving}
                   onChange={(event) =>
-                    setActivityTypeDraft(
-                      normalizeActivityType(event.target.value),
-                    )
+                    setDraft((current) => ({
+                      ...current,
+                      activityType: normalizeActivityType(event.target.value),
+                    }))
                   }
                 />
                 <span>

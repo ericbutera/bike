@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type SetStateAction,
+} from "react";
 import { toast } from "../../lib/toast";
 import { type UnitSystem } from "../../lib/activityFormatting";
 import {
@@ -12,9 +19,7 @@ import {
 import {
   EFFORT_COLORS,
   EMPTY_EFFORTS,
-  EMPTY_EFFORT_IDS,
   PLAYBACK_END_EPSILON,
-  areEffortIdListsEqual,
   fastestEffort,
   filterEffortsByTimeWindow,
   overallEffortRanks,
@@ -26,6 +31,7 @@ import {
   type SelectedEffortRow,
 } from "../../lib/segmentDetail";
 import { useUnitPreferences } from "../../lib/unitPreferences";
+import { useKeyedState } from "../../lib/useKeyedState";
 import { getAuthenticatedUserId, useAuthenticatedUser } from "../RequireAuth";
 
 export type SegmentRouteMetrics = {
@@ -251,13 +257,23 @@ export function useSegmentEffortSelection({
   reseedWhenSelectionEmpty: boolean;
 }) {
   const allEfforts = segment?.efforts ?? EMPTY_EFFORTS;
-  const requestedSelectionBySegmentIdRef = useRef(
-    new Map<number, number[]>([[Number(segmentId), initialSelectedEffortIds]]),
+  const [selectionState, setSelectionState] = useKeyedState(
+    String(segment?.id ?? segmentId),
+    { ids: initialSelectedEffortIds, edited: false },
   );
-  const initializedSelectionSegmentIdRef = useRef<number | null>(null);
-  const [selectedEffortIds, setSelectedEffortIds] = useState<number[]>(
-    initialSelectedEffortIds,
-  );
+  const availableEffortIds = new Set(allEfforts.map((effort) => effort.id));
+  function resolvedSelection(state: { ids: number[]; edited: boolean }) {
+    const validIds = state.ids.filter((id) => availableEffortIds.has(id));
+    if (validIds.length > 0 || (state.edited && !reseedWhenSelectionEmpty)) {
+      return validIds;
+    }
+
+    return allEfforts
+      .slice(0, Math.min(3, allEfforts.length))
+      .map((effort) => effort.id);
+  }
+
+  const selectedEffortIds = resolvedSelection(selectionState);
   const selectedEfforts = useMemo(
     () => selectedEffortsForIds(allEfforts, selectedEffortIds),
     [allEfforts, selectedEffortIds],
@@ -267,59 +283,29 @@ export function useSegmentEffortSelection({
     [selectedEfforts],
   );
 
-  useEffect(() => {
-    if (!segment || allEfforts.length === 0) {
-      initializedSelectionSegmentIdRef.current = null;
-      setSelectedEffortIds((current) =>
-        current.length === 0 ? current : EMPTY_EFFORT_IDS,
-      );
-      return;
-    }
-
-    const shouldSeedSelection =
-      initializedSelectionSegmentIdRef.current !== segment.id;
-    initializedSelectionSegmentIdRef.current = segment.id;
-
-    setSelectedEffortIds((current) => {
-      const availableIds = new Set(allEfforts.map((effort) => effort.id));
-      const requested = (
-        requestedSelectionBySegmentIdRef.current.get(segment.id) ?? []
-      ).filter((id) => availableIds.has(id));
-
-      if (requested.length > 0 && shouldSeedSelection) {
-        return areEffortIdListsEqual(current, requested) ? current : requested;
-      }
-
-      const valid = current.filter((id) => availableIds.has(id));
-
-      if (valid.length > 0) {
-        return areEffortIdListsEqual(current, valid) ? current : valid;
-      }
-
-      if (!shouldSeedSelection && !reseedWhenSelectionEmpty) {
-        return current.length === 0 ? current : EMPTY_EFFORT_IDS;
-      }
-
-      const seeded = allEfforts
-        .slice(0, Math.min(3, allEfforts.length))
-        .map((effort) => effort.id);
-
-      return areEffortIdListsEqual(current, seeded) ? current : seeded;
-    });
-  }, [allEfforts, reseedWhenSelectionEmpty, segment?.id, segment]);
-
   function addEffort(effortId: number) {
-    setSelectedEffortIds((current) => {
-      if (current.includes(effortId)) {
-        return current;
-      }
-
-      return [...current, effortId];
+    setSelectionState((current) => {
+      const currentIds = resolvedSelection(current);
+      const ids = currentIds.includes(effortId)
+        ? currentIds
+        : [...currentIds, effortId];
+      return { ids, edited: true };
     });
   }
 
   function removeEffort(effortId: number) {
-    setSelectedEffortIds((current) => current.filter((id) => id !== effortId));
+    setSelectionState((current) => ({
+      ids: resolvedSelection(current).filter((id) => id !== effortId),
+      edited: true,
+    }));
+  }
+
+  function setSelectedEffortIds(value: SetStateAction<number[]>) {
+    setSelectionState((current) => ({
+      ids:
+        typeof value === "function" ? value(resolvedSelection(current)) : value,
+      edited: true,
+    }));
   }
 
   return {
@@ -342,18 +328,29 @@ export function useSegmentPlayback({
 }): SegmentPlaybackState {
   const playbackAnimationFrameRef = useRef<number | null>(null);
   const playbackLastTimestampRef = useRef<number | null>(null);
-  const [playbackSeconds, setPlaybackSeconds] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-
-  useEffect(() => {
-    if (playbackLimitSeconds <= 0) {
-      setPlaybackSeconds(0);
-      setIsPlaying(false);
-      return;
-    }
-
-    setPlaybackSeconds((current) => Math.min(current, playbackLimitSeconds));
-  }, [playbackLimitSeconds]);
+  const initialPlayback = useMemo(() => ({ seconds: 0, isPlaying: false }), []);
+  const [playback, setPlayback] = useKeyedState(
+    String(playbackLimitSeconds),
+    initialPlayback,
+  );
+  const { seconds: playbackSeconds, isPlaying } = playback;
+  const setPlaybackSeconds = useCallback(
+    (value: SetStateAction<number>) =>
+      setPlayback((current) => ({
+        ...current,
+        seconds: typeof value === "function" ? value(current.seconds) : value,
+      })),
+    [setPlayback],
+  );
+  const setIsPlaying = useCallback(
+    (value: SetStateAction<boolean>) =>
+      setPlayback((current) => ({
+        ...current,
+        isPlaying:
+          typeof value === "function" ? value(current.isPlaying) : value,
+      })),
+    [setPlayback],
+  );
 
   useEffect(() => {
     if (!isPlaying || playbackLimitSeconds <= 0) {
@@ -402,7 +399,13 @@ export function useSegmentPlayback({
       }
       playbackLastTimestampRef.current = null;
     };
-  }, [isPlaying, playbackLimitSeconds, playbackRate]);
+  }, [
+    isPlaying,
+    playbackLimitSeconds,
+    playbackRate,
+    setIsPlaying,
+    setPlaybackSeconds,
+  ]);
 
   return {
     limitSeconds: playbackLimitSeconds,
@@ -473,13 +476,16 @@ export function useSegmentTitleEditor({
   segment: Segment | null;
   updateTitle: (input: { id: number; title: string }) => Promise<Segment>;
 }): SegmentTitleEditor {
-  const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [draftTitle, setDraftTitle] = useState("");
-
-  useEffect(() => {
-    setIsEditingTitle(false);
-    setDraftTitle(segment?.title ?? "");
-  }, [segment?.id, segment?.title]);
+  const editorKey = `${segment?.id ?? "none"}:${segment?.title ?? ""}`;
+  const [editor, setEditor] = useKeyedState(editorKey, {
+    isEditingTitle: false,
+    draftTitle: segment?.title ?? "",
+  });
+  const { isEditingTitle, draftTitle } = editor;
+  const setDraftTitle = (value: string) =>
+    setEditor((current) => ({ ...current, draftTitle: value }));
+  const setIsEditingTitle = (value: boolean) =>
+    setEditor((current) => ({ ...current, isEditingTitle: value }));
 
   return {
     isEditingTitle,
@@ -544,7 +550,6 @@ export function useSegmentEffortsContainer({
     initialSelectedEffortIds,
     reseedWhenSelectionEmpty: false,
   });
-  const [hoveredEffortId, setHoveredEffortId] = useState<number | null>(null);
   const [effortTimeFilter, setEffortTimeFilter] =
     useState<EffortTimeFilter>("all");
   const {
@@ -554,6 +559,14 @@ export function useSegmentEffortsContainer({
     addEffort,
     removeEffort,
   } = effortSelection;
+  const [requestedHoveredEffortId, setHoveredEffortId] = useState<
+    number | null
+  >(null);
+  const hoveredEffortId = selectedEfforts.some(
+    (effort) => effort.id === requestedHoveredEffortId,
+  )
+    ? requestedHoveredEffortId
+    : null;
   const visibleEfforts = filterEffortsByTimeWindow(
     segment?.efforts,
     effortTimeFilter,
@@ -569,15 +582,6 @@ export function useSegmentEffortsContainer({
       playbackPace,
     });
   };
-
-  useEffect(() => {
-    if (
-      hoveredEffortId != null &&
-      !selectedEfforts.some((effort) => effort.id === hoveredEffortId)
-    ) {
-      setHoveredEffortId(null);
-    }
-  }, [hoveredEffortId, selectedEfforts]);
 
   return {
     effortList: {

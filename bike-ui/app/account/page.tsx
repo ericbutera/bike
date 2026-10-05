@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import toast from "react-hot-toast";
 import IntegrationEventFeed from "../../components/IntegrationEventFeed";
 import Layout from "../../components/Layout";
@@ -10,7 +10,6 @@ import { AppCard, CardHeader } from "../../components/ui/Card";
 import InfoTooltip from "../../components/ui/InfoTooltip";
 import { LoadingCard } from "../../components/ui/QueryState";
 import {
-  DEFAULT_UNIT_SYSTEM,
   formatActivityTimestamp,
   formatDistance,
   formatElevation,
@@ -35,6 +34,7 @@ import {
   MAX_MAX_HEART_RATE_BPM,
   MIN_MAX_HEART_RATE_BPM,
 } from "../../lib/trainingProfile";
+import { useKeyedState } from "../../lib/useKeyedState";
 
 const ACCOUNT_PREFERENCES_HELP_TEXT =
   "Choose how Bike formats units and define the training profile Bike uses for ride-level zone summaries and future load models.";
@@ -212,25 +212,44 @@ function AuthenticatedAccountPage() {
       ? 5000
       : false,
   });
-  const [draftUnitSystem, setDraftUnitSystem] =
-    useState<UnitSystem>(DEFAULT_UNIT_SYSTEM);
-  const [draftEstimatedFtpWatts, setDraftEstimatedFtpWatts] = useState("");
-  const [draftMaxHeartRate, setDraftMaxHeartRate] = useState("");
-  const [draftHeartRateZoneBounds, setDraftHeartRateZoneBounds] = useState(
-    zoneBoundsToDraft(null),
-  );
   const heartRateZonesConfigured =
     hasConfiguredHeartRateZoneBounds(heartRateZoneBounds);
 
   const storedHeartRateZoneDraft = zoneBoundsToDraft(heartRateZoneBounds);
   const storedHeartRateZoneSignature = storedHeartRateZoneDraft.join("|");
-
-  useEffect(() => {
-    setDraftUnitSystem(unitSystem);
-    setDraftEstimatedFtpWatts(estimatedFtpWatts?.toString() ?? "");
-    setDraftMaxHeartRate("");
-    setDraftHeartRateZoneBounds(storedHeartRateZoneDraft);
-  }, [estimatedFtpWatts, storedHeartRateZoneSignature, unitSystem]);
+  const accountDraftKey = [
+    unitSystem,
+    estimatedFtpWatts ?? "",
+    storedHeartRateZoneSignature,
+  ].join("|");
+  const [draft, setDraft] = useKeyedState(accountDraftKey, {
+    unitSystem,
+    estimatedFtpWatts: estimatedFtpWatts?.toString() ?? "",
+    maxHeartRate: "",
+    heartRateZoneBounds: storedHeartRateZoneDraft,
+  });
+  const {
+    unitSystem: draftUnitSystem,
+    estimatedFtpWatts: draftEstimatedFtpWatts,
+    maxHeartRate: draftMaxHeartRate,
+    heartRateZoneBounds: draftHeartRateZoneBounds,
+  } = draft;
+  const setDraftUnitSystem = (value: UnitSystem) =>
+    setDraft((current) => ({ ...current, unitSystem: value }));
+  const setDraftEstimatedFtpWatts = (value: string) =>
+    setDraft((current) => ({ ...current, estimatedFtpWatts: value }));
+  const setDraftMaxHeartRate = (value: string) =>
+    setDraft((current) => ({ ...current, maxHeartRate: value }));
+  const setDraftHeartRateZoneBounds = (
+    value: string[] | ((current: string[]) => string[]),
+  ) =>
+    setDraft((current) => ({
+      ...current,
+      heartRateZoneBounds:
+        typeof value === "function"
+          ? value(current.heartRateZoneBounds)
+          : value,
+    }));
 
   useEffect(() => {
     const status = searchParams.get("strava");
@@ -772,10 +791,12 @@ function AuthenticatedAccountPage() {
             className="btn btn-ghost"
             disabled={!isDirty || updatePreferencesMutation.isPending}
             onClick={() => {
-              setDraftUnitSystem(unitSystem);
-              setDraftEstimatedFtpWatts(estimatedFtpWatts?.toString() ?? "");
-              setDraftMaxHeartRate("");
-              setDraftHeartRateZoneBounds(storedHeartRateZoneDraft);
+              setDraft({
+                unitSystem,
+                estimatedFtpWatts: estimatedFtpWatts?.toString() ?? "",
+                maxHeartRate: "",
+                heartRateZoneBounds: storedHeartRateZoneDraft,
+              });
             }}
           >
             Reset

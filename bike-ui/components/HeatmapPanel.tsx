@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { $typedApi } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { ACTIVITY_SPORT_OPTIONS } from "../lib/activitySports";
@@ -33,6 +33,34 @@ const LEGEND = [
   { label: "10–24", opacity: 225 / 255 },
   { label: "25+", opacity: 1 },
 ];
+const HEATMAP_PALETTE_CHANGE_EVENT = "bike:heatmap-palette-change";
+
+function subscribeToNothing() {
+  return () => {};
+}
+
+function getBrowserTimeZone() {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+function getStoredPaletteId(): HeatmapPaletteId {
+  try {
+    return heatmapPalette(
+      window.localStorage.getItem(HEATMAP_COLOR_STORAGE_KEY),
+    ).id;
+  } catch {
+    return "blue";
+  }
+}
+
+function subscribeToPalette(onChange: () => void) {
+  window.addEventListener("storage", onChange);
+  window.addEventListener(HEATMAP_PALETTE_CHANGE_EVENT, onChange);
+  return () => {
+    window.removeEventListener("storage", onChange);
+    window.removeEventListener(HEATMAP_PALETTE_CHANGE_EVENT, onChange);
+  };
+}
 
 export default function HeatmapPanel() {
   useDocumentTitle("Maps");
@@ -46,34 +74,32 @@ export default function HeatmapPanel() {
     );
   const router = useRouter();
   const search = useSearchParams();
-  const [browserTimeZone, setBrowserTimeZone] = useState<string>();
+  const browserTimeZone = useSyncExternalStore(
+    subscribeToNothing,
+    getBrowserTimeZone,
+    () => null,
+  );
   const [tileError, setTileError] = useState<string>();
   const [locationError, setLocationError] = useState<string>();
   const [locationRequest, setLocationRequest] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [paletteId, setPaletteId] = useState<HeatmapPaletteId>("blue");
+  const storedPaletteId = useSyncExternalStore(
+    subscribeToPalette,
+    getStoredPaletteId,
+    () => "blue" as HeatmapPaletteId,
+  );
+  const [unavailableStoragePalette, setUnavailableStoragePalette] =
+    useState<HeatmapPaletteId | null>(null);
+  const paletteId = unavailableStoragePalette ?? storedPaletteId;
   const refreshing = useRef(false);
   const lastStaleRevision = useRef<string | undefined>(undefined);
-  useEffect(
-    () => setBrowserTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone),
-    [],
-  );
-  useEffect(() => {
-    try {
-      setPaletteId(
-        heatmapPalette(window.localStorage.getItem(HEATMAP_COLOR_STORAGE_KEY))
-          .id,
-      );
-    } catch {
-      // Color selection also works when browser storage is unavailable.
-    }
-  }, []);
   const choosePalette = (value: HeatmapPaletteId) => {
-    setPaletteId(value);
     try {
       window.localStorage.setItem(HEATMAP_COLOR_STORAGE_KEY, value);
+      setUnavailableStoragePalette(null);
+      window.dispatchEvent(new Event(HEATMAP_PALETTE_CHANGE_EVENT));
     } catch {
-      // The current selection still applies for this visit.
+      setUnavailableStoragePalette(value);
     }
   };
   const lineColor = heatmapPaletteColor(heatmapPalette(paletteId));

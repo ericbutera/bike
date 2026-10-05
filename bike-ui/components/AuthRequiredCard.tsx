@@ -1,13 +1,17 @@
 import Link from "next/link";
+import Image from "next/image";
 
 export default function AuthRequiredCard() {
   return (
     <section className="card overflow-hidden bg-base-100 shadow-xl">
       <figure className="bg-base-300">
-        <img
+        <Image
           src="/social-preview.jpg"
           alt="all vibes bike analytic platform"
+          width={1376}
+          height={768}
           className="max-h-[32rem] w-full object-cover"
+          priority
         />
       </figure>
       <div className="card-body">

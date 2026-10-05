@@ -4,7 +4,7 @@ import { faArrowLeft, faArrowRight } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, type SetStateAction } from "react";
 import toast from "react-hot-toast";
 import {
   formatActivityTimestamp,
@@ -31,6 +31,7 @@ import {
   shiftStartIndex,
   sliceSegmentRoutePoints,
 } from "../lib/segmentBuilder";
+import { useKeyedState } from "../lib/useKeyedState";
 import { useUnitPreferences } from "../lib/unitPreferences";
 import MapLibreRouteMap from "./MapLibreRouteMap";
 import { AppCard } from "./ui/Card";
@@ -172,16 +173,9 @@ export default function SegmentBuilderWorkspace({
   const hasRoute = hasSegmentBuilderRoute(routePoints);
   const builderSource = segment?.builder_source ?? null;
   const isEditingExistingSegment = builderSource != null;
-  const [selection, setSelection] = useState<SegmentBuilderSelection>(() =>
-    buildInitialSegmentSelection(routePoints),
-  );
-  const [segmentName, setSegmentName] = useState("");
-
-  useEffect(() => {
+  const initialSelection = (() => {
     if (!activity) {
-      setSelection(buildInitialSegmentSelection(undefined));
-      setSegmentName(segment?.title ?? "");
-      return;
+      return buildInitialSegmentSelection(undefined);
     }
 
     if (
@@ -189,28 +183,44 @@ export default function SegmentBuilderWorkspace({
       builderSource.activity_id === activity.id &&
       hasSegmentBuilderRoute(routePoints)
     ) {
-      const nextStartIndex = clampStartIndex(
+      const startIndex = clampStartIndex(
         routePoints,
         builderSource.start_route_point_index,
         builderSource.end_route_point_index,
       );
-      const nextEndIndex = clampEndIndex(
-        routePoints,
-        nextStartIndex,
-        builderSource.end_route_point_index,
-      );
-
-      setSelection({
-        startIndex: nextStartIndex,
-        endIndex: nextEndIndex,
-      });
-      setSegmentName(segment?.title ?? "");
-      return;
+      return {
+        startIndex,
+        endIndex: clampEndIndex(
+          routePoints,
+          startIndex,
+          builderSource.end_route_point_index,
+        ),
+      };
     }
 
-    setSelection(buildInitialSegmentSelection(activity.route_points));
-    setSegmentName(segment?.title ?? "");
-  }, [activity, builderSource, routePoints, segment?.title]);
+    return buildInitialSegmentSelection(activity.route_points);
+  })();
+  const builderDraftKey = [
+    activity?.id ?? "no-activity",
+    routePoints.length,
+    segment?.id ?? "new-segment",
+    segment?.title ?? "",
+    builderSource?.activity_id ?? "",
+    builderSource?.start_route_point_index ?? "",
+    builderSource?.end_route_point_index ?? "",
+  ].join(":");
+  const [draft, setDraft] = useKeyedState(builderDraftKey, {
+    selection: initialSelection,
+    segmentName: segment?.title ?? "",
+  });
+  const { selection, segmentName } = draft;
+  const setSelection = (value: SetStateAction<SegmentBuilderSelection>) =>
+    setDraft((current) => ({
+      ...current,
+      selection: typeof value === "function" ? value(current.selection) : value,
+    }));
+  const setSegmentName = (value: string) =>
+    setDraft((current) => ({ ...current, segmentName: value }));
 
   const startIndex = clampStartIndex(
     routePoints,

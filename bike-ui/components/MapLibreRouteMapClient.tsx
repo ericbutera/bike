@@ -15,6 +15,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useBikeTheme } from "../lib/useBikeTheme";
 import { config } from "../lib/config";
 import { type ActivityRoutePoint } from "../lib/queries";
+import { useKeyedState } from "../lib/useKeyedState";
 import {
   type RouteMapBasemap,
   type RouteMapFollowViewportBehavior,
@@ -874,7 +875,7 @@ export default function MapLibreRouteMapClient({
     showLayerPicker &&
     availableBasemaps.length > 1;
   const [uncontrolledSelectedBasemap, setUncontrolledSelectedBasemap] =
-    useState<RouteMapBasemap>(configuredBasemap);
+    useKeyedState(configuredBasemap, configuredBasemap);
   const isBasemapControlled = selectedBasemapProp != null;
   const selectedBasemap = selectedBasemapProp ?? uncontrolledSelectedBasemap;
   const activityThemeBasemap = theme === "dark" ? "fiord" : "route-light";
@@ -885,12 +886,6 @@ export default function MapLibreRouteMapClient({
     x: number;
     y: number;
   } | null>(null);
-
-  useEffect(() => {
-    if (!isBasemapControlled) {
-      setUncontrolledSelectedBasemap(configuredBasemap);
-    }
-  }, [configuredBasemap, isBasemapControlled]);
 
   const handleBasemapChange = (basemap: RouteMapBasemap) => {
     if (!isBasemapControlled) {
@@ -967,6 +962,10 @@ export default function MapLibreRouteMapClient({
     showBaseTiles,
     isBasemapControlled,
   ]);
+  const initialMapStyleRef = useRef({ mapStyle, mapStyleKey });
+  useEffect(() => {
+    initialMapStyleRef.current = { mapStyle, mapStyleKey };
+  }, [mapStyle, mapStyleKey]);
 
   const routeSourceData = useMemo<FeatureCollection<LineString>>(
     () => ({
@@ -1044,7 +1043,7 @@ export default function MapLibreRouteMapClient({
 
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: mapStyle,
+      style: initialMapStyleRef.current.mapStyle,
       attributionControl: false,
       dragRotate: false,
       pitchWithRotate: false,
@@ -1052,7 +1051,7 @@ export default function MapLibreRouteMapClient({
       touchPitch: false,
       maxPitch: 0,
     });
-    appliedStyleKeyRef.current = mapStyleKey;
+    appliedStyleKeyRef.current = initialMapStyleRef.current.mapStyleKey;
 
     if (showBaseTiles) {
       map.addControl(
@@ -1534,6 +1533,7 @@ export default function MapLibreRouteMapClient({
     followViewportPreserveUserZoom,
     markerSourceData,
     mapStyleKey,
+    themedActivityMap,
     movingMarkerTransitionMs,
     movingMarkers,
     routePoints,

@@ -11,7 +11,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
-import { type KeyboardEvent, useEffect, useMemo, useState } from "react";
+import { type KeyboardEvent, useMemo, useState } from "react";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import { formatDuration, formatHeartRate } from "../lib/activityFormatting";
 import {
@@ -32,6 +32,7 @@ import {
   useMatchedSegmentGroups,
 } from "./activity-detail/matchedSegments";
 import { AppCard, CardHeader } from "./ui/Card";
+import { useKeyedState } from "../lib/useKeyedState";
 
 type SegmentAttemptChartPoint = {
   effort: ActivitySegmentEffort;
@@ -588,7 +589,6 @@ export default function MatchedSegmentsSection({
   selectedSegmentId: number | null;
   onToggleSegmentMatch: (segmentId: number) => void;
 }) {
-  const [expandedSegmentIds, setExpandedSegmentIds] = useState<number[]>([]);
   const activityQuery = useActivity(activityId);
   const activity = activityQuery.data;
   const routePoints = activity?.route_points;
@@ -611,34 +611,20 @@ export default function MatchedSegmentsSection({
         .join(","),
     [starredSegmentIds],
   );
-
-  useEffect(() => {
-    if (starredSegmentIds.size === 0) {
-      return;
-    }
-
-    setExpandedSegmentIds((current) => {
-      const next = new Set(current);
-
-      for (const segmentId of starredSegmentIds) {
-        next.add(segmentId);
-      }
-
-      return next.size === current.length ? current : Array.from(next);
-    });
-  }, [starredSegmentIds, starredSegmentIdsKey]);
-
-  useEffect(() => {
-    if (selectedSegmentId == null) {
-      return;
-    }
-
-    setExpandedSegmentIds((current) =>
-      current.includes(selectedSegmentId)
-        ? current
-        : [...current, selectedSegmentId],
-    );
-  }, [selectedSegmentId]);
+  const initialExpandedSegmentIds = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...starredSegmentIds,
+          ...(selectedSegmentId == null ? [] : [selectedSegmentId]),
+        ]),
+      ),
+    [selectedSegmentId, starredSegmentIds],
+  );
+  const [expandedSegmentIds, setExpandedSegmentIds] = useKeyedState(
+    `${starredSegmentIdsKey}:${selectedSegmentId ?? ""}`,
+    initialExpandedSegmentIds,
+  );
 
   async function toggleSegmentStar(segmentId: number, starred: boolean) {
     try {

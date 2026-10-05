@@ -43,6 +43,7 @@ import {
   type XcTrainingPurpose,
 } from "../lib/queries";
 import { hasConfiguredHeartRateZoneBounds } from "../lib/trainingProfile";
+import { useKeyedState } from "../lib/useKeyedState";
 import InfoTooltip from "./ui/InfoTooltip";
 import { LoadingSpinner } from "./ui/QueryState";
 
@@ -78,6 +79,16 @@ const EVENT_TARGET_HELP_TEXT =
 
 type GoalDistanceUnit = "mi" | "km";
 type GoalElevationUnit = "ft" | "m";
+
+type XcGoalDraft = {
+  eventName: string;
+  startDate: string;
+  targetDate: string;
+  distance: string;
+  elevation: string;
+  finishTime: string;
+  eventProfile: XcEventProfile | "";
+};
 
 type WeeklyChartPoint = {
   label: string;
@@ -480,6 +491,30 @@ function metersToElevationInput(
   return unit === "ft"
     ? Math.round(value * FEET_PER_METER).toString()
     : Math.round(value).toString();
+}
+
+function goalDraftsFromPreferences(
+  preferences: UserPreferences | null | undefined,
+  distanceUnit: GoalDistanceUnit,
+  elevationUnit: GoalElevationUnit,
+): XcGoalDraft {
+  return {
+    eventName: preferences?.xc_goal_event_name ?? "",
+    startDate: preferences?.xc_goal_start_date ?? "",
+    targetDate: preferences?.xc_goal_target_date ?? "",
+    distance: metersToDistanceInput(
+      preferences?.xc_goal_target_distance_meters,
+      distanceUnit,
+    ),
+    elevation: metersToElevationInput(
+      preferences?.xc_goal_target_elevation_gain_meters,
+      elevationUnit,
+    ),
+    finishTime: formatTargetFinishTimeInput(
+      preferences?.xc_goal_target_finish_time_seconds,
+    ),
+    eventProfile: preferences?.xc_goal_event_profile ?? "",
+  };
 }
 
 function formatDaysRemaining(daysRemaining: number) {
@@ -1258,6 +1293,28 @@ function formatRaceComparison(value: number | null | undefined) {
   return `${value.toFixed(0)}%`;
 }
 
+function RaceMetric({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+}) {
+  return (
+    <div className="border-l border-base-300 pl-3">
+      <div className="flex items-center gap-1.5">
+        <p className="text-xs uppercase tracking-[0.18em] text-base-content/45">
+          {label}
+        </p>
+        <InfoTooltip label={`${label} details`} tip={detail} />
+      </div>
+      <p className="mt-1 text-xl font-semibold text-base-content">{value}</p>
+    </div>
+  );
+}
+
 function RaceResultCard({
   race,
   raceCount,
@@ -1271,28 +1328,6 @@ function RaceResultCard({
   goalElevationUnit: GoalElevationUnit;
   unitSystem: UnitSystem;
 }) {
-  function RaceMetric({
-    label,
-    value,
-    detail,
-  }: {
-    label: string;
-    value: string;
-    detail: string;
-  }) {
-    return (
-      <div className="border-l border-base-300 pl-3">
-        <div className="flex items-center gap-1.5">
-          <p className="text-xs uppercase tracking-[0.18em] text-base-content/45">
-            {label}
-          </p>
-          <InfoTooltip label={`${label} details`} tip={detail} />
-        </div>
-        <p className="mt-1 text-xl font-semibold text-base-content">{value}</p>
-      </div>
-    );
-  }
-
   return (
     <article className="rounded-box border border-base-300 bg-base-100 p-5 shadow-sm sm:p-6">
       <div className="mb-5 flex items-center justify-between gap-3 text-xs font-medium uppercase tracking-[0.24em] text-base-content/50">
@@ -1728,86 +1763,63 @@ export default function XcGoalsProgressPanel() {
   const backfillCompletedAt =
     preferencesQuery.data?.xc_goal_backfill_completed_at ?? null;
   const previousBackfillStatusRef = useRef<string | null>(null);
-  const [goalEventNameDraft, setGoalEventNameDraft] = useState("");
-  const [goalStartDateDraft, setGoalStartDateDraft] = useState("");
-  const [goalDateDraft, setGoalDateDraft] = useState("");
-  const [goalDistanceDraft, setGoalDistanceDraft] = useState("");
   const [goalDistanceUnit, setGoalDistanceUnit] =
     useState<GoalDistanceUnit>("mi");
-  const [goalElevationDraft, setGoalElevationDraft] = useState("");
   const [goalElevationUnit, setGoalElevationUnit] =
     useState<GoalElevationUnit>("ft");
-  const [goalFinishTimeDraft, setGoalFinishTimeDraft] = useState("");
-  const [goalEventProfileDraft, setGoalEventProfileDraft] = useState<
-    XcEventProfile | ""
-  >("");
-  const [isEditingGoal, setIsEditingGoal] = useState(false);
-  const [rideBenchmarkPage, setRideBenchmarkPage] = useState(0);
-
-  useEffect(() => {
-    const nextGoalEventNameDraft =
-      preferencesQuery.data?.xc_goal_event_name ?? "";
-    const nextGoalStartDateDraft =
-      preferencesQuery.data?.xc_goal_start_date ?? "";
-    const nextGoalDateDraft = preferencesQuery.data?.xc_goal_target_date ?? "";
-    const nextGoalDistanceDraft = metersToDistanceInput(
-      preferencesQuery.data?.xc_goal_target_distance_meters,
-      goalDistanceUnit,
-    );
-    const nextGoalElevationDraft = metersToElevationInput(
-      preferencesQuery.data?.xc_goal_target_elevation_gain_meters,
-      goalElevationUnit,
-    );
-    const nextGoalFinishTimeDraft = formatTargetFinishTimeInput(
-      preferencesQuery.data?.xc_goal_target_finish_time_seconds,
-    );
-    const nextGoalEventProfileDraft =
-      preferencesQuery.data?.xc_goal_event_profile ?? "";
-
-    setGoalEventNameDraft((currentValue) =>
-      currentValue === nextGoalEventNameDraft
-        ? currentValue
-        : nextGoalEventNameDraft,
-    );
-    setGoalStartDateDraft((currentValue) =>
-      currentValue === nextGoalStartDateDraft
-        ? currentValue
-        : nextGoalStartDateDraft,
-    );
-    setGoalDateDraft((currentValue) =>
-      currentValue === nextGoalDateDraft ? currentValue : nextGoalDateDraft,
-    );
-    setGoalDistanceDraft((currentValue) =>
-      currentValue === nextGoalDistanceDraft
-        ? currentValue
-        : nextGoalDistanceDraft,
-    );
-    setGoalElevationDraft((currentValue) =>
-      currentValue === nextGoalElevationDraft
-        ? currentValue
-        : nextGoalElevationDraft,
-    );
-    setGoalFinishTimeDraft((currentValue) =>
-      currentValue === nextGoalFinishTimeDraft
-        ? currentValue
-        : nextGoalFinishTimeDraft,
-    );
-    setGoalEventProfileDraft((currentValue) =>
-      currentValue === nextGoalEventProfileDraft
-        ? currentValue
-        : nextGoalEventProfileDraft,
-    );
-  }, [
+  const preferences = preferencesQuery.data;
+  const goalDraftKey = JSON.stringify([
+    preferences?.xc_goal_event_name,
+    preferences?.xc_goal_start_date,
+    preferences?.xc_goal_target_date,
+    preferences?.xc_goal_target_distance_meters,
+    preferences?.xc_goal_target_elevation_gain_meters,
+    preferences?.xc_goal_target_finish_time_seconds,
+    preferences?.xc_goal_event_profile,
     goalDistanceUnit,
     goalElevationUnit,
-    preferencesQuery.data?.xc_goal_event_name,
-    preferencesQuery.data?.xc_goal_start_date,
-    preferencesQuery.data?.xc_goal_target_date,
-    preferencesQuery.data?.xc_goal_target_distance_meters,
-    preferencesQuery.data?.xc_goal_target_elevation_gain_meters,
-    preferencesQuery.data?.xc_goal_target_finish_time_seconds,
-    preferencesQuery.data?.xc_goal_event_profile,
   ]);
+  const [goalDraft, setGoalDraft] = useKeyedState(
+    goalDraftKey,
+    goalDraftsFromPreferences(preferences, goalDistanceUnit, goalElevationUnit),
+  );
+  const {
+    eventName: goalEventNameDraft,
+    startDate: goalStartDateDraft,
+    targetDate: goalDateDraft,
+    distance: goalDistanceDraft,
+    elevation: goalElevationDraft,
+    finishTime: goalFinishTimeDraft,
+    eventProfile: goalEventProfileDraft,
+  } = goalDraft;
+  const setGoalEventNameDraft = (value: string) =>
+    setGoalDraft((current) => ({ ...current, eventName: value }));
+  const setGoalStartDateDraft = (value: string) =>
+    setGoalDraft((current) => ({ ...current, startDate: value }));
+  const setGoalDateDraft = (value: string) =>
+    setGoalDraft((current) => ({ ...current, targetDate: value }));
+  const setGoalDistanceDraft = (value: string) =>
+    setGoalDraft((current) => ({ ...current, distance: value }));
+  const setGoalElevationDraft = (value: string) =>
+    setGoalDraft((current) => ({ ...current, elevation: value }));
+  const setGoalFinishTimeDraft = (value: string) =>
+    setGoalDraft((current) => ({ ...current, finishTime: value }));
+  const setGoalEventProfileDraft = (value: XcEventProfile | "") =>
+    setGoalDraft((current) => ({ ...current, eventProfile: value }));
+  const [isEditingGoal, setIsEditingGoal] = useState(false);
+  const recentRideCount = progressQuery.data?.recent_rides.length ?? 0;
+  const rideBenchmarkTotalPages = Math.max(
+    Math.ceil(recentRideCount / RIDE_BENCHMARK_PAGE_SIZE),
+    1,
+  );
+  const [requestedRideBenchmarkPage, setRideBenchmarkPage] = useKeyedState(
+    String(recentRideCount),
+    0,
+  );
+  const rideBenchmarkPage = Math.min(
+    requestedRideBenchmarkPage,
+    rideBenchmarkTotalPages - 1,
+  );
 
   useEffect(() => {
     const previousStatus = previousBackfillStatusRef.current;
@@ -2084,12 +2096,6 @@ export default function XcGoalsProgressPanel() {
       targetClimbDensity,
     };
   }, [goalDistanceUnit, goalElevationUnit, progressQuery.data]);
-  const rideBenchmarkTotalPages = Math.max(
-    Math.ceil(
-      (progressQuery.data?.recent_rides.length ?? 0) / RIDE_BENCHMARK_PAGE_SIZE,
-    ),
-    1,
-  );
   const rideBenchmarkStartIndex = rideBenchmarkPage * RIDE_BENCHMARK_PAGE_SIZE;
   const visibleRideBenchmarks = useMemo(() => {
     return (progressQuery.data?.recent_rides ?? []).slice(
@@ -2097,12 +2103,6 @@ export default function XcGoalsProgressPanel() {
       rideBenchmarkStartIndex + RIDE_BENCHMARK_PAGE_SIZE,
     );
   }, [progressQuery.data?.recent_rides, rideBenchmarkStartIndex]);
-
-  useEffect(() => {
-    setRideBenchmarkPage((currentPage) =>
-      Math.min(currentPage, rideBenchmarkTotalPages - 1),
-    );
-  }, [rideBenchmarkTotalPages]);
 
   if (progressQuery.isLoading) {
     return (
@@ -2159,27 +2159,13 @@ export default function XcGoalsProgressPanel() {
   function resetGoalDraftsFromPreferences(
     preferences: UserPreferences | null | undefined,
   ) {
-    setGoalEventNameDraft(preferences?.xc_goal_event_name ?? "");
-    setGoalStartDateDraft(preferences?.xc_goal_start_date ?? "");
-    setGoalDateDraft(preferences?.xc_goal_target_date ?? "");
-    setGoalDistanceDraft(
-      metersToDistanceInput(
-        preferences?.xc_goal_target_distance_meters,
+    setGoalDraft(
+      goalDraftsFromPreferences(
+        preferences,
         goalDistanceUnit,
-      ),
-    );
-    setGoalElevationDraft(
-      metersToElevationInput(
-        preferences?.xc_goal_target_elevation_gain_meters,
         goalElevationUnit,
       ),
     );
-    setGoalFinishTimeDraft(
-      formatTargetFinishTimeInput(
-        preferences?.xc_goal_target_finish_time_seconds,
-      ),
-    );
-    setGoalEventProfileDraft(preferences?.xc_goal_event_profile ?? "");
   }
 
   async function handleSaveGoal() {
@@ -2294,13 +2280,15 @@ export default function XcGoalsProgressPanel() {
           xcGoalEventProfile: null,
         }),
       );
-      setGoalEventNameDraft("");
-      setGoalStartDateDraft("");
-      setGoalDateDraft("");
-      setGoalDistanceDraft("");
-      setGoalElevationDraft("");
-      setGoalFinishTimeDraft("");
-      setGoalEventProfileDraft("");
+      setGoalDraft({
+        eventName: "",
+        startDate: "",
+        targetDate: "",
+        distance: "",
+        elevation: "",
+        finishTime: "",
+        eventProfile: "",
+      });
       setIsEditingGoal(false);
       toast.success("XC event goal cleared.");
     } catch {
