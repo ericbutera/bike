@@ -170,7 +170,7 @@ impl Projection {
         pending: &PendingProjection,
     ) -> Result<Option<ProjectionSource>, DbErr> {
         ProjectionSource::find_by_statement(Statement::from_sql_and_values(DbBackend::Postgres,
-            "SELECT a.sport, a.source, a.derived_data_json, a.updated_at FROM activities a JOIN heatmap_projections p ON p.activity_id=a.id WHERE a.id=$1 AND p.generation=$2 AND p.status IN ('pending','failed')",
+            "SELECT a.sport, a.source, a.title, a.derived_data_json, a.updated_at FROM activities a JOIN heatmap_projections p ON p.activity_id=a.id WHERE a.id=$1 AND p.generation=$2 AND p.status IN ('pending','failed')",
             [pending.activity_id.into(),pending.generation.into()])).one(db).await
     }
 }
@@ -179,6 +179,7 @@ impl Projection {
 pub struct ProjectionSource {
     pub sport: String,
     pub source: String,
+    pub title: String,
     pub derived_data_json: Option<crate::activity_data::StoredActivityDerivedData>,
     pub updated_at: DateTime<Utc>,
 }

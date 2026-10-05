@@ -74,9 +74,10 @@ complete backfill and tile reads.
    `activity_type` remains the separate Training/Race classification.
 2. An eligible route has at least two distinct, valid real-world coordinates
    forming a continuous piece of track. Exclude GPS-free activities and simulated
-   indoor/virtual routes. Recommended first-release policy: indoor trainer rides
-   contribute no geography even when a provider supplies virtual coordinates;
-   their filter displays an explanatory empty state.
+   indoor/virtual routes. Strava's `trainer` flag, virtual sport names, and
+   recognizable Zwift titles identify indoor rides; these contribute no
+   geography even when a provider supplies virtual coordinates. Their filter
+   displays an explanatory empty state.
 3. Offer All time, This year, Last 90 days, and Custom start/end dates. Custom
    bounds may be open-ended. Resolve relative presets to explicit dates when
    selected so a saved URL is reproducible.
@@ -158,17 +159,18 @@ labels, keyboard operation, visible focus, and a textual summary.
    change these counts.
 2. **Prepare routes.** The migration creates one projection status row for each
    existing activity. A database trigger marks an activity's projection pending
-   when its route, sport, start time, source, or owner changes. When the feature
-   is enabled, a reconciler leases up to 16 pending activities every 15 seconds
-   and queues one durable job containing their activity IDs and generations.
-   The job carries identities only, not route samples. The worker prepares its
-   entries sequentially: it reads one activity's stored `derived_data_json`,
-   excludes impossible point-to-point movements above 45 m/s, simplifies the
-   remaining route for four zoom bands, and stores bounded coordinate chunks
-   with spatial bounds in PostgreSQL. The suspect endpoint is dropped so neither
-   adjacent edge paints a straight line to or from the GPS spike. A usable route
-   becomes `ready`; missing or excluded geometry becomes `skipped`; a preparation
-   error becomes `failed`. Original activity data remains the source of truth.
+   when its route, sport, start time, source, title, or owner changes. When the
+   feature is enabled, a reconciler leases up to 16 pending activities every 15
+   seconds and queues one durable job containing their activity IDs and
+   generations. The job carries identities only, not route samples. The worker
+   prepares its entries sequentially: it reads one activity's stored
+   `derived_data_json`, excludes indoor/virtual rides and impossible
+   point-to-point movements above 45 m/s, simplifies the remaining route for
+   four zoom bands, and stores bounded coordinate chunks with spatial bounds in
+   PostgreSQL. The suspect endpoint is dropped so neither adjacent edge paints
+   a straight line to or from the GPS spike. A usable route becomes `ready`;
+   missing or excluded geometry becomes `skipped`; a preparation error becomes
+   `failed`. Original activity data remains the source of truth.
 3. **Draw the map.** For zoomed-out views, the Rust zones endpoint returns one
    center per ready activity for MapLibre to cluster. For visible route detail,
    the UI requests private PNG tiles through its server route. Rust filters
@@ -668,6 +670,20 @@ Eleven focused panel/map tests and TypeScript passed. A local Playwright check
 rendered all six presets against the real Rust API and basemap, observed zero
 heatmap tile requests during selection, restored the choice after a reload, and
 reported no browser errors.
+
+### Virtual ride exclusion, 2026-10-05
+
+Strava activities recorded on a trainer or named for Zwift now normalize to
+`indoor_trainer_ride` during import. Projection preparation also excludes legacy
+virtual sport values and Zwift-titled activities, covering existing rides that
+were stored as `road_ride`. Projection version 3 clears older chunks and queues
+them for regeneration; the source trigger watches title changes so later title
+corrections are reflected in the map.
+
+The user-provided production screenshot reports 967 activities with routes and
+shows clusters outside the rider's expected regions. This code change and
+versioned requeue are local only; deployment, production migration, and
+production backfill/readiness verification remain open in MAPS08.
 
 ## Primary technical references
 

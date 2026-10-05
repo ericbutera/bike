@@ -2866,6 +2866,7 @@ mod tests {
             average_cadence: Some(88.0),
             calories: Some(120.0),
             sport_type: Some("Ride".to_string()),
+            trainer: None,
             legacy_type: Some("Ride".to_string()),
             start_date: DateTime::parse_from_rfc3339("2026-05-12T12:00:00Z")
                 .unwrap()
@@ -2914,6 +2915,7 @@ mod tests {
             average_cadence: Some(88.0),
             calories: Some(120.0),
             sport_type: Some("Ride".to_string()),
+            trainer: None,
             legacy_type: Some("Ride".to_string()),
             start_date: DateTime::parse_from_rfc3339("2026-05-12T12:00:00Z")
                 .unwrap()

@@ -74,9 +74,16 @@ async fn prepares_backfills_and_invalidates_activity_generations() {
         .unwrap();
     assert_eq!(row.try_get::<i64>("", "count").unwrap(), 0);
     // Deleting an account must also allow activity cascade triggers to finish.
-    db.execute_raw(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO activities(id,user_id,sport,source,derived_data_json) VALUES(2,2,'VirtualRide','fixture',$1)",[route.into()])).await.unwrap();
+    db.execute_raw(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO activities(id,user_id,sport,source,derived_data_json) VALUES(2,2,'VirtualRide','fixture',$1)",[route.clone().into()])).await.unwrap();
     prepare(&db, 2, 1).await;
     assert_eq!(status(&db, 2).await, "skipped");
+    db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "INSERT INTO activities(id,user_id,title,sport,source,derived_data_json) VALUES(5,1,'Zwift morning ride','road_ride','strava_sync',$1)",
+        [route.clone().into()],
+    )).await.unwrap();
+    prepare(&db, 5, 1).await;
+    assert_eq!(status(&db, 5).await, "skipped");
     db.execute_unprepared("DELETE FROM users WHERE id=2")
         .await
         .unwrap();
@@ -141,6 +148,81 @@ async fn upgrades_existing_heatmap_projections_for_speed_filter() {
         counts.try_get::<String>("", "version_default").unwrap(),
         "2"
     );
+
+    db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+#[ignore = "Set BIKE_HEATMAP_TEST_DATABASE_URL to a disposable PostgreSQL database"]
+async fn upgrades_existing_heatmap_projections_for_virtual_ride_filter() {
+    let (db, schema) = fixture().await;
+    db.execute_unprepared(include_str!(
+        "../../migration/src/heatmap_projection_speed_filter.sql"
+    ))
+    .await
+    .unwrap();
+    db.execute_unprepared(
+        "UPDATE heatmap_projections SET status='ready', min_x=0.1, min_y=0.1, max_x=0.2, max_y=0.2 WHERE activity_id=1;
+         INSERT INTO heatmap_chunks(activity_id,band,chunk_index,min_x,min_y,max_x,max_y,points)
+         VALUES (1,0,0,0.1,0.1,0.2,0.2,decode(repeat('00',32),'hex'));",
+    )
+    .await
+    .unwrap();
+
+    db.execute_unprepared(include_str!(
+        "../../migration/src/heatmap_projection_virtual_ride_filter.sql"
+    ))
+    .await
+    .unwrap();
+
+    let projection = db
+        .query_one_raw(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT generation, projection_version, status, min_x FROM heatmap_projections WHERE activity_id=1"
+                .to_owned(),
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(projection.try_get::<i64>("", "generation").unwrap(), 3);
+    assert_eq!(
+        projection.try_get::<i32>("", "projection_version").unwrap(),
+        3
+    );
+    assert_eq!(
+        projection.try_get::<String>("", "status").unwrap(),
+        "pending"
+    );
+    assert_eq!(
+        projection.try_get::<Option<f64>>("", "min_x").unwrap(),
+        None
+    );
+
+    let counts = db
+        .query_one_raw(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT (SELECT count(*)::bigint FROM heatmap_chunks) AS chunks, (SELECT revision FROM heatmap_user_states WHERE user_id=1) AS revision, (SELECT column_default FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='heatmap_projections' AND column_name='projection_version') AS version_default"
+                .to_owned(),
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(counts.try_get::<i64>("", "chunks").unwrap(), 0);
+    assert_eq!(counts.try_get::<i64>("", "revision").unwrap(), 3);
+    assert_eq!(
+        counts.try_get::<String>("", "version_default").unwrap(),
+        "3"
+    );
+
+    db.execute_unprepared(
+        "UPDATE heatmap_projections SET status='ready' WHERE activity_id=1;
+         UPDATE activities SET title='Zwift route' WHERE id=1;",
+    )
+    .await
+    .unwrap();
+    assert_eq!(status(&db, 1).await, "pending");
 
     db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
         .await
@@ -318,7 +400,7 @@ async fn fixture() -> (sea_orm::DatabaseConnection, String) {
     .unwrap();
     db.execute_unprepared(r#"
         CREATE TABLE users(id integer PRIMARY KEY);
-        CREATE TABLE activities(id integer PRIMARY KEY, user_id integer REFERENCES users(id) ON DELETE CASCADE, sport text NOT NULL, source text NOT NULL, started_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), derived_data_json jsonb);
+        CREATE TABLE activities(id integer PRIMARY KEY, user_id integer REFERENCES users(id) ON DELETE CASCADE, title text NOT NULL DEFAULT '', sport text NOT NULL, source text NOT NULL, started_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), derived_data_json jsonb);
         CREATE TABLE feature_flags(feature_key text PRIMARY KEY, enabled boolean NOT NULL);
         CREATE TABLE background_tasks(id serial PRIMARY KEY,task_type text,payload jsonb,status text,attempts integer,max_attempts integer,created_at timestamptz,updated_at timestamptz);
         INSERT INTO users VALUES (1),(2);

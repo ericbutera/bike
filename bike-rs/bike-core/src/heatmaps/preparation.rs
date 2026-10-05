@@ -13,11 +13,7 @@ pub async fn prepare_activity(
     let Some(source) = Projection::source(db, &pending).await? else {
         return Ok(());
     };
-    let sport = normalize_activity_sport(&source.sport);
-    let virtual_activity = sport == "indoor_trainer_ride"
-        || source.sport.to_ascii_lowercase().contains("virtual")
-        || source.source.to_ascii_lowercase().contains("zwift");
-    let chunks = if virtual_activity {
+    let chunks = if should_exclude_from_heatmap(&source.sport, &source.source, &source.title) {
         Vec::new()
     } else {
         let derived = deserialize_derived_activity_data(source.derived_data_json.as_ref());
@@ -27,4 +23,40 @@ pub async fn prepare_activity(
     };
     Projection::publish(db, &pending, &chunks).await?;
     Ok(())
+}
+
+fn should_exclude_from_heatmap(sport: &str, source: &str, title: &str) -> bool {
+    normalize_activity_sport(sport) == "indoor_trainer_ride"
+        || sport.to_ascii_lowercase().contains("virtual")
+        || source.to_ascii_lowercase().contains("zwift")
+        || title.to_ascii_lowercase().contains("zwift")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_exclude_from_heatmap;
+
+    #[test]
+    fn excludes_virtual_and_zwift_rides_but_keeps_outdoor_rides() {
+        assert!(should_exclude_from_heatmap(
+            "VirtualRide",
+            "strava_sync",
+            "Morning ride"
+        ));
+        assert!(should_exclude_from_heatmap(
+            "road_ride",
+            "strava_sync",
+            "Zwift morning ride"
+        ));
+        assert!(should_exclude_from_heatmap(
+            "indoor trainer ride",
+            "manual_upload",
+            "Morning ride"
+        ));
+        assert!(!should_exclude_from_heatmap(
+            "road_ride",
+            "strava_sync",
+            "Morning ride"
+        ));
+    }
 }

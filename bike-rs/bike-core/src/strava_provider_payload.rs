@@ -44,6 +44,10 @@ pub struct StravaActivitySummary {
     pub average_cadence: Option<f64>,
     pub calories: Option<f64>,
     pub sport_type: Option<String>,
+    /// Strava marks activities recorded on a training machine independently
+    /// from the selected activity sport.
+    #[serde(default)]
+    pub trainer: Option<bool>,
     #[serde(rename = "type")]
     pub legacy_type: Option<String>,
     pub start_date: DateTime<Utc>,
@@ -356,6 +360,12 @@ pub fn strava_activity_sport_label(activity: &StravaActivitySummary) -> String {
 
 fn normalize_strava_sport(activity: &StravaActivitySummary) -> String {
     match strava_activity_sport_kind(activity) {
+        StravaSportKind::Bike
+            if activity.trainer == Some(true)
+                || activity.name.to_ascii_lowercase().contains("zwift") =>
+        {
+            "indoor_trainer_ride".to_string()
+        }
         StravaSportKind::Bike => normalize_activity_sport(&normalized_strava_sport_token(activity)),
         StravaSportKind::Run => "run".to_string(),
         StravaSportKind::Swim => "swim".to_string(),
@@ -511,6 +521,7 @@ mod tests {
             average_cadence: Some(88.0),
             calories: Some(120.0),
             sport_type: sport_type.map(ToOwned::to_owned),
+            trainer: None,
             legacy_type: legacy_type.map(ToOwned::to_owned),
             start_date: DateTime::parse_from_rfc3339("2026-05-12T12:00:00Z")
                 .unwrap()
@@ -578,6 +589,23 @@ mod tests {
             };
             assert_eq!(normalize_strava_sport(&activity), expected);
         }
+    }
+
+    #[test]
+    fn maps_training_machine_and_zwift_rides_to_indoor_sport() {
+        let mut trainer_ride = test_activity_with_sport(Some("Ride"), Some("Ride"));
+        trainer_ride.trainer = Some(true);
+        assert_eq!(
+            build_strava_activity_draft(&trainer_ride, &test_streams()).sport,
+            "indoor_trainer_ride"
+        );
+
+        let mut zwift_ride = test_activity_with_sport(Some("Ride"), Some("Ride"));
+        zwift_ride.name = "Zwift morning ride".to_string();
+        assert_eq!(
+            build_strava_activity_draft(&zwift_ride, &test_streams()).sport,
+            "indoor_trainer_ride"
+        );
     }
 
     #[test]
