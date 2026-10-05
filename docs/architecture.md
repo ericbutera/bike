@@ -38,6 +38,16 @@ policy. Queries live on their owning entity/model modules. Axum and SeaORM
 provide routing and persistence; Bike owns its platform modules inside
 `bike-rs/bike-core`.
 
+Use SeaORM entities and ActiveModels for ordinary reads, writes, joins,
+aggregates, pagination, locks, and conflicts. Use SeaQuery when an expression
+needs the database clock or a database function. Keep SQL escape hatches small,
+bind dynamic values, and explain the unsupported primitive or atomic operation
+beside each one. The retained application SQL covers heatmap writable CTEs and
+the PostgreSQL box-overlap expression used by the GiST index. Migration and
+fixture DDL remain schema records. The
+[shared engineering quality skill](../.agents/skills/bike-engineering-quality/SKILL.md)
+defines the review and verification requirements.
+
 ## Activity data flow
 
 File uploads and archive imports retain their source data and enter the durable

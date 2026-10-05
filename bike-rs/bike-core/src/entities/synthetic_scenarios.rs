@@ -1,7 +1,8 @@
 use super::{activities, segment_efforts, segments};
 use crate::auth::entities::users;
 use sea_orm::entity::prelude::*;
-use sea_orm::{ConnectionTrait, DbErr};
+use sea_orm::sea_query::{Alias, Func, Query};
+use sea_orm::{ConnectionTrait, DatabaseTransaction, DbBackend, DbErr};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "synthetic_scenarios")]
@@ -21,6 +22,18 @@ pub enum Relation {}
 impl ActiveModelBehavior for ActiveModel {}
 
 impl Model {
+    pub async fn lock_provisioning(db: &DatabaseTransaction) -> Result<(), DbErr> {
+        if db.get_database_backend() == DbBackend::Postgres {
+            db.execute(
+                &Query::select()
+                    .expr(Func::cust(Alias::new("pg_advisory_xact_lock")).arg(743918260_i64))
+                    .to_owned(),
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
     pub async fn validate_owner<C: ConnectionTrait>(&self, db: &C) -> Result<users::Model, DbErr> {
         let invalid =
             || DbErr::Custom("Synthetic scenario ownership or account isolation is invalid".into());

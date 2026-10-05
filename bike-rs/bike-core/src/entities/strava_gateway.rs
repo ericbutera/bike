@@ -1,7 +1,13 @@
+use super::{
+    strava_gateway_bindings as bindings, strava_gateway_receipts as receipts,
+    strava_gateway_revocations as revocations, strava_gateway_watermarks as watermarks,
+};
+use crate::integration_events_service::{self, NewIntegrationEvent, INTEGRATION_PROVIDER_STRAVA};
 use crate::workflow_error::WorkflowError as AppError;
+use sea_orm::sea_query::{Alias, Expr, OnConflict, Query, SimpleExpr};
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
-    TransactionTrait,
+    ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
+    ExprTrait, QueryFilter, QuerySelect, Set, TransactionTrait,
 };
 
 pub struct Receipt<'a> {
@@ -13,6 +19,29 @@ pub struct Receipt<'a> {
     pub operation: &'a str,
 }
 
+impl Receipt<'_> {
+    fn integration_event(
+        &self,
+        event_type: &str,
+        level: &str,
+        message: &str,
+    ) -> NewIntegrationEvent {
+        NewIntegrationEvent {
+            user_id: Some(self.user_id),
+            provider: INTEGRATION_PROVIDER_STRAVA.into(),
+            event_type: event_type.into(),
+            level: level.into(),
+            message: message.into(),
+            connection_id: None,
+            payload: Some(serde_json::json!({
+                "delivery_id": self.delivery_id, "athlete_id": self.athlete_id,
+                "strava_activity_id": (self.operation != "deauthorize").then_some(self.activity_id),
+                "event_time": self.event_time, "operation": self.operation,
+            })),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Claim {
     Acquired,
@@ -20,68 +49,47 @@ pub enum Claim {
     Busy,
 }
 
-fn stmt(sql: &str, values: Vec<sea_orm::Value>) -> Statement {
-    Statement::from_sql_and_values(DbBackend::Postgres, sql, values)
-}
-
 pub async fn claim(db: &DatabaseConnection, receipt: &Receipt<'_>) -> Result<Claim, AppError> {
     let txn = db.begin().await?;
-    txn.execute_raw(stmt(
-        "INSERT INTO strava_gateway_bindings (athlete_id,user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING",
-        vec![receipt.athlete_id.into(), receipt.user_id.into()],
-    ))
-    .await?;
-
-    let binding = txn
-        .query_one_raw(stmt(
-            "SELECT user_id,COALESCE(lease_until>now(),false) AS busy FROM strava_gateway_bindings WHERE athlete_id=$1 FOR UPDATE",
-            vec![receipt.athlete_id.into()],
-        ))
+    create_binding(&txn, receipt).await?;
+    let (mapped_user, busy) = bindings::Entity::find_by_id(receipt.athlete_id)
+        .select_only()
+        .column(bindings::Column::UserId)
+        .expr_as(
+            Expr::col(bindings::Column::LeaseUntil).gt(Expr::current_timestamp()),
+            "busy",
+        )
+        .lock_exclusive()
+        .into_tuple::<(i32, Option<bool>)>()
+        .one(&txn)
         .await?
         .ok_or_else(|| AppError::conflict("Strava athlete binding is unavailable"))?;
-    let mapped_user: i32 = binding.try_get("", "user_id")?;
     if mapped_user != receipt.user_id {
         return Err(AppError::conflict(
             "Strava athlete is bound to another Bike user",
         ));
     }
-    let busy: bool = binding.try_get("", "busy")?;
-    if busy {
+    if busy.unwrap_or(false) {
         return Ok(Claim::Busy);
     }
-
     if stale_receipt(&txn, receipt).await? {
-        txn.execute_raw(stmt(
-            "INSERT INTO strava_gateway_receipts (delivery_id,athlete_id,activity_id,event_time,operation,status,completed_at) VALUES ($1,$2,$3,$4,$5,'completed',now()) ON CONFLICT DO NOTHING",
-            vec![receipt.delivery_id.into(), receipt.athlete_id.into(), receipt.activity_id.into(), receipt.event_time.into(), receipt.operation.into()],
-        )).await?;
+        complete_stale_receipt(&txn, receipt).await?;
         txn.commit().await?;
         return Ok(Claim::Completed);
     }
-
-    let inserted = txn
-        .query_one_raw(stmt(
-            "INSERT INTO strava_gateway_receipts (delivery_id,athlete_id,activity_id,event_time,operation,status,lease_until) VALUES ($1,$2,$3,$4,$5,'processing',now()+interval '2 minutes') ON CONFLICT (delivery_id) DO UPDATE SET lease_until=excluded.lease_until WHERE strava_gateway_receipts.status='processing' AND strava_gateway_receipts.lease_until<now() RETURNING status",
-            vec![receipt.delivery_id.into(), receipt.athlete_id.into(), receipt.activity_id.into(), receipt.event_time.into(), receipt.operation.into()],
-        )).await?;
-    if inserted.is_some() {
-        txn.execute_raw(stmt(
-            "UPDATE strava_gateway_bindings SET active_delivery_id=$2,lease_until=now()+interval '2 minutes' WHERE athlete_id=$1",
-            vec![receipt.athlete_id.into(), receipt.delivery_id.into()],
-        ))
-        .await?;
+    if claim_processing_receipt(&txn, receipt).await? {
+        mark_delivery_processing(&txn, receipt).await?;
         txn.commit().await?;
         return Ok(Claim::Acquired);
     }
-    let existing = txn
-        .query_one_raw(stmt(
-            "SELECT status FROM strava_gateway_receipts WHERE delivery_id=$1",
-            vec![receipt.delivery_id.into()],
-        ))
+    let existing = receipts::Entity::find_by_id(receipt.delivery_id)
+        .select_only()
+        .column(receipts::Column::Status)
+        .into_tuple::<String>()
+        .one(&txn)
         .await?
         .ok_or_else(|| AppError::internal("Strava delivery receipt disappeared"))?;
-    let status: String = existing.try_get("", "status")?;
-    if status == "completed" {
+    if existing == "completed" {
         txn.commit().await?;
         Ok(Claim::Completed)
     } else {
@@ -89,30 +97,151 @@ pub async fn claim(db: &DatabaseConnection, receipt: &Receipt<'_>) -> Result<Cla
     }
 }
 
+async fn create_binding(txn: &DatabaseTransaction, receipt: &Receipt<'_>) -> Result<(), AppError> {
+    bindings::Entity::insert(bindings::ActiveModel {
+        athlete_id: Set(receipt.athlete_id),
+        user_id: Set(receipt.user_id),
+        ..Default::default()
+    })
+    .on_conflict(OnConflict::new().do_nothing().to_owned())
+    .try_insert()
+    .exec(txn)
+    .await?;
+    Ok(())
+}
+
+fn lease_deadline() -> SimpleExpr {
+    // PostgreSQL interval arithmetic keeps lease decisions on the database clock.
+    Expr::current_timestamp().add(Expr::val("2 minutes").cast_as("interval"))
+}
+
+async fn claim_processing_receipt(
+    txn: &DatabaseTransaction,
+    receipt: &Receipt<'_>,
+) -> Result<bool, AppError> {
+    // SeaQuery expresses the atomic conditional upsert and database-clock lease;
+    // ActiveModel values alone cannot represent an INSERT timestamp expression.
+    let query = Query::insert()
+        .into_table(receipts::Entity)
+        .columns([
+            receipts::Column::DeliveryId,
+            receipts::Column::AthleteId,
+            receipts::Column::ActivityId,
+            receipts::Column::EventTime,
+            receipts::Column::Operation,
+            receipts::Column::Status,
+            receipts::Column::LeaseUntil,
+        ])
+        .values_panic([
+            Expr::val(receipt.delivery_id),
+            Expr::val(receipt.athlete_id),
+            Expr::val(receipt.activity_id),
+            Expr::val(receipt.event_time),
+            Expr::val(receipt.operation),
+            Expr::val("processing"),
+            lease_deadline(),
+        ])
+        .on_conflict(
+            OnConflict::column(receipts::Column::DeliveryId)
+                .update_column(receipts::Column::LeaseUntil)
+                .action_cond_where(
+                    Condition::all()
+                        .add(
+                            Expr::col((receipts::Entity, receipts::Column::Status))
+                                .eq("processing"),
+                        )
+                        .add(
+                            Expr::col((receipts::Entity, receipts::Column::LeaseUntil))
+                                .lt(Expr::current_timestamp()),
+                        ),
+                )
+                .to_owned(),
+        )
+        .returning_col(receipts::Column::DeliveryId)
+        .to_owned();
+    Ok(txn.query_one(&query).await?.is_some())
+}
+
+async fn mark_delivery_processing(
+    txn: &DatabaseTransaction,
+    receipt: &Receipt<'_>,
+) -> Result<(), AppError> {
+    bindings::Entity::update_many()
+        .col_expr(
+            bindings::Column::ActiveDeliveryId,
+            Expr::val(receipt.delivery_id),
+        )
+        .col_expr(bindings::Column::LeaseUntil, lease_deadline())
+        .filter(bindings::Column::AthleteId.eq(receipt.athlete_id))
+        .exec(txn)
+        .await?;
+    integration_events_service::record_event(
+        txn,
+        receipt.integration_event(
+            "gateway.delivery.received",
+            "info",
+            "Received a Strava gateway delivery for processing.",
+        ),
+    )
+    .await?;
+    Ok(())
+}
+
+async fn complete_stale_receipt(
+    txn: &DatabaseTransaction,
+    receipt: &Receipt<'_>,
+) -> Result<(), AppError> {
+    // Use an INSERT expression to preserve the database-clock completion time.
+    let query = Query::insert()
+        .into_table(receipts::Entity)
+        .columns([
+            receipts::Column::DeliveryId,
+            receipts::Column::AthleteId,
+            receipts::Column::ActivityId,
+            receipts::Column::EventTime,
+            receipts::Column::Operation,
+            receipts::Column::Status,
+            receipts::Column::CompletedAt,
+        ])
+        .values_panic([
+            Expr::val(receipt.delivery_id),
+            Expr::val(receipt.athlete_id),
+            Expr::val(receipt.activity_id),
+            Expr::val(receipt.event_time),
+            Expr::val(receipt.operation),
+            Expr::val("completed"),
+            Expr::current_timestamp(),
+        ])
+        .on_conflict(OnConflict::new().do_nothing().to_owned())
+        .returning_col(receipts::Column::DeliveryId)
+        .to_owned();
+    if txn.query_one(&query).await?.is_some() {
+        integration_events_service::record_event(
+            txn,
+            receipt.integration_event(
+                "gateway.delivery.ignored",
+                "warning",
+                "Ignored an older Strava gateway delivery.",
+            ),
+        )
+        .await?;
+    }
+    Ok(())
+}
+
 async fn stale_receipt(txn: &DatabaseTransaction, receipt: &Receipt<'_>) -> Result<bool, AppError> {
-    let revoked = txn
-        .query_one_raw(stmt(
-            "SELECT event_time FROM strava_gateway_revocations WHERE athlete_id=$1",
-            vec![receipt.athlete_id.into()],
-        ))
+    let revoked_at = revocations::Entity::find_by_id(receipt.athlete_id)
+        .select_only()
+        .column(revocations::Column::EventTime)
+        .into_tuple::<i64>()
+        .one(txn)
         .await?;
-    let revoked_at: Option<i64> = revoked
-        .map(|row| row.try_get("", "event_time"))
-        .transpose()?;
-    let latest = txn
-        .query_one_raw(stmt(
-            "SELECT event_time,operation FROM strava_gateway_watermarks WHERE athlete_id=$1 AND activity_id=$2",
-            vec![receipt.athlete_id.into(), receipt.activity_id.into()],
-        ))
+    let latest_event = watermarks::Entity::find_by_id((receipt.athlete_id, receipt.activity_id))
+        .select_only()
+        .columns([watermarks::Column::EventTime, watermarks::Column::Operation])
+        .into_tuple::<(i64, String)>()
+        .one(txn)
         .await?;
-    let latest_event: Option<(i64, String)> = latest
-        .map(|row| {
-            Ok::<_, sea_orm::DbErr>((
-                row.try_get("", "event_time")?,
-                row.try_get("", "operation")?,
-            ))
-        })
-        .transpose()?;
     Ok(latest_event.is_some_and(|(event_time, operation)| {
         event_time > receipt.event_time
             || (event_time == receipt.event_time
@@ -124,58 +253,142 @@ async fn stale_receipt(txn: &DatabaseTransaction, receipt: &Receipt<'_>) -> Resu
 
 pub async fn complete(db: &DatabaseConnection, receipt: &Receipt<'_>) -> Result<(), AppError> {
     let txn = db.begin().await?;
-    let binding = txn
-        .execute_raw(stmt(
-            "UPDATE strava_gateway_bindings SET active_delivery_id=NULL,lease_until=NULL WHERE athlete_id=$1 AND active_delivery_id=$2",
-            vec![receipt.athlete_id.into(), receipt.delivery_id.into()],
-        ))
+    let binding = bindings::Entity::update_many()
+        .set(bindings::ActiveModel {
+            active_delivery_id: Set(None),
+            lease_until: Set(None),
+            ..Default::default()
+        })
+        .filter(bindings::Column::AthleteId.eq(receipt.athlete_id))
+        .filter(bindings::Column::ActiveDeliveryId.eq(receipt.delivery_id))
+        .exec(&txn)
         .await?;
-    if binding.rows_affected() != 1 {
+    if binding.rows_affected != 1 {
         return Err(AppError::internal("Strava athlete delivery lease was lost"));
     }
-    let result = txn
-        .execute_raw(stmt(
-            "UPDATE strava_gateway_receipts SET status='completed',lease_until=NULL,completed_at=now() WHERE delivery_id=$1 AND status='processing'",
-            vec![receipt.delivery_id.into()],
-        ))
+    let result = receipts::Entity::update_many()
+        .set(receipts::ActiveModel {
+            status: Set("completed".into()),
+            lease_until: Set(None),
+            ..Default::default()
+        })
+        .col_expr(receipts::Column::CompletedAt, Expr::current_timestamp())
+        .filter(receipts::Column::DeliveryId.eq(receipt.delivery_id))
+        .filter(receipts::Column::Status.eq("processing"))
+        .exec(&txn)
         .await?;
-    if result.rows_affected() != 1 {
+    if result.rows_affected != 1 {
         return Err(AppError::internal("Strava delivery receipt lease was lost"));
     }
-    txn.execute_raw(stmt(
-        "INSERT INTO strava_gateway_watermarks (athlete_id,activity_id,event_time,operation) VALUES ($1,$2,$3,$4) ON CONFLICT (athlete_id,activity_id) DO UPDATE SET event_time=excluded.event_time,operation=excluded.operation WHERE strava_gateway_watermarks.event_time<=excluded.event_time",
-        vec![receipt.athlete_id.into(), receipt.activity_id.into(), receipt.event_time.into(), receipt.operation.into()],
-    )).await?;
+    advance_watermark(&txn, receipt).await?;
     if receipt.operation == "deauthorize" {
-        txn.execute_raw(stmt(
-            "INSERT INTO strava_gateway_revocations (athlete_id,event_time) VALUES ($1,$2) ON CONFLICT (athlete_id) DO UPDATE SET event_time=GREATEST(strava_gateway_revocations.event_time,excluded.event_time)",
-            vec![receipt.athlete_id.into(), receipt.event_time.into()],
-        )).await?;
+        advance_revocation(&txn, receipt).await?;
     }
+    integration_events_service::record_event(
+        &txn,
+        receipt.integration_event(
+            "gateway.delivery.applied",
+            "success",
+            &format!("Applied Strava gateway {} delivery.", receipt.operation),
+        ),
+    )
+    .await?;
     txn.commit().await?;
     Ok(())
 }
 
-pub async fn release(db: &DatabaseConnection, delivery_id: &str) -> Result<(), AppError> {
+async fn advance_watermark(
+    txn: &DatabaseTransaction,
+    receipt: &Receipt<'_>,
+) -> Result<(), AppError> {
+    watermarks::Entity::insert(watermarks::ActiveModel {
+        athlete_id: Set(receipt.athlete_id),
+        activity_id: Set(receipt.activity_id),
+        event_time: Set(receipt.event_time),
+        operation: Set(receipt.operation.into()),
+    })
+    .on_conflict(
+        OnConflict::columns([
+            watermarks::Column::AthleteId,
+            watermarks::Column::ActivityId,
+        ])
+        .update_columns([watermarks::Column::EventTime, watermarks::Column::Operation])
+        .action_cond_where(
+            Expr::col((watermarks::Entity, watermarks::Column::EventTime)).lte(Expr::col((
+                Alias::new("excluded"),
+                watermarks::Column::EventTime,
+            ))),
+        )
+        .to_owned(),
+    )
+    .try_insert()
+    .exec(txn)
+    .await?;
+    Ok(())
+}
+
+async fn advance_revocation(
+    txn: &DatabaseTransaction,
+    receipt: &Receipt<'_>,
+) -> Result<(), AppError> {
+    revocations::Entity::insert(revocations::ActiveModel {
+        athlete_id: Set(receipt.athlete_id),
+        event_time: Set(receipt.event_time),
+    })
+    .on_conflict(
+        OnConflict::column(revocations::Column::AthleteId)
+            .update_column(revocations::Column::EventTime)
+            .action_cond_where(
+                Expr::col((revocations::Entity, revocations::Column::EventTime)).lte(Expr::col((
+                    Alias::new("excluded"),
+                    revocations::Column::EventTime,
+                ))),
+            )
+            .to_owned(),
+    )
+    .try_insert()
+    .exec(txn)
+    .await?;
+    Ok(())
+}
+
+pub async fn release(
+    db: &DatabaseConnection,
+    receipt: &Receipt<'_>,
+    error: &AppError,
+) -> Result<(), AppError> {
     let txn = db.begin().await?;
-    txn.execute_raw(stmt(
-        "UPDATE strava_gateway_bindings SET active_delivery_id=NULL,lease_until=NULL WHERE active_delivery_id=$1",
-        vec![delivery_id.into()],
-    ))
-    .await?;
-    txn.execute_raw(stmt(
-        "UPDATE strava_gateway_receipts SET lease_until=now() WHERE delivery_id=$1 AND status='processing'",
-        vec![delivery_id.into()],
-    ))
-    .await?;
+    bindings::Entity::update_many()
+        .set(bindings::ActiveModel {
+            active_delivery_id: Set(None),
+            lease_until: Set(None),
+            ..Default::default()
+        })
+        .filter(bindings::Column::ActiveDeliveryId.eq(receipt.delivery_id))
+        .exec(&txn)
+        .await?;
+    receipts::Entity::update_many()
+        .col_expr(receipts::Column::LeaseUntil, Expr::current_timestamp())
+        .filter(receipts::Column::DeliveryId.eq(receipt.delivery_id))
+        .filter(receipts::Column::Status.eq("processing"))
+        .exec(&txn)
+        .await?;
+    let mut event = receipt.integration_event("gateway.delivery.failed", "error", &error.message);
+    event.payload.as_mut().expect("receipt event payload")["status_code"] =
+        error.status.as_u16().into();
+    integration_events_service::record_event(&txn, event).await?;
     txn.commit().await?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{claim, complete, stmt, Claim, Receipt};
-    use sea_orm::{ConnectionTrait, Database, DatabaseConnection};
+    use super::{bindings, claim, complete, receipts, revocations, watermarks, Claim, Receipt};
+    use crate::auth::entities::users;
+    use crate::entities::integration_events;
+    use sea_orm::{
+        ActiveModelTrait, ColumnTrait, Database, DatabaseConnection, EntityTrait, QueryFilter, Set,
+    };
     use uuid::Uuid;
 
     #[tokio::test]
@@ -187,15 +400,17 @@ mod tests {
             .await
             .expect("connect to migrated test database");
         let unique = Uuid::new_v4().to_string();
-        let row = db
-            .query_one_raw(stmt(
-                "INSERT INTO users (pid,email,api_key,name) VALUES (gen_random_uuid(),$1,$2,'Gateway test') RETURNING id",
-                vec![format!("gateway-{unique}@example.invalid").into(), unique.clone().into()],
-            ))
-            .await
-            .expect("create test user")
-            .expect("created test user");
-        let user_id: i32 = row.try_get("", "id").expect("user id");
+        let user = users::ActiveModel {
+            pid: Set(Uuid::new_v4()),
+            email: Set(format!("gateway-{unique}@example.invalid")),
+            api_key: Set(unique.clone()),
+            name: Set("Gateway test".into()),
+            ..Default::default()
+        }
+        .insert(&db)
+        .await
+        .expect("create test user");
+        let user_id = user.id;
         let athlete_id = i64::from(user_id) + 9_000_000_000;
         let first_id = format!("rust:{unique}:1");
         let first = Receipt {
@@ -259,32 +474,30 @@ mod tests {
     }
 
     async fn cleanup(db: &DatabaseConnection, athlete_id: i64, user_id: i32) {
-        db.execute_raw(stmt(
-            "DELETE FROM strava_gateway_receipts WHERE athlete_id=$1",
-            vec![athlete_id.into()],
-        ))
-        .await
-        .unwrap();
-        db.execute_raw(stmt(
-            "DELETE FROM strava_gateway_watermarks WHERE athlete_id=$1",
-            vec![athlete_id.into()],
-        ))
-        .await
-        .unwrap();
-        db.execute_raw(stmt(
-            "DELETE FROM strava_gateway_revocations WHERE athlete_id=$1",
-            vec![athlete_id.into()],
-        ))
-        .await
-        .unwrap();
-        db.execute_raw(stmt(
-            "DELETE FROM strava_gateway_bindings WHERE athlete_id=$1",
-            vec![athlete_id.into()],
-        ))
-        .await
-        .unwrap();
-        db.execute_raw(stmt("DELETE FROM users WHERE id=$1", vec![user_id.into()]))
+        integration_events::Entity::delete_many()
+            .filter(integration_events::Column::UserId.eq(user_id))
+            .exec(db)
             .await
             .unwrap();
+        receipts::Entity::delete_many()
+            .filter(receipts::Column::AthleteId.eq(athlete_id))
+            .exec(db)
+            .await
+            .unwrap();
+        watermarks::Entity::delete_many()
+            .filter(watermarks::Column::AthleteId.eq(athlete_id))
+            .exec(db)
+            .await
+            .unwrap();
+        revocations::Entity::delete_many()
+            .filter(revocations::Column::AthleteId.eq(athlete_id))
+            .exec(db)
+            .await
+            .unwrap();
+        bindings::Entity::delete_by_id(athlete_id)
+            .exec(db)
+            .await
+            .unwrap();
+        users::Entity::delete_by_id(user_id).exec(db).await.unwrap();
     }
 }

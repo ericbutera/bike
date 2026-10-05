@@ -2,7 +2,7 @@
 
 import { formatActivityTimestamp } from "@/lib/activityFormatting";
 import type { IntegrationEvent } from "@/lib/queries";
-import { CenteredLoading } from "./ui/QueryState";
+import { CenteredLoading, ErrorCard } from "./ui/QueryState";
 
 type IntegrationEventFeedProps = {
   events: IntegrationEvent[];
@@ -26,7 +26,9 @@ export default function IntegrationEventFeed({
   }
 
   if (error) {
-    return null;
+    return (
+      <ErrorCard error={error} fallback="Unable to load integration events." />
+    );
   }
 
   if (events.length === 0) {
@@ -170,6 +172,7 @@ function buildPayloadMetrics(payload: Record<string, unknown> | null) {
     metricFromPayload(payload, "failed_count", "Failed"),
     metricFromPayload(payload, "cancelled_task_count", "Cancelled"),
     metricFromPayload(payload, "activity_id", "Activity"),
+    metricFromPayload(payload, "strava_activity_id", "Strava activity"),
     metricFromPayload(payload, "athlete_id", "Athlete"),
   ].filter(
     (metric): metric is { label: string; value: string } => metric != null,

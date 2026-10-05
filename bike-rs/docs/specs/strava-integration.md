@@ -183,6 +183,32 @@ Metrics should include:
 
 Integration events remain the user/admin audit trail. OpenTelemetry and metrics are the operational view.
 
+### Bike's gateway boundary events
+
+Bike persists Strava integration events when it receives gateway deliveries.
+`gateway.delivery.received` is written with the processing claim;
+`gateway.delivery.applied` is written with the completed receipt;
+`gateway.delivery.failed` is written when a failed attempt releases its lease.
+These writes share the receipt transaction so retries cannot acknowledge work
+without its event. Repeated completed or busy deliveries create no new events;
+new stale deliveries produce one `gateway.delivery.ignored` event.
+
+The payload contains the delivery ID, athlete ID, provider event time, operation,
+and `strava_activity_id`. Strava activity IDs are separate from Bike activity
+IDs. Provider payloads and credentials are not copied into the event. A failure
+records Bike's processing error and HTTP status.
+
+An append-only data migration projects Bike's retained completed receipts into
+`gateway.delivery.completed` events at their original completion timestamps.
+These informational events report receipt completion only: older receipts do
+not distinguish applied work from ignored stale deliveries. The projection
+skips receipts that already have a terminal boundary event and is repeatable.
+
+Both admin and rider integration history continue to query only Bike's
+`integration_events` table. Viewing these lists does not call the gateway.
+Gateway-only webhook rejections, provider fetches, and quota pauses are outside
+the evidence available at Bike's delivery boundary.
+
 ## Code Anchors
 
 - Strava controller: `api/src/controllers/strava.rs`

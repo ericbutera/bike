@@ -1,6 +1,14 @@
 //! Ownership, time, sport, zoom and spatial predicates run before materializing coordinates.
 use super::{geometry::zoom_band, raster::Tile, types::HeatmapQuery, PROJECTION_VERSION};
-use sea_orm::{ConnectionTrait, DbBackend, DbErr, FromQueryResult, Statement, Value};
+use crate::entities::{
+    activities, heatmap_chunks as chunks, heatmap_projections as projections,
+    heatmap_user_states as user_states,
+};
+use sea_orm::sea_query::{Expr, Func, Query};
+use sea_orm::{
+    ColumnTrait, Condition, ConnectionTrait, DbErr, EntityTrait, ExprTrait, FromQueryResult,
+    JoinType, QueryFilter, QueryOrder, QuerySelect, RelationTrait, Select,
+};
 
 #[derive(Debug, FromQueryResult)]
 pub struct Progress {
@@ -31,127 +39,177 @@ pub struct ActivityCenter {
 pub struct HeatmapData;
 
 impl HeatmapData {
-    pub async fn revision<C: ConnectionTrait>(db: &C, user_id: i32) -> Result<i64, DbErr> {
-        let row = db
-            .query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "SELECT revision FROM heatmap_user_states WHERE user_id=$1",
-                [user_id.into()],
-            ))
-            .await?;
-        row.map(|row| row.try_get("", "revision"))
-            .transpose()
-            .map(|n| n.unwrap_or(0))
+    pub async fn revision(db: &impl ConnectionTrait, user_id: i32) -> Result<i64, DbErr> {
+        Ok(user_states::Entity::find_by_id(user_id)
+            .select_only()
+            .column(user_states::Column::Revision)
+            .into_tuple::<i64>()
+            .one(db)
+            .await?
+            .unwrap_or(0))
     }
 
-    pub async fn progress<C: ConnectionTrait>(
-        db: &C,
+    pub async fn progress(
+        db: &impl ConnectionTrait,
         user_id: i32,
         filters: &HeatmapQuery,
     ) -> Result<Progress, DbErr> {
-        let scope = ActivityScope::new(user_id, filters);
-        Progress::find_by_statement(Statement::from_sql_and_values(DbBackend::Postgres, format!(r#"
-            SELECT COALESCE((SELECT revision FROM heatmap_user_states WHERE user_id=$1),0) AS revision,
-                count(*) FILTER(WHERE p.status='ready') AS ready,
-                count(*) FILTER(WHERE p.status='pending') AS pending,
-                count(*) FILTER(WHERE p.status='failed') AS failed,
-                count(*) FILTER(WHERE p.status='skipped') AS skipped,
-                min(p.min_x) FILTER(WHERE p.status='ready') AS min_x,
-                min(p.min_y) FILTER(WHERE p.status='ready') AS min_y,
-                max(p.max_x) FILTER(WHERE p.status='ready') AS max_x,
-                max(p.max_y) FILTER(WHERE p.status='ready') AS max_y
-            FROM heatmap_projections p JOIN activities a ON a.id=p.activity_id WHERE {}
-        "#,scope.predicate),scope.values)).one(db).await?.ok_or_else(|| DbErr::Custom("Missing heatmap progress".into()))
+        let revision = Query::select()
+            .column(user_states::Column::Revision)
+            .from(user_states::Entity)
+            .and_where(user_states::Column::UserId.eq(user_id))
+            .to_owned();
+        Self::scoped_projections(user_id, filters)
+            .expr_as(
+                Func::coalesce([revision.into(), Expr::val(0_i64)]),
+                "revision",
+            )
+            .expr_as(Self::status_count("ready"), "ready")
+            .expr_as(Self::status_count("pending"), "pending")
+            .expr_as(Self::status_count("failed"), "failed")
+            .expr_as(Self::status_count("skipped"), "skipped")
+            .expr_as(
+                Func::min(projections::Column::MinX.into_expr()).filter(Self::ready()),
+                "min_x",
+            )
+            .expr_as(
+                Func::min(projections::Column::MinY.into_expr()).filter(Self::ready()),
+                "min_y",
+            )
+            .expr_as(
+                Func::max(projections::Column::MaxX.into_expr()).filter(Self::ready()),
+                "max_x",
+            )
+            .expr_as(
+                Func::max(projections::Column::MaxY.into_expr()).filter(Self::ready()),
+                "max_y",
+            )
+            .into_model::<Progress>()
+            .one(db)
+            .await?
+            .ok_or_else(|| DbErr::Custom("Missing heatmap progress".into()))
     }
 
-    pub async fn activity_centers<C: ConnectionTrait>(
-        db: &C,
+    pub async fn activity_centers(
+        db: &impl ConnectionTrait,
         user_id: i32,
         filters: &HeatmapQuery,
     ) -> Result<Vec<ActivityCenter>, DbErr> {
-        let scope = ActivityScope::new(user_id, filters);
-        ActivityCenter::find_by_statement(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            format!(
-                r#"
-                SELECT
-                    CASE WHEN p.max_x - p.min_x > 0.5
-                        THEN (p.min_x + p.max_x + 1.0) / 2.0
-                            - CASE WHEN p.min_x + p.max_x >= 1.0 THEN 1.0 ELSE 0.0 END
-                        ELSE (p.min_x + p.max_x) / 2.0
-                    END AS x,
-                    (p.min_y + p.max_y) / 2.0 AS y
-                FROM heatmap_projections p JOIN activities a ON a.id=p.activity_id
-                WHERE {} AND p.status='ready' AND p.projection_version={}
-                ORDER BY p.activity_id
-            "#,
-                scope.predicate, PROJECTION_VERSION
-            ),
-            scope.values,
-        ))
-        .all(db)
-        .await
+        let x_sum = projections::Column::MinX
+            .into_expr()
+            .add(projections::Column::MaxX.into_expr());
+        let wraps_dateline = projections::Column::MaxX
+            .into_expr()
+            .sub(projections::Column::MinX.into_expr())
+            .gt(0.5);
+        let wrapped_x = x_sum
+            .clone()
+            .add(1.0)
+            .div(2.0)
+            .sub(Expr::case(x_sum.clone().gte(1.0), 1.0).finally(0.0));
+        Self::scoped_projections(user_id, filters)
+            .expr_as(
+                Expr::case(wraps_dateline, wrapped_x).finally(x_sum.div(2.0)),
+                "x",
+            )
+            .expr_as(
+                projections::Column::MinY
+                    .into_expr()
+                    .add(projections::Column::MaxY.into_expr())
+                    .div(2.0),
+                "y",
+            )
+            .filter(Self::ready())
+            .filter(projections::Column::ProjectionVersion.eq(PROJECTION_VERSION))
+            .order_by_asc(projections::Column::ActivityId)
+            .into_model::<ActivityCenter>()
+            .all(db)
+            .await
     }
 
-    pub async fn tile_page<C: ConnectionTrait>(
-        db: &C,
+    pub async fn tile_page(
+        db: &impl ConnectionTrait,
         user_id: i32,
         filters: &HeatmapQuery,
         tile: Tile,
         cursor: (i32, i32),
     ) -> Result<Vec<TileChunk>, DbErr> {
-        let mut scope = ActivityScope::new(user_id, filters);
-        let band = scope.bind(zoom_band(tile.z).into());
-        let activity = scope.bind(cursor.0.into());
-        let chunk = scope.bind(cursor.1.into());
-        let mut boxes = Vec::new();
-        for bounds in tile.query_bounds() {
-            let b: Vec<_> = bounds.into_iter().map(|v| scope.bind(v.into())).collect();
-            boxes.push(format!("box(point(c.min_x,c.min_y),point(c.max_x,c.max_y)) && box(point({},{}),point({},{}))",b[0],b[1],b[2],b[3]));
-        }
-        TileChunk::find_by_statement(Statement::from_sql_and_values(DbBackend::Postgres,format!(
-            "SELECT c.activity_id,c.chunk_index,c.points FROM heatmap_chunks c JOIN heatmap_projections p ON p.activity_id=c.activity_id JOIN activities a ON a.id=p.activity_id WHERE {} AND p.status='ready' AND p.projection_version={} AND c.band={} AND (c.activity_id,c.chunk_index) > ({},{}) AND ({}) ORDER BY c.activity_id,c.chunk_index LIMIT 64",
-            scope.predicate,PROJECTION_VERSION,band,activity,chunk,boxes.join(" OR ")),scope.values)).all(db).await
+        let boxes = tile
+            .query_bounds()
+            .into_iter()
+            .fold(Condition::any(), |condition, bounds| {
+                condition.add(Self::box_overlap(bounds))
+            });
+        Self::scoped_projections(user_id, filters)
+            .columns([
+                chunks::Column::ActivityId,
+                chunks::Column::ChunkIndex,
+                chunks::Column::Points,
+            ])
+            .join(JoinType::InnerJoin, projections::Relation::Chunks.def())
+            .filter(Self::ready())
+            .filter(projections::Column::ProjectionVersion.eq(PROJECTION_VERSION))
+            .filter(chunks::Column::Band.eq(zoom_band(tile.z)))
+            .filter(
+                Expr::tuple([
+                    chunks::Column::ActivityId.into_expr(),
+                    chunks::Column::ChunkIndex.into_expr(),
+                ])
+                .gt(Expr::tuple([Expr::val(cursor.0), Expr::val(cursor.1)])),
+            )
+            .filter(boxes)
+            .order_by_asc(chunks::Column::ActivityId)
+            .order_by_asc(chunks::Column::ChunkIndex)
+            .limit(64)
+            .into_model::<TileChunk>()
+            .all(db)
+            .await
     }
-}
 
-struct ActivityScope {
-    predicate: String,
-    values: Vec<Value>,
-}
+    fn ready() -> Expr {
+        projections::Column::Status.eq("ready")
+    }
 
-impl ActivityScope {
-    fn new(user_id: i32, filters: &HeatmapQuery) -> Self {
-        let mut scope = Self {
-            predicate: "a.user_id=$1 AND p.user_id=$1".into(),
-            values: vec![user_id.into()],
-        };
+    fn status_count(status: &str) -> Expr {
+        Func::count(projections::Column::ActivityId.into_expr())
+            .filter(projections::Column::Status.eq(status))
+            .into()
+    }
+
+    fn scoped_projections(user_id: i32, filters: &HeatmapQuery) -> Select<projections::Entity> {
+        let mut query = projections::Entity::find()
+            .select_only()
+            .join(JoinType::InnerJoin, projections::Relation::Activities.def())
+            .filter(activities::Column::UserId.eq(user_id))
+            .filter(projections::Column::UserId.eq(user_id));
         if let Some(sport) = filters.sport {
-            let parameters: Vec<_> = sport
-                .stored_values()
-                .iter()
-                .map(|value| scope.bind((*value).into()))
-                .collect();
-            scope
-                .predicate
-                .push_str(&format!(" AND a.sport IN ({})", parameters.join(",")));
+            query = query
+                .filter(activities::Column::Sport.is_in(sport.stored_values().iter().copied()));
         }
         if let Some(from) = filters.from {
-            let from = scope.bind(from.into());
-            scope
-                .predicate
-                .push_str(&format!(" AND a.started_at >= {from}"));
+            query = query.filter(activities::Column::StartedAt.gte(from));
         }
         if let Some(to) = filters.to {
-            let to = scope.bind(to.into());
-            scope
-                .predicate
-                .push_str(&format!(" AND a.started_at < {to}"));
+            query = query.filter(activities::Column::StartedAt.lt(to));
         }
-        scope
+        query
     }
-    fn bind(&mut self, value: Value) -> String {
-        self.values.push(value);
-        format!("${}", self.values.len())
+
+    fn box_overlap(bounds: [f64; 4]) -> Expr {
+        // PostgreSQL's native box operator matches the expression GiST index;
+        // SeaQuery has no typed box/point constructor or overlap operator.
+        Expr::cust_with_exprs(
+            "box(point($1,$2),point($3,$4)) && box(point($5,$6),point($7,$8))",
+            [
+                chunks::Column::MinX.into_expr(),
+                chunks::Column::MinY.into_expr(),
+                chunks::Column::MaxX.into_expr(),
+                chunks::Column::MaxY.into_expr(),
+                Expr::val(bounds[0]),
+                Expr::val(bounds[1]),
+                Expr::val(bounds[2]),
+                Expr::val(bounds[3]),
+            ],
+        )
     }
 }

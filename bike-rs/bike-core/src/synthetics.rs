@@ -6,7 +6,7 @@ use crate::entities::{
 };
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ActiveModelTrait, ConnectionTrait, DatabaseConnection, DbBackend, DbErr, Set, TransactionTrait,
+    ActiveModelTrait, ConnectionTrait, DatabaseConnection, DbErr, Set, TransactionTrait,
 };
 use serde::Serialize;
 use serde_json::json;
@@ -43,10 +43,7 @@ impl From<synthetic_scenarios::Model> for ScenarioManifest {
 pub async fn ensure_scenario(db: &DatabaseConnection) -> Result<users::Model, DbErr> {
     let tx = db.begin().await?;
     // Concurrent rolling starts provision once, without resetting any existing data.
-    if tx.get_database_backend() == DbBackend::Postgres {
-        tx.execute_unprepared("SELECT pg_advisory_xact_lock(743918260)")
-            .await?;
-    }
+    synthetic_scenarios::Model::lock_provisioning(&tx).await?;
     let scenario = match synthetic_scenarios::Model::find(&tx, SCENARIO).await? {
         Some(scenario) => scenario,
         None => provision_scenario(&tx).await?,

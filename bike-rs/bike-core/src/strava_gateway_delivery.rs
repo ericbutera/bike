@@ -48,7 +48,7 @@ pub async fn receive(
 
     let result = apply(db, tasks, uploads_dir, receipt, payload).await;
     if let Err(error) = result {
-        strava_gateway::release(db, receipt.delivery_id).await?;
+        strava_gateway::release(db, receipt, &error).await?;
         return Err(error);
     }
     strava_gateway::complete(db, receipt).await?;
@@ -314,11 +314,15 @@ async fn store_updated_artifact(
 #[cfg(test)]
 mod tests {
     use super::{receive, GatewayPayload};
-    use crate::entities::{activities, strava_gateway::Receipt};
+    use crate::auth::entities::users;
+    use crate::entities::{
+        activities, integration_events, strava_gateway::Receipt,
+        strava_gateway_bindings as bindings, strava_gateway_receipts as receipts,
+        strava_gateway_revocations as revocations, strava_gateway_watermarks as watermarks,
+    };
     use crate::jobs::JobQueue as TaskQueue;
     use sea_orm::{
-        ActiveModelTrait, ColumnTrait, ConnectionTrait, Database, DatabaseConnection, DbBackend,
-        EntityTrait, QueryFilter, Set, Statement,
+        ActiveModelTrait, ColumnTrait, Database, DatabaseConnection, EntityTrait, QueryFilter, Set,
     };
     use serde_json::json;
     use uuid::Uuid;
@@ -363,6 +367,74 @@ mod tests {
         );
         assert_eq!(data.route_points.len(), 8);
         assert_eq!(data.route_points[0].latitude, 44.742805);
+        assert_applied_events(&db, user_id, 1).await;
+        cleanup_fixture(&db, athlete_id, user_id, &uploads_dir).await;
+    }
+
+    #[tokio::test]
+    async fn failed_delivery_records_its_error_and_recovers_on_retry() {
+        let Ok(url) = std::env::var("BIKE_TEST_DATABASE_URL") else {
+            return;
+        };
+        let db = Database::connect(&url).await.unwrap();
+        let (unique, user_id, athlete_id, uploads_dir) = prepare_fixture(&db).await;
+        let tasks = TaskQueue::new(db.clone());
+        let delivery_id = format!("rust:{unique}:retry");
+        let receipt = Receipt {
+            delivery_id: &delivery_id,
+            athlete_id,
+            user_id,
+            activity_id: 42,
+            event_time: 100,
+            operation: "upsert",
+        };
+        let error = receive(&db, &tasks, &uploads_dir, &receipt, None)
+            .await
+            .unwrap_err();
+        assert_eq!(error.message, "Missing Strava activity");
+        receive(
+            &db,
+            &tasks,
+            &uploads_dir,
+            &receipt,
+            Some(ride_payload("Recovered Ride", 1000.0, 100, 44.001)),
+        )
+        .await
+        .unwrap();
+        let events = crate::integration_events_service::list_recent_events(
+            &db,
+            crate::integration_events_service::IntegrationEventListOptions {
+                provider: Some("strava".into()),
+                user_id: Some(user_id),
+                activity_id: None,
+                import_id: None,
+                limit: 100,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(events.len(), 4);
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.event_type == "gateway.delivery.received")
+                .count(),
+            2
+        );
+        let failure = events
+            .iter()
+            .find(|event| event.event_type == "gateway.delivery.failed")
+            .unwrap();
+        assert_eq!(failure.message, "Missing Strava activity");
+        assert_eq!(failure.level, "error");
+        assert_eq!(failure.payload.as_ref().unwrap()["status_code"], 400);
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.event_type == "gateway.delivery.applied")
+                .count(),
+            1
+        );
         cleanup_fixture(&db, athlete_id, user_id, &uploads_dir).await;
     }
 
@@ -448,17 +520,24 @@ mod tests {
             .unwrap()
             .is_none());
 
+        assert_applied_events(&db, user_id, 3).await;
+
         cleanup_fixture(&db, athlete_id, user_id, uploads_dir).await;
     }
 
     async fn prepare_fixture(db: &DatabaseConnection) -> (String, i32, i64, String) {
         let unique = Uuid::new_v4().to_string();
-        let result = db.query_one_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "INSERT INTO users (pid,email,api_key,name) VALUES (gen_random_uuid(),$1,$2,'Gateway test') RETURNING id",
-            vec![format!("gateway-delivery-{unique}@example.invalid").into(), unique.clone().into()],
-        )).await.expect("create user").expect("user row");
-        let user_id: i32 = result.try_get("", "id").unwrap();
+        let user_id = users::ActiveModel {
+            pid: Set(Uuid::new_v4()),
+            email: Set(format!("gateway-delivery-{unique}@example.invalid")),
+            api_key: Set(unique.clone()),
+            name: Set("Gateway test".into()),
+            ..Default::default()
+        }
+        .insert(db)
+        .await
+        .expect("create user")
+        .id;
         let athlete_id = i64::from(user_id) + 8_000_000_000;
         let uploads_dir = std::env::temp_dir().join(format!("bike-gateway-test-{unique}"));
         tokio::fs::create_dir_all(&uploads_dir).await.unwrap();
@@ -476,16 +555,60 @@ mod tests {
         user_id: i32,
         uploads_dir: &str,
     ) {
-        db.execute_unprepared(&format!(
-            "DELETE FROM strava_gateway_receipts WHERE athlete_id={athlete_id}; \
-             DELETE FROM strava_gateway_watermarks WHERE athlete_id={athlete_id}; \
-             DELETE FROM strava_gateway_revocations WHERE athlete_id={athlete_id}; \
-             DELETE FROM strava_gateway_bindings WHERE athlete_id={athlete_id}; \
-             DELETE FROM users WHERE id={user_id};"
-        ))
+        integration_events::Entity::delete_many()
+            .filter(integration_events::Column::UserId.eq(user_id))
+            .exec(db)
+            .await
+            .unwrap();
+        receipts::Entity::delete_many()
+            .filter(receipts::Column::AthleteId.eq(athlete_id))
+            .exec(db)
+            .await
+            .unwrap();
+        watermarks::Entity::delete_many()
+            .filter(watermarks::Column::AthleteId.eq(athlete_id))
+            .exec(db)
+            .await
+            .unwrap();
+        revocations::Entity::delete_by_id(athlete_id)
+            .exec(db)
+            .await
+            .unwrap();
+        bindings::Entity::delete_by_id(athlete_id)
+            .exec(db)
+            .await
+            .unwrap();
+        users::Entity::delete_by_id(user_id).exec(db).await.unwrap();
+        tokio::fs::remove_dir_all(uploads_dir).await.unwrap();
+    }
+
+    async fn assert_applied_events(db: &DatabaseConnection, user_id: i32, expected: usize) {
+        let events = crate::integration_events_service::list_recent_events(
+            db,
+            crate::integration_events_service::IntegrationEventListOptions {
+                provider: Some("strava".into()),
+                user_id: Some(user_id),
+                activity_id: None,
+                import_id: None,
+                limit: 100,
+            },
+        )
         .await
         .unwrap();
-        tokio::fs::remove_dir_all(uploads_dir).await.unwrap();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.event_type == "gateway.delivery.applied")
+                .count(),
+            expected
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.event_type == "gateway.delivery.received")
+                .count(),
+            expected
+        );
     }
 
     fn ride_payload(name: &str, distance: f64, seconds: i32, end_latitude: f64) -> GatewayPayload {

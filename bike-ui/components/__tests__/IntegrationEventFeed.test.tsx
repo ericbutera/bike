@@ -60,4 +60,42 @@ describe("IntegrationEventFeed", () => {
     expect(screen.getByText("No events")).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
+
+  it("labels a gateway's Strava activity id separately", () => {
+    render(
+      <IntegrationEventFeed
+        events={[
+          {
+            id: 2,
+            user_id: 17,
+            provider: "strava",
+            event_type: "gateway.delivery.applied",
+            level: "success",
+            message: "Applied Strava gateway upsert delivery.",
+            payload: { strava_activity_id: 9876543210 },
+            created_at: "2026-10-05T12:00:00Z",
+          },
+        ]}
+        isLoading={false}
+        error={null}
+        emptyMessage="No events"
+      />,
+    );
+    expect(screen.getByText("Strava activity: 9876543210")).toBeInTheDocument();
+  });
+
+  it("shows a visible error when integration history cannot load", () => {
+    render(
+      <IntegrationEventFeed
+        events={[]}
+        isLoading={false}
+        error={new Error("API unavailable")}
+        emptyMessage="No events"
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Unable to load integration events.",
+    );
+    expect(screen.queryByText("No events")).not.toBeInTheDocument();
+  });
 });

@@ -55,6 +55,19 @@ Do not skip hooks or use `--no-verify` to conceal a failing quality gate.
 
 ## Design for reuse and clarity
 
+Use the owning project's ORM and query builder for ordinary database access.
+In Bike Rust, use SeaORM entities, ActiveModels, typed projections, filters,
+joins, aggregates, pagination, bulk inserts, update/delete builders, locking,
+and supported conflict APIs. Do not write raw SQL for operations these APIs
+express directly, or merely because SQL is quicker to type. Put query
+construction on the owning entity/model; services compose workflows and
+controllers adapt HTTP. Reserve raw SQL for complex operations that cannot be
+expressed clearly with the supported builder, database-specific primitives,
+and migration/fixture DDL. Document the concrete reason at each application
+escape hatch and bind dynamic values. Preserve transaction, ownership,
+ordering, conflict, lease, and affected-row behavior when converting queries;
+verify those invariants against the owning database tests.
+
 Use `rg` to find existing components, hooks, model methods, services, and tests
 before adding similar behavior. Share repeated UI behavior through an owning
 component or hook. Prefer existing, mature framework/library features to

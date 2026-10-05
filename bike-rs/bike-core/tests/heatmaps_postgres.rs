@@ -8,6 +8,117 @@ use sea_orm::{ConnectOptions, ConnectionTrait, Database, DbBackend, Statement};
 
 #[tokio::test]
 #[ignore = "Set BIKE_HEATMAP_TEST_DATABASE_URL to a disposable PostgreSQL database"]
+async fn typed_publication_preserves_batch_pagination_seams_and_generation_guards() {
+    use bike_core::{
+        entities::heatmap_projections,
+        heatmaps::{data::HeatmapData, types::HeatmapQuery},
+    };
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set};
+    let (db, schema) = fixture().await;
+    let query = HeatmapQuery::default();
+    assert_eq!(HeatmapData::revision(&db, 999).await.unwrap(), 0);
+    let empty = HeatmapData::progress(&db, 999, &query).await.unwrap();
+    assert_eq!((empty.revision, empty.ready, empty.pending), (0, 0, 0));
+    let pending = Projection::backfill_page(&db, 1, 0).await.unwrap();
+    assert_eq!(pending.len(), 1);
+    assert!(Projection::backfill_page(&db, 2, 0)
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(Projection::backfill_page(&db, 1, 1)
+        .await
+        .unwrap()
+        .is_empty());
+    let chunks: Vec<_> = (0..65).map(seam_chunk).collect();
+    assert!(Projection::publish(&db, &pending[0], &chunks)
+        .await
+        .unwrap());
+    assert!(!Projection::pending(&db, 1, 1).await.unwrap());
+    assert!(!Projection::publish(&db, &pending[0], &[]).await.unwrap());
+    let progress = HeatmapData::progress(&db, 1, &query).await.unwrap();
+    assert_eq!(
+        (progress.revision, progress.ready, progress.pending),
+        (2, 1, 0)
+    );
+    let centers = HeatmapData::activity_centers(&db, 1, &query).await.unwrap();
+    assert_eq!(centers.len(), 1);
+    assert!(centers[0].x.abs() < 0.000001);
+    assert_seam_pages(&db, &query).await;
+    heatmap_projections::Entity::update_many()
+        .set(heatmap_projections::ActiveModel {
+            generation: Set(2),
+            status: Set("pending".into()),
+            ..Default::default()
+        })
+        .filter(heatmap_projections::Column::ActivityId.eq(1))
+        .exec(&db)
+        .await
+        .unwrap();
+    assert!(Projection::publish(
+        &db,
+        &PendingProjection {
+            activity_id: 1,
+            generation: 2
+        },
+        &[]
+    )
+    .await
+    .unwrap());
+    let skipped = HeatmapData::progress(&db, 1, &query).await.unwrap();
+    assert_eq!(
+        (skipped.revision, skipped.ready, skipped.skipped),
+        (3, 0, 1)
+    );
+    assert_eq!(skipped.min_x, None);
+    assert!(HeatmapData::activity_centers(&db, 1, &query)
+        .await
+        .unwrap()
+        .is_empty());
+    db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
+        .await
+        .unwrap();
+}
+
+async fn assert_seam_pages(
+    db: &sea_orm::DatabaseConnection,
+    query: &bike_core::heatmaps::types::HeatmapQuery,
+) {
+    use bike_core::heatmaps::{data::HeatmapData, raster::Tile};
+    for x in [0, 16383] {
+        let tile = Tile { z: 14, x, y: 8192 };
+        let first = HeatmapData::tile_page(db, 1, query, tile, (0, -1))
+            .await
+            .unwrap();
+        assert_eq!(first.len(), 64);
+        assert_eq!(first.first().unwrap().chunk_index, 0);
+        assert_eq!(first.last().unwrap().chunk_index, 63);
+        let last = HeatmapData::tile_page(db, 1, query, tile, (1, 63))
+            .await
+            .unwrap();
+        assert_eq!(last.len(), 1);
+        assert_eq!(last[0].chunk_index, 64);
+        assert!(HeatmapData::tile_page(db, 1, query, tile, (1, 64))
+            .await
+            .unwrap()
+            .is_empty());
+    }
+}
+
+fn seam_chunk(index: usize) -> geometry::Chunk {
+    let x = if index.is_multiple_of(2) {
+        0.000001
+    } else {
+        0.999999
+    };
+    geometry::Chunk {
+        band: 2,
+        bounds: [x, 0.500001, x + 0.0000001, 0.5000011],
+        points: geometry::encode(&[[x, 0.500001], [x + 0.0000001, 0.5000011]]),
+    }
+}
+
+#[tokio::test]
+#[ignore = "Set BIKE_HEATMAP_TEST_DATABASE_URL to a disposable PostgreSQL database"]
 async fn prepares_backfills_and_invalidates_activity_generations() {
     let (db, schema) = fixture().await;
     assert!(!Projection::enabled(&db).await.unwrap());
