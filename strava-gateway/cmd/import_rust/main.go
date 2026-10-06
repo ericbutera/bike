@@ -109,7 +109,7 @@ func readRustConnections(ctx context.Context, db *pgxpool.Pool) ([]sourceConnect
 			return character == ',' || character == ' '
 		})
 		if !slices.Contains(item.Connection.Scopes, "activity:read_all") {
-			return nil, fmt.Errorf("Rust athlete %d lacks activity:read_all scope", item.Connection.AthleteID)
+			return nil, fmt.Errorf("rust athlete %d lacks activity:read_all scope", item.Connection.AthleteID)
 		}
 		result = append(result, item)
 	}

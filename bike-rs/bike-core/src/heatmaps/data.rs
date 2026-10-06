@@ -166,13 +166,20 @@ impl HeatmapData {
             .await
     }
 
-    fn ready() -> Expr {
-        projections::Column::Status.eq("ready")
+    fn ready() -> Condition {
+        Condition::all()
+            .add(projections::Column::Status.eq("ready"))
+            .add(projections::Column::ProjectionVersion.eq(PROJECTION_VERSION))
+            .add(activities::Model::heatmap_eligible())
     }
 
     fn status_count(status: &str) -> Expr {
         Func::count(projections::Column::ActivityId.into_expr())
-            .filter(projections::Column::Status.eq(status))
+            .filter(if status == "ready" {
+                Self::ready()
+            } else {
+                Condition::all().add(projections::Column::Status.eq(status))
+            })
             .into()
     }
 

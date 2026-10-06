@@ -64,11 +64,7 @@ func (syncs Syncs) Queue(ctx context.Context, link SiteLink, mode string) error 
 	if mode != "initial" && mode != "incremental" && mode != "full" {
 		return errors.New("invalid Strava sync mode")
 	}
-	var after int64
-	if mode == "incremental" {
-		// Revisit a rolling window so missed webhooks and recent edits are repaired.
-		after = time.Now().Add(-30 * 24 * time.Hour).Unix()
-	}
+	after := syncAfterEpoch(mode, time.Now())
 	carrier := propagation.MapCarrier{}
 	otel.GetTextMapPropagator().Inject(ctx, carrier)
 	_, err := syncs.DB.Exec(ctx, `INSERT INTO gateway_sync_jobs
@@ -77,6 +73,13 @@ func (syncs Syncs) Queue(ctx context.Context, link SiteLink, mode string) error 
 		link.AthleteID, link.Target, mode, after,
 		nullableTrace(carrier.Get("traceparent")), nullableTrace(carrier.Get("tracestate")))
 	return err
+}
+
+func syncAfterEpoch(mode string, now time.Time) int64 {
+	if mode == "initial" || mode == "incremental" {
+		return now.Add(-30 * 24 * time.Hour).Unix()
+	}
+	return 0
 }
 
 type SyncStatus struct {
@@ -101,12 +104,12 @@ func (syncs Syncs) Status(ctx context.Context, link SiteLink) (SyncStatus, error
 	return status, err
 }
 
-func (syncs Syncs) Claim(ctx context.Context) (*SyncJob, error) {
+func (syncs Syncs) Claim(ctx context.Context) (claimed *SyncJob, err error) {
 	tx, err := syncs.DB.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback(ctx)
+	defer rollbackTransaction(ctx, tx, &err)
 	var job SyncJob
 	err = tx.QueryRow(ctx, `WITH candidate AS (
 		SELECT id FROM gateway_sync_jobs
@@ -144,14 +147,14 @@ func (syncs Syncs) Claim(ctx context.Context) (*SyncJob, error) {
 	return &job, nil
 }
 
-func (syncs Syncs) CompletePage(ctx context.Context, job SyncJob, ids []int64) error {
+func (syncs Syncs) CompletePage(ctx context.Context, job SyncJob, ids []int64) (err error) {
 	carrier := propagation.MapCarrier{}
 	otel.GetTextMapPropagator().Inject(ctx, carrier)
 	tx, err := syncs.DB.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer rollbackTransaction(ctx, tx, &err)
 	for _, id := range ids {
 		event := webhook.Event{
 			AspectType: "update", EventTime: time.Now().Unix(), ObjectID: id,
@@ -188,12 +191,12 @@ func (syncs Syncs) CompletePage(ctx context.Context, job SyncJob, ids []int64) e
 		return err
 	}
 	if command.RowsAffected() != 1 {
-		return errors.New("Strava sync lease was lost")
+		return errors.New("strava sync lease was lost")
 	}
 	return tx.Commit(ctx)
 }
 
-func (syncs Syncs) Retry(ctx context.Context, job SyncJob, retryAt time.Time, failure, waitingReason string) error {
+func (syncs Syncs) Retry(ctx context.Context, job SyncJob, retryAt time.Time, failure, waitingReason string) (err error) {
 	status := "queued"
 	if job.Attempts >= 20 {
 		status = "dead"
@@ -202,7 +205,7 @@ func (syncs Syncs) Retry(ctx context.Context, job SyncJob, retryAt time.Time, fa
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer rollbackTransaction(ctx, tx, &err)
 	command, err := tx.Exec(ctx, `UPDATE gateway_sync_jobs SET status=$2,
 		next_attempt_at=$3,lease_until=NULL,last_error=$4,waiting_reason=NULLIF($5,''),updated_at=now()
 		WHERE id=$1 AND status='processing'`, job.ID, status, retryAt, truncateFailure(failure), waitingReason)
@@ -210,7 +213,7 @@ func (syncs Syncs) Retry(ctx context.Context, job SyncJob, retryAt time.Time, fa
 		return err
 	}
 	if command.RowsAffected() != 1 {
-		return errors.New("Strava sync lease was lost")
+		return errors.New("strava sync lease was lost")
 	}
 	if waitingReason != "" && status == "queued" {
 		if _, err := tx.Exec(ctx, `INSERT INTO gateway_sync_events

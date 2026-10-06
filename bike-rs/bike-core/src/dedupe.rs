@@ -524,7 +524,7 @@ fn route_progress_values(route_points: &[ActivityRoutePoint]) -> Option<Vec<f64>
     Some(progress_values)
 }
 
-fn haversine_distance_meters(
+pub(crate) fn haversine_distance_meters(
     latitude_a: f64,
     longitude_a: f64,
     latitude_b: f64,

@@ -33,6 +33,8 @@ pub struct StoredStravaProviderPayload {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct StravaActivitySummary {
+    #[serde(flatten)]
+    pub additional_fields: serde_json::Map<String, serde_json::Value>,
     pub id: i64,
     pub name: String,
     pub distance: Option<f64>,
@@ -126,7 +128,8 @@ pub fn parse_strava_provider_payload(bytes: &[u8]) -> Result<ParsedActivityData,
     }
 
     let draft = build_strava_activity_draft(&payload.activity, &payload.streams);
-    let derived_data = build_strava_derived_data(&draft, &payload.streams);
+    let mut derived_data = build_strava_derived_data(&draft, &payload.streams);
+    derived_data.recording = recording_context(&payload.activity);
     Ok(ParsedActivityData {
         draft,
         derived_data,
@@ -208,6 +211,7 @@ fn build_strava_derived_data(
     let chart_points =
         downsample_chart_points(build_strava_chart_points(streams), MAX_STRAVA_CHART_POINTS);
     ActivityDerivedData {
+        recording: Default::default(),
         laps: vec![full_activity_lap(draft)],
         route_points: build_strava_route_points(streams),
         chart_points,
@@ -358,6 +362,32 @@ pub fn strava_activity_sport_label(activity: &StravaActivitySummary) -> String {
         .to_string()
 }
 
+pub fn recording_context(
+    activity: &StravaActivitySummary,
+) -> crate::activity_recording::RecordingContext {
+    let mut context = crate::activity_recording::RecordingContext::legacy(
+        &normalized_strava_sport_token(activity),
+        "strava_sync",
+        &activity.name,
+    );
+    context.observe(
+        "strava.sport_type",
+        activity.sport_type.as_deref().unwrap_or(""),
+    );
+    context.observe("strava.type", activity.legacy_type.as_deref().unwrap_or(""));
+    context.trainer("strava.trainer", activity.trainer == Some(true));
+    for field in ["device_name", "external_id", "source"] {
+        if let Some(value) = activity
+            .additional_fields
+            .get(field)
+            .and_then(serde_json::Value::as_str)
+        {
+            context.observe_recorder(&format!("strava.{field}"), value);
+        }
+    }
+    context
+}
+
 fn normalize_strava_sport(activity: &StravaActivitySummary) -> String {
     match strava_activity_sport_kind(activity) {
         StravaSportKind::Bike
@@ -484,6 +514,7 @@ impl StravaActivitySummaryExt for StravaActivitySummary {
 
 #[cfg(test)]
 mod tests {
+    mod recording;
     use super::*;
 
     #[test]
@@ -510,6 +541,7 @@ mod tests {
         legacy_type: Option<&str>,
     ) -> StravaActivitySummary {
         StravaActivitySummary {
+            additional_fields: Default::default(),
             id: 99,
             name: "Lunch Ride".to_string(),
             distance: Some(1000.0),

@@ -1,9 +1,9 @@
 use crate::activity_import_pipeline::{
     finalize_activity_import_batch, mark_activity_imports_processed,
     persist_activity_upload_with_artifacts, reprocess_activity_from_import,
-    ActivityImportArtifactPayload, ActivityUploadDeduplication, PersistActivityUploadOutcome,
-    PersistActivityUploadWithArtifactsRequest, ACTIVITY_IMPORT_ARTIFACT_KIND_GENERATED_EXPORT,
-    ACTIVITY_IMPORT_SOURCE_QUALITY_GENERATED_TCX,
+    ActivityUploadDeduplication, ActivityUploadPayload, PersistActivityUploadOutcome,
+    PersistActivityUploadWithArtifactsRequest, ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD,
+    ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS,
 };
 use crate::auth::entities::users;
 use crate::entities::{
@@ -20,9 +20,8 @@ use crate::strava_provider_payload::{
 use crate::training_profile::load_training_profile;
 use crate::workflow_error::WorkflowError as AppError;
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait};
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 use std::path::Path;
 use uuid::Uuid;
 
@@ -159,10 +158,10 @@ async fn upsert_activity(
                 uploads_dir,
                 user_storage_key: &user.pid.to_string(),
                 user_id,
-                upload: import_payload.generated_tcx_upload,
-                primary_artifact_kind: ACTIVITY_IMPORT_ARTIFACT_KIND_GENERATED_EXPORT,
-                primary_source_quality: ACTIVITY_IMPORT_SOURCE_QUALITY_GENERATED_TCX,
-                additional_artifacts: vec![import_payload.provider_payload_artifact],
+                upload: import_payload,
+                primary_artifact_kind: ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD,
+                primary_source_quality: ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS,
+                additional_artifacts: Vec::new(),
                 source: "strava_sync",
                 deduplication: ActivityUploadDeduplication::Enabled,
                 training_profile: Some(&profile),
@@ -190,14 +189,13 @@ async fn update_existing_activity(
     tasks: &TaskQueue,
     uploads_dir: &str,
     activity: activities::Model,
-    import_payload: crate::strava::StravaActivityImportPayload,
+    import_payload: ActivityUploadPayload,
     profile: &crate::training_profile::TrainingProfile,
 ) -> Result<(), AppError> {
     let import_id = activity
         .activity_import_id
         .ok_or_else(|| AppError::internal("Strava activity has no import record"))?;
-    let activity_import = activity_imports::Entity::find_by_id(import_id)
-        .one(db)
+    let activity_import = activity_imports::Entity::find_owned(db, activity.user_id, import_id)
         .await?
         .ok_or_else(|| AppError::internal("Strava import record was not found"))?;
     let activity_import =
@@ -229,86 +227,37 @@ async fn replace_stored_artifacts(
     db: &DatabaseConnection,
     uploads_dir: &str,
     activity_import: &activity_imports::Model,
-    payload: &crate::strava::StravaActivityImportPayload,
+    payload: &ActivityUploadPayload,
 ) -> Result<activity_imports::Model, AppError> {
     let parent = Path::new(&activity_import.storage_path)
         .parent()
         .ok_or_else(|| AppError::internal("Strava import path has no parent"))?;
-    store_updated_artifact(
-        db,
-        uploads_dir,
-        parent,
-        activity_import,
-        &payload.provider_payload_artifact,
-    )
-    .await?;
-    let export = &payload.generated_tcx_upload;
-    let export_artifact = ActivityImportArtifactPayload {
-        artifact_kind: ACTIVITY_IMPORT_ARTIFACT_KIND_GENERATED_EXPORT.to_string(),
-        format: export.format.clone(),
-        source_quality: ACTIVITY_IMPORT_SOURCE_QUALITY_GENERATED_TCX.to_string(),
-        original_filename: export.original_filename.clone(),
-        mime_type: export.mime_type.clone(),
-        bytes: export.bytes.clone(),
-    };
-    let export_path =
-        store_updated_artifact(db, uploads_dir, parent, activity_import, &export_artifact).await?;
-    let mut model: activity_imports::ActiveModel = activity_import.clone().into();
-    model.storage_path = Set(export_path);
-    model.original_filename = Set(export.original_filename.clone());
-    model.size_bytes = Set(export.bytes.len() as i64);
-    model.update(db).await.map_err(AppError::from)
-}
-
-async fn store_updated_artifact(
-    db: &DatabaseConnection,
-    uploads_dir: &str,
-    parent: &Path,
-    activity_import: &activity_imports::Model,
-    artifact: &ActivityImportArtifactPayload,
-) -> Result<String, AppError> {
-    let relative_path = parent.join(format!(
-        "strava_gateway_{}.{}",
-        Uuid::new_v4(),
-        artifact.format
-    ));
+    let relative_path = parent.join(format!("strava_gateway_{}.json", Uuid::new_v4()));
     let full_path = Path::new(uploads_dir).join(&relative_path);
     if let Some(parent) = full_path.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
-    tokio::fs::write(&full_path, &artifact.bytes).await?;
-    let relative_path = relative_path.to_string_lossy().to_string();
-    let checksum = hex::encode(Sha256::digest(&artifact.bytes));
-    let existing = activity_import_artifacts::Entity::find()
-        .filter(activity_import_artifacts::Column::ActivityImportId.eq(activity_import.id))
-        .filter(activity_import_artifacts::Column::ArtifactKind.eq(&artifact.artifact_kind))
-        .one(db)
-        .await?;
-    if let Some(existing) = existing {
-        let mut model: activity_import_artifacts::ActiveModel = existing.into();
-        model.storage_path = Set(relative_path.clone());
-        model.original_filename = Set(artifact.original_filename.clone());
-        model.size_bytes = Set(artifact.bytes.len() as i64);
-        model.checksum_sha256 = Set(checksum);
-        model.update(db).await?;
-    } else {
-        activity_import_artifacts::ActiveModel {
-            activity_import_id: Set(activity_import.id),
-            user_id: Set(activity_import.user_id),
-            artifact_kind: Set(artifact.artifact_kind.clone()),
-            format: Set(artifact.format.clone()),
-            source_quality: Set(artifact.source_quality.clone()),
-            original_filename: Set(artifact.original_filename.clone()),
-            storage_path: Set(relative_path.clone()),
-            size_bytes: Set(artifact.bytes.len() as i64),
-            mime_type: Set(artifact.mime_type.clone()),
-            checksum_sha256: Set(checksum),
-            ..Default::default()
-        }
-        .insert(db)
-        .await?;
+    tokio::fs::write(&full_path, &payload.bytes).await?;
+    let transaction = db.begin().await?;
+    let artifact = activity_import_artifacts::Entity::store_gateway_payload(
+        &transaction,
+        activity_import,
+        relative_path.to_string_lossy().into_owned(),
+        payload,
+    )
+    .await?;
+    if !activity_import
+        .promote_source(&transaction, &artifact)
+        .await?
+    {
+        return Err(AppError::bad_request(
+            "Strava import changed during payload replacement",
+        ));
     }
-    Ok(relative_path)
+    transaction.commit().await?;
+    activity_imports::Entity::find_owned(db, activity_import.user_id, activity_import.id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Strava import record was removed"))
 }
 
 #[cfg(test)]
@@ -316,9 +265,10 @@ mod tests {
     use super::{receive, GatewayPayload};
     use crate::auth::entities::users;
     use crate::entities::{
-        activities, integration_events, strava_gateway::Receipt,
-        strava_gateway_bindings as bindings, strava_gateway_receipts as receipts,
-        strava_gateway_revocations as revocations, strava_gateway_watermarks as watermarks,
+        activities, activity_import_artifacts, activity_imports, integration_events,
+        strava_gateway::Receipt, strava_gateway_bindings as bindings,
+        strava_gateway_receipts as receipts, strava_gateway_revocations as revocations,
+        strava_gateway_watermarks as watermarks,
     };
     use crate::jobs::JobQueue as TaskQueue;
     use sea_orm::{
@@ -367,6 +317,7 @@ mod tests {
         );
         assert_eq!(data.route_points.len(), 8);
         assert_eq!(data.route_points[0].latitude, 44.742805);
+        assert_provider_only_source(&db, &uploads_dir, &imported[0]).await;
         assert_applied_events(&db, user_id, 1).await;
         cleanup_fixture(&db, athlete_id, user_id, &uploads_dir).await;
     }
@@ -503,6 +454,7 @@ mod tests {
         assert_eq!(updated.title, "Updated Ride");
         assert_eq!(updated.activity_type, "race");
         assert_eq!(updated.distance_meters, Some(1500.0));
+        assert_provider_only_source(&db, uploads_dir, &updated).await;
 
         let delete_id = format!("rust:{unique}:3");
         let deletion = Receipt {
@@ -523,6 +475,39 @@ mod tests {
         assert_applied_events(&db, user_id, 3).await;
 
         cleanup_fixture(&db, athlete_id, user_id, uploads_dir).await;
+    }
+
+    async fn assert_provider_only_source(
+        db: &DatabaseConnection,
+        uploads_dir: &str,
+        activity: &activities::Model,
+    ) {
+        let import = activity_imports::Entity::find_owned(
+            db,
+            activity.user_id,
+            activity.activity_import_id.unwrap(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(import.format, "json");
+        let artifacts =
+            activity_import_artifacts::Entity::for_import(db, activity.user_id, import.id)
+                .await
+                .unwrap();
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(artifacts[0].artifact_kind, "provider_payload");
+        assert_eq!(artifacts[0].storage_path, import.storage_path);
+        let bytes = tokio::fs::read(std::path::Path::new(uploads_dir).join(import.storage_path))
+            .await
+            .unwrap();
+        let raw: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(raw["provider"], "strava");
+        assert_eq!(raw["activity"]["name"], activity.title);
+        assert_eq!(
+            raw["activity"]["id"].to_string(),
+            activity.source_correlation_id.as_deref().unwrap()
+        );
     }
 
     async fn prepare_fixture(db: &DatabaseConnection) -> (String, i32, i64, String) {

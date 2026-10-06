@@ -243,7 +243,7 @@ func (handler Handler) complete(ctx context.Context, code string, site storage.O
 		return err
 	}
 	if !provider.HasScope(provider.ParseScopes(token.Scope), "activity:read_all") {
-		return errors.New("Strava did not grant activity:read_all")
+		return errors.New("strava did not grant activity:read_all")
 	}
 	athleteID := token.Athlete.ID
 	if athleteID <= 0 {

@@ -54,6 +54,9 @@ mod m20261004_000001_synthetic_scenarios;
 mod m20261004_000002_heatmap_projection_speed_filter;
 mod m20261005_000001_heatmap_projection_virtual_ride_filter;
 mod m20261005_000002_strava_gateway_integration_events;
+mod m20261006_000001_heatmap_projection_recording_policy;
+mod m20261006_000002_heatmap_cycling_sources;
+mod m20261006_000003_activity_recording_environment;
 
 pub struct Migrator;
 
@@ -113,6 +116,9 @@ impl MigratorTrait for Migrator {
             Box::new(m20261004_000002_heatmap_projection_speed_filter::Migration),
             Box::new(m20261005_000001_heatmap_projection_virtual_ride_filter::Migration),
             Box::new(m20261005_000002_strava_gateway_integration_events::Migration),
+            Box::new(m20261006_000001_heatmap_projection_recording_policy::Migration),
+            Box::new(m20261006_000002_heatmap_cycling_sources::Migration),
+            Box::new(m20261006_000003_activity_recording_environment::Migration),
         ];
         locals.sort_by_key(|m| m.name().to_string());
 

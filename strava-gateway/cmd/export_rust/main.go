@@ -10,6 +10,7 @@ import (
 
 	"github.com/ericbutera/bike-services/strava-gateway/internal/secret"
 	"github.com/ericbutera/bike-services/strava-gateway/internal/storage"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -21,7 +22,7 @@ func main() {
 	}
 }
 
-func run(ctx context.Context, args []string) error {
+func run(ctx context.Context, args []string) (err error) {
 	apply := false
 	if len(args) == 1 && args[0] == "--apply" {
 		apply = true
@@ -76,10 +77,10 @@ func run(ctx context.Context, args []string) error {
 	for _, item := range owners {
 		link, err := connections.FindLink(ctx, item.athleteID, "rust")
 		if err != nil {
-			return fmt.Errorf("Rust athlete %d has no gateway link: %w", item.athleteID, err)
+			return fmt.Errorf("rust athlete %d has no gateway link: %w", item.athleteID, err)
 		}
 		if link.UserID != item.userID {
-			return fmt.Errorf("Rust athlete %d gateway link belongs to another user", item.athleteID)
+			return fmt.Errorf("rust athlete %d gateway link belongs to another user", item.athleteID)
 		}
 		current, err := connections.Find(ctx, item.athleteID)
 		if err != nil {
@@ -91,11 +92,18 @@ func run(ctx context.Context, args []string) error {
 		ready = append(ready, restoration{owner: item, connection: current})
 	}
 	if apply {
-		tx, err := rustDB.Begin(ctx)
+		var tx pgx.Tx
+		tx, err = rustDB.Begin(ctx)
 		if err != nil {
 			return err
 		}
-		defer tx.Rollback(ctx)
+		defer func() {
+			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
+			if cleanupErr := tx.Rollback(cleanupCtx); cleanupErr != nil && !errors.Is(cleanupErr, pgx.ErrTxClosed) {
+				err = errors.Join(err, cleanupErr)
+			}
+		}()
 		for _, item := range ready {
 			result, err := tx.Exec(ctx, `UPDATE strava_connections SET access_token=$1,
 			refresh_token=$2,expires_at=$3,updated_at=now()
@@ -106,7 +114,7 @@ func run(ctx context.Context, args []string) error {
 				return err
 			}
 			if result.RowsAffected() != 1 {
-				return fmt.Errorf("Rust athlete %d connection changed during export", item.owner.athleteID)
+				return fmt.Errorf("rust athlete %d connection changed during export", item.owner.athleteID)
 			}
 		}
 		if err := tx.Commit(ctx); err != nil {

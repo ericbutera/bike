@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
@@ -52,7 +53,7 @@ type Metrics struct {
 func NewMetrics() *Metrics {
 	registry := prometheus.NewRegistry()
 	prometheus.WrapRegistererWithPrefix("bike_strava_gateway_", registry).MustRegister(
-		prometheus.NewGoCollector(), prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}),
+		collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
 	metrics := &Metrics{
 		registry:           registry,

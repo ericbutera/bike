@@ -22,6 +22,42 @@ pub struct PendingProjection {
 pub struct Projection;
 
 impl Projection {
+    /// Invalidate an owned route within the caller's source-change transaction.
+    pub async fn invalidate_owned(
+        db: &impl ConnectionTrait,
+        activity_id: i32,
+        user_id: i32,
+    ) -> Result<(), DbErr> {
+        let changed = projections::Entity::update_many()
+            .set(projections::ActiveModel {
+                status: Set("pending".into()),
+                projection_version: Set(PROJECTION_VERSION),
+                queued_at: Set(None),
+                error: Set(None),
+                min_x: Set(None),
+                min_y: Set(None),
+                max_x: Set(None),
+                max_y: Set(None),
+                ..Default::default()
+            })
+            .col_expr(
+                projections::Column::Generation,
+                Expr::col(projections::Column::Generation).add(1),
+            )
+            .filter(projections::Column::ActivityId.eq(activity_id))
+            .filter(projections::Column::UserId.eq(user_id))
+            .exec(db)
+            .await?;
+        if changed.rows_affected > 0 {
+            chunks_entity::Entity::delete_many()
+                .filter(chunks_entity::Column::ActivityId.eq(activity_id))
+                .exec(db)
+                .await?;
+            Self::bump_revision(db, user_id).await?;
+        }
+        Ok(())
+    }
+
     pub async fn backfill_page(
         db: &impl ConnectionTrait,
         user_id: i32,
@@ -36,6 +72,7 @@ impl Projection {
             .filter(projections::Column::UserId.eq(user_id))
             .filter(projections::Column::ActivityId.gt(after_id))
             .filter(projections::Column::Status.is_in(["pending", "failed"]))
+            .filter(projections::Column::ProjectionVersion.eq(PROJECTION_VERSION))
             .order_by_asc(projections::Column::ActivityId)
             .limit(16)
             .into_model::<PendingProjection>()
@@ -59,10 +96,10 @@ impl Projection {
     pub async fn enqueue_pending(db: &DatabaseConnection) -> Result<u64, DbErr> {
         // Keep the writable CTE: the SKIP LOCKED lease UPDATE's RETURNING rows
         // feed an ordered JSON task INSERT atomically in the same statement.
-        let result = db.execute_raw(Statement::from_string(DbBackend::Postgres, r#"
+        let result = db.execute_raw(Statement::from_sql_and_values(DbBackend::Postgres, r#"
             WITH candidates AS (
                 SELECT activity_id FROM heatmap_projections
-                WHERE status='pending' AND (queued_at IS NULL OR queued_at < now() - interval '15 minutes')
+                WHERE status='pending' AND projection_version=$1 AND (queued_at IS NULL OR queued_at < now() - interval '15 minutes')
                 ORDER BY activity_id LIMIT 16 FOR UPDATE SKIP LOCKED
             ), leased AS (
                 UPDATE heatmap_projections p SET queued_at=now()
@@ -76,7 +113,7 @@ impl Projection {
                 'pending', 0, 3, now(), now()
             FROM leased
             HAVING count(*) > 0
-        "#.to_owned())).await?;
+        "#,[PROJECTION_VERSION.into()])).await?;
         Ok(result.rows_affected())
     }
 
@@ -89,6 +126,7 @@ impl Projection {
             .select_only()
             .column(projections::Column::ActivityId)
             .filter(projections::Column::Generation.eq(generation))
+            .filter(projections::Column::ProjectionVersion.eq(PROJECTION_VERSION))
             .filter(projections::Column::Status.is_in(["pending", "failed"]))
             .into_tuple::<i32>()
             .one(db)
@@ -106,6 +144,7 @@ impl Projection {
             .select_only()
             .column(projections::Column::UserId)
             .filter(projections::Column::Generation.eq(pending.generation))
+            .filter(projections::Column::ProjectionVersion.eq(PROJECTION_VERSION))
             .filter(projections::Column::Status.is_in(["pending", "failed"]))
             .lock_exclusive()
             .into_tuple::<i32>()
@@ -211,14 +250,18 @@ impl Projection {
             .select_only()
             .columns([
                 activities::Column::Sport,
+                activities::Column::Format,
                 activities::Column::Source,
                 activities::Column::Title,
                 activities::Column::DerivedDataJson,
                 activities::Column::UpdatedAt,
+                activities::Column::UserId,
+                activities::Column::StartedAt,
             ])
             .join(JoinType::InnerJoin, projections::Relation::Activities.def())
             .filter(projections::Column::ActivityId.eq(pending.activity_id))
             .filter(projections::Column::Generation.eq(pending.generation))
+            .filter(projections::Column::ProjectionVersion.eq(PROJECTION_VERSION))
             .filter(projections::Column::Status.is_in(["pending", "failed"]))
             .into_model::<ProjectionSource>()
             .one(db)
@@ -228,7 +271,10 @@ impl Projection {
 
 #[derive(FromQueryResult)]
 pub struct ProjectionSource {
+    pub user_id: i32,
+    pub started_at: DateTime<Utc>,
     pub sport: String,
+    pub format: Option<String>,
     pub source: String,
     pub title: String,
     pub derived_data_json: Option<crate::activity_data::StoredActivityDerivedData>,

@@ -33,5 +33,5 @@ done
 rustup toolchain install "$RUST_VERSION" --profile minimal --component rustfmt --component clippy
 
 cargo +"$RUST_VERSION" fmt --all --check
-cargo +"$RUST_VERSION" clippy --workspace --all-targets -- -D warnings
+cargo +"$RUST_VERSION" clippy --workspace --all-targets --all-features -- -D warnings
 cargo +"$RUST_VERSION" test --workspace

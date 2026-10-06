@@ -8,8 +8,8 @@ use crate::background_jobs::storage::{TaskRecord, TaskStatus, TaskStorage};
 use async_trait::async_trait;
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, NotSet, QueryFilter,
-    QueryOrder, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, DbErr,
+    EntityTrait, NotSet, QueryFilter, QueryOrder, QuerySelect, Set,
 };
 
 // Re-export the background_tasks entity
@@ -55,19 +55,18 @@ impl DurableStorage {
     }
 }
 
-#[async_trait]
-impl TaskStorage for DurableStorage {
-    async fn enqueue(
-        &self,
+impl Model {
+    pub async fn enqueue(
+        db: &impl ConnectionTrait,
         task_type: String,
         payload: serde_json::Value,
         scheduled_for: Option<chrono::DateTime<Utc>>,
         max_attempts: i32,
-    ) -> Result<TaskRecord, TaskError> {
-        let active_model = ActiveModel {
+    ) -> Result<Self, DbErr> {
+        ActiveModel {
             id: NotSet,
             task_type: Set(task_type),
-            payload: Set(payload.clone()),
+            payload: Set(payload),
             status: Set(TaskStatus::Pending.as_str().to_string()),
             attempts: Set(0),
             max_attempts: Set(max_attempts),
@@ -77,12 +76,30 @@ impl TaskStorage for DurableStorage {
             updated_at: Set(Utc::now()),
             started_at: Set(None),
             completed_at: Set(None),
-        };
+        }
+        .insert(db)
+        .await
+    }
+}
 
-        let model = active_model
-            .insert(&self.db)
-            .await
-            .map_err(|e| TaskError::Storage(e.to_string()))?;
+#[async_trait]
+impl TaskStorage for DurableStorage {
+    async fn enqueue(
+        &self,
+        task_type: String,
+        payload: serde_json::Value,
+        scheduled_for: Option<chrono::DateTime<Utc>>,
+        max_attempts: i32,
+    ) -> Result<TaskRecord, TaskError> {
+        let model = Model::enqueue(
+            &self.db,
+            task_type,
+            payload.clone(),
+            scheduled_for,
+            max_attempts,
+        )
+        .await
+        .map_err(|e| TaskError::Storage(e.to_string()))?;
 
         Ok(TaskRecord {
             id: model.id.to_string(),

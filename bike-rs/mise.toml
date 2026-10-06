@@ -59,6 +59,13 @@ run = "cargo test"
 description = "Format the Rust workspace"
 run = "cargo fmt --all"
 
+[tasks."test:heatmaps:postgres"]
+description = "Run heatmap regressions against a disposable PostgreSQL database"
+run = '''
+: "${BIKE_HEATMAP_TEST_DATABASE_URL:?Set this to a disposable PostgreSQL database}"
+cargo test -p bike-core --test heatmaps_postgres -- --ignored
+'''
+
 [tasks."fmt:check"]
 description = "Check Rust formatting without writing changes"
 run = [
@@ -97,3 +104,27 @@ run = "mise --cd ../bike-ui run openapi:check"
 [tasks."test:integration"]
 description = "Run native API integration tests with isolated fixtures"
 run = "cargo test -p api --test platform"
+
+[tasks."imports:recover"]
+description = "Inspect or recover an owned batch of Bike-generated Strava TCX imports"
+usage = '''
+flag "--user-id <user-id>" required=#true
+flag "--after-id <after-id>" default="0"
+flag "--limit <limit>" default="32"
+flag "--apply"
+flag "--refresh-recent"
+flag "--cleanup"
+flag "--withhold-unrecovered"
+flag "--refresh-recording"
+flag "--register-manifest <register-manifest>"
+'''
+run = '''
+set -- --user-id "${usage_user_id?}" --after-id "${usage_after_id?}" --limit "${usage_limit?}"
+if [ "${usage_apply:-false}" = "true" ]; then set -- "$@" --apply; fi
+if [ "${usage_refresh_recent:-false}" = "true" ]; then set -- "$@" --refresh-recent; fi
+if [ "${usage_cleanup:-false}" = "true" ]; then set -- "$@" --cleanup; fi
+if [ "${usage_withhold_unrecovered:-false}" = "true" ]; then set -- "$@" --withhold-unrecovered; fi
+if [ "${usage_refresh_recording:-false}" = "true" ]; then set -- "$@" --refresh-recording; fi
+if [ -n "${usage_register_manifest:-}" ]; then set -- "$@" --register-manifest "$usage_register_manifest"; fi
+cargo run -p bike-core --bin recover-generated-imports -- "$@"
+'''

@@ -80,6 +80,7 @@ fn derive_gpx_activity_detail(filename: &str, bytes: &[u8]) -> Result<ActivityDe
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(ActivityDerivedData {
+        recording: crate::activity_recording::RecordingContext::from_xml(&document),
         laps: vec![full_activity_lap(&summary)],
         chart_points: downsample_chart_points(
             build_gpx_chart_points(&points, summary.started_at),
@@ -100,6 +101,7 @@ fn derive_tcx_activity_detail(filename: &str, bytes: &[u8]) -> Result<ActivityDe
     let detail_laps = build_tcx_activity_laps(&summary, &laps)?;
 
     Ok(ActivityDerivedData {
+        recording: crate::activity_recording::RecordingContext::from_xml(&document),
         laps: detail_laps,
         chart_points: downsample_chart_points(
             build_tcx_chart_points(&points, summary.started_at),
@@ -311,6 +313,7 @@ fn derive_fit_activity_detail(filename: &str, bytes: &[u8]) -> Result<ActivityDe
     };
 
     Ok(ActivityDerivedData {
+        recording: parsed.recording,
         laps,
         chart_points,
         route_points,
@@ -815,6 +818,7 @@ fn is_element_named(node: Node<'_, '_>, name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    mod recording;
     use super::*;
     use serde_json::json;
 
@@ -971,6 +975,7 @@ mod tests {
 
     fn full_shape_derived_data_fixture() -> ActivityDerivedData {
         ActivityDerivedData {
+            recording: Default::default(),
             laps: vec![full_shape_lap_fixture()],
             chart_points: vec![full_shape_chart_point_fixture()],
             route_points: vec![full_shape_route_point_fixture()],

@@ -492,11 +492,8 @@ async fn load_best_activity_parsing_artifact(
     db: &DatabaseConnection,
     import: &activity_imports::Model,
 ) -> Result<ActivityProcessingArtifact, AppError> {
-    let artifacts = activity_import_artifacts::Entity::find()
-        .filter(activity_import_artifacts::Column::ActivityImportId.eq(import.id))
-        .filter(activity_import_artifacts::Column::UserId.eq(import.user_id))
-        .all(db)
-        .await?;
+    let artifacts =
+        activity_import_artifacts::Entity::for_import(db, import.user_id, import.id).await?;
 
     artifacts
         .into_iter()
@@ -527,7 +524,9 @@ fn activity_processing_artifact_from_model(
 fn legacy_activity_processing_artifact(
     import: &activity_imports::Model,
 ) -> Option<ActivityProcessingArtifact> {
-    if !activity_format_is_parsable(&import.format) {
+    if !activity_format_is_parsable(&import.format)
+        || (import.source == "strava_sync" && import.format == "tcx")
+    {
         return None;
     }
 
@@ -542,8 +541,9 @@ fn legacy_activity_processing_artifact(
 
 fn activity_artifact_is_parsable(artifact: &activity_import_artifacts::Model) -> bool {
     match artifact.artifact_kind.as_str() {
-        ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL | ACTIVITY_IMPORT_ARTIFACT_KIND_GENERATED_EXPORT => {
+        ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL => {
             activity_format_is_parsable(&artifact.format)
+                || (artifact.format == "json" && artifact.source_quality == "strava_archive_json")
         }
         ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD => {
             artifact.source_quality == ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS
@@ -563,6 +563,7 @@ fn activity_artifact_parse_priority(artifact: &activity_import_artifacts::Model)
         artifact.source_quality.as_str(),
         artifact.format.as_str(),
     ) {
+        (ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL, "strava_archive_json", "json") => 350,
         (
             ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL,
             ACTIVITY_IMPORT_SOURCE_QUALITY_FIT_ORIGINAL,
@@ -586,13 +587,6 @@ fn activity_artifact_parse_priority(artifact: &activity_import_artifacts::Model)
             ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS,
             "json",
         ) => 200,
-        (
-            ACTIVITY_IMPORT_ARTIFACT_KIND_GENERATED_EXPORT,
-            ACTIVITY_IMPORT_SOURCE_QUALITY_GENERATED_TCX,
-            "tcx",
-        ) => 100,
-        (ACTIVITY_IMPORT_ARTIFACT_KIND_GENERATED_EXPORT, _, "tcx") => 90,
-        (ACTIVITY_IMPORT_ARTIFACT_KIND_GENERATED_EXPORT, _, "gpx") => 80,
         _ => 0,
     }
 }
@@ -681,13 +675,40 @@ async fn parse_activity_node(
     state: &mut ActivityProcessingState,
     stage: &str,
 ) -> Result<(), AppError> {
-    state.parsed_activity = Some(parse_activity_artifact(ActivityParserArtifact {
+    let mut parsed = parse_activity_artifact(ActivityParserArtifact {
         original_filename: &state.parsing_artifact.original_filename,
         format: &state.parsing_artifact.format,
         artifact_kind: &state.parsing_artifact.artifact_kind,
         source_quality: &state.parsing_artifact.source_quality,
         bytes: &state.bytes,
-    })?);
+    })?;
+    parsed
+        .derived_data
+        .recording
+        .merge(crate::activity_recording::RecordingContext::legacy(
+            &parsed.draft.sport,
+            &state.import_model.source,
+            &parsed.draft.title,
+        ));
+    merge_recording_artifacts(run, state, &mut parsed).await?;
+    if let Some(activity) = &state.activity_model {
+        parsed
+            .derived_data
+            .recording
+            .merge(activity.recording_context());
+    }
+    parsed.derived_data.recording = crate::activity_recording_recovery::resolve_recording(
+        run.db,
+        state
+            .activity_model
+            .as_ref()
+            .map_or(0, |activity| activity.id),
+        run.user_id,
+        parsed.draft.started_at,
+        &parsed.derived_data,
+    )
+    .await?;
+    state.parsed_activity = Some(parsed);
     state.import_model = mark_activity_import_processing_stage(
         run.db,
         &state.import_model,
@@ -695,6 +716,34 @@ async fn parse_activity_node(
         state.activity_model.as_ref().map(|activity| activity.id),
     )
     .await?;
+    Ok(())
+}
+
+async fn merge_recording_artifacts(
+    run: &ActivityProcessingRun<'_>,
+    state: &ActivityProcessingState,
+    parsed: &mut ParsedActivityData,
+) -> Result<(), AppError> {
+    let artifacts =
+        activity_import_artifacts::Entity::for_import(run.db, run.user_id, state.import_model.id)
+            .await?;
+    for artifact in artifacts.into_iter().filter(|a| {
+        a.storage_path != state.parsing_artifact.storage_path && activity_artifact_is_parsable(a)
+    }) {
+        let bytes =
+            tokio::fs::read(Path::new(run.uploads_dir).join(&artifact.storage_path)).await?;
+        let other = parse_activity_artifact(ActivityParserArtifact {
+            original_filename: &artifact.original_filename,
+            format: &artifact.format,
+            artifact_kind: &artifact.artifact_kind,
+            source_quality: &artifact.source_quality,
+            bytes: &bytes,
+        })?;
+        parsed
+            .derived_data
+            .recording
+            .merge(other.derived_data.recording);
+    }
     Ok(())
 }
 
@@ -714,14 +763,50 @@ async fn prevent_duplicate_activity(
         return Ok(None);
     };
 
+    let activity =
+        merge_duplicate_recording(run.db, duplicate.activity, &parsed.derived_data.recording)
+            .await?;
     let import_model =
-        mark_activity_import_duplicate(run.db, &state.import_model, duplicate.activity.id).await?;
+        mark_activity_import_duplicate(run.db, &state.import_model, activity.id).await?;
     Ok(Some(PersistActivityUploadOutcome::Duplicate(
         DeduplicatedActivityImport {
-            activity: duplicate.activity,
+            activity,
             existing_import: Some(import_model),
         },
     )))
+}
+
+async fn merge_duplicate_recording(
+    db: &DatabaseConnection,
+    activity: activities::Model,
+    recording: &crate::activity_recording::RecordingContext,
+) -> Result<activities::Model, AppError> {
+    let mut derived = crate::activity_data::deserialize_derived_activity_data(
+        activity.derived_data_json.as_ref(),
+    );
+    let previous = derived.recording.clone();
+    derived.recording.merge(recording.clone());
+    if derived.recording != previous {
+        if !activities::Model::store_recording(
+            db,
+            activity.id,
+            activity.user_id,
+            activity.updated_at,
+            &derived,
+        )
+        .await?
+        {
+            return Err(AppError::internal(
+                "Duplicate activity changed while merging recording evidence; retry the import",
+            ));
+        }
+        let refreshed = activities::Model::find_owned(db, activity.id, activity.user_id)
+            .await?
+            .ok_or_else(|| AppError::internal("Duplicate activity disappeared"))?;
+        crate::activity_recording_recovery::propagate_recording(db, &refreshed).await?;
+        return Ok(refreshed);
+    }
+    Ok(activity)
 }
 
 async fn save_activity_node(
@@ -758,6 +843,8 @@ async fn save_activity_node(
             .await?
         }
     };
+
+    crate::activity_recording_recovery::propagate_recording(run.db, &saved_activity).await?;
 
     state.import_model = mark_activity_import_processing_stage(
         run.db,
@@ -811,9 +898,15 @@ async fn update_activity_from_parsed(
     save_data: ActivitySaveData,
 ) -> Result<activities::Model, AppError> {
     let activity_type = activity.activity_type.clone();
+    let archive_title = (activity.source == "strava_sync"
+        && parsing_artifact.artifact_kind == ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL)
+        .then(|| activity.title.clone());
     let mut active_model: activities::ActiveModel = activity.into();
     apply_common_activity_fields(&mut active_model, parsing_artifact, parsed, save_data);
     active_model.activity_type = Set(activity_type);
+    if let Some(title) = archive_title {
+        active_model.title = Set(title);
+    }
     active_model.update(db).await.map_err(AppError::from)
 }
 
@@ -1010,7 +1103,14 @@ pub async fn persist_activity_upload_with_artifacts(
         )
         .await?
         {
-            return Ok(PersistActivityUploadOutcome::Duplicate(existing));
+            let recording = incoming_recording(&request)?;
+            let activity = merge_duplicate_recording(db, existing.activity, &recording).await?;
+            return Ok(PersistActivityUploadOutcome::Duplicate(
+                DeduplicatedActivityImport {
+                    activity,
+                    existing_import: existing.existing_import,
+                },
+            ));
         }
     }
 
@@ -1052,6 +1152,41 @@ pub async fn persist_activity_upload_with_artifacts(
     }
 
     result
+}
+
+fn incoming_recording(
+    request: &PersistActivityUploadWithArtifactsRequest<'_>,
+) -> Result<crate::activity_recording::RecordingContext, AppError> {
+    let mut recording = parse_activity_artifact(ActivityParserArtifact {
+        original_filename: &request.upload.original_filename,
+        format: &request.upload.format,
+        artifact_kind: request.primary_artifact_kind,
+        source_quality: request.primary_source_quality,
+        bytes: &request.upload.bytes,
+    })?
+    .derived_data
+    .recording;
+    for artifact in &request.additional_artifacts {
+        if !activity_format_is_parsable(&artifact.format)
+            && !(artifact.artifact_kind == ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD
+                && artifact.source_quality == ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS
+                && artifact.format == "json")
+        {
+            continue;
+        }
+        recording.merge(
+            parse_activity_artifact(ActivityParserArtifact {
+                original_filename: &artifact.original_filename,
+                format: &artifact.format,
+                artifact_kind: &artifact.artifact_kind,
+                source_quality: &artifact.source_quality,
+                bytes: &artifact.bytes,
+            })?
+            .derived_data
+            .recording,
+        );
+    }
+    Ok(recording)
 }
 
 pub async fn find_stored_activity_import(
@@ -1449,6 +1584,7 @@ async fn deduplicated_activity_import_for_model(
 
 #[cfg(test)]
 mod tests {
+    mod recording;
     use super::*;
     use crate::background_jobs::background_tasks;
     use crate::entities::{
@@ -1470,7 +1606,10 @@ mod tests {
         let db = Database::connect("sqlite::memory:")
             .await
             .expect("in-memory db");
+        create_test_tables(db).await
+    }
 
+    async fn create_test_tables(db: DatabaseConnection) -> DatabaseConnection {
         let schema = Schema::new(db.get_database_backend());
         db.execute(&schema.create_table_from_entity(activities::Entity))
             .await

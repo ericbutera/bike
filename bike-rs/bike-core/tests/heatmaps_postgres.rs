@@ -1,4 +1,7 @@
 //! Opt-in integration checks against a disposable PostgreSQL database.
+#[path = "heatmaps_postgres/recording.rs"]
+mod recording;
+
 use bike_core::heatmaps::{
     geometry,
     preparation::prepare_activity,
@@ -171,7 +174,7 @@ async fn prepares_backfills_and_invalidates_activity_generations() {
     prepare(&db, 1, 2).await;
     assert_eq!(status(&db, 1).await, "pending");
     prepare(&db, 1, 3).await;
-    assert_eq!(status(&db, 1).await, "ready");
+    assert_eq!(status(&db, 1).await, "skipped");
     db.execute_unprepared("DELETE FROM activities WHERE id=1")
         .await
         .unwrap();
@@ -206,7 +209,7 @@ async fn prepares_backfills_and_invalidates_activity_generations() {
 #[tokio::test]
 #[ignore = "Set BIKE_HEATMAP_TEST_DATABASE_URL to a disposable PostgreSQL database"]
 async fn upgrades_existing_heatmap_projections_for_speed_filter() {
-    let (db, schema) = fixture().await;
+    let (db, schema) = legacy_fixture().await;
     db.execute_unprepared(
         "UPDATE heatmap_projections SET status='ready', min_x=0.1, min_y=0.1, max_x=0.2, max_y=0.2 WHERE activity_id=1;
          INSERT INTO heatmap_chunks(activity_id,band,chunk_index,min_x,min_y,max_x,max_y,points)
@@ -268,7 +271,7 @@ async fn upgrades_existing_heatmap_projections_for_speed_filter() {
 #[tokio::test]
 #[ignore = "Set BIKE_HEATMAP_TEST_DATABASE_URL to a disposable PostgreSQL database"]
 async fn upgrades_existing_heatmap_projections_for_virtual_ride_filter() {
-    let (db, schema) = fixture().await;
+    let (db, schema) = legacy_fixture().await;
     db.execute_unprepared(include_str!(
         "../../migration/src/heatmap_projection_speed_filter.sql"
     ))
@@ -499,10 +502,39 @@ async fn status(db: &sea_orm::DatabaseConnection, id: i32) -> String {
 }
 
 async fn fixture() -> (sea_orm::DatabaseConnection, String) {
+    let (db, schema) = legacy_fixture().await;
+    db.execute_unprepared(include_str!(
+        "../../migration/src/heatmap_projection_virtual_ride_filter.sql"
+    ))
+    .await
+    .unwrap();
+    db.execute_unprepared(include_str!(
+        "../../migration/src/heatmap_projection_recording_policy.sql"
+    ))
+    .await
+    .unwrap();
+    db.execute_unprepared(include_str!(
+        "../../migration/src/heatmap_cycling_sources.sql"
+    ))
+    .await
+    .unwrap();
+    db.execute_unprepared(include_str!(
+        "../../migration/src/activity_recording_environment.sql"
+    ))
+    .await
+    .unwrap();
+    // The baseline tests start with one new activity at generation/revision 1.
+    db.execute_unprepared(
+        "UPDATE heatmap_projections SET generation=1; UPDATE heatmap_user_states SET revision=1",
+    )
+    .await
+    .unwrap();
+    (db, schema)
+}
+
+async fn legacy_fixture() -> (sea_orm::DatabaseConnection, String) {
     let url = std::env::var("BIKE_HEATMAP_TEST_DATABASE_URL").expect("disposable database URL");
-    let db = Database::connect(ConnectOptions::new(url).max_connections(1).to_owned())
-        .await
-        .unwrap();
+    let db = disposable_database(url).await;
     let schema = format!("heatmap_test_{}", uuid::Uuid::new_v4().simple());
     db.execute_unprepared(&format!(
         "CREATE SCHEMA {schema}; SET search_path TO {schema}"
@@ -511,7 +543,7 @@ async fn fixture() -> (sea_orm::DatabaseConnection, String) {
     .unwrap();
     db.execute_unprepared(r#"
         CREATE TABLE users(id integer PRIMARY KEY);
-        CREATE TABLE activities(id integer PRIMARY KEY, user_id integer REFERENCES users(id) ON DELETE CASCADE, title text NOT NULL DEFAULT '', sport text NOT NULL, source text NOT NULL, started_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), derived_data_json jsonb);
+        CREATE TABLE activities(id integer PRIMARY KEY, user_id integer REFERENCES users(id) ON DELETE CASCADE, title text NOT NULL DEFAULT '', sport text NOT NULL, source text NOT NULL, format text, started_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), derived_data_json jsonb);
         CREATE TABLE feature_flags(feature_key text PRIMARY KEY, enabled boolean NOT NULL);
         CREATE TABLE background_tasks(id serial PRIMARY KEY,task_type text,payload jsonb,status text,attempts integer,max_attempts integer,created_at timestamptz,updated_at timestamptz);
         INSERT INTO users VALUES (1),(2);
@@ -522,6 +554,22 @@ async fn fixture() -> (sea_orm::DatabaseConnection, String) {
         .await
         .unwrap();
     (db, schema)
+}
+
+async fn disposable_database(url: String) -> sea_orm::DatabaseConnection {
+    let mut last_error = None;
+    for _ in 0..20 {
+        let options = ConnectOptions::new(url.clone())
+            .max_connections(1)
+            .connect_timeout(std::time::Duration::from_secs(1))
+            .to_owned();
+        match Database::connect(options).await {
+            Ok(db) => return db,
+            Err(error) => last_error = Some(error),
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    }
+    panic!("Disposable PostgreSQL did not become ready: {last_error:?}");
 }
 
 async fn prepare(db: &sea_orm::DatabaseConnection, activity_id: i32, generation: i64) {
@@ -545,7 +593,7 @@ async fn seed_routes(db: &sea_orm::DatabaseConnection) {
     ))
     .await
     .unwrap();
-    db.execute_raw(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO activities(id,user_id,sport,source,derived_data_json,started_at) VALUES(2,2,'ride','fixture',$1,'2026-01-01'),(3,1,'walk','fixture',$1,'2025-01-01')",[route.into()])).await.unwrap();
+    db.execute_raw(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO activities(id,user_id,sport,source,derived_data_json,started_at) VALUES(2,2,'ride','fixture',$1,'2026-01-01'),(3,1,'mountain_bike','fixture',$1,'2025-01-01')",[route.into()])).await.unwrap();
     prepare(db, 1, 2).await;
     prepare(db, 2, 1).await;
     prepare(db, 3, 1).await;

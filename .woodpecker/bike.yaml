@@ -69,7 +69,13 @@ steps:
     image: golang:1.25.1-bookworm
     depends_on: []
     commands:
-      - cd strava-gateway && go vet ./... && go test ./...
+      - cd strava-gateway && go vet ./... && go test -p 1 ./...
+
+  - name: lint-strava-gateway
+    image: golangci/golangci-lint:v2.14.0
+    depends_on: []
+    commands:
+      - cd strava-gateway && golangci-lint fmt --diff && golangci-lint run
 
   - name: build-api
     image: woodpeckerci/plugin-kaniko
@@ -80,6 +86,7 @@ steps:
         test-ui,
         test-map-renderer,
         test-strava-gateway,
+        lint-strava-gateway,
       ]
     backend_options:
       kubernetes:
@@ -131,6 +138,7 @@ steps:
         test-ui,
         test-map-renderer,
         test-strava-gateway,
+        lint-strava-gateway,
       ]
     settings:
       registry: registry.registry:5000
@@ -152,6 +160,7 @@ steps:
         test-ui,
         test-map-renderer,
         test-strava-gateway,
+        lint-strava-gateway,
       ]
     settings:
       registry: registry.registry:5000
@@ -173,6 +182,7 @@ steps:
         test-ui,
         test-map-renderer,
         test-strava-gateway,
+        lint-strava-gateway,
       ]
     settings:
       registry: registry.registry:5000

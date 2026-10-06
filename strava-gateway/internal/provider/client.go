@@ -51,7 +51,7 @@ func (client Client) AuthenticatedAthlete(ctx context.Context, token string) (in
 		return 0, response, err
 	}
 	if athlete.ID <= 0 {
-		return 0, response, errors.New("Strava athlete response omitted ID")
+		return 0, response, errors.New("strava athlete response omitted ID")
 	}
 	return athlete.ID, response, nil
 }
@@ -164,7 +164,7 @@ func (client Client) ExchangeCode(ctx context.Context, code string) (Token, Resp
 
 func (client Client) exchange(ctx context.Context, values url.Values) (Token, Response, error) {
 	if client.ClientID == "" || client.ClientSecret == "" {
-		return Token{}, Response{}, errors.New("Strava client credentials are required")
+		return Token{}, Response{}, errors.New("strava client credentials are required")
 	}
 	values.Set("client_id", client.ClientID)
 	values.Set("client_secret", client.ClientSecret)
@@ -187,12 +187,12 @@ func (client Client) exchange(ctx context.Context, values url.Values) (Token, Re
 		return Token{}, response, err
 	}
 	if token.AccessToken == "" || token.RefreshToken == "" || token.ExpiresAt <= 0 {
-		return Token{}, response, errors.New("Strava returned incomplete tokens")
+		return Token{}, response, errors.New("strava returned incomplete tokens")
 	}
 	return token, response, nil
 }
 
-func (client Client) send(request *http.Request) (Response, error) {
+func (client Client) send(request *http.Request) (result Response, err error) {
 	started := time.Now()
 	httpClient := client.HTTP
 	if httpClient == nil {
@@ -203,7 +203,7 @@ func (client Client) send(request *http.Request) (Response, error) {
 		client.recordMetrics(request.URL.Path, 0, started)
 		return Response{}, err
 	}
-	defer remote.Body.Close()
+	defer func() { err = errors.Join(err, remote.Body.Close()) }()
 	if client.Metrics != nil {
 		client.Metrics.RecordQuota(remote.Header)
 	}
@@ -214,7 +214,7 @@ func (client Client) send(request *http.Request) (Response, error) {
 	}
 	if len(body) > maxProviderBody {
 		client.recordMetrics(request.URL.Path, remote.StatusCode, started)
-		return Response{}, errors.New("Strava response exceeds size limit")
+		return Response{}, errors.New("strava response exceeds size limit")
 	}
 	response := Response{Body: body, StatusCode: remote.StatusCode, Headers: remote.Header.Clone()}
 	client.recordMetrics(request.URL.Path, remote.StatusCode, started)
@@ -252,7 +252,7 @@ func ParseActivity(data []byte) (Activity, error) {
 		return Activity{}, err
 	}
 	if activity.ID <= 0 {
-		return Activity{}, errors.New("Strava activity has no ID")
+		return Activity{}, errors.New("strava activity has no ID")
 	}
 	return activity, nil
 }

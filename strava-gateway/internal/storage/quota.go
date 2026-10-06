@@ -122,12 +122,12 @@ func (quota Quota) buckets() [4]bucket {
 
 // Acquire returns the earliest time at which all exhausted buckets reset. A
 // zero time means that one request unit was reserved from all four buckets.
-func (quota Quota) Acquire(ctx context.Context) (time.Time, error) {
+func (quota Quota) Acquire(ctx context.Context) (next time.Time, err error) {
 	tx, err := quota.DB.Begin(ctx)
 	if err != nil {
 		return time.Time{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer rollbackTransaction(ctx, tx, &err)
 	buckets := quota.buckets()
 	now := time.Now().UTC()
 	if quota.Now != nil {

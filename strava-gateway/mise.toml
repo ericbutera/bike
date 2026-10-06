@@ -1,16 +1,18 @@
 [tools]
 go = "1.25.1"
+golangci-lint = "2.14.0"
 
 [env]
 GOCACHE = "{{config_root}}/.cache/go-build"
 GOMODCACHE = "{{config_root}}/.cache/go-mod"
+GOLANGCI_LINT_CACHE = "{{config_root}}/.cache/golangci-lint"
 
 [tasks.test]
-run = "go test ./..."
+run = "go test -p 1 ./..."
 
 [tasks.lint]
-description = "Run Go vet for the gateway and worker"
-run = "go vet ./..."
+description = "Run gateway formatting, Go vet, and golangci-lint"
+run = ["golangci-lint fmt --diff", "go vet ./...", "golangci-lint run"]
 
 [tasks.build]
 run = ["go build ./cmd/gateway", "go build ./cmd/migrate", "go build ./cmd/worker", "go build ./cmd/admin", "go build ./cmd/import_rust", "go build ./cmd/export_rust"]

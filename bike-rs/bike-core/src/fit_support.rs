@@ -39,6 +39,7 @@ pub struct FitLapSummary {
 
 pub struct ParsedFitActivity {
     pub draft: ActivityDraft,
+    pub recording: crate::activity_recording::RecordingContext,
     pub track_points: Vec<FitTrackPoint>,
     pub laps: Vec<FitLapSummary>,
 }
@@ -91,6 +92,7 @@ pub fn parse_fit_activity(filename: &str, bytes: &[u8]) -> Result<ParsedFitActiv
         .reduce(f64::max);
 
     Ok(ParsedFitActivity {
+        recording: recording_context(&records),
         draft: ActivityDraft {
             title: humanize_filename(filename),
             sport: normalize_fit_sport(
@@ -274,6 +276,31 @@ fn title_case_words(value: &str) -> String {
         .join(" ")
 }
 
+fn recording_context(records: &[FitDataRecord]) -> crate::activity_recording::RecordingContext {
+    let mut context = crate::activity_recording::RecordingContext::default();
+    for record in records {
+        if record.kind() == MesgNum::FileId
+            || (record.kind() == MesgNum::DeviceInfo
+                && matches!(
+                    field_string(Some(record), "device_index").as_deref(),
+                    Some("creator") | Some("0")
+                ))
+        {
+            if let Some(value) = field_string(Some(record), "manufacturer") {
+                context.observe_recorder("fit.creator.manufacturer", &value);
+            }
+        }
+        if matches!(record.kind(), MesgNum::Session | MesgNum::Sport) {
+            for name in ["sport", "sub_sport"] {
+                if let Some(value) = field_string(Some(record), name) {
+                    context.observe(&format!("fit.{name}"), &value);
+                }
+            }
+        }
+    }
+    context
+}
+
 fn normalize_sport(value: Option<&str>) -> String {
     normalize_activity_sport(value.unwrap_or("activity"))
 }
@@ -305,4 +332,41 @@ fn normalize_fit_token(value: &str) -> String {
         .filter(|character| character.is_ascii_alphanumeric())
         .map(|character| character.to_ascii_lowercase())
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::activity_recording::RecordingEnvironment;
+
+    #[test]
+    fn recorder_and_subsport_evidence_survive_generic_cycling() {
+        for bytes in [
+            include_bytes!("../tests/fixtures/recording/virtual.fit").as_slice(),
+            include_bytes!("../tests/fixtures/recording/virtual-generic.fit").as_slice(),
+        ] {
+            let parsed = parse_fit_activity("archive.fit", bytes).unwrap();
+            assert_eq!(parsed.recording.environment, RecordingEnvironment::Virtual);
+            assert_eq!(parsed.recording.platform.as_deref(), Some("zwift"));
+            assert_eq!(parsed.track_points.len(), 16);
+        }
+        let indoor = parse_fit_activity(
+            "indoor.fit",
+            include_bytes!("../tests/fixtures/recording/indoor.fit"),
+        )
+        .unwrap();
+        assert_eq!(indoor.recording.environment, RecordingEnvironment::Indoor);
+    }
+
+    #[test]
+    fn real_recorder_with_a_non_creator_virtual_accessory_remains_outdoor_eligible() {
+        for bytes in [
+            include_bytes!("../tests/fixtures/recording/outdoor.fit").as_slice(),
+            include_bytes!("../tests/fixtures/recording/outdoor-accessory.fit").as_slice(),
+        ] {
+            let parsed = parse_fit_activity("outdoor.fit", bytes).unwrap();
+            assert!(!parsed.recording.excluded());
+            assert_eq!(parsed.track_points.len(), 16);
+        }
+    }
 }

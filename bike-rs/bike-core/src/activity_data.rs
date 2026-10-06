@@ -10,6 +10,11 @@ const STORAGE_SPEED_SCALE: f64 = 100.0;
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ActivityDerivedData {
+    #[serde(
+        default,
+        skip_serializing_if = "crate::activity_recording::RecordingContext::is_empty"
+    )]
+    pub recording: crate::activity_recording::RecordingContext,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub laps: Vec<ActivityLap>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -89,6 +94,7 @@ pub struct ActivityRoutePoint {
 #[derive(Debug, Clone, PartialEq, FromJsonQueryResult)]
 pub struct StoredActivityDerivedData {
     v: u8,
+    recording: crate::activity_recording::RecordingContext,
     laps: Vec<ActivityLap>,
     chart_points: Vec<ActivityChartPoint>,
     route_points: Vec<ActivityRoutePoint>,
@@ -98,6 +104,7 @@ impl Default for StoredActivityDerivedData {
     fn default() -> Self {
         Self {
             v: STORAGE_FORMAT_VERSION,
+            recording: Default::default(),
             laps: Vec::new(),
             chart_points: Vec::new(),
             route_points: Vec::new(),
@@ -108,6 +115,11 @@ impl Default for StoredActivityDerivedData {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct StoredActivityDerivedDataV2 {
     v: u8,
+    #[serde(
+        default,
+        skip_serializing_if = "crate::activity_recording::RecordingContext::is_empty"
+    )]
+    recording: crate::activity_recording::RecordingContext,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     laps: Vec<ActivityLap>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -119,6 +131,8 @@ struct StoredActivityDerivedDataV2 {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 struct CompactStoredActivityDerivedDataV1 {
     v: u8,
+    #[serde(default)]
+    recording: crate::activity_recording::RecordingContext,
     #[serde(default, rename = "l")]
     laps: Vec<CompactStoredActivityLapV1>,
     #[serde(default, rename = "c")]
@@ -184,6 +198,7 @@ impl Serialize for StoredActivityDerivedData {
     {
         StoredActivityDerivedDataV2 {
             v: STORAGE_FORMAT_VERSION,
+            recording: self.recording.clone(),
             laps: self.laps.clone(),
             chart_points: self.chart_points.clone(),
             route_points: self.route_points.clone(),
@@ -198,7 +213,8 @@ impl<'de> Deserialize<'de> for StoredActivityDerivedData {
         D: Deserializer<'de>,
     {
         let value = serde_json::Value::deserialize(deserializer)?;
-        let is_schemaful = value.get("laps").is_some()
+        let is_schemaful = value.get("v").and_then(serde_json::Value::as_u64) == Some(2)
+            || value.get("laps").is_some()
             || value.get("chart_points").is_some()
             || value.get("route_points").is_some();
 
@@ -215,6 +231,7 @@ impl<'de> Deserialize<'de> for StoredActivityDerivedData {
 
             Ok(Self {
                 v: STORAGE_FORMAT_VERSION,
+                recording: value.recording,
                 laps: value.laps,
                 chart_points: value.chart_points,
                 route_points: value.route_points,
@@ -262,6 +279,7 @@ impl From<&ActivityDerivedData> for StoredActivityDerivedData {
     fn from(value: &ActivityDerivedData) -> Self {
         Self {
             v: STORAGE_FORMAT_VERSION,
+            recording: value.recording.clone(),
             laps: value.laps.clone(),
             chart_points: value.chart_points.clone(),
             route_points: value.route_points.clone(),
@@ -272,6 +290,7 @@ impl From<&ActivityDerivedData> for StoredActivityDerivedData {
 impl From<StoredActivityDerivedData> for ActivityDerivedData {
     fn from(value: StoredActivityDerivedData) -> Self {
         Self {
+            recording: value.recording,
             laps: value.laps,
             chart_points: value.chart_points,
             route_points: value.route_points,
@@ -283,6 +302,7 @@ impl From<CompactStoredActivityDerivedDataV1> for StoredActivityDerivedData {
     fn from(value: CompactStoredActivityDerivedDataV1) -> Self {
         Self {
             v: STORAGE_FORMAT_VERSION,
+            recording: value.recording,
             laps: value.laps.into_iter().map(ActivityLap::from).collect(),
             chart_points: value
                 .chart_points
@@ -377,4 +397,44 @@ fn decode_coordinate(value: i32) -> f64 {
 
 fn decode_scaled_metric(value: Option<i32>, scale: f64) -> Option<f64> {
     value.map(|metric| f64::from(metric) / scale)
+}
+
+#[cfg(test)]
+mod recording_tests {
+    use super::*;
+    use crate::activity_recording::{RecordingContext, RecordingEnvironment};
+
+    #[test]
+    fn recording_evidence_survives_storage_and_legacy_format_upgrade() {
+        let mut context = RecordingContext::default();
+        context.observe("fit.creator.manufacturer", "zwift");
+        let derived = ActivityDerivedData {
+            recording: context.clone(),
+            ..Default::default()
+        };
+        let json = serde_json::to_value(serialize_derived_activity_data(&derived)).unwrap();
+        let stored: StoredActivityDerivedData = serde_json::from_value(json).unwrap();
+        assert_eq!(
+            deserialize_derived_activity_data(Some(&stored)).recording,
+            context
+        );
+        let legacy: StoredActivityDerivedData =
+            serde_json::from_value(serde_json::json!({"v":1,"recording":context,"r":[]})).unwrap();
+        let upgraded = serde_json::to_value(legacy).unwrap();
+        assert_eq!(upgraded["v"], 2);
+        assert_eq!(upgraded["recording"]["environment"], "virtual");
+    }
+
+    #[test]
+    fn absent_recording_metadata_preserves_real_legacy_activities() {
+        for json in [
+            serde_json::json!({"v":1,"r":[]}),
+            serde_json::json!({"v":2,"route_points":[]}),
+        ] {
+            let stored = serde_json::from_value(json).unwrap();
+            let derived = deserialize_derived_activity_data(Some(&stored));
+            assert_eq!(derived.recording.environment, RecordingEnvironment::Unknown);
+            assert!(!derived.recording.excluded());
+        }
+    }
 }

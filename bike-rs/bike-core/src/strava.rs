@@ -6,11 +6,9 @@ use crate::activity_import_lock::{
 };
 use crate::activity_import_pipeline::{
     finalize_activity_import_batch, mark_activity_imports_processed,
-    persist_activity_upload_with_artifacts, ActivityImportArtifactPayload,
-    ActivityUploadDeduplication, ActivityUploadPayload, PersistActivityUploadOutcome,
-    PersistActivityUploadWithArtifactsRequest, ACTIVITY_IMPORT_ARTIFACT_KIND_GENERATED_EXPORT,
-    ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD, ACTIVITY_IMPORT_SOURCE_QUALITY_GENERATED_TCX,
-    ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS,
+    persist_activity_upload_with_artifacts, ActivityUploadDeduplication, ActivityUploadPayload,
+    PersistActivityUploadOutcome, PersistActivityUploadWithArtifactsRequest,
+    ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD, ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS,
 };
 use crate::activity_lifecycle::{
     delete_activity_with_derived_state, resume_incomplete_activity_imports_for_user,
@@ -29,7 +27,7 @@ use crate::observability;
 use crate::strava_client::{StravaApiClient, StravaAuthorizationTokenResponse};
 use crate::strava_provider_payload::{
     strava_activity_is_bike, strava_activity_sport_label, StoredStravaProviderPayload,
-    StravaActivityStreams, StravaActivitySummary, StravaStream,
+    StravaActivityStreams, StravaActivitySummary,
 };
 use crate::training_profile::{load_training_profile, TrainingProfile};
 use crate::workflow_error::WorkflowError as AppError;
@@ -820,6 +818,7 @@ async fn prepare_strava_sync_context(
     let after_epoch = strava_sync_after_epoch(
         connection.last_synced_activity_started_at,
         latest_user_activity_started_at,
+        Utc::now(),
     );
 
     Ok(StravaSyncRunContext {
@@ -840,8 +839,6 @@ async fn import_strava_activity_pages(
     let mut page = 1usize;
     let mut progress = StravaSyncProgress::new(&context.connection);
 
-    // TODO: Large initial syncs can still put many generated files in one monthly
-    // bucket; add finer-grained sharding if that becomes an operational problem.
     loop {
         if stop_if_connection_removed(db, &context.connection).await? {
             return Ok(None);
@@ -977,14 +974,14 @@ async fn fetch_strava_activity_streams(
 fn build_strava_activity_import_payload(
     activity: &StravaActivitySummary,
     streams: &StravaActivityStreams,
-) -> Option<StravaActivityImportPayload> {
+) -> Option<ActivityUploadPayload> {
     match build_activity_upload(activity, streams) {
         Ok(value) => Some(value),
         Err(error) => {
             tracing::warn!(
                 activity_id = activity.id,
                 message = %error.message,
-                "failed to build synthetic Strava activity upload"
+                "failed to retain Strava provider payload"
             );
             None
         }
@@ -996,16 +993,16 @@ async fn persist_strava_activity_upload(
     uploads_dir: &str,
     context: &StravaSyncRunContext,
     activity: &StravaActivitySummary,
-    import_payload: StravaActivityImportPayload,
+    import_payload: ActivityUploadPayload,
 ) -> Result<StravaActivityImportOutcome, AppError> {
     let persist_request = PersistActivityUploadWithArtifactsRequest {
         uploads_dir,
         user_storage_key: &context.user_storage_key,
         user_id: context.connection.user_id,
-        upload: import_payload.generated_tcx_upload,
-        primary_artifact_kind: ACTIVITY_IMPORT_ARTIFACT_KIND_GENERATED_EXPORT,
-        primary_source_quality: ACTIVITY_IMPORT_SOURCE_QUALITY_GENERATED_TCX,
-        additional_artifacts: vec![import_payload.provider_payload_artifact],
+        upload: import_payload,
+        primary_artifact_kind: ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD,
+        primary_source_quality: ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS,
+        additional_artifacts: Vec::new(),
         source: "strava_sync",
         deduplication: ActivityUploadDeduplication::Enabled,
         training_profile: Some(&context.training_profile),
@@ -1383,12 +1380,16 @@ fn strava_sync_after_started_at(
 fn strava_sync_after_epoch(
     last_synced_activity_started_at: Option<DateTime<Utc>>,
     latest_user_activity_started_at: Option<DateTime<Utc>>,
+    now: DateTime<Utc>,
 ) -> Option<i64> {
-    strava_sync_after_started_at(
+    let cutoff = now - Duration::days(30);
+    let cursor = strava_sync_after_started_at(
         last_synced_activity_started_at,
         latest_user_activity_started_at,
     )
-    .map(|timestamp| (timestamp - Duration::minutes(5)).timestamp())
+    .map(|timestamp| timestamp - Duration::minutes(5))
+    .unwrap_or(cutoff);
+    Some(cursor.max(cutoff).timestamp())
 }
 
 fn ensure_strava_configured(config: &Config) -> Result<(), AppError> {
@@ -1740,47 +1741,26 @@ fn is_rate_limit_error(error: &AppError) -> bool {
     error.status == StatusCode::TOO_MANY_REQUESTS
 }
 
-pub(crate) struct StravaActivityImportPayload {
-    pub(crate) generated_tcx_upload: ActivityUploadPayload,
-    pub(crate) provider_payload_artifact: ActivityImportArtifactPayload,
-}
-
 pub(crate) fn build_activity_upload(
     activity: &StravaActivitySummary,
     streams: &StravaActivityStreams,
-) -> Result<StravaActivityImportPayload, AppError> {
-    let original_filename = format!(
-        "{}.tcx",
-        sanitize_title_for_filename(&activity.name, activity.id)
-    );
-    let bytes = build_tcx_document(activity, streams).into_bytes();
-    let provider_payload = serde_json::to_vec(&StoredStravaProviderPayload::new(
+) -> Result<ActivityUploadPayload, AppError> {
+    let bytes = serde_json::to_vec(&StoredStravaProviderPayload::new(
         activity.clone(),
         streams.clone(),
     ))
     .map_err(|error| {
         AppError::internal(format!(
-            "Failed to serialize Strava provider payload for activity {}: {error}",
+            "Failed to serialize Strava activity {}: {error}",
             activity.id
         ))
     })?;
-
-    Ok(StravaActivityImportPayload {
-        generated_tcx_upload: ActivityUploadPayload {
-            original_filename,
-            format: "tcx".to_string(),
-            mime_type: Some("application/vnd.garmin.tcx+xml".to_string()),
-            source_correlation_id: Some(activity.id.to_string()),
-            bytes,
-        },
-        provider_payload_artifact: ActivityImportArtifactPayload {
-            artifact_kind: ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD.to_string(),
-            format: "json".to_string(),
-            source_quality: ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS.to_string(),
-            original_filename: format!("strava_activity_{}.json", activity.id),
-            mime_type: Some("application/json".to_string()),
-            bytes: provider_payload,
-        },
+    Ok(ActivityUploadPayload {
+        original_filename: format!("strava_activity_{}.json", activity.id),
+        format: "json".into(),
+        mime_type: Some("application/json".into()),
+        source_correlation_id: Some(activity.id.to_string()),
+        bytes,
     })
 }
 
@@ -2129,256 +2109,6 @@ fn should_attempt_remote_strava_deauthorize() -> bool {
     false
 }
 
-fn build_tcx_document(activity: &StravaActivitySummary, streams: &StravaActivityStreams) -> String {
-    let summary = summarize_tcx_document(activity, streams);
-    let mut xml = String::from(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<TrainingCenterDatabase xmlns=\"http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2\" xmlns:ns3=\"http://www.garmin.com/xmlschemas/ActivityExtension/v2\">\n  <Activities>\n",
-    );
-
-    append_tcx_activity(&mut xml, activity, streams, &summary);
-    xml.push_str("  </Activities>\n</TrainingCenterDatabase>\n");
-    xml
-}
-
-struct TcxDocumentSummary {
-    total_time_seconds: i32,
-    distance_meters: f64,
-    max_speed_mps: Option<f64>,
-    average_heart_rate_bpm: Option<i32>,
-    max_heart_rate_bpm: Option<i32>,
-    average_cadence_rpm: Option<i32>,
-    calories: i32,
-    trackpoint_count: usize,
-    start_date: String,
-    sport: String,
-}
-
-struct TcxTrackpoint {
-    timestamp: String,
-    latlng: Option<[f64; 2]>,
-    altitude: Option<f64>,
-    distance: Option<f64>,
-    heart_rate: Option<i32>,
-    cadence: Option<f64>,
-    watts: Option<i32>,
-}
-
-fn summarize_tcx_document(
-    activity: &StravaActivitySummary,
-    streams: &StravaActivityStreams,
-) -> TcxDocumentSummary {
-    let total_time_seconds = activity
-        .elapsed_time
-        .or(activity.moving_time)
-        .unwrap_or_default()
-        .max(0);
-    let distance_meters = activity
-        .distance
-        .or_else(|| {
-            streams
-                .distance
-                .as_ref()
-                .and_then(|stream| stream.data.last().copied())
-        })
-        .unwrap_or_default();
-    let max_speed_mps = activity.max_speed.or_else(|| {
-        streams
-            .velocity_smooth
-            .as_ref()
-            .and_then(|stream| stream.data.iter().copied().reduce(f64::max))
-    });
-    let average_heart_rate_bpm = activity
-        .average_heartrate
-        .map(|value| value.round() as i32)
-        .or_else(|| average_i32_stream(streams.heartrate.as_ref()));
-    let max_heart_rate_bpm = activity
-        .max_heartrate
-        .map(|value| value.round() as i32)
-        .or_else(|| max_i32_stream(streams.heartrate.as_ref()));
-    let average_cadence_rpm = activity
-        .average_cadence
-        .map(|value| value.round() as i32)
-        .or_else(|| average_f64_stream(streams.cadence.as_ref()).map(|value| value.round() as i32));
-    let calories = activity
-        .calories
-        .map(|value| value.round() as i32)
-        .unwrap_or_default();
-
-    TcxDocumentSummary {
-        total_time_seconds,
-        distance_meters,
-        max_speed_mps,
-        average_heart_rate_bpm,
-        max_heart_rate_bpm,
-        average_cadence_rpm,
-        calories,
-        trackpoint_count: max_trackpoint_count(streams),
-        start_date: activity.start_date.to_rfc3339(),
-        sport: tcx_sport(activity).to_string(),
-    }
-}
-
-fn append_tcx_activity(
-    xml: &mut String,
-    activity: &StravaActivitySummary,
-    streams: &StravaActivityStreams,
-    summary: &TcxDocumentSummary,
-) {
-    xml.push_str(&format!(
-        "    <Activity Sport=\"{}\">\n      <Id>{}</Id>\n      <Lap StartTime=\"{}\">\n        <TotalTimeSeconds>{}</TotalTimeSeconds>\n        <DistanceMeters>{:.3}</DistanceMeters>\n",
-        escape_xml_text(&summary.sport),
-        escape_xml_text(&summary.start_date),
-        escape_xml_text(&summary.start_date),
-        summary.total_time_seconds,
-        summary.distance_meters,
-    ));
-
-    append_tcx_lap_metrics(xml, summary);
-    append_tcx_track(xml, activity, streams, summary);
-    xml.push_str("      </Lap>\n    </Activity>\n");
-}
-
-fn append_tcx_lap_metrics(xml: &mut String, summary: &TcxDocumentSummary) {
-    if let Some(max_speed_mps) = summary.max_speed_mps {
-        xml.push_str(&format!(
-            "        <MaximumSpeed>{:.3}</MaximumSpeed>\n",
-            max_speed_mps
-        ));
-    }
-
-    if let Some(value) = summary.average_heart_rate_bpm {
-        xml.push_str(&format!(
-            "        <AverageHeartRateBpm><Value>{}</Value></AverageHeartRateBpm>\n",
-            value
-        ));
-    }
-    if let Some(value) = summary.max_heart_rate_bpm {
-        xml.push_str(&format!(
-            "        <MaximumHeartRateBpm><Value>{}</Value></MaximumHeartRateBpm>\n",
-            value
-        ));
-    }
-
-    if let Some(cadence) = summary.average_cadence_rpm {
-        xml.push_str(&format!("        <Cadence>{}</Cadence>\n", cadence));
-    }
-    if summary.calories > 0 {
-        xml.push_str(&format!(
-            "        <Calories>{}</Calories>\n",
-            summary.calories
-        ));
-    }
-}
-
-fn append_tcx_track(
-    xml: &mut String,
-    activity: &StravaActivitySummary,
-    streams: &StravaActivityStreams,
-    summary: &TcxDocumentSummary,
-) {
-    if summary.trackpoint_count == 0 {
-        return;
-    }
-
-    xml.push_str("        <Track>\n");
-    for index in 0..summary.trackpoint_count {
-        append_tcx_trackpoint(xml, &tcx_trackpoint(activity, streams, summary, index));
-    }
-    xml.push_str("        </Track>\n");
-}
-
-fn tcx_trackpoint(
-    activity: &StravaActivitySummary,
-    streams: &StravaActivityStreams,
-    summary: &TcxDocumentSummary,
-    index: usize,
-) -> TcxTrackpoint {
-    let elapsed_seconds = stream_time_value(streams, index)
-        .or_else(|| {
-            interpolate_elapsed_seconds(index, summary.trackpoint_count, summary.total_time_seconds)
-        })
-        .unwrap_or(index as i32)
-        .max(0);
-
-    TcxTrackpoint {
-        timestamp: (activity.start_date + Duration::seconds(i64::from(elapsed_seconds)))
-            .to_rfc3339(),
-        latlng: stream_latlng_value(streams, index),
-        altitude: stream_f64_value(streams.altitude.as_ref(), index),
-        distance: stream_f64_value(streams.distance.as_ref(), index).or_else(|| {
-            interpolate_distance(index, summary.trackpoint_count, summary.distance_meters)
-        }),
-        heart_rate: stream_i32_value(streams.heartrate.as_ref(), index),
-        cadence: stream_f64_value(streams.cadence.as_ref(), index),
-        watts: stream_i32_value(streams.watts.as_ref(), index),
-    }
-}
-
-fn append_tcx_trackpoint(xml: &mut String, trackpoint: &TcxTrackpoint) {
-    xml.push_str("          <Trackpoint>\n");
-    xml.push_str(&format!(
-        "            <Time>{}</Time>\n",
-        escape_xml_text(&trackpoint.timestamp)
-    ));
-    append_tcx_position(xml, trackpoint.latlng);
-    append_tcx_trackpoint_scalar(xml, "AltitudeMeters", trackpoint.altitude);
-    append_tcx_trackpoint_scalar(xml, "DistanceMeters", trackpoint.distance);
-    append_tcx_trackpoint_heart_rate(xml, trackpoint.heart_rate);
-    append_tcx_trackpoint_cadence(xml, trackpoint.cadence);
-    append_tcx_trackpoint_watts(xml, trackpoint.watts);
-    xml.push_str("          </Trackpoint>\n");
-}
-
-fn append_tcx_position(xml: &mut String, latlng: Option<[f64; 2]>) {
-    let Some([latitude, longitude]) = latlng else {
-        return;
-    };
-
-    xml.push_str("            <Position>\n");
-    xml.push_str(&format!(
-        "              <LatitudeDegrees>{:.7}</LatitudeDegrees>\n              <LongitudeDegrees>{:.7}</LongitudeDegrees>\n",
-        latitude, longitude
-    ));
-    xml.push_str("            </Position>\n");
-}
-
-fn append_tcx_trackpoint_scalar(xml: &mut String, name: &str, value: Option<f64>) {
-    if let Some(value) = value {
-        xml.push_str(&format!("            <{name}>{value:.3}</{name}>\n"));
-    }
-}
-
-fn append_tcx_trackpoint_heart_rate(xml: &mut String, heart_rate: Option<i32>) {
-    if let Some(heart_rate) = heart_rate {
-        xml.push_str(&format!(
-            "            <HeartRateBpm><Value>{}</Value></HeartRateBpm>\n",
-            heart_rate
-        ));
-    }
-}
-
-fn append_tcx_trackpoint_cadence(xml: &mut String, cadence: Option<f64>) {
-    if let Some(cadence) = cadence {
-        xml.push_str(&format!(
-            "            <Cadence>{}</Cadence>\n",
-            cadence.round() as i32
-        ));
-    }
-}
-
-fn append_tcx_trackpoint_watts(xml: &mut String, watts: Option<i32>) {
-    if let Some(watts) = watts {
-        xml.push_str("            <Extensions>\n");
-        xml.push_str("              <ns3:TPX>\n");
-        xml.push_str(&format!(
-            "                <ns3:Watts>{}</ns3:Watts>\n",
-            watts
-        ));
-        xml.push_str("              </ns3:TPX>\n");
-        xml.push_str("            </Extensions>\n");
-    }
-}
-
 fn build_sync_summary_message(
     imported_count: i32,
     duplicate_count: i32,
@@ -2408,162 +2138,6 @@ fn build_sync_summary_message(
     } else {
         format!("{}.", parts.join(". "))
     }
-}
-
-fn sanitize_title_for_filename(title: &str, activity_id: i64) -> String {
-    let sanitized = title
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() {
-                character
-            } else {
-                '_'
-            }
-        })
-        .collect::<String>()
-        .split('_')
-        .filter(|segment| !segment.is_empty())
-        .collect::<Vec<_>>()
-        .join("_");
-
-    if sanitized.is_empty() {
-        format!("strava_activity_{activity_id}")
-    } else {
-        format!("{sanitized}_{activity_id}")
-    }
-}
-
-fn tcx_sport(activity: &StravaActivitySummary) -> &str {
-    match activity
-        .sport_type
-        .as_deref()
-        .or(activity.legacy_type.as_deref())
-        .unwrap_or("Activity")
-    {
-        "Ride" | "VirtualRide" | "MountainBikeRide" | "GravelRide" | "EBikeRide"
-        | "EMountainBikeRide" | "Velomobile" | "Handcycle" => "Ride",
-        "Run" | "VirtualRun" | "TrailRun" | "Walk" | "Hike" => "Run",
-        "Swim" => "Swim",
-        other => other,
-    }
-}
-
-fn max_trackpoint_count(streams: &StravaActivityStreams) -> usize {
-    [
-        streams
-            .time
-            .as_ref()
-            .map(|stream| stream.data.len())
-            .unwrap_or(0),
-        streams
-            .distance
-            .as_ref()
-            .map(|stream| stream.data.len())
-            .unwrap_or(0),
-        streams
-            .latlng
-            .as_ref()
-            .map(|stream| stream.data.len())
-            .unwrap_or(0),
-        streams
-            .altitude
-            .as_ref()
-            .map(|stream| stream.data.len())
-            .unwrap_or(0),
-        streams
-            .heartrate
-            .as_ref()
-            .map(|stream| stream.data.len())
-            .unwrap_or(0),
-        streams
-            .cadence
-            .as_ref()
-            .map(|stream| stream.data.len())
-            .unwrap_or(0),
-        streams
-            .watts
-            .as_ref()
-            .map(|stream| stream.data.len())
-            .unwrap_or(0),
-    ]
-    .into_iter()
-    .max()
-    .unwrap_or(0)
-}
-
-fn average_i32_stream(stream: Option<&StravaStream<i32>>) -> Option<i32> {
-    let data = &stream?.data;
-    if data.is_empty() {
-        None
-    } else {
-        Some((data.iter().copied().sum::<i32>() as f64 / data.len() as f64).round() as i32)
-    }
-}
-
-fn max_i32_stream(stream: Option<&StravaStream<i32>>) -> Option<i32> {
-    stream?.data.iter().copied().max()
-}
-
-fn average_f64_stream(stream: Option<&StravaStream<f64>>) -> Option<f64> {
-    let data = &stream?.data;
-    if data.is_empty() {
-        None
-    } else {
-        Some(data.iter().copied().sum::<f64>() / data.len() as f64)
-    }
-}
-
-fn stream_time_value(streams: &StravaActivityStreams, index: usize) -> Option<i32> {
-    stream_i32_value(streams.time.as_ref(), index)
-}
-
-fn stream_i32_value(stream: Option<&StravaStream<i32>>, index: usize) -> Option<i32> {
-    stream.and_then(|stream| stream.data.get(index)).copied()
-}
-
-fn stream_f64_value(stream: Option<&StravaStream<f64>>, index: usize) -> Option<f64> {
-    stream.and_then(|stream| stream.data.get(index)).copied()
-}
-
-fn stream_latlng_value(streams: &StravaActivityStreams, index: usize) -> Option<[f64; 2]> {
-    streams
-        .latlng
-        .as_ref()
-        .and_then(|stream| stream.data.get(index))
-        .copied()
-}
-
-fn interpolate_elapsed_seconds(index: usize, count: usize, total_time_seconds: i32) -> Option<i32> {
-    if count == 0 {
-        return None;
-    }
-
-    if count == 1 || total_time_seconds <= 0 {
-        return Some(0);
-    }
-
-    Some((((index as f64) / ((count - 1) as f64)) * f64::from(total_time_seconds)).round() as i32)
-}
-
-fn interpolate_distance(index: usize, count: usize, total_distance_meters: f64) -> Option<f64> {
-    if count == 0 || total_distance_meters <= 0.0 {
-        return None;
-    }
-
-    if count == 1 {
-        return Some(total_distance_meters);
-    }
-
-    Some(((index as f64) / ((count - 1) as f64)) * total_distance_meters)
-}
-
-fn escape_xml_text(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&apos;")
 }
 
 fn requested_oauth_scopes(config: &Config) -> Vec<String> {
@@ -2613,6 +2187,7 @@ mod tests {
     use crate::entities::analytics_user_states;
     use crate::entities::integration_events as integration_events_entity;
     use crate::entities::segment_efforts;
+    use crate::strava_provider_payload::StravaStream;
     use chrono::Duration as ChronoDuration;
     use sea_orm::{ActiveModelTrait, ConnectionTrait, Database, EntityTrait, QueryOrder, Schema};
 
@@ -2803,6 +2378,28 @@ mod tests {
     }
 
     #[test]
+    fn legacy_sync_never_fetches_history_older_than_thirty_days() {
+        let now = DateTime::from_timestamp(1_800_000_000, 0).unwrap();
+        let cutoff = now - Duration::days(30);
+        assert_eq!(
+            strava_sync_after_epoch(None, None, now),
+            Some(cutoff.timestamp())
+        );
+        assert_eq!(
+            strava_sync_after_epoch(Some(now - Duration::days(90)), None, now),
+            Some(cutoff.timestamp())
+        );
+        assert_eq!(
+            strava_sync_after_epoch(None, Some(now - Duration::days(90)), now),
+            Some(cutoff.timestamp())
+        );
+        assert_eq!(
+            strava_sync_after_epoch(Some(now - Duration::days(1)), None, now),
+            Some((now - Duration::days(1) - Duration::minutes(5)).timestamp())
+        );
+    }
+
+    #[test]
     fn strava_sync_after_started_at_keeps_newer_strava_cursor() {
         let last_synced_activity_started_at = DateTime::parse_from_rfc3339("2026-05-12T10:00:00Z")
             .unwrap()
@@ -2853,57 +2450,9 @@ mod tests {
     }
 
     #[test]
-    fn builds_tcx_document_from_summary_and_streams() {
+    fn builds_strava_import_directly_from_provider_payload() {
         let activity = StravaActivitySummary {
-            id: 99,
-            name: "Lunch Ride".to_string(),
-            distance: Some(1000.0),
-            moving_time: Some(300),
-            elapsed_time: Some(320),
-            max_speed: Some(6.2),
-            average_heartrate: Some(145.0),
-            max_heartrate: Some(162.0),
-            average_cadence: Some(88.0),
-            calories: Some(120.0),
-            sport_type: Some("Ride".to_string()),
-            trainer: None,
-            legacy_type: Some("Ride".to_string()),
-            start_date: DateTime::parse_from_rfc3339("2026-05-12T12:00:00Z")
-                .unwrap()
-                .with_timezone(&Utc),
-        };
-        let streams = StravaActivityStreams {
-            time: Some(test_stream(vec![0, 160, 320])),
-            distance: Some(test_stream(vec![0.0, 500.0, 1000.0])),
-            latlng: Some(crate::strava_provider_payload::StravaLatLngStream {
-                data: vec![[35.0, -82.0], [35.0005, -82.0005], [35.001, -82.001]],
-                original_size: None,
-                resolution: None,
-                series_type: None,
-            }),
-            altitude: Some(test_stream(vec![700.0, 720.0, 725.0])),
-            velocity_smooth: None,
-            heartrate: Some(test_stream(vec![140, 145, 150])),
-            cadence: Some(test_stream(vec![86.0, 88.0, 90.0])),
-            watts: Some(test_stream(vec![205, 220, 235])),
-            temp: None,
-            moving: None,
-            grade_smooth: None,
-        };
-
-        let tcx = build_tcx_document(&activity, &streams);
-
-        assert!(tcx.contains("<Activity Sport=\"Ride\">"));
-        assert!(tcx.contains("<DistanceMeters>1000.000</DistanceMeters>"));
-        assert!(tcx.contains("<LatitudeDegrees>35.0000000</LatitudeDegrees>"));
-        assert!(tcx.contains("<HeartRateBpm><Value>140</Value></HeartRateBpm>"));
-        assert!(tcx.contains("<Cadence>86</Cadence>"));
-        assert!(tcx.contains("<ns3:Watts>205</ns3:Watts>"));
-    }
-
-    #[test]
-    fn builds_strava_import_payload_with_provider_artifact_and_generated_tcx() {
-        let activity = StravaActivitySummary {
+            additional_fields: Default::default(),
             id: 99,
             name: "Lunch Ride".to_string(),
             distance: Some(1000.0),
@@ -2937,18 +2486,11 @@ mod tests {
 
         let payload = build_activity_upload(&activity, &streams).expect("build payload");
 
-        assert_eq!(payload.generated_tcx_upload.format, "tcx");
-        assert_eq!(
-            payload.provider_payload_artifact.artifact_kind,
-            ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD
-        );
-        assert_eq!(
-            payload.provider_payload_artifact.source_quality,
-            ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS
-        );
+        assert_eq!(payload.format, "json");
+        assert_eq!(payload.original_filename, "strava_activity_99.json");
+        assert_eq!(payload.source_correlation_id.as_deref(), Some("99"));
         let raw_json: serde_json::Value =
-            serde_json::from_slice(&payload.provider_payload_artifact.bytes)
-                .expect("provider payload json");
+            serde_json::from_slice(&payload.bytes).expect("provider payload json");
         assert_eq!(raw_json["v"], 1);
         assert_eq!(raw_json["provider"], "strava");
         assert_eq!(raw_json["provider_activity_id"], 99);

@@ -61,8 +61,8 @@ pass_filenames = false
 
 [[repos.hooks]]
 id = "gateway-vet"
-name = "Gateway Go vet"
+name = "Gateway Go lint and formatting"
 language = "system"
 entry = "mise --cd strava-gateway run lint"
-files = "^strava-gateway/.*\\.(go|mod)$"
+files = "^strava-gateway/(.*\\.(go|mod)|mise\\.toml|\\.golangci\\.yml)$"
 pass_filenames = false

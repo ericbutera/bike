@@ -46,7 +46,7 @@ type DeliveryError struct {
 
 func (err DeliveryError) Error() string { return err.Reason }
 
-func (sender DeliverySender) Send(ctx context.Context, job storage.DeliveryJob, link storage.SiteLink, artifacts Artifacts) error {
+func (sender DeliverySender) Send(ctx context.Context, job storage.DeliveryJob, link storage.SiteLink, artifacts Artifacts) (err error) {
 	target, exists := sender.Targets[job.Target]
 	if !exists || target.URL == "" || target.Secret == "" {
 		return errors.New("delivery target is not configured")
@@ -92,8 +92,10 @@ func (sender DeliverySender) Send(ctx context.Context, job storage.DeliveryJob, 
 	if err != nil {
 		return err
 	}
-	defer response.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
+	defer func() { err = errors.Join(err, response.Body.Close()) }()
+	if _, err := io.Copy(io.Discard, io.LimitReader(response.Body, 4096)); err != nil {
+		return err
+	}
 	if response.StatusCode == http.StatusOK || response.StatusCode == http.StatusAccepted {
 		return nil
 	}

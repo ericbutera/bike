@@ -1013,6 +1013,7 @@ mod tests {
     fn activity_import_derived_data_json() -> bike_core::activity_details::StoredActivityDerivedData
     {
         serialize_derived_activity_data(&ActivityDerivedData {
+            recording: Default::default(),
             laps: Vec::new(),
             chart_points: Vec::new(),
             route_points: vec![ActivityRoutePoint {

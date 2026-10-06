@@ -55,7 +55,11 @@ func TestCallbackBindsSiteUserAndQueuesInitialSyncWithFakeProvider(t *testing.T)
 	if _, err := pool.Exec(ctx, "CREATE SCHEMA "+quotedSchema); err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Exec(context.Background(), "DROP SCHEMA "+quotedSchema+" CASCADE")
+	defer func() {
+		if _, err := pool.Exec(context.Background(), "DROP SCHEMA "+quotedSchema+" CASCADE"); err != nil {
+			t.Errorf("drop fixture schema: %v", err)
+		}
+	}()
 	parsed, err := url.Parse(databaseURL)
 	if err != nil {
 		t.Fatal(err)
@@ -104,11 +108,15 @@ func TestCallbackBindsSiteUserAndQueuesInitialSyncWithFakeProvider(t *testing.T)
 		t.Fatalf("connection did not retain the fixture credential: %v", err)
 	}
 	var mode, status string
-	var userID int64
-	err = fixtureDB.QueryRow(ctx, `SELECT jobs.mode,jobs.status,links.site_user_id
+	var userID, afterEpoch int64
+	err = fixtureDB.QueryRow(ctx, `SELECT jobs.mode,jobs.status,links.site_user_id,jobs.after_epoch
 		FROM gateway_sync_jobs jobs JOIN gateway_site_links links USING (athlete_id,target)
-		WHERE jobs.athlete_id=$1 AND jobs.target='rust'`, link.AthleteID).Scan(&mode, &status, &userID)
+		WHERE jobs.athlete_id=$1 AND jobs.target='rust'`, link.AthleteID).Scan(&mode, &status, &userID, &afterEpoch)
 	if err != nil || mode != "initial" || status != "queued" || userID != 17 || len(fake.codes) != 1 || fake.codes[0] != "fixture-code" {
 		t.Fatalf("initial sync = %q %q user %d; error = %v", mode, status, userID, err)
+	}
+	cutoff := time.Now().Add(-30 * 24 * time.Hour).Unix()
+	if afterEpoch < cutoff-5 || afterEpoch > cutoff {
+		t.Fatalf("initial sync after_epoch = %d, want within five seconds of %d", afterEpoch, cutoff)
 	}
 }

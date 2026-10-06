@@ -348,7 +348,7 @@ func (worker Worker) processSync(ctx context.Context, job storage.SyncJob) error
 		return err
 	}
 	if !provider.HasScope(connection.Scopes, "activity:read_all") {
-		return errors.New("Strava connection lacks activity:read_all")
+		return errors.New("strava connection lacks activity:read_all")
 	}
 	connection, err = worker.refreshIfNeeded(ctx, connection, false)
 	if err != nil {
@@ -421,7 +421,7 @@ func (worker Worker) processEvent(ctx context.Context, job storage.EventJob) err
 		return err
 	}
 	if !provider.HasScope(connection.Scopes, "activity:read_all") {
-		return errors.New("Strava connection lacks activity:read_all")
+		return errors.New("strava connection lacks activity:read_all")
 	}
 	connection, err = worker.refreshIfNeeded(ctx, connection, false)
 	if err != nil {
@@ -473,7 +473,7 @@ func (worker Worker) processEvent(ctx context.Context, job storage.EventJob) err
 	}
 	if activity.ID != event.ObjectID {
 		return worker.retainInvalidPayload("activity", detail.Body,
-			fmt.Errorf("Strava returned activity %d for event %d", activity.ID, event.ObjectID))
+			fmt.Errorf("strava returned activity %d for event %d", activity.ID, event.ObjectID))
 	}
 	if !activity.Cycling() {
 		return worker.Jobs.CompleteEvent(ctx, job, "delete", nil)
@@ -517,7 +517,7 @@ func (worker Worker) processEvent(ctx context.Context, job storage.EventJob) err
 		return err
 	}
 	if !json.Valid(streams.Body) {
-		return worker.retainInvalidPayload("streams", streams.Body, errors.New("Strava returned invalid streams JSON"))
+		return worker.retainInvalidPayload("streams", streams.Body, errors.New("strava returned invalid streams JSON"))
 	}
 	payload, err := json.Marshal(struct {
 		Activity json.RawMessage `json:"activity"`

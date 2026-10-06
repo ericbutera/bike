@@ -96,7 +96,7 @@ type Artifact struct {
 	SizeBytes    int64
 }
 
-func (jobs Jobs) CompleteEvent(ctx context.Context, job EventJob, operation string, artifact *Artifact) error {
+func (jobs Jobs) CompleteEvent(ctx context.Context, job EventJob, operation string, artifact *Artifact) (err error) {
 	if operation != "upsert" && operation != "delete" && operation != "deauthorize" {
 		return errors.New("invalid delivery operation")
 	}
@@ -104,7 +104,7 @@ func (jobs Jobs) CompleteEvent(ctx context.Context, job EventJob, operation stri
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer rollbackTransaction(ctx, tx, &err)
 	var hash *string
 	if artifact != nil {
 		if operation != "upsert" || artifact.SHA256 == "" || artifact.RelativePath == "" || artifact.SizeBytes <= 0 {
@@ -153,12 +153,12 @@ func truncateFailure(failure string) string {
 	return string(characters[:min(len(characters), 500)])
 }
 
-func (jobs Jobs) IgnoreEvent(ctx context.Context, job EventJob) error {
+func (jobs Jobs) IgnoreEvent(ctx context.Context, job EventJob) (err error) {
 	tx, err := jobs.DB.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer rollbackTransaction(ctx, tx, &err)
 	if _, err := tx.Exec(ctx, `UPDATE strava_delivery_outbox SET status='delivered',
 		updated_at=now() WHERE event_id=$1 AND target='rust' AND status='waiting_for_fetch'`, job.ID); err != nil {
 		return err
@@ -245,7 +245,7 @@ func (jobs Jobs) RetryDelivery(ctx context.Context, job DeliveryJob, next time.T
 // RequeueMissingArtifact returns an already fetched event to the inbox so the
 // current provider payload can be fetched again. Completed site deliveries
 // remain completed; only undelivered targets wait for the new artifact.
-func (jobs Jobs) RequeueMissingArtifact(ctx context.Context, job DeliveryJob) error {
+func (jobs Jobs) RequeueMissingArtifact(ctx context.Context, job DeliveryJob) (err error) {
 	if job.Operation != "upsert" || job.EventID <= 0 {
 		return errors.New("only fetched activity deliveries can be refetched")
 	}
@@ -253,7 +253,7 @@ func (jobs Jobs) RequeueMissingArtifact(ctx context.Context, job DeliveryJob) er
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer rollbackTransaction(ctx, tx, &err)
 	if _, err := tx.Exec(ctx, `UPDATE strava_webhook_events
 		SET status='pending',next_attempt_at=now(),lease_until=NULL,attempts=0,updated_at=now()
 		WHERE id=$1 AND status='processed'`, job.EventID); err != nil {

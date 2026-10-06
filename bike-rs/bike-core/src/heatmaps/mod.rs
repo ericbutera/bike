@@ -7,4 +7,4 @@ pub mod service;
 pub mod types;
 
 pub const STYLE_VERSION: &str = "heatmap-v2";
-pub const PROJECTION_VERSION: i32 = 3;
+pub const PROJECTION_VERSION: i32 = 5;

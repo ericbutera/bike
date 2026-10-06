@@ -1146,6 +1146,7 @@ mod tests {
 
     fn activity_response_derived_data_json() -> StoredActivityDerivedData {
         serialize_derived_activity_data(&ActivityDerivedData {
+            recording: Default::default(),
             laps: vec![activity_response_lap_fixture()],
             chart_points: vec![activity_response_chart_point_fixture()],
             route_points: vec![activity_response_route_point_fixture()],
@@ -1431,6 +1432,7 @@ mod tests {
                 heart_rate_zones_json: None,
                 derived_data_json: Some(
                     serialize_derived_activity_data(&ActivityDerivedData {
+                        recording: Default::default(),
                         laps: Vec::new(),
                         chart_points: Vec::new(),
                         route_points: vec![ActivityRoutePoint {
@@ -1513,6 +1515,7 @@ mod tests {
                 heart_rate_zones_json: None,
                 derived_data_json: Some(
                     serialize_derived_activity_data(&ActivityDerivedData {
+                        recording: Default::default(),
                         laps: Vec::new(),
                         chart_points: Vec::new(),
                         route_points,
@@ -1599,6 +1602,7 @@ mod tests {
                 heart_rate_zones_json: None,
                 derived_data_json: Some(
                     serialize_derived_activity_data(&ActivityDerivedData {
+                        recording: Default::default(),
                         laps: Vec::new(),
                         chart_points: Vec::new(),
                         route_points,

@@ -42,7 +42,7 @@ func (connections Connections) Upsert(ctx context.Context, item Connection) erro
 
 // ImportRust links the legacy user to the gateway. Replacing an existing token
 // is only for the handoff after Rust's token-refresh worker has stopped.
-func (connections Connections) ImportRust(ctx context.Context, item Connection, userID int64, replace bool) (bool, error) {
+func (connections Connections) ImportRust(ctx context.Context, item Connection, userID int64, replace bool) (changed bool, err error) {
 	if userID <= 0 {
 		return false, errors.New("invalid Rust user ID")
 	}
@@ -54,7 +54,7 @@ func (connections Connections) ImportRust(ctx context.Context, item Connection, 
 	if err != nil {
 		return false, err
 	}
-	defer tx.Rollback(ctx)
+	defer rollbackTransaction(ctx, tx, &err)
 	statement := `INSERT INTO gateway_connections
 		(athlete_id,token_ciphertext,expires_at,scopes) VALUES ($1,$2,$3,$4)
 		ON CONFLICT (athlete_id) DO NOTHING`
@@ -181,12 +181,12 @@ func (connections Connections) FindLinkByUser(ctx context.Context, target string
 	return link, err
 }
 
-func (connections Connections) DisableLink(ctx context.Context, link SiteLink) error {
+func (connections Connections) DisableLink(ctx context.Context, link SiteLink) (err error) {
 	tx, err := connections.DB.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer rollbackTransaction(ctx, tx, &err)
 	command, err := tx.Exec(ctx, `UPDATE gateway_site_links SET enabled=false,updated_at=now()
 		WHERE athlete_id=$1 AND target=$2 AND site_user_id=$3 AND enabled=true`,
 		link.AthleteID, link.Target, link.UserID)
@@ -205,4 +205,4 @@ func (connections Connections) DisableLink(ctx context.Context, link SiteLink) e
 }
 
 var ErrLinkNotFound = errors.New("site link not found")
-var ErrLinkConflict = errors.New("Strava athlete is linked to another Bike user")
+var ErrLinkConflict = errors.New("strava athlete is linked to another Bike user")

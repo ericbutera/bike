@@ -73,7 +73,11 @@ func TestSyncWaitingReasonUsesExhaustedQuotaWindows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	defer pool.Exec(ctx, `DELETE FROM gateway_rate_limits`)
+	defer func() {
+		if _, err := pool.Exec(context.Background(), `DELETE FROM gateway_rate_limits`); err != nil {
+			t.Errorf("clean fixture rate limits: %v", err)
+		}
+	}()
 
 	for _, test := range []struct {
 		name   string

@@ -1351,6 +1351,7 @@ mod tests {
             heart_rate_zones_json: None,
             derived_data_json: Some(
                 serialize_derived_activity_data(&ActivityDerivedData {
+                    recording: Default::default(),
                     laps: Vec::new(),
                     chart_points: Vec::new(),
                     route_points,

@@ -21,14 +21,14 @@ type Inbox struct {
 
 // Store commits the event and target work atomically. The HTTP callback can
 // acknowledge only after this transaction commits.
-func (inbox Inbox) Store(ctx context.Context, event webhook.Event, raw json.RawMessage) (bool, error) {
+func (inbox Inbox) Store(ctx context.Context, event webhook.Event, raw json.RawMessage) (stored bool, err error) {
 	carrier := propagation.MapCarrier{}
 	otel.GetTextMapPropagator().Inject(ctx, carrier)
 	tx, err := inbox.DB.Begin(ctx)
 	if err != nil {
 		return false, err
 	}
-	defer tx.Rollback(ctx)
+	defer rollbackTransaction(ctx, tx, &err)
 	var id int64
 	err = tx.QueryRow(ctx, `INSERT INTO strava_webhook_events
 		(event_key, subscription_id, owner_id, object_id, object_type, aspect_type, event_time, payload, traceparent, tracestate)

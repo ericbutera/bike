@@ -10,6 +10,7 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
 COPY --from=planner /app/recipe.json recipe.json
+COPY --from=planner /app/vendor vendor
 RUN cargo chef cook --locked --release --recipe-path recipe.json
 COPY . .
 RUN cargo build --locked --release --bin api --bin worker

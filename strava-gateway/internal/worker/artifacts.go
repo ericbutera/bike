@@ -36,7 +36,7 @@ func (artifacts Artifacts) DiskUsage() (int64, error) {
 	return total, err
 }
 
-var ErrArtifactUnavailable = errors.New("Strava artifact unavailable")
+var ErrArtifactUnavailable = errors.New("strava artifact unavailable")
 
 // ReadByHash supports operator retrieval without trusting a supplied file path.
 func (artifacts Artifacts) ReadByHash(hash string) ([]byte, error) {
@@ -57,7 +57,7 @@ func (artifacts Artifacts) Write(data []byte) (storage.Artifact, error) {
 	return item, err
 }
 
-func (artifacts Artifacts) WriteWithStatus(data []byte) (storage.Artifact, bool, error) {
+func (artifacts Artifacts) WriteWithStatus(data []byte) (item storage.Artifact, created bool, err error) {
 	if len(data) == 0 {
 		return storage.Artifact{}, false, errors.New("empty Strava artifact")
 	}
@@ -83,18 +83,19 @@ func (artifacts Artifacts) WriteWithStatus(data []byte) (storage.Artifact, bool,
 		return storage.Artifact{}, false, err
 	}
 	temp := file.Name()
-	defer os.Remove(temp)
+	defer func() {
+		if cleanupErr := os.Remove(temp); cleanupErr != nil && !errors.Is(cleanupErr, os.ErrNotExist) {
+			err = errors.Join(err, cleanupErr)
+		}
+	}()
 	if err := file.Chmod(0o600); err != nil {
-		file.Close()
-		return storage.Artifact{}, false, err
+		return storage.Artifact{}, false, errors.Join(err, file.Close())
 	}
 	if _, err := file.Write(data); err != nil {
-		file.Close()
-		return storage.Artifact{}, false, err
+		return storage.Artifact{}, false, errors.Join(err, file.Close())
 	}
 	if err := file.Sync(); err != nil {
-		file.Close()
-		return storage.Artifact{}, false, err
+		return storage.Artifact{}, false, errors.Join(err, file.Close())
 	}
 	if err := file.Close(); err != nil {
 		return storage.Artifact{}, false, err

@@ -36,3 +36,6 @@ all = "deny"
 cognitive_complexity = "deny"
 too_many_arguments = "deny"
 too_many_lines = "deny"
+
+[patch.crates-io]
+proc-macro-error2 = { path = "vendor/proc-macro-error2" }
