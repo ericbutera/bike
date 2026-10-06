@@ -1,9 +1,6 @@
 import { expect } from "@playwright/test";
-import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import pixelmatch from "pixelmatch";
-import { PNG } from "pngjs";
 
 const uiRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -66,55 +63,4 @@ export async function stabilize(page) {
       }
     `,
   });
-}
-
-export async function captureElement(element, targetName, artifactName) {
-  const screenshotPath = path.join(
-    artifactRoot,
-    "screenshots",
-    `${targetName}-${artifactName}.png`,
-  );
-  await fs.mkdir(path.dirname(screenshotPath), { recursive: true });
-  await element.screenshot({ path: screenshotPath });
-  return screenshotPath;
-}
-
-export async function compareScreenshots(
-  baselinePath,
-  candidatePath,
-  diffPath,
-) {
-  const baseline = PNG.sync.read(await fs.readFile(baselinePath));
-  const candidate = PNG.sync.read(await fs.readFile(candidatePath));
-
-  if (
-    baseline.width !== candidate.width ||
-    baseline.height !== candidate.height
-  ) {
-    return {
-      differentPixels: Infinity,
-      totalPixels: Math.max(
-        baseline.width * baseline.height,
-        candidate.width * candidate.height,
-      ),
-      reason: `dimensions differ: ${baseline.width}x${baseline.height} vs ${candidate.width}x${candidate.height}`,
-    };
-  }
-
-  const diff = new PNG({ width: baseline.width, height: baseline.height });
-  const differentPixels = pixelmatch(
-    baseline.data,
-    candidate.data,
-    diff.data,
-    baseline.width,
-    baseline.height,
-    { threshold: 0.1 },
-  );
-  await fs.mkdir(path.dirname(diffPath), { recursive: true });
-  await fs.writeFile(diffPath, PNG.sync.write(diff));
-  return {
-    differentPixels,
-    totalPixels: baseline.width * baseline.height,
-    reason: null,
-  };
 }

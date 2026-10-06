@@ -3,7 +3,7 @@
 Status: experiment specification, 2026-10-03. No product implementation or
 deployment is authorized by this experiment. Work and results belong under
 [`experiments/postgis`](../../experiments/postgis/README.md); completion status
-belongs in [the Bike backlog](../TODO.md#personal-heatmaps).
+belongs in [the Bike backlog](../TODO.md#active-work).
 
 ## Evaluation question
 

@@ -7,7 +7,7 @@ today's backups and happy-path checks or claim that every proposed field ships.
 
 Bike should make ride history useful in ways Strava does not: compare endurance, climbing, fatigue, and execution across rides over time. The reports experience should answer "what is changing?" before it answers "what happened on one ride?"
 
-This spec ports the useful concepts from `scripts/cycling_trends` into Bike's Rust backend and `/training/reports` UI.
+This spec defines Bike's Rust training reports and `/training/reports` UI.
 
 ## Product Intent
 
@@ -34,9 +34,9 @@ Median climb rate: 286 -> 301 -> 318 -> 326 m/h
 Late ride fade: -14% -> -11% -> -8% -> ?
 ```
 
-## Source Reference
+## Report layers
 
-The Python reference in `scripts/cycling_trends` contains four useful layers:
+The report pipeline separates four concerns:
 
 - single-ride summary and heart-rate zone metrics;
 - hourly durability metrics;
@@ -330,8 +330,7 @@ Route-family ownership, stopped-time semantics, coasting without cadence, power-
 
 ## Code Anchors
 
-- Python reference: `scripts/cycling_trends`
-- Current Rust training summary logic, for reference only: `api/src/activity_training_analysis.rs`
+- Current Rust training summary logic, for reference only: `bike-core/src/activity_training_analysis.rs`
 - Current reports API: `api/src/controllers/reports.rs`
-- Activity derived data: `api/src/activity_details.rs`
+- Activity derived data: `bike-core/src/activity_details.rs`
 - Reports UI: `bike-ui/app/training/reports/page.tsx`, `bike-ui/components/reports`

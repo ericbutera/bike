@@ -186,7 +186,8 @@ Browser regressions live with the [UI](bike-ui/tests/e2e/README.md).
 - [Personal heatmaps](docs/specs/heatmaps.md) — design and implementation evidence.
 - [Map rendering](map-renderer/README.md) — render contract, caching, style updates.
 - [Strava gateway](strava-gateway/README.md) — configuration, jobs, verification.
-- [Production failure runbook](docs/production-failures.md) — diagnosis and recovery.
+- [Gateway recovery](strava-gateway/README.md#failure-recovery) and
+  [admin recovery](bike-rs/docs/specs/admin-operations.md#failed-import-recovery) — diagnosis and selective replay.
 - [Active backlog](docs/TODO.md) — remaining work and recorded verification limits.
 
 Production infrastructure is maintained in

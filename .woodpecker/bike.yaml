@@ -12,8 +12,6 @@ when:
         - integration-tests/**
         - .dockerignore
         - strava-gateway/**
-        - docs/shared-assets.json
-        - docs/api-route-audit.json
         - mise.toml
         - bin/mise
         - .woodpecker/**

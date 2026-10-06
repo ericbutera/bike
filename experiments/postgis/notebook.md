@@ -1,7 +1,7 @@
 # PostGIS research notebook
 
 This is a record of experimental reasoning and evidence. Project work/status
-belongs in [docs/TODO.md](../../docs/TODO.md#personal-heatmaps).
+belongs in [docs/TODO.md](../../docs/TODO.md#active-work).
 
 Each [idea](ideas.json) states a proposed explanation, a falsifiable comparison,
 primary metrics, and output invariants. Each [test](experiments/EXP001.json)

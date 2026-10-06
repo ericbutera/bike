@@ -81,8 +81,8 @@ endpoints. Worker preparation and feature flags are described in the
 - `bike-ui/lib/openapi/react-query/api.d.ts` is generated from that contract.
 - Versioned protobuf definitions under `proto/` describe internal gateway and
   renderer interfaces.
-- [`shared-assets.json`](shared-assets.json) records canonical asset owners and
-  intentional build-context copies.
+- `mise run assets:sync` copies canonical assets into required build contexts;
+  `mise run contracts:check` compares those copies with their owners.
 - Schema migrations are append-only records. Preserve their order and history.
 
 ## Deployment
@@ -100,4 +100,5 @@ identities and do not depend on the repository's display name.
 
 OpenTelemetry supports tracing; internal metrics, dashboards, alerts, and
 protected failure captures support diagnosis. See the
-[production failure runbook](production-failures.md) for recovery procedures.
+[gateway recovery guide](../strava-gateway/README.md#failure-recovery) and
+[admin recovery procedures](../bike-rs/docs/specs/admin-operations.md#failed-import-recovery) for recovery procedures.

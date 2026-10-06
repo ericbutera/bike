@@ -23,7 +23,7 @@ TEST_DATABASE_URL=postgres://gateway:gateway_local_only@127.0.0.1:54321/gateway_
 Ordinary gateway tests remain database-free unless that variable is explicitly
 set. No complete live SSO -> Strava -> app flow is required.
 
-## Real-ride sync and downstream checks (2026-10-02)
+## Ride fixture provenance
 
 `strava-real-ride.json` takes its first eight coordinates/elevations from the
 original `bike-rs/data/activities/Morning_Ride.gpx` (SHA-256
@@ -34,29 +34,10 @@ coordinates. This small sample covers an ordinary stored route, not a complete
 ride or a recorded Strava response. The originals remain unchanged/ignored.
 
 Rust owns the canonical fixture in `bike-rs/bike-core/testdata`; intentional
-component build-context copies are registered in `docs/shared-assets.json` and
-synchronized by `mise run assets:sync`.
+component build-context copies are synchronized by `mise run assets:sync` and
+compared by `mise run contracts:check`.
 
-Independent checks passed:
-
-- Gateway `TestSyncFetchesListDetailAndStreamsWithRealRideFixture`: fake HTTP
-  transport checks list pagination/window, bearer auth, detail, requested stream
-  keys, cycling classification, and response preservation. No provider or DB.
-- Rust `parses_original_ride_fixture`: parser preserves distance, time, and all
-  eight original route points. `imports_original_ride_fixture_without_duplicate`
-  also passed against a disposable database migrated by the Rust task, checking
-  the owning user's stored ride, correlation, route, and repeated delivery.
-- `playwright/activity-sync-fixture.spec.mjs`: the recorded run included the deployed
-  Rust UI assets. Every application API response was stubbed; the fixture
-  appears once in the list with distance, then detail shows the title and route
-  map. This proves the display step independently, without live login, provider
-  calls, or live-data mutation. Unexpected API requests are rejected.
-
-Run only the relevant owning test above. For browser checks, use the existing
-runner with available UI URLs, for example:
-
-```sh
-cd bike-ui
-BIKE_UI_URL=https://bike.example.com \
-  mise exec -- pnpm exec playwright test tests/e2e/activity-sync-fixture.spec.mjs
-```
+The owning gateway tests use fake transport for list/detail/stream responses.
+Rust tests consume the same sample at parsing and import boundaries. The UI's
+`activity-sync-fixture.spec.mjs` uses fake API responses to verify presentation.
+These checks make no live provider or login claim.

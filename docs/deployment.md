@@ -17,9 +17,6 @@ run the checks and builds without applying changes or receiving the production
 synthetic credential.
 Documentation-only changes do not release images.
 
-The [production verification record](production-verification.md) documents
-the current development, CI, deployment, monitoring, and synthetic checks.
-
 | Check                 | Coverage                                                                    |
 | --------------------- | --------------------------------------------------------------------------- |
 | `test-contracts`      | Canonical HTTP contract and shared asset copies                             |
@@ -146,7 +143,7 @@ fixtures and routing configuration; it sends no notifications.
 CI activation, repository configuration, and secrets belong to the
 [infrastructure repository](https://github.com/ericbutera/pulumi-iac).
 
-Use the [production failure runbook](production-failures.md) for retained task
+Use the [gateway recovery guide](../strava-gateway/README.md#failure-recovery) for retained task
 failures and the
 [backup runbook](https://github.com/ericbutera/pulumi-iac/blob/main/docs/Bike-Backup-Runbook.md)
 for database and file recovery. Record incomplete rollout work in

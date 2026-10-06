@@ -185,33 +185,12 @@ Rust uses `openidconnect`. Plain OAuth2 providers use code/userinfo exchange wit
 browser-bound state. The local development shortcut is restricted to explicitly
 enabled development configuration.
 
-All twelve Rust auth tests and strict bike-core/migration Clippy passed. The full
-migration chain, including the appended OAuth-state migration, applied to a fresh
-isolated PostgreSQL database. Provider fixtures are synthetic; this record does
-not claim a live SSO check.
+## Verification
 
-## Independent auth happy-path evidence (2026-10-02)
-
-AUTH04 (`d6388db`) verifies provider callbacks, session behavior, and UI sign-in
-independently, using fakes at external-provider seams.
-
-- Rust `mise exec -- cargo test -p bike-core auth::tests:: --lib` passed 10/10.
-  Fake OIDC exchange/account-binding and session-rotation cases used in-memory
-  SQLite. The added cookie-logout check invoked the owning handler with a test
-  session, verified cookie expiry, and removed the current stored token.
-  Strict bike-core Clippy and formatting passed.
-- `bike-ui/tests/e2e/auth-happy-path.spec.mjs` exercised provider discovery,
-  application sign-in return, current-user lookup, session reload, and logout
-  against deployed UI assets with stubbed application APIs. Unexpected API
-  requests were rejected. This verifies presentation independently of provider
-  exchange and does not assert live SSO.
-
-Run the browser check from the repository root:
-
-```sh
-BIKE_UI_URL=https://bike.example.com \
-  mise --cd bike-ui exec -- pnpm exec playwright test tests/e2e/auth-happy-path.spec.mjs
-```
+Rust auth tests use fake identity providers and in-memory fixtures. The UI
+`auth-happy-path.spec.mjs` checks sign-in return, session reload, and logout
+with a fake application API boundary. These are independent of live SSO.
+Run the owning tests through mise; browser instructions live with the UI suite.
 
 ## Non-Goals
 

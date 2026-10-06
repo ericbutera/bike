@@ -164,16 +164,14 @@ correlation provide idempotent **effects** under at-least-once delivery.
 - Never treat the old Rust and new gateway rate-limit counters as independent
   while both can call the same Strava app. Cut over API ownership deliberately.
 
-## Verification and rollout evidence
+## Verification
 
 The owning gateway tests cover provider failures, persistent inbox/delivery jobs,
 quota pauses, leased retries, sync checkpoints, and artifact repair. Integration
 tests use an explicitly selected disposable PostgreSQL schema. Provider fakes
 are recorded separately from live callbacks and production verification.
 
-The gateway and Rust receiver were deployed and verified in 2026-09-29's initial
-rollout. Subsequent 2026-10-02 records cover provider exchange/refresh, the
-original-ride fixture, and signature-mode callback recovery. See the
+See the
 [fixture provenance](../../internal/provider/testdata/README.md),
-[production failure runbook](../../../docs/production-failures.md), and
+[gateway recovery guide](../../README.md#failure-recovery), and
 [active backlog](../../../docs/TODO.md) for exact scope and remaining work.

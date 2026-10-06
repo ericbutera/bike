@@ -63,12 +63,41 @@ set `--platform linux/amd64` before publishing an immutable commit tag.
 
 ## Verification
 
-Use the [production failure runbook](../docs/production-failures.md) for
-alerting, protected failure captures, artifact export, and selective dead-job
-replay.
-
 Run `mise run test` and `mise run build` from this directory. For PostgreSQL
 integration checks, run `docker compose up -d postgres` and set
 `TEST_DATABASE_URL` to its published port before running the integration task.
 The checks apply migrations twice and cover inbox, outbox, quota, sync pages,
 reconciliation, and dead-letter replay.
+
+## Failure recovery
+
+Inspect status and retained failures inside the worker container:
+
+```sh
+/app/admin status
+/app/admin failures
+/app/admin artifact <sha256>
+```
+
+The artifact command writes the protected capture to stdout. Its `body_base64`
+field retains the rejected provider response. Keep the original private and
+sanitize a small derived regression fixture before committing it. OAuth token
+responses and authorization headers must not enter captures or logs.
+
+Fix and deploy the owning adapter/workflow before selectively replaying a dead job:
+
+```sh
+/app/admin replay event <event-id>
+/app/admin replay delivery <delivery-id>
+/app/admin replay sync <sync-id>
+```
+
+Replay accepts dead jobs and preserves successful deliveries. Confirm completion
+and receipt by Bike; a transiently empty queue is insufficient. Scheduled quota
+waits use the normal scheduler. A rejected callback before inbox persistence has
+no job to replay: diagnose its structured rejection reason, repair the boundary,
+then request incremental sync from Bike.
+
+Application import recovery belongs to [Bike admin operations](../bike-rs/docs/specs/admin-operations.md#failed-import-recovery).
+Alert rules and notification configuration belong to the infrastructure repo.
+Use its `check:bike:alerting` task to validate them; deployment is a separate action.

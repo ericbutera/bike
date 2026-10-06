@@ -136,8 +136,8 @@ mise run generate:protobuf:check
 ```
 
 Rust client bindings are generated during the Cargo build. Intentional asset
-copies are listed in [`shared-assets.json`](shared-assets.json). After changing
-an owning asset, run `mise run assets:sync` and review the resulting diff.
+copies are explicit in root mise tasks. After changing an owning asset, run
+`mise run assets:sync`, review the diff, and run `mise run contracts:check`.
 
 ## Inspect traces
 
