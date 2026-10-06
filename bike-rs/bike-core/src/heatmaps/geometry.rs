@@ -130,7 +130,7 @@ fn continuous_paths(route: &[ActivityRoutePoint]) -> Vec<Vec<Point>> {
                 finish(&mut path, &mut paths);
                 previous = None;
                 continue;
-            } else if meters > 5_000.0 || (dt > 120 && meters > 200.0) {
+            } else if meters > 5_000.0 || (dt >= 120 && meters > 200.0) {
                 finish(&mut path, &mut paths);
             } else if (next[0] - a[0]).abs() > 0.5 {
                 let wrapped = next[0] + if next[0] < a[0] { 1.0 } else { -1.0 };
@@ -255,6 +255,40 @@ mod tests {
         assert_eq!(
             decode(&encode(&[[0.123456789, 0.1234], [0.3, 0.4]])).unwrap(),
             vec![[0.123456789, 0.1234], [0.3, 0.4]]
+        );
+    }
+
+    #[test]
+    fn exact_two_minute_gps_gap_does_not_draw_a_two_kilometer_chord() {
+        // Anonymized translation of the observed archive sample deltas. The
+        // apparent speed is below 45 m/s, so only the inclusive gap rule catches it.
+        let mut before = point(-120.0, 2);
+        let mut after = point(-119.99143260531127, 122);
+        after.latitude += 0.01734483987093;
+        before.distance_meters = Some(500.0);
+        after.distance_meters = Some(2312.69);
+        let mut next = after.clone();
+        next.elapsed_seconds += 2;
+        next.longitude += 0.00001;
+        let route = [point(-120.00001, 0), before, after, next];
+        assert_eq!(continuous_paths(&route).len(), 2);
+        let chunks = prepare(&route);
+        assert_eq!(chunks.len(), 8);
+        assert!(chunks.iter().all(|c| c.bounds[3] - c.bounds[1] < 0.000001));
+    }
+
+    #[test]
+    fn real_continuously_recorded_long_road_is_not_removed() {
+        let route: Vec<_> = (0..1500)
+            .map(|i| point(-120.0 + f64::from(i) * 0.00003, i))
+            .collect();
+        assert_eq!(continuous_paths(&route).len(), 1);
+        let chunks = prepare(&route);
+        assert_eq!(chunks.len(), 4);
+        assert!(chunks.iter().all(|c| decode(&c.points).unwrap().len() == 2));
+        assert_eq!(
+            decode(&chunks[3].points).unwrap().last(),
+            Some(&project(route.last().unwrap().longitude, 45.0))
         );
     }
 }

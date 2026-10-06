@@ -45,3 +45,23 @@ fn gpx_recorder_and_tcx_creator_are_independent_of_generic_ride_type() {
         );
     }
 }
+
+#[test]
+fn imported_fit_with_exact_two_minute_gap_keeps_real_segments_without_joining_them() {
+    let derived = derive_activity_detail_data(
+        "gps-gap.fit",
+        "fit",
+        include_bytes!("../../../tests/fixtures/recording/gps-gap.fit"),
+    )
+    .unwrap();
+    assert!(!derived.recording.excluded());
+    assert_eq!(
+        derived.route_points[8].elapsed_seconds - derived.route_points[7].elapsed_seconds,
+        120
+    );
+    let chunks = geometry::prepare(&derived.route_points);
+    assert_eq!(chunks.len(), 8);
+    assert!(chunks
+        .iter()
+        .all(|chunk| chunk.bounds[3] - chunk.bounds[1] < 0.000001));
+}
