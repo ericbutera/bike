@@ -3,6 +3,13 @@
 Status: implementation authorized, 2026-10-03, for Rust and the shared UI.
 Implementation status belongs in [the Bike backlog](../TODO.md#personal-heatmaps).
 
+The 2026-10-06 cycling admission proposal below supersedes the original
+all-sports scope for future implementation. MAPS12 owns implementation and
+verification of the remaining stricter provenance rule. Implemented policy v5
+excludes non-cycling activities, known indoor/virtual rides, and unavailable
+authentic sources. It still admits unknown recordings with available cycling
+sources; that is not a guarantee that every admitted route was recorded outdoors.
+
 The [PostGIS evaluation](postgis-evaluation.md) supports deferring PostGIS.
 Use ordinary PostgreSQL with compact coordinate projections and indexed
 bounding-box filtering for this release. Retain the repeatable experiment for
@@ -11,7 +18,7 @@ future comparisons; adopting PostGIS is outside this implementation.
 ## Goal and scope
 
 Add `/maps` to the shared `bike-ui` so a signed-in user can see everywhere they
-have recorded activities. Use the supplied Strava screenshot as the visual
+have recorded eligible outdoor cycling activities. Use the supplied Strava screenshot as the visual
 reference: continuous routes over a readable basemap, with frequently traveled
 paths becoming more opaque. The 2026-10-03 visual feedback supersedes the original
 thickness/palette proposal: thin, fixed-width lines default to the blue used by
@@ -35,7 +42,66 @@ Public/global heatmaps, sharing, route planning, segment clicks, per-path activi
 drilldown, exports, road-network map matching, and a new map service are outside
 the first release. Existing activity-detail and preview maps retain their behavior.
 
+### Cycling admission proposal, 2026-10-06
+
+The current heatmap is personal: authenticated metadata, zones, and tiles are
+scoped to the signed-in user's ID. Adding a user must not mix their routes into
+another user's map. There is no global aggregation endpoint today. A future
+global heatmap is a separate product scope, tracked by MAPS13, with explicit
+contribution consent and removal on opt-out, deletion, or eligibility change.
+It must not broaden the existing personal queries to omit ownership filters.
+
+Known virtual/indoor routes and unclassified recordings must contribute no
+heatmap geometry. Admission requires a supported cycling sport, an accepted
+outdoor provenance decision under a versioned policy, and valid route geometry.
+The [ingestion contract](../../bike-rs/docs/specs/activity-ingestion.md#heatmap-admission-proposal)
+owns evidence precedence, uncertain inputs, and verification requirements.
+Persist claimed recording environment separately from the admission decision;
+an `outdoor` string in an uploaded export is not independent verification.
+
+This guarantees enforcement of the admission policy, not proof that every
+accepted GPS file describes physical travel. A virtual ride with stripped or
+falsified metadata can be indistinguishable from an outdoor ride. Unknown
+recordings therefore remain retained but unmapped until reviewed. This will
+also withhold legitimate rides whose exports lack accepted provenance.
+Do not quietly restore permissive inclusion to improve route counts. Personal
+review overrides must not automatically qualify a route for global contribution.
+The supported outdoor evidence rules must be approved and recorded before
+MAPS12 can be marked complete; there is no universally trusted recorder flag.
+
+Non-cycling retention and future parsing belong to the ingestion contract.
+The [supported activities specification](../../bike-rs/docs/specs/supported-activities.md)
+owns cycling subtypes and partial compatibility for other sports.
+Swims, runs, walks, and hikes must not enter either cycling heatmap, even if
+their retained source contains valid GPS. GPS continuity checks apply after
+admission and must break impossible edges without discarding good portions of
+an eligible ride. US location, plausible speed, and a clean track are not
+evidence of an outdoor recording. Outdoor cycling outside the US remains valid.
+
 ## Current code and constraints
+
+The production audit found a data-provenance failure rather than evidence of a
+filter code rollback. Older generated provider TCX exports had lost virtual
+recording metadata, while their original archive FIT counterparts retained it.
+Slightly different start timestamps defeated exact duplicate matching, so the
+generic copies survived as apparently ordinary rides. The earlier filter
+relied on available flags, sport labels, and titles; it could not reject evidence
+that had already been discarded. Reprocessing also needed to preserve and merge
+stronger evidence. The v5 repair addresses those known copies and durable
+provenance, and excludes non-cycling activities and unavailable original sources
+at preparation and every read surface. It does not solve arbitrary metadata-free imports. The stricter
+admission proposal above owns that separate limitation.
+
+Heatmap reads use the database-generated `activities.recording_environment`
+summary so checking virtual/indoor evidence does not load the full GPS JSON.
+PostgreSQL updates this field atomically whenever retained evidence changes.
+
+Bike no longer generates or replays synthetic Strava TCX files. Source recovery
+uses retained originals and native provider JSON, then removes obsolete
+generated artifacts after replay succeeds. See the
+[storage and GPS contract](../../bike-rs/docs/specs/activity-ingestion.md#activity-and-gps-storage)
+for exact source retention, normalized GPS in `activities.derived_data_json`,
+separate heatmap projection/chunk tables, and the proposed activity-detail table.
 
 The current repository provides these integration points:
 
@@ -67,17 +133,25 @@ complete backfill and tile reads.
 
 ### Activity and date filters
 
-1. Default to **All activities / All time**. Offer the existing sport choices:
-   run, walk, hike, mountain bike, indoor trainer ride, and road ride. Reuse
-   `ActivitySport` and its stored aliases; road ride includes legacy `ride`.
-   All activities includes other stored sports when they have eligible routes.
+1. Under MAPS12, default to **All outdoor rides / All time**. Offer supported
+   outdoor cycling choices, including mountain bike and road ride; do not
+   offer run, walk, hike, or indoor trainer rides as heatmap contributors.
+   Reuse `ActivitySport` and its stored aliases; road ride includes legacy
+   `ride`. A cycling sport alone never grants admission. The current UI still
+   offers the original all-activities choices pending this implementation.
    `activity_type` remains the separate Training/Race classification.
-2. An eligible route has at least two distinct, valid real-world coordinates
-   forming a continuous piece of track. Exclude GPS-free activities and simulated
-   indoor/virtual routes. Strava's `trainer` flag, virtual sport names, and
-   recognizable Zwift titles identify indoor rides; these contribute no
-   geography even when a provider supplies virtual coordinates. Their filter
-   displays an explanatory empty state.
+2. An admitted route has at least two distinct, valid coordinates forming a
+   continuous piece of track. Exclude GPS-free activities, non-cycling sports,
+   simulated indoor/virtual routes, and unknown recordings. Strava's `trainer`
+   flag, virtual sport names, and recognizable Zwift titles are exclusion
+   signals; their absence is not sufficient outdoor evidence. Original
+   recording environment and recorder evidence must survive archive transport,
+   generated exports, reprocessing, and verified provider copies. Generic
+   `Ride` metadata or a missing trainer flag must not clear stronger indoor or
+   virtual evidence. Apply eligibility consistently to preparation, tiles,
+   zones, bounds, and progress. Geographic location is an audit signal, not an
+   exclusion rule. Existing indoor/non-cycling filter URLs display an explanatory
+   empty state, and clients cannot bypass admission by selecting all sports.
 3. Offer All time, This year, Last 90 days, and Custom start/end dates. Custom
    bounds may be open-ended. Resolve relative presets to explicit dates when
    selected so a saved URL is reproducible.
@@ -266,7 +340,7 @@ The worker processes one activity at a time within each batch:
 
 1. Load the owned activity's complete ordered route once. Validate coordinate
    ranges/finite values and remove duplicate adjacent points. Preserve track
-   breaks, and split on reversed time, jumps over 5 km, gaps over 120 seconds
+   breaks, and split on reversed time, jumps over 5 km, gaps of at least 120 seconds
    with over 200 m of movement, or computed point-to-point speed above 45 m/s.
    For an impossible-speed jump, drop the suspect endpoint too, then start a new
    path at the following point so neither adjacent edge draws through the GPS
@@ -685,6 +759,78 @@ shows clusters outside the rider's expected regions. This code change and
 versioned requeue are local only; deployment, production migration, and
 production backfill/readiness verification remain open in MAPS08.
 
+### Production virtual ride audit, 2026-10-06
+
+The read-only production audit verified that API, UI, and worker run `8501628`
+and the virtual filter migration is applied. It confirmed visible generic
+Strava-generated TCX copies of excluded Zwift FIT activities imported through
+a Garmin archive. Original FIT creator and virtual session metadata survive in
+the archive, and timestamped route coordinates establish the provider-copy
+relationship. This pattern occurs outside and inside the US.
+
+Personal activity IDs, titles, dates, provider identifiers, source checksums,
+CSV exports, and the detailed audit report stay in the gitignored `.artifacts/`
+workbench. Commit only general findings, business rules, remediation plans, and
+anonymized regression fixtures.
+
+The version-3 title/source/sport filter is insufficient for this historical
+representation. The TCX discarded the original virtual classification, and the
+correct archive classification does not propagate to its Strava counterpart.
+This is a classification gap in the deployed code, with no evidence of a code
+rollback. Obsolete version-2 ready projections are a separate lifecycle
+inconsistency; current tiles/zones omit them.
+
+MAPS11 owns the planned durable remediation: persist recording environment and
+original recorder independently of sport/import source; retain authoritative
+evidence across import, artifact selection, reprocessing, and verified provider
+counterparts; exclude indoor/virtual environments in preparation and every map
+query; guard projection publication by policy version and generation; and
+cover these observed FIT/TCX and US/overseas patterns with regression fixtures.
+Use SeaORM entity/model methods for ordinary database access. Geography finds
+audit candidates and must not become a permanent US-only filter.
+
+The audit made no production changes. Recovery remains incomplete until a new
+implementation, migration, deployment, backfill, private-cohort exclusion check,
+outdoor controls, and actual map verification pass.
+
+### Durable recording provenance requirements
+
+1. Persist recording environment (`outdoor`, `indoor`, `virtual`, `unknown`) and
+   original recorder independently of sport and import transport. Reference the
+   authoritative artifact or verified counterpart as classification evidence;
+   preserve explicit user corrections separately.
+2. Normalize FIT file/creator/session metadata, TCX/GPX origin extensions, and
+   provider sport/type/trainer metadata received at Bike's boundary. Retain
+   original payloads. Missing metadata is unknown; a weak generated export must
+   not clear stronger virtual or indoor evidence during reprocessing.
+3. Choose geometry artifacts separately from classification evidence. Combine
+   authoritative evidence across artifacts and safely verified provider copies.
+   Nearby start times alone do not prove a shared activity; require strong route
+   or sample matching before propagating classification. Preserve both source
+   identities and files. Conflicting explicit evidence requires review.
+4. Enforce the same stored eligibility rule in preparation, tiles, zones, bounds,
+   and progress. Neither indoor nor virtual routes contribute geography, even
+   when coordinates exist. Invalidate generations and cache revisions when
+   classification changes so stale chunks cannot leak while rebuilding.
+5. Upgrade policy/projection versions with append-only migrations and reconcile
+   obsolete ready rows. Require the expected policy version at lease and
+   publication alongside the generation guard; older workers cannot publish
+   obsolete projections after migration.
+6. Preserve small anonymized fixtures for archive Zwift FIT, generic generated
+   TCX linked to an original FIT, trainer flags, creator metadata with generic
+   sport, origin extensions, conflicting artifacts, reprocessing/title edits,
+   US virtual routes, outdoor controls in multiple countries, false counterpart
+   matches, and older workers running during an upgrade. Unit tests use mocks
+   or in-memory fixtures. Keep server-specific PostgreSQL verification separate
+   and opt-in; verify relevant API/UI behavior for the release.
+7. Complete deployment only after the new image/migration are live, backfill is
+   finished, the private known-virtual cohort contributes no tiles or zones,
+   obsolete ready projections are absent, and outdoor controls and the actual
+   map pass verification. Geography remains an audit tool, not a product fence.
+
+All classification and evidence handling belongs to Bike. It requires no
+Strava gateway changes or read-time gateway access.
+
 ## Primary technical references
 
 - [MapLibre large-data performance guide](https://maplibre.org/maplibre-gl-js/docs/guides/large-data/): simplification, small payloads, and server tiling.
@@ -694,3 +840,89 @@ production backfill/readiness verification remain open in MAPS08.
 
 References reviewed on 2026-10-03. Rendering/aggregation policy and performance
 targets in this document are proposals, not results from these references.
+
+### Recording policy and GPS gap correction, 2026-10-06
+
+The original v4 correction stored typed recording context in activity derived
+storage alongside geometry. FIT creator manufacturer and session subtype,
+genuine GPX/TCX origin metadata, and Strava sport/type/trainer flags feed this
+context. Current v5 uses authentic files or native provider JSON; Bike-generated
+TCX is rejected and requires recovery. Reprocessing merges retained artifact
+evidence and existing context; weaker generic inputs cannot erase indoor/virtual flags.
+Duplicate imports preserve new evidence without replacing existing routes.
+
+Legacy copies recover evidence from activities belonging to the same owner,
+within five seconds of the start. A candidate must have at least eight GPS
+points and meaningful movement; up to 64 evenly spaced samples require matching
+absolute timestamps and positions within two meters, with at least 95 percent
+agreement. This recovered classification survives later replay. Original
+activities and files remain intact. Geography does not decide eligibility.
+
+Preparation and typed SeaORM read filters exclude stored indoor/virtual context.
+An append-only migration clears obsolete chunks, advances generations and user
+revisions, and queues v4 projections. Lease/source/publication guards require
+v4, and a database constraint rejects older workers publishing ready or skipped
+projections with an obsolete policy version.
+
+The observed straight-line defect was a roughly two-kilometer displacement
+across an exact 120-second GPS gap. Intermediate FIT records had no positions.
+The previous strict greater-than check missed the boundary; the inclusive check
+now breaks that path while retaining its valid sections. Tests use synthetic
+coordinates and dates, with continuously recorded outdoor routes as controls.
+
+Local verification passed every ingestion-node regression, parser/export/storage
+and replay tests, the full Rust workspace suite, Clippy with warnings denied,
+and nine disposable PostgreSQL heatmap tests. Private offline verification
+matched all 47 confirmed virtual copies with the implemented route matcher and
+removed the observed chord while retaining real segments. Committed fixtures
+contain synthetic records only; personal CSVs and source files stay gitignored.
+Regular Rust CI runs the unit suite using mocks and in-memory fixtures, without
+a PostgreSQL service. The disposable PostgreSQL checks remain separate opt-in
+verification. The live v5 recovery evidence below supersedes the original
+pending rollout status; local results alone do not establish production repair.
+
+### Production and local source recovery, 2026-10-06
+
+The virtual rides returned because Bike's generated TCX copies omitted recorder
+evidence that the original FIT files retained. Small start-time differences
+defeated the old duplicate matcher, leaving generic copies eligible. The invalid
+chord had a separate cause: the gap check used `> 120` seconds and admitted the
+observed exactly-120-second discontinuity. It now breaks at `>= 120` seconds.
+The fixes retain and merge recording evidence, compare absolute GPS time, retire
+generated inputs, and cover the boundary with synthetic regression fixtures.
+
+Production pipelines 186 and 187 deployed v5 source admission and the stored
+recording summary column. Pipeline 188 passed without a PostgreSQL test service
+and deployed image `1168481` across API, UI, and worker; its migration job and
+production smoke tests completed. The Rust suite passed 208 core unit tests,
+with clean formatting and Clippy. All owner activities were preserved. Of 197 historical
+generated imports, 139 now retain verified authentic FIT, GPX, or native JSON.
+Fifty recovered real cycling activities have ready heatmap projections. The
+remaining originals are absent from the retained May archives: 58 activities
+preserve their summaries/GPS and sole generated evidence but are marked
+unavailable and excluded. Recovery made zero Strava API requests. Cleanup
+removed 139 replaced generated files plus 17 verified unreferenced copies.
+Retiring the 58 sole sources still requires an updated archive or an explicit
+retirement decision; DATA18 remains open for that source gap.
+
+All 47 confirmed virtual activities and all 44 outside-US audit activities have
+zero published chunks. The reported roughly two-kilometer chord spanning exactly
+120 seconds is absent; the affected real ride retains 20 valid chunks and 2,697
+projected points. Live owner metadata reports 735 ready, 454 skipped, zero pending
+and zero failed. Nine actual map tiles around the reported area return nonempty
+512-pixel PNGs, and the resulting mosaic was inspected.
+
+The existing local Docker instance now binds the active Bike checkout and keeps
+its original PostgreSQL volume. Its final metadata reports 765 ready, 308 skipped,
+zero pending and zero failed; nine actual tiles render. One historical manually
+uploaded Bike-generated copy was mislabeled as an original. It is now correctly
+labeled, unavailable, and contributes zero chunks while its sole file, summary,
+and GPS remain retained. Synthetic parser and in-memory manual/archive workflow
+regressions reject such copies and keep genuine cycling TCX as a positive control.
+
+V5 rejects known indoor/virtual recordings, non-cycling sports, and unavailable
+sources. It still admits unknown recording environments with available cycling
+sources. MAPS12's stricter admission policy remains proposed before accepting
+a second user's history; these results do not guarantee physical recording
+authenticity for arbitrary uploads. GPS/chart/lap payloads still reside in
+`activities.derived_data_json`; DATA19's separate details table is a proposal.

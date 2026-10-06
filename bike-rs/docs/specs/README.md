@@ -7,7 +7,9 @@ The specs are intentionally written as product contracts instead of implementati
 ## Specs
 
 - [Project overview](project-overview.md)
+- [Supported activities](supported-activities.md)
 - [Activity ingestion](activity-ingestion.md)
+- [Personal heatmaps](../../../docs/specs/heatmaps.md)
 - [Activity experience](activity-experience.md)
 - [Segment processing](segment-processing.md)
 - [Segment race viewer](segment-race-viewer.md)

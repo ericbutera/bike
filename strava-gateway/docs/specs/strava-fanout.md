@@ -52,6 +52,25 @@ explicit gateway mappings to a local user ID in each Bike site. Mapping is
 established from authenticated site-to-gateway OAuth initiation, not inferred
 from matching integer user IDs. A target can be disabled independently.
 
+## History window
+
+First-time OAuth connections queue `initial` sync with `after_epoch` set to
+30 days before queueing. Manual and scheduled `incremental` sync use the same
+rolling window. Workers pass that cutoff to Strava's paginated activity-list
+request. New users import older history through archives; connecting an account
+must not start an unrestricted history pull. The existing operator `full` mode
+is explicit and is not requested by Bike connection or generated-source recovery.
+
+Bike-generated TCX recovery first uses Bike-owned archive originals or retained
+provider JSON. Only gaps from the last 30 days may request incremental sync.
+This window bounds history, not request count: listing, details, streams, and
+retries still consume the gateway's shared quota. Existing quota and retry
+mechanisms apply. The delivery envelope and payload contract are unchanged.
+
+Tests cover the exact cutoff and the persisted initial job produced by OAuth
+using a fake provider and disposable PostgreSQL. This is local implementation;
+production deployment and source recovery require their own verification.
+
 ## HTTP contracts
 
 ### Strava callback

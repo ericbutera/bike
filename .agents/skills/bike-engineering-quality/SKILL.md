@@ -85,6 +85,18 @@ blocks, or weaker configuration. Preserve unrelated work and keep fixes within
 the requested scope; identify a separate blocker if a clean gate needs work
 outside that scope.
 
+## Keep product specifications current
+
+For changes to product behavior, business rules, or background processing,
+read the [spec index](../../../bike-rs/docs/specs/README.md) and the owning
+domain spec before implementation. Update the canonical behavior in the same
+change; an appended investigation log does not replace obsolete rules. Reuse
+the owning spec instead of creating an overlapping one. Keep task status in
+the backlog and distinguish proposed behavior, local implementation, and
+verified production behavior. Include the updated spec links in the final
+report. Reversible implementation details without a behavior change do not
+need a new product specification.
+
 ## Verify before completion
 
 Run the affected area's established formatter, linter, type checks, relevant
@@ -92,6 +104,12 @@ build, and focused tests. Use meaningful happy-path coverage for changed
 behavior and a regression check for an observed bug. Run relevant existing
 prek hooks when source or hook configuration changes. Documentation-only
 changes need applicable document/config validation, not application suites.
+
+Respect the requested test level. Unit coverage uses pure functions, mocked
+boundaries, or in-memory databases with fixtures. Do not introduce database
+servers or CI services to satisfy a unit-test request. Keep server-specific
+database verification separate and opt-in unless the user explicitly asks for
+that integration coverage in CI.
 
 Inspect diagnostics as well as exit codes. Compiler, dependency, test-runner,
 React/browser-console, linter, and hook warnings/notices are failures even if

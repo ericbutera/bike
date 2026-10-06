@@ -39,6 +39,10 @@ Telemetry display should tolerate missing data. Activities without heart rate, c
 
 ## Activity Types
 
+The [supported activities specification](supported-activities.md) distinguishes
+supported cycling from partial file/list compatibility for hike, walk, and run,
+and recognition-only swim handling. Filter presence is not full sport support.
+
 Bike supports a normalized activity type separate from raw provider sport labels. The rider can update activity type when provider data is too broad or wrong.
 
 Training analytics may depend on activity type, so type updates should keep derived state consistent.

@@ -15,6 +15,26 @@ Connecting Strava should feel simple for riders while keeping provider behavior 
 
 Normal usage is at most about 10 activities a day. Occasional historical imports use the existing paging and quota pauses. Expand recovery or concurrency tests for an observed failure or measured need.
 
+## Current cycling and retention boundary
+
+The [supported activities specification](supported-activities.md) owns the
+cycling inventory and the distinction between Bike recognition and gateway
+delivery support.
+
+The gateway delivers cycling activity summaries/streams to Bike. For a
+non-cycling activity it skips stream fetching and delivers `delete` without
+an activity payload. Bike honors removal of the mapped ride and stores its
+boundary receipt/events; it cannot recover swim/run metadata or GPS from that
+message. Listing and detail requests still occur upstream during classification.
+
+The [ingestion retention proposal](activity-ingestion.md#non-cycling-retention-proposal)
+can retain non-cycling archive/upload originals inside Bike. It does not change
+the gateway or authorize Bike to fetch missing provider data directly. Retaining
+non-cycling Strava summaries would require a separately approved delivery
+contract change. Provider cycling classification also does not establish
+outdoor heatmap eligibility; Bike owns that decision under the
+[admission proposal](activity-ingestion.md#heatmap-admission-proposal).
+
 ## Legacy Rust provider flow
 
 In the pre-gateway design, outbound Strava HTTP calls were made through `StravaApiClient` in `api/src/strava_client.rs`. The worker does not call Strava directly; the `strava_sync` processor delegates to `api::strava::process_strava_sync`.
@@ -142,6 +162,17 @@ The desired pattern is:
 This pattern should be reused for future provider integrations and long backfills.
 
 ## Backfill Behavior
+
+First-time connections and incremental refresh fetch only the last 30 days. Older history comes from archive imports; Bike-generated TCX recovery uses retained originals or provider JSON before requesting a recent refresh. Bike persists delivered provider JSON as the primary input and does not generate TCX. See the [source recovery contract](activity-ingestion.md#generated-strava-tcx-retirement-and-source-backfill).
+
+Provider summary fields that Bike does not yet model remain retained in native
+JSON. Recorder/source identifiers can carry virtual evidence independently of
+sport or trainer flags. Verified replacements finish replay before obsolete
+generated files are removed. Historical non-cycling payloads are retained
+without ride replay; unavailable originals are withheld from heatmaps.
+The [activity and GPS storage contract](activity-ingestion.md#activity-and-gps-storage)
+documents uploads storage, import/artifact records, normalized route samples,
+and derived map geometry.
 
 Initial Strava backfill should prefer steady, resumable progress over speed. It should process activities oldest-to-newest within fetched pages when possible, so imported history grows coherently and derived analytics can be finalized in batches.
 
