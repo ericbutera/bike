@@ -10,15 +10,12 @@ when:
         - proto/**
         - map-renderer/**
         - integration-tests/**
-        - Dockerfile
         - .dockerignore
         - strava-gateway/**
-        - scripts/check-contracts.rb
-        - scripts/audit-api-routes.rb
-        - scripts/test-production.sh
         - docs/shared-assets.json
         - docs/api-route-audit.json
         - mise.toml
+        - bin/mise
         - .woodpecker/**
       on_empty: false
   - event: manual
@@ -34,16 +31,24 @@ clone:
 
 steps:
   - name: test-contracts
-    image: ruby:3.4.11-bookworm
+    image: buildpack-deps:bookworm
     depends_on: []
+    environment: &mise_environment
+      MISE_DATA_DIR: /cache/bike/mise
+      MISE_CACHE_DIR: /cache/bike/mise-cache
+      MISE_TASK_RUN_AUTO_INSTALL: "false"
+      MISE_TRUSTED_CONFIG_PATHS: /woodpecker/src
+      MISE_YES: "1"
+    volumes: &mise_cache
+      - woodpecker-cache:/cache
     commands:
-      - ruby scripts/check-contracts.rb
-      - ruby scripts/audit-api-routes.rb
+      - ./bin/mise run ci:contracts
 
   - name: test-rust
-    image: rust:1-bookworm
+    image: buildpack-deps:bookworm
     depends_on: []
     environment:
+      <<: *mise_environment
       TEST_MODE: "1"
       CARGO_HOME: /cache/bike/cargo
       RUSTUP_HOME: /cache/bike/rustup
@@ -51,31 +56,31 @@ steps:
     volumes:
       - woodpecker-cache:/cache
     commands:
-      - cd bike-rs && sh .woodpecker/test-rust.sh
+      - ./bin/mise run ci:rust
 
   - name: test-ui
-    image: node:25.2.1-alpine
+    image: buildpack-deps:bookworm
     depends_on: []
+    environment: *mise_environment
+    volumes: *mise_cache
     commands:
-      - cd bike-ui && npm install -g pnpm@9.15.9 && pnpm install --frozen-lockfile && pnpm run lint && pnpm run typecheck && pnpm run test
+      - ./bin/mise run ci:ui
 
   - name: test-map-renderer
-    image: node:25.2.1-alpine
+    image: buildpack-deps:bookworm
     depends_on: []
+    environment: *mise_environment
+    volumes: *mise_cache
     commands:
-      - node --test map-renderer/*.test.mjs
+      - ./bin/mise run ci:renderer
 
   - name: test-strava-gateway
-    image: golang:1.25.1-bookworm
+    image: buildpack-deps:bookworm
     depends_on: []
+    environment: *mise_environment
+    volumes: *mise_cache
     commands:
-      - cd strava-gateway && go vet ./... && go test -p 1 ./...
-
-  - name: lint-strava-gateway
-    image: golangci/golangci-lint:v2.14.0
-    depends_on: []
-    commands:
-      - cd strava-gateway && golangci-lint fmt --diff && golangci-lint run
+      - ./bin/mise run ci:gateway
 
   - name: build-api
     image: woodpeckerci/plugin-kaniko
@@ -86,7 +91,6 @@ steps:
         test-ui,
         test-map-renderer,
         test-strava-gateway,
-        lint-strava-gateway,
       ]
     backend_options:
       kubernetes:
@@ -138,7 +142,6 @@ steps:
         test-ui,
         test-map-renderer,
         test-strava-gateway,
-        lint-strava-gateway,
       ]
     settings:
       registry: registry.registry:5000
@@ -160,7 +163,6 @@ steps:
         test-ui,
         test-map-renderer,
         test-strava-gateway,
-        lint-strava-gateway,
       ]
     settings:
       registry: registry.registry:5000
@@ -171,7 +173,7 @@ steps:
       insecure-pull: true
       insecure-registry: true
       context: .
-      dockerfile: Dockerfile
+      dockerfile: map-renderer/Dockerfile
 
   - name: build-strava-gateway
     image: woodpeckerci/plugin-kaniko
@@ -182,7 +184,6 @@ steps:
         test-ui,
         test-map-renderer,
         test-strava-gateway,
-        lint-strava-gateway,
       ]
     settings:
       registry: registry.registry:5000
@@ -195,11 +196,25 @@ steps:
       context: strava-gateway
       dockerfile: strava-gateway/Dockerfile
 
+  - name: build-synthetics
+    image: woodpeckerci/plugin-kaniko
+    depends_on: [test-map-renderer, test-contracts]
+    settings:
+      registry: registry.registry:5000
+      repo: bike-synthetics
+      tags: ${CI_COMMIT_SHA}
+      insecure: true
+      skip_tls_verify: true
+      insecure-pull: true
+      insecure-registry: true
+      context: integration-tests
+      dockerfile: integration-tests/Dockerfile
+
   - name: deploy
     when:
       - event: [push, manual]
         branch: main
-    image: pulumi/pulumi-go:latest
+    image: buildpack-deps:bookworm
     depends_on:
       [
         build-api,
@@ -209,6 +224,7 @@ steps:
         build-strava-gateway,
       ]
     environment:
+      <<: *mise_environment
       PULUMI_ACCESS_TOKEN:
         from_secret: pulumi_access_token
       GITHUB_TOKEN:
@@ -217,24 +233,16 @@ steps:
         from_secret: pulumi_iac_repo
       IAC_DEPLOY_SSH_KEY:
         from_secret: iac_deploy_ssh_key
+    volumes: *mise_cache
     commands:
-      - sh .woodpecker/deploy.sh bike-rs
-      - sh .woodpecker/deploy.sh map-renderer
-      - sh .woodpecker/deploy.sh strava-gateway
-      - sh .woodpecker/deploy.sh bike-ui
+      - ./bin/mise run ci:deploy
 
-  - name: test-k6
+  - name: synthetic-smoke
     when:
       - event: [push, manual]
         branch: main
-    image: grafana/k6:2.3.0
-    depends_on: [deploy]
+    image: registry.registry:5000/bike-synthetics:${CI_COMMIT_SHA}
+    depends_on: [deploy, build-synthetics]
     environment:
-      BIKE_SYNTHETIC_KEY:
-        from_secret: bike_synthetic_key
       BIKE_UI_URL: http://ui.bike.svc.cluster.local:3000
       BIKE_API_URL: http://api.bike.svc.cluster.local:3000/api
-      BIKE_PUBLIC_URL:
-        from_secret: bike_public_url
-    commands:
-      - k6 run integration-tests/production.js

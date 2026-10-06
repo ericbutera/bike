@@ -22,43 +22,86 @@ the current development, CI, deployment, monitoring, and synthetic checks.
 
 | Check                 | Coverage                                                                    |
 | --------------------- | --------------------------------------------------------------------------- |
-| `test-contracts`      | HTTP contracts, shared assets, UI inventory, route inventory                |
+| `test-contracts`      | Canonical HTTP contract and shared asset copies                             |
 | `test-rust`           | Rust formatting, Clippy, workspace tests including native HTTP integrations |
-| `test-ui`             | ESLint, TypeScript, UI unit tests                                           |
-| `test-map-renderer`   | Renderer Node tests                                                         |
-| `test-strava-gateway` | Go vet and gateway tests                                                    |
+| `test-ui`             | ESLint, TypeScript, UI unit tests, formatting, generated OpenAPI client     |
+| `test-map-renderer`   | Renderer ESLint, Node tests, and formatting                                 |
+| `test-strava-gateway` | golangci-lint (including Go vet), formatting, gateway tests                 |
 
-Database-dependent gateway cases need `TEST_DATABASE_URL`; the regular CI test
-step has no test database. UI browser tests remain available through the
-[UI integration guide](../bike-ui/tests/e2e/README.md).
+Every workflow command calls the committed [`bin/mise`](../bin/mise) wrapper
+and an existing named task. The wrapper installs the verified mise version in
+the root config's `vars.mise_version`. Language tool versions come from the
+owning `mise.toml`; shared Node, Go, formatter, and hook pins are inherited
+from the root. A generic build image supplies bootstrap dependencies;
+mise selects and installs the check toolchain.
+CI installs only the tools needed by each check and shares its tool cache.
+The same entry points run locally:
 
-The API, UI, renderer, and gateway builds run in parallel. The worker build
-follows that wave so the two Rust builds remain separate. Rust Kaniko steps
-request four CPUs and 8 GiB of memory each and reuse the registry build cache.
+```sh
+./bin/mise run ci:contracts
+./bin/mise run ci:rust
+./bin/mise run ci:ui
+./bin/mise run ci:renderer
+./bin/mise run ci:gateway
+```
 
-One deployment step invokes the Pulumi helper in order: Bike Rust, map
-renderer, Strava gateway, then Bike UI.
-API and worker images share a commit tag; the infrastructure stack runs its
-migration Job before updating them. The map renderer and gateway share a Pulumi
-stack, so their applies run one after the other.
+The root `rust:check`, `renderer:check`, and component `check` tasks own the
+actual checks. `ci:deploy` calls `deploy:image` for each component. Image builds
+use Woodpecker's Kaniko plugin. The final synthetic step uses the standalone
+k6 image entrypoint; it needs no mise bootstrap or cluster credentials at runtime.
 
-After deployment, `test-k6` runs the [k6 journey](../integration-tests/README.md)
-against the internal API and UI services, with separate public availability and
-credential-rejection checks. Every assertion must pass for the pipeline to
-succeed. Manual runs on `main` use the same sequence.
+When upgrading mise, change `vars.mise_version`, then run
+`mise run mise:bootstrap:sync`. This follows
+[mise's CI guidance](https://mise.jdx.dev/continuous-integration.html).
 
-The root prek hook validates the k6 script with `k6 inspect` before commit.
+## Build version ownership
+
+Root mise vars pin Node, npm, pnpm, Rust, Go, k6, runtime/database images, and
+cargo-watch. Mise tools and exported build variables use those values directly.
+Compose passes the language variables as Docker build arguments; renderer,
+synthetic, and browser image tasks do the same. Specialized protobuf generator
+pins use mise's Go backend in the gateway config. There are no version-generation
+or custom configuration-validation scripts.
+
+Standalone Docker/Kaniko builds must retain explicit matching ARG defaults:
+Docker chooses base images before project configuration can execute. Update
+those defaults and native package-manager metadata when upgrading a pin.
+The workflow's bootstrap and plugin images are explicit CI inputs. These are
+manual synchronization points, not automatically enforced version ownership.
+The renderer's Playwright image must match its locked package version.
+
+Run `mise run images:check` for native Docker checks. Update the mise bootstrap
+with `mise run mise:bootstrap:sync`. Keep dependency locks in their native
+package managers; use frozen installs. The renderer Dockerfile lives in
+`map-renderer/` and retains the root build context for the shared protocol.
+The UI explicitly uses ESLint 9 because its Next plugins require that major;
+the renderer uses ESLint 10. All lint invocations reject warnings.
 
 ## Image promotion
 
 The CI workflow clones complete source history and publishes images tagged with
 the full source commit SHA. The [deployment wrapper](../.woodpecker/deploy.sh)
-clones IaC, then invokes its `scripts/deploy-bike-image.sh` helper.
+clones IaC, then invokes its `deploy:bike:image` mise task. That task owns
+Go/Pulumi installation and calls the guarded `scripts/deploy-bike-image.sh`
+helper. The IaC task change must be reviewed and published before a Bike
+release uses this handoff.
 
 The helper updates only the selected component's image pin, commits it to IaC,
 and applies the owning stack. It checks source ancestry before changing a pin,
 rejects divergent history, and skips an older release if a newer image already
 won. Competing IaC pushes are retried against the latest main branch.
+
+Agents keep work local until the user signs off the completed feature and
+explicitly authorizes publishing its reviewed commits. Implementation,
+corrections, and tests form one coherent feature commit; requested specs may
+have a separate commit. Passing checks and earlier feature approvals do not
+authorize a new push.
+
+Consolidating already-published commits also changes release ancestry. Keep a
+local recovery reference and review the old production image pin and new
+source commit before authorizing a remote rewrite. The IaC release guard
+requires an explicit reviewed history transition for divergent source history;
+do not weaken that guard to deploy a rewritten branch.
 
 | Pulumi project / stack           | Resources                                                              |
 | -------------------------------- | ---------------------------------------------------------------------- |

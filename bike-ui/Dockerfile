@@ -1,17 +1,25 @@
-FROM node:25.2.1-alpine AS deps
+ARG NODE_VERSION=24.21.0
+ARG NPM_VERSION=12.2.0
+ARG PNPM_VERSION=12.9.1
+
+FROM node:${NODE_VERSION}-alpine AS base
+ARG NPM_VERSION
+ARG PNPM_VERSION
 WORKDIR /app
-RUN npm install -g pnpm@9.15.9
-COPY package.json pnpm-lock.yaml* ./
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN npm install -g "npm@${NPM_VERSION}"
+RUN npm install -g "pnpm@${PNPM_VERSION}"
+
+FROM base AS deps
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
-FROM node:25.2.1-alpine AS builder
-WORKDIR /app
-RUN npm install -g pnpm@9.15.9
+FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN pnpm run build
 
-FROM node:25.2.1-alpine AS runner
+FROM node:${NODE_VERSION}-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000

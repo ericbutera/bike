@@ -1,0 +1,8 @@
+**
+!bike-ui/package.json
+!bike-ui/pnpm-lock.yaml
+!bike-ui/pnpm-workspace.yaml
+!bike-ui/playwright.config.mjs
+!bike-ui/tests/e2e/**
+!bike-rs/docs/openapi/openapi.json
+!bike-rs/api/tests/fixtures/platform/uploads/**

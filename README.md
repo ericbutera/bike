@@ -154,8 +154,9 @@ rendering have separate service boundaries; the
 
 ## Development and verification
 
-Tool versions and commands live in each component's `mise.toml`. Start with the
-checks for the component you changed:
+Shared tool versions live in the root `mise.toml`; components inherit them and
+own their specialized pins and commands. `lint` calls `lint:rs`, `lint:go`,
+`lint:ui`, and `lint:maps`. Start with the checks for the component you changed:
 
 ```sh
 mise tasks                  # Discover available tasks.
@@ -169,11 +170,10 @@ mise run strava:test        # Gateway tests.
 ```
 
 `mise run test:integration` runs the native API integration suite with an isolated
-SQLite fixture. `mise run contracts:check` verifies contract and route wiring.
+SQLite fixture. `mise run contracts:check` compares canonical contracts and shared asset copies.
 `mise run check` runs the combined component, protobuf, and contract checks.
 
-Production synthetics use k6 with an internal-only credential and automatically
-discovered fixture IDs. See the [production check instructions](integration-tests/README.md).
+Production synthetics use a standalone k6 image for API health and UI availability. See the [production check instructions](integration-tests/README.md).
 Browser regressions live with the [UI](bike-ui/tests/e2e/README.md).
 
 ## Documentation

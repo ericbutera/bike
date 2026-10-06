@@ -44,6 +44,15 @@ types:
 
 Keep a clean history. Do not make multiple commits for the same thing, use amend & force with lease instead.
 
+Do not push to a remote until the user explicitly signs off the completed
+feature and authorizes publishing its reviewed commits. Keep implementation,
+corrections, and tests in one coherent feature commit; amend locally while
+review is ongoing. Separate specifications when requested. Passing checks,
+requests to continue, and approval of a previous feature are not sign-off for
+new work. Prepare history consolidation locally before requesting publication;
+use `--force-with-lease` only after an approved remote rewrite. Review any
+production image ancestry implications before publishing rewritten history.
+
 Do not start commits with the word add (eg: `feat: added architecture diagram`), instead use `feat: architecture diagram`.
 
 ## code standards
@@ -80,6 +89,14 @@ Before running Node, Rust, Go, Python, pnpm, npm, cargo, task, or similar comman
 - check `mise.toml`
 - run tools through `mise exec -- <command>`
 - if tools are missing, run `mise install`
+
+Prefer an existing named `mise run <task>` over a raw tool command. Keep
+`lint` as direct calls to the owning `lint:rs`, `lint:go`, `lint:ui`, and
+`lint:maps` tasks. Use native tool commands in mise config rather than custom
+wrapper scripts or configuration validators. CI/CD must
+call the same owning tasks used locally; keep tool versions in mise config and
+avoid duplicating commands or pins in workflow YAML. The pinned `bin/mise`
+bootstrap provides mise on runners; language checks belong in the tasks.
 
 Examples:
 

@@ -1,4 +1,6 @@
 ARG GO_VERSION=1.25.1
+ARG RUNTIME_IMAGE=debian:bookworm-slim
+
 FROM golang:${GO_VERSION}-bookworm AS build
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -11,7 +13,7 @@ RUN CGO_ENABLED=0 go build -o /out/gateway ./cmd/gateway && \
     CGO_ENABLED=0 go build -o /out/import-rust ./cmd/import_rust && \
     CGO_ENABLED=0 go build -o /out/export-rust ./cmd/export_rust
 
-FROM debian:bookworm-slim
+FROM ${RUNTIME_IMAGE}
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/gateway /app/gateway
 COPY --from=build /out/migrate /app/migrate

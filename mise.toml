@@ -1,11 +1,69 @@
+[vars]
+mise_version = "2026.10.3"
+node_version = "24.21.0"
+npm_version = "12.2.0"
+pnpm_version = "12.9.1"
+rust_version = "1.97.1"
+go_version = "1.25.1"
+k6_version = "2.3.0"
+postgres_image = "postgres:17"
+gateway_postgres_image = "postgres:16"
+tracing_image = "jaegertracing/all-in-one:latest"
+runtime_image = "debian:bookworm-slim"
+cargo_watch_version = "8.5.3"
+
 [tools]
-node = "25.2.1"
-ruby = "3.4.11"
-go = "1.25.1"
+node = "{{vars.node_version}}"
+"npm:npm" = "{{vars.npm_version}}"
+pnpm = "{{vars.pnpm_version}}"
+rust = { version = "{{vars.rust_version}}", profile = "minimal", components = ["rustfmt", "clippy"] }
+go = "{{vars.go_version}}"
 prek = "0.4.12"
 protoc = "36.2"
-k6 = "2.3.0"
+k6 = "{{vars.k6_version}}"
 "npm:prettier" = "3.7.4"
+"aqua:woodpecker-ci/woodpecker/woodpecker-cli" = "3.18.1"
+
+[env]
+_.path = { path = ["{{config_root}}/bin", "{% if tools['npm:npm'] is defined %}{{tools['npm:npm'].path}}/node_modules/.bin{% else %}{{config_root}}/bin{% endif %}"], tools = true }
+NODE_VERSION = "{{vars.node_version}}"
+NPM_VERSION = "{{vars.npm_version}}"
+PNPM_VERSION = "{{vars.pnpm_version}}"
+RUST_VERSION = "{{vars.rust_version}}"
+GO_VERSION = "{{vars.go_version}}"
+RUNTIME_IMAGE = "{{vars.runtime_image}}"
+CARGO_WATCH_VERSION = "{{vars.cargo_watch_version}}"
+BIKE_POSTGRES_IMAGE = "{{vars.postgres_image}}"
+STRAVA_GATEWAY_POSTGRES_IMAGE = "{{vars.gateway_postgres_image}}"
+BIKE_TRACING_IMAGE = "{{vars.tracing_image}}"
+NPM_CONFIG_CACHE = "{{config_root}}/.cache/npm"
+PNPM_CONFIG_STORE_DIR = "{{config_root}}/.cache/pnpm-store"
+
+[tasks."renderer:build"]
+description = "Build the renderer image using mise version pins"
+run = '''
+docker build --file map-renderer/Dockerfile --tag bike-map-renderer:review --build-arg NODE_VERSION --build-arg NPM_VERSION --build-arg PLAYWRIGHT_VERSION="$(npm --prefix map-renderer pkg get dependencies.playwright | tr -d '"')" .
+'''
+
+[tasks."images:check"]
+description = "Run native Dockerfile checks"
+run = '''
+set -eu
+for dockerfile in bike-rs/api/Dockerfile bike-rs/worker/Dockerfile bike-rs/api/Dockerfile.dev bike-rs/worker/Dockerfile.dev; do
+  docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --file "$dockerfile" bike-rs
+done
+for dockerfile in bike-ui/Dockerfile bike-ui/Dockerfile.dev; do
+  docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --file "$dockerfile" bike-ui
+done
+docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --file bike-ui/Dockerfile.e2e .
+docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --file strava-gateway/Dockerfile strava-gateway
+docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --file map-renderer/Dockerfile .
+docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --file integration-tests/Dockerfile integration-tests
+'''
+
+[tasks."mise:bootstrap:sync"]
+description = "Regenerate the verified mise installer using the configured bootstrap pin"
+run = "mise generate install-script --version {{vars.mise_version}} --write bin/mise"
 
 [tasks."compose:config"]
 description = "Validate the shared Bike services Compose stack"
@@ -25,11 +83,71 @@ run = ["mise --cd bike-rs run fmt:check", "mise --cd bike-rs run lint", "mise --
 
 [tasks."ui:check"]
 description = "Run shared UI type, test, build, and format checks"
-run = ["mise --cd bike-ui run lint", "mise --cd bike-ui run typecheck", "mise --cd bike-ui run test", "mise --cd bike-ui run build", "mise --cd bike-ui run format:check", "mise --cd bike-ui run openapi:check"]
+run = ["mise --cd bike-ui run check", "mise --cd bike-ui run build"]
 
-[tasks.lint]
-description = "Run Rust, UI, and gateway linters and renderer formatting"
-run = ["mise --cd bike-rs run fmt:check", "mise --cd bike-rs run lint", "mise --cd bike-ui run lint", "mise --cd strava-gateway run lint", "mise run format:check"]
+[tasks."renderer:check"]
+description = "Check renderer lint and unit tests"
+run = ["mise run lint:maps", "mise run test"]
+
+[tasks."renderer:deps"]
+description = "Install locked renderer application and lint dependencies"
+run = "npm --prefix map-renderer ci"
+
+[tasks."ci:contracts"]
+description = "Check canonical asset mirrors"
+run = ["mise install aqua:woodpecker-ci/woodpecker/woodpecker-cli", "mise run ci:check", "mise run contracts:check"]
+
+[tasks."ci:check"]
+description = "Validate the workflow using the native Woodpecker CLI"
+run = "woodpecker-cli lint --strict .woodpecker"
+
+[tasks."ci:rust"]
+description = "Install Rust tooling and run the shared backend checks"
+run = ["mise --cd bike-rs install rust", "mise run rust:check"]
+
+[tasks."ci:ui"]
+description = "Install UI tooling and run the shared UI checks"
+run = ["mise --cd bike-ui install node npm:npm pnpm npm:prettier", "mise --cd bike-ui run check"]
+
+[tasks."ci:renderer"]
+description = "Install renderer tooling and run the shared renderer checks"
+run = ["mise install node npm:npm npm:prettier", "mise run renderer:check"]
+
+[tasks."ci:gateway"]
+description = "Install gateway tooling and run the shared gateway checks"
+run = ["mise --cd strava-gateway install go golangci-lint", "mise --cd strava-gateway run check"]
+
+[tasks."deploy:image"]
+description = "Promote one signed-off Bike component through the owning IaC task"
+usage = 'arg "<component>"'
+run = '''
+set -eu
+
+: "${GITHUB_TOKEN:?GITHUB_TOKEN is required}"
+: "${PULUMI_IAC_REPO:?PULUMI_IAC_REPO is required}"
+
+component="${usage_component?}"
+export BIKE_SOURCE_DIR="{{config_root}}"
+# Source credentials belong to the trusted clone plugin, not the IaC deploy token.
+if [ "$(git -C "$BIKE_SOURCE_DIR" rev-parse --is-shallow-repository)" = true ]; then
+  echo 'Bike release ancestry requires the workflow clone to use partial=false and depth=0' >&2
+  exit 1
+fi
+
+deploy_dir="$(mktemp -d "${TMPDIR:-/tmp}/bike-iac.XXXXXX")"
+trap 'rm -rf "$deploy_dir"' EXIT
+git clone --quiet "https://x-access-token:${GITHUB_TOKEN}@github.com/${PULUMI_IAC_REPO}" "$deploy_dir/pulumi-iac"
+mise trust --yes "$deploy_dir/pulumi-iac/mise.toml"
+mise --cd "$deploy_dir/pulumi-iac" run deploy:bike:image "$component"
+'''
+
+[tasks."ci:deploy"]
+description = "Promote the signed-off application and service images in order"
+run = ["mise run deploy:image bike-rs", "mise run deploy:image map-renderer", "mise run deploy:image strava-gateway", "mise run deploy:image bike-ui"]
+
+[tasks."lint"]
+description = "Run each language linter, formatter, and applicable type checks"
+run = ["mise run lint:rs", "mise run lint:go", "mise run lint:ui", "mise run lint:maps"]
 
 [tasks."hooks:install"]
 description = "Install the repository-root prek pre-commit hook"
@@ -57,40 +175,62 @@ run = "mise --cd strava-gateway run test"
 run = "mise --cd strava-gateway run build"
 
 [tasks."generate:protobuf"]
-description = "Regenerate the checked-in Strava gateway Go protobuf and gRPC bindings"
-run = "sh scripts/generate-protobuf.sh"
+description = "Generate or check gateway protobuf bindings"
+run = "mise --cd strava-gateway run generate:protobuf"
 
 [tasks."generate:protobuf:check"]
-description = "Check that the Strava gateway Go protobuf and gRPC bindings are current"
-run = "sh scripts/generate-protobuf.sh --check"
+description = "Generate or check gateway protobuf bindings"
+run = "mise --cd strava-gateway run generate:protobuf:check"
 
 [tasks."assets:sync"]
-description = "Synchronize intentional build-context mirrors from their canonical owners"
-run = "node scripts/sync-shared-assets.mjs"
+description = "Copy shared assets from their canonical owners"
+run = ["cp bike-rs/docs/openapi/openapi.json contracts/openapi/openapi.json", "cp bike-rs/docs/openapi/openapi.yaml contracts/openapi/openapi.yaml", "cp proto/bike/strava/v1/gateway.proto bike-rs/proto/bike/strava/v1/gateway.proto", "cp map-renderer/styles/fiord-v1.json bike-ui/public/map-styles/fiord-v1.json", "cp map-renderer/styles/route-light-v1.json bike-ui/public/map-styles/route-light-v1.json", "cp bike-rs/bike-core/testdata/strava-real-ride.json strava-gateway/internal/provider/testdata/strava-real-ride.json", "cp bike-rs/bike-core/testdata/strava-real-ride.json bike-ui/tests/e2e/fixtures/strava-real-ride.json"]
 
 [tasks."format:check"]
-run = "prettier map-renderer/*.mjs map-renderer/index.html --check"
+description = "Check renderer and synthetic formatting"
+run = "prettier map-renderer/*.mjs map-renderer/index.html integration-tests/*.js --check"
 
 [tasks."contracts:check"]
-description = "Check Rust HTTP contracts, asset copies, UI inventory, and routes"
-run = ["ruby scripts/check-contracts.rb", "ruby scripts/audit-api-routes.rb"]
-
-[tasks."audit:api:write"]
-description = "Refresh the reviewed Rust source-route inventory"
-run = "ruby scripts/audit-api-routes.rb --write"
+description = "Compare canonical contracts and shared asset mirrors"
+run = ["cmp bike-rs/docs/openapi/openapi.json contracts/openapi/openapi.json", "cmp bike-rs/docs/openapi/openapi.yaml contracts/openapi/openapi.yaml", "cmp proto/bike/strava/v1/gateway.proto bike-rs/proto/bike/strava/v1/gateway.proto", "cmp map-renderer/styles/fiord-v1.json bike-ui/public/map-styles/fiord-v1.json", "cmp map-renderer/styles/route-light-v1.json bike-ui/public/map-styles/route-light-v1.json", "cmp bike-rs/bike-core/testdata/strava-real-ride.json strava-gateway/internal/provider/testdata/strava-real-ride.json", "cmp bike-rs/bike-core/testdata/strava-real-ride.json bike-ui/tests/e2e/fixtures/strava-real-ride.json"]
 
 [tasks."test:integration"]
 description = "Run native Rust API integration tests"
 run = "mise --cd bike-rs run test:integration"
 
-[tasks."test:production"]
-description = "Run the k6 production activity, segment, race, and rendered-image checks"
-run = "sh scripts/test-production.sh"
-
-[tasks."test:production:browser"]
-description = "Run the separate authenticated production browser e2e journey"
-run = "sh scripts/test-production.sh browser"
-
 [tasks."synthetics:check"]
-description = "Validate the k6 production runner configuration"
-run = "k6 inspect integration-tests/production.js"
+description = "Validate the k6 synthetic configuration"
+run = "k6 inspect integration-tests/smoke.js"
+
+[tasks."lint:rs"]
+description = "Check Rust formatting and Clippy"
+run = ["mise --cd bike-rs run fmt:check", "mise --cd bike-rs run lint"]
+
+[tasks."lint:go"]
+description = "Check Go formatting, vet, and golangci-lint"
+run = "mise --cd strava-gateway run lint"
+
+[tasks."lint:ui"]
+description = "Check UI ESLint, TypeScript, and formatting"
+run = "mise --cd bike-ui run lint:check"
+
+[tasks."lint:maps"]
+description = "Check renderer and synthetic JavaScript"
+run = ["mise run renderer:deps", "map-renderer/node_modules/.bin/eslint --config map-renderer/eslint.config.mjs map-renderer integration-tests/*.js --max-warnings=0", "mise run format:check"]
+
+[tasks."synthetics:build"]
+description = "Build the standalone k6 synthetic image"
+run = "docker build --build-arg K6_VERSION={{vars.k6_version}} --tag bike-synthetics:review integration-tests"
+
+[tasks."synthetics:run"]
+description = "Run the synthetic image against explicit reachable URLs"
+run = "docker run --rm --env BIKE_API_URL --env BIKE_UI_URL bike-synthetics:review"
+
+[tasks."e2e:build"]
+description = "Build the standalone browser test image"
+run = "docker build --build-arg NODE_VERSION --build-arg NPM_VERSION --build-arg PNPM_VERSION --tag bike-e2e:review --file bike-ui/Dockerfile.e2e ."
+
+[tasks."e2e:run"]
+description = "Run browser tests against an explicitly configured test environment"
+usage = 'arg "[spec]" default="tests/e2e/platform-synthetic.spec.mjs"'
+run = 'docker run --rm --init --ipc=host --env BIKE_UI_URL --env BIKE_API_URL --env BIKE_PUBLIC_URL --env BIKE_SYNTHETIC_KEY --env BIKE_TEST_ACTIVITY_ID --env BIKE_TEST_SEGMENT_ID --env BIKE_TEST_RACE_EFFORT_IDS bike-e2e:review "${usage_spec?}"'

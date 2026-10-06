@@ -1,5 +1,12 @@
 # Production verification
 
+Historical verification date: 2026-10-04.
+
+The port-forward wrappers and broad k6 journey described below have been retired.
+Current runners are documented in [the synthetic guide](../integration-tests/README.md)
+and [the browser guide](../bike-ui/tests/e2e/README.md). These historical results
+do not establish verification of the replacement images.
+
 Verification date: 2026-10-04. This record covers the restored Bike repository,
 its component release workflows, and the running production services.
 

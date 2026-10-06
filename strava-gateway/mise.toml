@@ -1,5 +1,6 @@
 [tools]
-go = "1.25.1"
+"go:google.golang.org/protobuf/cmd/protoc-gen-go" = "v1.36.6"
+"go:google.golang.org/grpc/cmd/protoc-gen-go-grpc" = "v1.5.1"
 golangci-lint = "2.14.0"
 
 [env]
@@ -10,6 +11,10 @@ GOLANGCI_LINT_CACHE = "{{config_root}}/.cache/golangci-lint"
 [tasks.test]
 run = "go test -p 1 ./..."
 
+[tasks.check]
+description = "Run the shared gateway lint and fixture tests"
+run = ["mise run lint", "mise run test"]
+
 [tasks.lint]
 description = "Run gateway formatting, Go vet, and golangci-lint"
 run = ["golangci-lint fmt --diff", "go vet ./...", "golangci-lint run"]
@@ -19,11 +24,18 @@ run = ["go build ./cmd/gateway", "go build ./cmd/migrate", "go build ./cmd/worke
 
 [tasks."generate:protobuf"]
 description = "Regenerate the checked-in gateway protobuf and gRPC bindings"
-run = "mise --cd .. run generate:protobuf"
+run = 'protoc -I ../proto --go_out=. --go_opt=module=github.com/ericbutera/bike-services/strava-gateway --go-grpc_out=. --go-grpc_opt=module=github.com/ericbutera/bike-services/strava-gateway ../proto/bike/strava/v1/gateway.proto'
 
 [tasks."generate:protobuf:check"]
 description = "Check the checked-in gateway protobuf and gRPC bindings"
-run = "mise --cd .. run generate:protobuf:check"
+run = '''
+set -eu
+output_dir=$(mktemp -d)
+trap 'rm -rf "$output_dir"' EXIT
+protoc -I ../proto --go_out="$output_dir" --go_opt=module=github.com/ericbutera/bike-services/strava-gateway --go-grpc_out="$output_dir" --go-grpc_opt=module=github.com/ericbutera/bike-services/strava-gateway ../proto/bike/strava/v1/gateway.proto
+cmp "$output_dir/gen/bike/strava/v1/gateway.pb.go" gen/bike/strava/v1/gateway.pb.go
+cmp "$output_dir/gen/bike/strava/v1/gateway_grpc.pb.go" gen/bike/strava/v1/gateway_grpc.pb.go
+'''
 
 [tasks."db:migrate"]
 run = "go run ./cmd/migrate"

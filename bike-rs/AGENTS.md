@@ -17,6 +17,10 @@ Examples:
 If a task exists for the workflow, use that task instead of spelling out the
 underlying commands manually.
 
+CI/CD must reuse these owning mise tasks. Do not push feature work until the
+user has signed off its completed behavior and reviewed commit grouping;
+consolidate and amend locally during review, following the root Git rules.
+
 ## Verification
 
 Add or update happy-path test coverage for every feature change.

@@ -5,7 +5,12 @@ include:
 
 services:
   bike-maps:
-    build: .
+    build:
+      context: .
+      dockerfile: map-renderer/Dockerfile
+      args:
+        NODE_VERSION: ${NODE_VERSION:-24.21.0}
+        NPM_VERSION: ${NPM_VERSION:-12.2.0}
     environment:
       MAP_IMAGE_CACHE_DIR: /cache
       MAP_IMAGE_CACHE_TTL_SECONDS: ${MAP_IMAGE_CACHE_TTL_SECONDS:-604800}

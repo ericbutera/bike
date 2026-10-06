@@ -17,7 +17,7 @@ import {
   Histogram,
   Registry,
   collectDefaultMetrics,
-} from "prom-client";
+} from "@prometheus-io/client";
 import { shutdownTracing } from "./instrumentation.mjs";
 
 const cacheDir = process.env.MAP_IMAGE_CACHE_DIR ?? "/cache";

@@ -90,21 +90,19 @@ mise tasks
 | Command from the root              | Checks                                                                |
 | ---------------------------------- | --------------------------------------------------------------------- |
 | `mise run rust:check`              | Rust formatting, Clippy, workspace tests                              |
-| `mise run lint`                    | Rust Clippy, UI ESLint, gateway Go vet, renderer formatting           |
+| `mise run lint`                    | `lint:rs`, `lint:go`, `lint:ui`, and `lint:maps`                      |
 | `mise run hooks:check`             | All repository-root prek checks against tracked files                 |
-| `mise run ui:check`                | UI ESLint, typecheck, tests, build, format, client freshness           |
+| `mise run ui:check`                | UI ESLint, typecheck, tests, build, format, client freshness          |
 | `mise run test`                    | Map renderer tests                                                    |
 | `mise run strava:test`             | Gateway tests; database cases require `TEST_DATABASE_URL`             |
 | `mise run generate:protobuf:check` | Checked-in gateway protobuf bindings                                  |
-| `mise run contracts:check`         | Rust contract copies, shared assets, UI inventory, source routes      |
+| `mise run contracts:check`         | Canonical contract and shared asset copies                            |
 | `mise run test:integration`        | Real Axum routes and SeaORM queries with isolated SQLite fixture data |
 | `mise run compose:config`          | Complete local Compose configuration                                  |
 | `mise run check`                   | Combined Rust, UI, renderer, gateway, protobuf checks                 |
 
 The repository-root `prek.toml` routes checks to each owning mise task.
-`mise run format:staged` runs the same checks for staged files. The UI retains
-React Compiler adoption diagnostics as warnings while the compiler is disabled;
-Next.js checks, hook usage rules, and TypeScript checks remain release gates.
+`mise run format:staged` runs the same checks for staged files. ESLint uses zero-warning enforcement; Clippy denies warnings.
 
 For a targeted Rust check, use the component's toolchain:
 

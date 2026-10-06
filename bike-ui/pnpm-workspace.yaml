@@ -1,0 +1,5 @@
+# Mise selects the package manager; a mismatched executable must fail.
+pmOnFail: error
+allowBuilds:
+  sharp@0.34.5: true
+  unrs-resolver@1.12.2: true

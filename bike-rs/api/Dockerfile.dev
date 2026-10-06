@@ -1,4 +1,8 @@
-FROM rust:1.97.1-bookworm
+ARG RUST_VERSION=1.97.1
+ARG CARGO_WATCH_VERSION=8.5.3
+
+FROM rust:${RUST_VERSION}-bookworm
+ARG CARGO_WATCH_VERSION
 WORKDIR /app
-RUN cargo install --locked cargo-watch
+RUN cargo install --locked --version "${CARGO_WATCH_VERSION}" cargo-watch
 CMD ["cargo", "watch", "-w", "api", "-w", "bike-core", "-w", "migration", "-w", "Cargo.toml", "-x", "run --bin api"]

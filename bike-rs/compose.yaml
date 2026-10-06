@@ -2,7 +2,7 @@ name: bike-rust
 
 services:
   postgres:
-    image: postgres:17
+    image: ${BIKE_POSTGRES_IMAGE:-postgres:17}
     environment:
       POSTGRES_DB: 'bike'
       POSTGRES_USER: postgres
@@ -21,6 +21,9 @@ services:
     build:
       context: .
       dockerfile: api/Dockerfile.dev
+      args:
+        RUST_VERSION: ${RUST_VERSION:-1.97.1}
+        CARGO_WATCH_VERSION: ${CARGO_WATCH_VERSION:-8.5.3}
     command: ['cargo', 'run', '--locked', '--bin', 'migration', '--', 'up']
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/bike
@@ -34,6 +37,9 @@ services:
     build:
       context: .
       dockerfile: api/Dockerfile.dev
+      args:
+        RUST_VERSION: ${RUST_VERSION:-1.97.1}
+        CARGO_WATCH_VERSION: ${CARGO_WATCH_VERSION:-8.5.3}
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/bike
       RUST_LOG: info,sea_orm=trace,sqlx=warn,tower_http=trace
@@ -69,6 +75,9 @@ services:
     build:
       context: .
       dockerfile: worker/Dockerfile.dev
+      args:
+        RUST_VERSION: ${RUST_VERSION:-1.97.1}
+        CARGO_WATCH_VERSION: ${CARGO_WATCH_VERSION:-8.5.3}
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/bike
       RUST_LOG: info,sea_orm=trace,sqlx=warn
@@ -92,6 +101,10 @@ services:
     build:
       context: ../bike-ui
       dockerfile: Dockerfile.dev
+      args:
+        NODE_VERSION: ${NODE_VERSION:-24.21.0}
+        NPM_VERSION: ${NPM_VERSION:-12.2.0}
+        PNPM_VERSION: ${PNPM_VERSION:-12.9.1}
     environment:
       API_URL: http://localhost:${BIKE_RUST_API_PORT:-3000}/api
       CDN_URL: http://localhost:${BIKE_RUST_API_PORT:-3000}/uploads
@@ -108,7 +121,7 @@ services:
       - ui_next_node_modules:/app/node_modules
 
   jaeger:
-    image: jaegertracing/all-in-one:latest
+    image: ${BIKE_TRACING_IMAGE:-jaegertracing/all-in-one:latest}
     profiles:
       - tracing
     environment:

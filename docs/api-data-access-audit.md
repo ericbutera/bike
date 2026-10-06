@@ -1,18 +1,11 @@
 # Bike API and data-access review
 
-The [source-route inventory](api-route-audit.json) records actual Rust
-registrations alongside the distributed OpenAPI contract. It detects source
-route drift and contract operations without a registered handler. It does not
-establish runtime authorization, response behavior, or production performance.
+The [source-route inventory](api-route-audit.json) retains a historical source
+review. It is not an automated route or authorization check. Use the owning
+native HTTP tests (`mise run test:integration`) for route behavior and review
+OpenAPI changes alongside controller registrations. `mise run contracts:check`
+compares distributed asset copies with their canonical owners.
 
-From the repository root:
-
-```sh
-mise run contracts:check
-mise run audit:api:write
-```
-
-Refresh the inventory after a deliberate route change and review the diff.
 The owning controller adapts HTTP; application services delegate queries to
 entity/model modules. Bounds belong in SQL before materialization, while
 calculations must preserve their complete scoped input.
