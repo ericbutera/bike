@@ -4,13 +4,13 @@ node_version = "24.21.0"
 npm_version = "12.2.0"
 pnpm_version = "12.9.1"
 rust_version = "1.97.1"
-go_version = "1.25.1"
+go_version = "1.27.1"
 k6_version = "2.3.0"
 postgres_image = "postgres:17"
 gateway_postgres_image = "postgres:16"
-tracing_image = "jaegertracing/all-in-one:latest"
+tracing_image = "cr.jaegertracing.io/jaegertracing/jaeger:2.22.0"
 runtime_image = "debian:bookworm-slim"
-cargo_watch_version = "8.5.3"
+watchexec_version = "2.8.0"
 
 [tools]
 node = "{{vars.node_version}}"
@@ -18,6 +18,7 @@ node = "{{vars.node_version}}"
 pnpm = "{{vars.pnpm_version}}"
 rust = { version = "{{vars.rust_version}}", profile = "minimal", components = ["rustfmt", "clippy"] }
 go = "{{vars.go_version}}"
+watchexec = "{{vars.watchexec_version}}"
 prek = "0.4.12"
 protoc = "36.2"
 k6 = "{{vars.k6_version}}"
@@ -32,7 +33,7 @@ PNPM_VERSION = "{{vars.pnpm_version}}"
 RUST_VERSION = "{{vars.rust_version}}"
 GO_VERSION = "{{vars.go_version}}"
 RUNTIME_IMAGE = "{{vars.runtime_image}}"
-CARGO_WATCH_VERSION = "{{vars.cargo_watch_version}}"
+WATCHEXEC_VERSION = "{{vars.watchexec_version}}"
 BIKE_POSTGRES_IMAGE = "{{vars.postgres_image}}"
 STRAVA_GATEWAY_POSTGRES_IMAGE = "{{vars.gateway_postgres_image}}"
 BIKE_TRACING_IMAGE = "{{vars.tracing_image}}"
@@ -87,7 +88,7 @@ run = ["mise --cd bike-ui run check", "mise --cd bike-ui run build"]
 
 [tasks."renderer:check"]
 description = "Check renderer lint and unit tests"
-run = ["mise run lint:maps", "mise run test"]
+run = ["mise run lint:maps", "mise run test", "npm --prefix map-renderer audit"]
 
 [tasks."renderer:deps"]
 description = "Install locked renderer application and lint dependencies"

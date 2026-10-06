@@ -15,7 +15,7 @@
     "@opentelemetry/sdk-node": "0.222.0",
     "@opentelemetry/sdk-trace-base": "2.11.0",
     "@prometheus-io/client": "0.16.1",
-    "maplibre-gl": "6.11.2",
+    "maplibre-gl": "6.13.0",
     "playwright": "1.63.0"
   },
   "devDependencies": {

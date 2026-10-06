@@ -6,7 +6,11 @@ run = "pnpm install --frozen-lockfile"
 
 [tasks.check]
 description = "Install dependencies and run UI lint, type, fixture, format, and contract checks"
-run = ["mise run lint:check", "mise run test", "mise run openapi:check"]
+run = ["mise run lint:check", "mise run test", "mise run openapi:check", "mise run audit"]
+
+[tasks.audit]
+description = "Reject dependency advisories and incompatible peers"
+run = ["pnpm audit", "pnpm peers check"]
 
 [tasks."lint:check"]
 description = "Install locked dependencies and run strict lint, types, and formatting"

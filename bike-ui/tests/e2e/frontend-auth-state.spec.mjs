@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { protectedFrontendRoutes } from "./helpers/frontend-routes.mjs";
 import { openRoute } from "./helpers/ui.mjs";
+import { fakeProductApi } from "./helpers/product-fixtures.mjs";
 import {
   activityId,
   raceEffortIds,
@@ -119,6 +120,20 @@ test("forbidden segment comparison reads show the same access state", async ({
     const context = await browser.newContext({ colorScheme: "light" });
     const page = await context.newPage();
 
+    const state = await fakeProductApi(page, target);
+    await page.route(`**/api/segments/${segmentId}`, async (route) => {
+      await route.fulfill({
+        json: {
+          id: Number(segmentId),
+          title: "Fixture segment",
+          mode: "xc",
+          distance_meters: 1800,
+          route_points: [],
+          efforts: [],
+        },
+      });
+    });
+
     await page.route("**/api/auth/current", async (route) => {
       await route.fulfill({
         status: 200,
@@ -146,6 +161,8 @@ test("forbidden segment comparison reads show the same access state", async ({
         "Unable to load segment comparison.",
       );
     }
+
+    expect(state.unexpected).toEqual([]);
 
     await context.close();
   }

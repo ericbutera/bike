@@ -80,16 +80,13 @@ function createOAuthProviderButtons(apiUrl: string) {
         {prefix}
         <div className="flex w-full flex-col gap-3">
           {visibleProviders.map((provider) => (
-            <button
+            <a
               key={provider.id}
-              type="button"
               className={buttonClassName(provider.id)}
-              onClick={() => {
-                window.location.assign(`${baseUrl}/oauth/${provider.id}`);
-              }}
+              href={`${baseUrl}/oauth/${provider.id}`}
             >
               {visibleProviders.length === 1 && text ? text : provider.label}
-            </button>
+            </a>
           ))}
         </div>
       </>

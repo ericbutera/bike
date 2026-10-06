@@ -1,6 +1,7 @@
 "use client";
 
-import maplibregl, {
+import * as maplibregl from "maplibre-gl";
+import {
   type GeoJSONSource,
   type MapLayerMouseEvent,
   type RasterTileSource,
@@ -167,8 +168,10 @@ export default function HeatmapMap({
           labels,
         );
       } else if (appliedPaletteId !== paletteId) {
-        for (const [property, value] of Object.entries(palettePaint)) {
-          instance.setPaintProperty(SOURCE, property, value);
+        for (const property of Object.keys(palettePaint) as Array<
+          keyof typeof palettePaint
+        >) {
+          instance.setPaintProperty(SOURCE, property, palettePaint[property]);
         }
       }
       appliedPaletteId = paletteId;
