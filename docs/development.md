@@ -142,7 +142,9 @@ copies are explicit in root mise tasks. After changing an owning asset, run
 ## Inspect traces
 
 Local span export defaults to `OTEL_TRACES_EXPORTER=none`. Enable the optional
-Jaeger service and point API/worker export to its container address:
+Jaeger 2 service and point API/worker export to its container address. The pinned
+image uses its built-in all-in-one configuration with transient in-memory trace
+storage and OTLP receivers on ports 4317/4318:
 
 ```sh
 OTEL_TRACES_EXPORTER=otlp OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318 \

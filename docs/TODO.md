@@ -23,8 +23,9 @@ Keep private activity data out of committed reports and fixtures.
 
 ## System upgrade checklist
 
-Version audit checked on **2026-10-06**. This is planned work; no upgrades or
-deployments were performed by this audit. Targets are released stable versions
+Version audit checked on **2026-10-06**. Checked items in the first group are
+implemented and verified locally; production deployment remains separate.
+Unchecked items are planned work. Targets are released stable versions
 verified from upstream policies and registries. Refresh their patch versions
 before implementation. Prefer the latest supported LTS line where one exists;
 Rust, Go, npm, pnpm, and most libraries do not have a Node-style LTS channel.
@@ -39,68 +40,73 @@ code or documentation.
 
 ### Security and unsupported software first
 
-- [ ] **UPG01 — Patch Next.js and its production dependencies.**
-      `bike-ui/package.json` and the lockfile pin Next/ESLint config **16.1.6**;
-      the registry's current Active-LTS release is **16.4.0**. Upgrade Next and
-      `eslint-config-next` together. Move React/React DOM **19.2.3 → 19.3.0**
-      together after checking compatibility. The installed Next version is affected
-      by the [AVIF image optimization advisory](https://github.com/vercel/next.js/security/advisories/GHSA-2xp9-vwfh-vxw4),
-      fixed from 16.3.3; that is a minimum security fix, not the final target.
-      Update the lockfile's `sharp` **0.34.5**, PostCSS **8.4.31/8.5.14**, and
-      `nanoid` **3.3.12** through supported parent releases. Verify image rendering,
-      auth/proxy behavior, server rendering, and the production UI build.
+- [x] **UPG01 — Patch Next.js and its production dependencies.**
+      Next/ESLint config **16.4.0**, React/React DOM **19.3.0**, and refreshed
+      production locks replace the affected versions. `sharp` resolves **0.35.5**,
+      PostCSS **8.5.23/8.5.28**, and `nanoid` **3.3.19**. This removes the
+      [AVIF advisory](https://github.com/vercel/next.js/security/advisories/GHSA-2xp9-vwfh-vxw4)
+      affecting the previous Next 16.1.6 pin. UI unit/contract checks and production
+      build/image pass; the image serves login, maps, and activity SSR documents.
+      OAuth actions use ordinary links so provider redirects perform a full
+      document navigation; relative and external API bases have unit coverage.
+      Browser checks cover fake-provider sign-in, session reload/logout, and
+      non-admin/forbidden reads; the optional unauthorized-route matrix was not selected.
       Sources: [Next support policy](https://nextjs.org/support-policy),
       [Next registry](https://registry.npmjs.org/next/latest),
       [React registry](https://registry.npmjs.org/react/latest).
-- [ ] **UPG02 — Unify supported MapLibre versions.** UI **5.24.0** and renderer
-      **6.11.2** differ; target **6.13.0** in both after migration review. The UI
-      version falls within the [sanitizer advisory](https://github.com/maplibre/maplibre-gl-js/security/advisories/GHSA-jrc7-96c5-q579)
-      affected range; the fix starts at 6.4.1. Verify activity/segment/race maps,
-      personal heatmap controls, attribution, tiles, and renderer output. Preserve
-      outdoor controls and virtual/GPS-gap exclusions. Source:
+- [x] **UPG02 — Unify supported MapLibre versions.** Both UI and renderer pin
+      **6.13.0**, replacing UI 5.24.0 and renderer 6.11.2. The UI now uses the
+      supported namespace exports and typed paint keys. Map/heatmap/segment/race
+      unit fixtures pass; the renderer image passes authenticated HTTP/gRPC PNG,
+      theme, thumbnail, scale, and cache checks. GPS admission/filtering is preserved.
+      This removes the previous UI version's
+      [sanitizer advisory](https://github.com/maplibre/maplibre-gl-js/security/advisories/GHSA-jrc7-96c5-q579).
+      Source:
       [MapLibre registry](https://registry.npmjs.org/maplibre-gl/latest).
-- [ ] **UPG03 — Replace the unsupported Go toolchain.** Root mise and the
-      gateway Dockerfile use **1.25.1**; target **1.27.1**. Go supports only its
-      two newest release lines, currently 1.26 and 1.27. Review the gateway's
-      `go.mod` minimum language version separately from the build toolchain, and
-      verify the pinned compiler is used without an automatic toolchain substitution.
-      Run gateway lint/tests/build and protobuf freshness with the new toolchain;
-      verify linux/amd64 images. Source:
+- [x] **UPG03 — Replace the unsupported Go toolchain.** Mise, gateway Docker,
+      and the module minimum now select **1.27.1**. `GOTOOLCHAIN=local` in owning
+      tasks and the builder prevents compiler substitution. Gateway formatting,
+      vet, golangci-lint, fixture/unit tests, all command builds, protobuf freshness,
+      and a linux/amd64 gateway image pass. Go supports 1.26 and 1.27 at this snapshot.
+      Source:
       [Go releases and support policy](https://go.dev/doc/devel/release).
-- [ ] **UPG04 — Move UI ESLint off its EOL major.** UI **9.39.5 → 10.12.0**;
-      renderer already uses 10.12.0. ESLint 9 ended upstream maintenance on
-      2026-08-06. Coordinate with UPG01's Next config and plugin peer requirements;
-      retain all strict rules and zero-warning enforcement. Source:
+- [x] **UPG04 — Move UI ESLint off its EOL major.** UI and renderer use
+      **10.12.0**, with strict rules and zero-warning enforcement. ESLint 9 ended
+      maintenance on 2026-08-06. Next 16.4 supplies a rule-context adapter, but
+      three bundled plugins still declare older ESLint peers: exact-version pnpm
+      overrides record their tested compatibility through that adapter. Regression
+      fixtures accept valid code and detect React, accessibility, import, and Next
+      violations; strict peer validation and full lint pass. Remove those peer
+      overrides when the upstream declarations include 10. Source:
       [ESLint support policy](https://eslint.org/version-support/).
-- [ ] **UPG05 — Replace Jaeger 1 in local tracing.** Root mise and Rust Compose
-      use `jaegertracing/all-in-one:latest`, the retired v1 image family. Jaeger 1
-      reached EOL on 2025-12-31. Move to a pinned **Jaeger 2.22.0** image and its
-      supported configuration; verify OTLP ingestion, trace lookup, ports, and the
-      existing optional tracing profile. Coordinate any separately owned IaC
-      deployment instead of assuming Compose changes update production.
+- [x] **UPG05 — Replace Jaeger 1 in local tracing.** Mise and Compose pin
+      `cr.jaegertracing.io/jaegertracing/jaeger:2.22.0`, using its built-in
+      all-in-one configuration. The obsolete v1 collector flag is removed.
+      The optional tracing profile retains ports 16686/4317/4318. A disposable
+      container accepted an OTLP JSON span and returned it through the v3 query API;
+      UI availability and Compose configuration pass. No production/IaC change was made.
       Sources: [Jaeger lifecycle](https://www.jaegertracing.io/download/),
       [2.22.0 release](https://github.com/jaegertracing/jaeger/releases/tag/v2.22.0).
-- [ ] **UPG06 — Replace unmaintained cargo-watch.** Both Rust dev Dockerfiles
-      install **8.5.3**, whose upstream is archived and no longer receives updates.
-      Use maintained [watchexec](https://github.com/watchexec/watchexec) through
-      mise (current CLI **2.8.0**) or another supported existing watch workflow.
-      Verify API/worker reload, shutdown signals, and rebuild failure output.
-      Remove the obsolete pin and installation together. Source:
+- [x] **UPG06 — Replace unmaintained cargo-watch.** Mise and both Rust dev
+      images pin [watchexec CLI **2.8.0**](https://github.com/watchexec/watchexec).
+      Compose passes the shared pin; both image commands restart the owning Cargo
+      binary directly and use SIGTERM to stop it. Old pins/installations are removed.
+      Both images build and pass startup, file-change restart, visible failure,
+      recovery, and graceful shutdown checks using a fake Cargo command. These
+      are watcher/process checks, not a new database or full import replay. Source:
       [cargo-watch maintenance statement](https://github.com/watchexec/cargo-watch#maintenance).
-- [ ] **UPG07 — Resolve the remaining UI audit findings.** `pnpm audit --json`
-      reported **3 critical, 23 high, 20 moderate, 6 low** findings in the current
-      installed dependency tree, including development dependencies. These are
-      dependency matches, not a finding that every issue is exploitable in Bike.
-      Besides UPG01/02, affected paths include Vitest **4.1.5** (fix ≥4.1.11),
-      Vite **8.0.10** (fix ≥8.0.16), `happy-dom → ws` **8.20.0** (fix ≥8.21.0),
-      `mermaid → dompurify` **3.4.13** (fix ≥3.4.16), KaTeX (fix ≥0.18.2),
-      `source-map-js` **1.2.1** (fix ≥1.2.2), and
-      `eslint-config-next → fast-glob → micromatch → braces` **3.0.3**, for which
-      the audit reports no patched version. Upgrade supported parents, investigate
-      the remaining path, and verify the refreshed production and development
-      dependency graphs. Do not blanket-force fixes or suppress findings.
-      Record RustSec and Go vulnerability scans as separate remaining checks;
-      this audit did not execute those scanners or scan container layers.
+- [x] **UPG07 — Resolve the remaining UI audit findings.** Both native JS audits
+      report **zero advisories**, including the UI development tree (previously
+      3 critical, 23 high, 20 moderate, 6 low). Vitest **4.1.11**, Vite **8.3.2**,
+      happy-dom **20.14.5**, Mermaid **11.17.2**, and Tailwind **4.3.3** resolve
+      patched parent/transitive releases. Two exact consumer overrides use KaTeX
+      **0.18.2** and replace Next's `fast-glob` with **tinyglobby 0.2.17**,
+      removing the unpatched `braces` path. Root glob and Mermaid math fixtures
+      exercise those interfaces; valid existing UI tests pass. Vite's native ESM
+      config warning is fixed by explicit module metadata and URL-based paths.
+      Owning UI and renderer checks now fail on native audit findings; UI checks
+      also reject incompatible peers. RustSec, Go, and container-layer scans remain
+      separate work in UPG22; zero JS advisories is not a complete system security audit.
 
 ### Toolchains, database, and images
 
@@ -235,13 +241,14 @@ transitive copy that happens to appear elsewhere in the lockfile.
       [Goose](https://pkg.go.dev/github.com/pressly/goose/v3).
 - [ ] **UPG20 — Modernize UI types, tests, and supporting libraries.**
       Node types **20.19.39 → 24.19.1** to match Node 24, not the registry's Node 26
-      default; TypeScript **5.9.3 → 7.0.2**, Vitest **4.1.5 → 5.0.3**, Vite React
-      plugin **6.0.1 → 6.1.2**, jest-dom **6.9.1 → 7.0.1**, happy-dom
-      **20.9.0 → 20.14.5**, and Mermaid **11.16.1 → 12.1.0**. Review TypeScript
+      default; TypeScript **5.9.3 → 7.0.2**, Vitest **4.1.11 → 5.0.3**, jest-dom
+      **6.9.1 → 7.0.1**, and Mermaid **11.17.2 → 12.1.0**. Vite React plugin
+      **6.1.2**, happy-dom **20.14.5**, and Tailwind/PostCSS plugin **4.3.3**
+      were updated by UPG07. Review TypeScript
       6/7 migration changes and test/plugin peers; verify meaningful unit assertions,
       generated types, rendering, diagrams, and fake-boundary browser checks.
-      Remaining smaller updates: Tailwind/PostCSS plugin **4.2.4 → 4.3.3**,
-      React Query **5.100.9 → 5.104.1**, DaisyUI **5.7.37 → 5.7.47**, Recharts
+      Remaining smaller updates: React Query **5.100.9 → 5.104.1**,
+      DaisyUI **5.7.37 → 5.7.47**, Recharts
       **3.8.1 → 3.10.1**, Font Awesome core/icons **7.2.0 → 7.3.1**, React Font
       Awesome **3.3.1 → 3.5.0**, React/DOM types to **19.3.0**, Testing Library
       React **16.3.2 → 16.3.3**, user-event **14.6.1 → 14.6.7**, and toast
@@ -257,6 +264,10 @@ transitive copy that happens to appear elsewhere in the lockfile.
       indirect updates and platform/security requirements. Keep all existing
       warnings-as-errors and focused regression gates. Source:
       [crates.io version metadata](https://crates.io/).
+- [ ] **UPG22 — Check the remaining security surfaces.** Run pinned native
+      RustSec/Cargo, Go vulnerability, and container OS/browser-layer scanners
+      through mise. Record their exact dependency/image scope, findings, and
+      remediation; JS registry audit success does not cover these surfaces.
 
 ### Already current or deliberately retained
 

@@ -54,7 +54,7 @@ When upgrading mise, change `vars.mise_version`, then run
 ## Build version ownership
 
 Root mise vars pin Node, npm, pnpm, Rust, Go, k6, runtime/database images, and
-cargo-watch. Mise tools and exported build variables use those values directly.
+watchexec. Mise tools and exported build variables use those values directly.
 Compose passes the language variables as Docker build arguments; renderer,
 synthetic, and browser image tasks do the same. Specialized protobuf generator
 pins use mise's Go backend in the gateway config. There are no version-generation
@@ -71,8 +71,17 @@ Run `mise run images:check` for native Docker checks. Update the mise bootstrap
 with `mise run mise:bootstrap:sync`. Keep dependency locks in their native
 package managers; use frozen installs. The renderer Dockerfile lives in
 `map-renderer/` and retains the root build context for the shared protocol.
-The UI explicitly uses ESLint 9 because its Next plugins require that major;
-the renderer uses ESLint 10. All lint invocations reject warnings.
+The UI and renderer use ESLint 10. All lint invocations reject warnings.
+
+Next 16.4 adapts its plugins to the ESLint 10 rule-context API. The UI's native
+pnpm overrides correct the peer declarations for three exact plugin releases;
+the lint compatibility fixtures verify React, accessibility, import, and Next
+rules still execute. Remove those entries when upstream peers include ESLint 10.
+Two scoped security overrides replace Next's `fast-glob` with the maintained
+`tinyglobby` API and use patched KaTeX for Mermaid. Root-directory glob and math
+fixtures cover those consumer interfaces. These entries are temporary dependency
+compatibility decisions, not advisory ignore lists. UI checks run `mise run audit`
+and renderer checks run native npm audit; both fail on dependency advisories.
 
 ## Image promotion
 

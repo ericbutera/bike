@@ -1,7 +1,8 @@
-ARG GO_VERSION=1.25.1
+ARG GO_VERSION=1.27.1
 ARG RUNTIME_IMAGE=debian:bookworm-slim
 
 FROM golang:${GO_VERSION}-bookworm AS build
+ENV GOTOOLCHAIN=local
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

@@ -4,6 +4,7 @@
 golangci-lint = "2.14.0"
 
 [env]
+GOTOOLCHAIN = "local"
 GOCACHE = "{{config_root}}/.cache/go-build"
 GOMODCACHE = "{{config_root}}/.cache/go-mod"
 GOLANGCI_LINT_CACHE = "{{config_root}}/.cache/golangci-lint"
