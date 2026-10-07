@@ -494,8 +494,7 @@ describe("MapLibreRouteMapClient", () => {
     });
 
     const focusedBounds = mapMocks.fitBounds.mock.calls.at(-1)?.[0] as
-      | { points: [number, number][] }
-      | undefined;
+      { points: [number, number][] } | undefined;
 
     expect(focusedBounds?.points).toContainEqual([-121.996, 45.004]);
     expect(focusedBounds?.points).toContainEqual([-121.992, 45.008]);

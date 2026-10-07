@@ -10,10 +10,8 @@ excludes non-cycling activities, known indoor/virtual rides, and unavailable
 authentic sources. It still admits unknown recordings with available cycling
 sources; that is not a guarantee that every admitted route was recorded outdoors.
 
-The [PostGIS evaluation](postgis-evaluation.md) supports deferring PostGIS.
 Use ordinary PostgreSQL with compact coordinate projections and indexed
-bounding-box filtering for this release. Retain the repeatable experiment for
-future comparisons; adopting PostGIS is outside this implementation.
+bounding-box filtering. Rust owns geometry processing and raster aggregation.
 
 ## Goal and scope
 
@@ -122,8 +120,8 @@ Activities currently store complete route samples inside `derived_data_json`,
 alongside other derived data. Heatmap requests must not deserialize every
 historical activity's full samples or call every activity-detail endpoint.
 
-Rust's local Compose uses `postgres:17`; the inspected migrations do not install
-PostGIS. Prefer plain PostgreSQL and Rust processing initially. The backlog's
+Rust's local Compose uses the root mise PostgreSQL 17 image pin. Use plain
+PostgreSQL and Rust processing. The backlog's
 ordinary workload is at most about ten new activities per day, with occasional
 historical imports. Use anonymized fixtures for repeatable performance checks.
 
@@ -312,7 +310,6 @@ and storage/latency spike before selecting the final projection layout.
 | Persist compressed per-activity coverage masks                          | Reuses rasterization and makes aggregation cheaper                                                    | More projection storage; zoom/tolerance/version choices must be managed                                                              | Add for measured expensive tiles/zoom levels if baseline misses targets                        |
 | Daily sport/tile count rollups                                          | Faster long-range queries                                                                             | Extra rebuild/deletion bookkeeping and boundary-day handling                                                                         | Later optimization when history measurements justify it                                        |
 | Weighted vector tiles                                                   | Crisp lines; future hit testing; MapLibre can style width/opacity from counts                         | Requires a credible common-path/edge aggregation algorithm; snapping can distort trails, raw independent lines do not solve counting | Alternative if the raster spike fails visual requirements or path interaction becomes required |
-| PostGIS and a tile server                                               | Spatial querying and database MVT generation                                                          | Database-image/extension/backup/deployment changes; does not itself solve GPS alignment or distinct-activity aggregation             | Defer pending a demonstrated need                                                              |
 
 MapLibre's [large-data guidance](https://maplibre.org/maplibre-gl-js/docs/guides/large-data/)
 describes simplification, smaller payloads, and server tiling. Its
@@ -620,7 +617,6 @@ Strava gateway changes or read-time gateway access.
 - [MapLibre large-data performance guide](https://maplibre.org/maplibre-gl-js/docs/guides/large-data/): simplification, small payloads, and server tiling.
 - [MapLibre raster/vector source specification](https://maplibre.org/maplibre-style-spec/sources/): XYZ raster sources, bounds, tile sizes, and zoom limits.
 - [MapLibre layer specification](https://maplibre.org/maplibre-style-spec/layers/): point heatmap weighting and count-driven line width/opacity for the vector alternative.
-- [PostGIS ST_AsMVT](https://postgis.net/docs/ST_AsMVT.html): database vector-tile encoding, if a later measured need justifies PostGIS.
 
 References reviewed on 2026-10-03. Rendering/aggregation policy and performance
 targets in this document are proposals, not results from these references.

@@ -89,10 +89,7 @@ export type ActivityHeartRateZone = {
 };
 
 export type ActivityRideFocus =
-  | "xc_endurance"
-  | "mixed_xc"
-  | "dh_session"
-  | "other";
+  "xc_endurance" | "mixed_xc" | "dh_session" | "other";
 
 export type ActivityTrainingAnalysis = {
   ride_focus: ActivityRideFocus;
@@ -436,10 +433,7 @@ export type XcEventProfile =
   | "custom";
 
 export type XcReadinessStatus =
-  | "on_track"
-  | "watch"
-  | "falling_behind"
-  | "missing_data";
+  "on_track" | "watch" | "falling_behind" | "missing_data";
 
 export type XcReadinessGateKey =
   | "long_ride_distance"
@@ -707,9 +701,7 @@ export type TrainingReportId =
   | "aggregate_trends";
 
 export type TrainingReportFilterKey =
-  | "activity_ids"
-  | "min_duration"
-  | "min_distance";
+  "activity_ids" | "min_duration" | "min_distance";
 
 export type TrainingReportMetricDirection = "higher" | "lower" | "neutral";
 
@@ -773,10 +765,7 @@ export type TrainingReportsResponse = {
 };
 
 export type ReassessmentVerdict =
-  | "on_track"
-  | "plausible_but_risky"
-  | "needs_more_evidence"
-  | "missing_data";
+  "on_track" | "plausible_but_risky" | "needs_more_evidence" | "missing_data";
 
 export type ReassessmentTargetSource = "saved_goal" | "missing_goal";
 
@@ -1261,8 +1250,7 @@ export function useDisableAdminUser() {
 export function usePublicFeatureFlags() {
   const response = $typedApi.useQuery("get", "/feature-flags", {});
   const page = response.data as
-    | PaginatedResponse<PublicFeatureFlag>
-    | undefined;
+    PaginatedResponse<PublicFeatureFlag> | undefined;
 
   return {
     ...response,
@@ -1649,8 +1637,7 @@ export function useAdminActivities(opts?: {
   );
 
   const pageData = response.data as
-    | PaginatedResponse<AdminActivity>
-    | undefined;
+    PaginatedResponse<AdminActivity> | undefined;
 
   return {
     ...response,

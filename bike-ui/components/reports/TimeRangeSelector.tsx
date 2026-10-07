@@ -3,14 +3,7 @@
 import React from "react";
 
 export type TimeRange =
-  | "week"
-  | "month"
-  | "6month"
-  | "ytd"
-  | "1year"
-  | "3year"
-  | "5year"
-  | "all";
+  "week" | "month" | "6month" | "ytd" | "1year" | "3year" | "5year" | "all";
 
 export const TIME_RANGE_OPTIONS: { key: TimeRange; label: string }[] = [
   { key: "week", label: "Week" },

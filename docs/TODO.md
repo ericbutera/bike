@@ -18,7 +18,6 @@ Keep private activity data out of committed reports and fixtures.
 | ACT05  | Pending              | Retain non-cycling archive/upload inputs without ride processing.              | [Retention contract](../bike-rs/docs/specs/activity-ingestion.md#non-cycling-retention-proposal): owned originals and minimal summaries, explicit deferred outcome, zero full GPS/detail decodes or downstream ride jobs, idempotent future promotion, and measured mixed-sport import costs. Reuse import/artifact storage. Existing gateway delivers no non-cycling summary; gateway changes are outside scope.                                                                                  |
 | MAPS12 | Pending              | Require explicit heatmap admission and withhold unknown recordings.            | [Admission proposal](../bike-rs/docs/specs/activity-ingestion.md#heatmap-admission-proposal): agree supported outdoor evidence rules and their trust limits; persist a versioned decision separate from claimed environment; enforce all ingestion, replay, preparation, publication, and read boundaries; positive outdoor and unknown/virtual controls; two-user isolation; migrations/backfill and live verification before second-user imports. This stricter policy is not implemented by v5. |
 | MAPS13 | Pending              | Define a separate global cycling heatmap after personal admission is verified. | [Scope](specs/heatmaps.md#cycling-admission-proposal-2026-10-06): explicit participation, stricter contribution admission, separate aggregate queries/revisions, removal on opt-out/deletion/reclassification, no automatic global approval from personal overrides, and two-owner correctness tests. No global endpoint is implemented.                                                                                                                                                           |
-| GEO02  | Pending              | Measure vanilla/PostGIS data access and resource costs.                        | Current and projected vanilla controls versus extension-only/spatial PostGIS use identical fixtures; segments, heatmaps, map rendering, activity detail, and race viewer have correctness, stage timings, CPU, memory, storage and write-cost evidence before adopting a spatial design.                                                                                                                                                                                                           |
 | TEST10 | Implemented locally  | Separate synthetic availability monitoring from browser e2e.                   | Separate k6 availability and Playwright images build and pass fixture checks. Production publication and runtime verification remain separate from local implementation.                                                                                                                                                                                                                                                                                                                           |
 
 ## System upgrade checklist
@@ -32,7 +31,7 @@ Rust, Go, npm, pnpm, and most libraries do not have a Node-style LTS channel.
 
 Scope: root/component mise configs, application manifests and lockfiles, all
 tracked Dockerfiles, Compose, Woodpecker, code generators, the vendored Rust
-patch, and the retained PostGIS experiment. Infrastructure definitions were
+patch. Infrastructure definitions were
 checked only for the database baseline; running production versions, host
 software, image digests, and container OS package vulnerabilities still require
 deployment inspection. This checklist does not certify the absence of unused
@@ -110,72 +109,65 @@ code or documentation.
 
 ### Toolchains, database, and images
 
-- [ ] **UPG08 — Use current stable Rust consistently.** Root/application
-      **1.97.1 → 1.99.0**; PostGIS's separate mise config still pins **1.93.0**.
-      Update the shared toolchain, Rust Docker defaults/builder image, Clippy and
-      rustfmt together. Have the experiment inherit the shared pin or document a
-      deliberate frozen benchmark exception. Its digest-pinned compiler/runtime
-      must be identified before changing it; regenerate comparable measurements
-      rather than comparing different environments as equivalent. Rust has no LTS
-      release line. Source:
-      [Rust 1.99.0 announcement](https://blog.rust-lang.org/2026/10/01/Rust-1.99.0/).
-- [ ] **UPG09 — Align and patch PostgreSQL before a major migration.** Local
-      Bike uses floating **17**, gateway fixtures floating **16**, and the
-      infrastructure definition/backup image pins **17.7-trixie**. Both majors
-      remain supported; latest patches are **17.11** and **16.15**. First verify
-      the running versions and move to a consistent, explicitly pinned **17.11**
-      baseline across application development, optional gateway tests, production,
-      and backup/restore tooling. Keep real database checks opt-in rather than
-      adding a CI server for unit tests. Source:
-      [PostgreSQL version/support policy](https://www.postgresql.org/support/versioning/).
-- [ ] **UPG10 — Rehearse PostgreSQL 18 before changing persistent instances.**
-      Latest released major is **18.6**; PostgreSQL 19 is still prerelease in the
-      checked upstream release index. Validate dump/restore or `pg_upgrade`,
-      backups, extensions, database queries, and Docker data-directory/volume layout.
-      Preserve a tested recovery route and coordinate with the owning IaC repo.
-      Do not reuse a 17 data directory by changing its image tag alone.
-      Sources: [PostgreSQL releases](https://www.postgresql.org/docs/release/),
-      [official image upgrade notes](https://github.com/docker-library/docs/blob/master/postgres/README.md).
-- [ ] **UPG11 — Refresh and pin base images.** Rust and gateway builds/runtimes,
-      browser e2e, the renderer's Node stage, and CI bootstrap use Debian
-      **12/bookworm**. It is now in LTS; **13/trixie** is current stable. Review
-      compatible official image variants, libc/OpenSSL package names, CA certificates,
-      fonts/browser dependencies, and image size before moving. The renderer's
-      Playwright **noble** base is already Ubuntu 24.04 LTS; preserve its matching
-      browser/library version. UI `node:24.21.0-alpine` leaves the Alpine release
-      implicit: identify and pin the intended maintained variant/digest. Replace
-      floating cargo-chef, plugin, database, and `latest` tags with reviewed release
-      identities. Source: [Debian lifecycle](https://www.debian.org/releases/).
-- [ ] **UPG12 — Refresh quality-tool pins.** Root Prettier **3.7.4 → 3.9.9**
-      and prek **0.4.12 → 0.5.5**. Review native config changes, format the affected
-      files, validate `prek.toml`, reinstall/check hooks, and keep CI on the owning
-      mise tasks. Sources: [Prettier registry](https://registry.npmjs.org/prettier/latest),
-      [prek releases](https://github.com/j178/prek/releases).
-- [ ] **UPG13 — Align protobuf generators with runtimes.** Gateway
-      `protoc-gen-go` **1.36.6 → 1.36.12** (runtime already 1.36.12), and
-      `protoc-gen-go-grpc` **1.5.1 → 1.6.2**. Regenerate and inspect binding changes,
-      then run native freshness and gateway/receiver fixture checks. Rust
-      `protoc-bin-vendored` locks **3.2.0** while **3.3.0** is available and bypasses
-      mise's protoc selection in `build.rs`; choose one explicit compiler policy.
-      Root protoc **36.2**, Prost **0.14.4**, and Tonic **0.14.6** are already
-      current in their checked registries. Sources:
-      [Go protobuf](https://proxy.golang.org/google.golang.org/protobuf/@latest),
-      [Go gRPC generator](https://proxy.golang.org/google.golang.org/grpc/cmd/protoc-gen-go-grpc/@latest),
-      [vendored protoc](https://crates.io/crates/protoc-bin-vendored).
-- [ ] **UPG14 — Make mise pins reach every consumer.** Woodpecker's image
-      build steps currently use Dockerfile defaults rather than passing root mise
-      vars; Compose and local image tasks pass only some build arguments. Upgrade
-      owning tasks, supported plugin inputs, Docker defaults, package-manager
-      metadata, hooks, and documentation together. Decide whether to retain an
-      unmodified upstream mise bootstrap or use a pinned mise CI image; avoid
-      maintaining custom installer changes or another version-parser script.
-      Pin cargo-chef itself (current release **0.1.78**) rather than only a
-      `latest-rust-*` tag. Identify/pin Woodpecker's clone/build plugin images:
-      upstream Google Kaniko is archived, but the
-      [Woodpecker plugin now uses a maintained fork](https://github.com/woodpecker-ci/plugin-kaniko).
-      Verify the selected image actually contains that fork before planning a
-      builder replacement. Source:
-      [mise CI options](https://mise.jdx.dev/continuous-integration.html).
+Completed in the review branches on 2026-10-06. These checks establish local
+implementation and isolated compatibility, not a production deployment.
+The shared database's production patch requires the [companion IaC PR](https://github.com/ericbutera/pulumi-iac/pull/1) to be
+reviewed, its backup image rebuilt/published, and the StatefulSet applied.
+The observed production/local servers remain 17.7/17.9 until that rollout.
+
+- [x] **UPG08 — Use current stable Rust consistently.** Application mise and
+      official build/development images use **1.99.0**, with its Clippy/rustfmt.
+      New slice lints use native array chunks; **async-trait 0.1.92** fixes the
+      older macro's generated warning. The unused spatial experiment and its
+      separate compiler/image controls have been removed.
+      [Rust release](https://blog.rust-lang.org/2026/10/01/Rust-1.99.0/).
+- [x] **UPG09 — Align and patch PostgreSQL before a major migration.** Bike,
+      optional gateway fixtures, and the companion production/backup definitions
+      use the same explicit **17.11-trixie** multi-platform digest. Separate
+      server checks remain opt-in; no database CI service was introduced.
+      Live patch rollout remains subject to review as described above.
+      [PostgreSQL support policy](https://www.postgresql.org/support/versioning/).
+- [x] **UPG10 — Rehearse PostgreSQL 18 before changing persistent instances.**
+      The owning `db:rehearse` task restores private local/production Bike dumps
+      on **17.11** and **18.6** in fresh volumes, checks all public table counts,
+      exercises existing heatmap/gateway PostgreSQL cases, and restarts the
+      retained 17 instance for recovery. It uses random loopback ports and
+      removes only its own resources. [Deployment documentation](deployment.md#postgresql-patching-and-major-upgrade-rehearsal)
+      records the changed 18 volume layout, observed `plpgsql` extension scope,
+      backups, write freeze, cutover and recovery limits. No live major upgrade
+      was performed.
+      [Official image notes](https://github.com/docker-library/docs/blob/master/postgres/README.md).
+- [x] **UPG11 — Refresh and pin base images.** Rust, Go, browser e2e, renderer's
+      Node stage, runtime and CI bootstrap use **trixie**, with immutable image
+      digests. UI pins **Alpine 3.24**. Playwright **1.63.0/noble** retains its
+      matching browser/library identity. Clone **2.10.1**, Kaniko **2.3.3**, k6
+      **2.3.0**, and database inputs are pinned. Application SHA tags remain the
+      release identities; the existing `latest` application aliases are outputs,
+      not floating base dependencies.
+      [Debian lifecycle](https://www.debian.org/releases/).
+- [x] **UPG12 — Refresh quality-tool pins.** Prettier **3.9.9** and prek
+      **0.5.5** replace 3.7.4/0.4.12. Seven UI files, including the generated API
+      types, were reformatted; native config validation and reinstalled hooks
+      use the same owning mise gates. Root toolchain edits trigger Rust hooks.
+      [prek release](https://github.com/j178/prek/releases/tag/v0.5.5).
+- [x] **UPG13 — Align protobuf generators with runtimes.** Go protobuf
+      generator **1.36.12** matches its runtime; gRPC generator **1.6.2** has
+      freshly generated bindings. Both languages use root **protoc 36.2**;
+      Rust's separate vendored compiler was removed. Rust Docker builds copy
+      the selected compiler/includes from an official mise image stage. Native
+      freshness and gateway/receiver tests cover the updated bindings.
+- [x] **UPG14 — Make mise pins reach every consumer.** Native image tasks and
+      Compose pass the selected image/tool pins. The owning CI preparation task
+      exports only public build inputs; Kaniko consumes them through its native
+      `build_args_from_env` support. A real no-push plugin build verifies the
+      handoff and maintained executor **1.28.5**. Official mise **2026.10.3/debian**
+      supplies CI and protobuf stages; its installer is not committed. Cargo-chef
+      dependency caching is restored with immutable upstream revision
+      `449576bbc2645200936adb9dece80810c9a335f8` (PR #369), fixing Cargo 1.99's
+      target-edition warnings without suppressions. Replace the temporary revision
+      once the fix is released. Docker defaults and pre-bootstrap/plugin digests remain
+      documented explicit synchronization points, rather than another parser.
+      [Version ownership](deployment.md#build-version-ownership).
 
 ### Application library migrations
 
@@ -223,8 +215,7 @@ transitive copy that happens to appear elsewhere in the lockfile.
       [SHA-2](https://crates.io/crates/sha2) **0.10.9 → 0.11.0**.
       Verify authentic archive selection, bounds/errors, retained recording metadata,
       heatmap geometry/cache behavior, signature compatibility, and outdoor/virtual
-      regression fixtures. FIT parser **0.11.0** is current. The PostGIS probe also
-      uses PNG 0.17 and SHA-2 0.10; include it or retain an explicit experiment baseline.
+      regression fixtures. FIT parser **0.11.0** is current.
 - [ ] **UPG19 — Refresh telemetry and gateway dependencies in compatible groups.**
       Rust OpenTelemetry **0.32.x → 0.33.0**, tracing integration **0.33.0 → 0.34.0**;
       renderer experimental packages **0.222.0 → 0.223.0** and stable SDK/resources
@@ -279,10 +270,7 @@ OpenAPI JS tools (**openapi-typescript 7.13.0**, **openapi-fetch 0.17.0**,
 [Node LTS policy](https://nodejs.org/en/about/previous-releases),
 [mise releases](https://github.com/jdx/mise/releases),
 [npm registry metadata](https://registry.npmjs.org/), and the respective upstream
-release pages. PostGIS **3.6.4** is the latest checked stable series; 3.7 is
-still prerelease. Keep the experiment's reproducible package/digest controls
-until its baseline is intentionally refreshed.
-Source: [PostGIS releases](https://postgis.net/news/).
+release pages.
 
 ### Evidence and completion
 

@@ -15,14 +15,18 @@ Read the applicable `AGENTS.md`, including its Git rules, `mise.toml`,
 package/workspace manifests, linter configuration, and existing prek/CI gates.
 Prefer established mise tasks over recreating commands. Keep task orchestration
 in mise config, with direct native tool commands and calls to owning tasks.
+Multi-step operational workflows may use Bash scripts invoked by mise. Keep
+their tool/image pins in mise and check them with the owning ShellCheck task
+in local lint, prek, and CI.
 Do not create custom wrappers, config parsers, or validator frameworks for
 operations mise and the native tools already support. Run tools through mise;
 install missing configured tools with `mise install`.
 
 CI/CD must invoke the same owning named mise tasks used locally. Keep language
 tool versions in mise config and remove duplicated commands or version pins
-from workflow YAML. A pinned bootstrap may install mise itself on the runner;
-it must not implement a second copy of the checks.
+from workflow YAML. Source mise from its official pinned image on runners and
+share its executable through ignored CI artifacts. Do not commit mise binaries
+or installers; language checks belong in owning mise tasks.
 
 Identify the required formatter, linter, type checks, build, and tests for the
 affected area. Inspect configured complexity limits before writing or

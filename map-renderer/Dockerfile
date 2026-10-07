@@ -1,11 +1,11 @@
-ARG NODE_VERSION=24.21.0
+ARG NODE_IMAGE=node:24.21.0-trixie@sha256:1278a37eb510ec1606fba0e80f554bcc941ae0b44f35ae373c4822ae7717c64d
 ARG NPM_VERSION=12.2.0
-ARG PLAYWRIGHT_VERSION=1.63.0
+ARG PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
 
-FROM node:${NODE_VERSION}-bookworm AS node-toolchain
+FROM ${NODE_IMAGE} AS node-toolchain
 ARG NPM_VERSION
 RUN npm install -g "npm@${NPM_VERSION}"
-FROM mcr.microsoft.com/playwright:v${PLAYWRIGHT_VERSION}-noble
+FROM ${PLAYWRIGHT_IMAGE}
 # Keep the browser image's dependencies and use Bike's selected Node/npm.
 COPY --from=node-toolchain /usr/local/ /usr/local/
 WORKDIR /app
