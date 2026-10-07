@@ -122,21 +122,6 @@ describe("MapLibreRouteMapClient", () => {
       { elapsed_seconds: 0, latitude: 45, longitude: -85 },
       { elapsed_seconds: 60, latitude: 45.01, longitude: -85.01 },
     ];
-    let resolveStyleLoad: () => void = () => {};
-    const styleLoaded = new Promise<void>((resolve) => {
-      resolveStyleLoad = resolve;
-    });
-    mapMocks.setStyle.mockImplementation(() => {
-      setTimeout(() => {
-        act(() => {
-          mapMocks.sources.clear();
-          for (const handler of mapMocks.handlers.get("style.load") ?? []) {
-            handler();
-          }
-          resolveStyleLoad();
-        });
-      }, 0);
-    });
     render(
       <MapLibreRouteMapClient
         routePoints={routePoints}
@@ -152,8 +137,15 @@ describe("MapLibreRouteMapClient", () => {
     });
     expect(mapMocks.sources.has("cycling-trails")).toBe(false);
 
-    act(() => document.documentElement.setAttribute("data-theme", "dark"));
-    await styleLoaded;
+    await act(async () => {
+      document.documentElement.setAttribute("data-theme", "dark");
+    });
+    await act(async () => {
+      mapMocks.sources.clear();
+      for (const handler of mapMocks.handlers.get("style.load") ?? []) {
+        handler();
+      }
+    });
     await waitFor(() => {
       expect(mapMocks.setStyle).toHaveBeenCalledWith(
         "/map-styles/fiord-v1.json",
