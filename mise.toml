@@ -206,10 +206,10 @@ deploy_dir="$(mktemp -d "${TMPDIR:-/tmp}/bike-iac.XXXXXX")"
 trap 'rm -rf "$deploy_dir"' EXIT
 git clone --quiet "https://x-access-token:${GITHUB_TOKEN}@github.com/${PULUMI_IAC_REPO}" "$deploy_dir/pulumi-iac"
 mise trust --yes "$deploy_dir/pulumi-iac/mise.toml"
-mise --cd "$deploy_dir/pulumi-iac" run deploy:bike:image "$component"
+mise --cd "$deploy_dir/pulumi-iac" run deploy "$component"
 '''
 
-[tasks."ci:deploy"]
+[tasks.deploy]
 description = "Promote the signed-off application and service images in order"
 run = ["mise run deploy:image bike-rs", "mise run deploy:image map-renderer", "mise run deploy:image strava-gateway", "mise run deploy:image bike-ui"]
 

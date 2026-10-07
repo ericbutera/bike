@@ -249,7 +249,7 @@ steps:
         from_secret: iac_deploy_ssh_key
     volumes: *mise_cache
     commands:
-      - .artifacts/bin/mise run ci:deploy
+      - mise run deploy
 
   - name: synthetic-smoke
     when:

@@ -54,7 +54,7 @@ mise run ci:gateway
 ```
 
 The root `rust:check`, `renderer:check`, and component `check` tasks own the
-actual checks. `ci:deploy` calls `deploy:image` for each component. Image builds
+actual checks. `deploy` calls `deploy:image` for each component. Image builds
 use pinned Kaniko plugin **2.3.3**, verified to contain the maintained fork's
 executor **1.28.5**. The final synthetic step uses the standalone
 k6 image entrypoint; it needs no mise bootstrap or cluster credentials at runtime.
@@ -169,8 +169,9 @@ and renderer checks run native npm audit; both fail on dependency advisories.
 ## Image promotion
 
 The CI workflow clones complete source history and publishes images tagged with
-the full source commit SHA. The [deployment wrapper](../.woodpecker/deploy.sh)
-clones IaC, then invokes its `deploy:bike:image` mise task. That task owns
+the full source commit SHA. CI calls `mise run deploy`. The root
+[`deploy:image` task](../mise.toml) clones IaC, then invokes its `deploy`
+mise task for each component. That task owns
 Go/Pulumi installation and calls the guarded `scripts/deploy-bike-image.sh`
 helper. The IaC task change must be reviewed and published before a Bike
 release uses this handoff.
