@@ -1,6 +1,6 @@
 # Cycling Trends Reports Specification
 
-This is a product/design reference. [The backlog](../../../docs/TODO.md) owns
+This is a product/design reference. [The backlog](../TODO.md) owns
 current work; broader report features and test expansion are deferred LATER11.
 The historical gap list and completeness definitions below do not block
 today's backups and happy-path checks or claim that every proposed field ships.
@@ -47,7 +47,7 @@ Bike should not run this Python in production. The logic should be converted int
 
 ## Implementation snapshot
 
-The report registry, runner, server-side minimum filters, standalone reports, and compare-rides trends are implemented. Analyzer extraction, richer report filters and aggregates, completeness indicators, and broader test coverage remain under LATER11 in the [Bike TODO](../../../docs/TODO.md). The requirements below define the intended behavior; this specification does not maintain a separate task status list.
+The report registry, runner, server-side minimum filters, standalone reports, and compare-rides trends are implemented. Analyzer extraction, richer report filters and aggregates, completeness indicators, and broader test coverage remain under LATER11 in the [Bike TODO](../TODO.md). The requirements below define the intended behavior; this specification does not maintain a separate task status list.
 
 Completion criteria:
 
@@ -320,7 +320,7 @@ The first readiness version should return component scores and the evidence behi
 
 ## Follow-up tracking
 
-Follow-up status and priority live only in the [Bike TODO](../../../docs/TODO.md).
+Follow-up status and priority live only in the [Bike TODO](../TODO.md).
 This specification is the design reference for LATER11; resolve a bounded slice
 when a report issue or request justifies it.
 
@@ -330,7 +330,7 @@ Route-family ownership, stopped-time semantics, coasting without cadence, power-
 
 ## Code Anchors
 
-- Current Rust training summary logic, for reference only: `bike-core/src/activity_training_analysis.rs`
-- Current reports API: `api/src/controllers/reports.rs`
-- Activity derived data: `bike-core/src/activity_details.rs`
+- Current Rust training summary logic, for reference only: `bike-rs/bike-core/src/activity_training_analysis.rs`
+- Current reports API: `bike-rs/api/src/controllers/reports.rs`
+- Activity derived data: `bike-rs/bike-core/src/activity_details.rs`
 - Reports UI: `bike-ui/app/training/reports/page.tsx`, `bike-ui/components/reports`

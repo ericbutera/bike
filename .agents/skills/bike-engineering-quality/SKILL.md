@@ -100,7 +100,7 @@ outside that scope.
 ## Keep product specifications current
 
 For changes to product behavior, business rules, or background processing,
-read the [spec index](../../../bike-rs/docs/specs/README.md) and the owning
+read the [spec index](../../../docs/specs/README.md) and the owning
 domain spec before implementation. Update the canonical behavior in the same
 change; an appended investigation log does not replace obsolete rules. Reuse
 the owning spec instead of creating an overlapping one. Keep task status in

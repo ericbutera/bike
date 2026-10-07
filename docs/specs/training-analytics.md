@@ -78,17 +78,17 @@ The Reports page is a supporting trend view. Core XC readiness signals that affe
 
 ## Code Anchors
 
-- Activity parsing and derived ride data: `api/src/activity_details.rs`
-- Activity training cache: `api/src/activity_training_analysis.rs`
-- Fitness/fatigue/form analytics: `api/src/analytics.rs`
-- Training API responses: `api/src/controllers/training_goals.rs`
-- Training reports: `api/src/controllers/reports.rs`
+- Activity parsing and derived ride data: `bike-rs/api/src/activity_details.rs`
+- Activity training cache: `bike-rs/api/src/activity_training_analysis.rs`
+- Fitness/fatigue/form analytics: `bike-rs/api/src/analytics.rs`
+- Training API responses: `bike-rs/api/src/controllers/training_goals.rs`
+- Training reports: `bike-rs/api/src/controllers/reports.rs`
 - XC UI: `bike-ui/components/XcGoalsProgressPanel.tsx`
 - DH UI: `bike-ui/components/DhGoalsProgressPanel.tsx`
 
 ## Follow-up tracking
 
-Follow-up status and priority live only in the [Bike TODO](../../../docs/TODO.md).
+Follow-up status and priority live only in the [Bike TODO](../TODO.md).
 This specification is the training behavior reference for TRAIN01. Garmin
 training-effect fields remain supplemental metadata, not core planning inputs,
 unless a product decision changes.

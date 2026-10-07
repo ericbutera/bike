@@ -1,12 +1,12 @@
 # Strava gateway delivery contract
 
-Task status is maintained only in [the Bike backlog](../../../docs/TODO.md).
+Task status is maintained only in [the Bike backlog](../TODO.md).
 The old story checklist is preserved at `200921f` in Git in Git history. This document describes the delivery contract
 and recorded rollout evidence; it does not create additional acceptance gates.
 
 The gateway owns the live Strava subscription and provider credentials. The
 Rust receiver accepts signed delivery from the gateway. Current and deferred
-work is tracked only in the [Bike TODO](../../../docs/TODO.md).
+work is tracked only in the [Bike TODO](../TODO.md).
 
 ## Goal
 
@@ -84,7 +84,7 @@ production deployment and source recovery require their own verification.
   shows `X-Strava-Signature` without supported signing-key provisioning.
   Set `ALLOW_UNSIGNED_WEBHOOKS=true` without a signing key to accept callbacks
   with or without that header; defer key provisioning and enforcement to
-  [LATER12](../../../docs/TODO.md). With unsigned events, the
+  [LATER12](../TODO.md). With unsigned events, the
   subscription ID is only a filter, not authentication: the worker must fetch
   from Strava and must never forward unverified request fields as activity data.
 - Insert a canonical event key and raw event into PostgreSQL. A duplicate
@@ -172,6 +172,6 @@ tests use an explicitly selected disposable PostgreSQL schema. Provider fakes
 are recorded separately from live callbacks and production verification.
 
 See the
-[fixture provenance](../../internal/provider/testdata/README.md),
-[gateway recovery guide](../../README.md#failure-recovery), and
-[active backlog](../../../docs/TODO.md) for exact scope and remaining work.
+[fixture provenance](../../strava-gateway/internal/provider/testdata/README.md),
+[gateway recovery guide](../../strava-gateway/README.md#failure-recovery), and
+[active backlog](../TODO.md) for exact scope and remaining work.

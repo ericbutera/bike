@@ -5,7 +5,10 @@ use utoipa::OpenApi;
 
 fn main() {
     let document = ApiDoc::openapi();
-    let output_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../docs/openapi");
+    let output_dir = std::env::args_os().nth(1).map_or_else(
+        || PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/openapi"),
+        PathBuf::from,
+    );
 
     fs::create_dir_all(&output_dir).expect("create OpenAPI output directory");
     fs::write(

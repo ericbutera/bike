@@ -5,8 +5,8 @@ processing a ride, and admitting its route to a heatmap are separate decisions.
 
 This specification owns support tiers and the activity inventory. The
 [ingestion specification](activity-ingestion.md) owns retention and processing;
-the [heatmap specification](../../../docs/specs/heatmaps.md) owns geographic
-contribution. Task status stays in [the Bike backlog](../../../docs/TODO.md).
+the [heatmap specification](heatmaps.md) owns geographic
+contribution. Task status stays in [the Bike backlog](../TODO.md).
 The inventory reflects inspected code on 2026-10-06, not a new production
 verification. Expansion work below is proposed, not implemented behavior.
 
@@ -188,14 +188,14 @@ MAPS12 own the pending deferred retention and stricter recording admission imple
 Rust paths are relative to `bike-rs`; UI and gateway paths are relative to the
 repository root.
 
-- Sport normalization, cycling predicate, and list aliases: `bike-core/src/activity_sport.rs`
+- Sport normalization, cycling predicate, and list aliases: `bike-rs/bike-core/src/activity_sport.rs`
 - Shared UI choices: `bike-ui/lib/activitySports.ts`
-- File summary parsing: `bike-core/src/activity_summary.rs`
-- FIT session/sub-sport handling: `bike-core/src/fit_support.rs`
-- Provider classification: `bike-core/src/strava_provider_payload.rs`
+- File summary parsing: `bike-rs/bike-core/src/activity_summary.rs`
+- FIT session/sub-sport handling: `bike-rs/bike-core/src/fit_support.rs`
+- Provider classification: `bike-rs/bike-core/src/strava_provider_payload.rs`
 - Gateway allowlist: `strava-gateway/internal/provider/client.go`, `Activity.Cycling`
-- Non-cycling graph guards: `bike-core/src/activity_import_pipeline.rs`
-- Cycling query scope: `bike-core/src/entities/activities.rs`
-- Derived detail model: `bike-core/src/activity_data.rs`
+- Non-cycling graph guards: `bike-rs/bike-core/src/activity_import_pipeline.rs`
+- Cycling query scope: `bike-rs/bike-core/src/entities/activities.rs`
+- Derived detail model: `bike-rs/bike-core/src/activity_data.rs`
 - Detail metrics: `bike-ui/components/activity-detail/ActivityMetricsSummary.tsx`
-- Heatmap preparation: `bike-core/src/heatmaps/preparation.rs`
+- Heatmap preparation: `bike-rs/bike-core/src/heatmaps/preparation.rs`

@@ -156,15 +156,15 @@ Older activities uploaded before route-point persistence or before a parser fix 
 
 ## Code Anchors
 
-- Segment API and duplicate detection: `api/src/controllers/segments.rs`
-- Route matching helpers: `api/src/segment_support.rs`
-- Segment analytics: `api/src/analytics.rs`
-- Worker regeneration task: `worker/src/tasks/processors/regenerate_segment_efforts.rs`
+- Segment API and duplicate detection: `bike-rs/api/src/controllers/segments.rs`
+- Route matching helpers: `bike-rs/api/src/segment_support.rs`
+- Segment analytics: `bike-rs/api/src/analytics.rs`
+- Worker regeneration task: `bike-rs/worker/src/tasks/processors/regenerate_segment_efforts.rs`
 - Segment list UI: `bike-ui/components/SegmentsPanel.tsx`
 - Segment detail UI: `bike-ui/components/SegmentDetailPanel.tsx`
 - Segment builder UI: `bike-ui/components/SegmentBuilderWorkspace.tsx`
 
 ## Follow-up tracking
 
-Follow-up status and priority live only in the [Bike TODO](../../../docs/TODO.md).
+Follow-up status and priority live only in the [Bike TODO](../TODO.md).
 This specification is the processing reference for DATA05, DATA16, and SEG01.

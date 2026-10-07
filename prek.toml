@@ -44,6 +44,14 @@ files = "^bike-rs/.*\\.(rs|toml)$|^mise\\.toml$"
 pass_filenames = false
 
 [[repos.hooks]]
+id = "openapi-contract"
+name = "Canonical OpenAPI contract freshness"
+language = "system"
+entry = "mise --cd bike-rs run openapi:check"
+files = "^contracts/openapi/openapi\\.(json|yaml)$|^bike-rs/.*\\.(rs|toml)$|^mise\\.toml$"
+pass_filenames = false
+
+[[repos.hooks]]
 id = "ui-lint"
 name = "UI ESLint"
 language = "system"

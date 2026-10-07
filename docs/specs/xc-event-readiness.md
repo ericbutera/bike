@@ -140,13 +140,13 @@ Existing fields should stay backward-compatible where practical.
 
 ## Code Anchors
 
-- XC progress API: `api/src/controllers/training_goals.rs`
-- Event target preferences: `api/src/controllers/user_preferences.rs`
-- XC backfill: `api/src/xc_goal_backfill.rs`
+- XC progress API: `bike-rs/api/src/controllers/training_goals.rs`
+- Event target preferences: `bike-rs/api/src/controllers/user_preferences.rs`
+- XC backfill: `bike-rs/api/src/xc_goal_backfill.rs`
 - XC UI: `bike-ui/components/XcGoalsProgressPanel.tsx`
 - Preferences UI: `bike-ui/app/account/page.tsx`
 
 ## Follow-up tracking
 
-Follow-up status and priority live only in the [Bike TODO](../../../docs/TODO.md).
+Follow-up status and priority live only in the [Bike TODO](../TODO.md).
 This specification is the behavior reference for XC01.

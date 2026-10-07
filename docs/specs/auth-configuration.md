@@ -8,9 +8,9 @@ of the target shared-UI experience. Existing password data is retained during
 the migration; disabling these routes does not delete account data.
 
 The Rust API mounts Bike-owned session and OAuth routes from
-`bike-core/src/auth/`; password routes are absent. Bike-owned account and
+`bike-rs/bike-core/src/auth/`; password routes are absent. Bike-owned account and
 session follow-up is tracked as AUTH01–AUTH04 in
-[the single backlog](../../../docs/TODO.md). The shared UI owns session state in `bike-ui/lib/auth.tsx` and provider buttons
+[the single backlog](../TODO.md). The shared UI owns session state in `bike-ui/lib/auth.tsx` and provider buttons
 in `bike-ui/components/Providers.tsx`.
 
 ## Route Shape
@@ -26,7 +26,7 @@ Bike exposes these session routes and its configured OAuth providers:
 
 ## API Configuration
 
-Set these base settings explicitly in production; `bike-core/src/config.rs`
+Set these base settings explicitly in production; `bike-rs/bike-core/src/config.rs`
 provides development defaults. The shared UI has its own runtime settings below:
 
 | Variable               | Production | Purpose                                                                                                                                                                   |
@@ -139,7 +139,7 @@ discovered SSO provider. `AUTH_PASSWORD_ENABLED` and
 `AUTH_REGISTRATION_ENABLED` are obsolete and are not consumed by the shared UI.
 
 Use the existing component workflows and independently owned site stacks in the
-[deployment guide](../../../../pulumi-iac/BIKE-VARIANTS.md). AUTH04 verifies auth
+[deployment guide](../../../pulumi-iac/BIKE-VARIANTS.md). AUTH04 verifies auth
 and session behavior independently with fakes and Playwright as recorded below;
 a complete live SSO-to-Strava chain is not required.
 

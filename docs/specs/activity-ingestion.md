@@ -3,7 +3,7 @@
 Bike imports activities from manual files, server-side archive jobs, and Strava sync. Supported cycling activities converge on the same normalized activity pipeline so derived metrics, segments, analytics, and UI behavior remain consistent regardless of source. The retention and admission proposals below separate retaining an input from processing it as a ride or admitting its route to a heatmap.
 
 The 2026-10-06 proposals are design requirements for ACT05 and MAPS12 in
-[the Bike backlog](../../../docs/TODO.md), not implemented or deployed behavior.
+[the Bike backlog](../TODO.md), not implemented or deployed behavior.
 
 The [supported activities specification](supported-activities.md) owns the
 cycling inventory, partial non-cycling support, source-specific limitations,
@@ -30,7 +30,7 @@ Strava sync imports activities through the connected Strava account. OAuth conne
 
 ## Normalization
 
-Every activity admitted for full cycling processing must pass through the same core processing graph. Retention-only inputs stop before full GPS/detail decoding and do not execute the downstream graph. The implementation uses `petgraph` in `bike-core/src/activity_import_pipeline.rs` to model the graph and runs it in topological order, rather than relying on ad hoc call order in each importer.
+Every activity admitted for full cycling processing must pass through the same core processing graph. Retention-only inputs stop before full GPS/detail decoding and do not execute the downstream graph. The implementation uses `petgraph` in `bike-rs/bike-core/src/activity_import_pipeline.rs` to model the graph and runs it in topological order, rather than relying on ad hoc call order in each importer.
 
 The current graph nodes are:
 
@@ -55,7 +55,7 @@ The Rust import suite uses `import-analytics-ride.gpx`: a seven-point,
 gain. The owning pipeline and worker tests verify normalization, processing
 stages, segment/activity analytics, training and fitness, retained source data,
 and replay behavior. Provider-derived fixture provenance is documented in the
-[gateway fixtures](../../../strava-gateway/internal/provider/testdata/README.md).
+[gateway fixtures](../../strava-gateway/internal/provider/testdata/README.md).
 
 Raw storage intentionally precedes activity parsing for all retained file imports. This means fingerprint duplicates can leave a duplicate import row that points at the duplicate raw source and the existing activity. Provider-correlation duplicates, such as already-seen Strava activity IDs, may still short-circuit before raw storage when no new source artifact would be retained.
 
@@ -235,7 +235,7 @@ original artifacts only; provider-payload downloads remain a separate concept.
 
 ## Native Strava Provider Parsing
 
-`bike-core/src/strava_provider_payload.rs` defines the versioned `StoredStravaProviderPayload`, including the activity summary, streams keyed by type, and provider stream metadata. The artifact-aware `parse_activity_artifact` path dispatches between file formats and provider payloads; `parse_strava_provider_payload` maps summary and stream data directly into `ActivityDraft` and `ActivityDerivedData`, including route points, chart points, and a full-activity lap.
+`bike-rs/bike-core/src/strava_provider_payload.rs` defines the versioned `StoredStravaProviderPayload`, including the activity summary, streams keyed by type, and provider stream metadata. The artifact-aware `parse_activity_artifact` path dispatches between file formats and provider payloads; `parse_strava_provider_payload` maps summary and stream data directly into `ActivityDraft` and `ActivityDerivedData`, including route points, chart points, and a full-activity lap.
 
 Processing prefers original FIT, original TCX, native Strava archive JSON, original GPX, then the retained Strava provider payload. Regression tests protect this priority and reject generated-only replay. Genuine rider-uploaded TCX remains supported; Bike-generated TCX records require source recovery.
 
@@ -479,7 +479,7 @@ changes invalidate old projections, bump revisions, and remove contributions.
 Workers may publish only the current policy and generation. Global
 contributions use explicit owner participation and their own revision/removal
 lifecycle; personal cache keys and queries remain scoped to the authenticated
-owner. See the [heatmap spec](../../../docs/specs/heatmaps.md#cycling-admission-proposal-2026-10-06).
+owner. See the [heatmap spec](heatmaps.md#cycling-admission-proposal-2026-10-06).
 
 ### Required verification
 
@@ -535,23 +535,23 @@ Every activity-processing graph stage should emit an `activity_processing` integ
 
 ## Code Anchors
 
-- Upload and archive API: `api/src/controllers/activity_imports.rs`
-- Activity import pipeline: `bike-core/src/activity_import_pipeline.rs`
-- Generated-source recovery: `bike-core/src/activity_source_recovery.rs`, `bike-core/src/bin/recover-generated-imports.rs`
-- Shared activity parser entrypoint: `bike-core/src/activity_parser.rs`
-- Archive importer: `bike-core/src/archive_import.rs`
-- FIT support: `bike-core/src/fit_support.rs`
-- Activity summary normalization: `bike-core/src/activity_summary.rs`
-- Activity detail normalization: `bike-core/src/activity_details.rs`
-- Source-file download: `api/src/controllers/activities.rs`
-- Strava provider JSON ingestion: `bike-core/src/strava.rs`
-- Worker processors: `worker/src/tasks/processors/process_activity_import.rs`, `worker/src/tasks/processors/activity_archive_import.rs`, `worker/src/tasks/processors/strava_sync.rs`
+- Upload and archive API: `bike-rs/api/src/controllers/activity_imports.rs`
+- Activity import pipeline: `bike-rs/bike-core/src/activity_import_pipeline.rs`
+- Generated-source recovery: `bike-rs/bike-core/src/activity_source_recovery.rs`, `bike-rs/bike-core/src/bin/recover-generated-imports.rs`
+- Shared activity parser entrypoint: `bike-rs/bike-core/src/activity_parser.rs`
+- Archive importer: `bike-rs/bike-core/src/archive_import.rs`
+- FIT support: `bike-rs/bike-core/src/fit_support.rs`
+- Activity summary normalization: `bike-rs/bike-core/src/activity_summary.rs`
+- Activity detail normalization: `bike-rs/bike-core/src/activity_details.rs`
+- Source-file download: `bike-rs/api/src/controllers/activities.rs`
+- Strava provider JSON ingestion: `bike-rs/bike-core/src/strava.rs`
+- Worker processors: `bike-rs/worker/src/tasks/processors/process_activity_import.rs`, `bike-rs/worker/src/tasks/processors/activity_archive_import.rs`, `bike-rs/worker/src/tasks/processors/strava_sync.rs`
 - Upload UI: `bike-ui/components/ActivityImportsPanel.tsx`
 - Activity source download UI: `bike-ui/components/activity-detail/ActivityHeaderActions.tsx`
 
 ## Follow-up tracking
 
-Follow-up status and priority live only in the [Bike TODO](../../../docs/TODO.md).
+Follow-up status and priority live only in the [Bike TODO](../TODO.md).
 This specification is the behavior reference for DATA04, DATA12–14, DATA17–18,
 and ACT04–05. Generated TCX requires backfill to an authentic source; segment
 imports remain route-only.

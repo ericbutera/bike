@@ -109,4 +109,8 @@ Examples:
 
 ## specs
 
-Features should be recorded in docs/specs. Business rules and decisions need to be recorded as well.
+Keep shared documentation in the root `docs/` directory and product
+specifications in `docs/specs/`. Link to these documents from component READMEs
+instead of maintaining component documentation copies. Business rules and
+decisions belong in the owning specification. Generated HTTP contracts live
+only in `contracts/openapi/`; Rust generates them directly there.

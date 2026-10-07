@@ -54,7 +54,7 @@ File uploads and archive imports retain their source data and enter the durable
 processing workflow. Parsing normalizes FIT, TCX, or GPX into an activity record.
 Processing then matches segments and rebuilds activity and training analytics.
 Derived data can be regenerated from retained sources when parsers or rules
-change. See the [ingestion specification](../bike-rs/docs/specs/activity-ingestion.md).
+change. See the [ingestion specification](specs/activity-ingestion.md).
 
 Strava callbacks are acknowledged after the gateway inbox commits to PostgreSQL.
 The gateway worker fetches provider data, stores a content-addressed artifact,
@@ -76,13 +76,14 @@ endpoints. Worker preparation and feature flags are described in the
 
 ## Contracts and ownership
 
-- Rust generates the HTTP contract in `bike-rs/docs/openapi/`;
-  `contracts/openapi/` distributes it to the frontend.
+- Rust generates the canonical HTTP contract directly in `contracts/openapi/`.
+  The frontend and test harnesses consume its YAML and JSON representations.
 - `bike-ui/lib/openapi/react-query/api.d.ts` is generated from that contract.
 - Versioned protobuf definitions under `proto/` describe internal gateway and
   renderer interfaces.
 - `mise run assets:sync` copies canonical assets into required build contexts;
   `mise run contracts:check` compares those copies with their owners.
+- `mise run rust:check` verifies the HTTP contract against fresh Rust output.
 - Schema migrations are append-only records. Preserve their order and history.
 
 ## Deployment
@@ -101,4 +102,4 @@ identities and do not depend on the repository's display name.
 OpenTelemetry supports tracing; internal metrics, dashboards, alerts, and
 protected failure captures support diagnosis. See the
 [gateway recovery guide](../strava-gateway/README.md#failure-recovery) and
-[admin recovery procedures](../bike-rs/docs/specs/admin-operations.md#failed-import-recovery) for recovery procedures.
+[admin recovery procedures](specs/admin-operations.md#failed-import-recovery) for recovery procedures.
