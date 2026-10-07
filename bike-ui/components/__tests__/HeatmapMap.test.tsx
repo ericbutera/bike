@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("../../lib/useBikeTheme", () => ({ useBikeTheme: () => mocks.theme }));
 vi.mock("maplibre-gl", () => ({
+  setWorkerUrl: vi.fn(),
   Map: class {
     constructor() {
       mocks.create();

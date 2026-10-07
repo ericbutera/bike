@@ -57,6 +57,7 @@ Other individual suites can run directly:
 ```sh
 mise --cd bike-ui exec -- pnpm exec playwright test tests/e2e/auth-happy-path.spec.mjs
 mise --cd bike-ui exec -- pnpm exec playwright test tests/e2e/activity-sync-fixture.spec.mjs
+mise --cd bike-ui exec -- pnpm exec playwright test tests/e2e/map-rendering.spec.mjs
 mise --cd bike-ui run test:e2e:heatmaps
 ```
 
@@ -72,6 +73,11 @@ map data. They verify UI behavior independently of live auth, provider, and
 database behavior. The connected default journey uses real product APIs and the
 owned PNG renderer while faking external basemaps. Heatmap verification requires
 an enabled flag and prepared activity projections.
+
+The map-rendering regression uses fixture account/activity responses and a
+GeoJSON basemap with the real bundled MapLibre worker. Run it against a built UI
+to verify that both heatmap and activity maps paint their basemap; it rejects
+browser warnings and errors and requires no production account.
 
 `mise --cd bike-ui run test:e2e:all` runs the broad retained regressions on demand;
 some require additional scenario fixtures or modify disposable test data.

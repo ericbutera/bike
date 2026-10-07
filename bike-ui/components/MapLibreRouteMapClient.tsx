@@ -7,7 +7,7 @@ import type {
   Point,
   Position,
 } from "geojson";
-import * as maplibregl from "maplibre-gl";
+import * as maplibregl from "../lib/maplibre";
 import { type GeoJSONSource, type StyleSpecification } from "maplibre-gl";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useBikeTheme } from "../lib/useBikeTheme";
@@ -655,6 +655,7 @@ function ensureMapSourcesAndLayers(
           "symbol-placement": "line",
           "symbol-spacing": 84,
           "text-field": "▶",
+          "text-font": ["Noto Sans Regular"],
           "text-size": 11,
           "text-keep-upright": false,
         },

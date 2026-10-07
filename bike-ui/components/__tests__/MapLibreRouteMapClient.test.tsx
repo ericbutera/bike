@@ -101,6 +101,7 @@ vi.mock("maplibre-gl", () => {
   class MockAttributionControl {}
 
   return {
+    setWorkerUrl: vi.fn(),
     Map: MockMap,
     NavigationControl: MockNavigationControl,
     AttributionControl: MockAttributionControl,
