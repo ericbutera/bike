@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./helpers/test.mjs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { targets } from "./helpers/targets.mjs";

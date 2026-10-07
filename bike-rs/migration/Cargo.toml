@@ -14,6 +14,10 @@ workspace = true
 name = "migration"
 path = "src/main.rs"
 
+[[bin]]
+name = "e2e-fixture"
+path = "src/bin/e2e-fixture.rs"
+
 [dependencies]
 tokio = { workspace = true }
 sea-orm-migration = { workspace = true }

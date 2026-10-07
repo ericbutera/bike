@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./helpers/test.mjs";
 import { segmentId, targets } from "./helpers/targets.mjs";
 import { openRoute } from "./helpers/ui.mjs";
 
@@ -26,7 +26,10 @@ test("deleting a segment removes its detail and returns to the list", async ({
     expect(
       (
         await page.request.get(
-          new URL(`/api/segments/${segmentId}`, target.url).toString(),
+          new URL(
+            `/api/segments/${segmentId}`,
+            process.env.BIKE_API_URL ?? "http://localhost:3000",
+          ).toString(),
         )
       ).status(),
     ).toBe(404);

@@ -18,6 +18,10 @@ run = "cargo run --bin api"
 description = "Build the bike API"
 run = "cargo build --release --bin api"
 
+[tasks."e2e:build"]
+description = "Compile API, worker, and disposable database fixture tools for browser tests"
+run = "cargo build --locked --bin api --bin worker --bin e2e-fixture"
+
 [tasks."worker:dev"]
 description = "Start the bike worker"
 run = "cargo run --bin worker"

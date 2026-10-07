@@ -1,11 +1,11 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./helpers/test.mjs";
 import { targets } from "./helpers/targets.mjs";
 import { openRoute } from "./helpers/ui.mjs";
 
 test("the shared admin task page cancels a processing task", async ({
   browser,
 }) => {
-  for (const target of targets.filter((target) => target.name !== "rust")) {
+  for (const target of targets) {
     const context = await browser.newContext();
     const page = await context.newPage();
     await openRoute(page, target, "/admin/tasks");

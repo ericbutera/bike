@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./helpers/test.mjs";
 import { selectedFrontendRoutes } from "./helpers/frontend-routes.mjs";
 import {
   apiOperationEvidence,

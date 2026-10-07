@@ -9,39 +9,41 @@ Kubernetes.
 ## Continuous integration
 
 Woodpecker reads [`.woodpecker/bike.yaml`](../.woodpecker/bike.yaml). Each run
-uses one monorepo checkout, then follows **checkout → all checks → all image
-builds → Pulumi apply → production k6 checks**. `test-contracts` prepares shared
-tooling and assets before the four language checks run in parallel. All six
-image builds share the same dependency list and wait for every check to pass.
-Deployment waits for all six builds, including the standalone synthetic image;
-smoke checks wait for deployment. Matching main-branch pushes and manual runs
-build the images, deploy the services, then verify the running services. Every
-check uses `failure: fail`: a nonzero exit fails the pipeline and blocks all
-builds, deployment, and smoke checks. A failed build blocks deployment and smoke
-checks. Pull requests targeting `main` run those same check and build steps;
-only the deployment and smoke steps have main-only conditions. Woodpecker's
+uses one monorepo checkout, then follows **checkout → tooling preparation → all
+tests → all image builds → Pulumi apply**. Preparation only shares mise and
+exports public image pins. Five image builds share the same dependency list and
+wait for every test step to pass. Deployment waits for all five builds.
+Every test step uses `failure: fail`: a nonzero exit fails the pipeline and blocks
+all builds and deployment. A failed build also blocks deployment.
+Pull requests targeting `main` run those same test and build steps;
+only deployment has a main-only condition. Woodpecker's
 repository setting must enable pull requests; IaC owns that setting. Opening a
 PR or pushing another revision, including `git push --force-with-lease`, starts
 the shared pipeline. Woodpecker cancels superseded PR runs. Manual branch runs
 use the same checks and builds. All images use immutable commit tags, including
-PR builds. PR and manual branch runs stop before deployment and receive no
-production synthetic credential.
+PR builds. PR and manual feature-branch runs stop before deployment.
+The incorrect synthetic smoke step and its CI image build have been removed.
 Documentation-only changes do not release images.
 
-| Check                 | Coverage                                                                                           |
-| --------------------- | -------------------------------------------------------------------------------------------------- |
-| `test-contracts`      | Canonical HTTP contract and shared asset copies                                                    |
-| `test-rust`           | Rust formatting, Clippy, workspace tests including native HTTP integrations                        |
-| `test-ui`             | ESLint, TypeScript, UI unit tests, browser diagram rendering, formatting, generated OpenAPI client |
-| `test-map-renderer`   | Renderer ESLint, Node tests, and formatting                                                        |
-| `test-strava-gateway` | golangci-lint (including Go vet), formatting, gateway tests                                        |
+| Check                 | Coverage                                                                                 |
+| --------------------- | ---------------------------------------------------------------------------------------- |
+| `test-rust`           | Rust formatting, Clippy, workspace tests including native HTTP integrations              |
+| `test-ui-unit`        | ESLint, TypeScript, unit tests, formatting, generated OpenAPI client, dependency audit   |
+| `test-ui-e2e`         | Playwright browser suite with branch UI/API/renderer/worker and reset scenario databases |
+| `test-map-renderer`   | Renderer ESLint, Node tests, and formatting                                              |
+| `test-strava-gateway` | golangci-lint (including Go vet), formatting, gateway tests                              |
 
 The preparation step runs in the official mise **2026.10.3/debian** image,
 pinned by digest. Its owning `ci:mise:prepare` task copies the executable into
 ignored `.artifacts/bin/mise`; later checks and deployment use that executable
 with existing named tasks in the compiler-equipped buildpack image. The UI
-check uses the pinned Playwright image so its diagram rendering regression runs
-in Chromium before image builds. These steps wait for preparation. The workflow
+unit check uses the buildpack image. The separate e2e step uses the pinned
+Playwright image, after Rust, renderer, and UI unit checks prepare dependencies.
+It compiles the branch's test services, starts the UI and real map renderer,
+and resets a disposable PostgreSQL database before each browser test.
+Existing SQL fixtures supply each scenario; external basemaps use fixtures.
+The database service has no persistent volume or production credentials and is
+removed with the workflow. These steps wait for preparation. The workflow
 fixes the shared workspace at `/woodpecker/src`,
 matching the `.artifacts/bin` entry on `PATH` so nested mise commands resolve
 the copied executable. No committed installer or additional system-package setup
@@ -52,9 +54,9 @@ CI installs only the tools needed by each check and shares its tool cache.
 The same entry points run locally:
 
 ```sh
-mise run ci:contracts
 mise run ci:rust
-mise run ci:ui
+mise run ci:ui:unit
+BIKE_E2E_DATABASE_URL=postgres://bike_e2e:bike-e2e-only@localhost:5432/bike_e2e mise run ci:ui:e2e
 mise run ci:renderer
 mise run ci:gateway
 ```
@@ -62,8 +64,7 @@ mise run ci:gateway
 The root `rust:check`, `renderer:check`, and component `check` tasks own the
 actual checks. `deploy` calls `deploy:image` for each component. Image builds
 use pinned Kaniko plugin **2.3.3**, verified to contain the maintained fork's
-executor **1.28.5**. The final synthetic step uses the standalone
-k6 image entrypoint; it needs no mise bootstrap or cluster credentials at runtime.
+executor **1.28.5**.
 
 Install mise on developer machines using its
 [installation instructions](https://mise.jdx.dev/installing-mise.html).
@@ -82,7 +83,7 @@ pins use mise's Go backend in the gateway config. There are no version-generatio
 or custom configuration-validation scripts.
 
 Local image tasks pass complete image references and package/compiler pins as
-build arguments. `ci:contracts` also calls `ci:images:prepare`, which writes only
+build arguments. The preparation step calls `ci:images:prepare`, which writes only
 public build pins to an ignored environment file. Each Kaniko build loads it,
 then invokes the unchanged plugin with its native `build_args_from_env` input.
 This small shell handoff is required because Kaniko's image has no mise/bootstrap

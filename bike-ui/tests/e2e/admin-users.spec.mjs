@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./helpers/test.mjs";
 import { openFrontendRoute } from "./helpers/frontend.mjs";
 import { targets } from "./helpers/targets.mjs";
 

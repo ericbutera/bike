@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./helpers/test.mjs";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { activityId, targets } from "./helpers/targets.mjs";

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./helpers/test.mjs";
 import { targets } from "./helpers/targets.mjs";
 import { openRoute } from "./helpers/ui.mjs";
 
@@ -21,9 +21,7 @@ test("shared admin tools queue matching import and training work in Bike", async
 }) => {
   test.setTimeout(60_000);
 
-  for (const target of targets.filter(
-    (candidate) => candidate.name !== "rust",
-  )) {
+  for (const target of targets) {
     const context = await browser.newContext();
     const page = await context.newPage();
     await openRoute(page, target, "/admin/manual-tasks");

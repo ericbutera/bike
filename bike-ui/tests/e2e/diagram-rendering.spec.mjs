@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./helpers/test.mjs";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);

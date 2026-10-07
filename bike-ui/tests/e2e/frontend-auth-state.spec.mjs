@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./helpers/test.mjs";
 import { protectedFrontendRoutes } from "./helpers/frontend-routes.mjs";
 import { openRoute } from "./helpers/ui.mjs";
 import { fakeProductApi } from "./helpers/product-fixtures.mjs";

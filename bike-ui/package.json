@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test tests/e2e/platform-synthetic.spec.mjs",
+    "test:e2e": "playwright test",
     "test:e2e:all": "playwright test"
   },
   "dependencies": {

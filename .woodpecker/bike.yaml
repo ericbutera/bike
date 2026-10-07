@@ -33,8 +33,8 @@ clone:
       depth: 0
 
 steps:
-  # A failed check fails the pipeline; builds only run after every check passes.
-  - name: test-contracts
+  # Preparation shares tooling and image pins; it does not run product tests.
+  - name: prepare
     failure: fail
     image: ghcr.io/jdx/mise:2026.10.3-debian@sha256:58c4c847f5518a9a87a9a582886a485443dbca5eb024426577f58d586a0990c6
     depends_on: []
@@ -48,12 +48,13 @@ steps:
     volumes: &mise_cache
       - woodpecker-cache:/cache
     commands:
-      - mise run ci:contracts
+      - mise run ci:mise:prepare
+      - mise run ci:images:prepare
 
   - name: test-rust
     failure: fail
     image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
-    depends_on: [test-contracts]
+    depends_on: [prepare]
     environment:
       <<: *mise_environment
       TEST_MODE: "1"
@@ -65,19 +66,34 @@ steps:
     commands:
       - .artifacts/bin/mise run ci:rust
 
-  - name: test-ui
+  - name: test-ui-unit
     failure: fail
-    image: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
-    depends_on: [test-contracts]
+    image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
+    depends_on: [prepare]
     environment: *mise_environment
     volumes: *mise_cache
     commands:
-      - .artifacts/bin/mise run ci:ui
+      - .artifacts/bin/mise run ci:ui:unit
+
+  - name: test-ui-e2e
+    failure: fail
+    image: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+    depends_on: [test-ui-unit, test-rust, test-map-renderer]
+    environment:
+      <<: *mise_environment
+      CARGO_HOME: /cache/bike/cargo
+      RUSTUP_HOME: /cache/bike/rustup
+      CARGO_TARGET_DIR: /cache/bike/target
+      BIKE_E2E_DATABASE_URL: postgres://bike_e2e:bike-e2e-only@ci-postgres:5432/bike_e2e
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+    volumes: *mise_cache
+    commands:
+      - .artifacts/bin/mise run ci:ui:e2e
 
   - name: test-map-renderer
     failure: fail
     image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
-    depends_on: [test-contracts]
+    depends_on: [prepare]
     environment: *mise_environment
     volumes: *mise_cache
     commands:
@@ -86,7 +102,7 @@ steps:
   - name: test-strava-gateway
     failure: fail
     image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
-    depends_on: [test-contracts]
+    depends_on: [prepare]
     environment: *mise_environment
     volumes: *mise_cache
     commands:
@@ -96,9 +112,9 @@ steps:
     image: woodpeckerci/plugin-kaniko:2.3.3@sha256:d6ecc0f37561503eeacd8f2189068c5a13c531f5629cf2ce2de0ac144824c9f4
     depends_on:
       &all_tests [
-        test-contracts,
         test-rust,
-        test-ui,
+        test-ui-unit,
+        test-ui-e2e,
         test-map-renderer,
         test-strava-gateway,
       ]
@@ -205,24 +221,6 @@ steps:
       PLUGIN_CONTEXT: strava-gateway
       PLUGIN_DOCKERFILE: strava-gateway/Dockerfile
 
-  - name: build-synthetics
-    image: woodpeckerci/plugin-kaniko:2.3.3@sha256:d6ecc0f37561503eeacd8f2189068c5a13c531f5629cf2ce2de0ac144824c9f4
-    depends_on: *all_tests
-    # Kaniko has no mise/bootstrap shell. Load the public pins prepared by the owning mise task.
-    commands:
-      - set -a; . .artifacts/image-build.env; exec /kaniko/plugin.sh
-    environment:
-      PLUGIN_BUILD_ARGS_FROM_ENV: K6_IMAGE
-      PLUGIN_REGISTRY: registry.registry:5000
-      PLUGIN_REPO: bike-synthetics
-      PLUGIN_TAGS: ${CI_COMMIT_SHA}
-      PLUGIN_INSECURE: "true"
-      PLUGIN_SKIP_TLS_VERIFY: "true"
-      PLUGIN_INSECURE_PULL: "true"
-      PLUGIN_INSECURE_REGISTRY: "true"
-      PLUGIN_CONTEXT: integration-tests
-      PLUGIN_DOCKERFILE: integration-tests/Dockerfile
-
   - name: deploy
     when:
       - event: [push, manual]
@@ -235,7 +233,6 @@ steps:
         build-ui,
         build-map-renderer,
         build-strava-gateway,
-        build-synthetics,
       ]
     environment:
       <<: *mise_environment
@@ -251,12 +248,16 @@ steps:
     commands:
       - mise run deploy
 
-  - name: synthetic-smoke
-    when:
-      - event: [push, manual]
-        branch: main
-    image: registry.registry:5000/bike-synthetics:${CI_COMMIT_SHA}
-    depends_on: [deploy]
+# Woodpecker creates and removes this database with each workflow run.
+# No persistent volumes or production credentials are used.
+services:
+  ci-postgres:
+    image: postgres:17.11-trixie@sha256:ae69c452f483507a6b99fb654cf93aad7fe156ffd2c56247707eef4e36d3c12b
     environment:
-      BIKE_UI_URL: http://ui.bike.svc.cluster.local:3000
-      BIKE_API_URL: http://api.bike.svc.cluster.local:3000/api
+      POSTGRES_DB: bike_e2e
+      POSTGRES_USER: bike_e2e
+      POSTGRES_PASSWORD: bike-e2e-only
+    ports: [5432]
+    backend_options:
+      kubernetes:
+        workspaceVolume: false

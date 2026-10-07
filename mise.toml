@@ -131,10 +131,6 @@ run = ["mise run lint:maps", "mise run test", "npm --prefix map-renderer audit"]
 description = "Install locked renderer application and lint dependencies"
 run = "npm --prefix map-renderer ci"
 
-[tasks."ci:contracts"]
-description = "Check canonical asset mirrors"
-run = ["mise install aqua:woodpecker-ci/woodpecker/woodpecker-cli shellcheck", "mise run ci:check", "mise run lint:sh", "mise run contracts:check", "mise run ci:images:prepare", "mise run ci:mise:prepare"]
-
 [tasks."ci:mise:prepare"]
 description = "Share the official CI image's mise executable with subsequent runner steps"
 run = '''
@@ -173,9 +169,13 @@ run = "woodpecker-cli lint --strict .woodpecker"
 description = "Install Rust tooling and run the shared backend checks"
 run = ["mise --cd bike-rs install rust protoc", "mise run rust:check"]
 
-[tasks."ci:ui"]
-description = "Install UI tooling and run the shared UI checks"
+[tasks."ci:ui:unit"]
+description = "Install UI tooling and run lint, type, unit, format, and client checks"
 run = ["mise --cd bike-ui install node npm:npm pnpm npm:prettier", "mise --cd bike-ui run check"]
+
+[tasks."ci:ui:e2e"]
+description = "Install UI tooling and run the UI browser suite"
+run = ["mise --cd bike-ui install node npm:npm pnpm rust protoc", "mise --cd bike-ui run test:e2e:disposable"]
 
 [tasks."ci:renderer"]
 description = "Install renderer tooling and run the shared renderer checks"

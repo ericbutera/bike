@@ -5,8 +5,8 @@ NEXT_TELEMETRY_DISABLED = "1"
 run = "pnpm install --frozen-lockfile"
 
 [tasks.check]
-description = "Install dependencies and run UI lint, type, fixture, format, and contract checks"
-run = ["mise run lint:check", "mise run test", "mise run test:e2e:diagrams", "mise run openapi:check", "mise run audit"]
+description = "Install dependencies and run UI lint, type, unit, format, and contract checks"
+run = ["mise run lint:check", "mise run test", "mise run openapi:check", "mise run audit"]
 
 [tasks.audit]
 description = "Reject dependency advisories and incompatible peers"
@@ -59,12 +59,18 @@ cmp -- "$GENERATED_TYPES" lib/openapi/react-query/api.d.ts
 '''
 
 [tasks."test:e2e"]
-description = "Run the connected activity, segment, and race browser check"
+description = "Run all browser regressions against the configured Bike stack"
 run = "pnpm run test:e2e"
 
 [tasks."test:e2e:all"]
 description = "Run browser regressions against the configured Bike UI"
-run = "pnpm run test:e2e:all"
+run = "mise run test:e2e"
+
+[tasks."test:e2e:disposable"]
+description = "Run all browser regressions with fresh scenario databases and branch services"
+depends = ["deps"]
+env = { BIKE_E2E_DISPOSABLE = "1", BIKE_UI_URL = "http://127.0.0.1:3001", BIKE_API_URL = "http://127.0.0.1:3000", BIKE_TEST_CLIMB_COUNT = "0", BIKE_TEST_EFFORT_COUNT = "2", BIKE_TEST_ZONE_DISTRIBUTION = "false", BIKE_TEST_ADMIN_TASK_FIXTURE = "true", BIKE_TEST_EXPECT_AUTHENTICATED = "true", PLAYWRIGHT_AUTH_STATE = "1", HEATMAP_REQUIRE_ENABLED = "1", HEATMAP_PREVIEW_FILTERS = "sport=ride" }
+run = ["mise --cd ../bike-rs run e2e:build", "mise run test:e2e"]
 
 [tasks."test:e2e:diagrams"]
 description = "Verify diagram and math rendering in a standalone browser fixture"

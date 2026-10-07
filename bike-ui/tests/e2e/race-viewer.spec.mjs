@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./helpers/test.mjs";
 import { raceEffortIds, segmentId, targets } from "./helpers/targets.mjs";
 import { visualViewport } from "./helpers/frontend.mjs";
 import { openRoute } from "./helpers/ui.mjs";

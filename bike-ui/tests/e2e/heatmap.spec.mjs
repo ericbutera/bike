@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./helpers/test.mjs";
 import { PNG } from "pngjs";
 import { targets } from "./helpers/targets.mjs";
 import { openRoute, artifactRoot, stabilize } from "./helpers/ui.mjs";

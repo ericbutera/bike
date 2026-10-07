@@ -2,9 +2,6 @@
 -- Safe to reapply to the isolated test database.
 BEGIN;
 
-ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS disabled boolean NOT NULL DEFAULT false;
-
 INSERT INTO users
     (id, pid, email, api_key, name, is_admin, disabled, email_verified_at, created_at, updated_at)
 VALUES
