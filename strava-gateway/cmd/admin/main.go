@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/ericbutera/bike-services/strava-gateway/internal/storage"
-	"github.com/ericbutera/bike-services/strava-gateway/internal/worker"
+	"github.com/ericbutera/bike/strava-gateway/internal/storage"
+	"github.com/ericbutera/bike/strava-gateway/internal/worker"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

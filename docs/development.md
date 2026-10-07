@@ -21,7 +21,7 @@ start after migrations complete successfully; this also initializes a new databa
 
 Local authentication enables a development account and a local admin account.
 Production uses configured OAuth/OIDC providers with local auto-login disabled;
-see [authentication configuration](../bike-rs/docs/specs/auth-configuration.md).
+see [authentication configuration](specs/auth-configuration.md).
 
 Imports are processed by the worker, so start the complete stack when testing
 uploads, archives, or analytics. Rust source changes trigger recompilation inside
@@ -90,21 +90,19 @@ mise tasks
 | Command from the root              | Checks                                                                |
 | ---------------------------------- | --------------------------------------------------------------------- |
 | `mise run rust:check`              | Rust formatting, Clippy, workspace tests                              |
-| `mise run lint`                    | Rust Clippy, UI ESLint, gateway Go vet, renderer formatting           |
+| `mise run lint`                    | `lint:rs`, `lint:go`, `lint:ui`, and `lint:maps`                      |
 | `mise run hooks:check`             | All repository-root prek checks against tracked files                 |
-| `mise run ui:check`                | UI ESLint, typecheck, tests, build, format, client freshness           |
+| `mise run ui:check`                | UI ESLint, typecheck, tests, build, format, client freshness          |
 | `mise run test`                    | Map renderer tests                                                    |
 | `mise run strava:test`             | Gateway tests; database cases require `TEST_DATABASE_URL`             |
 | `mise run generate:protobuf:check` | Checked-in gateway protobuf bindings                                  |
-| `mise run contracts:check`         | Rust contract copies, shared assets, UI inventory, source routes      |
+| `mise run contracts:check`         | Canonical contract and shared asset copies                            |
 | `mise run test:integration`        | Real Axum routes and SeaORM queries with isolated SQLite fixture data |
 | `mise run compose:config`          | Complete local Compose configuration                                  |
 | `mise run check`                   | Combined Rust, UI, renderer, gateway, protobuf checks                 |
 
 The repository-root `prek.toml` routes checks to each owning mise task.
-`mise run format:staged` runs the same checks for staged files. The UI retains
-React Compiler adoption diagnostics as warnings while the compiler is disabled;
-Next.js checks, hook usage rules, and TypeScript checks remain release gates.
+`mise run format:staged` runs the same checks for staged files. ESLint uses zero-warning enforcement; Clippy denies warnings.
 
 For a targeted Rust check, use the component's toolchain:
 
@@ -125,6 +123,7 @@ copies and frontend types together:
 
 ```sh
 mise --cd bike-rs run generate:openapi
+mise --cd bike-rs run openapi:check
 mise --cd bike-ui run generate:typescript
 mise --cd bike-ui run openapi:check
 ```
@@ -138,13 +137,15 @@ mise run generate:protobuf:check
 ```
 
 Rust client bindings are generated during the Cargo build. Intentional asset
-copies are listed in [`shared-assets.json`](shared-assets.json). After changing
-an owning asset, run `mise run assets:sync` and review the resulting diff.
+copies are explicit in root mise tasks. After changing an owning asset, run
+`mise run assets:sync`, review the diff, and run `mise run contracts:check`.
 
 ## Inspect traces
 
 Local span export defaults to `OTEL_TRACES_EXPORTER=none`. Enable the optional
-Jaeger service and point API/worker export to its container address:
+Jaeger 2 service and point API/worker export to its container address. The pinned
+image uses its built-in all-in-one configuration with transient in-memory trace
+storage and OTLP receivers on ports 4317/4318:
 
 ```sh
 OTEL_TRACES_EXPORTER=otlp OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318 \
@@ -169,7 +170,7 @@ mise exec -- docker compose --profile tracing down
 | A tool version is missing                   | Run `mise install` in the owning component directory.                                                        |
 | A generated client is stale                 | Regenerate OpenAPI and TypeScript, then run `openapi:check`.                                                 |
 
-Update the owning [product specification](../bike-rs/docs/specs/README.md) when
+Update the owning [product specification](specs/README.md) when
 behavior changes. Track unfinished work in [`TODO.md`](TODO.md), and use
 conventional commit messages such as `fix(import): preserve source metadata`.
 

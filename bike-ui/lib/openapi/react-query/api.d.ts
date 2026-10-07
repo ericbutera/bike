@@ -1805,8 +1805,7 @@ export interface components {
        */
       total_time_seconds?: number | null;
       training_analysis?:
-        | null
-        | components["schemas"]["ActivityTrainingAnalysisResponse"];
+        null | components["schemas"]["ActivityTrainingAnalysisResponse"];
     };
     /** @enum {string} */
     ActivityRideFocus: "xc_endurance" | "mixed_xc" | "dh_session" | "other";
@@ -2901,8 +2900,7 @@ export interface components {
          */
         total_time_seconds?: number | null;
         training_analysis?:
-          | null
-          | components["schemas"]["ActivityTrainingAnalysisResponse"];
+          null | components["schemas"]["ActivityTrainingAnalysisResponse"];
       }[];
       /** @description Pagination metadata */
       metadata: components["schemas"]["PaginationMetadata"];
@@ -3726,8 +3724,7 @@ export interface components {
        */
       best_duration_seconds?: number | null;
       builder_source?:
-        | null
-        | components["schemas"]["SegmentBuilderSourceResponse"];
+        null | components["schemas"]["SegmentBuilderSourceResponse"];
       /**
        * Format: date-time
        * @example 2026-09-26T14:25:00Z
@@ -4331,8 +4328,7 @@ export interface components {
       boundary: components["schemas"]["ReportBoundary"];
       climbing?: null | components["schemas"]["ClimbingReportResponse"];
       compare_rides?:
-        | null
-        | components["schemas"]["CompareRidesReportResponse"];
+        null | components["schemas"]["CompareRidesReportResponse"];
       endurance?: null | components["schemas"]["EnduranceReportResponse"];
       fatigue?: null | components["schemas"]["FatigueReportResponse"];
       /**

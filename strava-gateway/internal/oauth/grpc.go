@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"time"
 
-	stravav1 "github.com/ericbutera/bike-services/strava-gateway/gen/bike/strava/v1"
-	"github.com/ericbutera/bike-services/strava-gateway/internal/storage"
+	stravav1 "github.com/ericbutera/bike/strava-gateway/gen/bike/strava/v1"
+	"github.com/ericbutera/bike/strava-gateway/internal/storage"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"

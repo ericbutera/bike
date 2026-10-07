@@ -8,7 +8,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/ericbutera/bike-services/strava-gateway/internal/webhook"
+	"github.com/ericbutera/bike/strava-gateway/internal/webhook"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )

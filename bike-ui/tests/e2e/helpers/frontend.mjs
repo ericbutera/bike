@@ -1,6 +1,5 @@
 import { expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { openRoute, stabilize } from "./ui.mjs";
 import { expectedEffortCount } from "./targets.mjs";
@@ -13,10 +12,8 @@ const NEXT_ERROR_MARKERS = [
 
 const rustOpenApiPath =
   process.env.BIKE_RUST_OPENAPI_FILE ??
-  join(
-    process.env.BIKE_RUST_DIR ??
-      fileURLToPath(new URL("../../../../bike-rs/", import.meta.url)),
-    "docs/openapi/openapi.json",
+  fileURLToPath(
+    new URL("../../../../contracts/openapi/openapi.json", import.meta.url),
   );
 const rustOpenApi = JSON.parse(readFileSync(rustOpenApiPath, "utf8"));
 const apiBasePath = new URL(

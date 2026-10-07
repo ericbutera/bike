@@ -31,74 +31,72 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("../../lib/useBikeTheme", () => ({ useBikeTheme: () => mocks.theme }));
 vi.mock("maplibre-gl", () => ({
-  default: {
-    Map: class {
-      constructor() {
-        mocks.create();
+  Map: class {
+    constructor() {
+      mocks.create();
+    }
+    addControl() {}
+    on(
+      event: string,
+      layerOrHandler: string | ((event?: unknown) => void),
+      handler?: (event?: unknown) => void,
+    ) {
+      if (typeof layerOrHandler === "string") {
+        mocks.handlers.set(`${event}:${layerOrHandler}`, handler!);
+      } else {
+        mocks.handlers.set(event, layerOrHandler);
       }
-      addControl() {}
-      on(
-        event: string,
-        layerOrHandler: string | ((event?: unknown) => void),
-        handler?: (event?: unknown) => void,
-      ) {
-        if (typeof layerOrHandler === "string") {
-          mocks.handlers.set(`${event}:${layerOrHandler}`, handler!);
-        } else {
-          mocks.handlers.set(event, layerOrHandler);
-        }
+    }
+    getSource(id: string) {
+      return mocks.sources.get(id);
+    }
+    getLayer(id: string) {
+      return mocks.layers.has(id);
+    }
+    addSource(id: string, definition: unknown) {
+      if (id === "personal-heatmap-zones") {
+        mocks.zoneSourceDefinition = definition;
+        mocks.sources.set(id, {
+          setData: mocks.zoneSetData,
+          getClusterExpansionZoom: mocks.clusterExpansionZoom,
+        });
+      } else {
+        mocks.sources.set(id, { setTiles: mocks.setTiles });
       }
-      getSource(id: string) {
-        return mocks.sources.get(id);
-      }
-      getLayer(id: string) {
-        return mocks.layers.has(id);
-      }
-      addSource(id: string, definition: unknown) {
-        if (id === "personal-heatmap-zones") {
-          mocks.zoneSourceDefinition = definition;
-          mocks.sources.set(id, {
-            setData: mocks.zoneSetData,
-            getClusterExpansionZoom: mocks.clusterExpansionZoom,
-          });
-        } else {
-          mocks.sources.set(id, { setTiles: mocks.setTiles });
-        }
-      }
-      removeSource(id: string) {
-        mocks.sources.delete(id);
-      }
-      addLayer(layer: { id: string }) {
-        mocks.layers.add(layer.id);
-        mocks.addLayer(layer);
-      }
-      removeLayer(id: string) {
-        mocks.layers.delete(id);
-      }
-      getStyle() {
-        return { layers: [{ id: "labels", type: "symbol" }] };
-      }
-      // Outstanding zoom tiles make isStyleLoaded false even after style.load.
-      isStyleLoaded() {
-        return false;
-      }
-      once() {}
-      off() {}
-      fitBounds = mocks.fitBounds;
-      flyTo = mocks.flyTo;
-      easeTo = mocks.easeTo;
-      getZoom = mocks.getZoom;
-      setStyle = mocks.setStyle;
-      setPaintProperty = mocks.setPaintProperty;
-      getCanvas() {
-        return { style: { cursor: "" } };
-      }
-      resize() {}
-      remove() {}
-    },
-    NavigationControl: class {},
-    AttributionControl: class {},
+    }
+    removeSource(id: string) {
+      mocks.sources.delete(id);
+    }
+    addLayer(layer: { id: string }) {
+      mocks.layers.add(layer.id);
+      mocks.addLayer(layer);
+    }
+    removeLayer(id: string) {
+      mocks.layers.delete(id);
+    }
+    getStyle() {
+      return { layers: [{ id: "labels", type: "symbol" }] };
+    }
+    // Outstanding zoom tiles make isStyleLoaded false even after style.load.
+    isStyleLoaded() {
+      return false;
+    }
+    once() {}
+    off() {}
+    fitBounds = mocks.fitBounds;
+    flyTo = mocks.flyTo;
+    easeTo = mocks.easeTo;
+    getZoom = mocks.getZoom;
+    setStyle = mocks.setStyle;
+    setPaintProperty = mocks.setPaintProperty;
+    getCanvas() {
+      return { style: { cursor: "" } };
+    }
+    resize() {}
+    remove() {}
   },
+  NavigationControl: class {},
+  AttributionControl: class {},
 }));
 
 const metadata: HeatmapMetadata = {

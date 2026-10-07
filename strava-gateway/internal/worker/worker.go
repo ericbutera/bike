@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ericbutera/bike-services/strava-gateway/internal/observability"
-	"github.com/ericbutera/bike-services/strava-gateway/internal/provider"
-	"github.com/ericbutera/bike-services/strava-gateway/internal/storage"
+	"github.com/ericbutera/bike/strava-gateway/internal/observability"
+	"github.com/ericbutera/bike/strava-gateway/internal/provider"
+	"github.com/ericbutera/bike/strava-gateway/internal/storage"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 )

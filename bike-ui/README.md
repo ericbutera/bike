@@ -33,8 +33,8 @@ mise run format:check
 mise run openapi:check
 ```
 
-Rust's Utoipa output in `../bike-rs/docs/openapi/` is the canonical contract.
-`../contracts/openapi/` contains distribution copies. After updating the contract,
+Rust's Utoipa definitions generate the canonical contract directly in
+`../contracts/openapi/`. After updating the contract,
 run `mise run generate:typescript` here to regenerate
 `lib/openapi/react-query/api.d.ts`.
 

@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ericbutera/bike-services/strava-gateway/internal/observability"
+	"github.com/ericbutera/bike/strava-gateway/internal/observability"
 )
 
 type memoryInbox struct {

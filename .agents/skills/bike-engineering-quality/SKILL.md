@@ -13,8 +13,20 @@ repository files and tooling; no personal Codex configuration is required.
 
 Read the applicable `AGENTS.md`, including its Git rules, `mise.toml`,
 package/workspace manifests, linter configuration, and existing prek/CI gates.
-Prefer established mise tasks over recreating commands. Run tools through mise;
+Prefer established mise tasks over recreating commands. Keep task orchestration
+in mise config, with direct native tool commands and calls to owning tasks.
+Multi-step operational workflows may use Bash scripts invoked by mise. Keep
+their tool/image pins in mise and check them with the owning ShellCheck task
+in local lint, prek, and CI.
+Do not create custom wrappers, config parsers, or validator frameworks for
+operations mise and the native tools already support. Run tools through mise;
 install missing configured tools with `mise install`.
+
+CI/CD must invoke the same owning named mise tasks used locally. Keep language
+tool versions in mise config and remove duplicated commands or version pins
+from workflow YAML. Source mise from its official pinned image on runners and
+share its executable through ignored CI artifacts. Do not commit mise binaries
+or installers; language checks belong in owning mise tasks.
 
 Identify the required formatter, linter, type checks, build, and tests for the
 affected area. Inspect configured complexity limits before writing or
@@ -88,7 +100,7 @@ outside that scope.
 ## Keep product specifications current
 
 For changes to product behavior, business rules, or background processing,
-read the [spec index](../../../bike-rs/docs/specs/README.md) and the owning
+read the [spec index](../../../docs/specs/README.md) and the owning
 domain spec before implementation. Update the canonical behavior in the same
 change; an appended investigation log does not replace obsolete rules. Reuse
 the owning spec instead of creating an overlapping one. Keep task status in
@@ -125,6 +137,15 @@ type and a concise subject describing the result without starting with "add",
 "added", or "adding". Keep continuing work in the same logical commit when
 amending is authorized; preserve unrelated staged changes and use
 `--force-with-lease` for an authorized rewritten-history push.
+
+Do not push until the user explicitly signs off the completed feature and
+authorizes publishing the reviewed commits. Passing checks, continuation
+requests, and a previous feature's release approval do not satisfy this gate.
+Combine implementation, corrections, and tests into one coherent feature
+commit, with separate specification commits when requested. Keep work local
+and amend during review. Prepare any already-published history consolidation
+and its production ancestry implications before seeking remote rewrite approval;
+publish rewritten history only with `--force-with-lease` after sign-off.
 
 Report what changed and which checks actually passed. Keep local, observed CI,
 and deployed verification distinct. For reviews, report violations and missing

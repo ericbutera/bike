@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ericbutera/bike-services/strava-gateway/internal/provider"
-	"github.com/ericbutera/bike-services/strava-gateway/internal/secret"
-	"github.com/ericbutera/bike-services/strava-gateway/internal/storage"
+	"github.com/ericbutera/bike/strava-gateway/internal/provider"
+	"github.com/ericbutera/bike/strava-gateway/internal/secret"
+	"github.com/ericbutera/bike/strava-gateway/internal/storage"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )

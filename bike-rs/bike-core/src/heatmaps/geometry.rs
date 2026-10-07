@@ -41,7 +41,9 @@ pub fn decode(bytes: &[u8]) -> Option<Vec<Point>> {
         return None;
     }
     let points: Vec<Point> = bytes
-        .chunks_exact(16)
+        .as_chunks::<16>()
+        .0
+        .iter()
         .map(|b| {
             [
                 f64::from_le_bytes(b[..8].try_into().unwrap()),

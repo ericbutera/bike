@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/ericbutera/bike-services/strava-gateway/internal/storage"
+	"github.com/ericbutera/bike/strava-gateway/internal/storage"
 )
 
 // Invalid provider bodies cannot be interpreted by this version of the app.

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ericbutera/bike-services/strava-gateway/internal/observability"
+	"github.com/ericbutera/bike/strava-gateway/internal/observability"
 )
 
 const maxProviderBody = 32 << 20

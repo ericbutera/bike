@@ -1,5 +1,8 @@
-ARG GO_VERSION=1.25.1
-FROM golang:${GO_VERSION}-bookworm AS build
+ARG GO_IMAGE=golang:1.27.1-trixie@sha256:8f58fd67ea075142d947a60e0caa4317746a55118d312f027793d382c7741734
+ARG RUNTIME_IMAGE=debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f
+
+FROM ${GO_IMAGE} AS build
+ENV GOTOOLCHAIN=local
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -11,8 +14,8 @@ RUN CGO_ENABLED=0 go build -o /out/gateway ./cmd/gateway && \
     CGO_ENABLED=0 go build -o /out/import-rust ./cmd/import_rust && \
     CGO_ENABLED=0 go build -o /out/export-rust ./cmd/export_rust
 
-FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+FROM ${RUNTIME_IMAGE}
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/gateway /app/gateway
 COPY --from=build /out/migrate /app/migrate
 COPY --from=build /out/worker /app/worker

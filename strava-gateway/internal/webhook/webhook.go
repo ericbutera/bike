@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ericbutera/bike-services/strava-gateway/internal/observability"
+	"github.com/ericbutera/bike/strava-gateway/internal/observability"
 	"go.opentelemetry.io/otel/trace"
 )
 

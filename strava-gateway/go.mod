@@ -1,6 +1,6 @@
-module github.com/ericbutera/bike-services/strava-gateway
+module github.com/ericbutera/bike/strava-gateway
 
-go 1.25.1
+go 1.27.1
 
 require (
 	github.com/exaring/otelpgx v0.12.0

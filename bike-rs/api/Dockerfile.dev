@@ -1,4 +1,15 @@
-FROM rust:1.97.1-bookworm
+ARG MISE_IMAGE=ghcr.io/jdx/mise:2026.10.3-debian@sha256:58c4c847f5518a9a87a9a582886a485443dbca5eb024426577f58d586a0990c6
+ARG RUST_IMAGE=rust:1.99.0-trixie@sha256:6ff07edce8775d0f64be7aba9197229407301bddf2054d62c27b541a6238a181
+
+FROM ${MISE_IMAGE} AS protobuf
+ARG PROTOC_VERSION=36.2
+RUN mise use --global protoc@"${PROTOC_VERSION}" \
+    && cp -a "$(mise where protoc@"${PROTOC_VERSION}")" /opt/protoc
+
+FROM ${RUST_IMAGE}
+ARG WATCHEXEC_VERSION=2.8.0
 WORKDIR /app
-RUN cargo install --locked cargo-watch
-CMD ["cargo", "watch", "-w", "api", "-w", "bike-core", "-w", "migration", "-w", "Cargo.toml", "-x", "run --bin api"]
+RUN cargo install --locked --version "${WATCHEXEC_VERSION}" watchexec-cli
+COPY --from=protobuf /opt/protoc/bin/protoc /usr/local/bin/protoc
+COPY --from=protobuf /opt/protoc/include /usr/local/include
+CMD ["watchexec", "--restart", "--shell=none", "--stop-signal", "SIGTERM", "--watch", "api", "--watch", "bike-core", "--watch", "migration", "--watch", "Cargo.toml", "--", "cargo", "run", "--locked", "--bin", "api"]

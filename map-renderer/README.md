@@ -7,6 +7,11 @@ authorization and forwards only permitted coordinates.
 The renderer starts with `mise run compose:up` from the root. It is an internal
 service; the UI's private image route serves images to the browser.
 
+The image is defined in [Dockerfile](Dockerfile), with the repository root as
+its build context for the shared protocol. Run `mise run renderer:build` from
+the root to build it locally. Node comes from the root mise pin; the browser
+image follows the locked Playwright package. Keep standalone Docker ARG defaults aligned when changing mise pins.
+
 ## Render contract
 
 `POST /render` accepts:

@@ -101,12 +101,10 @@ vi.mock("maplibre-gl", () => {
   class MockAttributionControl {}
 
   return {
-    default: {
-      Map: MockMap,
-      NavigationControl: MockNavigationControl,
-      AttributionControl: MockAttributionControl,
-      LngLatBounds: MockLngLatBounds,
-    },
+    Map: MockMap,
+    NavigationControl: MockNavigationControl,
+    AttributionControl: MockAttributionControl,
+    LngLatBounds: MockLngLatBounds,
   };
 });
 
@@ -124,21 +122,6 @@ describe("MapLibreRouteMapClient", () => {
       { elapsed_seconds: 0, latitude: 45, longitude: -85 },
       { elapsed_seconds: 60, latitude: 45.01, longitude: -85.01 },
     ];
-    let resolveStyleLoad: () => void = () => {};
-    const styleLoaded = new Promise<void>((resolve) => {
-      resolveStyleLoad = resolve;
-    });
-    mapMocks.setStyle.mockImplementation(() => {
-      setTimeout(() => {
-        act(() => {
-          mapMocks.sources.clear();
-          for (const handler of mapMocks.handlers.get("style.load") ?? []) {
-            handler();
-          }
-          resolveStyleLoad();
-        });
-      }, 0);
-    });
     render(
       <MapLibreRouteMapClient
         routePoints={routePoints}
@@ -154,8 +137,15 @@ describe("MapLibreRouteMapClient", () => {
     });
     expect(mapMocks.sources.has("cycling-trails")).toBe(false);
 
-    act(() => document.documentElement.setAttribute("data-theme", "dark"));
-    await styleLoaded;
+    await act(async () => {
+      document.documentElement.setAttribute("data-theme", "dark");
+    });
+    await act(async () => {
+      mapMocks.sources.clear();
+      for (const handler of mapMocks.handlers.get("style.load") ?? []) {
+        handler();
+      }
+    });
     await waitFor(() => {
       expect(mapMocks.setStyle).toHaveBeenCalledWith(
         "/map-styles/fiord-v1.json",
@@ -496,8 +486,7 @@ describe("MapLibreRouteMapClient", () => {
     });
 
     const focusedBounds = mapMocks.fitBounds.mock.calls.at(-1)?.[0] as
-      | { points: [number, number][] }
-      | undefined;
+      { points: [number, number][] } | undefined;
 
     expect(focusedBounds?.points).toContainEqual([-121.996, 45.004]);
     expect(focusedBounds?.points).toContainEqual([-121.992, 45.008]);

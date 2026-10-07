@@ -13,7 +13,7 @@ test("cache idle period must be positive", () => {
 });
 
 test("a request renews retention and idle images are pruned", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "bike-service-map-"));
+  const directory = await mkdtemp(join(tmpdir(), "bike-map-"));
   const cache = createImageCache(directory, 1000);
   const key = "a".repeat(64);
   const path = join(directory, `${key}.png`);

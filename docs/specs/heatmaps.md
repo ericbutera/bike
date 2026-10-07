@@ -1,7 +1,7 @@
 # Personal activity heatmaps
 
 Status: implementation authorized, 2026-10-03, for Rust and the shared UI.
-Implementation status belongs in [the Bike backlog](../TODO.md#personal-heatmaps).
+Implementation status belongs in [the Bike backlog](../TODO.md#active-work).
 
 The 2026-10-06 cycling admission proposal below supersedes the original
 all-sports scope for future implementation. MAPS12 owns implementation and
@@ -10,10 +10,8 @@ excludes non-cycling activities, known indoor/virtual rides, and unavailable
 authentic sources. It still admits unknown recordings with available cycling
 sources; that is not a guarantee that every admitted route was recorded outdoors.
 
-The [PostGIS evaluation](postgis-evaluation.md) supports deferring PostGIS.
 Use ordinary PostgreSQL with compact coordinate projections and indexed
-bounding-box filtering for this release. Retain the repeatable experiment for
-future comparisons; adopting PostGIS is outside this implementation.
+bounding-box filtering. Rust owns geometry processing and raster aggregation.
 
 ## Goal and scope
 
@@ -54,7 +52,7 @@ It must not broaden the existing personal queries to omit ownership filters.
 Known virtual/indoor routes and unclassified recordings must contribute no
 heatmap geometry. Admission requires a supported cycling sport, an accepted
 outdoor provenance decision under a versioned policy, and valid route geometry.
-The [ingestion contract](../../bike-rs/docs/specs/activity-ingestion.md#heatmap-admission-proposal)
+The [ingestion contract](activity-ingestion.md#heatmap-admission-proposal)
 owns evidence precedence, uncertain inputs, and verification requirements.
 Persist claimed recording environment separately from the admission decision;
 an `outdoor` string in an uploaded export is not independent verification.
@@ -70,7 +68,7 @@ The supported outdoor evidence rules must be approved and recorded before
 MAPS12 can be marked complete; there is no universally trusted recorder flag.
 
 Non-cycling retention and future parsing belong to the ingestion contract.
-The [supported activities specification](../../bike-rs/docs/specs/supported-activities.md)
+The [supported activities specification](supported-activities.md)
 owns cycling subtypes and partial compatibility for other sports.
 Swims, runs, walks, and hikes must not enter either cycling heatmap, even if
 their retained source contains valid GPS. GPS continuity checks apply after
@@ -99,7 +97,7 @@ PostgreSQL updates this field atomically whenever retained evidence changes.
 Bike no longer generates or replays synthetic Strava TCX files. Source recovery
 uses retained originals and native provider JSON, then removes obsolete
 generated artifacts after replay succeeds. See the
-[storage and GPS contract](../../bike-rs/docs/specs/activity-ingestion.md#activity-and-gps-storage)
+[storage and GPS contract](activity-ingestion.md#activity-and-gps-storage)
 for exact source retention, normalized GPS in `activities.derived_data_json`,
 separate heatmap projection/chunk tables, and the proposed activity-detail table.
 
@@ -122,12 +120,10 @@ Activities currently store complete route samples inside `derived_data_json`,
 alongside other derived data. Heatmap requests must not deserialize every
 historical activity's full samples or call every activity-detail endpoint.
 
-Rust's local Compose uses `postgres:17`; the inspected migrations do not install
-PostGIS. Prefer plain PostgreSQL and Rust processing initially. The backlog's
+Rust's local Compose uses the root mise PostgreSQL 17 image pin. Use plain
+PostgreSQL and Rust processing. The backlog's
 ordinary workload is at most about ten new activities per day, with occasional
-historical imports. The history-derived fixture contains 1,189 activities and
-4,854,345 route samples; the implementation measurements below describe its
-complete backfill and tile reads.
+historical imports. Use anonymized fixtures for repeatable performance checks.
 
 ## Product behavior
 
@@ -314,7 +310,6 @@ and storage/latency spike before selecting the final projection layout.
 | Persist compressed per-activity coverage masks                          | Reuses rasterization and makes aggregation cheaper                                                    | More projection storage; zoom/tolerance/version choices must be managed                                                              | Add for measured expensive tiles/zoom levels if baseline misses targets                        |
 | Daily sport/tile count rollups                                          | Faster long-range queries                                                                             | Extra rebuild/deletion bookkeeping and boundary-day handling                                                                         | Later optimization when history measurements justify it                                        |
 | Weighted vector tiles                                                   | Crisp lines; future hit testing; MapLibre can style width/opacity from counts                         | Requires a credible common-path/edge aggregation algorithm; snapping can distort trails, raw independent lines do not solve counting | Alternative if the raster spike fails visual requirements or path interaction becomes required |
-| PostGIS and a tile server                                               | Spatial querying and database MVT generation                                                          | Database-image/extension/backup/deployment changes; does not itself solve GPS alignment or distinct-activity aggregation             | Defer pending a demonstrated need                                                              |
 
 MapLibre's [large-data guidance](https://maplibre.org/maplibre-gl-js/docs/guides/large-data/)
 describes simplification, smaller payloads, and server tiling. Its
@@ -511,13 +506,14 @@ configured server-side. Never place tokens or a selectable user ID in tile URLs.
 The API derives ownership from auth; a client-supplied revision is not permission.
 
 Register Rust Utoipa endpoints/schemas and regenerate the canonical OpenAPI plus
-the shared TypeScript client with the existing mise tasks. Keep the Rust source-route inventory and distributed contracts current.
+the shared TypeScript client with the existing mise tasks. Keep distributed
+contract copies current with `mise run contracts:check`.
 Do not add contract-harness dependencies to component CI/deployment.
 
 ## Implementation detail
 
 Implementation status, priority, and rollout ownership live only in the
-[Bike TODO](../TODO.md#personal-heatmaps). This specification holds the scope,
+[Bike TODO](../TODO.md#active-work). This specification holds the scope,
 architecture, rendering and lifecycle constraints, and acceptance criteria for
 those entries.
 
@@ -571,229 +567,14 @@ log private route geometry. Avoid adding new infrastructure for hypothetical loa
 
 ## Rendering design choices
 
-The MAPS03 rendering spike in the [Bike TODO](../TODO.md#personal-heatmaps)
-owns validation of these design choices: raster overlays use continuous thin
+Validate these design choices against the implementation: raster overlays use continuous thin
 blue lines with progressive opacity; GPS tolerance and LOD preserve nearby
 trails and tile edges; per-activity geometry meets cold-tile targets before
 adding masks or rollups; indoor/virtual routes remain excluded; dates use
 activity start time with an explicit timezone. Exact road identities and hover
 counts remain outside the current scope.
 
-## Implementation evidence, 2026-10-03
-
-This section records local measurements, rather than production performance or
-the deferred vanilla/PostGIS comparison. The isolated PostgreSQL 17 container
-used the existing `history-1x` experiment fixture: 1,189 activity records with
-4,854,345 route samples. Identifiers/metadata are synthetic; routes retain the
-source history's recording density, repeat visits and travel distribution.
-The private fixture and screenshot are ignored artifacts, not checked-in GPS data.
-
-The explicit owner backfill prepared 1,118 routes and skipped 71 ineligible or
-missing-GPS activities in 79.3 seconds using debug Rust. It holds one source
-activity at a time and pages 16 scalar identities; a second run prepared zero.
-A real worker subsequently prepared a changed activity at its new generation.
-That temporary activity was deleted after the check. All native migrations
-applied successfully to the disposable database.
-
-Verification passed five geometry/raster tests, two real-PostgreSQL integration
-tests, 20 focused UI/proxy tests, TypeScript, the Next production build, Rust
-Clippy for core/API/worker and static contract/route checks. The Rust-backed
-Playwright flow exercised real tiles, sport/date URL filters, private conditional
-responses and the same MapLibre canvas across filters/themes. It passed with both
-a fake basemap provider and the real OpenFreeMap basemap. A separate real-API
-probe with local admin bypass disabled returned authenticated `200`/`304` and
-anonymous `401`, including an anonymous request with a known ETag.
-
-### Tile and storage measurements
-
-Machine: Apple M1 Max, 32 GiB RAM, macOS; Rust 1.97.1 debug build; PostgreSQL 17
-in Docker over localhost. `heatmap_performance` selects the world tile and the
-centers of the fixture's two largest regions at zooms 7, 14 and 18. Each case
-uses five fresh application-cache renders and five immediate cache hits.
-PostgreSQL/OS caches remain warm. These are single-request medians, not p95,
-concurrent load, browser startup timings or disk-cold measurements.
-
-| Case                | Fresh application cache, median ms | Cache hit, median ms | PNG bytes |
-| ------------------- | ---------------------------------: | -------------------: | --------: |
-| World               |                            183.589 |                3.533 |     7,512 |
-| Region R2, zoom 7   |                            165.081 |                4.348 |    19,650 |
-| Region R2, zoom 14  |                            397.090 |                5.442 |    70,708 |
-| Region R2, zoom 18  |                             68.742 |                4.826 |    31,623 |
-| Region R15, zoom 7  |                             50.059 |                3.749 |     6,487 |
-| Region R15, zoom 14 |                            212.435 |                4.430 |    20,801 |
-| Region R15, zoom 18 |                            238.929 |                5.786 |    12,424 |
-
-Native `/usr/bin/time -l` around the already-compiled diagnostic measured 7.80 s
-wall time, 4.82 s user CPU, 0.11 s system CPU and 20,201,472 bytes maximum RSS
-(19.27 MiB). This covers the diagnostic process's 35 fresh and 35 cached tile
-requests plus metadata calls. It excludes compilation, the long-running API,
-worker, browser and PostgreSQL process resources. A warmed in-process cache with
-many entries can grow to the configured 64 MiB cache cap in addition to process
-and render memory.
-
-`pg_total_relation_size` after preparation reported:
-
-| Record                           | Indexed relation bytes |
-| -------------------------------- | ---------------------: |
-| `activities` in this native copy |            215,007,232 |
-| `heatmap_projections`            |                327,680 |
-| `heatmap_chunks`                 |             99,418,112 |
-| `heatmap_user_states`            |                106,496 |
-
-There are 28,240 chunks containing 104,699,264 encoded coordinate bytes before
-PostgreSQL compression/index overhead. The four bands contain respectively
-1,140 / 2,063 / 8,988 / 16,049 chunks. Tile requests read bounded coordinate
-pages and return 512-pixel PNGs; they do not fetch raw activity JSON. This native
-activity copy is not a byte-for-byte replacement for the experiment's raw schema,
-so these sizes should not be presented as its PostgreSQL/PostGIS storage comparison.
-
-| Idea                                                                                                 | Test                                                                                                     | Result                                                                                                                                                                                                       |
-| ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Approximate five-meter GPS tolerance on a coarse counting grid, while painting original centerlines. | Compare the same seven tile cases and add a regression for tracks three meters and fifteen meters apart. | The three-meter pair shares frequency without a wide painted halo; the fifteen-meter pair remains separate. Region R15 zoom 18 improved from 852.412 to 238.929 ms; suite user CPU fell from 7.83 to 4.82 s. |
-| Keep MapLibre tile-template braces literal.                                                          | Real-browser tile requests through the shared proxy.                                                     | URL construction had encoded `{z}/{x}/{y}` and produced `400`; constructing the absolute template without encoding fixed actual `512×512` tile requests.                                                     |
-| Give the map a sized wrapper despite global MapLibre CSS.                                            | Inspect the production-build screenshot.                                                                 | The map now occupies 65% of viewport height with a minimum height, instead of extending with its parent.                                                                                                     |
-
-The panel now distinguishes loading and errors while checking feature availability
-from a disabled feature. Two regressions cover request suppression and flag retry;
-the browser flow waits for the actual feature-flag response before choosing its
-enabled/disabled path, and can require the enabled flow explicitly.
-
-The local evidence supports this initial implementation at current-history scale.
-The 3x/concurrent renderer sweep, PostgreSQL CPU/RSS/query-plan profiling,
-release-build p95 and instrumented browser responsiveness remain performance
-work before claiming all proposed rollout budgets. PostGIS remains deferred.
-
-### Repeating the focused checks
-
-Use an isolated native Bike database and its owner ID. The migration and backfill
-write only to the explicitly selected database; the tile diagnostic is read-only.
-Backfill may run while `heatmaps` is disabled. Enable the flag through the existing
-admin controls in the selected test database before running tile diagnostics.
-
-```sh
-# Run from bike; DATABASE_URL points to the chosen isolated database.
-mise --cd bike-rs run migration:up
-mise --cd bike-rs exec -- cargo run -p bike-core --example heatmap_backfill -- <user-id>
-mise --cd bike-rs exec -- cargo run -p bike-core --example heatmap_performance -- <user-id> ../experiments/postgis/fixtures/private-cases.json
-
-# Use the existing Playwright setup and running Rust API, worker and shared UI.
-# Uses the fake basemap by default; does not reinstall dependencies on each run.
-PLAYWRIGHT_TARGET=rust HEATMAP_REQUIRE_ENABLED=1 mise --cd bike-ui run test:e2e:heatmaps
-
-# Optional real-provider visual check; the screenshot stays in ignored artifacts.
-PLAYWRIGHT_TARGET=rust HEATMAP_REQUIRE_ENABLED=1 HEATMAP_REAL_BASEMAP=1 mise --cd bike-ui run test:e2e:heatmaps
-```
-
-Keep the existing [Compose experiment harness](../../experiments/postgis/README.md)
-for repeatable fixture/resource comparisons and its idea/test/result record.
-The new native tile diagnostic measures the implemented renderer separately;
-it does not replace that harness or its reports. Production flags remain disabled.
-
-### Rendering and zoom follow-up, 2026-10-03
-
-User feedback replaces the original variable-width orange/red treatment with
-fixed-width `#0060df` blue strokes and opacity-only frequency. The renderer is now
-`heatmap-v2`; tile URLs include its style version so already loaded v1 images are
-replaced. Prepared coordinate projections remain valid and need no rebuild.
-The measurements above describe v1; this correction does not claim a new resource
-comparison.
-
-The disappearing overlay had a lifecycle bug: `isStyleLoaded()` becomes false
-while zoom tiles are outstanding, but those requests do not cause another
-`style.load` event. Waiting for that event stranded incoming dataset revisions.
-The component now tracks actual style changes separately and applies changed
-tile templates while tiles are loading. Unchanged metadata no longer calls
-`setTiles()` and reloads the source. Raster tiles use a 300 ms crossfade while
-keeping the existing map and camera.
-
-Five Rust geometry/raster tests passed, including identical painted coverage for
-one versus 150 repetitions, solid blue opacity, GPS tolerance and tile borders.
-Twenty focused UI/helper/proxy tests passed, including four map lifecycle
-regressions; TypeScript and Rust core/API Clippy passed. Two Rust-backed browser
-checks passed on the user's Compose stack: real-basemap filters/themes/private
-tiles, plus a fake-basemap zoom check that blocks new real overlay requests and
-asserts existing blue pixels remain visible before releasing them. The native
-local history finished preparing: 859 ready, 214 skipped, zero pending/failed.
-
-Repeat both browser checks with a bounded known-route filter:
-
-```sh
-PLAYWRIGHT_TARGET=rust HEATMAP_REQUIRE_ENABLED=1 HEATMAP_REAL_BASEMAP=1 HEATMAP_PREVIEW_FILTERS='sport=road_ride&start=2026-08-01&end=2026-08-31&tz=America%2FDetroit' mise --cd bike-ui run test:e2e:heatmaps
-```
-
-The zoom check deliberately uses a fake basemap to ensure its pixel assertion
-measures the real personal overlay. Without `HEATMAP_PREVIEW_FILTERS`, that
-additional check is skipped; choose dates/sports with local routes for another
-dataset. No production enablement or PostGIS change is part of this correction.
-
-### Color customization, 2026-10-03
-
-The compact toolbar includes a DaisyUI color picker with Orange, Sunset, Blue,
-Pink, Purple, and Contrast presets. Blue remains the default. Selection is saved
-in browser local storage and updates the legend along with the overlay. Storage
-being unavailable does not prevent selection for the current visit.
-
-The existing raster layer uses MapLibre's GPU hue, contrast, and brightness
-properties to recolor already loaded tiles. Changing color preserves the camera,
-source, count opacity, and fixed stroke width. It does not fetch another tile set
-or add palette variants to backend caches. Theme changes restore the selected
-color on the new raster layer. The legend uses the same color transform as the
-raster shader to remain consistent with the displayed lines.
-
-Eleven focused panel/map tests and TypeScript passed. A local Playwright check
-rendered all six presets against the real Rust API and basemap, observed zero
-heatmap tile requests during selection, restored the choice after a reload, and
-reported no browser errors.
-
-### Virtual ride exclusion, 2026-10-05
-
-Strava activities recorded on a trainer or named for Zwift now normalize to
-`indoor_trainer_ride` during import. Projection preparation also excludes legacy
-virtual sport values and Zwift-titled activities, covering existing rides that
-were stored as `road_ride`. Projection version 3 clears older chunks and queues
-them for regeneration; the source trigger watches title changes so later title
-corrections are reflected in the map.
-
-The user-provided production screenshot reports 967 activities with routes and
-shows clusters outside the rider's expected regions. This code change and
-versioned requeue are local only; deployment, production migration, and
-production backfill/readiness verification remain open in MAPS08.
-
-### Production virtual ride audit, 2026-10-06
-
-The read-only production audit verified that API, UI, and worker run `8501628`
-and the virtual filter migration is applied. It confirmed visible generic
-Strava-generated TCX copies of excluded Zwift FIT activities imported through
-a Garmin archive. Original FIT creator and virtual session metadata survive in
-the archive, and timestamped route coordinates establish the provider-copy
-relationship. This pattern occurs outside and inside the US.
-
-Personal activity IDs, titles, dates, provider identifiers, source checksums,
-CSV exports, and the detailed audit report stay in the gitignored `.artifacts/`
-workbench. Commit only general findings, business rules, remediation plans, and
-anonymized regression fixtures.
-
-The version-3 title/source/sport filter is insufficient for this historical
-representation. The TCX discarded the original virtual classification, and the
-correct archive classification does not propagate to its Strava counterpart.
-This is a classification gap in the deployed code, with no evidence of a code
-rollback. Obsolete version-2 ready projections are a separate lifecycle
-inconsistency; current tiles/zones omit them.
-
-MAPS11 owns the planned durable remediation: persist recording environment and
-original recorder independently of sport/import source; retain authoritative
-evidence across import, artifact selection, reprocessing, and verified provider
-counterparts; exclude indoor/virtual environments in preparation and every map
-query; guard projection publication by policy version and generation; and
-cover these observed FIT/TCX and US/overseas patterns with regression fixtures.
-Use SeaORM entity/model methods for ordinary database access. Geography finds
-audit candidates and must not become a permanent US-only filter.
-
-The audit made no production changes. Recovery remains incomplete until a new
-implementation, migration, deployment, backfill, private-cohort exclusion check,
-outdoor controls, and actual map verification pass.
-
-### Durable recording provenance requirements
+## Durable recording provenance requirements
 
 1. Persist recording environment (`outdoor`, `indoor`, `virtual`, `unknown`) and
    original recorder independently of sport and import transport. Reference the
@@ -836,93 +617,34 @@ Strava gateway changes or read-time gateway access.
 - [MapLibre large-data performance guide](https://maplibre.org/maplibre-gl-js/docs/guides/large-data/): simplification, small payloads, and server tiling.
 - [MapLibre raster/vector source specification](https://maplibre.org/maplibre-style-spec/sources/): XYZ raster sources, bounds, tile sizes, and zoom limits.
 - [MapLibre layer specification](https://maplibre.org/maplibre-style-spec/layers/): point heatmap weighting and count-driven line width/opacity for the vector alternative.
-- [PostGIS ST_AsMVT](https://postgis.net/docs/ST_AsMVT.html): database vector-tile encoding, if a later measured need justifies PostGIS.
 
 References reviewed on 2026-10-03. Rendering/aggregation policy and performance
 targets in this document are proposals, not results from these references.
 
-### Recording policy and GPS gap correction, 2026-10-06
+## Recording policy and GPS discontinuities
 
-The original v4 correction stored typed recording context in activity derived
-storage alongside geometry. FIT creator manufacturer and session subtype,
-genuine GPX/TCX origin metadata, and Strava sport/type/trainer flags feed this
-context. Current v5 uses authentic files or native provider JSON; Bike-generated
-TCX is rejected and requires recovery. Reprocessing merges retained artifact
-evidence and existing context; weaker generic inputs cannot erase indoor/virtual flags.
-Duplicate imports preserve new evidence without replacing existing routes.
+Recording context retains FIT creator/session metadata, genuine TCX/GPX origin
+metadata, and native Strava sport/type/trainer flags. Authentic originals and
+provider JSON supply evidence; generated Bike TCX must be recovered and rejected
+as a replay source. Weaker generic reprocessing inputs cannot erase retained
+indoor or virtual evidence. Duplicate imports preserve new evidence without
+replacing existing routes.
 
-Legacy copies recover evidence from activities belonging to the same owner,
-within five seconds of the start. A candidate must have at least eight GPS
-points and meaningful movement; up to 64 evenly spaced samples require matching
-absolute timestamps and positions within two meters, with at least 95 percent
-agreement. This recovered classification survives later replay. Original
-activities and files remain intact. Geography does not decide eligibility.
+Counterpart recovery is owner-scoped and allows at most five seconds of start
+variation. Candidates require at least eight GPS points and meaningful movement.
+Up to 64 evenly spaced samples must agree on absolute timestamps and positions
+within two meters, with at least 95 percent agreement. Preserve both originals;
+geography does not decide eligibility.
 
-Preparation and typed SeaORM read filters exclude stored indoor/virtual context.
-An append-only migration clears obsolete chunks, advances generations and user
-revisions, and queues v4 projections. Lease/source/publication guards require
-v4, and a database constraint rejects older workers publishing ready or skipped
-projections with an obsolete policy version.
+Current projection policy is version 5. Preparation and every read surface
+exclude stored indoor/virtual context. Lease, source, and publication checks use
+the current policy and generation; database constraints reject obsolete workers.
+Classification changes invalidate existing chunks and user cache revisions.
 
-The observed straight-line defect was a roughly two-kilometer displacement
-across an exact 120-second GPS gap. Intermediate FIT records had no positions.
-The previous strict greater-than check missed the boundary; the inclusive check
-now breaks that path while retaining its valid sections. Tests use synthetic
-coordinates and dates, with continuously recorded outdoor routes as controls.
-
-Local verification passed every ingestion-node regression, parser/export/storage
-and replay tests, the full Rust workspace suite, Clippy with warnings denied,
-and nine disposable PostgreSQL heatmap tests. Private offline verification
-matched all 47 confirmed virtual copies with the implemented route matcher and
-removed the observed chord while retaining real segments. Committed fixtures
-contain synthetic records only; personal CSVs and source files stay gitignored.
-Regular Rust CI runs the unit suite using mocks and in-memory fixtures, without
-a PostgreSQL service. The disposable PostgreSQL checks remain separate opt-in
-verification. The live v5 recovery evidence below supersedes the original
-pending rollout status; local results alone do not establish production repair.
-
-### Production and local source recovery, 2026-10-06
-
-The virtual rides returned because Bike's generated TCX copies omitted recorder
-evidence that the original FIT files retained. Small start-time differences
-defeated the old duplicate matcher, leaving generic copies eligible. The invalid
-chord had a separate cause: the gap check used `> 120` seconds and admitted the
-observed exactly-120-second discontinuity. It now breaks at `>= 120` seconds.
-The fixes retain and merge recording evidence, compare absolute GPS time, retire
-generated inputs, and cover the boundary with synthetic regression fixtures.
-
-Production pipelines 186 and 187 deployed v5 source admission and the stored
-recording summary column. Pipeline 188 passed without a PostgreSQL test service
-and deployed image `1168481` across API, UI, and worker; its migration job and
-production smoke tests completed. The Rust suite passed 208 core unit tests,
-with clean formatting and Clippy. All owner activities were preserved. Of 197 historical
-generated imports, 139 now retain verified authentic FIT, GPX, or native JSON.
-Fifty recovered real cycling activities have ready heatmap projections. The
-remaining originals are absent from the retained May archives: 58 activities
-preserve their summaries/GPS and sole generated evidence but are marked
-unavailable and excluded. Recovery made zero Strava API requests. Cleanup
-removed 139 replaced generated files plus 17 verified unreferenced copies.
-Retiring the 58 sole sources still requires an updated archive or an explicit
-retirement decision; DATA18 remains open for that source gap.
-
-All 47 confirmed virtual activities and all 44 outside-US audit activities have
-zero published chunks. The reported roughly two-kilometer chord spanning exactly
-120 seconds is absent; the affected real ride retains 20 valid chunks and 2,697
-projected points. Live owner metadata reports 735 ready, 454 skipped, zero pending
-and zero failed. Nine actual map tiles around the reported area return nonempty
-512-pixel PNGs, and the resulting mosaic was inspected.
-
-The existing local Docker instance now binds the active Bike checkout and keeps
-its original PostgreSQL volume. Its final metadata reports 765 ready, 308 skipped,
-zero pending and zero failed; nine actual tiles render. One historical manually
-uploaded Bike-generated copy was mislabeled as an original. It is now correctly
-labeled, unavailable, and contributes zero chunks while its sole file, summary,
-and GPS remain retained. Synthetic parser and in-memory manual/archive workflow
-regressions reject such copies and keep genuine cycling TCX as a positive control.
-
-V5 rejects known indoor/virtual recordings, non-cycling sports, and unavailable
-sources. It still admits unknown recording environments with available cycling
-sources. MAPS12's stricter admission policy remains proposed before accepting
-a second user's history; these results do not guarantee physical recording
-authenticity for arbitrary uploads. GPS/chart/lap payloads still reside in
-`activities.derived_data_json`; DATA19's separate details table is a proposal.
+Break GPS paths across displacements above five kilometers, or gaps of at least
+120 seconds with displacement above 200 meters. Reject impossible-speed samples
+above 45 meters per second. The inclusive 120-second rule prevents a previously
+observed straight chord across missing FIT positions while retaining valid
+sections. Unit fixtures cover that boundary and continuously recorded outdoor
+controls, along with every ingestion stage and replay. Ordinary CI uses mocks
+and in-memory fixtures; PostgreSQL-specific checks are separate and opt-in.

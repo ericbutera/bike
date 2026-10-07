@@ -26,11 +26,22 @@ For another prepared dataset, set `BIKE_TEST_ACTIVITY_ID`,
 the UI address, which defaults to `http://localhost:3001`. Browser tests do not
 start or stop the application.
 
-Production HTTP synthetics use [k6](../../../integration-tests/README.md).
-`mise run test:production` runs that suite. The browser journey remains a
-separate e2e check: `mise run test:production:browser` opens the same temporary
-production port forwards and discovers its dataset automatically. Install the
-browser with the setup task above first.
+The browser image runs independently of k6:
+
+```sh
+mise run e2e:build
+BIKE_UI_URL=http://host.docker.internal:3001 mise run e2e:run
+```
+
+The image contains Chromium and the locked UI test dependencies. Its default
+entrypoint runs the activity/segment/race journey. Pass a spec path to
+`mise run e2e:run -- <spec>` for another slice. CI can run the same image
+against a prepared test stack.
+Set URLs and fixture configuration explicitly; it never uses Kubernetes or
+starts the application. Use disposable fixtures for suites that mutate data.
+
+The [k6 image](../../../integration-tests/README.md) only checks availability.
+It does not run the browser journey or inspect activities, segments, or races.
 
 For an internal browser run, set `BIKE_SYNTHETIC_KEY`, `BIKE_UI_URL`,
 `BIKE_API_URL` (including `/api`), and `BIKE_PUBLIC_URL`, then run the owning
@@ -48,6 +59,13 @@ mise --cd bike-ui exec -- pnpm exec playwright test tests/e2e/auth-happy-path.sp
 mise --cd bike-ui exec -- pnpm exec playwright test tests/e2e/activity-sync-fixture.spec.mjs
 mise --cd bike-ui run test:e2e:heatmaps
 ```
+
+`mise --cd bike-ui run test:e2e:diagrams` verifies Mermaid and patched KaTeX
+rendering in a real browser using the locked package assets. It uses a standalone
+HTML fixture, requires no running Bike services, and rejects browser warnings
+and errors. Browser E2E is temporarily excluded from CI and the UI `check` task.
+The [E2E TODO](../../../docs/E2E-TODO.md) defines the work needed before restoring
+a separate containerized browser gate.
 
 The auth and activity-sync fixtures stub application API responses and external
 map data. They verify UI behavior independently of live auth, provider, and

@@ -23,7 +23,7 @@ load-testing tool. It runs with ordinary `cargo test` and backend CI.
 This verifies HTTP adaptation and the native data path on SQLite. PostgreSQL
 migration behavior, production query plans, and resource use remain separate
 checks. External authentication and provider calls use their owning fixture
-suites. See the [verification guide](../../../docs/test-scope-audit.md).
+suites. The owning component instructions define required verification.
 
 `fixtures/platform/` also retains deterministic PostgreSQL scenario fixtures and
 small synthetic uploads for focused UI/workflow checks. SQL scenario files should

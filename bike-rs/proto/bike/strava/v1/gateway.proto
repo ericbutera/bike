@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package bike.strava.v1;
 
-option go_package = "github.com/ericbutera/bike-services/strava-gateway/gen/bike/strava/v1;stravav1";
+option go_package = "github.com/ericbutera/bike/strava-gateway/gen/bike/strava/v1;stravav1";
 
 // Site commands stay inside the cluster. Strava OAuth and webhook callbacks
 // remain HTTP because those are public provider callbacks.

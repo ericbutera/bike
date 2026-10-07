@@ -1,5 +1,6 @@
 .cache/
 node_modules/
+/bin/mise
 
 # Local configuration, credentials and verification output in every component
 .env

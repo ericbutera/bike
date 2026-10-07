@@ -1,6 +1,5 @@
 # This context owns only the map service and its protocol.
 **
-!Dockerfile
 !map-renderer
 !map-renderer/**
 !proto

@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/ericbutera/bike-services/strava-gateway/internal/observability"
-	"github.com/ericbutera/bike-services/strava-gateway/internal/webhook"
+	"github.com/ericbutera/bike/strava-gateway/internal/observability"
+	"github.com/ericbutera/bike/strava-gateway/internal/webhook"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel"

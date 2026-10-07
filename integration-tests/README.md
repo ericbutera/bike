@@ -1,42 +1,27 @@
-# Production synthetic checks
+# Synthetic availability check
 
-The production synthetic runner is k6. It runs one small journey with one
-virtual user after deployment; it is a correctness check rather than a load test.
-
-With mise installed and kubectl connected to the production cluster, run:
+The k6 image makes two read-only requests: API health and the UI HTML page.
+It needs no user, fixture data, authentication, Kubernetes CLI, or port forwards.
+It runs once and exits nonzero when either check fails. A sidecar scheduler or
+monitoring job inside the VPC can invoke the same image periodically.
 
 ```sh
-mise install
-mise run test:production
+mise run synthetics:build
+BIKE_API_URL=http://api:3000/api BIKE_UI_URL=http://ui:3000 mise run synthetics:run
 ```
 
-The task reads the managed synthetic credential and public origin from Kubernetes,
-opens temporary localhost forwards to the existing API and UI, and closes them
-after the run. It does not print or save credentials. `BIKE_KUBE_NAMESPACE`
-selects another prepared namespace. No user, activity, segment, or effort IDs
-need to be supplied.
+Both URLs must be reachable from the container. Locally, use
+`host.docker.internal` for host services or attach the image to the application's
+Docker network. Inside Kubernetes use service DNS names or localhost when the
+checked service shares the pod. Inject configuration when launching the image;
+the runner never queries cluster configuration.
 
-Woodpecker runs the same [`production.js`](production.js) directly against the
-ClusterIP services after a trusted main-branch deployment. Its synthetic secret
-is unavailable to pull-request jobs. Callers already inside the cluster can set
-`BIKE_SYNTHETIC_KEY`, `BIKE_API_URL` (including `/api`), `BIKE_UI_URL`, and
-`BIKE_PUBLIC_URL` and run the same mise task.
+Woodpecker builds this image and runs its entrypoint inside the cluster after
+an authorized deployment. Pull requests build and validate it without contacting
+production. `mise run synthetics:check` validates the k6 configuration.
+The k6 version is pinned in root mise vars and passed by `synthetics:build`;
+the Dockerfile default is also maintained for standalone CI builds.
 
-The API provisions `platform-smoke/v1` once when synthetic authentication is
-enabled. Its disabled, non-admin owner cannot sign in or obtain ordinary
-sessions. The provisioner allocates database IDs normally and records them in a
-scenario manifest. It never adopts an existing account, resets sequences, loads
-the empty-database development fixture, or edits another owner's records.
-
-The checks require meaningful activity and segment metrics, route coordinates,
-both discovered race efforts, and a real PNG from the UI proxy and owned renderer.
-They also require public API and UI image routes to reject the credential, and
-internal routes to reject account mutation, logout, and administration. Public
-UI and API availability are checked separately without credentials. Every check
-must pass; empty lists and HTTP 200 alone cannot establish success.
-
-These HTTP checks do not verify browser interaction, live SSO, or Strava login.
-The separate [Playwright suite](../bike-ui/tests/e2e/README.md) owns browser
-activity navigation, map display, and race playback. The [authentication design](../docs/specs/production-synthetics.md)
-describes the internal boundary. Remaining work is tracked only in
-[`docs/TODO.md`](../docs/TODO.md).
+[Browser e2e tests](../bike-ui/tests/e2e/README.md) have a separate image and
+cover activity/segment navigation and race playback. Native HTTP integration
+tests remain in `bike-rs/api/tests`. They are separate from availability monitoring.

@@ -1,4 +1,4 @@
-# Internal production synthetics
+# Synthetic monitoring and browser test authentication
 
 Bike uses one shared synthetic credential on the existing API and UI services.
 It does not add an identity provider, a token exchange, a second UI deployment,
@@ -60,11 +60,11 @@ API verifies identity and activity ownership, the server sends allowed geometry
 to the renderer using the existing map service credential. The synthetic
 credential and user identity are not forwarded to the renderer.
 
-k6 runs the production HTTP checks after a trusted main-branch deployment.
-Pull-request pipelines validate the runner configuration and native authorization
-behavior without receiving the production credential. Local production checks
-use short-lived localhost port forwards. The checks include explicit public
-credential rejection so ingress regressions fail verification.
+The k6 availability image makes only API health and UI HTML requests. It does
+not use this credential or dataset. It runs inside the VPC with explicit URLs
+and no Kubernetes access. The standalone Playwright image owns authenticated
+browser journeys, using an explicitly prepared environment and injected
+configuration. Native HTTP tests own authorization regression coverage.
 
 Playwright remains a separate browser check. For an internal production run it
 discovers the same manifest and directs the deployed UI's API transport to the
@@ -73,4 +73,4 @@ basemaps are fixtures. Credential-bearing browser traces are disabled. That run
 does not establish public ingress, SSO, or provider behavior.
 
 Operational instructions live in [the integration-test guide](../../integration-tests/README.md).
-The only work item is TEST10 in [the backlog](../TODO.md).
+Remaining work is tracked in [the backlog](../TODO.md).

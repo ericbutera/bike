@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	stravav1 "github.com/ericbutera/bike-services/strava-gateway/gen/bike/strava/v1"
+	stravav1 "github.com/ericbutera/bike/strava-gateway/gen/bike/strava/v1"
 	"google.golang.org/grpc/metadata"
 )
 

@@ -44,6 +44,15 @@ types:
 
 Keep a clean history. Do not make multiple commits for the same thing, use amend & force with lease instead.
 
+Do not push to a remote until the user explicitly signs off the completed
+feature and authorizes publishing its reviewed commits. Keep implementation,
+corrections, and tests in one coherent feature commit; amend locally while
+review is ongoing. Separate specifications when requested. Passing checks,
+requests to continue, and approval of a previous feature are not sign-off for
+new work. Prepare history consolidation locally before requesting publication;
+use `--force-with-lease` only after an approved remote rewrite. Review any
+production image ancestry implications before publishing rewritten history.
+
 Do not start commits with the word add (eg: `feat: added architecture diagram`), instead use `feat: architecture diagram`.
 
 ## code standards
@@ -81,6 +90,17 @@ Before running Node, Rust, Go, Python, pnpm, npm, cargo, task, or similar comman
 - run tools through `mise exec -- <command>`
 - if tools are missing, run `mise install`
 
+Prefer an existing named `mise run <task>` over a raw tool command. Keep
+`lint` as direct calls to the owning `lint:rs`, `lint:go`, `lint:ui`,
+`lint:maps`, and `lint:sh` tasks. Use native tool commands for simple tasks.
+Multi-step operational workflows may live in Bash scripts called by mise;
+mise owns their tool/image pins, and ShellCheck runs locally, in prek, and CI.
+Do not create custom configuration parsers or validator frameworks. CI/CD must
+call the same owning tasks used locally; keep tool versions in mise config and
+avoid duplicating commands or pins in workflow YAML. The official pinned mise
+image supplies the runner executable through ignored CI artifacts; do not commit
+mise or its installer. Language checks belong in the owning tasks.
+
 Examples:
 
 - `mise exec -- pnpm exec tsc --noEmit`
@@ -89,4 +109,8 @@ Examples:
 
 ## specs
 
-Features should be recorded in docs/specs. Business rules and decisions need to be recorded as well.
+Keep shared documentation in the root `docs/` directory and product
+specifications in `docs/specs/`. Link to these documents from component READMEs
+instead of maintaining component documentation copies. Business rules and
+decisions belong in the owning specification. Generated HTTP contracts live
+only in `contracts/openapi/`; Rust generates them directly there.

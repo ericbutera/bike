@@ -1,10 +1,3 @@
-[tools]
-node = "25.2.1"
-pnpm = "10.30.1"
-prek = "0.4.12"
-rust = "1.97.1"
-"npm:prettier" = "3.7.4"
-
 [tasks."hooks:install"]
 description = "Install prek Git hooks for this repository"
 run = "mise --cd .. run hooks:install"
@@ -53,7 +46,7 @@ run = "cargo run -- up"
 
 [tasks.test]
 description = "Run bike Rust tests"
-run = "cargo test"
+run = "cargo test --workspace"
 
 [tasks.fmt]
 description = "Format the Rust workspace"
@@ -83,10 +76,17 @@ run = "mise --cd ../bike-ui run generate:typescript"
 
 [tasks."generate:openapi"]
 description = "Generate the common OpenAPI contract from Rust Utoipa"
+run = "cargo run -p api --bin openapi"
+
+[tasks."openapi:check"]
+description = "Check the canonical HTTP contract against Rust Utoipa"
 run = '''
-cargo run -p api --bin openapi
-cp docs/openapi/openapi.json ../contracts/openapi/openapi.json
-cp docs/openapi/openapi.yaml ../contracts/openapi/openapi.yaml
+set -eu
+GENERATED_CONTRACTS="$(mktemp -d)"
+trap 'rm -rf "$GENERATED_CONTRACTS"' EXIT
+cargo run -p api --bin openapi -- "$GENERATED_CONTRACTS"
+cmp -- "$GENERATED_CONTRACTS/openapi.json" ../contracts/openapi/openapi.json
+cmp -- "$GENERATED_CONTRACTS/openapi.yaml" ../contracts/openapi/openapi.yaml
 '''
 
 [tasks."generate:protobuf"]

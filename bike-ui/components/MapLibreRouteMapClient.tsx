@@ -7,10 +7,8 @@ import type {
   Point,
   Position,
 } from "geojson";
-import maplibregl, {
-  type GeoJSONSource,
-  type StyleSpecification,
-} from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
+import { type GeoJSONSource, type StyleSpecification } from "maplibre-gl";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useBikeTheme } from "../lib/useBikeTheme";
 import { config } from "../lib/config";

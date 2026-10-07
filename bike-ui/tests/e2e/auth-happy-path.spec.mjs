@@ -12,7 +12,7 @@ for (const target of targets) {
       page.getByRole("heading", { name: "Sign in with OAuth/OIDC" }),
     ).toBeVisible();
     await page
-      .getByRole("button", { name: "Continue with SSO", exact: true })
+      .getByRole("link", { name: "Continue with SSO", exact: true })
       .click();
     await expect(
       page.getByRole("heading", { name: "Recent activities" }),

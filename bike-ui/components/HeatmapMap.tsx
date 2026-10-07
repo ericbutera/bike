@@ -1,6 +1,7 @@
 "use client";
 
-import maplibregl, {
+import * as maplibregl from "maplibre-gl";
+import {
   type GeoJSONSource,
   type MapLayerMouseEvent,
   type RasterTileSource,
@@ -167,8 +168,10 @@ export default function HeatmapMap({
           labels,
         );
       } else if (appliedPaletteId !== paletteId) {
-        for (const [property, value] of Object.entries(palettePaint)) {
-          instance.setPaintProperty(SOURCE, property, value);
+        for (const property of Object.keys(palettePaint) as Array<
+          keyof typeof palettePaint
+        >) {
+          instance.setPaintProperty(SOURCE, property, palettePaint[property]);
         }
       }
       appliedPaletteId = paletteId;
@@ -188,8 +191,7 @@ export default function HeatmapMap({
     const zonesOverlay = () => {
       if (!styleReady.current) return;
       const source = instance.getSource(ZONES_SOURCE) as
-        | GeoJSONSource
-        | undefined;
+        GeoJSONSource | undefined;
       const data = zoneFeatures(current.current.zones);
       if (source) {
         source.setData(data);
@@ -291,8 +293,7 @@ export default function HeatmapMap({
           fitted.current = true;
           if (typeof clusterId === "number") {
             const source = instance.getSource(ZONES_SOURCE) as
-              | GeoJSONSource
-              | undefined;
+              GeoJSONSource | undefined;
             if (source) {
               void source
                 .getClusterExpansionZoom(clusterId)
