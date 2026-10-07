@@ -6,7 +6,7 @@ run = "pnpm install --frozen-lockfile"
 
 [tasks.check]
 description = "Install dependencies and run UI lint, type, fixture, format, and contract checks"
-run = ["mise run lint:check", "mise run test", "mise run openapi:check", "mise run audit"]
+run = ["mise run lint:check", "mise run test", "mise run test:e2e:diagrams", "mise run openapi:check", "mise run audit"]
 
 [tasks.audit]
 description = "Reject dependency advisories and incompatible peers"
@@ -65,6 +65,11 @@ run = "pnpm run test:e2e"
 [tasks."test:e2e:all"]
 description = "Run browser regressions against the configured Bike UI"
 run = "pnpm run test:e2e:all"
+
+[tasks."test:e2e:diagrams"]
+description = "Verify diagram and math rendering in a standalone browser fixture"
+depends = ["test:e2e:install"]
+run = "pnpm exec playwright test tests/e2e/diagram-rendering.spec.mjs"
 
 [tasks."test:e2e:heatmaps"]
 description = "Verify personal heatmap tiles, filters, and controls"

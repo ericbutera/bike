@@ -60,6 +60,11 @@ mise --cd bike-ui exec -- pnpm exec playwright test tests/e2e/activity-sync-fixt
 mise --cd bike-ui run test:e2e:heatmaps
 ```
 
+`mise --cd bike-ui run test:e2e:diagrams` verifies Mermaid and patched KaTeX
+rendering in a real browser using the locked package assets. It uses a standalone
+HTML fixture, requires no running Bike services, and rejects browser warnings
+and errors. The UI `check` task includes this regression before image builds.
+
 The auth and activity-sync fixtures stub application API responses and external
 map data. They verify UI behavior independently of live auth, provider, and
 database behavior. The connected default journey uses real product APIs and the

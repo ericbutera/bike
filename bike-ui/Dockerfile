@@ -8,7 +8,7 @@ ARG PNPM_VERSION
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm install -g "npm@${NPM_VERSION}"
-RUN npm install -g "pnpm@${PNPM_VERSION}"
+RUN npm install -g --allow-scripts=pnpm "pnpm@${PNPM_VERSION}"
 
 FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./

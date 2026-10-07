@@ -22,19 +22,21 @@ checks. Pull requests run the checks and builds without applying changes or
 receiving the production synthetic credential.
 Documentation-only changes do not release images.
 
-| Check                 | Coverage                                                                    |
-| --------------------- | --------------------------------------------------------------------------- |
-| `test-contracts`      | Canonical HTTP contract and shared asset copies                             |
-| `test-rust`           | Rust formatting, Clippy, workspace tests including native HTTP integrations |
-| `test-ui`             | ESLint, TypeScript, UI unit tests, formatting, generated OpenAPI client     |
-| `test-map-renderer`   | Renderer ESLint, Node tests, and formatting                                 |
-| `test-strava-gateway` | golangci-lint (including Go vet), formatting, gateway tests                 |
+| Check                 | Coverage                                                                                           |
+| --------------------- | -------------------------------------------------------------------------------------------------- |
+| `test-contracts`      | Canonical HTTP contract and shared asset copies                                                    |
+| `test-rust`           | Rust formatting, Clippy, workspace tests including native HTTP integrations                        |
+| `test-ui`             | ESLint, TypeScript, UI unit tests, browser diagram rendering, formatting, generated OpenAPI client |
+| `test-map-renderer`   | Renderer ESLint, Node tests, and formatting                                                        |
+| `test-strava-gateway` | golangci-lint (including Go vet), formatting, gateway tests                                        |
 
 The preparation step runs in the official mise **2026.10.3/debian** image,
 pinned by digest. Its owning `ci:mise:prepare` task copies the executable into
 ignored `.artifacts/bin/mise`; later checks and deployment use that executable
-with existing named tasks in the compiler-equipped buildpack image. They wait
-for preparation. The workflow fixes the shared workspace at `/woodpecker/src`,
+with existing named tasks in the compiler-equipped buildpack image. The UI
+check uses the pinned Playwright image so its diagram rendering regression runs
+in Chromium before image builds. These steps wait for preparation. The workflow
+fixes the shared workspace at `/woodpecker/src`,
 matching the `.artifacts/bin` entry on `PATH` so nested mise commands resolve
 the copied executable. No committed installer or additional system-package setup
 is needed. Language tool versions come from the owning `mise.toml`; shared Node,
@@ -158,8 +160,9 @@ pnpm overrides correct the peer declarations for three exact plugin releases.
 The UI lint gate runs the React, accessibility, import, and Next rules. Remove
 those entries when upstream peers include ESLint 10.
 Two scoped security overrides replace Next's `fast-glob` with the maintained
-`tinyglobby` API and use patched KaTeX for Mermaid. Root-directory glob and math
-fixtures cover those consumer interfaces. These entries are temporary dependency
+`tinyglobby` API and use patched KaTeX for Mermaid. The root-directory glob
+fixture and Playwright diagram rendering check cover those consumer interfaces.
+These entries are temporary dependency
 compatibility decisions, not advisory ignore lists. UI checks run `mise run audit`
 and renderer checks run native npm audit; both fail on dependency advisories.
 
