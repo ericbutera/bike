@@ -195,15 +195,65 @@ grid; counting tolerance does not add painted visits or stroke width.
 ### Page layout and map lifecycle
 
 Use existing `Layout` and `RequireAuth`. Add a Maps navigation item when signed
-in and `heatmaps` is enabled. The page has compact filter controls above a large
-map, a collapsible control panel on mobile, a frequency legend, and a summary of
-mapped activities and preparation progress. Use the existing Route light/Fiord
-basemaps, attribution, theme behavior, pan/zoom, and a **Fit activities** control.
+in and `heatmaps` is enabled. Keep the map as the main page content, using the
+existing Route light/Fiord basemaps, attribution, theme behavior, and pan/zoom.
+The 2026-10-07 screenshot and control requirements below supersede the earlier
+automatic full-history fit and top-left summary panel.
 
-Fit eligible filtered bounds on first load if no camera is saved. Preserve the
-camera during filter changes; fitting again is explicit. A filter with no routes
-shows an empty message and keeps a usable map. Far-apart trips still appear when
-the user fits all activities.
+**Default framing.** With no saved camera, open at the local city and surrounding
+neighborhood scale shown in the supplied Traverse City screenshot. At a matching
+viewport size, the reference view includes the West Arm of Grand Traverse Bay,
+downtown Traverse City, Boardman Lake, Cherry Capital Airport, and nearby western
+trails. Match that geographic extent and route detail when calibrating the
+initial zoom. Center on the user's local riding area, using an available user
+location or the main concentration of their routes. Initial loading does not
+request GPS permission. A saved camera takes precedence over this default.
+Do not automatically fit all activity bounds on first load or after
+metadata/preparation updates.
+
+**Top-right toolbar.** Keep one compact toolbar over the map, with controls in
+this order: **Zoom preset**, **Color**, **Filters**, then **Help**. The Zoom preset
+control offers **Region** and **Full**. Keep the existing color picker and
+sport/date filters. Move the help control and its line-opacity explanation out
+of the top-left panel and place Help immediately to the right of Filters. Its
+popover contains the frequency legend, explains that distinct activities
+increase opacity while line width and the selected color stay constant, and
+retains the explanation of grouped route locations at low zoom. The top-right
+toolbar contains no GPS/use-location button.
+
+**Zoom presets.** Region fits the entire state containing the user's current
+location, with padding so every part of the state remains visible. For example,
+Michigan includes both the Lower and Upper Peninsulas; fitting only the local
+route cluster or one peninsula is insufficient. Resolve the state from the
+user's current location and its administrative boundary, not from heatmap route
+bounds or the map center. On explicit Region selection, request browser location
+if a usable current position is unavailable. If location access or state
+resolution fails, show an accessible explanation and preserve the camera.
+Full fits all ready, eligible routes matching the active sport/date filters,
+including far-apart trips, using the same bounds-fitting behavior as the map's
+previous initial load. Full replaces the earlier Fit activities action. Both
+presets change only the camera and retain filters and color selection.
+
+**Bottom-right controls.** Stack zoom in, zoom out, and **Use my location** in
+that order. Remove the compass/bearing-reset button currently below zoom out and
+replace it with the GPS button moved from the top-right toolbar. Use my location
+requests browser geolocation when selected and recenters at the screenshot's
+local default zoom. It performs a one-time location lookup; permission denial,
+unavailable location, or timeout produces an accessible message and leaves the
+camera usable.
+
+**Top-left area.** Remove the entire floating panel, including “Your heatmap,”
+the “735 activities with routes” counter, and the old help control. Leave the map
+visible there. Activity counts remain available in Help; show preparation,
+loading, and failure status as compact accessible notices near the toolbar
+without recreating the persistent title/count card. On mobile, keep the toolbar
+compact or collapsible while preserving control order and access to the presets,
+filters, Help, and bottom-right GPS button.
+
+Preserve the camera during filter and theme changes; applying a zoom preset or
+using GPS is explicit. A filter with no routes shows an empty message and keeps
+a usable map; Full leaves the camera unchanged when there are no ready bounds.
+Back/forward restores a saved view when present.
 
 Reuse basemap and lifecycle helpers where appropriate, but build a dedicated
 heatmap component rather than adding history/aggregation concerns to the
@@ -258,11 +308,12 @@ labels, keyboard operation, visible focus, and a textual summary.
 
 ### Reading preparation status and resource use
 
-The summary below the map comes from the authenticated user's metadata request
-and counts activities matching the selected sport/date filters. “148 activities
-with routes · Preparing 1,141 activities” means 148 matching projections are
-ready with routes and 1,141 are still pending. These are activity counts, not
-route-segment or GPS-point counts. Pending rows have not been checked for usable
+The activity summary in Help and preparation notices comes from the authenticated
+user's metadata request and counts activities matching the selected sport/date
+filters. “148 activities with routes · Preparing 1,141 activities” means 148
+matching projections are ready with routes and 1,141 are still pending. These
+are activity counts, not route-segment or GPS-point counts. Pending rows have
+not been checked for usable
 geometry, so some may finish as skipped. The UI reports failures separately;
 skipped activities are not included in the displayed ready or pending counts.
 “Preparing” describes the pending status, not the number of jobs currently
@@ -539,8 +590,16 @@ different owner/date/sport, plus one original ride for the projection happy path
    dirty records survive retries/crashes; a bounded batch prepares activities
    sequentially, and historical backfill uses the same per-activity builder.
    Partial history is labeled and advances to ready after publication.
-5. UI: shared navigation/page gates, filter URL restoration, fit/camera retention,
-   theme switching and attribution work. Exercise a Rust-backed happy path with
+5. UI: shared navigation/page gates, filter URL restoration, camera retention,
+   theme switching and attribution work. With no saved camera, verify the default
+   local framing against the supplied Traverse City screenshot at a matching
+   viewport. Region shows the user's entire current state, including both
+   Michigan peninsulas; Full reproduces the previous initial bounds fit for the
+   selected routes. Verify the top-right Zoom preset/Color/Filters/Help order,
+   Help's opacity legend, absence of the top-left title/count panel, and
+   bottom-right zoom-in/zoom-out/GPS order with no compass button. Check saved
+   camera precedence, mobile and keyboard access, location denial, state lookup
+   failure, and empty filtered bounds. Exercise a Rust-backed happy path with
    real tiles; use owning UI tests for loading/empty/error states.
 6. Performance: measure current history and a proportionate larger fixture,
    including its busiest local tile and an all-time overview. Record activity/
