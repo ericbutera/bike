@@ -274,15 +274,24 @@ mod tests {
         raster.add_chunk(&nearby);
         raster.finish_activity();
         let image = raster.rgba();
-        assert_eq!(image.chunks_exact(4).map(|p| p[3]).max(), Some(155));
-        assert!(image.chunks_exact(4).filter(|p| p[3] > 0).count() < 4096);
+        assert_eq!(
+            image.as_chunks::<4>().0.iter().map(|p| p[3]).max(),
+            Some(155)
+        );
+        assert!(image.as_chunks::<4>().0.iter().filter(|p| p[3] > 0).count() < 4096);
         let mut separate = Raster::new(tile);
         separate.add_chunk(&route);
         separate.finish_activity();
         separate.add_chunk(&route.map(|p| [p[0], p[1] + offset * 5.0]));
         separate.finish_activity();
         assert_eq!(
-            separate.rgba().chunks_exact(4).map(|p| p[3]).max(),
+            separate
+                .rgba()
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|p| p[3])
+                .max(),
             Some(100)
         );
     }
@@ -309,10 +318,25 @@ mod tests {
         }
         let frequent = raster.rgba();
         assert_eq!(
-            frequent.chunks_exact(4).filter(|p| p[3] > 0).count(),
-            single.chunks_exact(4).filter(|p| p[3] > 0).count()
+            frequent
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .filter(|p| p[3] > 0)
+                .count(),
+            single
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .filter(|p| p[3] > 0)
+                .count()
         );
-        for (one, many) in single.chunks_exact(4).zip(frequent.chunks_exact(4)) {
+        for (one, many) in single
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(frequent.as_chunks::<4>().0.iter())
+        {
             assert_eq!(one[3] > 0, many[3] > 0);
             if one[3] > 0 {
                 assert_eq!(&one[..3], &[0, 96, 223]);
@@ -321,8 +345,8 @@ mod tests {
             }
         }
         assert!(
-            frequent.chunks_exact(4).map(|p| p[3]).max()
-                > single.chunks_exact(4).map(|p| p[3]).max()
+            frequent.as_chunks::<4>().0.iter().map(|p| p[3]).max()
+                > single.as_chunks::<4>().0.iter().map(|p| p[3]).max()
         );
         assert_eq!(&raster.png().unwrap()[..8], b"\x89PNG\r\n\x1a\n");
     }

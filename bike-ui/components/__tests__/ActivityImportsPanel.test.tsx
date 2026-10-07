@@ -255,8 +255,7 @@ describe("ActivityImportsPanel", () => {
   it("keeps the manual upload button steady while queueing a file", async () => {
     const user = userEvent.setup();
     let resolveUpload:
-      | ((value: ReturnType<typeof makeActivityImport>) => void)
-      | undefined;
+      ((value: ReturnType<typeof makeActivityImport>) => void) | undefined;
     mocks.uploadAsync.mockImplementation(
       () =>
         new Promise((resolve) => {

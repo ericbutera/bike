@@ -1,7 +1,15 @@
-minimum_prek_version = "0.4.0"
+minimum_prek_version = "0.5.5"
 
 [[repos]]
 repo = "local"
+
+[[repos.hooks]]
+id = "shellcheck"
+name = "ShellCheck"
+language = "system"
+entry = "mise run lint:sh"
+files = "^scripts/.*\\.sh$|^bike-ui/docker-entrypoint-dev\\.sh$|^mise\\.toml$"
+pass_filenames = false
 
 [[repos.hooks]]
 id = "workflow-lint"
@@ -24,7 +32,7 @@ id = "cargo-fmt-check"
 name = "Rust formatting"
 language = "system"
 entry = "mise --cd bike-rs run fmt:check"
-files = "^bike-rs/.*\\.(rs|toml)$"
+files = "^bike-rs/.*\\.(rs|toml)$|^mise\\.toml$"
 pass_filenames = false
 
 [[repos.hooks]]
@@ -32,7 +40,7 @@ id = "cargo-clippy"
 name = "Rust Clippy"
 language = "system"
 entry = "mise --cd bike-rs run lint"
-files = "^bike-rs/.*\\.(rs|toml)$"
+files = "^bike-rs/.*\\.(rs|toml)$|^mise\\.toml$"
 pass_filenames = false
 
 [[repos.hooks]]

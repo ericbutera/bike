@@ -191,8 +191,7 @@ export default function HeatmapMap({
     const zonesOverlay = () => {
       if (!styleReady.current) return;
       const source = instance.getSource(ZONES_SOURCE) as
-        | GeoJSONSource
-        | undefined;
+        GeoJSONSource | undefined;
       const data = zoneFeatures(current.current.zones);
       if (source) {
         source.setData(data);
@@ -294,8 +293,7 @@ export default function HeatmapMap({
           fitted.current = true;
           if (typeof clusterId === "number") {
             const source = instance.getSource(ZONES_SOURCE) as
-              | GeoJSONSource
-              | undefined;
+              GeoJSONSource | undefined;
             if (source) {
               void source
                 .getClusterExpansionZoom(clusterId)

@@ -22,7 +22,7 @@ once_cell = "1.19"
 prometheus = "0.14"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 uuid = { version = "1", features = ["v4", "serde"] }
-async-trait = "0.1"
+async-trait = "0.1.92"
 utoipa = { version = "5", features = ["axum_extras", "yaml", "chrono"] }
 utoipa-swagger-ui = { version = "8", features = ["axum", "vendored"] }
 chrono = { version = "0.4", features = ["serde"] }

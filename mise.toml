@@ -1,15 +1,25 @@
 [vars]
 mise_version = "2026.10.3"
+mise_image = "ghcr.io/jdx/mise:{{vars.mise_version}}-debian@sha256:58c4c847f5518a9a87a9a582886a485443dbca5eb024426577f58d586a0990c6"
 node_version = "24.21.0"
 npm_version = "12.2.0"
 pnpm_version = "12.9.1"
-rust_version = "1.97.1"
+rust_version = "1.99.0"
+protoc_version = "36.2"
+# Upstream cargo-chef PR #369 fixes Cargo 1.99's generated target-edition warnings.
+cargo_chef_revision = "449576bbc2645200936adb9dece80810c9a335f8"
 go_version = "1.27.1"
 k6_version = "2.3.0"
-postgres_image = "postgres:17"
-gateway_postgres_image = "postgres:16"
+postgres_image = "postgres:17.11-trixie@sha256:ae69c452f483507a6b99fb654cf93aad7fe156ffd2c56247707eef4e36d3c12b"
+postgres_upgrade_image = "postgres:18.6-trixie@sha256:fc973eb97c9fd04bfa1840e0f510719a584ccb3be8debfe6a4144637a9dfe8cf"
 tracing_image = "cr.jaegertracing.io/jaegertracing/jaeger:2.22.0"
-runtime_image = "debian:bookworm-slim"
+runtime_image = "debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f"
+rust_image = "rust:1.99.0-trixie@sha256:6ff07edce8775d0f64be7aba9197229407301bddf2054d62c27b541a6238a181"
+node_image = "node:24.21.0-trixie@sha256:1278a37eb510ec1606fba0e80f554bcc941ae0b44f35ae373c4822ae7717c64d"
+node_alpine_image = "node:24.21.0-alpine3.24@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1"
+go_image = "golang:1.27.1-trixie@sha256:8f58fd67ea075142d947a60e0caa4317746a55118d312f027793d382c7741734"
+playwright_image = "mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27"
+k6_image = "grafana/k6:2.3.0@sha256:9c2dee7f8ed74d317e4027c06a10f169b625638189de8d4555d0b3486a5aeb34"
 watchexec_version = "2.8.0"
 
 [tools]
@@ -19,23 +29,33 @@ pnpm = "{{vars.pnpm_version}}"
 rust = { version = "{{vars.rust_version}}", profile = "minimal", components = ["rustfmt", "clippy"] }
 go = "{{vars.go_version}}"
 watchexec = "{{vars.watchexec_version}}"
-prek = "0.4.12"
-protoc = "36.2"
+prek = "0.5.5"
+shellcheck = "0.11.0"
+protoc = "{{vars.protoc_version}}"
 k6 = "{{vars.k6_version}}"
-"npm:prettier" = "3.7.4"
+"npm:prettier" = "3.9.9"
 "aqua:woodpecker-ci/woodpecker/woodpecker-cli" = "3.18.1"
 
 [env]
-_.path = { path = ["{{config_root}}/bin", "{% if tools['npm:npm'] is defined %}{{tools['npm:npm'].path}}/node_modules/.bin{% else %}{{config_root}}/bin{% endif %}"], tools = true }
+_.path = { path = ["{% if tools['npm:npm'] is defined %}{{tools['npm:npm'].path}}/node_modules/.bin{% endif %}"], tools = true }
+MISE_IMAGE = "{{vars.mise_image}}"
 NODE_VERSION = "{{vars.node_version}}"
 NPM_VERSION = "{{vars.npm_version}}"
 PNPM_VERSION = "{{vars.pnpm_version}}"
-RUST_VERSION = "{{vars.rust_version}}"
 GO_VERSION = "{{vars.go_version}}"
 RUNTIME_IMAGE = "{{vars.runtime_image}}"
+RUST_IMAGE = "{{vars.rust_image}}"
+PROTOC_VERSION = "{{vars.protoc_version}}"
+CARGO_CHEF_REVISION = "{{vars.cargo_chef_revision}}"
+NODE_IMAGE = "{{vars.node_image}}"
+NODE_ALPINE_IMAGE = "{{vars.node_alpine_image}}"
+GO_IMAGE = "{{vars.go_image}}"
+PLAYWRIGHT_IMAGE = "{{vars.playwright_image}}"
+K6_IMAGE = "{{vars.k6_image}}"
 WATCHEXEC_VERSION = "{{vars.watchexec_version}}"
 BIKE_POSTGRES_IMAGE = "{{vars.postgres_image}}"
-STRAVA_GATEWAY_POSTGRES_IMAGE = "{{vars.gateway_postgres_image}}"
+BIKE_POSTGRES_UPGRADE_IMAGE = "{{vars.postgres_upgrade_image}}"
+STRAVA_GATEWAY_POSTGRES_IMAGE = "{{vars.postgres_image}}"
 BIKE_TRACING_IMAGE = "{{vars.tracing_image}}"
 NPM_CONFIG_CACHE = "{{config_root}}/.cache/npm"
 PNPM_CONFIG_STORE_DIR = "{{config_root}}/.cache/pnpm-store"
@@ -43,28 +63,40 @@ PNPM_CONFIG_STORE_DIR = "{{config_root}}/.cache/pnpm-store"
 [tasks."renderer:build"]
 description = "Build the renderer image using mise version pins"
 run = '''
-docker build --file map-renderer/Dockerfile --tag bike-map-renderer:review --build-arg NODE_VERSION --build-arg NPM_VERSION --build-arg PLAYWRIGHT_VERSION="$(npm --prefix map-renderer pkg get dependencies.playwright | tr -d '"')" .
+docker build --file map-renderer/Dockerfile --tag bike-map-renderer:review --build-arg NODE_IMAGE --build-arg NPM_VERSION --build-arg PLAYWRIGHT_IMAGE .
 '''
+
+[tasks."api:image"]
+description = "Build the release API and migration tools using mise pins"
+run = "docker build --file bike-rs/api/Dockerfile --build-arg RUST_IMAGE --build-arg RUNTIME_IMAGE --build-arg MISE_IMAGE --build-arg PROTOC_VERSION --build-arg CARGO_CHEF_REVISION --tag bike-api:review bike-rs"
+
+[tasks."worker:image"]
+description = "Build the release worker using mise pins"
+run = "docker build --file bike-rs/worker/Dockerfile --build-arg RUST_IMAGE --build-arg RUNTIME_IMAGE --build-arg MISE_IMAGE --build-arg PROTOC_VERSION --build-arg CARGO_CHEF_REVISION --tag bike-worker:review bike-rs"
+
+[tasks."ui:image"]
+description = "Build the release UI using mise pins"
+run = "docker build --file bike-ui/Dockerfile --build-arg NODE_ALPINE_IMAGE --build-arg NPM_VERSION --build-arg PNPM_VERSION --tag bike-ui:review bike-ui"
+
+[tasks."strava:image"]
+description = "Build the release gateway using mise pins"
+run = "docker build --file strava-gateway/Dockerfile --build-arg GO_IMAGE --build-arg RUNTIME_IMAGE --tag bike-gateway:review strava-gateway"
 
 [tasks."images:check"]
 description = "Run native Dockerfile checks"
 run = '''
 set -eu
 for dockerfile in bike-rs/api/Dockerfile bike-rs/worker/Dockerfile bike-rs/api/Dockerfile.dev bike-rs/worker/Dockerfile.dev; do
-  docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --file "$dockerfile" bike-rs
+  docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg RUST_IMAGE --build-arg RUNTIME_IMAGE --build-arg MISE_IMAGE --build-arg PROTOC_VERSION --build-arg CARGO_CHEF_REVISION --build-arg WATCHEXEC_VERSION --file "$dockerfile" bike-rs
 done
 for dockerfile in bike-ui/Dockerfile bike-ui/Dockerfile.dev; do
-  docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --file "$dockerfile" bike-ui
+  docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg NODE_ALPINE_IMAGE --build-arg NPM_VERSION --build-arg PNPM_VERSION --file "$dockerfile" bike-ui
 done
-docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --file bike-ui/Dockerfile.e2e .
-docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --file strava-gateway/Dockerfile strava-gateway
-docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --file map-renderer/Dockerfile .
-docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --file integration-tests/Dockerfile integration-tests
+docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg NODE_IMAGE --build-arg NPM_VERSION --build-arg PNPM_VERSION --file bike-ui/Dockerfile.e2e .
+docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg GO_IMAGE --build-arg RUNTIME_IMAGE --file strava-gateway/Dockerfile strava-gateway
+docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg NODE_IMAGE --build-arg NPM_VERSION --build-arg PLAYWRIGHT_IMAGE --file map-renderer/Dockerfile .
+docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg K6_IMAGE --file integration-tests/Dockerfile integration-tests
 '''
-
-[tasks."mise:bootstrap:sync"]
-description = "Regenerate the verified mise installer using the configured bootstrap pin"
-run = "mise generate install-script --version {{vars.mise_version}} --write bin/mise"
 
 [tasks."compose:config"]
 description = "Validate the shared Bike services Compose stack"
@@ -77,6 +109,11 @@ run = "COMPOSE_PROJECT_NAME=bike docker compose up -d --build"
 [tasks."compose:down"]
 description = "Stop the shared Bike services Compose stack"
 run = "COMPOSE_PROJECT_NAME=bike docker compose down"
+
+[tasks."db:rehearse"]
+description = "Restore a private Bike custom-format dump into isolated PostgreSQL 17/18 volumes and verify recovery"
+usage = 'arg "<dump>" help="Absolute path to a Bike pg_dump -Fc backup"'
+run = 'bash scripts/db-rehearse.sh "${usage_dump?}"'
 
 [tasks."rust:check"]
 description = "Run Rust backend formatting, lint, and tests"
@@ -96,7 +133,37 @@ run = "npm --prefix map-renderer ci"
 
 [tasks."ci:contracts"]
 description = "Check canonical asset mirrors"
-run = ["mise install aqua:woodpecker-ci/woodpecker/woodpecker-cli", "mise run ci:check", "mise run contracts:check"]
+run = ["mise install aqua:woodpecker-ci/woodpecker/woodpecker-cli shellcheck", "mise run ci:check", "mise run lint:sh", "mise run contracts:check", "mise run ci:images:prepare", "mise run ci:mise:prepare"]
+
+[tasks."ci:mise:prepare"]
+description = "Share the official CI image's mise executable with subsequent runner steps"
+run = '''
+mkdir -p .artifacts/bin
+mise_binary="$(command -v mise)"
+if ! test "$mise_binary" -ef .artifacts/bin/mise; then
+  install -m 755 "$mise_binary" .artifacts/bin/mise
+fi
+'''
+
+[tasks."ci:images:prepare"]
+description = "Export only public mise build pins for the native Kaniko plugin"
+run = '''
+mkdir -p .artifacts
+cat > .artifacts/image-build.env <<'PINS'
+RUST_IMAGE='{{vars.rust_image}}'
+MISE_IMAGE='{{vars.mise_image}}'
+PROTOC_VERSION='{{vars.protoc_version}}'
+CARGO_CHEF_REVISION='{{vars.cargo_chef_revision}}'
+RUNTIME_IMAGE='{{vars.runtime_image}}'
+NODE_IMAGE='{{vars.node_image}}'
+NODE_ALPINE_IMAGE='{{vars.node_alpine_image}}'
+NPM_VERSION='{{vars.npm_version}}'
+PNPM_VERSION='{{vars.pnpm_version}}'
+GO_IMAGE='{{vars.go_image}}'
+PLAYWRIGHT_IMAGE='{{vars.playwright_image}}'
+K6_IMAGE='{{vars.k6_image}}'
+PINS
+'''
 
 [tasks."ci:check"]
 description = "Validate the workflow using the native Woodpecker CLI"
@@ -104,7 +171,7 @@ run = "woodpecker-cli lint --strict .woodpecker"
 
 [tasks."ci:rust"]
 description = "Install Rust tooling and run the shared backend checks"
-run = ["mise --cd bike-rs install rust", "mise run rust:check"]
+run = ["mise --cd bike-rs install rust protoc", "mise run rust:check"]
 
 [tasks."ci:ui"]
 description = "Install UI tooling and run the shared UI checks"
@@ -116,7 +183,7 @@ run = ["mise install node npm:npm npm:prettier", "mise run renderer:check"]
 
 [tasks."ci:gateway"]
 description = "Install gateway tooling and run the shared gateway checks"
-run = ["mise --cd strava-gateway install go golangci-lint", "mise --cd strava-gateway run check"]
+run = ["mise --cd strava-gateway install go golangci-lint protoc go:google.golang.org/protobuf/cmd/protoc-gen-go go:google.golang.org/grpc/cmd/protoc-gen-go-grpc", "mise --cd strava-gateway run check", "mise run generate:protobuf:check"]
 
 [tasks."deploy:image"]
 description = "Promote one signed-off Bike component through the owning IaC task"
@@ -148,7 +215,11 @@ run = ["mise run deploy:image bike-rs", "mise run deploy:image map-renderer", "m
 
 [tasks."lint"]
 description = "Run each language linter, formatter, and applicable type checks"
-run = ["mise run lint:rs", "mise run lint:go", "mise run lint:ui", "mise run lint:maps"]
+run = ["mise run lint:rs", "mise run lint:go", "mise run lint:ui", "mise run lint:maps", "mise run lint:sh"]
+
+[tasks."lint:sh"]
+description = "Check Bash operational scripts and the UI shell entrypoint"
+run = "shellcheck scripts/*.sh bike-ui/docker-entrypoint-dev.sh"
 
 [tasks."hooks:install"]
 description = "Install the repository-root prek pre-commit hook"
@@ -221,7 +292,7 @@ run = ["mise run renderer:deps", "map-renderer/node_modules/.bin/eslint --config
 
 [tasks."synthetics:build"]
 description = "Build the standalone k6 synthetic image"
-run = "docker build --build-arg K6_VERSION={{vars.k6_version}} --tag bike-synthetics:review integration-tests"
+run = "docker build --build-arg K6_IMAGE --tag bike-synthetics:review integration-tests"
 
 [tasks."synthetics:run"]
 description = "Run the synthetic image against explicit reachable URLs"
@@ -229,7 +300,7 @@ run = "docker run --rm --env BIKE_API_URL --env BIKE_UI_URL bike-synthetics:revi
 
 [tasks."e2e:build"]
 description = "Build the standalone browser test image"
-run = "docker build --build-arg NODE_VERSION --build-arg NPM_VERSION --build-arg PNPM_VERSION --tag bike-e2e:review --file bike-ui/Dockerfile.e2e ."
+run = "docker build --build-arg NODE_IMAGE --build-arg NPM_VERSION --build-arg PNPM_VERSION --tag bike-e2e:review --file bike-ui/Dockerfile.e2e ."
 
 [tasks."e2e:run"]
 description = "Run browser tests against an explicitly configured test environment"

@@ -91,12 +91,15 @@ Before running Node, Rust, Go, Python, pnpm, npm, cargo, task, or similar comman
 - if tools are missing, run `mise install`
 
 Prefer an existing named `mise run <task>` over a raw tool command. Keep
-`lint` as direct calls to the owning `lint:rs`, `lint:go`, `lint:ui`, and
-`lint:maps` tasks. Use native tool commands in mise config rather than custom
-wrapper scripts or configuration validators. CI/CD must
+`lint` as direct calls to the owning `lint:rs`, `lint:go`, `lint:ui`,
+`lint:maps`, and `lint:sh` tasks. Use native tool commands for simple tasks.
+Multi-step operational workflows may live in Bash scripts called by mise;
+mise owns their tool/image pins, and ShellCheck runs locally, in prek, and CI.
+Do not create custom configuration parsers or validator frameworks. CI/CD must
 call the same owning tasks used locally; keep tool versions in mise config and
-avoid duplicating commands or pins in workflow YAML. The pinned `bin/mise`
-bootstrap provides mise on runners; language checks belong in the tasks.
+avoid duplicating commands or pins in workflow YAML. The official pinned mise
+image supplies the runner executable through ignored CI artifacts; do not commit
+mise or its installer. Language checks belong in the owning tasks.
 
 Examples:
 
