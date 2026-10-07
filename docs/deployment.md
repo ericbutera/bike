@@ -18,8 +18,14 @@ smoke checks wait for deployment. Matching main-branch pushes and manual runs
 build the images, deploy the services, then verify the running services. Every
 check uses `failure: fail`: a nonzero exit fails the pipeline and blocks all
 builds, deployment, and smoke checks. A failed build blocks deployment and smoke
-checks. Pull requests run the checks and builds without applying changes or
-receiving the production synthetic credential.
+checks. Pull requests targeting `main` run those same check and build steps;
+only the deployment and smoke steps have main-only conditions. Woodpecker's
+repository setting must enable pull requests; IaC owns that setting. Opening a
+PR or pushing another revision, including `git push --force-with-lease`, starts
+the shared pipeline. Woodpecker cancels superseded PR runs. Manual branch runs
+use the same checks and builds. All images use immutable commit tags, including
+PR builds. PR and manual branch runs stop before deployment and receive no
+production synthetic credential.
 Documentation-only changes do not release images.
 
 | Check                 | Coverage                                                                                           |
