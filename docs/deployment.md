@@ -29,7 +29,9 @@ The preparation step runs in the official mise **2026.10.3/debian** image,
 pinned by digest. Its owning `ci:mise:prepare` task copies the executable into
 ignored `.artifacts/bin/mise`; later checks and deployment use that executable
 with existing named tasks in the compiler-equipped buildpack image. They wait
-for preparation, so no committed installer or additional system-package setup
+for preparation. The workflow fixes the shared workspace at `/woodpecker/src`,
+matching the `.artifacts/bin` entry on `PATH` so nested mise commands resolve
+the copied executable. No committed installer or additional system-package setup
 is needed. Language tool versions come from the owning `mise.toml`; shared Node,
 Go, formatter, and hook pins are inherited from the root. Mise selects and
 installs the language toolchain.

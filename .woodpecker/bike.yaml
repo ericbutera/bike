@@ -18,6 +18,11 @@ when:
       on_empty: false
   - event: manual
 
+# Keep the shared mise executable on PATH in every runner step.
+workspace:
+  base: /woodpecker
+  path: src
+
 # Release ancestry requires complete source history. Woodpecker mounts this
 # checkout into every step in the workflow.
 clone:
