@@ -9,12 +9,17 @@ Kubernetes.
 ## Continuous integration
 
 Woodpecker reads [`.woodpecker/bike.yaml`](../.woodpecker/bike.yaml). Each run
-uses one monorepo checkout, then follows **checkout → checks → image builds →
-Pulumi apply → production k6 checks**. All five checks run in parallel; every
-image build waits for them. Matching main-branch pushes and manual runs build
-all five images, deploy them, then verify the running services. Pull requests
-run the checks and builds without applying changes or receiving the production
-synthetic credential.
+uses one monorepo checkout, then follows **checkout → all checks → all image
+builds → Pulumi apply → production k6 checks**. `test-contracts` prepares shared
+tooling and assets before the four language checks run in parallel. All six
+image builds share the same dependency list and wait for every check to pass.
+Deployment waits for all six builds, including the standalone synthetic image;
+smoke checks wait for deployment. Matching main-branch pushes and manual runs
+build the images, deploy the services, then verify the running services. Every
+check uses `failure: fail`: a nonzero exit fails the pipeline and blocks all
+builds, deployment, and smoke checks. A failed build blocks deployment and smoke
+checks. Pull requests run the checks and builds without applying changes or
+receiving the production synthetic credential.
 Documentation-only changes do not release images.
 
 | Check                 | Coverage                                                                    |
@@ -149,9 +154,9 @@ paused until cutover validation is accepted. The rehearsal does not perform a
 live upgrade or guarantee third-party extension compatibility.
 
 Next 16.4 adapts its plugins to the ESLint 10 rule-context API. The UI's native
-pnpm overrides correct the peer declarations for three exact plugin releases;
-the lint compatibility fixtures verify React, accessibility, import, and Next
-rules still execute. Remove those entries when upstream peers include ESLint 10.
+pnpm overrides correct the peer declarations for three exact plugin releases.
+The UI lint gate runs the React, accessibility, import, and Next rules. Remove
+those entries when upstream peers include ESLint 10.
 Two scoped security overrides replace Next's `fast-glob` with the maintained
 `tinyglobby` API and use patched KaTeX for Mermaid. Root-directory glob and math
 fixtures cover those consumer interfaces. These entries are temporary dependency

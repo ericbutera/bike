@@ -33,7 +33,9 @@ clone:
       depth: 0
 
 steps:
+  # A failed check fails the pipeline; builds only run after every check passes.
   - name: test-contracts
+    failure: fail
     image: ghcr.io/jdx/mise:2026.10.3-debian@sha256:58c4c847f5518a9a87a9a582886a485443dbca5eb024426577f58d586a0990c6
     depends_on: []
     environment: &mise_environment
@@ -49,6 +51,7 @@ steps:
       - mise run ci:contracts
 
   - name: test-rust
+    failure: fail
     image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
     depends_on: [test-contracts]
     environment:
@@ -63,6 +66,7 @@ steps:
       - .artifacts/bin/mise run ci:rust
 
   - name: test-ui
+    failure: fail
     image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
     depends_on: [test-contracts]
     environment: *mise_environment
@@ -71,6 +75,7 @@ steps:
       - .artifacts/bin/mise run ci:ui
 
   - name: test-map-renderer
+    failure: fail
     image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
     depends_on: [test-contracts]
     environment: *mise_environment
@@ -79,6 +84,7 @@ steps:
       - .artifacts/bin/mise run ci:renderer
 
   - name: test-strava-gateway
+    failure: fail
     image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
     depends_on: [test-contracts]
     environment: *mise_environment
@@ -89,7 +95,7 @@ steps:
   - name: build-api
     image: woodpeckerci/plugin-kaniko:2.3.3@sha256:d6ecc0f37561503eeacd8f2189068c5a13c531f5629cf2ce2de0ac144824c9f4
     depends_on:
-      [
+      &all_tests [
         test-contracts,
         test-rust,
         test-ui,
@@ -121,7 +127,7 @@ steps:
 
   - name: build-worker
     image: woodpeckerci/plugin-kaniko:2.3.3@sha256:d6ecc0f37561503eeacd8f2189068c5a13c531f5629cf2ce2de0ac144824c9f4
-    depends_on: [build-api, build-ui, build-map-renderer, build-strava-gateway]
+    depends_on: *all_tests
     backend_options:
       kubernetes:
         resources:
@@ -147,14 +153,7 @@ steps:
 
   - name: build-ui
     image: woodpeckerci/plugin-kaniko:2.3.3@sha256:d6ecc0f37561503eeacd8f2189068c5a13c531f5629cf2ce2de0ac144824c9f4
-    depends_on:
-      [
-        test-contracts,
-        test-rust,
-        test-ui,
-        test-map-renderer,
-        test-strava-gateway,
-      ]
+    depends_on: *all_tests
     # Kaniko has no mise/bootstrap shell. Load the public pins prepared by the owning mise task.
     commands:
       - set -a; . .artifacts/image-build.env; exec /kaniko/plugin.sh
@@ -172,14 +171,7 @@ steps:
 
   - name: build-map-renderer
     image: woodpeckerci/plugin-kaniko:2.3.3@sha256:d6ecc0f37561503eeacd8f2189068c5a13c531f5629cf2ce2de0ac144824c9f4
-    depends_on:
-      [
-        test-contracts,
-        test-rust,
-        test-ui,
-        test-map-renderer,
-        test-strava-gateway,
-      ]
+    depends_on: *all_tests
     # Kaniko has no mise/bootstrap shell. Load the public pins prepared by the owning mise task.
     commands:
       - set -a; . .artifacts/image-build.env; exec /kaniko/plugin.sh
@@ -197,14 +189,7 @@ steps:
 
   - name: build-strava-gateway
     image: woodpeckerci/plugin-kaniko:2.3.3@sha256:d6ecc0f37561503eeacd8f2189068c5a13c531f5629cf2ce2de0ac144824c9f4
-    depends_on:
-      [
-        test-contracts,
-        test-rust,
-        test-ui,
-        test-map-renderer,
-        test-strava-gateway,
-      ]
+    depends_on: *all_tests
     # Kaniko has no mise/bootstrap shell. Load the public pins prepared by the owning mise task.
     commands:
       - set -a; . .artifacts/image-build.env; exec /kaniko/plugin.sh
@@ -222,7 +207,7 @@ steps:
 
   - name: build-synthetics
     image: woodpeckerci/plugin-kaniko:2.3.3@sha256:d6ecc0f37561503eeacd8f2189068c5a13c531f5629cf2ce2de0ac144824c9f4
-    depends_on: [test-map-renderer, test-contracts]
+    depends_on: *all_tests
     # Kaniko has no mise/bootstrap shell. Load the public pins prepared by the owning mise task.
     commands:
       - set -a; . .artifacts/image-build.env; exec /kaniko/plugin.sh
@@ -250,6 +235,7 @@ steps:
         build-ui,
         build-map-renderer,
         build-strava-gateway,
+        build-synthetics,
       ]
     environment:
       <<: *mise_environment
@@ -270,7 +256,7 @@ steps:
       - event: [push, manual]
         branch: main
     image: registry.registry:5000/bike-synthetics:${CI_COMMIT_SHA}
-    depends_on: [deploy, build-synthetics]
+    depends_on: [deploy]
     environment:
       BIKE_UI_URL: http://ui.bike.svc.cluster.local:3000
       BIKE_API_URL: http://api.bike.svc.cluster.local:3000/api
