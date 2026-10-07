@@ -98,6 +98,6 @@ waits use the normal scheduler. A rejected callback before inbox persistence has
 no job to replay: diagnose its structured rejection reason, repair the boundary,
 then request incremental sync from Bike.
 
-Application import recovery belongs to [Bike admin operations](../bike-rs/docs/specs/admin-operations.md#failed-import-recovery).
+Application import recovery belongs to [Bike admin operations](../docs/specs/admin-operations.md#failed-import-recovery).
 Alert rules and notification configuration belong to the infrastructure repo.
 Use its `check:bike:alerting` task to validate them; deployment is a separate action.

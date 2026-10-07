@@ -4,5 +4,5 @@
 !bike-ui/pnpm-workspace.yaml
 !bike-ui/playwright.config.mjs
 !bike-ui/tests/e2e/**
-!bike-rs/docs/openapi/openapi.json
+!contracts/openapi/openapi.json
 !bike-rs/api/tests/fixtures/platform/uploads/**

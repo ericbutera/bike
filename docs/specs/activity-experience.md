@@ -65,15 +65,15 @@ The route preview path and detailed map path have different payload expectations
 
 ## Code Anchors
 
-- Activity API: `api/src/controllers/activities.rs`
-- Derived activity data: `api/src/activity_details.rs`
-- Activity lifecycle: `api/src/activity_lifecycle.rs`
-- Activity training analysis: `api/src/activity_training_analysis.rs`
+- Activity API: `bike-rs/api/src/controllers/activities.rs`
+- Derived activity data: `bike-rs/api/src/activity_details.rs`
+- Activity lifecycle: `bike-rs/api/src/activity_lifecycle.rs`
+- Activity training analysis: `bike-rs/api/src/activity_training_analysis.rs`
 - Activity list UI: `bike-ui/components/ActivityStream.tsx`
 - Activity detail UI: `bike-ui/components/ActivityDetailPanel.tsx`
 - Route map UI: `bike-ui/components/MapLibreRouteMapClient.tsx`
 
 ## Follow-up tracking
 
-Follow-up status and priority live only in the [Bike TODO](../../../docs/TODO.md).
+Follow-up status and priority live only in the [Bike TODO](../TODO.md).
 This specification is the design reference for ACT03, DATA05, and MAPS11.

@@ -41,10 +41,11 @@ the database and other values from [`.env.example`](.env.example).
 
 ## Contracts and specifications
 
-`mise run generate:openapi` generates the HTTP contract and updates its copies in
-`../contracts/openapi/`. `mise run generate:typescript` regenerates the frontend
+`mise run generate:openapi` generates the canonical HTTP contract directly in
+`../contracts/openapi/`. `mise run openapi:check` verifies it against fresh Rust
+output. `mise run generate:typescript` regenerates the frontend
 client. `mise run generate:protobuf` checks the core crate and rebuilds the gateway
 Rust client bindings in Cargo's build directory.
 
-[Product specifications](docs/specs/README.md) describe intended behavior and
+[Product specifications](../docs/specs/README.md) describe intended behavior and
 should change with it. Track unfinished work in the root [backlog](../docs/TODO.md).

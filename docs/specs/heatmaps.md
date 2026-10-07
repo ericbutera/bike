@@ -52,7 +52,7 @@ It must not broaden the existing personal queries to omit ownership filters.
 Known virtual/indoor routes and unclassified recordings must contribute no
 heatmap geometry. Admission requires a supported cycling sport, an accepted
 outdoor provenance decision under a versioned policy, and valid route geometry.
-The [ingestion contract](../../bike-rs/docs/specs/activity-ingestion.md#heatmap-admission-proposal)
+The [ingestion contract](activity-ingestion.md#heatmap-admission-proposal)
 owns evidence precedence, uncertain inputs, and verification requirements.
 Persist claimed recording environment separately from the admission decision;
 an `outdoor` string in an uploaded export is not independent verification.
@@ -68,7 +68,7 @@ The supported outdoor evidence rules must be approved and recorded before
 MAPS12 can be marked complete; there is no universally trusted recorder flag.
 
 Non-cycling retention and future parsing belong to the ingestion contract.
-The [supported activities specification](../../bike-rs/docs/specs/supported-activities.md)
+The [supported activities specification](supported-activities.md)
 owns cycling subtypes and partial compatibility for other sports.
 Swims, runs, walks, and hikes must not enter either cycling heatmap, even if
 their retained source contains valid GPS. GPS continuity checks apply after
@@ -97,7 +97,7 @@ PostgreSQL updates this field atomically whenever retained evidence changes.
 Bike no longer generates or replays synthetic Strava TCX files. Source recovery
 uses retained originals and native provider JSON, then removes obsolete
 generated artifacts after replay succeeds. See the
-[storage and GPS contract](../../bike-rs/docs/specs/activity-ingestion.md#activity-and-gps-storage)
+[storage and GPS contract](activity-ingestion.md#activity-and-gps-storage)
 for exact source retention, normalized GPS in `activities.derived_data_json`,
 separate heatmap projection/chunk tables, and the proposed activity-detail table.
 

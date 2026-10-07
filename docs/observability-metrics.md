@@ -1,8 +1,8 @@
 # Bike Observability Metrics
 
 This is a historical metric/alert design reference. The implemented contract is
-[the infrastructure metric catalog](../../../pulumi-iac/docs/BIKE-OBSERVABILITY-METRICS.md).
-[The backlog](../../docs/TODO.md) owns current scope; alert follow-up and broader
+[the infrastructure metric catalog](../../pulumi-iac/docs/BIKE-OBSERVABILITY-METRICS.md).
+[The backlog](TODO.md) owns current scope; alert follow-up and broader
 observability validation are deferred STRAVA15/LATER10.
 
 This dashboard starts with the Prometheus metrics Bike already emits:

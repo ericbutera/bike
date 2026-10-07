@@ -70,7 +70,7 @@ async fn preference_updates_persist_and_invalid_profiles_leave_state_unchanged()
     let app = support::platform_app().await;
     let original = get_json(&app, "/api/preferences").await;
     let contract: Value =
-        serde_json::from_str(include_str!("../../docs/openapi/openapi.json")).unwrap();
+        serde_json::from_str(include_str!("../../../contracts/openapi/openapi.json")).unwrap();
     let example = &contract["paths"]["/preferences"]["put"]["requestBody"]["content"]
         ["application/json"]["example"];
     assert!(example.is_object(), "preferences OpenAPI example");

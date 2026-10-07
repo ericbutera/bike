@@ -213,7 +213,7 @@ The frontend should:
 ## Reference verification cases
 
 Broader report-test expansion is deferred LATER11 in
-[the backlog](../../../docs/TODO.md). Choose the cases relevant to a requested
+[the backlog](../TODO.md). Choose the cases relevant to a requested
 report change or observed bug and reuse the owning suite. This list describes
 useful scenarios; running or adding the whole set is outside today's scope.
 
@@ -240,14 +240,14 @@ Frontend examples:
 
 ## Code Anchors
 
-- Reports API: `api/src/controllers/reports.rs`
-- User goal preferences: `api/src/controllers/user_preferences.rs`
-- Existing XC goal loading pattern: `api/src/controllers/training_goals.rs`
+- Reports API: `bike-rs/api/src/controllers/reports.rs`
+- User goal preferences: `bike-rs/api/src/controllers/user_preferences.rs`
+- Existing XC goal loading pattern: `bike-rs/api/src/controllers/training_goals.rs`
 - Reports UI: `bike-ui/components/reports/ReportsClient.tsx`
 - Report definitions UI fallback: `bike-ui/components/reports/reportDefinitions.ts`
 - Frontend API types: `bike-ui/lib/queries.ts`
 
 ## Follow-up tracking
 
-Follow-up status and priority live only in the [Bike TODO](../../../docs/TODO.md).
+Follow-up status and priority live only in the [Bike TODO](../TODO.md).
 This report records the inputs and tradeoffs relevant to XC01.

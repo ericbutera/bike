@@ -9,7 +9,7 @@ progress into one place. Import recordings from your cycling computer or connect
 Strava, then explore the data behind your rides.
 
 [Quickstart](#quickstart) · [Development](docs/development.md) ·
-[Architecture](#architecture) · [Specifications](bike-rs/docs/specs/README.md)
+[Architecture](#architecture) · [Specifications](docs/specs/README.md)
 
 ## What you can do
 
@@ -150,7 +150,7 @@ rendering have separate service boundaries; the
 | [`map-renderer/`](map-renderer/README.md)                      | Route preview PNGs and a shared render cache                   |
 | [`contracts/`](contracts/openapi/README.md), [`proto/`](proto) | HTTP and gRPC contracts                                        |
 | [`bike-rs/api/tests/`](bike-rs/api/tests/README.md)            | Native HTTP integration tests and deterministic fixtures       |
-| [`docs/`](docs)                                                | Development guides, design specifications, operations, backlog |
+| [`docs/`](docs/README.md)                                      | Development guides, design specifications, operations, backlog |
 
 ## Development and verification
 
@@ -181,13 +181,13 @@ Browser regressions live with the [UI](bike-ui/tests/e2e/README.md).
 - [Development guide](docs/development.md) — setup, commands, configuration, tracing.
 - [Architecture](docs/architecture.md) — service boundaries and data flow.
 - [Deployment and CI](docs/deployment.md) — component workflows, image promotion, infrastructure.
-- [Product specifications](bike-rs/docs/specs/README.md) — activity, segment,
+- [Product specifications](docs/specs/README.md) — activity, segment,
   training, authentication, and admin behavior.
 - [Personal heatmaps](docs/specs/heatmaps.md) — design and implementation evidence.
 - [Map rendering](map-renderer/README.md) — render contract, caching, style updates.
 - [Strava gateway](strava-gateway/README.md) — configuration, jobs, verification.
 - [Gateway recovery](strava-gateway/README.md#failure-recovery) and
-  [admin recovery](bike-rs/docs/specs/admin-operations.md#failed-import-recovery) — diagnosis and selective replay.
+  [admin recovery](docs/specs/admin-operations.md#failed-import-recovery) — diagnosis and selective replay.
 - [Active backlog](docs/TODO.md) — remaining work and recorded verification limits.
 
 Production infrastructure is maintained in

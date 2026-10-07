@@ -1,9 +1,9 @@
 # Strava Integration Specification
 
-Task status is maintained only in [the Bike backlog](../../../docs/TODO.md).
+Task status is maintained only in [the Bike backlog](../TODO.md).
 The Rust-provider design below is a legacy reference. Production fetching,
 quota, checkpoints, and delivery are owned by the
-[shared gateway](../../../strava-gateway/docs/specs/strava-fanout.md).
+[shared gateway](strava-fanout.md).
 The old implementation checklist is preserved at `200921f` in Git and its
 open requests are accounted for in the backlog source inventory.
 
@@ -37,7 +37,7 @@ outdoor heatmap eligibility; Bike owns that decision under the
 
 ## Legacy Rust provider flow
 
-In the pre-gateway design, outbound Strava HTTP calls were made through `StravaApiClient` in `api/src/strava_client.rs`. The worker does not call Strava directly; the `strava_sync` processor delegates to `api::strava::process_strava_sync`.
+In the pre-gateway design, outbound Strava HTTP calls were made through `StravaApiClient` in `bike-rs/api/src/strava_client.rs`. The worker does not call Strava directly; the `strava_sync` processor delegates to `api::strava::process_strava_sync`.
 
 The client is separated from the broader Strava service module. It builds request URLs, sends `reqwest` calls, parses JSON, and converts HTTP failures to `AppError`. Strava calls reserve provider quota before sending, reconcile Strava rate-limit headers after responses, emit OpenTelemetry spans, and treat `429 Too Many Requests` as a structured retryable pause.
 
@@ -242,19 +242,19 @@ the evidence available at Bike's delivery boundary.
 
 ## Code Anchors
 
-- Strava controller: `api/src/controllers/strava.rs`
-- Current Strava service: `api/src/strava.rs`
-- Strava API client: `api/src/strava_client.rs`
-- Strava provider payload parsing: `api/src/strava_provider_payload.rs`
-- Provider rate limiter: `api/src/provider_rate_limit.rs`
-- Provider rate-limit entity: `api/src/entities/provider_rate_limit_buckets.rs`
-- Provider rate-limit migration: `migration/src/m20260912_000001_create_provider_rate_limit_buckets.rs`
-- Worker processor: `worker/src/tasks/processors/strava_sync.rs`
-- Task enqueueing: `api/src/tasks/adapter.rs`
-- Activity import pipeline: `api/src/activity_import_pipeline.rs`
-- Integration events: `api/src/integration_events.rs`
-- Prometheus metrics: `api/src/metrics.rs`
-- OpenTelemetry initialization and trace propagation: `api/src/observability.rs`
+- Strava controller: `bike-rs/api/src/controllers/strava.rs`
+- Current Strava service: `bike-rs/api/src/strava.rs`
+- Strava API client: `bike-rs/api/src/strava_client.rs`
+- Strava provider payload parsing: `bike-rs/api/src/strava_provider_payload.rs`
+- Provider rate limiter: `bike-rs/api/src/provider_rate_limit.rs`
+- Provider rate-limit entity: `bike-rs/api/src/entities/provider_rate_limit_buckets.rs`
+- Provider rate-limit migration: `bike-rs/migration/src/m20260912_000001_create_provider_rate_limit_buckets.rs`
+- Worker processor: `bike-rs/worker/src/tasks/processors/strava_sync.rs`
+- Task enqueueing: `bike-rs/api/src/tasks/adapter.rs`
+- Activity import pipeline: `bike-rs/api/src/activity_import_pipeline.rs`
+- Integration events: `bike-rs/api/src/integration_events.rs`
+- Prometheus metrics: `bike-rs/api/src/metrics.rs`
+- OpenTelemetry initialization and trace propagation: `bike-rs/api/src/observability.rs`
 - Observability metric backlog: `docs/observability-metrics.md`
 - Production API `ServiceMonitor`: `../../../pulumi-iac/bike/servicemonitor-bike-api.yaml`
 - Production worker `ServiceMonitor`: `../../../pulumi-iac/bike/servicemonitor-bike-worker.yaml`
@@ -263,4 +263,4 @@ the evidence available at Bike's delivery boundary.
 
 ## Verification reference
 
-Current and deferred status is maintained only in the [Bike TODO](../../../docs/TODO.md). Use provider fakes and the existing Playwright harness for the owning behavior; a full live SSO/provider chain is not required. When provider behavior changes, run the existing owning tests and add a regression for a demonstrated gap. Historical concurrency, pause/disconnect, and resume matrices are not extra acceptance gates.
+Current and deferred status is maintained only in the [Bike TODO](../TODO.md). Use provider fakes and the existing Playwright harness for the owning behavior; a full live SSO/provider chain is not required. When provider behavior changes, run the existing owning tests and add a regression for a demonstrated gap. Historical concurrency, pause/disconnect, and resume matrices are not extra acceptance gates.

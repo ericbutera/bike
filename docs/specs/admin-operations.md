@@ -124,14 +124,14 @@ Do not mark a missing-activity import processed or delete its file/history.
 
 ## Code Anchors
 
-- Admin API: `api/src/controllers/admin.rs`
-- Integration event API: `api/src/controllers/integration_events.rs`
-- Metrics: `api/src/metrics.rs`
+- Admin API: `bike-rs/api/src/controllers/admin.rs`
+- Integration event API: `bike-rs/api/src/controllers/integration_events.rs`
+- Metrics: `bike-rs/api/src/metrics.rs`
 - Admin task UI: `bike-ui/components/admin/AdminTaskTools.tsx`
 - Admin metrics UI: `bike-ui/components/admin/BikeMetricsSection.tsx`
 - Admin navigation: `bike-ui/components/admin/Nav.tsx`
 
 ## Follow-up tracking
 
-Follow-up status and priority live only in the [Bike TODO](../../../docs/TODO.md).
+Follow-up status and priority live only in the [Bike TODO](../TODO.md).
 This specification is the behavior reference for OPS02.

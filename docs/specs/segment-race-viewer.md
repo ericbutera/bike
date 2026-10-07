@@ -73,7 +73,7 @@ Gap labels on cards should be derived from the current live leader even though t
 
 ## Playback constraints
 
-RACE01 in the [Bike TODO](../../../docs/TODO.md) owns any future playback
+RACE01 in the [Bike TODO](../TODO.md) owns any future playback
 changes. This specification records the behavior constraints: use a
 multiplier-based race-viewer speed model without changing embedded comparison
 behavior, calculate live positions separately from stable card order, preserve
@@ -82,5 +82,5 @@ leader-follow.
 
 ## Follow-up tracking
 
-The [Bike TODO](../../../docs/TODO.md) is the sole status and priority record;
+The [Bike TODO](../TODO.md) is the sole status and priority record;
 this specification retains playback behavior and interaction details.

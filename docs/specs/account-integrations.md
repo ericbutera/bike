@@ -48,13 +48,13 @@ Secrets and token material are configuration or database concerns, not frontend 
 
 ## Code Anchors
 
-- Preferences API: `api/src/controllers/user_preferences.rs`
-- Training profile validation: `api/src/training_profile.rs`
-- Strava API: `api/src/controllers/strava.rs`
-- Strava service: `api/src/strava.rs`
+- Preferences API: `bike-rs/api/src/controllers/user_preferences.rs`
+- Training profile validation: `bike-rs/api/src/training_profile.rs`
+- Strava API: `bike-rs/api/src/controllers/strava.rs`
+- Strava service: `bike-rs/api/src/strava.rs`
 - Account UI: `bike-ui/app/account/page.tsx`
 
 ## Follow-up tracking
 
-Follow-up status and priority live only in the [Bike TODO](../../../docs/TODO.md).
+Follow-up status and priority live only in the [Bike TODO](../TODO.md).
 This specification is the behavior reference for AUTH05.

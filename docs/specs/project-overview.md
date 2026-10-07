@@ -59,8 +59,8 @@ Segment correctness should favor transparent user-owned matching and personal co
 
 ## Code Anchors
 
-- App wiring: `api/src/lib.rs`, `api/src/controllers/mod.rs`
-- Worker entry points: `worker/src/tasks/processors`
+- App wiring: `bike-rs/api/src/lib.rs`, `bike-rs/api/src/controllers/mod.rs`
+- Worker entry points: `bike-rs/worker/src/tasks/processors`
 - Migrations: `migration/src`
 - Frontend routes: `bike-ui/app`
 - Local tasks: `mise.toml` (`mise tasks`)
@@ -68,4 +68,4 @@ Segment correctness should favor transparent user-owned matching and personal co
 
 ## Potential product directions
 
-Training plans, official Garmin cloud sync, power-zone planning, and cross-user segment leaderboards are uncommitted product directions, not active work. If one is requested or becomes viable, record its scope once in the [Bike TODO](../../../docs/TODO.md) and use this overview for architecture context.
+Training plans, official Garmin cloud sync, power-zone planning, and cross-user segment leaderboards are uncommitted product directions, not active work. If one is requested or becomes viable, record its scope once in the [Bike TODO](../TODO.md) and use this overview for architecture context.

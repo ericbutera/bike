@@ -117,7 +117,7 @@ run = 'bash scripts/db-rehearse.sh "${usage_dump?}"'
 
 [tasks."rust:check"]
 description = "Run Rust backend formatting, lint, and tests"
-run = ["mise --cd bike-rs run fmt:check", "mise --cd bike-rs run lint", "mise --cd bike-rs run test"]
+run = ["mise --cd bike-rs run fmt:check", "mise --cd bike-rs run lint", "mise --cd bike-rs run test", "mise --cd bike-rs run openapi:check"]
 
 [tasks."ui:check"]
 description = "Run shared UI type, test, build, and format checks"
@@ -256,15 +256,15 @@ run = "mise --cd strava-gateway run generate:protobuf:check"
 
 [tasks."assets:sync"]
 description = "Copy shared assets from their canonical owners"
-run = ["cp bike-rs/docs/openapi/openapi.json contracts/openapi/openapi.json", "cp bike-rs/docs/openapi/openapi.yaml contracts/openapi/openapi.yaml", "cp proto/bike/strava/v1/gateway.proto bike-rs/proto/bike/strava/v1/gateway.proto", "cp map-renderer/styles/fiord-v1.json bike-ui/public/map-styles/fiord-v1.json", "cp map-renderer/styles/route-light-v1.json bike-ui/public/map-styles/route-light-v1.json", "cp bike-rs/bike-core/testdata/strava-real-ride.json strava-gateway/internal/provider/testdata/strava-real-ride.json", "cp bike-rs/bike-core/testdata/strava-real-ride.json bike-ui/tests/e2e/fixtures/strava-real-ride.json"]
+run = ["cp proto/bike/strava/v1/gateway.proto bike-rs/proto/bike/strava/v1/gateway.proto", "cp map-renderer/styles/fiord-v1.json bike-ui/public/map-styles/fiord-v1.json", "cp map-renderer/styles/route-light-v1.json bike-ui/public/map-styles/route-light-v1.json", "cp bike-rs/bike-core/testdata/strava-real-ride.json strava-gateway/internal/provider/testdata/strava-real-ride.json", "cp bike-rs/bike-core/testdata/strava-real-ride.json bike-ui/tests/e2e/fixtures/strava-real-ride.json"]
 
 [tasks."format:check"]
 description = "Check renderer and synthetic formatting"
 run = "prettier map-renderer/*.mjs map-renderer/index.html integration-tests/*.js --check"
 
 [tasks."contracts:check"]
-description = "Compare canonical contracts and shared asset mirrors"
-run = ["cmp bike-rs/docs/openapi/openapi.json contracts/openapi/openapi.json", "cmp bike-rs/docs/openapi/openapi.yaml contracts/openapi/openapi.yaml", "cmp proto/bike/strava/v1/gateway.proto bike-rs/proto/bike/strava/v1/gateway.proto", "cmp map-renderer/styles/fiord-v1.json bike-ui/public/map-styles/fiord-v1.json", "cmp map-renderer/styles/route-light-v1.json bike-ui/public/map-styles/route-light-v1.json", "cmp bike-rs/bike-core/testdata/strava-real-ride.json strava-gateway/internal/provider/testdata/strava-real-ride.json", "cmp bike-rs/bike-core/testdata/strava-real-ride.json bike-ui/tests/e2e/fixtures/strava-real-ride.json"]
+description = "Compare shared asset mirrors with their canonical owners"
+run = ["cmp proto/bike/strava/v1/gateway.proto bike-rs/proto/bike/strava/v1/gateway.proto", "cmp map-renderer/styles/fiord-v1.json bike-ui/public/map-styles/fiord-v1.json", "cmp map-renderer/styles/route-light-v1.json bike-ui/public/map-styles/route-light-v1.json", "cmp bike-rs/bike-core/testdata/strava-real-ride.json strava-gateway/internal/provider/testdata/strava-real-ride.json", "cmp bike-rs/bike-core/testdata/strava-real-ride.json bike-ui/tests/e2e/fixtures/strava-real-ride.json"]
 
 [tasks."test:integration"]
 description = "Run native Rust API integration tests"

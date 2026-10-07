@@ -21,7 +21,7 @@ start after migrations complete successfully; this also initializes a new databa
 
 Local authentication enables a development account and a local admin account.
 Production uses configured OAuth/OIDC providers with local auto-login disabled;
-see [authentication configuration](../bike-rs/docs/specs/auth-configuration.md).
+see [authentication configuration](specs/auth-configuration.md).
 
 Imports are processed by the worker, so start the complete stack when testing
 uploads, archives, or analytics. Rust source changes trigger recompilation inside
@@ -123,6 +123,7 @@ copies and frontend types together:
 
 ```sh
 mise --cd bike-rs run generate:openapi
+mise --cd bike-rs run openapi:check
 mise --cd bike-ui run generate:typescript
 mise --cd bike-ui run openapi:check
 ```
@@ -169,7 +170,7 @@ mise exec -- docker compose --profile tracing down
 | A tool version is missing                   | Run `mise install` in the owning component directory.                                                        |
 | A generated client is stale                 | Regenerate OpenAPI and TypeScript, then run `openapi:check`.                                                 |
 
-Update the owning [product specification](../bike-rs/docs/specs/README.md) when
+Update the owning [product specification](specs/README.md) when
 behavior changes. Track unfinished work in [`TODO.md`](TODO.md), and use
 conventional commit messages such as `fix(import): preserve source metadata`.
 

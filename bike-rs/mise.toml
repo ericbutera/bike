@@ -76,10 +76,17 @@ run = "mise --cd ../bike-ui run generate:typescript"
 
 [tasks."generate:openapi"]
 description = "Generate the common OpenAPI contract from Rust Utoipa"
+run = "cargo run -p api --bin openapi"
+
+[tasks."openapi:check"]
+description = "Check the canonical HTTP contract against Rust Utoipa"
 run = '''
-cargo run -p api --bin openapi
-cp docs/openapi/openapi.json ../contracts/openapi/openapi.json
-cp docs/openapi/openapi.yaml ../contracts/openapi/openapi.yaml
+set -eu
+GENERATED_CONTRACTS="$(mktemp -d)"
+trap 'rm -rf "$GENERATED_CONTRACTS"' EXIT
+cargo run -p api --bin openapi -- "$GENERATED_CONTRACTS"
+cmp -- "$GENERATED_CONTRACTS/openapi.json" ../contracts/openapi/openapi.json
+cmp -- "$GENERATED_CONTRACTS/openapi.yaml" ../contracts/openapi/openapi.yaml
 '''
 
 [tasks."generate:protobuf"]
