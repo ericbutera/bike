@@ -4,16 +4,27 @@ Design revised on 2026-10-08 under TEST11 in [the backlog](TODO.md), continuing
 [Bike PR #8](https://github.com/ericbutera/bike/pull/8). The initial restart-based
 gate passed CI pipeline 215, but its 19-minute E2E stage was unacceptable.
 The replacement keeps services running and excludes the worker. The revised
-required suite passes locally in 3.4 minutes; publication and revised CI
-acceptance remain pending. Commands and the scenario
+required suite passes locally in 3.4 minutes and in Woodpecker pipeline 216 in
+4.5 minutes. Main deployment and CI failure acceptance remain pending. Commands and the scenario
 inventory live in the [browser README](../bike-ui/tests/e2e/README.md).
 
 ## Implementation evidence
 
+- Published revision `79adc931e2982621e425ca1fc6e95e1a588e3fe2` passed all 74
+  tests on Linux amd64 in Woodpecker pipeline 216, with no skipped, retried,
+  flaky, or failed tests. Playwright took 270 seconds and its full image pull,
+  setup, test, export, and cleanup step took 411 seconds (6m51s). Docker's service
+  duration overlaps that step. All 73 identity and browser diagnostic attachments
+  passed; initial setup took 17 seconds, services remained running without a
+  worker, and cleanup left no resources. Retained reports were copied from
+  `/cache/bike/e2e/216/bike-e2e-20261008212531-95-30289/` after pipeline completion.
+  The full pipeline took 22m21s, including an 11m54s API build; this is distinct
+  from browser execution. Image builds still reported slow package downloads,
+  so pipeline success does not establish clean dependency-download diagnostics.
 - Shared image-based Compose runtime, separate development/test overlays, root
   `e2e:prepare`/`e2e` tasks, Playwright-owned ORM-validated seed builders, native
   data snapshots, normal authentication, upload/cache restoration, and artifact export
-  are implemented locally. Required projects include connected, API-mocked, and
+  are implemented. Required projects include connected, API-mocked, and
   standalone diagram coverage; visual comparisons are explicit opt-in.
 - Repeated default runs passed all 74 tests on Linux arm64 in 213 and 206 seconds with
   zero skips, failures, retries, or flakiness. Initial migration/seed/snapshot
@@ -44,8 +55,12 @@ inventory live in the [browser README](../bike-ui/tests/e2e/README.md).
 - The CI workflow builds the prepared browser image and job-local daemon from
   mise pins, gates E2E on every owning check/image, and gates deployment on E2E.
   CI reports use the existing cache PVC rather than disappearing with checkout.
-  The dependent E2E workflow declares Docker as a native service with TLS port
-  2376, as required by the installed Kubernetes backend and strict workflow schema.
+  The dependent E2E workflow declares Docker as a native service with a private
+  Unix socket in a mode-0700 directory on its disposable workspace PVC. It uses
+  containerd's current configuration format, enables Tini child reaping, and
+  requests and verifies clean engine shutdown before Woodpecker tears down the
+  service. Unexpected daemon exits fail the gate. This avoids Woodpecker 3.19
+  reporting its normal forced service teardown as exit 137.
 - [Companion IaC PR #6](https://github.com/ericbutera/pulumi-iac/pull/6) permits
   privileged steps only for Bike and deploys validated tested-image digests.
   Go formatting, lint, vet, and tests passed. Woodpecker preview/apply changed only
@@ -86,9 +101,66 @@ inventory live in the [browser README](../bike-ui/tests/e2e/README.md).
   returned failure and removed its partially started resources. These runs
   coexisted with the broader E2E run and the existing development stack.
   Initial CI pipeline 215 passed all 74 tests on Linux amd64, retained reports
-  after pod exit, and removed run resources. Revised-gate CI and main deployment
-  proof remain pending. The standalone diagram check also passed in
+  after pod exit, and removed run resources. Main deployment and revised-gate CI
+  failure proof remain pending. The standalone diagram check also passed in
   the retained external containerized runner.
+
+## Shared Node build cache
+
+- Pipeline 216's image builds used isolated package stores and reported slow npm
+  downloads. Logs showed `reused 0`; they did not establish IP rate limiting.
+  Node image builds now share npm downloads, pnpm package content, registry
+  metadata, and process locks through BuildKit cache mounts. The persistent CI
+  builder retains these mounts on its dedicated PVC; native checks retain their
+  own shared package store on `woodpecker-cache`. Local Docker uses the same
+  mount definitions. Every image keeps its own platform-specific `node_modules`, immutable
+  tool pins, frozen lockfile, integrity verification, and supply-chain policies.
+- Local native Kaniko 2.3.3 builds reused 574 packages when moving from Alpine
+  to Debian, downloading only eight platform-specific packages. After warming
+  both variants and metadata, simultaneous fresh Alpine/Debian dependency builds
+  each passed with all 582 packages reused and zero downloads using `--offline`.
+  A fresh BuildKit dependency build also passed with networking disabled and
+  all 582 packages reused. Package caches are excluded from the resulting images.
+- The UI, prepared browser, and renderer images built; native Dockerfile checks,
+  strict Woodpecker validation, formatting, and all 12 applicable prek hooks
+  passed. The final prepared images passed the two live setup/warm-reset checks
+  in 22 seconds with clean diagnostics and no surviving resources. Evidence is
+  retained in `.artifacts/node-cache/` and
+  `.artifacts/e2e/bike-e2e-20261008215406-8976-18414/`. These are the initial
+  package-cache experiments; the published builder evidence follows below.
+
+## Persistent BuildKit and shared Rust builds
+
+- Local and Woodpecker release tasks now resolve `docker-bake.hcl` through
+  mise-pinned Buildx 0.38.0. The seven CI targets run in one build step after all
+  checks. Release and development Rust Dockerfiles each own API/worker targets;
+  release targets share one compilation and retain Cargo downloads/artifacts.
+- Local API/worker builds succeeded from one compile operation. An unchanged
+  rebuild loaded both images in 1.77 seconds. Rebuilt browser-runtime images
+  passed setup and warm-reset checks in 13.5 seconds, with clean service/browser
+  diagnostics and no remaining resources. This is local evidence, not CI timing.
+- Companion IaC owns one BuildKit 0.34.0 StatefulSet, a persistent cache PVC,
+  garbage collection, and Bike-only mutual TLS credentials. A local real-daemon
+  test proved a build client works without Docker access and a forced RUN reads
+  its cache marker after daemon restart. Targeted Pulumi update 64 created 14
+  builder/TLS resources and replaced only Bike's repository sync Job. The cache
+  PVC is bound, the StatefulSet is ready, and Bike credential synchronization
+  completed; the existing Woodpecker service and application deployments were unchanged.
+- The first cold BuildKit run, pipeline 217, published all seven images in
+  7m15s. Its E2E image reused all 574 packages after the UI install populated the
+  store. All 74 browser tests passed in 4.2 minutes with no skips, retries,
+  flakiness, browser/service diagnostics, or surviving application resources.
+  The workflow failed because Woodpecker 3.19's strict service reporting observed
+  its normal Docker-service teardown as exit 137. The private socket and
+  explicit shutdown correction above addresses that lifecycle; local real-engine
+  checks verify socket permissions, container execution, clean shutdown, and
+  failure on an unexpected daemon exit.
+- [Bike PR #8](https://github.com/ericbutera/bike/pull/8) records the latest
+  Woodpecker result and warm timings. Changed-source/lockfile benchmarks remain
+  follow-up evidence. BuildKit reports an unconditional upstream default-worker
+  warning and an unsupported fs-verity warning on both local and cluster storage;
+  its behavior passed, but daemon startup is not diagnostic-free.
+  See `.artifacts/buildkit-*.log` and the companion IaC's BuildKit test output.
 
 ## Template and tmpfs exploration
 
@@ -182,12 +254,12 @@ checkout -> preparation -> unit/lint/native tests -> all image builds -> Playwri
   needs deliberate permissions; the existing
   [Woodpecker IaC](https://github.com/ericbutera/pulumi-iac/blob/main/nibelheim/woodpecker/repo_secrets.go)
   now has an authorized Bike-only permission application. The installed runner's
-  registry, TLS/networking, and cancellation behavior still need CI verification.
+  registry, job-local socket permissions, and cancellation behavior still need CI verification.
 - Required spec skips, fixed waits, and live archive URLs have source replacements;
   a broad invocation alone still does not establish deterministic coverage.
-- Earlier source-compilation and file-signalling daemon drafts are absent from
-  the current checkout. Their cleanup is not an implementation prerequisite;
-  the replacement must use supported tools and native Playwright fixtures.
+- The native daemon service owns Docker/containerd process shutdown and its
+  acknowledgment. Native Playwright fixtures own the application services and
+  data lifecycle.
 
 ## Implementation sequence
 

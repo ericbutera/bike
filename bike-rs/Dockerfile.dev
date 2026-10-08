@@ -6,10 +6,15 @@ ARG PROTOC_VERSION
 RUN mise use --global protoc@"${PROTOC_VERSION:?PROTOC_VERSION must be supplied by mise}" \
     && cp -a "$(mise where protoc@"${PROTOC_VERSION}")" /opt/protoc
 
-FROM ${RUST_IMAGE:-scratch}
+FROM ${RUST_IMAGE:-scratch} AS development
 ARG WATCHEXEC_VERSION
 WORKDIR /app
 RUN cargo install --locked --version "${WATCHEXEC_VERSION:?WATCHEXEC_VERSION must be supplied by mise}" watchexec-cli
 COPY --from=protobuf /opt/protoc/bin/protoc /usr/local/bin/protoc
 COPY --from=protobuf /opt/protoc/include /usr/local/include
+
+FROM development AS worker
 CMD ["watchexec", "--restart", "--shell=none", "--stop-signal", "SIGTERM", "--watch", "worker", "--watch", "bike-core", "--watch", "Cargo.toml", "--", "cargo", "run", "--locked", "--bin", "worker"]
+
+FROM development AS api
+CMD ["watchexec", "--restart", "--shell=none", "--stop-signal", "SIGTERM", "--watch", "api", "--watch", "bike-core", "--watch", "migration", "--watch", "Cargo.toml", "--", "cargo", "run", "--locked", "--bin", "api"]

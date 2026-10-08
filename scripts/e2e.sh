@@ -113,7 +113,8 @@ if [[ "${DOCKER_HOST:-unix://}" == tcp://* ]]; then
   engine+=(--add-host "$host:$address" --env DOCKER_HOST --env DOCKER_TLS_VERIFY
     --env DOCKER_CERT_PATH=/docker-certs)
 else
-  engine+=(--mount 'type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock')
+  engine_socket="${DOCKER_HOST:-unix:///var/run/docker.sock}"
+  engine+=(--mount "type=bind,source=${engine_socket#unix://},target=/var/run/docker.sock")
 fi
 
 runner_created=true

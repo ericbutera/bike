@@ -9,11 +9,17 @@ COPY --from=docker /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker /usr/local/libexec/docker/cli-plugins/ /usr/local/libexec/docker/cli-plugins/
 ARG NPM_VERSION
 ARG PNPM_VERSION
+ENV NODE_PACKAGE_CACHE=/var/cache/bike-node
 WORKDIR /workspace/bike-ui
-RUN npm install --global "npm@${NPM_VERSION:?NPM_VERSION must be supplied by mise}"
-RUN npm install --global --allow-scripts=pnpm "pnpm@${PNPM_VERSION:?PNPM_VERSION must be supplied by mise}"
+RUN --mount=type=cache,id=bike-node-packages,target=/var/cache/bike-node \
+    npm install --cache "${NODE_PACKAGE_CACHE}/npm" --prefer-offline --global "npm@${NPM_VERSION:?NPM_VERSION must be supplied by mise}"
+RUN --mount=type=cache,id=bike-node-packages,target=/var/cache/bike-node \
+    npm install --cache "${NODE_PACKAGE_CACHE}/npm" --prefer-offline --global --allow-scripts=pnpm "pnpm@${PNPM_VERSION:?PNPM_VERSION must be supplied by mise}"
 COPY bike-ui/package.json bike-ui/pnpm-lock.yaml bike-ui/pnpm-workspace.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=bike-node-packages,target=/var/cache/bike-node \
+    mkdir -p "${NODE_PACKAGE_CACHE}/runtime" && chmod 700 "${NODE_PACKAGE_CACHE}/runtime" \
+    && XDG_RUNTIME_DIR="${NODE_PACKAGE_CACHE}/runtime" PNPM_CONFIG_CACHE_DIR="${NODE_PACKAGE_CACHE}/pnpm-metadata" \
+    pnpm install --store-dir "${NODE_PACKAGE_CACHE}/pnpm-store" --frozen-lockfile --prefer-offline
 COPY bike-ui/playwright.config.mjs ./
 COPY bike-ui/tests/e2e ./tests/e2e
 COPY bike-ui/public/map-styles ./public/map-styles

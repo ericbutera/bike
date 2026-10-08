@@ -10,9 +10,9 @@ Kubernetes.
 
 Woodpecker reads [`.woodpecker/bike.yaml`](../.woodpecker/bike.yaml). Each run
 uses one monorepo checkout, then follows **checkout → tooling preparation → all
-tests → all image builds → Pulumi apply**. Preparation only shares mise and
-exports public image pins. Five image builds share the same dependency list and
-wait for every test step to pass. Deployment waits for all five builds.
+tests → one Bake image build → E2E → main-only Pulumi apply**. Preparation shares
+mise and prepares the native package cache. Bake builds all seven image targets
+after every test step passes. Deployment waits for the builds and E2E.
 Every test step uses `failure: fail`: a nonzero exit fails the pipeline and blocks
 all builds and deployment. A failed build also blocks deployment.
 Pull requests targeting `main` run those same test and build steps;
@@ -78,15 +78,17 @@ mise run ci:gateway
   E2E → main-only `ci:deploy`. Deployment consumes the image digests that passed
   E2E; PR test jobs receive no deployment credentials.
 - `bike.yaml` owns checks and image builds. The dependent `e2e.yaml` workflow
-  starts a native Docker service with TLS port 2376, using the daemon image built
+  starts a native Docker service with a private workspace Unix socket, using the daemon image built
   for that revision. Each workflow checks out the same commit and prepares mise
   through the existing task; only E2E and deployment share the tested digest file.
 - Export browser reports, failure traces/screenshots, service logs, and image
   identities before cleanup. Startup, migration, fixture, browser, export, or
   cleanup failures must fail the gate and block deployment.
 - Retain CI reports on the existing cache PVC at
-  `/cache/bike/e2e/<pipeline-number>/<project>/`, with seven-day cleanup. TLS
-  certificates stay on the disposable checkout PVC. Local reports live at
+  `/cache/bike/e2e/<pipeline-number>/<project>/`, with seven-day cleanup. The
+  engine socket stays in a mode-0700 directory on the disposable checkout PVC.
+  The gate requests and verifies clean engine shutdown before Woodpecker tears
+  down its service; unexpected daemon exits still fail the workflow. Local reports live at
   `.artifacts/e2e/<project>/`; both paths are printed by the owning runner.
 - Merge the companion digest deployment change before enabling this workflow on
   main. Do not infer a verified CI/main release from a successful permission apply.
@@ -98,8 +100,9 @@ criteria. Production availability monitoring remains a separate workflow.
 
 The root `rust:check`, `renderer:check`, and component `check` tasks own the
 actual checks. Deployment calls `ci:deploy` once for the release. Image builds
-use pinned Kaniko plugin **2.3.3**, verified to contain the maintained fork's
-executor **1.28.5**.
+use mise-pinned Buildx **0.38.0** and the shared `docker-bake.hcl` definition.
+The remote driver connects to persistent BuildKit **0.34.0** in the Woodpecker
+Pulumi stack. The image-build step needs no Docker daemon or privileged mode.
 
 Install mise on developer machines using its
 [installation instructions](https://mise.jdx.dev/installing-mise.html).
@@ -109,7 +112,7 @@ Docker ARG defaults, and the workflow's image reference together. This follows
 
 ## Build version ownership
 
-Root mise vars pin Node, npm, pnpm, Rust, Go, protoc, cargo-chef, k6,
+Root mise vars pin Node, npm, pnpm, Rust, Go, protoc, cargo-chef, Buildx, k6,
 mise/runtime/database images, and watchexec. Mise tools and exported build
 variables use those values directly.
 Compose passes the language variables as Docker build arguments; renderer,
@@ -117,35 +120,56 @@ synthetic, and browser image tasks do the same. Specialized protobuf generator
 pins use mise's Go backend in the gateway config. There are no version-generation
 or custom configuration-validation scripts.
 
-Local image tasks pass complete image references and package/compiler pins as
-build arguments. The preparation step calls `ci:images:prepare`, which writes only
-public build pins to an ignored environment file. Each Kaniko build loads it,
-then invokes the unchanged plugin with its native `build_args_from_env` input.
-This small shell handoff is required because Kaniko's image has no mise/bootstrap
-runtime. It contains no checks, version parser, secrets, or custom installer.
-All builds wait for preparation; missing pins fail the shell step.
+Local image tasks and `ci:images` resolve image references and package/compiler
+pins through the same Bake definition and mise environment. Tasks explicitly
+select `docker-bake.hcl`, preventing discovery of development Compose targets.
+Local builds load images into Docker; CI pushes full source-SHA tags and records
+`.artifacts/image-builds.json`.
+
+`ci:images` connects with Bike-only client credentials synchronized by Pulumi:
+`buildkit_ca_cert`, `buildkit_client_cert`, and `buildkit_client_key`. The client
+writes temporary certificate files with private permissions and removes them on
+exit. Credentials never become Docker build arguments. The builder has one
+StatefulSet replica, a dedicated `bike-buildkit-cache` PVC, bounded garbage
+collection, a private ClusterIP endpoint, and mutual TLS. The existing
+`woodpecker-cache` retains tooling, native-check package caches, and E2E reports.
+BuildKit package cache mounts live on its own PVC; exporting registry layers
+does not persist those mutable mounts.
+
+CI exports intermediate layers with `mode=max` to
+`registry.registry:5000/bike-build-cache:<target>-<scope>`. Main writes `main`;
+PRs and other branches write separate scopes and cannot overwrite main's cache.
+The persistent builder normally reads its local cache. For recovery after
+replacing its disk, set `CACHE_IMPORT=true` only when the corresponding registry
+caches exist. Normal builds do not attempt to import absent cache manifests.
 
 Rust **1.99.0**, Node **24.21.0**, Go **1.27.1**, and Debian **trixie** images
 have explicit release/variant names and immutable multi-platform digests.
 The UI pins Alpine **3.24**; renderer Playwright **1.63.0/noble** continues to
 match its locked package. Release Rust images use cargo-chef's separate
 `prepare`/`cook` stages to cache locked dependencies before copying application
-source. API and worker share identical builder stages and the registry cache;
-source-only edits reuse the cooked dependency layer. The vendored Rust patch
+source. `bike-rs/Dockerfile` has one builder and separate `api`/`worker` runtime
+targets. One Bake invocation shares their compilation of the API, worker,
+migration, recovery, and E2E fixture binaries. Cargo registry/git downloads and
+platform-specific release artifacts use persistent cache mounts. Binaries are
+copied out of those mounts before export. The vendored Rust patch
 is copied before `cook`, so changing it invalidates that layer correctly.
 Cargo-chef **0.1.78** repeats target editions, which Cargo 1.99 warns about.
 `vars.cargo_chef_revision` temporarily pins upstream
 [PR #369](https://github.com/LukeMathWalker/cargo-chef/pull/369) at
 `449576bbc2645200936adb9dece80810c9a335f8`. It removes the redundant fields
 without suppressing warnings. Replace this prerelease revision with a released
-version containing the fix when available. No cache mounts are required;
-the stages work with Docker and the existing Kaniko builder.
+version containing the fix when available.
+
+Development also has one `bike-rs/Dockerfile.dev` with separate API and worker
+targets. Compose selects each target while sharing protoc and watchexec setup;
+source mounts and watch commands retain their existing behavior.
 
 Rust build scripts and Go binding generation both use protoc **36.2** selected
 by root mise. Rust no longer selects a separate vendored compiler. Rust images
 use a separate official mise image stage to install the selected compiler through
 mise's registry and copy its binary and standard includes into the Rust builder.
-The compiler is copied after the dependency cache stage. There are no custom
+The compiler is available during dependency and source compilation. There are no custom
 archive-download, architecture-selection, checksum, or unzip steps. Cargo's
 existing `tonic_prost_build` build script generates Rust bindings from the
 shared protocol using that compiler; generated Rust bindings are not committed.
