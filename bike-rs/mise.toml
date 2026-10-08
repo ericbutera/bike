@@ -142,6 +142,13 @@ run = "mise --cd ../bike-ui run openapi:check"
 description = "Run native API integration tests with isolated fixtures"
 run = "cargo test -p api --test platform"
 
+[tasks."test:ingestion:postgres"]
+description = "Verify ingestion migration and execution constraints in disposable PostgreSQL"
+run = '''
+: "${BIKE_INGESTION_TEST_DATABASE_URL:?Set this to a disposable PostgreSQL database}"
+cargo test -p migration postgres_migration_enforces_active_execution_uniqueness_and_preserves_history -- --ignored
+'''
+
 [tasks."imports:recover"]
 description = "Inspect or recover an owned batch of Bike-generated Strava TCX imports"
 usage = '''

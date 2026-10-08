@@ -6,6 +6,7 @@ use crate::jobs::JobQueue;
 use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, Set,
+    TransactionTrait,
 };
 use serde_json::Value;
 use std::fmt;
@@ -75,6 +76,9 @@ pub async fn mark_activity_import_processing_stage(
     }
 
     let updated = active_model.update(db).await?;
+    crate::activity_import_execution::record_batch_stage(db, &updated, stage)
+        .await
+        .map_err(|error| ActivityImportLifecycleError::internal(error.message))?;
     record_activity_processing_event(
         db,
         &updated,
@@ -115,13 +119,18 @@ pub async fn mark_activity_imports_processed(
         .await?;
 
     for import in imports {
+        let transaction = db.begin().await?;
         let mut active_model: activity_imports::ActiveModel = import.into();
         active_model.status = Set(ACTIVITY_IMPORT_STATUS_PROCESSED.to_string());
         active_model.processing_stage = Set(ACTIVITY_IMPORT_STAGE_COMPLETE.to_string());
         active_model.processing_error = Set(None);
         active_model.processed_at = Set(Some(Utc::now()));
         active_model.last_processing_event_at = Set(Some(Utc::now()));
-        let updated = active_model.update(db).await?;
+        let updated = active_model.update(&transaction).await?;
+        crate::activity_import_execution::finish_active(&transaction, &updated, "completed", None)
+            .await
+            .map_err(|error| ActivityImportLifecycleError::internal(error.message))?;
+        transaction.commit().await?;
         record_activity_processing_event(
             db,
             &updated,
@@ -147,13 +156,47 @@ pub async fn mark_activity_import_failed(
     stage: &str,
     error_message: &str,
 ) -> Result<(), ActivityImportLifecycleError> {
-    let mut active_model: activity_imports::ActiveModel = import.clone().into();
+    let latest = activity_imports::Entity::find_owned(db, import.user_id, import.id)
+        .await?
+        .ok_or_else(|| ActivityImportLifecycleError::internal("Activity import disappeared"))?;
+    let attempt =
+        crate::entities::activity_import_attempts::Entity::active(db, import.user_id, import.id)
+            .await?;
+    if attempt.is_none()
+        && matches!(
+            latest.status.as_str(),
+            ACTIVITY_IMPORT_STATUS_FAILED
+                | ACTIVITY_IMPORT_STATUS_PROCESSED
+                | ACTIVITY_IMPORT_STATUS_DUPLICATE
+                | ACTIVITY_IMPORT_STATUS_CANCELED
+        )
+    {
+        return Ok(());
+    }
+    let stage = if stage == "finalizing" {
+        stage
+    } else {
+        attempt
+            .as_ref()
+            .map_or(stage, |attempt| attempt.current_stage.as_str())
+    };
+    let mut active_model: activity_imports::ActiveModel = latest.clone().into();
     active_model.status = Set(ACTIVITY_IMPORT_STATUS_FAILED.to_string());
     active_model.processing_stage = Set(stage.to_string());
     active_model.processing_error = Set(Some(error_message.to_string()));
-    active_model.processing_attempts = Set(import.processing_attempts.saturating_add(1));
+    active_model.processing_attempts = Set(latest.processing_attempts.saturating_add(1));
     active_model.last_processing_event_at = Set(Some(Utc::now()));
-    let updated = active_model.update(db).await?;
+    let transaction = db.begin().await?;
+    let updated = active_model.update(&transaction).await?;
+    crate::activity_import_execution::finish_active(
+        &transaction,
+        &updated,
+        "failed",
+        Some(error_message),
+    )
+    .await
+    .map_err(|error| ActivityImportLifecycleError::internal(error.message))?;
+    transaction.commit().await?;
 
     record_activity_processing_event(
         db,
@@ -232,9 +275,47 @@ pub async fn finalize_activity_import_batch(
         mark_segment_activity_changes(db, &affected_segment_ids, changed_at).await?;
     }
 
-    tasks.rebuild_fitness_freshness(user_id).await;
+    tasks
+        .queue_fitness_freshness(user_id)
+        .await
+        .map_err(|error| {
+            ActivityImportLifecycleError::internal(format!(
+                "Could not queue fitness rebuild: {error}"
+            ))
+        })?;
 
     Ok(())
+}
+
+pub async fn complete_activity_imports(
+    db: &DatabaseConnection,
+    tasks: &JobQueue,
+    user_id: i32,
+    import_ids: &[i32],
+    affected_segment_ids: Vec<i32>,
+    fitness_dirty_from_day: Option<NaiveDate>,
+) -> Result<(), ActivityImportLifecycleError> {
+    let result = async {
+        finalize_activity_import_batch(
+            db,
+            tasks,
+            user_id,
+            affected_segment_ids,
+            fitness_dirty_from_day,
+            Utc::now(),
+        )
+        .await?;
+        mark_activity_imports_processed(db, import_ids).await
+    }
+    .await;
+    if let Err(error) = &result {
+        for id in import_ids {
+            if let Some(import) = activity_imports::Entity::find_owned(db, user_id, *id).await? {
+                mark_activity_import_failed(db, &import, "finalizing", &error.message).await?;
+            }
+        }
+    }
+    result
 }
 
 pub async fn record_activity_processing_event(

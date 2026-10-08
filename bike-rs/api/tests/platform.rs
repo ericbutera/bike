@@ -1,6 +1,8 @@
 //! HTTP integration coverage for authentication, preferences, and ride read paths.
 //! The real Axum router and SeaORM queries run against an isolated SQLite fixture.
 
+#[path = "support/ingestion.rs"]
+mod ingestion_tests;
 mod support;
 #[path = "support/synthetics.rs"]
 mod synthetic_tests;
@@ -28,10 +30,10 @@ async fn request_json(
         .unwrap();
     let response = app.clone().oneshot(request).await.unwrap();
     let status = response.status();
-    assert!(response.headers()["content-type"]
-        .to_str()
-        .unwrap()
-        .starts_with("application/json"));
+    let json_content = response
+        .headers()
+        .get("content-type")
+        .is_some_and(|value| value.to_str().unwrap().starts_with("application/json"));
     let body = axum::body::to_bytes(response.into_body(), 1_048_576)
         .await
         .unwrap();
@@ -41,6 +43,7 @@ async fn request_json(
         "{method} {path}: {}",
         String::from_utf8_lossy(&body)
     );
+    assert!(json_content, "{method} {path} returned non-JSON content");
     serde_json::from_slice(&body).unwrap()
 }
 

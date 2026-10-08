@@ -1,4 +1,5 @@
 use crate::activity_details::serialize_derived_activity_data;
+use crate::activity_import_execution::{self as execution, ProcessingCheckpoint, StageRecord};
 use crate::activity_lifecycle::refresh_activity_derived_state_without_cache_rebuilds;
 use crate::activity_parser::{parse_activity_artifact, ActivityParserArtifact, ParsedActivityData};
 use crate::activity_training_analysis::rebuild_activity_training_analysis_cache;
@@ -6,7 +7,8 @@ use crate::activity_type::ActivityType;
 use crate::analytics::{rebuild_activity_analytics_cache, rebuild_segment_analytics_cache};
 use crate::dedupe::activity_dedupe_matches_model;
 use crate::entities::{
-    activities, activity_import_artifacts, activity_imports, activity_training_analyses,
+    activities, activity_import_artifacts, activity_import_attempts, activity_imports,
+    activity_training_analyses,
 };
 use crate::integration_events_service::INTEGRATION_LEVEL_INFO;
 use crate::jobs::JobQueue as TaskQueue;
@@ -23,6 +25,15 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::Path;
 use uuid::Uuid;
+mod replay;
+mod stage_execution;
+use self::stage_execution::{
+    begin_processing_attempt, complete_processing_node, start_processing_node,
+};
+pub use replay::{
+    plan_activity_import_replay, queue_activity_import_replay,
+    queue_expected_activity_import_replay, ActivityImportReplayPlan,
+};
 
 #[derive(Debug, Clone)]
 pub struct ActivityUploadPayload {
@@ -347,6 +358,7 @@ struct ActivityProcessingRun<'a> {
 }
 
 struct ActivityProcessingState {
+    attempt: activity_import_attempts::Model,
     import_model: activity_imports::Model,
     activity_model: Option<activities::Model>,
     parsed_activity: Option<ParsedActivityData>,
@@ -357,6 +369,8 @@ struct ActivityProcessingState {
 
 #[derive(Debug, Clone)]
 struct ActivityProcessingArtifact {
+    size_bytes: i64,
+    checksum_sha256: Option<String>,
     artifact_kind: String,
     original_filename: String,
     format: String,
@@ -448,11 +462,29 @@ async fn record_activity_processing_event(
 async fn run_activity_processing_graph(
     run: ActivityProcessingRun<'_>,
 ) -> Result<PersistActivityUploadOutcome, AppError> {
+    let attempt = begin_processing_attempt(&run).await?;
+    let result = execute_activity_processing_graph(&run, attempt.clone()).await;
+    if let Err(error) = &result {
+        let own_attempt = activity_import_attempts::Entity::find_by_id(attempt.id)
+            .one(run.db)
+            .await?;
+        if let Some(own_attempt) = own_attempt.filter(|attempt| attempt.status == "running") {
+            mark_activity_import_failed(run.db, &run.import, &own_attempt.current_stage, error)
+                .await?;
+        }
+    }
+    result
+}
+
+async fn execute_activity_processing_graph(
+    run: &ActivityProcessingRun<'_>,
+    attempt: activity_import_attempts::Model,
+) -> Result<PersistActivityUploadOutcome, AppError> {
     let graph_nodes_by_node = activity_processing_graph_nodes()
         .iter()
         .map(|node| (node.node, *node))
         .collect::<HashMap<_, _>>();
-    let mut state = load_activity_processing_state(&run).await?;
+    let mut state = load_activity_processing_state(run, attempt).await?;
 
     for node in activity_processing_topological_order()? {
         let graph_node = graph_nodes_by_node.get(&node).ok_or_else(|| {
@@ -461,10 +493,20 @@ async fn run_activity_processing_graph(
             ))
         })?;
 
-        if let Some(outcome) = run_activity_processing_node(&run, &mut state, *graph_node).await? {
+        if execution::stages(&state.attempt)?
+            .iter()
+            .any(|stage| stage.stage == graph_node.stage && stage.status == "reused")
+        {
+            continue;
+        }
+        start_processing_node(run, &mut state, graph_node.stage).await?;
+        let outcome = run_activity_processing_node(run, &mut state, *graph_node).await?;
+        complete_processing_node(run, &mut state, node).await?;
+        if let Some(outcome) = outcome {
+            execution::finish_active(run.db, &state.import_model, "duplicate", None).await?;
             return Ok(outcome);
         }
-        if should_stop_activity_processing(&run, node) {
+        if should_stop_activity_processing(run, node) {
             break;
         }
     }
@@ -474,15 +516,37 @@ async fn run_activity_processing_graph(
 
 async fn load_activity_processing_state(
     run: &ActivityProcessingRun<'_>,
+    attempt: activity_import_attempts::Model,
 ) -> Result<ActivityProcessingState, AppError> {
     let parsing_artifact = load_best_activity_parsing_artifact(run.db, &run.import).await?;
     let bytes =
         tokio::fs::read(Path::new(run.uploads_dir).join(&parsing_artifact.storage_path)).await?;
+    if let Some(checksum) = &parsing_artifact.checksum_sha256 {
+        if checksum_sha256_hex(&bytes) != *checksum {
+            return Err(AppError::bad_request(
+                "Retained source checksum does not match; replay is blocked",
+            ));
+        }
+    }
+    let checkpoint = execution::checkpoint(&attempt);
+    if attempt.reused_attempt_id.is_some()
+        && (attempt.source_json != stage_execution::artifact_metadata(&parsing_artifact)
+            || checkpoint.as_ref().is_some_and(|checkpoint| {
+                run.existing_activity.as_ref().is_some_and(|activity| {
+                    checkpoint.activity_updated_at != Some(activity.updated_at)
+                })
+            }))
+    {
+        return Err(AppError::conflict(
+            "Earlier results changed after replay was queued; create a new replay",
+        ));
+    }
     Ok(ActivityProcessingState {
+        attempt,
         import_model: run.import.clone(),
         activity_model: run.existing_activity.clone(),
-        parsed_activity: None,
-        affected_segment_ids: Vec::new(),
+        parsed_activity: checkpoint.as_ref().map(|value| value.parsed.clone()),
+        affected_segment_ids: checkpoint.map_or_else(Vec::new, |value| value.affected_segment_ids),
         parsing_artifact,
         bytes,
     })
@@ -513,6 +577,8 @@ fn activity_processing_artifact_from_model(
     artifact: activity_import_artifacts::Model,
 ) -> ActivityProcessingArtifact {
     ActivityProcessingArtifact {
+        size_bytes: artifact.size_bytes,
+        checksum_sha256: Some(artifact.checksum_sha256),
         artifact_kind: artifact.artifact_kind,
         original_filename: artifact.original_filename,
         format: artifact.format,
@@ -531,6 +597,8 @@ fn legacy_activity_processing_artifact(
     }
 
     Some(ActivityProcessingArtifact {
+        size_bytes: import.size_bytes,
+        checksum_sha256: None,
         artifact_kind: ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL.to_string(),
         original_filename: import.original_filename.clone(),
         format: import.format.clone(),
@@ -1142,15 +1210,6 @@ pub async fn persist_activity_upload_with_artifacts(
     })
     .await;
 
-    if let Err(error) = &result {
-        let latest_import = activity_imports::Entity::find_by_id(import_model.id)
-            .one(db)
-            .await?
-            .unwrap_or(import_model);
-        mark_activity_import_failed(db, &latest_import, &latest_import.processing_stage, error)
-            .await?;
-    }
-
     result
 }
 
@@ -1585,6 +1644,7 @@ async fn deduplicated_activity_import_for_model(
 #[cfg(test)]
 mod tests {
     mod recording;
+    mod replay_tests;
     use super::*;
     use crate::background_jobs::background_tasks;
     use crate::entities::{
@@ -1617,6 +1677,11 @@ mod tests {
         db.execute(&schema.create_table_from_entity(activity_imports::Entity))
             .await
             .expect("create activity imports table");
+        db.execute(
+            &schema.create_table_from_entity(crate::entities::activity_import_attempts::Entity),
+        )
+        .await
+        .expect("create activity import attempts table");
         db.execute(&schema.create_table_from_entity(activity_import_artifacts::Entity))
             .await
             .expect("create activity import artifacts table");
@@ -2431,6 +2496,10 @@ mod tests {
             .await
             .expect("clear activity training analysis");
 
+        mark_activity_imports_processed(&db, &[imported.import.id])
+            .await
+            .unwrap();
+
         reprocess_activity_from_import(
             &db,
             &uploads_dir,
@@ -2505,6 +2574,9 @@ mod tests {
             1,
         );
 
+        mark_activity_imports_processed(&db, &[imported.import.id])
+            .await
+            .unwrap();
         reprocess_activity_from_import(
             &db,
             &uploads_dir,
@@ -2560,6 +2632,9 @@ mod tests {
             .await
             .expect("clear activity training analysis");
 
+        mark_activity_imports_processed(&db, &[imported.import.id])
+            .await
+            .unwrap();
         reprocess_activity_from_import_deferred_caches(
             &db,
             &uploads_dir,

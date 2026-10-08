@@ -372,11 +372,20 @@ where
         .await?
         .ok_or_else(|| AdminTaskError::not_found("Task not found"))?;
 
+    let mut payload = task.payload;
+    if task.task_type == "process_activity_import" {
+        if let Some(data) = payload
+            .get_mut("data")
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            data.remove("attempt_id");
+        }
+    }
     let now = Utc::now();
     let created = background_tasks::ActiveModel {
         id: NotSet,
         task_type: Set(task.task_type),
-        payload: Set(task.payload),
+        payload: Set(payload),
         status: Set("pending".to_string()),
         attempts: Set(0),
         max_attempts: Set(task.max_attempts),

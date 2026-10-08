@@ -163,6 +163,15 @@ impl JobQueue {
         .await;
     }
 
+    pub async fn queue_fitness_freshness(
+        &self,
+        user_id: i32,
+    ) -> Result<(), crate::background_jobs::TaskError> {
+        let job = Job::RebuildFitnessFreshness(RebuildFitnessFreshnessTask { user_id });
+        self.queue.enqueue(job.task_type().to_string(), job).await?;
+        Ok(())
+    }
+
     pub async fn rebuild_segment_analytics(&self, segment_ids: Vec<i32>) {
         let mut segment_ids = segment_ids
             .into_iter()
@@ -211,11 +220,27 @@ impl JobQueue {
             return Ok(());
         }
 
-        let job = Job::ProcessActivityImport(ProcessActivityImportTask { user_id, import_id });
-        let task_type = job.task_type().to_string();
+        self.process_activity_import_with_attempt(user_id, import_id, None)
+            .await
+    }
 
+    pub async fn process_activity_import_with_attempt(
+        &self,
+        user_id: i32,
+        import_id: i32,
+        attempt_id: Option<i32>,
+    ) -> Result<(), String> {
+        let mut data = serde_json::json!({"user_id": user_id, "import_id": import_id});
+        if let Some(id) = attempt_id {
+            data["attempt_id"] = id.into();
+        }
         self.queue
-            .enqueue_with_options(task_type, job, None, 1)
+            .enqueue_with_options(
+                "process_activity_import".into(),
+                serde_json::json!({"data": data}),
+                None,
+                1,
+            )
             .await
             .map(|_| ())
             .map_err(|error| error.to_string())

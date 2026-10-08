@@ -1,6 +1,7 @@
 use crate::app_error;
 use crate::controllers;
 use crate::controllers::activities;
+use crate::controllers::activity_import_history;
 use crate::controllers::activity_imports;
 use crate::controllers::admin;
 use crate::controllers::fitness;
@@ -59,6 +60,9 @@ use utoipa::OpenApi;
         reports::get_training_reports,
         activity_imports::list_activity_imports,
         activity_imports::get_activity_import_trace,
+        activity_import_history::history,
+        activity_import_history::replay_plan,
+        activity_import_history::replay,
         activity_imports::get_activity_processing_graph,
         activity_imports::get_activity_processing_state,
         activity_imports::list_activity_archive_import_jobs,
@@ -193,6 +197,10 @@ use utoipa::OpenApi;
             activity_imports::ActivityImportTraceEventResponse,
             activity_imports::ActivityImportTraceNodeResponse,
             activity_imports::ActivityImportTraceResponse,
+            crate::activity_import_history::ImportHistoryResponse,
+            crate::activity_import_history::ReplayRequest,
+            crate::activity_import_history::ReplayResponse,
+            crate::activity_import_history::ImportAttemptResponse,
             activity_imports::ActivityProcessingGraphEdgeResponse,
             activity_imports::ActivityProcessingGraphNodeResponse,
             activity_imports::ActivityProcessingGraphResponse,

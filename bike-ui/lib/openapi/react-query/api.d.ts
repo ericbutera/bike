@@ -132,6 +132,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/activity-imports/history": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["history"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/activity-imports/processing-graph": {
     parameters: {
       query?: never;
@@ -158,6 +174,22 @@ export interface paths {
     get: operations["get_activity_processing_state"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/activity-imports/{id}/replay": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["replay_plan"];
+    put?: never;
+    post: operations["replay"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1325,6 +1357,8 @@ export interface components {
        * @example 2026-09-26T13:00:00Z
        */
       activity_started_at?: string | null;
+      /** Format: int32 */
+      archive_job_id?: number | null;
       /**
        * Format: date-time
        * @example 2026-09-26T14:20:00Z
@@ -1353,6 +1387,7 @@ export interface components {
        * @example 184320
        */
       size_bytes: number;
+      source: string;
       /** @example processed */
       status: string;
     };
@@ -1369,10 +1404,16 @@ export interface components {
     ActivityImportTraceNodeResponse: {
       /** Format: date-time */
       completed_at?: string | null;
+      error?: string | null;
       id: string;
       label: string;
+      /** Format: int32 */
+      reused_attempt_id?: number | null;
       stage: string;
+      /** Format: date-time */
+      started_at?: string | null;
       status: string;
+      summary: string[];
     };
     /**
      * @example {
@@ -1409,6 +1450,7 @@ export interface components {
      *     }
      */
     ActivityImportTraceResponse: {
+      attempts: components["schemas"]["ImportAttemptResponse"][];
       /** @example [] */
       events: components["schemas"]["ActivityImportTraceEventResponse"][];
       graph: components["schemas"]["ActivityProcessingGraphResponse"];
@@ -1707,6 +1749,8 @@ export interface components {
      */
     ActivityResponse: {
       achievement_highlights?: components["schemas"]["ActivityAchievementHighlight"][];
+      /** Format: int32 */
+      activity_import_id?: number | null;
       activity_type: components["schemas"]["ActivityType"];
       /** Format: int32 */
       average_cadence_rpm?: number | null;
@@ -2726,6 +2770,33 @@ export interface components {
       /** Format: int32 */
       stopped_seconds: number;
     };
+    ImportAttemptResponse: {
+      /** Format: date-time */
+      created_at: string;
+      error?: string | null;
+      /** Format: date-time */
+      finished_at?: string | null;
+      /** Format: int32 */
+      id: number;
+      nodes: components["schemas"]["ActivityImportTraceNodeResponse"][];
+      requested_stage: string;
+      /** Format: int32 */
+      reused_attempt_id?: number | null;
+      source: unknown;
+      start_stage: string;
+      /** Format: date-time */
+      started_at?: string | null;
+      status: string;
+    };
+    ImportHistoryResponse: {
+      items: components["schemas"]["ActivityImportResponse"][];
+      /** Format: int64 */
+      page: number;
+      /** Format: int64 */
+      per_page: number;
+      /** Format: int64 */
+      total: number;
+    };
     /**
      * @example {
      *       "connection_id": 5,
@@ -2802,6 +2873,8 @@ export interface components {
       /** @description Recordset */
       data: {
         achievement_highlights?: components["schemas"]["ActivityAchievementHighlight"][];
+        /** Format: int32 */
+        activity_import_id?: number | null;
         activity_type: components["schemas"]["ActivityType"];
         /** Format: int32 */
         average_cadence_rpm?: number | null;
@@ -3250,6 +3323,21 @@ export interface components {
        * @example 12
        */
       user_id: number;
+    };
+    ReplayRequest: {
+      /** Format: int32 */
+      expected_reused_attempt_id?: number | null;
+      expected_start_stage?: string | null;
+      stage: string;
+    };
+    ReplayResponse: {
+      /** Format: int32 */
+      attempt_id?: number | null;
+      reason?: string | null;
+      requested_stage: string;
+      /** Format: int32 */
+      reused_attempt_id?: number | null;
+      start_stage: string;
     };
     /**
      * @example week
@@ -5661,6 +5749,44 @@ export interface operations {
       };
     };
   };
+  history: {
+    parameters: {
+      query?: {
+        page?: number;
+        source?: string;
+        status?: string;
+        archive_job_id?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ImportHistoryResponse"];
+        };
+      };
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+    };
+  };
   get_activity_processing_graph: {
     parameters: {
       query?: never;
@@ -5802,6 +5928,96 @@ export interface operations {
       };
       /** @description Internal server error */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+    };
+  };
+  replay_plan: {
+    parameters: {
+      query: {
+        stage: string;
+        expected_start_stage?: string;
+        expected_reused_attempt_id?: number;
+      };
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReplayResponse"];
+        };
+      };
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+    };
+  };
+  replay: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReplayRequest"];
+      };
+    };
+    responses: {
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReplayResponse"];
+        };
+      };
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+      409: {
         headers: {
           [name: string]: unknown;
         };

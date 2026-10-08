@@ -1,3 +1,4 @@
+pub mod activity_import_history;
 pub mod activity_import_lock;
 pub mod activity_location;
 pub mod app_error;

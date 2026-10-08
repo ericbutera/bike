@@ -4,15 +4,11 @@ use crate::activity_import_lock::{
     ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
 };
 use crate::activity_import_pipeline::{
-    finalize_activity_import_batch, mark_activity_import_failed,
-    mark_activity_import_processing_stage, mark_activity_imports_processed,
-    reprocess_activity_from_import_deferred_caches, ReprocessedActivityImport,
-    ACTIVITY_IMPORT_STAGE_ACTIVITY_ANALYTICS_BUILT, ACTIVITY_IMPORT_STAGE_RAW_STORED,
-    ACTIVITY_IMPORT_STAGE_SEGMENTS_BUILT, ACTIVITY_IMPORT_STAGE_SEGMENT_ANALYTICS_BUILT,
+    process_stored_activity_import, reprocess_activity_from_import, ActivityUploadDeduplication,
+    PersistActivityUploadOutcome, ReprocessedActivityImport,
     ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT, ACTIVITY_IMPORT_STATUS_FAILED,
     ACTIVITY_IMPORT_STATUS_PROCESSING,
 };
-use crate::activity_training_analysis::rebuild_activity_training_analysis_cache;
 use crate::analytics::{
     mark_segment_activity_changes, mark_user_activity_change, mark_user_fitness_dirty,
 };
@@ -112,15 +108,9 @@ impl ActivityReprocessProgress {
     }
 }
 
-struct ResumedActivityImport {
-    import: activity_imports::Model,
-    activity_id: i32,
-}
-
 #[derive(Default)]
 struct ResumeImportProgress {
     reprocessed: ActivityReprocessProgress,
-    stage_ready_imports: Vec<ResumedActivityImport>,
 }
 
 impl ResumeImportProgress {
@@ -129,12 +119,7 @@ impl ResumeImportProgress {
         import: activity_imports::Model,
         reprocessed: ReprocessedActivityImport,
     ) {
-        let activity_id = reprocessed.activity.id;
         self.reprocessed.record_success(import.id, reprocessed);
-        self.stage_ready_imports.push(ResumedActivityImport {
-            import,
-            activity_id,
-        });
     }
 
     fn record_failure(&mut self) {
@@ -179,56 +164,6 @@ impl<'a> SingleActivityReprocessContext<'a> {
 
     fn set_activity_id(&mut self, activity_id: i32) {
         self.activity_id = activity_id;
-    }
-
-    async fn mark_raw_stored(&mut self) -> Result<(), AppError> {
-        self.mark_stage(ACTIVITY_IMPORT_STAGE_RAW_STORED).await
-    }
-
-    async fn mark_segments_built(&mut self) -> Result<(), AppError> {
-        self.mark_stage(ACTIVITY_IMPORT_STAGE_SEGMENTS_BUILT).await
-    }
-
-    async fn rebuild_segment_analytics(
-        &mut self,
-        affected_segment_ids: &[i32],
-    ) -> Result<(), AppError> {
-        rebuild_segment_analytics_cache(self.db, affected_segment_ids).await?;
-        self.mark_stage(ACTIVITY_IMPORT_STAGE_SEGMENT_ANALYTICS_BUILT)
-            .await
-    }
-
-    async fn rebuild_activity_analytics(&mut self) -> Result<(), AppError> {
-        rebuild_activity_analytics_cache(self.db, &[self.activity_id]).await?;
-        self.mark_stage(ACTIVITY_IMPORT_STAGE_ACTIVITY_ANALYTICS_BUILT)
-            .await
-    }
-
-    async fn rebuild_training_analysis(&mut self) -> Result<(), AppError> {
-        rebuild_activity_training_analysis_cache(self.db, &[self.activity_id]).await?;
-        self.mark_stage(ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT)
-            .await
-    }
-
-    async fn fail_current_stage(&self, error: &AppError) -> Result<(), AppError> {
-        mark_activity_import_failed(
-            self.db,
-            &self.activity_import,
-            &self.activity_import.processing_stage,
-            error,
-        )
-        .await
-    }
-
-    async fn mark_stage(&mut self, stage: &str) -> Result<(), AppError> {
-        self.activity_import = mark_activity_import_processing_stage(
-            self.db,
-            &self.activity_import,
-            stage,
-            Some(self.activity_id),
-        )
-        .await?;
-        Ok(())
     }
 }
 
@@ -658,12 +593,12 @@ async fn reprocess_user_activity_import(
         return;
     };
 
-    match reprocess_activity_from_import_deferred_caches(
+    match reprocess_activity_from_import(
         db,
         uploads_dir,
         user_id,
         activity,
-        activity_import,
+        activity_import.clone(),
         Some(training_profile),
     )
     .await
@@ -710,20 +645,17 @@ async fn finalize_user_activity_reprocessing(
     }
 
     progress.dedup_ids();
-    rebuild_segment_analytics_cache(db, &progress.affected_segment_ids).await?;
-    rebuild_activity_analytics_cache(db, &progress.activity_ids).await?;
-    rebuild_activity_training_analysis_cache(db, &progress.activity_ids).await?;
 
-    finalize_activity_import_batch(
+    crate::activity_import_lifecycle::complete_activity_imports(
         db,
         tasks,
         user_id,
+        &progress.import_ids,
         progress.affected_segment_ids,
         progress.fitness_dirty_from_day,
-        Utc::now(),
     )
-    .await?;
-    mark_activity_imports_processed(db, &progress.import_ids).await
+    .await
+    .map_err(AppError::from)
 }
 
 pub async fn resume_incomplete_activity_imports_for_user(
@@ -859,17 +791,50 @@ async fn resume_activity_import(
     progress: &mut ResumeImportProgress,
 ) -> Result<(), AppError> {
     log_failed_import_resume_retry(user_id, &import);
+    if crate::entities::activity_import_attempts::Entity::active(db, user_id, import.id)
+        .await?
+        .is_some()
+    {
+        return Ok(());
+    }
     let Some(activity) = activities_by_import_id.get(&import.id).cloned() else {
-        tracing::warn!(
+        match crate::activity_import_pipeline::plan_activity_import_replay(
+            db,
+            uploads_dir,
+            &import,
+            "raw_stored",
+        )
+        .await
+        {
+            Ok(_) => {}
+            Err(error) if matches!(error.status.as_u16(), 400 | 404) => return Ok(()),
+            Err(error) => return Err(error),
+        }
+        match process_stored_activity_import(
+            db,
+            uploads_dir,
             user_id,
-            import_id = import.id,
-            status = %import.status,
-            "skipping activity import resume because its activity is missing"
-        );
+            import.clone(),
+            ActivityUploadDeduplication::Enabled,
+            Some(training_profile),
+        )
+        .await
+        {
+            Ok(PersistActivityUploadOutcome::Imported(persisted)) => progress.record_success(
+                persisted.import,
+                ReprocessedActivityImport {
+                    activity: persisted.activity,
+                    affected_segment_ids: persisted.affected_segment_ids,
+                    fitness_dirty_from_day: persisted.fitness_dirty_from_day,
+                },
+            ),
+            Ok(PersistActivityUploadOutcome::Duplicate(_)) => {}
+            Err(_) => progress.record_failure(),
+        }
         return Ok(());
     };
 
-    match reprocess_activity_from_import_deferred_caches(
+    match reprocess_activity_from_import(
         db,
         uploads_dir,
         user_id,
@@ -880,19 +845,9 @@ async fn resume_activity_import(
     .await
     {
         Ok(reprocessed) => {
-            let import = mark_activity_import_processing_stage(
-                db,
-                &import,
-                ACTIVITY_IMPORT_STAGE_SEGMENTS_BUILT,
-                Some(reprocessed.activity.id),
-            )
-            .await?;
             progress.record_success(import, reprocessed);
         }
-        Err(error) => {
-            progress.record_failure();
-            mark_activity_import_failed(db, &import, &import.processing_stage, &error).await?;
-        }
+        Err(_) => progress.record_failure(),
     }
 
     Ok(())
@@ -914,71 +869,9 @@ async fn finalize_resumed_activity_imports(
     db: &DatabaseConnection,
     tasks: &TaskQueue,
     user_id: i32,
-    mut progress: ResumeImportProgress,
+    progress: ResumeImportProgress,
 ) -> Result<(), AppError> {
-    if progress.succeeded_count() == 0 {
-        return Ok(());
-    }
-
-    progress.reprocessed.dedup_ids();
-    rebuild_segment_analytics_cache(db, &progress.reprocessed.affected_segment_ids).await?;
-    let stage_ready_imports = mark_resumed_imports_processing_stage(
-        db,
-        progress.stage_ready_imports,
-        ACTIVITY_IMPORT_STAGE_SEGMENT_ANALYTICS_BUILT,
-    )
-    .await?;
-
-    rebuild_activity_analytics_cache(db, &progress.reprocessed.activity_ids).await?;
-    let stage_ready_imports = mark_resumed_imports_processing_stage(
-        db,
-        stage_ready_imports,
-        ACTIVITY_IMPORT_STAGE_ACTIVITY_ANALYTICS_BUILT,
-    )
-    .await?;
-
-    rebuild_activity_training_analysis_cache(db, &progress.reprocessed.activity_ids).await?;
-    mark_resumed_imports_processing_stage(
-        db,
-        stage_ready_imports,
-        ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT,
-    )
-    .await?;
-
-    finalize_activity_import_batch(
-        db,
-        tasks,
-        user_id,
-        progress.reprocessed.affected_segment_ids,
-        progress.reprocessed.fitness_dirty_from_day,
-        Utc::now(),
-    )
-    .await?;
-    mark_activity_imports_processed(db, &progress.reprocessed.import_ids).await
-}
-
-async fn mark_resumed_imports_processing_stage(
-    db: &DatabaseConnection,
-    imports: Vec<ResumedActivityImport>,
-    stage: &str,
-) -> Result<Vec<ResumedActivityImport>, AppError> {
-    let mut marked = Vec::new();
-
-    for resumed in imports {
-        let import = mark_activity_import_processing_stage(
-            db,
-            &resumed.import,
-            stage,
-            Some(resumed.activity_id),
-        )
-        .await?;
-        marked.push(ResumedActivityImport {
-            import,
-            activity_id: resumed.activity_id,
-        });
-    }
-
-    Ok(marked)
+    finalize_user_activity_reprocessing(db, tasks, user_id, progress.reprocessed).await
 }
 
 pub async fn process_single_activity_import_reprocessing(
@@ -1039,8 +932,6 @@ async fn run_single_activity_import_reprocessing(
     affected_segment_ids.sort_unstable();
     affected_segment_ids.dedup();
 
-    rebuild_single_activity_reprocessing_caches(&mut context, &affected_segment_ids).await?;
-
     finalize_single_activity_reprocessing(
         db,
         tasks,
@@ -1095,9 +986,7 @@ async fn reprocess_single_activity_from_import(
     activity: activities::Model,
     training_profile: &TrainingProfile,
 ) -> Result<ReprocessedActivityImport, AppError> {
-    context.mark_raw_stored().await?;
-
-    match reprocess_activity_from_import_deferred_caches(
+    reprocess_activity_from_import(
         context.db,
         uploads_dir,
         user_id,
@@ -1106,25 +995,6 @@ async fn reprocess_single_activity_from_import(
         Some(training_profile),
     )
     .await
-    {
-        Ok(reprocessed) => Ok(reprocessed),
-        Err(error) => {
-            context.fail_current_stage(&error).await?;
-            Err(error)
-        }
-    }
-}
-
-async fn rebuild_single_activity_reprocessing_caches(
-    context: &mut SingleActivityReprocessContext<'_>,
-    affected_segment_ids: &[i32],
-) -> Result<(), AppError> {
-    context.mark_segments_built().await?;
-    context
-        .rebuild_segment_analytics(affected_segment_ids)
-        .await?;
-    context.rebuild_activity_analytics().await?;
-    context.rebuild_training_analysis().await
 }
 
 async fn finalize_single_activity_reprocessing(
@@ -1134,16 +1004,15 @@ async fn finalize_single_activity_reprocessing(
 ) -> Result<ActivityImportReprocessSummary, AppError> {
     let affected_segment_count = finalization.affected_segment_ids.len();
 
-    finalize_activity_import_batch(
+    crate::activity_import_lifecycle::complete_activity_imports(
         db,
         tasks,
         finalization.user_id,
+        &[finalization.activity_import_id],
         finalization.affected_segment_ids,
         Some(finalization.fitness_dirty_from_day),
-        Utc::now(),
     )
     .await?;
-    mark_activity_imports_processed(db, &[finalization.activity_import_id]).await?;
 
     Ok(ActivityImportReprocessSummary {
         activity_id: finalization.activity_id,
@@ -1187,7 +1056,11 @@ pub async fn process_user_activity_import_reprocessing(
                 failed_count,
                 "completed user activity import reprocessing"
             );
-            Ok(())
+            if failed_count > 0 {
+                Err(AppError::internal(format!("Reprocessed {reprocessed_count} activities; {failed_count} imports failed. See import history for recovery.")))
+            } else {
+                Ok(())
+            }
         }
     }
 }
@@ -1219,9 +1092,19 @@ mod tests {
             .await
             .expect("in-memory db");
         let schema = sea_orm::Schema::new(db.get_database_backend());
+        db.execute(
+            &schema.create_table_from_entity(crate::entities::activity_import_artifacts::Entity),
+        )
+        .await
+        .expect("create import artifacts table");
         db.execute(&schema.create_table_from_entity(activity_imports::Entity))
             .await
             .expect("create activity imports table");
+        db.execute(
+            &schema.create_table_from_entity(crate::entities::activity_import_attempts::Entity),
+        )
+        .await
+        .expect("create activity imports table");
         db.execute(&schema.create_table_from_entity(integration_events::Entity))
             .await
             .expect("create integration events table");

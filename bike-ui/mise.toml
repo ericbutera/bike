@@ -90,3 +90,7 @@ run = "pnpm exec playwright test tests/e2e/heatmap.spec.mjs tests/e2e/heatmap-co
 description = "Install the browser used by UI integration checks"
 depends = ["deps"]
 run = "pnpm exec playwright install chromium"
+
+[tasks."test:e2e:imports"]
+description = "Verify import summaries and replay with synthetic API fixtures"
+run = "mise --cd .. run e2e import-replay"

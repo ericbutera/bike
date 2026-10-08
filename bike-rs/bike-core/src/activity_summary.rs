@@ -5,7 +5,7 @@ use chrono::{DateTime, Duration, Utc};
 use roxmltree::{Document, Node};
 use std::path::Path;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ActivityDraft {
     pub title: String,
     pub sport: String,

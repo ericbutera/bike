@@ -1,6 +1,7 @@
 pub mod activity_achievements;
 pub mod activity_data;
 pub mod activity_details;
+pub mod activity_import_execution;
 pub mod activity_import_lifecycle;
 pub mod activity_import_lock;
 pub mod activity_import_pipeline;

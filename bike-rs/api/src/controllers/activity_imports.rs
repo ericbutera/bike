@@ -10,10 +10,9 @@ use axum::http::StatusCode;
 use axum::Json;
 use bike_core::activity_import_pipeline::{
     activity_processing_graph_mermaid, activity_processing_graph_nodes,
-    activity_processing_topological_order, find_stored_activity_import,
-    mark_activity_import_failed, store_activity_upload_import, validate_activity_format,
-    ActivityProcessingGraphNode, ActivityProcessingNode, ActivityUploadPayload,
-    ACTIVITY_IMPORT_STAGE_COMPLETE, ACTIVITY_PROCESSING_PROVIDER,
+    find_stored_activity_import, mark_activity_import_failed, store_activity_upload_import,
+    validate_activity_format, ActivityProcessingGraphNode, ActivityUploadPayload,
+    ACTIVITY_PROCESSING_PROVIDER,
 };
 use bike_core::archive_import::{
     decode_error_samples, enqueue_activity_archive_import_job, normalize_archive_url,
@@ -41,6 +40,8 @@ struct ActivityImportUploadForm {
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(example = json!({"id": 17,"import_version": 1,"original_filename": "saturday-hills.fit","format": "fit","status": "processed","processing_stage": "complete","size_bytes": 184320,"created_at": "2026-09-26T14:20:00Z","activity_id": 42,"activity_started_at": "2026-09-26T13:00:00Z","activity_location": "Detroit, Michigan","activity_duration_seconds": 4320}))]
 pub struct ActivityImportResponse {
+    pub archive_job_id: Option<i32>,
+    pub source: String,
     #[schema(example = 17)]
     pub id: i32,
     #[schema(example = 1)]
@@ -139,6 +140,7 @@ pub struct ActivityProcessingGraphEdgeResponse {
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(example = json!({"import": {"id": 17,"import_version": 1,"original_filename": "saturday-hills.fit","format": "fit","status": "processed","processing_stage": "complete","size_bytes": 184320,"created_at": "2026-09-26T14:20:00Z"},"graph": {"nodes": [{"id": "raw_stored","label": "Raw stored","stage": "raw_stored"}],"edges": [],"mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]"},"nodes": [{"id": "raw_stored","label": "Raw stored","stage": "raw_stored","status": "completed"}],"events": []}))]
 pub struct ActivityImportTraceResponse {
+    pub attempts: Vec<crate::activity_import_history::ImportAttemptResponse>,
     pub import: ActivityImportResponse,
     pub graph: ActivityProcessingGraphResponse,
     #[schema(example = json!([{"id": "raw_stored","label": "Raw stored","stage": "raw_stored","status": "completed"}]))]
@@ -147,13 +149,17 @@ pub struct ActivityImportTraceResponse {
     pub events: Vec<ActivityImportTraceEventResponse>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ActivityImportTraceNodeResponse {
     pub id: String,
     pub label: String,
     pub stage: String,
     pub status: String,
+    pub started_at: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,
+    pub summary: Vec<String>,
+    pub error: Option<String>,
+    pub reused_attempt_id: Option<i32>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -190,6 +196,8 @@ impl ActivityImportResponse {
     ) -> Self {
         Self {
             id: model.id,
+            source: model.source,
+            archive_job_id: model.archive_job_id,
             import_version: model.import_version,
             activity_id: activity.map(|value| value.id).or(model.activity_id),
             original_filename: model.original_filename,
@@ -284,50 +292,27 @@ pub(crate) fn build_trace_nodes(
     import: &activity_imports::Model,
     events: &[ActivityImportTraceEventResponse],
 ) -> Result<Vec<ActivityImportTraceNodeResponse>, AppError> {
-    let rank_by_stage = activity_processing_topological_order()?
-        .into_iter()
-        .enumerate()
-        .map(|(index, node)| (node.id().to_string(), index))
-        .collect::<HashMap<_, _>>();
-    let current_rank = if import.processing_stage == ACTIVITY_IMPORT_STAGE_COMPLETE {
-        usize::MAX
-    } else {
-        rank_by_stage
-            .get(&import.processing_stage)
-            .copied()
-            .unwrap_or(0)
-    };
-
     Ok(activity_processing_graph_nodes()
         .iter()
-        .map(|node| {
-            let rank = rank_by_stage.get(node.node.id()).copied().unwrap_or(0);
-            ActivityImportTraceNodeResponse {
-                id: node.node.id().to_string(),
-                label: node.node.label().to_string(),
-                stage: node.stage.to_string(),
-                status: trace_node_status(import, node.node, rank, current_rank).to_string(),
-                completed_at: stage_completed_at(events, node.stage),
+        .map(|node| ActivityImportTraceNodeResponse {
+            id: node.node.id().to_string(),
+            label: node.node.label().to_string(),
+            stage: node.stage.to_string(),
+            status: if import.status == "failed" && import.processing_stage == node.stage {
+                "failed"
+            } else {
+                "unknown"
             }
+            .into(),
+            started_at: None,
+            completed_at: stage_completed_at(events, node.stage),
+            summary: vec!["Historical import: no durable stage summary was recorded".into()],
+            error: (import.status == "failed" && import.processing_stage == node.stage)
+                .then(|| import.processing_error.clone())
+                .flatten(),
+            reused_attempt_id: None,
         })
         .collect())
-}
-
-fn trace_node_status(
-    import: &activity_imports::Model,
-    node: ActivityProcessingNode,
-    rank: usize,
-    current_rank: usize,
-) -> &'static str {
-    if import.status == bike_core::activity_import_pipeline::ACTIVITY_IMPORT_STATUS_FAILED
-        && import.processing_stage == node.id()
-    {
-        "failed"
-    } else if rank <= current_rank {
-        "completed"
-    } else {
-        "pending"
-    }
 }
 
 fn stage_completed_at(
@@ -506,31 +491,37 @@ pub async fn get_activity_import_trace(
     State(state): State<Arc<AppStorage>>,
     Path(import_id): Path<i32>,
 ) -> Result<Json<ActivityImportTraceResponse>, AppError> {
-    let import = activity_imports::Entity::find()
-        .filter(activity_imports::Column::Id.eq(import_id))
-        .filter(activity_imports::Column::UserId.eq(user.id))
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| AppError::not_found("Activity import not found"))?;
+    let import =
+        crate::activity_import_history::owned_import_for_inspection(&state.db, user.id, import_id)
+            .await?;
     let activity = load_activity_for_import_trace(&state.db, user.id, &import).await?;
-    let events = integration_event_service::list_recent_events(
-        &state.db,
-        integration_event_service::IntegrationEventListOptions {
-            provider: Some(ACTIVITY_PROCESSING_PROVIDER.to_string()),
-            user_id: Some(user.id),
-            activity_id: None,
-            import_id: Some(import.id),
-            limit: 100,
-        },
-    )
-    .await?;
+    let attempts = crate::activity_import_history::attempts(&state.db, &import).await?;
+    let events = if attempts.is_empty() {
+        integration_event_service::list_recent_events(
+            &state.db,
+            integration_event_service::IntegrationEventListOptions {
+                provider: Some(ACTIVITY_PROCESSING_PROVIDER.to_string()),
+                user_id: Some(user.id),
+                activity_id: None,
+                import_id: Some(import.id),
+                limit: 100,
+            },
+        )
+        .await?
+    } else {
+        Vec::new()
+    };
     let trace_events = events
         .into_iter()
         .map(ActivityImportTraceEventResponse::from_model)
         .collect::<Vec<_>>();
-    let trace_nodes = build_trace_nodes(&import, &trace_events)?;
+    let trace_nodes = attempts
+        .first()
+        .map(|attempt| attempt.nodes.clone())
+        .unwrap_or(build_trace_nodes(&import, &trace_events)?);
 
     Ok(Json(ActivityImportTraceResponse {
+        attempts,
         import: ActivityImportResponse::from_model(import, activity.as_ref()),
         graph: ActivityProcessingGraphResponse::from_graph(),
         nodes: trace_nodes,
@@ -684,12 +675,18 @@ pub async fn upload_activity_import(
         Err(error) => return Err(error.into()),
     };
 
-    if let Err(message) = state
-        .tasks
-        .process_activity_import(user.id, import.id)
-        .await
+    if let Err(failure) = bike_core::activity_import_pipeline::queue_activity_import_replay(
+        &state.db,
+        &state.uploads_dir,
+        &import,
+        "raw_stored",
+    )
+    .await
     {
-        let error = AppError::internal(format!("Failed to queue activity import: {message}"));
+        let error = AppError::internal(format!(
+            "Failed to queue activity import: {}",
+            failure.message
+        ));
         let workflow_error =
             bike_core::workflow_error::WorkflowError::internal(error.message.clone());
         mark_activity_import_failed(
@@ -1033,6 +1030,7 @@ mod tests {
 
     fn activity_import_fixture(now: DateTime<Utc>) -> activity_imports::Model {
         activity_imports::Model {
+            archive_job_id: None,
             id: 7,
             user_id: 12,
             import_version: bike_core::entities::activity_imports::ACTIVITY_IMPORT_VERSION_CURRENT,

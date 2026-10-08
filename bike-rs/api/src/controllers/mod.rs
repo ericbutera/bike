@@ -1,5 +1,6 @@
 use bike_core::config::Config;
 pub mod activities;
+pub mod activity_import_history;
 pub mod activity_imports;
 pub mod admin;
 pub mod fitness;
@@ -72,6 +73,14 @@ fn platform_routes() -> Router<Arc<AppStorage>> {
 
 fn activity_routes() -> Router<Arc<AppStorage>> {
     Router::new()
+        .route(
+            "/api/activity-imports/history",
+            get(activity_import_history::history),
+        )
+        .route(
+            "/api/activity-imports/:id/replay",
+            get(activity_import_history::replay_plan).post(activity_import_history::replay),
+        )
         .route(
             "/api/activities",
             axum::routing::get(activities::list_activities),

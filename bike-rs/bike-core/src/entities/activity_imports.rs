@@ -19,6 +19,7 @@ pub struct Model {
     pub format: String,
     pub status: String,
     pub activity_id: Option<i32>,
+    pub archive_job_id: Option<i32>,
     pub processing_stage: String,
     pub processing_error: Option<String>,
     pub processing_attempts: i32,
@@ -36,6 +37,47 @@ pub struct Model {
 pub enum Relation {}
 
 impl Entity {
+    pub async fn processing_for_user(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        source: Option<&str>,
+    ) -> Result<Vec<Model>, DbErr> {
+        let mut query = Self::find()
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::Status.eq("processing"));
+        if let Some(source) = source {
+            query = query.filter(Column::Source.eq(source));
+        }
+        query.order_by_asc(Column::CreatedAt).all(db).await
+    }
+
+    pub async fn history(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        page: u64,
+        source: Option<&str>,
+        status: Option<&str>,
+        archive_job_id: Option<i32>,
+    ) -> Result<(Vec<Model>, u64), DbErr> {
+        let mut query = Self::find().filter(Column::UserId.eq(user_id));
+        if let Some(source) = source {
+            query = query.filter(Column::Source.eq(source));
+        }
+        if let Some(status) = status {
+            query = query.filter(Column::Status.eq(status));
+        }
+        if let Some(job_id) = archive_job_id {
+            query = query.filter(Column::ArchiveJobId.eq(job_id));
+        }
+        let total = query.clone().count(db).await?;
+        let items = query
+            .order_by_desc(Column::Id)
+            .offset(page.saturating_sub(1).saturating_mul(25))
+            .limit(25)
+            .all(db)
+            .await?;
+        Ok((items, total))
+    }
     pub async fn mark_recovery_pending(
         db: &impl ConnectionTrait,
         user_id: i32,
@@ -50,6 +92,24 @@ impl Entity {
             })
             .filter(Column::UserId.eq(user_id))
             .filter(Column::Id.eq(import_id))
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+    pub async fn attach_archive_job(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        import_id: i32,
+        job_id: i32,
+    ) -> Result<(), DbErr> {
+        Self::update_many()
+            .set(ActiveModel {
+                archive_job_id: Set(Some(job_id)),
+                ..Default::default()
+            })
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::Id.eq(import_id))
+            .filter(Column::Source.eq("archive_url_import"))
             .exec(db)
             .await?;
         Ok(())

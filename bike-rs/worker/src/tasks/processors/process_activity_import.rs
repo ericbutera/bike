@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use bike_core::activity_import_lifecycle::{
-    finalize_activity_import_batch, mark_activity_import_failed, mark_activity_imports_processed,
-    ACTIVITY_IMPORT_STATUS_PROCESSING,
+    complete_activity_imports, ACTIVITY_IMPORT_STATUS_FAILED, ACTIVITY_IMPORT_STATUS_PROCESSING,
 };
 use bike_core::activity_import_pipeline::{
     process_stored_activity_import, reprocess_activity_from_import, ActivityUploadDeduplication,
@@ -9,10 +8,10 @@ use bike_core::activity_import_pipeline::{
 };
 use bike_core::background_jobs::worker::TaskProcessor;
 use bike_core::config::Config;
-use bike_core::entities::{activities, activity_imports};
+use bike_core::entities::{activities, activity_import_attempts, activity_imports};
 use bike_core::jobs::{JobQueue, ProcessActivityImportTask};
 use bike_core::workflow_error::WorkflowError;
-use chrono::{NaiveDate, Utc};
+use chrono::NaiveDate;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use std::error::Error;
 
@@ -26,10 +25,14 @@ pub struct ProcessActivityImport {
 
 impl ProcessActivityImport {
     pub fn new(db: DatabaseConnection) -> Self {
+        Self::with_uploads_dir(db, Config::get().uploads_dir.clone())
+    }
+
+    pub fn with_uploads_dir(db: DatabaseConnection, uploads_dir: String) -> Self {
         Self {
             tasks: JobQueue::new(db.clone()),
             db,
-            uploads_dir: Config::get().uploads_dir.clone(),
+            uploads_dir,
         }
     }
 }
@@ -44,6 +47,21 @@ impl TaskProcessor for ProcessActivityImport {
         let data = payload.get("data").unwrap_or(&payload);
         let task: ProcessActivityImportTask = serde_json::from_value(data.clone())?;
         let import = load_import_for_task(&self.db, &task).await?;
+        let active =
+            activity_import_attempts::Entity::active(&self.db, task.user_id, task.import_id)
+                .await?;
+        let requested_attempt = data.get("attempt_id").and_then(serde_json::Value::as_i64);
+        if let Some(active) = &active {
+            if active.status != "queued" || requested_attempt != Some(i64::from(active.id)) {
+                return Err(worker_error(
+                    "This import has another queued or running attempt",
+                ));
+            }
+        } else if requested_attempt.is_some() {
+            return Err(worker_error(
+                "Replay attempt has finished; queue a new replay",
+            ));
+        }
 
         if should_skip_import_task(&import) {
             return Ok(());
@@ -55,7 +73,6 @@ impl TaskProcessor for ProcessActivityImport {
         {
             return Ok(());
         }
-
         self.process_new_activity_import(&task, import).await
     }
 }
@@ -90,7 +107,7 @@ impl ProcessActivityImport {
                 .await?;
                 Ok(true)
             }
-            Err(error) => fail_activity_import(&self.db, import, error).await,
+            Err(error) => Err(worker_workflow_error(error)),
         }
     }
 
@@ -119,7 +136,7 @@ impl ProcessActivityImport {
                 .await
             }
             Ok(PersistActivityUploadOutcome::Duplicate(_duplicate)) => Ok(()),
-            Err(error) => fail_activity_import(&self.db, &import, error).await,
+            Err(error) => Err(worker_workflow_error(error)),
         }
     }
 
@@ -130,19 +147,16 @@ impl ProcessActivityImport {
         affected_segment_ids: Vec<i32>,
         fitness_dirty_from_day: Option<NaiveDate>,
     ) -> WorkerResult<()> {
-        finalize_activity_import_batch(
+        complete_activity_imports(
             &self.db,
             &self.tasks,
             user_id,
+            &[import_id],
             affected_segment_ids,
             fitness_dirty_from_day,
-            Utc::now(),
         )
         .await
-        .map_err(worker_core_error)?;
-        mark_activity_imports_processed(&self.db, &[import_id])
-            .await
-            .map_err(worker_core_error)
+        .map_err(worker_core_error)
     }
 }
 
@@ -159,7 +173,10 @@ async fn load_import_for_task(
 }
 
 fn should_skip_import_task(import: &activity_imports::Model) -> bool {
-    if import.status == ACTIVITY_IMPORT_STATUS_PROCESSING {
+    if matches!(
+        import.status.as_str(),
+        ACTIVITY_IMPORT_STATUS_PROCESSING | ACTIVITY_IMPORT_STATUS_FAILED
+    ) {
         return false;
     }
 
@@ -169,17 +186,6 @@ fn should_skip_import_task(import: &activity_imports::Model) -> bool {
         "skipping activity import task because the import is no longer processing"
     );
     true
-}
-
-async fn fail_activity_import<T>(
-    db: &DatabaseConnection,
-    import: &activity_imports::Model,
-    error: WorkflowError,
-) -> WorkerResult<T> {
-    mark_activity_import_failed(db, import, &import.processing_stage, &error.message)
-        .await
-        .map_err(worker_core_error)?;
-    Err(worker_workflow_error(error))
 }
 
 fn worker_workflow_error(error: WorkflowError) -> Box<dyn Error + Send + Sync> {

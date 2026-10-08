@@ -106,6 +106,7 @@ export type ActivityTrainingAnalysis = {
 };
 
 export type Activity = {
+  activity_import_id?: number | null;
   id: number;
   title: string;
   sport: string;
@@ -175,6 +176,38 @@ export type ActivityProcessingGraph = {
 export type ActivityImportTraceNode = ActivityProcessingGraphNode & {
   status: "completed" | "failed" | "pending" | string;
   completed_at?: string | null;
+  started_at?: string | null;
+  summary?: string[];
+  error?: string | null;
+  reused_attempt_id?: number | null;
+};
+
+export type ActivityImportAttempt = {
+  id: number;
+  status: string;
+  requested_stage: string;
+  start_stage: string;
+  reused_attempt_id?: number | null;
+  source: {
+    filename?: string;
+    format?: string;
+    quality?: string;
+    checksum?: string;
+    size_bytes?: number;
+  };
+  created_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  error?: string | null;
+  nodes: ActivityImportTraceNode[];
+};
+
+export type ActivityImportReplayPlan = {
+  requested_stage: string;
+  start_stage: string;
+  reused_attempt_id?: number | null;
+  reason?: string | null;
+  attempt_id?: number | null;
 };
 
 export type ActivityImportTraceEvent = {
@@ -187,6 +220,7 @@ export type ActivityImportTraceEvent = {
 };
 
 export type ActivityImportTrace = {
+  attempts?: ActivityImportAttempt[];
   import: ActivityImport;
   graph: ActivityProcessingGraph;
   nodes: ActivityImportTraceNode[];
@@ -1113,6 +1147,8 @@ export type ActivityArchiveImportJob = {
 };
 
 export type ActivityImport = {
+  archive_job_id?: number | null;
+  source?: string;
   id: number;
   import_version: number;
   activity_id?: number | null;
@@ -1678,7 +1714,7 @@ export function useActivityImportTrace(
     {
       params: { path: { id: enabled ? numericImportId : 0 } },
     },
-    { enabled },
+    { enabled, refetchInterval: 3000 },
   );
 
   return {
@@ -2122,6 +2158,77 @@ export function useDeleteSegment() {
       ]);
 
       return result;
+    },
+  };
+}
+
+export function useActivityImportHistory(query: {
+  page: number;
+  source?: string;
+  status?: string;
+  archive_job_id?: number;
+}) {
+  const response = $typedApi.useQuery(
+    "get",
+    "/activity-imports/history",
+    {
+      params: { query },
+    },
+    { refetchInterval: 3000 },
+  );
+  return response;
+}
+
+export function useActivityImportReplayPlan(
+  importId: number,
+  stage: string,
+  enabled: boolean,
+) {
+  return $typedApi.useQuery(
+    "get",
+    "/activity-imports/{id}/replay",
+    {
+      params: { path: { id: importId }, query: { stage } },
+    },
+    { enabled },
+  );
+}
+
+export function useReplayActivityImport() {
+  const queryClient = useQueryClient();
+  const mutation = $typedApi.useMutation(
+    "post",
+    "/activity-imports/{id}/replay",
+  );
+  return {
+    ...mutation,
+    async replay(
+      importId: number,
+      stage: string,
+      plan?: ActivityImportReplayPlan,
+    ) {
+      try {
+        return await mutation.mutateAsync({
+          params: { path: { id: importId } },
+          body: {
+            stage,
+            expected_start_stage: plan?.start_stage,
+            expected_reused_attempt_id: plan?.reused_attempt_id,
+          },
+        });
+      } finally {
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: ["get", "/activity-imports/{id}/trace"],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["get", "/activity-imports/history"],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["get", "/activity-imports/{id}/replay"],
+          }),
+        ]);
+      }
     },
   };
 }

@@ -25,7 +25,7 @@ async fn import_recording(
     dir: &str,
     virtual_ride: bool,
 ) -> PersistedActivityImport {
-    match persist_test_activity_upload(
+    let imported = match persist_test_activity_upload(
         db,
         dir,
         recording_upload(virtual_ride),
@@ -37,7 +37,11 @@ async fn import_recording(
     {
         PersistActivityUploadOutcome::Imported(imported) => imported,
         PersistActivityUploadOutcome::Duplicate(_) => panic!("expected import"),
-    }
+    };
+    mark_activity_imports_processed(db, &[imported.import.id])
+        .await
+        .unwrap();
+    imported
 }
 
 #[tokio::test]
@@ -959,7 +963,8 @@ async fn every_ingestion_node_keeps_virtual_and_real_heatmap_behavior() {
             training_profile: Some(&profile),
             cache_refresh: ReprocessCacheRefresh::Immediate,
         };
-        let mut state = load_activity_processing_state(&run).await.unwrap();
+        let attempt = begin_processing_attempt(&run).await.unwrap();
+        let mut state = load_activity_processing_state(&run, attempt).await.unwrap();
         for node in activity_processing_topological_order().unwrap() {
             let metadata = *activity_processing_graph_nodes()
                 .iter()

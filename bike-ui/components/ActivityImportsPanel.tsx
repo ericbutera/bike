@@ -238,8 +238,7 @@ export default function ActivityImportsPanel() {
           {importsQuery.data?.length === 0 ? (
             <div className="alert mt-4">
               <span>
-                No uploads yet. Start with one of your GPX exports to seed the
-                queue and verify the raw ingest path.
+                No uploads yet. Upload an original FIT, TCX, or GPX recording.
               </span>
             </div>
           ) : null}
@@ -299,9 +298,13 @@ export default function ActivityImportsPanel() {
                           </span>
                         </td>
                         <td className="min-w-[12rem] max-w-xs">
-                          <div className="truncate font-medium text-base-content">
+                          <Link
+                            href={`/imports/${activityImport.id}`}
+                            onClick={(event) => event.stopPropagation()}
+                            className="link truncate font-medium text-base-content"
+                          >
                             {activityImport.original_filename}
-                          </div>
+                          </Link>
                           <div className="text-xs uppercase text-base-content/50">
                             {activityImport.format}
                           </div>
@@ -332,6 +335,9 @@ export default function ActivityImportsPanel() {
       </AppCard>
 
       <AppCard>
+        <Link href="/imports" className="link link-primary">
+          View all imports and processing stages
+        </Link>
         <CardHeader
           title="Fetch an export ZIP by URL"
           description="Paste a shareable Garmin Connect or Strava export URL and Bike will fetch the archive server-side, unpack supported activity files, and deduplicate anything already in your feed."
@@ -400,6 +406,12 @@ export default function ActivityImportsPanel() {
                         <div className="text-sm text-base-content/60">
                           Queued {formatActivityTimestamp(job.created_at)}
                         </div>
+                        <Link
+                          className="link link-primary"
+                          href={`/imports?archive_job_id=${job.id}`}
+                        >
+                          View entry stages and replay
+                        </Link>
                         <div className="mt-1 break-all font-medium text-base-content">
                           {job.resolved_url ?? job.archive_url}
                         </div>
@@ -519,6 +531,8 @@ function activityImportStatusBadgeClass(activityImport: ActivityImport) {
       return "badge badge-neutral badge-outline uppercase";
     case "failed":
       return "badge badge-error badge-outline uppercase";
+    case "partial":
+      return "badge badge-warning badge-outline uppercase";
     default:
       return "badge badge-ghost uppercase";
   }

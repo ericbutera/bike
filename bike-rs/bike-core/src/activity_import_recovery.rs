@@ -72,20 +72,44 @@ pub async fn recover_abandoned_manual_activity_imports_after_worker_start(
     tasks: &JobQueue,
     now: DateTime<Utc>,
 ) -> Result<usize, ActivityImportRecoveryError> {
-    let user_ids = activity_imports::Entity::find()
+    recover_abandoned_imports(db, tasks, now, Some(MANUAL_UPLOAD_SOURCE)).await
+}
+
+pub async fn recover_abandoned_activity_imports_after_worker_start(
+    db: &DatabaseConnection,
+    tasks: &JobQueue,
+    now: DateTime<Utc>,
+) -> Result<usize, ActivityImportRecoveryError> {
+    recover_abandoned_imports(db, tasks, now, None).await
+}
+
+async fn recover_abandoned_imports(
+    db: &DatabaseConnection,
+    tasks: &JobQueue,
+    now: DateTime<Utc>,
+    source: Option<&str>,
+) -> Result<usize, ActivityImportRecoveryError> {
+    let mut query = activity_imports::Entity::find()
         .select_only()
         .column(activity_imports::Column::UserId)
         .distinct()
-        .filter(activity_imports::Column::Source.eq(MANUAL_UPLOAD_SOURCE))
-        .filter(activity_imports::Column::Status.eq(ACTIVITY_IMPORT_STATUS_PROCESSING))
-        .into_tuple::<i32>()
-        .all(db)
-        .await?;
+        .filter(activity_imports::Column::Status.eq(ACTIVITY_IMPORT_STATUS_PROCESSING));
+    if let Some(source) = source {
+        query = query.filter(activity_imports::Column::Source.eq(source));
+    }
+    let user_ids = query.into_tuple::<i32>().all(db).await?;
 
     let mut recovered_count = 0usize;
     for user_id in user_ids {
-        recovered_count +=
-            recover_manual_activity_imports_for_user(db, tasks, user_id, now, None).await?;
+        recovered_count += recover_activity_imports_for_user(
+            db,
+            tasks,
+            user_id,
+            now,
+            Some(now - ChronoDuration::seconds(ACTIVITY_IMPORT_STALE_PROCESSING_SECONDS)),
+            source,
+        )
+        .await?;
     }
 
     Ok(recovered_count)
@@ -98,23 +122,43 @@ pub async fn recover_stale_manual_activity_imports_for_user(
     now: DateTime<Utc>,
 ) -> Result<usize, ActivityImportRecoveryError> {
     let stale_before = now - ChronoDuration::seconds(ACTIVITY_IMPORT_STALE_PROCESSING_SECONDS);
-    recover_manual_activity_imports_for_user(db, tasks, user_id, now, Some(stale_before)).await
+    recover_activity_imports_for_user(
+        db,
+        tasks,
+        user_id,
+        now,
+        Some(stale_before),
+        Some(MANUAL_UPLOAD_SOURCE),
+    )
+    .await
 }
 
-async fn recover_manual_activity_imports_for_user(
+pub async fn recover_stale_activity_imports_for_user(
+    db: &DatabaseConnection,
+    tasks: &JobQueue,
+    user_id: i32,
+    now: DateTime<Utc>,
+) -> Result<usize, ActivityImportRecoveryError> {
+    recover_activity_imports_for_user(
+        db,
+        tasks,
+        user_id,
+        now,
+        Some(now - ChronoDuration::seconds(ACTIVITY_IMPORT_STALE_PROCESSING_SECONDS)),
+        None,
+    )
+    .await
+}
+
+async fn recover_activity_imports_for_user(
     db: &DatabaseConnection,
     tasks: &JobQueue,
     user_id: i32,
     now: DateTime<Utc>,
     stale_before: Option<DateTime<Utc>>,
+    source: Option<&str>,
 ) -> Result<usize, ActivityImportRecoveryError> {
-    let imports = activity_imports::Entity::find()
-        .filter(activity_imports::Column::UserId.eq(user_id))
-        .filter(activity_imports::Column::Source.eq(MANUAL_UPLOAD_SOURCE))
-        .filter(activity_imports::Column::Status.eq(ACTIVITY_IMPORT_STATUS_PROCESSING))
-        .order_by_asc(activity_imports::Column::CreatedAt)
-        .all(db)
-        .await?;
+    let imports = activity_imports::Entity::processing_for_user(db, user_id, source).await?;
 
     let mut recovered_count = 0usize;
 
@@ -128,23 +172,43 @@ async fn recover_manual_activity_imports_for_user(
 
         let active_tasks =
             find_active_process_activity_import_tasks(db, user_id, import.id).await?;
-        let has_fresh_processing_task = active_tasks.iter().any(|task| {
-            stale_before.is_some_and(|stale_before| {
-                task.status == background_tasks::TaskStatus::Processing.as_str()
-                    && task.updated_at > stale_before
-            })
-        });
+        let has_fresh_processing_task = background_tasks::Model::has_live_activity_import_executor(
+            db,
+            &import,
+            stale_before
+                .unwrap_or(now - ChronoDuration::seconds(ACTIVITY_IMPORT_STALE_PROCESSING_SECONDS)),
+        )
+        .await?;
 
         if has_fresh_processing_task {
             continue;
         }
 
+        let attempt =
+            crate::entities::activity_import_attempts::Entity::active(db, user_id, import.id)
+                .await?;
+        let restart_attempt = attempt
+            .as_ref()
+            .is_some_and(|attempt| attempt.status == "running");
+        let queued_attempt = attempt
+            .as_ref()
+            .filter(|attempt| attempt.status == "queued");
+        if restart_attempt {
+            crate::activity_import_execution::finish_active(
+                db,
+                &import,
+                "failed",
+                Some("Worker stopped before the attempt finished; recovery queued a new execution"),
+            )
+            .await
+            .map_err(|error| ActivityImportRecoveryError::internal(error.message))?;
+        }
+
         let mut recovered_this_import = false;
-        for task in active_tasks
-            .iter()
-            .filter(|task| task.status == background_tasks::TaskStatus::Processing.as_str())
-        {
-            reset_background_task_to_pending(db, task).await?;
+        for task in active_tasks.iter().filter(|task| {
+            restart_attempt || task.status == background_tasks::TaskStatus::Processing.as_str()
+        }) {
+            reset_background_task_to_pending(db, task, restart_attempt).await?;
             recovered_this_import = true;
         }
 
@@ -154,7 +218,11 @@ async fn recover_manual_activity_imports_for_user(
 
         if !has_pending_task && !recovered_this_import {
             tasks
-                .process_activity_import(user_id, import.id)
+                .process_activity_import_with_attempt(
+                    user_id,
+                    import.id,
+                    queued_attempt.map(|attempt| attempt.id),
+                )
                 .await
                 .map_err(|message| {
                     ActivityImportRecoveryError::internal(format!(
@@ -166,7 +234,10 @@ async fn recover_manual_activity_imports_for_user(
         }
 
         if has_pending_task || recovered_this_import {
-            mark_activity_import_requeued(db, &import, now).await?;
+            let stage = queued_attempt.map_or(ACTIVITY_IMPORT_STAGE_RAW_STORED, |attempt| {
+                attempt.start_stage.as_str()
+            });
+            mark_activity_import_requeued(db, &import, now, stage).await?;
             recovered_count += 1;
         }
     }
@@ -213,8 +284,19 @@ fn task_targets_activity_import(
 async fn reset_background_task_to_pending(
     db: &DatabaseConnection,
     task: &background_tasks::Model,
+    restart_attempt: bool,
 ) -> Result<(), ActivityImportRecoveryError> {
     let mut active: background_tasks::ActiveModel = task.clone().into();
+    if restart_attempt {
+        let mut payload = task.payload.clone();
+        if let Some(data) = payload
+            .get_mut("data")
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            data.remove("attempt_id");
+        }
+        active.payload = Set(payload);
+    }
     active.status = Set(background_tasks::TaskStatus::Pending.as_str().to_string());
     active.attempts = Set(0);
     active.error = Set(None);
@@ -232,10 +314,11 @@ async fn mark_activity_import_requeued(
     db: &DatabaseConnection,
     import: &activity_imports::Model,
     now: DateTime<Utc>,
+    stage: &str,
 ) -> Result<activity_imports::Model, ActivityImportRecoveryError> {
     let mut active_model: activity_imports::ActiveModel = import.clone().into();
     active_model.status = Set(ACTIVITY_IMPORT_STATUS_PROCESSING.to_string());
-    active_model.processing_stage = Set(ACTIVITY_IMPORT_STAGE_RAW_STORED.to_string());
+    active_model.processing_stage = Set(stage.to_string());
     active_model.processing_error = Set(None);
     active_model.last_processing_event_at = Set(Some(now));
     active_model.update(db).await.map_err(Into::into)

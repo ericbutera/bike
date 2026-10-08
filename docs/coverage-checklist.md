@@ -21,6 +21,12 @@ Fresh reports on 2026-10-09 were collected with `mise run coverage:unit`:
 
 After integration with current main, the full unit run passed 294 Rust tests
 (three ignored) and 214 Next.js tests.
+The ingestion and heatmap feature closeout subsequently passed 308 Rust unit
+tests (four ignored) and 231 Next.js unit tests. Overall line coverage is 59.00%
+for Rust and 59.74% for Next.js, with 49 Rust files and 42 Next.js paths still at
+0%. The history service, replay hooks, import detail/page inputs, and container
+resize regression have focused unit coverage.
+
 Rust totals exclude migrations and integration execution, so they are not directly
 comparable with the original full-workspace baseline. Separate Rust test files
 are excluded from the report. The paths below include every file still at 0%
@@ -49,7 +55,7 @@ on the free [coverage site](https://ericbutera.github.io/bike/coverage/).
 - [ ] [bike-rs/bike-core/src/background_jobs/worker/task_worker.rs](../bike-rs/bike-core/src/background_jobs/worker/task_worker.rs)
 - [ ] [bike-rs/bike-core/src/background_jobs/worker/tracing.rs](../bike-rs/bike-core/src/background_jobs/worker/tracing.rs)
 - [ ] [bike-rs/bike-core/src/db.rs](../bike-rs/bike-core/src/db.rs)
-- [ ] [bike-rs/bike-core/src/entities/activity_archive_import_jobs.rs](../bike-rs/bike-core/src/entities/activity_archive_import_jobs.rs)
+- [x] [bike-rs/bike-core/src/entities/activity_archive_import_jobs.rs](../bike-rs/bike-core/src/entities/activity_archive_import_jobs.rs) — archive execution heartbeats and recovery ([tests](../bike-rs/bike-core/src/activity_import_pipeline/tests/replay_tests.rs)).
 - [ ] [bike-rs/bike-core/src/heatmaps/data.rs](../bike-rs/bike-core/src/heatmaps/data.rs)
 - [x] [bike-rs/bike-core/src/heatmaps/types.rs](../bike-rs/bike-core/src/heatmaps/types.rs) — 93.33% lines; valid sport/date filters and cache identity ([tests](../bike-rs/bike-core/src/heatmaps/types_tests.rs)).
 - [ ] [bike-rs/bike-core/src/jobs/email.rs](../bike-rs/bike-core/src/jobs/email.rs)
@@ -145,7 +151,7 @@ here so integration coverage does not hide missing unit happy paths.
 - [ ] [bike-ui/components/SegmentEffortAnalysisReport.tsx](../bike-ui/components/SegmentEffortAnalysisReport.tsx)
 - [ ] [bike-ui/components/SegmentYearlyProgressReport.tsx](../bike-ui/components/SegmentYearlyProgressReport.tsx)
 - [x] [bike-ui/components/ThemeToggle.tsx](../bike-ui/components/ThemeToggle.tsx) — 97.05% lines; theme selection and persistence ([tests](../bike-ui/components/__tests__/ThemeToggle.test.tsx)).
-- [ ] [bike-ui/components/activity-detail/ActivityImportTracePanel.tsx](../bike-ui/components/activity-detail/ActivityImportTracePanel.tsx)
+- [x] [bike-ui/components/activity-detail/ActivityImportTracePanel.tsx](../bike-ui/components/activity-detail/ActivityImportTracePanel.tsx) — recorded stages, summaries, and replay ([tests](../bike-ui/components/__tests__/ActivityImportTracePanel.test.tsx)).
 - [ ] [bike-ui/components/admin/AdminUsersPageContent.tsx](../bike-ui/components/admin/AdminUsersPageContent.tsx)
 - [ ] [bike-ui/components/admin/BikeMetricsSection.tsx](../bike-ui/components/admin/BikeMetricsSection.tsx)
 - [x] [bike-ui/components/admin/LocalAdminLayout.tsx](../bike-ui/components/admin/LocalAdminLayout.tsx) — 100.00% lines; admin content and successful metric display ([tests](../bike-ui/components/__tests__/PageShells.test.tsx)).
@@ -156,4 +162,9 @@ here so integration coverage does not hide missing unit happy paths.
 - [x] [bike-ui/components/reports/TimeRangeSelector.tsx](../bike-ui/components/reports/TimeRangeSelector.tsx) — 100.00% lines; interval selection callback ([tests](../bike-ui/components/reports/TimeRangeSelector.test.tsx)).
 - [x] [bike-ui/components/reports/reportDefinitions.ts](../bike-ui/components/reports/reportDefinitions.ts) — 91.66% lines; report adaptation and defaults ([tests](../bike-ui/components/reports/reportDefinitions.test.ts)).
 - [x] [bike-ui/lib/activitySourceFiles.ts](../bike-ui/lib/activitySourceFiles.ts) — 100.00% lines; source-file URLs and encoded activity IDs ([tests](../bike-ui/lib/activitySourceFiles.test.ts)).
-- [ ] [bike-ui/lib/queries.ts](../bike-ui/lib/queries.ts)
+- [x] [bike-ui/lib/queries.ts](../bike-ui/lib/queries.ts) — import history polling and reviewed replay invalidation ([tests](../bike-ui/lib/importQueries.test.tsx)); other query hooks remain untested.
+
+## New entrypoint gaps
+
+- [ ] [bike-rs/api/src/controllers/activity_import_history.rs](../bike-rs/api/src/controllers/activity_import_history.rs) — the service has unit coverage; HTTP adaptation remains uncovered.
+- [ ] [bike-ui/app/imports/layout.tsx](../bike-ui/app/imports/layout.tsx) — the shared authentication and layout components have unit coverage; this route wrapper remains uncovered.
