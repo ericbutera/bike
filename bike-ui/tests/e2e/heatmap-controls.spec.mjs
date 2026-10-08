@@ -83,6 +83,48 @@ function camera(page) {
 }
 
 for (const target of targets) {
+  test(`${target.name}: wheel and button zoom survive camera persistence and color changes`, async ({
+    page,
+  }) => {
+    const { diagnostics, api } = await fixture(page, target);
+    await page.goto(
+      new URL("/maps?lng=-85.62&lat=44.76&zoom=13", target.url).toString(),
+    );
+    const map = page.getByRole("region", { name: "Personal activity heatmap" });
+    const canvas = map.locator("canvas");
+    await expect(canvas).toBeVisible();
+    await page.getByLabel("Heatmap color: Blue").click();
+    await map.getByRole("button", { name: "Zoom in", exact: true }).click();
+    await page.getByText("Orange", { exact: true }).click();
+    await expect.poll(() => camera(page).zoom).toBe(14);
+    await page.getByLabel("Heatmap color: Orange").click();
+
+    const bounds = await canvas.boundingBox();
+    await page.mouse.move(
+      bounds.x + bounds.width / 2,
+      bounds.y + bounds.height / 2,
+    );
+    await page.mouse.wheel(0, -600);
+    await expect.poll(() => camera(page).zoom).toBeGreaterThan(14);
+    const firstZoom = camera(page).zoom;
+    await page.mouse.wheel(0, -600);
+    await expect.poll(() => camera(page).zoom).toBeGreaterThan(firstZoom);
+
+    const beforeDrag = camera(page);
+    await page.mouse.down();
+    await page.mouse.move(
+      bounds.x + bounds.width / 2 + 200,
+      bounds.y + bounds.height / 2 + 100,
+      { steps: 8 },
+    );
+    await page.mouse.up();
+    await expect
+      .poll(() => camera(page).longitude)
+      .not.toBe(beforeDrag.longitude);
+    expect(camera(page).zoom).toBe(beforeDrag.zoom);
+    expect(api.unexpected).toEqual([]);
+    expect(diagnostics).toEqual([]);
+  });
   for (const initialQuery of [
     "sport=road_ride",
     "sport=road_ride&lng=0&lat=0&zoom=2",
