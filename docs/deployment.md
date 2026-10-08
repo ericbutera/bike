@@ -38,9 +38,8 @@ ignored `.artifacts/bin/mise`; later checks and deployment use that executable
 with existing named tasks in the compiler-equipped buildpack image. The UI
 unit check uses the buildpack image. Browser E2E is temporarily excluded from
 CI, including the standalone diagram browser test; UI checks run no Playwright
-commands. The [E2E TODO](E2E-TODO.md) defines the containerized runner and snapshot
-isolation needed before enabling a separate browser gate. Test steps wait for
-preparation. The workflow
+commands. The [TEST11 plan](E2E-TODO.md) defines the separate disposable browser
+gate described below. Test steps wait for preparation. The workflow
 fixes the shared workspace at `/woodpecker/src`,
 matching the `.artifacts/bin` entry on `PATH` so nested mise commands resolve
 the copied executable. No committed installer or additional system-package setup
@@ -56,6 +55,36 @@ mise run ci:ui:unit
 mise run ci:renderer
 mise run ci:gateway
 ```
+
+### Planned E2E gate (TEST11)
+
+- Implementation remains pending. The proposed `mise run e2e` command and
+  `test-ui-e2e` stage are not present in the current workflow.
+- Prove a disposable Docker-in-Docker runtime on the existing Kubernetes-backed
+  Woodpecker runner first. The managed repository currently disables privileged
+  execution; prepare the required permission change in the owning Woodpecker IaC
+  and verify registry access, networking, and failure/cancellation cleanup.
+- Run the same minimal Compose model and owning task locally and in CI, using
+  independent project names, networks, databases, uploads, and caches. Reuse
+  runtime definitions with development through small overrides; keep each test
+  run separate from the persistent development stack.
+- Local preparation can build the worktree through existing image tasks. CI
+  supplies already-built application/test images. Record image identities and
+  platform; no application compilation or dependency installation occurs during
+  the browser run.
+- Keep unit/native checks independent of PostgreSQL servers. The E2E environment
+  owns its database, migrated baseline, scenario overlays, and attempt resets.
+- Once verified, the shared PR/main path becomes checks → all image builds →
+  E2E → main-only `ci:deploy`. Deployment consumes the image digests that passed
+  E2E; PR test jobs receive no deployment credentials.
+- Export browser reports, failure traces/screenshots, service logs, and image
+  identities before cleanup. Startup, migration, fixture, browser, export, or
+  cleanup failures must fail the gate and block deployment.
+
+Follow the [canonical E2E checklist](E2E-TODO.md) for implementation and acceptance
+criteria. Production availability monitoring remains a separate workflow.
+
+### Owning tasks and tooling
 
 The root `rust:check`, `renderer:check`, and component `check` tasks own the
 actual checks. Deployment calls `ci:deploy` once for the release. Image builds
