@@ -509,9 +509,13 @@ Use synthetic regression data, never private activity exports or CSVs:
 
 Unit and native HTTP tests establish these boundary behaviors using mocked
 boundaries or in-memory databases with fixtures. Their CI checks need no
-PostgreSQL service. The planned [TEST11 browser gate](../E2E-TODO.md) provisions
-its own disposable PostgreSQL environment and verifies a successful upload
-through the real API and worker to a persisted activity visible in the UI.
+PostgreSQL service. The [TEST11 browser gate](../E2E-TODO.md), under implementation
+and runtime verification, provisions
+its own disposable PostgreSQL environment and verifies uploads accepted through
+the real API, queue display, and seeded persisted results visible in the UI.
+The default browser gate excludes the worker and does not wait for job execution.
+Worker E2E is deferred to a separately selected, opt-in suite; job execution
+remains owned by pipeline/worker tests.
 Separate opt-in PostgreSQL checks can verify server-specific persisted
 eligibility, leases/generations, and queries; release
 verification must identify the deployed image and policy, complete migration

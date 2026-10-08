@@ -1,23 +1,4 @@
 name: bike
 
 include:
-  - path: bike-rs/compose.yaml
-
-services:
-  bike-maps:
-    build:
-      context: .
-      dockerfile: map-renderer/Dockerfile
-      args:
-        NODE_IMAGE: ${NODE_IMAGE:?Run Compose through mise}
-        NPM_VERSION: ${NPM_VERSION:?Run Compose through mise}
-        PLAYWRIGHT_IMAGE: ${PLAYWRIGHT_IMAGE:?Run Compose through mise}
-    environment:
-      MAP_IMAGE_CACHE_DIR: /cache
-      MAP_IMAGE_CACHE_TTL_SECONDS: ${MAP_IMAGE_CACHE_TTL_SECONDS:-604800}
-      MAP_SERVICE_TOKEN: ${MAP_SERVICE_TOKEN:-}
-    volumes:
-      - map_image_cache:/cache
-
-volumes:
-  map_image_cache:
+  - path: [compose.runtime.yaml, compose.dev.yaml]

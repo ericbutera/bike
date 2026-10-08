@@ -1,7 +1,8 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./helpers/test.mjs";
 import { protectedFrontendRoutes } from "./helpers/frontend-routes.mjs";
 import { openRoute } from "./helpers/ui.mjs";
 import { fakeProductApi } from "./helpers/product-fixtures.mjs";
+import { fakeApiResponse } from "./helpers/api-response.mjs";
 import {
   activityId,
   raceEffortIds,
@@ -10,25 +11,18 @@ import {
 } from "./helpers/targets.mjs";
 
 test("protected routes expose the shared sign-in state when auth is unavailable", async ({
-  browser,
+  createContext,
 }) => {
   test.setTimeout(240_000);
-  test.skip(
-    process.env.PLAYWRIGHT_AUTH_STATE !== "1",
-    "Set PLAYWRIGHT_AUTH_STATE=1 to run the isolated unauthorized-state matrix.",
-  );
 
   for (const target of targets) {
     for (const route of protectedFrontendRoutes) {
-      const context = await browser.newContext({ colorScheme: "light" });
+      const context = await createContext({ colorScheme: "light" });
       const page = await context.newPage();
-      await page.route("**/api/auth/current", async (routeHandler) => {
-        await routeHandler.fulfill({
-          status: 401,
-          contentType: "application/json",
-          body: JSON.stringify({ message: "Unauthorized" }),
-        });
-      });
+      await fakeApiResponse(page, ["/api/auth/current"], () => ({
+        status: 401,
+        json: { message: "Unauthorized" },
+      }));
 
       await openRoute(page, target, route.path);
       await expect(
@@ -41,12 +35,13 @@ test("protected routes expose the shared sign-in state when auth is unavailable"
 });
 
 test("authenticated non-admins cannot open admin pages", async ({
-  browser,
+  createContext,
 }) => {
   for (const target of targets) {
-    const context = await browser.newContext({ colorScheme: "light" });
+    const context = await createContext({ colorScheme: "light" });
     const page = await context.newPage();
 
+    const state = await fakeProductApi(page, target);
     await page.route("**/api/auth/current", async (route) => {
       await route.fulfill({
         status: 200,
@@ -67,103 +62,108 @@ test("authenticated non-admins cannot open admin pages", async ({
       page.getByRole("heading", { name: "Recent activities" }),
     ).toBeVisible();
 
-    await context.close();
-  }
-});
-
-test("forbidden activity reads show the same access state", async ({
-  browser,
-}) => {
-  for (const target of targets) {
-    const context = await browser.newContext({ colorScheme: "light" });
-    const page = await context.newPage();
-
-    await page.route("**/api/auth/current", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          pid: "2",
-          name: "Parity Rider",
-          email: "parity-rider@example.test",
-          is_admin: false,
-          verified: true,
-        }),
-      });
-    });
-    await page.route(`**/api/activities/${activityId}`, async (route) => {
-      await route.fulfill({
-        status: 403,
-        contentType: "application/json",
-        body: JSON.stringify({ message: "Forbidden" }),
-      });
-    });
-
-    await openRoute(page, target, `/activities/${activityId}`);
-    await expect(page.locator(".alert-error")).toHaveText(
-      "Unable to load activity.",
-    );
-
-    await context.close();
-  }
-});
-
-test("forbidden segment comparison reads show the same access state", async ({
-  browser,
-}) => {
-  const deniedRoutes = [
-    `/segments/${segmentId}`,
-    `/segments/${segmentId}/race?efforts=${encodeURIComponent(raceEffortIds)}`,
-  ];
-
-  for (const target of targets) {
-    const context = await browser.newContext({ colorScheme: "light" });
-    const page = await context.newPage();
-
-    const state = await fakeProductApi(page, target);
-    await page.route(`**/api/segments/${segmentId}`, async (route) => {
-      await route.fulfill({
-        json: {
-          id: Number(segmentId),
-          title: "Fixture segment",
-          mode: "xc",
-          distance_meters: 1800,
-          route_points: [],
-          efforts: [],
-        },
-      });
-    });
-
-    await page.route("**/api/auth/current", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          pid: "2",
-          name: "Parity Rider",
-          email: "parity-rider@example.test",
-          is_admin: false,
-          verified: true,
-        }),
-      });
-    });
-    await page.route("**/api/segments/*/comparison**", async (route) => {
-      await route.fulfill({
-        status: 403,
-        contentType: "application/json",
-        body: JSON.stringify({ message: "Forbidden" }),
-      });
-    });
-
-    for (const route of deniedRoutes) {
-      await openRoute(page, target, route);
-      await expect(page.locator(".alert-error")).toHaveText(
-        "Unable to load segment comparison.",
-      );
-    }
-
     expect(state.unexpected).toEqual([]);
-
     await context.close();
   }
+});
+
+test.describe("forbidden activity", () => {
+  test.use({ expectedConsoleErrors: ["[API Error] Forbidden undefined"] });
+  test("forbidden activity reads show the same access state", async ({
+    createContext,
+  }) => {
+    for (const target of targets) {
+      const context = await createContext({ colorScheme: "light" });
+      const page = await context.newPage();
+
+      await page.route("**/api/auth/current", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            pid: "2",
+            name: "Parity Rider",
+            email: "parity-rider@example.test",
+            is_admin: false,
+            verified: true,
+          }),
+        });
+      });
+      await fakeProductApi(page, target);
+      await fakeApiResponse(page, [`/api/activities/${activityId}`], () => ({
+        status: 403,
+        json: { message: "Forbidden" },
+      }));
+
+      await openRoute(page, target, `/activities/${activityId}`);
+      await expect(page.locator(".alert-error")).toHaveText(
+        "Unable to load activity.",
+      );
+
+      await context.close();
+    }
+  });
+});
+
+test.describe("forbidden comparison", () => {
+  test.use({
+    expectedConsoleErrors: Array(2).fill("[API Error] Forbidden undefined"),
+  });
+  test("forbidden segment comparison reads show the same access state", async ({
+    createContext,
+  }) => {
+    const deniedRoutes = [
+      `/segments/${segmentId}`,
+      `/segments/${segmentId}/race?efforts=${encodeURIComponent(raceEffortIds)}`,
+    ];
+
+    for (const target of targets) {
+      const context = await createContext({ colorScheme: "light" });
+      const page = await context.newPage();
+
+      const state = await fakeProductApi(page, target);
+      await page.route(`**/api/segments/${segmentId}`, async (route) => {
+        await route.fulfill({
+          json: {
+            id: Number(segmentId),
+            title: "Fixture segment",
+            mode: "xc",
+            distance_meters: 1800,
+            route_points: [],
+            efforts: [],
+          },
+        });
+      });
+
+      await page.route("**/api/auth/current", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            pid: "2",
+            name: "Parity Rider",
+            email: "parity-rider@example.test",
+            is_admin: false,
+            verified: true,
+          }),
+        });
+      });
+      await fakeApiResponse(
+        page,
+        [`/api/segments/${segmentId}/comparison`],
+        () => ({ status: 403, json: { message: "Forbidden" } }),
+      );
+
+      for (const route of deniedRoutes) {
+        await openRoute(page, target, route);
+        await expect(page.locator(".alert-error")).toHaveText(
+          "Unable to load segment comparison.",
+        );
+      }
+
+      expect(state.unexpected).toEqual([]);
+
+      await context.close();
+    }
+  });
 });

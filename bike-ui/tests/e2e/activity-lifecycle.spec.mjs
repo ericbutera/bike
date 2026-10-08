@@ -1,17 +1,20 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
 import { activityId, targets } from "./helpers/targets.mjs";
 import { openActivityDetail } from "./helpers/ui.mjs";
 
 const apiUrls = {
-  rust: process.env.BIKE_API_URL ?? "http://localhost:3030",
+  rust: (process.env.BIKE_API_URL ?? "http://localhost:3000/api").replace(
+    /\/api\/?$/,
+    "",
+  ),
 };
 
 test("activity regeneration and deletion work through the shared actions", async ({
-  browser,
+  createContext,
 }) => {
   test.setTimeout(120_000);
   for (const target of targets) {
-    const context = await browser.newContext();
+    const context = await createContext();
     const page = await context.newPage();
     await openActivityDetail(page, target, activityId);
 

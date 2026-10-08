@@ -4,6 +4,7 @@ use sea_orm::{Condition, DatabaseConnection, DbErr, QueryFilter, QueryOrder, Que
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 #[sea_orm(table_name = "background_tasks")]
 pub struct Model {
     #[sea_orm(primary_key)]

@@ -1,12 +1,13 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
+test.use({ scenario: "laps" });
 import { activityId, targets } from "./helpers/targets.mjs";
 import { openActivityDetail } from "./helpers/ui.mjs";
 
 test("explicit lap rollups render on each activity detail", async ({
-  browser,
+  createContext,
 }) => {
   for (const target of targets) {
-    const context = await browser.newContext({ colorScheme: "light" });
+    const context = await createContext({ colorScheme: "light" });
     const page = await context.newPage();
     await openActivityDetail(page, target, activityId);
 

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./helpers/test.mjs";
 import { PNG } from "pngjs";
 import { fakeProductApi } from "./helpers/product-fixtures.mjs";
 import { targets } from "./helpers/targets.mjs";

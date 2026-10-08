@@ -1,17 +1,17 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
 import { openFrontendRoute } from "./helpers/frontend.mjs";
 import { targets } from "./helpers/targets.mjs";
 
 test("admin tasks expose the same filters, timing, and detail in Bike", async ({
-  browser,
+  createContext,
 }) => {
-  test.skip(
-    process.env.BIKE_TEST_ADMIN_TASK_FIXTURE !== "true",
-    "Requires the pinned synthetic task fixture",
-  );
+  expect(
+    process.env.BIKE_TEST_ADMIN_TASK_FIXTURE,
+    "Pinned task fixture is required",
+  ).toBe("true");
 
   for (const target of targets) {
-    const context = await browser.newContext({
+    const context = await createContext({
       colorScheme: "light",
       locale: "en-US",
       timezoneId: "America/Detroit",

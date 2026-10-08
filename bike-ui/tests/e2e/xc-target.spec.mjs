@@ -1,13 +1,13 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
 import { targets } from "./helpers/targets.mjs";
 import { openRoute } from "./helpers/ui.mjs";
 
 test("XC event target saves and clears through the shared UI", async ({
-  browser,
+  createContext,
 }) => {
   test.setTimeout(120_000);
   for (const target of targets) {
-    const context = await browser.newContext();
+    const context = await createContext();
     const page = await context.newPage();
     await openRoute(page, target, "/xc");
     await expect(

@@ -36,11 +36,10 @@ The preparation step runs in the official mise **2026.10.3/debian** image,
 pinned by digest. Its owning `ci:mise:prepare` task copies the executable into
 ignored `.artifacts/bin/mise`; later checks and deployment use that executable
 with existing named tasks in the compiler-equipped buildpack image. The UI
-unit check uses the buildpack image. Browser E2E is temporarily excluded from
-CI, including the standalone diagram browser test; UI checks run no Playwright
-commands. The [TEST11 plan](E2E-TODO.md) defines the separate disposable browser
-gate described below. Test steps wait for preparation. The workflow
-fixes the shared workspace at `/woodpecker/src`,
+unit check uses the buildpack image and runs no Playwright commands. The
+[TEST11 implementation](E2E-TODO.md) configures a separate disposable browser
+gate described below; runtime acceptance remains pending. Test steps wait for
+preparation. Both workflows fix their workspace at `/woodpecker/src`,
 matching the `.artifacts/bin` entry on `PATH` so nested mise commands resolve
 the copied executable. No committed installer or additional system-package setup
 is needed. Language tool versions come from the owning `mise.toml`; shared Node,
@@ -56,14 +55,15 @@ mise run ci:renderer
 mise run ci:gateway
 ```
 
-### Planned E2E gate (TEST11)
+### Disposable E2E gate (TEST11, under review)
 
-- Implementation remains pending. The proposed `mise run e2e` command and
-  `test-ui-e2e` stage are not present in the current workflow.
-- Prove a disposable Docker-in-Docker runtime on the existing Kubernetes-backed
-  Woodpecker runner first. The managed repository currently disables privileged
-  execution; prepare the required permission change in the owning Woodpecker IaC
-  and verify registry access, networking, and failure/cancellation cleanup.
+- `mise run e2e` and the `test-ui-e2e` stage are implemented in source. The
+  installed Kubernetes-backed Woodpecker runtime still needs registry, TLS,
+  networking, and failure/cancellation acceptance verification.
+- [IaC PR #6](https://github.com/ericbutera/pulumi-iac/pull/6) owns the Bike-only
+  privileged-step permission and tested digest deployment. Its permission
+  preview/apply changed only the Bike sync ConfigMap/Job, which succeeded.
+  No production deployment credentials are passed to the browser job.
 - Run the same minimal Compose model and owning task locally and in CI, using
   independent project names, networks, databases, uploads, and caches. Reuse
   runtime definitions with development through small overrides; keep each test
@@ -74,12 +74,22 @@ mise run ci:gateway
   the browser run.
 - Keep unit/native checks independent of PostgreSQL servers. The E2E environment
   owns its database, migrated baseline, scenario overlays, and attempt resets.
-- Once verified, the shared PR/main path becomes checks → all image builds →
+- The configured shared PR/main path is checks → all image builds →
   E2E → main-only `ci:deploy`. Deployment consumes the image digests that passed
   E2E; PR test jobs receive no deployment credentials.
+- `bike.yaml` owns checks and image builds. The dependent `e2e.yaml` workflow
+  starts a native Docker service with TLS port 2376, using the daemon image built
+  for that revision. Each workflow checks out the same commit and prepares mise
+  through the existing task; only E2E and deployment share the tested digest file.
 - Export browser reports, failure traces/screenshots, service logs, and image
   identities before cleanup. Startup, migration, fixture, browser, export, or
   cleanup failures must fail the gate and block deployment.
+- Retain CI reports on the existing cache PVC at
+  `/cache/bike/e2e/<pipeline-number>/<project>/`, with seven-day cleanup. TLS
+  certificates stay on the disposable checkout PVC. Local reports live at
+  `.artifacts/e2e/<project>/`; both paths are printed by the owning runner.
+- Merge the companion digest deployment change before enabling this workflow on
+  main. Do not infer a verified CI/main release from a successful permission apply.
 
 Follow the [canonical E2E checklist](E2E-TODO.md) for implementation and acceptance
 criteria. Production availability monitoring remains a separate workflow.

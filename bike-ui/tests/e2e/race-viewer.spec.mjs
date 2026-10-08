@@ -1,10 +1,10 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
 import { raceEffortIds, segmentId, targets } from "./helpers/targets.mjs";
 import { visualViewport } from "./helpers/frontend.mjs";
 import { openRoute } from "./helpers/ui.mjs";
 
 test("race viewer controls and selected efforts work in Bike", async ({
-  browser,
+  createContext,
 }) => {
   test.setTimeout(120_000);
   const expectedEfforts = raceEffortIds.split(",");
@@ -12,35 +12,11 @@ test("race viewer controls and selected efforts work in Bike", async ({
   const { viewport } = visualViewport();
 
   for (const target of targets) {
-    const context = await browser.newContext({
+    const context = await createContext({
       colorScheme: "light",
       viewport,
     });
     const page = await context.newPage();
-    // Keep control interactions independent of third-party tile outages, which
-    // otherwise raise Next's dev error overlay above the playback controls.
-    await page.route(
-      /^https:\/\/(?:tiles\.openfreemap\.org|tile\.waymarkedtrails\.org|server\.arcgisonline\.com)\//,
-      async (route) => {
-        if (route.request().url().includes("/styles/")) {
-          await route.fulfill({
-            contentType: "application/json",
-            headers: { "access-control-allow-origin": "*" },
-            body: JSON.stringify({ version: 8, sources: {}, layers: [] }),
-          });
-          return;
-        }
-
-        await route.fulfill({
-          contentType: "image/png",
-          headers: { "access-control-allow-origin": "*" },
-          body: Buffer.from(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==",
-            "base64",
-          ),
-        });
-      },
-    );
     await openRoute(
       page,
       target,

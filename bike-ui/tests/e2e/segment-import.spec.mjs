@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,12 +11,12 @@ const source = path.resolve(
 );
 
 test("segment route-file import creates the same manual segment in Bike", async ({
-  browser,
+  createContext,
 }) => {
   const gpx = await readFile(source);
 
   for (const target of targets) {
-    const context = await browser.newContext();
+    const context = await createContext();
     const page = await context.newPage();
     let apiBase;
     let segmentId;

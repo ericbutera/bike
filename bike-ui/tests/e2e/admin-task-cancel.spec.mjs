@@ -1,12 +1,13 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
+test.use({ scenario: "task-cancel" });
 import { targets } from "./helpers/targets.mjs";
 import { openRoute } from "./helpers/ui.mjs";
 
 test("the shared admin task page cancels a processing task", async ({
-  browser,
+  createContext,
 }) => {
-  for (const target of targets.filter((target) => target.name !== "rust")) {
-    const context = await browser.newContext();
+  for (const target of targets) {
+    const context = await createContext();
     const page = await context.newPage();
     await openRoute(page, target, "/admin/tasks");
     await expect(

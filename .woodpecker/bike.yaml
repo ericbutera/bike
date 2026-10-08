@@ -1,4 +1,4 @@
-# One monorepo checkout feeds every check, image build, and IaC apply below.
+# Owning checks and image builds feed the dependent E2E/deployment workflow.
 when:
   - event: [push, pull_request]
     branch: main
@@ -11,6 +11,8 @@ when:
         - map-renderer/**
         - integration-tests/**
         - scripts/**
+        - compose*.yaml
+        - prek.toml
         - .dockerignore
         - strava-gateway/**
         - mise.toml
@@ -65,6 +67,15 @@ steps:
     commands:
       - .artifacts/bin/mise run ci:rust
 
+  - name: test-runtime-tooling
+    failure: fail
+    image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
+    depends_on: [prepare]
+    environment: *mise_environment
+    volumes: *mise_cache
+    commands:
+      - mise run ci:runtime
+
   - name: test-ui-unit
     failure: fail
     image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
@@ -100,6 +111,7 @@ steps:
         test-ui-unit,
         test-map-renderer,
         test-strava-gateway,
+        test-runtime-tooling,
       ]
     backend_options:
       kubernetes:
@@ -204,27 +216,36 @@ steps:
       PLUGIN_CONTEXT: strava-gateway
       PLUGIN_DOCKERFILE: strava-gateway/Dockerfile
 
-  - name: deploy
-    when:
-      - event: [push, manual]
-        branch: main
-    image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
-    depends_on:
-      [
-        build-api,
-        build-worker,
-        build-ui,
-        build-map-renderer,
-        build-strava-gateway,
-      ]
-    environment:
-      <<: *mise_environment
-      PULUMI_ACCESS_TOKEN:
-        from_secret: pulumi_access_token
-      GITHUB_TOKEN:
-        from_secret: github_token
-      PULUMI_IAC_REPO:
-        from_secret: pulumi_iac_repo
-    volumes: *mise_cache
+  - name: build-e2e
+    image: woodpeckerci/plugin-kaniko:2.3.3@sha256:d6ecc0f37561503eeacd8f2189068c5a13c531f5629cf2ce2de0ac144824c9f4
+    depends_on: *all_tests
     commands:
-      - mise run ci:deploy
+      - set -a; . .artifacts/image-build.env; exec /kaniko/plugin.sh
+    environment:
+      PLUGIN_BUILD_ARGS_FROM_ENV: NODE_IMAGE,NPM_VERSION,PNPM_VERSION,PLAYWRIGHT_IMAGE,DOCKER_CLI_IMAGE
+      PLUGIN_REGISTRY: registry.registry:5000
+      PLUGIN_REPO: bike-e2e
+      PLUGIN_TAGS: ${CI_COMMIT_SHA}
+      PLUGIN_INSECURE: "true"
+      PLUGIN_SKIP_TLS_VERIFY: "true"
+      PLUGIN_INSECURE_PULL: "true"
+      PLUGIN_INSECURE_REGISTRY: "true"
+      PLUGIN_CONTEXT: .
+      PLUGIN_DOCKERFILE: bike-ui/Dockerfile.e2e
+
+  - name: build-e2e-engine
+    image: woodpeckerci/plugin-kaniko:2.3.3@sha256:d6ecc0f37561503eeacd8f2189068c5a13c531f5629cf2ce2de0ac144824c9f4
+    depends_on: *all_tests
+    commands:
+      - set -a; . .artifacts/image-build.env; exec /kaniko/plugin.sh
+    environment:
+      PLUGIN_BUILD_ARGS_FROM_ENV: DOCKER_DIND_IMAGE
+      PLUGIN_REGISTRY: registry.registry:5000
+      PLUGIN_REPO: bike-e2e-engine
+      PLUGIN_TAGS: ${CI_COMMIT_SHA}
+      PLUGIN_INSECURE: "true"
+      PLUGIN_SKIP_TLS_VERIFY: "true"
+      PLUGIN_INSECURE_PULL: "true"
+      PLUGIN_INSECURE_REGISTRY: "true"
+      PLUGIN_CONTEXT: .
+      PLUGIN_DOCKERFILE: bike-ui/Dockerfile.e2e-engine

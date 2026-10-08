@@ -1,12 +1,12 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
 import { targets } from "./helpers/targets.mjs";
 import { openRoute } from "./helpers/ui.mjs";
 
 test("the shared UI queues a new remote archive in Bike", async ({
-  browser,
+  createContext,
 }) => {
   for (const target of targets) {
-    const context = await browser.newContext();
+    const context = await createContext();
     const page = await context.newPage();
     await openRoute(page, target, "/upload");
     await expect(
@@ -14,7 +14,7 @@ test("the shared UI queues a new remote archive in Bike", async ({
     ).toBeVisible();
     await page
       .getByPlaceholder("https://.../export.zip")
-      .fill("https://example.com/exports/parity.zip");
+      .fill("http://bike-maps:3100/styles/route-light-v1.json");
 
     const queued = page.waitForResponse(
       (response) =>
@@ -26,7 +26,7 @@ test("the shared UI queues a new remote archive in Bike", async ({
     const response = await queued;
     expect(response.status(), `${target.name} archive queue`).toBe(202);
     expect(await response.json()).toMatchObject({
-      archive_url: "https://example.com/exports/parity.zip",
+      archive_url: "http://bike-maps:3100/styles/route-light-v1.json",
       status: "queued",
       total_entries: 0,
       imported_count: 0,

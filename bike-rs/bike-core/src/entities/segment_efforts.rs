@@ -3,7 +3,8 @@ use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{ColumnTrait, ConnectionTrait, DbErr, QueryFilter, QueryOrder, QuerySelect, Set};
 
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 #[sea_orm(table_name = "segment_efforts")]
 pub struct Model {
     #[sea_orm(primary_key)]

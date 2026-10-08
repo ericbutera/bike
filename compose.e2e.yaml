@@ -1,0 +1,40 @@
+# No development overlay, host ports, source mounts or globally named volumes.
+services:
+  postgres:
+    environment:
+      POSTGRES_INITDB_ARGS: --auth-local=scram-sha-256 --auth-host=scram-sha-256
+      PGPASSWORD: postgres
+  bike-rs:
+    environment:
+      DATABASE_URL: postgres://bike_application:e2e-application@postgres:5432/bike
+      LOCAL_ADMIN_ENABLED: 'false'
+      OAUTH_PROVIDERS: ''
+      CORS_ALLOWED_ORIGINS: http://ui.e2e.test:3000
+      FRONTEND_URL: http://ui.e2e.test:3000
+      API_URL: http://api.e2e.test:3000
+      ALLOW_LOCAL_ARCHIVE_IMPORTS: 'true'
+    networks:
+      default:
+        aliases: [api.e2e.test]
+    volumes:
+      - uploads:/app/uploads
+  worker:
+    # A future worker E2E is opt-in, outside the default browser gate.
+    profiles: [worker]
+  ui:
+    environment:
+      API_URL: http://api.e2e.test:3000/api
+      CDN_URL: http://api.e2e.test:3000/uploads
+      LOCAL_ADMIN_AUTO_LOGIN: 'false'
+    volumes:
+      - ui_image_cache:/app/.next/cache/images
+    networks:
+      default:
+        aliases: [ui.e2e.test]
+  bike-maps:
+    volumes:
+      - map_styles:/app/styles:ro
+volumes:
+  uploads:
+  map_styles:
+  ui_image_cache:

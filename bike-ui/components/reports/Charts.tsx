@@ -1,8 +1,9 @@
 "use client";
 
+import ResponsiveChart from "../ui/ResponsiveChart";
+
 import React from "react";
 import {
-  ResponsiveContainer,
   LineChart,
   Line,
   XAxis,
@@ -169,7 +170,7 @@ export default function Charts({
 
     return (
       <div style={{ width: "100%", height: 280 }}>
-        <ResponsiveContainer>
+        <ResponsiveChart>
           <BarChart data={data}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="label" />
@@ -197,7 +198,7 @@ export default function Charts({
               fill="#dc2626"
             />
           </BarChart>
-        </ResponsiveContainer>
+        </ResponsiveChart>
       </div>
     );
   }
@@ -205,7 +206,7 @@ export default function Charts({
   if (type === "hr_zones") {
     return (
       <div style={{ width: "100%", height: 240 }}>
-        <ResponsiveContainer>
+        <ResponsiveChart>
           <BarChart data={data}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="label" />
@@ -221,7 +222,7 @@ export default function Charts({
             <Bar dataKey="z4" stackId="a" fill="#ff7f7f" />
             <Bar dataKey="z5" stackId="a" fill="#8dd1e1" />
           </BarChart>
-        </ResponsiveContainer>
+        </ResponsiveChart>
       </div>
     );
   }
@@ -240,7 +241,7 @@ export default function Charts({
 
     return (
       <div style={{ width: "100%", height: 280 }}>
-        <ResponsiveContainer>
+        <ResponsiveChart>
           <BarChart data={barData}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="label" />
@@ -262,7 +263,7 @@ export default function Charts({
               fill={config.fill}
             />
           </BarChart>
-        </ResponsiveContainer>
+        </ResponsiveChart>
       </div>
     );
   }
@@ -280,7 +281,7 @@ export default function Charts({
 
   return (
     <div style={{ width: "100%", height: 240 }}>
-      <ResponsiveContainer>
+      <ResponsiveChart>
         <LineChart data={lineData}>
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis dataKey="label" />
@@ -305,7 +306,7 @@ export default function Charts({
             dot={lineData.length <= 12}
           />
         </LineChart>
-      </ResponsiveContainer>
+      </ResponsiveChart>
     </div>
   );
 }

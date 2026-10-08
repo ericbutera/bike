@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
 import {
   openFrontendRoute,
   stabilizePage,
@@ -7,7 +7,7 @@ import {
 import { targets } from "./helpers/targets.mjs";
 
 test("segment lists expose the shared structure and interactions", async ({
-  browser,
+  createContext,
 }) => {
   const requestedTarget = process.env.PLAYWRIGHT_TARGET?.trim();
   const selectedTargets = requestedTarget
@@ -21,7 +21,7 @@ test("segment lists expose the shared structure and interactions", async ({
   const { viewport } = visualViewport();
 
   for (const target of selectedTargets) {
-    const context = await browser.newContext({
+    const context = await createContext({
       colorScheme: "light",
       locale: "en-US",
       timezoneId: "America/Detroit",
