@@ -731,5 +731,8 @@ observed straight chord across missing FIT positions while retaining valid
 sections. Unit fixtures cover that boundary and continuously recorded outdoor
 controls, along with every ingestion stage and replay. Unit/native CI uses mocks
 and in-memory fixtures; PostgreSQL-specific checks are separate and opt-in.
-The planned [TEST11 browser gate](../E2E-TODO.md) owns a disposable PostgreSQL
+The [TEST11 browser gate](../E2E-TODO.md), under implementation and runtime
+verification, owns a disposable PostgreSQL
 environment for required connected heatmap scenarios, separate from those checks.
+Playwright seeds persisted projections through the owning builder once per run;
+the default browser gate renders/filters those results without running a worker.

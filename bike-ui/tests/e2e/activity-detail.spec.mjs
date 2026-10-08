@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
 import {
   activityId,
   expectedClimbCount,
@@ -7,39 +7,13 @@ import {
 } from "./helpers/targets.mjs";
 import { openActivityDetail } from "./helpers/ui.mjs";
 
-async function stubMapTiles(page) {
-  await page.route(
-    /^https:\/\/(?:tiles\.openfreemap\.org|tile\.waymarkedtrails\.org|server\.arcgisonline\.com)\//,
-    async (route) => {
-      if (route.request().url().includes("/styles/")) {
-        await route.fulfill({
-          contentType: "application/json",
-          headers: { "access-control-allow-origin": "*" },
-          body: JSON.stringify({ version: 8, sources: {}, layers: [] }),
-        });
-        return;
-      }
-
-      await route.fulfill({
-        contentType: "image/png",
-        headers: { "access-control-allow-origin": "*" },
-        body: Buffer.from(
-          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==",
-          "base64",
-        ),
-      });
-    },
-  );
-}
-
 test("activity detail exposes the activity surface in Bike", async ({
-  browser,
+  createContext,
 }) => {
   for (const target of targets) {
-    const context = await browser.newContext({ colorScheme: "light" });
+    const context = await createContext({ colorScheme: "light" });
     const page = await context.newPage();
     const activityRequests = [];
-    await stubMapTiles(page);
 
     page.on("request", (request) => {
       if (request.url().includes("/api/activities/")) {
@@ -54,20 +28,11 @@ test("activity detail exposes the activity surface in Bike", async ({
     ).toBeVisible();
     const routeMap = page.getByRole("img", { name: "Activity route map" });
     await expect(routeMap).toBeVisible();
-    const routeMapControls = routeMap.locator("xpath=..");
-    const streetLayer = routeMapControls.getByRole("button", {
-      name: "Street",
-      exact: true,
-    });
-    await streetLayer.click();
-    await expect(streetLayer).toHaveAttribute("aria-pressed", "true");
-    const topoLayer = routeMapControls.getByRole("button", {
-      name: "Topo",
-      exact: true,
-    });
-    await topoLayer.click();
-    await expect(topoLayer).toHaveAttribute("aria-pressed", "true");
-    await routeMapControls.getByRole("button", { name: "Zoom in" }).click();
+    // The enhanced map uses the owned style; basemap controls have separate coverage.
+    await expect(
+      routeMap.getByRole("button", { name: "Street", exact: true }),
+    ).toHaveCount(0);
+    await routeMap.getByRole("button", { name: "Zoom in" }).click();
 
     const matchedSegment = page
       .getByRole("button", { name: /^Jump to .* matches$/ })

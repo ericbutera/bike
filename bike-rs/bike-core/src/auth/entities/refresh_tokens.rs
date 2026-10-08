@@ -6,7 +6,8 @@ use sea_orm::DatabaseConnection;
 use sea_orm::Set;
 use uuid::Uuid;
 
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 #[sea_orm(table_name = "refresh_tokens")]
 pub struct Model {
     #[sea_orm(primary_key)]

@@ -23,7 +23,7 @@ RUN cargo chef cook --locked --release --recipe-path recipe.json
 COPY --from=protobuf /opt/protoc/bin/protoc /usr/local/bin/protoc
 COPY --from=protobuf /opt/protoc/include /usr/local/include
 COPY . .
-RUN cargo build --locked --release --bin api --bin worker --bin migration --bin recover-generated-imports
+RUN cargo build --locked --release --bin api --bin worker --bin migration --bin recover-generated-imports --bin e2e-fixtures
 
 FROM ${RUNTIME_IMAGE:-scratch}
 WORKDIR /app
@@ -31,6 +31,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 COPY --from=builder /app/target/release/api /app/api
 COPY --from=builder /app/target/release/migration /app/migration
 COPY --from=builder /app/target/release/recover-generated-imports /app/recover-generated-imports
+COPY --from=builder /app/target/release/e2e-fixtures /app/e2e-fixtures
 USER nobody
 
 EXPOSE 3000

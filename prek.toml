@@ -36,6 +36,14 @@ files = "^integration-tests/.*\\.js$"
 pass_filenames = false
 
 [[repos.hooks]]
+id = "compose-runtime"
+name = "Shared development and E2E runtime configuration"
+language = "system"
+entry = "mise run runtime:check"
+files = "^compose.*\\.yaml$|^bike-rs/compose\\.yaml$|^mise\\.toml$"
+pass_filenames = false
+
+[[repos.hooks]]
 id = "cargo-fmt-check"
 name = "Rust formatting"
 language = "system"

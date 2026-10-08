@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,14 +11,14 @@ const source = path.resolve(
 );
 
 test("a new GPX upload enters the manual processing queue", async ({
-  browser,
+  createContext,
 }) => {
   const xml = (await readFile(source, "utf8"))
     .replaceAll("2025-06-01", "2025-06-05")
     .replace("Synthetic northbound A", "Fresh parity upload");
 
   for (const target of targets) {
-    const context = await browser.newContext();
+    const context = await createContext();
     const page = await context.newPage();
     await openRoute(page, target, "/upload");
     await expect(

@@ -19,6 +19,8 @@ node_image = "node:{{vars.node_version}}-trixie@sha256:1278a37eb510ec1606fba0e80
 node_alpine_image = "node:{{vars.node_version}}-alpine3.24@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1"
 go_image = "golang:{{vars.go_version}}-trixie@sha256:8f58fd67ea075142d947a60e0caa4317746a55118d312f027793d382c7741734"
 playwright_image = "mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27"
+docker_cli_image = "docker:29.4.0-cli@sha256:2efe7c8e806b35050def6ba1ba0ddad67b521a0a6d37f4910b3d88f11b495d03"
+docker_dind_image = "docker:29.4.0-dind@sha256:a6dd5322747a95cd8e3207bd8d415a8fd20ec34e9c00f06dc019cbd912013489"
 k6_image = "grafana/k6:2.3.0@sha256:9c2dee7f8ed74d317e4027c06a10f169b625638189de8d4555d0b3486a5aeb34"
 watchexec_version = "2.8.0"
 
@@ -51,6 +53,8 @@ NODE_IMAGE = "{{vars.node_image}}"
 NODE_ALPINE_IMAGE = "{{vars.node_alpine_image}}"
 GO_IMAGE = "{{vars.go_image}}"
 PLAYWRIGHT_IMAGE = "{{vars.playwright_image}}"
+DOCKER_CLI_IMAGE = "{{vars.docker_cli_image}}"
+DOCKER_DIND_IMAGE = "{{vars.docker_dind_image}}"
 K6_IMAGE = "{{vars.k6_image}}"
 WATCHEXEC_VERSION = "{{vars.watchexec_version}}"
 BIKE_POSTGRES_IMAGE = "{{vars.postgres_image}}"
@@ -59,6 +63,7 @@ STRAVA_GATEWAY_POSTGRES_IMAGE = "{{vars.postgres_image}}"
 BIKE_TRACING_IMAGE = "{{vars.tracing_image}}"
 NPM_CONFIG_CACHE = "{{config_root}}/.cache/npm"
 PNPM_CONFIG_STORE_DIR = "{{config_root}}/.cache/pnpm-store"
+BUILDX_CONFIG = "{{config_root}}/.cache/docker-buildx"
 
 [tasks."renderer:build"]
 description = "Build the renderer image using mise version pins"
@@ -100,7 +105,8 @@ done
 for dockerfile in bike-ui/Dockerfile bike-ui/Dockerfile.dev; do
   docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg NODE_ALPINE_IMAGE --build-arg NPM_VERSION --build-arg PNPM_VERSION --file "$dockerfile" bike-ui
 done
-docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg NODE_IMAGE --build-arg NPM_VERSION --build-arg PNPM_VERSION --file bike-ui/Dockerfile.e2e .
+docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg NODE_IMAGE --build-arg NPM_VERSION --build-arg PNPM_VERSION --build-arg PLAYWRIGHT_IMAGE --build-arg DOCKER_CLI_IMAGE --file bike-ui/Dockerfile.e2e .
+docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg DOCKER_DIND_IMAGE --file bike-ui/Dockerfile.e2e-engine .
 docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg GO_IMAGE --build-arg RUNTIME_IMAGE --file strava-gateway/Dockerfile strava-gateway
 docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg NODE_IMAGE --build-arg NPM_VERSION --build-arg PLAYWRIGHT_IMAGE --file map-renderer/Dockerfile .
 docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg K6_IMAGE --file integration-tests/Dockerfile integration-tests
@@ -165,6 +171,8 @@ NPM_VERSION='{{vars.npm_version}}'
 PNPM_VERSION='{{vars.pnpm_version}}'
 GO_IMAGE='{{vars.go_image}}'
 PLAYWRIGHT_IMAGE='{{vars.playwright_image}}'
+DOCKER_CLI_IMAGE='{{vars.docker_cli_image}}'
+DOCKER_DIND_IMAGE='{{vars.docker_dind_image}}'
 K6_IMAGE='{{vars.k6_image}}'
 PINS
 '''
@@ -189,13 +197,14 @@ run = ["mise install node npm:npm npm:prettier", "mise run renderer:check"]
 description = "Install gateway tooling and run the shared gateway checks"
 run = ["mise --cd strava-gateway install go golangci-lint protoc go:google.golang.org/protobuf/cmd/protoc-gen-go go:google.golang.org/grpc/cmd/protoc-gen-go-grpc", "mise --cd strava-gateway run check", "mise run generate:protobuf:check"]
 
+[tasks."ci:runtime"]
+description = "Check owning CI and shell orchestration before image builds"
+run = ["mise install shellcheck aqua:woodpecker-ci/woodpecker/woodpecker-cli", "mise run lint:sh", "mise run ci:check"]
+
 [tasks."ci:deploy"]
 description = "Clone Bike infrastructure once and apply the single Pulumi project"
-run = [
-  'git clone --quiet "https://x-access-token:${GITHUB_TOKEN:?GITHUB_TOKEN is required}@github.com/${PULUMI_IAC_REPO:?PULUMI_IAC_REPO is required}" .artifacts/pulumi-iac',
-  "mise trust --yes .artifacts/pulumi-iac/mise.toml",
-  "mise --cd .artifacts/pulumi-iac run ci:deploy",
-]
+env = { _.file = ".artifacts/e2e-images.env" }
+run = "bash scripts/ci-deploy.sh"
 
 [tasks."lint"]
 description = "Run each language linter, formatter, and applicable type checks"
@@ -284,7 +293,28 @@ run = "docker run --rm --env BIKE_API_URL --env BIKE_UI_URL bike-synthetics:revi
 
 [tasks."e2e:build"]
 description = "Build the standalone browser test image"
-run = "docker build --build-arg NODE_IMAGE --build-arg NPM_VERSION --build-arg PNPM_VERSION --tag bike-e2e:review --file bike-ui/Dockerfile.e2e ."
+run = "docker build --build-arg NODE_IMAGE --build-arg NPM_VERSION --build-arg PNPM_VERSION --build-arg PLAYWRIGHT_IMAGE --build-arg DOCKER_CLI_IMAGE --tag bike-e2e:review --file bike-ui/Dockerfile.e2e ."
+
+[tasks."e2e:prepare"]
+description = "Prepare cached release images and the browser image from this worktree"
+run = ["mise run api:image", "mise run ui:image", "mise run renderer:build", "mise run e2e:build"]
+
+[tasks.e2e]
+description = "Run the required browser suite in a disposable image-based environment"
+usage = 'arg "[spec]" default=""'
+run = 'bash scripts/e2e.sh ${usage_spec:+"$usage_spec"}'
+
+[tasks."e2e:config"]
+description = "Validate the disposable runtime with native Compose"
+run = "docker compose --project-name bike-e2e-config --file compose.runtime.yaml --file compose.e2e.yaml config --quiet"
+
+[tasks."runtime:check"]
+description = "Validate shared development and disposable runtime configuration"
+run = ["mise run compose:config", "mise run e2e:config"]
+
+[tasks."ci:e2e"]
+description = "Test this revision's prepared registry images on the job-local engine"
+run = "bash scripts/ci-e2e.sh"
 
 [tasks."e2e:run"]
 description = "Run browser tests against an explicitly configured test environment"

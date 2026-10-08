@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { platformTest as test, expect } from "./helpers/test.mjs";
 import { PNG } from "pngjs";
 import fs from "node:fs/promises";
 import {
@@ -8,6 +8,7 @@ import {
   targets,
 } from "./helpers/targets.mjs";
 import { openRoute } from "./helpers/ui.mjs";
+import { fakeExternalBasemaps } from "./helpers/external-providers.mjs";
 
 const selectedTargets = process.env.PLAYWRIGHT_TARGET
   ? targets.filter((target) => target.name === process.env.PLAYWRIGHT_TARGET)
@@ -123,52 +124,6 @@ async function testAuthentication(page, target) {
     },
   );
   return { headers, ...ids };
-}
-
-async function fakeExternalBasemaps(page) {
-  await page.route(
-    /^https:\/\/(?:tiles\.openfreemap\.org|tile\.waymarkedtrails\.org|server\.arcgisonline\.com)\//,
-    async (route) => {
-      const url = route.request().url();
-      if (url.endsWith("/planet")) {
-        await route.fulfill({
-          contentType: "application/json",
-          headers: { "access-control-allow-origin": "*" },
-          body: JSON.stringify({
-            tilejson: "3.0.0",
-            tiles: ["https://tiles.openfreemap.org/fixture/{z}/{x}/{y}.pbf"],
-            minzoom: 0,
-            maxzoom: 14,
-            vector_layers: [],
-          }),
-        });
-      } else if (url.endsWith(".pbf")) {
-        await route.fulfill({
-          contentType: "application/x-protobuf",
-          headers: { "access-control-allow-origin": "*" },
-          body: Buffer.alloc(0),
-        });
-      } else if (url.includes("/styles/")) {
-        await route.fulfill({
-          contentType: "application/json",
-          headers: { "access-control-allow-origin": "*" },
-          body: JSON.stringify({ version: 8, sources: {}, layers: [] }),
-        });
-      } else if (url.endsWith(".json")) {
-        await route.fulfill({
-          contentType: "application/json",
-          headers: { "access-control-allow-origin": "*" },
-          body: "{}",
-        });
-      } else {
-        await route.fulfill({
-          contentType: "image/png",
-          headers: { "access-control-allow-origin": "*" },
-          body: PNG.sync.write({ width: 1, height: 1, data: Buffer.alloc(4) }),
-        });
-      }
-    },
-  );
 }
 
 for (const target of selectedTargets) {

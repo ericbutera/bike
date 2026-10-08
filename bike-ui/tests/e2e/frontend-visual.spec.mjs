@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
 import { selectedFrontendRoutes } from "./helpers/frontend-routes.mjs";
 import {
   dynamicVisualMasks,
@@ -10,7 +10,9 @@ import {
 } from "./helpers/frontend.mjs";
 import { snapshotSet, targets } from "./helpers/targets.mjs";
 
-test("Rust owns the canonical frontend screenshots", async ({ browser }) => {
+test("Rust owns the canonical frontend screenshots", async ({
+  createContext,
+}) => {
   test.setTimeout(10 * 60 * 1000);
   test.skip(
     process.env.PLAYWRIGHT_VISUAL !== "1",
@@ -21,7 +23,7 @@ test("Rust owns the canonical frontend screenshots", async ({ browser }) => {
   const { viewport, suffix } = visualViewport();
   for (const route of selectedFrontendRoutes()) {
     for (const theme of visualThemes()) {
-      const context = await browser.newContext({
+      const context = await createContext({
         colorScheme: theme,
         locale: "en-US",
         timezoneId: "America/Detroit",

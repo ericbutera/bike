@@ -1,15 +1,14 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
 import { openFrontendRoute } from "./helpers/frontend.mjs";
 import { targets } from "./helpers/targets.mjs";
 
 test("report selection fetches only the selected report in Bike", async ({
-  browser,
+  createContext,
 }) => {
   test.setTimeout(90_000);
-  const statusesByStack = {};
 
   for (const target of targets) {
-    const context = await browser.newContext({
+    const context = await createContext({
       viewport: { width: 1440, height: 900 },
     });
     const page = await context.newPage();
@@ -23,8 +22,7 @@ test("report selection fetches only the selected report in Bike", async ({
           new URL(response.url()).pathname === "/api/training/reports",
       );
     await expect.poll(() => reportResponses().length).toBe(1);
-    const initialStatus = reportResponses()[0].status();
-    expect([200, 429]).toContain(initialStatus);
+    expect(reportResponses()[0].status()).toBe(200);
 
     const menu = page.getByRole("navigation", { name: "Report menu" });
     await menu.getByRole("button", { name: /Ride Summary/ }).click();
@@ -34,19 +32,12 @@ test("report selection fetches only the selected report in Bike", async ({
     ).toBeVisible();
     await expect.poll(() => reportResponses().length).toBe(2);
     const statuses = reportResponses().map((response) => response.status());
-    expect(statuses).toHaveLength(2);
-    expect(statuses.every((status) => status === 200 || status === 429)).toBe(
-      true,
-    );
+    expect(statuses).toEqual([200, 200]);
     expect(new URL(reportResponses()[1].url()).searchParams.get("report")).toBe(
       "ride_summary",
     );
-    statusesByStack[target.name] = statuses;
 
     await evidence.close();
     await context.close();
   }
-
-  expect(statusesByStack.go).toEqual(statusesByStack.rust);
-  expect(statusesByStack.cs).toEqual(statusesByStack.rust);
 });

@@ -1,5 +1,7 @@
 "use client";
 
+import ResponsiveChart from "../ui/ResponsiveChart";
+
 import { faPause, faPlay, faXmark } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
@@ -10,7 +12,6 @@ import {
   ComposedChart,
   Line,
   ReferenceDot,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
@@ -304,11 +305,12 @@ function ComparisonChart({
       aria-label="Segment comparison chart"
       className="h-[18rem] p-3"
     >
-      <ResponsiveContainer
+      <ResponsiveChart
         width="100%"
         height="100%"
         minWidth={320}
         minHeight={240}
+        initialDimension={{ width: 320, height: 240 }}
       >
         <ComposedChart
           data={chartRows}
@@ -441,7 +443,7 @@ function ComparisonChart({
               })
             : null}
         </ComposedChart>
-      </ResponsiveContainer>
+      </ResponsiveChart>
     </div>
   ) : (
     <div className="flex h-[18rem] items-center justify-center p-4">

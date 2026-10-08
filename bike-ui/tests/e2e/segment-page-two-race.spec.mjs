@@ -1,12 +1,13 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
+test.use({ scenario: "eleven-efforts" });
 import { segmentId, targets } from "./helpers/targets.mjs";
 import { openRoute } from "./helpers/ui.mjs";
 
 test("a second-page effort reaches the race viewer through its URL", async ({
-  browser,
+  createContext,
 }) => {
   for (const target of targets) {
-    const context = await browser.newContext({ colorScheme: "light" });
+    const context = await createContext({ colorScheme: "light" });
     const page = await context.newPage();
     await openRoute(page, target, `/segments/${segmentId}`);
     await expect(page.getByText("Showing 1-10 of 11 efforts")).toBeVisible();

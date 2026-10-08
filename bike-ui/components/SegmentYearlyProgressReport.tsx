@@ -1,5 +1,7 @@
 "use client";
 
+import ResponsiveChart from "./ui/ResponsiveChart";
+
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo } from "react";
@@ -7,7 +9,6 @@ import {
   CartesianGrid,
   Line,
   LineChart,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
@@ -210,7 +211,7 @@ export default function SegmentYearlyProgressReport() {
           ) : (
             <>
               <div className="h-80 w-full">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveChart width="100%" height="100%">
                   <LineChart
                     data={chartData}
                     margin={{ top: 12, right: 24, bottom: 8, left: 8 }}
@@ -239,7 +240,7 @@ export default function SegmentYearlyProgressReport() {
                       activeDot={{ r: 6 }}
                     />
                   </LineChart>
-                </ResponsiveContainer>
+                </ResponsiveChart>
               </div>
 
               <p className="max-w-3xl text-sm leading-6 text-base-content/70">

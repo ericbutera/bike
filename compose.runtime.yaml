@@ -1,0 +1,79 @@
+# Image-based service contracts shared by development and disposable E2E.
+services:
+  postgres:
+    image: ${BIKE_POSTGRES_IMAGE:?Run Compose through mise}
+    environment:
+      POSTGRES_DB: bike
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -h 127.0.0.1 -U postgres -d postgres]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migration:
+    image: ${BIKE_API_IMAGE:-bike-api:review}
+    command: [/app/migration, up]
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/bike
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  bike-rs:
+    image: ${BIKE_API_IMAGE:-bike-api:review}
+    environment: &application_environment
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/bike
+      UPLOADS_DIR: /app/uploads
+      RUST_LOG: info,sqlx=warn
+      OTEL_TRACES_EXPORTER: ${OTEL_TRACES_EXPORTER:-none}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      FRONTEND_URL: ${BIKE_FRONTEND_URL:-http://localhost:3001}
+      API_URL: ${BIKE_BACKEND_URL:-http://localhost:3000}
+      JWT_SECRET: ${BIKE_JWT_SECRET:-change_me_in_dev}
+      STRAVA_CLIENT_ID: ''
+      STRAVA_CLIENT_SECRET: ''
+      STRAVA_OAUTH_SCOPES: activity:read_all
+      APP_NAME: Bike
+      SMTP_HOST: localhost
+      SMTP_PORT: 1025
+      MAIL_FROM: noreply@bike.local
+      SMTP_FROM_NAME: Bike
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+
+  worker:
+    image: ${BIKE_WORKER_IMAGE:-bike-worker:review}
+    environment: *application_environment
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+
+  ui:
+    image: ${BIKE_UI_IMAGE:-bike-ui:review}
+    environment:
+      API_URL: ${BIKE_BROWSER_API_URL:-http://localhost:3000/api}
+      CDN_URL: ${BIKE_BROWSER_CDN_URL:-http://localhost:3000/uploads}
+      INTERNAL_API_URL: http://bike-rs:3000/api
+      MAP_RENDERER_URL: http://bike-maps:3100
+      MAP_SERVICE_TOKEN: ${MAP_SERVICE_TOKEN:-}
+    depends_on:
+      bike-rs:
+        condition: service_started
+
+  bike-maps:
+    image: ${BIKE_RENDERER_IMAGE:-bike-map-renderer:review}
+    environment:
+      MAP_IMAGE_CACHE_DIR: /cache
+      MAP_IMAGE_CACHE_TTL_SECONDS: ${MAP_IMAGE_CACHE_TTL_SECONDS:-604800}
+      MAP_SERVICE_TOKEN: ${MAP_SERVICE_TOKEN:-}
+    volumes:
+      - map_image_cache:/cache
+
+volumes:
+  postgres_data:
+  map_image_cache:

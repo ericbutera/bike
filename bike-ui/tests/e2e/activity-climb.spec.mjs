@@ -1,13 +1,14 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
+test.use({ scenario: "climb" });
 import { activityId, targets } from "./helpers/targets.mjs";
 import { openActivityDetail } from "./helpers/ui.mjs";
 
 test("a sustained climb opens its details and elevation chart", async ({
-  browser,
+  createContext,
 }) => {
   test.setTimeout(90_000);
   for (const target of targets) {
-    const context = await browser.newContext();
+    const context = await createContext();
     const page = await context.newPage();
     await openActivityDetail(page, target, activityId);
     await expect(page.getByText("1 climb", { exact: true })).toBeVisible();

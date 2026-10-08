@@ -1,17 +1,17 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { activityId, targets } from "./helpers/targets.mjs";
 import { openActivityDetail } from "./helpers/ui.mjs";
 
 test("activity source download and admin import trace work in Bike", async ({
-  browser,
+  createContext,
 }) => {
   test.setTimeout(90_000);
   const downloads = [];
 
   for (const target of targets) {
-    const context = await browser.newContext({ acceptDownloads: true });
+    const context = await createContext({ acceptDownloads: true });
     const page = await context.newPage();
     await openActivityDetail(page, target, activityId);
 
@@ -37,21 +37,16 @@ test("activity source download and admin import trace work in Bike", async ({
     await context.close();
   }
 
-  expect(downloads).toEqual([
-    {
+  const source = await readFile(
+    new URL(
+      "../../../bike-rs/api/tests/fixtures/platform/uploads/activity-imports/synthetic-1109.gpx",
+      import.meta.url,
+    ),
+  );
+  expect(downloads).toEqual(
+    targets.map(() => ({
       name: "synthetic-1109.gpx",
-      digest:
-        "81afe890f5a7740bf7defbaad9fb6b5325a5deaacd4139d4977c00e81868a267",
-    },
-    {
-      name: "synthetic-1109.gpx",
-      digest:
-        "81afe890f5a7740bf7defbaad9fb6b5325a5deaacd4139d4977c00e81868a267",
-    },
-    {
-      name: "synthetic-1109.gpx",
-      digest:
-        "81afe890f5a7740bf7defbaad9fb6b5325a5deaacd4139d4977c00e81868a267",
-    },
-  ]);
+      digest: createHash("sha256").update(source).digest("hex"),
+    })),
+  );
 });

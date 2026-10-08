@@ -1,5 +1,7 @@
 "use client";
 
+import ResponsiveChart from "../ui/ResponsiveChart";
+
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
@@ -8,7 +10,6 @@ import {
   CartesianGrid,
   Cell,
   Legend,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
@@ -423,7 +424,7 @@ export default function SegmentEffortAnalysisSection({
           />
 
           <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveChart width="100%" height="100%">
               <BarChart
                 data={chartData}
                 onMouseMove={(state) => {
@@ -471,7 +472,7 @@ export default function SegmentEffortAnalysisSection({
                   ))}
                 </Bar>
               </BarChart>
-            </ResponsiveContainer>
+            </ResponsiveChart>
           </div>
 
           <div className="overflow-x-auto">

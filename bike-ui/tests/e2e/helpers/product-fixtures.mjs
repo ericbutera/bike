@@ -1,4 +1,6 @@
 import fs from "node:fs";
+import { fakeApiResponse } from "./api-response.mjs";
+import { blankPng } from "./external-providers.mjs";
 
 export const ridePayload = JSON.parse(
   fs.readFileSync(
@@ -34,34 +36,38 @@ export const ride = {
   })),
 };
 
-const pixel = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==",
-  "base64",
-);
 const pagination = { page: 1, per_page: 10, total: 1, total_pages: 1 };
 
 export async function fakeProductApi(page, target, { signedIn = true } = {}) {
   const state = { signedIn, requests: [], unexpected: [] };
+  // The Next.js preview routes fetch product APIs on the server, beyond page API interception.
+  await page.route(
+    /\/activity-(?:map-images|previews)(?:\/|\?)/,
+    async (route) => {
+      await route.fulfill({ contentType: "image/png", body: blankPng });
+    },
+  );
+  await fakeApiResponse(page, ["/api/auth/current"], () => {
+    state.requests.push("/auth/current");
+    return {
+      status: state.signedIn ? 200 : 401,
+      json: state.signedIn
+        ? {
+            pid: "fixture-user",
+            email: "fixture@example.test",
+            name: "Fixture Rider",
+            verified: true,
+            is_admin: false,
+          }
+        : { message: "Unauthorized" },
+    };
+  });
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname.replace(/^.*\/api/, "");
     state.requests.push(path);
     let json;
     switch (path) {
-      case "/auth/current":
-        await route.fulfill({
-          status: state.signedIn ? 200 : 401,
-          json: state.signedIn
-            ? {
-                pid: "fixture-user",
-                email: "fixture@example.test",
-                name: "Fixture Rider",
-                verified: true,
-                is_admin: false,
-              }
-            : { message: "Unauthorized" },
-        });
-        return;
       case "/oauth/providers":
         json = {
           providers: [{ id: "sso", label: "Continue with fixture SSO" }],
@@ -100,7 +106,7 @@ export async function fakeProductApi(page, target, { signedIn = true } = {}) {
           path.startsWith(`/activities/${ride.id}/`) &&
           path.includes("map")
         ) {
-          await route.fulfill({ contentType: "image/png", body: pixel });
+          await route.fulfill({ contentType: "image/png", body: blankPng });
           return;
         }
         state.unexpected.push(`${request.method()} ${path}`);
@@ -109,15 +115,5 @@ export async function fakeProductApi(page, target, { signedIn = true } = {}) {
     }
     await route.fulfill({ json });
   });
-  await page.route(
-    /^https:\/\/(?:tiles\.openfreemap\.org|tile\.waymarkedtrails\.org|server\.arcgisonline\.com)\//,
-    async (route) => {
-      if (route.request().url().includes("/styles/")) {
-        await route.fulfill({ json: { version: 8, sources: {}, layers: [] } });
-      } else {
-        await route.fulfill({ contentType: "image/png", body: pixel });
-      }
-    },
-  );
   return state;
 }

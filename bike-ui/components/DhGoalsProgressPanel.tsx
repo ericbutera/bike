@@ -1,5 +1,7 @@
 "use client";
 
+import ResponsiveChart from "./ui/ResponsiveChart";
+
 import Link from "next/link";
 import { useMemo } from "react";
 import {
@@ -8,7 +10,6 @@ import {
   ComposedChart,
   Line,
   ReferenceLine,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
@@ -516,7 +517,7 @@ export default function DhGoalsProgressPanel() {
                 role="img"
                 aria-label="DH recent sessions chart"
               >
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveChart width="100%" height="100%">
                   <ComposedChart data={sessionChartData}>
                     <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.2} />
                     <XAxis
@@ -563,7 +564,7 @@ export default function DhGoalsProgressPanel() {
                       name="Average fade"
                     />
                   </ComposedChart>
-                </ResponsiveContainer>
+                </ResponsiveChart>
               </div>
             ) : (
               <EmptySessionsState />

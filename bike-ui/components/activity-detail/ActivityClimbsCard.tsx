@@ -1,11 +1,12 @@
 "use client";
 
+import ResponsiveChart from "../ui/ResponsiveChart";
+
 import { type KeyboardEvent, useMemo } from "react";
 import {
   Area,
   CartesianGrid,
   ComposedChart,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
@@ -322,11 +323,12 @@ export default function ActivityClimbsCard({
                   className="mt-6 overflow-hidden rounded-box border border-base-300 bg-base-200 p-3"
                 >
                   <div className="h-[180px] w-full">
-                    <ResponsiveContainer
+                    <ResponsiveChart
                       width="100%"
                       height="100%"
                       minWidth={320}
                       minHeight={180}
+                      initialDimension={{ width: 320, height: 180 }}
                     >
                       <ComposedChart
                         data={elevationRows}
@@ -365,7 +367,7 @@ export default function ActivityClimbsCard({
                           connectNulls
                         />
                       </ComposedChart>
-                    </ResponsiveContainer>
+                    </ResponsiveChart>
                   </div>
                 </div>
               ) : null}

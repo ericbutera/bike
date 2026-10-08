@@ -25,7 +25,9 @@ migration behavior, production query plans, and resource use remain separate
 checks. External authentication and provider calls use their owning fixture
 suites. The owning component instructions define required verification.
 
-`fixtures/platform/` also retains deterministic PostgreSQL scenario fixtures and
-small synthetic uploads for focused UI/workflow checks. SQL scenario files should
-only be applied to an explicitly selected disposable database. The integration
-test's SQLite fixture does not use those PostgreSQL files.
+`fixtures/platform/` retains the owning in-memory read fixture and small synthetic
+uploads. Browser scenario data lives in
+[`Playwright seed builders`](../../../bike-ui/tests/e2e/helpers/seeds.mjs), is
+validated through current ORM models by `e2e-fixtures`, and is snapshotted after
+current migrations. Browser tests restore data while services remain running.
+The default browser suite excludes the job worker; worker E2E is a future opt-in.
