@@ -1,6 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+: "${BIKE_E2E_ENGINE_STATE_DIR:?CI must select the job-local engine directory}"
+stop_engine() {
+  local result=$?
+  trap - EXIT
+  mkdir -p "$BIKE_E2E_ENGINE_STATE_DIR"
+  touch "$BIKE_E2E_ENGINE_STATE_DIR/stop"
+  for attempt in {1..30}; do
+    if [[ -f "$BIKE_E2E_ENGINE_STATE_DIR/stopped" ]]; then
+      if [[ "$(cat "$BIKE_E2E_ENGINE_STATE_DIR/stopped")" != 0 ]]; then result=1; fi
+      exit "$result"
+    fi
+    sleep 1
+  done
+  printf 'Job-local Docker engine did not stop cleanly\n' >&2
+  exit 1
+}
+trap stop_engine EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 registry=registry.registry:5000
 revision="${CI_COMMIT_SHA:?CI must supply its immutable source revision}"
 export BIKE_API_IMAGE="$registry/bike-api:$revision"

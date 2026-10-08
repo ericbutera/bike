@@ -149,10 +149,9 @@ The observed production/local servers remain 17.7/17.9 until that rollout.
 - [x] **UPG11 — Refresh and pin base images.** Rust, Go, browser e2e, renderer's
       Node stage, runtime and CI bootstrap use **trixie**, with immutable image
       digests. UI pins **Alpine 3.24**. Playwright **1.63.0/noble** retains its
-      matching browser/library identity. Clone **2.10.1**, Kaniko **2.3.3**, k6
+      matching browser/library identity. Clone **2.10.1**, Buildx **0.38.0**, k6
       **2.3.0**, and database inputs are pinned. Application SHA tags remain the
-      release identities; the existing `latest` application aliases are outputs,
-      not floating base dependencies.
+      release identities. Base inputs use immutable references.
       [Debian lifecycle](https://www.debian.org/releases/).
 - [x] **UPG12 — Refresh quality-tool pins.** Prettier **3.9.9** and prek
       **0.5.5** replace 3.7.4/0.4.12. Seven UI files, including the generated API
@@ -166,10 +165,10 @@ The observed production/local servers remain 17.7/17.9 until that rollout.
       the selected compiler/includes from an official mise image stage. Native
       freshness and gateway/receiver tests cover the updated bindings.
 - [x] **UPG14 — Make mise pins reach every consumer.** Native image tasks and
-      Compose pass the selected image/tool pins. The owning CI preparation task
-      exports only public build inputs; Kaniko consumes them through its native
-      `build_args_from_env` support. A real no-push plugin build verifies the
-      handoff and maintained executor **1.28.5**. Official mise **2026.10.3/debian**
+      Compose pass the selected image/tool pins. Local and CI release tasks use
+      the same Bake targets and mise environment. BuildKit retains package and
+      compiler caches across jobs; API/worker share one compilation stage.
+      Official mise **2026.10.3/debian**
       supplies CI and protobuf stages; its installer is not committed. Cargo-chef
       dependency caching is restored with immutable upstream revision
       `449576bbc2645200936adb9dece80810c9a335f8` (PR #369), fixing Cargo 1.99's

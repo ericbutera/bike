@@ -1,5 +1,5 @@
 # A native service starts only after this revision's checks and images pass.
-# Woodpecker services expose ports; detached command steps cannot declare them.
+# The private workspace socket keeps the disposable engine inside this job.
 depends_on: [bike]
 when:
   - event: [push, pull_request]
@@ -14,6 +14,7 @@ when:
         - integration-tests/**
         - scripts/**
         - compose*.yaml
+        - docker-bake.hcl
         - prek.toml
         - .dockerignore
         - strava-gateway/**
@@ -37,11 +38,10 @@ services:
   - name: docker
     image: localhost:32500/bike-e2e-engine:${CI_COMMIT_SHA}
     privileged: true
-    ports: [2376]
     environment:
-      DOCKER_TLS_CERTDIR: /woodpecker/src/.artifacts/dind-certs
+      BIKE_E2E_ENGINE_STATE_DIR: &engine_state /woodpecker/src/.artifacts/dind-state
     commands:
-      - dockerd-entrypoint.sh --insecure-registry=registry.registry:5000
+      - sh scripts/ci-e2e-engine.sh --insecure-registry=registry.registry:5000
 
 steps:
   - name: prepare
@@ -63,9 +63,8 @@ steps:
     image: localhost:32500/bike-e2e:${CI_COMMIT_SHA}
     environment:
       <<: *mise_environment
-      DOCKER_HOST: tcp://docker:2376
-      DOCKER_TLS_VERIFY: "1"
-      DOCKER_CERT_PATH: /woodpecker/src/.artifacts/dind-certs/client
+      DOCKER_HOST: unix:///woodpecker/src/.artifacts/dind-state/docker.sock
+      BIKE_E2E_ENGINE_STATE_DIR: *engine_state
     volumes: *mise_cache
     commands:
       - mise run ci:e2e
