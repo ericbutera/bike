@@ -57,6 +57,7 @@ mod m20261005_000002_strava_gateway_integration_events;
 mod m20261006_000001_heatmap_projection_recording_policy;
 mod m20261006_000002_heatmap_cycling_sources;
 mod m20261006_000003_activity_recording_environment;
+mod m20261008_000001_activity_import_attempts;
 
 pub struct Migrator;
 
@@ -67,6 +68,7 @@ impl MigratorTrait for Migrator {
         migrations.sort_by_key(|m| m.name().to_string());
 
         let mut locals: Vec<Box<dyn MigrationTrait>> = vec![
+            Box::new(m20261008_000001_activity_import_attempts::Migration),
             Box::new(m20260506_000001_create_activity_imports::Migration),
             Box::new(m20260506_000002_create_activities::Migration),
             Box::new(m20260506_000003_add_activity_derived_data::Migration),

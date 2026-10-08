@@ -71,6 +71,13 @@ export function ActivityHeaderActions({
                 </button>
               </li>
             ) : null}
+            {activity.activity_import_id ? (
+              <li>
+                <Link href={`/imports/${activity.activity_import_id}`}>
+                  Processing stages and replay
+                </Link>
+              </li>
+            ) : null}
 
             {activity.can_regenerate ? (
               <li>

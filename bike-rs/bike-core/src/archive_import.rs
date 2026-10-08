@@ -4,9 +4,9 @@ use crate::activity_import_lock::{
     ACTIVITY_IMPORT_LOCK_STAGE_QUEUED, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
 };
 use crate::activity_import_pipeline::{
-    finalize_activity_import_batch, mark_activity_imports_processed, persist_activity_upload,
+    process_stored_activity_import, store_activity_upload_import_with_artifacts,
     ActivityUploadDeduplication, ActivityUploadPayload, PersistActivityUploadOutcome,
-    PersistActivityUploadRequest,
+    StoreActivityUploadImportRequest,
 };
 use crate::activity_lifecycle::resume_incomplete_activity_imports_for_user;
 use crate::config::Config;
@@ -38,6 +38,7 @@ pub const ACTIVITY_ARCHIVE_IMPORT_STATUS_QUEUED: &str = "queued";
 pub const ACTIVITY_ARCHIVE_IMPORT_STATUS_RUNNING: &str = "running";
 pub const ACTIVITY_ARCHIVE_IMPORT_STATUS_SUCCEEDED: &str = "succeeded";
 pub const ACTIVITY_ARCHIVE_IMPORT_STATUS_FAILED: &str = "failed";
+pub const ACTIVITY_ARCHIVE_IMPORT_STATUS_PARTIAL: &str = "partial";
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[schema(example = json!({"source": "strava_archive","total_entries": 120,"supported_entry_count": 116,"imported_count": 110,"duplicate_count": 6,"skipped_unsupported_count": 4,"failed_count": 0,"error_samples": []}))]
@@ -67,6 +68,7 @@ pub struct DownloadedArchive {
 }
 
 pub struct ImportActivityArchiveRequest<'a> {
+    pub archive_job_id: Option<i32>,
     pub uploads_dir: &'a str,
     pub user_storage_key: &'a str,
     pub user_id: i32,
@@ -176,6 +178,7 @@ pub async fn process_activity_archive_import_job(
         db,
         &TaskQueue::new(db.clone()),
         ImportActivityArchiveRequest {
+            archive_job_id: Some(job_id),
             uploads_dir,
             user_storage_key: &running_job.user_storage_key,
             user_id: running_job.user_id,
@@ -190,14 +193,21 @@ pub async fn process_activity_archive_import_job(
 
     match result {
         Ok(summary) => {
-            mark_activity_archive_import_job_succeeded(db, &running_job, &summary).await?;
+            mark_activity_archive_import_job_finished(db, &running_job, &summary).await?;
             release_user_activity_import_lock(
                 db,
                 running_job.user_id,
                 ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT,
             )
             .await?;
-            Ok(())
+            if summary.failed_count > 0 {
+                Err(AppError::internal(format!(
+                    "Archive finished with {} failed entries; inspect import history",
+                    summary.failed_count
+                )))
+            } else {
+                Ok(())
+            }
         }
         Err(error) => {
             mark_activity_archive_import_job_failed(
@@ -278,7 +288,9 @@ pub fn decode_error_samples(raw: Option<&str>) -> Vec<String> {
 pub fn is_archive_import_terminal_status(status: &str) -> bool {
     matches!(
         status,
-        ACTIVITY_ARCHIVE_IMPORT_STATUS_SUCCEEDED | ACTIVITY_ARCHIVE_IMPORT_STATUS_FAILED
+        ACTIVITY_ARCHIVE_IMPORT_STATUS_SUCCEEDED
+            | ACTIVITY_ARCHIVE_IMPORT_STATUS_FAILED
+            | ACTIVITY_ARCHIVE_IMPORT_STATUS_PARTIAL
     )
 }
 
@@ -318,6 +330,7 @@ struct ArchiveScanResult {
 }
 
 struct ActivityArchiveImportRun<'a> {
+    archive_job_id: Option<i32>,
     db: &'a DatabaseConnection,
     uploads_dir: &'a str,
     user_storage_key: &'a str,
@@ -343,17 +356,39 @@ impl ActivityArchiveImportRun<'_> {
             bytes,
         };
 
-        persist_activity_upload(
+        let import = store_activity_upload_import_with_artifacts(
             self.db,
-            PersistActivityUploadRequest {
+            StoreActivityUploadImportRequest {
                 uploads_dir: self.uploads_dir,
                 user_storage_key: self.user_storage_key,
                 user_id: self.user_id,
                 upload,
                 source: self.activity_source,
-                deduplication: ActivityUploadDeduplication::Enabled,
-                training_profile: Some(self.training_profile),
+                primary_artifact_kind: "original",
+                primary_source_quality:
+                    crate::activity_import_pipeline::original_source_quality_for_format(
+                        &indexed_entry.activity_entry.format,
+                    ),
+                additional_artifacts: Vec::new(),
             },
+        )
+        .await?;
+        if let Some(job_id) = self.archive_job_id {
+            crate::entities::activity_imports::Entity::attach_archive_job(
+                self.db,
+                self.user_id,
+                import.id,
+                job_id,
+            )
+            .await?;
+        }
+        process_stored_activity_import(
+            self.db,
+            self.uploads_dir,
+            self.user_id,
+            import,
+            ActivityUploadDeduplication::Enabled,
+            Some(self.training_profile),
         )
         .await
     }
@@ -406,6 +441,7 @@ pub async fn import_activity_archive_from_path(
     request: ImportActivityArchiveRequest<'_>,
 ) -> Result<ActivityArchiveImportResponse, AppError> {
     let ImportActivityArchiveRequest {
+        archive_job_id,
         uploads_dir,
         user_storage_key,
         user_id,
@@ -418,6 +454,7 @@ pub async fn import_activity_archive_from_path(
     let scan = scan_archive_entries(archive_path)?;
     let training_profile = load_training_profile(db, user_id).await?;
     let run = ActivityArchiveImportRun {
+        archive_job_id,
         db,
         uploads_dir,
         user_storage_key,
@@ -426,7 +463,7 @@ pub async fn import_activity_archive_from_path(
         training_profile: &training_profile,
     };
 
-    let progress = import_supported_archive_entries(&run, archive_path, &scan).await;
+    let progress = import_supported_archive_entries(&run, archive_path, &scan).await?;
 
     if scan.supported_entry_count == 0 {
         return Err(AppError::validation_field(
@@ -447,16 +484,15 @@ pub async fn import_activity_archive_from_path(
     let error_samples = error_samples.into_iter().take(10).collect::<Vec<_>>();
 
     if imported_count > 0 {
-        finalize_activity_import_batch(
+        crate::activity_import_lifecycle::complete_activity_imports(
             db,
             tasks,
             user_id,
+            &imported_import_ids,
             affected_segment_ids,
             fitness_dirty_from_day,
-            Utc::now(),
         )
         .await?;
-        mark_activity_imports_processed(db, &imported_import_ids).await?;
     }
 
     Ok(ActivityArchiveImportResponse {
@@ -475,8 +511,9 @@ async fn import_supported_archive_entries(
     run: &ActivityArchiveImportRun<'_>,
     archive_path: &Path,
     scan: &ArchiveScanResult,
-) -> ActivityArchiveImportProgress {
+) -> Result<ActivityArchiveImportProgress, AppError> {
     let mut progress = ActivityArchiveImportProgress::default();
+    persist_archive_progress(run, scan, &progress).await?;
     let supported_entries = sorted_supported_archive_entries(scan);
 
     for indexed_entry in &supported_entries {
@@ -491,9 +528,37 @@ async fn import_supported_archive_entries(
                 progress.record_error(&indexed_entry.entry_name, error.message);
             }
         }
+        persist_archive_progress(run, scan, &progress).await?;
     }
 
-    progress
+    Ok(progress)
+}
+
+async fn persist_archive_progress(
+    run: &ActivityArchiveImportRun<'_>,
+    scan: &ArchiveScanResult,
+    progress: &ActivityArchiveImportProgress,
+) -> Result<(), AppError> {
+    let Some(job_id) = run.archive_job_id else {
+        return Ok(());
+    };
+    activity_archive_import_jobs::Entity::store_progress(
+        run.db,
+        run.user_id,
+        job_id,
+        &ActivityArchiveImportResponse {
+            source: run.activity_source.into(),
+            total_entries: scan.total_entries,
+            supported_entry_count: scan.supported_entry_count,
+            imported_count: progress.imported_count,
+            duplicate_count: progress.duplicate_count,
+            skipped_unsupported_count: scan.skipped_unsupported_count,
+            failed_count: progress.error_samples.len() as i32,
+            error_samples: progress.error_samples.iter().take(10).cloned().collect(),
+        },
+    )
+    .await?;
+    Ok(())
 }
 
 fn sorted_supported_archive_entries(scan: &ArchiveScanResult) -> Vec<IndexedArchiveActivityEntry> {
@@ -1061,7 +1126,7 @@ async fn mark_activity_archive_import_job_running(
     .map_err(AppError::from)
 }
 
-async fn mark_activity_archive_import_job_succeeded(
+async fn mark_activity_archive_import_job_finished(
     db: &DatabaseConnection,
     job: &activity_archive_import_jobs::Model,
     summary: &ActivityArchiveImportResponse,
@@ -1069,7 +1134,7 @@ async fn mark_activity_archive_import_job_succeeded(
     activity_archive_import_jobs::ActiveModel {
         id: Set(job.id),
         resolved_url: Set(Some(summary.source.clone())),
-        status: Set(ACTIVITY_ARCHIVE_IMPORT_STATUS_SUCCEEDED.to_string()),
+        status: Set(archive_outcome(summary).into()),
         failure_message: Set(None),
         error_samples_json: Set(Some(
             serde_json::to_string(&summary.error_samples).map_err(|error| {
@@ -1090,6 +1155,16 @@ async fn mark_activity_archive_import_job_succeeded(
     .update(db)
     .await
     .map_err(AppError::from)
+}
+
+fn archive_outcome(summary: &ActivityArchiveImportResponse) -> &'static str {
+    if summary.failed_count == 0 {
+        ACTIVITY_ARCHIVE_IMPORT_STATUS_SUCCEEDED
+    } else if summary.imported_count + summary.duplicate_count > 0 {
+        ACTIVITY_ARCHIVE_IMPORT_STATUS_PARTIAL
+    } else {
+        ACTIVITY_ARCHIVE_IMPORT_STATUS_FAILED
+    }
 }
 
 async fn mark_activity_archive_import_job_failed(
@@ -1161,6 +1236,11 @@ mod tests {
         db.execute(&schema.create_table_from_entity(activity_imports::Entity))
             .await
             .expect("create activity imports table");
+        db.execute(
+            &schema.create_table_from_entity(crate::entities::activity_import_attempts::Entity),
+        )
+        .await
+        .expect("create activity imports table");
         db.execute(&schema.create_table_from_entity(activity_import_artifacts::Entity))
             .await
             .expect("create activity import artifacts table");
@@ -1185,8 +1265,18 @@ mod tests {
         db.execute(&schema.create_table_from_entity(background_tasks::Entity))
             .await
             .expect("create background tasks table");
+        create_archive_trace_tables(&db, &schema).await;
 
         db
+    }
+
+    async fn create_archive_trace_tables(db: &DatabaseConnection, schema: &Schema) {
+        db.execute(&schema.create_table_from_entity(activity_archive_import_jobs::Entity))
+            .await
+            .unwrap();
+        db.execute(&schema.create_table_from_entity(crate::entities::integration_events::Entity))
+            .await
+            .unwrap();
     }
 
     fn test_uploads_dir() -> String {
@@ -1286,6 +1376,7 @@ mod tests {
             &db,
             &tasks,
             ImportActivityArchiveRequest {
+                archive_job_id: None,
                 uploads_dir: &uploads_dir,
                 user_storage_key: "test-user",
                 user_id: 1,
@@ -1303,6 +1394,7 @@ mod tests {
             &db,
             &tasks,
             ImportActivityArchiveRequest {
+                archive_job_id: None,
                 uploads_dir: &uploads_dir,
                 user_storage_key: "test-user",
                 user_id: 1,
@@ -1324,6 +1416,86 @@ mod tests {
 
         let _ = std::fs::remove_file(&archive_path);
         let _ = std::fs::remove_dir_all(&uploads_dir);
+    }
+
+    #[tokio::test]
+    async fn partial_archive_persists_counters_and_links_failed_uncreated_imports() {
+        let db = test_db().await;
+        let uploads_dir = test_uploads_dir();
+        let path = write_test_archive(&[
+            (
+                "ride.fit",
+                include_bytes!("../../api/tests/fixtures/activity.fit").as_slice(),
+            ),
+            ("broken.gpx", b"invalid"),
+            ("readme.txt", b"unsupported"),
+        ]);
+        let job = activity_archive_import_jobs::ActiveModel {
+            user_id: Set(1),
+            user_storage_key: Set("test-user".into()),
+            archive_url: Set("https://example.test/archive.zip".into()),
+            status: Set("running".into()),
+            total_entries: Set(0),
+            supported_entry_count: Set(0),
+            imported_count: Set(0),
+            duplicate_count: Set(0),
+            skipped_unsupported_count: Set(0),
+            failed_count: Set(0),
+            ..Default::default()
+        }
+        .insert(&db)
+        .await
+        .unwrap();
+        let summary = import_activity_archive_from_path(
+            &db,
+            &TaskQueue::new(db.clone()),
+            ImportActivityArchiveRequest {
+                archive_job_id: Some(job.id),
+                uploads_dir: &uploads_dir,
+                user_storage_key: "test-user",
+                user_id: 1,
+                activity_source: "archive_url_import",
+                display_source: "synthetic mixed archive".into(),
+                archive_path: &path,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            (
+                summary.imported_count,
+                summary.failed_count,
+                summary.skipped_unsupported_count
+            ),
+            (1, 1, 1)
+        );
+        let progress = activity_archive_import_jobs::Entity::find_by_id(job.id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!((progress.imported_count, progress.failed_count), (1, 1));
+        assert!(progress.error_samples_json.unwrap().contains("broken.gpx"));
+        let finished = mark_activity_archive_import_job_finished(&db, &job, &summary)
+            .await
+            .unwrap();
+        assert_eq!(finished.status, "partial");
+        let (imports, total) =
+            activity_imports::Entity::history(&db, 1, 1, None, None, Some(job.id))
+                .await
+                .unwrap();
+        assert_eq!(total, 2);
+        assert!(imports
+            .iter()
+            .any(|import| import.status == "failed" && import.activity_id.is_none()));
+        let failed_summary = ActivityArchiveImportResponse {
+            imported_count: 0,
+            duplicate_count: 0,
+            ..summary
+        };
+        assert_eq!(archive_outcome(&failed_summary), "failed");
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_dir_all(uploads_dir).unwrap();
     }
 
     #[test]

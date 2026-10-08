@@ -308,24 +308,36 @@ async fn build_admin_activity_import_trace(
         Some(activity) => Some(activity),
         None => load_activity_for_admin_import_trace(db, &import).await?,
     };
-    let events = integration_event_service::list_recent_events(
-        db,
-        integration_event_service::IntegrationEventListOptions {
-            provider: Some(ACTIVITY_PROCESSING_PROVIDER.to_string()),
-            user_id: Some(import.user_id),
-            activity_id: None,
-            import_id: Some(import.id),
-            limit: 100,
-        },
-    )
-    .await?;
+    let attempts = crate::activity_import_history::attempts(db, &import).await?;
+    let events = if attempts.is_empty() {
+        integration_event_service::list_recent_events(
+            db,
+            integration_event_service::IntegrationEventListOptions {
+                provider: Some(ACTIVITY_PROCESSING_PROVIDER.to_string()),
+                user_id: Some(import.user_id),
+                activity_id: None,
+                import_id: Some(import.id),
+                limit: 100,
+            },
+        )
+        .await?
+    } else {
+        Vec::new()
+    };
     let trace_events = events
         .into_iter()
         .map(activity_imports_controller::ActivityImportTraceEventResponse::from_model)
         .collect::<Vec<_>>();
-    let trace_nodes = activity_imports_controller::build_trace_nodes(&import, &trace_events)?;
+    let trace_nodes = attempts
+        .first()
+        .map(|attempt| attempt.nodes.clone())
+        .unwrap_or(activity_imports_controller::build_trace_nodes(
+            &import,
+            &trace_events,
+        )?);
 
     Ok(activity_imports_controller::ActivityImportTraceResponse {
+        attempts,
         import: activity_imports_controller::ActivityImportResponse::from_model(
             import,
             activity.as_ref(),
@@ -1194,6 +1206,7 @@ pub async fn import_activity_archive(
         &state.db,
         &state.tasks,
         ImportActivityArchiveRequest {
+            archive_job_id: None,
             uploads_dir: &state.uploads_dir,
             user_storage_key: &user_storage_key,
             user_id: admin.user.id,
@@ -1290,6 +1303,11 @@ mod tests {
         db.execute(&schema.create_table_from_entity(activity_imports::Entity))
             .await
             .expect("create activity imports table");
+        db.execute(
+            &schema.create_table_from_entity(bike_core::entities::activity_import_attempts::Entity),
+        )
+        .await
+        .expect("create activity imports table");
         db.execute(&schema.create_table_from_entity(segments::Entity))
             .await
             .expect("create segments table");

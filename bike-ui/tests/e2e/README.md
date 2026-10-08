@@ -58,6 +58,11 @@ PLAYWRIGHT_VISUAL=1 mise run e2e frontend-visual
 
 ## Scenario and coverage inventory
 
+`mise run e2e import-replay` selects the API-mocked import history and replay
+checks. These verify rider-facing stages, summaries, and replay requests with
+synthetic data; Rust unit tests and opt-in database checks own execution and
+server-specific migration constraints.
+
 All connected scenarios use PostgreSQL, the real API/UI/renderer, restored public
 GPX uploads, normal session authentication, and a freshly restored Playwright
 scenario snapshot. Activity, segment, and task IDs can recur across independent

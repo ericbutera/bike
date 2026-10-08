@@ -5,7 +5,7 @@ const disposable = Boolean(process.env.BIKE_E2E_PROJECT);
 const mesaRendering =
   process.platform === "linux" && Boolean(process.env.DISPLAY);
 const mockedSpecs =
-  /(?:auth-happy-path|activity-sync-fixture|map-rendering|heatmap-controls|frontend-auth-state)\.spec\.mjs$/;
+  /(?:auth-happy-path|activity-sync-fixture|map-rendering|heatmap-controls|frontend-auth-state|import-replay)\.spec\.mjs$/;
 
 export default defineConfig({
   testDir: "./tests/e2e",

@@ -7,7 +7,7 @@ use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 
 pub use processors::*;
-use startup::RecoverManualActivityImportsOnStartup;
+use startup::RecoverActivityImportsOnStartup;
 
 pub fn register_email_processors(
     worker: TaskWorker,
@@ -34,10 +34,10 @@ pub async fn register_default_processors(
     let activity_archive_import = Arc::new(ActivityArchiveImport::new(db.clone()));
     let prepare_heatmap = Arc::new(PrepareHeatmap::new(db.clone()));
     let strava_sync = Arc::new(StravaSync::new(db));
-    let recover_manual_imports = Arc::new(RecoverManualActivityImportsOnStartup);
+    let recover_imports = Arc::new(RecoverActivityImportsOnStartup);
 
     Ok(worker
-        .register_startup_hook(recover_manual_imports)
+        .register_startup_hook(recover_imports)
         .register_processor(backfill_user_xc_training)
         .register_processor(rebuild_fitness_freshness)
         .register_processor(rebuild_segment_analytics)

@@ -31,6 +31,40 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
 
+impl Entity {
+    pub async fn store_progress(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        job_id: i32,
+        summary: &crate::archive_import::ActivityArchiveImportResponse,
+    ) -> Result<(), DbErr> {
+        let errors = serde_json::to_string(&summary.error_samples)
+            .map_err(|error| DbErr::Custom(error.to_string()))?;
+        let result = Self::update_many()
+            .set(ActiveModel {
+                total_entries: Set(summary.total_entries),
+                supported_entry_count: Set(summary.supported_entry_count),
+                imported_count: Set(summary.imported_count),
+                duplicate_count: Set(summary.duplicate_count),
+                skipped_unsupported_count: Set(summary.skipped_unsupported_count),
+                failed_count: Set(summary.failed_count),
+                error_samples_json: Set(Some(errors)),
+                updated_at: Set(Utc::now()),
+                ..Default::default()
+            })
+            .filter(Column::Id.eq(job_id))
+            .filter(Column::UserId.eq(user_id))
+            .exec(db)
+            .await?;
+        if result.rows_affected != 1 {
+            return Err(DbErr::RecordNotFound(
+                "Owned archive job was not found".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl ActiveModelBehavior for ActiveModel {
     async fn before_save<C>(mut self, _db: &C, insert: bool) -> Result<Self, DbErr>

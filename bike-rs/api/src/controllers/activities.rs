@@ -101,6 +101,7 @@ where
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(example = json!({"id": 42,"title": "Saturday hill repeats","sport": "ride","source": "manual_upload","activity_type": "training","original_filename": "saturday-hills.fit","format": "fit","started_at": "2026-09-26T13:00:00Z","ended_at": "2026-09-26T14:12:00Z","location": "Detroit, Michigan","distance_meters": 25430.5,"moving_time_seconds": 4200,"total_time_seconds": 4320,"elevation_gain_meters": 312.4,"average_speed_mps": 6.05,"average_heart_rate_bpm": 148,"estimated_ftp_watts": 245,"route_points": [{"elapsed_seconds": 900,"latitude": 42.3314,"longitude": -83.0458,"distance_meters": 4200.5,"elevation_meters": 183.2}],"can_regenerate": true,"can_download_source_file": true}))]
 pub struct ActivityResponse {
+    pub activity_import_id: Option<i32>,
     #[schema(example = 42)]
     pub id: i32,
     #[schema(example = "Saturday hill repeats")]
@@ -243,6 +244,7 @@ impl ActivityResponse {
         let relative_effort = relative_effort(&model);
 
         Self {
+            activity_import_id: model.activity_import_id,
             id: model.id,
             title: model.title,
             sport: model.sport,

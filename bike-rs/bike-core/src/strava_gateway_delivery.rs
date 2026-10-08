@@ -1,5 +1,4 @@
 use crate::activity_import_pipeline::{
-    finalize_activity_import_batch, mark_activity_imports_processed,
     persist_activity_upload_with_artifacts, reprocess_activity_from_import,
     ActivityUploadDeduplication, ActivityUploadPayload, PersistActivityUploadOutcome,
     PersistActivityUploadWithArtifactsRequest, ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD,
@@ -19,7 +18,6 @@ use crate::strava_provider_payload::{
 };
 use crate::training_profile::load_training_profile;
 use crate::workflow_error::WorkflowError as AppError;
-use chrono::Utc;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait};
 use serde::Deserialize;
 use std::path::Path;
@@ -169,16 +167,15 @@ async fn upsert_activity(
         )
         .await?;
         if let PersistActivityUploadOutcome::Imported(imported) = result {
-            finalize_activity_import_batch(
+            crate::activity_import_lifecycle::complete_activity_imports(
                 db,
                 tasks,
                 user_id,
+                &[imported.import.id],
                 imported.affected_segment_ids,
                 Some(imported.fitness_dirty_from_day),
-                Utc::now(),
             )
             .await?;
-            mark_activity_imports_processed(db, &[imported.import.id]).await?;
         }
         Ok(())
     }
@@ -210,16 +207,15 @@ async fn update_existing_activity(
         Some(profile),
     )
     .await?;
-    finalize_activity_import_batch(
+    crate::activity_import_lifecycle::complete_activity_imports(
         db,
         tasks,
         activity.user_id,
+        &[import_id],
         result.affected_segment_ids,
         Some(prior_day.min(result.fitness_dirty_from_day)),
-        Utc::now(),
     )
     .await?;
-    mark_activity_imports_processed(db, &[import_id]).await?;
     Ok(())
 }
 

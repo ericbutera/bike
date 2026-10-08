@@ -2,6 +2,7 @@ pub mod activities;
 pub mod activity_analytics;
 pub mod activity_archive_import_jobs;
 pub mod activity_import_artifacts;
+pub mod activity_import_attempts;
 pub mod activity_import_locks;
 pub mod activity_imports;
 pub mod activity_training_analyses;

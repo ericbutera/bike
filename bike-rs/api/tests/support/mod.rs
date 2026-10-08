@@ -69,6 +69,13 @@ pub async fn synthetic_platform_app() -> (Router, DatabaseConnection, users::Mod
 }
 
 async fn build_platform_app(local_admin: bool) -> Router {
+    ingestion_platform_app(local_admin, String::new()).await.0
+}
+
+pub async fn ingestion_platform_app(
+    local_admin: bool,
+    uploads_dir: String,
+) -> (Router, DatabaseConnection) {
     init_test_metrics();
     let db = platform_database().await;
     let user_pid = Uuid::parse_str(USER_PID).unwrap();
@@ -97,12 +104,12 @@ async fn build_platform_app(local_admin: bool) -> Router {
         tasks: tasks::TaskQueue::new(db.clone()),
         feature_flags: bike_core::platform::feature_flags::FeatureFlagService::new(),
         session_service: tasks::create_session_service(db.clone()),
-        db,
-        uploads_dir: String::new(),
+        db: db.clone(),
+        uploads_dir,
         local_admin_user_pid: local_admin.then_some(user_pid),
         synthetic_auth: None,
     });
-    api::app(state).await
+    (api::app(state).await, db)
 }
 
 async fn platform_database() -> DatabaseConnection {
@@ -116,9 +123,6 @@ async fn platform_database() -> DatabaseConnection {
     create_tables!(
         users::Entity,
         activities::Entity,
-        activity_imports::Entity,
-        activity_import_locks::Entity,
-        activity_import_artifacts::Entity,
         activity_analytics::Entity,
         activity_training_analyses::Entity,
         user_preferences::Entity,
@@ -130,7 +134,8 @@ async fn platform_database() -> DatabaseConnection {
         segment_user_summaries::Entity,
         bike_core::entities::synthetic_scenarios::Entity,
     );
-    // No worker or external provider runs against this isolated fixture.
+    create_ingestion_tables(&db, &schema).await;
+    // This fixture has no external provider or shared database access.
     db.execute_raw(Statement::from_string(
         db.get_database_backend(),
         "PRAGMA foreign_keys = ON",
@@ -138,6 +143,22 @@ async fn platform_database() -> DatabaseConnection {
     .await
     .unwrap();
     db
+}
+
+async fn create_ingestion_tables(db: &DatabaseConnection, schema: &Schema) {
+    macro_rules! create_tables {
+        ($($entity:expr),+ $(,)?) => {
+            $(db.execute(&schema.create_table_from_entity($entity)).await.unwrap();)+
+        };
+    }
+    create_tables!(
+        activity_imports::Entity,
+        bike_core::entities::activity_import_attempts::Entity,
+        bike_core::entities::integration_events::Entity,
+        bike_core::entities::activity_archive_import_jobs::Entity,
+        activity_import_locks::Entity,
+        activity_import_artifacts::Entity,
+    );
 }
 
 fn init_test_metrics() {
