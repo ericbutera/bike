@@ -2,7 +2,12 @@
 NEXT_TELEMETRY_DISABLED = "1"
 
 [tasks.deps]
+depends = ["pins:check"]
 run = "pnpm install --frozen-lockfile"
+
+[tasks."pins:check"]
+description = "Check package-manager metadata against the root mise pin"
+run = "mise --cd .. run pins:check"
 
 [tasks.check]
 description = "Install dependencies and run UI lint, type, unit, format, and contract checks"
@@ -73,7 +78,7 @@ run = "pnpm exec playwright test tests/e2e/diagram-rendering.spec.mjs"
 
 [tasks."test:e2e:heatmaps"]
 description = "Verify personal heatmap tiles, filters, and controls"
-run = "pnpm exec playwright test tests/e2e/heatmap.spec.mjs"
+run = "pnpm exec playwright test tests/e2e/heatmap.spec.mjs tests/e2e/heatmap-controls.spec.mjs"
 
 [tasks."test:e2e:install"]
 description = "Install the browser used by UI integration checks"

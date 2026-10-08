@@ -3,7 +3,7 @@ mise_version = "2026.10.3"
 mise_image = "ghcr.io/jdx/mise:{{vars.mise_version}}-debian@sha256:58c4c847f5518a9a87a9a582886a485443dbca5eb024426577f58d586a0990c6"
 node_version = "24.21.0"
 npm_version = "12.2.0"
-pnpm_version = "12.9.1"
+pnpm_version = "12.10.1"
 rust_version = "1.99.0"
 protoc_version = "36.2"
 # Upstream cargo-chef PR #369 fixes Cargo 1.99's generated target-edition warnings.
@@ -14,10 +14,10 @@ postgres_image = "postgres:17.11-trixie@sha256:ae69c452f483507a6b99fb654cf93aad7
 postgres_upgrade_image = "postgres:18.6-trixie@sha256:fc973eb97c9fd04bfa1840e0f510719a584ccb3be8debfe6a4144637a9dfe8cf"
 tracing_image = "cr.jaegertracing.io/jaegertracing/jaeger:2.22.0"
 runtime_image = "debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f"
-rust_image = "rust:1.99.0-trixie@sha256:6ff07edce8775d0f64be7aba9197229407301bddf2054d62c27b541a6238a181"
-node_image = "node:24.21.0-trixie@sha256:1278a37eb510ec1606fba0e80f554bcc941ae0b44f35ae373c4822ae7717c64d"
-node_alpine_image = "node:24.21.0-alpine3.24@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1"
-go_image = "golang:1.27.1-trixie@sha256:8f58fd67ea075142d947a60e0caa4317746a55118d312f027793d382c7741734"
+rust_image = "rust:{{vars.rust_version}}-trixie@sha256:6ff07edce8775d0f64be7aba9197229407301bddf2054d62c27b541a6238a181"
+node_image = "node:{{vars.node_version}}-trixie@sha256:1278a37eb510ec1606fba0e80f554bcc941ae0b44f35ae373c4822ae7717c64d"
+node_alpine_image = "node:{{vars.node_version}}-alpine3.24@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1"
+go_image = "golang:{{vars.go_version}}-trixie@sha256:8f58fd67ea075142d947a60e0caa4317746a55118d312f027793d382c7741734"
 playwright_image = "mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27"
 k6_image = "grafana/k6:2.3.0@sha256:9c2dee7f8ed74d317e4027c06a10f169b625638189de8d4555d0b3486a5aeb34"
 watchexec_version = "2.8.0"
@@ -34,7 +34,7 @@ shellcheck = "0.11.0"
 protoc = "{{vars.protoc_version}}"
 k6 = "{{vars.k6_version}}"
 "npm:prettier" = "3.9.9"
-"aqua:woodpecker-ci/woodpecker/woodpecker-cli" = "3.18.1"
+"aqua:woodpecker-ci/woodpecker/woodpecker-cli" = "3.19.0"
 
 [env]
 _.path = { path = ["{% if tools['npm:npm'] is defined %}{{tools['npm:npm'].path}}/node_modules/.bin{% endif %}"], tools = true }
@@ -65,6 +65,14 @@ description = "Build the renderer image using mise version pins"
 run = '''
 docker build --file map-renderer/Dockerfile --tag bike-map-renderer:review --build-arg NODE_IMAGE --build-arg NPM_VERSION --build-arg PLAYWRIGHT_IMAGE .
 '''
+
+[tasks."pins:sync"]
+description = "Regenerate pnpm manifest and lock metadata from mise's version pin"
+run = ['npm --prefix bike-ui pkg set "packageManager=pnpm@${PNPM_VERSION?}"', "mise --cd bike-ui exec -- pnpm install --lockfile-only"]
+
+[tasks."pins:check"]
+description = "Verify generated package-manager metadata agrees with mise"
+run = "sh scripts/check-package-manager.sh"
 
 [tasks."api:image"]
 description = "Build the release API and migration tools using mise pins"
@@ -100,15 +108,15 @@ docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-ar
 
 [tasks."compose:config"]
 description = "Validate the shared Bike services Compose stack"
-run = "COMPOSE_PROJECT_NAME=bike docker compose config"
+run = "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-bike} docker compose config"
 
 [tasks."compose:up"]
 description = "Start Bike Rust, the shared UI, PostgreSQL, and map renderer"
-run = "COMPOSE_PROJECT_NAME=bike docker compose up -d --build"
+run = "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-bike} docker compose up -d --build"
 
 [tasks."compose:down"]
 description = "Stop the shared Bike services Compose stack"
-run = "COMPOSE_PROJECT_NAME=bike docker compose down"
+run = "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-bike} docker compose down"
 
 [tasks."db:rehearse"]
 description = "Restore a private Bike custom-format dump into isolated PostgreSQL 17/18 volumes and verify recovery"

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import HeatmapPanel from "../HeatmapPanel";
 import { HEATMAP_COLOR_STORAGE_KEY } from "../../lib/heatmapColors";
+import type { HeatmapView } from "../../lib/heatmapCamera";
 
 const mocks = vi.hoisted(() => ({
   enabled: true,
@@ -14,13 +15,17 @@ const mocks = vi.hoisted(() => ({
   refetch: vi.fn(),
   data: undefined as unknown,
   storage: new Map<string, string>(),
+  view: undefined as HeatmapView | undefined,
 }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: mocks.replace }),
   useSearchParams: () => new URLSearchParams(mocks.search),
 }));
 vi.mock("next/dynamic", () => ({
-  default: () => () => <div aria-label="Personal activity heatmap" />,
+  default: () => (props: { view: HeatmapView }) => {
+    mocks.view = props.view;
+    return <div aria-label="Personal activity heatmap" />;
+  },
 }));
 vi.mock("../../lib/auth", () => ({
   useAuth: () => ({ user: { id: "viewer-1" } }),
@@ -59,6 +64,7 @@ beforeEach(() => {
   mocks.search = "";
   mocks.data = undefined;
   mocks.storage.clear();
+  window.history.replaceState(null, "", "/maps");
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => mocks.storage.get(key) ?? null,
     setItem: (key: string, value: string) => mocks.storage.set(key, value),
@@ -126,13 +132,13 @@ describe("personal heatmap", () => {
     );
     const help = screen.getByLabelText("Heatmap help and legend");
     expect(help.closest("details")).not.toHaveAttribute("open");
-    expect(help.closest("details")).toHaveClass("dropdown-start");
+    expect(help.closest("details")).toHaveClass("dropdown-end");
     const legend = screen.getByLabelText("Activities per path legend");
     expect(legend.closest("details")).not.toHaveAttribute("open");
     fireEvent.click(help);
     expect(legend.closest("details")).toHaveAttribute("open");
     expect(legend).toHaveTextContent("25+");
-    expect(screen.getByLabelText("Find my location")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Find my location")).not.toBeInTheDocument();
     expect(
       screen.queryByText(/Only your activities are shown/),
     ).not.toBeInTheDocument();
@@ -167,9 +173,12 @@ describe("personal heatmap", () => {
     expect(zoneRequest?.[2]).toMatchObject({
       params: { query: { revision: "4" } },
     });
-    expect(screen.getByText(/25 activities with routes/)).toHaveTextContent(
+    expect(screen.getByRole("status")).toHaveTextContent(
       "Preparing 10 activities",
     );
+    expect(
+      screen.getByText(/25 activities with routes/).closest("details"),
+    ).not.toHaveAttribute("open");
     expect(
       screen.getByLabelText("Activities per path legend"),
     ).toHaveTextContent("25+");
@@ -178,5 +187,67 @@ describe("personal heatmap", () => {
     });
     expect(mocks.replace.mock.calls.at(-1)![0]).toContain("sport=road_ride");
     expect(mocks.replace.mock.calls.at(-1)![0]).toContain("tz=");
+  });
+  it("places zoom presets and help in the top-right toolbar without a title card", () => {
+    render(<HeatmapPanel />);
+    const toolbar = screen.getByRole("toolbar", { name: "Heatmap controls" });
+    const summaries = toolbar.querySelectorAll("summary");
+    expect(
+      [...summaries].map(
+        (summary) => summary.getAttribute("aria-label") ?? summary.textContent,
+      ),
+    ).toEqual([
+      "Zoom preset",
+      "Heatmap color: Blue",
+      "Filters",
+      "Heatmap help and legend",
+    ]);
+    expect(
+      screen.queryByRole("heading", { name: "Your heatmap" }),
+    ).not.toBeInTheDocument();
+    expect(toolbar.querySelector('button[aria-label*="location"]')).toBeNull();
+    fireEvent.click(screen.getByLabelText("Heatmap help and legend"));
+    expect(screen.getByText(/Paths become more opaque/)).toBeVisible();
+    expect(screen.getByLabelText("Activities per path legend")).toBeVisible();
+  });
+  it("requests Region and Full without changing URL filters or color", () => {
+    mocks.data = {
+      ready: 1,
+      bounds: [-85, 44, -84, 45],
+      filters: {},
+      revision: "fixture",
+      style_version: "heatmap-v2",
+      zones: [],
+    };
+    mocks.search = "sport=road_ride&start=2026-01-01";
+    const { rerender } = render(<HeatmapPanel />);
+    fireEvent.click(screen.getByText("Zoom preset", { exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Region" }));
+    expect(mocks.view?.request).toEqual({ action: "region", sequence: 1 });
+    fireEvent.click(screen.getByText("Zoom preset", { exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Full" }));
+    expect(mocks.view?.request).toEqual({ action: "full", sequence: 2 });
+    expect(mocks.replace).not.toHaveBeenCalled();
+    expect(mocks.storage.size).toBe(0);
+    mocks.data = { ready: 0, bounds: null };
+    rerender(<HeatmapPanel />);
+    expect(
+      screen.getByRole("button", { name: "Full", hidden: true }),
+    ).toBeDisabled();
+  });
+  it("restores a saved camera and saves movement without removing filters", () => {
+    mocks.search = "sport=road_ride&lng=-122&lat=47&zoom=9";
+    window.history.replaceState(null, "", `/maps?${mocks.search}`);
+    render(<HeatmapPanel />);
+    expect(mocks.view?.camera).toEqual({
+      longitude: -122,
+      latitude: 47,
+      zoom: 9,
+    });
+    mocks.view!.onChange({ longitude: -85, latitude: 45, zoom: 13 });
+    const params = new URLSearchParams(window.location.search);
+    expect(params.get("sport")).toBe("road_ride");
+    expect(params.get("lng")).toBe("-85");
+    expect(params.get("zoom")).toBe("13");
   });
 });

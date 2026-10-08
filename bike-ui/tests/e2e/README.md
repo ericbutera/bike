@@ -58,6 +58,7 @@ Other individual suites can run directly:
 mise --cd bike-ui exec -- pnpm exec playwright test tests/e2e/auth-happy-path.spec.mjs
 mise --cd bike-ui exec -- pnpm exec playwright test tests/e2e/activity-sync-fixture.spec.mjs
 mise --cd bike-ui exec -- pnpm exec playwright test tests/e2e/map-rendering.spec.mjs
+mise --cd bike-ui exec -- pnpm exec playwright test tests/e2e/heatmap-controls.spec.mjs
 mise --cd bike-ui run test:e2e:heatmaps
 ```
 
@@ -67,6 +68,18 @@ HTML fixture, requires no running Bike services, and rejects browser warnings
 and errors. Browser E2E is temporarily excluded from CI and the UI `check` task.
 The [E2E TODO](../../../docs/E2E-TODO.md) defines the work needed before restoring
 a separate containerized browser gate.
+
+The heatmap-controls suite needs a running UI, but fixtures replace authentication,
+API responses, basemap styles, and heatmap tiles. It runs the real MapLibre worker,
+browser geolocation with a fixed position, and the bundled state-boundary lookup.
+Desktop and mobile checks cover automatic browser location and saved cameras, Region/Full/GPS actions,
+toolbar and navigation order, Help, filter retention, and console diagnostics.
+Delayed-route checks resize the loading map, recover the old `0,0,2` placeholder
+URL with location permission denied, and verify local framing survives reload.
+An automatic-location check centers on a fixed browser position before route
+locations arrive and preserves that view when they finish loading.
+The owning heatmaps task also includes the existing connected tile/filter suite;
+those connected checks require a prepared API and authenticated session.
 
 The auth and activity-sync fixtures stub application API responses and external
 map data. They verify UI behavior independently of live auth, provider, and

@@ -61,8 +61,11 @@ BIKE_RUST_API_PORT=3100 BIKE_RUST_UI_PORT=3101 BIKE_RUST_POSTGRES_PORT=55432 \
 ```
 
 The UI API URL, CORS origin, and development return URL follow these port values.
-The Compose project name is pinned to `bike`; use the root tasks to keep
-container and volume ownership consistent.
+The Compose project name defaults to `bike`; use the root tasks to keep
+container and volume ownership consistent. For an existing stack with another
+project name, set `COMPOSE_PROJECT_NAME` to the name shown by
+`mise exec -- docker compose ls` before running these tasks. This reuses that
+stack rather than creating another set of containers on the same ports.
 
 [`bike-rs/.env.example`](../bike-rs/.env.example) documents backend environment
 variables for running processes directly. Container database connections use
@@ -74,6 +77,14 @@ UI server requests use `INTERNAL_API_URL`; browser requests use `API_URL`.
 Mise manages pinned language and package-manager versions. Use `mise run` for
 existing tasks and `mise exec --` for additional commands. Install frontend
 dependencies before running host-side checks:
+
+Tool versions and application build-image pins belong in the root `mise.toml`.
+Dockerfiles consume build arguments and Compose requires mise's environment.
+Change pnpm's pin there, then run `mise run pins:sync` to regenerate its required
+`package.json` and lock metadata. `mise run pins:check` rejects drift in local
+UI checks, prek, and the same UI tasks used by CI. Dockerfiles use `scratch` as
+an empty image reference when no argument is supplied; builds still require
+the actual image and tool arguments from mise.
 
 ```sh
 mise trust bike-rs/mise.toml
@@ -160,6 +171,20 @@ mise exec -- docker compose --profile tracing down
 ```
 
 ## Troubleshooting
+
+After changing tooling or dependencies, run `mise run compose:up` to rebuild
+and recreate the development containers. Restarting an existing container does
+not update its image. The Rust development image includes the pinned `protoc`;
+the UI image uses the pnpm version in mise. Old images can
+fail with a missing `protoc` or `packages field missing or empty` during pnpm
+installation. Keep any existing project-name and Compose-file overrides when
+rebuilding an older stack.
+
+The UI keeps `/app/.next` in its own Docker volume so host-side Next.js builds
+and development servers cannot overwrite the container's manifests. Dependencies
+remain in a separate `/app/node_modules` volume and the entrypoint synchronizes
+them with the frozen lockfile on startup. The pnpm store lives in that volume
+too, so dependency hard links do not cross filesystems.
 
 | Symptom                                     | Next step                                                                                                    |
 | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |

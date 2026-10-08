@@ -21,18 +21,18 @@ import {
   type HeatmapPaletteId,
 } from "../lib/heatmapColors";
 import HeatmapColorPicker from "./HeatmapColorPicker";
+import HeatmapHelp from "./HeatmapHelp";
+import HeatmapZoomPresets from "./HeatmapZoomPresets";
+import {
+  parseHeatmapCamera,
+  type HeatmapCamera,
+  type HeatmapViewAction,
+} from "../lib/heatmapCamera";
 
 const HeatmapMap = dynamic(() => import("./HeatmapMap"), {
   ssr: false,
   loading: () => <div className="absolute inset-0 animate-pulse bg-base-300" />,
 });
-const LEGEND = [
-  { label: "1", opacity: 100 / 255 },
-  { label: "2–4", opacity: 155 / 255 },
-  { label: "5–9", opacity: 195 / 255 },
-  { label: "10–24", opacity: 225 / 255 },
-  { label: "25+", opacity: 1 },
-];
 const HEATMAP_PALETTE_CHANGE_EVENT = "bike:heatmap-palette-change";
 
 function subscribeToNothing() {
@@ -81,7 +81,17 @@ export default function HeatmapPanel() {
   );
   const [tileError, setTileError] = useState<string>();
   const [locationError, setLocationError] = useState<string>();
-  const [locationRequest, setLocationRequest] = useState(0);
+  const [viewRequest, setViewRequest] = useState<{
+    action: HeatmapViewAction;
+    sequence: number;
+  }>();
+  const requestView = (action: HeatmapViewAction) => {
+    setLocationError(undefined);
+    setViewRequest((previous) => ({
+      action,
+      sequence: (previous?.sequence ?? 0) + 1,
+    }));
+  };
   const [refreshKey, setRefreshKey] = useState(0);
   const storedPaletteId = useSyncExternalStore(
     subscribeToPalette,
@@ -152,6 +162,18 @@ export default function HeatmapPanel() {
     setTileError(undefined);
     router.replace(`/maps?${params}`, { scroll: false });
   };
+  const saveCamera = (camera: HeatmapCamera) => {
+    const params = new URLSearchParams(window.location.search);
+    params.set("lng", String(camera.longitude));
+    params.set("lat", String(camera.latitude));
+    params.set("zoom", String(camera.zoom));
+    if (
+      params.toString() ===
+      new URLSearchParams(window.location.search).toString()
+    )
+      return;
+    window.history.replaceState(null, "", `/maps?${params}`);
+  };
   const refresh = async () => {
     if (refreshing.current) return;
     refreshing.current = true;
@@ -215,101 +237,25 @@ export default function HeatmapPanel() {
         paletteId={paletteId}
         onStale={stale}
         onTileError={setTileError}
-        locationRequest={locationRequest}
-        onLocationError={setLocationError}
+        view={{
+          camera: parseHeatmapCamera(new URLSearchParams(search.toString())),
+          request: viewRequest,
+          onChange: saveCamera,
+          onRequest: requestView,
+          onError: setLocationError,
+        }}
         onMapMoveStart={() => setTileError(undefined)}
       />
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-col gap-2 p-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:p-4">
-        <div className="pointer-events-auto flex max-w-full flex-col gap-2 rounded-xl border border-base-300/70 bg-base-100/95 p-3 shadow-lg backdrop-blur">
-          <div className="flex items-center justify-between gap-3">
-            <h1 className="text-lg font-semibold">Your heatmap</h1>
-            <details className="dropdown dropdown-start">
-              <summary
-                className="btn btn-circle btn-sm btn-ghost"
-                aria-label="Heatmap help and legend"
-                title="Heatmap help and legend"
-              >
-                <span
-                  aria-hidden="true"
-                  className="flex size-5 items-center justify-center rounded-full border border-current text-xs font-bold"
-                >
-                  ?
-                </span>
-              </summary>
-              <div className="dropdown-content z-30 mt-2 w-[min(90vw,24rem)] rounded-box border border-base-300 bg-base-100 p-4 shadow-xl">
-                <h2 className="font-semibold">Heatmap legend</h2>
-                <p className="mt-1 text-sm opacity-70">
-                  Paths get brighter as more of your activities use them.
-                </p>
-                <p className="mt-2 text-sm opacity-70">
-                  At low zoom, circles group route locations. Their number is
-                  the activities in that area.
-                </p>
-                <div
-                  className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm"
-                  aria-label="Activities per path legend"
-                >
-                  <span className="opacity-70">Per path</span>
-                  {LEGEND.map((item) => (
-                    <span
-                      key={item.label}
-                      className="flex items-center gap-1.5"
-                    >
-                      <span
-                        aria-hidden="true"
-                        style={{
-                          display: "inline-block",
-                          width: 18,
-                          height: 2,
-                          background: lineColor,
-                          opacity: item.opacity,
-                          borderRadius: 8,
-                        }}
-                      />
-                      {item.label}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </details>
-          </div>
-          <p className="text-sm" aria-live="polite">
-            {response.isFetching && !metadata
-              ? "Loading your routes…"
-              : metadata
-                ? `${metadata.ready.toLocaleString()} activities with routes`
-                : ""}
-            {metadata?.preparing
-              ? ` · Preparing ${metadata.pending.toLocaleString()} activities…`
-              : ""}
-            {metadata?.failed
-              ? ` · ${metadata.failed} routes could not be prepared`
-              : ""}
-          </p>
-        </div>
-        <div className="pointer-events-auto flex max-w-full flex-wrap items-center justify-end gap-2 self-end rounded-xl border border-base-300/70 bg-base-100/95 p-2 shadow-lg backdrop-blur sm:ml-auto sm:self-start">
-          <button
-            className="btn btn-circle btn-sm btn-ghost"
-            aria-label="Find my location"
-            title="Find my location"
-            onClick={() => {
-              setLocationError(undefined);
-              setLocationRequest((request) => request + 1);
-            }}
-          >
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              className="size-5"
-            >
-              <circle cx="12" cy="12" r="7" />
-              <circle cx="12" cy="12" r="2" />
-              <path d="M12 2v3m0 14v3M2 12h3m14 0h3" />
-            </svg>
-          </button>
+      <div className="pointer-events-none absolute right-0 top-0 z-20 flex max-w-full flex-col items-end gap-2 p-3 sm:p-4">
+        <div
+          role="toolbar"
+          aria-label="Heatmap controls"
+          className="pointer-events-auto flex max-w-full flex-wrap items-center justify-end gap-1 rounded-xl border border-base-300/70 bg-base-100/95 p-2 shadow-lg backdrop-blur"
+        >
+          <HeatmapZoomPresets
+            onChoose={requestView}
+            canFit={Boolean(metadata?.bounds)}
+          />
           <HeatmapColorPicker value={paletteId} onChange={choosePalette} />
           <details className="dropdown dropdown-end">
             <summary className="btn btn-sm btn-ghost">Filters</summary>
@@ -376,7 +322,24 @@ export default function HeatmapPanel() {
               </div>
             </div>
           </details>
+          <HeatmapHelp metadata={metadata} color={lineColor} />
         </div>
+        {((response.isFetching && !metadata) ||
+          metadata?.preparing ||
+          Boolean(metadata?.failed)) && (
+          <p
+            role="status"
+            className="rounded-lg bg-base-100/95 px-3 py-2 text-sm shadow-lg"
+          >
+            {response.isFetching && !metadata ? "Loading your routes…" : ""}
+            {metadata?.preparing
+              ? `Preparing ${metadata.pending.toLocaleString()} activities…`
+              : ""}
+            {metadata?.failed
+              ? ` ${metadata.failed} routes could not be prepared`
+              : ""}
+          </p>
+        )}
       </div>
       {metadata?.ready === 0 && (
         <div className="pointer-events-none absolute inset-x-4 top-1/2 z-10 -translate-y-1/2 text-center">

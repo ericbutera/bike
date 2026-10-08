@@ -4,6 +4,14 @@ minimum_prek_version = "0.5.5"
 repo = "local"
 
 [[repos.hooks]]
+id = "package-manager-pin"
+name = "Mise package-manager pin freshness"
+language = "system"
+entry = "mise run pins:check"
+files = "^mise\\.toml$|^bike-ui/(package\\.json|pnpm-lock\\.yaml|pnpm-workspace\\.yaml|mise\\.toml)$|^scripts/check-package-manager\\.sh$"
+pass_filenames = false
+
+[[repos.hooks]]
 id = "shellcheck"
 name = "ShellCheck"
 language = "system"

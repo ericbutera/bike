@@ -1,16 +1,16 @@
-ARG MISE_IMAGE=ghcr.io/jdx/mise:2026.10.3-debian@sha256:58c4c847f5518a9a87a9a582886a485443dbca5eb024426577f58d586a0990c6
-ARG RUST_IMAGE=rust:1.99.0-trixie@sha256:6ff07edce8775d0f64be7aba9197229407301bddf2054d62c27b541a6238a181
-ARG RUNTIME_IMAGE=debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f
+ARG MISE_IMAGE
+ARG RUST_IMAGE
+ARG RUNTIME_IMAGE
 
-FROM ${MISE_IMAGE} AS protobuf
-ARG PROTOC_VERSION=36.2
-RUN mise use --global protoc@"${PROTOC_VERSION}" \
+FROM ${MISE_IMAGE:-scratch} AS protobuf
+ARG PROTOC_VERSION
+RUN mise use --global protoc@"${PROTOC_VERSION:?PROTOC_VERSION must be supplied by mise}" \
     && cp -a "$(mise where protoc@"${PROTOC_VERSION}")" /opt/protoc
 
-FROM ${RUST_IMAGE} AS chef
-ARG CARGO_CHEF_REVISION=449576bbc2645200936adb9dece80810c9a335f8
+FROM ${RUST_IMAGE:-scratch} AS chef
+ARG CARGO_CHEF_REVISION
 WORKDIR /app
-RUN cargo install --git https://github.com/LukeMathWalker/cargo-chef --rev "${CARGO_CHEF_REVISION}" --locked cargo-chef
+RUN cargo install --git https://github.com/LukeMathWalker/cargo-chef --rev "${CARGO_CHEF_REVISION:?CARGO_CHEF_REVISION must be supplied by mise}" --locked cargo-chef
 
 FROM chef AS planner
 COPY . .
@@ -25,7 +25,7 @@ COPY --from=protobuf /opt/protoc/include /usr/local/include
 COPY . .
 RUN cargo build --locked --release --bin api --bin worker --bin migration --bin recover-generated-imports
 
-FROM ${RUNTIME_IMAGE}
+FROM ${RUNTIME_IMAGE:-scratch}
 WORKDIR /app
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates libssl3t64 && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/api /app/api

@@ -109,9 +109,11 @@ for (const target of selected) {
       });
       const canvas = map.locator("canvas");
       await expect(canvas).toBeVisible();
+      await page.getByLabel("Heatmap help and legend").click();
       await expect(
         page.getByText(/^[1-9][\d,]* activities with routes/),
       ).toBeVisible();
+      await page.getByLabel("Heatmap help and legend").click();
       await expect
         .poll(async () => bluePixels(await canvas.screenshot()))
         .toBeGreaterThan(5);
@@ -162,7 +164,7 @@ for (const target of selected) {
     );
     if (process.env.HEATMAP_REQUIRE_ENABLED === "1") expect(enabled).toBe(true);
     const disabled = page.getByText("Heatmaps are not enabled on this site.");
-    const heading = page.getByRole("heading", { name: "Your heatmap" });
+    const toolbar = page.getByRole("toolbar", { name: "Heatmap controls" });
     if (!enabled) {
       await expect(disabled).toBeVisible();
       await expect(
@@ -171,13 +173,15 @@ for (const target of selected) {
       expect(tileResponses).toHaveLength(0);
       return;
     }
-    await expect(heading).toBeVisible();
+    await expect(toolbar).toBeVisible();
     await expect(
       page.getByRole("link", { name: "Maps", exact: true }),
     ).toBeVisible();
     const map = page.getByRole("region", { name: "Personal activity heatmap" });
     await expect(map.locator("canvas")).toBeVisible();
+    await page.getByLabel("Heatmap help and legend").click();
     await expect(page.getByText(/\d+ activities with routes/)).toBeVisible();
+    await page.getByLabel("Heatmap help and legend").click();
     await expect
       .poll(() => tileResponses.filter((r) => r.status() === 200).length)
       .toBeGreaterThan(0);
@@ -238,13 +242,13 @@ for (const target of selected) {
     await expect(page).not.toHaveURL(/start=/);
     await page.getByLabel("Activity type").selectOption("");
     await expect(page).not.toHaveURL(/sport=/);
+    await page.getByText("Filters", { exact: true }).click();
+    await page.getByLabel("Heatmap help and legend").click();
     await expect(
       page.getByText(
         `${metadata.ready.toLocaleString()} activities with routes`,
       ),
     ).toBeVisible();
-    await page.getByText("Filters", { exact: true }).click();
-    await page.getByLabel("Heatmap help and legend").click();
     await expect(page.getByLabel("Activities per path legend")).toBeVisible();
     await page.getByLabel("Heatmap help and legend").click();
     await page.getByRole("button", { name: "Account", exact: true }).click();
@@ -271,10 +275,13 @@ for (const target of selected) {
         target,
         `/maps?${process.env.HEATMAP_PREVIEW_FILTERS}`,
       );
+      await page.getByLabel("Heatmap help and legend").click();
       await expect(page.getByText(/\d+ activities with routes/)).toBeVisible();
+      await page.getByLabel("Heatmap help and legend").click();
       await previewTile;
     }
-    await heading.click();
+    await page.getByText("Zoom preset", { exact: true }).click();
+    await page.getByRole("button", { name: "Full", exact: true }).click();
     await page.mouse.move(10, 850);
     await stabilize(page);
     await fs.mkdir(path.join(artifactRoot, "screenshots"), { recursive: true });

@@ -205,9 +205,13 @@ neighborhood scale shown in the supplied Traverse City screenshot. At a matching
 viewport size, the reference view includes the West Arm of Grand Traverse Bay,
 downtown Traverse City, Boardman Lake, Cherry Capital Airport, and nearby western
 trails. Match that geographic extent and route detail when calibrating the
-initial zoom. Center on the user's local riding area, using an available user
-location or the main concentration of their routes. Initial loading does not
-request GPS permission. A saved camera takes precedence over this default.
+initial zoom. Automatically request browser geolocation on first load and
+center on the user's current location at zoom 13. The browser may prompt for
+location permission. If access is denied, unavailable, or times out, fall back
+to the main concentration of their routes without interrupting map use.
+A saved camera takes precedence and skips automatic location detection.
+If the user pans, zooms, or selects a preset while detection is pending,
+preserve that choice when the location result arrives.
 Do not automatically fit all activity bounds on first load or after
 metadata/preparation updates.
 
@@ -254,6 +258,23 @@ Preserve the camera during filter and theme changes; applying a zoom preset or
 using GPS is explicit. A filter with no routes shows an empty message and keeps
 a usable map; Full leaves the camera unchanged when there are no ready bounds.
 Back/forward restores a saved view when present.
+
+The local view uses zoom 13, centered on the detected browser location, or on
+the busiest quarter-degree group of ready route centers when location fails.
+While location or routes are loading, automatic resize events must not
+save the temporary world view or prevent the local default from being applied.
+A user moving the map during loading retains their chosen view. Recover the
+previously persisted loading placeholder `lng=0&lat=0&zoom=2` as an unsaved camera.
+Save a validated `lng`, `lat`, and `zoom` in the URL after movement settles,
+preserving the active filters. Region performs its lookup
+locally against bundled
+[Natural Earth Admin 1 boundaries](https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-admin-1-states-provinces/)
+from release 5.1.2. The 4,596 state/province features include separated parts such
+as both Michigan peninsulas, with 500-meter boundary simplification and topology
+cleaning using Mapshaper 0.7.80. The compressed asset loads only when Region is
+selected and is decoded with the browser's native gzip support; GPS coordinates
+are not sent to a geocoder.
+These general-purpose boundaries are approximate near state borders.
 
 Reuse basemap and lifecycle helpers where appropriate, but build a dedicated
 heatmap component rather than adding history/aggregation concerns to the
@@ -598,7 +619,10 @@ different owner/date/sport, plus one original ride for the projection happy path
    selected routes. Verify the top-right Zoom preset/Color/Filters/Help order,
    Help's opacity legend, absence of the top-left title/count panel, and
    bottom-right zoom-in/zoom-out/GPS order with no compass button. Check saved
-   camera precedence, mobile and keyboard access, location denial, state lookup
+   automatic browser location centering, saved camera precedence, fallback when
+   location is denied/unavailable or times out, delayed route loading with map
+   resize, recovery of the old
+   loading placeholder URL, mobile and keyboard access, location denial, state lookup
    failure, and empty filtered bounds. Exercise a Rust-backed happy path with
    real tiles; use owning UI tests for loading/empty/error states.
 6. Performance: measure current history and a proportionate larger fixture,

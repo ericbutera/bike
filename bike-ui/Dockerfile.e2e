@@ -1,10 +1,10 @@
-ARG NODE_IMAGE=node:24.21.0-trixie@sha256:1278a37eb510ec1606fba0e80f554bcc941ae0b44f35ae373c4822ae7717c64d
-FROM ${NODE_IMAGE}
-ARG NPM_VERSION=12.2.0
-ARG PNPM_VERSION=12.9.1
+ARG NODE_IMAGE
+FROM ${NODE_IMAGE:-scratch}
+ARG NPM_VERSION
+ARG PNPM_VERSION
 WORKDIR /workspace/bike-ui
-RUN npm install --global "npm@${NPM_VERSION}"
-RUN npm install --global --allow-scripts=pnpm "pnpm@${PNPM_VERSION}"
+RUN npm install --global "npm@${NPM_VERSION:?NPM_VERSION must be supplied by mise}"
+RUN npm install --global --allow-scripts=pnpm "pnpm@${PNPM_VERSION:?PNPM_VERSION must be supplied by mise}"
 COPY bike-ui/package.json bike-ui/pnpm-lock.yaml bike-ui/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 RUN DEBIAN_FRONTEND=noninteractive pnpm exec playwright install --with-deps chromium

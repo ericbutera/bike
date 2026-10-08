@@ -18,7 +18,7 @@ type-safe frameworks and ORMs when they reduce duplicated infrastructure.
 Historical migrations are append-only; preserve their order and contents.
 
 Track active Bike work in `docs/TODO.md`. Work one bounded task at a time and
-commit its result with a conventional commit message. Preserve historical
+deliver its result for review on a feature branch. Preserve historical
 operational evidence unless a task explicitly retires it.
 
 Use focused checks through the relevant mise task. Keep provider calls behind
@@ -28,6 +28,11 @@ HTTP integration tests live in `bike-rs/api/tests`; browser tests belong to
 race-viewer flows; use owning unit, functional, or SQL suites for workflow rules.
 
 ## git
+
+Never commit directly to `main` or `master`. Create or use a feature branch
+before changing code. Either deliver a pull request when publication is
+authorized or leave changes uncommitted for review. If the user asks for no
+commits, do not create or amend commits or open a PR that requires committing.
 
 Always use conventional commit format.
 
@@ -101,6 +106,12 @@ avoid duplicating commands or pins in workflow YAML. The official pinned mise
 image supplies the runner executable through ignored CI artifacts; do not commit
 mise or its installer. Language checks belong in the owning tasks.
 
+Keep tool versions and application build-image pins in mise only. Dockerfiles
+declare build arguments without version defaults; Compose requires the exported
+mise values. Do not copy a pin into a Dockerfile or Compose fallback during an
+upgrade. Regenerate pnpm's required manifest/lock metadata with
+`mise run pins:sync`; `mise run pins:check`, UI checks, and prek verify freshness.
+
 Examples:
 
 - `mise exec -- pnpm exec tsc --noEmit`
@@ -114,3 +125,10 @@ specifications in `docs/specs/`. Link to these documents from component READMEs
 instead of maintaining component documentation copies. Business rules and
 decisions belong in the owning specification. Generated HTTP contracts live
 only in `contracts/openapi/`; Rust generates them directly there.
+
+## other rules
+
+- Clean up git `.worktrees` when finished with a PR.
+- Do not introduce new scripting languages without explicit approval. Only shell scripts are allowed.
+- Create shell scripts instead of multi-line commands.
+- Use mise as the task runner.

@@ -12,6 +12,14 @@ import type { FeatureCollection, Point } from "geojson";
 import { useBikeTheme } from "../lib/useBikeTheme";
 import type { HeatmapMetadata, HeatmapZones } from "../lib/heatmaps";
 import {
+  DEFAULT_HEATMAP_ZOOM,
+  HEATMAP_LOADING_CAMERA,
+  localRidingCenter,
+  type HeatmapView,
+} from "../lib/heatmapCamera";
+import { useHeatmapCamera } from "../lib/useHeatmapCamera";
+import HeatmapNavigationControl from "./HeatmapNavigationControl";
+import {
   heatmapPalette,
   heatmapPalettePaint,
   type HeatmapPaletteId,
@@ -49,8 +57,7 @@ export default function HeatmapMap({
   paletteId = "blue",
   onStale,
   onTileError,
-  locationRequest,
-  onLocationError,
+  view,
   onMapMoveStart,
 }: {
   metadata?: HeatmapMetadata;
@@ -59,8 +66,7 @@ export default function HeatmapMap({
   paletteId?: HeatmapPaletteId;
   onStale: () => void;
   onTileError: (message: string) => void;
-  locationRequest: number;
-  onLocationError: (message: string) => void;
+  view: HeatmapView;
   onMapMoveStart: () => void;
 }) {
   const container = useRef<HTMLDivElement>(null);
@@ -72,7 +78,7 @@ export default function HeatmapMap({
     paletteId,
     onStale,
     onTileError,
-    onLocationError,
+    view,
     onMapMoveStart,
   });
   useEffect(() => {
@@ -83,7 +89,7 @@ export default function HeatmapMap({
       paletteId,
       onStale,
       onTileError,
-      onLocationError,
+      view,
       onMapMoveStart,
     };
   }, [
@@ -93,10 +99,9 @@ export default function HeatmapMap({
     paletteId,
     onStale,
     onTileError,
-    onLocationError,
+    view,
     onMapMoveStart,
   ]);
-  const fitted = useRef(false);
   const zoneInteractionBound = useRef(false);
   const styleReady = useRef(false);
   const syncOverlay = useRef(() => {});
@@ -105,17 +110,31 @@ export default function HeatmapMap({
   const appliedTheme = useRef(theme);
 
   useEffect(() => {
+    const camera = current.current.view.camera;
+    const localCenter = localRidingCenter(current.current.zones);
     const instance = new maplibregl.Map({
       container: container.current!,
       style: styleUrl(appliedTheme.current),
-      center: [-85.6, 44.7],
-      zoom: 6,
+      center: camera
+        ? [camera.longitude, camera.latitude]
+        : (localCenter ?? [
+            HEATMAP_LOADING_CAMERA.longitude,
+            HEATMAP_LOADING_CAMERA.latitude,
+          ]),
+      zoom:
+        camera?.zoom ??
+        (localCenter ? DEFAULT_HEATMAP_ZOOM : HEATMAP_LOADING_CAMERA.zoom),
       minZoom: 0,
       maxZoom: 18,
       attributionControl: false,
     });
     map.current = instance;
-    instance.addControl(new maplibregl.NavigationControl(), "bottom-right");
+    instance.addControl(
+      new HeatmapNavigationControl(() =>
+        current.current.view.onRequest("location"),
+      ),
+      "bottom-right",
+    );
     instance.addControl(
       new maplibregl.AttributionControl({ compact: false }),
       "bottom-left",
@@ -124,7 +143,7 @@ export default function HeatmapMap({
     let appliedPaletteId: HeatmapPaletteId | undefined;
     const overlay = () => {
       if (!styleReady.current) return;
-      const { tileUrl, metadata, paletteId } = current.current;
+      const { tileUrl, paletteId } = current.current;
       const source = instance.getSource(SOURCE) as RasterTileSource | undefined;
       if (!tileUrl) {
         if (instance.getLayer(SOURCE)) instance.removeLayer(SOURCE);
@@ -175,17 +194,6 @@ export default function HeatmapMap({
         }
       }
       appliedPaletteId = paletteId;
-      if (!fitted.current && metadata?.bounds) {
-        const [west, south, east, north] = metadata.bounds;
-        instance.fitBounds(
-          [
-            [west, south],
-            [east, north],
-          ],
-          { padding: 50, maxZoom: 14, duration: 0 },
-        );
-        fitted.current = true;
-      }
     };
     syncOverlay.current = overlay;
     const zonesOverlay = () => {
@@ -209,6 +217,7 @@ export default function HeatmapMap({
           id: ZONES_CIRCLES,
           type: "circle",
           source: ZONES_SOURCE,
+          maxzoom: 7,
           filter: ["has", "point_count"],
           paint: {
             "circle-color": [
@@ -238,6 +247,7 @@ export default function HeatmapMap({
           id: ZONES_COUNTS,
           type: "symbol",
           source: ZONES_SOURCE,
+          maxzoom: 7,
           filter: ["has", "point_count"],
           layout: {
             "text-field": ["get", "point_count_abbreviated"],
@@ -290,7 +300,6 @@ export default function HeatmapMap({
           if (!feature || feature.geometry.type !== "Point") return;
           const center = feature.geometry.coordinates as [number, number];
           const clusterId = feature.properties?.cluster_id;
-          fitted.current = true;
           if (typeof clusterId === "number") {
             const source = instance.getSource(ZONES_SOURCE) as
               GeoJSONSource | undefined;
@@ -361,41 +370,7 @@ export default function HeatmapMap({
     };
   }, []);
 
-  useEffect(() => {
-    if (locationRequest === 0) return;
-    const instance = map.current;
-    if (!instance) return;
-    if (!navigator.geolocation) {
-      current.current.onLocationError(
-        "Location is not available in this browser.",
-      );
-      return;
-    }
-    let cancelled = false;
-    navigator.geolocation.getCurrentPosition(
-      ({ coords }) => {
-        if (cancelled || map.current !== instance) return;
-        fitted.current = true;
-        instance.flyTo({
-          center: [coords.longitude, coords.latitude],
-          zoom: 12,
-          duration: 900,
-        });
-      },
-      (error) => {
-        if (cancelled || map.current !== instance) return;
-        current.current.onLocationError(
-          error.code === error.PERMISSION_DENIED
-            ? "Location access was denied. Allow location access in your browser and try again."
-            : "Could not determine your location. Try again.",
-        );
-      },
-      { enableHighAccuracy: false, maximumAge: 300_000, timeout: 10_000 },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [locationRequest]);
+  useHeatmapCamera(map, view, { metadata, zones });
 
   useEffect(() => {
     const instance = map.current;

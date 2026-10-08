@@ -28,6 +28,12 @@ from workflow YAML. Source mise from its official pinned image on runners and
 share its executable through ignored CI artifacts. Do not commit mise binaries
 or installers; language checks belong in owning mise tasks.
 
+Keep application build-image and tool-version pins in mise only. Dockerfiles
+consume build arguments without pinned defaults, and Compose requires the mise
+environment. Regenerate required pnpm manifest/lock metadata with
+`mise run pins:sync`; run `mise run pins:check` to reject drift. A version upgrade
+must not require manually changing Dockerfile or Compose copies of the pin.
+
 Identify the required formatter, linter, type checks, build, and tests for the
 affected area. Inspect configured complexity limits before writing or
 refactoring substantial functions. When changing quality tooling, enforce
@@ -131,16 +137,19 @@ dependency, environment, or unrelated defect prevents completion, state the
 exact failing check and cause; do not label it passed or silently skip it.
 
 Review the final diff for duplicated behavior, complexity, suppression, and
-unrelated edits; check whitespace with `git diff --check`. Before a commit,
+unrelated edits; check whitespace with `git diff --check`. Never commit directly
+to `main` or `master`; work on a feature branch. If the user requests no commits,
+leave all changes uncommitted, including instructions and skill updates. Before a commit,
 apply the repository's Git instructions: use an allowed Conventional Commit
 type and a concise subject describing the result without starting with "add",
 "added", or "adding". Keep continuing work in the same logical commit when
 amending is authorized; preserve unrelated staged changes and use
 `--force-with-lease` for an authorized rewritten-history push.
 
-Do not push until the user explicitly signs off the completed feature and
-authorizes publishing the reviewed commits. Passing checks, continuation
-requests, and a previous feature's release approval do not satisfy this gate.
+Deliver an authorized PR from a feature branch or leave the work uncommitted
+for review. Do not create commits merely to open a PR when the user requested
+no commits. Keep authorized commit history linear. Passing checks, continuation
+requests, and a previous feature's release approval do not authorize publication.
 Combine implementation, corrections, and tests into one coherent feature
 commit, with separate specification commits when requested. Keep work local
 and amend during review. Prepare any already-published history consolidation

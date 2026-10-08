@@ -2,7 +2,7 @@ name: bike-rust
 
 services:
   postgres:
-    image: ${BIKE_POSTGRES_IMAGE:-postgres:17.11-trixie@sha256:ae69c452f483507a6b99fb654cf93aad7fe156ffd2c56247707eef4e36d3c12b}
+    image: ${BIKE_POSTGRES_IMAGE:?Run Compose through mise}
     environment:
       POSTGRES_DB: 'bike'
       POSTGRES_USER: postgres
@@ -22,10 +22,10 @@ services:
       context: .
       dockerfile: api/Dockerfile.dev
       args:
-        RUST_IMAGE: ${RUST_IMAGE:-rust:1.99.0-trixie@sha256:6ff07edce8775d0f64be7aba9197229407301bddf2054d62c27b541a6238a181}
-        WATCHEXEC_VERSION: ${WATCHEXEC_VERSION:-2.8.0}
-        MISE_IMAGE: ${MISE_IMAGE:-ghcr.io/jdx/mise:2026.10.3-debian@sha256:58c4c847f5518a9a87a9a582886a485443dbca5eb024426577f58d586a0990c6}
-        PROTOC_VERSION: ${PROTOC_VERSION:-36.2}
+        RUST_IMAGE: ${RUST_IMAGE:?Run Compose through mise}
+        WATCHEXEC_VERSION: ${WATCHEXEC_VERSION:?Run Compose through mise}
+        MISE_IMAGE: ${MISE_IMAGE:?Run Compose through mise}
+        PROTOC_VERSION: ${PROTOC_VERSION:?Run Compose through mise}
     command: ['cargo', 'run', '--locked', '--bin', 'migration', '--', 'up']
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/bike
@@ -40,10 +40,10 @@ services:
       context: .
       dockerfile: api/Dockerfile.dev
       args:
-        RUST_IMAGE: ${RUST_IMAGE:-rust:1.99.0-trixie@sha256:6ff07edce8775d0f64be7aba9197229407301bddf2054d62c27b541a6238a181}
-        WATCHEXEC_VERSION: ${WATCHEXEC_VERSION:-2.8.0}
-        MISE_IMAGE: ${MISE_IMAGE:-ghcr.io/jdx/mise:2026.10.3-debian@sha256:58c4c847f5518a9a87a9a582886a485443dbca5eb024426577f58d586a0990c6}
-        PROTOC_VERSION: ${PROTOC_VERSION:-36.2}
+        RUST_IMAGE: ${RUST_IMAGE:?Run Compose through mise}
+        WATCHEXEC_VERSION: ${WATCHEXEC_VERSION:?Run Compose through mise}
+        MISE_IMAGE: ${MISE_IMAGE:?Run Compose through mise}
+        PROTOC_VERSION: ${PROTOC_VERSION:?Run Compose through mise}
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/bike
       RUST_LOG: info,sea_orm=trace,sqlx=warn,tower_http=trace
@@ -80,10 +80,10 @@ services:
       context: .
       dockerfile: worker/Dockerfile.dev
       args:
-        RUST_IMAGE: ${RUST_IMAGE:-rust:1.99.0-trixie@sha256:6ff07edce8775d0f64be7aba9197229407301bddf2054d62c27b541a6238a181}
-        WATCHEXEC_VERSION: ${WATCHEXEC_VERSION:-2.8.0}
-        MISE_IMAGE: ${MISE_IMAGE:-ghcr.io/jdx/mise:2026.10.3-debian@sha256:58c4c847f5518a9a87a9a582886a485443dbca5eb024426577f58d586a0990c6}
-        PROTOC_VERSION: ${PROTOC_VERSION:-36.2}
+        RUST_IMAGE: ${RUST_IMAGE:?Run Compose through mise}
+        WATCHEXEC_VERSION: ${WATCHEXEC_VERSION:?Run Compose through mise}
+        MISE_IMAGE: ${MISE_IMAGE:?Run Compose through mise}
+        PROTOC_VERSION: ${PROTOC_VERSION:?Run Compose through mise}
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/bike
       RUST_LOG: info,sea_orm=trace,sqlx=warn
@@ -108,15 +108,16 @@ services:
       context: ../bike-ui
       dockerfile: Dockerfile.dev
       args:
-        NODE_ALPINE_IMAGE: ${NODE_ALPINE_IMAGE:-node:24.21.0-alpine3.24@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1}
-        NPM_VERSION: ${NPM_VERSION:-12.2.0}
-        PNPM_VERSION: ${PNPM_VERSION:-12.9.1}
+        NODE_ALPINE_IMAGE: ${NODE_ALPINE_IMAGE:?Run Compose through mise}
+        NPM_VERSION: ${NPM_VERSION:?Run Compose through mise}
+        PNPM_VERSION: ${PNPM_VERSION:?Run Compose through mise}
     environment:
       API_URL: http://localhost:${BIKE_RUST_API_PORT:-3000}/api
       CDN_URL: http://localhost:${BIKE_RUST_API_PORT:-3000}/uploads
       INTERNAL_API_URL: http://bike-rs:3000/api
       MAP_RENDERER_URL: http://bike-maps:3100
       MAP_SERVICE_TOKEN: ${MAP_SERVICE_TOKEN:-}
+      PNPM_CONFIG_STORE_DIR: /app/node_modules/.pnpm-store
     depends_on:
       bike-rs:
         condition: service_started
@@ -125,9 +126,10 @@ services:
     volumes:
       - ../bike-ui:/app
       - ui_next_node_modules:/app/node_modules
+      - ui_next_cache:/app/.next
 
   jaeger:
-    image: ${BIKE_TRACING_IMAGE:-cr.jaegertracing.io/jaegertracing/jaeger:2.22.0}
+    image: ${BIKE_TRACING_IMAGE:?Run Compose through mise}
     profiles:
       - tracing
     ports:
@@ -139,3 +141,4 @@ volumes:
   postgres_data:
     name: ${BIKE_RUST_POSTGRES_VOLUME:-bike_postgres_data}
   ui_next_node_modules:
+  ui_next_cache:
