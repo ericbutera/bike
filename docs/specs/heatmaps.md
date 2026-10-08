@@ -729,5 +729,7 @@ Break GPS paths across displacements above five kilometers, or gaps of at least
 above 45 meters per second. The inclusive 120-second rule prevents a previously
 observed straight chord across missing FIT positions while retaining valid
 sections. Unit fixtures cover that boundary and continuously recorded outdoor
-controls, along with every ingestion stage and replay. Ordinary CI uses mocks
+controls, along with every ingestion stage and replay. Unit/native CI uses mocks
 and in-memory fixtures; PostgreSQL-specific checks are separate and opt-in.
+The planned [TEST11 browser gate](../E2E-TODO.md) owns a disposable PostgreSQL
+environment for required connected heatmap scenarios, separate from those checks.

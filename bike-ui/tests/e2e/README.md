@@ -4,14 +4,38 @@ Browser regressions belong to the UI. They use its package dependencies and
 Playwright configuration, while backend HTTP checks live in
 [`bike-rs/api/tests`](../../../bike-rs/api/tests/README.md).
 
-## Setup and focused checks
+## Planned disposable runner (TEST11)
 
-From the repository root, start Bike with `mise run compose:up`, then install
-the UI dependencies and browser:
+- The [E2E plan](../../../docs/E2E-TODO.md) defines a proposed root
+  `mise run e2e` command for the required suite and an explicit spec filter for
+  focused runs. That command is not implemented yet; browser E2E remains excluded
+  from CI until its runtime and acceptance checks are verified.
+- Each invocation will own a disposable Compose project, using shared runtime
+  definitions with small development/test overrides. Development services and
+  persistent volumes are independent of the test environment.
+- Local preparation will build or reuse cached application/test images; CI will
+  supply the revision's already-built images to the same owning task. Actual test
+  execution will run release services without source mounts or package installs.
+- Connected attempts will clone a small migrated baseline, apply explicitly
+  selected scenario SQL, restore uploads/caches, and start the required services.
+  Queue-display scenarios omit the worker; processing scenarios wait for its
+  persisted results. Connected writes/admin actions use normal authentication.
+- Browser regressions with mocked application APIs will keep their own browser
+  isolation and required services. Standalone diagrams will need no Bike stack.
+  External provider responses will remain controlled at browser and server seams.
+- The default will include all declared required coverage. Missing connected
+  fixtures will fail setup; optional visual comparisons will be reported
+  separately. Failure artifacts will be exported before resource cleanup.
+
+## Current runner: manually prepared environment
+
+The existing commands require an explicitly prepared disposable UI/API environment
+and scenario data. They do not provision, reset, or stop application services.
+Install the UI dependencies and browser, then select the prepared UI URL:
 
 ```sh
 mise --cd bike-ui run test:e2e:install
-mise --cd bike-ui run test:e2e
+BIKE_UI_URL="${BIKE_UI_URL:?Set the prepared disposable UI URL}" mise --cd bike-ui run test:e2e
 ```
 
 The default check follows activity list/detail, segment list/detail, and race
@@ -30,7 +54,7 @@ The browser image runs independently of k6:
 
 ```sh
 mise run e2e:build
-BIKE_UI_URL=http://host.docker.internal:3001 mise run e2e:run
+BIKE_UI_URL="${BIKE_UI_URL:?Set a disposable UI URL reachable from Docker}" mise run e2e:run
 ```
 
 The image contains Chromium and the locked UI test dependencies. Its default
@@ -66,7 +90,7 @@ mise --cd bike-ui run test:e2e:heatmaps
 rendering in a real browser using the locked package assets. It uses a standalone
 HTML fixture, requires no running Bike services, and rejects browser warnings
 and errors. Browser E2E is temporarily excluded from CI and the UI `check` task.
-The [E2E TODO](../../../docs/E2E-TODO.md) defines the work needed before restoring
+The [E2E plan](../../../docs/E2E-TODO.md) defines the work needed before restoring
 a separate containerized browser gate.
 
 The heatmap-controls suite needs a running UI, but fixtures replace authentication,
