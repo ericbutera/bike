@@ -80,8 +80,8 @@ steps:
         from_secret: pulumi_access_token
       GITHUB_TOKEN:
         from_secret: github_token
-      PULUMI_IAC_REPO:
-        from_secret: pulumi_iac_repo
+      DEPLOYMENT_REPO:
+        from_secret: deployment_repo
     volumes: *mise_cache
     commands:
       - mise run ci:deploy

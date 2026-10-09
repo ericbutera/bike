@@ -121,8 +121,9 @@ code or documentation.
 
 Completed in the review branches on 2026-10-06. These checks establish local
 implementation and isolated compatibility, not a production deployment.
-The shared database's production patch requires the [companion IaC PR](https://github.com/ericbutera/pulumi-iac/pull/1) to be
-reviewed, its backup image rebuilt/published, and the StatefulSet applied.
+The shared database's production patch requires the companion infrastructure
+change to be reviewed, its backup image rebuilt/published, and the StatefulSet
+applied.
 The observed production/local servers remain 17.7/17.9 until that rollout.
 
 - [x] **UPG08 — Use current stable Rust consistently.** Application mise and

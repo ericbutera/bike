@@ -256,10 +256,9 @@ the evidence available at Bike's delivery boundary.
 - Prometheus metrics: `bike-rs/api/src/metrics.rs`
 - OpenTelemetry initialization and trace propagation: `bike-rs/api/src/observability.rs`
 - Observability metric backlog: `docs/observability-metrics.md`
-- Production API `ServiceMonitor`: `../../../pulumi-iac/bike/servicemonitor-bike-api.yaml`
-- Production worker `ServiceMonitor`: `../../../pulumi-iac/bike/servicemonitor-bike-worker.yaml`
-- Bike Grafana dashboard: `../../../pulumi-iac/bike/bike-grafana-dashboard.yaml`
-- Grafana Loki/Tempo datasource provisioning: [infrastructure repository](https://github.com/ericbutera/pulumi-iac)
+
+Production ServiceMonitors, dashboards, and Grafana datasource provisioning are
+maintained separately from this repository.
 
 ## Verification reference
 

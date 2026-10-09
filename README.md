@@ -209,7 +209,6 @@ Local coverage reports and their scope are documented in the
   [admin recovery](docs/specs/admin-operations.md#failed-import-recovery) — diagnosis and selective replay.
 - [Active backlog](docs/TODO.md) — remaining work and recorded verification limits.
 
-Production infrastructure is maintained in
-[`ericbutera/pulumi-iac`](https://github.com/ericbutera/pulumi-iac). Release jobs
+Production infrastructure is maintained separately. Release jobs
 publish immutable commit tags, run migrations, and promote the owning component.
 The local Compose environment is the starting point for development.

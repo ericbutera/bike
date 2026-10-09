@@ -1,8 +1,7 @@
 # Deploying Bike
 
 Bike's source and Woodpecker workflows live in this repository. Production
-infrastructure is managed by
-[`ericbutera/pulumi-iac`](https://github.com/ericbutera/pulumi-iac).
+infrastructure is maintained separately.
 Local development uses [Docker Compose](development.md); production runs on
 Kubernetes.
 
@@ -60,7 +59,7 @@ mise run ci:gateway
 - `mise run e2e` and the `test-ui-e2e` stage are implemented in source. The
   installed Kubernetes-backed Woodpecker runtime still needs registry, TLS,
   networking, and failure/cancellation acceptance verification.
-- [IaC PR #6](https://github.com/ericbutera/pulumi-iac/pull/6) owns the Bike-only
+- The companion infrastructure change owns the Bike-only
   privileged-step permission and tested digest deployment. Its permission
   preview/apply changed only the Bike sync ConfigMap/Job, which succeeded.
   No production deployment credentials are passed to the browser job.
@@ -236,7 +235,10 @@ and renderer checks run native npm audit; both fail on dependency advisories.
 
 The CI workflow publishes images tagged with the full source commit SHA and calls
 `mise run ci:deploy`. The root [`ci:deploy` task](../mise.toml) clones IaC once into
-ignored `.artifacts/pulumi-iac` and invokes that checkout's `ci:deploy` task.
+ignored `.artifacts/deployment` and invokes that checkout's `ci:deploy` task.
+The repository location comes from the `DEPLOYMENT_REPO` environment variable,
+supplied by Woodpecker's `deployment_repo` secret. Keep its value in private CI
+configuration; configure this secret before enabling deployment.
 IaC installs its pinned Go/Pulumi tools, compiles the Bike program once, and calls
 `pulumi up --yes --skip-preview` for `ericbutera/bike/bike`. Its four `--config`
 arguments set the API/worker, UI, map, and gateway image pins to `CI_COMMIT_SHA`.
@@ -274,8 +276,8 @@ transferring state and copying artifact data before starting the moved worker.
 
 ## Infrastructure changes
 
-Run these commands from a checkout of `pulumi-iac` with its configured Pulumi
-backend and Kubernetes access:
+Run these commands from the private infrastructure checkout with its configured
+Pulumi backend and Kubernetes access:
 
 ```sh
 mise trust
@@ -297,11 +299,9 @@ The existing Woodpecker synchronization checks use a fake CLI.
 Alert validation uses pinned Prometheus and Alertmanager tools against local
 fixtures and routing configuration; it sends no notifications.
 
-CI activation, repository configuration, and secrets belong to the
-[infrastructure repository](https://github.com/ericbutera/pulumi-iac).
+CI activation, repository configuration, and secrets are maintained separately.
 
 Use the [gateway recovery guide](../strava-gateway/README.md#failure-recovery) for retained task
-failures and the
-[backup runbook](https://github.com/ericbutera/pulumi-iac/blob/main/docs/Bike-Backup-Runbook.md)
-for database and file recovery. Record incomplete rollout work in
+failures and the private backup runbook for database and file recovery.
+Record incomplete rollout work in
 [`TODO.md`](TODO.md); a successful build alone does not establish live health.

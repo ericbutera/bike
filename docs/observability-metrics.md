@@ -1,7 +1,9 @@
 # Bike Observability Metrics
 
-This is a historical metric/alert design reference. The implemented contract is
-[the infrastructure metric catalog](../../pulumi-iac/docs/BIKE-OBSERVABILITY-METRICS.md).
+This is a historical metric/alert design reference. Implemented metrics are
+defined in the [Rust API](../bike-rs/api/src/metrics.rs),
+[worker](../bike-rs/bike-core/src/background_jobs/worker/metrics.rs), and
+[gateway](../strava-gateway/internal/observability/metrics.go).
 [The backlog](TODO.md) owns current scope; alert follow-up and broader
 observability validation are deferred STRAVA15/LATER10.
 

@@ -61,7 +61,7 @@ inventory live in the [browser README](../bike-ui/tests/e2e/README.md).
   requests and verifies clean engine shutdown before Woodpecker tears down the
   service. Unexpected daemon exits fail the gate. This avoids Woodpecker 3.19
   reporting its normal forced service teardown as exit 137.
-- [Companion IaC PR #6](https://github.com/ericbutera/pulumi-iac/pull/6) permits
+- The companion infrastructure change permits
   privileged steps only for Bike and deploys validated tested-image digests.
   Go formatting, lint, vet, and tests passed. Woodpecker preview/apply changed only
   the Bike sync ConfigMap/Job; the synchronization Job completed successfully.
@@ -273,8 +273,7 @@ checkout -> preparation -> unit/lint/native tests -> all image builds -> Playwri
 - Upload fixtures and image caches live outside PostgreSQL. A data restore
   alone cannot restore deleted files or remove stale cached results.
 - Woodpecker uses its Kubernetes backend. Its documented Docker-in-Docker path
-  needs deliberate permissions; the existing
-  [Woodpecker IaC](https://github.com/ericbutera/pulumi-iac/blob/main/nibelheim/woodpecker/repo_secrets.go)
+  needs deliberate permissions; the separately maintained Woodpecker configuration
   now has an authorized Bike-only permission application. The installed runner's
   registry, job-local socket permissions, and cancellation behavior still need CI verification.
 - Required spec skips, fixed waits, and live archive URLs have source replacements;
