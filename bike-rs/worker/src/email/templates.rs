@@ -29,3 +29,7 @@ impl EmailTemplate {
         self.templates.render(template_name, data)
     }
 }
+
+#[cfg(test)]
+#[path = "templates_tests.rs"]
+mod tests;

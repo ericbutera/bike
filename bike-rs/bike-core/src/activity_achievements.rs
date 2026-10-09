@@ -50,3 +50,7 @@ impl StoredActivityAchievementHighlights {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "activity_achievements_tests.rs"]
+mod tests;

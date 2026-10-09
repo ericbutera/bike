@@ -78,3 +78,7 @@ where
         self.order_by(column, sea_order)
     }
 }
+
+#[cfg(test)]
+#[path = "sorting_tests.rs"]
+mod tests;

@@ -136,6 +136,10 @@ run = ["mise --cd bike-ui run check", "mise --cd bike-ui run build"]
 description = "Generate coverage reports for the implemented Rust and Next.js suites"
 run = ["mise run rust:coverage", "mise run ui:coverage"]
 
+[tasks."coverage:unit"]
+description = "Generate Rust and Next.js unit coverage without integration or E2E tests"
+run = ["mise --cd bike-rs run coverage:unit", "mise run ui:coverage"]
+
 [tasks."rust:coverage"]
 description = "Generate Rust workspace coverage reports"
 run = "mise --cd bike-rs run coverage"
