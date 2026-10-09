@@ -1,0 +1,29 @@
+[
+  {
+    "commit": "38cb105f33f9ed2e98086e61d8a0393facd3fcdb",
+    "created_at": "2026-10-09T17:55:27Z",
+    "base_revision": "7dad8c3a242d526ecbc6be0605ddef61aafe954d",
+    "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/231",
+    "minimum_changed_line_percent": 80,
+    "rust": {
+      "lines": 38665,
+      "covered": 22251,
+      "percent": 57.54817017974913,
+      "changed": {
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
+      }
+    },
+    "nextjs": {
+      "lines": 5606,
+      "covered": 3291,
+      "percent": 58.7,
+      "changed": {
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
+      }
+    }
+  }
+]
