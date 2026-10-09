@@ -127,6 +127,113 @@ race-viewer workflows. Prefer unit tests, workflow tests, and provider fakes for
 individual rules. Record fixture checks separately from live provider and
 production verification.
 
+## Coverage reports
+
+Run all implemented coverage suites from the repository root:
+
+```sh
+mise run coverage
+```
+
+Use `mise run rust:coverage` or `mise run ui:coverage` to run one component.
+Use `mise run coverage:unit` for Rust and Next.js coverage without running
+Rust integration tests. The [happy-path checklist](coverage-checklist.md) records
+the initially uncovered paths and progress adding unit tests.
+Each component also provides `mise run coverage` from its own directory. The
+tasks install their pinned tools/dependencies and print per-file coverage and
+totals. The first Rust run builds instrumented artifacts separately from ordinary
+builds in `bike-rs/target/llvm-cov-target`; later runs reuse that build cache.
+Each Rust collection clears only prior `.profraw` measurements, preserving
+compiled artifacts so a previous run cannot inflate the new report.
+
+| Suite   | HTML report                                  | Machine-readable reports                                              |
+| ------- | -------------------------------------------- | --------------------------------------------------------------------- |
+| Rust    | `.artifacts/coverage/rust/html/index.html`   | `lcov.info`, `coverage-summary.json` in `.artifacts/coverage/rust/`   |
+| Next.js | `.artifacts/coverage/nextjs/html/index.html` | `lcov.info`, `coverage-summary.json` in `.artifacts/coverage/nextjs/` |
+
+Open either HTML file in a browser to inspect coverage by directory, file, and
+source line. Reports are generated locally and Git-ignored. JSON uses each
+provider's native schema; percentages from different languages are not combined.
+Coverage currently records a baseline without enforcing a minimum percentage.
+Test failures and Rust compiler warnings fail the task.
+
+Rust uses pinned `cargo-llvm-cov` and the matching toolchain's LLVM component.
+Reports cover `bike-core`, API, and worker. The default task runs ordinary
+workspace unit tests and the native SQLite HTTP integration suite;
+`coverage:unit` selects library and binary unit tests only. PostgreSQL tests
+marked `#[ignore]` require an explicitly selected disposable database and are
+not run by either task. Large real-archive tests marked `#[ignore]` also remain
+excluded. Stable Rust coverage does not instrument doctests or
+collect branch coverage. Upstream excludes separate test files, generated output,
+and dependencies by default; inline test modules may appear in source coverage.
+All paths under `migration/` are excluded from HTML, LCOV, JSON, and terminal
+reports. The migration crate still compiles when needed by application code.
+
+Next.js uses Vitest's V8 provider, pinned to the installed Vitest version. The
+report includes all TypeScript application sources in `app`, `components`, and
+`lib`, including untested files, while excluding tests and type declarations.
+It measures unit/component and route-handler tests, not Playwright browser
+execution. Async server components need additional validation of framework
+rendering and navigation beyond isolated unit tests.
+
+The map renderer, Strava gateway, Playwright, and k6 are not yet coverage suites
+in the root task. Coverage shows execution, not the strength of assertions.
+
+### CI coverage policy and viewing reports
+
+The owning Rust and Next.js `test` tasks produce unit coverage as part of the
+test run. Woodpecker's `test-rust` and `test-ui-unit` steps call those tasks;
+each unit suite runs once. Rust then runs its existing integration tests and
+doctests separately, without including their execution in the unit reports.
+Its instrumented build cache persists at `/cache/bike/target/llvm-cov-target`;
+the first instrumented build is still required, while subsequent runs reuse
+unchanged compiled artifacts. Formatting, lint, types, audits, and contract
+checks remain in the owning check tasks.
+
+After both test steps finish, `mise run ci:coverage` checks their existing
+reports through `mise run coverage:check`, without compiling or running tests.
+The native [diff-cover CLI](https://github.com/Bachmann1234/diff_cover) reads
+each project's LCOV report and requires **80% coverage of added or changed
+executable lines**, separately for Rust and Next.js. Untouched existing source
+has no minimum; modifying a line makes it subject to the policy. Tests, type
+declarations, and all Rust `migration/**` paths are excluded. Overall percentages
+are informational and may decrease without failing this gate.
+
+The first commit creating `scripts/coverage-check.sh` in first-parent Git history
+freezes the source that existed when this policy was introduced, including after
+the repository's rebase merge. The first rollout grandfathers that tree. Later PRs
+compare with the target branch's merge base. Main pushes compare with the prior
+main push recorded by CI, falling back to the first parent when unavailable.
+Neither comparison can precede the activation revision; missing activation
+history fails the gate. New Rust unit tests
+should live in separate `*_tests.rs` files so test bodies do not inflate source
+coverage. Review still needs to verify meaningful happy-path assertions.
+
+After generating local reports, run `mise run coverage:check`. Set
+`COVERAGE_COMPARE_REF` to an explicit Git revision when checking another base.
+The task writes uncovered line lists and HTML, Markdown, and JSON diff reports
+to `.artifacts/coverage/diff/`. Run `mise run coverage:test` for isolated tooling
+fixtures proving the threshold, legacy exemption, migration exclusion, and
+invalid source-path or missing-report failure; prek and CI run these same fixtures.
+
+View published reports at **[Bike test coverage](https://ericbutera.github.io/bike/coverage/)**.
+GitHub Pages is free for this public repository; Codecov and other paid services
+are not used. The landing page shows overall coverage, changes from the prior
+report, changed-line coverage, full HTML reports, and downloadable HTML/LCOV/JSON
+artifacts. Ten recent main revisions remain browsable, with `history.json` and
+`latest-summary.json` available for automation.
+
+GitHub Pages is configured once to serve the generated `gh-pages` branch.
+Main and manual main pipelines publish using the repository's dedicated SSH
+deploy key in the `coverage_publish_key` Woodpecker secret, restricted to push
+and manual events. GitHub's SSH host key is pinned in mise; publication uses
+SSH over port 443. The existing read-only `github_token` stays with deployment.
+PRs enforce the gate and
+print uncovered lines without receiving publishing credentials. Reports can
+publish after a changed-line failure so failed main coverage remains inspectable;
+the failed gate still blocks image builds and deployment. Superseded main runs
+skip publication to preserve the latest source revision.
+
 ## Regenerate contracts and shared assets
 
 Rust's Utoipa schema is the canonical HTTP contract. Regenerate the distribution

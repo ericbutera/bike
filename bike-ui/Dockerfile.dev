@@ -8,11 +8,17 @@ ARG PNPM_VERSION
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN npm install -g "npm@${NPM_VERSION:?NPM_VERSION must be supplied by mise}"
-RUN npm install -g --allow-scripts=pnpm "pnpm@${PNPM_VERSION:?PNPM_VERSION must be supplied by mise}"
+ENV NODE_PACKAGE_CACHE=/var/cache/bike-node
+RUN --mount=type=cache,id=bike-node-packages,target=/var/cache/bike-node \
+    npm install --cache "${NODE_PACKAGE_CACHE}/npm" --prefer-offline -g "npm@${NPM_VERSION:?NPM_VERSION must be supplied by mise}"
+RUN --mount=type=cache,id=bike-node-packages,target=/var/cache/bike-node \
+    npm install --cache "${NODE_PACKAGE_CACHE}/npm" --prefer-offline -g --allow-scripts=pnpm "pnpm@${PNPM_VERSION:?PNPM_VERSION must be supplied by mise}"
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=bike-node-packages,target=/var/cache/bike-node \
+    mkdir -p "${NODE_PACKAGE_CACHE}/runtime" && chmod 700 "${NODE_PACKAGE_CACHE}/runtime" \
+    && XDG_RUNTIME_DIR="${NODE_PACKAGE_CACHE}/runtime" PNPM_CONFIG_CACHE_DIR="${NODE_PACKAGE_CACHE}/pnpm-metadata" \
+    pnpm install --store-dir "${NODE_PACKAGE_CACHE}/pnpm-store" --frozen-lockfile --prefer-offline
 
 COPY docker-entrypoint-dev.sh /usr/local/bin/docker-entrypoint-dev.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint-dev.sh

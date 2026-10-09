@@ -1,5 +1,7 @@
 "use client";
 
+import ResponsiveChart from "./ui/ResponsiveChart";
+
 import { useMemo, useState } from "react";
 import {
   Bar,
@@ -8,7 +10,6 @@ import {
   Line,
   ReferenceArea,
   ReferenceLine,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
@@ -466,7 +467,7 @@ export default function FitnessFreshnessPanel() {
                 aria-label="Fitness and fatigue chart"
                 className="h-[360px] w-full"
               >
-                <ResponsiveContainer
+                <ResponsiveChart
                   width="100%"
                   height="100%"
                   minWidth={320}
@@ -563,7 +564,7 @@ export default function FitnessFreshnessPanel() {
                       }}
                     />
                   </ComposedChart>
-                </ResponsiveContainer>
+                </ResponsiveChart>
               </div>
             </div>
 
@@ -600,7 +601,7 @@ export default function FitnessFreshnessPanel() {
                 aria-label="Form chart"
                 className="h-[220px] w-full"
               >
-                <ResponsiveContainer
+                <ResponsiveChart
                   width="100%"
                   height="100%"
                   minWidth={320}
@@ -691,7 +692,7 @@ export default function FitnessFreshnessPanel() {
                       }}
                     />
                   </ComposedChart>
-                </ResponsiveContainer>
+                </ResponsiveChart>
               </div>
             </div>
           </>

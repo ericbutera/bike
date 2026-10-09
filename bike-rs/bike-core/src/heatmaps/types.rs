@@ -76,3 +76,7 @@ impl HeatmapQuery {
         )
     }
 }
+
+#[cfg(test)]
+#[path = "types_tests.rs"]
+mod tests;

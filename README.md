@@ -73,6 +73,21 @@ mise run compose:down
 See the [development guide](docs/development.md) for port overrides, tracing,
 focused checks, contract generation, and startup troubleshooting.
 
+Release image tasks use `docker-bake.hcl` locally and in Woodpecker. Run
+`mise run rust:images` to compile the API and worker once and load both images,
+or `mise run images:build` for all release/test images. `mise run e2e:prepare`
+builds just the worker-free browser runtime. `mise run images:plan` prints the
+resolved targets and mise pins without building.
+
+Node image builds share BuildKit's `bike-node-packages` download cache across UI,
+browser E2E, and renderer builds. Each image installs its own locked dependencies,
+including the correct Alpine or Debian native packages. CI connects to a
+persistent BuildKit service managed in the Woodpecker Pulumi stack; its dedicated
+PVC retains package/compiler caches and layers across jobs. Native CI checks
+retain their separate package store on `woodpecker-cache`. Package caches stay
+outside the runtime images. See the [build and deployment guide](docs/deployment.md)
+for registry cache recovery and builder operations.
+
 ## Architecture
 
 ```mermaid
@@ -164,6 +179,7 @@ mise run hooks:install       # Install repository-root prek hooks.
 mise run lint               # Run the owning component linters.
 mise run compose:config     # Validate local service wiring.
 mise run rust:check         # Rust formatting, Clippy, and tests.
+mise run coverage           # Rust and Next.js coverage reports.
 mise run ui:check           # UI types, tests, build, formatting, generated client.
 mise run test               # Map renderer tests.
 mise run strava:test        # Gateway tests.
@@ -175,6 +191,9 @@ SQLite fixture. `mise run contracts:check` compares canonical contracts and shar
 
 Production synthetics use a standalone k6 image for API health and UI availability. See the [production check instructions](integration-tests/README.md).
 Browser regressions live with the [UI](bike-ui/tests/e2e/README.md).
+
+Local coverage reports and their scope are documented in the
+[development guide](docs/development.md#coverage-reports).
 
 ## Documentation
 
@@ -190,7 +209,6 @@ Browser regressions live with the [UI](bike-ui/tests/e2e/README.md).
   [admin recovery](docs/specs/admin-operations.md#failed-import-recovery) — diagnosis and selective replay.
 - [Active backlog](docs/TODO.md) — remaining work and recorded verification limits.
 
-Production infrastructure is maintained in
-[`ericbutera/pulumi-iac`](https://github.com/ericbutera/pulumi-iac). Release jobs
+Production infrastructure is maintained separately. Release jobs
 publish immutable commit tags, run migrations, and promote the owning component.
 The local Compose environment is the starting point for development.

@@ -1,5 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
 import { openRoute } from "./helpers/ui.mjs";
+import { fakeApiResponse } from "./helpers/api-response.mjs";
 import {
   activityId,
   raceEffortIds,
@@ -8,7 +9,7 @@ import {
 } from "./helpers/targets.mjs";
 
 test("the priority views expose accessible loading state in Bike", async ({
-  browser,
+  createContext,
 }) => {
   const scenarios = [
     {
@@ -58,7 +59,7 @@ test("the priority views expose accessible loading state in Bike", async ({
 
   for (const target of targets) {
     for (const scenario of scenarios) {
-      const context = await browser.newContext({ colorScheme: "light" });
+      const context = await createContext({ colorScheme: "light" });
       const page = await context.newPage();
       let releaseResponse;
       let markRequestPaused;
@@ -95,54 +96,76 @@ test("the priority views expose accessible loading state in Bike", async ({
   }
 });
 
-test("the priority detail views show the same missing-record state", async ({
-  browser,
-}) => {
-  const missingRoutes = [
-    ["/activities/2147483647", "Unable to load activity."],
-    ["/segments/2147483647", "Unable to load segment."],
-    ["/segments/2147483647/race", "Unable to load segment."],
-  ];
+test.describe("missing records", () => {
+  test.use({
+    expectedConsoleErrors: Array(3).fill("[API Error] Not found undefined"),
+  });
+  test("the priority detail views show the same missing-record state", async ({
+    createContext,
+  }) => {
+    const missingRoutes = [
+      ["/activities/2147483647", "Unable to load activity."],
+      ["/segments/2147483647", "Unable to load segment."],
+      ["/segments/2147483647/race", "Unable to load segment."],
+    ];
 
-  for (const target of targets) {
-    const context = await browser.newContext({ colorScheme: "light" });
-    const page = await context.newPage();
+    for (const target of targets) {
+      const context = await createContext({ colorScheme: "light" });
+      const page = await context.newPage();
 
-    for (const [route, message] of missingRoutes) {
-      await openRoute(page, target, route);
-      await expect(page.locator(".alert-error")).toHaveText(message);
+      const missingApiPaths = [
+        "/api/activities/2147483647",
+        "/api/segments/2147483647",
+      ];
+      for (const apiPath of missingApiPaths) {
+        const response = await context.request.get(
+          new URL(apiPath, process.env.BIKE_API_URL ?? target.url).toString(),
+        );
+        expect(response.status()).toBe(404);
+      }
+      await fakeApiResponse(page, missingApiPaths, () => ({
+        status: 404,
+        json: { message: "Not found" },
+      }));
+
+      for (const [route, message] of missingRoutes) {
+        await openRoute(page, target, route);
+        await expect(page.locator(".alert-error")).toHaveText(message);
+      }
+
+      await context.close();
     }
-
-    await context.close();
-  }
+  });
 });
 
-test("the activity list exposes the same API failure state", async ({
-  browser,
-}) => {
-  for (const target of targets) {
-    const context = await browser.newContext({ colorScheme: "light" });
-    const page = await context.newPage();
+test.describe("service failure", () => {
+  test.use({
+    expectedConsoleErrors: ["[API Error] Service unavailable undefined"],
+  });
+  test("the activity list exposes the same API failure state", async ({
+    createContext,
+  }) => {
+    for (const target of targets) {
+      const context = await createContext({ colorScheme: "light" });
+      const page = await context.newPage();
 
-    await page.route("**/api/activities**", async (route) => {
-      await route.fulfill({
+      await fakeApiResponse(page, ["/api/activities"], () => ({
         status: 503,
-        contentType: "application/json",
-        body: JSON.stringify({ message: "Service unavailable" }),
-      });
-    });
+        json: { message: "Service unavailable" },
+      }));
 
-    await openRoute(page, target);
-    await expect(page.locator(".alert-error")).toHaveText(
-      "Unable to load activities.",
-    );
+      await openRoute(page, target);
+      await expect(page.locator(".alert-error")).toHaveText(
+        "Unable to load activities.",
+      );
 
-    await context.close();
-  }
+      await context.close();
+    }
+  });
 });
 
 test("the priority views preserve their empty-data states", async ({
-  browser,
+  createContext,
 }) => {
   const scenarios = [
     {
@@ -233,7 +256,7 @@ test("the priority views preserve their empty-data states", async ({
 
   for (const target of targets) {
     for (const scenario of scenarios) {
-      const context = await browser.newContext({ colorScheme: "light" });
+      const context = await createContext({ colorScheme: "light" });
       const page = await context.newPage();
 
       await page.route("**/api/**", async (route) => {

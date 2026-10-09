@@ -90,8 +90,7 @@ endpoints. Worker preparation and feature flags are described in the
 
 Root Docker Compose supplies the local application environment. The gateway has
 a separate database development stack. Production definitions and release
-promotion live in
-[`ericbutera/pulumi-iac`](https://github.com/ericbutera/pulumi-iac).
+promotion are maintained separately.
 
 Woodpecker jobs run checks for the owning component, publish images with
 immutable commit tags, and call the Pulumi release helper. Backend promotion

@@ -1,6 +1,11 @@
 import type { HeatmapZones } from "./heatmaps";
 
 export const DEFAULT_HEATMAP_ZOOM = 13;
+export const HEATMAP_ZONES_SOURCE = "personal-heatmap-zones";
+export const HEATMAP_ZONE_LAYERS = [
+  "personal-heatmap-zone-circles",
+  "personal-heatmap-single-zone-circles",
+] as const;
 
 export type HeatmapCamera = {
   longitude: number;

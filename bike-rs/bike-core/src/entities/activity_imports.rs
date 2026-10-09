@@ -7,7 +7,8 @@ pub const ACTIVITY_IMPORT_VERSION_LEGACY: i32 = 1;
 pub const ACTIVITY_IMPORT_VERSION_ARTIFACT_AWARE: i32 = 2;
 pub const ACTIVITY_IMPORT_VERSION_CURRENT: i32 = ACTIVITY_IMPORT_VERSION_ARTIFACT_AWARE;
 
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 #[sea_orm(table_name = "activity_imports")]
 pub struct Model {
     #[sea_orm(primary_key)]

@@ -507,8 +507,15 @@ Use synthetic regression data, never private activity exports or CSVs:
   caches, counts, and reprocessing. Future global tests cover participation,
   personal overrides, opt-out, deletion, and removal after eligibility changes.
 
-Unit tests establish these boundary behaviors using mocked boundaries or
-in-memory databases with fixtures. Regular CI needs no PostgreSQL service.
+Unit and native HTTP tests establish these boundary behaviors using mocked
+boundaries or in-memory databases with fixtures. Their CI checks need no
+PostgreSQL service. The [TEST11 browser gate](../E2E-TODO.md), under implementation
+and runtime verification, provisions
+its own disposable PostgreSQL environment and verifies uploads accepted through
+the real API, queue display, and seeded persisted results visible in the UI.
+The default browser gate excludes the worker and does not wait for job execution.
+Worker E2E is deferred to a separately selected, opt-in suite; job execution
+remains owned by pipeline/worker tests.
 Separate opt-in PostgreSQL checks can verify server-specific persisted
 eligibility, leases/generations, and queries; release
 verification must identify the deployed image and policy, complete migration

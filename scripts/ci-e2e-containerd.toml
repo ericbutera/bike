@@ -1,0 +1,12 @@
+# Docker 29's managed configuration is still version 2. Use containerd's
+# supported version 3 format so the job engine needs no startup migration.
+version = 3
+root = "/var/lib/docker/containerd/daemon"
+state = "/var/run/docker/containerd/daemon"
+disabled_plugins = ["io.containerd.cri.v1.images", "io.containerd.cri.v1.runtime", "io.containerd.grpc.v1.cri", "io.containerd.podsandbox.controller.v1.podsandbox"]
+
+[grpc]
+  address = "/var/run/docker/containerd/containerd.sock"
+
+[plugins."io.containerd.nri.v1.nri"]
+  disable = true

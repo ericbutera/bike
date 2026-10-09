@@ -1,4 +1,4 @@
-# One monorepo checkout feeds every check, image build, and IaC apply below.
+# Owning checks and image builds feed the dependent E2E/deployment workflow.
 when:
   - event: [push, pull_request]
     branch: main
@@ -11,6 +11,9 @@ when:
         - map-renderer/**
         - integration-tests/**
         - scripts/**
+        - compose*.yaml
+        - docker-bake.hcl
+        - prek.toml
         - .dockerignore
         - strava-gateway/**
         - mise.toml
@@ -44,11 +47,16 @@ steps:
       MISE_TASK_RUN_AUTO_INSTALL: "false"
       MISE_TRUSTED_CONFIG_PATHS: /woodpecker/src
       MISE_YES: "1"
+      CARGO_HOME: /cache/bike/cargo
+      RUSTUP_HOME: /cache/bike/rustup
+      UV_CACHE_DIR: /cache/bike/uv
+      BIKE_NODE_PACKAGE_CACHE: /cache/bike/node-packages
+      XDG_RUNTIME_DIR: /cache/bike/node-packages/runtime
     volumes: &mise_cache
       - woodpecker-cache:/cache
     commands:
       - mise run ci:mise:prepare
-      - mise run ci:images:prepare
+      - mise run ci:cache:prepare
 
   - name: test-rust
     failure: fail
@@ -60,10 +68,20 @@ steps:
       CARGO_HOME: /cache/bike/cargo
       RUSTUP_HOME: /cache/bike/rustup
       CARGO_TARGET_DIR: /cache/bike/target
+      CARGO_LLVM_COV_TARGET_DIR: /cache/bike/target/llvm-cov-target
     volumes:
       - woodpecker-cache:/cache
     commands:
       - .artifacts/bin/mise run ci:rust
+
+  - name: test-runtime-tooling
+    failure: fail
+    image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
+    depends_on: [prepare]
+    environment: *mise_environment
+    volumes: *mise_cache
+    commands:
+      - mise run ci:runtime
 
   - name: test-ui-unit
     failure: fail
@@ -92,139 +110,52 @@ steps:
     commands:
       - .artifacts/bin/mise run ci:gateway
 
-  - name: build-api
-    image: woodpeckerci/plugin-kaniko:2.3.3@sha256:d6ecc0f37561503eeacd8f2189068c5a13c531f5629cf2ce2de0ac144824c9f4
+  - name: build-images
+    image: ghcr.io/jdx/mise:2026.10.3-debian@sha256:58c4c847f5518a9a87a9a582886a485443dbca5eb024426577f58d586a0990c6
+    failure: fail
     depends_on:
-      &all_tests [
+      [
         test-rust,
         test-ui-unit,
         test-map-renderer,
         test-strava-gateway,
-      ]
-    backend_options:
-      kubernetes:
-        resources:
-          requests:
-            cpu: "4"
-            memory: 8Gi
-    # Kaniko has no mise/bootstrap shell. Load the public pins prepared by the owning mise task.
-    commands:
-      - set -a; . .artifacts/image-build.env; exec /kaniko/plugin.sh
-    environment:
-      PLUGIN_BUILD_ARGS_FROM_ENV: RUST_IMAGE,RUNTIME_IMAGE,MISE_IMAGE,PROTOC_VERSION,CARGO_CHEF_REVISION
-      PLUGIN_REGISTRY: registry.registry:5000
-      PLUGIN_REPO: bike-api
-      PLUGIN_TAGS: ${CI_COMMIT_SHA}
-      PLUGIN_INSECURE: "true"
-      PLUGIN_SKIP_TLS_VERIFY: "true"
-      PLUGIN_INSECURE_PULL: "true"
-      PLUGIN_INSECURE_REGISTRY: "true"
-      PLUGIN_CONTEXT: bike-rs
-      PLUGIN_DOCKERFILE: bike-rs/api/Dockerfile
-      PLUGIN_CACHE: "true"
-      PLUGIN_CACHE_REPO: bike-rust-cache
-
-  - name: build-worker
-    image: woodpeckerci/plugin-kaniko:2.3.3@sha256:d6ecc0f37561503eeacd8f2189068c5a13c531f5629cf2ce2de0ac144824c9f4
-    depends_on: *all_tests
-    backend_options:
-      kubernetes:
-        resources:
-          requests:
-            cpu: "4"
-            memory: 8Gi
-    # Kaniko has no mise/bootstrap shell. Load the public pins prepared by the owning mise task.
-    commands:
-      - set -a; . .artifacts/image-build.env; exec /kaniko/plugin.sh
-    environment:
-      PLUGIN_BUILD_ARGS_FROM_ENV: RUST_IMAGE,RUNTIME_IMAGE,MISE_IMAGE,PROTOC_VERSION,CARGO_CHEF_REVISION
-      PLUGIN_REGISTRY: registry.registry:5000
-      PLUGIN_REPO: bike-worker
-      PLUGIN_TAGS: ${CI_COMMIT_SHA}
-      PLUGIN_INSECURE: "true"
-      PLUGIN_SKIP_TLS_VERIFY: "true"
-      PLUGIN_INSECURE_PULL: "true"
-      PLUGIN_INSECURE_REGISTRY: "true"
-      PLUGIN_CONTEXT: bike-rs
-      PLUGIN_DOCKERFILE: bike-rs/worker/Dockerfile
-      PLUGIN_CACHE: "true"
-      PLUGIN_CACHE_REPO: bike-rust-cache
-
-  - name: build-ui
-    image: woodpeckerci/plugin-kaniko:2.3.3@sha256:d6ecc0f37561503eeacd8f2189068c5a13c531f5629cf2ce2de0ac144824c9f4
-    depends_on: *all_tests
-    # Kaniko has no mise/bootstrap shell. Load the public pins prepared by the owning mise task.
-    commands:
-      - set -a; . .artifacts/image-build.env; exec /kaniko/plugin.sh
-    environment:
-      PLUGIN_BUILD_ARGS_FROM_ENV: NODE_ALPINE_IMAGE,NPM_VERSION,PNPM_VERSION
-      PLUGIN_REGISTRY: registry.registry:5000
-      PLUGIN_REPO: bike-ui
-      PLUGIN_TAGS: ${CI_COMMIT_SHA}
-      PLUGIN_INSECURE: "true"
-      PLUGIN_SKIP_TLS_VERIFY: "true"
-      PLUGIN_INSECURE_PULL: "true"
-      PLUGIN_INSECURE_REGISTRY: "true"
-      PLUGIN_CONTEXT: bike-ui
-      PLUGIN_DOCKERFILE: bike-ui/Dockerfile
-
-  - name: build-map-renderer
-    image: woodpeckerci/plugin-kaniko:2.3.3@sha256:d6ecc0f37561503eeacd8f2189068c5a13c531f5629cf2ce2de0ac144824c9f4
-    depends_on: *all_tests
-    # Kaniko has no mise/bootstrap shell. Load the public pins prepared by the owning mise task.
-    commands:
-      - set -a; . .artifacts/image-build.env; exec /kaniko/plugin.sh
-    environment:
-      PLUGIN_BUILD_ARGS_FROM_ENV: NODE_IMAGE,NPM_VERSION,PLAYWRIGHT_IMAGE
-      PLUGIN_REGISTRY: registry.registry:5000
-      PLUGIN_REPO: bike-maps
-      PLUGIN_TAGS: ${CI_COMMIT_SHA}
-      PLUGIN_INSECURE: "true"
-      PLUGIN_SKIP_TLS_VERIFY: "true"
-      PLUGIN_INSECURE_PULL: "true"
-      PLUGIN_INSECURE_REGISTRY: "true"
-      PLUGIN_CONTEXT: .
-      PLUGIN_DOCKERFILE: map-renderer/Dockerfile
-
-  - name: build-strava-gateway
-    image: woodpeckerci/plugin-kaniko:2.3.3@sha256:d6ecc0f37561503eeacd8f2189068c5a13c531f5629cf2ce2de0ac144824c9f4
-    depends_on: *all_tests
-    # Kaniko has no mise/bootstrap shell. Load the public pins prepared by the owning mise task.
-    commands:
-      - set -a; . .artifacts/image-build.env; exec /kaniko/plugin.sh
-    environment:
-      PLUGIN_BUILD_ARGS_FROM_ENV: GO_IMAGE,RUNTIME_IMAGE
-      PLUGIN_REGISTRY: registry.registry:5000
-      PLUGIN_REPO: bike-strava-gateway
-      PLUGIN_TAGS: ${CI_COMMIT_SHA}
-      PLUGIN_INSECURE: "true"
-      PLUGIN_SKIP_TLS_VERIFY: "true"
-      PLUGIN_INSECURE_PULL: "true"
-      PLUGIN_INSECURE_REGISTRY: "true"
-      PLUGIN_CONTEXT: strava-gateway
-      PLUGIN_DOCKERFILE: strava-gateway/Dockerfile
-
-  - name: deploy
-    when:
-      - event: [push, manual]
-        branch: main
-    image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
-    depends_on:
-      [
-        build-api,
-        build-worker,
-        build-ui,
-        build-map-renderer,
-        build-strava-gateway,
+        test-runtime-tooling,
+        coverage,
       ]
     environment:
       <<: *mise_environment
-      PULUMI_ACCESS_TOKEN:
-        from_secret: pulumi_access_token
-      GITHUB_TOKEN:
-        from_secret: github_token
-      PULUMI_IAC_REPO:
-        from_secret: pulumi_iac_repo
+      BIKE_BUILDKIT_ADDR: tcp://bike-buildkit.woodpecker.svc.cluster.local:1234
+      BIKE_BUILDKIT_CA:
+        from_secret: buildkit_ca_cert
+      BIKE_BUILDKIT_CERT:
+        from_secret: buildkit_client_cert
+      BIKE_BUILDKIT_KEY:
+        from_secret: buildkit_client_key
     volumes: *mise_cache
     commands:
-      - mise run ci:deploy
+      - mise run ci:images
+
+  - name: coverage
+    failure: fail
+    image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
+    depends_on: [test-rust, test-ui-unit]
+    environment: *mise_environment
+    volumes: *mise_cache
+    commands:
+      - mise run ci:coverage
+
+  - name: publish-coverage
+    failure: fail
+    image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
+    depends_on: [coverage]
+    when:
+      - event: [push, manual]
+        branch: main
+        status: [success, failure]
+    environment:
+      <<: *mise_environment
+      COVERAGE_PUBLISH_KEY:
+        from_secret: coverage_publish_key
+    volumes: *mise_cache
+    commands:
+      - mise run coverage:publish

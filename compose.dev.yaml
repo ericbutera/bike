@@ -1,0 +1,89 @@
+# Development-only builds, source mounts, persistent storage and host ports.
+services:
+  postgres:
+    ports:
+      - "${BIKE_RUST_POSTGRES_PORT:-5432}:5432"
+  migration:
+    image: bike-dev-api
+    build: &api_build
+      context: ./bike-rs
+      dockerfile: Dockerfile.dev
+      target: api
+      args:
+        RUST_IMAGE: ${RUST_IMAGE:?Run Compose through mise}
+        WATCHEXEC_VERSION: ${WATCHEXEC_VERSION:?Run Compose through mise}
+        MISE_IMAGE: ${MISE_IMAGE:?Run Compose through mise}
+        PROTOC_VERSION: ${PROTOC_VERSION:?Run Compose through mise}
+    command: [cargo, run, --locked, --bin, migration, --, up]
+    volumes:
+      - ./bike-rs:/app
+  bike-rs:
+    image: bike-dev-api
+    build: *api_build
+    environment:
+      RUST_LOG: info,sea_orm=trace,sqlx=warn,tower_http=trace
+      CORS_ALLOWED_ORIGINS: http://localhost:${BIKE_RUST_UI_PORT:-3001}
+      FRONTEND_URL: http://localhost:${BIKE_RUST_UI_PORT:-3001}
+      API_URL: http://localhost:${BIKE_RUST_API_PORT:-3000}
+      LOCAL_ADMIN_ENABLED: ${LOCAL_ADMIN_ENABLED:-true}
+      OAUTH_PROVIDERS: dev
+      OAUTH_DEV_ENABLED: "true"
+      OAUTH_DEV_EMAIL: developer@bike.local
+      OAUTH_DEV_NAME: Local Developer
+      OAUTH_DEV_SUBJECT: bike-local-dev
+    ports:
+      - "${BIKE_RUST_API_PORT:-3000}:3000"
+    volumes:
+      - ./bike-rs:/app
+  worker:
+    image: bike-dev-worker
+    build:
+      context: ./bike-rs
+      dockerfile: Dockerfile.dev
+      target: worker
+      args:
+        RUST_IMAGE: ${RUST_IMAGE:?Run Compose through mise}
+        WATCHEXEC_VERSION: ${WATCHEXEC_VERSION:?Run Compose through mise}
+        MISE_IMAGE: ${MISE_IMAGE:?Run Compose through mise}
+        PROTOC_VERSION: ${PROTOC_VERSION:?Run Compose through mise}
+    volumes:
+      - ./bike-rs:/app
+  ui:
+    image: bike-dev-ui
+    build:
+      context: ./bike-ui
+      dockerfile: Dockerfile.dev
+      args:
+        NODE_ALPINE_IMAGE: ${NODE_ALPINE_IMAGE:?Run Compose through mise}
+        NPM_VERSION: ${NPM_VERSION:?Run Compose through mise}
+        PNPM_VERSION: ${PNPM_VERSION:?Run Compose through mise}
+    environment:
+      API_URL: http://localhost:${BIKE_RUST_API_PORT:-3000}/api
+      CDN_URL: http://localhost:${BIKE_RUST_API_PORT:-3000}/uploads
+      PNPM_CONFIG_STORE_DIR: /app/node_modules/.pnpm-store
+    ports:
+      - "${BIKE_RUST_UI_PORT:-3001}:3000"
+    volumes:
+      - ./bike-ui:/app
+      - ui_next_node_modules:/app/node_modules
+      - ui_next_cache:/app/.next
+  bike-maps:
+    build:
+      context: .
+      dockerfile: map-renderer/Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:?Run Compose through mise}
+        NPM_VERSION: ${NPM_VERSION:?Run Compose through mise}
+        PLAYWRIGHT_IMAGE: ${PLAYWRIGHT_IMAGE:?Run Compose through mise}
+  jaeger:
+    image: ${BIKE_TRACING_IMAGE:?Run Compose through mise}
+    profiles: [tracing]
+    ports:
+      - "${BIKE_RUST_JAEGER_UI_PORT:-16686}:16686"
+      - "${BIKE_RUST_JAEGER_GRPC_PORT:-4317}:4317"
+      - "${BIKE_RUST_JAEGER_HTTP_PORT:-4318}:4318"
+volumes:
+  postgres_data:
+    name: ${BIKE_RUST_POSTGRES_VOLUME:-bike_postgres_data}
+  ui_next_node_modules:
+  ui_next_cache:

@@ -1803,6 +1803,8 @@ export function useDeleteActivity() {
         queryClient.invalidateQueries({ queryKey: ["get", "/activities"] }),
         queryClient.invalidateQueries({
           queryKey: ["get", "/activities/{id}"],
+          // The deleted detail remains mounted until navigation completes.
+          refetchType: "none",
         }),
         queryClient.invalidateQueries({
           queryKey: ["get", "/activity-imports"],
@@ -2105,9 +2107,13 @@ export function useDeleteSegment() {
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["get", "/segments"] }),
-        queryClient.invalidateQueries({ queryKey: ["get", "/segments/{id}"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["get", "/segments/{id}"],
+          refetchType: "none",
+        }),
         queryClient.invalidateQueries({
           queryKey: ["get", "/segments/{id}/comparison"],
+          refetchType: "none",
         }),
         queryClient.invalidateQueries({ queryKey: ["get", "/activities"] }),
         queryClient.invalidateQueries({

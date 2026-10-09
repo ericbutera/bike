@@ -1,13 +1,13 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
 import { expectedEffortCount, segmentId, targets } from "./helpers/targets.mjs";
 import { openRoute } from "./helpers/ui.mjs";
 
 test("segment detail renders the shared workspace and supports core interactions", async ({
-  browser,
+  createContext,
 }) => {
   const rustFilterSummaries = new Map();
   for (const target of targets) {
-    const context = await browser.newContext({ colorScheme: "light" });
+    const context = await createContext({ colorScheme: "light" });
     const page = await context.newPage();
     const segmentRequests = [];
 

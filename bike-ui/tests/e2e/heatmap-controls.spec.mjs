@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./helpers/test.mjs";
 import { PNG } from "pngjs";
 import { fakeProductApi } from "./helpers/product-fixtures.mjs";
 import { targets } from "./helpers/targets.mjs";
@@ -82,7 +82,154 @@ function camera(page) {
   };
 }
 
+async function recordResizePaint(page) {
+  await page.addInitScript(() => {
+    window.heatmapResizePaint = { recording: false, pixels: [] };
+    let sampleQueued = false;
+    for (const dimension of ["width", "height"]) {
+      const descriptor = Object.getOwnPropertyDescriptor(
+        HTMLCanvasElement.prototype,
+        dimension,
+      );
+      Object.defineProperty(HTMLCanvasElement.prototype, dimension, {
+        ...descriptor,
+        set(value) {
+          descriptor.set.call(this, value);
+          if (
+            !window.heatmapResizePaint.recording ||
+            sampleQueued ||
+            !this.matches(
+              '[aria-label="Personal activity heatmap"] .maplibregl-canvas',
+            )
+          )
+            return;
+          sampleQueued = true;
+          // Sample after resize/redraw returns, before the browser composites.
+          // A settled screenshot would miss the transient cleared canvas.
+          queueMicrotask(() => {
+            sampleQueued = false;
+            const gl = this.getContext("webgl2");
+            const pixel = new Uint8Array(4);
+            gl.readPixels(
+              Math.floor(this.width / 2),
+              Math.floor(this.height / 2),
+              1,
+              1,
+              gl.RGBA,
+              gl.UNSIGNED_BYTE,
+              pixel,
+            );
+            window.heatmapResizePaint.pixels.push([...pixel]);
+          });
+        },
+      });
+    }
+  });
+}
+
 for (const target of targets) {
+  test(`${target.name}: resizing keeps the map painted and preserves the camera`, async ({
+    page,
+  }) => {
+    const { diagnostics, api } = await fixture(page, target);
+    await recordResizePaint(page);
+    await page.goto(
+      new URL("/maps?lng=-85.62&lat=44.76&zoom=13", target.url).toString(),
+    );
+    const map = page.getByRole("region", { name: "Personal activity heatmap" });
+    const canvas = map.locator("canvas");
+    await expect(canvas).toBeVisible();
+    const backgroundPixel = [232, 236, 232, 255];
+    await expect
+      .poll(async () => {
+        const image = PNG.sync.read(await canvas.screenshot());
+        const offset =
+          (Math.floor(image.height / 2) * image.width +
+            Math.floor(image.width / 2)) *
+          4;
+        return [...image.data.subarray(offset, offset + 4)];
+      })
+      .toEqual(backgroundPixel);
+    const initialCamera = camera(page);
+    const pixelRatio = await page.evaluate(() => window.devicePixelRatio);
+    await page.evaluate(() => {
+      window.heatmapResizePaint.recording = true;
+    });
+    for (const size of [
+      { width: 1360, height: 840 },
+      { width: 1000, height: 700 },
+      { width: 760, height: 600 },
+      { width: 390, height: 844 },
+      { width: 1440, height: 900 },
+    ]) {
+      const samplesBefore = await page.evaluate(
+        () => window.heatmapResizePaint.pixels.length,
+      );
+      await page.setViewportSize(size);
+      const bounds = await map.boundingBox();
+      await expect(canvas).toHaveJSProperty(
+        "width",
+        Math.round(bounds.width * pixelRatio),
+      );
+      await expect(canvas).toHaveJSProperty(
+        "height",
+        Math.round(bounds.height * pixelRatio),
+      );
+      await expect
+        .poll(() =>
+          page.evaluate(() => window.heatmapResizePaint.pixels.length),
+        )
+        .toBeGreaterThan(samplesBefore);
+      expect(camera(page)).toEqual(initialCamera);
+    }
+    const pixels = await page.evaluate(() => window.heatmapResizePaint.pixels);
+    expect(pixels).toEqual(pixels.map(() => backgroundPixel));
+    expect(api.unexpected).toEqual([]);
+    expect(diagnostics).toEqual([]);
+  });
+
+  test(`${target.name}: wheel and button zoom survive camera persistence and color changes`, async ({
+    page,
+  }) => {
+    const { diagnostics, api } = await fixture(page, target);
+    await page.goto(
+      new URL("/maps?lng=-85.62&lat=44.76&zoom=13", target.url).toString(),
+    );
+    const map = page.getByRole("region", { name: "Personal activity heatmap" });
+    const canvas = map.locator("canvas");
+    await expect(canvas).toBeVisible();
+    await page.getByLabel("Heatmap color: Blue").click();
+    await map.getByRole("button", { name: "Zoom in", exact: true }).click();
+    await page.getByText("Orange", { exact: true }).click();
+    await expect.poll(() => camera(page).zoom).toBe(14);
+    await page.getByLabel("Heatmap color: Orange").click();
+
+    const bounds = await canvas.boundingBox();
+    await page.mouse.move(
+      bounds.x + bounds.width / 2,
+      bounds.y + bounds.height / 2,
+    );
+    await page.mouse.wheel(0, -600);
+    await expect.poll(() => camera(page).zoom).toBeGreaterThan(14);
+    const firstZoom = camera(page).zoom;
+    await page.mouse.wheel(0, -600);
+    await expect.poll(() => camera(page).zoom).toBeGreaterThan(firstZoom);
+
+    const beforeDrag = camera(page);
+    await page.mouse.down();
+    await page.mouse.move(
+      bounds.x + bounds.width / 2 + 200,
+      bounds.y + bounds.height / 2 + 100,
+      { steps: 8 },
+    );
+    await page.mouse.up();
+    await expect
+      .poll(() => camera(page).longitude)
+      .not.toBe(beforeDrag.longitude);
+    expect(camera(page).zoom).toBe(beforeDrag.zoom);
+    expect(api.unexpected).toEqual([]);
+    expect(diagnostics).toEqual([]);
+  });
   for (const initialQuery of [
     "sport=road_ride",
     "sport=road_ride&lng=0&lat=0&zoom=2",
