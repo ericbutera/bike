@@ -127,3 +127,7 @@ impl Drop for CooldownLease {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "cooldown_tests.rs"]
+mod tests;

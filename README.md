@@ -179,6 +179,7 @@ mise run hooks:install       # Install repository-root prek hooks.
 mise run lint               # Run the owning component linters.
 mise run compose:config     # Validate local service wiring.
 mise run rust:check         # Rust formatting, Clippy, and tests.
+mise run coverage           # Rust and Next.js coverage reports.
 mise run ui:check           # UI types, tests, build, formatting, generated client.
 mise run test               # Map renderer tests.
 mise run strava:test        # Gateway tests.
@@ -190,6 +191,9 @@ SQLite fixture. `mise run contracts:check` compares canonical contracts and shar
 
 Production synthetics use a standalone k6 image for API health and UI availability. See the [production check instructions](integration-tests/README.md).
 Browser regressions live with the [UI](bike-ui/tests/e2e/README.md).
+
+Local coverage reports and their scope are documented in the
+[development guide](docs/development.md#coverage-reports).
 
 ## Documentation
 

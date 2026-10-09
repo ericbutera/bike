@@ -10,6 +10,7 @@
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "test:e2e": "playwright test tests/e2e/platform-synthetic.spec.mjs",
     "test:e2e:all": "playwright test"
@@ -42,6 +43,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6.1.2",
+    "@vitest/coverage-v8": "4.1.11",
     "eslint": "10.12.0",
     "eslint-config-next": "16.4.0",
     "happy-dom": "20.14.5",

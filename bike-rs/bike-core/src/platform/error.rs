@@ -83,3 +83,7 @@ impl From<sea_orm::DbErr> for PlatformError {
         Self::internal_error(format!("Database error: {}", err))
     }
 }
+
+#[cfg(test)]
+#[path = "error_tests.rs"]
+mod tests;
