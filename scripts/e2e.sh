@@ -79,7 +79,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 docker info --format '{{json .}}' >"$artifacts/engine.json"
 printf '%s\n' "$(git rev-parse HEAD)" >"$artifacts/revision.txt"
-git diff --binary HEAD >"$artifacts/worktree.patch"
+git status --porcelain >"$artifacts/worktree-status.txt"
 select_image BIKE_API_IMAGE "${BIKE_API_IMAGE:-bike-api:review}"
 select_image BIKE_UI_IMAGE "${BIKE_UI_IMAGE:-bike-ui:review}"
 select_image BIKE_RENDERER_IMAGE "${BIKE_RENDERER_IMAGE:-bike-map-renderer:review}"

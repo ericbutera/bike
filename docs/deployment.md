@@ -235,7 +235,8 @@ and renderer checks run native npm audit; both fail on dependency advisories.
 
 The CI workflow publishes images tagged with the full source commit SHA and calls
 `mise run ci:deploy`. The root [`ci:deploy` task](../mise.toml) clones IaC once into
-ignored `.artifacts/deployment` and invokes that checkout's `ci:deploy` task.
+a temporary directory and invokes that checkout's `ci:deploy` task. Its exit trap
+removes the clone after success or failure.
 The repository location comes from the `DEPLOYMENT_REPO` environment variable,
 supplied by Woodpecker's `deployment_repo` secret. Keep its value in private CI
 configuration; configure this secret before enabling deployment.
@@ -258,11 +259,18 @@ make the intended config changes and preview/apply. The workflow needs its
 read-only IaC clone token and Pulumi token; an IaC SSH deploy key is no longer
 used.
 
-Agents keep work local until the user signs off the completed feature and
-explicitly authorizes publishing its reviewed commits. Implementation,
-corrections, and tests form one coherent feature commit; requested specs may
-have a separate commit. Passing checks and earlier feature approvals do not
-authorize a new push.
+Permission to commit includes publishing, merging into remote and local main,
+and removing the finished worktree and task branches, unless the user requests
+a narrower scope. Implementation, corrections, and tests form one coherent
+feature commit; requested specs may have a separate commit. See [AGENTS.md](../AGENTS.md).
+
+Local `.artifacts` contains generated coverage, browser reports, logs, image
+metadata, and temporary tooling. These outputs can be regenerated with their
+owning tasks. Remove completed task output at handoff; do not keep code copies,
+Git bundles, or stale deployment checkouts there. Preserve domain knowledge in
+the owning specs and runbooks and use Git for source history. Published coverage
+reports remain available on GitHub Pages; CI browser reports follow their
+configured seven-day retention.
 
 | Pulumi project / stack           | Resources                                                                                                   |
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------- |
