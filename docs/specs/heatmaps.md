@@ -217,3 +217,90 @@ and metric labels.
 | Background preparation            | [prepare_heatmap.rs](../../bike-rs/worker/src/tasks/processors/prepare_heatmap.rs) |
 
 See [Bike maps](../maps.md) for the activity-preview renderer's separate flow.
+
+Validate these design choices against the implementation: raster overlays use continuous thin
+blue lines with progressive opacity; GPS tolerance and LOD preserve nearby
+trails and tile edges; per-activity geometry meets cold-tile targets before
+adding masks or rollups; indoor/virtual routes remain excluded; dates use
+activity start time with an explicit timezone. Exact road identities and hover
+counts remain outside the current scope.
+
+## Durable recording provenance requirements
+
+1. Persist recording environment (`outdoor`, `indoor`, `virtual`, `unknown`) and
+   original recorder independently of sport and import transport. Reference the
+   authoritative artifact or verified counterpart as classification evidence;
+   preserve explicit user corrections separately.
+2. Normalize FIT file/creator/session metadata, TCX/GPX origin extensions, and
+   provider sport/type/trainer metadata received at Bike's boundary. Retain
+   original payloads. Missing metadata is unknown; a weak generated export must
+   not clear stronger virtual or indoor evidence during reprocessing.
+3. Choose geometry artifacts separately from classification evidence. Combine
+   authoritative evidence across artifacts and safely verified provider copies.
+   Nearby start times alone do not prove a shared activity; require strong route
+   or sample matching before propagating classification. Preserve both source
+   identities and files. Conflicting explicit evidence requires review.
+4. Enforce the same stored eligibility rule in preparation, tiles, zones, bounds,
+   and progress. Neither indoor nor virtual routes contribute geography, even
+   when coordinates exist. Invalidate generations and cache revisions when
+   classification changes so stale chunks cannot leak while rebuilding.
+5. Upgrade policy/projection versions with append-only migrations and reconcile
+   obsolete ready rows. Require the expected policy version at lease and
+   publication alongside the generation guard; older workers cannot publish
+   obsolete projections after migration.
+6. Preserve small anonymized fixtures for archive Zwift FIT, generic generated
+   TCX linked to an original FIT, trainer flags, creator metadata with generic
+   sport, origin extensions, conflicting artifacts, reprocessing/title edits,
+   US virtual routes, outdoor controls in multiple countries, false counterpart
+   matches, and older workers running during an upgrade. Unit tests use mocks
+   or in-memory fixtures. Keep server-specific PostgreSQL verification separate
+   and opt-in; verify relevant API/UI behavior for the release.
+7. Complete deployment only after the new image/migration are live, backfill is
+   finished, the private known-virtual cohort contributes no tiles or zones,
+   obsolete ready projections are absent, and outdoor controls and the actual
+   map pass verification. Geography remains an audit tool, not a product fence.
+
+All classification and evidence handling belongs to Bike. It requires no
+Strava gateway changes or read-time gateway access.
+
+## Primary technical references
+
+- [MapLibre large-data performance guide](https://maplibre.org/maplibre-gl-js/docs/guides/large-data/): simplification, small payloads, and server tiling.
+- [MapLibre raster/vector source specification](https://maplibre.org/maplibre-style-spec/sources/): XYZ raster sources, bounds, tile sizes, and zoom limits.
+- [MapLibre layer specification](https://maplibre.org/maplibre-style-spec/layers/): point heatmap weighting and count-driven line width/opacity for the vector alternative.
+
+References reviewed on 2026-10-03. Rendering/aggregation policy and performance
+targets in this document are proposals, not results from these references.
+
+## Recording policy and GPS discontinuities
+
+Recording context retains FIT creator/session metadata, genuine TCX/GPX origin
+metadata, and native Strava sport/type/trainer flags. Authentic originals and
+provider JSON supply evidence; generated Bike TCX must be recovered and rejected
+as a replay source. Weaker generic reprocessing inputs cannot erase retained
+indoor or virtual evidence. Duplicate imports preserve new evidence without
+replacing existing routes.
+
+Counterpart recovery is owner-scoped and allows at most five seconds of start
+variation. Candidates require at least eight GPS points and meaningful movement.
+Up to 64 evenly spaced samples must agree on absolute timestamps and positions
+within two meters, with at least 95 percent agreement. Preserve both originals;
+geography does not decide eligibility.
+
+Current projection policy is version 5. Preparation and every read surface
+exclude stored indoor/virtual context. Lease, source, and publication checks use
+the current policy and generation; database constraints reject obsolete workers.
+Classification changes invalidate existing chunks and user cache revisions.
+
+Break GPS paths across displacements above five kilometers, or gaps of at least
+120 seconds with displacement above 200 meters. Reject impossible-speed samples
+above 45 meters per second. The inclusive 120-second rule prevents a previously
+observed straight chord across missing FIT positions while retaining valid
+sections. Unit fixtures cover that boundary and continuously recorded outdoor
+controls, along with every ingestion stage and replay. Unit/native CI uses mocks
+and in-memory fixtures; PostgreSQL-specific checks are separate and opt-in.
+The [TEST11 browser gate](../E2E-TODO.md), under implementation and runtime
+verification, owns a disposable PostgreSQL
+environment for required connected heatmap scenarios, separate from those checks.
+Playwright seeds persisted projections through the owning builder once per run;
+the default browser gate renders/filters those results without running a worker.

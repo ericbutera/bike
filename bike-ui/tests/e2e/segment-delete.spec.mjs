@@ -1,12 +1,12 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
 import { segmentId, targets } from "./helpers/targets.mjs";
 import { openRoute } from "./helpers/ui.mjs";
 
 test("deleting a segment removes its detail and returns to the list", async ({
-  browser,
+  createContext,
 }) => {
   for (const target of targets) {
-    const context = await browser.newContext();
+    const context = await createContext();
     const page = await context.newPage();
     await openRoute(page, target, `/segments/${segmentId}`);
     await expect(

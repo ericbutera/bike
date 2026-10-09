@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
 import { selectedFrontendRoutes } from "./helpers/frontend-routes.mjs";
 import {
   apiOperationEvidence,
@@ -11,10 +11,10 @@ import { targets } from "./helpers/targets.mjs";
 test.describe("shared frontend route and interaction matrix", () => {
   for (const route of selectedFrontendRoutes()) {
     test(`${route.name} has the same navigable route in Bike`, async ({
-      browser,
+      createContext,
     }) => {
       for (const target of targets) {
-        const context = await browser.newContext({
+        const context = await createContext({
           colorScheme: "light",
           locale: "en-US",
           timezoneId: "America/Detroit",

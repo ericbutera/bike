@@ -1,12 +1,13 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
+test.use({ scenario: "archive-states" });
 import { targets } from "./helpers/targets.mjs";
 import { openRoute } from "./helpers/ui.mjs";
 
 test("archive import states and queue response match in Bike", async ({
-  browser,
+  createContext,
 }) => {
   for (const target of targets) {
-    const context = await browser.newContext();
+    const context = await createContext();
     const page = await context.newPage();
     let jobsResponse;
     page.on("response", (response) => {

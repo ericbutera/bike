@@ -1,4 +1,5 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
+test.use({ scenario: "manual-processing" });
 import { targets } from "./helpers/targets.mjs";
 import { openRoute } from "./helpers/ui.mjs";
 
@@ -17,14 +18,12 @@ function sectionWithHeading(page, name) {
 }
 
 test("shared admin tools queue matching import and training work in Bike", async ({
-  browser,
+  createContext,
 }) => {
   test.setTimeout(60_000);
 
-  for (const target of targets.filter(
-    (candidate) => candidate.name !== "rust",
-  )) {
-    const context = await browser.newContext();
+  for (const target of targets) {
+    const context = await createContext();
     const page = await context.newPage();
     await openRoute(page, target, "/admin/manual-tasks");
     await expect(

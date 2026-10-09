@@ -1,12 +1,12 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
 import { openActivityList, selectTheme } from "./helpers/ui.mjs";
 import { targets } from "./helpers/targets.mjs";
 
 test("activity list renders and light theme persistence works in Bike", async ({
-  browser,
+  createContext,
 }) => {
   for (const target of targets) {
-    const context = await browser.newContext({ colorScheme: "light" });
+    const context = await createContext({ colorScheme: "light" });
     const page = await context.newPage();
 
     await openActivityList(page, target);

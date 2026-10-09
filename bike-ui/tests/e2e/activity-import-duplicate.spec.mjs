@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { targets } from "./helpers/targets.mjs";
@@ -10,11 +10,11 @@ const fixture = path.resolve(
 );
 
 test("uploading an existing GPX shows the existing import in Bike", async ({
-  browser,
+  createContext,
 }) => {
   test.setTimeout(90_000);
   for (const target of targets) {
-    const context = await browser.newContext();
+    const context = await createContext();
     const page = await context.newPage();
     await openRoute(page, target, "/upload");
     await expect(

@@ -1,0 +1,87 @@
+# A native service starts only after this revision's checks and images pass.
+# The private workspace socket keeps the disposable engine inside this job.
+depends_on: [bike]
+when:
+  - event: [push, pull_request]
+    branch: main
+    path:
+      include:
+        - bike-rs/**
+        - bike-ui/**
+        - contracts/**
+        - proto/**
+        - map-renderer/**
+        - integration-tests/**
+        - scripts/**
+        - compose*.yaml
+        - docker-bake.hcl
+        - prek.toml
+        - .dockerignore
+        - strava-gateway/**
+        - mise.toml
+        - .woodpecker/**
+      on_empty: false
+  - event: manual
+
+workspace:
+  base: /woodpecker
+  path: src
+
+clone:
+  git:
+    image: docker.io/woodpeckerci/plugin-git:2.10.1@sha256:550075c844fcec0af41d9d28f9860aa5d8c43e1e9419be4b9266dc02c2f29804
+    settings:
+      partial: false
+      depth: 0
+
+services:
+  - name: docker
+    image: localhost:32500/bike-e2e-engine:${CI_COMMIT_SHA}
+    privileged: true
+    environment:
+      BIKE_E2E_ENGINE_STATE_DIR: &engine_state /woodpecker/src/.artifacts/dind-state
+    commands:
+      - sh scripts/ci-e2e-engine.sh --insecure-registry=registry.registry:5000
+
+steps:
+  - name: prepare
+    image: ghcr.io/jdx/mise:2026.10.3-debian@sha256:58c4c847f5518a9a87a9a582886a485443dbca5eb024426577f58d586a0990c6
+    environment: &mise_environment
+      PATH: /woodpecker/src/.artifacts/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      MISE_DATA_DIR: /cache/bike/mise
+      MISE_CACHE_DIR: /cache/bike/mise-cache
+      MISE_TASK_RUN_AUTO_INSTALL: "false"
+      MISE_TRUSTED_CONFIG_PATHS: /woodpecker/src
+      MISE_YES: "1"
+    volumes: &mise_cache
+      - woodpecker-cache:/cache
+    commands:
+      - mise run ci:mise:prepare
+
+  - name: test-ui-e2e
+    failure: fail
+    image: localhost:32500/bike-e2e:${CI_COMMIT_SHA}
+    environment:
+      <<: *mise_environment
+      DOCKER_HOST: unix:///woodpecker/src/.artifacts/dind-state/docker.sock
+      BIKE_E2E_ENGINE_STATE_DIR: *engine_state
+    volumes: *mise_cache
+    commands:
+      - mise run ci:e2e
+
+  - name: deploy
+    when:
+      - event: [push, manual]
+        branch: main
+    image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
+    environment:
+      <<: *mise_environment
+      PULUMI_ACCESS_TOKEN:
+        from_secret: pulumi_access_token
+      GITHUB_TOKEN:
+        from_secret: github_token
+      PULUMI_IAC_REPO:
+        from_secret: pulumi_iac_repo
+    volumes: *mise_cache
+    commands:
+      - mise run ci:deploy

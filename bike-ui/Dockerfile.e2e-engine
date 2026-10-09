@@ -1,0 +1,3 @@
+# Keep the job's native Docker daemon pin in mise, like other runtime images.
+ARG DOCKER_DIND_IMAGE
+FROM ${DOCKER_DIND_IMAGE:-scratch}

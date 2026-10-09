@@ -4,5 +4,12 @@
 !bike-ui/pnpm-workspace.yaml
 !bike-ui/playwright.config.mjs
 !bike-ui/tests/e2e/**
+!bike-ui/public/
+!bike-ui/public/map-styles/
+!bike-ui/public/map-styles/**
 !contracts/openapi/openapi.json
-!bike-rs/api/tests/fixtures/platform/uploads/**
+!bike-rs/api/tests/fixtures/platform/**
+!compose.runtime.yaml
+!compose.e2e.yaml
+!scripts/e2e-state.sh
+!scripts/e2e-reset.sql

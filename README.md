@@ -73,6 +73,21 @@ mise run compose:down
 See the [development guide](docs/development.md) for port overrides, tracing,
 focused checks, contract generation, and startup troubleshooting.
 
+Release image tasks use `docker-bake.hcl` locally and in Woodpecker. Run
+`mise run rust:images` to compile the API and worker once and load both images,
+or `mise run images:build` for all release/test images. `mise run e2e:prepare`
+builds just the worker-free browser runtime. `mise run images:plan` prints the
+resolved targets and mise pins without building.
+
+Node image builds share BuildKit's `bike-node-packages` download cache across UI,
+browser E2E, and renderer builds. Each image installs its own locked dependencies,
+including the correct Alpine or Debian native packages. CI connects to a
+persistent BuildKit service managed in the Woodpecker Pulumi stack; its dedicated
+PVC retains package/compiler caches and layers across jobs. Native CI checks
+retain their separate package store on `woodpecker-cache`. Package caches stay
+outside the runtime images. See the [build and deployment guide](docs/deployment.md)
+for registry cache recovery and builder operations.
+
 ## Architecture
 
 ```mermaid

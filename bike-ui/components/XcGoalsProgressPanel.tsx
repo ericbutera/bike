@@ -1,5 +1,7 @@
 "use client";
 
+import ResponsiveChart from "./ui/ResponsiveChart";
+
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -10,7 +12,6 @@ import {
   ComposedChart,
   Line,
   ReferenceLine,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
@@ -2485,7 +2486,7 @@ export default function XcGoalsProgressPanel() {
               aria-label="XC weekly distance and climbing trend chart"
               className="mt-4 h-[300px] w-full"
             >
-              <ResponsiveContainer
+              <ResponsiveChart
                 width="100%"
                 height="100%"
                 minWidth={320}
@@ -2554,7 +2555,7 @@ export default function XcGoalsProgressPanel() {
                     activeDot={{ r: 5, fill: CLIMB_COLOR }}
                   />
                 </ComposedChart>
-              </ResponsiveContainer>
+              </ResponsiveChart>
             </div>
           </div>
 
@@ -2600,7 +2601,7 @@ export default function XcGoalsProgressPanel() {
                 aria-label="XC Z2 speed climbing rate and decoupling trend chart"
                 className="mt-4 h-[300px] w-full"
               >
-                <ResponsiveContainer
+                <ResponsiveChart
                   width="100%"
                   height="100%"
                   minWidth={320}
@@ -2680,7 +2681,7 @@ export default function XcGoalsProgressPanel() {
                       connectNulls
                     />
                   </ComposedChart>
-                </ResponsiveContainer>
+                </ResponsiveChart>
               </div>
             ) : (
               <EmptyTrendState message="Repeat comparable endurance rides with heart-rate data to unlock Z2 speed, climb-rate, and decoupling trends." />
@@ -2719,7 +2720,7 @@ export default function XcGoalsProgressPanel() {
               aria-label="XC weekly time in zones chart"
               className="mt-4 h-[280px] w-full"
             >
-              <ResponsiveContainer
+              <ResponsiveChart
                 width="100%"
                 height="100%"
                 minWidth={320}
@@ -2791,7 +2792,7 @@ export default function XcGoalsProgressPanel() {
                     maxBarSize={34}
                   />
                 </ComposedChart>
-              </ResponsiveContainer>
+              </ResponsiveChart>
             </div>
           ) : (
             <EmptyTrendState message="Save heart-rate zones on Account and regenerate older rides to populate weekly time-in-zone history." />

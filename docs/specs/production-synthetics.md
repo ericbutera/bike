@@ -66,6 +66,12 @@ and no Kubernetes access. The standalone Playwright image owns authenticated
 browser journeys, using an explicitly prepared environment and injected
 configuration. Native HTTP tests own authorization regression coverage.
 
+The [TEST11 gate](../E2E-TODO.md), under implementation and runtime verification,
+owns disposable local/CI environments
+and uses normal session/token authentication for connected write and admin
+journeys. This production synthetic credential remains read-only; it is not the
+authentication mechanism for those mutating E2E scenarios.
+
 Playwright remains a separate browser check. For an internal production run it
 discovers the same manifest and directs the deployed UI's API transport to the
 existing internal API, preserving real application responses. External browser

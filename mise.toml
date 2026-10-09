@@ -19,8 +19,11 @@ node_image = "node:{{vars.node_version}}-trixie@sha256:1278a37eb510ec1606fba0e80
 node_alpine_image = "node:{{vars.node_version}}-alpine3.24@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1"
 go_image = "golang:{{vars.go_version}}-trixie@sha256:8f58fd67ea075142d947a60e0caa4317746a55118d312f027793d382c7741734"
 playwright_image = "mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27"
+docker_cli_image = "docker:29.4.0-cli@sha256:2efe7c8e806b35050def6ba1ba0ddad67b521a0a6d37f4910b3d88f11b495d03"
+docker_dind_image = "docker:29.4.0-dind@sha256:a6dd5322747a95cd8e3207bd8d415a8fd20ec34e9c00f06dc019cbd912013489"
 k6_image = "grafana/k6:2.3.0@sha256:9c2dee7f8ed74d317e4027c06a10f169b625638189de8d4555d0b3486a5aeb34"
 watchexec_version = "2.8.0"
+buildx_version = "0.38.0"
 
 [tools]
 node = "{{vars.node_version}}"
@@ -36,6 +39,7 @@ protoc = "{{vars.protoc_version}}"
 k6 = "{{vars.k6_version}}"
 "npm:prettier" = "3.9.9"
 "aqua:woodpecker-ci/woodpecker/woodpecker-cli" = "3.19.0"
+"aqua:docker/buildx" = "{{vars.buildx_version}}"
 
 [env]
 _.path = { path = ["{% if tools['npm:npm'] is defined %}{{tools['npm:npm'].path}}/node_modules/.bin{% endif %}"], tools = true }
@@ -52,20 +56,22 @@ NODE_IMAGE = "{{vars.node_image}}"
 NODE_ALPINE_IMAGE = "{{vars.node_alpine_image}}"
 GO_IMAGE = "{{vars.go_image}}"
 PLAYWRIGHT_IMAGE = "{{vars.playwright_image}}"
+DOCKER_CLI_IMAGE = "{{vars.docker_cli_image}}"
+DOCKER_DIND_IMAGE = "{{vars.docker_dind_image}}"
 K6_IMAGE = "{{vars.k6_image}}"
 WATCHEXEC_VERSION = "{{vars.watchexec_version}}"
 BIKE_POSTGRES_IMAGE = "{{vars.postgres_image}}"
 BIKE_POSTGRES_UPGRADE_IMAGE = "{{vars.postgres_upgrade_image}}"
 STRAVA_GATEWAY_POSTGRES_IMAGE = "{{vars.postgres_image}}"
 BIKE_TRACING_IMAGE = "{{vars.tracing_image}}"
-NPM_CONFIG_CACHE = "{{config_root}}/.cache/npm"
-PNPM_CONFIG_STORE_DIR = "{{config_root}}/.cache/pnpm-store"
+NPM_CONFIG_CACHE = "{{get_env(name='BIKE_NODE_PACKAGE_CACHE', default=config_root ~ '/.cache')}}/npm"
+PNPM_CONFIG_STORE_DIR = "{{get_env(name='BIKE_NODE_PACKAGE_CACHE', default=config_root ~ '/.cache')}}/pnpm-store"
+PNPM_CONFIG_CACHE_DIR = "{{get_env(name='BIKE_NODE_PACKAGE_CACHE', default=config_root ~ '/.cache')}}/pnpm-metadata"
+BUILDX_CONFIG = "{{get_env(name='BUILDX_CONFIG', default=config_root ~ '/.cache/docker-buildx')}}"
 
 [tasks."renderer:build"]
 description = "Build the renderer image using mise version pins"
-run = '''
-docker build --file map-renderer/Dockerfile --tag bike-map-renderer:review --build-arg NODE_IMAGE --build-arg NPM_VERSION --build-arg PLAYWRIGHT_IMAGE .
-'''
+run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load maps"
 
 [tasks."pins:sync"]
 description = "Regenerate pnpm manifest and lock metadata from mise's version pin"
@@ -77,31 +83,52 @@ run = "sh scripts/check-package-manager.sh"
 
 [tasks."api:image"]
 description = "Build the release API and migration tools using mise pins"
-run = "docker build --file bike-rs/api/Dockerfile --build-arg RUST_IMAGE --build-arg RUNTIME_IMAGE --build-arg MISE_IMAGE --build-arg PROTOC_VERSION --build-arg CARGO_CHEF_REVISION --tag bike-api:review bike-rs"
+run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load api"
 
 [tasks."worker:image"]
 description = "Build the release worker using mise pins"
-run = "docker build --file bike-rs/worker/Dockerfile --build-arg RUST_IMAGE --build-arg RUNTIME_IMAGE --build-arg MISE_IMAGE --build-arg PROTOC_VERSION --build-arg CARGO_CHEF_REVISION --tag bike-worker:review bike-rs"
+run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load worker"
+
+[tasks."rust:images"]
+description = "Build API and worker together from their shared compilation stage"
+run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load rust"
+
+[tasks."images:build"]
+description = "Build and load release images using the shared Bake targets"
+run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load"
+
+[tasks."images:push"]
+description = "Build and push immutable release images using the shared Bake targets"
+run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --push --progress=plain --metadata-file .artifacts/image-builds.json"
+
+[tasks."images:plan"]
+description = "Resolve the local or CI release build graph without building images"
+run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --print"
+
+[tasks."images:validate"]
+description = "Check every release Dockerfile with the selected BuildKit builder"
+run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --call=check --set '*.args.BUILDKIT_DOCKERFILE_CHECK=error=true'"
 
 [tasks."ui:image"]
 description = "Build the release UI using mise pins"
-run = "docker build --file bike-ui/Dockerfile --build-arg NODE_ALPINE_IMAGE --build-arg NPM_VERSION --build-arg PNPM_VERSION --tag bike-ui:review bike-ui"
+run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load ui"
 
 [tasks."strava:image"]
 description = "Build the release gateway using mise pins"
-run = "docker build --file strava-gateway/Dockerfile --build-arg GO_IMAGE --build-arg RUNTIME_IMAGE --tag bike-gateway:review strava-gateway"
+run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load strava-gateway"
 
 [tasks."images:check"]
 description = "Run native Dockerfile checks"
 run = '''
 set -eu
-for dockerfile in bike-rs/api/Dockerfile bike-rs/worker/Dockerfile bike-rs/api/Dockerfile.dev bike-rs/worker/Dockerfile.dev; do
+for dockerfile in bike-rs/Dockerfile bike-rs/Dockerfile.dev; do
   docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg RUST_IMAGE --build-arg RUNTIME_IMAGE --build-arg MISE_IMAGE --build-arg PROTOC_VERSION --build-arg CARGO_CHEF_REVISION --build-arg WATCHEXEC_VERSION --file "$dockerfile" bike-rs
 done
 for dockerfile in bike-ui/Dockerfile bike-ui/Dockerfile.dev; do
   docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg NODE_ALPINE_IMAGE --build-arg NPM_VERSION --build-arg PNPM_VERSION --file "$dockerfile" bike-ui
 done
-docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg NODE_IMAGE --build-arg NPM_VERSION --build-arg PNPM_VERSION --file bike-ui/Dockerfile.e2e .
+docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg NODE_IMAGE --build-arg NPM_VERSION --build-arg PNPM_VERSION --build-arg PLAYWRIGHT_IMAGE --build-arg DOCKER_CLI_IMAGE --file bike-ui/Dockerfile.e2e .
+docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg DOCKER_DIND_IMAGE --file bike-ui/Dockerfile.e2e-engine .
 docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg GO_IMAGE --build-arg RUNTIME_IMAGE --file strava-gateway/Dockerfile strava-gateway
 docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg NODE_IMAGE --build-arg NPM_VERSION --build-arg PLAYWRIGHT_IMAGE --file map-renderer/Dockerfile .
 docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg K6_IMAGE --file integration-tests/Dockerfile integration-tests
@@ -166,25 +193,18 @@ if ! test "$mise_binary" -ef .artifacts/bin/mise; then
 fi
 '''
 
-[tasks."ci:images:prepare"]
-description = "Export only public mise build pins for the native Kaniko plugin"
+[tasks."ci:cache:prepare"]
+description = "Prepare shared package cache permissions for native CI checks"
 run = '''
-mkdir -p .artifacts
-cat > .artifacts/image-build.env <<'PINS'
-RUST_IMAGE='{{vars.rust_image}}'
-MISE_IMAGE='{{vars.mise_image}}'
-PROTOC_VERSION='{{vars.protoc_version}}'
-CARGO_CHEF_REVISION='{{vars.cargo_chef_revision}}'
-RUNTIME_IMAGE='{{vars.runtime_image}}'
-NODE_IMAGE='{{vars.node_image}}'
-NODE_ALPINE_IMAGE='{{vars.node_alpine_image}}'
-NPM_VERSION='{{vars.npm_version}}'
-PNPM_VERSION='{{vars.pnpm_version}}'
-GO_IMAGE='{{vars.go_image}}'
-PLAYWRIGHT_IMAGE='{{vars.playwright_image}}'
-K6_IMAGE='{{vars.k6_image}}'
-PINS
+if [ -n "${BIKE_NODE_PACKAGE_CACHE:-}" ]; then
+  mkdir -p "$BIKE_NODE_PACKAGE_CACHE/runtime"
+  chmod 700 "$BIKE_NODE_PACKAGE_CACHE/runtime"
+fi
 '''
+
+[tasks."ci:images"]
+description = "Connect to persistent BuildKit and publish this revision's Bake targets"
+run = ["mise install aqua:docker/buildx", "bash scripts/ci-images.sh"]
 
 [tasks."ci:check"]
 description = "Validate the workflow using the native Woodpecker CLI"
@@ -206,13 +226,14 @@ run = ["mise install node npm:npm npm:prettier", "mise run renderer:check"]
 description = "Install gateway tooling and run the shared gateway checks"
 run = ["mise --cd strava-gateway install go golangci-lint protoc go:google.golang.org/protobuf/cmd/protoc-gen-go go:google.golang.org/grpc/cmd/protoc-gen-go-grpc", "mise --cd strava-gateway run check", "mise run generate:protobuf:check"]
 
+[tasks."ci:runtime"]
+description = "Check owning CI and shell orchestration before image builds"
+run = ["mise install shellcheck aqua:woodpecker-ci/woodpecker/woodpecker-cli aqua:docker/buildx", "mise run lint:sh", "mise run ci:check", "mise run images:plan"]
+
 [tasks."ci:deploy"]
 description = "Clone Bike infrastructure once and apply the single Pulumi project"
-run = [
-  'git clone --quiet "https://x-access-token:${GITHUB_TOKEN:?GITHUB_TOKEN is required}@github.com/${PULUMI_IAC_REPO:?PULUMI_IAC_REPO is required}" .artifacts/pulumi-iac',
-  "mise trust --yes .artifacts/pulumi-iac/mise.toml",
-  "mise --cd .artifacts/pulumi-iac run ci:deploy",
-]
+env = { _.file = ".artifacts/e2e-images.env" }
+run = "bash scripts/ci-deploy.sh"
 
 [tasks."lint"]
 description = "Run each language linter, formatter, and applicable type checks"
@@ -293,7 +314,7 @@ run = ["mise run renderer:deps", "map-renderer/node_modules/.bin/eslint --config
 
 [tasks."synthetics:build"]
 description = "Build the standalone k6 synthetic image"
-run = "docker build --build-arg K6_IMAGE --tag bike-synthetics:review integration-tests"
+run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load synthetics"
 
 [tasks."synthetics:run"]
 description = "Run the synthetic image against explicit reachable URLs"
@@ -301,7 +322,28 @@ run = "docker run --rm --env BIKE_API_URL --env BIKE_UI_URL bike-synthetics:revi
 
 [tasks."e2e:build"]
 description = "Build the standalone browser test image"
-run = "docker build --build-arg NODE_IMAGE --build-arg NPM_VERSION --build-arg PNPM_VERSION --tag bike-e2e:review --file bike-ui/Dockerfile.e2e ."
+run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load e2e"
+
+[tasks."e2e:prepare"]
+description = "Prepare cached release images and the browser image from this worktree"
+run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load e2e-runtime"
+
+[tasks.e2e]
+description = "Run the required browser suite in a disposable image-based environment"
+usage = 'arg "[spec]" default=""'
+run = 'bash scripts/e2e.sh ${usage_spec:+"$usage_spec"}'
+
+[tasks."e2e:config"]
+description = "Validate the disposable runtime with native Compose"
+run = "docker compose --project-name bike-e2e-config --file compose.runtime.yaml --file compose.e2e.yaml config --quiet"
+
+[tasks."runtime:check"]
+description = "Validate shared development and disposable runtime configuration"
+run = ["mise run compose:config", "mise run e2e:config"]
+
+[tasks."ci:e2e"]
+description = "Test this revision's prepared registry images on the job-local engine"
+run = "bash scripts/ci-e2e.sh"
 
 [tasks."e2e:run"]
 description = "Run browser tests against an explicitly configured test environment"

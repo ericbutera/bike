@@ -1,51 +1,14 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
+test.use({ scenario: "heatmap", channel: "chromium" });
 import { PNG } from "pngjs";
 import { targets } from "./helpers/targets.mjs";
 import { openRoute, artifactRoot, stabilize } from "./helpers/ui.mjs";
-import { openFrontendRoute } from "./helpers/frontend.mjs";
 import fs from "node:fs/promises";
 import path from "node:path";
 
 const selected = process.env.PLAYWRIGHT_TARGET
   ? targets.filter((target) => target.name === process.env.PLAYWRIGHT_TARGET)
   : targets;
-const blank = PNG.sync.write({ width: 1, height: 1, data: Buffer.alloc(4) });
-
-async function fakeBasemapProvider(
-  page,
-  real = process.env.HEATMAP_REAL_BASEMAP === "1",
-) {
-  if (real) return;
-  await page.route(/^https:\/\/tiles\.openfreemap\.org\//, async (route) => {
-    const url = route.request().url();
-    let body;
-    let contentType;
-    if (url.endsWith("/planet")) {
-      contentType = "application/json";
-      body = JSON.stringify({
-        tilejson: "3.0.0",
-        tiles: ["https://tiles.openfreemap.org/fixture/{z}/{x}/{y}.pbf"],
-        minzoom: 0,
-        maxzoom: 14,
-        vector_layers: [],
-      });
-    } else if (url.endsWith(".json")) {
-      contentType = "application/json";
-      body = "{}";
-    } else if (url.endsWith(".pbf")) {
-      contentType = "application/x-protobuf";
-      body = Buffer.alloc(0);
-    } else {
-      contentType = "image/png";
-      body = blank;
-    }
-    await route.fulfill({
-      contentType,
-      body,
-      headers: { "access-control-allow-origin": "*" },
-    });
-  });
-}
 
 function bluePixels(buffer) {
   const png = PNG.sync.read(buffer);
@@ -61,13 +24,12 @@ for (const target of selected) {
   test(`${target.name}: zoom retains heat while detailed tiles are delayed`, async ({
     page,
   }) => {
-    test.skip(
-      !process.env.HEATMAP_PREVIEW_FILTERS,
-      "Select a bounded known-route filter for zoom verification.",
-    );
+    expect(
+      process.env.HEATMAP_PREVIEW_FILTERS,
+      "Known-route filter is required",
+    ).toBeTruthy();
     test.setTimeout(60_000);
     // Keep basemap colors out of the pixel assertion; overlay tiles use the real API.
-    await fakeBasemapProvider(page, false);
     let hold = false;
     let resume;
     let notifyRequest;
@@ -88,14 +50,15 @@ for (const target of selected) {
       const flagResponse = page.waitForResponse((response) =>
         new URL(response.url()).pathname.endsWith("/feature-flags"),
       );
-      await openFrontendRoute(
-        page,
-        target,
-        {
-          name: "heatmap-zoom",
-          path: `/maps?${process.env.HEATMAP_PREVIEW_FILTERS}`,
-        },
-        { retryAuthRedirect: true },
+      const filters = new URLSearchParams(process.env.HEATMAP_PREVIEW_FILTERS);
+      await openRoute(page, target, `/maps?${filters}`);
+      await expect(page).toHaveURL(
+        (url) =>
+          url.origin === new URL(target.url).origin &&
+          url.pathname === "/maps" &&
+          [...filters].every(
+            ([key, value]) => url.searchParams.get(key) === value,
+          ),
       );
       const flags = await (await flagResponse).json();
       const enabled = flags.data.some(
@@ -103,7 +66,7 @@ for (const target of selected) {
       );
       if (process.env.HEATMAP_REQUIRE_ENABLED === "1")
         expect(enabled).toBe(true);
-      test.skip(!enabled, "Heatmaps are disabled on this site.");
+      expect(enabled, "Required heatmap feature is enabled").toBe(true);
       const map = page.getByRole("region", {
         name: "Personal activity heatmap",
       });
@@ -148,7 +111,6 @@ for (const target of selected) {
     page,
   }) => {
     test.setTimeout(90_000);
-    await fakeBasemapProvider(page);
     const tileResponses = [];
     page.on("response", (response) => {
       if (response.url().includes("/heatmap-tiles/"))
@@ -162,17 +124,11 @@ for (const target of selected) {
     const enabled = flags.data.some(
       (flag) => flag.feature_key === "heatmaps" && flag.enabled,
     );
-    if (process.env.HEATMAP_REQUIRE_ENABLED === "1") expect(enabled).toBe(true);
-    const disabled = page.getByText("Heatmaps are not enabled on this site.");
+    expect(
+      enabled,
+      "The required heatmap scenario must enable its feature flag",
+    ).toBe(true);
     const toolbar = page.getByRole("toolbar", { name: "Heatmap controls" });
-    if (!enabled) {
-      await expect(disabled).toBeVisible();
-      await expect(
-        page.getByRole("link", { name: "Maps", exact: true }),
-      ).toHaveCount(0);
-      expect(tileResponses).toHaveLength(0);
-      return;
-    }
     await expect(toolbar).toBeVisible();
     await expect(
       page.getByRole("link", { name: "Maps", exact: true }),
@@ -186,7 +142,11 @@ for (const target of selected) {
       .poll(() => tileResponses.filter((r) => r.status() === 200).length)
       .toBeGreaterThan(0);
     const successful = tileResponses.find((r) => r.status() === 200);
-    const png = PNG.sync.read(await successful.body());
+    // Camera changes can evict Chromium's completed response body. Read the
+    // same real tile through Playwright's authenticated request context.
+    const tile = await page.request.get(successful.url());
+    expect(tile.status()).toBe(200);
+    const png = PNG.sync.read(await tile.body());
     expect(png.width).toBe(512);
     expect(png.height).toBe(512);
     const apiUrl = await page.evaluate(() => window.__APP_CONFIG__.API_URL);

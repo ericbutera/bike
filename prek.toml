@@ -28,11 +28,27 @@ files = "^\\.woodpecker/.*\\.yaml$|^mise\\.toml$"
 pass_filenames = false
 
 [[repos.hooks]]
+id = "image-build-plan"
+name = "Release image build plan"
+language = "system"
+entry = "mise run images:plan"
+files = "(^|/)Dockerfile(\\..*)?$|^docker-bake\\.hcl$|^mise\\.toml$"
+pass_filenames = false
+
+[[repos.hooks]]
 id = "synthetics-check"
 name = "k6 synthetic configuration"
 language = "system"
 entry = "mise run synthetics:check"
 files = "^integration-tests/.*\\.js$"
+pass_filenames = false
+
+[[repos.hooks]]
+id = "compose-runtime"
+name = "Shared development and E2E runtime configuration"
+language = "system"
+entry = "mise run runtime:check"
+files = "^compose.*\\.yaml$|^bike-rs/compose\\.yaml$|^mise\\.toml$"
 pass_filenames = false
 
 [[repos.hooks]]

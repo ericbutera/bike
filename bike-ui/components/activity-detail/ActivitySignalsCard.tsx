@@ -1,12 +1,13 @@
 "use client";
 
+import ResponsiveChart from "../ui/ResponsiveChart";
+
 import { useMemo, useState } from "react";
 import {
   Area,
   CartesianGrid,
   ComposedChart,
   Line,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
@@ -356,11 +357,12 @@ export default function ActivitySignalsCard({
             className="mt-5 overflow-hidden rounded-box border border-base-300 bg-base-200 p-3"
           >
             <div className="h-[208px] w-full">
-              <ResponsiveContainer
+              <ResponsiveChart
                 width="100%"
                 height="100%"
                 minWidth={320}
                 minHeight={208}
+                initialDimension={{ width: 320, height: 208 }}
               >
                 <ComposedChart
                   data={rows}
@@ -423,7 +425,7 @@ export default function ActivitySignalsCard({
                     ),
                   )}
                 </ComposedChart>
-              </ResponsiveContainer>
+              </ResponsiveChart>
             </div>
           </div>
 

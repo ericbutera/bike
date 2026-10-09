@@ -1,14 +1,14 @@
-import { test, expect } from "@playwright/test";
+import { connectedTest as test, expect } from "./helpers/test.mjs";
 import { activityId, targets } from "./helpers/targets.mjs";
 import { openRoute } from "./helpers/ui.mjs";
 
 test("segment builder crops, saves, reopens, and updates a ride segment in Bike", async ({
-  browser,
+  createContext,
 }) => {
   test.setTimeout(120_000);
 
   for (const target of targets) {
-    const context = await browser.newContext();
+    const context = await createContext();
     const page = await context.newPage();
     let apiBase;
     let segmentId;
