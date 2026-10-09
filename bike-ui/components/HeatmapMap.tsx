@@ -1,11 +1,7 @@
 "use client";
 
 import * as maplibregl from "../lib/maplibre";
-import {
-  type GeoJSONSource,
-  type MapLayerMouseEvent,
-  type RasterTileSource,
-} from "maplibre-gl";
+import { type GeoJSONSource, type RasterTileSource } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
 import type { FeatureCollection, Point } from "geojson";
@@ -14,6 +10,8 @@ import type { HeatmapMetadata, HeatmapZones } from "../lib/heatmaps";
 import {
   DEFAULT_HEATMAP_ZOOM,
   HEATMAP_LOADING_CAMERA,
+  HEATMAP_ZONE_LAYERS,
+  HEATMAP_ZONES_SOURCE,
   localRidingCenter,
   type HeatmapView,
 } from "../lib/heatmapCamera";
@@ -26,10 +24,10 @@ import {
 } from "../lib/heatmapColors";
 
 const SOURCE = "personal-heatmap";
-const ZONES_SOURCE = "personal-heatmap-zones";
-const ZONES_CIRCLES = "personal-heatmap-zone-circles";
+const ZONES_SOURCE = HEATMAP_ZONES_SOURCE;
+const ZONES_CIRCLES = HEATMAP_ZONE_LAYERS[0];
 const ZONES_COUNTS = "personal-heatmap-zone-counts";
-const SINGLE_ZONE_CIRCLES = "personal-heatmap-single-zone-circles";
+const SINGLE_ZONE_CIRCLES = HEATMAP_ZONE_LAYERS[1];
 const SINGLE_ZONE_COUNTS = "personal-heatmap-single-zone-counts";
 const styleUrl = (theme: string) =>
   theme === "dark"
@@ -295,39 +293,7 @@ export default function HeatmapMap({
         });
       }
       if (!zoneInteractionBound.current) {
-        const zoomToZone = (event: MapLayerMouseEvent) => {
-          const feature = event.features?.[0];
-          if (!feature || feature.geometry.type !== "Point") return;
-          const center = feature.geometry.coordinates as [number, number];
-          const clusterId = feature.properties?.cluster_id;
-          if (typeof clusterId === "number") {
-            const source = instance.getSource(ZONES_SOURCE) as
-              GeoJSONSource | undefined;
-            if (source) {
-              void source
-                .getClusterExpansionZoom(clusterId)
-                .then((expansionZoom) => {
-                  if (map.current !== instance) return;
-                  instance.easeTo({
-                    center,
-                    zoom: Math.max(expansionZoom, instance.getZoom() + 2),
-                    duration: 600,
-                  });
-                })
-                .catch(() => {
-                  // The zone source can refresh while expansion is resolving.
-                });
-            }
-          } else {
-            instance.easeTo({
-              center,
-              zoom: Math.min(18, Math.max(instance.getZoom() + 2, 8)),
-              duration: 600,
-            });
-          }
-        };
         for (const layer of [ZONES_CIRCLES, SINGLE_ZONE_CIRCLES]) {
-          instance.on("click", layer, zoomToZone);
           instance.on("mouseenter", layer, () => {
             instance.getCanvas().style.cursor = "pointer";
           });
@@ -358,10 +324,7 @@ export default function HeatmapMap({
         );
     });
     instance.on("movestart", () => current.current.onMapMoveStart());
-    const observer = new ResizeObserver(() => instance.resize());
-    observer.observe(container.current!);
     return () => {
-      observer.disconnect();
       instance.remove();
       map.current = null;
       styleReady.current = false;

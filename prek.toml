@@ -36,6 +36,14 @@ files = "(^|/)Dockerfile(\\..*)?$|^docker-bake\\.hcl$|^mise\\.toml$"
 pass_filenames = false
 
 [[repos.hooks]]
+id = "coverage-policy"
+name = "Changed-line coverage policy fixtures"
+language = "system"
+entry = "mise run coverage:test"
+files = "^scripts/coverage-.*\\.sh$|^mise\\.toml$|^prek\\.toml$"
+pass_filenames = false
+
+[[repos.hooks]]
 id = "synthetics-check"
 name = "k6 synthetic configuration"
 language = "system"

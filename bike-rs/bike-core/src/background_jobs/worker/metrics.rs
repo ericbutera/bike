@@ -177,3 +177,7 @@ pub fn spawn_metrics_server(port: u16, metrics: Arc<WorkerMetrics>) {
         }
     });
 }
+
+#[cfg(test)]
+#[path = "metrics_tests.rs"]
+mod tests;

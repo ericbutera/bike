@@ -125,7 +125,6 @@ vi.mock("maplibre-gl", () => ({
     getCanvas() {
       return { style: { cursor: "" } };
     }
-    resize() {}
     remove() {}
   },
   NavigationControl: class {
@@ -188,13 +187,6 @@ beforeEach(() => {
   vi.stubGlobal("navigator", {
     geolocation: { getCurrentPosition: mocks.getCurrentPosition },
   });
-  vi.stubGlobal(
-    "ResizeObserver",
-    class {
-      observe() {}
-      disconnect() {}
-    },
-  );
 });
 
 describe("heatmap overlay lifecycle", () => {
@@ -543,6 +535,160 @@ describe("heatmap overlay lifecycle", () => {
       />,
     );
     expect(mocks.jumpTo).toHaveBeenCalledWith({ center: [-87, 44], zoom: 7 });
+  });
+  it.each(["wheel", "mousedown"])(
+    "does not restore an unchanged URL camera during a %s gesture or data refresh",
+    (eventType) => {
+      const camera = { longitude: -85, latitude: 45, zoom: 13 };
+      const { rerender } = render(
+        <HeatmapMap {...props} view={{ ...props.view, camera }} />,
+      );
+      mocks.jumpTo.mockClear();
+      act(() =>
+        mocks.handlers.get("movestart")!({
+          originalEvent: new MouseEvent(eventType),
+        }),
+      );
+      mocks.getZoom.mockReturnValue(14.5);
+      rerender(
+        <HeatmapMap
+          {...props}
+          metadata={{ ...metadata, revision: "2", pending: 1 }}
+          paletteId="orange"
+          view={{ ...props.view, camera: { ...camera } }}
+        />,
+      );
+      expect(mocks.jumpTo).not.toHaveBeenCalled();
+      expect(mocks.fitBounds).not.toHaveBeenCalled();
+      expect(mocks.getCurrentPosition).not.toHaveBeenCalled();
+    },
+  );
+  it("does not replay its saved camera after the next zoom has started", () => {
+    const { rerender } = render(
+      <HeatmapMap
+        {...props}
+        view={{
+          ...props.view,
+          camera: { longitude: -85, latitude: 45, zoom: 13 },
+        }}
+      />,
+    );
+    mocks.getZoom.mockReturnValue(14);
+    act(() => mocks.handlers.get("moveend")!());
+    const saved = props.view.onChange.mock.calls.at(-1)![0];
+    mocks.jumpTo.mockClear();
+    act(() =>
+      mocks.handlers.get("movestart")!({
+        originalEvent: new WheelEvent("wheel"),
+      }),
+    );
+    mocks.getZoom.mockReturnValue(14.5);
+    rerender(<HeatmapMap {...props} view={{ ...props.view, camera: saved }} />);
+    expect(mocks.jumpTo).not.toHaveBeenCalled();
+  });
+  it.each(["location", "region"] as const)(
+    "cancels a pending %s lookup when the rider starts zooming",
+    async (action) => {
+      render(
+        <HeatmapMap
+          {...props}
+          view={{ ...props.view, request: { action, sequence: 1 } }}
+        />,
+      );
+      act(() =>
+        mocks.handlers.get("movestart")!({
+          originalEvent: new WheelEvent("wheel"),
+        }),
+      );
+      await act(async () =>
+        mocks.getCurrentPosition.mock.calls[0][0]({
+          coords: { longitude: -85.6, latitude: 44.7 },
+        }),
+      );
+      expect(mocks.flyTo).not.toHaveBeenCalled();
+      expect(mocks.fitBounds).not.toHaveBeenCalled();
+      expect(locateMapRegion).not.toHaveBeenCalled();
+    },
+  );
+  it("ignores a region result after movement interrupts its boundary lookup", async () => {
+    let resolveRegion!: (
+      region: Awaited<ReturnType<typeof locateMapRegion>>,
+    ) => void;
+    vi.mocked(locateMapRegion).mockReturnValue(
+      new Promise((resolve) => {
+        resolveRegion = resolve;
+      }),
+    );
+    render(
+      <HeatmapMap
+        {...props}
+        view={{ ...props.view, request: { action: "region", sequence: 1 } }}
+      />,
+    );
+    await act(async () =>
+      mocks.getCurrentPosition.mock.calls[0][0]({
+        coords: { longitude: -85.62, latitude: 44.76 },
+      }),
+    );
+    act(() =>
+      mocks.handlers.get("move")!({ originalEvent: new WheelEvent("wheel") }),
+    );
+    await act(async () =>
+      resolveRegion({
+        name: "Michigan",
+        bounds: [-90.42, 41.7, -82.12, 48.3],
+      }),
+    );
+    expect(vi.mocked(locateMapRegion).mock.calls[0][1].aborted).toBe(true);
+    expect(mocks.fitBounds).not.toHaveBeenCalled();
+  });
+  it("cancels delayed cluster expansion when a newer gesture takes over", async () => {
+    let resolveZoom!: (zoom: number) => void;
+    mocks.clusterExpansionZoom.mockReturnValue(
+      new Promise<number>((resolve) => {
+        resolveZoom = resolve;
+      }),
+    );
+    render(<HeatmapMap {...props} />);
+    loadStyle();
+    act(() =>
+      mocks.handlers.get("click:personal-heatmap-zone-circles")!({
+        features: [
+          {
+            geometry: { type: "Point", coordinates: [-85, 45] },
+            properties: { cluster_id: 42 },
+          },
+        ],
+      }),
+    );
+    act(() =>
+      mocks.handlers.get("movestart")!({
+        originalEvent: new WheelEvent("wheel"),
+      }),
+    );
+    await act(async () => resolveZoom(7));
+    expect(mocks.easeTo).not.toHaveBeenCalled();
+  });
+  it("does not apply automatic location after a route zone is selected", async () => {
+    render(<HeatmapMap {...props} />);
+    loadStyle();
+    act(() =>
+      mocks.handlers.get("click:personal-heatmap-single-zone-circles")!({
+        features: [
+          {
+            geometry: { type: "Point", coordinates: [-84, 44] },
+            properties: {},
+          },
+        ],
+      }),
+    );
+    await act(async () =>
+      mocks.getCurrentPosition.mock.calls[0][0]({
+        coords: { longitude: -122.33, latitude: 47.61 },
+      }),
+    );
+    expect(mocks.easeTo).toHaveBeenCalledOnce();
+    expect(mocks.jumpTo).not.toHaveBeenCalled();
   });
   it("leaves the camera unchanged when Full has no ready route bounds", () => {
     render(

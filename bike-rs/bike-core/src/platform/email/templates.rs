@@ -36,3 +36,7 @@ impl Default for TemplateRegistry {
         Self::new()
     }
 }
+
+#[cfg(test)]
+#[path = "templates_tests.rs"]
+mod tests;

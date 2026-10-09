@@ -24,12 +24,16 @@ docker_dind_image = "docker:29.4.0-dind@sha256:a6dd5322747a95cd8e3207bd8d415a8fd
 k6_image = "grafana/k6:2.3.0@sha256:9c2dee7f8ed74d317e4027c06a10f169b625638189de8d4555d0b3486a5aeb34"
 watchexec_version = "2.8.0"
 buildx_version = "0.38.0"
+coverage_minimum = 80
+coverage_site_url = "https://ericbutera.github.io/bike/coverage"
+python_version = "3.13.16"
 
 [tools]
 node = "{{vars.node_version}}"
 "npm:npm" = "{{vars.npm_version}}"
 pnpm = "{{vars.pnpm_version}}"
-rust = { version = "{{vars.rust_version}}", profile = "minimal", components = ["rustfmt", "clippy"] }
+rust = { version = "{{vars.rust_version}}", profile = "minimal", components = ["rustfmt", "clippy", "llvm-tools"] }
+"aqua:taiki-e/cargo-llvm-cov" = "0.9.1"
 go = "{{vars.go_version}}"
 watchexec = "{{vars.watchexec_version}}"
 prek = "0.5.5"
@@ -39,6 +43,11 @@ k6 = "{{vars.k6_version}}"
 "npm:prettier" = "3.9.9"
 "aqua:woodpecker-ci/woodpecker/woodpecker-cli" = "3.19.0"
 "aqua:docker/buildx" = "{{vars.buildx_version}}"
+python = "{{vars.python_version}}"
+uv = "0.12.23"
+"pipx:diff-cover" = { version = "10.6.0", uvx_args = "--python {{vars.python_version}}" }
+"aqua:cli/cli" = "2.102.0"
+jq = "1.8.2"
 
 [env]
 _.path = { path = ["{% if tools['npm:npm'] is defined %}{{tools['npm:npm'].path}}/node_modules/.bin{% endif %}"], tools = true }
@@ -67,6 +76,8 @@ NPM_CONFIG_CACHE = "{{get_env(name='BIKE_NODE_PACKAGE_CACHE', default=config_roo
 PNPM_CONFIG_STORE_DIR = "{{get_env(name='BIKE_NODE_PACKAGE_CACHE', default=config_root ~ '/.cache')}}/pnpm-store"
 PNPM_CONFIG_CACHE_DIR = "{{get_env(name='BIKE_NODE_PACKAGE_CACHE', default=config_root ~ '/.cache')}}/pnpm-metadata"
 BUILDX_CONFIG = "{{get_env(name='BUILDX_CONFIG', default=config_root ~ '/.cache/docker-buildx')}}"
+COVERAGE_MINIMUM = "{{vars.coverage_minimum}}"
+COVERAGE_SITE_URL = "{{vars.coverage_site_url}}"
 
 [tasks."renderer:build"]
 description = "Build the renderer image using mise version pins"
@@ -158,6 +169,48 @@ run = ["mise --cd bike-rs run fmt:check", "mise --cd bike-rs run lint", "mise --
 description = "Run shared UI type, test, build, and format checks"
 run = ["mise --cd bike-ui run check", "mise --cd bike-ui run build"]
 
+[tasks.coverage]
+description = "Generate coverage reports for the implemented Rust and Next.js suites"
+run = ["mise run rust:coverage", "mise run ui:coverage"]
+
+[tasks."coverage:unit"]
+description = "Generate Rust and Next.js unit coverage without integration or E2E tests"
+run = ["mise --cd bike-rs run coverage:unit", "mise run ui:coverage"]
+
+[tasks."coverage:tools"]
+description = "Install the pinned native diff-coverage CLI and JSON tooling"
+run = ["mise install python uv jq", "mise install pipx:diff-cover"]
+
+[tasks."coverage:check"]
+description = "Require 80% changed-line coverage for Rust and Next.js"
+depends = ["coverage:tools"]
+run = "mise exec pipx:diff-cover jq -- bash scripts/coverage-check.sh"
+
+[tasks."coverage:test"]
+description = "Verify the coverage gate with isolated Git and LCOV fixtures"
+depends = ["coverage:tools"]
+run = "mise exec pipx:diff-cover jq -- bash scripts/coverage-test.sh"
+
+[tasks."coverage:site"]
+description = "Assemble browsable reports and overall coverage history"
+run = "bash scripts/coverage-site.sh"
+
+[tasks."coverage:publish"]
+description = "Publish generated reports to the free GitHub Pages site"
+run = ["mise install aqua:cli/cli jq", "mise exec aqua:cli/cli jq -- bash scripts/coverage-publish.sh"]
+
+[tasks."ci:coverage"]
+description = "Collect unit reports and enforce the changed-line coverage policy"
+run = ["mise install node npm:npm pnpm", "mise run coverage:unit", "mise run coverage:check"]
+
+[tasks."rust:coverage"]
+description = "Generate Rust workspace coverage reports"
+run = "mise --cd bike-rs run coverage"
+
+[tasks."ui:coverage"]
+description = "Generate Next.js unit-test coverage reports"
+run = "mise --cd bike-ui run coverage"
+
 [tasks."renderer:check"]
 description = "Check renderer lint and unit tests"
 run = ["mise run lint:maps", "mise run test", "npm --prefix map-renderer audit"]
@@ -211,7 +264,7 @@ run = ["mise --cd strava-gateway install go golangci-lint protoc go:google.golan
 
 [tasks."ci:runtime"]
 description = "Check owning CI and shell orchestration before image builds"
-run = ["mise install shellcheck aqua:woodpecker-ci/woodpecker/woodpecker-cli aqua:docker/buildx", "mise run lint:sh", "mise run ci:check", "mise run images:plan"]
+run = ["mise install shellcheck aqua:woodpecker-ci/woodpecker/woodpecker-cli aqua:docker/buildx", "mise run lint:sh", "mise run ci:check", "mise run images:plan", "mise run coverage:test"]
 
 [tasks."ci:deploy"]
 description = "Clone Bike infrastructure once and apply the single Pulumi project"

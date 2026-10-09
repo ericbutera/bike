@@ -48,6 +48,33 @@ run = "cargo run -- up"
 description = "Run bike Rust tests"
 run = "cargo test --workspace"
 
+[tasks.coverage]
+description = "Run Rust tests once and generate HTML, LCOV, and JSON coverage reports"
+env = { RUSTFLAGS = "-D warnings" }
+run = [
+  "mise install rust protoc aqua:taiki-e/cargo-llvm-cov",
+  "mise exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov --workspace --locked --no-report",
+  "mise run coverage:report",
+]
+
+[tasks."coverage:unit"]
+description = "Collect Rust unit coverage without integration tests or doctests"
+env = { RUSTFLAGS = "-D warnings" }
+run = [
+  "mise install rust protoc aqua:taiki-e/cargo-llvm-cov",
+  "mise exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov --workspace --locked --lib --bins --no-report",
+  "mise run coverage:report",
+]
+
+[tasks."coverage:report"]
+description = "Render the collected Rust coverage, excluding migration sources"
+run = [
+  "cargo llvm-cov report --ignore-filename-regex '(^|/)migration/' --html --output-dir ../.artifacts/coverage/rust",
+  "cargo llvm-cov report --ignore-filename-regex '(^|/)migration/' --lcov --output-path ../.artifacts/coverage/rust/lcov.info",
+  "cargo llvm-cov report --ignore-filename-regex '(^|/)migration/' --json --summary-only --output-path ../.artifacts/coverage/rust/coverage-summary.json",
+  "cargo llvm-cov report --ignore-filename-regex '(^|/)migration/'",
+]
+
 [tasks.fmt]
 description = "Format the Rust workspace"
 run = "cargo fmt --all"

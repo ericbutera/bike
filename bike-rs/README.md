@@ -33,9 +33,12 @@ mise install
 mise run fmt:check
 mise run lint
 mise run test
+mise run coverage
 ```
 
 Use `mise exec -- cargo test -p bike-core <test_filter>` for a focused regression.
+See the [coverage guide](../docs/development.md#coverage-reports) for report paths
+and the suites included in coverage.
 Run direct API/worker processes with `api:dev` and `worker:dev` after configuring
 the database and other values from [`.env.example`](.env.example).
 
