@@ -1,5 +1,32 @@
 [
   {
+    "commit": "56021f836490babc7388c63a23685e38308b01bc",
+    "created_at": "2026-10-09T21:41:00Z",
+    "base_revision": "b604fabac5fad42dc36fd6974cc7779b66dce59a",
+    "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/241",
+    "minimum_changed_line_percent": 80,
+    "rust": {
+      "lines": 46884,
+      "covered": 23539,
+      "percent": 50.206893609760264,
+      "changed": {
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
+      }
+    },
+    "nextjs": {
+      "lines": 5656,
+      "covered": 3379,
+      "percent": 59.74,
+      "changed": {
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
+      }
+    }
+  },
+  {
     "commit": "0760d11c2e01c635b5558fc8e3059ff3027abe39",
     "created_at": "2026-10-09T20:56:30Z",
     "base_revision": "0760d11c2e01c635b5558fc8e3059ff3027abe39",
