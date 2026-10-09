@@ -116,8 +116,8 @@ models, rather than committed SQL datasets or database dumps.
 - Woodpecker runs checks, then all release/browser/engine image builds, then
   `mise run ci:e2e`, which calls the same `mise run e2e` lifecycle. It uses a
   job-local Docker daemon with TLS client certificates on the disposable
-  workspace. The Bike-only permission is owned by
-  [the companion IaC PR](https://github.com/ericbutera/pulumi-iac/pull/6).
+  workspace. The Bike-only permission is owned by the separately maintained
+  infrastructure configuration.
 - PR tests receive no deployment secrets. Main deployment depends on E2E success
   and consumes the recorded registry digests and source revision. The companion
   IaC change must merge before that deployment task is enabled on main.

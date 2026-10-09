@@ -126,6 +126,9 @@ instead of maintaining component documentation copies. Business rules and
 decisions belong in the owning specification. Generated HTTP contracts live
 only in `contracts/openapi/`; Rust generates them directly there.
 
+Keep private infrastructure repository names, URLs, and local paths out of
+public files. CI receives repository locations through generically named secrets.
+
 ## other rules
 
 - Clean up git `.worktrees` when finished with a PR.

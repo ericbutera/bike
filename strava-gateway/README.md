@@ -55,9 +55,9 @@ subscription ID, payload limits, validation, and durable persistence still
 apply. A configured signing key validates any supplied signature. Never expose
 the signed `/v1` routes through public ingress.
 
-The production stack lives in `../../pulumi-iac/bike`. Its public
-ingress exposes only the OAuth callback and webhook on the existing Bike
-callback host. The worker mounts a protected 5 Gi PVC at `/data/artifacts`.
+The production stack is maintained separately. Its public ingress exposes only
+the OAuth callback and webhook on the existing Bike callback host. The worker
+mounts a protected 5 Gi PVC at `/data/artifacts`.
 Production runs on `linux/amd64`; manual image builds from Apple Silicon must
 set `--platform linux/amd64` before publishing an immutable commit tag.
 
