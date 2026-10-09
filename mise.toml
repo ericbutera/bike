@@ -202,8 +202,8 @@ description = "Publish generated reports to the free GitHub Pages site"
 run = ["mise install jq", "mise exec jq -- bash scripts/coverage-publish.sh"]
 
 [tasks."ci:coverage"]
-description = "Collect unit reports and enforce the changed-line coverage policy"
-run = ["mise install node npm:npm pnpm", "mise run coverage:unit", "mise run coverage:check"]
+description = "Enforce changed-line coverage using reports from the Rust and UI test steps"
+run = "mise run coverage:check"
 
 [tasks."rust:coverage"]
 description = "Generate Rust workspace coverage reports"

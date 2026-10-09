@@ -36,7 +36,8 @@ run = "pnpm run lint"
 run = "pnpm run build"
 
 [tasks.test]
-run = "pnpm run test"
+description = "Run Next.js unit tests with coverage"
+run = "mise run coverage"
 
 [tasks.coverage]
 description = "Run Next.js unit tests and generate HTML, LCOV, and JSON coverage reports"

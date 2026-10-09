@@ -143,6 +143,8 @@ Each component also provides `mise run coverage` from its own directory. The
 tasks install their pinned tools/dependencies and print per-file coverage and
 totals. The first Rust run builds instrumented artifacts separately from ordinary
 builds in `bike-rs/target/llvm-cov-target`; later runs reuse that build cache.
+Each Rust collection clears only prior `.profraw` measurements, preserving
+compiled artifacts so a previous run cannot inflate the new report.
 
 | Suite   | HTML report                                  | Machine-readable reports                                              |
 | ------- | -------------------------------------------- | --------------------------------------------------------------------- |
@@ -179,7 +181,17 @@ in the root task. Coverage shows execution, not the strength of assertions.
 
 ### CI coverage policy and viewing reports
 
-Woodpecker runs the same unit coverage tasks, then `mise run coverage:check`.
+The owning Rust and Next.js `test` tasks produce unit coverage as part of the
+test run. Woodpecker's `test-rust` and `test-ui-unit` steps call those tasks;
+each unit suite runs once. Rust then runs its existing integration tests and
+doctests separately, without including their execution in the unit reports.
+Its instrumented build cache persists at `/cache/bike/target/llvm-cov-target`;
+the first instrumented build is still required, while subsequent runs reuse
+unchanged compiled artifacts. Formatting, lint, types, audits, and contract
+checks remain in the owning check tasks.
+
+After both test steps finish, `mise run ci:coverage` checks their existing
+reports through `mise run coverage:check`, without compiling or running tests.
 The native [diff-cover CLI](https://github.com/Bachmann1234/diff_cover) reads
 each project's LCOV report and requires **80% coverage of added or changed
 executable lines**, separately for Rust and Next.js. Untouched existing source

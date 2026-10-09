@@ -68,6 +68,7 @@ steps:
       CARGO_HOME: /cache/bike/cargo
       RUSTUP_HOME: /cache/bike/rustup
       CARGO_TARGET_DIR: /cache/bike/target
+      CARGO_LLVM_COV_TARGET_DIR: /cache/bike/target/llvm-cov-target
     volumes:
       - woodpecker-cache:/cache
     commands:
@@ -138,12 +139,7 @@ steps:
     failure: fail
     image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
     depends_on: [test-rust, test-ui-unit]
-    environment:
-      <<: *mise_environment
-      TEST_MODE: "1"
-      CARGO_HOME: /cache/bike/cargo
-      RUSTUP_HOME: /cache/bike/rustup
-      CARGO_TARGET_DIR: /cache/bike/target
+    environment: *mise_environment
     volumes: *mise_cache
     commands:
       - mise run ci:coverage

@@ -45,23 +45,33 @@ dir = "migration"
 run = "cargo run -- up"
 
 [tasks.test]
-description = "Run bike Rust tests"
-run = "cargo test --workspace"
+description = "Run Rust unit tests with coverage, then integration tests and doctests"
+run = ["mise run coverage:unit", "mise run test:non-unit"]
+
+[tasks."test:non-unit"]
+description = "Run existing Rust integration tests and doctests without repeating unit tests"
+env = { RUSTFLAGS = "-D warnings", RUSTDOCFLAGS = "-D warnings" }
+run = [
+  "cargo test --workspace --locked --test '*'",
+  "cargo test --workspace --locked --doc",
+]
 
 [tasks.coverage]
 description = "Run Rust tests once and generate HTML, LCOV, and JSON coverage reports"
-env = { RUSTFLAGS = "-D warnings" }
+env = { RUSTFLAGS = "-D warnings", CARGO_LLVM_COV_DENY_WARNINGS = "1" }
 run = [
   "mise install rust protoc aqua:taiki-e/cargo-llvm-cov",
+  "mise exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov clean --profraw-only",
   "mise exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov --workspace --locked --no-report",
   "mise run coverage:report",
 ]
 
 [tasks."coverage:unit"]
 description = "Collect Rust unit coverage without integration tests or doctests"
-env = { RUSTFLAGS = "-D warnings" }
+env = { RUSTFLAGS = "-D warnings", CARGO_LLVM_COV_DENY_WARNINGS = "1" }
 run = [
   "mise install rust protoc aqua:taiki-e/cargo-llvm-cov",
+  "mise exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov clean --profraw-only",
   "mise exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov --workspace --locked --lib --bins --no-report",
   "mise run coverage:report",
 ]
