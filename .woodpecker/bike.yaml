@@ -158,8 +158,8 @@ steps:
         status: [success, failure]
     environment:
       <<: *mise_environment
-      GITHUB_TOKEN:
-        from_secret: github_token
+      COVERAGE_PUBLISH_KEY:
+        from_secret: coverage_publish_key
     volumes: *mise_cache
     commands:
       - mise run coverage:publish

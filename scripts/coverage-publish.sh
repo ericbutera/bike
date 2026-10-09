@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Free GitHub Pages publishes generated files from a dedicated artifact branch.
 set -euo pipefail
+umask 077
 # The generated artifact checkout owns its Git metadata even when invoked from a hook.
 while IFS= read -r variable; do unset "$variable"; done < <(git rev-parse --local-env-vars)
 cd "$(dirname "$0")/.."
@@ -18,6 +19,11 @@ if [[ "$latest_main" != "$(git rev-parse HEAD)" ]]; then
 fi
 site="$(mktemp -d "${TMPDIR:-/tmp}/bike-coverage-pages.XXXXXX")"
 trap 'rm -rf -- "$site"' EXIT
+: "${COVERAGE_PUBLISH_KEY:?A dedicated repository deploy key is required}"
+: "${COVERAGE_GITHUB_SSH_HOST_KEY:?The pinned GitHub SSH host key is required}"
+printf '%s\n' "$COVERAGE_PUBLISH_KEY" >"$site/key"
+printf '[ssh.github.com]:443 %s\n' "$COVERAGE_GITHUB_SSH_HOST_KEY" >"$site/known_hosts"
+export GIT_SSH_COMMAND="ssh -i $site/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$site/known_hosts -o StrictHostKeyChecking=yes"
 
 if git ls-remote --exit-code --heads "$remote" refs/heads/gh-pages >"$site/branch.txt"; then
   git clone --quiet --depth=1 --single-branch --branch gh-pages "$remote" "$site/repo"
@@ -32,12 +38,5 @@ git -C "$site/repo" config user.name 'Bike coverage'
 git -C "$site/repo" config user.email 'coverage@users.noreply.github.com'
 git -C "$site/repo" add .
 git -C "$site/repo" commit --quiet -m "docs: coverage reports for $(git rev-parse --short=12 HEAD)"
-git -C "$site/repo" -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
-  push --quiet origin gh-pages
-
-if [[ "$(gh api "repos/$repository" --jq .has_pages)" == false ]]; then
-  printf '{"build_type":"legacy","source":{"branch":"gh-pages","path":"/"}}\n' \
-    | gh api --method POST "repos/$repository/pages" --input - >/dev/null
-fi
-url="$(gh api "repos/$repository/pages" --jq .html_url)"
-printf 'Browsable coverage reports: %scoverage/\n' "$url"
+git -C "$site/repo" push --quiet "ssh://git@ssh.github.com:443/$repository.git" gh-pages
+printf 'Browsable coverage reports: %s/\n' "${COVERAGE_SITE_URL:?Coverage site URL is required}"

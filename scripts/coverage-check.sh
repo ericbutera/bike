@@ -52,6 +52,9 @@ check_suite() {
     printf 'Missing or empty %s coverage report\n' "$suite" >&2
     return 1
   fi
+  if [[ "$suite" == nextjs ]] && ! awk '/^SF:/ && !/^SF:bike-ui\// { print "Next.js LCOV paths must be relative to the repository root: " $0; exit 1 }' "$report"; then
+    return 1
+  fi
   diff-cover "$report" --compare-branch "$base" --include "$include" \
     --exclude "$@" --include-untracked --show-uncovered --total-percent-float \
     --fail-under "$COVERAGE_MINIMUM" \

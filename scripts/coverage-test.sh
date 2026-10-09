@@ -71,6 +71,13 @@ if bash "$gate" >"$fixture/fail.log" 2>&1; then
 fi
 
 write_report nextjs bike-ui/lib/new.ts 4
+sed 's#SF:bike-ui/#SF:#' "$fixture/.artifacts/coverage/nextjs/lcov.info" >"$fixture/invalid-lcov.info"
+mv "$fixture/invalid-lcov.info" "$fixture/.artifacts/coverage/nextjs/lcov.info"
+if bash "$gate" >"$fixture/fail.log" 2>&1; then
+  printf 'Incorrect Next.js source paths silently passed\n' >&2
+  exit 1
+fi
+write_report nextjs bike-ui/lib/new.ts 4
 mkdir -p "$fixture/bike-rs/migration/src"
 printf 'uncovered migration\n' >"$fixture/bike-rs/migration/src/new.rs"
 printf 'TN:\nSF:bike-rs/migration/src/new.rs\nDA:1,0\nLF:1\nLH:0\nend_of_record\n' \
