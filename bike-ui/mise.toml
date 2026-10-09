@@ -38,6 +38,11 @@ run = "pnpm run build"
 [tasks.test]
 run = "pnpm run test"
 
+[tasks.coverage]
+description = "Run Next.js unit tests and generate HTML, LCOV, and JSON coverage reports"
+depends = ["deps"]
+run = "pnpm run test:coverage"
+
 [tasks.format]
 description = "Format the shared Bike UI with the pinned Prettier config"
 run = "prettier . --write"

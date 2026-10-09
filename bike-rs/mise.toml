@@ -48,6 +48,18 @@ run = "cargo run -- up"
 description = "Run bike Rust tests"
 run = "cargo test --workspace"
 
+[tasks.coverage]
+description = "Run Rust tests once and generate HTML, LCOV, and JSON coverage reports"
+env = { RUSTFLAGS = "-D warnings" }
+run = [
+  "mise install rust protoc aqua:taiki-e/cargo-llvm-cov",
+  "cargo llvm-cov --workspace --locked --no-report",
+  "cargo llvm-cov report --html --output-dir ../.artifacts/coverage/rust",
+  "cargo llvm-cov report --lcov --output-path ../.artifacts/coverage/rust/lcov.info",
+  "cargo llvm-cov report --json --summary-only --output-path ../.artifacts/coverage/rust/coverage-summary.json",
+  "cargo llvm-cov report",
+]
+
 [tasks.fmt]
 description = "Format the Rust workspace"
 run = "cargo fmt --all"

@@ -127,6 +127,51 @@ race-viewer workflows. Prefer unit tests, workflow tests, and provider fakes for
 individual rules. Record fixture checks separately from live provider and
 production verification.
 
+## Coverage reports
+
+Run all implemented coverage suites from the repository root:
+
+```sh
+mise run coverage
+```
+
+Use `mise run rust:coverage` or `mise run ui:coverage` to run one component.
+Each component also provides `mise run coverage` from its own directory. The
+tasks install their pinned tools/dependencies and print per-file coverage and
+totals. The first Rust run builds instrumented artifacts separately from ordinary
+builds in `bike-rs/target/llvm-cov-target`; later runs reuse that build cache.
+
+| Suite   | HTML report                                | Machine-readable reports                                          |
+| ------- | ------------------------------------------ | ----------------------------------------------------------------- |
+| Rust    | `.artifacts/coverage/rust/html/index.html`   | `lcov.info`, `coverage-summary.json` in `.artifacts/coverage/rust/`   |
+| Next.js | `.artifacts/coverage/nextjs/html/index.html` | `lcov.info`, `coverage-summary.json` in `.artifacts/coverage/nextjs/` |
+
+Open either HTML file in a browser to inspect coverage by directory, file, and
+source line. Reports are generated locally and Git-ignored. JSON uses each
+provider's native schema; percentages from different languages are not combined.
+Coverage currently records a baseline without enforcing a minimum percentage.
+Test failures and Rust compiler warnings fail the task.
+
+Rust uses pinned `cargo-llvm-cov` and the matching toolchain's LLVM component.
+It instruments `bike-core`, API, worker, and migrations, including ordinary
+workspace unit tests and the native SQLite HTTP integration suite. PostgreSQL
+tests marked `#[ignore]` require an explicitly selected disposable database and
+are not run by this task. Large real-archive tests marked `#[ignore]` also remain
+excluded. Stable Rust coverage does not instrument doctests or
+collect branch coverage. Upstream excludes separate test files, generated output,
+and dependencies by default; inline test modules may appear in source coverage.
+Historical migrations remain in the report.
+
+Next.js uses Vitest's V8 provider, pinned to the installed Vitest version. The
+report includes all TypeScript application sources in `app`, `components`, and
+`lib`, including untested files, while excluding tests and type declarations.
+It measures unit/component and route-handler tests, not Playwright browser
+execution. Async server components still need browser tests for behavior.
+
+The map renderer, Strava gateway, Playwright, and k6 are not yet coverage suites
+in the root task. CI and prek retain their existing checks; coverage is an
+opt-in local workflow. Coverage shows execution, not the strength of assertions.
+
 ## Regenerate contracts and shared assets
 
 Rust's Utoipa schema is the canonical HTTP contract. Regenerate the distribution

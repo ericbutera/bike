@@ -26,7 +26,8 @@ watchexec_version = "2.8.0"
 node = "{{vars.node_version}}"
 "npm:npm" = "{{vars.npm_version}}"
 pnpm = "{{vars.pnpm_version}}"
-rust = { version = "{{vars.rust_version}}", profile = "minimal", components = ["rustfmt", "clippy"] }
+rust = { version = "{{vars.rust_version}}", profile = "minimal", components = ["rustfmt", "clippy", "llvm-tools"] }
+"aqua:taiki-e/cargo-llvm-cov" = "0.9.1"
 go = "{{vars.go_version}}"
 watchexec = "{{vars.watchexec_version}}"
 prek = "0.5.5"
@@ -130,6 +131,18 @@ run = ["mise --cd bike-rs run fmt:check", "mise --cd bike-rs run lint", "mise --
 [tasks."ui:check"]
 description = "Run shared UI type, test, build, and format checks"
 run = ["mise --cd bike-ui run check", "mise --cd bike-ui run build"]
+
+[tasks.coverage]
+description = "Generate coverage reports for the implemented Rust and Next.js suites"
+run = ["mise run rust:coverage", "mise run ui:coverage"]
+
+[tasks."rust:coverage"]
+description = "Generate Rust workspace coverage reports"
+run = "mise --cd bike-rs run coverage"
+
+[tasks."ui:coverage"]
+description = "Generate Next.js unit-test coverage reports"
+run = "mise --cd bike-ui run coverage"
 
 [tasks."renderer:check"]
 description = "Check renderer lint and unit tests"
