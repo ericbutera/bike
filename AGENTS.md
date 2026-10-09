@@ -34,6 +34,18 @@ before changing code. Either deliver a pull request when publication is
 authorized or leave changes uncommitted for review. If the user asks for no
 commits, do not create or amend commits or open a PR that requires committing.
 
+Keep the user's primary/editor checkout on `main`. Create or reuse a separate
+Git worktree for feature, test, and documentation branches, and perform edits,
+builds, tests, and commits there. Do not switch the primary checkout to a task
+branch unless the user explicitly requests it.
+
+Check the primary checkout's branch and status before starting and before the
+final response. Preserve any existing task branch and its staged, unstaged,
+and untracked changes in a separate worktree before restoring `main`. Report
+where pending work is preserved. Remove only clean, finished agent worktrees
+whose work is safely integrated or explicitly discarded; never discard
+unreviewed work to clean up.
+
 Always use conventional commit format.
 
 types:
@@ -49,14 +61,34 @@ types:
 
 Keep a clean history. Do not make multiple commits for the same thing, use amend & force with lease instead.
 
-Do not push to a remote until the user explicitly signs off the completed
-feature and authorizes publishing its reviewed commits. Keep implementation,
-corrections, and tests in one coherent feature commit; amend locally while
-review is ongoing. Separate specifications when requested. Passing checks,
-requests to continue, and approval of a previous feature are not sign-off for
-new work. Prepare history consolidation locally before requesting publication;
-use `--force-with-lease` only after an approved remote rewrite. Review any
-production image ancestry implications before publishing rewritten history.
+Permission to commit a task also authorizes pushing its completed commits,
+merging through the required PR workflow into remote and local `main`, and
+deleting its finished worktree and local and remote task branches. Complete
+these steps without asking for separate push, merge, or cleanup confirmation.
+Do not stop at a local commit or an open PR after commit permission is given.
+Run the relevant checks, freshly fetch the remote default branch, and verify
+the work is integrated into both default branches before removing the clean
+worktree. Leave the primary/editor checkout clean on `main`.
+
+Treat `.artifacts` as temporary generated output, not a code archive. Do not
+retain source snapshots, Git bundles, deployment clones, or copied worktrees
+unless the user explicitly requests an archive. Keep domain knowledge in the
+owning specs and runbooks; Git holds source history. At completion, remove task
+scratch output and leftover worktree directories, including directories no
+longer registered with Git. Preserve explicitly requested deliverables such
+as published coverage reports and other active tasks' output.
+
+Explicit instructions such as "commit locally", "do not push", "leave the PR
+open", "keep the worktree", or "do not commit" override the corresponding
+steps. Without commit or publication authorization, keep work local for review.
+Passing checks, requests to continue, and a previous feature's approval alone
+do not authorize publishing a new task. Deploy when the user requests it and
+verify the deployment before declaring that request complete.
+
+Keep implementation, corrections, and tests in one coherent feature commit;
+amend locally during review. Separate specifications when requested. Prepare
+history consolidation and production image ancestry implications locally;
+use `--force-with-lease` only after an approved remote rewrite.
 
 Do not start commits with the word add (eg: `feat: added architecture diagram`), instead use `feat: architecture diagram`.
 

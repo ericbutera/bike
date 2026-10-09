@@ -9,6 +9,26 @@ Use the repository's root `AGENTS.md` as the source of shared engineering
 standards and read applicable component instructions. This workflow uses
 repository files and tooling; no personal Codex configuration is required.
 
+## File management
+
+- always leave main repo in `main` branch
+- do not leave dangling branches locally
+- do not leave merged branches on remote
+- Use git worktrees to prevent conflicting changes or managing stashes
+- always clean up worktrees when complete
+
+Use `.artifacts` only for temporary generated output. Do not retain code
+snapshots, Git bundles, deployment clones, or copied worktrees without an
+explicit archive request. Preserve domain knowledge in the owning specs and
+runbooks and rely on Git for source history. Remove completed task scratch
+output and leftover worktree directories, including unregistered directories;
+preserve requested deliverables and other active tasks' output.
+
+Keep the user's primary/editor checkout on `main`. Apply the root Git worktree
+rules at the start and finish: perform edits and validation in a separate
+feature worktree, preserve pending work there, and verify the primary
+checkout's branch and status before handing work back.
+
 ## Establish the checks
 
 Read the applicable `AGENTS.md`, including its Git rules, `mise.toml`,
@@ -138,7 +158,8 @@ exact failing check and cause; do not label it passed or silently skip it.
 
 Review the final diff for duplicated behavior, complexity, suppression, and
 unrelated edits; check whitespace with `git diff --check`. Never commit directly
-to `main` or `master`; work on a feature branch. If the user requests no commits,
+to `main` or `master`; work on a feature branch in a separate worktree.
+If the user requests no commits,
 leave all changes uncommitted, including instructions and skill updates. Before a commit,
 apply the repository's Git instructions: use an allowed Conventional Commit
 type and a concise subject describing the result without starting with "add",
@@ -146,15 +167,22 @@ type and a concise subject describing the result without starting with "add",
 amending is authorized; preserve unrelated staged changes and use
 `--force-with-lease` for an authorized rewritten-history push.
 
-Deliver an authorized PR from a feature branch or leave the work uncommitted
-for review. Do not create commits merely to open a PR when the user requested
-no commits. Keep authorized commit history linear. Passing checks, continuation
-requests, and a previous feature's release approval do not authorize publication.
-Combine implementation, corrections, and tests into one coherent feature
-commit, with separate specification commits when requested. Keep work local
-and amend during review. Prepare any already-published history consolidation
-and its production ancestry implications before seeking remote rewrite approval;
-publish rewritten history only with `--force-with-lease` after sign-off.
+Apply the root `AGENTS.md` authorization rules: permission to commit includes
+pushing, merging into remote and local `main` through the required PR workflow,
+and deleting the completed worktree and local and remote task branches. Do not
+ask for separate approval or stop at a local commit or open PR. Honor explicit
+local-only, no-push, open-PR, keep-worktree, and no-commit instructions.
+
+Freshly fetch the remote default branch and verify integration into both default
+branches before removing the clean task worktree. Leave the primary checkout
+clean on `main` and preserve other active work unless its completion is also
+authorized. Verify deployment when it is requested.
+
+Keep authorized history linear. Combine implementation, corrections, and tests
+into one coherent feature commit, with separate specification commits when
+requested. Amend during local review. Prepare published history consolidation
+and production ancestry implications before requesting rewrite authorization;
+use `--force-with-lease` only after that authorization.
 
 Report what changed and which checks actually passed. Keep local, observed CI,
 and deployed verification distinct. For reviews, report violations and missing

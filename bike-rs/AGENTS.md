@@ -17,9 +17,9 @@ Examples:
 If a task exists for the workflow, use that task instead of spelling out the
 underlying commands manually.
 
-CI/CD must reuse these owning mise tasks. Do not push feature work until the
-user has signed off its completed behavior and reviewed commit grouping;
-consolidate and amend locally during review, following the root Git rules.
+CI/CD must reuse these owning mise tasks. Follow the root Git authorization
+rules: permission to commit includes publication, integration, and cleanup.
+Keep each complete feature in one coherent commit.
 
 ## Verification
 
@@ -32,5 +32,6 @@ Browser controls alone do not require a manual user handoff.
 
 Prefer targeted local checks for the code touched. The project CI is configured
 to fail on tests, lint, and formatting, so do not spend quota repeatedly polling
-for CI completion. Before starting any long-running verification, CI watch, or
-status polling loop, ask the user whether to proceed.
+for CI completion. Run the verification needed for the authorized task. Ask
+before starting expensive verification outside that scope; do not ask again
+when the user has already authorized the checks or deployment verification.
