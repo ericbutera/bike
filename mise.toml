@@ -187,12 +187,12 @@ run = ["mise install python uv jq", "mise install pipx:diff-cover"]
 [tasks."coverage:check"]
 description = "Require 80% changed-line coverage for Rust and Next.js"
 depends = ["coverage:tools"]
-run = "mise exec -- bash scripts/coverage-check.sh"
+run = "mise exec pipx:diff-cover jq -- bash scripts/coverage-check.sh"
 
 [tasks."coverage:test"]
 description = "Verify the coverage gate with isolated Git and LCOV fixtures"
 depends = ["coverage:tools"]
-run = "mise exec -- bash scripts/coverage-test.sh"
+run = "mise exec pipx:diff-cover jq -- bash scripts/coverage-test.sh"
 
 [tasks."coverage:site"]
 description = "Assemble browsable reports and overall coverage history"
@@ -200,7 +200,7 @@ run = "bash scripts/coverage-site.sh"
 
 [tasks."coverage:publish"]
 description = "Publish generated reports to the free GitHub Pages site"
-run = ["mise install aqua:cli/cli jq", "mise exec -- bash scripts/coverage-publish.sh"]
+run = ["mise install aqua:cli/cli jq", "mise exec aqua:cli/cli jq -- bash scripts/coverage-publish.sh"]
 
 [tasks."ci:coverage"]
 description = "Collect unit reports and enforce the changed-line coverage policy"

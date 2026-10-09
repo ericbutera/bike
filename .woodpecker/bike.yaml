@@ -47,6 +47,9 @@ steps:
       MISE_TASK_RUN_AUTO_INSTALL: "false"
       MISE_TRUSTED_CONFIG_PATHS: /woodpecker/src
       MISE_YES: "1"
+      CARGO_HOME: /cache/bike/cargo
+      RUSTUP_HOME: /cache/bike/rustup
+      UV_CACHE_DIR: /cache/bike/uv
       BIKE_NODE_PACKAGE_CACHE: /cache/bike/node-packages
       XDG_RUNTIME_DIR: /cache/bike/node-packages/runtime
     volumes: &mise_cache
