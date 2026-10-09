@@ -8,9 +8,9 @@ Generate the TypeScript client from `../contracts/openapi/openapi.yaml` with
 `mise run generate:typescript`. Run tools through mise as required by the
 parent `AGENTS.md`.
 
-CI/CD must reuse these owning mise tasks. Do not push feature work until the
-user has signed off its completed behavior and reviewed commit grouping;
-consolidate and amend locally during review, following the root Git rules.
+CI/CD must reuse these owning mise tasks. Follow the root Git authorization
+rules: permission to commit includes publication, integration, and cleanup.
+Keep each complete feature in one coherent commit.
 
 <!-- BEGIN:nextjs-agent-rules -->
 
