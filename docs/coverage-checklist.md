@@ -16,10 +16,11 @@ Fresh reports on 2026-10-09 were collected with `mise run coverage:unit`:
 
 | Suite   | New happy-path tests | Paths with new coverage | Paths still at 0% | Overall line coverage |
 | ------- | -------------------- | ----------------------- | ----------------- | --------------------- |
-| Rust    | 12                   | 10                      | 49                | 57.57%                |
-| Next.js | 13                   | 11                      | 43                | 58.69%                |
+| Rust    | 12                   | 10                      | 49                | 57.55%                |
+| Next.js | 13                   | 11                      | 43                | 58.70%                |
 
-The full unit run passed 292 Rust tests (three ignored) and 214 Next.js tests.
+After integration with current main, the full unit run passed 294 Rust tests
+(three ignored) and 214 Next.js tests.
 Rust totals exclude migrations and integration execution, so they are not directly
 comparable with the original full-workspace baseline. Separate Rust test files
 are excluded from the report. The paths below include every file still at 0%
@@ -27,6 +28,9 @@ in the current unit reports; checked entries retain the original gaps for tracki
 
 Reports are generated locally under `.artifacts/coverage/{rust,nextjs}/`, with
 HTML in `html/index.html` and per-file data in `coverage-summary.json`.
+CI enforces [80% coverage for changed lines](development.md#ci-coverage-policy-and-viewing-reports)
+while keeping these existing gaps exempt. Published main reports are available
+on the free [coverage site](https://ericbutera.github.io/bike/coverage/).
 
 ## Rust: 45 initially uncovered files
 

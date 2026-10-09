@@ -116,6 +116,7 @@ steps:
         test-map-renderer,
         test-strava-gateway,
         test-runtime-tooling,
+        coverage,
       ]
     environment:
       <<: *mise_environment
@@ -129,3 +130,33 @@ steps:
     volumes: *mise_cache
     commands:
       - mise run ci:images
+
+  - name: coverage
+    failure: fail
+    image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
+    depends_on: [test-rust, test-ui-unit]
+    environment:
+      <<: *mise_environment
+      TEST_MODE: "1"
+      CARGO_HOME: /cache/bike/cargo
+      RUSTUP_HOME: /cache/bike/rustup
+      CARGO_TARGET_DIR: /cache/bike/target
+    volumes: *mise_cache
+    commands:
+      - mise run ci:coverage
+
+  - name: publish-coverage
+    failure: fail
+    image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
+    depends_on: [coverage]
+    when:
+      - event: [push, manual]
+        branch: main
+        status: [success, failure]
+    environment:
+      <<: *mise_environment
+      GITHUB_TOKEN:
+        from_secret: github_token
+    volumes: *mise_cache
+    commands:
+      - mise run coverage:publish

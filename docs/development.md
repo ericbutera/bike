@@ -175,8 +175,46 @@ execution. Async server components need additional validation of framework
 rendering and navigation beyond isolated unit tests.
 
 The map renderer, Strava gateway, Playwright, and k6 are not yet coverage suites
-in the root task. CI and prek retain their existing checks; coverage is an
-opt-in local workflow. Coverage shows execution, not the strength of assertions.
+in the root task. Coverage shows execution, not the strength of assertions.
+
+### CI coverage policy and viewing reports
+
+Woodpecker runs the same unit coverage tasks, then `mise run coverage:check`.
+The native [diff-cover CLI](https://github.com/Bachmann1234/diff_cover) reads
+each project's LCOV report and requires **80% coverage of added or changed
+executable lines**, separately for Rust and Next.js. Untouched existing source
+has no minimum; modifying a line makes it subject to the policy. Tests, type
+declarations, and all Rust `migration/**` paths are excluded. Overall percentages
+are informational and may decrease without failing this gate.
+
+`coverage_baseline_revision` in `mise.toml` freezes the source that existed when
+this policy was introduced. The first rollout grandfathers that tree. Later PRs
+compare with the target branch's merge base. Main pushes compare with the prior
+main push recorded by CI, falling back to the first parent when unavailable.
+Neither comparison can precede the activation revision. New Rust unit tests
+should live in separate `*_tests.rs` files so test bodies do not inflate source
+coverage. Review still needs to verify meaningful happy-path assertions.
+
+After generating local reports, run `mise run coverage:check`. Set
+`COVERAGE_COMPARE_REF` to an explicit Git revision when checking another base.
+The task writes uncovered line lists and HTML, Markdown, and JSON diff reports
+to `.artifacts/coverage/diff/`. Run `mise run coverage:test` for isolated tooling
+fixtures proving the threshold, legacy exemption, migration exclusion, and
+missing-report failure; prek and CI run these same fixtures.
+
+View published reports at **[Bike test coverage](https://ericbutera.github.io/bike/coverage/)**.
+GitHub Pages is free for this public repository; Codecov and other paid services
+are not used. The landing page shows overall coverage, changes from the prior
+report, changed-line coverage, full HTML reports, and downloadable HTML/LCOV/JSON
+artifacts. Ten recent main revisions remain browsable, with `history.json` and
+`latest-summary.json` available for automation.
+
+Main and manual main pipelines publish from the dedicated generated `gh-pages`
+branch using the existing `github_token` CI secret. PRs enforce the gate and
+print uncovered lines without receiving publishing credentials. Reports can
+publish after a changed-line failure so failed main coverage remains inspectable;
+the failed gate still blocks image builds and deployment. Superseded main runs
+skip publication to preserve the latest source revision.
 
 ## Regenerate contracts and shared assets
 
