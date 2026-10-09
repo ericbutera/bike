@@ -101,8 +101,8 @@ inventory live in the [browser README](../bike-ui/tests/e2e/README.md).
   returned failure and removed its partially started resources. These runs
   coexisted with the broader E2E run and the existing development stack.
   Initial CI pipeline 215 passed all 74 tests on Linux amd64, retained reports
-  after pod exit, and removed run resources. Main deployment and revised-gate CI
-  failure proof remain pending. The standalone diagram check also passed in
+  after pod exit, and removed run resources. Those initial runs predate the
+  production verification below. The standalone diagram check also passed in
   the retained external containerized runner.
 
 ## Shared Node build cache
@@ -161,6 +161,28 @@ inventory live in the [browser README](../bike-ui/tests/e2e/README.md).
   warning and an unsupported fs-verity warning on both local and cluster storage;
   its behavior passed, but daemon startup is not diagnostic-free.
   See `.artifacts/buildkit-*.log` and the companion IaC's BuildKit test output.
+
+## Production verification
+
+- Bike PR #8 and companion IaC PR #6 were rebase-merged. Main revision
+  `ef1d36add4c391ae98c118dd2b3d9f220c0065c1` passed
+  [pipeline 221](https://ci.nibelheim.dev/repos/3/pipeline/221): all seven warm
+  image builds in 20 seconds, all 74 browser tests in 3m55s, and the complete
+  E2E step in 5m09s. Deployment took 2m17s; the full pipeline took 10m46s.
+  There were no skips, retries, flaky tests, unexpected application/browser
+  diagnostics, service restarts, or surviving disposable resources.
+- [Bike stack update 200](https://app.pulumi.com/ericbutera/bike/bike/updates/200)
+  updated six deployments and replaced both migration jobs. All six live
+  workloads match the E2E-tested digests and are ready with zero restarts. Both
+  migration jobs completed without failed pods. Pulumi emitted transient
+  completion warnings when the migration containers exited 0; Kubernetes
+  independently confirmed both jobs Complete.
+- The public API/UI availability smoke passed both checks. The internal,
+  read-only synthetic scenario query passed against the production database;
+  it uses the existing isolated synthetic account, not a real user's data.
+  The public metrics boundary check passed, and all six startup logs had no
+  warning/error diagnostics. TEST11's remaining fault-injection and cancellation
+  acceptance is kept explicit below; worker E2E remains separate future work.
 
 ## Template and tmpfs exploration
 
@@ -269,14 +291,14 @@ does not establish a successful CI run.
 
 ### 1. Prove the CI container runtime
 
-- [ ] Use a disposable Docker-in-Docker daemon for the E2E job on Woodpecker's
+- [x] Use a disposable Docker-in-Docker daemon for the E2E job on Woodpecker's
       Kubernetes backend, and the developer's Docker engine locally. Verify the
       installed runner's support before building the rest of the harness.
 - [x] Prepare the required permission change in the existing Woodpecker IaC,
       with pinned daemon/client inputs and authenticated engine access. Document
       its actual privilege scope; do not grant the test workload production
       Kubernetes or deployment credentials.
-- [ ] Demonstrate that the job can pull the revision's application images from
+- [x] Demonstrate that the job can pull the revision's application images from
       the existing registry, create a Compose network and disposable storage,
       reach services, and remove its resources after success and failure.
 - [ ] Verify the registry hostname and protocol from both the job and nested
@@ -451,18 +473,19 @@ References: [Playwright best practices](https://playwright.dev/docs/best-practic
 - [x] Record initial seed/snapshot setup, per-attempt restore/session/files,
       browser execution, and total suite timings separately. Prepared full-suite
       execution should take a few minutes; service restarts are prohibited.
-- [ ] Run the same required suite on a PR revision and record test counts,
+- [x] Run the same required suite on a PR revision and record test counts,
       source revision, platform, and tested image digests.
 - [ ] Deliberately fail a browser assertion in an authorized test revision;
       verify pipeline failure, absence of deployment, retained artifacts, fresh
       state on retry, and cleanup. Also verify partial-startup failure and
       cancellation cleanup. Restore the assertion before final review.
-- [ ] Verify a revised PR run uses its own images and fresh state without leaks
+- [x] Verify a revised PR run uses its own images and fresh state without leaks
       from a superseded run. Publish test revisions only under the repository's
       explicit publication rules.
-- [ ] After review and merge, verify the same path on main and confirm deployment
+- [x] After review and merge, verify the same path on main and confirm deployment
       uses the images that passed E2E.
 
-The implementation is not ready to merge until the remaining runtime acceptance
-checks pass. Main deployment proof follows reviewed publication and merge; it is
-not inferred from local builds, static checks, or the permission application.
+The runtime is merged and deployed with the PR/main evidence above. Unchecked
+fault-injection, registry-boundary, and runner-cancellation acceptance remains
+open; successful suite runs do not establish those cases. Main deployment was
+verified directly against the tested digests and live Kubernetes workloads.
