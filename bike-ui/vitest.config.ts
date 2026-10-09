@@ -21,7 +21,10 @@ export default defineConfig({
       reporter: [
         "text",
         ["html", { subdir: "html" }],
-        "lcovonly",
+        [
+          "lcovonly",
+          { projectRoot: fileURLToPath(new URL("..", import.meta.url)) },
+        ],
         "json-summary",
       ],
     },

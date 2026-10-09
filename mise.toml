@@ -26,6 +26,7 @@ watchexec_version = "2.8.0"
 buildx_version = "0.38.0"
 coverage_minimum = 80
 coverage_site_url = "https://ericbutera.github.io/bike/coverage"
+github_ssh_host_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
 python_version = "3.13.16"
 
 [tools]
@@ -78,6 +79,7 @@ PNPM_CONFIG_CACHE_DIR = "{{get_env(name='BIKE_NODE_PACKAGE_CACHE', default=confi
 BUILDX_CONFIG = "{{get_env(name='BUILDX_CONFIG', default=config_root ~ '/.cache/docker-buildx')}}"
 COVERAGE_MINIMUM = "{{vars.coverage_minimum}}"
 COVERAGE_SITE_URL = "{{vars.coverage_site_url}}"
+COVERAGE_GITHUB_SSH_HOST_KEY = "{{vars.github_ssh_host_key}}"
 
 [tasks."renderer:build"]
 description = "Build the renderer image using mise version pins"
@@ -197,7 +199,7 @@ run = "bash scripts/coverage-site.sh"
 
 [tasks."coverage:publish"]
 description = "Publish generated reports to the free GitHub Pages site"
-run = ["mise install aqua:cli/cli jq", "mise exec aqua:cli/cli jq -- bash scripts/coverage-publish.sh"]
+run = ["mise install jq", "mise exec jq -- bash scripts/coverage-publish.sh"]
 
 [tasks."ci:coverage"]
 description = "Collect unit reports and enforce the changed-line coverage policy"

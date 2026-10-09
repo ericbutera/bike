@@ -202,7 +202,7 @@ After generating local reports, run `mise run coverage:check`. Set
 The task writes uncovered line lists and HTML, Markdown, and JSON diff reports
 to `.artifacts/coverage/diff/`. Run `mise run coverage:test` for isolated tooling
 fixtures proving the threshold, legacy exemption, migration exclusion, and
-missing-report failure; prek and CI run these same fixtures.
+invalid source-path or missing-report failure; prek and CI run these same fixtures.
 
 View published reports at **[Bike test coverage](https://ericbutera.github.io/bike/coverage/)**.
 GitHub Pages is free for this public repository; Codecov and other paid services
@@ -211,8 +211,12 @@ report, changed-line coverage, full HTML reports, and downloadable HTML/LCOV/JSO
 artifacts. Ten recent main revisions remain browsable, with `history.json` and
 `latest-summary.json` available for automation.
 
-Main and manual main pipelines publish from the dedicated generated `gh-pages`
-branch using the existing `github_token` CI secret. PRs enforce the gate and
+GitHub Pages is configured once to serve the generated `gh-pages` branch.
+Main and manual main pipelines publish using the repository's dedicated SSH
+deploy key in the `coverage_publish_key` Woodpecker secret, restricted to push
+and manual events. GitHub's SSH host key is pinned in mise; publication uses
+SSH over port 443. The existing read-only `github_token` stays with deployment.
+PRs enforce the gate and
 print uncovered lines without receiving publishing credentials. Reports can
 publish after a changed-line failure so failed main coverage remains inspectable;
 the failed gate still blocks image builds and deployment. Superseded main runs
