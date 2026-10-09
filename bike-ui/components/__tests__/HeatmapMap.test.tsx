@@ -9,6 +9,11 @@ const mocks = vi.hoisted(() => ({
   theme: "light" as "light" | "dark",
   create: vi.fn(),
   navigationOptions: vi.fn(),
+  resize: vi.fn(),
+  remove: vi.fn(),
+  observe: vi.fn(),
+  disconnect: vi.fn(),
+  onResize: undefined as (() => void) | undefined,
   jumpTo: vi.fn(),
   getCenter: vi.fn(() => ({
     lng: -85,
@@ -125,7 +130,8 @@ vi.mock("maplibre-gl", () => ({
     getCanvas() {
       return { style: { cursor: "" } };
     }
-    remove() {}
+    resize = mocks.resize;
+    remove = mocks.remove;
   },
   NavigationControl: class {
     constructor(options: unknown) {
@@ -187,9 +193,33 @@ beforeEach(() => {
   vi.stubGlobal("navigator", {
     geolocation: { getCurrentPosition: mocks.getCurrentPosition },
   });
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(callback: () => void) {
+        mocks.onResize = callback;
+      }
+      observe = mocks.observe;
+      disconnect = mocks.disconnect;
+    },
+  );
 });
 
 describe("heatmap overlay lifecycle", () => {
+  it("resizes with its container and stops observing before removing the map", () => {
+    const { unmount } = render(<HeatmapMap {...props} />);
+    expect(mocks.observe).toHaveBeenCalledWith(
+      mocks.create.mock.calls[0][0].container,
+    );
+    act(() => mocks.onResize!());
+    expect(mocks.resize).toHaveBeenCalledOnce();
+    unmount();
+    expect(mocks.disconnect).toHaveBeenCalledOnce();
+    expect(mocks.remove).toHaveBeenCalledOnce();
+    expect(mocks.disconnect.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.remove.mock.invocationCallOrder[0],
+    );
+  });
   it("clusters route centers into low-zoom zone markers", () => {
     render(<HeatmapMap {...props} />);
     loadStyle();
