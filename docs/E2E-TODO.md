@@ -10,6 +10,12 @@ inventory live in the [browser README](../bike-ui/tests/e2e/README.md).
 
 ## Implementation evidence
 
+The observations below preserve test outcomes and timing decisions. Temporary
+local reports, logs, and source snapshots were removed during task closeout on
+2026-10-09. Git retains the implementation; CI links retain published run
+results. Current runners record the source revision and worktree status without
+copying source patches into reports.
+
 - Published revision `79adc931e2982621e425ca1fc6e95e1a588e3fe2` passed all 74
   tests on Linux amd64 in Woodpecker pipeline 216, with no skipped, retried,
   flaky, or failed tests. Playwright took 270 seconds and its full image pull,
@@ -33,8 +39,8 @@ inventory live in the [browser README](../bike-ui/tests/e2e/README.md).
   median and 316 ms p95. Every attempt verified unchanged container IDs/start
   times/restart counts, database object identities, and snapshot hashes. No
   worker container existed, final service logs were clean, and cleanup left no
-  run-owned resources. Native reports and timing/runtime attachments are retained
-  in `.artifacts/e2e/bike-e2e-20261008202317-3106-20242/`.
+  run-owned resources. The timings above summarize the generated local report;
+  its temporary files were removed at closeout.
 - A repeated focused run passed all six setup/upload queue/seeded result/warm
   reset/heatmap checks in 26 seconds. The warm-reset regression deletes a real
   activity through the API, restores the baseline while services remain alive,
@@ -70,9 +76,8 @@ inventory live in the [browser README](../bike-ui/tests/e2e/README.md).
   invocation passed all 74 tests on Linux arm64 in 15.4 minutes: 59 connected,
   13 mocked, one setup, and one standalone diagram check. There were zero skipped,
   failed, flaky, or retried tests, and no service diagnostics in either per-test
-  attachments or final logs. All run-owned resources were removed. Reports,
-  image identities, source revision/patch, and logs are retained in
-  `.artifacts/e2e/bike-e2e-20261008165139-93738-20784/`.
+  attachments or final logs. All run-owned resources were removed. Temporary
+  reports, image identities, source patches, and logs were removed at closeout.
 - Historical focused runs verified GPX upload through the real worker to a persisted activity
   visible in the UI, the connected activity/segment/race journey, and both real
   heatmap checks. An independently selected run passed all 14 setup/mocked checks
@@ -124,9 +129,7 @@ inventory live in the [browser README](../bike-ui/tests/e2e/README.md).
 - The UI, prepared browser, and renderer images built; native Dockerfile checks,
   strict Woodpecker validation, formatting, and all 12 applicable prek hooks
   passed. The final prepared images passed the two live setup/warm-reset checks
-  in 22 seconds with clean diagnostics and no surviving resources. Evidence is
-  retained in `.artifacts/node-cache/` and
-  `.artifacts/e2e/bike-e2e-20261008215406-8976-18414/`. These are the initial
+  in 22 seconds with clean diagnostics and no surviving resources. These are the initial
   package-cache experiments; the published builder evidence follows below.
 
 ## Persistent BuildKit and shared Rust builds
@@ -160,7 +163,8 @@ inventory live in the [browser README](../bike-ui/tests/e2e/README.md).
   follow-up evidence. BuildKit reports an unconditional upstream default-worker
   warning and an unsupported fs-verity warning on both local and cluster storage;
   its behavior passed, but daemon startup is not diagnostic-free.
-  See `.artifacts/buildkit-*.log` and the companion IaC's BuildKit test output.
+  The companion infrastructure's owning BuildKit check can reproduce those
+  startup diagnostics; temporary local logs were removed at closeout.
 
 ## Production verification
 
