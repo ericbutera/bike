@@ -158,6 +158,9 @@ depends on route size and concurrency; zones grow by one center per ready route.
   metadata refreshes must not interrupt pan or zoom.
   Loading resize events must not save the temporary world view. Treat the old
   `lng=0&lat=0&zoom=2` placeholder as unsaved.
+- **Resizing:** MapLibre's built-in container tracking owns canvas resizing and
+  redraws. Preserve the camera and keep the map painted while resizing between
+  desktop and mobile layouts.
 - **States:** distinguish preparing/partial, no eligible routes, no filter
   matches, and failures. Never present old-filter heat as new results. Provide
   retry, mobile/keyboard access, and authentication/WebGL failure states.

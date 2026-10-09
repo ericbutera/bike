@@ -11,6 +11,20 @@ export default defineConfig({
     environment: "happy-dom",
     globals: true,
     setupFiles: ["./vitest.setup.ts"],
+    coverage: {
+      provider: "v8",
+      reportsDirectory: fileURLToPath(
+        new URL("../.artifacts/coverage/nextjs", import.meta.url),
+      ),
+      include: ["{app,components,lib}/**/*.{ts,tsx}"],
+      exclude: ["**/*.d.ts", "**/*.{test,spec}.{ts,tsx}", "**/__tests__/**"],
+      reporter: [
+        "text",
+        ["html", { subdir: "html" }],
+        "lcovonly",
+        "json-summary",
+      ],
+    },
     alias: {
       "@": projectRoot,
     },

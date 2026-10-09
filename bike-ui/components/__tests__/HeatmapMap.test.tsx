@@ -125,7 +125,6 @@ vi.mock("maplibre-gl", () => ({
     getCanvas() {
       return { style: { cursor: "" } };
     }
-    resize() {}
     remove() {}
   },
   NavigationControl: class {
@@ -188,13 +187,6 @@ beforeEach(() => {
   vi.stubGlobal("navigator", {
     geolocation: { getCurrentPosition: mocks.getCurrentPosition },
   });
-  vi.stubGlobal(
-    "ResizeObserver",
-    class {
-      observe() {}
-      disconnect() {}
-    },
-  );
 });
 
 describe("heatmap overlay lifecycle", () => {

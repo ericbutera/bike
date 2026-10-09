@@ -324,10 +324,7 @@ export default function HeatmapMap({
         );
     });
     instance.on("movestart", () => current.current.onMapMoveStart());
-    const observer = new ResizeObserver(() => instance.resize());
-    observer.observe(container.current!);
     return () => {
-      observer.disconnect();
       instance.remove();
       map.current = null;
       styleReady.current = false;
