@@ -1,5 +1,92 @@
 [
   {
+    "commit": "0c20debc99a0c5b6ef202e41ba83e03ae7127e65",
+    "created_at": "2026-10-10T00:39:01Z",
+    "base_revision": "56021f836490babc7388c63a23685e38308b01bc",
+    "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/245",
+    "minimum_changed_line_percent": 80,
+    "projects": {
+      "api": {
+        "name": "Bike API",
+        "language": "Rust",
+        "source": "bike-rs/api",
+        "lines": 10844,
+        "covered": 3811,
+        "percent": 35.14385835485061,
+        "changed": {
+          "lines": 0,
+          "covered": 0,
+          "percent": 100.0
+        }
+      },
+      "worker": {
+        "name": "Bike worker",
+        "language": "Rust",
+        "source": "bike-rs/worker",
+        "lines": 545,
+        "covered": 15,
+        "percent": 2.752293577981652,
+        "changed": {
+          "lines": 0,
+          "covered": 0,
+          "percent": 100.0
+        }
+      },
+      "bike-core": {
+        "name": "Shared Bike core",
+        "language": "Rust",
+        "source": "bike-rs/bike-core",
+        "lines": 35151,
+        "covered": 19617,
+        "percent": 55.80780063156098,
+        "changed": {
+          "lines": 0,
+          "covered": 0,
+          "percent": 100.0
+        }
+      },
+      "bike-ui": {
+        "name": "Bike UI",
+        "language": "Next.js",
+        "source": "bike-ui",
+        "lines": 5656,
+        "covered": 3379,
+        "percent": 59.74,
+        "changed": {
+          "lines": 0,
+          "covered": 0,
+          "percent": 100.0
+        }
+      },
+      "map-renderer": {
+        "name": "Map renderer",
+        "language": "Node.js",
+        "source": "map-renderer",
+        "lines": 757,
+        "covered": 133,
+        "percent": 17.56,
+        "changed": {
+          "lines": 0,
+          "covered": 0,
+          "percent": 100.0
+        }
+      },
+      "strava-gateway": {
+        "name": "Strava gateway",
+        "language": "Go",
+        "source": "strava-gateway",
+        "lines": 2856,
+        "covered": 461,
+        "percent": 16.141456582633054,
+        "changed": {
+          "lines": 0,
+          "covered": 0,
+          "percent": 100.0
+        }
+      }
+    }
+  },
+  {
     "commit": "56021f836490babc7388c63a23685e38308b01bc",
     "created_at": "2026-10-09T21:41:00Z",
     "base_revision": "b604fabac5fad42dc36fd6974cc7779b66dce59a",
