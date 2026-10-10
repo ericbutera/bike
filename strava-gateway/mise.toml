@@ -1,14 +1,3 @@
-[tools]
-"go:google.golang.org/protobuf/cmd/protoc-gen-go" = "v1.36.12"
-"go:google.golang.org/grpc/cmd/protoc-gen-go-grpc" = "v1.6.2"
-golangci-lint = "2.14.0"
-
-[env]
-GOTOOLCHAIN = "local"
-GOCACHE = "{{get_env(name='BIKE_GO_CACHE', default=config_root ~ '/.cache')}}/go-build"
-GOMODCACHE = "{{get_env(name='BIKE_GO_CACHE', default=config_root ~ '/.cache')}}/go-mod"
-GOLANGCI_LINT_CACHE = "{{get_env(name='BIKE_GO_CACHE', default=config_root ~ '/.cache')}}/golangci-lint"
-
 [tasks.test]
 description = "Run gateway unit tests with coverage"
 run = "mise run coverage"

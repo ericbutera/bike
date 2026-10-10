@@ -120,7 +120,8 @@ flowchart LR
     Browser -->|HTTP| UI
     Browser -->|HTTP| API
     UI -->|HTTP| API
-    UI -->|PNG rendering| Maps["Map renderer"]
+    API -->|Snapshot gRPC| Maps["Go Chromium worker"]
+    API --> MapCache["Private map PNG cache"]
     API --> DB
     Worker --> DB
     API --> Files
@@ -150,7 +151,8 @@ for service responsibilities, privacy boundaries, and data flow.
 | Strava integration  | Go gateway, durable PostgreSQL inbox and delivery jobs, gRPC     |
 | Operations          | Docker Compose, Woodpecker CI, Pulumi, Kubernetes, OpenTelemetry |
 
-The Rust backend owns application behavior and data access. The frontend uses a
+The [specifications](docs/specs/README.md) define system behavior. The Rust
+backend implements application workflows and owns data access. The frontend uses a
 TypeScript client generated from its OpenAPI contract. Provider fetching and map
 rendering have separate service boundaries; the
 [architecture guide](docs/architecture.md) explains their responsibilities.
@@ -162,7 +164,7 @@ rendering have separate service boundaries; the
 | [`bike-rs/`](bike-rs/README.md)                                | Rust API, core models and services, worker, schema migrations  |
 | [`bike-ui/`](bike-ui/README.md)                                | Rider and admin UI, generated API client                       |
 | [`strava-gateway/`](strava-gateway/README.md)                  | OAuth, webhooks, provider quotas, artifact storage, delivery   |
-| [`map-renderer/`](map-renderer/README.md)                      | Route preview PNGs and a shared render cache                   |
+| [`map-renderer/`](map-renderer/README.md)                      | Internal Go gRPC Chromium snapshots                            |
 | [`contracts/`](contracts/openapi/README.md), [`proto/`](proto) | HTTP and gRPC contracts                                        |
 | [`bike-rs/api/tests/`](bike-rs/api/tests/README.md)            | Native HTTP integration tests and deterministic fixtures       |
 | [`docs/`](docs/README.md)                                      | Development guides, design specifications, operations, backlog |
@@ -203,7 +205,9 @@ Local coverage reports and their scope are documented in the
 - [Product specifications](docs/specs/README.md) — activity, segment,
   training, authentication, and admin behavior.
 - [Personal heatmaps](docs/specs/heatmaps.md) — design and implementation evidence.
-- [Map rendering](map-renderer/README.md) — render contract, caching, style updates.
+- [Maps specification](docs/specs/maps.md) — private PNGs, cache lifecycle,
+  gRPC snapshots, and tracing.
+- [Snapshot worker](map-renderer/README.md) — runtime commands and style updates.
 - [Strava gateway](strava-gateway/README.md) — configuration, jobs, verification.
 - [Gateway recovery](strava-gateway/README.md#failure-recovery) and
   [admin recovery](docs/specs/admin-operations.md#failed-import-recovery) — diagnosis and selective replay.

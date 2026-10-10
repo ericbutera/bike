@@ -34,8 +34,9 @@ mise run compose:down
 ```
 
 Stopping the stack preserves the PostgreSQL volume and activity files. Local
-uploads live under `bike-rs/uploads/` and are Git-ignored. The renderer cache is
-regenerable and has its own volume.
+uploads live under `bike-rs/uploads/` and are Git-ignored. The regenerable PNG
+cache has its own volume mounted on the Rust API; the Go snapshot worker has
+no cache volume. See the [maps specification](specs/maps.md).
 
 ## Try an activity import
 
@@ -157,8 +158,9 @@ tasks install their pinned tools/dependencies and create per-file reports and
 totals. The first Rust run builds instrumented artifacts separately from ordinary
 builds in `bike-rs/target/llvm-cov-target` when running directly, or
 `/cache/target/llvm-cov-target` in Docker; later runs reuse that build cache.
-Each Rust collection clears only prior `.profraw` measurements, preserving
-compiled artifacts so a previous run cannot inflate the new report.
+Each Rust collection cleans the instrumented workspace artifacts and prior
+measurements so stale test executables cannot corrupt or inflate the report.
+Downloaded dependencies and their build cache remain reusable.
 
 | Service / project | Implementation | HTML report                                          |
 | ----------------- | -------------- | ---------------------------------------------------- |
@@ -166,7 +168,7 @@ compiled artifacts so a previous run cannot inflate the new report.
 | Bike worker       | Rust           | `.artifacts/coverage/worker/html/index.html`         |
 | Shared Bike core  | Rust           | `.artifacts/coverage/bike-core/html/index.html`      |
 | Bike UI           | Next.js        | `.artifacts/coverage/bike-ui/html/index.html`        |
-| Map renderer      | Node.js        | `.artifacts/coverage/map-renderer/html/index.html`   |
+| Map renderer      | Go             | `.artifacts/coverage/map-renderer/html/index.html`   |
 | Strava gateway    | Go             | `.artifacts/coverage/strava-gateway/html/index.html` |
 
 Open an HTML file in a browser to inspect coverage by directory, file, and
@@ -200,21 +202,20 @@ It measures unit/component and route-handler tests, not Playwright browser
 execution. Async server components need additional validation of framework
 rendering and navigation beyond isolated unit tests.
 
-The map renderer uses [c8](https://github.com/bcoe/c8) with native Node unit tests
-and includes unloaded application files at 0%. Its smoke harness, ESLint config,
-and test sources are excluded. Strava gateway uses native `go test` coverage
-across all handwritten packages, including packages without tests. Generated
-protobuf bindings are excluded. PostgreSQL tests remain opt-in and are not
-included in these unit reports. The Go directory also contains its native
+The map renderer and Strava gateway use native `go test` coverage across all
+handwritten packages, including packages without tests. Generated protobuf
+bindings are excluded. Browser asset lint/parity/smoke checks remain separate
+from Go unit coverage. Gateway PostgreSQL tests remain opt-in and are not
+included in these unit reports. Each Go directory also contains its native
 `coverage.out` profile and `statements.txt`; its native HTML reports statements,
 while the shared dashboard and gate measure lines from pinned
 [gcov2lcov](https://github.com/jandelgado/gcov2lcov) output.
 
 [`coverage-projects.json`](../coverage-projects.json) defines stable project IDs,
-source scope, language, and gate exclusions. To convert map-renderer to Go,
-change its language to `Go` and include pattern to `map-renderer/**/*.go`, use
-Go test/generated-source exclusions, and make its owning `coverage` task call
-`mise --cd .. run go:coverage map-renderer`. The shared Go workflow resolves
+source scope, language, and gate exclusions. The map renderer is registered as
+Go with `map-renderer/**/*.go` sources and test/generated-source exclusions.
+Its owning `coverage` task calls `mise --cd .. run go:coverage map-renderer`.
+The shared Go workflow resolves
 that project's source directory and writes its existing report ID. The gate,
 dashboard, publisher, and report URLs do not need another language-specific
 branch. Further Go services can use the same task with their registered IDs.
@@ -306,10 +307,14 @@ copies are explicit in root mise tasks. After changing an owning asset, run
 
 ## Inspect traces
 
-Local span export defaults to `OTEL_TRACES_EXPORTER=none`. Enable the optional
-Jaeger 2 service and point API/worker export to its container address. The pinned
-image uses its built-in all-in-one configuration with transient in-memory trace
-storage and OTLP receivers on ports 4317/4318:
+Local span export defaults to `OTEL_TRACES_EXPORTER=none`, preserving trace
+context and local instrumentation without contacting a collector.
+`OTEL_SDK_DISABLED=true` explicitly disables tracing.
+
+Enable the optional Jaeger 2 service and point Rust API/worker and Go snapshot
+export to its container address. The pinned image uses its built-in all-in-one
+configuration with transient in-memory trace storage and OTLP receivers on
+ports 4317/4318:
 
 ```sh
 OTEL_TRACES_EXPORTER=otlp OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318 \
@@ -322,6 +327,11 @@ use `http://localhost:4318` as the OTLP endpoint. Stop the tracing stack with:
 ```sh
 mise exec -- docker compose --profile tracing down
 ```
+
+For a map cache miss, inspect the Rust snapshot CLIENT span, the Go gRPC SERVER
+span, and its browser pipeline children in one trace. A cache hit does not make
+an RPC. The [maps visibility contract](specs/maps.md#network-visibility) defines
+the required attributes and the limit on individual Chromium provider calls.
 
 ## Troubleshooting
 

@@ -24,12 +24,12 @@ PR builds. PR and manual feature-branch runs stop before deployment.
 The incorrect synthetic smoke step and its CI image build have been removed.
 Documentation-only changes do not release images.
 
-| Check                 | Coverage                                                                               |
-| --------------------- | -------------------------------------------------------------------------------------- |
-| `test-rust`           | Rust formatting, Clippy, workspace tests including native HTTP integrations            |
-| `test-ui-unit`        | ESLint, TypeScript, unit tests, formatting, generated OpenAPI client, dependency audit |
-| `test-map-renderer`   | Renderer ESLint, Node tests, and formatting                                            |
-| `test-strava-gateway` | golangci-lint (including Go vet), formatting, gateway tests                            |
+| Check                 | Coverage                                                                                      |
+| --------------------- | --------------------------------------------------------------------------------------------- |
+| `test-rust`           | Rust formatting, Clippy, workspace tests including native HTTP integrations                   |
+| `test-ui-unit`        | ESLint, TypeScript, unit tests, formatting, generated OpenAPI client, dependency audit        |
+| `test-map-renderer`   | Go formatting, vet, golangci-lint, tests, build, protobuf freshness, browser asset lint/audit |
+| `test-strava-gateway` | golangci-lint (including Go vet), formatting, gateway tests                                   |
 
 The preparation step runs in the official mise **2026.10.3/debian** image,
 pinned by digest. Its owning `ci:mise:prepare` task copies the executable into
@@ -144,8 +144,9 @@ caches exist. Normal builds do not attempt to import absent cache manifests.
 
 Rust **1.99.0**, Node **24.21.0**, Go **1.27.1**, and Debian **trixie** images
 have explicit release/variant names and immutable multi-platform digests.
-The UI pins Alpine **3.24**; renderer Playwright **1.63.0/noble** continues to
-match its locked package. Release Rust images use cargo-chef's separate
+The UI pins Alpine **3.24**. The renderer downloads only the Chromium headless
+shell from locked Playwright **1.63.0** during its asset build and packages it
+with a Go executable in Debian trixie. Release Rust images use cargo-chef's separate
 `prepare`/`cook` stages to cache locked dependencies before copying application
 source. `bike-rs/Dockerfile` has one builder and separate `api`/`worker` runtime
 targets. One Bake invocation shares their compilation of the API, worker,
@@ -185,6 +186,18 @@ Run `mise run images:check` for native Docker checks. Keep dependency locks in t
 package managers; use frozen installs. The renderer Dockerfile lives in
 `map-renderer/` and retains the root build context for the shared protocol.
 The UI and renderer use ESLint 10. All lint invocations reject warnings.
+
+The Rust API owns activity-map PNGs. Its deployment needs `MAP_RENDERER_GRPC_ADDRESS`,
+`MAP_SERVICE_TOKEN`, `MAP_IMAGE_CACHE_DIR`, and `MAP_IMAGE_CACHE_TTL_SECONDS`;
+the existing cache volume mounts on the API. The UI proxies image requests to
+Rust and needs only its existing API URL. The Go snapshot worker has no cache
+volume. Coordinate these settings with the API, UI, and worker image release;
+see the [maps deployment contract](specs/maps.md#deployment-constraints) and
+[release acceptance](specs/maps.md#acceptance-and-evidence). The worker Service
+exposes only gRPC 50051 and metrics 9090, with named gRPC health readiness.
+Loopback browser assets are not a Service port. Cache metrics and alerts scrape
+the API; render and gRPC metrics scrape the worker. OTLP must be configured for
+both processes before checking the connected snapshot trace.
 
 ## PostgreSQL patching and major-upgrade rehearsal
 

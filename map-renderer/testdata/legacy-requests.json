@@ -1,0 +1,301 @@
+[
+  {
+    "input": {
+      "theme": "light",
+      "variant": "full",
+      "dpr": 1,
+      "points": [
+        {
+          "latitude": 44.7631,
+          "longitude": -85.6206
+        },
+        {
+          "latitude": 44.782,
+          "longitude": -85.576
+        }
+      ]
+    },
+    "normalized": {
+      "theme": "light",
+      "variant": "full",
+      "dpr": 1,
+      "points": [
+        {
+          "latitude": 44.7631,
+          "longitude": -85.6206
+        },
+        {
+          "latitude": 44.782,
+          "longitude": -85.576
+        }
+      ]
+    },
+    "key": "a8b695447a40259b7774dd0f75f14b63879b8493b1d7fc93897c7dd5bc7994f7"
+  },
+  {
+    "input": {
+      "theme": "dark",
+      "variant": "thumbnail",
+      "dpr": 2,
+      "points": [
+        {
+          "latitude": 0,
+          "longitude": 1e-7
+        },
+        {
+          "latitude": 0.000001,
+          "longitude": -1e-9
+        }
+      ],
+      "activityId": 8,
+      "scope": "private"
+    },
+    "normalized": {
+      "theme": "dark",
+      "variant": "thumbnail",
+      "dpr": 2,
+      "points": [
+        {
+          "latitude": 0,
+          "longitude": 1e-7
+        },
+        {
+          "latitude": 0.000001,
+          "longitude": -1e-9
+        }
+      ]
+    },
+    "key": "5d97aa8fbacae37d7649fb907be23af5c33fcea3f5d931af5de7401a88249e6d"
+  },
+  {
+    "input": {
+      "theme": "light",
+      "variant": "full",
+      "dpr": 1,
+      "points": [
+        {
+          "latitude": 0.00001,
+          "longitude": -5e-324
+        },
+        {
+          "latitude": 90,
+          "longitude": 180
+        }
+      ]
+    },
+    "normalized": {
+      "theme": "light",
+      "variant": "full",
+      "dpr": 1,
+      "points": [
+        {
+          "latitude": 0.00001,
+          "longitude": -5e-324
+        },
+        {
+          "latitude": 90,
+          "longitude": 180
+        }
+      ]
+    },
+    "key": "3a55a4a8cbefaf39dc72678e657f630d066aaee58ce7b941a468007057524722"
+  },
+  {
+    "input": {
+      "theme": "light",
+      "variant": "full",
+      "dpr": 1,
+      "points": [
+        {
+          "latitude": 0.000001,
+          "longitude": -5e-324
+        },
+        {
+          "latitude": 90,
+          "longitude": 180
+        }
+      ]
+    },
+    "normalized": {
+      "theme": "light",
+      "variant": "full",
+      "dpr": 1,
+      "points": [
+        {
+          "latitude": 0.000001,
+          "longitude": -5e-324
+        },
+        {
+          "latitude": 90,
+          "longitude": 180
+        }
+      ]
+    },
+    "key": "d2acf6fe3a31cf57fad31f78ea6c74a4b78a5458c7fb5039be15cf73d3027dab"
+  },
+  {
+    "input": {
+      "theme": "light",
+      "variant": "full",
+      "dpr": 1,
+      "points": [
+        {
+          "latitude": 1e-7,
+          "longitude": -5e-324
+        },
+        {
+          "latitude": 90,
+          "longitude": 180
+        }
+      ]
+    },
+    "normalized": {
+      "theme": "light",
+      "variant": "full",
+      "dpr": 1,
+      "points": [
+        {
+          "latitude": 1e-7,
+          "longitude": -5e-324
+        },
+        {
+          "latitude": 90,
+          "longitude": 180
+        }
+      ]
+    },
+    "key": "67beb0f7a62781c9631d5a4c4b791e9a9fbe300952198a348192a2c85dd2a25c"
+  },
+  {
+    "input": {
+      "theme": "light",
+      "variant": "full",
+      "dpr": 1,
+      "points": [
+        {
+          "latitude": 1e-9,
+          "longitude": -5e-324
+        },
+        {
+          "latitude": 90,
+          "longitude": 180
+        }
+      ]
+    },
+    "normalized": {
+      "theme": "light",
+      "variant": "full",
+      "dpr": 1,
+      "points": [
+        {
+          "latitude": 1e-9,
+          "longitude": -5e-324
+        },
+        {
+          "latitude": 90,
+          "longitude": 180
+        }
+      ]
+    },
+    "key": "9907ddd7b6fc3a0d04268294ec7224f803ce967c19aa16936d5b5fcd2e7713a7"
+  },
+  {
+    "input": {
+      "theme": "light",
+      "variant": "full",
+      "dpr": 1,
+      "points": [
+        {
+          "latitude": 1e-100,
+          "longitude": -5e-324
+        },
+        {
+          "latitude": 90,
+          "longitude": 180
+        }
+      ]
+    },
+    "normalized": {
+      "theme": "light",
+      "variant": "full",
+      "dpr": 1,
+      "points": [
+        {
+          "latitude": 1e-100,
+          "longitude": -5e-324
+        },
+        {
+          "latitude": 90,
+          "longitude": 180
+        }
+      ]
+    },
+    "key": "15ee0370c0f388d73f5a8580b0d48f0c7a10f84ccf84613394caeaec5fa09db6"
+  },
+  {
+    "input": {
+      "theme": "light",
+      "variant": "full",
+      "dpr": 1,
+      "points": [
+        {
+          "latitude": 1e-308,
+          "longitude": -5e-324
+        },
+        {
+          "latitude": 90,
+          "longitude": 180
+        }
+      ]
+    },
+    "normalized": {
+      "theme": "light",
+      "variant": "full",
+      "dpr": 1,
+      "points": [
+        {
+          "latitude": 1e-308,
+          "longitude": -5e-324
+        },
+        {
+          "latitude": 90,
+          "longitude": 180
+        }
+      ]
+    },
+    "key": "2338e8e889acef0b6ca0ca6cec7d9935f82518dbaa7c09828d796cfe32fa3b4d"
+  },
+  {
+    "input": {
+      "theme": "light",
+      "variant": "full",
+      "dpr": 1,
+      "points": [
+        {
+          "latitude": 1.0000000000000002,
+          "longitude": 89.99999999999999
+        },
+        {
+          "latitude": -90,
+          "longitude": -180
+        }
+      ]
+    },
+    "normalized": {
+      "theme": "light",
+      "variant": "full",
+      "dpr": 1,
+      "points": [
+        {
+          "latitude": 1.0000000000000002,
+          "longitude": 89.99999999999999
+        },
+        {
+          "latitude": -90,
+          "longitude": -180
+        }
+      ]
+    },
+    "key": "6e820a3cc5b76119787fe629245dbd6055cbfa0388b71b1e558df43e6e9e55d6"
+  }
+]

@@ -143,6 +143,16 @@ Use the existing component workflows and independently owned site stacks in the
 and session behavior independently with fakes and Playwright as recorded below;
 a complete live SSO-to-Strava chain is not required.
 
+## Private map authentication
+
+Activity-map HTTP requests use the same viewer authentication and disabled-user
+rules as other protected activity reads. The API checks activity ownership on
+every request, including cached PNGs and 304 responses. The UI forwards viewer
+credentials to the API; only the API holds the Go worker's service token.
+Worker gRPC authentication is a service boundary, not a rider identity.
+The [maps specification](maps.md) owns the image and snapshot contract;
+[production synthetics](production-synthetics.md) owns the read-only test identity.
+
 ## Disabled accounts
 
 AUTH01 (`2694699`, 2026-10-01) uses the existing `users.disabled` column in

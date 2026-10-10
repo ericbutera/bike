@@ -212,6 +212,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/activity-map-images/{variant}/{style_version}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["image"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/admin/activities": {
     parameters: {
       query?: never;
@@ -4140,6 +4156,8 @@ export interface components {
       updated_at: string;
     };
     /** @enum {string} */
+    Theme: "light" | "dark";
+    /** @enum {string} */
     TrainingGoalDirection: "at_least" | "at_most";
     /** @enum {string} */
     TrainingGoalKey:
@@ -4630,6 +4648,8 @@ export interface components {
       verified: boolean;
     };
     Value: unknown;
+    /** @enum {string} */
+    Variant: "thumbnail" | "full";
     XcEventGoalResponse: {
       /** Format: double */
       counted_distance_meters: number;
@@ -6103,6 +6123,74 @@ export interface operations {
       };
       /** @description Internal server error */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+    };
+  };
+  image: {
+    parameters: {
+      query: {
+        activityId: number;
+        theme: components["schemas"]["Theme"];
+        dpr: number;
+      };
+      header?: never;
+      path: {
+        variant: components["schemas"]["Variant"];
+        style_version: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Private activity map PNG */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "image/png": number[];
+        };
+      };
+      /** @description Owned activity map has not changed */
+      304: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid map options */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+      /** @description Not authenticated */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Activity or route not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+      /** @description Snapshot worker unavailable */
+      502: {
         headers: {
           [name: string]: unknown;
         };

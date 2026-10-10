@@ -9,7 +9,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: [CMD-SHELL, pg_isready -h 127.0.0.1 -U postgres -d postgres]
+      test:
+        - CMD-SHELL
+        - test -r "$${PGDATA}/postmaster.pid" && grep -q '^ready' "$${PGDATA}/postmaster.pid" && pg_isready -h 127.0.0.1 -U postgres -d postgres
       interval: 2s
       timeout: 3s
       retries: 30
@@ -42,6 +44,12 @@ services:
       SMTP_PORT: 1025
       MAIL_FROM: noreply@bike.local
       SMTP_FROM_NAME: Bike
+      MAP_RENDERER_GRPC_ADDRESS: http://bike-maps:50051
+      MAP_SERVICE_TOKEN: ${MAP_SERVICE_TOKEN:-}
+      MAP_IMAGE_CACHE_DIR: /cache
+      MAP_IMAGE_CACHE_TTL_SECONDS: ${MAP_IMAGE_CACHE_TTL_SECONDS:-604800}
+    volumes:
+      - map_image_cache:/cache
     depends_on:
       migration:
         condition: service_completed_successfully
@@ -59,8 +67,6 @@ services:
       API_URL: ${BIKE_BROWSER_API_URL:-http://localhost:3000/api}
       CDN_URL: ${BIKE_BROWSER_CDN_URL:-http://localhost:3000/uploads}
       INTERNAL_API_URL: http://bike-rs:3000/api
-      MAP_RENDERER_URL: http://bike-maps:3100
-      MAP_SERVICE_TOKEN: ${MAP_SERVICE_TOKEN:-}
     depends_on:
       bike-rs:
         condition: service_started
@@ -68,11 +74,9 @@ services:
   bike-maps:
     image: ${BIKE_RENDERER_IMAGE:-bike-map-renderer:review}
     environment:
-      MAP_IMAGE_CACHE_DIR: /cache
-      MAP_IMAGE_CACHE_TTL_SECONDS: ${MAP_IMAGE_CACHE_TTL_SECONDS:-604800}
       MAP_SERVICE_TOKEN: ${MAP_SERVICE_TOKEN:-}
-    volumes:
-      - map_image_cache:/cache
+      OTEL_TRACES_EXPORTER: ${OTEL_TRACES_EXPORTER:-none}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
 
 volumes:
   postgres_data:
