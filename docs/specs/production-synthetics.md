@@ -28,6 +28,8 @@ preferences, activities, import status, segments, comparison, and the manifest.
 The read-only activity-map image GET is included and checks the resolved
 owner before cache reads or conditional responses, as specified in
 [the maps contract](maps.md#private-http-image-contract).
+Its allowlist includes thumbnail and full images at the current style version 1;
+write methods, unsupported image paths, and extra path segments are rejected.
 Logout is excluded despite using GET. Existing ownership filters continue to
 apply. Admin, verified-user, API-client, and write routes reject this identity.
 
@@ -58,6 +60,8 @@ analytics; ownership filters keep such maintenance within the synthetic dataset.
 
 ## Rendering and verification
 
+When synthetics are enabled, API and UI receive the same configured credential;
+the UI starts after its credential and ingress header boundary are available.
 The UI server forwards the internal credential only to Bike's API. Rust checks
 the synthetic identity and activity ownership before reading its PNG cache or
 returning 304. On a miss, Rust sends allowed geometry to the Go snapshot worker

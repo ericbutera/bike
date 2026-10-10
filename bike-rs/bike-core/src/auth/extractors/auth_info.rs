@@ -235,6 +235,10 @@ fn synthetic_read_allowed(method: &axum::http::Method, path: &str) -> bool {
     let pieces = path.trim_start_matches('/').split('/').collect::<Vec<_>>();
     matches!(pieces.as_slice(), ["api", "activities" | "segments", id] if id.parse::<i32>().is_ok_and(|id| id > 0))
         || matches!(pieces.as_slice(), ["api", "segments", id, "comparison"] if id.parse::<i32>().is_ok_and(|id| id > 0))
+        || matches!(
+            pieces.as_slice(),
+            ["api", "activity-map-images", "thumbnail" | "full", "1"]
+        )
 }
 
 async fn verify_refresh_token(db: &DatabaseConnection, token: &str) -> Result<Uuid, AuthError> {
@@ -256,3 +260,7 @@ async fn verify_api_client(
 
     Ok((client.parsed_scopes(), client.revoked_at.is_some()))
 }
+
+#[cfg(test)]
+#[path = "auth_info_tests.rs"]
+mod tests;
