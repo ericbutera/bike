@@ -16,7 +16,7 @@ while IFS= read -r project; do
       json) args=(--json --summary-only --output-path "$output/coverage-summary.json") ;;
     esac
     mise --cd bike-rs exec rust protoc aqua:taiki-e/cargo-llvm-cov -- \
-      cargo llvm-cov report --ignore-filename-regex "(^|/)($other_crates)/" "${args[@]}"
+      cargo llvm-cov report --ignore-filename-regex "(^|/)bike-rs/($other_crates)/" "${args[@]}"
   done
   bash scripts/coverage-normalize.sh "$output/lcov.info"
 done < <(jq -c '.[] | select(.language == "Rust")' coverage-projects.json)

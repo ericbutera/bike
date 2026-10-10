@@ -1,6 +1,9 @@
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{Condition, DatabaseConnection, DbErr, QueryFilter, QueryOrder, QuerySelect, Set};
+use sea_orm::{
+    Condition, DatabaseConnection, DbErr, ExprTrait, QueryFilter, QueryOrder, QuerySelect,
+    QueryTrait,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
@@ -61,6 +64,37 @@ impl TaskStatus {
 }
 
 impl Model {
+    pub fn with_correlation(query: sea_orm::Select<Entity>, id: &str) -> sea_orm::Select<Entity> {
+        use super::{pipeline_runs, pipeline_tasks, task_attempts};
+        let runs = pipeline_runs::Entity::find()
+            .select_only()
+            .column(pipeline_runs::Column::Id)
+            .filter(
+                Condition::any()
+                    .add(pipeline_runs::Column::Id.eq(id))
+                    .add(pipeline_runs::Column::RequestId.eq(id))
+                    .add(pipeline_runs::Column::TraceId.eq(id)),
+            )
+            .into_query();
+        let tasks = pipeline_tasks::Entity::find()
+            .select_only()
+            .column(pipeline_tasks::Column::TaskId)
+            .filter(pipeline_tasks::Column::RunId.in_subquery(runs))
+            .into_query();
+        let traces = task_attempts::Entity::find()
+            .select_only()
+            .column(task_attempts::Column::TaskId)
+            .filter(task_attempts::Column::TraceId.eq(id))
+            .into_query();
+        let mut matches = Condition::any()
+            .add(Column::Id.in_subquery(tasks))
+            .add(Column::Id.in_subquery(traces));
+        if let Ok(task_id) = id.parse::<i32>() {
+            matches = matches.add(Column::Id.eq(task_id));
+        }
+        query.filter(matches)
+    }
+
     pub async fn has_live_activity_import_executor(
         db: &DatabaseConnection,
         import: &crate::entities::activity_imports::Model,
@@ -108,6 +142,10 @@ impl Model {
         Entity::find()
             .filter(Column::Status.eq(TaskStatus::Pending.as_str()))
             .filter(
+                sea_orm::sea_query::Expr::col(Column::Attempts)
+                    .lt(sea_orm::sea_query::Expr::col(Column::MaxAttempts)),
+            )
+            .filter(
                 Condition::any()
                     .add(Column::ScheduledFor.is_null())
                     .add(Column::ScheduledFor.lte(Utc::now())),
@@ -116,73 +154,5 @@ impl Model {
             .limit(limit)
             .all(db)
             .await
-    }
-
-    /// Mark task as processing
-    pub async fn mark_processing(&self, db: &DatabaseConnection) -> Result<Model, DbErr> {
-        let mut active: ActiveModel = self.clone().into();
-        active.status = Set(TaskStatus::Processing.as_str().to_string());
-        active.started_at = Set(Some(Utc::now()));
-        active.attempts = Set(self.attempts + 1);
-        active.updated_at = Set(Utc::now());
-        active.update(db).await
-    }
-
-    /// Refresh updated_at for a task that is still actively processing.
-    pub async fn mark_processing_heartbeat(
-        db: &DatabaseConnection,
-        id: i32,
-    ) -> Result<Option<Model>, DbErr> {
-        let Some(task) = Entity::find_by_id(id).one(db).await? else {
-            return Ok(None);
-        };
-
-        if task.status != TaskStatus::Processing.as_str() {
-            return Ok(Some(task));
-        }
-
-        let mut active: ActiveModel = task.into();
-        active.updated_at = Set(Utc::now());
-        active.update(db).await.map(Some)
-    }
-
-    /// Mark task as completed
-    pub async fn mark_completed(&self, db: &DatabaseConnection) -> Result<Model, DbErr> {
-        self.mark_completed_with_result(db, None).await
-    }
-
-    /// Mark task as completed with an optional result message
-    pub async fn mark_completed_with_result(
-        &self,
-        db: &DatabaseConnection,
-        result: Option<String>,
-    ) -> Result<Model, DbErr> {
-        let mut active: ActiveModel = self.clone().into();
-        active.status = Set(TaskStatus::Completed.as_str().to_string());
-        active.completed_at = Set(Some(Utc::now()));
-        active.updated_at = Set(Utc::now());
-        active.result = Set(result);
-        active.update(db).await
-    }
-
-    /// Mark task as failed
-    pub async fn mark_failed(
-        &self,
-        db: &DatabaseConnection,
-        error: String,
-    ) -> Result<Model, DbErr> {
-        let mut active: ActiveModel = self.clone().into();
-        active.error = Set(Some(error));
-        active.updated_at = Set(Utc::now());
-
-        // If max attempts reached, mark as failed permanently
-        if self.attempts >= self.max_attempts {
-            active.status = Set(TaskStatus::Failed.as_str().to_string());
-        } else {
-            // Otherwise, set back to pending for retry
-            active.status = Set(TaskStatus::Pending.as_str().to_string());
-        }
-
-        active.update(db).await
     }
 }

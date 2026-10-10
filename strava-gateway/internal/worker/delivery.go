@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/ericbutera/bike/strava-gateway/internal/storage"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 type Target struct {
@@ -37,6 +39,46 @@ type Envelope struct {
 	Operation     string          `json:"operation"`
 	ContentSHA256 string          `json:"content_sha256,omitempty"`
 	Payload       json.RawMessage `json:"payload,omitempty"`
+	Pipeline      *PipelineOrigin `json:"pipeline,omitempty"`
+}
+
+type PipelineOrigin struct {
+	RunID          string            `json:"run_id"`
+	StartedAt      time.Time         `json:"pipeline_started_at"`
+	Entrypoint     string            `json:"entrypoint"`
+	RequestID      *string           `json:"request_id"`
+	ParentTaskID   *int              `json:"parent_task_id"`
+	TraceContext   map[string]string `json:"trace_context"`
+	GatewayHistory []GatewayStep     `json:"gateway_history"`
+}
+type GatewayStep struct {
+	Kind       string    `json:"kind"`
+	StartedAt  time.Time `json:"started_at"`
+	FinishedAt time.Time `json:"finished_at"`
+	Attempts   int       `json:"attempts"`
+}
+
+func pipelineOrigin(ctx context.Context, id string, job storage.DeliveryJob) *PipelineOrigin {
+	if job.ReceivedAt.IsZero() {
+		return nil
+	} // Legacy evidence stays unknown.
+	digest := sha256.Sum256([]byte("bike:strava-delivery:" + id))
+	digest[6] = (digest[6] & 0x0f) | 0x50
+	digest[8] = (digest[8] & 0x3f) | 0x80
+	carrier := propagation.MapCarrier{}
+	otel.GetTextMapPropagator().Inject(ctx, carrier)
+	entrypoint := "strava_webhook"
+	if job.Event.SubscriptionID == 0 {
+		entrypoint = "strava_sync"
+	}
+	return &PipelineOrigin{
+		RunID:     fmt.Sprintf("%x-%x-%x-%x-%x", digest[0:4], digest[4:6], digest[6:8], digest[8:10], digest[10:16]),
+		StartedAt: job.ReceivedAt, Entrypoint: entrypoint, TraceContext: carrier,
+		GatewayHistory: []GatewayStep{
+			{Kind: "gateway_receive_to_fetch", StartedAt: job.ReceivedAt, FinishedAt: job.FetchedAt},
+			{Kind: "gateway_delivery_wait", StartedAt: job.CreatedAt, FinishedAt: job.ClaimedAt, Attempts: job.Attempts},
+		},
+	}
 }
 
 type DeliveryError struct {
@@ -56,6 +98,7 @@ func (sender DeliverySender) Send(ctx context.Context, job storage.DeliveryJob, 
 		Version: 1, DeliveryID: id, AthleteID: job.Event.OwnerID,
 		SiteUserID: link.UserID, ActivityID: job.Event.ObjectID,
 		EventTime: job.Event.EventTime, Operation: job.Operation,
+		Pipeline: pipelineOrigin(ctx, id, job),
 	}
 	if job.Operation == "upsert" {
 		if job.Artifact == nil {

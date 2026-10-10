@@ -231,6 +231,12 @@ impl From<WorkflowError> for AppError {
     }
 }
 
+impl From<bike_core::background_jobs::TaskError> for AppError {
+    fn from(error: bike_core::background_jobs::TaskError) -> Self {
+        Self::internal(error.to_string())
+    }
+}
+
 #[cfg(test)]
 mod map_tests {
     use super::*;

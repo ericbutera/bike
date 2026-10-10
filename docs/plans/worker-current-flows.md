@@ -1,4 +1,51 @@
-# Current worker triggers and processor handoffs
+# Worker triggers and processor handoffs
+
+## Draft implementation
+
+The current draft registers **15 Rust processors** and retains the Go gateway's
+event, delivery and sync queues. Solid arrows describe execution or an inline
+stage; dashed arrows describe durable task scheduling. Parent tasks yield after
+a bounded page. Shared rebuilds execute once and retain each contributing run.
+
+```mermaid
+flowchart TD
+    Strava["Strava webhook"] --> Gateway["Gateway inbox: original received_at"]
+    Sync["Gateway sync job: original created_at"] -.-> Gateway
+    Gateway --> Fetch["Gateway worker: quota, fetch, retained artifact"]
+    Fetch -.-> Outbox["Durable delivery outbox"]
+    Outbox --> Deliver["Gateway delivery worker"]
+    Deliver --> API["Signed HTTP: validate and atomically accept source + compact task"]
+    API -.-> Receive["receive_strava_delivery"]
+    Receive --> Operation{"Upsert / delete / deauthorize"}
+    Operation -->|upsert: inline domain graph| Stages["Import stages: raw, parsed, saved, segments, analytics, training"]
+    Upload["Upload or replay acceptance"] -.-> Import["process_activity_import / reprocess_activity_import"]
+    Import --> Stages
+    Archive["activity_archive_import"] -.->|16 entries + cursor| Import
+    Reprocess["reprocess_user_activity_imports / archive FIT"] -.->|16 activities + cursor| Import
+    Segments["regenerate_user_segments"] -.->|16 activity IDs + cursor| Match["regenerate_activity_segments"]
+    Match -.->|barrier after matching children| SegmentCache["rebuild_segment_analytics"]
+    Stages -.-> Fitness["rebuild_fitness_freshness"]
+    Stages --> Pending["Persist pending heatmap generation"]
+    Operation -->|delete / deauthorize| Pending
+    Pending -.->|bounded reconciliation lease| Heatmap["prepare_heatmap"]
+    Stages --> Output["Revision-matched committed outputs"]
+    Fitness --> Output
+    SegmentCache --> Output
+    Heatmap --> Output
+    Import --> Barrier["Durable bulk child barrier"]
+    Match --> Barrier
+    SegmentCache --> Barrier
+    Barrier --> Cleanup["Finalize result; release exact lock; remove retained archive"]
+    Output --> Ready["Run available after required publications and successful task tree"]
+```
+
+Inline import stages are intentionally visible within their owning execution;
+the diagram does not invent queue tasks for ordinary function calls. Gateway
+receive-to-fetch and delivery-wait intervals may overlap. Their original timestamps,
+attempt count and trace context are retained; they are not added as if they were
+disjoint runtime measurements.
+
+## Source audit before WORK01
 
 - Source snapshot: Bike revision `0c20deb`, inspected on **2026-10-10**.
   These diagrams describe the checked-out implementation; production deployment
@@ -59,7 +106,7 @@ flowchart TD
   terminal failures remain visible. This is separate from Bike's task retry loop.
 - The current target is `rust`. Bike's existing internal gRPC goes **API → gateway**
   for commands. Activity delivery goes **gateway → API over signed HTTP**.
-  A worker-to-core gRPC service is proposed, not currently implemented.
+  Rust workers access Bike storage directly.
 - An upsert currently runs ingestion before acknowledging the delivery. It does
   **not** queue `process_activity_import`. Provider webhook acknowledgment is
   nevertheless independent: the gateway has already committed that callback.

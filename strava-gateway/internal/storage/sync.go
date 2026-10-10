@@ -11,12 +11,11 @@ import (
 
 	"github.com/ericbutera/bike/strava-gateway/internal/webhook"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 )
 
-type Syncs struct{ DB *pgxpool.Pool }
+type Syncs struct{ DB JobDatabase }
 
 func (syncs Syncs) QueueDepth(ctx context.Context) (int64, error) {
 	var depth int64
@@ -25,6 +24,7 @@ func (syncs Syncs) QueueDepth(ctx context.Context) (int64, error) {
 }
 
 type SyncJob struct {
+	CreatedAt     time.Time
 	ID            int64
 	AthleteID     int64
 	Target        string
@@ -121,9 +121,9 @@ func (syncs Syncs) Claim(ctx context.Context) (claimed *SyncJob, err error) {
 	    attempts=jobs.attempts+1, updated_at=now()
 	FROM candidate WHERE jobs.id=candidate.id
 	RETURNING jobs.id,jobs.athlete_id,jobs.target,jobs.mode,jobs.page,
-	    coalesce(jobs.after_epoch,0),jobs.attempts,coalesce(jobs.waiting_reason,''),jobs.traceparent,jobs.tracestate`).Scan(
+	    coalesce(jobs.after_epoch,0),jobs.attempts,coalesce(jobs.waiting_reason,''),jobs.traceparent,jobs.tracestate,jobs.created_at`).Scan(
 		&job.ID, &job.AthleteID, &job.Target, &job.Mode, &job.Page,
-		&job.AfterEpoch, &job.Attempts, &job.WaitingReason, &job.TraceParent, &job.TraceState)
+		&job.AfterEpoch, &job.Attempts, &job.WaitingReason, &job.TraceParent, &job.TraceState, &job.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -167,11 +167,11 @@ func (syncs Syncs) CompletePage(ctx context.Context, job SyncJob, ids []int64) (
 		key := sha256.Sum256([]byte(fmt.Sprintf("sync:%d:%d", job.ID, id)))
 		var eventID int64
 		if err := tx.QueryRow(ctx, `INSERT INTO strava_webhook_events
-			(event_key,subscription_id,owner_id,object_id,object_type,aspect_type,event_time,payload,traceparent,tracestate)
-			VALUES ($1,0,$2,$3,'activity','update',$4,$5,$6,$7)
+			(event_key,subscription_id,owner_id,object_id,object_type,aspect_type,event_time,payload,traceparent,tracestate,received_at)
+			VALUES ($1,0,$2,$3,'activity','update',$4,$5,$6,$7,coalesce($8,now()))
 			ON CONFLICT (event_key) DO UPDATE SET event_key=excluded.event_key
 			RETURNING id`, hex.EncodeToString(key[:]), job.AthleteID, id,
-			event.EventTime, payload, nullableTrace(carrier.Get("traceparent")), nullableTrace(carrier.Get("tracestate"))).Scan(&eventID); err != nil {
+			event.EventTime, payload, nullableTrace(carrier.Get("traceparent")), nullableTrace(carrier.Get("tracestate")), syncReceipt(job)).Scan(&eventID); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO strava_delivery_outbox
@@ -230,4 +230,11 @@ func (syncs Syncs) Fail(ctx context.Context, job SyncJob, failure string) error 
 		lease_until=NULL,last_error=$2,waiting_reason=NULL,updated_at=now()
 		WHERE id=$1 AND status='processing'`, job.ID, truncateFailure(failure))
 	return err
+}
+
+func syncReceipt(job SyncJob) *time.Time {
+	if job.CreatedAt.IsZero() {
+		return nil
+	}
+	return &job.CreatedAt
 }

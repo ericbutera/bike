@@ -319,7 +319,7 @@ pub async fn complete_activity_imports(
 }
 
 pub async fn record_activity_processing_event(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     import: &activity_imports::Model,
     event_type: &str,
     level: &str,

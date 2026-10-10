@@ -65,11 +65,11 @@ func NewMetrics() *Metrics {
 		providerDuration:   prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "bike_strava_gateway_provider_request_duration_seconds", Help: "Outbound Strava API request duration in seconds.", Buckets: requestBuckets()}, []string{"operation", "status_code"}),
 		webhookEvents:      prometheus.NewCounterVec(prometheus.CounterOpts{Name: "bike_strava_gateway_webhook_events_total", Help: "Strava webhook callbacks by bounded outcome."}, []string{"outcome"}),
 		workerJobs:         prometheus.NewCounterVec(prometheus.CounterOpts{Name: "bike_strava_gateway_worker_jobs_total", Help: "Gateway worker job attempts by type and outcome."}, []string{"job_type", "outcome"}),
-		workerDuration:     prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "bike_strava_gateway_worker_job_duration_seconds", Help: "Gateway worker job duration in seconds.", Buckets: requestBuckets()}, []string{"job_type", "outcome"}),
+		workerDuration:     prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "bike_strava_gateway_worker_job_duration_seconds", Help: "Gateway worker job duration in seconds.", Buckets: jobBuckets()}, []string{"job_type", "outcome"}),
 		deliveryAttempts:   prometheus.NewCounterVec(prometheus.CounterOpts{Name: "bike_strava_gateway_delivery_attempts_total", Help: "Site delivery attempts by site and outcome."}, []string{"site", "outcome"}),
 		deliveryDuration:   prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "bike_strava_gateway_delivery_duration_seconds", Help: "Site delivery duration in seconds.", Buckets: requestBuckets()}, []string{"site", "outcome"}),
 		deliveriesEnqueued: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "bike_strava_gateway_deliveries_enqueued_total", Help: "Site delivery jobs committed to the durable outbox."}, []string{"site"}),
-		deliveryQueueAge:   prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "bike_strava_gateway_delivery_queue_age_seconds", Help: "Time from site delivery enqueue to its first processing attempt in seconds.", Buckets: requestBuckets()}, []string{"site"}),
+		deliveryQueueAge:   prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "bike_strava_gateway_delivery_queue_age_seconds", Help: "Time from site delivery enqueue to its first processing attempt in seconds.", Buckets: jobBuckets()}, []string{"site"}),
 		artifactsCreated:   prometheus.NewCounter(prometheus.CounterOpts{Name: "bike_strava_gateway_artifacts_created_total", Help: "Strava payload artifacts written to durable storage."}),
 		artifactBytes:      prometheus.NewCounter(prometheus.CounterOpts{Name: "bike_strava_gateway_artifact_bytes_total", Help: "Bytes written as Strava payload artifacts."}),
 		artifactFailures:   prometheus.NewCounterVec(prometheus.CounterOpts{Name: "bike_strava_gateway_artifact_failures_total", Help: "Strava artifact read/write failures."}, []string{"stage"}),
@@ -344,4 +344,8 @@ func bound(value string, allowed ...string) string {
 
 func requestBuckets() []float64 {
 	return []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60}
+}
+
+func jobBuckets() []float64 {
+	return []float64{0.01, 0.1, 1, 5, 10, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 21600, 86400}
 }

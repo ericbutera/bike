@@ -30,8 +30,13 @@ the existing Playwright harness against the local Rust stack for focused
 browser verification, with fakes at external-service seams. Missing in-app
 Browser controls alone do not require a manual user handoff.
 
-Prefer targeted local checks for the code touched. The project CI is configured
-to fail on tests, lint, and formatting, so do not spend quota repeatedly polling
-for CI completion. Run the verification needed for the authorized task. Ask
-before starting expensive verification outside that scope; do not ask again
-when the user has already authorized the checks or deployment verification.
+Run only focused tests and lints for the code touched locally, in Docker. For
+worker changes, use `mise run test:workers`; select the owning crate and test
+filter for other changes. The primary full test/lint gate is CI/CD through
+`ci:rust`, including workspace unit coverage, integration tests, doctests, Clippy,
+formatting, and contract checks. Keep tests under the owning crate's source or
+`tests/` path so these tasks discover them. Keep required prek checks active.
+
+Do not repeat full workspace tests, coverage, or builds locally, and do not
+repeatedly poll CI completion. Update the draft PR and report CI status separately
+from focused local results.

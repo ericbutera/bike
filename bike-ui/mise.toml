@@ -39,6 +39,10 @@ run = "pnpm run build"
 description = "Run Next.js unit tests with coverage"
 run = "mise run coverage"
 
+[tasks."test:workers"]
+description = "Run focused admin worker history, search, and polling tests"
+run = "pnpm exec vitest run components/__tests__/TasksPageContent.test.tsx components/__tests__/TaskProcessingHistory.test.tsx components/__tests__/ProcessorOverview.test.tsx components/__tests__/PipelinePanel.test.tsx components/__tests__/ActivityPipelines.test.tsx components/__tests__/ActivityImportTracePanel.test.tsx lib/pipelineGraph.test.ts lib/taskQueries.test.tsx"
+
 [tasks.coverage]
 description = "Run Next.js unit tests and generate HTML, LCOV, and JSON coverage reports"
 run = ["mise install node npm:npm pnpm", "mise run deps", "mise exec node pnpm -- pnpm run test:coverage"]

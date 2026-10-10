@@ -14,5 +14,6 @@ to the owning specification.
 - [Personal heatmaps](specs/heatmaps.md): preparation, filters, and private tiles.
 - [Deployment](deployment.md): CI, image promotion, and operational verification.
 - [Observability metrics](observability-metrics.md): historical metric design and the infrastructure catalog.
+- [Worker pipeline diagnostics](production-failures.md): anomalies, processor budgets, capacity and deployment acceptance.
 - [Active backlog](TODO.md): task status and remaining verification.
 - [HTTP contract](../contracts/openapi/README.md): canonical generated YAML and JSON, plus client generation.

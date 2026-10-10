@@ -162,7 +162,7 @@ async fn recover_activity_imports_for_user(
 
     let mut recovered_count = 0usize;
 
-    for import in imports {
+    'imports: for import in imports {
         if let Some(stale_before) = stale_before {
             let last_event_at = import.last_processing_event_at.unwrap_or(import.updated_at);
             if last_event_at > stale_before {
@@ -193,6 +193,16 @@ async fn recover_activity_imports_for_user(
         let queued_attempt = attempt
             .as_ref()
             .filter(|attempt| attempt.status == "queued");
+        let mut recovered_this_import = false;
+        for task in active_tasks.iter().filter(|task| {
+            restart_attempt || task.status == background_tasks::TaskStatus::Processing.as_str()
+        }) {
+            if !reset_background_task_to_pending(db, task, restart_attempt).await? {
+                continue 'imports;
+            }
+            recovered_this_import = true;
+        }
+
         if restart_attempt {
             crate::activity_import_execution::finish_active(
                 db,
@@ -202,14 +212,6 @@ async fn recover_activity_imports_for_user(
             )
             .await
             .map_err(|error| ActivityImportRecoveryError::internal(error.message))?;
-        }
-
-        let mut recovered_this_import = false;
-        for task in active_tasks.iter().filter(|task| {
-            restart_attempt || task.status == background_tasks::TaskStatus::Processing.as_str()
-        }) {
-            reset_background_task_to_pending(db, task, restart_attempt).await?;
-            recovered_this_import = true;
         }
 
         let has_pending_task = active_tasks
@@ -285,29 +287,17 @@ async fn reset_background_task_to_pending(
     db: &DatabaseConnection,
     task: &background_tasks::Model,
     restart_attempt: bool,
-) -> Result<(), ActivityImportRecoveryError> {
-    let mut active: background_tasks::ActiveModel = task.clone().into();
+) -> Result<bool, ActivityImportRecoveryError> {
+    let mut payload = task.payload.clone();
     if restart_attempt {
-        let mut payload = task.payload.clone();
         if let Some(data) = payload
             .get_mut("data")
             .and_then(serde_json::Value::as_object_mut)
         {
             data.remove("attempt_id");
         }
-        active.payload = Set(payload);
     }
-    active.status = Set(background_tasks::TaskStatus::Pending.as_str().to_string());
-    active.attempts = Set(0);
-    active.error = Set(None);
-    active.scheduled_for = Set(None);
-    active.started_at = Set(None);
-    active.completed_at = Set(None);
-    active.result = Set(None);
-    active.updated_at = Set(Utc::now());
-    active.update(db).await?;
-
-    Ok(())
+    Ok(task.recover(db, payload).await?)
 }
 
 async fn mark_activity_import_requeued(

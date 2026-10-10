@@ -33,6 +33,7 @@ impl Projection {
                 status: Set("pending".into()),
                 projection_version: Set(PROJECTION_VERSION),
                 queued_at: Set(None),
+                published_at: Set(None),
                 error: Set(None),
                 min_x: Set(None),
                 min_y: Set(None),
@@ -49,6 +50,15 @@ impl Projection {
             .exec(db)
             .await?;
         if changed.rows_affected > 0 {
+            if let Some(projection) = projections::Entity::find_by_id(activity_id).one(db).await? {
+                crate::background_jobs::entities::pipeline_outputs::Model::advance(
+                    db,
+                    "heatmap",
+                    activity_id,
+                    &format!("{}:{PROJECTION_VERSION}", projection.generation),
+                )
+                .await?;
+            }
             chunks_entity::Entity::delete_many()
                 .filter(chunks_entity::Column::ActivityId.eq(activity_id))
                 .exec(db)
@@ -94,27 +104,72 @@ impl Projection {
     /// Queue and lease rows in the same transaction. Worker crashes and enqueue
     /// failures cannot strand durable dirty state; leases recover after 15 minutes.
     pub async fn enqueue_pending(db: &DatabaseConnection) -> Result<u64, DbErr> {
-        // Keep the writable CTE: the SKIP LOCKED lease UPDATE's RETURNING rows
-        // feed an ordered JSON task INSERT atomically in the same statement.
-        let result = db.execute_raw(Statement::from_sql_and_values(DbBackend::Postgres, r#"
+        let context =
+            crate::background_jobs::pipeline::PipelineContext::current().unwrap_or_else(|| {
+                crate::background_jobs::pipeline::PipelineContext::received(
+                    "heatmap_reconciliation",
+                    None,
+                )
+            });
+        crate::background_jobs::pipeline::PipelineContext::scope(
+            Some(context),
+            Self::lease_and_enqueue(db),
+        )
+        .await
+    }
+
+    async fn lease_and_enqueue(db: &DatabaseConnection) -> Result<u64, DbErr> {
+        let txn = db.begin().await?;
+        // Native locking is necessary for concurrent outbox consumers. Submission
+        // then uses the shared queue API in this same transaction, including lineage.
+        let leased = PendingProjection::find_by_statement(Statement::from_sql_and_values(DbBackend::Postgres, r#"
             WITH candidates AS (
-                SELECT activity_id FROM heatmap_projections
-                WHERE status='pending' AND projection_version=$1 AND (queued_at IS NULL OR queued_at < now() - interval '15 minutes')
-                ORDER BY activity_id LIMIT 16 FOR UPDATE SKIP LOCKED
-            ), leased AS (
-                UPDATE heatmap_projections p SET queued_at=now()
-                FROM candidates c WHERE p.activity_id=c.activity_id
-                RETURNING p.activity_id, p.generation
+                SELECT p.activity_id FROM heatmap_projections p
+                WHERE p.status='pending' AND p.projection_version=$1 AND (p.queued_at IS NULL OR p.queued_at < now() - interval '15 minutes')
+                AND NOT EXISTS (SELECT 1 FROM background_tasks t WHERE t.task_type='prepare_heatmap'
+                    AND t.status IN ('pending','processing') AND (t.status='processing' OR t.attempts<t.max_attempts)
+                    AND (t.payload->'data'->'activities') @> jsonb_build_array(jsonb_build_object('activity_id',p.activity_id,'generation',p.generation)))
+                ORDER BY p.activity_id LIMIT 16 FOR UPDATE SKIP LOCKED
             )
-            INSERT INTO background_tasks(task_type, payload, status, attempts, max_attempts, created_at, updated_at)
-            SELECT 'prepare_heatmap',
-                jsonb_build_object('type', 'PrepareHeatmap', 'data', jsonb_build_object('activities',
-                    jsonb_agg(jsonb_build_object('activity_id', activity_id, 'generation', generation) ORDER BY activity_id))),
-                'pending', 0, 3, now(), now()
-            FROM leased
-            HAVING count(*) > 0
-        "#,[PROJECTION_VERSION.into()])).await?;
-        Ok(result.rows_affected())
+            UPDATE heatmap_projections p SET queued_at=now() FROM candidates c WHERE p.activity_id=c.activity_id
+            RETURNING p.activity_id, p.generation
+        "#,[PROJECTION_VERSION.into()])).all(&txn).await?;
+        if leased.is_empty() {
+            return Ok(0);
+        }
+        let activities: Vec<_> = leased.iter().map(|pending|serde_json::json!({"activity_id":pending.activity_id,"generation":pending.generation})).collect();
+        let task = crate::background_jobs::background_tasks::Model::enqueue(
+            &txn,
+            "prepare_heatmap".into(),
+            serde_json::json!({"type":"PrepareHeatmap","data":{"activities":activities}}),
+            None,
+            3,
+        )
+        .await?;
+        for pending in leased {
+            let revision = Self::revision(pending.generation);
+            crate::background_jobs::entities::pipeline_outputs::Model::advance(
+                &txn,
+                "heatmap",
+                pending.activity_id,
+                &revision,
+            )
+            .await?;
+            crate::background_jobs::entities::pipeline_outputs::Model::attach_waiting_tasks(
+                &txn,
+                "heatmap",
+                pending.activity_id,
+                &revision,
+                task.id,
+            )
+            .await?;
+        }
+        txn.commit().await?;
+        Ok(1)
+    }
+
+    pub fn revision(generation: i64) -> String {
+        format!("{generation}:{PROJECTION_VERSION}")
     }
 
     pub async fn pending(
@@ -170,6 +225,7 @@ impl Projection {
                 b[3].max(c.bounds[3]),
             ]
         });
+        let published_at = Utc::now();
         projections::Entity::update_many()
             .set(projections::ActiveModel {
                 status: Set(if chunks.is_empty() {
@@ -181,6 +237,7 @@ impl Projection {
                 projection_version: Set(PROJECTION_VERSION),
                 error: Set(None),
                 queued_at: Set(None),
+                published_at: Set(Some(published_at)),
                 min_x: Set((!chunks.is_empty()).then_some(bounds[0])),
                 min_y: Set((!chunks.is_empty()).then_some(bounds[1])),
                 max_x: Set((!chunks.is_empty()).then_some(bounds[2])),
@@ -191,6 +248,14 @@ impl Projection {
             .exec(&txn)
             .await?;
         Self::bump_revision(&txn, user_id).await?;
+        crate::background_jobs::entities::pipeline_outputs::Model::publish(
+            &txn,
+            "heatmap",
+            pending.activity_id,
+            &Self::revision(pending.generation),
+            published_at,
+        )
+        .await?;
         txn.commit().await?;
         Ok(true)
     }

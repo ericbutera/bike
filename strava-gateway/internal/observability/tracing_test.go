@@ -13,11 +13,11 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-func TestStartJobSpanLinksPersistedTraceContextAsConsumer(t *testing.T) {
+func TestStartJobSpanContinuesPersistedTraceContextAsConsumer(t *testing.T) {
 	previousProvider := otel.GetTracerProvider()
 	previousPropagator := otel.GetTextMapPropagator()
 	recorder := tracetest.NewSpanRecorder()
-	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder), sdktrace.WithSampler(sdktrace.AlwaysSample()))
 	otel.SetTracerProvider(provider)
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 	t.Cleanup(func() {
@@ -38,8 +38,11 @@ func TestStartJobSpanLinksPersistedTraceContextAsConsumer(t *testing.T) {
 	if got := ended[0].SpanKind(); got != trace.SpanKindConsumer {
 		t.Fatalf("job span kind = %s", got)
 	}
-	if got := ended[0].SpanContext().TraceID().String(); got == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" {
-		t.Fatalf("linked job unexpectedly continued producer trace %s", got)
+	if got := ended[0].SpanContext().TraceID().String(); got != "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" {
+		t.Fatalf("job lost the original producer trace %s", got)
+	}
+	if got := ended[0].Parent().SpanID().String(); got != "bbbbbbbbbbbbbbbb" {
+		t.Fatalf("parent span ID = %s", got)
 	}
 	links := ended[0].Links()
 	if len(links) != 1 {

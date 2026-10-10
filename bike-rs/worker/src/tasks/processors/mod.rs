@@ -5,11 +5,15 @@ mod prepare_heatmap;
 mod process_activity_import;
 mod rebuild_fitness_freshness;
 mod rebuild_segment_analytics;
+mod receive_strava_delivery;
+mod regenerate_activity_segments;
 mod regenerate_segment_efforts;
 mod regenerate_user_segments;
+pub use regenerate_activity_segments::RegenerateActivitySegments;
 mod reprocess_activity_import;
 mod reprocess_user_activity_imports;
 mod strava_sync;
+pub use receive_strava_delivery::ReceiveStravaDelivery;
 
 pub use activity_archive_import::ActivityArchiveImport;
 pub use backfill_user_xc_training::BackfillUserXcTraining;

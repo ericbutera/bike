@@ -10,10 +10,9 @@ import (
 
 	"github.com/ericbutera/bike/strava-gateway/internal/webhook"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type Jobs struct{ DB *pgxpool.Pool }
+type Jobs struct{ DB JobDatabase }
 
 type QueueStat struct {
 	Depth     int64
@@ -174,6 +173,9 @@ type DeliveryJob struct {
 	ID          int64
 	EventID     int64
 	CreatedAt   time.Time
+	ReceivedAt  time.Time
+	FetchedAt   time.Time
+	ClaimedAt   time.Time
 	Event       webhook.Event
 	Target      string
 	Operation   string
@@ -201,8 +203,10 @@ func (jobs Jobs) ClaimDelivery(ctx context.Context) (*DeliveryJob, error) {
 	WHERE outbox.id=candidate.id AND events.id=outbox.event_id
 		RETURNING outbox.id, outbox.event_id, events.payload, outbox.target,
 	    outbox.operation, artifacts.sha256, artifacts.relative_path,
-	    artifacts.size_bytes, outbox.created_at, outbox.attempts, events.traceparent, events.tracestate`).Scan(&job.ID, &job.EventID, &raw,
-		&job.Target, &job.Operation, &hash, &path, &size, &job.CreatedAt, &job.Attempts, &job.TraceParent, &job.TraceState)
+	    artifacts.size_bytes, outbox.created_at, outbox.attempts, events.traceparent, events.tracestate,
+	    events.received_at, events.updated_at, outbox.updated_at`).Scan(&job.ID, &job.EventID, &raw,
+		&job.Target, &job.Operation, &hash, &path, &size, &job.CreatedAt, &job.Attempts, &job.TraceParent, &job.TraceState,
+		&job.ReceivedAt, &job.FetchedAt, &job.ClaimedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}

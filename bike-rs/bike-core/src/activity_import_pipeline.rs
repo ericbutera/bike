@@ -446,7 +446,7 @@ pub async fn mark_activity_import_duplicate(
 }
 
 async fn record_activity_processing_event(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     import: &activity_imports::Model,
     event_type: &str,
     level: &str,
@@ -1288,7 +1288,7 @@ pub async fn store_activity_upload_import(
 }
 
 pub async fn store_activity_upload_import_with_artifacts(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     request: StoreActivityUploadImportRequest<'_>,
 ) -> Result<activity_imports::Model, AppError> {
     let StoreActivityUploadImportRequest {
@@ -1386,7 +1386,7 @@ pub fn original_source_quality_for_format(format: &str) -> &'static str {
 }
 
 async fn store_additional_activity_import_artifact(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     uploads_dir: &str,
     user_storage_key: &str,
     import: &activity_imports::Model,
@@ -1406,7 +1406,7 @@ async fn store_additional_activity_import_artifact(
 }
 
 async fn insert_activity_import_artifact(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     import: &activity_imports::Model,
     artifact: ActivityImportArtifactPayload,
     storage_path: String,
@@ -1688,6 +1688,12 @@ mod tests {
         db.execute(&schema.create_table_from_entity(background_tasks::Entity))
             .await
             .expect("create background tasks table");
+        db.execute(
+            &schema
+                .create_table_from_entity(crate::background_jobs::entities::task_attempts::Entity),
+        )
+        .await
+        .expect("create background task attempts table");
         db.execute(&schema.create_table_from_entity(activity_analytics::Entity))
             .await
             .expect("create activity analytics table");
@@ -1703,6 +1709,7 @@ mod tests {
         db.execute(&schema.create_table_from_entity(integration_events::Entity))
             .await
             .expect("create integration events table");
+        crate::background_jobs::history_tests::diagnostic_tables(&db).await;
 
         db
     }
@@ -1973,7 +1980,7 @@ mod tests {
             .expect("load task")
             .expect("task exists");
         assert_eq!(task.status, background_tasks::TaskStatus::Pending.as_str());
-        assert_eq!(task.attempts, 0);
+        assert_eq!(task.attempts, 1);
         assert_eq!(task.started_at, None);
 
         let import = activity_imports::Entity::find_by_id(import.id)

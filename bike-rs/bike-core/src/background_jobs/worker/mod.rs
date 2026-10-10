@@ -1,3 +1,4 @@
+pub mod catalog;
 mod config;
 mod metrics;
 mod processor;

@@ -647,6 +647,7 @@ async fn seed_ready_heatmap(db: &DatabaseConnection, activity_id: i32) {
         .await
         .unwrap();
     heatmap_projections::ActiveModel {
+        published_at: Set(None),
         activity_id: Set(activity_id),
         user_id: Set(1),
         generation: Set(1),

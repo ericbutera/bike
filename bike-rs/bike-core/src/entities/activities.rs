@@ -12,6 +12,58 @@ use std::collections::HashMap;
 
 pub const BIKE_ACTIVITY_SPORT: &str = "ride";
 
+impl Model {
+    pub async fn cycling_ids_page(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        after: i32,
+    ) -> Result<Vec<i32>, DbErr> {
+        Entity::find()
+            .select_only()
+            .column(Column::Id)
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::Sport.is_in(BIKE_ACTIVITY_SPORT_VALUES.iter().copied()))
+            .filter(Column::Id.gt(after))
+            .order_by_asc(Column::Id)
+            .limit(16)
+            .into_tuple::<i32>()
+            .all(db)
+            .await
+    }
+    pub async fn imported_ids_page(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        after: i32,
+        archive_only: bool,
+    ) -> Result<Vec<i32>, DbErr> {
+        use sea_orm::QueryTrait;
+        let query = Entity::find()
+            .select_only()
+            .column(Column::Id)
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::Id.gt(after))
+            .filter(Column::ActivityImportId.is_not_null());
+        let query = if archive_only {
+            let imports = super::activity_imports::Entity::find()
+                .select_only()
+                .column(super::activity_imports::Column::Id)
+                .filter(super::activity_imports::Column::UserId.eq(user_id))
+                .filter(super::activity_imports::Column::Source.eq("archive_url_import"))
+                .filter(super::activity_imports::Column::Format.eq("fit"))
+                .into_query();
+            query.filter(Column::ActivityImportId.in_subquery(imports))
+        } else {
+            query
+        };
+        query
+            .order_by_asc(Column::Id)
+            .limit(16)
+            .into_tuple::<i32>()
+            .all(db)
+            .await
+    }
+}
+
 // PostgreSQL maintains this summary from the full recording evidence. It is
 // intentionally absent from ActiveModel: application writes cannot override it.
 #[derive(sea_orm::DeriveIden)]

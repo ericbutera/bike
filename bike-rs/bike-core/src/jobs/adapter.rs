@@ -29,6 +29,7 @@ pub enum Job {
     ReprocessActivityImport(ReprocessActivityImportTask),
     BackfillUserXcTraining(BackfillUserXcTrainingTask),
     RegenerateUserSegments(RegenerateUserSegmentsTask),
+    RegenerateActivitySegments(RegenerateActivitySegmentsTask),
     ActivityArchiveImport(ActivityArchiveImportTask),
     StravaSync(StravaSyncTask),
 }
@@ -89,6 +90,10 @@ pub struct BackfillUserXcTrainingTask {
 pub struct RegenerateUserSegmentsTask {
     pub user_id: i32,
 }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegenerateActivitySegmentsTask {
+    pub activity_id: i32,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActivityArchiveImportTask {
@@ -116,6 +121,7 @@ impl Job {
             Job::ReprocessActivityImport(_) => "reprocess_activity_import",
             Job::BackfillUserXcTraining(_) => "backfill_user_xc_training",
             Job::RegenerateUserSegments(_) => "regenerate_user_segments",
+            Job::RegenerateActivitySegments(_) => "regenerate_activity_segments",
             Job::ActivityArchiveImport(_) => "activity_archive_import",
             Job::StravaSync(_) => "strava_sync",
         }
@@ -134,9 +140,9 @@ impl JobQueue {
         }
     }
 
-    async fn enqueue_job(&self, job: Job) {
+    async fn enqueue_job(&self, job: Job) -> Result<(), crate::background_jobs::TaskError> {
         let task_type = job.task_type().to_string();
-        let _ = self.queue.enqueue(task_type, job).await;
+        self.queue.enqueue(task_type, job).await.map(|_| ())
     }
 
     async fn enqueue_job_with_options(
@@ -144,23 +150,31 @@ impl JobQueue {
         job: Job,
         scheduled_for: Option<chrono::DateTime<Utc>>,
         max_attempts: i32,
-    ) {
+    ) -> Result<(), crate::background_jobs::TaskError> {
         let task_type = job.task_type().to_string();
-        let _ = self
-            .queue
+        self.queue
             .enqueue_with_options(task_type, job, scheduled_for, max_attempts)
-            .await;
+            .await
+            .map(|_| ())
     }
 
-    pub async fn email_notification(&self, to: String, subject: String, message: String) {
-        enqueue_email_notification(&self.queue, to, subject, message).await;
+    pub async fn email_notification(
+        &self,
+        to: String,
+        subject: String,
+        message: String,
+    ) -> Result<(), crate::background_jobs::TaskError> {
+        enqueue_email_notification(&self.queue, to, subject, message).await
     }
 
-    pub async fn rebuild_fitness_freshness(&self, user_id: i32) {
+    pub async fn rebuild_fitness_freshness(
+        &self,
+        user_id: i32,
+    ) -> Result<(), crate::background_jobs::TaskError> {
         self.enqueue_job(Job::RebuildFitnessFreshness(RebuildFitnessFreshnessTask {
             user_id,
         }))
-        .await;
+        .await
     }
 
     pub async fn queue_fitness_freshness(
@@ -172,7 +186,10 @@ impl JobQueue {
         Ok(())
     }
 
-    pub async fn rebuild_segment_analytics(&self, segment_ids: Vec<i32>) {
+    pub async fn rebuild_segment_analytics(
+        &self,
+        segment_ids: Vec<i32>,
+    ) -> Result<(), crate::background_jobs::TaskError> {
         let mut segment_ids = segment_ids
             .into_iter()
             .filter(|segment_id| *segment_id > 0)
@@ -181,13 +198,13 @@ impl JobQueue {
         segment_ids.dedup();
 
         if segment_ids.is_empty() {
-            return;
+            return Ok(());
         }
 
         self.enqueue_job(Job::RebuildSegmentAnalytics(RebuildSegmentAnalyticsTask {
             segment_ids,
         }))
-        .await;
+        .await
     }
 
     pub async fn regenerate_segment_efforts(
@@ -368,7 +385,7 @@ impl JobQueue {
         .await
     }
 
-    pub async fn enqueue(&self, job: Job) {
+    pub async fn enqueue(&self, job: Job) -> Result<(), crate::background_jobs::TaskError> {
         self.enqueue_with_options(job, None, 3).await
     }
 
@@ -377,7 +394,7 @@ impl JobQueue {
         job: Job,
         scheduled_for: Option<chrono::DateTime<Utc>>,
         max_attempts: i32,
-    ) {
+    ) -> Result<(), crate::background_jobs::TaskError> {
         self.enqueue_job_with_options(job, scheduled_for, max_attempts)
             .await
     }
