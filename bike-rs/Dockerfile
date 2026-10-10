@@ -40,7 +40,8 @@ RUN --mount=type=cache,id=bike-cargo-registry,target=/usr/local/cargo/registry \
 
 FROM ${RUNTIME_IMAGE:-scratch} AS runtime
 WORKDIR /app
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates libssl3t64 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates libssl3t64 && rm -rf /var/lib/apt/lists/* \
+    && install -d -o nobody -g nogroup /cache
 USER nobody
 
 FROM runtime AS worker

@@ -42,10 +42,10 @@
   {
     "id": "map-renderer",
     "name": "Map renderer",
-    "language": "Node.js",
+    "language": "Go",
     "source": "map-renderer",
-    "include": "map-renderer/**/*.mjs",
-    "exclude": ["*.test.mjs", "*/eslint.config.mjs", "*/smoke.mjs"]
+    "include": "map-renderer/**/*.go",
+    "exclude": ["*_test.go", "*.pb.go", "*/gen/*"]
   },
   {
     "id": "strava-gateway",

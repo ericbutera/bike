@@ -17,6 +17,10 @@ pub struct Config {
     pub strava_gateway_grpc_address: Option<String>,
     pub strava_gateway_shared_secret: String,
     pub uploads_dir: String,
+    pub map_renderer_grpc_address: Option<String>,
+    pub map_service_token: String,
+    pub map_image_cache_dir: String,
+    pub map_image_cache_ttl_seconds: u64,
     pub max_upload_bytes: usize,
     pub max_archive_fetch_bytes: usize,
     pub archive_fetch_timeout_seconds: u64,
@@ -68,17 +72,19 @@ impl Config {
                 .ok()
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty()),
-            strava_gateway_url: env::var("STRAVA_GATEWAY_URL")
-                .ok()
-                .map(|value| value.trim().trim_end_matches('/').to_string())
-                .filter(|value| !value.is_empty()),
-            strava_gateway_grpc_address: env::var("STRAVA_GATEWAY_GRPC_ADDRESS")
-                .ok()
-                .map(|value| value.trim().trim_end_matches('/').to_string())
-                .filter(|value| !value.is_empty()),
+            strava_gateway_url: env_endpoint("STRAVA_GATEWAY_URL"),
+            strava_gateway_grpc_address: env_endpoint("STRAVA_GATEWAY_GRPC_ADDRESS"),
             strava_gateway_shared_secret: env::var("STRAVA_GATEWAY_SHARED_SECRET")
                 .unwrap_or_default(),
             uploads_dir: env::var("UPLOADS_DIR").unwrap_or_else(|_| "./uploads".to_string()),
+            map_renderer_grpc_address: env_endpoint("MAP_RENDERER_GRPC_ADDRESS"),
+            map_service_token: env::var("MAP_SERVICE_TOKEN").unwrap_or_default(),
+            map_image_cache_dir: env::var("MAP_IMAGE_CACHE_DIR")
+                .unwrap_or_else(|_| "./map-image-cache".into()),
+            map_image_cache_ttl_seconds: env::var("MAP_IMAGE_CACHE_TTL_SECONDS")
+                .unwrap_or_else(|_| "604800".into())
+                .parse()
+                .expect("MAP_IMAGE_CACHE_TTL_SECONDS must be a positive integer"),
             max_upload_bytes: env::var("MAX_UPLOAD_BYTES")
                 .ok()
                 .and_then(|s| s.parse().ok())
@@ -138,6 +144,13 @@ impl Config {
             .map(ToOwned::to_owned)
             .collect()
     }
+}
+
+fn env_endpoint(name: &str) -> Option<String> {
+    env::var(name)
+        .ok()
+        .map(|value| value.trim().trim_end_matches('/').to_string())
+        .filter(|value| !value.is_empty())
 }
 
 fn env_bool(name: &str, default: bool) -> bool {

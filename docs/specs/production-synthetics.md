@@ -25,6 +25,9 @@ credential and ordinary user/trace headers, not proxy forwarding headers.
 Synthetic authentication selects the scenario's server-resolved owner. It
 accepts only the explicit GET routes needed for current-user discovery,
 preferences, activities, import status, segments, comparison, and the manifest.
+The read-only activity-map image GET is included and checks the resolved
+owner before cache reads or conditional responses, as specified in
+[the maps contract](maps.md#private-http-image-contract).
 Logout is excluded despite using GET. Existing ownership filters continue to
 apply. Admin, verified-user, API-client, and write routes reject this identity.
 
@@ -55,10 +58,12 @@ analytics; ownership filters keep such maintenance within the synthetic dataset.
 
 ## Rendering and verification
 
-The UI server forwards the internal credential only to Bike's API. After the
-API verifies identity and activity ownership, the server sends allowed geometry
-to the renderer using the existing map service credential. The synthetic
-credential and user identity are not forwarded to the renderer.
+The UI server forwards the internal credential only to Bike's API. Rust checks
+the synthetic identity and activity ownership before reading its PNG cache or
+returning 304. On a miss, Rust sends allowed geometry to the Go snapshot worker
+over gRPC using the map service token and W3C trace context. The UI has no worker
+token. Synthetic credentials and user identity are never forwarded to the worker.
+The [maps specification](maps.md) owns this transport and visibility contract.
 
 The k6 availability image makes only API health and UI HTML requests. It does
 not use this credential or dataset. It runs inside the VPC with explicit URLs
@@ -66,11 +71,21 @@ and no Kubernetes access. The standalone Playwright image owns authenticated
 browser journeys, using an explicitly prepared environment and injected
 configuration. Native HTTP tests own authorization regression coverage.
 
-The [TEST11 gate](../E2E-TODO.md), under implementation and runtime verification,
-owns disposable local/CI environments
-and uses normal session/token authentication for connected write and admin
-journeys. This production synthetic credential remains read-only; it is not the
-authentication mechanism for those mutating E2E scenarios.
+The [TEST11 gate](../E2E-TODO.md) uses disposable local/CI environments and normal
+session/token authentication for connected write and admin journeys. This
+production synthetic credential remains read-only; it is not the authentication
+mechanism for those mutating E2E scenarios.
+
+The connected map regression requests a PNG through the real UI proxy, Rust
+API, and Go/Chromium worker with frozen external basemaps. It verifies a fresh
+miss, an identical cache hit, and ETag/304. Mocked browser/API scenarios do not
+replace this boundary check. Each disposable baseline reset restores upload
+and map-cache ownership for the nonroot API without restarting services.
+
+Disposable PostgreSQL readiness waits for the permanent server's native ready
+state before issuing an authenticated TCP probe. Migration and API startup
+depend on that readiness. Initialization, browser, and service warnings/errors
+fail the gate; startup races must be fixed rather than filtered from diagnostics.
 
 Playwright remains a separate browser check. For an internal production run it
 discovers the same manifest and directs the deployed UI's API transport to the

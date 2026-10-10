@@ -1,0 +1,17 @@
+version: "2"
+formatters:
+  enable:
+    - gofmt
+linters:
+  enable:
+    - gocyclo
+    - gocognit
+    - funlen
+  settings:
+    gocyclo:
+      min-complexity: 11
+    gocognit:
+      min-complexity: 16
+    funlen:
+      lines: -1
+      statements: 50

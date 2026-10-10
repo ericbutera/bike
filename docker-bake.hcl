@@ -85,7 +85,7 @@ target "ui" {
 target "maps" {
   inherits = ["_node"]
   dockerfile = "map-renderer/Dockerfile"
-  args = { NODE_IMAGE = NODE_IMAGE, PLAYWRIGHT_IMAGE = PLAYWRIGHT_IMAGE }
+  args = { NODE_IMAGE = NODE_IMAGE, GO_IMAGE = GO_IMAGE, RUNTIME_IMAGE = RUNTIME_IMAGE }
   tags = [image("maps")]
   cache-from = cache_from("maps")
   cache-to = cache_to("maps")

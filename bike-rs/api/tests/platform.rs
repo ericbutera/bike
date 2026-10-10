@@ -1,6 +1,8 @@
 //! HTTP integration coverage for authentication, preferences, and ride read paths.
 //! The real Axum router and SeaORM queries run against an isolated SQLite fixture.
 
+#[path = "support/activity_maps.rs"]
+mod activity_map_tests;
 #[path = "support/ingestion.rs"]
 mod ingestion_tests;
 mod support;

@@ -182,7 +182,11 @@ Webhook-triggered syncs should remain incremental and cheap. Webhooks are the pr
 
 ## Observability
 
-Bike should add OpenTelemetry support for API and worker processes. The project already has metrics endpoints, but provider sync work needs distributed traces and structured span attributes that can flow into the existing Grafana stack.
+Bike's API, background workers, and gateway initialize OpenTelemetry and retain
+distributed context across their boundaries. Provider sync requires structured
+spans alongside operational metrics. The
+[maps specification](maps.md#network-visibility) owns the separate Rust-to-Go
+snapshot boundary and its required tracing; it is not a Strava provider call.
 
 The production observability stack installs into an `observability` namespace with `kube-prometheus-stack` for Prometheus, Grafana, Alertmanager, and CRDs; `grafana/loki-stack` with promtail enabled for logs; and `grafana/tempo` for traces. Bike's API and worker already have `ServiceMonitor` manifests in the deployment infrastructure, and production Prometheus is configured to discover ServiceMonitors from the observability and app namespaces. Bike observability work should therefore prefer real Prometheus metrics and OpenTelemetry spans over app-only admin counters when the signal is operational.
 
@@ -254,7 +258,7 @@ the evidence available at Bike's delivery boundary.
 - Activity import pipeline: `bike-rs/api/src/activity_import_pipeline.rs`
 - Integration events: `bike-rs/api/src/integration_events.rs`
 - Prometheus metrics: `bike-rs/api/src/metrics.rs`
-- OpenTelemetry initialization and trace propagation: `bike-rs/api/src/observability.rs`
+- OpenTelemetry initialization and trace propagation: `bike-rs/bike-core/src/observability.rs`
 - Observability metric backlog: `docs/observability-metrics.md`
 
 Production ServiceMonitors, dashboards, and Grafana datasource provisioning are

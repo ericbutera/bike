@@ -53,6 +53,7 @@ pub async fn synthetic_platform_app() -> (Router, DatabaseConnection, users::Mod
         .unwrap();
     let user = bike_core::synthetics::ensure_scenario(&db).await.unwrap();
     let state = Arc::new(AppStorage {
+        map_images: None,
         heatmaps: Arc::new(bike_core::heatmaps::service::HeatmapService::default()),
         tasks: tasks::TaskQueue::new(db.clone()),
         feature_flags: bike_core::platform::feature_flags::FeatureFlagService::new(),
@@ -75,6 +76,21 @@ async fn build_platform_app(local_admin: bool) -> Router {
 pub async fn ingestion_platform_app(
     local_admin: bool,
     uploads_dir: String,
+) -> (Router, DatabaseConnection) {
+    build_platform_fixture(local_admin, uploads_dir, None).await
+}
+
+pub async fn map_image_platform_app(
+    local_admin: bool,
+    service: Arc<bike_core::activity_maps::MapImageService>,
+) -> (Router, DatabaseConnection) {
+    build_platform_fixture(local_admin, String::new(), Some(service)).await
+}
+
+async fn build_platform_fixture(
+    local_admin: bool,
+    uploads_dir: String,
+    map_images: Option<Arc<bike_core::activity_maps::MapImageService>>,
 ) -> (Router, DatabaseConnection) {
     init_test_metrics();
     let db = platform_database().await;
@@ -100,6 +116,7 @@ pub async fn ingestion_platform_app(
         .await
         .unwrap();
     let state = Arc::new(AppStorage {
+        map_images,
         heatmaps: Arc::new(bike_core::heatmaps::service::HeatmapService::default()),
         tasks: tasks::TaskQueue::new(db.clone()),
         feature_flags: bike_core::platform::feature_flags::FeatureFlagService::new(),

@@ -11,6 +11,8 @@ The current Bike product includes:
 - server-side archive imports from shareable export URLs;
 - Strava OAuth sync, manual re-sync, and webhook ingestion;
 - normalized activity list/detail views with telemetry, route, laps, zones, and matched segments where data exists;
+- private activity route previews and interactive maps, with personal cycling
+  heatmaps available behind their feature flag;
 - manual GPX/TCX segment import and activity-route segment builder flows;
 - segment efforts, personal-best context, summaries, and comparison/race views;
 - user-managed heart-rate zones, estimated FTP, and unit preferences;
@@ -24,12 +26,20 @@ The current product does not treat training plans, Garmin cloud activity sync, G
 
 Bike follows the repo shape used by the surrounding workspace:
 
-- `api`: Rust Axum API for auth integration, preferences, Strava connections, activity import endpoints, activity/segment/training read APIs, and admin operations.
+- `api`: Rust Axum API for auth integration, preferences, Strava connections,
+  activity import endpoints, activity/segment/training read APIs, private map
+  images and their cache, heatmap tiles, and admin operations.
 - `worker`: background processors for activity import, archive import, Strava sync, segment effort regeneration, analytics rebuilds, XC backfills, and email notifications.
 - `migration`: SeaORM migrations for Bike-owned schema.
 - `bike-ui`: shared Next.js frontend for rider and admin workflows.
+- `map-renderer`: internal Go service running Chromium snapshots over gRPC.
+  It owns browser lifecycle and rendering, with no activity database or PNG cache.
 
 Bike owns auth, database wiring, background jobs, feature flags, and metrics in `bike-core`. PostgreSQL is the normalized system of record. The separate Strava gateway owns provider callbacks, credentials, fetching, quota handling, and signed delivery to the Rust receiver.
+
+The [maps specification](maps.md) owns image permissions, compatibility,
+caching, the snapshot boundary, and its OpenTelemetry contract. The
+[heatmap specification](heatmaps.md) owns preparation and tile behavior.
 
 ## Data Strategy
 
