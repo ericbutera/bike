@@ -1,0 +1,15 @@
+[tasks.test]
+description = "Run renderer unit tests with coverage"
+run = "mise run coverage"
+
+[tasks.coverage]
+description = "Render Node.js unit coverage for the map-renderer service"
+run = [
+  "mise install node npm:npm npm:c8",
+  "rm -rf ../.artifacts/coverage/map-renderer",
+  "mise --cd .. run renderer:deps",
+  "mise exec node npm:c8 -- c8 --all --src . --include '*.mjs' --exclude '*.test.mjs' --exclude 'eslint.config.mjs' --exclude 'smoke.mjs' --temp-directory ../.artifacts/coverage/map-renderer/raw --reports-dir ../.artifacts/coverage/map-renderer/html --reporter text --reporter html --reporter lcovonly --reporter json-summary node --test *.test.mjs",
+  "mv ../.artifacts/coverage/map-renderer/html/lcov.info ../.artifacts/coverage/map-renderer/html/coverage-summary.json ../.artifacts/coverage/map-renderer/",
+  "sed 's#^SF:#SF:map-renderer/#' ../.artifacts/coverage/map-renderer/lcov.info > ../.artifacts/coverage/map-renderer/lcov.info.next",
+  "mv ../.artifacts/coverage/map-renderer/lcov.info.next ../.artifacts/coverage/map-renderer/lcov.info",
+]

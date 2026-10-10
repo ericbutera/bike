@@ -179,7 +179,7 @@ mise run hooks:install       # Install repository-root prek hooks.
 mise run lint               # Run the owning component linters.
 mise run compose:config     # Validate local service wiring.
 mise run rust:check         # Rust formatting, Clippy, and tests.
-mise run coverage           # Rust and Next.js coverage reports.
+mise run coverage           # Unit coverage for every implemented service.
 mise run ui:check           # UI types, tests, build, formatting, generated client.
 mise run test               # Map renderer tests.
 mise run strava:test        # Gateway tests.

@@ -77,13 +77,8 @@ run = [
 ]
 
 [tasks."coverage:report"]
-description = "Render the collected Rust coverage, excluding migration sources"
-run = [
-  "cargo llvm-cov report --ignore-filename-regex '(^|/)migration/' --html --output-dir ../.artifacts/coverage/rust",
-  "cargo llvm-cov report --ignore-filename-regex '(^|/)migration/' --lcov --output-path ../.artifacts/coverage/rust/lcov.info",
-  "cargo llvm-cov report --ignore-filename-regex '(^|/)migration/' --json --summary-only --output-path ../.artifacts/coverage/rust/coverage-summary.json",
-  "cargo llvm-cov report --ignore-filename-regex '(^|/)migration/'",
-]
+description = "Render API, worker, and shared-core coverage from one test run"
+run = ["mise install jq", "mise exec jq -- bash ../scripts/coverage-rust-report.sh"]
 
 [tasks.fmt]
 description = "Format the Rust workspace"

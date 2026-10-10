@@ -21,8 +21,14 @@ Track active Bike work in `docs/TODO.md`. Work one bounded task at a time and
 deliver its result for review on a feature branch. Preserve historical
 operational evidence unless a task explicitly retires it.
 
-Use focused checks through the relevant mise task. Keep provider calls behind
-the gateway seam and use fixtures/fakes for ordinary workflow checks. Native
+Use focused checks through the relevant mise task.
+Prefer `mise run checks:docker <task>` for local verification; `mise run coverage`
+uses that container by default. Keep tool, dependency, and build caches in
+Docker volumes so verification does not repeatedly request host-cache access.
+Containers are disposable; source remains in the task worktree and reports are
+temporary generated output.
+
+Keep provider calls behind the gateway seam and use fixtures/fakes for ordinary workflow checks. Native
 HTTP integration tests live in `bike-rs/api/tests`; browser tests belong to
 `bike-ui/tests/e2e`. Reserve Playwright for focused activity, segment, and
 race-viewer flows; use owning unit, functional, or SQL suites for workflow rules.

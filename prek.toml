@@ -40,7 +40,7 @@ id = "coverage-policy"
 name = "Changed-line coverage policy fixtures"
 language = "system"
 entry = "mise run coverage:test"
-files = "^scripts/coverage-.*\\.sh$|^mise\\.toml$|^prek\\.toml$"
+files = "^scripts/coverage-.*\\.sh$|^coverage-projects\\.json$|^(strava-gateway|map-renderer|bike-rs)/mise\\.toml$|^mise\\.toml$|^prek\\.toml$"
 pass_filenames = false
 
 [[repos.hooks]]
@@ -112,7 +112,7 @@ id = "renderer-lint"
 name = "Renderer and shared JavaScript lint and formatting"
 language = "system"
 entry = "mise run lint:maps"
-files = "^map-renderer/.*\\.(mjs|html|json)$|^integration-tests/.*\\.js$|^mise\\.toml$"
+files = "^map-renderer/.*\\.(mjs|html|json|toml)$|^integration-tests/.*\\.js$|^mise\\.toml$"
 pass_filenames = false
 
 [[repos.hooks]]

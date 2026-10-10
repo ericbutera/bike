@@ -14,7 +14,7 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reportsDirectory: fileURLToPath(
-        new URL("../.artifacts/coverage/nextjs", import.meta.url),
+        new URL("../.artifacts/coverage/bike-ui", import.meta.url),
       ),
       include: ["{app,components,lib}/**/*.{ts,tsx}"],
       exclude: ["**/*.d.ts", "**/*.{test,spec}.{ts,tsx}", "**/__tests__/**"],

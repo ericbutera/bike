@@ -1,0 +1,58 @@
+[
+  {
+    "id": "api",
+    "name": "Bike API",
+    "language": "Rust",
+    "source": "bike-rs/api",
+    "include": "bike-rs/api/**/*.rs",
+    "exclude": ["*/tests/*", "*_tests.rs"]
+  },
+  {
+    "id": "worker",
+    "name": "Bike worker",
+    "language": "Rust",
+    "source": "bike-rs/worker",
+    "include": "bike-rs/worker/**/*.rs",
+    "exclude": ["*/tests/*", "*_tests.rs"]
+  },
+  {
+    "id": "bike-core",
+    "name": "Shared Bike core",
+    "language": "Rust",
+    "source": "bike-rs/bike-core",
+    "include": "bike-rs/bike-core/**/*.rs",
+    "exclude": ["*/tests/*", "*_tests.rs"]
+  },
+  {
+    "id": "bike-ui",
+    "name": "Bike UI",
+    "language": "Next.js",
+    "source": "bike-ui",
+    "include": "bike-ui/**/*.ts*",
+    "exclude": [
+      "*.d.ts",
+      "*.test.ts",
+      "*.test.tsx",
+      "*.spec.ts",
+      "*.spec.tsx",
+      "*/__tests__/*",
+      "*/tests/*"
+    ]
+  },
+  {
+    "id": "map-renderer",
+    "name": "Map renderer",
+    "language": "Node.js",
+    "source": "map-renderer",
+    "include": "map-renderer/**/*.mjs",
+    "exclude": ["*.test.mjs", "*/eslint.config.mjs", "*/smoke.mjs"]
+  },
+  {
+    "id": "strava-gateway",
+    "name": "Strava gateway",
+    "language": "Go",
+    "source": "strava-gateway",
+    "include": "strava-gateway/**/*.go",
+    "exclude": ["*_test.go", "*.pb.go", "*/gen/*"]
+  }
+]

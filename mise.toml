@@ -1,3 +1,7 @@
+[settings.task]
+# Docker launch tasks must not install unrelated host language toolchains.
+run_auto_install = false
+
 [vars]
 mise_version = "2026.10.3"
 mise_image = "ghcr.io/jdx/mise:{{vars.mise_version}}-debian@sha256:58c4c847f5518a9a87a9a582886a485443dbca5eb024426577f58d586a0990c6"
@@ -42,6 +46,8 @@ shellcheck = "0.11.0"
 protoc = "{{vars.protoc_version}}"
 k6 = "{{vars.k6_version}}"
 "npm:prettier" = "3.9.9"
+"npm:c8" = "12.0.0"
+"go:github.com/jandelgado/gcov2lcov" = "v1.1.1"
 "aqua:woodpecker-ci/woodpecker/woodpecker-cli" = "3.19.0"
 "aqua:docker/buildx" = "{{vars.buildx_version}}"
 python = "{{vars.python_version}}"
@@ -57,6 +63,9 @@ NODE_VERSION = "{{vars.node_version}}"
 NPM_VERSION = "{{vars.npm_version}}"
 PNPM_VERSION = "{{vars.pnpm_version}}"
 GO_VERSION = "{{vars.go_version}}"
+GOTOOLCHAIN = "local"
+GOCACHE = "{{get_env(name='BIKE_GO_CACHE', default=config_root ~ '/.cache')}}/go-build"
+GOMODCACHE = "{{get_env(name='BIKE_GO_CACHE', default=config_root ~ '/.cache')}}/go-mod"
 RUNTIME_IMAGE = "{{vars.runtime_image}}"
 RUST_IMAGE = "{{vars.rust_image}}"
 PROTOC_VERSION = "{{vars.protoc_version}}"
@@ -133,6 +142,7 @@ run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load strava
 description = "Run native Dockerfile checks"
 run = '''
 set -eu
+docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg MISE_IMAGE --build-arg RUST_IMAGE --build-arg DOCKER_CLI_IMAGE --file Dockerfile.checks .
 for dockerfile in bike-rs/Dockerfile bike-rs/Dockerfile.dev; do
   docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg RUST_IMAGE --build-arg RUNTIME_IMAGE --build-arg MISE_IMAGE --build-arg PROTOC_VERSION --build-arg CARGO_CHEF_REVISION --build-arg WATCHEXEC_VERSION --file "$dockerfile" bike-rs
 done
@@ -172,37 +182,55 @@ description = "Run shared UI type, test, build, and format checks"
 run = ["mise --cd bike-ui run check", "mise --cd bike-ui run build"]
 
 [tasks.coverage]
-description = "Generate coverage reports for the implemented Rust and Next.js suites"
-run = ["mise run rust:coverage", "mise run ui:coverage"]
+description = "Generate every service's unit coverage in Docker"
+run = "mise run checks:docker coverage:unit"
+
+[tasks."checks:docker"]
+description = "Run an owning mise task in Docker with shared Linux caches"
+usage = 'arg "<task>" help="Owning mise task to run in Docker"'
+run = 'bash scripts/checks-docker.sh'
 
 [tasks."coverage:unit"]
-description = "Generate Rust and Next.js unit coverage without integration or E2E tests"
-run = ["mise --cd bike-rs run coverage:unit", "mise run ui:coverage"]
+description = "Generate service unit coverage without integration or E2E tests"
+run = ["mise --cd bike-rs run coverage:unit", "mise run ui:coverage", "mise run renderer:coverage", "mise run strava:coverage"]
+
+[tasks."renderer:coverage"]
+description = "Generate coverage for the map-renderer service"
+run = "mise --cd map-renderer run coverage"
+
+[tasks."strava:coverage"]
+description = "Generate Go coverage for the Strava gateway service"
+run = "mise --cd strava-gateway run coverage"
+
+[tasks."go:coverage"]
+description = "Generate native unit coverage for a registered Go service"
+usage = 'arg "<project>" help="Project ID in coverage-projects.json"'
+run = ["mise install go go:github.com/jandelgado/gcov2lcov jq", 'mise exec go go:github.com/jandelgado/gcov2lcov jq -- bash scripts/coverage-go.sh "${usage_project?}"']
 
 [tasks."coverage:tools"]
 description = "Install the pinned native diff-coverage CLI and JSON tooling"
 run = ["mise install python uv jq", "mise install pipx:diff-cover"]
 
 [tasks."coverage:check"]
-description = "Require 80% changed-line coverage for Rust and Next.js"
+description = "Require 80% changed-line coverage independently for each service"
 depends = ["coverage:tools"]
 run = "mise exec pipx:diff-cover jq -- bash scripts/coverage-check.sh"
 
 [tasks."coverage:test"]
 description = "Verify the coverage gate with isolated Git and LCOV fixtures"
 depends = ["coverage:tools"]
-run = "mise exec pipx:diff-cover jq -- bash scripts/coverage-test.sh"
+run = ["mise install go go:github.com/jandelgado/gcov2lcov", "mise exec pipx:diff-cover jq go go:github.com/jandelgado/gcov2lcov -- bash scripts/coverage-test.sh"]
 
 [tasks."coverage:site"]
 description = "Assemble browsable reports and overall coverage history"
-run = "bash scripts/coverage-site.sh"
+run = ["mise install jq", "mise exec jq -- bash scripts/coverage-site.sh"]
 
 [tasks."coverage:publish"]
 description = "Publish generated reports to the free GitHub Pages site"
 run = ["mise install jq", "mise exec jq -- bash scripts/coverage-publish.sh"]
 
 [tasks."ci:coverage"]
-description = "Enforce changed-line coverage using reports from the Rust and UI test steps"
+description = "Enforce changed-line coverage using reports from all owning test steps"
 run = "mise run coverage:check"
 
 [tasks."rust:coverage"]
@@ -298,7 +326,7 @@ description = "Run Rust, shared UI, service, and contract checks"
 run = ["mise run rust:check", "mise run ui:check", "mise run test", "mise run strava:test", "mise run generate:protobuf:check", "mise run contracts:check"]
 
 [tasks.test]
-run = "node --test map-renderer/*.test.mjs"
+run = "mise --cd map-renderer run test"
 
 [tasks."strava:test"]
 run = "mise --cd strava-gateway run test"
