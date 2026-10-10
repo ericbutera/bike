@@ -6,6 +6,19 @@ Keep private activity data out of committed reports and fixtures.
 
 ## Active work
 
+**WORK01 — Proposed:** Deliver received-to-available pipeline visibility using the
+existing worker. Follow the [visibility plan](plans/pipeline-visibility.md):
+connect all processors and gateway work with durable run/attempt lineage,
+persisted original-receipt timestamps and request/trace IDs; show full DAG/timing
+and related tasks from an admin activity; measure receipt-to-current/available,
+per-type p50/p90, retries, waits, stalls and required-output readiness; expose
+work amplification, load/capacity and redundant heatmap/fitness/segment rebuilds;
+update provisioned Grafana dashboards with distributions, worker health and
+individual anomalous runs; refactor meaningful queue boundaries; verify live
+correlation, diagnostic links, panel queries and alerts.
+The [current flow diagrams](plans/worker-current-flows.md) document existing
+triggers and handoffs. Implementation has not started.
+
 Deployment simplification is implemented locally: `mise run ci:deploy` clones
 IaC once, compiles the consolidated Bike Pulumi program once, and applies all
 four image pins in one update. All workload definitions now use the `bike`
