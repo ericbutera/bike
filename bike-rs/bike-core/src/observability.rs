@@ -312,6 +312,16 @@ pub fn set_span_parent_from_carrier(span: &tracing::Span, carrier: Option<&Trace
     let _ = span.set_parent(parent_context);
 }
 
+pub fn trace_id_from_carrier(carrier: Option<&TraceContextCarrier>) -> Option<String> {
+    let carrier = carrier?;
+    let context = global::get_text_map_propagator(|propagator| {
+        propagator.extract(&TraceContextExtractor(carrier))
+    });
+    let span = context.span();
+    let ids = span.span_context();
+    ids.is_valid().then(|| ids.trace_id().to_string())
+}
+
 pub fn set_span_parent_from_headers(span: &tracing::Span, headers: &HeaderMap) {
     let parent_context = global::get_text_map_propagator(|propagator| {
         propagator.extract(&TraceHeaderExtractor(headers))
@@ -328,6 +338,14 @@ pub fn record_current_trace_context() {
     let span = tracing::Span::current();
     let context = span.context();
     record_context_fields(&span, &context);
+}
+
+pub fn current_trace_ids() -> Option<(String, String)> {
+    let context = tracing::Span::current().context();
+    let span = context.span();
+    let ids = span.span_context();
+    ids.is_valid()
+        .then(|| (ids.trace_id().to_string(), ids.span_id().to_string()))
 }
 
 fn record_context_fields(span: &tracing::Span, context: &Context) {

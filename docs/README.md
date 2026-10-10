@@ -11,5 +11,6 @@ their local commands and link to the owning guide or specification.
 - [Maps](maps.md): rendering and personal heatmaps.
 - [Deployment](deployment.md): CI, image promotion, and operational verification.
 - [Observability metrics](observability-metrics.md): historical metric design and the infrastructure catalog.
+- [Worker pipeline diagnostics](production-failures.md): anomalies, processor budgets, capacity and deployment acceptance.
 - [Active backlog](TODO.md): task status and remaining verification.
 - [HTTP contract](../contracts/openapi/README.md): canonical generated YAML and JSON, plus client generation.

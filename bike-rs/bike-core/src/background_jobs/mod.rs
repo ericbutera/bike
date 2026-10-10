@@ -1,7 +1,12 @@
 //! Bike's durable background queue and worker runtime.
+pub mod batches;
+pub mod diagnostics;
 pub mod entities;
 pub mod error;
+pub mod execution;
+pub mod history;
 pub mod openapi;
+pub mod pipeline;
 pub mod queue;
 pub mod storage;
 pub mod task;
@@ -17,3 +22,9 @@ pub use storage::{TaskRecord, TaskStatus, TaskStorage};
 pub use task::Task;
 
 pub use durable::DurableStorage;
+
+#[cfg(test)]
+pub(crate) mod history_tests;
+
+#[cfg(test)]
+mod admin_tests;

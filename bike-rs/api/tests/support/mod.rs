@@ -2,7 +2,10 @@ use api::{storage::AppStorage, tasks};
 use axum::Router;
 use bike_core::{
     auth::entities::users,
-    background_jobs::background_tasks,
+    background_jobs::{
+        background_tasks,
+        entities::{pipeline_runs, pipeline_tasks, task_attempts},
+    },
     entities::{
         activities, activity_analytics, activity_import_artifacts, activity_import_locks,
         activity_imports, activity_training_analyses, analytics_user_states, segment_efforts,
@@ -127,13 +130,13 @@ async fn platform_database() -> DatabaseConnection {
         activity_training_analyses::Entity,
         user_preferences::Entity,
         analytics_user_states::Entity,
-        background_tasks::Entity,
         segments::Entity,
         segment_efforts::Entity,
         segment_summaries::Entity,
         segment_user_summaries::Entity,
         bike_core::entities::synthetic_scenarios::Entity,
     );
+    create_worker_tables(&db, &schema).await;
     create_ingestion_tables(&db, &schema).await;
     // This fixture has no external provider or shared database access.
     db.execute_raw(Statement::from_string(
@@ -158,10 +161,38 @@ async fn create_ingestion_tables(db: &DatabaseConnection, schema: &Schema) {
         bike_core::entities::activity_archive_import_jobs::Entity,
         activity_import_locks::Entity,
         activity_import_artifacts::Entity,
+        bike_core::platform::feature_flags::entities::Entity,
     );
 }
 
 fn init_test_metrics() {
     static METRICS: Once = Once::new();
     METRICS.call_once(api::metrics::init_metrics);
+}
+
+async fn create_worker_tables(db: &DatabaseConnection, schema: &Schema) {
+    for statement in [
+        schema.create_table_from_entity(background_tasks::Entity),
+        schema.create_table_from_entity(pipeline_runs::Entity),
+        schema.create_table_from_entity(pipeline_tasks::Entity),
+        schema.create_table_from_entity(task_attempts::Entity),
+        schema.create_table_from_entity(
+            bike_core::background_jobs::entities::processor_registry::Entity,
+        ),
+        schema.create_table_from_entity(
+            bike_core::background_jobs::entities::pipeline_subjects::Entity,
+        ),
+        schema.create_table_from_entity(
+            bike_core::background_jobs::entities::pipeline_outputs::Entity,
+        ),
+        schema.create_table_from_entity(bike_core::background_jobs::entities::work_units::Entity),
+        schema
+            .create_table_from_entity(bike_core::background_jobs::entities::task_anomalies::Entity),
+        schema
+            .create_table_from_entity(bike_core::background_jobs::entities::worker_batches::Entity),
+        schema.create_table_from_entity(bike_core::background_jobs::entities::batch_tasks::Entity),
+        schema.create_table_from_entity(bike_core::entities::strava_delivery_intents::Entity),
+    ] {
+        db.execute(&statement).await.unwrap();
+    }
 }

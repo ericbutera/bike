@@ -81,6 +81,7 @@ func StartJobSpan(ctx context.Context, traceparent, tracestate *string, name str
 	options = append(options, trace.WithSpanKind(trace.SpanKindConsumer))
 	if parentContext.IsValid() {
 		options = append(options, trace.WithLinks(trace.Link{SpanContext: parentContext}))
+		ctx = trace.ContextWithRemoteSpanContext(ctx, parentContext)
 	}
 	return otel.Tracer("bike.strava.gateway").Start(ctx, name, options...)
 }

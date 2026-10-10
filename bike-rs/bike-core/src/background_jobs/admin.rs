@@ -8,8 +8,8 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, JsonValue, NotSet,
-    PaginatorTrait, QueryFilter, QueryOrder, Set,
+    ColumnTrait, DatabaseConnection, EntityTrait, JsonValue, PaginatorTrait, QueryFilter,
+    QueryOrder,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -59,6 +59,9 @@ where
 {
     Router::new()
         .route("/", get(list_tasks::<S, A>))
+        .route("/processors", get(processors::<S, A>))
+        .route("/pipelines/:run_id", get(pipeline::<S, A>))
+        .route("/activities/:id/pipelines", get(activity_pipelines::<S, A>))
         .route("/:id", get(get_task::<S, A>))
         .route("/:id/rerun", post(rerun_task::<S, A>))
         .route("/:id/cancel", post(cancel_task::<S, A>))
@@ -119,7 +122,80 @@ impl IntoResponse for AdminTaskError {
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
+pub struct ProcessorQuery {
+    pub window_hours: Option<i64>,
+    pub outcome: Option<String>,
+}
+
+#[utoipa::path(get, path="/admin/tasks/processors", params(ProcessorQuery), responses((status=200, body=Vec<super::diagnostics::ProcessorSummary>)), tag="tasks", security(("cookie_auth"=[])))]
+pub async fn processors<S, A>(
+    _admin: A,
+    State(state): State<Arc<S>>,
+    Query(query): Query<ProcessorQuery>,
+) -> Result<Json<Vec<super::diagnostics::ProcessorSummary>>, AdminTaskError>
+where
+    S: BackgroundTasksStorage,
+    A: AdminVerified,
+{
+    let hours = query.window_hours.unwrap_or(24);
+    let outcome = query.outcome.as_deref().unwrap_or("completed");
+    if !(1..=168).contains(&hours)
+        || !["completed", "failed", "retrying", "interrupted", "canceled"].contains(&outcome)
+    {
+        return Err(AdminTaskError::bad_request(
+            "Use a 1-168 hour window and a recorded terminal attempt outcome",
+        ));
+    }
+    Ok(Json(
+        super::diagnostics::ProcessorSummary::list(state.db(), hours, outcome).await?,
+    ))
+}
+
+pub use super::diagnostics::GraphCursor as GraphQuery;
+
+#[utoipa::path(get, path="/admin/tasks/pipelines/{run_id}", params(("run_id"=String, Path), GraphQuery), responses((status=200, body=super::diagnostics::PipelineGraph), (status=404)), tag="tasks", security(("cookie_auth"=[])))]
+pub async fn pipeline<S, A>(
+    _admin: A,
+    State(state): State<Arc<S>>,
+    Path(run_id): Path<String>,
+    Query(query): Query<GraphQuery>,
+) -> Result<Json<super::diagnostics::PipelineGraph>, AdminTaskError>
+where
+    S: BackgroundTasksStorage,
+    A: AdminVerified,
+{
+    if query.output_offset.is_some_and(|offset| offset > 100_000) {
+        return Err(AdminTaskError::bad_request(
+            "Output cursor exceeds retained history",
+        ));
+    }
+    super::diagnostics::PipelineGraph::load_page(state.db(), &run_id, &query)
+        .await?
+        .map(Json)
+        .ok_or_else(|| AdminTaskError::not_found("Pipeline run not found"))
+}
+
+#[utoipa::path(get, path="/admin/tasks/activities/{id}/pipelines", params(("id"=i32, Path), GraphQuery), responses((status=200, body=super::diagnostics::PipelinePage)), tag="tasks", security(("cookie_auth"=[])))]
+pub async fn activity_pipelines<S, A>(
+    _admin: A,
+    State(state): State<Arc<S>>,
+    Path(id): Path<i32>,
+    Query(query): Query<GraphQuery>,
+) -> Result<Json<super::diagnostics::PipelinePage>, AdminTaskError>
+where
+    S: BackgroundTasksStorage,
+    A: AdminVerified,
+{
+    Ok(Json(
+        super::diagnostics::PipelinePage::for_activity(state.db(), id, query.after_run).await?,
+    ))
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct TaskListQuery {
+    /// Exact request, trace, or pipeline run ID.
+    pub correlation_id: Option<String>,
     pub task_type: Option<String>,
     pub status: Option<String>,
     pub error: Option<String>,
@@ -208,6 +284,8 @@ impl From<background_tasks::Model> for TaskResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct TaskDetailResponse {
+    pub attempt_history: Vec<super::history::TaskAttemptResponse>,
+    pub pipelines: Vec<super::history::TaskPipelineResponse>,
     pub id: i32,
     pub task_type: String,
     pub status: String,
@@ -226,6 +304,8 @@ pub struct TaskDetailResponse {
 impl From<background_tasks::Model> for TaskDetailResponse {
     fn from(m: background_tasks::Model) -> Self {
         Self {
+            attempt_history: Vec::new(),
+            pipelines: Vec::new(),
             id: m.id,
             task_type: m.task_type,
             status: m.status,
@@ -271,6 +351,10 @@ where
 
     let mut query =
         background_tasks::Entity::find().order_by_desc(background_tasks::Column::CreatedAt);
+
+    if let Some(id) = &params.correlation_id {
+        query = background_tasks::Model::with_correlation(query, id);
+    }
 
     if let Some(ref t) = params.task_type {
         query = query.filter(background_tasks::Column::TaskType.eq(t.clone()));
@@ -338,7 +422,9 @@ where
         .await?
         .ok_or_else(|| AdminTaskError::not_found("Task not found"))?;
 
-    Ok(Json(TaskDetailResponse::from(task)))
+    let mut detail = TaskDetailResponse::from(task);
+    (detail.attempt_history, detail.pipelines) = super::history::load(db, id).await?;
+    Ok(Json(detail))
 }
 
 #[utoipa::path(
@@ -373,6 +459,15 @@ where
         .ok_or_else(|| AdminTaskError::not_found("Task not found"))?;
 
     let mut payload = task.payload;
+    if let Some(object) = payload.as_object_mut() {
+        object.remove("_batch_id");
+    }
+    if let Some(data) = payload
+        .get_mut("data")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        data.remove("batch_id");
+    }
     if task.task_type == "process_activity_import" {
         if let Some(data) = payload
             .get_mut("data")
@@ -381,23 +476,14 @@ where
             data.remove("attempt_id");
         }
     }
-    let now = Utc::now();
-    let created = background_tasks::ActiveModel {
-        id: NotSet,
-        task_type: Set(task.task_type),
-        payload: Set(payload),
-        status: Set("pending".to_string()),
-        attempts: Set(0),
-        max_attempts: Set(task.max_attempts),
-        error: Set(None),
-        result: Set(None),
-        scheduled_for: Set(None),
-        created_at: Set(now),
-        updated_at: Set(now),
-        started_at: Set(None),
-        completed_at: Set(None),
-    }
-    .insert(db)
+    let origin = super::pipeline::PipelineContext::received(
+        "admin_rerun",
+        super::pipeline::PipelineContext::current().and_then(|context| context.request_id),
+    );
+    let created = super::pipeline::PipelineContext::scope(
+        Some(origin),
+        background_tasks::Model::enqueue(db, task.task_type, payload, None, task.max_attempts),
+    )
     .await?;
 
     Ok(Json(TaskResponse::from(created)))
@@ -441,13 +527,6 @@ where
         ));
     }
 
-    let now = Utc::now();
-    let mut active: background_tasks::ActiveModel = task.into();
-    active.status = Set("canceled".to_string());
-    active.error = Set(Some("Canceled by admin".to_string()));
-    active.completed_at = Set(Some(now));
-    active.updated_at = Set(now);
-
-    let updated = active.update(db).await?;
+    let updated = task.cancel(db).await?;
     Ok(Json(TaskResponse::from(updated)))
 }

@@ -95,6 +95,9 @@ use utoipa::OpenApi;
         platform_openapi::paths::update_flag,
         platform_openapi::paths::get_metrics,
         background_jobs_openapi::paths::list_tasks,
+        background_jobs_openapi::paths::processors,
+        background_jobs_openapi::paths::pipeline,
+        background_jobs_openapi::paths::activity_pipelines,
         background_jobs_openapi::paths::get_task,
         background_jobs_openapi::paths::rerun_task,
         background_jobs_openapi::paths::cancel_task,
@@ -248,7 +251,13 @@ use utoipa::OpenApi;
             background_jobs_openapi::schemas::PaginatedResponse<background_jobs_openapi::schemas::TaskResponse>,
             background_jobs_openapi::schemas::PaginationMetadata,
             background_jobs_openapi::schemas::TaskResponse,
+            background_jobs_openapi::schemas::ProcessorSummary,
+            background_jobs_openapi::schemas::Distribution,
+            background_jobs_openapi::schemas::PipelineGraph,
+            background_jobs_openapi::schemas::PipelinePage,
             background_jobs_openapi::schemas::TaskDetailResponse,
+            background_jobs_openapi::schemas::TaskAttemptResponse,
+            background_jobs_openapi::schemas::TaskPipelineResponse,
         )
     ),
     tags(

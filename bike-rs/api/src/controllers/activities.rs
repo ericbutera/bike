@@ -925,11 +925,11 @@ pub async fn delete_activity(
     let changed_at = Utc::now();
     mark_user_fitness_dirty(&state.db, user.id, fitness_dirty_from_day, changed_at).await?;
     mark_segment_activity_changes(&state.db, &affected_segment_ids, changed_at).await?;
-    state.tasks.rebuild_fitness_freshness(user.id).await;
+    state.tasks.rebuild_fitness_freshness(user.id).await?;
     state
         .tasks
         .rebuild_segment_analytics(affected_segment_ids)
-        .await;
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

@@ -4,11 +4,60 @@
   received-to-available timing, request/trace correlation, processor metrics,
   Grafana visualizations, and detection of anomalous or unnecessary work.
 - The [current flow map](worker-current-flows.md) describes existing execution.
-- This is a proposal grounded in source revision `0c20deb`, inspected on
-  **2026-10-10**. No application changes or live telemetry verification have been
-  performed. Track implementation as **WORK01** in [Bike TODO](../TODO.md).
+- The source audit below records revision `0c20deb`, inspected on **2026-10-10**.
+  Implementation is prepared for review as **WORK01** in [Bike TODO](../TODO.md).
+  No live telemetry verification or deployment has been performed.
 
-## What exists and what is missing
+## Implementation for review
+
+- The existing worker remains the engine. Original receipt, request/trace/run
+  IDs, causal task links, fenced attempts, inline work and import stages survive
+  queue handoffs, retry and recovery. Signed gateway deliveries preserve the
+  inbox or sync receipt; acceptance stores source ownership and a compact task
+  atomically before returning HTTP 202.
+- The worker publishes its actual 15-processor registry. Admin statistics use
+  complete PostgreSQL populations with explicit outcome, window, p50/p90 and
+  sample count. Shared queue gauges are aggregated once across replicas;
+  execution counters and histogram buckets aggregate actual attempts.
+- Admin activities open their processing runs even without a linked import.
+  Interactive Mermaid shows queued parents, attempts, actual inline work,
+  authoritative import dependencies, gateway intervals and required output
+  revisions. Selection shows stage/runtime, receipt-to-start/result, errors,
+  progress and links to logs/traces. Missing historical evidence stays unknown.
+- Fitness, heatmap and segment publication must match the accepted input revision.
+  Fitness and segment rebuilds fence concurrent source changes; shared heatmap
+  tasks retain each contributing origin while counting execution once.
+  Publication and task-tree end are separate clocks.
+- Archive, bulk reprocessing and segment regeneration producers enqueue bounded
+  pages and persist cursor/child intents together. A durable child barrier owns
+  the exact import lock; parents yield instead of waiting on a sequential worker.
+  Segment aggregate caches run after matching children; archive file cleanup
+  resumes after restart.
+- Real work units record scoped reads, computation, writes, publications, mode,
+  reason, revision and outcome. They expose repeated revision, superseded work,
+  retries and rebuild amplification. Counts describe domain units and rows
+  touched by the measured stage, not physical I/O or CPU instructions.
+- One persisted anomaly policy supplies admin, logs, metrics and Grafana.
+  Relative duration requires 30 prior comparable workload/version samples;
+  candidate/future runs cannot bias the baseline. Absolute queue/runtime,
+  heartbeat/progress and retry budgets work during warm-up.
+- Provisioned Bike overview, gateway, system health and traces dashboards include
+  histograms, p50/p90, populations, health, capacity, work volume and an anomalous
+  run table. The owning deployment project contains dashboard/alert fixtures and
+  its CI workflow. Application changes do not deploy those resources.
+- Local validation uses focused Docker tasks:
+  `mise run checks:docker test:workers` and disposable
+  `test:workers:postgres:docker`. Rust/UI/Go tests are in Bike's existing test
+  paths. Full lint, tests, coverage, production builds and E2E are CI gates;
+  PostgreSQL migration/statistics fixtures also run in the dependent CI workflow.
+- Diagnostic pages are bounded (50 tasks, 25 work units and 100 outputs with
+  cursors; 20 activity run IDs). Closed diagnostic history expires after 30 days;
+  active or explicitly unready evidence is retained for investigation. Native
+  PostgreSQL fixtures report synthetic table/index footprint; production resource
+  use, real trace delivery, deployed image identity and readiness remain a
+  deployment acceptance check.
+
+## Source audit before implementation
 
 | Area                 | Existing implementation                                                                           | Gap to close                                                                                                                |
 | -------------------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |

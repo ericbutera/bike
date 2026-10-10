@@ -74,9 +74,24 @@ UI server requests use `INTERNAL_API_URL`; browser requests use `API_URL`.
 
 ## Run focused checks
 
-Mise manages pinned language and package-manager versions. Use `mise run` for
-existing tasks and `mise exec --` for additional commands. Install frontend
-dependencies before running host-side checks:
+Mise manages pinned language and package-manager versions. Run only focused
+tests and lints locally, in Docker. CI/CD is the primary gate for full suites,
+workspace linting, coverage, production builds, and E2E tests. Git and GitHub
+commands may run on the host. Keep required prek hooks active.
+
+Use `mise run checks:docker <task>` for an owning focused task. Worker pipeline
+tests include API receipt propagation, queue/attempt history, trace handoffs,
+admin handlers, and the UI history/search/polling behavior:
+
+```sh
+mise run checks:docker test:workers
+```
+
+These tests live in the existing Rust unit and Vitest paths. `ci:rust` and
+`ci:ui:unit` discover them as part of the full CI suites; the focused command
+does not replace those gates. The PostgreSQL migration/concurrent-claim check
+is a separate opt-in integration test, run by `bike-rs`'s
+`test:workers:postgres` task with a disposable `BIKE_WORKER_TEST_DATABASE_URL`.
 
 Tool versions and application build-image pins belong in the root `mise.toml`.
 Dockerfiles consume build arguments and Compose requires mise's environment.
@@ -90,13 +105,13 @@ the actual image and tool arguments from mise.
 mise trust bike-rs/mise.toml
 mise trust bike-ui/mise.toml
 mise trust strava-gateway/mise.toml
-mise --cd bike-rs install
-mise --cd bike-ui install
-mise --cd strava-gateway install
-mise --cd bike-ui run deps
 mise run hooks:install
 mise tasks
 ```
+
+The following broad tasks are CI entrypoints and reference commands. Do not
+repeat them locally during iteration; publish updates to the draft PR and use
+that revision's CI results for full validation.
 
 | Command from the root              | Checks                                                                |
 | ---------------------------------- | --------------------------------------------------------------------- |
@@ -118,8 +133,8 @@ The repository-root `prek.toml` routes checks to each owning mise task.
 For a targeted Rust check, use the component's toolchain:
 
 ```sh
-cd bike-rs
-mise exec -- cargo test -p bike-core <test_filter>
+# Inside the checks container, from bike-rs:
+mise exec -- cargo test -p bike-core --lib <test_filter>
 ```
 
 Use the [UI browser tests](../bike-ui/tests/e2e/README.md) for activity, segment, and
@@ -129,7 +144,9 @@ production verification.
 
 ## Coverage reports
 
-Run all implemented coverage suites from the repository root:
+CI collects all implemented coverage suites and enforces the changed-line gate.
+When a full local coverage run is explicitly requested, run it in Docker from
+the repository root:
 
 ```sh
 mise run coverage
@@ -156,7 +173,7 @@ Each component also provides `mise run coverage` from its own directory. The
 tasks install their pinned tools/dependencies and create per-file reports and
 totals. The first Rust run builds instrumented artifacts separately from ordinary
 builds in `bike-rs/target/llvm-cov-target` when running directly, or
-`/cache/target/llvm-cov-target` in Docker; later runs reuse that build cache.
+`/cache/target/<checkout>/llvm-cov-target` in Docker; later runs reuse that build cache.
 Each Rust collection clears only prior `.profraw` measurements, preserving
 compiled artifacts so a previous run cannot inflate the new report.
 

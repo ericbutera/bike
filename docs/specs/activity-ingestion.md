@@ -111,6 +111,13 @@ Worker startup and owner inspection recover executions after five minutes
 without progress. A live task or parent archive/bulk task heartbeat prevents
 recovery from stealing active work. Preserve interrupted attempts and queue a
 new execution; queued replay keeps its selected start and attempt ID.
+Background task attempt numbers remain monotonic through recovery. Recovery
+compares the task's status, attempt, and heartbeat timestamp before requeueing;
+an intervening heartbeat prevents that stale snapshot from reclaiming the task.
+An exhausted task receives at least one eligible recovery attempt without
+erasing prior execution history. The separate import execution IDs and replay
+stage contracts remain unchanged. See
+[task processing history](admin-operations.md#task-processing-history).
 
 Archive jobs expose queued/running, succeeded, partial, or failed. Succeeded
 means every supported entry was imported or duplicate; partial means both

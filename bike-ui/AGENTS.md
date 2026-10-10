@@ -12,6 +12,13 @@ CI/CD must reuse these owning mise tasks. Follow the root Git authorization
 rules: permission to commit includes publication, integration, and cleanup.
 Keep each complete feature in one coherent commit.
 
+Run only focused tests and lints for changed components/hooks locally, in Docker.
+Use Vitest file filters and ESLint file paths through mise; keep required prek
+checks active. CI/CD is the primary full test/lint gate through `ci:ui:unit` and
+the image/E2E workflows. Do not repeat full UI coverage or production builds
+locally. Put tests in the existing Vitest test paths so CI discovers them, update
+the draft PR continuously, and report focused local results separately from CI.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 ## This is NOT the Next.js you know

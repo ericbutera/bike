@@ -6,11 +6,13 @@ use chrono::{DateTime, Utc};
 use sea_orm::{ActiveModelTrait, ConnectionTrait, Set};
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct StageRecord {
     pub stage: String,
     pub status: String,
+    #[schema(value_type = Option<String>, format = DateTime)]
     pub started_at: Option<DateTime<Utc>>,
+    #[schema(value_type = Option<String>, format = DateTime)]
     pub completed_at: Option<DateTime<Utc>>,
     pub summary: Vec<String>,
     pub error: Option<String>,
@@ -66,7 +68,7 @@ pub async fn create_attempt(
         updated_at: Set(now),
         ..Default::default()
     };
-    attempt.insert(db).await.map_err(|error| {
+    let attempt = attempt.insert(db).await.map_err(|error| {
         if matches!(
             error.sql_err(),
             Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
@@ -77,7 +79,15 @@ pub async fn create_attempt(
         } else {
             WorkflowError::from(error)
         }
-    })
+    })?;
+    crate::background_jobs::entities::pipeline_outputs::Model::require(
+        db,
+        "import",
+        import.id,
+        attempt.id.to_string(),
+    )
+    .await?;
+    Ok(attempt)
 }
 
 fn initial_stages(
@@ -134,8 +144,18 @@ pub async fn record_stage(
     active.current_stage = Set(record.stage);
     active.stages_json = Set(serde_json::to_value(records).map_err(json_error)?);
     active.updated_at = Set(Utc::now());
+    if let Some(context) = crate::background_jobs::execution::ExecutionContext::current() {
+        active.worker_task_id = Set(Some(context.task_id));
+        crate::background_jobs::entities::task_attempts::Model::progress(
+            db,
+            context.task_id,
+            context.attempt,
+        )
+        .await?;
+    }
     if let Some(id) = activity_id {
         active.activity_id = Set(Some(id));
+        record_activity_lineage(db, id).await?;
     }
     if let Some(checkpoint) = checkpoint {
         let value = serde_json::to_value(checkpoint).map_err(json_error)?;
@@ -144,6 +164,60 @@ pub async fn record_stage(
         }
     }
     Ok(active.update(db).await?)
+}
+
+async fn record_activity_lineage(
+    db: &impl ConnectionTrait,
+    activity_id: i32,
+) -> Result<(), WorkflowError> {
+    use crate::background_jobs::{
+        entities::{pipeline_outputs, pipeline_runs, pipeline_subjects},
+        pipeline::PipelineContext,
+    };
+    use sea_orm::EntityTrait;
+    let Some(context) = PipelineContext::current() else {
+        return Ok(());
+    };
+    pipeline_runs::Model::record_origin(db, &context).await?;
+    pipeline_subjects::Model::attach(db, &context.run_id, "activity", activity_id).await?;
+    if let Some(activity) = crate::entities::activities::Entity::find_by_id(activity_id)
+        .one(db)
+        .await?
+    {
+        let revision = activity.updated_at.timestamp_micros().to_string();
+        pipeline_outputs::Model::require(db, "activity", activity_id, revision.clone()).await?;
+        pipeline_outputs::Model::publish(
+            db,
+            "activity",
+            activity_id,
+            &revision,
+            activity.updated_at,
+        )
+        .await?;
+    }
+    if crate::heatmaps::projection::Projection::enabled(db).await? {
+        if let Some(projection) =
+            crate::entities::heatmap_projections::Entity::find_by_id(activity_id)
+                .one(db)
+                .await?
+        {
+            let revision = crate::heatmaps::projection::Projection::revision(projection.generation);
+            pipeline_outputs::Model::require(db, "heatmap", activity_id, revision.clone()).await?;
+            if ["ready", "skipped"].contains(&projection.status.as_str()) {
+                if let Some(published) = projection.published_at {
+                    pipeline_outputs::Model::publish(
+                        db,
+                        "heatmap",
+                        activity_id,
+                        &revision,
+                        published,
+                    )
+                    .await?;
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 pub async fn finish_active(
@@ -174,14 +248,26 @@ pub async fn finish_active(
             }
         }
     }
+    let revision = attempt.id.to_string();
+    let finished_at = Utc::now();
     let mut active: attempts::ActiveModel = attempt.into();
     active.status = Set(outcome.into());
     active.activity_id = Set(import.activity_id);
     active.error = Set(error.map(str::to_owned));
     active.stages_json = Set(serde_json::to_value(records).map_err(json_error)?);
-    active.finished_at = Set(Some(Utc::now()));
+    active.finished_at = Set(Some(finished_at));
     active.updated_at = Set(Utc::now());
     active.update(db).await?;
+    if error.is_none() && ["completed", "duplicate"].contains(&outcome) {
+        crate::background_jobs::entities::pipeline_outputs::Model::publish(
+            db,
+            "import",
+            import.id,
+            &revision,
+            finished_at,
+        )
+        .await?;
+    }
     Ok(())
 }
 

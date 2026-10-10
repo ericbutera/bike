@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import TasksPageContent from "../admin/TasksPageContent";
@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   useAdminTaskCancel: vi.fn(),
   useAdminTaskRerun: vi.fn(),
   useAdminTasks: vi.fn(),
+  useWorkerProcessors: vi.fn(),
   cancelAsync: vi.fn(),
   rerunAsync: vi.fn(),
   refetchTasks: vi.fn(),
@@ -19,11 +20,13 @@ vi.mock("@/lib/queries", () => ({
   useAdminTaskCancel: mocks.useAdminTaskCancel,
   useAdminTaskRerun: mocks.useAdminTaskRerun,
   useAdminTasks: mocks.useAdminTasks,
+  useWorkerProcessors: mocks.useWorkerProcessors,
 }));
 
 describe("TasksPageContent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.useWorkerProcessors.mockReturnValue({ data: [], error: null });
     mocks.useAdminTasks.mockReturnValue({
       data: [
         {
@@ -78,5 +81,56 @@ describe("TasksPageContent", () => {
       });
     });
     expect(mocks.refetchTasks).toHaveBeenCalled();
+  });
+
+  it("searches task lineage by the correlation ID from an error log", async () => {
+    const user = userEvent.setup();
+    render(<TasksPageContent />);
+    await user.type(
+      screen.getByLabelText("Request, trace, or pipeline ID"),
+      "request-123",
+    );
+    expect(mocks.useAdminTasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ correlationId: "request-123" }),
+    );
+  });
+
+  it("filters registered and historical processors and retains the selection on an empty page", () => {
+    const distribution = { samples: 0, p50_seconds: null, p90_seconds: null };
+    mocks.useWorkerProcessors.mockReturnValue({
+      data: [
+        {
+          task_type: "receive_strava_delivery",
+          queued: 0,
+          scheduled: 0,
+          running: 0,
+          retrying: 0,
+          failed: 0,
+          attempt: distribution,
+          eligible_wait: distribution,
+          logical_completion: distribution,
+        },
+      ],
+    });
+    const view = render(<TasksPageContent />);
+    expect(
+      screen.getByRole("table", { name: "Background task history" }),
+    ).toBeVisible();
+    const filter = screen.getByLabelText("Filter task type");
+    expect(filter).toHaveTextContent("receive strava delivery");
+    expect(filter).toHaveTextContent("rebuild fitness freshness");
+    fireEvent.change(filter, {
+      target: { value: "rebuild_fitness_freshness" },
+    });
+    expect(mocks.useAdminTasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ taskType: "rebuild_fitness_freshness" }),
+    );
+    mocks.useAdminTasks.mockReturnValue({
+      data: [],
+      metadata: { total: 0, per_page: 20 },
+    });
+    view.rerender(<TasksPageContent />);
+    expect(filter).toHaveValue("rebuild_fitness_freshness");
+    expect(screen.getByText("No tasks found matching criteria.")).toBeVisible();
   });
 });

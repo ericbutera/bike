@@ -15,6 +15,7 @@ test("the shared admin task page cancels a processing task", async ({
     ).toBeVisible();
 
     const task = page
+      .getByRole("table", { name: "Background task history" })
       .locator("tbody tr")
       .filter({ hasText: "process_activity_import" });
     await expect(task).toContainText("processing");

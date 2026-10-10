@@ -790,10 +790,10 @@ pub async fn backfill_analytics(
     mark_user_activity_changes(&state.db, &user_ids, changed_at).await?;
 
     for user_id in &user_ids {
-        state.tasks.rebuild_fitness_freshness(*user_id).await;
+        state.tasks.rebuild_fitness_freshness(*user_id).await?;
     }
 
-    let segment_task_count = enqueue_segment_backfill_tasks(&state, &segment_ids).await;
+    let segment_task_count = enqueue_segment_backfill_tasks(&state, &segment_ids).await?;
     let fitness_task_count = user_ids.len() as i32;
 
     Ok((
@@ -1274,15 +1274,21 @@ async fn load_segment_ids(state: &Arc<AppStorage>) -> Result<Vec<i32>, AppError>
     Ok(segment_ids)
 }
 
-async fn enqueue_segment_backfill_tasks(state: &Arc<AppStorage>, segment_ids: &[i32]) -> i32 {
+async fn enqueue_segment_backfill_tasks(
+    state: &Arc<AppStorage>,
+    segment_ids: &[i32],
+) -> Result<i32, AppError> {
     let mut task_count = 0;
 
     for chunk in segment_ids.chunks(SEGMENT_BACKFILL_CHUNK_SIZE) {
-        state.tasks.rebuild_segment_analytics(chunk.to_vec()).await;
+        state
+            .tasks
+            .rebuild_segment_analytics(chunk.to_vec())
+            .await?;
         task_count += 1;
     }
 
-    task_count
+    Ok(task_count)
 }
 
 #[cfg(test)]
@@ -1344,7 +1350,10 @@ mod tests {
             synthetic_auth: None,
         });
 
-        assert_eq!(enqueue_segment_backfill_tasks(&state, &[]).await, 0);
+        assert_eq!(
+            enqueue_segment_backfill_tasks(&state, &[]).await.unwrap(),
+            0
+        );
     }
 
     #[tokio::test]

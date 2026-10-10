@@ -19,6 +19,45 @@ Admin navigation exposes operational pages for:
 
 Admin pages require an authenticated admin user. Non-admin users should not be able to reach admin-only operations through either UI or API.
 
+## Task processing history
+
+- Admin task search accepts an exact request, trace, or pipeline run ID. A
+  matching origin returns its queued descendants, including work that has not
+  started. A trace recorded on an execution attempt also locates that task.
+- Task details show each recorded attempt's start/end, outcome, error,
+  heartbeat, and trace/span IDs. Retry and recovery preserve earlier attempts;
+  recovery never resets the execution number. A late result cannot overwrite a
+  cancellation or a later execution. Admin cancellation records the cancellation;
+  processors retain their existing cooperative cancellation behavior.
+- Pipeline details show the immutable original receipt, first durable task
+  acceptance, parent task, and receipt-to-task timing. Follow the parent link to
+  inspect the processor that scheduled the task. Rerun starts a new admin origin;
+  automatic retry and stale-execution recovery retain their existing origin.
+- Receipt origins cover API requests, signed gateway inbox/sync deliveries,
+  cron enqueue and worker startup. HTTP acceptance of a gateway source and its
+  task intent commits together. Retries retain the first receipt.
+- Activity processing opens all directly linked pipeline runs, including
+  activities without import history. The interactive graph shows task parents,
+  attempts, inline work, authoritative import stages, gateway intervals and
+  output revisions. Selection shows receipt-to-start/result and stage/runtime.
+  Log/trace links use the deployment's configured Grafana URL.
+- Receipt-to-available uses committed, revision-matched publications and a closed
+  successful task tree. Receipt-to-end uses the last terminal task timestamp.
+  Failed downstream outputs remain unready. Unknown legacy evidence is N/A.
+- The processor table includes the actual registered Rust processors with zero
+  sample states, full-population p50/p90, sample count, outcome and window.
+  Queued, scheduled, running, retrying and failed counts are distinct.
+  Gateway queue operations and runtime distributions are in the gateway dashboard.
+- Meaningful import stage/work completion advances progress; a heartbeat alone
+  does not. Anomalies store reason, observed/expected value, policy version,
+  evaluation time and sample count. Relative duration needs 30 earlier comparable
+  completed runs. The same records drive dashboards and alerts.
+- Task graphs use pages of 50 tasks, 25 work units and 100 outputs. Archive and
+  bulk producers queue bounded pages; their child barrier retains the exact lock
+  until descendants finish. An admin rerun starts a fresh run outside the old
+  batch. See the [visibility plan](../plans/pipeline-visibility.md) for operational
+  acceptance and the [worker runbook](../production-failures.md#bikeworkerpipelineblocked).
+
 ## Metrics
 
 Bike exposes app metrics in addition to shared system metrics. Metrics should be suitable for dashboards and alerting without leaking sensitive user data.

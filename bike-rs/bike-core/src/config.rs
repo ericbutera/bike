@@ -8,6 +8,7 @@ pub struct Config {
     pub frontend_url: String,
     pub cors_allowed_origins: Vec<String>,
     pub api_url: String,
+    pub grafana_url: Option<String>,
     pub strava_client_id: String,
     pub strava_client_secret: String,
     pub strava_oauth_scopes: String,
@@ -58,6 +59,9 @@ impl Config {
                 .filter(|s| !s.is_empty())
                 .collect(),
             api_url: env::var("API_URL").unwrap_or_else(|_| "http://localhost:3000".to_string()),
+            grafana_url: env::var("GRAFANA_URL").ok().filter(|value| {
+                url::Url::parse(value).is_ok_and(|url| ["https", "http"].contains(&url.scheme()))
+            }),
             strava_client_id: env::var("STRAVA_CLIENT_ID").unwrap_or_default(),
             strava_client_secret: env::var("STRAVA_CLIENT_SECRET").unwrap_or_default(),
             strava_oauth_scopes: env::var("STRAVA_OAUTH_SCOPES")

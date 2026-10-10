@@ -1,1 +1,14 @@
 pub mod background_tasks;
+pub mod batch_tasks;
+pub mod diagnostic_reads;
+pub mod pipeline_outputs;
+pub mod pipeline_runs;
+pub mod pipeline_subjects;
+pub mod pipeline_tasks;
+pub mod processor_registry;
+pub mod queue_observations;
+pub mod task_anomalies;
+pub mod task_attempts;
+mod task_lifecycle;
+pub mod work_units;
+pub mod worker_batches;

@@ -1347,6 +1347,7 @@ export type AdminTask = {
 };
 
 export function useAdminTasks(opts?: {
+  correlationId?: string;
   enabled?: boolean;
   page?: number;
   perPage?: number;
@@ -1364,6 +1365,7 @@ export function useAdminTasks(opts?: {
     {
       params: {
         query: {
+          correlation_id: opts?.correlationId || undefined,
           page,
           per_page: perPage,
           task_type: opts?.taskType || undefined,
@@ -1392,12 +1394,61 @@ export function useAdminTask(id: number | null) {
     {
       params: { path: { id: id ?? 0 } },
     },
-    { enabled: id !== null },
+    {
+      enabled: id !== null,
+      refetchInterval: (query) =>
+        ["pending", "processing"].includes(query.state.data?.status ?? "")
+          ? 5000
+          : false,
+    },
   );
 }
 
 export function useAdminTaskCancel() {
   return $typedApi.useMutation("post", "/admin/tasks/{id}/cancel");
+}
+
+export function useWorkerProcessors(windowHours = 24, outcome = "completed") {
+  return $typedApi.useQuery(
+    "get",
+    "/admin/tasks/processors",
+    {
+      params: { query: { window_hours: windowHours, outcome } },
+    },
+    { refetchInterval: 15000 },
+  );
+}
+
+export function usePipelineGraph(
+  runId: string | null,
+  afterTask = 0,
+  evidence?: {
+    work_task?: number;
+    after_work?: number;
+    output_offset?: number;
+  },
+) {
+  return $typedApi.useQuery(
+    "get",
+    "/admin/tasks/pipelines/{run_id}",
+    {
+      params: {
+        path: { run_id: runId ?? "" },
+        query: { after_task: afterTask, ...evidence },
+      },
+    },
+    {
+      enabled: runId !== null,
+      refetchInterval: (query) =>
+        query.state.data && query.state.data.ended_at == null ? 5000 : false,
+    },
+  );
+}
+
+export function useActivityPipelines(activityId: number, afterRun?: string) {
+  return $typedApi.useQuery("get", "/admin/tasks/activities/{id}/pipelines", {
+    params: { path: { id: activityId }, query: { after_run: afterRun } },
+  });
 }
 
 export function useAdminTaskRerun() {

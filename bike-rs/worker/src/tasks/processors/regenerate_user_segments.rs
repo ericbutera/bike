@@ -1,7 +1,7 @@
 use async_trait::async_trait;
+use bike_core::background_jobs::batches::segments_page;
 use bike_core::background_jobs::worker::TaskProcessor;
 use bike_core::jobs::RegenerateUserSegmentsTask;
-use bike_core::segment_regeneration::process_user_segment_regeneration;
 use sea_orm::DatabaseConnection;
 use std::error::Error;
 
@@ -23,15 +23,22 @@ impl TaskProcessor for RegenerateUserSegments {
 
     async fn process(
         &self,
-        _task_id: i32,
+        task_id: i32,
         payload: serde_json::Value,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let data = payload.get("data").unwrap_or(&payload);
         let task: RegenerateUserSegmentsTask = serde_json::from_value(data.clone())?;
 
-        process_user_segment_regeneration(&self.db, task.user_id)
-            .await
-            .map_err(|error| std::io::Error::other(error.message))?;
+        segments_page(
+            &self.db,
+            task_id,
+            task.user_id,
+            data["batch_id"]
+                .as_i64()
+                .and_then(|id| i32::try_from(id).ok()),
+        )
+        .await
+        .map_err(|error| std::io::Error::other(error.message))?;
 
         Ok(())
     }

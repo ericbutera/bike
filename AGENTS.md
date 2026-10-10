@@ -21,12 +21,20 @@ Track active Bike work in `docs/TODO.md`. Work one bounded task at a time and
 deliver its result for review on a feature branch. Preserve historical
 operational evidence unless a task explicitly retires it.
 
-Use focused checks through the relevant mise task.
-Prefer `mise run checks:docker <task>` for local verification; `mise run coverage`
-uses that container by default. Keep tool, dependency, and build caches in
-Docker volumes so verification does not repeatedly request host-cache access.
-Containers are disposable; source remains in the task worktree and reports are
-temporary generated output.
+Run only focused tests and lints for the changed area locally. Use CI/CD as the
+primary test and lint gate for full suites, workspace checks, coverage, production
+builds, and E2E testing. Do not repeat those longer CI checks locally during
+iteration. Keep required prek checks active; never bypass or weaken them.
+
+Run local validation, formatting, tests, and builds in Docker through the owning
+mise tasks. `mise run checks:docker <task>` provides the shared checks container.
+Git and GitHub commands may run on the host. Keep tool, dependency, and build
+caches in Docker volumes. Containers are disposable; source remains in the task
+worktree and reports are temporary generated output.
+
+Put regression tests in Bike's existing Rust or UI test paths so the owning CI
+tasks discover them. Keep CI and focused local tasks on the same tooling and
+warning-as-error policy. Report local results separately from CI status.
 
 Keep provider calls behind the gateway seam and use fixtures/fakes for ordinary workflow checks. Native
 HTTP integration tests live in `bike-rs/api/tests`; browser tests belong to
@@ -44,6 +52,10 @@ Keep the user's primary/editor checkout on `main`. Create or reuse a separate
 Git worktree for feature, test, and documentation branches, and perform edits,
 builds, tests, and commits there. Do not switch the primary checkout to a task
 branch unless the user explicitly requests it.
+
+Make draft PRs for work and update them continuously during review. Keep them
+open for review unless the user explicitly requests integration or a production
+fix. Do not leave authorized PR updates only in a local commit.
 
 Check the primary checkout's branch and status before starting and before the
 final response. Preserve any existing task branch and its staged, unstaged,

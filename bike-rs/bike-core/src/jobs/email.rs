@@ -16,8 +16,8 @@ pub async fn enqueue_email_notification<S: TaskStorage>(
     to: String,
     subject: String,
     message: String,
-) {
-    let _ = queue
+) -> Result<(), crate::background_jobs::TaskError> {
+    queue
         .enqueue(
             EMAIL_NOTIFICATION_TASK_TYPE.to_string(),
             EmailNotificationTask {
@@ -26,5 +26,6 @@ pub async fn enqueue_email_notification<S: TaskStorage>(
                 message,
             },
         )
-        .await;
+        .await
+        .map(|_| ())
 }

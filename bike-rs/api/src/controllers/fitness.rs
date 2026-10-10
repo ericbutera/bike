@@ -255,6 +255,11 @@ mod tests {
         db.execute(&schema.create_table_from_entity(fitness_freshness_daily::Entity))
             .await
             .expect("create fitness freshness table");
+        db.execute(&schema.create_table_from_entity(
+            bike_core::background_jobs::entities::pipeline_outputs::Entity,
+        ))
+        .await
+        .expect("create pipeline output evidence table");
 
         db
     }

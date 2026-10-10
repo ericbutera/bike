@@ -655,7 +655,7 @@ async fn commit_recovery(
 }
 
 async fn enqueue_recovery(
-    db: &impl sea_orm::ConnectionTrait,
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
     activity_id: i32,
 ) -> Result<(), AppError> {
     let job = crate::jobs::Job::ReprocessActivityImport(crate::jobs::ReprocessActivityImportTask {
