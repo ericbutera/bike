@@ -63,15 +63,23 @@ Maps and charts should use the normalized route and chart data. They are display
 
 The route preview path and detailed map path have different payload expectations. A list preview can simplify route points; a detail page can render the full route.
 
+Activity-card PNGs follow the [maps specification](maps.md): the UI proxies the
+private image request; the Rust API owns current activity access, geometry,
+caching, and conditional responses; the internal Go worker snapshots Chromium
+only on a miss. Fewer than two preview points displays **No route**. Missing
+or failed PNGs do not change the activity record or its import outcome.
+Interactive detail maps remain independent of the snapshot service.
+
 ## Code Anchors
 
 - Activity API: `bike-rs/api/src/controllers/activities.rs`
-- Derived activity data: `bike-rs/api/src/activity_details.rs`
-- Activity lifecycle: `bike-rs/api/src/activity_lifecycle.rs`
-- Activity training analysis: `bike-rs/api/src/activity_training_analysis.rs`
+- Derived activity data: `bike-rs/bike-core/src/activity_details.rs`
+- Activity lifecycle: `bike-rs/bike-core/src/activity_lifecycle.rs`
+- Activity training analysis: `bike-rs/bike-core/src/activity_training_analysis.rs`
 - Activity list UI: `bike-ui/components/ActivityStream.tsx`
 - Activity detail UI: `bike-ui/components/ActivityDetailPanel.tsx`
 - Route map UI: `bike-ui/components/MapLibreRouteMapClient.tsx`
+- Private PNG API: `bike-rs/api/src/controllers/activity_maps.rs`
 
 ## Follow-up tracking
 

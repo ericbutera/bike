@@ -61,7 +61,7 @@ description = "Run Rust tests once and generate HTML, LCOV, and JSON coverage re
 env = { RUSTFLAGS = "-D warnings", CARGO_LLVM_COV_DENY_WARNINGS = "1" }
 run = [
   "mise install rust protoc aqua:taiki-e/cargo-llvm-cov",
-  "mise exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov clean --profraw-only",
+  "mise exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov clean --workspace",
   "mise exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov --workspace --locked --no-report",
   "mise run coverage:report",
 ]
@@ -71,7 +71,7 @@ description = "Collect Rust unit coverage without integration tests or doctests"
 env = { RUSTFLAGS = "-D warnings", CARGO_LLVM_COV_DENY_WARNINGS = "1" }
 run = [
   "mise install rust protoc aqua:taiki-e/cargo-llvm-cov",
-  "mise exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov clean --profraw-only",
+  "mise exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov clean --workspace",
   "mise exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov --workspace --locked --lib --bins --no-report",
   "mise run coverage:report",
 ]
@@ -136,6 +136,11 @@ run = "mise --cd ../bike-ui run openapi:check"
 [tasks."test:integration"]
 description = "Run native API integration tests with isolated fixtures"
 run = "cargo test -p api --test platform"
+
+[tasks."test:maps"]
+description = "Check map image caching and native API-to-snapshot-worker contracts"
+env = { RUSTFLAGS = "-D warnings" }
+run = ["cargo test -p bike-core activity_maps --lib", "cargo test -p api --test platform map_image"]
 
 [tasks."test:ingestion:postgres"]
 description = "Verify ingestion migration and execution constraints in disposable PostgreSQL"

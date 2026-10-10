@@ -15,7 +15,8 @@ flowchart LR
     Worker[Rust worker] --> DB
     API --> Files[Activity files]
     Worker --> Files
-    UI --> Maps[Map renderer]
+    API --> Maps[Go Chromium snapshot worker]
+    API --> MapCache[Map PNG cache]
     Strava[Strava] --> Gateway[Strava gateway]
     Gateway --> Inbox[(Gateway PostgreSQL)]
     ProviderWorker[Gateway worker] --> Inbox
@@ -24,14 +25,14 @@ flowchart LR
     ProviderWorker --> API
 ```
 
-| Component                 | Owns                                                                                                  |
-| ------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Rust API                  | HTTP adaptation, application services, activity access, authentication, admin operations              |
-| Rust core                 | Domain models, database queries, import and segment behavior, analytics, platform modules             |
-| Rust worker               | Activity/archive processing, derived-data rebuilds, queued maintenance                                |
-| Next.js UI                | Rider/admin presentation, React Query state, generated API client, private map proxy                  |
-| Strava gateway and worker | OAuth credentials, callback persistence, provider quotas, fetching, artifact storage, signed delivery |
-| Map renderer              | Coordinate-to-PNG rendering and a content-based file cache                                            |
+| Component                 | Owns                                                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Rust API                  | HTTP adaptation, application services, activity access, authentication, admin operations, map PNG cache |
+| Rust core                 | Domain models, database queries, import and segment behavior, analytics, platform modules               |
+| Rust worker               | Activity/archive processing, derived-data rebuilds, queued maintenance                                  |
+| Next.js UI                | Rider/admin presentation, React Query state, generated API client, private map proxy                    |
+| Strava gateway and worker | OAuth credentials, callback persistence, provider quotas, fetching, artifact storage, signed delivery   |
+| Map renderer              | Go gRPC snapshots, Chromium lifecycle, serialized MapLibre rendering, loopback browser assets           |
 
 Controllers adapt HTTP requests and responses. Services compose workflows and
 policy. Queries live on their owning entity/model modules. Axum and SeaORM
@@ -65,10 +66,10 @@ jobs and integration events.
 ## Maps and privacy
 
 Interactive activity and segment views use MapLibre. Activity-card PNGs pass
-through the UI's private image route: the UI first reads the activity with the
-viewer's credentials, then submits permitted coordinates to the renderer.
-The renderer receives geometry and a service token, and stores no account or
-activity records. Identical geometry and styles can share one cached image.
+through the UI's private image route to the Rust API, which owns access and PNG
+caching. A miss calls the Go Chromium worker over gRPC. The
+[maps specification](specs/maps.md) defines the HTTP and gRPC contracts,
+privacy, cache lifecycle, and required OpenTelemetry visibility.
 
 Personal heatmaps use Rust-owned activity projections and private raster tile
 endpoints. Worker preparation and feature flags are described in the

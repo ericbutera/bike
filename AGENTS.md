@@ -2,10 +2,12 @@
 
 ## Overview
 
-`bike-rs` is the Bike backend and source of truth for business behavior and
-data handling. `bike-ui` is the shared Next.js and React Query frontend.
+`docs/specs/` is the source of truth for system behavior. `bike-rs` implements
+the backend's business rules and data handling. `bike-ui` is the shared Next.js
+and React Query frontend.
 `strava-gateway` owns the provider callback, inbox, credentials, and delivery
-to Bike Rust. The map renderer is a separate shared service.
+to Bike Rust. The Rust API owns map image access and caching; the separate Go
+map worker owns Chromium snapshots over gRPC.
 
 Use each project's `mise.toml` for language and package-manager versions and
 tasks. Root tasks delegate to their owning projects. Preserve unrelated work

@@ -79,7 +79,6 @@ async function waitForServices(request) {
   for (const url of [
     "http://api.e2e.test:3000/api/health",
     "http://ui.e2e.test:3000",
-    "http://bike-maps:3100/healthz",
   ]) {
     await expect
       .poll(
@@ -94,6 +93,19 @@ async function waitForServices(request) {
       )
       .toBe(200);
   }
+  await expect
+    .poll(
+      async () => {
+        try {
+          await environmentCommand("health");
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      { message: "Snapshot worker gRPC health", timeout: 60_000 },
+    )
+    .toBe(true);
 }
 
 export async function prepareBaseline(request, testInfo) {

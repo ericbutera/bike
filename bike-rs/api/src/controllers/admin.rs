@@ -1323,26 +1323,10 @@ mod tests {
 
     #[tokio::test]
     async fn empty_segment_backfill_enqueues_no_tasks() {
-        let state = Arc::new(AppStorage {
-            heatmaps: Arc::new(bike_core::heatmaps::service::HeatmapService::default()),
-            db: sea_orm::Database::connect("sqlite::memory:")
-                .await
-                .expect("in-memory db"),
-            tasks: crate::tasks::TaskQueue::new(
-                sea_orm::Database::connect("sqlite::memory:")
-                    .await
-                    .expect("in-memory queue db"),
-            ),
-            feature_flags: bike_core::platform::feature_flags::FeatureFlagService::new(),
-            session_service: crate::tasks::create_session_service(
-                sea_orm::Database::connect("sqlite::memory:")
-                    .await
-                    .expect("in-memory auth db"),
-            ),
-            uploads_dir: "/tmp".to_string(),
-            local_admin_user_pid: None,
-            synthetic_auth: None,
-        });
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory db");
+        let state = Arc::new(AppStorage::for_test(db));
 
         assert_eq!(enqueue_segment_backfill_tasks(&state, &[]).await, 0);
     }

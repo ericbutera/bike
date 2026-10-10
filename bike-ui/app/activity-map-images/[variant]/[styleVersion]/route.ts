@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-import { ACTIVITY_MAP_STYLE_REVISION } from "../../../../lib/activityMapImages";
 import {
   apiBaseUrls,
   syntheticRequestHeaders,
@@ -20,108 +18,48 @@ export async function GET(
   context: { params: Promise<{ variant: string; styleVersion: string }> },
 ) {
   const { variant, styleVersion } = await context.params;
-  const query = new URL(request.url).searchParams;
-  const activityId = Number(query.get("activityId"));
-  const theme = query.get("theme");
-  const dpr = Number(query.get("dpr"));
-  if (
-    !Number.isSafeInteger(activityId) ||
-    activityId <= 0 ||
-    (variant !== "full" && variant !== "thumbnail") ||
-    (theme !== "light" && theme !== "dark") ||
-    (dpr !== 1 && dpr !== 2) ||
-    styleVersion !== ACTIVITY_MAP_STYLE_REVISION
-  )
-    return imageError(400);
-
-  const cookie = request.headers.get("cookie");
-  const authorization = request.headers.get("authorization");
   const syntheticHeaders = syntheticRequestHeaders(request.headers);
   if (syntheticHeaders === null) return imageError(403);
-  let activityResponse: Response | null = null;
+  const forwarded = new Headers({ Accept: "image/png", ...syntheticHeaders });
+  for (const name of ["cookie", "authorization", "if-none-match"]) {
+    const value = request.headers.get(name);
+    if (value) forwarded.set(name, value);
+  }
+  const path = `/activity-map-images/${encodeURIComponent(variant)}/${encodeURIComponent(styleVersion)}${new URL(request.url).search}`;
+  let imageResponse: Response | undefined;
   for (const baseUrl of apiBaseUrls()) {
     try {
-      activityResponse = await fetch(`${baseUrl}/activities/${activityId}`, {
-        headers: headersWithTraceContext(
-          {
-            Accept: "application/json",
-            ...(cookie ? { cookie } : {}),
-            ...(authorization ? { authorization } : {}),
-            ...syntheticHeaders,
-          },
-          request.headers,
-        ),
+      imageResponse = await fetch(`${baseUrl}${path}`, {
+        headers: headersWithTraceContext(forwarded, request.headers),
         cache: "no-store",
+        signal: AbortSignal.timeout(60000),
       });
       break;
     } catch {
-      // A local Next process can reach localhost even when Docker's api name cannot resolve.
+      // A local Next process can also reach the configured localhost API.
     }
   }
-  if (!activityResponse) return imageError(502);
-  if (!activityResponse.ok) {
+  if (!imageResponse) return imageError(502);
+  if (!imageResponse.ok && imageResponse.status !== 304) {
     return imageError(
-      [401, 403, 404].includes(activityResponse.status)
-        ? activityResponse.status
+      [400, 401, 403, 404].includes(imageResponse.status)
+        ? imageResponse.status
         : 502,
     );
   }
-
-  const activity = (await activityResponse.json()) as {
-    route_points?: Array<{ latitude: number; longitude: number }> | null;
-  };
-  const points = (activity.route_points ?? [])
-    .filter(
-      (point) =>
-        point &&
-        Number.isFinite(point.latitude) &&
-        Number.isFinite(point.longitude) &&
-        Math.abs(point.latitude) <= 90 &&
-        Math.abs(point.longitude) <= 180,
-    )
-    .map((point) => ({
-      latitude: point.latitude,
-      longitude: point.longitude,
-    }));
-  if (points.length < 2) return imageError(404);
-
-  let imageResponse: Response;
-  try {
-    imageResponse = await fetch(
-      `${process.env.MAP_RENDERER_URL ?? "http://bike-maps:3100"}/render`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(process.env.MAP_SERVICE_TOKEN
-            ? { Authorization: `Bearer ${process.env.MAP_SERVICE_TOKEN}` }
-            : {}),
-        },
-        body: JSON.stringify({
-          points,
-          theme,
-          variant,
-          dpr,
-        }),
-        cache: "no-store",
-        signal: AbortSignal.timeout(60000),
-      },
-    );
-  } catch {
-    return imageError(502);
+  const headers = new Headers();
+  for (const name of [
+    "content-type",
+    "cache-control",
+    "vary",
+    "etag",
+    "x-map-cache",
+  ]) {
+    const value = imageResponse.headers.get(name);
+    if (value) headers.set(name, value);
   }
-  if (!imageResponse.ok) return imageError(502);
-
-  const png = await imageResponse.arrayBuffer();
-  const etag = `"${createHash("sha256").update(Buffer.from(png)).digest("hex")}"`;
-  const responseHeaders = {
-    "Content-Type": "image/png",
-    "Cache-Control": "private, no-cache",
-    Vary: "Cookie, Authorization",
-    ETag: etag,
-  };
-  if (request.headers.get("if-none-match") === etag) {
-    return new Response(null, { status: 304, headers: responseHeaders });
-  }
-  return new Response(png, { headers: responseHeaders });
+  return new Response(
+    imageResponse.status === 304 ? null : await imageResponse.arrayBuffer(),
+    { status: imageResponse.status, headers },
+  );
 }

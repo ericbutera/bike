@@ -75,7 +75,7 @@ files() {
   cp -R "$fixtures/uploads/." /data/uploads/
   cp bike-ui/tests/e2e/fixtures/renderer-style.json /data/styles/route-light-v1.json
   cp bike-ui/tests/e2e/fixtures/renderer-style.json /data/styles/fiord-v1.json
-  chown -R 65534:65534 /data/uploads
+  chown -R 65534:65534 /data/uploads /data/cache
 }
 
 case "${1:?Choose prepare, seed, snapshot, restore, verify or files}" in
@@ -89,5 +89,6 @@ case "${1:?Choose prepare, seed, snapshot, restore, verify or files}" in
       "SELECT 'database', oid FROM pg_database WHERE datname = current_database() UNION ALL SELECT relname, oid FROM pg_class WHERE relnamespace = 'public'::regnamespace ORDER BY 1"
     ;;
   files) files ;;
+  health) compose exec -T bike-maps /app/renderer healthcheck ;;
   *) exit 1 ;;
 esac

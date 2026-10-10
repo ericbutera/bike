@@ -5,7 +5,7 @@ use opentelemetry::trace::{TraceContextExt, TracerProvider as _};
 use opentelemetry::{Context, KeyValue};
 use opentelemetry_otlp::{Protocol, WithExportConfig};
 use opentelemetry_sdk::propagation::TraceContextPropagator;
-use opentelemetry_sdk::trace::{Sampler, SdkTracerProvider};
+use opentelemetry_sdk::trace::{Sampler, SdkTracerProvider, TracerProviderBuilder};
 use opentelemetry_sdk::Resource;
 use std::collections::HashMap;
 use tracing::field;
@@ -23,6 +23,7 @@ pub struct ObservabilityGuard {
 }
 
 enum TraceExporterConfig {
+    SdkDisabled,
     Disabled { reason: &'static str },
     Otlp { traces_endpoint: String },
 }
@@ -41,11 +42,23 @@ pub fn init_observability(service_name: &'static str) -> ObservabilityGuard {
     global::set_text_map_propagator(TraceContextPropagator::new());
 
     match trace_exporter_config() {
-        TraceExporterConfig::Disabled { reason } => init_logs_only(service_name, reason),
+        TraceExporterConfig::SdkDisabled => init_logs_only(service_name, "OTEL_SDK_DISABLED=true"),
+        TraceExporterConfig::Disabled { reason } => init_without_exporter(service_name, reason),
         TraceExporterConfig::Otlp { traces_endpoint } => {
             init_otel_or_log_fallback(service_name, &traces_endpoint)
         }
     }
+}
+
+fn init_without_exporter(service_name: &'static str, reason: &'static str) -> ObservabilityGuard {
+    let provider = tracer_provider_builder(service_name).build();
+    let guard = install_tracer_subscriber(service_name, provider);
+    tracing::info!(
+        service_name,
+        reason,
+        "OpenTelemetry propagation enabled without export"
+    );
+    guard
 }
 
 fn init_logs_only(service_name: &'static str, reason: &'static str) -> ObservabilityGuard {
@@ -97,6 +110,20 @@ fn init_otel_subscriber(
     traces_endpoint: &str,
 ) -> Result<ObservabilityGuard, Box<dyn std::error::Error + Send + Sync>> {
     let provider = build_tracer_provider(service_name, traces_endpoint)?;
+    let guard = install_tracer_subscriber(service_name, provider);
+    tracing::info!(
+        service_name,
+        otel_traces_endpoint = %traces_endpoint,
+        otel_protocol = %otel_protocol_label(),
+        "OpenTelemetry OTLP tracing exporter enabled"
+    );
+    Ok(guard)
+}
+
+fn install_tracer_subscriber(
+    service_name: &'static str,
+    provider: SdkTracerProvider,
+) -> ObservabilityGuard {
     let tracer = provider.tracer(service_name);
     global::set_tracer_provider(provider.clone());
 
@@ -113,27 +140,14 @@ fn init_otel_subscriber(
                 ctx.lookup_current().is_some(),
             )
         }));
-    if tracing_subscriber::registry()
+    let _ = tracing_subscriber::registry()
         .with(EnvFilter::from_default_env())
         .with(fmt_layer)
         .with(otel_layer)
-        .try_init()
-        .is_err()
-    {
-        return Ok(ObservabilityGuard {
-            tracer_provider: Some(provider),
-        });
-    }
-
-    tracing::info!(
-        service_name,
-        otel_traces_endpoint = %traces_endpoint,
-        otel_protocol = %otel_protocol_label(),
-        "OpenTelemetry OTLP tracing exporter enabled"
-    );
-    Ok(ObservabilityGuard {
+        .try_init();
+    ObservabilityGuard {
         tracer_provider: Some(provider),
-    })
+    }
 }
 
 fn build_tracer_provider(
@@ -145,6 +159,12 @@ fn build_tracer_provider(
         .with_endpoint(traces_endpoint)
         .with_protocol(otel_protocol())
         .build()?;
+    Ok(tracer_provider_builder(service_name)
+        .with_batch_exporter(exporter)
+        .build())
+}
+
+fn tracer_provider_builder(service_name: &'static str) -> TracerProviderBuilder {
     let resource = Resource::builder()
         .with_service_name(service_name)
         .with_attributes(vec![
@@ -161,13 +181,11 @@ fn build_tracer_provider(
         ])
         .build();
 
-    Ok(SdkTracerProvider::builder()
+    SdkTracerProvider::builder()
         .with_resource(resource)
         // Keep successful spans available for downstream tail sampling, including
         // requests whose remote parent did not set the sampled flag.
         .with_sampler(Sampler::AlwaysOn)
-        .with_batch_exporter(exporter)
-        .build())
 }
 
 fn trace_exporter_config() -> TraceExporterConfig {
@@ -188,9 +206,7 @@ fn trace_exporter_config_from_values(
     otlp_endpoint: Option<&str>,
 ) -> TraceExporterConfig {
     if env_flag_enabled(sdk_disabled) {
-        return TraceExporterConfig::Disabled {
-            reason: "OTEL_SDK_DISABLED=true",
-        };
+        return TraceExporterConfig::SdkDisabled;
     }
 
     if let Some(exporter) = traces_exporter.and_then(non_empty_env_value) {
@@ -380,6 +396,40 @@ mod tests {
     };
 
     #[test]
+    fn propagation_without_export_preserves_remote_parent_and_child_identity() {
+        use opentelemetry::global;
+        use opentelemetry::trace::TracerProvider as _;
+        use opentelemetry_sdk::propagation::TraceContextPropagator;
+        use tracing_subscriber::layer::SubscriberExt;
+
+        global::set_text_map_propagator(TraceContextPropagator::new());
+        let guard = super::init_without_exporter("bike-test", "OTEL_TRACES_EXPORTER=none");
+        let provider = guard.tracer_provider.as_ref().unwrap();
+        let remote = super::TraceContextCarrier::from([
+            (
+                "traceparent".into(),
+                "00-12345678901234567890123456789012-1234567890123456-01".into(),
+            ),
+            ("tracestate".into(), "bike=fixture".into()),
+        ]);
+        let subscriber = tracing_subscriber::registry()
+            .with(tracing_opentelemetry::layer().with_tracer(provider.tracer("bike-test")));
+        tracing::subscriber::with_default(subscriber, || {
+            let request = tracing::info_span!("map.request");
+            super::set_span_parent_from_carrier(&request, Some(&remote));
+            let _request = request.enter();
+            let client = tracing::info_span!("bike.maps.snapshot", otel.kind = "client");
+            let _client = client.enter();
+            let carrier = super::inject_current_trace_context().unwrap();
+            let parts: Vec<_> = carrier["traceparent"].split('-').collect();
+            assert_eq!(parts[1], "12345678901234567890123456789012");
+            assert_ne!(parts[2], "1234567890123456");
+            assert_eq!(carrier["tracestate"], "bike=fixture");
+        });
+        provider.force_flush().unwrap();
+    }
+
+    #[test]
     fn otel_filter_allows_application_roots() {
         assert!(should_export_otel_span("request", "api", false));
         assert!(should_export_otel_span(
@@ -476,9 +526,7 @@ mod tests {
     fn otel_exporter_honors_standard_disable_flags() {
         assert!(matches!(
             trace_exporter_config_from_values(Some("true"), Some("otlp"), None, None),
-            TraceExporterConfig::Disabled {
-                reason: "OTEL_SDK_DISABLED=true"
-            }
+            TraceExporterConfig::SdkDisabled
         ));
         assert!(matches!(
             trace_exporter_config_from_values(None, Some("none"), None, Some("http://jaeger:4318")),

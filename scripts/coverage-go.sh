@@ -11,11 +11,12 @@ rm -rf -- "$output"
 mkdir -p "$output/html"
 cd "$source"
 # Instrument all handwritten packages, including packages without tests.
-packages="$(go list ./... | awk '!/\/gen\// { printf "%s%s", separator, $0; separator = "," }')"
+packages="$(go list ./... | awk '!/\/gen\/|\/node_modules\// { printf "%s%s", separator, $0; separator = "," }')"
 test -n "$packages"
+IFS=',' read -r -a test_packages <<<"$packages"
 # Coverage remains unit-only even when a developer has configured PostgreSQL checks.
 env -u TEST_DATABASE_URL go test -p 1 \
-  -covermode=atomic -coverpkg="$packages" -coverprofile="$output/coverage.out" ./...
+  -covermode=atomic -coverpkg="$packages" -coverprofile="$output/coverage.out" "${test_packages[@]}"
 go tool cover -html="$output/coverage.out" -o "$output/html/index.html"
 go tool cover -func="$output/coverage.out" >"$output/statements.txt"
 gcov2lcov \

@@ -1371,6 +1371,118 @@
         ]
       }
     },
+    "/activity-map-images/{variant}/{style_version}": {
+      "get": {
+        "tags": [
+          "activities"
+        ],
+        "operationId": "image",
+        "parameters": [
+          {
+            "name": "variant",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Variant"
+            }
+          },
+          {
+            "name": "style_version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "activityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "theme",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Theme"
+            }
+          },
+          {
+            "name": "dpr",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "maximum": 2,
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Private activity map PNG",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Owned activity map has not changed"
+          },
+          "400": {
+            "description": "Invalid map options",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "404": {
+            "description": "Activity or route not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Snapshot worker unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/admin/activities": {
       "get": {
         "tags": [
@@ -11711,6 +11823,13 @@
           }
         }
       },
+      "Theme": {
+        "type": "string",
+        "enum": [
+          "light",
+          "dark"
+        ]
+      },
       "TrainingGoalDirection": {
         "type": "string",
         "enum": [
@@ -12649,6 +12768,13 @@
         }
       },
       "Value": {},
+      "Variant": {
+        "type": "string",
+        "enum": [
+          "thumbnail",
+          "full"
+        ]
+      },
       "XcEventGoalResponse": {
         "type": "object",
         "required": [

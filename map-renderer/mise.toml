@@ -1,15 +1,38 @@
 [tasks.test]
-description = "Run renderer unit tests with coverage"
+description = "Run Go renderer unit and transport tests with coverage"
 run = "mise run coverage"
 
 [tasks.coverage]
-description = "Render Node.js unit coverage for the map-renderer service"
-run = [
-  "mise install node npm:npm npm:c8",
-  "rm -rf ../.artifacts/coverage/map-renderer",
-  "mise --cd .. run renderer:deps",
-  "mise exec node npm:c8 -- c8 --all --src . --include '*.mjs' --exclude '*.test.mjs' --exclude 'eslint.config.mjs' --exclude 'smoke.mjs' --temp-directory ../.artifacts/coverage/map-renderer/raw --reports-dir ../.artifacts/coverage/map-renderer/html --reporter text --reporter html --reporter lcovonly --reporter json-summary node --test *.test.mjs",
-  "mv ../.artifacts/coverage/map-renderer/html/lcov.info ../.artifacts/coverage/map-renderer/html/coverage-summary.json ../.artifacts/coverage/map-renderer/",
-  "sed 's#^SF:#SF:map-renderer/#' ../.artifacts/coverage/map-renderer/lcov.info > ../.artifacts/coverage/map-renderer/lcov.info.next",
-  "mv ../.artifacts/coverage/map-renderer/lcov.info.next ../.artifacts/coverage/map-renderer/lcov.info",
-]
+description = "Generate Go service coverage through the shared workflow"
+run = "mise --cd .. run go:coverage map-renderer"
+
+[tasks.check]
+description = "Check Go formatting, vet, lint, tests, build and protobuf freshness"
+run = ["mise run lint:go", "mise run test", "mise run build", "mise run generate:protobuf:check"]
+[tasks."generate:protobuf"]
+description = "Generate Go map-service bindings from the canonical contract"
+run = '''
+protoc -I ../proto --go_out=. --go_opt=module=github.com/ericbutera/bike/map-renderer --go-grpc_out=. --go-grpc_opt=module=github.com/ericbutera/bike/map-renderer ../proto/bike/maps/v1/maps.proto
+mkdir -p ../bike-rs/proto/bike/maps/v1
+cp ../proto/bike/maps/v1/maps.proto ../bike-rs/proto/bike/maps/v1/maps.proto
+'''
+
+[tasks."generate:protobuf:check"]
+description = "Check Go map-service bindings are fresh"
+run = '''
+set -eu
+output_dir=$(mktemp -d)
+trap 'rm -rf "$output_dir"' EXIT
+protoc -I ../proto --go_out="$output_dir" --go_opt=module=github.com/ericbutera/bike/map-renderer --go-grpc_out="$output_dir" --go-grpc_opt=module=github.com/ericbutera/bike/map-renderer ../proto/bike/maps/v1/maps.proto
+cmp "$output_dir/gen/bike/maps/v1/maps.pb.go" gen/bike/maps/v1/maps.pb.go
+cmp "$output_dir/gen/bike/maps/v1/maps_grpc.pb.go" gen/bike/maps/v1/maps_grpc.pb.go
+cmp ../proto/bike/maps/v1/maps.proto ../bike-rs/proto/bike/maps/v1/maps.proto
+'''
+
+[tasks."lint:go"]
+description = "Check Go formatting, vet, and complexity gates"
+run = ["golangci-lint fmt --diff ./cmd/... ./internal/... ./gen/...", "go vet ./cmd/... ./internal/... ./gen/...", "golangci-lint run ./cmd/... ./internal/... ./gen/..."]
+
+[tasks.build]
+description = "Compile the Go renderer"
+run = "go build -o ../.artifacts/map-renderer ./cmd/renderer"

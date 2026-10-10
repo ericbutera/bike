@@ -1,0 +1,38 @@
+{
+  "version": 8,
+  "sources": {
+    "land": {
+      "type": "geojson",
+      "attribution": "Bike parity fixture",
+      "data": {
+        "type": "Feature",
+        "properties": {},
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [-90, 40],
+              [-80, 40],
+              [-80, 50],
+              [-90, 50],
+              [-90, 40]
+            ]
+          ]
+        }
+      }
+    }
+  },
+  "layers": [
+    {
+      "id": "background",
+      "type": "background",
+      "paint": { "background-color": "#172434" }
+    },
+    {
+      "id": "land",
+      "type": "fill",
+      "source": "land",
+      "paint": { "fill-color": "#38556a" }
+    }
+  ]
+}

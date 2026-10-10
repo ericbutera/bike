@@ -7,6 +7,7 @@ pub mod activity_import_lock;
 pub mod activity_import_pipeline;
 pub mod activity_import_recovery;
 pub mod activity_lifecycle;
+pub mod activity_maps;
 pub mod activity_parser;
 pub mod activity_recording;
 pub mod activity_recording_recovery;

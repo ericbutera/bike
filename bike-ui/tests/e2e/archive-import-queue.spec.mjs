@@ -14,7 +14,7 @@ test("the shared UI queues a new remote archive in Bike", async ({
     ).toBeVisible();
     await page
       .getByPlaceholder("https://.../export.zip")
-      .fill("http://bike-maps:3100/styles/route-light-v1.json");
+      .fill("http://api.e2e.test:3000/uploads/segments/synthetic-segment.gpx");
 
     const queued = page.waitForResponse(
       (response) =>
@@ -26,7 +26,8 @@ test("the shared UI queues a new remote archive in Bike", async ({
     const response = await queued;
     expect(response.status(), `${target.name} archive queue`).toBe(202);
     expect(await response.json()).toMatchObject({
-      archive_url: "http://bike-maps:3100/styles/route-light-v1.json",
+      archive_url:
+        "http://api.e2e.test:3000/uploads/segments/synthetic-segment.gpx",
       status: "queued",
       total_entries: 0,
       imported_count: 0,

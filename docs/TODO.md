@@ -6,6 +6,13 @@ Keep private activity data out of committed reports and fixtures.
 
 ## Active work
 
+- **MAP01 — In review:** Rust owns the activity-map endpoint, authorization,
+  cache, and revalidation; Go runs the stateless Chromium snapshot worker.
+  The [maps specification](specs/maps.md) defines behavior and acceptance;
+  implementation and verification evidence are in
+  [PR #17](https://github.com/ericbutera/bike/pull/17). Coordinated infrastructure
+  changes and a verified production release remain pending.
+
 Deployment simplification is implemented locally: `mise run ci:deploy` clones
 IaC once, compiles the consolidated Bike Pulumi program once, and applies all
 four image pins in one update. All workload definitions now use the `bike`

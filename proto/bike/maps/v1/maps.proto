@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package bike.maps.v1;
 
+option go_package = "github.com/ericbutera/bike/map-renderer/gen/bike/maps/v1;mapsv1";
+
 service MapService {
   rpc Render(RenderMapRequest) returns (RenderMapResponse);
 }
@@ -21,5 +23,7 @@ message RenderMapRequest {
 
 message RenderMapResponse {
   bytes png = 1;
+  // Retained for wire compatibility. The stateless snapshot worker returns false;
+  // Bike API owns the activity-map image cache.
   bool cache_hit = 2;
 }

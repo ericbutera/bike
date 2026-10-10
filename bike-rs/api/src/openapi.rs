@@ -3,6 +3,7 @@ use crate::controllers;
 use crate::controllers::activities;
 use crate::controllers::activity_import_history;
 use crate::controllers::activity_imports;
+use crate::controllers::activity_maps;
 use crate::controllers::admin;
 use crate::controllers::fitness;
 use crate::controllers::heatmaps;
@@ -46,6 +47,7 @@ use utoipa::OpenApi;
         admin::import_activity_archive,
         activities::list_activities,
         activities::get_activity,
+        activity_maps::image,
         activities::update_activity,
         activities::delete_activity,
         activities::regenerate_activity,
@@ -125,6 +127,8 @@ use utoipa::OpenApi;
             activities::ActivityResponse,
             activities::ActivitySegmentEffort,
             activities::UpdateActivityRequest,
+            bike_core::activity_maps::Theme,
+            bike_core::activity_maps::Variant,
             fitness::FitnessFreshnessPoint,
             fitness::FitnessFreshnessResponse,
             bike_core::heatmaps::types::HeatmapMetadata,

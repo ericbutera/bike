@@ -40,16 +40,17 @@ run `mise run generate:typescript` here to regenerate
 
 ## Maps
 
-Activity cards use private PNG route previews. The UI authenticates each activity
-read before submitting permitted coordinates to the renderer. Detail pages use
-interactive MapLibre maps. The `/maps` heatmap page is gated by `heatmaps` and uses
-private Rust tile endpoints.
+Activity cards proxy private PNG requests to Rust, which owns activity access,
+geometry, and caching. The UI does not call the snapshot worker or hold its
+credential. Detail pages use interactive MapLibre maps. See the canonical
+[maps specification](../docs/specs/maps.md) and
+[heatmap specification](../docs/specs/heatmaps.md) for behavior.
 
 The renderer owns light and Fiord snapshots in `../map-renderer/styles/`;
 `public/map-styles/` contains build-context copies. Run `mise run assets:sync`
 from the root after changing the owning styles. When output changes, update
-`ACTIVITY_MAP_STYLE_REVISION` in the UI and `renderRevision` in
-`../map-renderer/request.mjs`.
+`ACTIVITY_MAP_STYLE_REVISION` in the UI and `RENDER_REVISION` in
+[`types.rs`](../bike-rs/bike-core/src/activity_maps/types.rs) together.
 
 ## Deployment
 

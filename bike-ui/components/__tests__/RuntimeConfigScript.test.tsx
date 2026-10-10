@@ -1,10 +1,10 @@
-import { render } from "@testing-library/react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import RuntimeConfigScript from "../RuntimeConfigScript";
 
 describe("runtime configuration", () => {
   it("publishes the API configuration and request context safely inside a script", () => {
-    const { container } = render(
+    const html = renderToStaticMarkup(
       <RuntimeConfigScript
         config={{
           API_URL: "/api",
@@ -17,6 +17,8 @@ describe("runtime configuration", () => {
         }}
       />,
     );
+    const container = document.createElement("div");
+    container.innerHTML = html;
     const script = container.querySelector("script")!.textContent;
 
     expect(script).toContain('window.__APP_CONFIG__={"API_URL":"/api"');

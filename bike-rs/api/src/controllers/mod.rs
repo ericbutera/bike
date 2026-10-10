@@ -2,6 +2,7 @@ use bike_core::config::Config;
 pub mod activities;
 pub mod activity_import_history;
 pub mod activity_imports;
+pub mod activity_maps;
 pub mod admin;
 pub mod fitness;
 pub mod heatmaps;
@@ -37,6 +38,10 @@ pub fn routes() -> Router<Arc<AppStorage>> {
         .route("/api/synthetics/scenario", get(synthetics::scenario))
         .merge(platform_routes())
         .merge(activity_routes())
+        .route(
+            "/api/activity-map-images/:variant/:style_version",
+            get(activity_maps::image),
+        )
         .merge(training_routes())
         .merge(segment_routes())
         .merge(preference_routes())

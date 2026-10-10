@@ -1,6 +1,9 @@
 # Bike Specifications
 
-This folder is the natural-language source of truth for Bike product behavior. When a code change modifies user-visible behavior, background processing semantics, or training recommendations, update the relevant spec in the same change.
+This folder is the natural-language source of truth for Bike behavior, including
+user workflows, background processing, service boundaries, and operational
+contracts. Code implements these specifications; tests verify that implementation.
+Update the owning spec in the same change as any intended behavior change.
 
 The specs are intentionally written as product contracts instead of implementation logs. Task status and priority live only in the [Bike TODO](../TODO.md); specs keep the behavior, technical constraints, and evidence needed to complete those items.
 
@@ -9,6 +12,7 @@ The specs are intentionally written as product contracts instead of implementati
 - [Project overview](project-overview.md)
 - [Supported activities](supported-activities.md)
 - [Activity ingestion](activity-ingestion.md)
+- [Maps and snapshot service](maps.md)
 - [Personal heatmaps](heatmaps.md)
 - [Activity experience](activity-experience.md)
 - [Segment processing](segment-processing.md)
@@ -28,6 +32,10 @@ The specs are intentionally written as product contracts instead of implementati
 ## Spec Rules
 
 - Specs describe the intended behavior first. Code anchors are supporting references, not substitutes for the product contract.
+- Keep each behavioral contract in one owning spec. Guides, plans, component
+  READMEs, and generated HTTP/protobuf schemas link to it rather than maintaining
+  competing requirements. Resolve a mismatch explicitly against the intended
+  contract; passing tests or current code do not silently override the spec.
 - Deterministic rules should be documented before an LLM or narrative layer summarizes them.
 - If a change fixes a bug by changing intended behavior, update the spec so future revisions do not restore the old behavior.
 - If design details are unresolved, record the relevant TODO ID in the spec and keep the technical options here as design context. Do not maintain a second task or status checklist in a spec.

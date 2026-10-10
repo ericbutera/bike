@@ -7,8 +7,10 @@ Task and deployment status live in [the Bike backlog](../TODO.md#active-work).
 
 ## How the lines are drawn today
 
-**The Rust API renders heatmap tiles.** The separate `map-renderer` service
-renders activity-preview images; it does not handle heatmaps.
+**The Rust API renders heatmap tiles.** Activity-preview PNGs follow the
+[maps specification](maps.md): Rust owns access and caching, and a separate Go
+worker snapshots Chromium over gRPC. Heatmap preparation and tile drawing do
+not use that worker or its PNG cache policy.
 
 ```mermaid
 flowchart LR

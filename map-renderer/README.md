@@ -1,53 +1,66 @@
-# Bike map renderer
+# Bike snapshot worker
 
-The route preview service for [Bike](../README.md). It renders coordinates into
-PNGs through MapLibre and caches results on disk. The UI owns activity
-authorization and forwards only permitted coordinates.
+Go and chromedp run the Chromium snapshot worker for Bike. The
+[maps specification](../docs/specs/maps.md) is the source of truth for rendering,
+authorization, cache lifecycle, gRPC, and tracing. This README owns runtime
+commands, style synchronization, and implementation measurements.
 
-The renderer starts with `mise run compose:up` from the root. It is an internal
-service; the UI's private image route serves images to the browser.
+Start the local stack with `mise run compose:up`. The worker is internal and
+has no public ingress. Its runtime contains the Go executable, Chromium headless
+shell, fonts, and browser assets. Node/npm install locked browser assets during
+the build; the serving process is Go.
 
-The image is defined in [Dockerfile](Dockerfile), with the repository root as
-its build context for the shared protocol. Run `mise run renderer:build` from
-the root to build it locally. Node comes from the root mise pin; the browser
-image follows the locked Playwright package. Keep standalone Docker ARG defaults aligned when changing mise pins.
+## Runtime configuration
 
-## Render contract
+The API uses `MAP_RENDERER_GRPC_ADDRESS=http://bike-maps:50051`,
+`MAP_SERVICE_TOKEN`, `MAP_IMAGE_CACHE_DIR`, and `MAP_IMAGE_CACHE_TTL_SECONDS`.
+The worker uses the same token, gRPC 50051, metrics 9090, and
+`MAP_ASSETS_ADDRESS=127.0.0.1:3100` for Chromium assets.
+See the [snapshot contract](../docs/specs/maps.md#internal-grpc-snapshot-contract)
+for validation, limits, health, cancellation, and shutdown behavior.
 
-`POST /render` accepts:
+## Styles
 
-| Field     | Values                                        |
-| --------- | --------------------------------------------- |
-| `points`  | Two to 100,000 valid latitude/longitude pairs |
-| `variant` | `thumbnail` or `full`                         |
-| `theme`   | `light` or `dark`                             |
-| `dpr`     | `1` or `2`                                    |
+Style snapshots live in `styles/`. Run `mise run assets:sync` after editing
+styles. When pixels or attribution change, update Rust's `RENDER_REVISION`
+in [types.rs](../bike-rs/bike-core/src/activity_maps/types.rs) and the UI's
+`ACTIVITY_MAP_STYLE_REVISION` together.
 
-The response is `image/png` with `X-Map-Cache: hit` or `miss`.
-`GET /healthz` checks readiness. HTTP uses port `3100`.
+## Tracing
 
-`bike.maps.v1.MapService/Render` on gRPC port `50051` accepts the same inputs
-and returns PNG bytes and a cache-hit flag. Both transports use the same
-renderer and cache. `MAP_SERVICE_TOKEN` authenticates HTTP Bearer requests and
-gRPC metadata when configured.
-
-## Cache and styles
-
-Cache keys include geometry, dimensions, theme, and render revision. They omit
-credentials and activity IDs. The renderer stores no account or activity data.
-Reads renew last-use time; startup and hourly cleanup remove images idle beyond
-`MAP_IMAGE_CACHE_TTL_SECONDS`, which defaults to seven days.
-
-Style snapshots live in `styles/`. Run `mise run assets:sync` from the root after
-editing styles, then bump `renderRevision` in `request.mjs` and the UI's
-`ACTIVITY_MAP_STYLE_REVISION` when pixels or attribution change.
+See the [network visibility contract](../docs/specs/maps.md#network-visibility)
+for required propagation, attributes, and visibility limits, and
+[local Jaeger setup](../docs/development.md#inspect-traces) for collector commands.
 
 ## Verification
 
-From the repository root:
+Run from the repository root:
 
 ```sh
-mise run test
-mise run format:check
+mise run checks:docker ci:renderer
+mise run checks:docker ci:rust
+mise run checks:docker ci:ui:unit
+mise run renderer:parity
+mise run renderer:smoke
 mise run compose:config
 ```
+
+The parity task compares decoded pixels against the pre-rewrite Node renderer
+using frozen basemaps across both themes, sizes, and DPRs. The smoke task uses
+current basemap providers. Native Rust HTTP tests cover ownership, cache
+renewal/expiry, request coalescing, and ETag/304 behavior with a fake snapshot
+gRPC worker. Transport tests verify client span metadata and remote parenting,
+including an actual OTLP HTTP export. The
+[acceptance criteria](../docs/specs/maps.md#acceptance-and-evidence) define the
+required outcomes; [PR #17](https://github.com/ericbutera/bike/pull/17) records
+review evidence. Deployment remains subject to coordinated release verification.
+
+## Local rewrite measurements
+
+The Linux/arm64 image measured approximately 786 MB versus 2.76 GB for the former
+Node/Playwright image; the build downloads Chromium's headless shell only.
+An initial Go compile took 10.8 seconds and an incremental compile 0.8 seconds.
+A comparable headless-shell checkpoint measured peak cgroup memory of 404.3 MB
+for Go and 398.5 MB for Node. These are historical local observations, not
+cross-language benchmarks or a claim of reduced Chromium memory use. The Go
+services reuse repository tooling and BuildKit module/build caches.

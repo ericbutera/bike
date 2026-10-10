@@ -139,6 +139,25 @@ impl From<sea_orm::DbErr> for AppError {
     }
 }
 
+impl From<bike_core::activity_maps::MapImageError> for AppError {
+    fn from(error: bike_core::activity_maps::MapImageError) -> Self {
+        use bike_core::activity_maps::MapImageError;
+        match error {
+            MapImageError::Invalid => Self::bad_request(error.to_string()),
+            MapImageError::NotFound => Self::not_found(error.to_string()),
+            MapImageError::Database(error) => error.into(),
+            MapImageError::Cache(error) => error.into(),
+            error => {
+                tracing::error!(%error, "Map snapshot failed");
+                Self {
+                    status: StatusCode::BAD_GATEWAY,
+                    ..Self::internal("Map rendering failed")
+                }
+            }
+        }
+    }
+}
+
 impl From<bike_core::heatmaps::types::HeatmapError> for AppError {
     fn from(error: bike_core::heatmaps::types::HeatmapError) -> Self {
         use bike_core::heatmaps::types::HeatmapError;
@@ -208,6 +227,37 @@ impl From<WorkflowError> for AppError {
             message: error.message,
             errors: error.errors,
             retry_at: error.retry_at,
+        }
+    }
+}
+
+#[cfg(test)]
+mod map_tests {
+    use super::*;
+    use bike_core::activity_maps::MapImageError;
+
+    #[test]
+    fn map_image_errors_use_the_existing_api_error_contract() {
+        for (error, status) in [
+            (MapImageError::Invalid, StatusCode::BAD_REQUEST),
+            (MapImageError::NotFound, StatusCode::NOT_FOUND),
+            (MapImageError::InvalidPNG, StatusCode::BAD_GATEWAY),
+            (
+                MapImageError::Snapshot(Box::new(tonic::Status::unavailable(
+                    "fixture worker unavailable",
+                ))),
+                StatusCode::BAD_GATEWAY,
+            ),
+            (
+                MapImageError::Cache(std::io::Error::other("fixture cache error")),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ),
+            (
+                MapImageError::Database(sea_orm::DbErr::Custom("fixture database error".into())),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ),
+        ] {
+            assert_eq!(AppError::from(error).status, status);
         }
     }
 }

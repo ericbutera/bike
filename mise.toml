@@ -48,6 +48,9 @@ k6 = "{{vars.k6_version}}"
 "npm:prettier" = "3.9.9"
 "npm:c8" = "12.0.0"
 "go:github.com/jandelgado/gcov2lcov" = "v1.1.1"
+"go:google.golang.org/protobuf/cmd/protoc-gen-go" = "v1.36.12"
+"go:google.golang.org/grpc/cmd/protoc-gen-go-grpc" = "v1.6.2"
+golangci-lint = "2.14.0"
 "aqua:woodpecker-ci/woodpecker/woodpecker-cli" = "3.19.0"
 "aqua:docker/buildx" = "{{vars.buildx_version}}"
 python = "{{vars.python_version}}"
@@ -66,6 +69,7 @@ GO_VERSION = "{{vars.go_version}}"
 GOTOOLCHAIN = "local"
 GOCACHE = "{{get_env(name='BIKE_GO_CACHE', default=config_root ~ '/.cache')}}/go-build"
 GOMODCACHE = "{{get_env(name='BIKE_GO_CACHE', default=config_root ~ '/.cache')}}/go-mod"
+GOLANGCI_LINT_CACHE = "{{get_env(name='BIKE_GO_CACHE', default=config_root ~ '/.cache')}}/golangci-lint"
 RUNTIME_IMAGE = "{{vars.runtime_image}}"
 RUST_IMAGE = "{{vars.rust_image}}"
 PROTOC_VERSION = "{{vars.protoc_version}}"
@@ -152,7 +156,7 @@ done
 docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg NODE_IMAGE --build-arg NPM_VERSION --build-arg PNPM_VERSION --build-arg PLAYWRIGHT_IMAGE --build-arg DOCKER_CLI_IMAGE --file bike-ui/Dockerfile.e2e .
 docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg DOCKER_DIND_IMAGE --file bike-ui/Dockerfile.e2e-engine .
 docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg GO_IMAGE --build-arg RUNTIME_IMAGE --file strava-gateway/Dockerfile strava-gateway
-docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg NODE_IMAGE --build-arg NPM_VERSION --build-arg PLAYWRIGHT_IMAGE --file map-renderer/Dockerfile .
+docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg NODE_IMAGE --build-arg GO_IMAGE --build-arg RUNTIME_IMAGE --build-arg NPM_VERSION --file map-renderer/Dockerfile .
 docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg K6_IMAGE --file integration-tests/Dockerfile integration-tests
 '''
 
@@ -243,11 +247,21 @@ run = "mise --cd bike-ui run coverage"
 
 [tasks."renderer:check"]
 description = "Check renderer lint and unit tests"
-run = ["mise run lint:maps", "mise run test", "npm --prefix map-renderer audit"]
+run = ["mise run lint:maps", "mise --cd map-renderer run check", "npm --prefix map-renderer audit"]
 
 [tasks."renderer:deps"]
 description = "Install locked renderer application and lint dependencies"
 run = "npm --prefix map-renderer ci"
+
+[tasks."renderer:parity"]
+description = "Compare Go and the main-branch renderer against frozen styles"
+depends = ["renderer:deps", "renderer:build"]
+run = "bash scripts/renderer-parity.sh fixture"
+
+[tasks."renderer:smoke"]
+description = "Render authenticated PNGs against the current tile provider"
+depends = ["renderer:deps", "renderer:build"]
+run = "bash scripts/renderer-parity.sh live"
 
 [tasks."ci:mise:prepare"]
 description = "Share the official CI image's mise executable with subsequent runner steps"
@@ -286,7 +300,7 @@ run = ["mise --cd bike-ui install node npm:npm pnpm npm:prettier", "mise --cd bi
 
 [tasks."ci:renderer"]
 description = "Install renderer tooling and run the shared renderer checks"
-run = ["mise install node npm:npm npm:prettier", "mise run renderer:check"]
+run = ["mise install node npm:npm npm:prettier go golangci-lint protoc go:google.golang.org/protobuf/cmd/protoc-gen-go go:google.golang.org/grpc/cmd/protoc-gen-go-grpc", "mise run renderer:check"]
 
 [tasks."ci:gateway"]
 description = "Install gateway tooling and run the shared gateway checks"
@@ -336,11 +350,11 @@ run = "mise --cd strava-gateway run build"
 
 [tasks."generate:protobuf"]
 description = "Generate or check gateway protobuf bindings"
-run = "mise --cd strava-gateway run generate:protobuf"
+run = ["mise --cd strava-gateway run generate:protobuf", "mise --cd map-renderer run generate:protobuf"]
 
 [tasks."generate:protobuf:check"]
 description = "Generate or check gateway protobuf bindings"
-run = "mise --cd strava-gateway run generate:protobuf:check"
+run = ["mise --cd strava-gateway run generate:protobuf:check", "mise --cd map-renderer run generate:protobuf:check"]
 
 [tasks."assets:sync"]
 description = "Copy shared assets from their canonical owners"
@@ -348,7 +362,7 @@ run = ["cp proto/bike/strava/v1/gateway.proto bike-rs/proto/bike/strava/v1/gatew
 
 [tasks."format:check"]
 description = "Check renderer and synthetic formatting"
-run = "prettier map-renderer/*.mjs map-renderer/index.html integration-tests/*.js --check"
+run = "prettier map-renderer/*.mjs map-renderer/tests/*.mjs map-renderer/index.html integration-tests/*.js --check"
 
 [tasks."contracts:check"]
 description = "Compare shared asset mirrors with their canonical owners"
@@ -368,7 +382,7 @@ run = ["mise --cd bike-rs run fmt:check", "mise --cd bike-rs run lint"]
 
 [tasks."lint:go"]
 description = "Check Go formatting, vet, and golangci-lint"
-run = "mise --cd strava-gateway run lint"
+run = ["mise --cd strava-gateway run lint", "mise --cd map-renderer run lint:go"]
 
 [tasks."lint:ui"]
 description = "Check UI ESLint, TypeScript, and formatting"

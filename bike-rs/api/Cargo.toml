@@ -58,6 +58,8 @@ hex = "0.4"
 petgraph = "0.8.3"
 
 [dev-dependencies]
+tonic = { version = "0.14.6", features = ["transport"] }
+tokio-stream = { version = "0.1", features = ["net"] }
 tempfile = "3.27.0"
 worker = { path = "../worker" }
 sea-orm = { workspace = true, features = ["sqlx-sqlite", "mock"] }

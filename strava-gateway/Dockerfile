@@ -2,12 +2,15 @@ ARG GO_IMAGE
 ARG RUNTIME_IMAGE
 
 FROM ${GO_IMAGE:-scratch} AS build
+ARG TARGETPLATFORM
 ENV GOTOOLCHAIN=local
 WORKDIR /src
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,id=bike-go-modules,target=/go/pkg/mod go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /out/gateway ./cmd/gateway && \
+RUN --mount=type=cache,id=bike-go-modules,target=/go/pkg/mod \
+    --mount=type=cache,id=bike-go-build-${TARGETPLATFORM},target=/root/.cache/go-build \
+    CGO_ENABLED=0 go build -o /out/gateway ./cmd/gateway && \
     CGO_ENABLED=0 go build -o /out/migrate ./cmd/migrate && \
     CGO_ENABLED=0 go build -o /out/worker ./cmd/worker && \
     CGO_ENABLED=0 go build -o /out/admin ./cmd/admin && \

@@ -122,3 +122,19 @@ language = "system"
 entry = "mise --cd strava-gateway run lint"
 files = "^strava-gateway/(.*\\.(go|mod|sum)|mise\\.toml|\\.golangci\\.yml)$|^mise\\.toml$"
 pass_filenames = false
+
+[[repos.hooks]]
+id = "renderer-go"
+name = "Renderer Go lint and formatting"
+language = "system"
+entry = "mise --cd map-renderer run lint:go"
+files = "^map-renderer/(.*\\.(go|mod|sum)|mise\\.toml|\\.golangci\\.yml)$|^mise\\.toml$"
+pass_filenames = false
+
+[[repos.hooks]]
+id = "maps-protobuf"
+name = "Map service protobuf freshness"
+language = "system"
+entry = "mise --cd map-renderer run generate:protobuf:check"
+files = "^(proto|bike-rs/proto)/bike/maps/.*\\.proto$|^map-renderer/gen/|^map-renderer/mise\\.toml$|^mise\\.toml$"
+pass_filenames = false

@@ -1,11 +1,16 @@
 # Bike Observability Metrics
 
 This is a historical metric/alert design reference. Implemented metrics are
-defined in the [Rust API](../bike-rs/api/src/metrics.rs),
+anchored in the [Rust API](../bike-rs/bike-core/src/platform/api_metrics.rs),
 [worker](../bike-rs/bike-core/src/background_jobs/worker/metrics.rs), and
 [gateway](../strava-gateway/internal/observability/metrics.go).
 [The backlog](TODO.md) owns current scope; alert follow-up and broader
 observability validation are deferred STRAVA15/LATER10.
+
+The [maps specification](specs/maps.md#network-visibility) defines current map
+observability: cache signals come from the Rust API, and gRPC/browser signals
+come from the Go worker. Worker HTTP-render metrics are retired. Operational
+dashboards and alerts must use the emitting service's scrape job.
 
 This dashboard starts with the Prometheus metrics Bike already emits:
 
