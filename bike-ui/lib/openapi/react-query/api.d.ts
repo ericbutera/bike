@@ -132,22 +132,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/activity-imports/history": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get: operations["history"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/activity-imports/processing-graph": {
     parameters: {
       query?: never;
@@ -172,38 +156,6 @@ export interface paths {
       cookie?: never;
     };
     get: operations["get_activity_processing_state"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/activity-imports/{id}/replay": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get: operations["replay_plan"];
-    put?: never;
-    post: operations["replay"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/activity-imports/{id}/trace": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get: operations["get_activity_import_trace"];
     put?: never;
     post?: never;
     delete?: never;
@@ -292,6 +244,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/admin/activity-imports/history": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["history"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/admin/activity-imports/reprocess": {
     parameters: {
       query?: never;
@@ -318,6 +286,22 @@ export interface paths {
     get?: never;
     put?: never;
     post: operations["admin_reprocess_activity_import"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/activity-imports/{id}/replay": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["replay_plan"];
+    put?: never;
+    post: operations["replay"];
     delete?: never;
     options?: never;
     head?: never;
@@ -5999,44 +5983,6 @@ export interface operations {
       };
     };
   };
-  history: {
-    parameters: {
-      query?: {
-        page?: number;
-        source?: string;
-        status?: string;
-        archive_job_id?: number;
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ImportHistoryResponse"];
-        };
-      };
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ApiErrorResponse"];
-        };
-      };
-    };
-  };
   get_activity_processing_graph: {
     parameters: {
       query?: never;
@@ -6175,181 +6121,6 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ApiErrorResponse"];
-        };
-      };
-    };
-  };
-  replay_plan: {
-    parameters: {
-      query: {
-        stage: string;
-        expected_start_stage?: string;
-        expected_reused_attempt_id?: number;
-      };
-      header?: never;
-      path: {
-        id: number;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ReplayResponse"];
-        };
-      };
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ApiErrorResponse"];
-        };
-      };
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ApiErrorResponse"];
-        };
-      };
-    };
-  };
-  replay: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        id: number;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["ReplayRequest"];
-      };
-    };
-    responses: {
-      202: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ReplayResponse"];
-        };
-      };
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ApiErrorResponse"];
-        };
-      };
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ApiErrorResponse"];
-        };
-      };
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ApiErrorResponse"];
-        };
-      };
-    };
-  };
-  get_activity_import_trace: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /**
-         * @description Activity import id
-         * @example 17
-         */
-        id: number;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Activity import processing DAG and event trace */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          /**
-           * @example {
-           *       "events": [],
-           *       "graph": {
-           *         "edges": [],
-           *         "mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]",
-           *         "nodes": [
-           *           {
-           *             "id": "raw_stored",
-           *             "label": "Raw stored",
-           *             "stage": "raw_stored"
-           *           }
-           *         ]
-           *       },
-           *       "import": {
-           *         "created_at": "2026-09-26T14:20:00Z",
-           *         "format": "fit",
-           *         "id": 17,
-           *         "import_version": 1,
-           *         "original_filename": "saturday-hills.fit",
-           *         "processing_stage": "complete",
-           *         "size_bytes": 184320,
-           *         "status": "processed"
-           *       },
-           *       "nodes": [
-           *         {
-           *           "id": "raw_stored",
-           *           "label": "Raw stored",
-           *           "stage": "raw_stored",
-           *           "status": "completed"
-           *         }
-           *       ]
-           *     }
-           */
-          "application/json": components["schemas"]["ActivityImportTraceResponse"];
-        };
-      };
-      /** @description Not authenticated */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Activity import not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ApiErrorResponse"];
-        };
       };
       /** @description Internal server error */
       500: {
@@ -6732,6 +6503,59 @@ export interface operations {
       };
     };
   };
+  history: {
+    parameters: {
+      query?: {
+        user_id?: number;
+        page?: number;
+        source?: string;
+        status?: string;
+        archive_job_id?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ImportHistoryResponse"];
+        };
+      };
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+    };
+  };
   admin_reprocess_user_activity_imports: {
     parameters: {
       query?: never;
@@ -6882,6 +6706,120 @@ export interface operations {
       };
       /** @description Internal server error */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+    };
+  };
+  replay_plan: {
+    parameters: {
+      query: {
+        stage: string;
+        expected_start_stage?: string;
+        expected_reused_attempt_id?: number;
+      };
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReplayResponse"];
+        };
+      };
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+    };
+  };
+  replay: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReplayRequest"];
+      };
+    };
+    responses: {
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReplayResponse"];
+        };
+      };
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+      409: {
         headers: {
           [name: string]: unknown;
         };

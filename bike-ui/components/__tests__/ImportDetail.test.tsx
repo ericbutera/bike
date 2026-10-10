@@ -39,7 +39,7 @@ describe("import detail", () => {
     );
     expect(
       screen.getByRole("link", { name: /Import history/ }),
-    ).toHaveAttribute("href", "/imports");
+    ).toHaveAttribute("href", "/admin/imports");
     expect(screen.getByText("Replay available")).toBeInTheDocument();
   });
 

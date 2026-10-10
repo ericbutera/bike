@@ -90,10 +90,10 @@ async function fixture(page, target) {
       diagnostics.push(message.text());
   });
   page.on("pageerror", (error) => diagnostics.push(error.message));
-  const api = await fakeProductApi(page, target);
+  const api = await fakeProductApi(page, target, { isAdmin: true });
   const state = importFixture();
   const replays = [];
-  await page.route("**/api/activity-imports/**", async (route) => {
+  await page.route("**/api/admin/activity-imports/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     if (url.pathname.endsWith("/history")) {
@@ -150,7 +150,7 @@ for (const target of targets) {
     page,
   }) => {
     const { api, diagnostics, replays } = await fixture(page, target);
-    await page.goto(new URL("/imports", target.url).toString());
+    await page.goto(new URL("/admin/imports", target.url).toString());
     await expect(
       page.getByRole("heading", { name: "Imports", exact: true }),
     ).toBeVisible();
@@ -217,7 +217,7 @@ for (const target of targets) {
     state.trace.attempts[0].error = "Invalid GPX recording";
     state.trace.nodes[1].status = "failed";
     state.trace.nodes[1].error = "Invalid GPX recording";
-    await page.goto(new URL("/imports", target.url).toString());
+    await page.goto(new URL("/admin/imports", target.url).toString());
     await expect(page.getByText("No activity yet")).toBeVisible();
     await page
       .getByRole("link", { name: "synthetic-ride.gpx", exact: true })

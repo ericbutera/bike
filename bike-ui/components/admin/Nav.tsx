@@ -40,6 +40,11 @@ export default function Nav() {
         </Link>
       </li>
       <li>
+        <Link href="/admin/imports" className={linkClass("/admin/imports")}>
+          Import history
+        </Link>
+      </li>
+      <li>
         <Link
           href="/admin/integrations"
           className={linkClass("/admin/integrations")}

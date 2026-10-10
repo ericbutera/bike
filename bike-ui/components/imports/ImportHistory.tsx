@@ -15,16 +15,23 @@ export default function ImportHistory({
   const [page, setPage] = useState(1);
   const [source, setSource] = useState("");
   const [status, setStatus] = useState("");
-  const query = useActivityImportHistory({
-    page,
-    source: source || undefined,
-    status: status || undefined,
-    archive_job_id: archiveJobId,
-  });
+  const [userId, setUserId] = useState("");
+  const validUserId =
+    !userId || (Number.isInteger(Number(userId)) && Number(userId) > 0);
+  const query = useActivityImportHistory(
+    {
+      page,
+      source: source || undefined,
+      status: status || undefined,
+      archive_job_id: archiveJobId,
+      user_id: userId ? Number(userId) : undefined,
+    },
+    { enabled: validUserId },
+  );
   return (
     <AppCard>
       <div className="flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold">Imports</h1>
+        <h2 className="text-2xl font-semibold">Imports</h2>
         <Link href="/upload" className="btn btn-primary">
           Upload activity
         </Link>
@@ -37,10 +44,29 @@ export default function ImportHistory({
         {archiveJobId ? (
           <p className="w-full">
             Archive job #{archiveJobId} ·{" "}
-            <Link className="link" href="/imports">
+            <Link className="link" href="/admin/imports">
               Show all imports
             </Link>
           </p>
+        ) : null}
+        <label>
+          User ID
+          <input
+            aria-label="User ID"
+            className="input input-bordered ml-2 w-40"
+            type="number"
+            min="1"
+            step="1"
+            placeholder="Your account"
+            value={userId}
+            onChange={(event) => {
+              setUserId(event.target.value);
+              setPage(1);
+            }}
+          />
+        </label>
+        {!validUserId ? (
+          <p className="text-error">User ID must be positive</p>
         ) : null}
         <label>
           Source
@@ -102,7 +128,7 @@ export default function ImportHistory({
                 <td>
                   <Link
                     className="link link-primary font-medium"
-                    href={`/imports/${item.id}`}
+                    href={`/admin/imports/${item.id}`}
                   >
                     {item.original_filename}
                   </Link>

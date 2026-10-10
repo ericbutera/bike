@@ -54,9 +54,6 @@ export default function Navigation() {
               <Link href="/" className="btn btn-ghost btn-sm">
                 Activities
               </Link>
-              <Link href="/imports" className="btn btn-ghost btn-sm">
-                Imports
-              </Link>
 
               {heatmaps && (
                 <Link href="/maps" className="btn btn-ghost btn-sm">

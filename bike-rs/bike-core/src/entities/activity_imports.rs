@@ -37,6 +37,13 @@ pub struct Model {
 pub enum Relation {}
 
 impl Entity {
+    pub async fn find_for_administration(
+        db: &impl ConnectionTrait,
+        import_id: i32,
+    ) -> Result<Option<Model>, DbErr> {
+        Self::find_by_id(import_id).one(db).await
+    }
+
     pub async fn processing_for_user(
         db: &impl ConnectionTrait,
         user_id: i32,

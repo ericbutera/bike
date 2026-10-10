@@ -12,7 +12,6 @@ use bike_core::activity_import_pipeline::{
     activity_processing_graph_mermaid, activity_processing_graph_nodes,
     find_stored_activity_import, mark_activity_import_failed, store_activity_upload_import,
     validate_activity_format, ActivityProcessingGraphNode, ActivityUploadPayload,
-    ACTIVITY_PROCESSING_PROVIDER,
 };
 use bike_core::archive_import::{
     decode_error_samples, enqueue_activity_archive_import_job, normalize_archive_url,
@@ -20,7 +19,6 @@ use bike_core::archive_import::{
 use bike_core::auth::UserContext;
 use bike_core::config::Config;
 use bike_core::entities::{activities, activity_archive_import_jobs, activity_imports};
-use bike_core::integration_events_service as integration_event_service;
 use chrono::{DateTime, Utc};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::Serialize;
@@ -266,28 +264,6 @@ impl ActivityImportTraceEventResponse {
     }
 }
 
-async fn load_activity_for_import_trace(
-    db: &sea_orm::DatabaseConnection,
-    user_id: i32,
-    import: &activity_imports::Model,
-) -> Result<Option<activities::Model>, AppError> {
-    if let Some(activity_id) = import.activity_id {
-        return activities::Entity::find()
-            .filter(activities::Column::UserId.eq(user_id))
-            .filter(activities::Column::Id.eq(activity_id))
-            .one(db)
-            .await
-            .map_err(AppError::from);
-    }
-
-    activities::Entity::find()
-        .filter(activities::Column::UserId.eq(user_id))
-        .filter(activities::Column::ActivityImportId.eq(Some(import.id)))
-        .one(db)
-        .await
-        .map_err(AppError::from)
-}
-
 pub(crate) fn build_trace_nodes(
     import: &activity_imports::Model,
     events: &[ActivityImportTraceEventResponse],
@@ -467,66 +443,6 @@ pub async fn get_activity_processing_graph(
     UserContext { .. }: UserContext<AppStorage>,
 ) -> Result<Json<ActivityProcessingGraphResponse>, AppError> {
     Ok(Json(ActivityProcessingGraphResponse::from_graph()))
-}
-
-#[utoipa::path(
-    get,
-    path = "/activity-imports/{id}/trace",
-    params(
-        ("id" = i32, Path, description = "Activity import id", example = 17),
-    ),
-    responses(
-        (status = 200, description = "Activity import processing DAG and event trace", body = ActivityImportTraceResponse, example = json!({"import": {"id": 17,"import_version": 1,"original_filename": "saturday-hills.fit","format": "fit","status": "processed","processing_stage": "complete","size_bytes": 184320,"created_at": "2026-09-26T14:20:00Z"},"graph": {"nodes": [{"id": "raw_stored","label": "Raw stored","stage": "raw_stored"}],"edges": [],"mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]"},"nodes": [{"id": "raw_stored","label": "Raw stored","stage": "raw_stored","status": "completed"}],"events": []})),
-        (status = 401, description = "Not authenticated"),
-        (status = 404, description = "Activity import not found", body = ApiErrorResponse),
-        (status = 500, description = "Internal server error", body = ApiErrorResponse),
-    ),
-    tag = "activity-imports",
-    security(
-        ("bearer_auth" = [])
-    )
-)]
-pub async fn get_activity_import_trace(
-    UserContext { user, .. }: UserContext<AppStorage>,
-    State(state): State<Arc<AppStorage>>,
-    Path(import_id): Path<i32>,
-) -> Result<Json<ActivityImportTraceResponse>, AppError> {
-    let import =
-        crate::activity_import_history::owned_import_for_inspection(&state.db, user.id, import_id)
-            .await?;
-    let activity = load_activity_for_import_trace(&state.db, user.id, &import).await?;
-    let attempts = crate::activity_import_history::attempts(&state.db, &import).await?;
-    let events = if attempts.is_empty() {
-        integration_event_service::list_recent_events(
-            &state.db,
-            integration_event_service::IntegrationEventListOptions {
-                provider: Some(ACTIVITY_PROCESSING_PROVIDER.to_string()),
-                user_id: Some(user.id),
-                activity_id: None,
-                import_id: Some(import.id),
-                limit: 100,
-            },
-        )
-        .await?
-    } else {
-        Vec::new()
-    };
-    let trace_events = events
-        .into_iter()
-        .map(ActivityImportTraceEventResponse::from_model)
-        .collect::<Vec<_>>();
-    let trace_nodes = attempts
-        .first()
-        .map(|attempt| attempt.nodes.clone())
-        .unwrap_or(build_trace_nodes(&import, &trace_events)?);
-
-    Ok(Json(ActivityImportTraceResponse {
-        attempts,
-        import: ActivityImportResponse::from_model(import, activity.as_ref()),
-        graph: ActivityProcessingGraphResponse::from_graph(),
-        nodes: trace_nodes,
-        events: trace_events,
-    }))
 }
 
 #[utoipa::path(

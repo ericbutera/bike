@@ -6,6 +6,7 @@ use crate::activity_import_lock::{
     ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
 };
 use crate::app_error::{ApiErrorResponse, AppError};
+use crate::controllers::activity_import_history;
 use crate::controllers::activity_imports as activity_imports_controller;
 use crate::storage::AppStorage;
 use crate::xc_goal_backfill::queue_user_xc_goal_backfill;
@@ -108,6 +109,14 @@ impl AdminActivityResponse {
 
 pub fn routes() -> Router<Arc<AppStorage>> {
     Router::new()
+        .route(
+            "/activity-imports/history",
+            get(activity_import_history::history),
+        )
+        .route(
+            "/activity-imports/:id/replay",
+            get(activity_import_history::replay_plan).post(activity_import_history::replay),
+        )
         .route("/metrics/app", get(app_metrics))
         .route("/activities", get(list_admin_activities))
         .route("/analytics/backfill", post(backfill_analytics))
@@ -250,10 +259,8 @@ pub async fn get_admin_activity_import_trace(
     State(state): State<Arc<AppStorage>>,
     Path(import_id): Path<i32>,
 ) -> Result<Json<activity_imports_controller::ActivityImportTraceResponse>, AppError> {
-    let import = activity_imports::Entity::find_by_id(import_id)
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| AppError::not_found("Activity import not found"))?;
+    let import =
+        crate::activity_import_history::admin_import_for_inspection(&state.db, import_id).await?;
     let trace = build_admin_activity_import_trace(&state.db, import, None).await?;
 
     Ok(Json(trace))

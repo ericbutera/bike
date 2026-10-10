@@ -167,4 +167,4 @@ here so integration coverage does not hide missing unit happy paths.
 ## New entrypoint gaps
 
 - [ ] [bike-rs/api/src/controllers/activity_import_history.rs](../bike-rs/api/src/controllers/activity_import_history.rs) — the service has unit coverage; HTTP adaptation remains uncovered.
-- [ ] [bike-ui/app/imports/layout.tsx](../bike-ui/app/imports/layout.tsx) — the shared authentication and layout components have unit coverage; this route wrapper remains uncovered.
+- [x] [bike-ui/app/admin/imports/layout.tsx](../bike-ui/app/admin/imports/layout.tsx) — the route wrapper and shared admin authentication/layout components have unit coverage.

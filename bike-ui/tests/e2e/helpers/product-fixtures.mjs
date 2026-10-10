@@ -38,7 +38,11 @@ export const ride = {
 
 const pagination = { page: 1, per_page: 10, total: 1, total_pages: 1 };
 
-export async function fakeProductApi(page, target, { signedIn = true } = {}) {
+export async function fakeProductApi(
+  page,
+  target,
+  { signedIn = true, isAdmin = false } = {},
+) {
   const state = { signedIn, requests: [], unexpected: [] };
   // The Next.js preview routes fetch product APIs on the server, beyond page API interception.
   await page.route(
@@ -57,7 +61,7 @@ export async function fakeProductApi(page, target, { signedIn = true } = {}) {
             email: "fixture@example.test",
             name: "Fixture Rider",
             verified: true,
-            is_admin: false,
+            is_admin: isAdmin,
           }
         : { message: "Unauthorized" },
     };

@@ -1,4 +1,4 @@
-import ImportHistory from "../../components/imports/ImportHistory";
+import ImportHistory from "../../../components/imports/ImportHistory";
 
 export default async function ImportsPage({
   searchParams,

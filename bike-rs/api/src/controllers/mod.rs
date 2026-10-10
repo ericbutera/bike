@@ -79,14 +79,6 @@ fn platform_routes() -> Router<Arc<AppStorage>> {
 fn activity_routes() -> Router<Arc<AppStorage>> {
     Router::new()
         .route(
-            "/api/activity-imports/history",
-            get(activity_import_history::history),
-        )
-        .route(
-            "/api/activity-imports/:id/replay",
-            get(activity_import_history::replay_plan).post(activity_import_history::replay),
-        )
-        .route(
             "/api/activities",
             axum::routing::get(activities::list_activities),
         )
@@ -129,10 +121,6 @@ fn activity_routes() -> Router<Arc<AppStorage>> {
         .route(
             "/api/activity-imports/processing-graph",
             axum::routing::get(activity_imports::get_activity_processing_graph),
-        )
-        .route(
-            "/api/activity-imports/:id/trace",
-            axum::routing::get(activity_imports::get_activity_import_trace),
         )
         .route(
             "/api/activity-imports/archive-jobs/:id",

@@ -1,4 +1,4 @@
-import ImportDetail from "../../../components/imports/ImportDetail";
+import ImportDetail from "../../../../components/imports/ImportDetail";
 
 export default async function ImportPage({
   params,
