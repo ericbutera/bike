@@ -165,3 +165,52 @@ pub async fn process_user_segment_regeneration(
         (Ok(_), Ok(())) => Ok(()),
     }
 }
+
+pub async fn process_activity_segment_regeneration(
+    db: &DatabaseConnection,
+    activity_id: i32,
+) -> Result<(), SegmentRegenerationError> {
+    use crate::background_jobs::execution::{measured, WorkCounts, WorkScope};
+    use sea_orm::{ColumnTrait, PaginatorTrait, QueryFilter};
+    let activity = activities::Entity::find_by_id(activity_id)
+        .one(db)
+        .await?
+        .ok_or_else(|| SegmentRegenerationError::internal("Activity disappeared"))?;
+    let points =
+        deserialize_derived_activity_data(activity.derived_data_json.as_ref()).route_points;
+    let scope = WorkScope {
+        kind: "segment_match",
+        work_key: format!("activity:{activity_id}"),
+        revision: activity.updated_at.timestamp_micros().to_string(),
+        mode: "full",
+        reason: "user_regeneration",
+    };
+    measured(db, scope, async {
+        let old_count = segment_efforts::Entity::find()
+            .filter(segment_efforts::Column::ActivityId.eq(activity_id))
+            .count(db)
+            .await?;
+        let mut affected = load_segment_ids_for_activity(db, activity_id).await?;
+        replace_segment_efforts_for_activity(db, activity.user_id, activity_id, &points).await?;
+        affected.extend(load_segment_ids_for_activity(db, activity_id).await?);
+        affected.sort_unstable();
+        affected.dedup();
+        mark_segment_activity_changes(db, &affected, Utc::now()).await?;
+        crate::background_jobs::batches::affected_segments(db, &affected).await?;
+        let count = segment_efforts::Entity::find()
+            .filter(segment_efforts::Column::ActivityId.eq(activity_id))
+            .count(db)
+            .await?;
+        Ok::<_, SegmentRegenerationError>((
+            (),
+            WorkCounts {
+                inputs_read: points.len() as u64,
+                units_computed: points.len() as u64,
+                rows_written: old_count + count,
+                outputs_published: 0,
+                outcome: "matched",
+            },
+        ))
+    })
+    .await
+}

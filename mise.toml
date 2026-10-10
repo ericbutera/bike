@@ -328,6 +328,19 @@ run = ["mise run rust:check", "mise run ui:check", "mise run test", "mise run st
 [tasks.test]
 run = "mise --cd map-renderer run test"
 
+[tasks."test:workers"]
+description = "Run focused worker pipeline and admin history regressions"
+run = ["mise --cd bike-rs run test:workers", "mise --cd bike-ui run test:workers", "mise --cd strava-gateway run test:workers"]
+
+[tasks."test:workers:postgres:docker"]
+description = "Exercise migrations, publication fences and worker statistics in disposable PostgreSQL"
+run = "bash scripts/test-worker-postgres.sh"
+
+[tasks."ci:workers:postgres"]
+description = "Run worker persistence regressions against the job-local disposable database"
+env = { BIKE_WORKER_TEST_DATABASE_HOST = "docker", BIKE_WORKER_TEST_DATABASE_PORT = "5432" }
+run = ["mise install rust protoc go", "mise run test:workers:postgres:docker"]
+
 [tasks."strava:test"]
 run = "mise --cd strava-gateway run test"
 

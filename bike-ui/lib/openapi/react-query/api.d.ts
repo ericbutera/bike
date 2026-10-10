@@ -474,6 +474,54 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/admin/tasks/activities/{id}/pipelines": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["activity_pipelines"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/tasks/pipelines/{run_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["pipeline"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/tasks/processors": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["processors"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/admin/tasks/{id}": {
     parameters: {
       query?: never;
@@ -2547,6 +2595,14 @@ export interface components {
     DisableUserRequest: {
       disabled?: boolean | null;
     };
+    Distribution: {
+      /** Format: double */
+      p50_seconds?: number | null;
+      /** Format: double */
+      p90_seconds?: number | null;
+      /** Format: int64 */
+      samples: number;
+    };
     EnduranceReportResponse: {
       /** Format: int32 */
       activity_count: number;
@@ -3082,6 +3138,81 @@ export interface components {
        * @description Number of items per page
        */
       per_page?: number;
+    };
+    PipelineGraph: {
+      accepted_at: string;
+      available_at?: string | null;
+      ended_at?: string | null;
+      entrypoint: string;
+      gateway_history?: unknown;
+      grafana_url?: string | null;
+      /** Format: int64 */
+      next_output_offset?: number | null;
+      /** Format: int32 */
+      next_task_cursor?: number | null;
+      outputs: components["schemas"]["WorkerOutputEvidence"][];
+      received_at: string;
+      request_id?: string | null;
+      run_id: string;
+      tasks: components["schemas"]["PipelineTask"][];
+      trace_id?: string | null;
+    };
+    PipelineImport: {
+      /** Format: int32 */
+      activity_id?: number | null;
+      /** Format: int32 */
+      attempt_id: number;
+      edges: components["schemas"]["PipelineStageEdge"][];
+      /** Format: int32 */
+      import_id: number;
+      stages: components["schemas"]["StageRecord"][];
+      status: string;
+    };
+    PipelinePage: {
+      next_cursor?: string | null;
+      run_ids: string[];
+    };
+    PipelineStageEdge: {
+      from: string;
+      to: string;
+    };
+    PipelineTask: {
+      anomalies: components["schemas"]["WorkerAnomalyEvidence"][];
+      attempts: components["schemas"]["TaskAttemptResponse"][];
+      created_at: string;
+      /** Format: int32 */
+      id: number;
+      imports: components["schemas"]["PipelineImport"][];
+      /** Format: int32 */
+      next_work_cursor?: number | null;
+      /** Format: int32 */
+      parent_task_id?: number | null;
+      scheduled_for?: string | null;
+      status: string;
+      task_type: string;
+      work: components["schemas"]["WorkerWorkEvidence"][];
+      work_has_more: boolean;
+    };
+    ProcessorSummary: {
+      attempt: components["schemas"]["Distribution"];
+      eligible_wait: components["schemas"]["Distribution"];
+      /** Format: int64 */
+      failed: number;
+      logical_completion: components["schemas"]["Distribution"];
+      outcome: string;
+      /** Format: int64 */
+      queued: number;
+      /** Format: date-time */
+      registered_at: string;
+      /** Format: int64 */
+      retrying: number;
+      /** Format: int64 */
+      running: number;
+      /** Format: int64 */
+      scheduled: number;
+      task_type: string;
+      /** Format: int64 */
+      window_hours: number;
     };
     PublicFlagResponse: {
       enabled: boolean;
@@ -3959,6 +4090,18 @@ export interface components {
        */
       years?: components["schemas"]["SegmentYearlyBestResponse"][];
     };
+    StageRecord: {
+      /** Format: date-time */
+      completed_at?: string | null;
+      error?: string | null;
+      /** Format: int32 */
+      reused_attempt_id?: number | null;
+      stage: string;
+      /** Format: date-time */
+      started_at?: string | null;
+      status: string;
+      summary: string[];
+    };
     /**
      * @example {
      *       "authorization_url": "https://www.strava.com/oauth/authorize?client_id=12345&response_type=code"
@@ -4104,7 +4247,24 @@ export interface components {
       auth: components["schemas"]["NamedStat"][];
       background_tasks: components["schemas"]["NamedStat"][];
     };
+    TaskAttemptResponse: {
+      /** Format: int32 */
+      attempt: number;
+      eligible_at?: string | null;
+      error?: string | null;
+      finished_at?: string | null;
+      heartbeat_at: string;
+      outcome: string;
+      processing_version?: string | null;
+      /** @description Last recorded checkpoint; heartbeats do not update this value. */
+      progress_at: string;
+      span_id?: string | null;
+      started_at: string;
+      trace_id?: string | null;
+      workload_cohort?: string | null;
+    };
     TaskDetailResponse: {
+      attempt_history: components["schemas"]["TaskAttemptResponse"][];
       /** Format: int32 */
       attempts: number;
       completed_at?: string | null;
@@ -4115,12 +4275,25 @@ export interface components {
       /** Format: int32 */
       max_attempts: number;
       payload?: null | components["schemas"]["Value"];
+      pipelines: components["schemas"]["TaskPipelineResponse"][];
       result?: string | null;
       scheduled_for?: string | null;
       started_at?: string | null;
       status: string;
       task_type: string;
       updated_at: string;
+    };
+    TaskPipelineResponse: {
+      accepted_at: string;
+      /** @description Output readiness is unknown until a publication barrier records it. */
+      available_at?: string | null;
+      entrypoint: string;
+      /** Format: int32 */
+      parent_task_id?: number | null;
+      pipeline_started_at: string;
+      request_id?: string | null;
+      run_id: string;
+      trace_id?: string | null;
     };
     TaskResponse: {
       /** Format: int32 */
@@ -4630,6 +4803,63 @@ export interface components {
       verified: boolean;
     };
     Value: unknown;
+    WorkerAnomalyEvidence: {
+      /** Format: int32 */
+      attempt: number;
+      /** Format: int64 */
+      baseline_samples: number;
+      /** Format: date-time */
+      evaluated_at: string;
+      /** Format: double */
+      expected: number;
+      /** Format: double */
+      observed: number;
+      /** Format: int32 */
+      policy_version: number;
+      reason: string;
+      /** Format: date-time */
+      resolved_at?: string | null;
+      severity: string;
+      /** Format: int32 */
+      task_id: number;
+    };
+    WorkerOutputEvidence: {
+      /** Format: date-time */
+      available_at?: string | null;
+      kind: string;
+      reason?: string | null;
+      required: boolean;
+      /** Format: date-time */
+      required_at: string;
+      revision: string;
+      run_id: string;
+      status: string;
+      /** Format: int32 */
+      target_id: number;
+    };
+    WorkerWorkEvidence: {
+      /** Format: int32 */
+      attempt: number;
+      counts?: null | components["schemas"]["Value"];
+      error?: string | null;
+      /** Format: date-time */
+      finished_at: string;
+      /** Format: int32 */
+      id: number;
+      kind: string;
+      mode: string;
+      outcome: string;
+      processing_version: string;
+      reason: string;
+      revision: string;
+      span_id?: string | null;
+      /** Format: date-time */
+      started_at: string;
+      /** Format: int32 */
+      task_id: number;
+      trace_id?: string | null;
+      work_key: string;
+    };
     XcEventGoalResponse: {
       /** Format: double */
       counted_distance_meters: number;
@@ -7079,6 +7309,8 @@ export interface operations {
   admin_list_tasks: {
     parameters: {
       query?: {
+        /** @description Exact request, trace, or pipeline run ID. */
+        correlation_id?: string;
         task_type?: string;
         status?: string;
         error?: string;
@@ -7115,6 +7347,88 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  activity_pipelines: {
+    parameters: {
+      query?: {
+        after_task?: number;
+        after_run?: string;
+        work_task?: number;
+        after_work?: number;
+        output_offset?: number;
+      };
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PipelinePage"];
+        };
+      };
+    };
+  };
+  pipeline: {
+    parameters: {
+      query?: {
+        after_task?: number;
+        after_run?: string;
+        work_task?: number;
+        after_work?: number;
+        output_offset?: number;
+      };
+      header?: never;
+      path: {
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PipelineGraph"];
+        };
+      };
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  processors: {
+    parameters: {
+      query?: {
+        window_hours?: number;
+        outcome?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProcessorSummary"][];
+        };
       };
     };
   };

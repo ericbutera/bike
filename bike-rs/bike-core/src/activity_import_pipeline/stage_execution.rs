@@ -27,6 +27,13 @@ pub(super) async fn begin_processing_attempt(
             "This import already has a running attempt",
         ));
     }
+    crate::background_jobs::entities::pipeline_outputs::Model::require(
+        run.db,
+        "import",
+        run.import.id,
+        attempt.id.to_string(),
+    )
+    .await?;
     activity_import_attempts::Entity::find_by_id(attempt.id)
         .one(run.db)
         .await?

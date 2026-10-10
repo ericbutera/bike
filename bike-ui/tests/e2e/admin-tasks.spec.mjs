@@ -28,13 +28,17 @@ test("admin tasks expose the same filters, timing, and detail in Bike", async ({
     await expect(
       page.getByRole("heading", { name: "Background Tasks" }),
     ).toBeVisible();
-    const table = page.locator("table");
+    const table = page.getByRole("table", { name: "Background task history" });
+    await expect(
+      page.getByRole("heading", { name: "All registered processors" }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Processor window")).toHaveValue("24");
+    await expect(page.getByLabel("Attempt outcome")).toHaveValue("completed");
     for (const header of [
       "ID",
       "Type",
       "Status",
       "Duration",
-      "Trend",
       "Attempts",
       "Error",
       "Created",
@@ -44,7 +48,6 @@ test("admin tasks expose the same filters, timing, and detail in Bike", async ({
       ).toBeVisible();
     }
     await expect(table.locator("tbody tr")).toHaveCount(5);
-    await expect(table.getByText("Slower")).toBeVisible();
     await table
       .locator("tbody tr")
       .filter({ hasText: "regenerate_segment_efforts" })
@@ -54,17 +57,22 @@ test("admin tasks expose the same filters, timing, and detail in Bike", async ({
     await expect(detail).toBeVisible();
     await expect(detail).toContainText("Task #3");
     await expect(detail.locator("pre")).toContainText("segment_id");
+    await expect(
+      detail.getByRole("heading", { name: "Processing history" }),
+    ).toBeVisible();
+    await expect(detail).toContainText(
+      "Original receipt and task lineage were not recorded for this task.",
+    );
     await detail.getByRole("button", { name: "Close" }).click();
 
-    await page.locator("select").nth(1).selectOption("completed");
+    await page.getByLabel("Filter task status").selectOption("completed");
     await page.getByRole("button", { name: "Search" }).click();
     await expect(table.locator("tbody tr")).toHaveCount(3);
     await page.getByRole("button", { name: "Clear" }).click();
     await expect(table.locator("tbody tr")).toHaveCount(5);
 
     await page
-      .locator("select")
-      .first()
+      .getByLabel("Filter task type")
       .selectOption("regenerate_segment_efforts");
     await page.getByRole("button", { name: "Search" }).click();
     await expect(table.locator("tbody tr")).toHaveCount(3);

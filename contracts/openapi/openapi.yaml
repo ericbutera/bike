@@ -1559,6 +1559,12 @@ paths:
       - admin
       operationId: admin_list_tasks
       parameters:
+      - name: correlation_id
+        in: query
+        description: Exact request, trace, or pipeline run ID.
+        required: false
+        schema:
+          type: string
       - name: task_type
         in: query
         required: false
@@ -1611,6 +1617,137 @@ paths:
           description: Forbidden
       security:
       - bearer_auth: []
+  /admin/tasks/activities/{id}/pipelines:
+    get:
+      tags:
+      - tasks
+      operationId: activity_pipelines
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: after_task
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - name: after_run
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: work_task
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - name: after_work
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - name: output_offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelinePage'
+      security:
+      - cookie_auth: []
+  /admin/tasks/pipelines/{run_id}:
+    get:
+      tags:
+      - tasks
+      operationId: pipeline
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: after_task
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - name: after_run
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: work_task
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - name: after_work
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - name: output_offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineGraph'
+        '404':
+          description: ''
+      security:
+      - cookie_auth: []
+  /admin/tasks/processors:
+    get:
+      tags:
+      - tasks
+      operationId: processors
+      parameters:
+      - name: window_hours
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: outcome
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProcessorSummary'
+      security:
+      - cookie_auth: []
   /admin/tasks/{id}:
     get:
       tags:
@@ -5429,6 +5566,24 @@ components:
           - 'null'
       example:
         disabled: true
+    Distribution:
+      type: object
+      required:
+      - samples
+      properties:
+        p50_seconds:
+          type:
+          - number
+          - 'null'
+          format: double
+        p90_seconds:
+          type:
+          - number
+          - 'null'
+          format: double
+        samples:
+          type: integer
+          format: int64
     EnduranceReportResponse:
       type: object
       required:
@@ -6442,6 +6597,218 @@ components:
           type: integer
           format: int64
           description: Number of items per page
+    PipelineGraph:
+      type: object
+      required:
+      - run_id
+      - entrypoint
+      - received_at
+      - accepted_at
+      - tasks
+      - outputs
+      properties:
+        accepted_at:
+          type: string
+        available_at:
+          type:
+          - string
+          - 'null'
+        ended_at:
+          type:
+          - string
+          - 'null'
+        entrypoint:
+          type: string
+        gateway_history: {}
+        grafana_url:
+          type:
+          - string
+          - 'null'
+        next_output_offset:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        next_task_cursor:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        outputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkerOutputEvidence'
+        received_at:
+          type: string
+        request_id:
+          type:
+          - string
+          - 'null'
+        run_id:
+          type: string
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/PipelineTask'
+        trace_id:
+          type:
+          - string
+          - 'null'
+    PipelineImport:
+      type: object
+      required:
+      - attempt_id
+      - import_id
+      - status
+      - stages
+      - edges
+      properties:
+        activity_id:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        attempt_id:
+          type: integer
+          format: int32
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/PipelineStageEdge'
+        import_id:
+          type: integer
+          format: int32
+        stages:
+          type: array
+          items:
+            $ref: '#/components/schemas/StageRecord'
+        status:
+          type: string
+    PipelinePage:
+      type: object
+      required:
+      - run_ids
+      properties:
+        next_cursor:
+          type:
+          - string
+          - 'null'
+        run_ids:
+          type: array
+          items:
+            type: string
+    PipelineStageEdge:
+      type: object
+      required:
+      - from
+      - to
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+    PipelineTask:
+      type: object
+      required:
+      - id
+      - task_type
+      - status
+      - created_at
+      - attempts
+      - work
+      - work_has_more
+      - anomalies
+      - imports
+      properties:
+        anomalies:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkerAnomalyEvidence'
+        attempts:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskAttemptResponse'
+        created_at:
+          type: string
+        id:
+          type: integer
+          format: int32
+        imports:
+          type: array
+          items:
+            $ref: '#/components/schemas/PipelineImport'
+        next_work_cursor:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        parent_task_id:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        scheduled_for:
+          type:
+          - string
+          - 'null'
+        status:
+          type: string
+        task_type:
+          type: string
+        work:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkerWorkEvidence'
+        work_has_more:
+          type: boolean
+    ProcessorSummary:
+      type: object
+      required:
+      - task_type
+      - registered_at
+      - queued
+      - running
+      - scheduled
+      - failed
+      - retrying
+      - attempt
+      - eligible_wait
+      - logical_completion
+      - window_hours
+      - outcome
+      properties:
+        attempt:
+          $ref: '#/components/schemas/Distribution'
+        eligible_wait:
+          $ref: '#/components/schemas/Distribution'
+        failed:
+          type: integer
+          format: int64
+        logical_completion:
+          $ref: '#/components/schemas/Distribution'
+        outcome:
+          type: string
+        queued:
+          type: integer
+          format: int64
+        registered_at:
+          type: string
+          format: date-time
+        retrying:
+          type: integer
+          format: int64
+        running:
+          type: integer
+          format: int64
+        scheduled:
+          type: integer
+          format: int64
+        task_type:
+          type: string
+        window_hours:
+          type: integer
+          format: int64
     PublicFlagResponse:
       type: object
       required:
@@ -7804,6 +8171,40 @@ components:
           effort_id: 90
           effort_index: 1
           year: 2026
+    StageRecord:
+      type: object
+      required:
+      - stage
+      - status
+      - summary
+      properties:
+        completed_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        error:
+          type:
+          - string
+          - 'null'
+        reused_attempt_id:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        stage:
+          type: string
+        started_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        status:
+          type: string
+        summary:
+          type: array
+          items:
+            type: string
     StravaAuthorizeResponse:
       type: object
       required:
@@ -7992,9 +8393,60 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/NamedStat'
+    TaskAttemptResponse:
+      type: object
+      required:
+      - attempt
+      - started_at
+      - heartbeat_at
+      - progress_at
+      - outcome
+      properties:
+        attempt:
+          type: integer
+          format: int32
+        eligible_at:
+          type:
+          - string
+          - 'null'
+        error:
+          type:
+          - string
+          - 'null'
+        finished_at:
+          type:
+          - string
+          - 'null'
+        heartbeat_at:
+          type: string
+        outcome:
+          type: string
+        processing_version:
+          type:
+          - string
+          - 'null'
+        progress_at:
+          type: string
+          description: Last recorded checkpoint; heartbeats do not update this value.
+        span_id:
+          type:
+          - string
+          - 'null'
+        started_at:
+          type: string
+        trace_id:
+          type:
+          - string
+          - 'null'
+        workload_cohort:
+          type:
+          - string
+          - 'null'
     TaskDetailResponse:
       type: object
       required:
+      - attempt_history
+      - pipelines
       - id
       - task_type
       - status
@@ -8003,6 +8455,10 @@ components:
       - created_at
       - updated_at
       properties:
+        attempt_history:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskAttemptResponse'
         attempts:
           type: integer
           format: int32
@@ -8026,6 +8482,10 @@ components:
           oneOf:
           - type: 'null'
           - $ref: '#/components/schemas/Value'
+        pipelines:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskPipelineResponse'
         result:
           type:
           - string
@@ -8044,6 +8504,40 @@ components:
           type: string
         updated_at:
           type: string
+    TaskPipelineResponse:
+      type: object
+      required:
+      - run_id
+      - pipeline_started_at
+      - accepted_at
+      - entrypoint
+      properties:
+        accepted_at:
+          type: string
+        available_at:
+          type:
+          - string
+          - 'null'
+          description: Output readiness is unknown until a publication barrier records it.
+        entrypoint:
+          type: string
+        parent_task_id:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        pipeline_started_at:
+          type: string
+        request_id:
+          type:
+          - string
+          - 'null'
+        run_id:
+          type: string
+        trace_id:
+          type:
+          - string
+          - 'null'
     TaskResponse:
       type: object
       required:
@@ -8742,6 +9236,146 @@ components:
         verified:
           type: boolean
     Value: {}
+    WorkerAnomalyEvidence:
+      type: object
+      required:
+      - task_id
+      - attempt
+      - reason
+      - policy_version
+      - observed
+      - expected
+      - baseline_samples
+      - evaluated_at
+      - severity
+      properties:
+        attempt:
+          type: integer
+          format: int32
+        baseline_samples:
+          type: integer
+          format: int64
+        evaluated_at:
+          type: string
+          format: date-time
+        expected:
+          type: number
+          format: double
+        observed:
+          type: number
+          format: double
+        policy_version:
+          type: integer
+          format: int32
+        reason:
+          type: string
+        resolved_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        severity:
+          type: string
+        task_id:
+          type: integer
+          format: int32
+    WorkerOutputEvidence:
+      type: object
+      required:
+      - run_id
+      - kind
+      - target_id
+      - revision
+      - required
+      - status
+      - required_at
+      properties:
+        available_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        kind:
+          type: string
+        reason:
+          type:
+          - string
+          - 'null'
+        required:
+          type: boolean
+        required_at:
+          type: string
+          format: date-time
+        revision:
+          type: string
+        run_id:
+          type: string
+        status:
+          type: string
+        target_id:
+          type: integer
+          format: int32
+    WorkerWorkEvidence:
+      type: object
+      required:
+      - id
+      - task_id
+      - attempt
+      - kind
+      - work_key
+      - revision
+      - processing_version
+      - mode
+      - reason
+      - started_at
+      - finished_at
+      - outcome
+      properties:
+        attempt:
+          type: integer
+          format: int32
+        counts:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/Value'
+        error:
+          type:
+          - string
+          - 'null'
+        finished_at:
+          type: string
+          format: date-time
+        id:
+          type: integer
+          format: int32
+        kind:
+          type: string
+        mode:
+          type: string
+        outcome:
+          type: string
+        processing_version:
+          type: string
+        reason:
+          type: string
+        revision:
+          type: string
+        span_id:
+          type:
+          - string
+          - 'null'
+        started_at:
+          type: string
+          format: date-time
+        task_id:
+          type: integer
+          format: int32
+        trace_id:
+          type:
+          - string
+          - 'null'
+        work_key:
+          type: string
     XcEventGoalResponse:
       type: object
       required:

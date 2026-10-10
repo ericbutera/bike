@@ -3,20 +3,48 @@ use super::{
     projection::{PendingProjection, Projection},
 };
 use crate::activity_data::deserialize_derived_activity_data;
+use crate::background_jobs::execution::{measured, WorkCounts, WorkScope};
 use sea_orm::{DatabaseConnection, DbErr};
 
 pub async fn prepare_activity(
     db: &DatabaseConnection,
     pending: PendingProjection,
 ) -> Result<(), DbErr> {
+    let scope = WorkScope {
+        kind: "heatmap",
+        work_key: format!("activity:{}", pending.activity_id),
+        revision: Projection::revision(pending.generation),
+        mode: "full",
+        reason: "projection_dirty",
+    };
+    measured(db, scope, async {
+        prepare_measured(db, pending)
+            .await
+            .map(|counts| ((), counts))
+    })
+    .await
+}
+
+async fn prepare_measured(
+    db: &DatabaseConnection,
+    pending: PendingProjection,
+) -> Result<WorkCounts, DbErr> {
     let Some(source) = Projection::source(db, &pending).await? else {
-        return Ok(());
+        return Ok(WorkCounts {
+            outcome: "already_current",
+            ..Default::default()
+        });
     };
     if !crate::activity_sport::is_bike_activity_sport(&source.sport)
         || source.format.as_deref() == Some("unavailable")
     {
-        Projection::publish(db, &pending, &[]).await?;
-        return Ok(());
+        let published = Projection::publish(db, &pending, &[]).await?;
+        return Ok(WorkCounts {
+            inputs_read: 1,
+            outputs_published: u64::from(published),
+            outcome: if published { "skipped" } else { "superseded" },
+            ..Default::default()
+        });
     }
     let mut derived = deserialize_derived_activity_data(source.derived_data_json.as_ref());
     derived
@@ -46,13 +74,24 @@ pub async fn prepare_activity(
             &derived,
         )
         .await?;
-        return Ok(());
+        return Ok(WorkCounts {
+            inputs_read: 1,
+            outcome: "source_recovered",
+            ..Default::default()
+        });
     }
+    let points = derived.route_points.len() as u64;
     let chunks = tokio::task::spawn_blocking(move || prepare_route(&derived))
         .await
         .map_err(|error| DbErr::Custom(error.to_string()))?;
-    Projection::publish(db, &pending, &chunks).await?;
-    Ok(())
+    let published = Projection::publish(db, &pending, &chunks).await?;
+    Ok(WorkCounts {
+        inputs_read: points,
+        units_computed: points,
+        rows_written: if published { chunks.len() as u64 } else { 0 },
+        outputs_published: u64::from(published),
+        outcome: if published { "published" } else { "superseded" },
+    })
 }
 
 pub(crate) fn prepare_route(

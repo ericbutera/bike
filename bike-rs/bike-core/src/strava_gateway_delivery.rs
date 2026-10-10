@@ -22,6 +22,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Transac
 use serde::Deserialize;
 use std::path::Path;
 use uuid::Uuid;
+pub mod intent;
 
 #[derive(Debug, Deserialize)]
 pub struct GatewayPayload {

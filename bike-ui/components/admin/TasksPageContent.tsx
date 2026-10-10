@@ -9,15 +9,23 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useMemo, useState, type FormEvent } from "react";
 import toast from "react-hot-toast";
 import Pagination from "../ui/Pagination";
+import TaskProcessingHistory from "./TaskProcessingHistory";
+import ProcessorOverview from "./ProcessorOverview";
+import {
+  formatTaskDate as formatDate,
+  formatTaskDuration as formatDuration,
+} from "../../lib/taskTiming";
 import {
   useAdminTask,
   useAdminTaskCancel,
   useAdminTaskRerun,
   useAdminTasks,
+  useWorkerProcessors,
   type AdminTask,
 } from "../../lib/queries";
 
 type TaskFilters = {
+  correlationId: string;
   error: string;
   taskType: string;
   status: string;
@@ -27,10 +35,10 @@ type TaskFilters = {
 
 type TimedTask = AdminTask & {
   durationMs: number | null;
-  slowerBaselineMs: number | null;
 };
 
 const emptyFilters: TaskFilters = {
+  correlationId: "",
   error: "",
   taskType: "",
   status: "",
@@ -38,30 +46,24 @@ const emptyFilters: TaskFilters = {
   toDate: "",
 };
 
-const taskTypes = [
-  "email_registration",
-  "email_password_reset",
-  "email_notification",
-  "resize_image",
-  "zip_import",
-  "process_activity_import",
-  "reprocess_activity_import",
-  "reprocess_user_activity_imports",
-  "activity_archive_import",
-  "strava_sync",
-  "rebuild_fitness_freshness",
-  "rebuild_segment_analytics",
-  "regenerate_segment_efforts",
-  "regenerate_user_segments",
-  "backfill_user_xc_training",
-];
-
-export default function TasksPageContent() {
-  const [draft, setDraft] = useState<TaskFilters>(emptyFilters);
-  const [filters, setFilters] = useState<TaskFilters>(emptyFilters);
+export default function TasksPageContent({
+  initialCorrelationId = "",
+}: {
+  initialCorrelationId?: string;
+}) {
+  const processors = useWorkerProcessors();
+  const [draft, setDraft] = useState<TaskFilters>({
+    ...emptyFilters,
+    correlationId: initialCorrelationId,
+  });
+  const [filters, setFilters] = useState<TaskFilters>({
+    ...emptyFilters,
+    correlationId: initialCorrelationId,
+  });
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const query = useAdminTasks({
+    correlationId: filters.correlationId,
     page,
     perPage: 20,
     taskType: filters.taskType,
@@ -74,6 +76,13 @@ export default function TasksPageContent() {
   const cancel = useAdminTaskCancel();
   const rerun = useAdminTaskRerun();
   const tasks = useMemo(() => addDurations(query.data ?? []), [query.data]);
+  const taskTypes = [
+    ...new Set([
+      ...(processors.data?.map((processor) => processor.task_type) ?? []),
+      ...tasks.map((task) => task.task_type),
+      ...(draft.taskType ? [draft.taskType] : []),
+    ]),
+  ].sort();
   const selectedTask = tasks.find((task) => task.id === selectedId);
   const detail = detailQuery.data;
   const total = query.metadata?.total ?? 0;
@@ -123,11 +132,22 @@ export default function TasksPageContent() {
           <h2 className="card-title m-0 text-2xl font-bold">
             Background Tasks
           </h2>
+          <ProcessorOverview />
           <form
             onSubmit={applyFilters}
             className="flex w-full flex-wrap items-center justify-end gap-2 rounded-lg bg-base-200/50 p-2"
           >
             <div className="flex flex-1 flex-wrap justify-end gap-2">
+              <input
+                type="search"
+                aria-label="Request, trace, or pipeline ID"
+                placeholder="Request, trace, or pipeline ID"
+                className="input input-sm w-64"
+                value={draft.correlationId}
+                onChange={(event) =>
+                  setDraftField("correlationId", event.target.value)
+                }
+              />
               <input
                 type="search"
                 aria-label="Filter error text"
@@ -229,14 +249,16 @@ export default function TasksPageContent() {
         ) : null}
         {tasks.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className="table table-zebra w-full min-w-[820px]">
+            <table
+              aria-label="Background task history"
+              className="table table-zebra w-full min-w-[820px]"
+            >
               <thead>
                 <tr>
                   <th>ID</th>
                   <th>Type</th>
                   <th>Status</th>
                   <th>Duration</th>
-                  <th>Trend</th>
                   <th>Attempts</th>
                   <th>Error</th>
                   <th>Created</th>
@@ -265,21 +287,6 @@ export default function TasksPageContent() {
                         }
                       >
                         {formatDuration(task.durationMs)}
-                      </td>
-                      <td>
-                        {task.slowerBaselineMs === null ? (
-                          <span className="text-base-content/50">-</span>
-                        ) : (
-                          <span
-                            className="badge badge-warning badge-sm whitespace-nowrap"
-                            title={
-                              "Slower than visible baseline " +
-                              formatDuration(task.slowerBaselineMs)
-                            }
-                          >
-                            Slower
-                          </span>
-                        )}
                       </td>
                       <td>
                         {task.attempts}/{task.max_attempts}
@@ -405,6 +412,10 @@ export default function TasksPageContent() {
                     value={formatDate(detail.updated_at)}
                   />
                 </dl>
+                <TaskProcessingHistory
+                  detail={detail}
+                  onSelectTask={setSelectedId}
+                />
                 <div className="mt-4 text-sm">
                   <strong>Payload:</strong>
                   <pre className="mt-1 max-h-48 w-full max-w-full overflow-auto rounded bg-base-200 p-2 text-xs">
@@ -443,12 +454,6 @@ function dateBoundary(value: string) {
   return new Date(value).toISOString();
 }
 
-function formatDate(value?: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
-}
-
 function formatPayload(value: unknown) {
   if (value == null) return "—";
   try {
@@ -478,42 +483,6 @@ function durationMs(task: AdminTask) {
     : null;
 }
 
-function formatDuration(value: number | null) {
-  if (value === null) return "";
-  const seconds = Math.max(0, Math.round(value / 1000));
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  if (hours) return String(hours) + "h " + String(minutes) + "m";
-  if (minutes) return String(minutes) + "m " + String(seconds % 60) + "s";
-  return String(seconds) + "s";
-}
-
 function addDurations(tasks: AdminTask[]): TimedTask[] {
-  const timed = tasks.map((task) => ({
-    ...task,
-    durationMs: durationMs(task),
-    slowerBaselineMs: null as number | null,
-  }));
-  const byType = new Map<string, TimedTask[]>();
-  for (const task of timed) {
-    if (task.status !== "completed" || task.durationMs === null) continue;
-    const group = byType.get(task.task_type) ?? [];
-    group.push(task);
-    byType.set(task.task_type, group);
-  }
-  for (const group of byType.values()) {
-    group.sort(
-      (a, b) =>
-        new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-    );
-    for (let index = 2; index < group.length; index += 1) {
-      const baseline =
-        group
-          .slice(0, index)
-          .reduce((sum, task) => sum + (task.durationMs ?? 0), 0) / index;
-      if (baseline > 0 && (group[index].durationMs ?? 0) > baseline * 1.5)
-        group[index].slowerBaselineMs = baseline;
-    }
-  }
-  return timed;
+  return tasks.map((task) => ({ ...task, durationMs: durationMs(task) }));
 }

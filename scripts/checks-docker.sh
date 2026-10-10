@@ -3,6 +3,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 repo="$PWD"
+# Every checkout is mounted at /workspace. Cargo's timestamp fingerprints cannot
+# distinguish two worktrees at that path, so only tool/download caches are shared.
+build_cache="${repo##*/}"
 git_common="$(git rev-parse --path-format=absolute --git-common-dir)"
 docker build --file Dockerfile.checks --tag bike-checks:local \
   --build-arg MISE_IMAGE --build-arg RUST_IMAGE --build-arg DOCKER_CLI_IMAGE .
@@ -17,8 +20,8 @@ docker run --rm --init \
   --env MISE_TRUSTED_CONFIG_PATHS=/workspace --env MISE_YES=1 \
   --env MISE_TASK_RUN_AUTO_INSTALL=true \
   --env CARGO_HOME=/cache/cargo --env RUSTUP_HOME=/cache/rustup \
-  --env CARGO_TARGET_DIR=/cache/target \
-  --env CARGO_LLVM_COV_TARGET_DIR=/cache/target/llvm-cov-target \
+  --env "CARGO_TARGET_DIR=/cache/target/$build_cache" \
+  --env "CARGO_LLVM_COV_TARGET_DIR=/cache/target/$build_cache/llvm-cov-target" \
   --env UV_CACHE_DIR=/cache/uv --env PREK_HOME=/cache/prek \
   --env BIKE_NODE_PACKAGE_CACHE=/cache/node-packages --env BIKE_GO_CACHE=/cache/go \
   --env GOCACHE=/cache/go/go-build --env GOMODCACHE=/cache/go/go-mod \

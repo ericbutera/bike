@@ -1,4 +1,4 @@
-use bike_core::background_jobs::background_tasks;
+use bike_core::background_jobs::diagnostics;
 use bike_core::background_jobs::worker::{
     spawn_metrics_server, TaskWorker, WorkerConfig, WorkerConfigDefaults, WorkerMetrics,
 };
@@ -6,7 +6,6 @@ use bike_core::config::Config;
 use bike_core::observability;
 use bike_core::provider_metrics;
 use prometheus::{register_int_gauge, IntGauge};
-use sea_orm::{ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter};
 use std::sync::Arc;
 use std::time::Duration;
 use worker::tasks::{register_default_processors, register_email_processors};
@@ -37,11 +36,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         "bike_rust_worker_queue_depth",
         "Current number of pending background tasks ready to be claimed."
     )?;
-    spawn_queue_depth_sampler(db.clone(), queue_depth);
     worker::tasks::spawn_heatmap_reconciliation(db.clone());
     let task_types = worker.registered_task_types();
-    let task_type_refs: Vec<&str> = task_types.iter().map(String::as_str).collect();
-    metrics.warmup_task_types(&task_type_refs);
+    let _queue_sampler =
+        start_queue_diagnostics(db.clone(), queue_depth, metrics.clone(), task_types).await?;
     spawn_metrics_server(worker_config.metrics_port, metrics.clone());
     let worker = worker.with_metrics(metrics);
 
@@ -51,23 +49,53 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     Ok(())
 }
 
-fn spawn_queue_depth_sampler(db: sea_orm::DatabaseConnection, queue_depth: IntGauge) {
+async fn start_queue_diagnostics(
+    db: sea_orm::DatabaseConnection,
+    queue_depth: IntGauge,
+    metrics: Arc<WorkerMetrics>,
+    task_types: Vec<String>,
+) -> Result<tokio::task::JoinHandle<()>, sea_orm::DbErr> {
+    let task_type_refs: Vec<&str> = task_types.iter().map(String::as_str).collect();
+    metrics.warmup_task_types(&task_type_refs);
+    bike_core::background_jobs::entities::processor_registry::Model::register(&db, &task_types)
+        .await?;
+    Ok(spawn_queue_depth_sampler(
+        db,
+        queue_depth,
+        metrics,
+        task_types,
+    ))
+}
+
+fn spawn_queue_depth_sampler(
+    db: sea_orm::DatabaseConnection,
+    queue_depth: IntGauge,
+    metrics: Arc<WorkerMetrics>,
+    task_types: Vec<String>,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
+        let mut last_retention = tokio::time::Instant::now();
         loop {
-            let ready = background_tasks::Entity::find()
-                .filter(background_tasks::Column::Status.eq("pending"))
-                .filter(
-                    Condition::any()
-                        .add(background_tasks::Column::ScheduledFor.is_null())
-                        .add(background_tasks::Column::ScheduledFor.lte(chrono::Utc::now())),
-                )
-                .count(&db)
-                .await;
+            let ready = diagnostics::ready_count(&db).await;
             match ready {
                 Ok(count) => queue_depth.set(count.min(i64::MAX as u64) as i64),
                 Err(error) => tracing::warn!(%error, "failed to sample worker queue depth"),
             }
+            if let Err(error) = diagnostics::sample(&db, &metrics, &task_types).await {
+                tracing::error!(%error, "failed to sample worker diagnostics");
+            }
+            if last_retention.elapsed() >= Duration::from_secs(3600) {
+                if let Err(error) = diagnostics::retain(&db).await {
+                    tracing::error!(%error,"failed to retain worker diagnostics");
+                }
+                last_retention = tokio::time::Instant::now();
+            }
             tokio::time::sleep(Duration::from_secs(15)).await;
         }
-    });
+    })
 }
+
+#[cfg(test)]
+mod pipeline_fixture_tests;
+#[cfg(test)]
+mod sampler_tests;

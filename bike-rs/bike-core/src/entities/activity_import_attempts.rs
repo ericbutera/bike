@@ -9,6 +9,7 @@ pub struct Model {
     pub user_id: i32,
     pub activity_import_id: i32,
     pub activity_id: Option<i32>,
+    pub worker_task_id: Option<i32>,
     pub status: String,
     pub requested_stage: String,
     pub start_stage: String,
@@ -30,6 +31,25 @@ pub enum Relation {}
 impl ActiveModelBehavior for ActiveModel {}
 
 impl Entity {
+    pub async fn for_worker_metadata(
+        db: &impl ConnectionTrait,
+        task_id: i32,
+    ) -> Result<Vec<Model>, DbErr> {
+        Self::find()
+            .select_only()
+            .columns(
+                Column::iter().filter(|column| {
+                    !matches!(column, Column::CheckpointJson | Column::SourceJson)
+                }),
+            )
+            .expr_as(Expr::value(None::<Json>), Column::CheckpointJson)
+            .expr_as(Expr::value(serde_json::json!({})), Column::SourceJson)
+            .filter(Column::WorkerTaskId.eq(task_id))
+            .order_by_asc(Column::Id)
+            .limit(100)
+            .all(db)
+            .await
+    }
     pub async fn recent_metadata(
         db: &impl ConnectionTrait,
         user_id: i32,
