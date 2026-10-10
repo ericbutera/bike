@@ -10,6 +10,7 @@ import (
 	"github.com/ericbutera/bike/map-renderer/internal/render"
 	"github.com/samber/lo"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/filters"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
@@ -27,7 +28,7 @@ type Server struct {
 
 func New(renderer *render.Renderer, token auth.Token, metrics *observability.Metrics) *grpc.Server {
 	server := grpc.NewServer(grpc.MaxRecvMsgSize(10_000_000), grpc.MaxSendMsgSize(20_000_000),
-		grpc.StatsHandler(otelgrpc.NewServerHandler()))
+		grpc.StatsHandler(otelgrpc.NewServerHandler(otelgrpc.WithFilter(filters.Not(filters.HealthCheck())))))
 	mapsv1.RegisterMapServiceServer(server, &Server{renderer: renderer, token: token, metrics: metrics})
 	readiness := health.NewServer()
 	readiness.SetServingStatus("bike.maps.v1.MapService", grpc_health_v1.HealthCheckResponse_SERVING)
@@ -37,7 +38,12 @@ func New(renderer *render.Renderer, token auth.Token, metrics *observability.Met
 
 func (s *Server) Render(ctx context.Context, input *mapsv1.RenderMapRequest) (response *mapsv1.RenderMapResponse, err error) {
 	started := time.Now()
-	defer func() { s.metrics.GRPC(int(status.Code(err)), started) }()
+	defer func() {
+		code := int(status.Code(err))
+		s.metrics.GRPC(code, started)
+		observability.Info(ctx, "Map render RPC completed", "rpc_method", mapsv1.MapService_Render_FullMethodName,
+			"status_code", code, "duration_ms", time.Since(started).Milliseconds())
+	}()
 	md, _ := metadata.FromIncomingContext(ctx)
 	if !s.token.Authorized(first(md.Get("authorization"))) {
 		return nil, status.Error(codes.Unauthenticated, "Unauthorized")

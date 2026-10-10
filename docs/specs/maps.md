@@ -174,6 +174,13 @@ An explicit `OTEL_SDK_DISABLED=true` disables tracing independently of export.
   gRPC status, and errors. Queue telemetry records waiting time separately from
   browser rendering. Coordinates and service credentials are excluded from
   RPC and render spans and metric labels.
+- Worker startup and every render RPC completion emit JSON logs with service,
+  version, and environment. Completion logs include method, numeric gRPC status,
+  duration in milliseconds, and trace/span IDs when tracing is enabled, including
+  successful, rejected, and failed requests. Logs exclude credentials and route
+  coordinates. The map dashboard exposes API and Chrome worker logs separately.
+- Health RPCs, including `Check` and `Watch`, do not create spans or request logs.
+  Metrics scrapes and the API health/readiness routes also remain untraced.
 - Both processes export OTLP when `OTEL_TRACES_EXPORTER=otlp` and
   `OTEL_EXPORTER_OTLP_ENDPOINT` selects a collector. Local export defaults to
   `none`; [the development guide](../development.md#inspect-traces) enables

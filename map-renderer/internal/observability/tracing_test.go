@@ -70,3 +70,17 @@ func TestErrorLogsContainTraceIdentity(t *testing.T) {
 	require.Len(t, exporter.GetSpans(), 1)
 	require.NoError(t, provider.Shutdown(context.Background()))
 }
+
+func TestInfoLogsWithoutTracingRemainVisible(t *testing.T) {
+	var output bytes.Buffer
+	logger := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(logger) })
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
+	Info(context.Background(), "Map snapshot worker ready", "metrics_port", 9090)
+	var record map[string]any
+	require.NoError(t, json.Unmarshal(output.Bytes(), &record))
+	require.Equal(t, "INFO", record["level"])
+	require.Equal(t, "Map snapshot worker ready", record["msg"])
+	require.Equal(t, float64(9090), record["metrics_port"])
+	require.NotContains(t, record, "trace_id")
+}
