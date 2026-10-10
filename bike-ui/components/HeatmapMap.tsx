@@ -124,6 +124,7 @@ export default function HeatmapMap({
         (localCenter ? DEFAULT_HEATMAP_ZOOM : HEATMAP_LOADING_CAMERA.zoom),
       minZoom: 0,
       maxZoom: 18,
+      trackResize: true,
       attributionControl: false,
     });
     map.current = instance;
@@ -324,10 +325,7 @@ export default function HeatmapMap({
         );
     });
     instance.on("movestart", () => current.current.onMapMoveStart());
-    const observer = new ResizeObserver(() => instance.resize());
-    observer.observe(container.current!);
     return () => {
-      observer.disconnect();
       instance.remove();
       map.current = null;
       styleReady.current = false;

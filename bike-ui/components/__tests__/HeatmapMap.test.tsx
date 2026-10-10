@@ -206,19 +206,14 @@ beforeEach(() => {
 });
 
 describe("heatmap overlay lifecycle", () => {
-  it("resizes with its container and stops observing before removing the map", () => {
+  it("lets MapLibre track container size without a second resize observer", () => {
     const { unmount } = render(<HeatmapMap {...props} />);
-    expect(mocks.observe).toHaveBeenCalledWith(
-      mocks.create.mock.calls[0][0].container,
+    expect(mocks.create).toHaveBeenCalledWith(
+      expect.objectContaining({ trackResize: true }),
     );
-    act(() => mocks.onResize!());
-    expect(mocks.resize).toHaveBeenCalledOnce();
+    expect(mocks.observe).not.toHaveBeenCalled();
     unmount();
-    expect(mocks.disconnect).toHaveBeenCalledOnce();
     expect(mocks.remove).toHaveBeenCalledOnce();
-    expect(mocks.disconnect.mock.invocationCallOrder[0]).toBeLessThan(
-      mocks.remove.mock.invocationCallOrder[0],
-    );
   });
   it("clusters route centers into low-zoom zone markers", () => {
     render(<HeatmapMap {...props} />);
