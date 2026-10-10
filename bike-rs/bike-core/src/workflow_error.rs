@@ -102,6 +102,12 @@ impl From<sea_orm::DbErr> for WorkflowError {
     }
 }
 
+impl From<crate::background_jobs::TaskError> for WorkflowError {
+    fn from(error: crate::background_jobs::TaskError) -> Self {
+        Self::internal(error.to_string())
+    }
+}
+
 impl From<std::io::Error> for WorkflowError {
     fn from(error: std::io::Error) -> Self {
         tracing::error!(error = ?error, "file storage request failed");

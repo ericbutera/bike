@@ -195,6 +195,9 @@ for (const target of targets) {
       page.getByRole("button", { name: /Raw stored completed/ }),
     ).toBeVisible();
     expect(api.unexpected).toEqual([]);
+    expect(api.requests.filter((path) => path.startsWith("/admin/"))).toEqual(
+      [],
+    );
     expect(diagnostics).toEqual([]);
     await stabilize(page);
     await page.screenshot({

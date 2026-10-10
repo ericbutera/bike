@@ -1,5 +1,6 @@
 "use client";
 
+import ActivityPipelines from "@/components/admin/ActivityPipelines";
 import ActivityImportTracePanel from "@/components/activity-detail/ActivityImportTracePanel";
 import {
   type AdminActivity,
@@ -104,17 +105,8 @@ function AdminActivitiesContent() {
           <button
             type="button"
             className="btn btn-ghost btn-square btn-sm"
-            aria-label={
-              activity.activity_import_id
-                ? `View import trace for ${activity.title}`
-                : `${activity.title} has no linked import trace`
-            }
-            disabled={!activity.activity_import_id}
-            title={
-              activity.activity_import_id
-                ? "View import DAG and events"
-                : "No linked import"
-            }
+            aria-label={`View processing pipeline for ${activity.title}`}
+            title="View processing pipeline, timings and import history"
             onClick={() => {
               setSelectedActivity(activity);
             }}
@@ -196,7 +188,7 @@ function ActivityImportTraceModal({
       <div className="modal-box max-w-5xl">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold">Import trace</h2>
+            <h2 className="text-lg font-semibold">Activity processing</h2>
             {activity?.activity_import_id ? (
               <p className="mt-1 text-sm text-base-content/65">
                 Activity #{activity.id} · import #{activity.activity_import_id}
@@ -216,6 +208,7 @@ function ActivityImportTraceModal({
         </div>
 
         <div className="mt-6">
+          {activity ? <ActivityPipelines activityId={activity.id} /> : null}
           <ActivityImportTracePanel
             trace={trace}
             isLoading={isLoading}

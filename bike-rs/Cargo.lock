@@ -575,6 +575,7 @@ dependencies = [
  "lettre",
  "log",
  "lru",
+ "migration",
  "oauth2 4.4.2",
  "once_cell",
  "open-feature",

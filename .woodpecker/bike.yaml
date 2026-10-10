@@ -70,8 +70,11 @@ steps:
       TEST_MODE: "1"
       CARGO_HOME: /cache/bike/cargo
       RUSTUP_HOME: /cache/bike/rustup
-      CARGO_TARGET_DIR: /cache/bike/target
-      CARGO_LLVM_COV_TARGET_DIR: /cache/bike/target/llvm-cov-target
+      # Branches share download caches, but not objects collected for coverage.
+      # Every runner mounts /woodpecker/src; cross-branch timestamp fingerprints
+      # can otherwise retain objects for source files absent from this revision.
+      CARGO_TARGET_DIR: /cache/bike/target/${CI_COMMIT_REF}
+      CARGO_LLVM_COV_TARGET_DIR: /cache/bike/target/${CI_COMMIT_REF}/llvm-cov-target
     volumes:
       - woodpecker-cache:/cache
     commands:

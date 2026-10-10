@@ -38,6 +38,7 @@ services:
   - name: docker
     image: localhost:32500/bike-e2e-engine:${CI_COMMIT_SHA}
     privileged: true
+    ports: [5432]
     environment:
       BIKE_E2E_ENGINE_STATE_DIR: &engine_state /woodpecker/src/.artifacts/dind-state
     commands:
@@ -58,7 +59,21 @@ steps:
     commands:
       - mise run ci:mise:prepare
 
+  - name: test-worker-postgres
+    failure: fail
+    image: localhost:32500/bike-checks:${CI_COMMIT_SHA}
+    environment:
+      <<: *mise_environment
+      DOCKER_HOST: unix:///woodpecker/src/.artifacts/dind-state/docker.sock
+      CARGO_HOME: /cache/bike/cargo
+      RUSTUP_HOME: /cache/bike/rustup
+      CARGO_TARGET_DIR: /cache/bike/target/${CI_COMMIT_REF}
+    volumes: *mise_cache
+    commands:
+      - mise run ci:workers:postgres
+
   - name: test-ui-e2e
+    depends_on: [test-worker-postgres]
     failure: fail
     image: localhost:32500/bike-e2e:${CI_COMMIT_SHA}
     environment:

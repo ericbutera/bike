@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use bike_core::archive_import::process_activity_archive_import_job;
+use bike_core::archive_import::queue_archive_page;
 use bike_core::background_jobs::worker::TaskProcessor;
 use bike_core::config::Config;
 use bike_core::jobs::ActivityArchiveImportTask;
@@ -28,15 +28,23 @@ impl TaskProcessor for ActivityArchiveImport {
 
     async fn process(
         &self,
-        _task_id: i32,
+        task_id: i32,
         payload: serde_json::Value,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let data = payload.get("data").unwrap_or(&payload);
         let task: ActivityArchiveImportTask = serde_json::from_value(data.clone())?;
 
-        process_activity_archive_import_job(&self.db, &self.uploads_dir, task.job_id)
-            .await
-            .map_err(|error| std::io::Error::other(error.message))?;
+        queue_archive_page(
+            &self.db,
+            &self.uploads_dir,
+            task_id,
+            task.job_id,
+            data["batch_id"]
+                .as_i64()
+                .and_then(|id| i32::try_from(id).ok()),
+        )
+        .await
+        .map_err(|error| std::io::Error::other(error.message))?;
 
         Ok(())
     }

@@ -35,18 +35,39 @@ async fn upload(app: &Router, bytes: &[u8]) -> Value {
     .unwrap()
 }
 
-async fn await_outcome(app: &Router, id: i64, outcome: &str) -> Value {
-    tokio::time::timeout(Duration::from_secs(10), async {
+async fn await_outcome(
+    app: &Router,
+    db: &sea_orm::DatabaseConnection,
+    id: i64,
+    outcome: &str,
+) -> Value {
+    let result = tokio::time::timeout(Duration::from_secs(10), async {
         loop {
             let trace = get_json(app, &format!("/api/activity-imports/{id}/trace")).await;
             if trace["import"]["status"] == outcome {
                 return trace;
             }
+            assert!(
+                trace["import"]["status"] != "failed",
+                "Import failed before {outcome}: {}",
+                trace["import"]["processing_error"]
+            );
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
     })
-    .await
-    .expect("worker completes ingestion")
+    .await;
+    match result {
+        Ok(trace) => trace,
+        Err(_) => {
+            let tasks = bike_core::background_jobs::background_tasks::Model::metadata_query()
+                .into_model::<bike_core::background_jobs::entities::diagnostic_reads::TaskMetadata>(
+                )
+                .all(db)
+                .await
+                .unwrap();
+            panic!("Worker did not complete {outcome}: {tasks:?}");
+        }
+    }
 }
 
 fn start_worker(db: sea_orm::DatabaseConnection, dir: String) -> tokio::task::JoinHandle<()> {
@@ -88,7 +109,7 @@ async fn owner_upload_worker_trace_and_replay_run_to_completion() {
         .iter()
         .all(|node| node["status"] == "pending"));
     let worker = start_worker(db.clone(), dir.display().to_string());
-    let first = await_outcome(&app, id, "processed").await;
+    let first = await_outcome(&app, &db, id, "processed").await;
     assert_eq!(first["nodes"][1]["summary"][0], "Parsed 7 records");
     assert!(first["nodes"][0]["summary"][0]
         .as_str()
@@ -113,7 +134,7 @@ async fn owner_upload_worker_trace_and_replay_run_to_completion() {
         202,
     )
     .await;
-    let replayed = await_outcome(&app, id, "processed").await;
+    let replayed = await_outcome(&app, &db, id, "processed").await;
     assert_eq!(
         replayed["import"]["activity_id"],
         first["import"]["activity_id"]

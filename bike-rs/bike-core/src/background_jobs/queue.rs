@@ -43,7 +43,8 @@ impl<S: TaskStorage> TaskQueue<S> {
         let span_for_records = span.clone();
 
         async move {
-            let payload = serde_json::to_value(&task)?;
+            let mut payload = serde_json::to_value(&task)?;
+            super::pipeline::PipelineContext::attach(&mut payload)?;
 
             let task_record = self
                 .storage

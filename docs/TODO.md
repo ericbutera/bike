@@ -24,7 +24,7 @@ Keep private activity data out of committed reports and fixtures.
   data, not a rider login or provider synchronization. Pulumi emitted transient
   rollout and successful migration-container warnings; runtime logs were clean.
 
-**WORK01 — Proposed:** Deliver received-to-available pipeline visibility using the
+**WORK01 — Draft review:** Deliver received-to-available pipeline visibility using the
 existing worker. Follow the [visibility plan](plans/pipeline-visibility.md):
 connect all processors and gateway work with durable run/attempt lineage,
 persisted original-receipt timestamps and request/trace IDs; show full DAG/timing
@@ -34,8 +34,13 @@ work amplification, load/capacity and redundant heatmap/fitness/segment rebuilds
 update provisioned Grafana dashboards with distributions, worker health and
 individual anomalous runs; refactor meaningful queue boundaries; verify live
 correlation, diagnostic links, panel queries and alerts.
-The [current flow diagrams](plans/worker-current-flows.md) document existing
-triggers and handoffs. Implementation has not started.
+The [flow diagrams](plans/worker-current-flows.md) show the reviewed implementation
+and the dated source audit. The draft includes gateway receipt propagation,
+durable attempts, inline stages and activity DAGs, revision-matched readiness,
+processor/work-volume metrics, persisted anomalies, provisioned dashboards and
+bounded scheduling barriers. Focused regressions live in Bike's existing test
+paths; CI is the primary full validation gate. Deployment and live operational
+acceptance remain pending review and integration.
 
 Deployment simplification is implemented locally: `mise run ci:deploy` clones
 IaC once, compiles the consolidated Bike Pulumi program once, and applies all

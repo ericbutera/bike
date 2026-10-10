@@ -59,6 +59,7 @@ uuid = { workspace = true }
 tonic-prost-build = "0.14.6"
 
 [dev-dependencies]
+migration = { path = "../migration" }
 opentelemetry_sdk = { workspace = true, features = ["testing"] }
 tokio-stream = { version = "0.1", features = ["net"] }
 tempfile = "3.27.0"

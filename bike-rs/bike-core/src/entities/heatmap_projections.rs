@@ -10,6 +10,7 @@ pub struct Model {
     pub status: String,
     pub projection_version: i32,
     pub queued_at: Option<DateTimeUtc>,
+    pub published_at: Option<DateTimeUtc>,
     pub error: Option<String>,
     pub min_x: Option<f64>,
     pub min_y: Option<f64>,

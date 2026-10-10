@@ -1798,8 +1798,10 @@ pub(crate) async fn delete_strava_activity(
     let changed_at = Utc::now();
     mark_user_fitness_dirty(db, user_id, fitness_dirty_from_day, changed_at).await?;
     mark_segment_activity_changes(db, &affected_segment_ids, changed_at).await?;
-    tasks.rebuild_fitness_freshness(user_id).await;
-    tasks.rebuild_segment_analytics(affected_segment_ids).await;
+    tasks.rebuild_fitness_freshness(user_id).await?;
+    tasks
+        .rebuild_segment_analytics(affected_segment_ids)
+        .await?;
 
     Ok(())
 }
@@ -2218,6 +2220,7 @@ mod tests {
         db.execute(&schema.create_table_from_entity(integration_events_entity::Entity))
             .await
             .expect("create integration events table");
+        crate::background_jobs::history_tests::diagnostic_tables(&db).await;
 
         db
     }
@@ -2274,6 +2277,7 @@ mod tests {
 
     fn test_config() -> Config {
         Config {
+            grafana_url: None,
             environment: "test".to_string(),
             database_url: "postgres://localhost/test".to_string(),
             frontend_url: "http://localhost:3001".to_string(),

@@ -56,6 +56,30 @@ run = [
   "cargo test --workspace --locked --doc",
 ]
 
+[tasks."test:workers"]
+description = "Run focused queue, pipeline history, and worker metric regressions"
+env = { RUSTFLAGS = "-D warnings" }
+run = [
+  "cargo test -p bike-core --lib background_jobs",
+  "cargo test -p bike-core --lib strava_gateway_delivery::intent",
+  "cargo test -p bike-core --lib analytics::tests::stale",
+  "cargo test -p bike-core --lib queued_archive",
+  "cargo test -p worker --lib pipeline_",
+  "cargo test -p worker --bin worker pipeline_sampler",
+  "cargo test -p api --lib controllers::strava_gateway::tests",
+  "cargo test -p api --lib request_receipt_and_id_are_preserved_in_enqueued_work",
+  "cargo test -p api --lib load_cached_rows_for_request_rebuilds_dirty_cache_before_returning",
+  "cargo test -p api --test platform owner_upload_worker_trace_and_replay_run_to_completion",
+]
+
+[tasks."test:workers:postgres"]
+description = "Verify pipeline migration, concurrent claims, and retry history in disposable PostgreSQL"
+env = { RUSTFLAGS = "-D warnings" }
+run = '''
+: "${BIKE_WORKER_TEST_DATABASE_URL:?Set this to a disposable PostgreSQL database}"
+cargo test -p bike-core --test worker_history_postgres -- --ignored --nocapture
+'''
+
 [tasks.coverage]
 description = "Run Rust tests once and generate HTML, LCOV, and JSON coverage reports"
 env = { RUSTFLAGS = "-D warnings", CARGO_LLVM_COV_DENY_WARNINGS = "1" }

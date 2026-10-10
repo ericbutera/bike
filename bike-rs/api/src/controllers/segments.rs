@@ -472,7 +472,7 @@ pub async fn list_segments(
         state
             .tasks
             .rebuild_segment_analytics(stale_segment_ids)
-            .await;
+            .await?;
     }
 
     Ok(Json(segment_list_responses(

@@ -40,9 +40,16 @@ function "cache_to" {
 }
 
 group "default" {
-  targets = ["api", "worker", "ui", "maps", "strava-gateway", "e2e", "e2e-engine"]
+  targets = ["api", "worker", "ui", "maps", "strava-gateway", "e2e", "e2e-engine", "checks"]
 }
 group "rust" { targets = ["api", "worker"] }
+target "checks" {
+  dockerfile = "Dockerfile.checks"
+  args = { MISE_IMAGE = MISE_IMAGE, RUST_IMAGE = RUST_IMAGE, DOCKER_CLI_IMAGE = DOCKER_CLI_IMAGE }
+  tags = [image("checks")]
+  cache-from = cache_from("checks")
+  cache-to = cache_to("checks")
+}
 group "e2e-runtime" { targets = ["api", "ui", "maps", "e2e"] }
 
 target "_rust" {

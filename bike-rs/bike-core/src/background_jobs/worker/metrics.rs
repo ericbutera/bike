@@ -7,6 +7,12 @@ use prometheus::{
 };
 use std::sync::Arc;
 
+mod diagnostics;
+pub(super) const DURATION_BUCKETS: &[f64] = &[
+    0.01, 0.05, 0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0, 1800.0, 3600.0,
+    7200.0, 14400.0, 86400.0,
+];
+
 pub struct WorkerMetrics {
     registry: Registry,
     tasks_completed: IntCounterVec,
@@ -14,6 +20,7 @@ pub struct WorkerMetrics {
     task_invocations: IntCounterVec,
     task_processing_lag: HistogramVec,
     task_duration_seconds: HistogramVec,
+    diagnostics: diagnostics::DiagnosticMetrics,
 }
 
 impl WorkerMetrics {
@@ -59,7 +66,7 @@ impl WorkerMetrics {
                 "task_processing_lag_seconds",
                 "Time from task creation to processing start in seconds",
             )
-            .buckets(vec![0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0, 300.0, 600.0]),
+            .buckets(DURATION_BUCKETS.to_vec()),
             &["type"],
         )
         .expect("failed to create task_processing_lag metric");
@@ -72,7 +79,7 @@ impl WorkerMetrics {
                 "task_duration_seconds",
                 "Task execution duration in seconds",
             )
-            .buckets(vec![0.01, 0.05, 0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0]),
+            .buckets(DURATION_BUCKETS.to_vec()),
             &["type"],
         )
         .expect("failed to create task_duration_seconds metric");
@@ -81,6 +88,7 @@ impl WorkerMetrics {
             .expect("failed to register task_duration_seconds metric");
 
         Self {
+            diagnostics: diagnostics::DiagnosticMetrics::new(&registry),
             registry,
             tasks_completed,
             tasks_failed,
@@ -91,6 +99,7 @@ impl WorkerMetrics {
     }
 
     pub fn warmup_task_types(&self, task_types: &[&str]) {
+        self.diagnostics.warmup(task_types);
         for task_type in task_types {
             self.tasks_completed
                 .with_label_values(&[*task_type])
@@ -99,12 +108,8 @@ impl WorkerMetrics {
             self.task_invocations
                 .with_label_values(&[*task_type])
                 .inc_by(0);
-            self.task_processing_lag
-                .with_label_values(&[*task_type])
-                .observe(0.0);
-            self.task_duration_seconds
-                .with_label_values(&[*task_type])
-                .observe(0.0);
+            self.task_processing_lag.with_label_values(&[*task_type]);
+            self.task_duration_seconds.with_label_values(&[*task_type]);
         }
     }
 

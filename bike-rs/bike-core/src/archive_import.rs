@@ -28,6 +28,10 @@ use tokio::net::lookup_host;
 use utoipa::ToSchema;
 use uuid::Uuid;
 use zip::ZipArchive;
+mod batch;
+#[cfg(test)]
+mod queued_tests;
+pub use batch::{finish_queued_archive_batch, queue_archive_page};
 
 const MAX_ARCHIVE_REDIRECTS: usize = 5;
 // Bound nested ZIPs and decoded activities independently; descriptors never
@@ -1206,7 +1210,7 @@ mod tests {
             .join(file_name)
     }
 
-    fn write_test_archive(entries: &[(&str, &[u8])]) -> std::path::PathBuf {
+    pub(super) fn write_test_archive(entries: &[(&str, &[u8])]) -> std::path::PathBuf {
         let archive_path =
             std::env::temp_dir().join(format!("bike-archive-import-{}.zip", uuid::Uuid::new_v4()));
         let file = std::fs::File::create(&archive_path).expect("create archive file");
@@ -1224,12 +1228,13 @@ mod tests {
         archive_path
     }
 
-    async fn test_db() -> DatabaseConnection {
+    pub(super) async fn test_db() -> DatabaseConnection {
         let db = Database::connect("sqlite::memory:")
             .await
             .expect("in-memory db");
 
         let schema = Schema::new(db.get_database_backend());
+        crate::background_jobs::history_tests::diagnostic_tables(&db).await;
         db.execute(&schema.create_table_from_entity(activities::Entity))
             .await
             .expect("create activities table");
@@ -1279,7 +1284,7 @@ mod tests {
             .unwrap();
     }
 
-    fn test_uploads_dir() -> String {
+    pub(super) fn test_uploads_dir() -> String {
         let uploads_dir = std::env::temp_dir().join(format!(
             "bike-archive-import-uploads-{}",
             uuid::Uuid::new_v4()

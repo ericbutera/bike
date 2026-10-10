@@ -5,9 +5,12 @@ use axum::extract::{DefaultBodyLimit, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::post;
 use axum::{Json, Router};
+use bike_core::background_jobs::pipeline::PipelineContext;
 use bike_core::config::Config;
-use bike_core::entities::strava_gateway::{Claim, Receipt};
-use bike_core::strava_gateway_delivery::{self, GatewayPayload};
+use bike_core::strava_gateway_delivery::{
+    intent::{self, DeliverySource},
+    GatewayPayload,
+};
 use chrono::Utc;
 use hmac::{Hmac, Mac};
 use serde::Deserialize;
@@ -29,6 +32,8 @@ struct Envelope {
     operation: String,
     content_sha256: Option<String>,
     payload: Option<Box<RawValue>>,
+    #[serde(default)]
+    pipeline: Option<PipelineContext>,
 }
 
 pub fn routes() -> Router<Arc<AppStorage>> {
@@ -57,54 +62,87 @@ async fn deliver(
     let envelope: Envelope = serde_json::from_slice(&body)
         .map_err(|_| AppError::bad_request("Invalid Strava gateway delivery"))?;
     validate_envelope(&envelope, &headers)?;
-    let payload = if envelope.operation == "upsert" {
-        let raw = envelope
-            .payload
-            .as_ref()
-            .ok_or_else(|| AppError::bad_request("Missing Strava activity payload"))?;
-        let actual = Sha256::digest(raw.get().as_bytes());
-        let expected = envelope
-            .content_sha256
-            .as_deref()
-            .and_then(|value| hex::decode(value).ok())
-            .ok_or_else(|| AppError::bad_request("Invalid Strava activity hash"))?;
-        if expected.as_slice() != actual.as_slice() {
-            return Err(AppError::bad_request(
-                "Strava activity hash does not match payload",
-            ));
-        }
-        Some(
-            serde_json::from_str::<GatewayPayload>(raw.get())
-                .map_err(|_| AppError::bad_request("Invalid Strava activity payload"))?,
-        )
-    } else {
-        None
-    };
-    let receipt = Receipt {
-        delivery_id: &envelope.delivery_id,
-        athlete_id: envelope.athlete_id,
-        user_id: i32::try_from(envelope.site_user_id)
-            .map_err(|_| AppError::bad_request("Invalid Bike user ID"))?,
-        activity_id: envelope.activity_id,
-        event_time: envelope.event_time,
-        operation: &envelope.operation,
-    };
-    match strava_gateway_delivery::receive(
-        &state.db,
-        &state.tasks,
-        &state.uploads_dir,
-        &receipt,
-        payload,
-    )
-    .await?
+    let context = envelope.pipeline.clone().or_else(PipelineContext::current);
+    let source = envelope.into_source()?;
+    if let Some(carrier) = context
+        .as_ref()
+        .and_then(|context| context.trace_context.as_ref())
     {
-        Claim::Acquired => Ok((StatusCode::OK, Json(json!({"status":"applied"})))),
-        Claim::Completed => Ok((StatusCode::OK, Json(json!({"status":"already_applied"})))),
-        Claim::Busy => Err(AppError::internal("Strava delivery is already processing")),
+        bike_core::observability::set_span_parent_from_carrier(
+            &tracing::Span::current(),
+            Some(carrier),
+        );
+    }
+    let accepted = PipelineContext::scope(context, intent::accept(&state.db, source)).await?;
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(json!({"status":if accepted{"queued"}else{"already_accepted"}})),
+    ))
+}
+
+impl Envelope {
+    /// Validate the signed provider content before handing its owned source to
+    /// the durable queue. Parsing here does not execute the ingestion workflow.
+    fn into_source(self) -> Result<DeliverySource, AppError> {
+        let payload = if self.operation == "upsert" {
+            let raw = self
+                .payload
+                .as_ref()
+                .ok_or_else(|| AppError::bad_request("Missing Strava activity payload"))?;
+            let actual = Sha256::digest(raw.get().as_bytes());
+            let expected = self
+                .content_sha256
+                .as_deref()
+                .and_then(|value| hex::decode(value).ok())
+                .ok_or_else(|| AppError::bad_request("Invalid Strava activity hash"))?;
+            if expected.as_slice() != actual.as_slice() {
+                return Err(AppError::bad_request(
+                    "Strava activity hash does not match payload",
+                ));
+            }
+            Some(
+                serde_json::from_str::<GatewayPayload>(raw.get())
+                    .map_err(|_| AppError::bad_request("Invalid Strava activity payload"))?,
+            )
+        } else {
+            None
+        };
+        if let Some(payload) = &payload {
+            if payload.activity.id != self.activity_id {
+                return Err(AppError::bad_request(
+                    "Strava activity ID does not match delivery",
+                ));
+            }
+        }
+        drop(payload);
+        Ok(DeliverySource {
+            delivery_id: self.delivery_id,
+            athlete_id: self.athlete_id,
+            user_id: i32::try_from(self.site_user_id)
+                .map_err(|_| AppError::bad_request("Invalid Bike user ID"))?,
+            activity_id: self.activity_id,
+            event_time: self.event_time,
+            operation: self.operation,
+            payload: self
+                .payload
+                .map(|raw| serde_json::from_str(raw.get()))
+                .transpose()
+                .map_err(|_| AppError::bad_request("Invalid source"))?,
+        })
     }
 }
 
 fn validate_envelope(envelope: &Envelope, headers: &HeaderMap) -> Result<(), AppError> {
+    if let Some(origin) = &envelope.pipeline {
+        if uuid::Uuid::parse_str(&origin.run_id).is_err()
+            || !["strava_webhook", "strava_sync"].contains(&origin.entrypoint.as_str())
+            || origin.parent_task_id.is_some()
+            || origin.pipeline_started_at.timestamp() <= 0
+            || origin.pipeline_started_at > Utc::now() + chrono::Duration::minutes(5)
+        {
+            return Err(AppError::bad_request("Invalid signed pipeline origin"));
+        }
+    }
     if envelope.version != 1
         || envelope.athlete_id <= 0
         || envelope.site_user_id <= 0
@@ -155,10 +193,74 @@ fn valid_signature(headers: &HeaderMap, body: &[u8], secret: &str, now: i64) -> 
 
 #[cfg(test)]
 mod tests {
-    use super::valid_signature;
+    use super::*;
     use axum::http::HeaderMap;
     use hmac::{Hmac, Mac};
     use sha2::Sha256;
+
+    fn envelope() -> Envelope {
+        serde_json::from_value(json!({
+            "version":1,"delivery_id":"rust:3","athlete_id":7,"site_user_id":7,
+            "activity_id":42,"event_time":1,"operation":"delete",
+            "pipeline":PipelineContext::received("strava_webhook",Some("request".into())),
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn signed_origins_reject_forged_parents_entrypoints_and_receipt_clocks() {
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Bike-Delivery-ID", "rust:3".parse().unwrap());
+        validate_envelope(&envelope(), &headers).unwrap();
+        for change in ["parent", "entrypoint", "clock"] {
+            let mut received = envelope();
+            let origin = received.pipeline.as_mut().unwrap();
+            match change {
+                "parent" => origin.parent_task_id = Some(1),
+                "entrypoint" => origin.entrypoint = "untrusted".into(),
+                _ => origin.pipeline_started_at = chrono::DateTime::from_timestamp(0, 0).unwrap(),
+            }
+            assert!(validate_envelope(&received, &headers).is_err());
+        }
+    }
+
+    #[test]
+    fn owned_source_validates_provider_hash_and_identity_before_queueing() {
+        let deleted = envelope().into_source().unwrap();
+        assert_eq!(deleted.operation, "delete");
+        assert!(deleted.payload.is_none());
+        let value =
+            json!({"activity":{"id":42,"name":"Fixture ride","start_date":"2026-10-10T12:00:00Z"}});
+        let raw = value.to_string();
+        let mut upsert = envelope();
+        upsert.operation = "upsert".into();
+        upsert.content_sha256 = Some(hex::encode(Sha256::digest(raw.as_bytes())));
+        upsert.payload = Some(RawValue::from_string(raw).unwrap());
+        assert_eq!(upsert.into_source().unwrap().payload, Some(value));
+        let mut bad = envelope();
+        bad.operation = "upsert".into();
+        assert!(bad.into_source().is_err());
+    }
+
+    #[test]
+    fn owned_source_rejects_tampered_hash_mismatched_activity_and_invalid_payload() {
+        for kind in ["hash", "identity", "payload", "encoding"] {
+            let raw = if kind == "payload" { json!({"unexpected":true}) } else {
+                json!({"activity":{"id":42,"name":"Fixture ride","start_date":"2026-10-10T12:00:00Z"}})
+            }.to_string();
+            let mut received = envelope();
+            received.operation = "upsert".into();
+            received.content_sha256 = Some(hex::encode(Sha256::digest(raw.as_bytes())));
+            received.payload = Some(RawValue::from_string(raw).unwrap());
+            match kind {
+                "hash" => received.content_sha256 = Some("00".repeat(32)),
+                "identity" => received.activity_id = 43,
+                "encoding" => received.content_sha256 = Some("invalid".into()),
+                _ => {}
+            }
+            assert!(received.into_source().is_err(), "accepted invalid {kind}");
+        }
+    }
 
     #[test]
     fn signed_delivery_accepts_exact_body_and_rejects_tampering() {

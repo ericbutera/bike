@@ -330,8 +330,10 @@ pub async fn cleanup_duplicate_activities_for_user(
         mark_user_activity_change(db, user_id, changed_at).await?;
     }
     mark_segment_activity_changes(db, &affected_segment_ids, changed_at).await?;
-    tasks.rebuild_fitness_freshness(user_id).await;
-    tasks.rebuild_segment_analytics(affected_segment_ids).await;
+    tasks.rebuild_fitness_freshness(user_id).await?;
+    tasks
+        .rebuild_segment_analytics(affected_segment_ids)
+        .await?;
 
     Ok(DuplicateActivityCleanupSummary {
         duplicate_group_count: cleanup_plan.duplicate_group_count,
@@ -881,6 +883,9 @@ pub async fn process_single_activity_import_reprocessing(
     activity_id: i32,
 ) -> Result<ActivityImportReprocessSummary, AppError> {
     let activity = load_activity_for_reprocessing(db, activity_id).await?;
+    if crate::background_jobs::batches::current().is_some() {
+        return run_single_activity_import_reprocessing(db, uploads_dir, tasks, activity).await;
+    }
     let user_id = activity.user_id;
 
     ensure_user_activity_import_lock_stage(

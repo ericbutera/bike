@@ -1,4 +1,5 @@
 use crate::background_jobs::background_tasks;
+use crate::background_jobs::pipeline::PipelineContext;
 use crate::background_jobs::worker::metrics::WorkerMetrics;
 use crate::background_jobs::worker::processor::TaskProcessor;
 use crate::background_jobs::worker::startup::WorkerStartupHook;
@@ -96,7 +97,11 @@ impl TaskWorker {
     }
 
     async fn backoff(&self, interval: Duration, maximum: Duration) -> Duration {
+        let started = std::time::Instant::now();
         tokio::time::sleep(interval).await;
+        if let Some(metrics) = &self.metrics {
+            metrics.record_idle(started.elapsed().as_secs_f64());
+        }
         Duration::from_secs(
             interval
                 .as_secs()
@@ -108,116 +113,243 @@ impl TaskWorker {
 
     async fn process_batch(&self) -> Result<usize, WorkerError> {
         let tasks = background_tasks::Model::find_pending(&self.db, self.batch_size).await?;
-        let count = tasks.len();
-        debug!(count, "Found pending task batch");
+        let mut count = 0;
+        debug!(count = tasks.len(), "Found pending task batch");
 
         for task_model in tasks {
-            if let Err(worker_error) = self.process_task(task_model).await {
-                error!(%worker_error, "Failed to process task");
+            match self.process_task(task_model).await {
+                Ok(true) => count += 1,
+                Ok(false) => (),
+                Err(worker_error) => error!(%worker_error, "Failed to process task"),
             }
         }
 
         Ok(count)
     }
 
-    async fn process_task(&self, task_model: background_tasks::Model) -> Result<(), WorkerError> {
-        let task_id = task_model.id;
-        let task_type = task_model.task_type.clone();
+    async fn process_task(&self, pending: background_tasks::Model) -> Result<bool, WorkerError> {
+        let Some(task) = pending.claim(&self.db).await? else {
+            return Ok(false);
+        };
+        let context = PipelineContext::from_payload(&task.payload);
+        let origin = context.as_ref().ok().and_then(Option::as_ref);
         let task_span = tracing::info_span!(
             "background_task.process",
-            task.id = task_id,
-            task.type = task_type.as_str(),
+            task.id = task.id,
+            task.type = task.task_type.as_str(),
+            task.attempt = task.attempts,
+            pipeline_run_id = origin.map(|context| context.run_id.as_str()),
+            pipeline_started_at = origin.map(|context| context.pipeline_started_at.to_rfc3339()),
+            request_id = origin.and_then(|context| context.request_id.as_deref()),
+            trace_id = tracing::field::Empty,
+            span_id = tracing::field::Empty,
             task.status = tracing::field::Empty,
+            "otel.status_code" = tracing::field::Empty,
+            "otel.status_description" = tracing::field::Empty,
             error = tracing::field::Empty,
         );
-        let task_span_for_records = task_span.clone();
-
-        async move {
-            info!(
-                task_id,
-                task_type = task_type.as_str(),
-                "Starting background task"
-            );
-
-            if let Some(metrics) = &self.metrics {
-                metrics.record_invocation(task_type.as_str());
-                let lag_seconds =
-                    (chrono::Utc::now() - task_model.created_at).num_milliseconds() as f64 / 1000.0;
-                metrics.record_processing_lag(task_type.as_str(), lag_seconds);
-            }
-
-            let task_model = task_model.mark_processing(&self.db).await?;
-            let started_at = std::time::Instant::now();
-            let heartbeat = spawn_processing_heartbeat(
-                self.db.clone(),
-                task_model.id,
-                task_model.task_type.clone(),
-                Duration::from_secs(30),
-            );
-
-            let result = match self.processors.get(task_type.as_str()) {
-                Some(processor) => {
-                    processor
-                        .process(task_model.id, task_model.payload.clone())
-                        .await
-                }
-                None => Err(format!("No processor registered for task type: {}", task_type).into()),
-            };
-            heartbeat.abort();
-
-            if let Some(metrics) = &self.metrics {
-                metrics.record_duration(task_type.as_str(), started_at.elapsed().as_secs_f64());
-            }
-
-            match result {
-                Ok(()) => {
-                    task_span_for_records.record("task.status", "completed");
-                    task_model.mark_completed(&self.db).await?;
-                    info!(
-                        task_id,
-                        task_type = task_type.as_str(),
-                        "Completed background task"
-                    );
-                    if let Some(metrics) = &self.metrics {
-                        metrics.record_completed(task_type.as_str());
-                    }
-                }
-                Err(process_error) => {
-                    let error_message = process_error.to_string();
-                    task_span_for_records.record("task.status", "failed");
-                    task_span_for_records.record("error", error_message.as_str());
-                    task_model
-                        .mark_failed(&self.db, error_message.clone())
-                        .await?;
-                    warn!(
-                        task_id,
-                        task_type = task_type.as_str(),
-                        error = %error_message,
-                        "Failed background task"
-                    );
-                    if let Some(metrics) = &self.metrics {
-                        metrics.record_failed(task_type.as_str());
-                    }
-                }
-            }
-
-            Ok(())
+        if let Some(carrier) = origin.and_then(|context| context.trace_context.as_ref()) {
+            crate::observability::set_span_parent_from_carrier(&task_span, Some(carrier));
         }
+        let execution_context = origin.cloned().map(|context| context.for_task(task.id));
+        PipelineContext::scope(
+            execution_context,
+            crate::background_jobs::execution::ExecutionContext {
+                task_id: task.id,
+                attempt: task.attempts,
+                task_type: task.task_type.clone(),
+                metrics: self.metrics.clone(),
+            }
+            .scope(crate::background_jobs::batches::scope(
+                task.payload["_batch_id"]
+                    .as_i64()
+                    .and_then(|id| i32::try_from(id).ok()),
+                self.execute_claimed(&task, context.err()),
+            )),
+        )
         .instrument(task_span)
+        .await?;
+        Ok(true)
+    }
+
+    async fn execute_claimed(
+        &self,
+        task: &background_tasks::Model,
+        context_error: Option<serde_json::Error>,
+    ) -> Result<(), WorkerError> {
+        crate::observability::record_current_trace_context();
+        task.record_execution_trace(&self.db).await?;
+        info!("Starting background task");
+        if let Some(metrics) = &self.metrics {
+            metrics.set_busy(true);
+            metrics.record_invocation(&task.task_type);
+            if let Some(context) = PipelineContext::current() {
+                metrics.record_receipt_to_current(
+                    &task.task_type,
+                    &context.entrypoint,
+                    (chrono::Utc::now() - context.pipeline_started_at).num_milliseconds() as f64
+                        / 1000.0,
+                );
+            }
+        }
+        let started_at = std::time::Instant::now();
+        let heartbeat =
+            spawn_processing_heartbeat(self.db.clone(), task.clone(), Duration::from_secs(30));
+        let result = match context_error {
+            Some(error) => Err(error.into()),
+            None => self.invoke_with_capacity(task).await,
+        };
+        heartbeat.abort();
+        if let Some(metrics) = &self.metrics {
+            metrics.set_busy(false);
+            metrics.record_duration(&task.task_type, started_at.elapsed().as_secs_f64());
+        }
+        self.record_result(task, result, started_at.elapsed().as_secs_f64())
+            .await
+    }
+
+    async fn invoke_processor(&self, task: &background_tasks::Model) -> Result<(), WorkerError> {
+        match self.processors.get(&task.task_type) {
+            Some(processor) => processor.process(task.id, task.payload.clone()).await,
+            None => {
+                Err(format!("No processor registered for task type: {}", task.task_type).into())
+            }
+        }
+    }
+
+    async fn invoke_with_capacity(
+        &self,
+        task: &background_tasks::Model,
+    ) -> Result<(), WorkerError> {
+        let future = self.invoke_processor(task);
+        tokio::pin!(future);
+        let mut ticker = tokio::time::interval(Duration::from_secs(1));
+        let mut recorded = std::time::Instant::now();
+        loop {
+            let result =
+                tokio::select! { result=&mut future => Some(result), _=ticker.tick()=>None };
+            if let Some(metrics) = &self.metrics {
+                metrics.record_busy(recorded.elapsed().as_secs_f64());
+            }
+            recorded = std::time::Instant::now();
+            if let Some(result) = result {
+                return result;
+            }
+        }
+    }
+
+    async fn record_result(
+        &self,
+        task: &background_tasks::Model,
+        result: Result<(), WorkerError>,
+        duration: f64,
+    ) -> Result<(), WorkerError> {
+        let span = tracing::Span::current();
+        let result = result.map_err(|error| error.to_string());
+        if let Err(error) = &result {
+            span.record("error", error.as_str());
+            span.record("otel.status_code", "ERROR");
+            span.record("otel.status_description", error.as_str());
+        }
+        let Some(updated) = task.finish_execution(&self.db, result).await? else {
+            record_superseded_execution();
+            return Ok(());
+        };
+        self.record_task_outcome(&task.task_type, &updated);
+        self.record_diagnostic_result(&updated, duration).await;
+        Ok(())
+    }
+
+    async fn record_diagnostic_result(&self, task: &background_tasks::Model, duration: f64) {
+        let Some(metrics) = &self.metrics else {
+            return;
+        };
+        self.record_attempt_wait(task, metrics).await;
+        let outcome = if task.status == "pending" {
+            "retrying"
+        } else {
+            &task.status
+        };
+        metrics.record_attempt_duration(&task.task_type, outcome, duration);
+        if task.status == "pending" {
+            metrics.record_retry(&task.task_type);
+        }
+        if task.status == "completed" {
+            metrics.record_logical_duration(
+                &task.task_type,
+                (chrono::Utc::now() - task.created_at).num_milliseconds() as f64 / 1000.0,
+            );
+        }
+        if let Err(error) =
+            crate::background_jobs::diagnostics::completed(&self.db, metrics, task).await
+        {
+            error!(%error,"Failed to evaluate completed attempt diagnostics");
+        }
+    }
+
+    async fn record_attempt_wait(&self, task: &background_tasks::Model, metrics: &WorkerMetrics) {
+        let history = match crate::background_jobs::entities::task_attempts::Model::for_task(
+            &self.db, task.id,
+        )
         .await
+        {
+            Ok(history) => history,
+            Err(error) => {
+                error!(%error,"Failed to read attempt eligibility");
+                return;
+            }
+        };
+        let Some(attempt) = history.last() else {
+            return;
+        };
+        let Some(eligible) = attempt.eligible_at else {
+            return;
+        };
+        let seconds = (attempt.started_at - eligible).num_milliseconds() as f64 / 1000.0;
+        metrics.record_eligible_wait(&task.task_type, &attempt.outcome, seconds);
+        if seconds >= 0.0 {
+            metrics.record_processing_lag(&task.task_type, seconds);
+        }
+    }
+
+    fn record_task_outcome(&self, task_type: &str, updated: &background_tasks::Model) {
+        tracing::Span::current().record("task.status", updated.status.as_str());
+        if updated.status == "completed" {
+            info!("Completed background task");
+        } else {
+            warn!(error = updated.error, "Background task failed");
+        }
+        self.record_outcome_metric(task_type, &updated.status);
+    }
+
+    fn record_outcome_metric(&self, task_type: &str, status: &str) {
+        let Some(metrics) = &self.metrics else {
+            return;
+        };
+        if status == "completed" {
+            metrics.record_completed(task_type);
+        } else {
+            metrics.record_failed(task_type);
+        }
     }
 
     async fn run_startup_hooks(&self) {
         for hook in &self.startup_hooks {
             let hook_name = hook.name();
+            let context = PipelineContext::received("worker_startup", None);
             let hook_span = tracing::info_span!(
                 "background_task.startup_hook",
                 hook.name = hook_name,
+                pipeline_run_id = context.run_id.as_str(),
+                pipeline_started_at = %context.pipeline_started_at,
+                trace_id = tracing::field::Empty,
+                span_id = tracing::field::Empty,
                 hook.status = tracing::field::Empty,
                 error = tracing::field::Empty,
             );
 
-            async {
+            PipelineContext::scope(Some(context), async {
+                crate::observability::record_current_trace_context();
                 info!(hook = hook_name, "Running worker startup hook");
 
                 match hook.run(&self.db).await {
@@ -231,7 +363,7 @@ impl TaskWorker {
                         error!(hook = hook_name, %worker_error, "Worker startup hook failed")
                     }
                 }
-            }
+            })
             .instrument(hook_span.clone())
             .await;
         }
@@ -240,8 +372,7 @@ impl TaskWorker {
 
 fn spawn_processing_heartbeat(
     db: DatabaseConnection,
-    task_id: i32,
-    task_type: String,
+    task: background_tasks::Model,
     interval: Duration,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
@@ -249,17 +380,26 @@ fn spawn_processing_heartbeat(
 
         loop {
             ticker.tick().await;
-            match background_tasks::Model::mark_processing_heartbeat(&db, task_id).await {
-                Ok(Some(task))
-                    if task.status == background_tasks::TaskStatus::Processing.as_str() =>
-                {
-                    debug!(task_id, task_type, "Recorded background task heartbeat");
-                }
-                Ok(_) => break,
+            match task.heartbeat(&db).await {
+                Ok(true) => debug!(
+                    task_id = task.id,
+                    attempt = task.attempts,
+                    "Recorded background task heartbeat"
+                ),
+                Ok(false) => break,
                 Err(error) => {
-                    warn!(task_id, task_type, %error, "Failed to record background task heartbeat");
+                    warn!(task_id = task.id, attempt = task.attempts, %error, "Failed to record background task heartbeat");
                 }
             }
         }
     })
 }
+
+fn record_superseded_execution() {
+    tracing::Span::current().record("task.status", "superseded");
+    info!("Discarded result from a superseded or canceled execution");
+}
+
+#[cfg(test)]
+#[path = "task_worker_tests.rs"]
+mod tests;
