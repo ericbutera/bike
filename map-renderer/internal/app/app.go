@@ -69,6 +69,8 @@ func run(ctx context.Context, config Config, openBrowser browserFactory) (err er
 	if err := servers.start(); err != nil {
 		return err
 	}
+	observability.Info(ctx, "Map snapshot worker ready", "grpc_address", config.GRPCAddress,
+		"metrics_port", config.MetricsPort)
 	select {
 	case <-ctx.Done():
 	case err = <-servers.errors:

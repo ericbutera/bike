@@ -32,7 +32,8 @@ func InitTracing(ctx context.Context) (func(context.Context) error, error) {
 		return nil, err
 	}
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)).With("service", config.Service))
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)).With(
+		"service", config.Service, "service_version", config.Version, "environment", config.Environment))
 	if config.Disabled {
 		otel.SetTracerProvider(noop.NewTracerProvider())
 		return func(context.Context) error { return nil }, nil
@@ -72,9 +73,17 @@ func Error(ctx context.Context, message string, err error, stage string) {
 	span := trace.SpanFromContext(ctx)
 	span.RecordError(err)
 	span.SetStatus(codes.Error, err.Error())
-	fields := []any{"error", err.Error(), "stage", stage}
+	slog.ErrorContext(ctx, message, traceFields(ctx, []any{"error", err.Error(), "stage", stage})...)
+}
+
+func Info(ctx context.Context, message string, fields ...any) {
+	slog.InfoContext(ctx, message, traceFields(ctx, fields)...)
+}
+
+func traceFields(ctx context.Context, fields []any) []any {
+	span := trace.SpanFromContext(ctx)
 	if sc := span.SpanContext(); sc.IsValid() {
 		fields = append(fields, "trace_id", sc.TraceID().String(), "span_id", sc.SpanID().String())
 	}
-	slog.ErrorContext(ctx, message, fields...)
+	return fields
 }

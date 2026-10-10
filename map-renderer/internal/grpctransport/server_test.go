@@ -3,6 +3,7 @@ package grpctransport
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -18,6 +19,8 @@ import (
 	"github.com/ericbutera/bike/map-renderer/internal/render"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
 	collector "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
@@ -96,6 +99,43 @@ func TestGRPCSnapshotFailureRecordsError(t *testing.T) {
 	require.Contains(t, logs.String(), `"stage":"grpc_render"`)
 }
 
+func TestGRPCHealthCheckAndWatchDoNotCreateSpansOrLogs(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	previous, logger := otel.GetTracerProvider(), slog.Default()
+	var logs bytes.Buffer
+	otel.SetTracerProvider(provider)
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
+	t.Cleanup(func() {
+		otel.SetTracerProvider(previous)
+		slog.SetDefault(logger)
+		require.NoError(t, provider.Shutdown(context.Background()))
+	})
+	connection := fixtureConnection(t, &fixtureBrowser{})
+	health := grpc_health_v1.NewHealthClient(connection)
+	_, err := health.Check(t.Context(), &grpc_health_v1.HealthCheckRequest{Service: "bike.maps.v1.MapService"})
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	watch, err := health.Watch(ctx, &grpc_health_v1.HealthCheckRequest{Service: "bike.maps.v1.MapService"})
+	require.NoError(t, err)
+	response, err := watch.Recv()
+	require.NoError(t, err)
+	require.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, response.Status)
+	cancel()
+	_, err = watch.Recv()
+	require.Equal(t, codes.Canceled, status.Code(err))
+	require.Empty(t, recorder.Ended())
+	require.Empty(t, logs.String())
+	ctx = metadata.NewOutgoingContext(t.Context(), metadata.Pairs("authorization", "Bearer secret"))
+	_, err = mapsv1.NewMapServiceClient(connection).Render(ctx, input())
+	require.NoError(t, err)
+	require.Eventually(t, func() bool { return len(recorder.Ended()) == 3 }, time.Second, time.Millisecond)
+	for _, span := range recorder.Ended() {
+		require.NotContains(t, span.Name(), "grpc.health")
+	}
+}
+
 func traceCollector(t *testing.T) (func(context.Context) error, <-chan *collector.ExportTraceServiceRequest) {
 	t.Helper()
 	exports := make(chan *collector.ExportTraceServiceRequest, 10)
@@ -124,6 +164,8 @@ func traceCollector(t *testing.T) (func(context.Context) error, <-chan *collecto
 
 func TestGRPCExportsRemoteParentAndRenderChildrenOverOTLP(t *testing.T) {
 	shutdown, exports := traceCollector(t)
+	var logs bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
 	browser := &fixtureBrowser{context: make(chan trace.SpanContext, 1)}
 	connection := fixtureConnection(t, browser)
 	ctx := metadata.NewOutgoingContext(t.Context(), metadata.Pairs("authorization", "Bearer secret",
@@ -133,6 +175,15 @@ func TestGRPCExportsRemoteParentAndRenderChildrenOverOTLP(t *testing.T) {
 	serverContext := <-browser.context
 	require.Equal(t, "00112233445566778899aabbccddeeff", serverContext.TraceID().String())
 	require.Equal(t, "bike=fixture", serverContext.TraceState().String())
+	var record map[string]any
+	require.NoError(t, json.Unmarshal(logs.Bytes(), &record))
+	require.Equal(t, "Map render RPC completed", record["msg"])
+	require.Equal(t, mapsv1.MapService_Render_FullMethodName, record["rpc_method"])
+	require.Equal(t, float64(codes.OK), record["status_code"])
+	require.Equal(t, serverContext.TraceID().String(), record["trace_id"])
+	require.NotEmpty(t, record["span_id"])
+	require.Contains(t, record, "duration_ms")
+	require.NotContains(t, logs.String(), "secret")
 	require.NoError(t, shutdown(context.Background()))
 	select {
 	case request := <-exports:
