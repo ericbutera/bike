@@ -31,9 +31,9 @@ describe("import query hooks", () => {
     const { result } = renderHook(() => useActivityImportHistory(query));
     expect(api.query).toHaveBeenCalledWith(
       "get",
-      "/activity-imports/history",
+      "/admin/activity-imports/history",
       { params: { query } },
-      { refetchInterval: 3000 },
+      { refetchInterval: 3000, enabled: true },
     );
     expect(result.current.data).toEqual({ total: 1 });
   });
@@ -42,7 +42,7 @@ describe("import query hooks", () => {
     renderHook(() => useActivityImportReplayPlan(7, "activity_saved", true));
     expect(api.query).toHaveBeenCalledWith(
       "get",
-      "/activity-imports/{id}/replay",
+      "/admin/activity-imports/{id}/replay",
       { params: { path: { id: 7 }, query: { stage: "activity_saved" } } },
       { enabled: true },
     );
@@ -71,9 +71,9 @@ describe("import query hooks", () => {
       },
     });
     for (const path of [
-      "/activity-imports/{id}/trace",
-      "/activity-imports/history",
-      "/activity-imports/{id}/replay",
+      "/admin/activity-imports/{id}/trace",
+      "/admin/activity-imports/history",
+      "/admin/activity-imports/{id}/replay",
     ]) {
       expect(invalidate).toHaveBeenCalledWith({ queryKey: ["get", path] });
     }

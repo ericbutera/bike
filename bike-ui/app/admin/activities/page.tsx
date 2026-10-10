@@ -37,7 +37,6 @@ function AdminActivitiesContent() {
   const traceQuery = useActivityImportTrace(
     selectedActivity?.activity_import_id ?? null,
     {
-      admin: true,
       enabled: !!selectedActivity?.activity_import_id,
     },
   );

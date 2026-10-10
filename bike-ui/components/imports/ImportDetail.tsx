@@ -9,7 +9,7 @@ export default function ImportDetail({ importId }: { importId: string }) {
   const query = useActivityImportTrace(importId);
   return (
     <AppCard>
-      <Link href="/imports" className="link">
+      <Link href="/admin/imports" className="link">
         ← Import history
       </Link>
       <div className="my-6 flex flex-wrap items-center justify-between gap-4">

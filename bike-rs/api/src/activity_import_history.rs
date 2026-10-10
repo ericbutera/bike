@@ -15,11 +15,12 @@ use utoipa::{IntoParams, ToSchema};
 
 #[cfg(test)]
 #[path = "activity_import_history_tests.rs"]
-mod tests;
+pub(crate) mod tests;
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct HistoryQuery {
+    pub user_id: Option<i32>,
     pub page: Option<u64>,
     pub source: Option<String>,
     pub status: Option<String>,
@@ -114,6 +115,34 @@ pub async fn owned_import_for_inspection(
     activity_imports::Entity::find_owned(db, user_id, import_id)
         .await?
         .ok_or_else(|| AppError::not_found("Activity import not found"))
+}
+
+pub async fn admin_import_for_inspection(
+    db: &DatabaseConnection,
+    import_id: i32,
+) -> Result<activity_imports::Model, AppError> {
+    let import = admin_import(db, import_id).await?;
+    owned_import_for_inspection(db, import.user_id, import_id).await
+}
+
+async fn admin_import(
+    db: &DatabaseConnection,
+    import_id: i32,
+) -> Result<activity_imports::Model, AppError> {
+    activity_imports::Entity::find_for_administration(db, import_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Activity import not found"))
+}
+
+pub async fn admin_replay(
+    db: &DatabaseConnection,
+    uploads_dir: &str,
+    import_id: i32,
+    request: ReplayRequest,
+    queue: bool,
+) -> Result<ReplayResponse, AppError> {
+    let import = admin_import(db, import_id).await?;
+    replay(db, uploads_dir, import.user_id, import_id, request, queue).await
 }
 
 pub async fn replay(

@@ -43,7 +43,7 @@ async fn await_outcome(
 ) -> Value {
     let result = tokio::time::timeout(Duration::from_secs(10), async {
         loop {
-            let trace = get_json(app, &format!("/api/activity-imports/{id}/trace")).await;
+            let trace = get_json(app, &format!("/api/admin/activity-imports/{id}/trace")).await;
             if trace["import"]["status"] == outcome {
                 return trace;
             }
@@ -84,7 +84,7 @@ fn start_worker(db: sea_orm::DatabaseConnection, dir: String) -> tokio::task::Jo
 }
 
 #[tokio::test]
-async fn owner_upload_worker_trace_and_replay_run_to_completion() {
+async fn owner_upload_and_admin_trace_and_replay_run_to_completion() {
     let dir = std::env::temp_dir().join(format!("bike-ingestion-http-{}", uuid::Uuid::new_v4()));
     let (app, db) = support::ingestion_platform_app(true, dir.display().to_string()).await;
     bike_core::auth::entities::users::ActiveModel {
@@ -101,7 +101,25 @@ async fn owner_upload_worker_trace_and_replay_run_to_completion() {
     )
     .await;
     let id = received["id"].as_i64().unwrap();
-    let queued = get_json(&app, &format!("/api/activity-imports/{id}/trace")).await;
+    let progress = get_json(&app, "/api/activity-imports").await;
+    assert_eq!(progress[0]["id"], id);
+    request_json(
+        &app,
+        "GET",
+        &format!("/api/admin/activity-imports/{id}/trace"),
+        None,
+        403,
+    )
+    .await;
+    bike_core::auth::entities::users::ActiveModel {
+        id: Set(1),
+        is_admin: Set(Some(true)),
+        ..Default::default()
+    }
+    .update(&db)
+    .await
+    .unwrap();
+    let queued = get_json(&app, &format!("/api/admin/activity-imports/{id}/trace")).await;
     assert_eq!(queued["attempts"][0]["status"], "queued");
     assert!(queued["nodes"]
         .as_array()
@@ -122,14 +140,14 @@ async fn owner_upload_worker_trace_and_replay_run_to_completion() {
         .all(|node| node["status"] == "completed"));
     let plan = get_json(
         &app,
-        &format!("/api/activity-imports/{id}/replay?stage=activity_saved"),
+        &format!("/api/admin/activity-imports/{id}/replay?stage=activity_saved"),
     )
     .await;
     assert_eq!(plan["start_stage"], "activity_saved");
     request_json(
         &app,
         "POST",
-        &format!("/api/activity-imports/{id}/replay"),
+        &format!("/api/admin/activity-imports/{id}/replay"),
         Some(&serde_json::json!({"stage":"activity_saved"})),
         202,
     )
@@ -173,12 +191,12 @@ async fn history_is_paginated_owner_scoped_and_includes_failed_unlinked_imports(
     }
     let first = get_json(
         &app,
-        "/api/activity-imports/history?source=archive_url_import&status=failed&page=1",
+        "/api/admin/activity-imports/history?source=archive_url_import&status=failed&page=1",
     )
     .await;
     let second = get_json(
         &app,
-        "/api/activity-imports/history?source=archive_url_import&status=failed&page=2",
+        "/api/admin/activity-imports/history?source=archive_url_import&status=failed&page=2",
     )
     .await;
     assert_eq!(first["total"], 27);
@@ -198,7 +216,7 @@ async fn history_is_paginated_owner_scoped_and_includes_failed_unlinked_imports(
     request_json(
         &app,
         "GET",
-        &format!("/api/activity-imports/{id}/replay?stage=raw_stored"),
+        "/api/admin/activity-imports/99999/replay?stage=raw_stored",
         None,
         404,
     )
@@ -206,15 +224,22 @@ async fn history_is_paginated_owner_scoped_and_includes_failed_unlinked_imports(
     request_json(
         &app,
         "POST",
-        &format!("/api/activity-imports/{id}/replay"),
+        "/api/admin/activity-imports/99999/replay",
         Some(&serde_json::json!({"stage":"raw_stored"})),
         404,
     )
     .await;
     let filtered = get_json(
         &app,
-        "/api/activity-imports/history?source=archive_url_import&status=failed&page=1",
+        "/api/admin/activity-imports/history?source=archive_url_import&status=failed&page=1",
     )
     .await;
     assert_eq!(filtered["total"], 26);
+    let other_owner = get_json(
+        &app,
+        "/api/admin/activity-imports/history?user_id=999&source=archive_url_import&status=failed",
+    )
+    .await;
+    assert_eq!(other_owner["total"], 1);
+    assert_eq!(other_owner["items"][0]["id"], id);
 }

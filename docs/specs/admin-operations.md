@@ -15,6 +15,7 @@ Admin navigation exposes operational pages for:
 - feature flags;
 - metrics;
 - integration events;
+- import history and stage replay;
 - background tasks.
 
 Admin pages require an authenticated admin user. Non-admin users should not be able to reach admin-only operations through either UI or API.
@@ -58,6 +59,20 @@ Admin pages require an authenticated admin user. Non-admin users should not be a
   batch. See the [visibility plan](../plans/pipeline-visibility.md) for operational
   acceptance and the [worker runbook](../production-failures.md#bikeworkerpipelineblocked).
 
+## Import history
+
+`/admin/imports` and `/admin/imports/{id}` provide the import list, durable
+attempts, stage summaries, and reviewed replay actions. Admin navigation links
+to Import history. History defaults to the administrator's account and supports
+selecting another owner by positive user ID. The existing admin trace endpoint
+reads any owner's import; replay always keeps that import's recorded owner.
+
+History and replay APIs live under `/api/admin/activity-imports`; normal rider
+and synthetic credentials do not authorize them. The old rider history, trace,
+and replay routes are removed. Upload and archive progress remain available
+to the owning rider. The [ingestion specification](activity-ingestion.md#import-history-and-administration)
+defines source filtering, durable attempts, recovery, and replay invariants.
+
 ## Metrics
 
 Bike exposes app metrics in addition to shared system metrics. Metrics should be suitable for dashboards and alerting without leaking sensitive user data.
@@ -90,76 +105,24 @@ Feature flags are operational switches. They should not become hidden product re
 
 ## Failed import recovery
 
-Use the alert's namespace and count to inspect failed rows through that site's
-protected database connection using the deployment's `DATABASE_URL`. Start
-with this read-only query:
+Use Admin → Import history to select the owner and failed import, including
+failures before an activity exists. Inspect durable attempts and the failed
+stage. Preserve missing/corrupt source evidence and deploy parser fixes before
+replay; follow the [source recovery runbook](../runbooks/activity-source-recovery.md)
+when original bytes need restoration.
 
-```sql
-SELECT id, user_id, source, format, status, processing_stage,
-       processing_attempts, processing_error, storage_path, activity_id
-FROM activity_imports
-WHERE status = 'failed'
-ORDER BY last_processing_event_at DESC NULLS LAST
-LIMIT 50;
-```
+Request `GET /api/admin/activity-imports/{id}/replay?stage={stage}` to review the
+actual start stage, reusable attempt, and fallback reason. Queue the reviewed
+plan with `POST` to the same route, including `expected_start_stage` and
+`expected_reused_attempt_id`. A changed prerequisite or active execution
+returns 409. The accepted response identifies the durable attempt; follow that
+attempt to its terminal outcome. Replay keeps the recorded owner, activity
+identity, original source, and earlier attempt history.
 
-For one import, inspect its durable processing history:
-
-```sql
-SELECT event_type, created_at, message, payload
-FROM integration_events
-WHERE provider = 'activity_processing'
-  AND payload->>'import_id' = '<import-id>'
-ORDER BY created_at;
-```
-
-Compare the stage/error with the original file at `storage_path` on that site's
-uploads volume. Preserve a parse/format failure, add a small fixture from the
-file (sanitize personal data), and deploy the parser/workflow fix before retrying.
-Choose the recovery operation for the failed import:
-
-- When an activity is linked: an administrator can
-  `POST /api/admin/activity-imports/reprocess-activity` with JSON
-  `{"activity_id": <activity-id>}`. Track the returned task ID.
-- When parsing failed before an activity was created: find the matching
-  `process_activity_import` task using the query below. Rust has no per-import
-  retry endpoint; uploading the same bytes returns the existing import. After
-  the fix is deployed, set only that failed import back to `processing`, then
-  use the admin task's Rerun action or `POST /api/admin/tasks/<task-id>/rerun`.
-  The worker skips imports whose status is still `failed`. If there is no
-  matching task, preserve the failure and escalate with its original file;
-  do not replay an entire archive or sync to recover one import.
-
-```sql
-SELECT id, status, error, payload
-FROM background_tasks
-WHERE task_type = 'process_activity_import'
-  AND COALESCE(payload->'data', payload)->>'import_id' = '<import-id>'
-ORDER BY created_at DESC
-LIMIT 5;
-```
-
-For that Rust task rerun, verify its payload's user/import IDs and that no
-matching task is already pending/processing. Then prepare only that import:
-
-```sql
-UPDATE activity_imports AS i
-SET status = 'processing', processing_stage = 'raw_stored', updated_at = now()
-WHERE i.id = <import-id> AND i.status = 'failed'
-  AND NOT EXISTS (
-    SELECT 1 FROM background_tasks AS t
-    WHERE t.task_type = 'process_activity_import'
-      AND t.status IN ('pending', 'processing')
-      AND COALESCE(t.payload->'data', t.payload)->>'import_id' = i.id::text
-  )
-RETURNING i.id, i.status;
-```
-
-Require one returned row, rerun the matching task once, and follow its new task
-ID to completion. If the rerun request fails to enqueue, restore this import's
-status to `failed` while preserving its error. A zero count during processing
-is not proof of recovery: confirm the task succeeds and the activity is present.
-Do not mark a missing-activity import processed or delete its file/history.
+This per-import operation covers both linked activities and failures without
+an activity. Do not hand-edit import status or rerun an entire archive/sync to
+recover one input. Bulk repair still uses the explicit admin manual tasks and
+the ingestion contract.
 
 ## Code Anchors
 

@@ -18,6 +18,7 @@ import {
 } from "../lib/queries";
 import { AppCard, CardHeader } from "./ui/Card";
 import { LoadingSpinner } from "./ui/QueryState";
+import { useAuth } from "../lib/auth";
 
 const ALLOWED_EXTENSIONS = new Set(["fit", "tcx", "gpx"]);
 const MANUAL_IMPORT_VISIBLE_ROW_COUNT = 10;
@@ -42,6 +43,8 @@ function getExtension(filename: string) {
 
 export default function ActivityImportsPanel() {
   const router = useRouter();
+  const { user } = useAuth();
+  const isAdmin = Boolean(user?.is_admin);
   const archiveJobsQuery = useActivityArchiveImportJobs({
     refetchIntervalMs: 5000,
   });
@@ -298,13 +301,19 @@ export default function ActivityImportsPanel() {
                           </span>
                         </td>
                         <td className="min-w-[12rem] max-w-xs">
-                          <Link
-                            href={`/imports/${activityImport.id}`}
-                            onClick={(event) => event.stopPropagation()}
-                            className="link truncate font-medium text-base-content"
-                          >
-                            {activityImport.original_filename}
-                          </Link>
+                          {isAdmin ? (
+                            <Link
+                              href={`/admin/imports/${activityImport.id}`}
+                              onClick={(event) => event.stopPropagation()}
+                              className="link truncate font-medium text-base-content"
+                            >
+                              {activityImport.original_filename}
+                            </Link>
+                          ) : (
+                            <span className="truncate font-medium text-base-content">
+                              {activityImport.original_filename}
+                            </span>
+                          )}
                           <div className="text-xs uppercase text-base-content/50">
                             {activityImport.format}
                           </div>
@@ -335,9 +344,11 @@ export default function ActivityImportsPanel() {
       </AppCard>
 
       <AppCard>
-        <Link href="/imports" className="link link-primary">
-          View all imports and processing stages
-        </Link>
+        {isAdmin ? (
+          <Link href="/admin/imports" className="link link-primary">
+            View all imports and processing stages
+          </Link>
+        ) : null}
         <CardHeader
           title="Fetch an export ZIP by URL"
           description="Paste a shareable Garmin Connect or Strava export URL and Bike will fetch the archive server-side, unpack supported activity files, and deduplicate anything already in your feed."
@@ -406,12 +417,14 @@ export default function ActivityImportsPanel() {
                         <div className="text-sm text-base-content/60">
                           Queued {formatActivityTimestamp(job.created_at)}
                         </div>
-                        <Link
-                          className="link link-primary"
-                          href={`/imports?archive_job_id=${job.id}`}
-                        >
-                          View entry stages and replay
-                        </Link>
+                        {isAdmin ? (
+                          <Link
+                            className="link link-primary"
+                            href={`/admin/imports?archive_job_id=${job.id}`}
+                          >
+                            View entry stages and replay
+                          </Link>
+                        ) : null}
                         <div className="mt-1 break-all font-medium text-base-content">
                           {job.resolved_url ?? job.archive_url}
                         </div>

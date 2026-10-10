@@ -3,7 +3,7 @@ use bike_core::activity_import_execution::StageRecord;
 use sea_orm::{ActiveModelTrait, ConnectionTrait, Database, EntityTrait, PaginatorTrait, Schema};
 use serde_json::json;
 
-async fn database() -> DatabaseConnection {
+pub(crate) async fn database() -> DatabaseConnection {
     let db = Database::connect("sqlite::memory:").await.unwrap();
     let schema = Schema::new(db.get_database_backend());
     db.execute(&schema.create_table_from_entity(activity_imports::Entity))
@@ -73,7 +73,7 @@ async fn replay_previews_fallback_and_queues_only_the_reviewed_plan() {
     assert_eq!(tasks[0].payload["data"]["attempt_id"], attempt_id);
 }
 
-fn imported(id: i32, user_id: i32) -> activity_imports::Model {
+pub(crate) fn imported(id: i32, user_id: i32) -> activity_imports::Model {
     let now = Utc::now();
     activity_imports::Model {
         id,
@@ -109,6 +109,7 @@ async fn history_lists_only_owned_imports_even_without_an_activity() {
         &db,
         7,
         HistoryQuery {
+            user_id: None,
             page: Some(0),
             source: Some("manual_upload".into()),
             status: Some("failed".into()),

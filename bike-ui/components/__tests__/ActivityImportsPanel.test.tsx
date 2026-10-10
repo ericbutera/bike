@@ -133,6 +133,24 @@ function makeArchiveImportJob(
 }
 
 describe("ActivityImportsPanel", () => {
+  it("keeps history and replay links in Admin", () => {
+    const view = render(<ActivityImportsPanel />);
+    expect(
+      screen.queryByRole("link", {
+        name: "View all imports and processing stages",
+      }),
+    ).not.toBeInTheDocument();
+    mocks.useCurrentUser.mockReturnValue({
+      user: { id: 1, is_admin: true },
+      isLoading: false,
+    });
+    view.rerender(<ActivityImportsPanel />);
+    expect(
+      screen.getByRole("link", {
+        name: "View all imports and processing stages",
+      }),
+    ).toHaveAttribute("href", "/admin/imports");
+  });
   beforeEach(() => {
     vi.clearAllMocks();
 

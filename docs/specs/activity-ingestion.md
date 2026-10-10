@@ -1,17 +1,21 @@
 # Activity ingestion
 
 Bike retains activity inputs, normalizes supported activities, and rebuilds
-derived results through one processing graph. Riders can follow an import,
-inspect a summary of each stage, and replay from a selected stage without
-uploading again. This document defines the contract; the
+derived results through one processing graph. Administrators can follow an
+import, inspect stage summaries, and replay from a selected stage without
+uploading again. Riders retain their upload and archive progress. This document
+defines the contract; the
 [recovery runbook](../runbooks/activity-source-recovery.md) contains operator
 commands. [Supported activities](supported-activities.md) owns sport support.
 
-## Rider workflow
+## Import history and administration
 
-- Open Imports from the activity upload page. History includes manual files,
+- Open Import history from Admin at `/admin/imports`. History includes manual files,
   archive entries, and Strava deliveries, including inputs with no activity.
 - History is owner-scoped, paginated, and filterable by source and outcome.
+  It initially shows the administrator's own account. A positive `user_id`
+  selects another owner for inspection; source, outcome, and archive filters
+  remain scoped to that owner.
   Each row links directly to its import and to its activity when one exists.
 - An import shows its selected retained source, graph, recent attempts,
   stage summaries, current work, error, and available recovery action.
@@ -19,9 +23,19 @@ commands. [Supported activities](supported-activities.md) owns sport support.
   unavailable-source, and request-failure states are explicit.
 - Stage details show compact facts and a short error, not a full log viewer.
   Selecting a node shows its summary and the Replay from here action.
-- Owners can inspect and replay their imports. Administrators can inspect
-  other owners' imports through existing admin controls. Replay never changes
-  ownership or grants access to another owner's input.
+- Only authenticated administrators can open history/detail pages or call
+  `GET /api/admin/activity-imports/history`, import trace reads, or
+  `GET|POST /api/admin/activity-imports/{id}/replay`. Non-admin requests return
+  403; missing authentication returns 401. Old rider history/replay/trace API
+  routes and `/imports` pages are removed. Synthetic access cannot bypass the
+  administrator requirement.
+- Administrators can inspect and replay another owner's import by its ID.
+  Replay runs as the import's recorded owner and never changes ownership or
+  grants that owner administrative access.
+- Ordinary riders can upload activities and archives and follow their owned
+  progress/outcome on Upload. History, stage diagnostics, and replay links are
+  visible there only to administrators. Imports is absent from primary rider
+  navigation.
 
 ## Supported Sources
 
@@ -29,7 +43,7 @@ commands. [Supported activities](supported-activities.md) owns sport support.
   limit. Prefer FIT in guidance. Retain exact bytes and return an accepted
   import after durable worker queueing. Invalid multipart, extension, or size
   receives a field error. Repeated identical bytes return the owned import;
-  a failed import still offers replay.
+  administrators can replay a failed import.
 - Archive import accepts a shareable HTTPS ZIP URL. Extract FIT/TCX/GPX,
   gzip-wrapped entries, and nested Garmin ZIPs within configured expansion
   limits. Try FIT before TCX before GPX. Link entries to the parent archive
@@ -107,7 +121,7 @@ canceled outcomes. A failure before activity creation remains replayable by
 import ID. Manual tasks and admin reruns cannot report success by skipping a
 failed import. Bulk reprocessing persists each import's result.
 
-Worker startup and owner inspection recover executions after five minutes
+Worker startup and administrator inspection recover executions after five minutes
 without progress. A live task or parent archive/bulk task heartbeat prevents
 recovery from stealing active work. Preserve interrupted attempts and queue a
 new execution; queued replay keeps its selected start and attempt ID.

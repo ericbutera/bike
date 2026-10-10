@@ -1749,16 +1749,14 @@ export function useActivityProcessingGraph(opts?: { enabled?: boolean }) {
 
 export function useActivityImportTrace(
   importId: number | string | null | undefined,
-  opts?: { admin?: boolean; enabled?: boolean },
+  opts?: { enabled?: boolean },
 ) {
   const numericImportId = Number(importId);
   const enabled =
     (opts?.enabled ?? true) &&
     Number.isFinite(numericImportId) &&
     numericImportId > 0;
-  const path = opts?.admin
-    ? "/admin/activity-imports/{id}/trace"
-    : "/activity-imports/{id}/trace";
+  const path = "/admin/activity-imports/{id}/trace";
   const response = $api.useQuery(
     "get",
     path,
@@ -2213,19 +2211,23 @@ export function useDeleteSegment() {
   };
 }
 
-export function useActivityImportHistory(query: {
-  page: number;
-  source?: string;
-  status?: string;
-  archive_job_id?: number;
-}) {
+export function useActivityImportHistory(
+  query: {
+    page: number;
+    source?: string;
+    status?: string;
+    archive_job_id?: number;
+    user_id?: number;
+  },
+  opts?: { enabled?: boolean },
+) {
   const response = $typedApi.useQuery(
     "get",
-    "/activity-imports/history",
+    "/admin/activity-imports/history",
     {
       params: { query },
     },
-    { refetchInterval: 3000 },
+    { refetchInterval: 3000, enabled: opts?.enabled ?? true },
   );
   return response;
 }
@@ -2237,7 +2239,7 @@ export function useActivityImportReplayPlan(
 ) {
   return $typedApi.useQuery(
     "get",
-    "/activity-imports/{id}/replay",
+    "/admin/activity-imports/{id}/replay",
     {
       params: { path: { id: importId }, query: { stage } },
     },
@@ -2249,7 +2251,7 @@ export function useReplayActivityImport() {
   const queryClient = useQueryClient();
   const mutation = $typedApi.useMutation(
     "post",
-    "/activity-imports/{id}/replay",
+    "/admin/activity-imports/{id}/replay",
   );
   return {
     ...mutation,
@@ -2270,13 +2272,13 @@ export function useReplayActivityImport() {
       } finally {
         await Promise.all([
           queryClient.invalidateQueries({
-            queryKey: ["get", "/activity-imports/{id}/trace"],
+            queryKey: ["get", "/admin/activity-imports/{id}/trace"],
           }),
           queryClient.invalidateQueries({
-            queryKey: ["get", "/activity-imports/history"],
+            queryKey: ["get", "/admin/activity-imports/history"],
           }),
           queryClient.invalidateQueries({
-            queryKey: ["get", "/activity-imports/{id}/replay"],
+            queryKey: ["get", "/admin/activity-imports/{id}/replay"],
           }),
         ]);
       }

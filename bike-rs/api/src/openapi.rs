@@ -61,7 +61,6 @@ use utoipa::OpenApi;
         reports::get_training_report_definitions,
         reports::get_training_reports,
         activity_imports::list_activity_imports,
-        activity_imports::get_activity_import_trace,
         activity_import_history::history,
         activity_import_history::replay_plan,
         activity_import_history::replay,

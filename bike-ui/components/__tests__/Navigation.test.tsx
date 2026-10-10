@@ -81,6 +81,9 @@ describe("Navigation", () => {
       "href",
       "/admin",
     );
+    expect(
+      screen.queryByRole("link", { name: "Imports" }),
+    ).not.toBeInTheDocument();
   });
 
   it("hides protected navigation when signed out", () => {

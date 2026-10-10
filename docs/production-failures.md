@@ -54,7 +54,7 @@ and source artifacts follow their owning lifecycle. Temporary accepted delivery
 source is cleared after durable execution. Bulk archive source is removed after
 the child barrier closes, with restartable cleanup.
 
-The draft has not been deployed. After integration, verify live worker/gateway
+After deployment, verify live worker/gateway
 images, migrations, actual trace/log links, one upload/webhook through
 receipt-to-available and the four provisioned dashboards. Synthetic fixture
 footprint does not establish production memory or disk requirements.
