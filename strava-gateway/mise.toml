@@ -5,12 +5,17 @@ golangci-lint = "2.14.0"
 
 [env]
 GOTOOLCHAIN = "local"
-GOCACHE = "{{config_root}}/.cache/go-build"
-GOMODCACHE = "{{config_root}}/.cache/go-mod"
-GOLANGCI_LINT_CACHE = "{{config_root}}/.cache/golangci-lint"
+GOCACHE = "{{get_env(name='BIKE_GO_CACHE', default=config_root ~ '/.cache')}}/go-build"
+GOMODCACHE = "{{get_env(name='BIKE_GO_CACHE', default=config_root ~ '/.cache')}}/go-mod"
+GOLANGCI_LINT_CACHE = "{{get_env(name='BIKE_GO_CACHE', default=config_root ~ '/.cache')}}/golangci-lint"
 
 [tasks.test]
-run = "go test -p 1 ./..."
+description = "Run gateway unit tests with coverage"
+run = "mise run coverage"
+
+[tasks.coverage]
+description = "Generate service coverage with the shared native Go workflow"
+run = "mise --cd .. run go:coverage strava-gateway"
 
 [tasks."test:postgres"]
 description = "Run existing opt-in gateway storage checks against an explicitly disposable database"

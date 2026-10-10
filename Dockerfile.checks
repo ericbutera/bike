@@ -1,0 +1,14 @@
+ARG MISE_IMAGE
+ARG DOCKER_CLI_IMAGE
+ARG RUST_IMAGE
+FROM ${MISE_IMAGE:-scratch} AS mise
+FROM ${DOCKER_CLI_IMAGE:-scratch} AS docker
+FROM ${RUST_IMAGE:-scratch}
+COPY --from=mise /usr/local/bin/mise /usr/local/bin/mise
+COPY --from=docker /usr/local/bin/docker /usr/local/bin/docker
+COPY --from=docker /usr/local/libexec/docker/cli-plugins /usr/local/libexec/docker/cli-plugins
+# Mise owns the cached Rust installation; leave the base image's Rust off PATH.
+ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+WORKDIR /workspace
+ENTRYPOINT ["mise", "run"]
+CMD ["coverage:unit"]

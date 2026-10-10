@@ -41,31 +41,42 @@ if ! git merge-base --is-ancestor "$activation" "$base"; then
   base="$activation"
 fi
 mkdir -p .artifacts/coverage/diff
+jq -e 'type == "array" and length > 0' coverage-projects.json >/dev/null
 printf '%s\n' "$base" >.artifacts/coverage/diff/base-revision.txt
 printf 'Changed-line coverage base: %s; minimum: %s%% per project\n' "$base" "$COVERAGE_MINIMUM"
 
-check_suite() {
-  local suite="$1" include="$2"
-  shift 2
-  local report=".artifacts/coverage/$suite/lcov.info"
+check_project() {
+  local project="$1" id source include report
+  id="$(jq -r .id <<<"$project")"
+  source="$(jq -r .source <<<"$project")"
+  include="$(jq -r .include <<<"$project")"
+  report=".artifacts/coverage/$id/lcov.info"
+  local -a exclude=()
+  while IFS= read -r pattern; do exclude+=("$pattern"); done < <(jq -r '.exclude[]' <<<"$project")
   if [[ ! -s "$report" ]]; then
-    printf 'Missing or empty %s coverage report\n' "$suite" >&2
+    printf 'Missing or empty %s coverage report\n' "$id" >&2
     return 1
   fi
-  if [[ "$suite" == nextjs ]] && ! awk '/^SF:/ && !/^SF:bike-ui\// { print "Next.js LCOV paths must be relative to the repository root: " $0; exit 1 }' "$report"; then
+  if ! awk -v prefix="SF:$source/" '
+    /^SF:/ { found = 1; if (index($0, prefix) != 1 || $0 ~ /\/\.\.\//) {
+      print "LCOV source path is outside its project: " $0; invalid = 1
+    }}
+    /^DA:/ { measured = 1 }
+    END { exit invalid || !found || !measured }
+  ' "$report"; then
     return 1
   fi
+  printf '\nCoverage project: %s\n' "$id"
   diff-cover "$report" --compare-branch "$base" --include "$include" \
-    --exclude "$@" --include-untracked --show-uncovered --total-percent-float \
+    --exclude "${exclude[@]}" '*/migration/*' '*/migrations/*' \
+    --include-untracked --show-uncovered --total-percent-float \
     --fail-under "$COVERAGE_MINIMUM" \
-    --format "html:.artifacts/coverage/diff/$suite.html,json:.artifacts/coverage/diff/$suite.json,markdown:.artifacts/coverage/diff/$suite.md"
+    --format "html:.artifacts/coverage/diff/$id.html,json:.artifacts/coverage/diff/$id.json,markdown:.artifacts/coverage/diff/$id.md"
 }
 
-# Report both projects even when one fails; failures still block CI.
+# Report every project even when one fails; failures still block CI.
 result=0
-check_suite rust 'bike-rs/**/*.rs' \
-  '*/bike-rs/migration/*' '*/bike-rs/*/tests/*' '*_tests.rs' || result=1
-check_suite nextjs 'bike-ui/**/*.ts*' \
-  '*.d.ts' '*.test.ts' '*.test.tsx' '*.spec.ts' '*.spec.tsx' \
-  '*/__tests__/*' '*/bike-ui/tests/*' || result=1
+while IFS= read -r project; do
+  check_project "$project" || result=1
+done < <(jq -c '.[]' coverage-projects.json)
 exit "$result"

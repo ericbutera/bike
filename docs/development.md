@@ -105,7 +105,7 @@ mise tasks
 | `mise run hooks:check`             | All repository-root prek checks against tracked files                 |
 | `mise run ui:check`                | UI ESLint, typecheck, tests, build, format, client freshness          |
 | `mise run test`                    | Map renderer tests                                                    |
-| `mise run strava:test`             | Gateway tests; database cases require `TEST_DATABASE_URL`             |
+| `mise run strava:test`             | Gateway unit tests with coverage; PostgreSQL checks remain opt-in     |
 | `mise run generate:protobuf:check` | Checked-in gateway protobuf bindings                                  |
 | `mise run contracts:check`         | Canonical contract and shared asset copies                            |
 | `mise run test:integration`        | Real Axum routes and SeaORM queries with isolated SQLite fixture data |
@@ -135,39 +135,63 @@ Run all implemented coverage suites from the repository root:
 mise run coverage
 ```
 
-Use `mise run rust:coverage` or `mise run ui:coverage` to run one component.
-Use `mise run coverage:unit` for Rust and Next.js coverage without running
-Rust integration tests. The [happy-path checklist](coverage-checklist.md) records
+`coverage` runs the owning `coverage:unit` task in a disposable Docker container.
+Tool versions and base images come from mise, matching the owning CI tasks.
+Docker keeps reusable tool/build caches in `bike-checks-cache` and Linux Node
+dependencies in `bike-checks-ui-deps` and `bike-checks-renderer-deps`; no host
+mise cache access is needed. Containers are removed after each run. These
+volumes contain regenerable dependencies and compiled output, not source copies.
+The first container run installs tooling and builds instrumented Rust; later
+runs reuse its caches. Reports remain in the checkout for viewing.
+Run other owning checks in the same environment, for example
+`mise run checks:docker coverage:test` or `mise run checks:docker ci:runtime`.
+
+`coverage:unit` also supports direct execution where tooling is installed,
+including CI. Both tasks collect unit coverage for all implemented services
+without integration or E2E execution. Use `rust:coverage`, `ui:coverage`,
+`renderer:coverage`, or `strava:coverage` to select an owning component.
+The [happy-path checklist](coverage-checklist.md) records
 the initially uncovered paths and progress adding unit tests.
 Each component also provides `mise run coverage` from its own directory. The
-tasks install their pinned tools/dependencies and print per-file coverage and
+tasks install their pinned tools/dependencies and create per-file reports and
 totals. The first Rust run builds instrumented artifacts separately from ordinary
-builds in `bike-rs/target/llvm-cov-target`; later runs reuse that build cache.
+builds in `bike-rs/target/llvm-cov-target` when running directly, or
+`/cache/target/llvm-cov-target` in Docker; later runs reuse that build cache.
 Each Rust collection clears only prior `.profraw` measurements, preserving
 compiled artifacts so a previous run cannot inflate the new report.
 
-| Suite   | HTML report                                  | Machine-readable reports                                              |
-| ------- | -------------------------------------------- | --------------------------------------------------------------------- |
-| Rust    | `.artifacts/coverage/rust/html/index.html`   | `lcov.info`, `coverage-summary.json` in `.artifacts/coverage/rust/`   |
-| Next.js | `.artifacts/coverage/nextjs/html/index.html` | `lcov.info`, `coverage-summary.json` in `.artifacts/coverage/nextjs/` |
+| Service / project | Implementation | HTML report                                          |
+| ----------------- | -------------- | ---------------------------------------------------- |
+| Bike API          | Rust           | `.artifacts/coverage/api/html/index.html`            |
+| Bike worker       | Rust           | `.artifacts/coverage/worker/html/index.html`         |
+| Shared Bike core  | Rust           | `.artifacts/coverage/bike-core/html/index.html`      |
+| Bike UI           | Next.js        | `.artifacts/coverage/bike-ui/html/index.html`        |
+| Map renderer      | Node.js        | `.artifacts/coverage/map-renderer/html/index.html`   |
+| Strava gateway    | Go             | `.artifacts/coverage/strava-gateway/html/index.html` |
 
-Open either HTML file in a browser to inspect coverage by directory, file, and
-source line. Reports are generated locally and Git-ignored. JSON uses each
+Open an HTML file in a browser to inspect coverage by directory, file, and
+source line. Each collection replaces its generated reports so removed source
+files and previous language implementations do not remain in the current report.
+Raw captures and converter logs stay outside the published HTML.
+Reports are generated locally and Git-ignored. JSON uses each
 provider's native schema; percentages from different languages are not combined.
-Coverage currently records a baseline without enforcing a minimum percentage.
+Each project's directory also contains `lcov.info` and `coverage-summary.json`.
+Overall coverage is informational; the changed-line minimum is enforced separately.
 Test failures and Rust compiler warnings fail the task.
 
 Rust uses pinned `cargo-llvm-cov` and the matching toolchain's LLVM component.
-Reports cover `bike-core`, API, and worker. The default task runs ordinary
-workspace unit tests and the native SQLite HTTP integration suite;
+Reports cover `bike-core`, API, and worker. The root `rust:coverage`
+task also runs the native SQLite HTTP integration suite;
 `coverage:unit` selects library and binary unit tests only. PostgreSQL tests
 marked `#[ignore]` require an explicitly selected disposable database and are
 not run by either task. Large real-archive tests marked `#[ignore]` also remain
 excluded. Stable Rust coverage does not instrument doctests or
 collect branch coverage. Upstream excludes separate test files, generated output,
 and dependencies by default; inline test modules may appear in source coverage.
-All paths under `migration/` are excluded from HTML, LCOV, JSON, and terminal
-reports. The migration crate still compiles when needed by application code.
+All paths under `migration/` are excluded from reports. The migration crate
+still compiles when needed by application code. One workspace measurement is
+rendered into separate API, worker, and shared-core reports; shared-core lines
+are not counted again in the service reports.
 
 Next.js uses Vitest's V8 provider, pinned to the installed Vitest version. The
 report includes all TypeScript application sources in `app`, `components`, and
@@ -176,25 +200,46 @@ It measures unit/component and route-handler tests, not Playwright browser
 execution. Async server components need additional validation of framework
 rendering and navigation beyond isolated unit tests.
 
-The map renderer, Strava gateway, Playwright, and k6 are not yet coverage suites
-in the root task. Coverage shows execution, not the strength of assertions.
+The map renderer uses [c8](https://github.com/bcoe/c8) with native Node unit tests
+and includes unloaded application files at 0%. Its smoke harness, ESLint config,
+and test sources are excluded. Strava gateway uses native `go test` coverage
+across all handwritten packages, including packages without tests. Generated
+protobuf bindings are excluded. PostgreSQL tests remain opt-in and are not
+included in these unit reports. The Go directory also contains its native
+`coverage.out` profile and `statements.txt`; its native HTML reports statements,
+while the shared dashboard and gate measure lines from pinned
+[gcov2lcov](https://github.com/jandelgado/gcov2lcov) output.
+
+[`coverage-projects.json`](../coverage-projects.json) defines stable project IDs,
+source scope, language, and gate exclusions. To convert map-renderer to Go,
+change its language to `Go` and include pattern to `map-renderer/**/*.go`, use
+Go test/generated-source exclusions, and make its owning `coverage` task call
+`mise --cd .. run go:coverage map-renderer`. The shared Go workflow resolves
+that project's source directory and writes its existing report ID. The gate,
+dashboard, publisher, and report URLs do not need another language-specific
+branch. Further Go services can use the same task with their registered IDs.
+Update their owning test/CI tasks and the root collection task together.
+Language changes retain service history and start a new trend baseline.
+
+Playwright and k6 are separate checks and do not contribute unit coverage.
+Coverage shows execution, not the strength of assertions.
 
 ### CI coverage policy and viewing reports
 
-The owning Rust and Next.js `test` tasks produce unit coverage as part of the
-test run. Woodpecker's `test-rust` and `test-ui-unit` steps call those tasks;
-each unit suite runs once. Rust then runs its existing integration tests and
+Every owning `test` task produces unit coverage as part of its test run.
+Woodpecker's Rust, UI, map-renderer, and Strava gateway test steps call those
+tasks; each unit suite runs once. Rust then runs its existing integration tests and
 doctests separately, without including their execution in the unit reports.
 Its instrumented build cache persists at `/cache/bike/target/llvm-cov-target`;
 the first instrumented build is still required, while subsequent runs reuse
 unchanged compiled artifacts. Formatting, lint, types, audits, and contract
 checks remain in the owning check tasks.
 
-After both test steps finish, `mise run ci:coverage` checks their existing
+After all owning test steps finish, `mise run ci:coverage` checks their existing
 reports through `mise run coverage:check`, without compiling or running tests.
 The native [diff-cover CLI](https://github.com/Bachmann1234/diff_cover) reads
 each project's LCOV report and requires **80% coverage of added or changed
-executable lines**, separately for Rust and Next.js. Untouched existing source
+executable lines**, separately for each service and shared core. Untouched existing source
 has no minimum; modifying a line makes it subject to the policy. Tests, type
 declarations, and all Rust `migration/**` paths are excluded. Overall percentages
 are informational and may decrease without failing this gate.
@@ -213,8 +258,9 @@ After generating local reports, run `mise run coverage:check`. Set
 `COVERAGE_COMPARE_REF` to an explicit Git revision when checking another base.
 The task writes uncovered line lists and HTML, Markdown, and JSON diff reports
 to `.artifacts/coverage/diff/`. Run `mise run coverage:test` for isolated tooling
-fixtures proving the threshold, legacy exemption, migration exclusion, and
-invalid source-path or missing-report failure; prek and CI run these same fixtures.
+fixtures proving independent thresholds, legacy/migration exemptions, invalid
+source-path or missing-report failure, historical report compatibility, and
+native collection from two independent Go modules; prek and CI run these same fixtures.
 
 View published reports at **[Bike test coverage](https://ericbutera.github.io/bike/coverage/)**.
 GitHub Pages is free for this public repository; Codecov and other paid services

@@ -41,8 +41,7 @@ run = "mise run coverage"
 
 [tasks.coverage]
 description = "Run Next.js unit tests and generate HTML, LCOV, and JSON coverage reports"
-depends = ["deps"]
-run = "pnpm run test:coverage"
+run = ["mise install node npm:npm pnpm", "mise run deps", "mise exec node pnpm -- pnpm run test:coverage"]
 
 [tasks.format]
 description = "Format the shared Bike UI with the pinned Prettier config"

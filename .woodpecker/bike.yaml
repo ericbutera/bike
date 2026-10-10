@@ -13,10 +13,12 @@ when:
         - scripts/**
         - compose*.yaml
         - docker-bake.hcl
+        - Dockerfile.checks
         - prek.toml
         - .dockerignore
         - strava-gateway/**
         - mise.toml
+        - coverage-projects.json
         - .woodpecker/**
       on_empty: false
   - event: manual
@@ -51,6 +53,7 @@ steps:
       RUSTUP_HOME: /cache/bike/rustup
       UV_CACHE_DIR: /cache/bike/uv
       BIKE_NODE_PACKAGE_CACHE: /cache/bike/node-packages
+      BIKE_GO_CACHE: /cache/bike/go
       XDG_RUNTIME_DIR: /cache/bike/node-packages/runtime
     volumes: &mise_cache
       - woodpecker-cache:/cache
@@ -138,7 +141,7 @@ steps:
   - name: coverage
     failure: fail
     image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
-    depends_on: [test-rust, test-ui-unit]
+    depends_on: [test-rust, test-ui-unit, test-map-renderer, test-strava-gateway]
     environment: *mise_environment
     volumes: *mise_cache
     commands:
