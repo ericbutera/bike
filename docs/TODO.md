@@ -50,6 +50,13 @@ image identity, migrations, metrics and dashboard provisioning. Live pipeline
 acceptance requires a newly received upload or webhook; missing historical
 receipt and trace evidence remains unknown.
 
+Local reliability repairs are pending review and release: stale background-task
+recovery, per-entry archive failure handling, truthful archive outcomes, fair
+batch reconciliation, and map-worker shutdown draining. The owning specs in
+[activity ingestion](specs/activity-ingestion.md),
+[admin operations](specs/admin-operations.md), and [maps](specs/maps.md) define
+the contracts; focused regressions exercise the production queue boundaries.
+
 Deployment simplification is implemented locally: `mise run ci:deploy` clones
 IaC once, compiles the consolidated Bike Pulumi program once, and applies all
 four image pins in one update. All workload definitions now use the `bike`

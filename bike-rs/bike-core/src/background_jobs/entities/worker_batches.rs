@@ -15,3 +15,22 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
 impl ActiveModelBehavior for ActiveModel {}
+
+impl Model {
+    /// Keyset pages visit every running batch, including those behind batches
+    /// whose descendants are still active. IDs are stable across reconciliation.
+    pub async fn running_page(
+        db: &DatabaseConnection,
+        after_id: i32,
+        limit: u64,
+    ) -> Result<Vec<Self>, DbErr> {
+        use sea_orm::{QueryOrder, QuerySelect};
+        Entity::find()
+            .filter(Column::Status.eq("running"))
+            .filter(Column::Id.gt(after_id))
+            .order_by_asc(Column::Id)
+            .limit(limit)
+            .all(db)
+            .await
+    }
+}

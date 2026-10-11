@@ -102,7 +102,8 @@ impl Projection {
     }
 
     /// Queue and lease rows in the same transaction. Worker crashes and enqueue
-    /// failures cannot strand durable dirty state; leases recover after 15 minutes.
+    /// failures cannot strand durable dirty state. Projection leases expire after
+    /// 15 minutes; the shared worker heartbeat lease recovers abandoned executions.
     pub async fn enqueue_pending(db: &DatabaseConnection) -> Result<u64, DbErr> {
         let context =
             crate::background_jobs::pipeline::PipelineContext::current().unwrap_or_else(|| {

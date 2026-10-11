@@ -38,7 +38,7 @@ func runtimeConfig(t *testing.T) Config {
 		Assets: t.TempDir()}
 }
 
-func TestRuntimeStartsGRPCAndMetricsAndDrainsBeforeBrowserCloses(t *testing.T) {
+func TestRuntimeStartsGRPCAndMetricsAndClosesBrowser(t *testing.T) {
 	config := runtimeConfig(t)
 	metrics := freeAddress(t)
 	_, port, err := net.SplitHostPort(metrics)

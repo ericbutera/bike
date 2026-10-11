@@ -69,7 +69,7 @@ run = [
   "cargo test -p api --lib controllers::strava_gateway::tests",
   "cargo test -p api --lib request_receipt_and_id_are_preserved_in_enqueued_work",
   "cargo test -p api --lib load_cached_rows_for_request_rebuilds_dirty_cache_before_returning",
-  "cargo test -p api --test platform owner_upload_worker_trace_and_replay_run_to_completion",
+  "cargo test -p api --test platform owner_upload_and_admin_trace_and_replay_run_to_completion",
 ]
 
 [tasks."test:workers:postgres"]

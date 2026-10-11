@@ -111,7 +111,24 @@ impl TaskWorker {
         )
     }
 
+    async fn recover_abandoned_tasks(&self) -> Result<(), WorkerError> {
+        let recovered = background_tasks::Model::recover_stale_executions(
+            &self.db,
+            chrono::Utc::now(),
+            self.batch_size,
+        )
+        .await?;
+        if recovered > 0 {
+            info!(
+                recovered,
+                "Recovered background tasks with expired heartbeat leases"
+            );
+        }
+        Ok(())
+    }
+
     async fn process_batch(&self) -> Result<usize, WorkerError> {
+        self.recover_abandoned_tasks().await?;
         let tasks = background_tasks::Model::find_pending(&self.db, self.batch_size).await?;
         let mut count = 0;
         debug!(count = tasks.len(), "Found pending task batch");
@@ -403,3 +420,6 @@ fn record_superseded_execution() {
 #[cfg(test)]
 #[path = "task_worker_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod recovery_tests;

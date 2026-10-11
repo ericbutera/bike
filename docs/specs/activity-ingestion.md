@@ -121,8 +121,11 @@ canceled outcomes. A failure before activity creation remains replayable by
 import ID. Manual tasks and admin reruns cannot report success by skipping a
 failed import. Bulk reprocessing persists each import's result.
 
-Worker startup and administrator inspection recover executions after five minutes
-without progress. A live task or parent archive/bulk task heartbeat prevents
+Worker polling, including the first poll after startup, recovers background
+tasks after five minutes without a heartbeat. This includes accepted Strava
+deliveries, heatmap work, and bounded archive/bulk producers. Import startup and
+administrator inspection also recover executions after five minutes without
+progress. A live task or parent archive/bulk task heartbeat prevents
 recovery from stealing active work. Preserve interrupted attempts and queue a
 new execution; queued replay keeps its selected start and attempt ID.
 Background task attempt numbers remain monotonic through recovery. Recovery
@@ -138,6 +141,11 @@ means every supported entry was imported or duplicate; partial means both
 successful and failed entries; failed means no supported entry succeeded or
 the job could not finish. Unsupported entries have their own count. Counters
 and bounded error samples survive failure; retry preserves completed work.
+An unreadable or malformed compressed member records an entry failure while
+healthy members continue to queue. Entry errors, child intents, and the page
+cursor commit together. Database or source-storage failures abort the page for
+retry. A failed producer or archive scan never becomes success because entry
+counts are zero; an archive with no supported entries fails explicitly.
 
 ## Deduplication
 

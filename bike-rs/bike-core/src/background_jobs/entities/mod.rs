@@ -10,5 +10,6 @@ pub mod queue_observations;
 pub mod task_anomalies;
 pub mod task_attempts;
 mod task_lifecycle;
+mod task_recovery;
 pub mod work_units;
 pub mod worker_batches;

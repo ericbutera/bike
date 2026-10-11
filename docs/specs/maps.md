@@ -150,7 +150,9 @@ HTTP is used only for loopback browser assets and internal Prometheus metrics.
 - Caller cancellation or RPC expiry ends the caller's wait; already accepted
   browser work continues within its browser deadline. Queue waiting is separate
   from that deadline. Shutdown stops admission, attempts to drain accepted work
-  within a 60-second shutdown budget, then closes Chromium and flushes telemetry.
+  within a 60-second shutdown budget. Browser assets stay available until active
+  RPCs and accepted browser work drain, including work whose caller canceled.
+  Shutdown then closes the asset server and Chromium and flushes telemetry.
 - Standard gRPC health uses service name `bike.maps.v1.MapService` after Chromium
   starts. Docker health checks and Kubernetes readiness use this interface.
 - Browser assets bind to loopback only, default `127.0.0.1:3100`.
