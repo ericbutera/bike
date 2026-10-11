@@ -12,7 +12,11 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { formatDuration } from "../../lib/activityFormatting";
-import { config } from "../../lib/config";
+import {
+  DEFAULT_ROUTE_BASEMAP,
+  ROUTE_MAP_BASEMAP_LABELS,
+  ROUTE_MAP_BASEMAP_OPTIONS,
+} from "../../lib/mapAppearance";
 import { type ActivityRoutePoint } from "../../lib/queries";
 import { ErrorCard, LoadingSpinner } from "../ui/QueryState";
 import {
@@ -36,25 +40,6 @@ import {
 type RaceMapMode = "overview" | "leader-follow";
 
 const FOLLOW_LEADER_MAP_ZOOM = 19;
-
-function resolveRaceViewerBasemap(styleUrl: string): RouteMapBasemap {
-  switch (styleUrl.trim().toLowerCase()) {
-    case "":
-    case "topo":
-    case "opentopomap":
-    case "outdoors":
-      return "topo";
-    case "street":
-    case "streets":
-    case "carto-voyager":
-      return "street";
-    case "satellite":
-    case "imagery":
-      return "satellite";
-    default:
-      return "topo";
-  }
-}
 
 function formatRideDateLabel(value: string) {
   const date = new Date(value);
@@ -241,8 +226,7 @@ function RaceViewerMap({
       ariaLabel="Segment race viewer map"
       emptyMessage="Segment route geometry is not available yet."
       className="race-viewer-map absolute inset-0 border-0"
-      basemapOptions={["topo", "street", "satellite"]}
-      defaultBasemap="topo"
+      basemapOptions={ROUTE_MAP_BASEMAP_OPTIONS}
       selectedBasemap={selectedBasemap}
       onSelectedBasemapChange={onSelectedBasemapChange}
       fitBoundsPadding={40}
@@ -271,8 +255,8 @@ export default function SegmentRaceViewer({
     useSegmentWithComparison(segmentId);
   const [playbackSpeed, setPlaybackSpeed] =
     useState<RacePlaybackSpeed>(initialPlaybackSpeed);
-  const [selectedBasemap, setSelectedBasemap] = useState<RouteMapBasemap>(() =>
-    resolveRaceViewerBasemap(config.MAP_STYLE_URL),
+  const [selectedBasemap, setSelectedBasemap] = useState<RouteMapBasemap>(
+    DEFAULT_ROUTE_BASEMAP,
   );
   const mapMode: RaceMapMode = "leader-follow";
   const effortSelection = useSegmentEffortSelection({
@@ -395,13 +379,7 @@ export default function SegmentRaceViewer({
 
               <div className="rounded-box border border-base-300/80 bg-base-100/90 p-1 shadow-sm backdrop-blur">
                 <div className="join join-horizontal shrink-0">
-                  {(
-                    [
-                      ["topo", "Topo"],
-                      ["street", "Street"],
-                      ["satellite", "Satellite"],
-                    ] as const
-                  ).map(([basemap, label]) => (
+                  {ROUTE_MAP_BASEMAP_OPTIONS.map((basemap) => (
                     <button
                       key={basemap}
                       type="button"
@@ -411,7 +389,7 @@ export default function SegmentRaceViewer({
                         setSelectedBasemap(basemap);
                       }}
                     >
-                      {label}
+                      {ROUTE_MAP_BASEMAP_LABELS[basemap]}
                     </button>
                   ))}
                 </div>

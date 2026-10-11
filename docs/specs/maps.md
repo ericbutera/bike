@@ -1,17 +1,58 @@
 # Maps specification
 
-This is the canonical contract for activity route PNGs and the internal snapshot
-service. It replaces the map guide and map-renderer refactoring plan. Code,
-generated transport schemas, and tests implement this contract; they do not
-define product requirements. Review and release status live in
+This is the canonical contract for map appearance across Bike, activity route
+PNGs, and the internal snapshot service. It replaces the map guide and
+map-renderer refactoring plan. Code, generated transport schemas, and tests
+implement this contract; they do not define product requirements.
+Snapshot review and release status live in
 [MAP01](../TODO.md#active-work).
+
+## Shared map appearance
+
+- All current and future Bike maps must use the same clean background look
+  established by activity previews and personal heatmaps. This includes activity
+  images and interactive maps, heatmaps, segment detail and comparison maps,
+  segment builders, and race viewers.
+- Use the shared Route light basemap in light theme and Fiord in dark theme.
+  Within a theme, land, water, roads, terrain, labels, and contrast must match
+  across surfaces. Segment and race viewers must adopt these backgrounds as
+  their defaults; page-specific legacy backgrounds must not remain the default.
+- Overlay lines default to Bike blue `#0060df` in both themes, including
+  generated activity images. Switching theme changes the background without
+  implicitly changing a blue route to another color.
+- Different segment and compared-effort colors are permitted when they help
+  distinguish selections or riders. Explicitly selected heatmap palettes and
+  other colors specified by an owning feature contract are also permitted.
+  Color exceptions do not change the shared background requirement.
+- Browser maps and the `map-renderer` snapshot service must use synchronized
+  basemap styles and the same default route color. Keep shared style assets and
+  defaults reusable so individual pages and the renderer cannot drift.
+- Interactive map controls offer **Map** as the theme-aware default. Explicit
+  Topo, Street, or Satellite selections remain available where layer controls
+  already exist; **Map** restores the shared background in the current theme.
+  Deployment's legacy `MAP_STYLE_URL` must not override the shared default.
+- Preserve each surface's framing, heatmap density/opacity, selection highlights,
+  playback behavior, and visible attribution while applying the shared look.
+
+### Appearance acceptance
+
+- Compare activity previews, an interactive activity map, `/maps`,
+  `/segments/16`, and `/segments/16/race?efforts=7286%2C7249%2C6945` in both
+  themes. At comparable locations and zoom levels, backgrounds must match;
+  default overlay lines must be blue unless an explicit color exception applies.
+- Verify permitted segment/effort colors and selected heatmap palettes remain
+  distinguishable over the common backgrounds, including during race playback.
+- Compare `map-renderer` thumbnail/full PNGs with browser maps in both themes;
+  style changes must follow the image revision and cache rules below.
+  [MAPS15](../TODO.md#active-work) tracks implementation and visual verification.
 
 ## Rider experience
 
 - With `enhanced_maps` enabled, activity cards display a private route PNG in
   the rider's light or dark theme. With it disabled, cards retain the existing
-  SVG route preview and do not call the snapshot service. Missing flags are
-  disabled. `activity_list_full_maps` selects full images when enabled and
+  simplified SVG route preview, with a blue route, and do not call the snapshot
+  service. SVG preview style version 7 refreshes the previous teal previews.
+  Missing flags are disabled. `activity_list_full_maps` selects full images when enabled and
   thumbnails otherwise. Images load lazily; a preview with fewer than two
   route points displays **No route** in either mode.
 - Thumbnail images are 288×192 CSS pixels; full images are 1000×300 CSS pixels.

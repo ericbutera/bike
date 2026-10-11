@@ -6,6 +6,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
 import type { FeatureCollection, Point } from "geojson";
 import { useBikeTheme } from "../lib/useBikeTheme";
+import { bikeMapStyle } from "../lib/mapAppearance";
 import type { HeatmapMetadata, HeatmapZones } from "../lib/heatmaps";
 import {
   DEFAULT_HEATMAP_ZOOM,
@@ -29,10 +30,6 @@ const ZONES_CIRCLES = HEATMAP_ZONE_LAYERS[0];
 const ZONES_COUNTS = "personal-heatmap-zone-counts";
 const SINGLE_ZONE_CIRCLES = HEATMAP_ZONE_LAYERS[1];
 const SINGLE_ZONE_COUNTS = "personal-heatmap-single-zone-counts";
-const styleUrl = (theme: string) =>
-  theme === "dark"
-    ? "/map-styles/fiord-v1.json"
-    : "/map-styles/route-light-v1.json";
 
 function zoneFeatures(zones: HeatmapZones["zones"]): FeatureCollection<Point> {
   return {
@@ -112,7 +109,7 @@ export default function HeatmapMap({
     const localCenter = localRidingCenter(current.current.zones);
     const instance = new maplibregl.Map({
       container: container.current!,
-      style: styleUrl(appliedTheme.current),
+      style: bikeMapStyle(appliedTheme.current),
       center: camera
         ? [camera.longitude, camera.latitude]
         : (localCenter ?? [
@@ -341,7 +338,7 @@ export default function HeatmapMap({
     if (!instance || appliedTheme.current === theme) return;
     appliedTheme.current = theme;
     styleReady.current = false;
-    instance.setStyle(styleUrl(theme));
+    instance.setStyle(bikeMapStyle(theme));
   }, [theme]);
 
   useEffect(() => {

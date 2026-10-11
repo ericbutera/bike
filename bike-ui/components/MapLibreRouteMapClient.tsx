@@ -11,6 +11,13 @@ import * as maplibregl from "../lib/maplibre";
 import { type GeoJSONSource, type StyleSpecification } from "maplibre-gl";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useBikeTheme } from "../lib/useBikeTheme";
+import {
+  bikeMapStyle,
+  DEFAULT_ROUTE_BASEMAP,
+  DEFAULT_ROUTE_COLOR,
+  ROUTE_MAP_BASEMAP_LABELS,
+  ROUTE_MAP_BASEMAP_OPTIONS,
+} from "../lib/mapAppearance";
 import { config } from "../lib/config";
 import { type ActivityRoutePoint } from "../lib/queries";
 import { useKeyedState } from "../lib/useKeyedState";
@@ -31,18 +38,6 @@ const OPEN_FREE_MAP_POSITRON_STYLE_URL =
   "https://tiles.openfreemap.org/styles/positron";
 const CYCLING_TRAILS_SOURCE_ID = "cycling-trails";
 const CYCLING_TRAILS_LAYER_ID = "cycling-trails-overlay";
-const DEFAULT_BASEMAP_OPTIONS: RouteMapBasemap[] = [
-  "topo",
-  "street",
-  "satellite",
-];
-const BASEMAP_LABELS: Record<RouteMapBasemap, string> = {
-  topo: "Topo",
-  street: "Street",
-  satellite: "Satellite",
-  "route-light": "Route light",
-  fiord: "Fiord",
-};
 
 const EMPTY_STYLE: StyleSpecification = {
   version: 8,
@@ -123,8 +118,11 @@ function buildSatelliteStyle(): StyleSpecification {
 
 function buildBasemapStyle(
   basemap: RouteMapBasemap,
+  theme: string,
 ): string | StyleSpecification {
   switch (basemap) {
+    case "default":
+      return bikeMapStyle(theme);
     case "route-light":
       return "/map-styles/route-light-v1.json";
     case "fiord":
@@ -567,13 +565,12 @@ function fitMapToGeometry(
 function ensureMapSourcesAndLayers(
   map: maplibregl.Map,
   showBaseTiles: boolean,
-  themedActivityMap: boolean,
-  activityRouteColor: string,
+  sharedBasemap: boolean,
 ) {
-  const beforeLabels = themedActivityMap
+  const beforeLabels = sharedBasemap
     ? map.getStyle().layers?.find((layer) => layer.type === "symbol")?.id
     : undefined;
-  const showCyclingTrails = showBaseTiles && !themedActivityMap;
+  const showCyclingTrails = showBaseTiles && !sharedBasemap;
   if (showCyclingTrails && !map.getSource(CYCLING_TRAILS_SOURCE_ID)) {
     map.addSource(CYCLING_TRAILS_SOURCE_ID, {
       type: "raster",
@@ -620,9 +617,9 @@ function ensureMapSourcesAndLayers(
           "line-join": "round",
         },
         paint: {
-          "line-color": themedActivityMap ? "#ffffff" : "#10212d",
+          "line-color": sharedBasemap ? "#ffffff" : "#10212d",
           "line-width": 9,
-          "line-opacity": themedActivityMap ? 1 : 0.86,
+          "line-opacity": sharedBasemap ? 1 : 0.86,
         },
       },
       beforeLabels,
@@ -638,8 +635,8 @@ function ensureMapSourcesAndLayers(
           "line-join": "round",
         },
         paint: {
-          "line-color": themedActivityMap ? activityRouteColor : "#16b8a5",
-          "line-width": themedActivityMap ? 6 : 5,
+          "line-color": DEFAULT_ROUTE_COLOR,
+          "line-width": 6,
           "line-opacity": 1,
         },
       },
@@ -660,8 +657,8 @@ function ensureMapSourcesAndLayers(
           "text-keep-upright": false,
         },
         paint: {
-          "text-color": themedActivityMap ? "#ffffff" : "#e6fffb",
-          "text-halo-color": themedActivityMap ? activityRouteColor : "#0c5c55",
+          "text-color": "#ffffff",
+          "text-halo-color": DEFAULT_ROUTE_COLOR,
           "text-halo-width": 1.1,
           "text-opacity": 0.96,
         },
@@ -709,7 +706,7 @@ function ensureMapSourcesAndLayers(
       data: emptyFeatureCollection<LineString>(),
     });
 
-    if (themedActivityMap) {
+    if (sharedBasemap) {
       map.addLayer(
         {
           id: OVERLAY_CASING_LAYER_ID,
@@ -798,7 +795,7 @@ export default function MapLibreRouteMapClient({
   showZoomControls = false,
   showLayerPicker = false,
   basemapOptions,
-  defaultBasemap = "topo",
+  defaultBasemap = DEFAULT_ROUTE_BASEMAP,
   selectedBasemap: selectedBasemapProp,
   onSelectedBasemapChange,
   fitBoundsPoints,
@@ -857,11 +854,14 @@ export default function MapLibreRouteMapClient({
     () =>
       basemapOptions && basemapOptions.length > 0
         ? basemapOptions
-        : DEFAULT_BASEMAP_OPTIONS,
+        : ROUTE_MAP_BASEMAP_OPTIONS,
     [basemapOptions],
   );
   const configuredBasemap = useMemo(
-    () => resolveConfiguredBasemap(styleUrl, defaultBasemap),
+    () =>
+      defaultBasemap === DEFAULT_ROUTE_BASEMAP
+        ? DEFAULT_ROUTE_BASEMAP
+        : resolveConfiguredBasemap(styleUrl, defaultBasemap),
     [defaultBasemap, styleUrl],
   );
   const customMapStyle = useMemo(
@@ -877,9 +877,10 @@ export default function MapLibreRouteMapClient({
     useKeyedState(configuredBasemap, configuredBasemap);
   const isBasemapControlled = selectedBasemapProp != null;
   const selectedBasemap = selectedBasemapProp ?? uncontrolledSelectedBasemap;
-  const activityThemeBasemap = theme === "dark" ? "fiord" : "route-light";
-  const activityRouteColor = theme === "dark" ? "#fc5200" : "#0060df";
-  const themedActivityMap = defaultBasemap === "route-light";
+  const sharedBasemap =
+    selectedBasemap === DEFAULT_ROUTE_BASEMAP ||
+    selectedBasemap === "route-light" ||
+    selectedBasemap === "fiord";
   const [overlayTooltip, setOverlayTooltip] = useState<{
     label: string;
     x: number;
@@ -899,29 +900,25 @@ export default function MapLibreRouteMapClient({
       return EMPTY_STYLE;
     }
 
-    if (themedActivityMap) {
-      return buildBasemapStyle(activityThemeBasemap);
-    }
-
     // If the basemap is controlled by the parent component, prefer it
     // even if the internal layer picker UI is not shown. This allows
     // external controls (like a top-level join) to change the map style.
     if (isBasemapControlled) {
-      return buildBasemapStyle(selectedBasemap);
+      return buildBasemapStyle(selectedBasemap, theme);
     }
 
     if (canShowLayerPicker) {
-      return buildBasemapStyle(selectedBasemap);
+      return buildBasemapStyle(selectedBasemap, theme);
     }
 
-    if (customMapStyle) {
+    if (customMapStyle && defaultBasemap !== DEFAULT_ROUTE_BASEMAP) {
       return customMapStyle;
     }
 
-    return buildBasemapStyle(configuredBasemap);
+    return buildBasemapStyle(configuredBasemap, theme);
   }, [
-    activityThemeBasemap,
-    themedActivityMap,
+    theme,
+    defaultBasemap,
     canShowLayerPicker,
     configuredBasemap,
     customMapStyle,
@@ -934,8 +931,8 @@ export default function MapLibreRouteMapClient({
       return "empty";
     }
 
-    if (themedActivityMap) {
-      return `activity-theme:${activityThemeBasemap}`;
+    if (selectedBasemap === DEFAULT_ROUTE_BASEMAP) {
+      return `bike-theme:${theme}`;
     }
 
     if (isBasemapControlled) {
@@ -946,14 +943,14 @@ export default function MapLibreRouteMapClient({
       return `basemap:${selectedBasemap}`;
     }
 
-    if (customMapStyle) {
+    if (customMapStyle && defaultBasemap !== DEFAULT_ROUTE_BASEMAP) {
       return `custom:${customMapStyle}`;
     }
 
     return `basemap:${configuredBasemap}`;
   }, [
-    activityThemeBasemap,
-    themedActivityMap,
+    theme,
+    defaultBasemap,
     canShowLayerPicker,
     configuredBasemap,
     customMapStyle,
@@ -1001,7 +998,7 @@ export default function MapLibreRouteMapClient({
         .map((overlay) =>
           buildLineFeature(overlay.id, overlay.points, {
             overlayId: overlay.id,
-            color: overlay.color,
+            color: overlay.color ?? DEFAULT_ROUTE_COLOR,
             label: overlay.label ?? "",
             weight: overlay.weight ?? 6,
           }),
@@ -1204,12 +1201,7 @@ export default function MapLibreRouteMapClient({
         lastFittedFitBoundsPointsRef.current !== fitBoundsPoints ||
         lastFitBoundsKeyRef.current !== fitBoundsKey;
 
-      ensureMapSourcesAndLayers(
-        map,
-        showBaseTiles,
-        themedActivityMap,
-        activityRouteColor,
-      );
+      ensureMapSourcesAndLayers(map, showBaseTiles, sharedBasemap);
 
       (map.getSource(ROUTE_SOURCE_ID) as GeoJSONSource).setData(
         routeSourceData,
@@ -1354,8 +1346,7 @@ export default function MapLibreRouteMapClient({
     fitBoundsPadding,
     mapStyleKey,
     showBaseTiles,
-    themedActivityMap,
-    activityRouteColor,
+    sharedBasemap,
   ]);
 
   useEffect(() => {
@@ -1369,12 +1360,7 @@ export default function MapLibreRouteMapClient({
         return;
       }
 
-      ensureMapSourcesAndLayers(
-        map,
-        showBaseTiles,
-        themedActivityMap,
-        activityRouteColor,
-      );
+      ensureMapSourcesAndLayers(map, showBaseTiles, sharedBasemap);
       const markerSource = map.getSource(MARKER_SOURCE_ID) as GeoJSONSource;
 
       if (markerAnimationFrameRef.current != null) {
@@ -1532,12 +1518,11 @@ export default function MapLibreRouteMapClient({
     followViewportPreserveUserZoom,
     markerSourceData,
     mapStyleKey,
-    themedActivityMap,
+    sharedBasemap,
     movingMarkerTransitionMs,
     movingMarkers,
     routePoints,
     showBaseTiles,
-    activityRouteColor,
   ]);
 
   return (
@@ -1562,7 +1547,7 @@ export default function MapLibreRouteMapClient({
                   handleBasemapChange(basemap);
                 }}
               >
-                {BASEMAP_LABELS[basemap]}
+                {ROUTE_MAP_BASEMAP_LABELS[basemap]}
               </button>
             );
           })}

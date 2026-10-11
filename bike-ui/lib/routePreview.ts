@@ -18,7 +18,7 @@ type RoutePreviewDimensions = {
   padding: number;
 };
 
-export const ROUTE_PREVIEW_STYLE_VERSION = "6";
+export const ROUTE_PREVIEW_STYLE_VERSION = "7";
 
 const ROUTE_PREVIEW_DIMENSIONS: Record<
   RoutePreviewVariant,
