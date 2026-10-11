@@ -13,6 +13,10 @@ export function formatTaskDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
+export function formatTaskInterval(start?: string | null, end?: string | null) {
+  return formatTaskDuration(millisecondsBetween(start, end)) || "N/A";
+}
+
 export function formatTaskDuration(value: number | null) {
   if (value === null) return "";
   const seconds = Math.max(0, Math.round(value / 1000));

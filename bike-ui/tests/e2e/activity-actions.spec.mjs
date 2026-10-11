@@ -22,7 +22,9 @@ test("activity source download and admin import trace work in Bike", async ({
       trace.getByRole("heading", { name: "Import trace" }),
     ).toBeVisible();
     await expect(trace.getByText(/Import #\d+/)).toBeVisible();
-    await expect(trace.getByRole("heading", { name: "DAG" })).toBeVisible();
+    await expect(
+      trace.getByRole("heading", { name: "Import stages" }),
+    ).toBeVisible();
     await trace.getByRole("button", { name: "Close", exact: true }).click();
     await expect(trace).toHaveCount(0);
 

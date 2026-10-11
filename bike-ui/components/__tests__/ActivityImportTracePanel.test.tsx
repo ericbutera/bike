@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActivityImportTrace } from "../../lib/queries";
@@ -8,14 +8,6 @@ const mocks = vi.hoisted(() => ({ plan: vi.fn(), replay: vi.fn() }));
 vi.mock("../../lib/queries", () => ({
   useActivityImportReplayPlan: mocks.plan,
   useReplayActivityImport: () => ({ replay: mocks.replay, isPending: false }),
-}));
-vi.mock("mermaid", () => ({
-  default: {
-    initialize: vi.fn(),
-    render: vi.fn().mockResolvedValue({
-      svg: '<svg><g class="node" id="activity-import-render-flowchart-activity_saved-1"><text>Saved node</text></g></svg>',
-    }),
-  },
 }));
 vi.mock("react-hot-toast", () => ({
   default: { success: vi.fn(), error: vi.fn() },
@@ -108,7 +100,12 @@ describe("Processing stages and replay", () => {
       />,
     );
     expect(screen.getByText("Parsed 7 records")).toBeInTheDocument();
-    expect(screen.getByText("GPX · 4096 bytes")).toBeInTheDocument();
+    expect(
+      within(
+        screen.getByRole("button", { name: "Raw stored completed" }),
+      ).getByText("GPX · 4096 bytes"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(screen.queryByText("Verbose event message")).not.toBeInTheDocument();
   });
 
@@ -122,7 +119,9 @@ describe("Processing stages and replay", () => {
         canReplay
       />,
     );
-    await user.click(await screen.findByText("Saved node"));
+    await user.click(
+      screen.getByRole("button", { name: "Activity saved completed" }),
+    );
     expect(mocks.plan).toHaveBeenLastCalledWith(17, "activity_saved", true);
     await user.click(
       screen.getByRole("button", { name: "Replay from Activity saved" }),
@@ -206,11 +205,71 @@ describe("Processing stages and replay", () => {
       />,
     );
     expect(screen.getByText("Latest failure")).toBeInTheDocument();
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "Attempt" }),
-      "1",
+    await user.click(
+      screen.getByRole("button", { name: "Attempt #1 completed" }),
     );
     expect(screen.queryByText("Latest failure")).not.toBeInTheDocument();
     expect(screen.getByText("Parsed 7 records")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Raw stored completed" }),
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("shows every selected stage fact and never mixes another attempt's timing", async () => {
+    const user = userEvent.setup();
+    const current = trace();
+    current.attempts![0].nodes[1] = {
+      ...current.nodes[1],
+      started_at: "2026-10-08T12:00:05Z",
+      completed_at: "2026-10-08T12:00:15Z",
+    };
+    render(
+      <ActivityImportTracePanel
+        trace={current}
+        isLoading={false}
+        error={null}
+      />,
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Activity parsed completed" }),
+    );
+    const details = within(
+      screen.getByRole("region", { name: "Selected stage" }),
+    );
+    expect(details.getByText("7 chart samples · 0 laps")).toBeInTheDocument();
+    expect(details.getByText("10s")).toBeInTheDocument();
+    expect(
+      details.getByRole("link", { name: /Open activity processing/ }),
+    ).toHaveAttribute("href", "/admin/imports/17");
+  });
+
+  it("names the actual replay stage when fallback stops at parsing", async () => {
+    const user = userEvent.setup();
+    mocks.plan.mockReturnValue({
+      data: {
+        requested_stage: "activity_saved",
+        start_stage: "activity_parsed",
+      },
+      isLoading: false,
+      error: null,
+    });
+    render(
+      <ActivityImportTracePanel
+        trace={trace()}
+        isLoading={false}
+        error={null}
+        canReplay
+      />,
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Activity saved completed" }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Replay from Activity parsed" }),
+    );
+    expect(mocks.replay).toHaveBeenCalledWith(17, "activity_saved", {
+      requested_stage: "activity_saved",
+      start_stage: "activity_parsed",
+    });
   });
 });

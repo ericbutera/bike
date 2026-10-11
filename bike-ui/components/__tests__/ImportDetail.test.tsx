@@ -9,6 +9,11 @@ vi.mock("../activity-detail/ActivityImportTracePanel", () => ({
     <p>{canReplay ? "Replay available" : "Read only"}</p>
   ),
 }));
+vi.mock("../admin/ActivityPipelines", () => ({
+  default: ({ activityId }: { activityId: number }) => (
+    <p>Worker runs for activity #{activityId}</p>
+  ),
+}));
 
 describe("import detail", () => {
   it("shows the source summary and links to its saved activity", () => {
@@ -30,9 +35,7 @@ describe("import detail", () => {
     expect(
       screen.getByRole("heading", { name: "ride.gpx" }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/processed · manual_upload · 4,096 bytes/),
-    ).toBeInTheDocument();
+    expect(screen.getByText("4,096 bytes")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View activity" })).toHaveAttribute(
       "href",
       "/activities/42",
@@ -41,6 +44,11 @@ describe("import detail", () => {
       screen.getByRole("link", { name: /Import history/ }),
     ).toHaveAttribute("href", "/admin/imports");
     expect(screen.getByText("Replay available")).toBeInTheDocument();
+    expect(
+      screen.getByText("Worker runs for activity #42"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("manual upload")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 
   it("keeps the import identifiable before its summary is loaded", () => {
@@ -55,6 +63,21 @@ describe("import detail", () => {
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: "View activity" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("retains stage recovery before activity creation", () => {
+    mocks.trace.mockReturnValue({
+      data: { import: { id: 17, status: "failed", source: "archive" } },
+      isLoading: false,
+      error: null,
+    });
+    render(<ImportDetail importId="17" />);
+    expect(screen.getByText("Replay available")).toBeInTheDocument();
+    expect(screen.getByText("No activity created")).toBeInTheDocument();
+    expect(screen.getByText(/Worker runs will appear/)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Worker runs for activity/),
     ).not.toBeInTheDocument();
   });
 });

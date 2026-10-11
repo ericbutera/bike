@@ -1,17 +1,16 @@
 "use client";
 import { useState } from "react";
 import { usePipelineGraph } from "../../lib/queries";
+import { pipelineMermaid, gatewaySteps } from "../../lib/pipelineGraph";
 import {
-  pipelineMermaid,
-  gatewaySteps,
-  type PipelineGraph,
-  type PipelineTask,
-} from "../../lib/pipelineGraph";
-import { formatTaskDuration, millisecondsBetween } from "../../lib/taskTiming";
+  formatTaskDate,
+  formatTaskInterval as duration,
+} from "../../lib/taskTiming";
 import MermaidFlowchart from "../ui/MermaidFlowchart";
+import { ProcessingFacts, ProcessingStatus } from "../ui/ProcessingDetails";
 
-const duration = (start?: string | null, end?: string | null) =>
-  formatTaskDuration(millisecondsBetween(start, end)) || "N/A";
+import EvidenceLinks from "./PipelineEvidenceLinks";
+import TaskEvidence from "./PipelineTaskEvidence";
 export default function PipelinePanel({ runId }: { runId: string }) {
   const [cursor, setCursor] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
@@ -24,7 +23,9 @@ export default function PipelinePanel({ runId }: { runId: string }) {
     output_offset: outputOffset,
   });
   const run = query.data;
-  const task = run?.tasks.find((task) => task.id === taskId);
+  const task =
+    run?.tasks.find((task) => task.id === taskId) ??
+    (selected == null ? run?.tasks[0] : undefined);
   const gateway =
     selected?.startsWith("gateway_") && run
       ? gatewaySteps(run)[Number(selected.split("_")[1])]
@@ -35,36 +36,118 @@ export default function PipelinePanel({ runId }: { runId: string }) {
       {query.error ? <p role="alert">Unable to load pipeline.</p> : null}
       {run ? (
         <>
-          <h4 className="font-semibold">Received → processing → available</h4>
-          <p className="text-sm">
-            {run.entrypoint} ·{" "}
-            {run.available_at
-              ? "Available"
-              : "Readiness pending or not recorded"}{" "}
-            · receipt → current{" "}
-            {duration(run.received_at, new Date().toISOString())} · receipt →
-            available {duration(run.received_at, run.available_at)} · receipt →
-            end {duration(run.received_at, run.ended_at)}
-          </p>
-          <p className="break-all font-mono text-xs">
-            Run {run.run_id} · Request {run.request_id ?? "unknown"} · Trace{" "}
-            {run.trace_id ?? "unknown"}
-          </p>
-          <EvidenceLinks run={run} traceId={run.trace_id} />
-          <MermaidFlowchart
-            chart={pipelineMermaid(run)}
-            onSelect={(node) => {
-              setSelected(node);
-              setWorkAfter(0);
-            }}
+          <h4 className="font-semibold">Run overview</h4>
+          <ol aria-label="Run progress" className="grid gap-3 md:grid-cols-3">
+            {[
+              {
+                label: "1. Received",
+                time: run.received_at,
+                detail: run.entrypoint.replaceAll("_", " "),
+              },
+              {
+                label: "2. Accepted for processing",
+                time: run.accepted_at,
+                detail: run.ended_at
+                  ? `Work ended ${formatTaskDate(run.ended_at)}`
+                  : "Work has not ended",
+              },
+              {
+                label: "3. Outputs available",
+                time: run.available_at,
+                detail: run.available_at
+                  ? "Publication confirmed"
+                  : "Readiness pending or not recorded",
+              },
+            ].map((step) => (
+              <li
+                key={step.label}
+                className="rounded-box border border-base-300 bg-base-200/40 p-4"
+              >
+                <h5 className="font-semibold">{step.label}</h5>
+                <p className="mt-2 text-sm">
+                  {formatTaskDate(step.time) || "Not recorded"}
+                </p>
+                <p className="mt-1 text-xs text-base-content/60">
+                  {step.detail}
+                </p>
+              </li>
+            ))}
+          </ol>
+          <ProcessingFacts
+            facts={[
+              {
+                label: "Receipt to availability",
+                value: duration(run.received_at, run.available_at),
+              },
+              {
+                label: "Receipt to end of work",
+                value: duration(run.received_at, run.ended_at),
+              },
+            ]}
           />
+          <details className="rounded-box border border-base-300 p-3">
+            <summary className="cursor-pointer text-sm font-medium">
+              Run identifiers
+            </summary>
+            <div className="mt-3">
+              <ProcessingFacts
+                facts={[
+                  { label: "Run ID", value: run.run_id },
+                  { label: "Request ID", value: run.request_id },
+                  { label: "Trace ID", value: run.trace_id },
+                ]}
+              />
+            </div>
+          </details>
+          <EvidenceLinks run={run} traceId={run.trace_id} />
+          <div className="flex flex-wrap gap-2" aria-label="Worker tasks">
+            {run.tasks.map((item) => (
+              <button
+                type="button"
+                key={item.id}
+                aria-pressed={item.id === task?.id}
+                className={`rounded-box border p-3 text-left ${item.id === task?.id ? "border-primary bg-primary/5" : "border-base-300"}`}
+                onClick={() => {
+                  setSelected(`task_${item.id}`);
+                  setWorkAfter(0);
+                }}
+              >
+                <span className="block text-sm font-semibold">
+                  Task #{item.id}: {item.task_type.replaceAll("_", " ")}
+                </span>
+                <ProcessingStatus status={item.status} />
+              </button>
+            ))}
+          </div>
+          <details className="rounded-box border border-base-300 p-3">
+            <summary className="cursor-pointer text-sm font-medium">
+              Complete task dependency graph
+            </summary>
+            <div className="mt-3">
+              <MermaidFlowchart
+                chart={pipelineMermaid(run)}
+                onSelect={(node) => {
+                  setSelected(node);
+                  setWorkAfter(0);
+                }}
+              />
+            </div>
+          </details>
           {gateway ? (
-            <p>
-              {gateway.kind} ·{" "}
-              {duration(gateway.started_at, gateway.finished_at)} · receipt →
-              result {duration(run.received_at, gateway.finished_at)} · attempts{" "}
-              {gateway.attempts ?? "unknown"}
-            </p>
+            <ProcessingFacts
+              facts={[
+                { label: "Provider step", value: gateway.kind },
+                {
+                  label: "Duration",
+                  value: duration(gateway.started_at, gateway.finished_at),
+                },
+                {
+                  label: "Receipt to result",
+                  value: duration(run.received_at, gateway.finished_at),
+                },
+                { label: "Attempts", value: gateway.attempts },
+              ]}
+            />
           ) : null}
           {task ? (
             <TaskEvidence run={run} task={task} selected={selected} />
@@ -87,14 +170,40 @@ export default function PipelinePanel({ runId }: { runId: string }) {
               First work evidence
             </button>
           ) : null}
-          <ul>
-            {run.outputs.map((output, index) => (
-              <li key={index}>
-                {output.kind} #{output.target_id} · {output.status} · revision{" "}
-                {output.revision} · published {output.available_at ?? "pending"}
-              </li>
-            ))}
-          </ul>
+          <section aria-label="Published outputs" className="space-y-3">
+            <h5 className="font-semibold">Outputs</h5>
+            {!run.outputs.length ? (
+              <p className="text-sm text-base-content/60">
+                No output evidence was recorded on this page.
+              </p>
+            ) : null}
+            <div className="grid gap-3 sm:grid-cols-2">
+              {run.outputs.map((output, index) => (
+                <article
+                  key={index}
+                  className="rounded-box border border-base-300 p-4"
+                >
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <h6 className="text-sm font-semibold">
+                      {output.kind.replaceAll("_", " ")} #{output.target_id}
+                    </h6>
+                    <ProcessingStatus status={output.status} />
+                  </div>
+                  <ProcessingFacts
+                    facts={[
+                      { label: "Revision", value: output.revision },
+                      {
+                        label: "Published",
+                        value:
+                          formatTaskDate(output.available_at) ||
+                          "Pending or not recorded",
+                      },
+                    ]}
+                  />
+                </article>
+              ))}
+            </div>
+          </section>
           {run.next_output_offset != null ? (
             <button
               className="btn btn-sm"
@@ -127,152 +236,5 @@ export default function PipelinePanel({ runId }: { runId: string }) {
         </>
       ) : null}
     </section>
-  );
-}
-function TaskEvidence({
-  run,
-  task,
-  selected,
-}: {
-  run: PipelineGraph;
-  task: PipelineTask;
-  selected: string | null;
-}) {
-  const now = new Date().toISOString();
-  const workIndex = selected?.match(/^work_\d+_(\d+)$/)?.[1];
-  const work = workIndex == null ? undefined : task.work[Number(workIndex)];
-  const stages = task.imports.flatMap((imported) =>
-    imported.stages.map((stage) => ({
-      ...stage,
-      attemptId: imported.attempt_id,
-    })),
-  );
-  const stage = stages.find(
-    (stage) =>
-      selected === `stage_${task.id}_${stage.attemptId}_${stage.stage}`,
-  );
-  const attemptNumber = selected?.match(/^try_\d+_(\d+)$/)?.[1];
-  const attempt = task.attempts.find(
-    (attempt) => attempt.attempt === Number(attemptNumber),
-  );
-  const started = work?.started_at ?? attempt?.started_at ?? stage?.started_at;
-  const finished =
-    work?.finished_at ?? attempt?.finished_at ?? stage?.completed_at;
-  const running = attempt?.outcome === "running" || stage?.status === "running";
-  return (
-    <div className="rounded border border-base-300 p-3">
-      <h5>
-        Task #{task.id} · {task.task_type} · {task.status}
-      </h5>
-      <p>
-        Receipt → queued {duration(run.received_at, task.created_at)} · receipt
-        → first start {duration(run.received_at, task.attempts[0]?.started_at)}
-      </p>
-      {work || stage || attempt ? (
-        <p>
-          Selected step ·{" "}
-          {duration(started, finished ?? (running ? now : null))} · receipt →
-          start {duration(run.received_at, started)} · receipt → result{" "}
-          {duration(run.received_at, finished)}
-        </p>
-      ) : null}
-      {work ? (
-        <>
-          <p>
-            {work.work_key} · revision {work.revision} · {work.error}
-          </p>
-          <EvidenceLinks run={run} traceId={work.trace_id} taskId={task.id} />
-        </>
-      ) : null}
-      {stage ? (
-        <p>
-          {stage.stage} · {stage.status} · {stage.summary.join(" · ")} ·{" "}
-          {stage.error}{" "}
-          {stage.reused_attempt_id
-            ? ` · reused attempt ${stage.reused_attempt_id}`
-            : ""}
-        </p>
-      ) : null}
-      {task.attempts.map((attempt) => (
-        <div key={attempt.attempt} className="my-2">
-          Attempt {attempt.attempt} · {attempt.outcome} ·{" "}
-          {duration(
-            attempt.started_at,
-            attempt.finished_at ?? (attempt.outcome === "running" ? now : null),
-          )}
-          <p className="text-xs">
-            Heartbeat {attempt.heartbeat_at} · Progress {attempt.progress_at}
-          </p>
-          <p className="break-all font-mono text-xs">
-            {attempt.error} · Trace {attempt.trace_id ?? "unknown"}
-          </p>
-          <EvidenceLinks
-            run={run}
-            traceId={attempt.trace_id}
-            taskId={task.id}
-          />
-        </div>
-      ))}
-      {task.anomalies.map((anomaly, index) => (
-        <p key={index} className="text-warning">
-          {anomaly.reason} · observed {anomaly.observed} · budget/baseline{" "}
-          {anomaly.expected} · policy {anomaly.policy_version} · baseline
-          samples {anomaly.baseline_samples} ·{" "}
-          {anomaly.resolved_at ? "resolved" : "recorded"}
-        </p>
-      ))}
-      {task.work.map((work) => (
-        <p key={work.id} className="text-xs">
-          {work.kind} · {work.mode} · {work.reason} · {work.outcome} ·{" "}
-          {duration(work.started_at, work.finished_at)} ·{" "}
-          {JSON.stringify(work.counts)}
-        </p>
-      ))}
-    </div>
-  );
-}
-function EvidenceLinks({
-  run,
-  traceId,
-  taskId,
-}: {
-  run: PipelineGraph;
-  traceId?: string | null;
-  taskId?: number;
-}) {
-  if (!run.grafana_url) return null;
-  const base = run.grafana_url.replace(/\/$/, "");
-  const key = traceId || run.request_id || run.run_id;
-  const logs = {
-    datasource: "loki",
-    queries: [
-      { refId: "A", expr: `{namespace="bike"} |= ${JSON.stringify(key)}` },
-    ],
-    range: { from: run.received_at, to: run.ended_at ?? "now" },
-  };
-  const trace = {
-    datasource: "tempo",
-    queries: [{ refId: "A", query: traceId, queryType: "traceId" }],
-    range: { from: run.received_at, to: "now" },
-  };
-  return (
-    <p className="text-xs space-x-3">
-      <a
-        href={`${base}/explore?left=${encodeURIComponent(JSON.stringify(logs))}`}
-        target="_blank"
-        rel="noreferrer"
-      >
-        Related logs{taskId ? ` · task #${taskId}` : ""}
-      </a>
-      {traceId ? (
-        <a
-          href={`${base}/explore?left=${encodeURIComponent(JSON.stringify(trace))}`}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Open trace
-        </a>
-      ) : null}
-    </p>
   );
 }

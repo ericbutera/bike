@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useActivityPipelines } from "../../lib/queries";
 import PipelinePanel from "./PipelinePanel";
+import { LoadingSpinner } from "../ui/QueryState";
 
 export default function ActivityPipelines({
   activityId,
@@ -11,10 +12,17 @@ export default function ActivityPipelines({
   const [after, setAfter] = useState<string>();
   const [selected, setSelected] = useState<string>();
   const query = useActivityPipelines(activityId, after);
-  const runId = selected ?? query.data?.run_ids[0];
+  const runId = query.data?.run_ids.includes(selected ?? "")
+    ? selected
+    : query.data?.run_ids[0];
   return (
     <section aria-label="Activity processing pipelines" className="space-y-3">
-      <h3 className="font-semibold">All processing runs for this activity</h3>
+      {query.isLoading ? (
+        <p className="flex items-center gap-2">
+          <LoadingSpinner size="sm" />
+          Loading worker runs…
+        </p>
+      ) : null}
       {query.error ? (
         <p role="alert">Unable to load related processing runs.</p>
       ) : null}
@@ -25,16 +33,24 @@ export default function ActivityPipelines({
         </p>
       ) : null}
       {query.data?.run_ids.length ? (
-        <select
-          aria-label="Activity pipeline"
-          className="select select-bordered"
-          value={runId}
-          onChange={(event) => setSelected(event.target.value)}
-        >
-          {query.data.run_ids.map((id) => (
-            <option key={id}>{id}</option>
+        <div aria-label="Worker run history" className="flex flex-wrap gap-2">
+          {query.data.run_ids.map((id, index) => (
+            <button
+              type="button"
+              key={id}
+              aria-pressed={id === runId}
+              className={`max-w-full rounded-box border p-3 text-left ${id === runId ? "border-primary bg-primary/5" : "border-base-300"}`}
+              onClick={() => setSelected(id)}
+            >
+              <span className="block text-sm font-semibold">
+                Run {index + 1}
+              </span>
+              <span className="block break-all font-mono text-xs text-base-content/60">
+                {id}
+              </span>
+            </button>
           ))}
-        </select>
+        </div>
       ) : null}
       {runId ? <PipelinePanel key={runId} runId={runId} /> : null}
       {query.data?.next_cursor ? (
@@ -46,6 +62,18 @@ export default function ActivityPipelines({
           }}
         >
           More runs
+        </button>
+      ) : null}
+      {after ? (
+        <button
+          type="button"
+          className="btn btn-sm"
+          onClick={() => {
+            setAfter(undefined);
+            setSelected(undefined);
+          }}
+        >
+          First runs
         </button>
       ) : null}
     </section>
