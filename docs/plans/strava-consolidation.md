@@ -53,9 +53,21 @@
 - SDK regeneration is byte-identical; applicable prek hooks pass without warnings.
 - Companion infrastructure's `mise run check:bike` passes Go quality gates and
   Pulumi mock assertions for native settings and preserved callback routes.
-- CI coverage handoff and cleanup pass using a fresh pipeline-specific target.
+- CI coverage handoff and cleanup pass. Coverage dependencies persist in the
+  ref's instrumented target; native workspace cleanup prevents stale reports.
+- A two-run cache regression verifies compiled dependency reuse and exclusion
+  of removed source and test executables, in CI and pre-commit.
 - Follow-up checks cover the 15-day cutoff, admin list/trace/replay/events,
   queued retry correlation exports, UI import/event components, and native
   dashboard Promtool queries. Replay makes no additional vendor requests.
-- Deployment, live OAuth, live webhook acceptance and live Grafana searches
-  remain unverified.
+- Production cutover on 2026-10-11 passed migrations and readiness for all four
+  tested image digests; retired gateway services were removed.
+- Eric's production sync completed with two activities inspected, one applied,
+  one unsupported activity excluded and no failures. Native token refresh worked.
+- The existing callback URL passed its verification handshake. Two identical
+  manually submitted update callbacks for a real activity produced one workflow
+  and one set of stage events. A fresh vendor-originated delivery and the full
+  create/update/delete vendor lifecycle remain unverified.
+- Native admin import history and import trace endpoints returned the activity;
+  integration history populated workflow stages. Activity-ID searches returned
+  its production logs in Loki and traces in Tempo.

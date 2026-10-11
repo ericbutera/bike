@@ -236,6 +236,10 @@ description = "Verify the coverage gate with isolated Git and LCOV fixtures"
 depends = ["coverage:tools"]
 run = ["mise install go go:github.com/jandelgado/gcov2lcov", "mise exec pipx:diff-cover jq go go:github.com/jandelgado/gcov2lcov -- bash scripts/coverage-test.sh"]
 
+[tasks."coverage:cache:test"]
+description = "Verify compiled Rust dependency reuse and fresh coverage across CI runs"
+run = ["mise install rust aqua:taiki-e/cargo-llvm-cov", "mise exec rust aqua:taiki-e/cargo-llvm-cov -- bash scripts/coverage-rust-cache-test.sh"]
+
 [tasks."coverage:site"]
 description = "Assemble browsable reports and overall coverage history"
 run = ["mise install jq", "mise exec jq -- bash scripts/coverage-site.sh"]
@@ -253,11 +257,11 @@ description = "Enforce changed-line coverage after native database workflow test
 run = '''
 set -euo pipefail
 : "${CI_PIPELINE_NUMBER:?Pipeline identity is required}"
-case "${CARGO_LLVM_COV_TARGET_DIR:?Pipeline coverage objects are required}" in
-  /cache/bike/target/*/llvm-cov-"${CI_PIPELINE_NUMBER}") ;;
-  *) printf 'Coverage target is outside this pipeline cache\n' >&2; exit 1 ;;
+case "${CARGO_LLVM_COV_TARGET_DIR:?Shared coverage objects are required}" in
+  /cache/bike/target/*/llvm-cov-target) ;;
+  *) printf 'Coverage target is outside the reusable ref cache\n' >&2; exit 1 ;;
 esac
-trap 'rm -rf -- "$CARGO_LLVM_COV_TARGET_DIR"' EXIT
+trap 'mise --cd bike-rs exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov clean --profraw-only' EXIT
 bash scripts/coverage-transfer.sh restore
 mise --cd bike-rs run coverage:report
 mise run coverage:check
@@ -331,7 +335,7 @@ run = ["mise install node npm:npm npm:prettier go golangci-lint protoc go:google
 
 [tasks."ci:runtime"]
 description = "Check owning CI and shell orchestration before image builds"
-run = ["mise install shellcheck aqua:woodpecker-ci/woodpecker/woodpecker-cli aqua:docker/buildx", "mise run lint:sh", "mise run ci:check", "mise run images:plan", "mise run coverage:test"]
+run = ["mise install shellcheck aqua:woodpecker-ci/woodpecker/woodpecker-cli aqua:docker/buildx", "mise run lint:sh", "mise run ci:check", "mise run images:plan", "mise run coverage:test", "mise run coverage:cache:test"]
 
 [tasks."ci:deploy"]
 description = "Clone Bike infrastructure once and apply the single Pulumi project"

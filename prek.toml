@@ -44,6 +44,14 @@ files = "^scripts/coverage-.*\\.sh$|^coverage-projects\\.json$|^(map-renderer|bi
 pass_filenames = false
 
 [[repos.hooks]]
+id = "rust-coverage-cache"
+name = "Rust compiled dependency cache regression"
+language = "system"
+entry = "mise run coverage:cache:test"
+files = "^scripts/coverage-rust-cache-test\\.sh$|^\\.woodpecker/.*\\.yaml$|^(bike-rs/)?mise\\.toml$|^prek\\.toml$"
+pass_filenames = false
+
+[[repos.hooks]]
 id = "synthetics-check"
 name = "k6 synthetic configuration"
 language = "system"

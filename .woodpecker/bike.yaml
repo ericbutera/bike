@@ -70,11 +70,10 @@ steps:
       TEST_MODE: "1"
       CARGO_HOME: /cache/bike/cargo
       RUSTUP_HOME: /cache/bike/rustup
-      # Coverage objects belong to one pipeline while its unit and DAG checks run.
-      # Every runner mounts /woodpecker/src; cross-branch timestamp fingerprints
-      # can otherwise retain objects for source files absent from this revision.
+      # Clean workspace coverage objects at collection start; retain compiled
+      # dependencies across runs. Unit and DAG checks share this ref's target.
       CARGO_TARGET_DIR: /cache/bike/target/${CI_COMMIT_REF}
-      CARGO_LLVM_COV_TARGET_DIR: /cache/bike/target/${CI_COMMIT_REF}/llvm-cov-${CI_PIPELINE_NUMBER}
+      CARGO_LLVM_COV_TARGET_DIR: /cache/bike/target/${CI_COMMIT_REF}/llvm-cov-target
     volumes:
       - woodpecker-cache:/cache
     commands:
