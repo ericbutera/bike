@@ -48,7 +48,6 @@ static FAILED_ACTIVITY_IMPORTS: Lazy<IntGauge> = Lazy::new(|| {
 pub fn init_metrics() {
     bike_core::platform::api_metrics::init_api_metrics("bike_rust_api");
     init_provider_metrics();
-    bike_core::strava_gateway_metrics::init();
     Lazy::force(&STRAVA_CONNECTED_ATHLETES);
     Lazy::force(&UPLOADS_DISK_USAGE_BYTES);
     Lazy::force(&FAILED_ACTIVITY_IMPORTS);

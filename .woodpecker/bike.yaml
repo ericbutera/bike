@@ -5,6 +5,7 @@ when:
     path:
       include:
         - bike-rs/**
+        - contracts/strava/**
         - bike-ui/**
         - contracts/**
         - proto/**
@@ -16,7 +17,6 @@ when:
         - Dockerfile.checks
         - prek.toml
         - .dockerignore
-        - strava-gateway/**
         - mise.toml
         - coverage-projects.json
         - .woodpecker/**
@@ -70,11 +70,11 @@ steps:
       TEST_MODE: "1"
       CARGO_HOME: /cache/bike/cargo
       RUSTUP_HOME: /cache/bike/rustup
-      # Branches share download caches, but not objects collected for coverage.
+      # Coverage objects belong to one pipeline while its unit and DAG checks run.
       # Every runner mounts /woodpecker/src; cross-branch timestamp fingerprints
       # can otherwise retain objects for source files absent from this revision.
       CARGO_TARGET_DIR: /cache/bike/target/${CI_COMMIT_REF}
-      CARGO_LLVM_COV_TARGET_DIR: /cache/bike/target/${CI_COMMIT_REF}/llvm-cov-target
+      CARGO_LLVM_COV_TARGET_DIR: /cache/bike/target/${CI_COMMIT_REF}/llvm-cov-${CI_PIPELINE_NUMBER}
     volumes:
       - woodpecker-cache:/cache
     commands:
@@ -107,15 +107,6 @@ steps:
     commands:
       - .artifacts/bin/mise run ci:renderer
 
-  - name: test-strava-gateway
-    failure: fail
-    image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
-    depends_on: [prepare]
-    environment: *mise_environment
-    volumes: *mise_cache
-    commands:
-      - .artifacts/bin/mise run ci:gateway
-
   - name: build-images
     image: ghcr.io/jdx/mise:2026.10.3-debian@sha256:58c4c847f5518a9a87a9a582886a485443dbca5eb024426577f58d586a0990c6
     failure: fail
@@ -124,9 +115,8 @@ steps:
         test-rust,
         test-ui-unit,
         test-map-renderer,
-        test-strava-gateway,
         test-runtime-tooling,
-        coverage,
+        retain-unit-coverage,
       ]
     environment:
       <<: *mise_environment
@@ -141,27 +131,11 @@ steps:
     commands:
       - mise run ci:images
 
-  - name: coverage
+  - name: retain-unit-coverage
     failure: fail
     image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
-    depends_on: [test-rust, test-ui-unit, test-map-renderer, test-strava-gateway]
+    depends_on: [test-rust, test-ui-unit, test-map-renderer]
     environment: *mise_environment
     volumes: *mise_cache
     commands:
-      - mise run ci:coverage
-
-  - name: publish-coverage
-    failure: fail
-    image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
-    depends_on: [coverage]
-    when:
-      - event: [push, manual]
-        branch: main
-        status: [success, failure]
-    environment:
-      <<: *mise_environment
-      COVERAGE_PUBLISH_KEY:
-        from_secret: coverage_publish_key
-    volumes: *mise_cache
-    commands:
-      - mise run coverage:publish
+      - mise run ci:coverage:retain

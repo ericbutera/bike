@@ -54,9 +54,6 @@ for major in 17 18; do
   port=$(docker port "$container" 5432/tcp | cut -d: -f2)
   BIKE_HEATMAP_TEST_DATABASE_URL="postgres://postgres:rehearsal-only@127.0.0.1:$port/bike" \
     mise --cd bike-rs run test:heatmaps:postgres
-  docker exec "$container" createdb -U postgres gateway_test
-  TEST_DATABASE_URL="postgres://postgres:rehearsal-only@127.0.0.1:$port/gateway_test" \
-    mise --cd strava-gateway run test:postgres
 done
 
 cmp "$rehearsal_dir/17.counts" "$rehearsal_dir/18.counts"

@@ -72,6 +72,11 @@ impl TaskProcessor for HandoffProcessor {
 #[tokio::test(flavor = "current_thread")]
 async fn worker_restores_trace_and_pipeline_across_retry_and_handoff() {
     let db = database(true).await;
+    // Keep another dispatcher alive alongside the scoped exporter. With only
+    // one scoped dispatcher, tracing's callsite fast path uses the registering
+    // thread's default; parallel untraced tests can then cache Interest::never
+    // for worker spans before this test reaches them.
+    let _parallel_dispatcher = tracing::Dispatch::new(tracing_subscriber::registry());
     global::set_text_map_propagator(TraceContextPropagator::new());
     let exporter = InMemorySpanExporter::default();
     let provider = SdkTracerProvider::builder()
@@ -91,7 +96,10 @@ async fn worker_restores_trace_and_pipeline_across_retry_and_handoff() {
             "traceparent".into(),
             format!("00-{trace_id}-0202020202020202-01"),
         )]));
-        let task = PipelineContext::scope(Some(origin.clone()), enqueue(&db)).await;
+        let task = PipelineContext::scope(Some(origin.clone()),
+            background_tasks::Model::enqueue(&db, "rebuild_fitness_freshness".into(),
+                json!({"strava":{"correlation_id":"887654322","workflow_id":"activity-workflow","parent_workflow_id":"signup-workflow","strava_activity_id":887654322,"athlete_id":123}}),
+                None, 2)).await.unwrap();
         let processor = Arc::new(HandoffProcessor {
             db: db.clone(),
             calls: AtomicUsize::new(0),
@@ -111,11 +119,7 @@ async fn worker_restores_trace_and_pipeline_across_retry_and_handoff() {
         assert_eq!(processor.calls.load(Ordering::SeqCst), 2);
         assert_attempt_metrics(&metrics).await;
         let history = task_attempts::Model::for_task(&db, task.id).await.unwrap();
-        assert_eq!(history.len(), 2);
-        assert!(history
-            .iter()
-            .all(|attempt| attempt.trace_id.as_deref() == Some(trace_id)));
-        assert_ne!(history[0].span_id, history[1].span_id);
+        assert_attempt_traces(&history, trace_id, &exporter);
         let child = background_tasks::Entity::find()
             .filter(background_tasks::Column::TaskType.eq("downstream_fixture"))
             .one(&db)
@@ -152,12 +156,62 @@ async fn worker_restores_trace_and_pipeline_across_retry_and_handoff() {
     .await;
 }
 
+fn assert_attempt_traces(
+    history: &[task_attempts::Model],
+    trace_id: &str,
+    exporter: &InMemorySpanExporter,
+) {
+    assert_eq!(history.len(), 2);
+    assert!(
+        history
+            .iter()
+            .all(|attempt| attempt.trace_id.as_deref() == Some(trace_id)),
+        "retry trace IDs: {:?}; exported spans: {:?}",
+        history
+            .iter()
+            .map(|attempt| &attempt.trace_id)
+            .collect::<Vec<_>>(),
+        exporter
+            .get_finished_spans()
+            .unwrap()
+            .iter()
+            .map(|span| (&span.name, span.span_context.trace_id()))
+            .collect::<Vec<_>>()
+    );
+    assert_ne!(history[0].span_id, history[1].span_id);
+}
+
 fn assert_retry_spans(exporter: &InMemorySpanExporter) {
     let spans = exporter.get_finished_spans().unwrap();
-    assert!(spans
+    for span in spans
         .iter()
-        .any(|span| span.name == "background_task.process"
-            && span.status == opentelemetry::trace::Status::error("fixture retry")));
+        .filter(|span| span.name == "background_task.process")
+    {
+        for (key, value) in [
+            ("correlation_id", "887654322"),
+            ("workflow_id", "activity-workflow"),
+            ("parent_workflow_id", "signup-workflow"),
+        ] {
+            assert!(
+                span.attributes
+                    .iter()
+                    .any(|attribute| attribute.key.as_str() == key
+                        && attribute.value.as_str() == value),
+                "queued retry must export {key} for Grafana correlation"
+            );
+        }
+    }
+    assert!(
+        spans
+            .iter()
+            .any(|span| span.name == "background_task.process"
+                && span.status == opentelemetry::trace::Status::error("fixture retry")),
+        "exported span statuses: {:?}",
+        spans
+            .iter()
+            .map(|span| (&span.name, &span.status))
+            .collect::<Vec<_>>()
+    );
     assert_eq!(
         spans
             .iter()

@@ -5,7 +5,7 @@ use bike_core::activity_source_recovery::{
 };
 use bike_core::config::Config;
 use bike_core::entities::{activity_import_artifacts, activity_imports};
-use bike_core::strava_gateway_client::StravaGatewayClient;
+use bike_core::strava_workflow;
 use chrono::Utc;
 use sea_orm::Database;
 use std::error::Error;
@@ -138,9 +138,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
     if run.refresh_recent && recent_gaps {
-        StravaGatewayClient::from_config(config)?
-            .queue_sync(run.user_id)
-            .await?;
+        let connection = bike_core::strava::load_connection(&db, run.user_id)
+            .await?
+            .ok_or("Strava connection was not found")?;
+        strava_workflow::queue_sync(&db, &connection, false).await?;
     }
     println!(
         "{}",

@@ -75,6 +75,7 @@ use utoipa::OpenApi;
         strava::begin_connect,
         strava::get_connection,
         strava::queue_sync,
+        strava::queue_backfill,
         strava::disconnect_connection,
         strava::handle_callback,
         strava::handle_webhook_verification,

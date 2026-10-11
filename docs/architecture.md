@@ -17,22 +17,18 @@ flowchart LR
     Worker --> Files
     API --> Maps[Go Chromium snapshot worker]
     API --> MapCache[Map PNG cache]
-    Strava[Strava] --> Gateway[Strava gateway]
-    Gateway --> Inbox[(Gateway PostgreSQL)]
-    ProviderWorker[Gateway worker] --> Inbox
-    ProviderWorker --> Strava
-    ProviderWorker --> Artifacts[Provider artifacts]
-    ProviderWorker --> API
+    Strava[Strava] -->|OAuth and webhooks| API
+    Worker -->|Generated SDK| Strava
+    Worker --> ProviderObjects[Retained raw and transformed objects]
 ```
 
-| Component                 | Owns                                                                                                    |
-| ------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Rust API                  | HTTP adaptation, application services, activity access, authentication, admin operations, map PNG cache |
-| Rust core                 | Domain models, database queries, import and segment behavior, analytics, platform modules               |
-| Rust worker               | Activity/archive processing, derived-data rebuilds, queued maintenance                                  |
-| Next.js UI                | Rider/admin presentation, React Query state, generated API client, private map proxy                    |
-| Strava gateway and worker | OAuth credentials, callback persistence, provider quotas, fetching, artifact storage, signed delivery   |
-| Map renderer              | Go gRPC snapshots, Chromium lifecycle, serialized MapLibre rendering, loopback browser assets           |
+| Component    | Owns                                                                                                    |
+| ------------ | ------------------------------------------------------------------------------------------------------- |
+| Rust API     | HTTP adaptation, application services, activity access, authentication, admin operations, map PNG cache |
+| Rust core    | Domain models, database queries, import and segment behavior, analytics, platform modules               |
+| Rust worker  | Activity/archive processing, derived-data rebuilds, queued maintenance                                  |
+| Next.js UI   | Rider/admin presentation, React Query state, generated API client, private map proxy                    |
+| Map renderer | Go gRPC snapshots, Chromium lifecycle, serialized MapLibre rendering, loopback browser assets           |
 
 Controllers adapt HTTP requests and responses. Services compose workflows and
 policy. Queries live on their owning entity/model modules. Axum and SeaORM
@@ -57,11 +53,14 @@ Processing then matches segments and rebuilds activity and training analytics.
 Derived data can be regenerated from retained sources when parsers or rules
 change. See the [ingestion specification](specs/activity-ingestion.md).
 
-Strava callbacks are acknowledged after the gateway inbox commits to PostgreSQL.
-The gateway worker fetches provider data, stores a content-addressed artifact,
-and delivers it to the Rust receiver. Bike does not fetch provider data on the
-webhook request path. Retries, quota pauses, and recovery remain visible through
-jobs and integration events.
+Strava callbacks are acknowledged after the Rust API commits the original source,
+workflow and existing Bike worker job. Named action DAGs run on the Rust workers;
+the generated vendor SDK, quota ledger, saved stage outputs and activity correlation
+are defined by [the Strava specification](specs/strava-integration.md).
+Raw responses and each transform remain immutable on the existing uploads volume.
+Retries, quota pauses and failures appear in worker administration and integration
+history. [The cutover plan](plans/strava-consolidation.md) switches webhook ownership
+before provider ownership changes.
 
 ## Maps and privacy
 
@@ -80,8 +79,7 @@ endpoints. Worker preparation and feature flags are described in the
 - Rust generates the canonical HTTP contract directly in `contracts/openapi/`.
   The frontend and test harnesses consume its YAML and JSON representations.
 - `bike-ui/lib/openapi/react-query/api.d.ts` is generated from that contract.
-- Versioned protobuf definitions under `proto/` describe internal gateway and
-  renderer interfaces.
+- Versioned protobuf definitions under `proto/` describe the internal renderer interface.
 - `mise run assets:sync` copies canonical assets into required build contexts;
   `mise run contracts:check` compares those copies with their owners.
 - `mise run rust:check` verifies the HTTP contract against fresh Rust output.
@@ -89,17 +87,16 @@ endpoints. Worker preparation and feature flags are described in the
 
 ## Deployment
 
-Root Docker Compose supplies the local application environment. The gateway has
-a separate database development stack. Production definitions and release
+Root Docker Compose supplies the local application environment. Production definitions and release
 promotion are maintained separately.
 
 Woodpecker jobs run checks for the owning component, publish images with
 immutable commit tags, and call the Pulumi release helper. Backend promotion
-runs migrations before API/worker rollout; the UI, renderer, and gateway have
+runs migrations before API/worker rollout; the UI and renderer have
 their own image boundaries. Existing namespace and image names are deployment
 identities and do not depend on the repository's display name.
 
 OpenTelemetry supports tracing; internal metrics, dashboards, alerts, and
 protected failure captures support diagnosis. See the
-[gateway recovery guide](../strava-gateway/README.md#failure-recovery) and
+[Strava workflow specification](specs/strava-integration.md) and
 [admin recovery procedures](specs/admin-operations.md#failed-import-recovery) for recovery procedures.

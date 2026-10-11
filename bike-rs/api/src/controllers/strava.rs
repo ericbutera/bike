@@ -13,7 +13,6 @@ use bike_core::integration_events_service::{
     INTEGRATION_LEVEL_INFO, INTEGRATION_PROVIDER_STRAVA,
 };
 use bike_core::strava;
-use bike_core::strava_gateway_client::{GatewayConnection, StravaGatewayClient};
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -79,6 +78,7 @@ pub fn routes() -> Router<Arc<AppStorage>> {
             get(get_connection).delete(disconnect_connection),
         )
         .route("/sync", post(queue_sync))
+        .route("/backfill", post(queue_backfill))
         .route("/callback", get(handle_callback))
         .route(
             "/webhook",
@@ -104,12 +104,6 @@ pub async fn begin_connect(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<StravaAuthorizeResponse>, AppError> {
-    if Config::get().strava_gateway_url.is_some() {
-        let authorization_url = StravaGatewayClient::from_config(Config::get())?
-            .begin_connect(user.id)
-            .await?;
-        return Ok(Json(StravaAuthorizeResponse { authorization_url }));
-    }
     let url = match strava::create_authorization_url_for_user(Config::get(), user.id) {
         Ok(url) => {
             record_strava_event_best_effort(
@@ -162,12 +156,6 @@ pub async fn get_connection(
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<StravaConnectionResponse>, AppError> {
     let connection = strava::load_connection(&state.db, user.id).await?;
-    if Config::get().strava_gateway_url.is_some() {
-        let gateway = StravaGatewayClient::from_config(Config::get())?
-            .connection(user.id)
-            .await?;
-        return Ok(Json(response_from_gateway(gateway, connection.as_ref())));
-    }
 
     Ok(Json(
         response_from_model(&state.db, connection.as_ref()).await?,
@@ -194,15 +182,30 @@ pub async fn queue_sync(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<StravaConnectionResponse>, AppError> {
-    if Config::get().strava_gateway_url.is_some() {
-        let gateway_client = StravaGatewayClient::from_config(Config::get())?;
-        gateway_client.queue_sync(user.id).await?;
-        let gateway = gateway_client.connection(user.id).await?;
-        let connection = strava::load_connection(&state.db, user.id).await?;
-        return Ok(Json(response_from_gateway(gateway, connection.as_ref())));
-    }
-    let connection = strava::queue_connection_sync(&state.db, &state.tasks, user.id).await?;
+    let connection = bike_core::strava_workflow::queue_user_sync(&state.db, user.id, false).await?;
 
+    Ok(Json(
+        response_from_model(&state.db, Some(&connection)).await?,
+    ))
+}
+
+#[utoipa::path(
+    post,
+    path = "/strava/backfill",
+    responses(
+        (status = 200, description = "Queued a full Strava backfill from retained and remote sources", body = StravaConnectionResponse),
+        (status = 401, description = "Not authenticated"),
+        (status = 404, description = "No Strava connection exists", body = ApiErrorResponse),
+        (status = 409, description = "Strava disconnect is pending", body = ApiErrorResponse),
+    ),
+    tag = "strava",
+    security(("bearer_auth" = []))
+)]
+pub async fn queue_backfill(
+    UserContext { user, .. }: UserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+) -> Result<Json<StravaConnectionResponse>, AppError> {
+    let connection = bike_core::strava_workflow::queue_user_sync(&state.db, user.id, true).await?;
     Ok(Json(
         response_from_model(&state.db, Some(&connection)).await?,
     ))
@@ -212,7 +215,7 @@ pub async fn queue_sync(
     delete,
     path = "/strava/connection",
     responses(
-        (status = 200, description = "Removed the authenticated user's Strava connection", body = auth_openapi::schemas::MessageResponse, example = json!({"message": "Strava connection removed."})),
+        (status = 200, description = "Queued removal of the authenticated user's Strava connection", body = auth_openapi::schemas::MessageResponse, example = json!({"message": "Strava disconnect queued."})),
         (status = 409, description = "The user's Strava sync is queued or running", body = ApiErrorResponse),
         (status = 401, description = "Not authenticated"),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
@@ -226,17 +229,9 @@ pub async fn disconnect_connection(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<auth_openapi::schemas::MessageResponse>, AppError> {
-    if Config::get().strava_gateway_url.is_some() {
-        StravaGatewayClient::from_config(Config::get())?
-            .disconnect(user.id)
-            .await?;
-        strava::forget_local_connection(&state.db, user.id).await?;
-    } else {
-        strava::disconnect_connection(&state.db, user.id).await?;
-    }
-
+    bike_core::strava_workflow::queue_disconnect(&state.db, user.id).await?;
     Ok(Json(auth_openapi::schemas::MessageResponse {
-        message: "Strava connection removed.".to_string(),
+        message: "Strava disconnect queued.".to_string(),
     }))
 }
 
@@ -252,13 +247,6 @@ pub async fn handle_callback(
     State(state): State<Arc<AppStorage>>,
     Query(query): Query<StravaCallbackQuery>,
 ) -> Redirect {
-    if Config::get().strava_gateway_url.is_some() {
-        return Redirect::to(&strava::build_frontend_account_redirect(
-            Config::get(),
-            "error",
-            Some("Strava now connects through the Bike gateway. Start a new connection."),
-        ));
-    }
     let result = async {
         if let Some(error) = query.error.as_deref() {
             return Err(AppError::bad_request(format!(
@@ -375,12 +363,11 @@ pub async fn handle_webhook_verification(
 )]
 pub async fn handle_webhook_event(
     State(state): State<Arc<AppStorage>>,
-    Json(event): Json<strava::StravaWebhookEvent>,
+    body: axum::body::Bytes,
 ) -> Result<Json<auth_openapi::schemas::MessageResponse>, AppError> {
-    if Config::get().strava_gateway_url.is_some() {
-        return Err(AppError::bad_request("Strava webhook moved to the gateway"));
-    }
-    strava::handle_webhook_event(&state.db, &state.tasks, &event).await?;
+    let event: strava::StravaWebhookEvent = serde_json::from_slice(&body)
+        .map_err(|_| AppError::bad_request("Invalid Strava webhook body"))?;
+    bike_core::strava_workflow::accept_webhook(&state.db, &event, &body).await?;
 
     Ok(Json(auth_openapi::schemas::MessageResponse {
         message: "ok".to_string(),
@@ -397,6 +384,12 @@ async fn response_from_model(
         None => None,
     };
     let connection = resolved.as_ref().map(|state| &state.connection);
+    let waiting = match connection {
+        Some(connection) => {
+            bike_core::entities::strava_workflows::Model::waiting(db, connection.id).await?
+        }
+        None => None,
+    };
 
     Ok(StravaConnectionResponse {
         configured: config.strava_enabled(),
@@ -412,8 +405,15 @@ async fn response_from_model(
         last_sync_status: connection
             .map(|connection| connection.last_sync_status.clone())
             .unwrap_or_else(|| strava::STRAVA_SYNC_STATUS_NEVER.to_string()),
-        last_sync_wait_reason: None,
-        last_sync_next_attempt_at: None,
+        last_sync_wait_reason: waiting
+            .as_ref()
+            .and_then(|pause| pause["reason"].as_str())
+            .map(ToOwned::to_owned),
+        last_sync_next_attempt_at: waiting
+            .as_ref()
+            .map(|pause| serde_json::from_value(pause["retry_at"].clone()))
+            .transpose()
+            .map_err(|_| AppError::internal("Invalid saved Strava retry time"))?,
         last_sync_message: connection.and_then(|connection| connection.last_sync_message.clone()),
         last_sync_started_at: connection.and_then(|connection| connection.last_sync_started_at),
         last_sync_finished_at: connection.and_then(|connection| connection.last_sync_finished_at),
@@ -429,34 +429,6 @@ async fn response_from_model(
             .map(|connection| connection.last_sync_failed_count)
             .unwrap_or_default(),
     })
-}
-
-fn response_from_gateway(
-    gateway: GatewayConnection,
-    local: Option<&strava_connections::Model>,
-) -> StravaConnectionResponse {
-    let local = local.filter(|connection| gateway.athlete_id == Some(connection.athlete_id));
-    StravaConnectionResponse {
-        configured: gateway.configured,
-        connected: gateway.connected,
-        athlete_id: gateway.athlete_id,
-        athlete_name: local.and_then(strava::athlete_display_name),
-        athlete_username: local.and_then(|connection| connection.athlete_username.clone()),
-        athlete_profile_medium_url: local
-            .and_then(|connection| connection.athlete_profile_medium_url.clone()),
-        scopes: gateway.scopes,
-        last_sync_status: gateway.last_sync_status,
-        last_sync_wait_reason: gateway.last_sync_wait_reason,
-        last_sync_next_attempt_at: gateway.last_sync_next_attempt_at,
-        last_sync_message: local.and_then(|connection| connection.last_sync_message.clone()),
-        last_sync_started_at: local.and_then(|connection| connection.last_sync_started_at),
-        last_sync_finished_at: local.and_then(|connection| connection.last_sync_finished_at),
-        last_synced_activity_started_at: local
-            .and_then(|connection| connection.last_synced_activity_started_at),
-        last_sync_imported_count: gateway.last_sync_imported_count,
-        last_sync_duplicate_count: gateway.last_sync_duplicate_count,
-        last_sync_failed_count: gateway.last_sync_failed_count,
-    }
 }
 
 async fn record_strava_event_best_effort(
@@ -490,39 +462,5 @@ async fn record_strava_event_best_effort(
             log_message = %message,
             "failed to persist controller-level Strava integration event"
         );
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{response_from_gateway, GatewayConnection};
-    use chrono::DateTime;
-
-    #[test]
-    fn gateway_sync_pause_detail_reaches_connection_response() {
-        let next_attempt = DateTime::parse_from_rfc3339("2026-10-02T12:00:30Z")
-            .expect("valid fixture timestamp")
-            .to_utc();
-        let response = response_from_gateway(
-            GatewayConnection {
-                configured: true,
-                connected: true,
-                athlete_id: Some(42),
-                scopes: vec!["activity:read_all".to_string()],
-                last_sync_status: "queued".to_string(),
-                last_sync_wait_reason: Some("rate_limit".to_string()),
-                last_sync_next_attempt_at: Some(next_attempt),
-                last_sync_imported_count: 0,
-                last_sync_duplicate_count: 0,
-                last_sync_failed_count: 0,
-            },
-            None,
-        );
-
-        assert_eq!(
-            response.last_sync_wait_reason.as_deref(),
-            Some("rate_limit")
-        );
-        assert_eq!(response.last_sync_next_attempt_at, Some(next_attempt));
     }
 }

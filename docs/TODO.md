@@ -6,11 +6,31 @@ Keep private activity data out of committed reports and fixtures.
 
 ## Active work
 
-- **STRAVA01 — Pending production verification:** Skip unchanged scheduled reconciliation
-  deliveries under the [gateway contract](specs/strava-fanout.md#durable-workflow).
-  Preserve explicit resyncs and actual webhook updates. Production verification
-  must confirm a repeated reconciliation creates no Bike receipt/import work,
-  while a changed activity still delivers. Existing integration history remains.
+- **STRAVA01 — Partially deployed:** Skip unchanged scheduled reconciliation
+  deliveries under the [retired gateway record](specs/strava-fanout.md).
+  Revision `7edad07b` is deployed and unchanged upserts can be skipped. Repeated
+  scheduled deletes still create fresh applied deliveries; STRAVA02 must cover
+  both operations. Existing integration history remains.
+
+- **STRAVA02 — Ready for review; deployment pending:** Move Strava ownership into Bike's
+  Rust API/core/worker and remove the separate gateway after a verified cutover.
+  The [target contract](specs/strava-integration.md)
+  defines behavior; the [cutover plan](plans/strava-consolidation.md) covers
+  webhook routing, gateway retirement and acceptance.
+  Use a vendor/generated client, named action DAGs, Strava activity correlation,
+  immutable source/transform objects and idempotent stage reuse. Prove remote
+  request counts and workflow effects, including resumed backfill and deletion.
+  Native workflows and generated SDK are implemented in the feature worktree;
+  happy-path units and native HTTP/worker/PostgreSQL integration tests pass,
+  including vendor revocation, duplicates, retries, quotas and retained-stage
+  correlation. SDK freshness and applicable hooks pass. Before the admin/Grafana
+  follow-up, changed-line coverage passed (API 96.97%, worker 93.94%, core
+  89.36%); CI must recheck coverage on the updated feature.
+  [PR #26](https://github.com/ericbutera/bike/pull/26) contains the cutover.
+  The hard 15-day onboarding rule, native admin import/replay/events and Grafana
+  activity/workflow correlation are covered by the updated contract and focused
+  fixture checks. Companion dashboard and datasource updates are prepared.
+  Merge, deployment and live vendor/Grafana verification remain pending.
 
 - **MAP01 — Deployed:** Rust owns the activity-map endpoint, authorization,
   cache, and revalidation; Go runs the stateless Chromium snapshot worker.

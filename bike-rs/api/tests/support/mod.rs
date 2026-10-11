@@ -208,7 +208,8 @@ async fn create_worker_tables(db: &DatabaseConnection, schema: &Schema) {
         schema
             .create_table_from_entity(bike_core::background_jobs::entities::worker_batches::Entity),
         schema.create_table_from_entity(bike_core::background_jobs::entities::batch_tasks::Entity),
-        schema.create_table_from_entity(bike_core::entities::strava_delivery_intents::Entity),
+        schema.create_table_from_entity(bike_core::entities::strava_workflows::Entity),
+        schema.create_table_from_entity(bike_core::entities::strava_activity_states::Entity),
     ] {
         db.execute(&statement).await.unwrap();
     }

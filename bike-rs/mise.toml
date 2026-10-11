@@ -61,12 +61,10 @@ description = "Run focused queue, pipeline history, and worker metric regression
 env = { RUSTFLAGS = "-D warnings" }
 run = [
   "cargo test -p bike-core --lib background_jobs",
-  "cargo test -p bike-core --lib strava_gateway_delivery::intent",
   "cargo test -p bike-core --lib analytics::tests::stale",
   "cargo test -p bike-core --lib queued_archive",
   "cargo test -p worker --lib pipeline_",
   "cargo test -p worker --bin worker pipeline_sampler",
-  "cargo test -p api --lib controllers::strava_gateway::tests",
   "cargo test -p api --lib request_receipt_and_id_are_preserved_in_enqueued_work",
   "cargo test -p api --lib load_cached_rows_for_request_rebuilds_dirty_cache_before_returning",
   "cargo test -p api --test platform owner_upload_and_admin_trace_and_replay_run_to_completion",
@@ -79,6 +77,21 @@ run = '''
 : "${BIKE_WORKER_TEST_DATABASE_URL:?Set this to a disposable PostgreSQL database}"
 cargo test -p bike-core --test worker_history_postgres -- --ignored --nocapture
 '''
+
+[tasks."test:strava:postgres"]
+description = "Verify native Strava DAGs, effects, retries, and vendor request counts"
+env = { RUSTFLAGS = "-D warnings" }
+run = '''
+: "${BIKE_STRAVA_TEST_DATABASE_URL:?Set this to a disposable PostgreSQL database}"
+cargo test -p api --test strava_workflows_postgres -- --ignored --nocapture
+'''
+
+[tasks."coverage:strava:postgres"]
+description = "Collect native Strava PostgreSQL workflow coverage"
+env = { RUSTFLAGS = "-D warnings", CARGO_LLVM_COV_DENY_WARNINGS = "1" }
+run = [
+  "mise exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov -p api --locked --no-report --test strava_workflows_postgres -- --ignored --nocapture",
+]
 
 [tasks.coverage]
 description = "Run Rust tests once and generate HTML, LCOV, and JSON coverage reports"
@@ -106,7 +119,7 @@ run = ["mise install jq", "mise exec jq -- bash ../scripts/coverage-rust-report.
 
 [tasks.fmt]
 description = "Format the Rust workspace"
-run = "cargo fmt --all"
+run = "cargo fmt --package bike-core --package api --package worker --package migration"
 
 [tasks."test:heatmaps:postgres"]
 description = "Run heatmap regressions against a disposable PostgreSQL database"
@@ -118,7 +131,7 @@ cargo test -p bike-core --test heatmaps_postgres -- --ignored
 [tasks."fmt:check"]
 description = "Check Rust formatting without writing changes"
 run = [
-  "cargo fmt --all --check",
+  "cargo fmt --package bike-core --package api --package worker --package migration --check",
 ]
 
 [tasks.lint]
@@ -144,10 +157,6 @@ cargo run -p api --bin openapi -- "$GENERATED_CONTRACTS"
 cmp -- "$GENERATED_CONTRACTS/openapi.json" ../contracts/openapi/openapi.json
 cmp -- "$GENERATED_CONTRACTS/openapi.yaml" ../contracts/openapi/openapi.yaml
 '''
-
-[tasks."generate:protobuf"]
-description = "Regenerate Strava gateway Rust protobuf client bindings in the Cargo build directory"
-run = "cargo check -p bike-core"
 
 [tasks."generate:typescript"]
 description = "Generate the frontend TypeScript API contract from OpenAPI"

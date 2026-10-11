@@ -32,6 +32,7 @@ coverage_minimum = 80
 coverage_site_url = "https://ericbutera.github.io/bike/coverage"
 github_ssh_host_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
 python_version = "3.13.16"
+strava_sdk_generator_image = "openapitools/openapi-generator-cli:v7.15.0@sha256:509f01c3c7eee9d1ad286506a7b6aa4624a95b410be9a238a306d209e900621f"
 
 [tools]
 node = "{{vars.node_version}}"
@@ -84,7 +85,7 @@ K6_IMAGE = "{{vars.k6_image}}"
 WATCHEXEC_VERSION = "{{vars.watchexec_version}}"
 BIKE_POSTGRES_IMAGE = "{{vars.postgres_image}}"
 BIKE_POSTGRES_UPGRADE_IMAGE = "{{vars.postgres_upgrade_image}}"
-STRAVA_GATEWAY_POSTGRES_IMAGE = "{{vars.postgres_image}}"
+STRAVA_SDK_GENERATOR_IMAGE = "{{vars.strava_sdk_generator_image}}"
 BIKE_TRACING_IMAGE = "{{vars.tracing_image}}"
 NPM_CONFIG_CACHE = "{{get_env(name='BIKE_NODE_PACKAGE_CACHE', default=config_root ~ '/.cache')}}/npm"
 PNPM_CONFIG_STORE_DIR = "{{get_env(name='BIKE_NODE_PACKAGE_CACHE', default=config_root ~ '/.cache')}}/pnpm-store"
@@ -97,6 +98,23 @@ COVERAGE_GITHUB_SSH_HOST_KEY = "{{vars.github_ssh_host_key}}"
 [tasks."renderer:build"]
 description = "Build the renderer image using mise version pins"
 run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load maps"
+
+[tasks."strava:sdk"]
+description = "Generate the standard Rust SDK from the pinned Strava vendor contract"
+run = "bash scripts/strava-sdk.sh"
+
+[tasks."strava:sdk:check"]
+description = "Check Strava SDK bindings against the pinned vendor contract"
+run = "bash scripts/strava-sdk.sh check"
+
+[tasks."test:strava:coverage:docker"]
+description = "Collect native Strava coverage using disposable PostgreSQL"
+env = { BIKE_STRAVA_COVERAGE = "true" }
+run = "bash scripts/test-worker-postgres.sh strava"
+
+[tasks."test:strava:docker"]
+description = "Exercise native Strava workflows in disposable PostgreSQL with a fake vendor"
+run = "bash scripts/test-worker-postgres.sh strava"
 
 [tasks."pins:sync"]
 description = "Regenerate pnpm manifest and lock metadata from mise's version pin"
@@ -138,9 +156,6 @@ run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --call=check 
 description = "Build the release UI using mise pins"
 run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load ui"
 
-[tasks."strava:image"]
-description = "Build the release gateway using mise pins"
-run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load strava-gateway"
 
 [tasks."images:check"]
 description = "Run native Dockerfile checks"
@@ -155,7 +170,6 @@ for dockerfile in bike-ui/Dockerfile bike-ui/Dockerfile.dev; do
 done
 docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg NODE_IMAGE --build-arg NPM_VERSION --build-arg PNPM_VERSION --build-arg PLAYWRIGHT_IMAGE --build-arg DOCKER_CLI_IMAGE --file bike-ui/Dockerfile.e2e .
 docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg DOCKER_DIND_IMAGE --file bike-ui/Dockerfile.e2e-engine .
-docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg GO_IMAGE --build-arg RUNTIME_IMAGE --file strava-gateway/Dockerfile strava-gateway
 docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg NODE_IMAGE --build-arg GO_IMAGE --build-arg RUNTIME_IMAGE --build-arg NPM_VERSION --file map-renderer/Dockerfile .
 docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg K6_IMAGE --file integration-tests/Dockerfile integration-tests
 '''
@@ -196,15 +210,12 @@ run = 'bash scripts/checks-docker.sh'
 
 [tasks."coverage:unit"]
 description = "Generate service unit coverage without integration or E2E tests"
-run = ["mise --cd bike-rs run coverage:unit", "mise run ui:coverage", "mise run renderer:coverage", "mise run strava:coverage"]
+run = ["mise --cd bike-rs run coverage:unit", "mise run ui:coverage", "mise run renderer:coverage"]
 
 [tasks."renderer:coverage"]
 description = "Generate coverage for the map-renderer service"
 run = "mise --cd map-renderer run coverage"
 
-[tasks."strava:coverage"]
-description = "Generate Go coverage for the Strava gateway service"
-run = "mise --cd strava-gateway run coverage"
 
 [tasks."go:coverage"]
 description = "Generate native unit coverage for a registered Go service"
@@ -233,9 +244,24 @@ run = ["mise install jq", "mise exec jq -- bash scripts/coverage-site.sh"]
 description = "Publish generated reports to the free GitHub Pages site"
 run = ["mise install jq", "mise exec jq -- bash scripts/coverage-publish.sh"]
 
+[tasks."ci:coverage:retain"]
+description = "Retain unit coverage for the existing database validation workflow"
+run = "bash scripts/coverage-transfer.sh save"
+
 [tasks."ci:coverage"]
-description = "Enforce changed-line coverage using reports from all owning test steps"
-run = "mise run coverage:check"
+description = "Enforce changed-line coverage after native database workflow tests"
+run = '''
+set -euo pipefail
+: "${CI_PIPELINE_NUMBER:?Pipeline identity is required}"
+case "${CARGO_LLVM_COV_TARGET_DIR:?Pipeline coverage objects are required}" in
+  /cache/bike/target/*/llvm-cov-"${CI_PIPELINE_NUMBER}") ;;
+  *) printf 'Coverage target is outside this pipeline cache\n' >&2; exit 1 ;;
+esac
+trap 'rm -rf -- "$CARGO_LLVM_COV_TARGET_DIR"' EXIT
+bash scripts/coverage-transfer.sh restore
+mise --cd bike-rs run coverage:report
+mise run coverage:check
+'''
 
 [tasks."rust:coverage"]
 description = "Generate Rust workspace coverage reports"
@@ -302,9 +328,6 @@ run = ["mise --cd bike-ui install node npm:npm pnpm npm:prettier", "mise --cd bi
 description = "Install renderer tooling and run the shared renderer checks"
 run = ["mise install node npm:npm npm:prettier go golangci-lint protoc go:google.golang.org/protobuf/cmd/protoc-gen-go go:google.golang.org/grpc/cmd/protoc-gen-go-grpc", "mise run renderer:check"]
 
-[tasks."ci:gateway"]
-description = "Install gateway tooling and run the shared gateway checks"
-run = ["mise --cd strava-gateway install go golangci-lint protoc go:google.golang.org/protobuf/cmd/protoc-gen-go go:google.golang.org/grpc/cmd/protoc-gen-go-grpc", "mise --cd strava-gateway run check", "mise run generate:protobuf:check"]
 
 [tasks."ci:runtime"]
 description = "Check owning CI and shell orchestration before image builds"
@@ -337,14 +360,14 @@ run = "prek run"
 
 [tasks.check]
 description = "Run Rust, shared UI, service, and contract checks"
-run = ["mise run rust:check", "mise run ui:check", "mise run test", "mise run strava:test", "mise run generate:protobuf:check", "mise run contracts:check"]
+run = ["mise run rust:check", "mise run ui:check", "mise run test", "mise run generate:protobuf:check", "mise run contracts:check"]
 
 [tasks.test]
 run = "mise --cd map-renderer run test"
 
 [tasks."test:workers"]
 description = "Run focused worker pipeline and admin history regressions"
-run = ["mise --cd bike-rs run test:workers", "mise --cd bike-ui run test:workers", "mise --cd strava-gateway run test:workers"]
+run = ["mise --cd bike-rs run test:workers", "mise --cd bike-ui run test:workers"]
 
 [tasks."test:workers:postgres:docker"]
 description = "Exercise migrations, publication fences and worker statistics in disposable PostgreSQL"
@@ -352,26 +375,22 @@ run = "bash scripts/test-worker-postgres.sh"
 
 [tasks."ci:workers:postgres"]
 description = "Run worker persistence regressions against the job-local disposable database"
-env = { BIKE_WORKER_TEST_DATABASE_HOST = "docker", BIKE_WORKER_TEST_DATABASE_PORT = "5432" }
-run = ["mise install rust protoc go", "mise run test:workers:postgres:docker"]
+env = { BIKE_WORKER_TEST_DATABASE_HOST = "docker", BIKE_WORKER_TEST_DATABASE_PORT = "5432", BIKE_STRAVA_COVERAGE = "true" }
+run = ["mise install rust protoc go", "mise run strava:sdk:check", "mise run test:workers:postgres:docker"]
 
-[tasks."strava:test"]
-run = "mise --cd strava-gateway run test"
 
-[tasks."strava:build"]
-run = "mise --cd strava-gateway run build"
 
 [tasks."generate:protobuf"]
-description = "Generate or check gateway protobuf bindings"
-run = ["mise --cd strava-gateway run generate:protobuf", "mise --cd map-renderer run generate:protobuf"]
+description = "Generate or check map protobuf bindings"
+run = ["mise --cd map-renderer run generate:protobuf"]
 
 [tasks."generate:protobuf:check"]
-description = "Generate or check gateway protobuf bindings"
-run = ["mise --cd strava-gateway run generate:protobuf:check", "mise --cd map-renderer run generate:protobuf:check"]
+description = "Generate or check map protobuf bindings"
+run = ["mise --cd map-renderer run generate:protobuf:check"]
 
 [tasks."assets:sync"]
 description = "Copy shared assets from their canonical owners"
-run = ["cp proto/bike/strava/v1/gateway.proto bike-rs/proto/bike/strava/v1/gateway.proto", "cp map-renderer/styles/fiord-v1.json bike-ui/public/map-styles/fiord-v1.json", "cp map-renderer/styles/route-light-v1.json bike-ui/public/map-styles/route-light-v1.json", "cp bike-rs/bike-core/testdata/strava-real-ride.json strava-gateway/internal/provider/testdata/strava-real-ride.json", "cp bike-rs/bike-core/testdata/strava-real-ride.json bike-ui/tests/e2e/fixtures/strava-real-ride.json"]
+run = ["cp map-renderer/styles/fiord-v1.json bike-ui/public/map-styles/fiord-v1.json", "cp map-renderer/styles/route-light-v1.json bike-ui/public/map-styles/route-light-v1.json", "cp bike-rs/bike-core/testdata/strava-real-ride.json bike-ui/tests/e2e/fixtures/strava-real-ride.json"]
 
 [tasks."format:check"]
 description = "Check renderer and synthetic formatting"
@@ -379,7 +398,7 @@ run = "prettier map-renderer/*.mjs map-renderer/tests/*.mjs map-renderer/index.h
 
 [tasks."contracts:check"]
 description = "Compare shared asset mirrors with their canonical owners"
-run = ["cmp proto/bike/strava/v1/gateway.proto bike-rs/proto/bike/strava/v1/gateway.proto", "cmp map-renderer/styles/fiord-v1.json bike-ui/public/map-styles/fiord-v1.json", "cmp map-renderer/styles/route-light-v1.json bike-ui/public/map-styles/route-light-v1.json", "cmp bike-rs/bike-core/testdata/strava-real-ride.json strava-gateway/internal/provider/testdata/strava-real-ride.json", "cmp bike-rs/bike-core/testdata/strava-real-ride.json bike-ui/tests/e2e/fixtures/strava-real-ride.json"]
+run = ["cmp map-renderer/styles/fiord-v1.json bike-ui/public/map-styles/fiord-v1.json", "cmp map-renderer/styles/route-light-v1.json bike-ui/public/map-styles/route-light-v1.json", "cmp bike-rs/bike-core/testdata/strava-real-ride.json bike-ui/tests/e2e/fixtures/strava-real-ride.json"]
 
 [tasks."test:integration"]
 description = "Run native Rust API integration tests"
@@ -395,7 +414,7 @@ run = ["mise --cd bike-rs run fmt:check", "mise --cd bike-rs run lint"]
 
 [tasks."lint:go"]
 description = "Check Go formatting, vet, and golangci-lint"
-run = ["mise --cd strava-gateway run lint", "mise --cd map-renderer run lint:go"]
+run = ["mise --cd map-renderer run lint:go"]
 
 [tasks."lint:ui"]
 description = "Check UI ESLint, TypeScript, and formatting"

@@ -172,8 +172,10 @@ function buildPayloadMetrics(payload: Record<string, unknown> | null) {
     metricFromPayload(payload, "failed_count", "Failed"),
     metricFromPayload(payload, "cancelled_task_count", "Cancelled"),
     metricFromPayload(payload, "activity_id", "Activity"),
+    metricFromPayload(payload, "import_id", "Import"),
     metricFromPayload(payload, "strava_activity_id", "Strava activity"),
     metricFromPayload(payload, "athlete_id", "Athlete"),
+    metricFromPayload(payload, "workflow_id", "Workflow"),
   ].filter(
     (metric): metric is { label: string; value: string } => metric != null,
   );

@@ -1,0 +1,133 @@
+{
+  "paths": {
+    "/oauth/token": {
+      "post": {
+        "operationId": "oauthToken",
+        "consumes": ["application/x-www-form-urlencoded"],
+        "tags": [
+          "Strava"
+        ],
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "formData",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "client_secret",
+            "in": "formData",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "grant_type",
+            "in": "formData",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "code",
+            "in": "formData",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "refresh_token",
+            "in": "formData",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Strava OAuth token response",
+            "schema": {"type": "object", "additionalProperties": true}
+          }
+        }
+      }
+    },
+    "/oauth/deauthorize": {
+      "post": {
+        "operationId": "deauthorize",
+        "tags": [
+          "Strava"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Deauthorization result",
+            "schema": {"type": "object", "additionalProperties": true}
+          }
+        }
+      }
+    },
+    "/push_subscriptions": {
+      "get": {
+        "operationId": "listPushSubscriptions",
+        "tags": [
+          "Strava"
+        ],
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "client_secret",
+            "in": "query",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Webhook subscriptions",
+            "schema": {"type": "array", "items": {"type":"object", "additionalProperties":true}}
+          }
+        }
+      },
+      "post": {
+        "operationId": "createPushSubscription",
+        "consumes": ["application/x-www-form-urlencoded"],
+        "tags": [
+          "Strava"
+        ],
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "formData",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "client_secret",
+            "in": "formData",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "callback_url",
+            "in": "formData",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "verify_token",
+            "in": "formData",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Created webhook subscription",
+            "schema": {"type":"object", "additionalProperties":true}
+          }
+        }
+      }
+    }
+  }
+}

@@ -103,6 +103,7 @@ pub(super) async fn complete_processing_node(
                 .as_ref()
                 .map(|activity| activity.updated_at),
         });
+    crate::strava_workflow::import_objects::save(node.id(), &crate::strava_objects::checksum(&state.bytes), &serde_json::json!({"checkpoint":checkpoint,"activity":state.activity_model,"segment_ids":state.affected_segment_ids})).await?;
     state.attempt = execution::record_stage(
         run.db,
         state.attempt.clone(),

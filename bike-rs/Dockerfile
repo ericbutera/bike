@@ -24,6 +24,9 @@ COPY --from=protobuf /opt/protoc/bin/protoc /usr/local/bin/protoc
 COPY --from=protobuf /opt/protoc/include /usr/local/include
 COPY --from=planner /app/recipe.json recipe.json
 COPY --from=planner /app/vendor vendor
+# cargo-chef's recipe covers workspace members. The standard generated SDK is
+# excluded from workspace linting, so preserve its package before cooking.
+COPY --from=planner /app/strava-sdk strava-sdk
 RUN --mount=type=cache,id=bike-cargo-registry,target=/usr/local/cargo/registry \
     --mount=type=cache,id=bike-cargo-git,target=/usr/local/cargo/git \
     --mount=type=cache,id=bike-rust-target-${TARGETPLATFORM},target=/app/target,sharing=locked \

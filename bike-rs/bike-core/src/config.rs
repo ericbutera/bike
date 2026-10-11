@@ -14,9 +14,6 @@ pub struct Config {
     pub strava_oauth_scopes: String,
     pub strava_webhook_verify_token: String,
     pub strava_webhook_callback_url: Option<String>,
-    pub strava_gateway_url: Option<String>,
-    pub strava_gateway_grpc_address: Option<String>,
-    pub strava_gateway_shared_secret: String,
     pub uploads_dir: String,
     pub map_renderer_grpc_address: Option<String>,
     pub map_service_token: String,
@@ -76,10 +73,6 @@ impl Config {
                 .ok()
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty()),
-            strava_gateway_url: env_endpoint("STRAVA_GATEWAY_URL"),
-            strava_gateway_grpc_address: env_endpoint("STRAVA_GATEWAY_GRPC_ADDRESS"),
-            strava_gateway_shared_secret: env::var("STRAVA_GATEWAY_SHARED_SECRET")
-                .unwrap_or_default(),
             uploads_dir: env::var("UPLOADS_DIR").unwrap_or_else(|_| "./uploads".to_string()),
             map_renderer_grpc_address: env_endpoint("MAP_RENDERER_GRPC_ADDRESS"),
             map_service_token: env::var("MAP_SERVICE_TOKEN").unwrap_or_default(),

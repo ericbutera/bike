@@ -5,8 +5,8 @@
 `docs/specs/` is the source of truth for system behavior. `bike-rs` implements
 the backend's business rules and data handling. `bike-ui` is the shared Next.js
 and React Query frontend.
-`strava-gateway` owns the provider callback, inbox, credentials, and delivery
-to Bike Rust. The Rust API owns map image access and caching; the separate Go
+`bike-rs` owns Strava callbacks, OAuth credentials, and provider workflow DAGs.
+The Rust API owns map image access and caching; the separate Go
 map worker owns Chromium snapshots over gRPC.
 
 Use each project's `mise.toml` for language and package-manager versions and
@@ -38,8 +38,9 @@ Put regression tests in Bike's existing Rust or UI test paths so the owning CI
 tasks discover them. Keep CI and focused local tasks on the same tooling and
 warning-as-error policy. Report local results separately from CI status.
 
-Keep provider calls behind the gateway seam and use fixtures/fakes for ordinary workflow checks. Native
-HTTP integration tests live in `bike-rs/api/tests`; browser tests belong to
+Keep provider calls behind the generated SDK wrapper and use fixtures/fakes for
+ordinary workflow checks. Native HTTP integration tests live in
+`bike-rs/api/tests`; browser tests belong to
 `bike-ui/tests/e2e`. Reserve Playwright for focused activity, segment, and
 race-viewer flows; use owning unit, functional, or SQL suites for workflow rules.
 

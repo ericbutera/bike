@@ -1,7 +1,22 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ConnectionTrait, DbErr, Set};
+use sea_orm::{ColumnTrait, ConnectionTrait, DbErr, QueryFilter, Set};
+
+impl Model {
+    pub async fn for_athlete(
+        db: &impl ConnectionTrait,
+        athlete_id: i64,
+    ) -> Result<Option<Self>, DbErr> {
+        Entity::find()
+            .filter(Column::AthleteId.eq(athlete_id))
+            .one(db)
+            .await
+    }
+    pub async fn all_connected(db: &impl ConnectionTrait) -> Result<Vec<Self>, DbErr> {
+        Entity::find().all(db).await
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "strava_connections")]

@@ -61,7 +61,7 @@ describe("IntegrationEventFeed", () => {
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
-  it("labels a gateway's Strava activity id separately", () => {
+  it("shows native Strava activity, workflow and import correlation", () => {
     render(
       <IntegrationEventFeed
         events={[
@@ -69,10 +69,14 @@ describe("IntegrationEventFeed", () => {
             id: 2,
             user_id: 17,
             provider: "strava",
-            event_type: "gateway.delivery.applied",
+            event_type: "workflow.stage",
             level: "success",
-            message: "Applied Strava gateway upsert delivery.",
-            payload: { strava_activity_id: 9876543210 },
+            message: "Strava insert: apply applied.",
+            payload: {
+              strava_activity_id: 9876543210,
+              workflow_id: "native-workflow",
+              import_id: 17,
+            },
             created_at: "2026-10-05T12:00:00Z",
           },
         ]}
@@ -82,6 +86,8 @@ describe("IntegrationEventFeed", () => {
       />,
     );
     expect(screen.getByText("Strava activity: 9876543210")).toBeInTheDocument();
+    expect(screen.getByText("Workflow: native-workflow")).toBeInTheDocument();
+    expect(screen.getByText("Import: 17")).toBeInTheDocument();
   });
 
   it("shows a visible error when integration history cannot load", () => {

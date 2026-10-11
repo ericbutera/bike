@@ -27,7 +27,6 @@ export BIKE_WORKER_IMAGE="$registry/bike-worker:$revision"
 export BIKE_UI_IMAGE="$registry/bike-ui:$revision"
 export BIKE_RENDERER_IMAGE="$registry/bike-maps:$revision"
 export BIKE_E2E_IMAGE="$registry/bike-e2e:$revision"
-export BIKE_GATEWAY_IMAGE="$registry/bike-strava-gateway:$revision"
 # The checkout PVC disappears after a pipeline; retain reports on the existing cache PVC.
 export BIKE_E2E_ARTIFACT_ROOT="/cache/bike/e2e/${CI_PIPELINE_NUMBER:?CI pipeline identity is required}"
 mkdir -p "$BIKE_E2E_ARTIFACT_ROOT"

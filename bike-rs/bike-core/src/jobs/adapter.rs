@@ -131,17 +131,28 @@ impl Job {
 #[derive(Clone)]
 pub struct JobQueue {
     queue: TaskQueue<DurableStorage>,
+    db: DatabaseConnection,
 }
 
 impl JobQueue {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
-            queue: TaskQueue::new(DurableStorage::new(db)),
+            queue: TaskQueue::new(DurableStorage::new(db.clone())),
+            db,
         }
     }
 
     async fn enqueue_job(&self, job: Job) -> Result<(), crate::background_jobs::TaskError> {
         let task_type = job.task_type().to_string();
+        if crate::strava_workflow::intents::enqueue(
+            &self.db,
+            &task_type,
+            &serde_json::to_value(&job)?,
+        )
+        .await?
+        {
+            return Ok(());
+        }
         self.queue.enqueue(task_type, job).await.map(|_| ())
     }
 
@@ -182,8 +193,7 @@ impl JobQueue {
         user_id: i32,
     ) -> Result<(), crate::background_jobs::TaskError> {
         let job = Job::RebuildFitnessFreshness(RebuildFitnessFreshnessTask { user_id });
-        self.queue.enqueue(job.task_type().to_string(), job).await?;
-        Ok(())
+        self.enqueue_job(job).await
     }
 
     pub async fn rebuild_segment_analytics(
