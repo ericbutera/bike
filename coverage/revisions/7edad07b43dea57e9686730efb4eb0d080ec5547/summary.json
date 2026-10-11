@@ -1,0 +1,87 @@
+{
+  "commit": "7edad07b43dea57e9686730efb4eb0d080ec5547",
+  "created_at": "2026-10-11T01:32:36Z",
+  "base_revision": "fd2b7ea251144a1d3e2de9c1e24c332209da3550",
+  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/291",
+  "minimum_changed_line_percent": 80,
+  "projects": {
+    "api": {
+      "name": "Bike API",
+      "language": "Rust",
+      "source": "bike-rs/api",
+      "lines": 8116,
+      "covered": 4487,
+      "percent": 55.285855101035,
+      "changed": {
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
+      }
+    },
+    "worker": {
+      "name": "Bike worker",
+      "language": "Rust",
+      "source": "bike-rs/worker",
+      "lines": 592,
+      "covered": 218,
+      "percent": 36.82432432432432,
+      "changed": {
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
+      }
+    },
+    "bike-core": {
+      "name": "Shared Bike core",
+      "language": "Rust",
+      "source": "bike-rs/bike-core",
+      "lines": 36194,
+      "covered": 24647,
+      "percent": 68.09692214179147,
+      "changed": {
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
+      }
+    },
+    "bike-ui": {
+      "name": "Bike UI",
+      "language": "Next.js",
+      "source": "bike-ui",
+      "lines": 5769,
+      "covered": 3514,
+      "percent": 60.91,
+      "changed": {
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
+      }
+    },
+    "map-renderer": {
+      "name": "Map renderer",
+      "language": "Go",
+      "source": "map-renderer",
+      "lines": 443,
+      "covered": 359,
+      "percent": 81.03837471783295,
+      "changed": {
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
+      }
+    },
+    "strava-gateway": {
+      "name": "Strava gateway",
+      "language": "Go",
+      "source": "strava-gateway",
+      "lines": 2909,
+      "covered": 620,
+      "percent": 21.313166036438638,
+      "changed": {
+        "lines": 27,
+        "covered": 25,
+        "percent": 92.59
+      }
+    }
+  }
+}
