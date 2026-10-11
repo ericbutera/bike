@@ -1,30 +1,30 @@
 {
-  "commit": "660c81102bf4805f0c4f15d0d6bf2c0cb9a5aab0",
-  "created_at": "2026-10-10T20:04:21Z",
-  "base_revision": "87f72614a955348cfc4470e0a4eb91af9f40de47",
-  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/270",
+  "commit": "329b1a101c5f43867c3d030db3777a28f6eb0fe4",
+  "created_at": "2026-10-11T00:07:05Z",
+  "base_revision": "b1eb9bf77abdc2a16a239f818045c76ea2104e19",
+  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/286",
   "minimum_changed_line_percent": 80,
   "projects": {
     "api": {
       "name": "Bike API",
       "language": "Rust",
       "source": "bike-rs/api",
-      "lines": 7984,
-      "covered": 4215,
-      "percent": 52.793086172344694,
+      "lines": 8116,
+      "covered": 4487,
+      "percent": 55.285855101035,
       "changed": {
-        "lines": 0,
-        "covered": 0,
-        "percent": 100.0
+        "lines": 43,
+        "covered": 41,
+        "percent": 95.35
       }
     },
     "worker": {
       "name": "Bike worker",
       "language": "Rust",
       "source": "bike-rs/worker",
-      "lines": 545,
-      "covered": 15,
-      "percent": 2.752293577981652,
+      "lines": 592,
+      "covered": 218,
+      "percent": 36.82432432432432,
       "changed": {
         "lines": 0,
         "covered": 0,
@@ -35,12 +35,12 @@
       "name": "Shared Bike core",
       "language": "Rust",
       "source": "bike-rs/bike-core",
-      "lines": 31639,
-      "covered": 20152,
-      "percent": 63.693542779481014,
+      "lines": 36194,
+      "covered": 24647,
+      "percent": 68.09692214179147,
       "changed": {
-        "lines": 3,
-        "covered": 3,
+        "lines": 6,
+        "covered": 6,
         "percent": 100.0
       }
     },
@@ -48,22 +48,22 @@
       "name": "Bike UI",
       "language": "Next.js",
       "source": "bike-ui",
-      "lines": 5641,
-      "covered": 3372,
-      "percent": 59.77,
+      "lines": 5769,
+      "covered": 3514,
+      "percent": 60.91,
       "changed": {
-        "lines": 0,
-        "covered": 0,
-        "percent": 100.0
+        "lines": 22,
+        "covered": 18,
+        "percent": 81.82
       }
     },
     "map-renderer": {
       "name": "Map renderer",
       "language": "Go",
       "source": "map-renderer",
-      "lines": 431,
-      "covered": 347,
-      "percent": 80.51044083526682,
+      "lines": 443,
+      "covered": 359,
+      "percent": 81.03837471783295,
       "changed": {
         "lines": 0,
         "covered": 0,
@@ -74,9 +74,9 @@
       "name": "Strava gateway",
       "language": "Go",
       "source": "strava-gateway",
-      "lines": 2856,
-      "covered": 461,
-      "percent": 16.141456582633054,
+      "lines": 2886,
+      "covered": 539,
+      "percent": 18.676368676368675,
       "changed": {
         "lines": 0,
         "covered": 0,
