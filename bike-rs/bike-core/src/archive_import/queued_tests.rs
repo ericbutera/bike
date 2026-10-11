@@ -14,6 +14,190 @@ use sea_orm::{
 };
 use serde_json::json;
 
+#[tokio::test]
+async fn queued_archive_corrupt_gzip_preserves_healthy_sources_and_the_entry_error() {
+    let fixture = ArchiveFixture::new().await;
+    let bytes = include_bytes!("../../../api/tests/fixtures/activity.fit").as_slice();
+    let archive = write_test_archive(&[
+        ("ride-0.fit", bytes),
+        ("ride-1.fit.gz", b"not gzip"),
+        (
+            "ride-2.gpx",
+            include_bytes!("../../../api/tests/fixtures/import-analytics-ride.gpx").as_slice(),
+        ),
+    ]);
+    std::fs::rename(archive, &fixture.path).unwrap();
+    fixture.page().await;
+    let imports = activity_imports::Entity::find()
+        .all(&fixture.db)
+        .await
+        .unwrap();
+    assert_eq!(imports.len(), 2);
+    assert!(imports
+        .iter()
+        .all(|import| import.archive_job_id == Some(fixture.job)));
+    assert_eq!(
+        background_tasks::Entity::find()
+            .filter(background_tasks::Column::TaskType.eq("process_activity_import"))
+            .count(&fixture.db)
+            .await
+            .unwrap(),
+        2
+    );
+    let progress = activity_archive_import_jobs::Entity::find_by_id(fixture.job)
+        .one(&fixture.db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        (progress.supported_entry_count, progress.failed_count),
+        (3, 1)
+    );
+    assert!(progress
+        .error_samples_json
+        .unwrap()
+        .contains("ride-1.fit.gz"));
+    // This test supplies successful child outcomes after checking the production
+    // producer. The undecodable entry must survive the terminal barrier.
+    fixture.finish_children(false).await;
+    let job = activity_archive_import_jobs::Entity::find_by_id(fixture.job)
+        .one(&fixture.db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(job.status, "partial");
+    assert_eq!((job.imported_count, job.failed_count), (2, 1));
+    assert!(job.failure_message.unwrap().contains("ride-1.fit.gz"));
+    assert!(!fixture.path.exists());
+    assert!(activity_import_locks::Entity::find_by_id(fixture.lock)
+        .one(&fixture.db)
+        .await
+        .unwrap()
+        .is_none());
+}
+
+#[tokio::test]
+async fn queued_archive_scan_failure_cannot_report_success_without_committed_entry_counts() {
+    let fixture = ArchiveFixture::new().await;
+    std::fs::write(&fixture.path, b"downloaded response is not a zip").unwrap();
+    let error = queue_archive_page(
+        &fixture.db,
+        &fixture.uploads,
+        fixture.parent,
+        fixture.job,
+        Some(fixture.parent),
+    )
+    .await
+    .unwrap_err();
+    let mut task = background_tasks::Entity::find_by_id(fixture.parent)
+        .one(&fixture.db)
+        .await
+        .unwrap()
+        .unwrap();
+    for _ in 0..task.max_attempts {
+        task = task
+            .claim(&fixture.db)
+            .await
+            .unwrap()
+            .unwrap()
+            .mark_failed(&fixture.db, error.message.clone())
+            .await
+            .unwrap();
+    }
+    batches::reconcile(&fixture.db).await.unwrap();
+    let job = activity_archive_import_jobs::Entity::find_by_id(fixture.job)
+        .one(&fixture.db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(job.status, "failed");
+    assert_eq!((job.supported_entry_count, job.imported_count), (0, 0));
+    assert_eq!(job.failure_message.as_deref(), Some(error.message.as_str()));
+    assert!(job.finished_at.is_some());
+    assert!(activity_import_locks::Entity::find_by_id(fixture.lock)
+        .one(&fixture.db)
+        .await
+        .unwrap()
+        .is_none());
+    assert!(!fixture.path.exists());
+    let output = pipeline_outputs::Entity::find()
+        .one(&fixture.db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(output.available_at.is_none());
+}
+
+#[tokio::test]
+async fn queued_archive_without_supported_entries_fails_instead_of_reporting_empty_success() {
+    let fixture = ArchiveFixture::new().await;
+    let archive = write_test_archive(&[("readme.txt", b"unsupported")]);
+    std::fs::rename(archive, &fixture.path).unwrap();
+    fixture.page().await;
+    fixture.finish_children(false).await;
+    let job = activity_archive_import_jobs::Entity::find_by_id(fixture.job)
+        .one(&fixture.db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(job.status, "failed");
+    assert_eq!((job.total_entries, job.skipped_unsupported_count), (1, 1));
+    assert!(job
+        .failure_message
+        .unwrap()
+        .contains("no supported activity files"));
+}
+
+#[tokio::test]
+async fn queued_archive_queue_failure_rolls_back_entry_errors_imports_and_cursor() {
+    let fixture = ArchiveFixture::new().await;
+    let archive = write_test_archive(&[("broken.fit.gz", b"not gzip"), ("healthy.gpx", b"<gpx/>")]);
+    std::fs::rename(archive, &fixture.path).unwrap();
+    fixture
+        .db
+        .execute_unprepared("DROP TABLE worker_batch_tasks")
+        .await
+        .unwrap();
+    assert!(queue_archive_page(
+        &fixture.db,
+        &fixture.uploads,
+        fixture.parent,
+        fixture.job,
+        Some(fixture.parent)
+    )
+    .await
+    .is_err());
+    assert_eq!(
+        activity_imports::Entity::find()
+            .count(&fixture.db)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        background_tasks::Entity::find()
+            .count(&fixture.db)
+            .await
+            .unwrap(),
+        1
+    );
+    let job = activity_archive_import_jobs::Entity::find_by_id(fixture.job)
+        .one(&fixture.db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!((job.supported_entry_count, job.failed_count), (0, 0));
+    assert!(job.error_samples_json.is_none());
+    let batch = worker_batches::Entity::find_by_id(fixture.parent)
+        .one(&fixture.db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(batch.cursor, 0);
+    assert!(!batch.sealed);
+    assert!(fixture.path.exists());
+}
+
 struct ArchiveFixture {
     db: DatabaseConnection,
     uploads: String,

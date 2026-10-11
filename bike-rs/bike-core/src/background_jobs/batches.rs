@@ -127,13 +127,16 @@ pub async fn schedule_page(
 }
 /// Failed/canceled children produce a terminal partial result, never success.
 pub async fn reconcile(db: &DatabaseConnection) -> Result<(), DbErr> {
-    let candidates = worker_batches::Entity::find()
-        .filter(worker_batches::Column::Status.eq("running"))
-        .limit(64)
-        .all(db)
-        .await?;
-    for batch in candidates {
-        close_batch(db, batch).await?;
+    let mut after_id = 0;
+    loop {
+        let candidates = worker_batches::Model::running_page(db, after_id, 64).await?;
+        if candidates.is_empty() {
+            break;
+        }
+        for batch in candidates {
+            after_id = batch.id;
+            close_batch(db, batch).await?;
+        }
     }
     cleanup_archives(db).await
 }
@@ -365,6 +368,57 @@ mod tests {
             .mark_completed(db)
             .await
             .unwrap();
+    }
+    #[tokio::test]
+    async fn reconciliation_visits_completed_batches_beyond_an_active_page() {
+        let db = database(true).await;
+        for _ in 0..64 {
+            let parent = enqueue(&db).await;
+            start(&db, parent.id, 7, "reprocess", serde_json::json!({}))
+                .await
+                .unwrap();
+        }
+        let parent = enqueue(&db).await;
+        let lock = activity_import_locks::ActiveModel {
+            user_id: Set(7),
+            source: Set("activity_reprocessing".into()),
+            stage: Set("running".into()),
+            ..Default::default()
+        }
+        .insert(&db)
+        .await
+        .unwrap();
+        let batch = start(
+            &db,
+            parent.id,
+            7,
+            "reprocess",
+            serde_json::json!({"lock_id":lock.id}),
+        )
+        .await
+        .unwrap();
+        schedule_page(&db, &batch, 0, true, vec![]).await.unwrap();
+        complete(&db, &parent).await;
+        reconcile(&db).await.unwrap();
+        let finished = worker_batches::Entity::find_by_id(batch.id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(finished.status, "completed");
+        assert!(activity_import_locks::Entity::find_by_id(lock.id)
+            .one(&db)
+            .await
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            worker_batches::Entity::find()
+                .filter(worker_batches::Column::Status.eq("running"))
+                .count(&db)
+                .await
+                .unwrap(),
+            64
+        );
     }
     #[tokio::test]
     async fn failed_child_intent_rolls_back_the_page_and_cursor() {

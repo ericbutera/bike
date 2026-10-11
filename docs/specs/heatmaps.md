@@ -111,6 +111,10 @@ make it contribute. Outdoor-only choices belong to MAPS12.
 Imports and edits durably mark projections pending without waiting for
 preparation. While enabled, the worker reconciles up to **16 activity IDs every
 15 seconds** and prepares them sequentially. Backfill uses the same builder.
+A crashed preparation task resumes through the shared worker's five-minute
+heartbeat recovery, preserving its activity generations and attempt history.
+A live heartbeat prevents reclaiming that task; deduplication keeps one eligible
+task for the same projection generation.
 
 | Stored record         | Purpose                                                  |
 | --------------------- | -------------------------------------------------------- |

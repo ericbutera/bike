@@ -21,10 +21,6 @@ pub async fn queue_archive_page(
             .ok_or_else(|| AppError::internal("Archive batch source is missing"))?,
     );
     let scan = scan_archive_entries(&archive)?;
-    let job = activity_archive_import_jobs::Entity::find_by_id(job_id)
-        .one(db)
-        .await?
-        .ok_or_else(|| AppError::not_found("Archive job disappeared"))?;
     let txn = db.begin().await?;
     batches::lock_origins(&txn, batch.id).await?;
     let stored = worker_batches::Entity::find_by_id(batch.id)
@@ -35,32 +31,32 @@ pub async fn queue_archive_page(
     if stored.cursor != batch.cursor || stored.sealed {
         return Ok(());
     }
+    let job = activity_archive_import_jobs::Entity::find_by_id(job_id)
+        .one(&txn)
+        .await?
+        .ok_or_else(|| AppError::not_found("Archive job disappeared"))?;
     let mut jobs = Vec::new();
+    let mut errors = Vec::new();
     for entry in scan
         .supported_entries
         .iter()
         .skip(batch.cursor as usize)
         .take(16)
     {
-        let import = store_entry(&txn, uploads_dir, &job, &archive, entry).await?;
-        jobs.push(Job::ProcessActivityImport(ProcessActivityImportTask {
-            user_id: job.user_id,
-            import_id: import.id,
-        }));
+        match read_entry_source(&archive, entry) {
+            Ok(bytes) => {
+                let import = store_entry(&txn, uploads_dir, &job, entry, bytes).await?;
+                jobs.push(Job::ProcessActivityImport(ProcessActivityImportTask {
+                    user_id: job.user_id,
+                    import_id: import.id,
+                }));
+            }
+            Err(error) => errors.push(format!("{}: {}", entry.entry_name, error.message)),
+        }
     }
     let next = (batch.cursor + 16).min(scan.supported_entries.len() as i32);
     batches::schedule_page(&txn, &batch, next, next >= scan.supported_entry_count, jobs).await?;
-    activity_archive_import_jobs::Entity::update_many()
-        .set(activity_archive_import_jobs::ActiveModel {
-            total_entries: Set(scan.total_entries),
-            supported_entry_count: Set(scan.supported_entry_count),
-            skipped_unsupported_count: Set(scan.skipped_unsupported_count),
-            updated_at: Set(Utc::now()),
-            ..Default::default()
-        })
-        .filter(activity_archive_import_jobs::Column::Id.eq(job_id))
-        .exec(&txn)
-        .await?;
+    job.store_queued_page_progress(&txn, &scan, errors).await?;
     txn.commit().await?;
     Ok(())
 }
@@ -105,12 +101,9 @@ async fn store_entry(
     db: &impl ConnectionTrait,
     uploads_dir: &str,
     job: &activity_archive_import_jobs::Model,
-    archive: &Path,
     entry: &IndexedArchiveActivityEntry,
+    bytes: Vec<u8>,
 ) -> Result<crate::entities::activity_imports::Model, AppError> {
-    let bytes = read_archive_entry_bytes(archive, &entry.source)?;
-    let bytes =
-        maybe_decode_archive_entry(&entry.activity_entry, bytes).map_err(AppError::bad_request)?;
     let import = store_activity_upload_import_with_artifacts(
         db,
         StoreActivityUploadImportRequest {
@@ -142,6 +135,43 @@ async fn store_entry(
     )
     .await?;
     Ok(import)
+}
+
+fn read_entry_source(
+    archive: &Path,
+    entry: &IndexedArchiveActivityEntry,
+) -> Result<Vec<u8>, AppError> {
+    let bytes = read_archive_entry_bytes(archive, &entry.source)?;
+    maybe_decode_archive_entry(&entry.activity_entry, bytes).map_err(AppError::bad_request)
+}
+
+impl activity_archive_import_jobs::Model {
+    async fn store_queued_page_progress(
+        &self,
+        db: &impl ConnectionTrait,
+        scan: &ArchiveScanResult,
+        errors: Vec<String>,
+    ) -> Result<(), AppError> {
+        let failed = errors.len() as i32;
+        let samples = decode_error_samples(self.error_samples_json.as_deref())
+            .into_iter()
+            .chain(errors)
+            .take(10)
+            .collect::<Vec<_>>();
+        let progress = ActivityArchiveImportResponse {
+            source: self.archive_url.clone(),
+            total_entries: scan.total_entries,
+            supported_entry_count: scan.supported_entry_count,
+            skipped_unsupported_count: scan.skipped_unsupported_count,
+            imported_count: self.imported_count,
+            duplicate_count: self.duplicate_count,
+            failed_count: self.failed_count + failed,
+            error_samples: samples,
+        };
+        activity_archive_import_jobs::Entity::store_progress(db, self.user_id, self.id, &progress)
+            .await?;
+        Ok(())
+    }
 }
 pub async fn finish_queued_archive_batch(
     db: &impl ConnectionTrait,
@@ -175,17 +205,20 @@ pub async fn finish_queued_archive_batch(
         .filter(|status| status.as_str() == "duplicate")
         .count() as i32;
     let failed = (job.supported_entry_count - imported - duplicate).max(0);
-    let errors = tasks
-        .iter()
-        .filter_map(|task| task.error.as_ref())
-        .take(10)
-        .collect::<Vec<_>>();
+    let task_failed = tasks.iter().any(|task| task.status != "completed");
+    let has_failure = task_failed || failed > 0 || job.supported_entry_count == 0;
+    let mut errors = decode_error_samples(job.error_samples_json.as_deref());
+    errors.extend(tasks.iter().filter_map(|task| task.error.clone()));
+    if job.supported_entry_count == 0 && errors.is_empty() {
+        errors.push("Archive contained no supported activity files".into());
+    }
+    errors.truncate(10);
     activity_archive_import_jobs::Entity::update_many()
         .set(activity_archive_import_jobs::ActiveModel {
             imported_count: Set(imported),
             duplicate_count: Set(duplicate),
             failed_count: Set(failed),
-            status: Set(if failed == 0 {
+            status: Set(if !has_failure {
                 "succeeded"
             } else if imported + duplicate > 0 {
                 "partial"
@@ -193,7 +226,7 @@ pub async fn finish_queued_archive_batch(
                 "failed"
             }
             .into()),
-            failure_message: Set(errors.first().map(|error| (*error).clone())),
+            failure_message: Set(errors.first().cloned()),
             error_samples_json: Set(Some(
                 serde_json::to_string(&errors)
                     .map_err(|error| sea_orm::DbErr::Custom(error.to_string()))?,
@@ -206,5 +239,5 @@ pub async fn finish_queued_archive_batch(
         .filter(activity_archive_import_jobs::Column::Id.eq(id))
         .exec(db)
         .await?;
-    Ok(failed > 0)
+    Ok(has_failure)
 }

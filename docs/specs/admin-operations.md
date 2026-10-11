@@ -30,6 +30,9 @@ Admin pages require an authenticated admin user. Non-admin users should not be a
   recovery never resets the execution number. A late result cannot overwrite a
   cancellation or a later execution. Admin cancellation records the cancellation;
   processors retain their existing cooperative cancellation behavior.
+- Every worker poll recovers executions whose heartbeat lease has been stale
+  for five minutes. Recovery preserves source payloads and lineage, records the
+  interrupted attempt, and rejects snapshots superseded by a heartbeat.
 - Pipeline details show the immutable original receipt, first durable task
   acceptance, parent task, and receipt-to-task timing. Follow the parent link to
   inspect the processor that scheduled the task. Rerun starts a new admin origin;
@@ -58,6 +61,8 @@ Admin pages require an authenticated admin user. Non-admin users should not be a
   until descendants finish. An admin rerun starts a fresh run outside the old
   batch. See the [visibility plan](../plans/pipeline-visibility.md) for operational
   acceptance and the [worker runbook](../production-failures.md#bikeworkerpipelineblocked).
+  Barrier reconciliation visits every running batch in ordered pages; active
+  batches cannot prevent later completed batches from releasing their locks.
 
 ## Import history
 

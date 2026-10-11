@@ -64,7 +64,7 @@ func run(ctx context.Context, config Config, openBrowser browserFactory) (err er
 	defer func() {
 		shutdown, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
-		err = errors.Join(err, servers.shutdown(shutdown), renderer.Close(shutdown))
+		err = errors.Join(err, servers.shutdown(shutdown, renderer))
 	}()
 	if err := servers.start(); err != nil {
 		return err
@@ -117,9 +117,17 @@ func (s *servers) serveHTTP(server *http.Server, listener net.Listener) {
 	s.errors <- err
 }
 
-func (s *servers) shutdown(ctx context.Context) error {
+func (s *servers) shutdown(ctx context.Context, renderer *render.Renderer) error {
 	done := make(chan struct{})
 	go func() { s.grpc.GracefulStop(); close(done) }()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		s.grpc.Stop()
+	}
+	// Canceled RPCs may still have accepted work in the render queue. Keep the
+	// asset server available until that queue drains or the shutdown budget ends.
+	drainErr := renderer.Close(ctx)
 	results := make(chan error, 2)
 	for _, server := range []*http.Server{s.http, s.metrics} {
 		go func() {
@@ -130,10 +138,5 @@ func (s *servers) shutdown(ctx context.Context) error {
 			results <- err
 		}()
 	}
-	select {
-	case <-done:
-	case <-ctx.Done():
-		s.grpc.Stop()
-	}
-	return errors.Join(<-results, <-results, ctx.Err())
+	return errors.Join(drainErr, <-results, <-results, ctx.Err())
 }
