@@ -1,0 +1,87 @@
+{
+  "commit": "7094b5d003751e97b6e714459a2fad50d7a0c6fd",
+  "created_at": "2026-10-11T18:40:43Z",
+  "base_revision": "7edad07b43dea57e9686730efb4eb0d080ec5547",
+  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/295",
+  "minimum_changed_line_percent": 80,
+  "projects": {
+    "api": {
+      "name": "Bike API",
+      "language": "Rust",
+      "source": "bike-rs/api",
+      "lines": 8116,
+      "covered": 4487,
+      "percent": 55.285855101035,
+      "changed": {
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
+      }
+    },
+    "worker": {
+      "name": "Bike worker",
+      "language": "Rust",
+      "source": "bike-rs/worker",
+      "lines": 592,
+      "covered": 223,
+      "percent": 37.66891891891892,
+      "changed": {
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
+      }
+    },
+    "bike-core": {
+      "name": "Shared Bike core",
+      "language": "Rust",
+      "source": "bike-rs/bike-core",
+      "lines": 36328,
+      "covered": 24854,
+      "percent": 68.41554723629156,
+      "changed": {
+        "lines": 162,
+        "covered": 162,
+        "percent": 100.0
+      }
+    },
+    "bike-ui": {
+      "name": "Bike UI",
+      "language": "Next.js",
+      "source": "bike-ui",
+      "lines": 5769,
+      "covered": 3514,
+      "percent": 60.91,
+      "changed": {
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
+      }
+    },
+    "map-renderer": {
+      "name": "Map renderer",
+      "language": "Go",
+      "source": "map-renderer",
+      "lines": 444,
+      "covered": 361,
+      "percent": 81.30630630630631,
+      "changed": {
+        "lines": 6,
+        "covered": 6,
+        "percent": 100.0
+      }
+    },
+    "strava-gateway": {
+      "name": "Strava gateway",
+      "language": "Go",
+      "source": "strava-gateway",
+      "lines": 2909,
+      "covered": 620,
+      "percent": 21.313166036438638,
+      "changed": {
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
+      }
+    }
+  }
+}
