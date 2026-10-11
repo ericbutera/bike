@@ -247,10 +247,21 @@ Every owning `test` task produces unit coverage as part of its test run.
 Woodpecker's Rust, UI and map-renderer test steps call those
 tasks; each unit suite runs once. Rust then runs its existing integration tests and
 doctests separately, without including their execution in the unit reports.
-Its instrumented build cache persists at `/cache/bike/target/llvm-cov-target`;
-the first instrumented build is still required, while subsequent runs reuse
-unchanged compiled artifacts. Formatting, lint, types, audits, and contract
-checks remain in the owning check tasks.
+Its instrumented build cache persists at
+`/cache/bike/target/${CI_COMMIT_REF}/llvm-cov-target` on the shared runner volume.
+The first instrumented dependency build is required for each ref; subsequent
+runs retain those compiled dependencies. `cargo llvm-cov clean --workspace`
+clears workspace artifacts and measurements before unit collection so removed
+source files and test binaries cannot pollute a later report. Unit and native
+PostgreSQL workflow checks share the same target before reporting. End-of-run
+cleanup removes raw profiles only; it must never delete compiled dependencies
+or introduce a pipeline number in the target path.
+
+`mise run checks:docker coverage:cache:test` builds a small Rust fixture twice
+using the configured workflow paths, removes source and test files between
+runs, and verifies dependency freshness plus the resulting coverage. Prek and
+`ci:runtime` enforce this regression. Formatting, lint, types, audits, and
+contract checks remain in the owning check tasks.
 
 After all owning test steps finish, `mise run ci:coverage` checks their existing
 reports through `mise run coverage:check`, without compiling or running tests.

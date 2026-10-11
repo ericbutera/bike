@@ -115,6 +115,7 @@ run = [
 
 [tasks."coverage:report"]
 description = "Render API, worker, and shared-core coverage from one test run"
+env = { CARGO_LLVM_COV_DENY_WARNINGS = "1" }
 run = ["mise install jq", "mise exec jq -- bash ../scripts/coverage-rust-report.sh"]
 
 [tasks.fmt]
