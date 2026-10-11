@@ -17,8 +17,30 @@ commands. [Supported activities](supported-activities.md) owns sport support.
   selects another owner for inspection; source, outcome, and archive filters
   remain scoped to that owner.
   Each row links directly to its import and to its activity when one exists.
-- An import shows its selected retained source, graph, recent attempts,
-  stage summaries, current work, error, and available recovery action.
+- `/admin/imports/{id}` is the combined activity-processing view. Admin activity
+  processing actions open this page when the activity has a linked import.
+  It shows the source and current outcome, import attempts and replay, then
+  related worker runs and output publication. Imports without an activity still
+  show their source, failure evidence, and replay action.
+- Attempt history uses visible cards with attempt ID, outcome, date, and a
+  selected state. The latest attempt opens by default; choosing an earlier
+  attempt shows only that attempt's stages, timestamps, and error. Selecting an
+  attempt resets stage selection to its failure or first stage.
+- The stage graph uses keyboard-accessible component cards and drawn connectors
+  from the authoritative graph edges. Read it from top to bottom; parallel stages
+  share a row. Each card shows its label, recorded status, and a compact result.
+  Selecting it opens one detail panel with all summary facts, dependencies,
+  timestamps, duration, error/reuse evidence, and the reviewed replay action.
+- Source identity, requested/actual start, timing, and reuse evidence use labeled
+  fields in expandable attempt details. Section links jump directly to import
+  stages/replay or worker runs/publication. Do not flatten fields into
+  arrow-delimited sentences or duplicate the graph with a second set of stage
+  cards. Missing measurements stay explicit.
+- Related worker runs use visible selectable cards instead of dropdowns of run
+  IDs. Receipt, durable acceptance, and publication use separate progress cards;
+  timing, attempts, work evidence, anomalies, and outputs use labeled fields.
+  The complete worker dependency graph and correlation IDs expand on demand.
+  Activity processing completion and output readiness remain distinct.
 - Progress refreshes while work is queued or running. Loading, empty, denied,
   unavailable-source, and request-failure states are explicit.
 - Stage details show compact facts and a short error, not a full log viewer.

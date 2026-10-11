@@ -82,6 +82,16 @@ image identity, migrations, metrics and dashboard provisioning. Live pipeline
 acceptance requires a newly received upload or webhook; missing historical
 receipt and trace evidence remains unknown.
 
+The combined activity-processing view is implemented under
+[activity ingestion](specs/activity-ingestion.md#import-history-and-administration).
+Linked admin activity actions open the import detail page with stage/replay
+and worker/publication evidence. Native connected stage cards, visible
+attempt/run choices, labeled fields, and section links replace the fragmented
+presentation. Docker validation passed 18 focused units, three synthetic
+desktop/mobile browser cases, and UI ESLint/TypeScript/formatting hooks.
+Release verification checks the full CI pipeline, deployed image identity,
+and the live import detail without replaying production work.
+
 Local reliability repairs are pending review and release: stale background-task
 recovery, per-entry archive failure handling, truthful archive outcomes, fair
 batch reconciliation, and map-worker shutdown draining. The owning specs in

@@ -40,9 +40,14 @@ Admin pages require an authenticated admin user. Non-admin users should not be a
 - Receipt origins cover API requests, signed gateway inbox/sync deliveries,
   cron enqueue and worker startup. HTTP acceptance of a gateway source and its
   task intent commits together. Retries retain the first receipt.
-- Activity processing opens all directly linked pipeline runs, including
-  activities without import history. The interactive graph shows task parents,
-  attempts, inline work, authoritative import stages, gateway intervals and
+- Activity processing opens the combined `/admin/imports/{id}` view for linked
+  imports; activities without import history retain a worker-run dialog.
+  The combined view includes durable import attempts/stage replay and all
+  directly linked pipeline runs. Visible history cards replace selection
+  dropdowns. Labeled progress and timing components separate receipt, durable
+  acceptance, work completion, and confirmed publication. The expandable
+  interactive worker graph shows task parents, attempts, inline work,
+  authoritative import stages, gateway intervals and
   output revisions. Selection shows receipt-to-start/result and stage/runtime.
   Log/trace links use the deployment's configured Grafana URL.
 - Receipt-to-available uses committed, revision-matched publications and a closed
@@ -66,9 +71,11 @@ Admin pages require an authenticated admin user. Non-admin users should not be a
 
 ## Import history
 
-`/admin/imports` and `/admin/imports/{id}` provide the import list, durable
-attempts, stage summaries, and reviewed replay actions. Admin navigation links
-to Import history. History defaults to the administrator's account and supports
+`/admin/imports` provides the import list; `/admin/imports/{id}` combines durable
+attempts, stage summaries, reviewed replay actions, and the activity's worker
+runs/publication. Admin activity processing actions link to this same page.
+Admin navigation links to Import history. History defaults to the
+administrator's account and supports
 selecting another owner by positive user ID. The existing admin trace endpoint
 reads any owner's import; replay always keeps that import's recorded owner.
 

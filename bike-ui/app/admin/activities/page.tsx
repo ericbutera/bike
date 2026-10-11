@@ -1,16 +1,12 @@
 "use client";
 
 import ActivityPipelines from "@/components/admin/ActivityPipelines";
-import ActivityImportTracePanel from "@/components/activity-detail/ActivityImportTracePanel";
-import {
-  type AdminActivity,
-  useAdminActivities,
-  useActivityImportTrace,
-} from "@/lib/queries";
+import { type AdminActivity, useAdminActivities } from "@/lib/queries";
 import GenericList, { type Column } from "@/components/ui/GenericList";
 import { faGear } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { Suspense, useMemo, useState } from "react";
+import Link from "next/link";
 import { LocalAdminLayout } from "../../../components/admin/LocalAdminLayout";
 
 const ADMIN_ACTIVITIES_PAGE_SIZE = 25;
@@ -34,12 +30,6 @@ export default function AdminActivitiesPage() {
 function AdminActivitiesContent() {
   const [selectedActivity, setSelectedActivity] =
     useState<AdminActivity | null>(null);
-  const traceQuery = useActivityImportTrace(
-    selectedActivity?.activity_import_id ?? null,
-    {
-      enabled: !!selectedActivity?.activity_import_id,
-    },
-  );
   const columns = useMemo<Column<AdminActivity, AdminActivitiesGridParams>[]>(
     () => [
       {
@@ -100,19 +90,29 @@ function AdminActivitiesContent() {
         key: "actions",
         header: "",
         className: "w-12 whitespace-nowrap",
-        render: (activity) => (
-          <button
-            type="button"
-            className="btn btn-ghost btn-square btn-sm"
-            aria-label={`View processing pipeline for ${activity.title}`}
-            title="View processing pipeline, timings and import history"
-            onClick={() => {
-              setSelectedActivity(activity);
-            }}
-          >
-            <FontAwesomeIcon icon={faGear} className="h-4 w-4" />
-          </button>
-        ),
+        render: (activity) =>
+          activity.activity_import_id ? (
+            <Link
+              className="btn btn-ghost btn-square btn-sm"
+              href={`/admin/imports/${activity.activity_import_id}`}
+              aria-label={`View processing pipeline for ${activity.title}`}
+              title="Activity processing and replay"
+            >
+              <FontAwesomeIcon icon={faGear} className="h-4 w-4" />
+            </Link>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-ghost btn-square btn-sm"
+              aria-label={`View processing pipeline for ${activity.title}`}
+              title="View processing pipeline, timings and import history"
+              onClick={() => {
+                setSelectedActivity(activity);
+              }}
+            >
+              <FontAwesomeIcon icon={faGear} className="h-4 w-4" />
+            </button>
+          ),
       },
     ],
     [],
@@ -150,11 +150,8 @@ function AdminActivitiesContent() {
         emptyMessage="No activities found."
       />
 
-      <ActivityImportTraceModal
+      <ActivityProcessingModal
         activity={selectedActivity}
-        trace={traceQuery.data}
-        isLoading={traceQuery.isLoading}
-        error={traceQuery.error}
         onClose={() => {
           setSelectedActivity(null);
         }}
@@ -163,17 +160,11 @@ function AdminActivitiesContent() {
   );
 }
 
-function ActivityImportTraceModal({
+function ActivityProcessingModal({
   activity,
-  trace,
-  isLoading,
-  error,
   onClose,
 }: {
   activity: AdminActivity | null;
-  trace: ReturnType<typeof useActivityImportTrace>["data"];
-  isLoading: boolean;
-  error: Error | null;
   onClose: () => void;
 }) {
   const isOpen = !!activity;
@@ -183,19 +174,18 @@ function ActivityImportTraceModal({
   }
 
   return (
-    <dialog className="modal modal-open">
+    <dialog
+      open
+      aria-label={`Activity processing for ${activity.title}`}
+      className="modal modal-open"
+    >
       <div className="modal-box max-w-5xl">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold">Activity processing</h2>
-            {activity?.activity_import_id ? (
-              <p className="mt-1 text-sm text-base-content/65">
-                Activity #{activity.id} · import #{activity.activity_import_id}
-                {activity.import_version
-                  ? ` · version ${activity.import_version}`
-                  : ""}
-              </p>
-            ) : null}
+            <p className="mt-1 text-sm text-base-content/65">
+              {activity.title} · Activity #{activity.id}
+            </p>
           </div>
           <button
             type="button"
@@ -208,11 +198,6 @@ function ActivityImportTraceModal({
 
         <div className="mt-6">
           {activity ? <ActivityPipelines activityId={activity.id} /> : null}
-          <ActivityImportTracePanel
-            trace={trace}
-            isLoading={isLoading}
-            error={error}
-          />
         </div>
       </div>
       <form method="dialog" className="modal-backdrop">

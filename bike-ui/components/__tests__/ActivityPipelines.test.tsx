@@ -16,14 +16,13 @@ describe("ActivityPipelines", () => {
     });
     render(<ActivityPipelines activityId={7} />);
     expect(screen.getByText("Selected run first")).toBeInTheDocument();
-    fireEvent.change(
-      screen.getByRole("combobox", { name: "Activity pipeline" }),
-      { target: { value: "second" } },
-    );
+    fireEvent.click(screen.getByRole("button", { name: /Run 2 second/ }));
     expect(screen.getByText("Selected run second")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "More runs" }));
     expect(useActivityPipelines).toHaveBeenLastCalledWith(7, "second");
     expect(screen.getByText("Selected run first")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "First runs" }));
+    expect(useActivityPipelines).toHaveBeenLastCalledWith(7, undefined);
   });
   it("keeps missing historical lineage unknown and reports a failed lookup", () => {
     useActivityPipelines.mockReturnValue({

@@ -71,12 +71,13 @@ function importFixture() {
     ...nodes.map((node) => `${node.id}["${node.label}"]`),
     ...ids.slice(1).map((id, index) => `${ids[index]} --> ${id}`),
   ].join("\n");
+  const edges = ids.slice(1).map((id, index) => ({ from: ids[index], to: id }));
   return {
     item,
     trace: {
       import: item,
       nodes,
-      graph: { nodes, edges: [], mermaid },
+      graph: { nodes, edges, mermaid },
       attempts: [first],
       events: [],
     },
@@ -93,6 +94,47 @@ async function fixture(page, target) {
   const api = await fakeProductApi(page, target, { isAdmin: true });
   const state = importFixture();
   const replays = [];
+  await page.route("**/api/admin/tasks/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/activities/42/pipelines")) {
+      await route.fulfill({
+        json: { run_ids: ["fixture-run"], next_cursor: null },
+      });
+    } else if (path.endsWith("/pipelines/fixture-run")) {
+      await route.fulfill({
+        json: {
+          run_id: "fixture-run",
+          entrypoint: "manual_upload",
+          received_at: state.item.created_at,
+          accepted_at: "2026-10-08T12:00:01Z",
+          ended_at: "2026-10-08T12:00:20Z",
+          available_at: null,
+          tasks: [
+            {
+              id: 42,
+              task_type: "process_activity_import",
+              status: "completed",
+              created_at: "2026-10-08T12:00:01Z",
+              attempts: [],
+              work: [],
+              work_has_more: false,
+              imports: [],
+              anomalies: [],
+            },
+          ],
+          outputs: [
+            {
+              kind: "heatmap",
+              target_id: 42,
+              status: "pending",
+              revision: 1,
+              available_at: null,
+            },
+          ],
+        },
+      });
+    } else throw new Error(`Unexpected worker request: ${path}`);
+  });
   await page.route("**/api/admin/activity-imports/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -160,16 +202,18 @@ for (const target of targets) {
     await expect(
       page.getByRole("heading", { name: "synthetic-ride.gpx", exact: true }),
     ).toBeVisible();
-    const graph = page.locator("svg g.node");
-    await expect(graph).toHaveCount(7);
+    const graph = page.getByLabel("Stage results");
+    await expect(graph.getByRole("button")).toHaveCount(7);
+    await expect(graph.locator("svg path[data-from]")).toHaveCount(6);
     await expect(
       page.getByRole("button", { name: /Activity parsed completed/ }),
     ).toContainText("Parsed 7 records");
-    await expect(graph.first()).toContainText("4096 bytes");
-    const savedNode = graph.filter({ hasText: "Activity saved" });
-    expect(await savedNode.getAttribute("id")).toMatch(
-      /flowchart-activity_saved-\d+$/,
-    );
+    await expect(
+      graph.getByRole("button", { name: "Raw stored completed" }),
+    ).toContainText("4096 bytes");
+    const savedNode = graph.getByRole("button", {
+      name: "Activity saved completed",
+    });
     await savedNode.click();
     await expect(
       page.getByRole("button", { name: /Activity saved completed/ }),
@@ -177,11 +221,15 @@ for (const target of targets) {
     await page
       .getByRole("button", { name: "Replay from Activity saved", exact: true })
       .click();
-    await expect(page.getByRole("combobox", { name: "Attempt" })).toHaveValue(
-      "2",
-    );
+    await expect(
+      page.getByRole("button", { name: "Attempt #2 completed" }),
+    ).toHaveAttribute("aria-pressed", "true");
     await expect(
       page.getByRole("button", { name: /Raw stored reused/ }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Raw stored reused" }).click();
+    await expect(
+      page.getByRole("region", { name: "Selected stage" }),
     ).toContainText("Reused from attempt #1");
     expect(replays).toEqual([
       {
@@ -190,10 +238,31 @@ for (const target of targets) {
         expected_reused_attempt_id: 1,
       },
     ]);
-    await page.getByRole("combobox", { name: "Attempt" }).selectOption("1");
+    await page.getByRole("button", { name: "Attempt #1 completed" }).click();
     await expect(
       page.getByRole("button", { name: /Raw stored completed/ }),
     ).toBeVisible();
+    await expect(page.getByRole("combobox")).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: "Worker runs and publication" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Readiness pending or not recorded"),
+    ).toBeVisible();
+    await page
+      .getByText("Complete task dependency graph", { exact: true })
+      .click();
+    const workerGraph = page
+      .getByRole("region", { name: "Pipeline graph" })
+      .locator("svg g.node");
+    await expect(workerGraph).toHaveCount(4);
+    await workerGraph
+      .filter({ hasText: "#42 process_activity_import" })
+      .click();
+    await expect(page.getByText("Receipt to queue")).toBeVisible();
+    await page
+      .getByText("Complete task dependency graph", { exact: true })
+      .click();
     expect(api.unexpected).toEqual([]);
     expect(api.requests.filter((path) => path.startsWith("/admin/"))).toEqual(
       [],
@@ -202,6 +271,33 @@ for (const target of targets) {
     await stabilize(page);
     await page.screenshot({
       path: ".artifacts/playwright/import-replay.png",
+      fullPage: true,
+    });
+  });
+
+  test(`${target.name}: combined processing stays usable on a narrow screen`, async ({
+    page,
+  }) => {
+    const { diagnostics } = await fixture(page, target);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(new URL("/admin/imports/17", target.url).toString());
+    await page
+      .getByRole("button", { name: "Activity saved completed" })
+      .click();
+    await expect(
+      page.getByRole("button", {
+        name: "Replay from Activity saved",
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    expect(diagnostics).toEqual([]);
+    await page.screenshot({
+      path: ".artifacts/playwright/import-processing-mobile.png",
       fullPage: true,
     });
   });
