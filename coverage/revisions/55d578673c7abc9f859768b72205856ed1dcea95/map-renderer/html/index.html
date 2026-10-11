@@ -1,0 +1,1011 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>renderer: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/ericbutera/bike/map-renderer/cmd/renderer/main.go (61.5%)</option>
+				
+				<option value="file1">github.com/ericbutera/bike/map-renderer/internal/app/app.go (98.5%)</option>
+				
+				<option value="file2">github.com/ericbutera/bike/map-renderer/internal/app/config.go (100.0%)</option>
+				
+				<option value="file3">github.com/ericbutera/bike/map-renderer/internal/app/health.go (92.3%)</option>
+				
+				<option value="file4">github.com/ericbutera/bike/map-renderer/internal/auth/token.go (100.0%)</option>
+				
+				<option value="file5">github.com/ericbutera/bike/map-renderer/internal/browser/browser.go (28.7%)</option>
+				
+				<option value="file6">github.com/ericbutera/bike/map-renderer/internal/grpctransport/server.go (100.0%)</option>
+				
+				<option value="file7">github.com/ericbutera/bike/map-renderer/internal/httptransport/server.go (100.0%)</option>
+				
+				<option value="file8">github.com/ericbutera/bike/map-renderer/internal/observability/metrics.go (100.0%)</option>
+				
+				<option value="file9">github.com/ericbutera/bike/map-renderer/internal/observability/tracing.go (97.1%)</option>
+				
+				<option value="file10">github.com/ericbutera/bike/map-renderer/internal/render/renderer.go (100.0%)</option>
+				
+				<option value="file11">github.com/ericbutera/bike/map-renderer/internal/render/request.go (90.0%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">no coverage</span>
+				<span class="cov1">low coverage</span>
+				<span class="cov2">*</span>
+				<span class="cov3">*</span>
+				<span class="cov4">*</span>
+				<span class="cov5">*</span>
+				<span class="cov6">*</span>
+				<span class="cov7">*</span>
+				<span class="cov8">*</span>
+				<span class="cov9">*</span>
+				<span class="cov10">high coverage</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package main
+
+import (
+        "context"
+        "errors"
+        "log/slog"
+        "os"
+        "os/signal"
+        "syscall"
+
+        "github.com/ericbutera/bike/map-renderer/internal/app"
+)
+
+func main() {
+        <span class="cov0" title="0">ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+        defer stop()
+        if err := run(ctx, os.Args[1:]); err != nil </span>{
+                <span class="cov0" title="0">slog.Error("Map renderer failed", "error", err)
+                os.Exit(1)
+</span>        }
+}
+
+func run(ctx context.Context, args []string) error {
+        <span class="cov10" title="5">config, err := app.LoadConfig()
+        if err != nil </span>{
+                <span class="cov1" title="1">return err
+</span>        }
+        <span class="cov8" title="4">if len(args) == 1 &amp;&amp; args[0] == "healthcheck" </span>{
+                <span class="cov4" title="2">return app.CheckHealth(ctx, config)
+</span>        }
+        <span class="cov4" title="2">if len(args) != 0 </span>{
+                <span class="cov1" title="1">return errors.New("unknown renderer command")
+</span>        }
+        <span class="cov1" title="1">return app.Run(ctx, config)</span>
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package app
+
+import (
+        "context"
+        "errors"
+        "fmt"
+        "net"
+        "net/http"
+        "time"
+
+        "github.com/ericbutera/bike/map-renderer/internal/auth"
+        "github.com/ericbutera/bike/map-renderer/internal/browser"
+        "github.com/ericbutera/bike/map-renderer/internal/grpctransport"
+        "github.com/ericbutera/bike/map-renderer/internal/httptransport"
+        "github.com/ericbutera/bike/map-renderer/internal/observability"
+        "github.com/ericbutera/bike/map-renderer/internal/render"
+        "google.golang.org/grpc"
+)
+
+type servers struct {
+        http        *http.Server
+        metrics     *http.Server
+        grpc        *grpc.Server
+        grpcAddress string
+        errors      chan error
+}
+
+type browserRuntime interface {
+        render.Browser
+        Close() error
+}
+type browserFactory func(context.Context, Config) (browserRuntime, error)
+
+func Run(ctx context.Context, config Config) error {
+        <span class="cov1" title="1">return run(ctx, config, openBrowser)
+</span>}
+
+func openBrowser(ctx context.Context, config Config) (browserRuntime, error) {
+        <span class="cov3" title="2">url, err := config.browserURL()
+        if err != nil </span>{
+                <span class="cov1" title="1">return nil, err
+</span>        }
+        <span class="cov1" title="1">return browser.New(ctx, config.ChromeExecutable, url)</span>
+}
+
+func run(ctx context.Context, config Config, openBrowser browserFactory) (err error) {
+        <span class="cov7" title="7">stopTracing, err := observability.InitTracing(context.Background())
+        if err != nil </span>{
+                <span class="cov1" title="1">return err
+</span>        }
+        <span class="cov7" title="6">defer func() </span>{
+                <span class="cov7" title="6">shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+                defer cancel()
+                err = errors.Join(err, stopTracing(shutdown))
+</span>        }()
+        <span class="cov7" title="6">browser, err := openBrowser(context.Background(), config)
+        if err != nil </span>{
+                <span class="cov3" title="2">return err
+</span>        }
+        <span class="cov5" title="4">defer func() </span>{ <span class="cov5" title="4">err = errors.Join(err, browser.Close()) }</span>()
+        <span class="cov5" title="4">metrics := observability.NewMetrics()
+        renderer := render.New(browser, metrics)
+        servers := newServers(config, renderer, metrics)
+        defer func() </span>{
+                <span class="cov5" title="4">shutdown, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+                defer cancel()
+                err = errors.Join(err, servers.shutdown(shutdown, renderer))
+</span>        }()
+        <span class="cov5" title="4">if err := servers.start(); err != nil </span>{
+                <span class="cov1" title="1">return err
+</span>        }
+        <span class="cov4" title="3">observability.Info(ctx, "Map snapshot worker ready", "grpc_address", config.GRPCAddress,
+                "metrics_port", config.MetricsPort)
+        select </span>{
+        case &lt;-ctx.Done():<span class="cov4" title="3"></span>
+        case err = &lt;-servers.errors:<span class="cov0" title="0"></span>
+        }
+        <span class="cov4" title="3">return err</span>
+}
+
+func newServers(config Config, renderer *render.Renderer, metrics *observability.Metrics) *servers {
+        <span class="cov6" title="5">token := auth.Token(config.Token)
+        return &amp;servers{
+                http:    &amp;http.Server{Addr: config.AssetsAddress, Handler: httptransport.AssetsHandler(config.Assets), ReadHeaderTimeout: 10 * time.Second},
+                metrics: &amp;http.Server{Addr: fmt.Sprintf(":%d", config.MetricsPort), Handler: httptransport.MetricsHandler(metrics), ReadHeaderTimeout: 10 * time.Second},
+                grpc:    grpctransport.New(renderer, token, metrics), grpcAddress: config.GRPCAddress, errors: make(chan error, 3),
+</span>        }
+}
+
+func (s *servers) start() (err error) {
+        <span class="cov6" title="5">var listeners []net.Listener
+        defer func() </span>{
+                <span class="cov6" title="5">if err != nil </span>{
+                        <span class="cov1" title="1">for _, listener := range listeners </span>{
+                                <span class="cov1" title="1">err = errors.Join(err, listener.Close())
+</span>                        }
+                }
+        }()
+        <span class="cov6" title="5">for _, address := range []string{s.grpcAddress, s.http.Addr, s.metrics.Addr} </span>{
+                <span class="cov10" title="14">listener, err := net.Listen("tcp", address)
+                if err != nil </span>{
+                        <span class="cov1" title="1">return err
+</span>                }
+                <span class="cov9" title="13">listeners = append(listeners, listener)</span>
+        }
+        <span class="cov5" title="4">go func() </span>{ <span class="cov5" title="4">s.errors &lt;- s.grpc.Serve(listeners[0]) }</span>()
+        <span class="cov5" title="4">go s.serveHTTP(s.http, listeners[1])
+        go s.serveHTTP(s.metrics, listeners[2])
+        return nil</span>
+}
+
+func (s *servers) serveHTTP(server *http.Server, listener net.Listener) {
+        <span class="cov8" title="8">err := server.Serve(listener)
+        if errors.Is(err, http.ErrServerClosed) </span>{
+                <span class="cov8" title="8">err = nil
+</span>        }
+        <span class="cov8" title="8">s.errors &lt;- err</span>
+}
+
+func (s *servers) shutdown(ctx context.Context, renderer *render.Renderer) error {
+        <span class="cov7" title="6">done := make(chan struct{})
+        go func() </span>{ <span class="cov7" title="6">s.grpc.GracefulStop(); close(done) }</span>()
+        <span class="cov7" title="6">select </span>{
+        case &lt;-done:<span class="cov6" title="5"></span>
+        case &lt;-ctx.Done():
+                <span class="cov1" title="1">s.grpc.Stop()</span>
+        }
+        // Canceled RPCs may still have accepted work in the render queue. Keep the
+        // asset server available until that queue drains or the shutdown budget ends.
+        <span class="cov7" title="6">drainErr := renderer.Close(ctx)
+        results := make(chan error, 2)
+        for _, server := range []*http.Server{s.http, s.metrics} </span>{
+                <span class="cov9" title="12">go func() </span>{
+                        <span class="cov9" title="12">err := server.Shutdown(ctx)
+                        if err != nil </span>{
+                                <span class="cov0" title="0">err = errors.Join(err, server.Close())
+</span>                        }
+                        <span class="cov9" title="12">results &lt;- err</span>
+                }()
+        }
+        <span class="cov7" title="6">return errors.Join(drainErr, &lt;-results, &lt;-results, ctx.Err())</span>
+}
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package app
+
+import (
+        "errors"
+        "net"
+
+        "github.com/caarlos0/env/v11"
+        "github.com/go-playground/validator/v10"
+)
+
+type Config struct {
+        AssetsAddress    string `env:"MAP_ASSETS_ADDRESS" envDefault:"127.0.0.1:3100"`
+        GRPCAddress      string `env:"MAP_GRPC_ADDRESS" envDefault:":50051"`
+        MetricsPort      int    `env:"METRICS_PORT" envDefault:"9090" validate:"min=1,max=65535"`
+        Assets           string `env:"MAP_ASSETS_DIR" envDefault:"/app"`
+        Token            string `env:"MAP_SERVICE_TOKEN"`
+        ChromeExecutable string `env:"CHROME_EXECUTABLE"`
+}
+
+func LoadConfig() (Config, error) {
+        <span class="cov8" title="10">config, err := env.ParseAs[Config]()
+        if err != nil </span>{
+                <span class="cov3" title="2">return config, err
+</span>        }
+        <span class="cov7" title="8">if err := validator.New().Struct(config); err != nil </span>{
+                <span class="cov3" title="2">return config, err
+</span>        }
+        <span class="cov6" title="6">_, err = config.browserURL()
+        return config, err</span>
+}
+
+func (c Config) browserURL() (string, error) {
+        <span class="cov10" title="15">host, port, err := net.SplitHostPort(c.AssetsAddress)
+        if err != nil </span>{
+                <span class="cov3" title="2">return "", err
+</span>        }
+        <span class="cov9" title="13">if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() </span>{
+                <span class="cov4" title="3">return "", errors.New("MAP_ASSETS_ADDRESS must bind a loopback IP")
+</span>        }
+        <span class="cov8" title="10">if port == "0" </span>{
+                <span class="cov1" title="1">return "", errors.New("MAP_ASSETS_ADDRESS must specify a fixed browser port")
+</span>        }
+        <span class="cov8" title="9">return "http://" + net.JoinHostPort(host, port) + "/", nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package app
+
+import (
+        "context"
+        "errors"
+        "time"
+
+        "google.golang.org/grpc"
+        "google.golang.org/grpc/credentials/insecure"
+        "google.golang.org/grpc/health/grpc_health_v1"
+)
+
+func CheckHealth(ctx context.Context, config Config) (err error) {
+        <span class="cov10" title="10">connection, err := grpc.NewClient(config.GRPCAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
+        if err != nil </span>{
+                <span class="cov0" title="0">return err
+</span>        }
+        <span class="cov10" title="10">defer func() </span>{ <span class="cov10" title="10">err = errors.Join(err, connection.Close()) }</span>()
+        <span class="cov10" title="10">ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+        defer cancel()
+        response, err := grpc_health_v1.NewHealthClient(connection).Check(ctx, &amp;grpc_health_v1.HealthCheckRequest{Service: "bike.maps.v1.MapService"})
+        if err != nil </span>{
+                <span class="cov7" title="5">return err
+</span>        }
+        <span class="cov7" title="5">if response.GetStatus() != grpc_health_v1.HealthCheckResponse_SERVING </span>{
+                <span class="cov1" title="1">return errors.New("snapshot worker is not serving")
+</span>        }
+        <span class="cov6" title="4">return nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package auth
+
+import (
+        "crypto/sha256"
+        "crypto/subtle"
+        "strings"
+)
+
+type Token string
+
+func (t Token) Authorized(authorization string) bool {
+        <span class="cov10" title="16">if t == "" </span>{
+                <span class="cov5" title="4">return true
+</span>        }
+        <span class="cov9" title="12">supplied := sha256.Sum256([]byte(strings.TrimPrefix(authorization, "Bearer ")))
+        expected := sha256.Sum256([]byte(t))
+        return subtle.ConstantTimeCompare(supplied[:], expected[:]) == 1</span>
+}
+</pre>
+		
+		<pre class="file" id="file5" style="display: none">package browser
+
+import (
+        "context"
+        "encoding/json"
+        "errors"
+        "fmt"
+        "iter"
+        "path/filepath"
+        "sync"
+        "time"
+
+        "github.com/chromedp/cdproto/cdp"
+        "github.com/chromedp/cdproto/log"
+        "github.com/chromedp/cdproto/runtime"
+        "github.com/chromedp/chromedp"
+        "github.com/ericbutera/bike/map-renderer/internal/observability"
+        "github.com/ericbutera/bike/map-renderer/internal/render"
+        "github.com/samber/lo"
+        "go.opentelemetry.io/otel"
+)
+
+type Browser struct {
+        ctx           context.Context
+        cancel        context.CancelFunc
+        stopAllocator context.CancelFunc
+        url           string
+}
+type diagnostics struct {
+        mu     sync.Mutex
+        errors []error
+}
+
+func New(ctx context.Context, executable, url string) (*Browser, error) {
+        <span class="cov4" title="2">options := append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...)
+        options = append(options, chromedp.NoSandbox, chromedp.Flag("use-gl", "angle"),
+                chromedp.Flag("use-angle", "swiftshader"), chromedp.Flag("enable-unsafe-swiftshader", true))
+        if executable == "" </span>{
+                <span class="cov0" title="0">matches, err := filepath.Glob("/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux*/chrome-headless-shell")
+                if err != nil </span>{
+                        <span class="cov0" title="0">return nil, err
+</span>                }
+                <span class="cov0" title="0">if len(matches) &gt; 0 </span>{
+                        <span class="cov0" title="0">executable = matches[0]
+</span>                }
+        }
+        <span class="cov4" title="2">if executable != "" </span>{
+                <span class="cov4" title="2">options = append(options, chromedp.ExecPath(executable))
+</span>        }
+        <span class="cov4" title="2">allocator, stop := chromedp.NewExecAllocator(ctx, options...)
+        browserCtx, cancel := chromedp.NewContext(allocator)
+        if err := chromedp.Do(browserCtx); err != nil </span>{
+                <span class="cov4" title="2">cancel()
+                stop()
+                return nil, err
+</span>        }
+        <span class="cov0" title="0">return &amp;Browser{ctx: browserCtx, cancel: cancel, stopAllocator: stop, url: url}, nil</span>
+}
+
+func (b *Browser) Close() error {
+        <span class="cov0" title="0">err := chromedp.Cancel(b.ctx)
+        b.cancel()
+        b.stopAllocator()
+        return err
+</span>}
+
+func (b *Browser) Render(ctx context.Context, request render.Request) (png []byte, err error) {
+        <span class="cov0" title="0">tab, closeTab := chromedp.NewContext(b.ctx, chromedp.WithNewBrowserContext())
+        defer closeTab()
+        tab, stop := context.WithTimeout(tab, 45*time.Second)
+        defer stop()
+        if err := chromedp.Do(tab, chromedp.Func(func(ctx context.Context, target *chromedp.Target) error </span>{
+                <span class="cov0" title="0">_, err := cdp.Call(ctx, target, log.Enable, cdp.Empty{})
+                return err
+</span>        })); err != nil {
+                <span class="cov0" title="0">return nil, err
+</span>        }
+        <span class="cov0" title="0">diagnostics, stopConsole := watchConsole(tab)
+        defer stopConsole()
+        if err := b.renderMap(tab, ctx, request); err != nil </span>{
+                <span class="cov0" title="0">return nil, err
+</span>        }
+        <span class="cov0" title="0">if err := diagnostics.err(); err != nil </span>{
+                <span class="cov0" title="0">return nil, err
+</span>        }
+        <span class="cov0" title="0">spanCtx, span := otel.Tracer("bike-map-renderer").Start(ctx, "bike.maps.screenshot")
+        defer span.End()
+        png, err = chromedp.Run(tab, chromedp.CaptureScreenshot())
+        stopConsole()
+        err = errors.Join(err, diagnostics.err())
+        if err != nil </span>{
+                <span class="cov0" title="0">observability.Error(spanCtx, "Map screenshot failed", err, "screenshot")
+</span>        }
+        <span class="cov0" title="0">return png, err</span>
+}
+
+func (b *Browser) renderMap(tab, parent context.Context, request render.Request) error {
+        <span class="cov0" title="0">ctx, span := otel.Tracer("bike-map-renderer").Start(parent, "bike.maps.browser_render")
+        defer span.End()
+        width, height := request.Dimensions()
+        data, err := json.Marshal(request)
+        if err != nil </span>{
+                <span class="cov0" title="0">return err
+</span>        }
+        <span class="cov0" title="0">err = chromedp.Do(tab, chromedp.EmulateViewport(int64(width), int64(height), chromedp.EmulateScale(float64(request.DPR))), chromedp.Navigate(b.url))
+        if err == nil </span>{
+                <span class="cov0" title="0">_, err = chromedp.Run(tab, chromedp.Poll[bool](`typeof window.renderMap === "function"`))
+</span>        }
+        <span class="cov0" title="0">if err == nil </span>{
+                <span class="cov0" title="0">_, err = chromedp.Run(tab, chromedp.Evaluate[bool]("window.renderMap("+string(data)+")", func(p *runtime.EvaluateParams) </span>{
+                        <span class="cov0" title="0">p.AwaitPromise = lo.ToPtr(true)
+</span>                }))
+        }
+        <span class="cov0" title="0">if err != nil </span>{
+                <span class="cov0" title="0">observability.Error(ctx, "Map browser rendering failed", err, "browser_render")
+</span>        }
+        <span class="cov0" title="0">return err</span>
+}
+
+func watchConsole(ctx context.Context) (*diagnostics, func()) {
+        <span class="cov0" title="0">ctx, cancel := context.WithCancel(ctx)
+        messages := chromedp.Console(ctx)
+        d := &amp;diagnostics{}
+        done := make(chan struct{})
+        go func() </span>{
+                <span class="cov0" title="0">defer close(done)
+                d.collect(messages)
+</span>        }()
+        <span class="cov0" title="0">return d, func() </span>{ <span class="cov0" title="0">cancel(); &lt;-done }</span>
+}
+
+func (d *diagnostics) collect(messages iter.Seq2[chromedp.ConsoleMessage, error]) {
+        <span class="cov10" title="6">for message, err := range messages </span>{
+                <span class="cov10" title="6">if errors.Is(err, context.Canceled) </span>{
+                        <span class="cov1" title="1">return
+</span>                }
+                <span class="cov9" title="5">if message.Type == chromedp.ConsoleWarning || message.Type == chromedp.ConsoleError || message.IsException() </span>{
+                        <span class="cov6" title="3">err = fmt.Errorf("browser console %s", message.String())
+</span>                }
+                <span class="cov9" title="5">if err != nil </span>{
+                        <span class="cov7" title="4">d.mu.Lock()
+                        d.errors = append(d.errors, err)
+                        d.mu.Unlock()
+</span>                }
+        }
+}
+
+func (d *diagnostics) err() error { <span class="cov10" title="6">d.mu.Lock(); defer d.mu.Unlock(); return errors.Join(d.errors...) }</span>
+</pre>
+		
+		<pre class="file" id="file6" style="display: none">package grpctransport
+
+import (
+        "context"
+        "time"
+
+        mapsv1 "github.com/ericbutera/bike/map-renderer/gen/bike/maps/v1"
+        "github.com/ericbutera/bike/map-renderer/internal/auth"
+        "github.com/ericbutera/bike/map-renderer/internal/observability"
+        "github.com/ericbutera/bike/map-renderer/internal/render"
+        "github.com/samber/lo"
+        "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+        "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/filters"
+        "google.golang.org/grpc"
+        "google.golang.org/grpc/codes"
+        "google.golang.org/grpc/health"
+        "google.golang.org/grpc/health/grpc_health_v1"
+        "google.golang.org/grpc/metadata"
+        "google.golang.org/grpc/status"
+)
+
+type Server struct {
+        mapsv1.UnimplementedMapServiceServer
+        renderer *render.Renderer
+        token    auth.Token
+        metrics  *observability.Metrics
+}
+
+func New(renderer *render.Renderer, token auth.Token, metrics *observability.Metrics) *grpc.Server {
+        <span class="cov8" title="9">server := grpc.NewServer(grpc.MaxRecvMsgSize(10_000_000), grpc.MaxSendMsgSize(20_000_000),
+                grpc.StatsHandler(otelgrpc.NewServerHandler(otelgrpc.WithFilter(filters.Not(filters.HealthCheck())))))
+        mapsv1.RegisterMapServiceServer(server, &amp;Server{renderer: renderer, token: token, metrics: metrics})
+        readiness := health.NewServer()
+        readiness.SetServingStatus("bike.maps.v1.MapService", grpc_health_v1.HealthCheckResponse_SERVING)
+        grpc_health_v1.RegisterHealthServer(server, readiness)
+        return server
+</span>}
+
+func (s *Server) Render(ctx context.Context, input *mapsv1.RenderMapRequest) (response *mapsv1.RenderMapResponse, err error) {
+        <span class="cov8" title="9">started := time.Now()
+        defer func() </span>{
+                <span class="cov8" title="9">code := int(status.Code(err))
+                s.metrics.GRPC(code, started)
+                observability.Info(ctx, "Map render RPC completed", "rpc_method", mapsv1.MapService_Render_FullMethodName,
+                        "status_code", code, "duration_ms", time.Since(started).Milliseconds())
+</span>        }()
+        <span class="cov8" title="9">md, _ := metadata.FromIncomingContext(ctx)
+        if !s.token.Authorized(first(md.Get("authorization"))) </span>{
+                <span class="cov1" title="1">return nil, status.Error(codes.Unauthenticated, "Unauthorized")
+</span>        }
+        <span class="cov8" title="8">request := decode(input)
+        if err := request.Validate(); err != nil </span>{
+                <span class="cov1" title="1">return nil, status.Error(codes.InvalidArgument, "Invalid map request")
+</span>        }
+        <span class="cov7" title="7">result, err := s.renderer.Render(ctx, request)
+        if err != nil </span>{
+                <span class="cov3" title="2">observability.Error(ctx, "gRPC map rendering failed", err, "grpc_render")
+                return nil, status.Error(codes.Internal, "Map rendering failed")
+</span>        }
+        <span class="cov6" title="5">return &amp;mapsv1.RenderMapResponse{Png: result.PNG}, nil</span>
+}
+
+func first(values []string) string {
+        <span class="cov8" title="9">if len(values) == 0 </span>{
+                <span class="cov5" title="4">return ""
+</span>        }
+        <span class="cov6" title="5">return values[0]</span>
+}
+
+func decode(input *mapsv1.RenderMapRequest) render.Request {
+        <span class="cov8" title="8">return render.Request{Theme: input.GetTheme(), Variant: input.GetVariant(), DPR: int(input.GetDpr()),
+                Points: lo.Map(input.GetPoints(), func(p *mapsv1.RoutePoint, _ int) render.Point </span>{
+                        <span class="cov10" title="14">return render.Point{Latitude: p.GetLatitude(), Longitude: p.GetLongitude()}
+</span>                })}
+}
+</pre>
+		
+		<pre class="file" id="file7" style="display: none">// Package httptransport serves Chromium's private assets and Prometheus metrics.
+package httptransport
+
+import (
+        "net/http"
+        "os"
+
+        "github.com/ericbutera/bike/map-renderer/internal/observability"
+        "github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+func AssetsHandler(assets string) http.Handler {
+        <span class="cov5" title="6">mux := http.NewServeMux()
+        files := map[string]string{"/{$}": "index.html",
+                "/styles/route-light-v1.json": "styles/route-light-v1.json", "/styles/fiord-v1.json": "styles/fiord-v1.json"}
+        for _, name := range []string{"maplibre-gl.css", "maplibre-gl.mjs", "maplibre-gl-shared.mjs", "maplibre-gl-worker.mjs"} </span>{
+                <span class="cov8" title="24">files["/vendor/"+name] = "vendor/" + name
+</span>        }
+        <span class="cov5" title="6">for route, path := range files </span>{
+                <span class="cov10" title="42">mux.HandleFunc("GET "+route, func(w http.ResponseWriter, r *http.Request) </span>{
+                        <span class="cov4" title="5">http.ServeFileFS(w, r, os.DirFS(assets), path)
+</span>                })
+        }
+        <span class="cov5" title="6">mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, _ *http.Request) </span>{ <span class="cov1" title="1">w.WriteHeader(http.StatusNoContent) }</span>)
+        <span class="cov5" title="6">return mux</span>
+}
+
+func MetricsHandler(metrics *observability.Metrics) http.Handler {
+        <span class="cov5" title="6">mux := http.NewServeMux()
+        mux.Handle("GET /metrics", promhttp.HandlerFor(metrics.Registry, promhttp.HandlerOpts{}))
+        return mux
+</span>}
+</pre>
+		
+		<pre class="file" id="file8" style="display: none">package observability
+
+import (
+        "strconv"
+        "time"
+
+        "github.com/prometheus/client_golang/prometheus"
+        "github.com/prometheus/client_golang/prometheus/collectors"
+        "github.com/prometheus/client_golang/prometheus/promauto"
+)
+
+var buckets = []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60}
+
+type Metrics struct {
+        Registry        *prometheus.Registry
+        GRPCRequests    *prometheus.CounterVec
+        GRPCDuration    *prometheus.HistogramVec
+        ImagesGenerated prometheus.Counter
+        Failures        *prometheus.CounterVec
+        RenderDuration  *prometheus.HistogramVec
+        QueueWait       prometheus.Histogram
+        QueueDepth      prometheus.Gauge
+        InFlight        prometheus.Gauge
+}
+
+func NewMetrics() *Metrics {
+        <span class="cov7" title="17">registry := prometheus.NewRegistry()
+        process := prometheus.WrapRegistererWithPrefix("bike_maps_process_", registry)
+        process.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}), collectors.NewGoCollector())
+        factory := promauto.With(registry)
+        grpcLabels := []string{"method", "status_code"}
+        return &amp;Metrics{
+                Registry:        registry,
+                GRPCRequests:    factory.NewCounterVec(counter("grpc_requests_total", "Map renderer gRPC requests."), grpcLabels),
+                GRPCDuration:    factory.NewHistogramVec(histogram("grpc_request_duration_seconds", "Map renderer gRPC request duration in seconds."), grpcLabels),
+                ImagesGenerated: factory.NewCounter(counter("images_generated_total", "Successfully generated map snapshots.")),
+                Failures:        factory.NewCounterVec(counter("render_failures_total", "Map rendering failures by bounded stage."), []string{"stage"}),
+                RenderDuration:  factory.NewHistogramVec(histogram("render_duration_seconds", "Chromium snapshot pipeline duration."), []string{"outcome"}),
+                QueueWait:       factory.NewHistogram(histogram("render_queue_wait_seconds", "Time map renders wait in the serialized browser queue.")),
+                QueueDepth:      factory.NewGauge(gauge("render_queue_depth", "Map renders waiting for the browser queue.")),
+                InFlight:        factory.NewGauge(gauge("renders_in_flight", "Map renders currently using the browser.")),
+</span>        }
+}
+
+func counter(name, help string) prometheus.CounterOpts {
+        <span class="cov10" title="51">return prometheus.CounterOpts{Namespace: "bike_maps", Name: name, Help: help}
+</span>}
+func gauge(name, help string) prometheus.GaugeOpts {
+        <span class="cov9" title="34">return prometheus.GaugeOpts{Namespace: "bike_maps", Name: name, Help: help}
+</span>}
+func histogram(name, help string) prometheus.HistogramOpts {
+        <span class="cov10" title="51">return prometheus.HistogramOpts{Namespace: "bike_maps", Name: name, Help: help, Buckets: buckets}
+</span>}
+
+func (m *Metrics) GRPC(status int, started time.Time) {
+        <span class="cov6" title="9">labels := []string{"Render", strconv.Itoa(status)}
+        m.GRPCRequests.WithLabelValues(labels...).Inc()
+        m.GRPCDuration.WithLabelValues(labels...).Observe(time.Since(started).Seconds())
+</span>}
+</pre>
+		
+		<pre class="file" id="file9" style="display: none">package observability
+
+import (
+        "context"
+        "log/slog"
+        "os"
+        "strings"
+
+        "github.com/caarlos0/env/v11"
+        "go.opentelemetry.io/otel"
+        "go.opentelemetry.io/otel/attribute"
+        "go.opentelemetry.io/otel/codes"
+        "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+        "go.opentelemetry.io/otel/propagation"
+        "go.opentelemetry.io/otel/sdk/resource"
+        sdktrace "go.opentelemetry.io/otel/sdk/trace"
+        "go.opentelemetry.io/otel/trace"
+        "go.opentelemetry.io/otel/trace/noop"
+)
+
+type tracingConfig struct {
+        Service     string `env:"OTEL_SERVICE_NAME" envDefault:"bike-map-renderer"`
+        Version     string `env:"BIKE_VERSION" envDefault:"unknown"`
+        Environment string `env:"APP_ENV" envDefault:"development"`
+        Disabled    bool   `env:"OTEL_SDK_DISABLED"`
+        Exporters   string `env:"OTEL_TRACES_EXPORTER" envDefault:"otlp"`
+}
+
+func InitTracing(ctx context.Context) (func(context.Context) error, error) {
+        <span class="cov8" title="11">config, err := env.ParseAs[tracingConfig]()
+        if err != nil </span>{
+                <span class="cov3" title="2">return nil, err
+</span>        }
+        <span class="cov7" title="9">otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
+        slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)).With(
+                "service", config.Service, "service_version", config.Version, "environment", config.Environment))
+        if config.Disabled </span>{
+                <span class="cov1" title="1">otel.SetTracerProvider(noop.NewTracerProvider())
+                return func(context.Context) error </span>{ <span class="cov1" title="1">return nil }</span>, nil
+        }
+        <span class="cov7" title="8">options := []sdktrace.TracerProviderOption{
+                sdktrace.WithResource(resource.NewSchemaless(
+                        attribute.String("service.name", config.Service),
+                        attribute.String("service.version", config.Version),
+                        attribute.String("deployment.environment.name", config.Environment))),
+                sdktrace.WithSampler(sdktrace.AlwaysSample()),
+</span>        }
+        <span class="cov7" title="8">if config.exportsOTLP() </span>{
+                <span class="cov1" title="1">exporter, err := otlptracehttp.New(ctx)
+                if err != nil </span>{
+                        <span class="cov0" title="0">return nil, err
+</span>                }
+                <span class="cov1" title="1">options = append(options, sdktrace.WithBatcher(exporter))</span>
+        }
+        <span class="cov7" title="8">provider := sdktrace.NewTracerProvider(options...)
+        otel.SetTracerProvider(provider)
+        return provider.Shutdown, nil</span>
+}
+
+func (c tracingConfig) exportsOTLP() bool {
+        <span class="cov8" title="12">if c.Disabled </span>{
+                <span class="cov1" title="1">return false
+</span>        }
+        <span class="cov8" title="11">for _, name := range strings.Split(c.Exporters, ",") </span>{
+                <span class="cov8" title="12">if strings.EqualFold(strings.TrimSpace(name), "otlp") </span>{
+                        <span class="cov4" title="3">return true
+</span>                }
+        }
+        <span class="cov7" title="8">return false</span>
+}
+
+func Error(ctx context.Context, message string, err error, stage string) {
+        <span class="cov6" title="6">span := trace.SpanFromContext(ctx)
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
+        slog.ErrorContext(ctx, message, traceFields(ctx, []any{"error", err.Error(), "stage", stage})...)
+</span>}
+
+func Info(ctx context.Context, message string, fields ...any) {
+        <span class="cov8" title="13">slog.InfoContext(ctx, message, traceFields(ctx, fields)...)
+</span>}
+
+func traceFields(ctx context.Context, fields []any) []any {
+        <span class="cov10" title="19">span := trace.SpanFromContext(ctx)
+        if sc := span.SpanContext(); sc.IsValid() </span>{
+                <span class="cov5" title="5">fields = append(fields, "trace_id", sc.TraceID().String(), "span_id", sc.SpanID().String())
+</span>        }
+        <span class="cov10" title="19">return fields</span>
+}
+</pre>
+		
+		<pre class="file" id="file10" style="display: none">package render
+
+import (
+        "context"
+        "errors"
+        "sync"
+        "time"
+
+        "github.com/ericbutera/bike/map-renderer/internal/observability"
+        "go.opentelemetry.io/otel"
+        "go.opentelemetry.io/otel/attribute"
+        "go.opentelemetry.io/otel/trace"
+)
+
+var ErrStopped = errors.New("renderer is shutting down")
+
+type Browser interface {
+        Render(context.Context, Request) ([]byte, error)
+}
+type Result struct{ PNG []byte }
+type outcome struct {
+        result Result
+        err    error
+}
+type queuedRequest struct {
+        ctx      context.Context
+        request  Request
+        response chan outcome
+        enqueued time.Time
+}
+
+// Renderer owns the serialized Chromium queue. Bike's API owns image caching.
+type Renderer struct {
+        browser Browser
+        metrics *observability.Metrics
+        mu      sync.Mutex
+        ready   *sync.Cond
+        queue   []queuedRequest
+        stopped bool
+        done    chan struct{}
+}
+
+func New(browser Browser, metrics *observability.Metrics) *Renderer {
+        <span class="cov7" title="12">r := &amp;Renderer{browser: browser, metrics: metrics, done: make(chan struct{})}
+        r.ready = sync.NewCond(&amp;r.mu)
+        go r.processQueue()
+        return r
+</span>}
+
+func (r *Renderer) Render(ctx context.Context, request Request) (Result, error) {
+        <span class="cov8" title="16">if err := request.Validate(); err != nil </span>{
+                <span class="cov1" title="1">return Result{}, err
+</span>        }
+        <span class="cov8" title="15">job := queuedRequest{ctx: context.WithoutCancel(ctx), request: request,
+                response: make(chan outcome, 1), enqueued: time.Now()}
+        r.mu.Lock()
+        if r.stopped </span>{
+                <span class="cov1" title="1">r.mu.Unlock()
+                return Result{}, ErrStopped
+</span>        }
+        <span class="cov8" title="14">r.queue = append(r.queue, job)
+        r.metrics.QueueDepth.Inc()
+        r.ready.Signal()
+        r.mu.Unlock()
+        select </span>{
+        case outcome := &lt;-job.response:
+                <span class="cov7" title="12">return outcome.result, outcome.err</span>
+        case &lt;-ctx.Done():
+                <span class="cov2" title="2">return Result{}, ctx.Err()</span>
+        }
+}
+
+func (r *Renderer) next() (queuedRequest, bool) {
+        <span class="cov10" title="26">r.mu.Lock()
+        defer r.mu.Unlock()
+        for len(r.queue) == 0 &amp;&amp; !r.stopped </span>{
+                <span class="cov9" title="21">r.ready.Wait()
+</span>        }
+        <span class="cov10" title="26">if len(r.queue) == 0 </span>{
+                <span class="cov7" title="12">return queuedRequest{}, false
+</span>        }
+        <span class="cov8" title="14">job := r.queue[0]
+        r.queue[0] = queuedRequest{}
+        r.queue = r.queue[1:]
+        return job, true</span>
+}
+
+func (r *Renderer) processQueue() {
+        <span class="cov7" title="12">defer close(r.done)
+        for </span>{
+                <span class="cov10" title="26">job, ok := r.next()
+                if !ok </span>{
+                        <span class="cov7" title="12">return
+</span>                }
+                <span class="cov8" title="14">r.metrics.QueueDepth.Dec()
+                r.metrics.InFlight.Inc()
+                wait := time.Since(job.enqueued).Seconds()
+                r.metrics.QueueWait.Observe(wait)
+                ctx, span := otel.Tracer("bike-map-renderer").Start(job.ctx, "bike.maps.render_queue_wait",
+                        trace.WithAttributes(attribute.Float64("queue.wait_seconds", wait)))
+                result, err := r.render(ctx, job.request)
+                span.End()
+                r.metrics.InFlight.Dec()
+                job.response &lt;- outcome{result, err}</span>
+        }
+}
+
+func (r *Renderer) Close(ctx context.Context) error {
+        <span class="cov8" title="16">r.mu.Lock()
+        r.stopped = true
+        r.ready.Broadcast()
+        r.mu.Unlock()
+        select </span>{
+        case &lt;-r.done:
+                <span class="cov8" title="14">return nil</span>
+        case &lt;-ctx.Done():
+                <span class="cov2" title="2">return ctx.Err()</span>
+        }
+}
+
+func (r *Renderer) render(ctx context.Context, request Request) (Result, error) {
+        <span class="cov8" title="14">ctx, span := otel.Tracer("bike-map-renderer").Start(ctx, "bike.maps.render",
+                trace.WithAttributes(attribute.String("map.variant", request.Variant), attribute.String("map.theme", request.Theme)))
+        defer span.End()
+        started := time.Now()
+        outcome := "error"
+        defer func() </span>{ <span class="cov8" title="14">r.metrics.RenderDuration.WithLabelValues(outcome).Observe(time.Since(started).Seconds()) }</span>()
+        <span class="cov8" title="14">image, err := r.browser.Render(ctx, request)
+        if err != nil </span>{
+                <span class="cov4" title="3">r.metrics.Failures.WithLabelValues("browser_render").Inc()
+                observability.Error(ctx, "Map rendering failed", err, "browser_render")
+                return Result{}, err
+</span>        }
+        <span class="cov7" title="11">r.metrics.ImagesGenerated.Inc()
+        outcome = "success"
+        return Result{PNG: image}, nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file11" style="display: none">package render
+
+import (
+        "errors"
+        "math"
+
+        "github.com/go-playground/validator/v10"
+        "github.com/samber/lo"
+)
+
+var (
+        ErrRequest = errors.New("invalid map request")
+        validation = validator.New()
+)
+
+type Point struct {
+        Latitude  float64 `json:"latitude" validate:"gte=-90,lte=90"`
+        Longitude float64 `json:"longitude" validate:"gte=-180,lte=180"`
+}
+
+type Request struct {
+        Theme   string  `json:"theme" validate:"oneof=light dark"`
+        Variant string  `json:"variant" validate:"oneof=thumbnail full"`
+        DPR     int     `json:"dpr" validate:"oneof=1 2"`
+        Points  []Point `json:"points" validate:"min=2,max=100000,dive"`
+}
+
+func (r Request) Validate() error {
+        <span class="cov3" title="40">if err := validation.Struct(r); err != nil </span>{
+                <span class="cov2" title="8">return ErrRequest
+</span>        }
+        <span class="cov3" title="32">if lo.ContainsBy(r.Points, func(p Point) bool </span>{
+                <span class="cov9" title="100062">return !finite(p.Latitude) || !finite(p.Longitude)
+</span>        }) {
+                <span class="cov0" title="0">return ErrRequest
+</span>        }
+        <span class="cov3" title="32">return nil</span>
+}
+
+func finite(n float64) bool { <span class="cov10" title="200124">return !math.IsNaN(n) &amp;&amp; !math.IsInf(n, 0) }</span>
+
+func (r Request) Dimensions() (int, int) {
+        <span class="cov1" title="2">if r.Variant == "thumbnail" </span>{
+                <span class="cov1" title="1">return 288, 192
+</span>        }
+        <span class="cov1" title="1">return 1000, 300</span>
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>
