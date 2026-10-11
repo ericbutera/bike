@@ -6,6 +6,7 @@ members = [
   "migration",
 ]
 resolver = "2"
+exclude = ["strava-sdk"]
 
 [workspace.dependencies]
 axum = { version = "0.7", features = ["macros", "multipart"] }

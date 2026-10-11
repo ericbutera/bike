@@ -24,8 +24,8 @@ impl TaskProcessor for FixtureProcessor {
 
 async fn abandoned(db: &DatabaseConnection, kind: &str) -> background_tasks::Model {
     let origin = PipelineContext::received("strava_webhook", Some("crash-receipt".into()));
-    let payload = if kind == "receive_strava_delivery" {
-        json!({"data":{"delivery_id":"rust:42"}})
+    let payload = if kind == "strava_workflow" {
+        json!({"data":{"workflow_id":"webhook-fixture"},"strava":{"workflow_id":"webhook-fixture","correlation_id":"42","strava_activity_id":42,"athlete_id":7}})
     } else {
         json!({"data":{"activities":[{"activity_id":42,"generation":1}]}})
     };
@@ -60,8 +60,9 @@ async fn expire_heartbeat(db: &DatabaseConnection, task_id: i32) {
 }
 
 #[tokio::test]
-async fn poll_recovers_abandoned_delivery_and_heatmap_with_the_original_payload_and_origin() {
-    for kind in ["receive_strava_delivery", "prepare_heatmap"] {
+async fn poll_recovers_abandoned_strava_workflow_and_heatmap_with_the_original_payload_and_origin()
+{
+    for kind in ["strava_workflow", "prepare_heatmap"] {
         let db = database(true).await;
         let crashed = abandoned(&db, kind).await;
         let processor = Arc::new(FixtureProcessor {

@@ -105,16 +105,9 @@ flowchart LR
         Worker
     end
 
-    subgraph Integration["Strava integration (Go)"]
-        Gateway["Strava gateway"]
-        GatewayWorker["Gateway worker"]
-    end
-
     subgraph Storage
         DB[(Bike PostgreSQL)]
         Files["Activity files"]
-        GatewayDB[(Gateway PostgreSQL)]
-        Artifacts["Provider artifacts"]
     end
 
     Browser -->|HTTP| UI
@@ -126,18 +119,14 @@ flowchart LR
     Worker --> DB
     API --> Files
     Worker --> Files
-    API -->|gRPC / HTTP commands| Gateway
-    Strava -->|OAuth / webhooks| Gateway
-    Gateway --> GatewayDB
-    GatewayWorker --> GatewayDB
-    GatewayWorker -->|Provider API| Strava
-    GatewayWorker --> Artifacts
-    GatewayWorker -->|Signed HTTP delivery| API
+    Strava -->|OAuth and webhooks| API
+    Worker -->|Generated SDK| Strava
+    Worker --> ProviderObjects[Raw responses and transforms]
 ```
 
 The Rust API and worker share PostgreSQL-backed jobs and retained activity files.
-Strava integration has its own database and artifact storage and runs separately
-from the local Quickstart stack. See the [architecture guide](docs/architecture.md)
+Strava DAGs run on those workers and retain provider sources and transforms on the
+same upload volume. See the [architecture guide](docs/architecture.md)
 for service responsibilities, privacy boundaries, and data flow.
 
 ## Built with
@@ -148,7 +137,7 @@ for service responsibilities, privacy boundaries, and data flow.
 | Frontend            | Next.js, React, TypeScript, React Query                          |
 | Persistence         | PostgreSQL and stored activity files                             |
 | Maps                | MapLibre GL, a separate PNG renderer, Rust heatmap tiles         |
-| Strava integration  | Go gateway, durable PostgreSQL inbox and delivery jobs, gRPC     |
+| Strava integration  | Generated vendor SDK, Rust webhook API and worker DAGs           |
 | Operations          | Docker Compose, Woodpecker CI, Pulumi, Kubernetes, OpenTelemetry |
 
 The [specifications](docs/specs/README.md) define system behavior. The Rust
@@ -163,7 +152,6 @@ rendering have separate service boundaries; the
 | -------------------------------------------------------------- | -------------------------------------------------------------- |
 | [`bike-rs/`](bike-rs/README.md)                                | Rust API, core models and services, worker, schema migrations  |
 | [`bike-ui/`](bike-ui/README.md)                                | Rider and admin UI, generated API client                       |
-| [`strava-gateway/`](strava-gateway/README.md)                  | OAuth, webhooks, provider quotas, artifact storage, delivery   |
 | [`map-renderer/`](map-renderer/README.md)                      | Internal Go gRPC Chromium snapshots                            |
 | [`contracts/`](contracts/openapi/README.md), [`proto/`](proto) | HTTP and gRPC contracts                                        |
 | [`bike-rs/api/tests/`](bike-rs/api/tests/README.md)            | Native HTTP integration tests and deterministic fixtures       |
@@ -184,7 +172,7 @@ mise run rust:check         # Rust formatting, Clippy, and tests.
 mise run coverage           # Unit coverage for every implemented service.
 mise run ui:check           # UI types, tests, build, formatting, generated client.
 mise run test               # Map renderer tests.
-mise run strava:test        # Gateway tests.
+mise run test:strava:docker # Native DAGs with PostgreSQL and a fake vendor.
 ```
 
 `mise run test:integration` runs the native API integration suite with an isolated
@@ -208,9 +196,8 @@ Local coverage reports and their scope are documented in the
 - [Maps specification](docs/specs/maps.md) — private PNGs, cache lifecycle,
   gRPC snapshots, and tracing.
 - [Snapshot worker](map-renderer/README.md) — runtime commands and style updates.
-- [Strava gateway](strava-gateway/README.md) — configuration, jobs, verification.
-- [Gateway recovery](strava-gateway/README.md#failure-recovery) and
-  [admin recovery](docs/specs/admin-operations.md#failed-import-recovery) — diagnosis and selective replay.
+- [Strava workflows](docs/specs/strava-integration.md) — client, stages, retention and quotas.
+- [Admin recovery](docs/specs/admin-operations.md#failed-import-recovery) — diagnosis and selective replay.
 - [Active backlog](docs/TODO.md) — remaining work and recorded verification limits.
 
 Production infrastructure is maintained separately. Release jobs

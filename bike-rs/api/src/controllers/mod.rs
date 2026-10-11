@@ -10,7 +10,6 @@ pub mod integration_events;
 pub mod reports;
 pub mod segments;
 pub mod strava;
-pub mod strava_gateway;
 pub mod synthetics;
 pub mod training_goals;
 pub mod user_preferences;
@@ -46,7 +45,11 @@ pub fn routes() -> Router<Arc<AppStorage>> {
         .merge(segment_routes())
         .merge(preference_routes())
         .merge(integration_routes())
-        .merge(strava_gateway::routes())
+        .route(
+            "/webhooks/strava-gateway",
+            get(strava::handle_webhook_verification).post(strava::handle_webhook_event),
+        )
+        .route("/oauth/gateway/callback", get(strava::handle_callback))
         .route("/api/maps/heatmap", get(heatmaps::metadata))
         .route("/api/maps/heatmap/zones", get(heatmaps::zones))
         .route("/api/maps/heatmap/tiles/:z/:x/:y", get(heatmaps::tile))

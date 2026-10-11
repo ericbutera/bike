@@ -24,12 +24,12 @@ PR builds. PR and manual feature-branch runs stop before deployment.
 The incorrect synthetic smoke step and its CI image build have been removed.
 Documentation-only changes do not release images.
 
-| Check                 | Coverage                                                                                      |
-| --------------------- | --------------------------------------------------------------------------------------------- |
-| `test-rust`           | Rust formatting, Clippy, workspace tests including native HTTP integrations                   |
-| `test-ui-unit`        | ESLint, TypeScript, unit tests, formatting, generated OpenAPI client, dependency audit        |
-| `test-map-renderer`   | Go formatting, vet, golangci-lint, tests, build, protobuf freshness, browser asset lint/audit |
-| `test-strava-gateway` | golangci-lint (including Go vet), formatting, gateway tests                                   |
+| Check                  | Coverage                                                                                      |
+| ---------------------- | --------------------------------------------------------------------------------------------- |
+| `test-rust`            | Rust formatting, Clippy, workspace tests including native HTTP integrations                   |
+| `test-ui-unit`         | ESLint, TypeScript, unit tests, formatting, generated OpenAPI client, dependency audit        |
+| `test-map-renderer`    | Go formatting, vet, golangci-lint, tests, build, protobuf freshness, browser asset lint/audit |
+| `test-worker-postgres` | PostgreSQL native Strava webhook/DAG flows, request-count assertions and coverage             |
 
 The preparation step runs in the official mise **2026.10.3/debian** image,
 pinned by digest. Its owning `ci:mise:prepare` task copies the executable into
@@ -51,7 +51,6 @@ The same entry points run locally:
 mise run ci:rust
 mise run ci:ui:unit
 mise run ci:renderer
-mise run ci:gateway
 ```
 
 ### Disposable E2E gate (TEST11, under review)
@@ -116,7 +115,7 @@ mise/runtime/database images, and watchexec. Mise tools and exported build
 variables use those values directly.
 Compose passes the language variables as Docker build arguments; renderer,
 synthetic, and browser image tasks do the same. Specialized protobuf generator
-pins use mise's Go backend in the gateway config. There are no version-generation
+pins use mise's Go backend in the root config. There are no version-generation
 or custom configuration-validation scripts.
 
 Local image tasks and `ci:images` resolve image references and package/compiler
@@ -201,7 +200,7 @@ both processes before checking the connected snapshot trace.
 
 ## PostgreSQL patching and major-upgrade rehearsal
 
-Application and optional gateway databases share the pinned PostgreSQL
+Application databases share the pinned PostgreSQL
 **17.11/trixie** image. The owning IaC definition and backup image use the same
 reference; publish/review their companion change before applying the shared
 production StatefulSet. The observed running versions on 2026-10-06 were
@@ -215,7 +214,7 @@ both database image pins supplied by mise. `mise run lint:sh`, prek, and CI
 check shell scripts with the pinned ShellCheck.
 This explicitly selected task restores the backup into two fresh, disposable
 volumes on **17.11** and **18.6**, compares every public table's exact row count,
-runs the existing PostgreSQL heatmap and gateway storage regressions on each,
+runs the existing PostgreSQL heatmap regressions on each,
 and verifies that the
 retained 17 instance restarts with the same counts after the 18 instance is
 removed. Connections are published only on random loopback ports. Cleanup owns
@@ -255,7 +254,7 @@ supplied by Woodpecker's `deployment_repo` secret. Keep its value in private CI
 configuration; configure this secret before enabling deployment.
 IaC installs its pinned Go/Pulumi tools, compiles the Bike program once, and calls
 `pulumi up --yes --skip-preview` for `ericbutera/bike/bike`. Its four `--config`
-arguments set the API/worker, UI, map, and gateway image pins to `CI_COMMIT_SHA`.
+arguments set the API/worker, UI and map image pins to `CI_COMMIT_SHA`.
 There are no component deploy wrappers or IaC Git commits/pushes.
 
 The single `bike` Go program compiles once through `build:bike:prod`. Pulumi's
@@ -285,15 +284,14 @@ the owning specs and runbooks and use Git for source history. Published coverage
 reports remain available on GitHub Pages; CI browser reports follow their
 configured seven-day retention.
 
-| Pulumi project / stack           | Resources                                                                                                   |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `bike` / `bike`                  | Rust API, worker, migration Job, UI, uploads, maps and cache, Strava gateway and worker, artifacts, ingress |
-| `woodpecker` / `woodpecker-prod` | CI server, agents, cache, repository configuration and release secrets                                      |
+| Pulumi project / stack           | Resources                                                                                      |
+| -------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `bike` / `bike`                  | Rust API, worker, migration Job, UI, uploads, maps and cache, native Strava workflows, ingress |
+| `woodpecker` / `woodpecker-prod` | CI server, agents, cache, repository configuration and release secrets                         |
 
-All Bike workloads use the `bike` namespace. Maps and the gateway publish
-`bike-maps` and `bike-strava-gateway` images. Internal endpoints, monitoring,
-and backup sources use that same namespace. The first namespace cutover requires
-transferring state and copying artifact data before starting the moved worker.
+All Bike workloads use the `bike` namespace. Maps publish the `bike-maps` image. Internal endpoints, monitoring,
+and backup sources use that same namespace. Strava's native cutover routes callbacks
+to Rust and retires the gateway without copying or replaying gateway work.
 
 ## Infrastructure changes
 
@@ -322,7 +320,19 @@ fixtures and routing configuration; it sends no notifications.
 
 CI activation, repository configuration, and secrets are maintained separately.
 
-Use the [gateway recovery guide](../strava-gateway/README.md#failure-recovery) for retained task
+Use the [Strava workflow specification](specs/strava-integration.md) for retained task
 failures and the private backup runbook for database and file recovery.
 Record incomplete rollout work in
 [`TODO.md`](TODO.md); a successful build alone does not establish live health.
+
+## Native workflow coverage
+
+- Unit checks retain their measured reports for the existing PostgreSQL workflow.
+- The PostgreSQL step collects Strava webhook and DAG coverage with a fake vendor.
+- Coverage objects are isolated by pipeline identity so concurrent revisions
+  cannot overwrite each other's measurements.
+- The final coverage gate combines those measurements before deployment and
+  removes that pipeline's temporary instrumented build objects.
+- The 80 percent changed-line requirement remains unchanged.
+- Temporary shared reports are removed after transfer; abandoned reports expire
+  after seven days on the existing CI cache volume.

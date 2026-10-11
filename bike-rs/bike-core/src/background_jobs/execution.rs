@@ -23,7 +23,7 @@ impl ExecutionContext {
     pub fn current() -> Option<Self> {
         CURRENT.try_with(Clone::clone).ok()
     }
-    async fn record_progress(&self, db: &impl ConnectionTrait) {
+    pub async fn record_progress(&self, db: &impl ConnectionTrait) {
         if let Err(error) =
             super::entities::task_attempts::Model::progress(db, self.task_id, self.attempt).await
         {

@@ -84,7 +84,7 @@ fi
 printf 'legacy uncovered code\n' >"$fixture/bike-ui/lib/legacy.ts"
 write_report bike-ui 4
 
-for id in bike-ui strava-gateway; do
+for id in bike-ui map-renderer; do
   sed 's#^SF:#SF:/incorrect-root/#' "$fixture/.artifacts/coverage/$id/lcov.info" >"$fixture/invalid-lcov.info"
   mv "$fixture/invalid-lcov.info" "$fixture/.artifacts/coverage/$id/lcov.info"
   if bash "$gate" >"$fixture/fail.log" 2>&1; then
@@ -112,24 +112,24 @@ site="$fixture/site"
 mkdir -p "$site/coverage"
 printf '[{"commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","created_at":"2026-01-01T00:00:00Z","rust":{"percent":50},"nextjs":{"percent":70}}]\n' >"$site/coverage/history.json"
 bash "$repo/scripts/coverage-site.sh" "$site" >"$fixture/pass.log" 2>&1
-jq -e '.projects | length == 6' "$site/coverage/latest-summary.json" >/dev/null
-jq -e '.projects["strava-gateway"].percent == 80 and .projects["worker"].changed.percent == 80' "$site/coverage/latest-summary.json" >/dev/null
+jq -e '.projects | length == 5' "$site/coverage/latest-summary.json" >/dev/null
+jq -e '.projects["map-renderer"].percent == 80 and .projects["worker"].changed.percent == 80' "$site/coverage/latest-summary.json" >/dev/null
 grep -Fq 'Rust workspace (legacy)' "$site/coverage/index.html"
 grep -Fq '+10 percentage points' "$site/coverage/index.html"
 for id in "${ids[@]}"; do
   test -s "$site/coverage/revisions/$COVERAGE_BASELINE_REVISION/$id/html/index.html"
 done
 tar -tzf "$site/coverage/revisions/$COVERAGE_BASELINE_REVISION/reports.tar.gz" >"$fixture/archive.txt"
-grep -qx 'strava-gateway/lcov.info' "$fixture/archive.txt"
-jq '[. + {commit:"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"} | .projects["strava-gateway"].language = "Node.js"]' "$site/coverage/latest-summary.json" >"$site/coverage/history.json"
+grep -qx 'map-renderer/lcov.info' "$fixture/archive.txt"
+jq '[. + {commit:"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"} | .projects["map-renderer"].language = "Node.js"]' "$site/coverage/latest-summary.json" >"$site/coverage/history.json"
 bash "$repo/scripts/coverage-site.sh" "$site" >"$fixture/pass.log" 2>&1
 grep -Fq 'Language changed; new baseline' "$site/coverage/index.html"
 
-# Two real Go modules prove report identity and paths are independent of language.
+# A real Go module proves report identity and paths.
 jq 'map(if .id == "map-renderer" then .language = "Go" | .include = "map-renderer/**/*.go" | .exclude = ["*_test.go", "*.pb.go"] else . end)' "$fixture/coverage-projects.json" >"$fixture/projects.next.json"
 mv "$fixture/projects.next.json" "$fixture/coverage-projects.json"
 export GOTOOLCHAIN=local GOMODCACHE="$fixture/go-mod" GOCACHE="${GOCACHE:-$repo/.cache/coverage-fixture-go-build}"
-for id in strava-gateway map-renderer; do
+while IFS= read -r id; do
   printf 'Retired provider report\n' >"$fixture/.artifacts/coverage/$id/html/retired.mjs.html"
   rm -rf -- "${fixture:?}/$id"
   mkdir -p "$fixture/$id"
@@ -159,5 +159,5 @@ GO
   jq -e '.lines > 0 and .percent == 100' "$fixture/.artifacts/coverage/$id/coverage-summary.json" >/dev/null
   test -s "$fixture/.artifacts/coverage/$id/html/index.html"
   test ! -e "$fixture/.artifacts/coverage/$id/html/retired.mjs.html"
-done
+done < <(jq -r '.[] | select(.language == "Go") | .id' "$fixture/coverage-projects.json")
 printf 'Coverage fixtures passed: six independent gates, legacy/migrations, historical reports, and two native Go projects.\n'

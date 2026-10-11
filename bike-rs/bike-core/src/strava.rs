@@ -352,7 +352,7 @@ pub async fn exchange_code_for_connection(
 pub async fn ensure_webhook_subscription_registered(
     db: &DatabaseConnection,
 ) -> Result<(), AppError> {
-    if Config::get().strava_gateway_url.is_some() {
+    if !crate::strava_workflow::provider_work_enabled() {
         return Ok(());
     }
     ensure_webhook_subscription(db, Config::get()).await
@@ -642,8 +642,8 @@ pub async fn forget_local_connection(
         db,
         &connection,
         false,
-        "Gateway removed the local Strava connection mirror.",
-        Some(serde_json::json!({ "trigger": "gateway" })),
+        "Removed the local Strava connection after the cleanup workflow.",
+        Some(serde_json::json!({ "trigger": "workflow" })),
     )
     .await
 }
@@ -653,13 +653,6 @@ pub async fn process_strava_sync(
     uploads_dir: &str,
     connection_id: i32,
 ) -> Result<(), AppError> {
-    if Config::get().strava_gateway_url.is_some() {
-        tracing::info!(
-            connection_id,
-            "skipping legacy Strava sync: gateway owns provider API"
-        );
-        return Ok(());
-    }
     let Some(connection) = load_sync_connection(db, connection_id).await? else {
         tracing::info!(
             connection_id,
@@ -1382,7 +1375,7 @@ fn strava_sync_after_epoch(
     latest_user_activity_started_at: Option<DateTime<Utc>>,
     now: DateTime<Utc>,
 ) -> Option<i64> {
-    let cutoff = now - Duration::days(30);
+    let cutoff = now - Duration::days(crate::strava_workflow::INITIAL_BACKFILL_DAYS);
     let cursor = strava_sync_after_started_at(
         last_synced_activity_started_at,
         latest_user_activity_started_at,
@@ -1440,8 +1433,13 @@ async fn upsert_connection_from_token(
         active_model.athlete_last_name = Set(token_response.athlete.lastname);
         active_model.athlete_profile_medium_url = Set(token_response.athlete.profile_medium);
         active_model.scopes = Set(token_response.scope);
-        active_model.access_token = Set(token_response.access_token);
-        active_model.refresh_token = Set(token_response.refresh_token);
+        active_model.access_token = Set(crate::strava_credentials::seal(
+            token_response.access_token.as_bytes(),
+        )?);
+        active_model.refresh_token = Set(crate::strava_credentials::seal(
+            token_response.refresh_token.as_bytes(),
+        )?);
+        active_model.created_at = Set(Utc::now());
         active_model.expires_at = Set(expires_at);
         active_model.update(db).await.map_err(AppError::from)
     } else {
@@ -1453,8 +1451,12 @@ async fn upsert_connection_from_token(
             athlete_last_name: Set(token_response.athlete.lastname),
             athlete_profile_medium_url: Set(token_response.athlete.profile_medium),
             scopes: Set(token_response.scope),
-            access_token: Set(token_response.access_token),
-            refresh_token: Set(token_response.refresh_token),
+            access_token: Set(crate::strava_credentials::seal(
+                token_response.access_token.as_bytes(),
+            )?),
+            refresh_token: Set(crate::strava_credentials::seal(
+                token_response.refresh_token.as_bytes(),
+            )?),
             expires_at: Set(expires_at),
             last_sync_status: Set(STRAVA_SYNC_STATUS_NEVER.to_string()),
             last_sync_imported_count: Set(0),
@@ -1468,7 +1470,7 @@ async fn upsert_connection_from_token(
     }
 }
 
-async fn ensure_fresh_access_token(
+pub(crate) async fn ensure_fresh_access_token(
     db: &DatabaseConnection,
     client: &StravaApiClient,
     connection: strava_connections::Model,
@@ -1477,8 +1479,20 @@ async fn ensure_fresh_access_token(
         return Ok(connection);
     }
 
-    let token_response = client
-        .refresh_access_token(&connection.refresh_token)
+    let refresh_token = crate::strava_credentials::open(&connection.refresh_token)?;
+    let archive = crate::strava_client::RequestArchive {
+        store: crate::strava_objects::ObjectStore::new(&Config::get().uploads_dir),
+        key: format!(
+            "strava/{}/credentials/{}/refresh/{}",
+            connection.athlete_id,
+            connection.created_at.timestamp_micros(),
+            crate::strava_objects::checksum(
+                format!("{}:{}", refresh_token, connection.expires_at.timestamp()).as_bytes()
+            )
+        ),
+    };
+    let token_response = archive
+        .scope(client.refresh_access_token(&refresh_token))
         .await?;
     let expires_at = DateTime::<Utc>::from_timestamp(token_response.expires_at, 0)
         .ok_or_else(|| AppError::internal("Strava returned an invalid token expiration"))?;
@@ -1486,8 +1500,12 @@ async fn ensure_fresh_access_token(
     active_model.scopes = Set(token_response
         .scope
         .unwrap_or_else(|| connection.scopes.clone()));
-    active_model.access_token = Set(token_response.access_token);
-    active_model.refresh_token = Set(token_response.refresh_token);
+    active_model.access_token = Set(crate::strava_credentials::seal(
+        token_response.access_token.as_bytes(),
+    )?);
+    active_model.refresh_token = Set(crate::strava_credentials::seal(
+        token_response.refresh_token.as_bytes(),
+    )?);
     active_model.expires_at = Set(expires_at);
 
     if let Some(athlete) = token_response.athlete {
@@ -1696,7 +1714,7 @@ async fn set_sync_message(
 
 async fn queue_sync_task_for_connection(
     db: &DatabaseConnection,
-    tasks: &TaskQueue,
+    _tasks: &TaskQueue,
     connection: &strava_connections::Model,
     queued_message: &str,
 ) -> Result<strava_connections::Model, AppError> {
@@ -1721,7 +1739,7 @@ async fn queue_sync_task_for_connection(
         }
     };
 
-    if let Err(message) = tasks.sync_strava_connection(queued_connection.id).await {
+    if let Err(message) = crate::strava_workflow::queue_sync(db, &queued_connection, false).await {
         tracing::error!(connection_id = queued_connection.id, %message, "failed to enqueue Strava sync task");
         let failed_message = format!("Failed to queue Strava sync: {message}");
         let _ = mark_sync_failed(db, &queued_connection, &failed_message, 0, 0, 0).await;
@@ -1810,6 +1828,18 @@ pub async fn resolve_connection_sync_state(
     db: &DatabaseConnection,
     connection: &strava_connections::Model,
 ) -> Result<ResolvedStravaConnectionSyncState, AppError> {
+    if let Some(run) =
+        crate::entities::strava_workflows::Model::active_collection(db, connection.id).await?
+    {
+        return Ok(ResolvedStravaConnectionSyncState {
+            connection: connection.clone(),
+            active_sync_status: Some(if run.status == "running" {
+                STRAVA_SYNC_STATUS_RUNNING
+            } else {
+                STRAVA_SYNC_STATUS_QUEUED
+            }),
+        });
+    }
     let active_tasks = find_active_connection_sync_tasks(db, connection.id).await?;
     let active_sync_status = if active_tasks
         .iter()
@@ -2159,7 +2189,7 @@ fn missing_activity_scope_message() -> String {
     )
 }
 
-fn ensure_connection_scopes_allow_activity_import(
+pub(crate) fn ensure_connection_scopes_allow_activity_import(
     connection: &strava_connections::Model,
 ) -> Result<(), AppError> {
     if scopes_allow_activity_import(&connection.scopes) {
@@ -2202,6 +2232,9 @@ mod tests {
         db.execute(&schema.create_table_from_entity(strava_connections::Entity))
             .await
             .expect("create Strava connections table");
+        db.execute(&schema.create_table_from_entity(crate::entities::strava_workflows::Entity))
+            .await
+            .expect("create Strava workflows table");
         db.execute(&schema.create_table_from_entity(activity_import_locks::Entity))
             .await
             .expect("create activity import locks table");
@@ -2288,9 +2321,6 @@ mod tests {
             strava_oauth_scopes: "activity:read_all profile:read_all".to_string(),
             strava_webhook_verify_token: "verify-token".to_string(),
             strava_webhook_callback_url: None,
-            strava_gateway_url: None,
-            strava_gateway_grpc_address: None,
-            strava_gateway_shared_secret: String::new(),
             uploads_dir: "./uploads".to_string(),
             map_renderer_grpc_address: None,
             map_service_token: String::new(),
@@ -2386,9 +2416,9 @@ mod tests {
     }
 
     #[test]
-    fn legacy_sync_never_fetches_history_older_than_thirty_days() {
+    fn legacy_sync_never_fetches_history_older_than_fifteen_days() {
         let now = DateTime::from_timestamp(1_800_000_000, 0).unwrap();
-        let cutoff = now - Duration::days(30);
+        let cutoff = now - Duration::days(crate::strava_workflow::INITIAL_BACKFILL_DAYS);
         assert_eq!(
             strava_sync_after_epoch(None, None, now),
             Some(cutoff.timestamp())
@@ -2728,7 +2758,17 @@ mod tests {
             .expect("load task")
             .expect("queued task exists");
         assert_eq!(task.status, background_tasks::TaskStatus::Pending.as_str());
-        assert!(task_targets_connection(&task, connection.id));
+        assert_eq!(task.task_type, "strava_workflow");
+        let workflow = crate::entities::strava_workflows::Entity::find_by_id(
+            task.payload["data"]["workflow_id"]
+                .as_str()
+                .expect("workflow ID"),
+        )
+        .one(&db)
+        .await
+        .expect("load workflow")
+        .expect("retained workflow");
+        assert_eq!(workflow.connection_id, connection.id);
 
         let event_types = load_event_types(&db).await;
         assert!(event_types.contains(&"webhook.received".to_string()));

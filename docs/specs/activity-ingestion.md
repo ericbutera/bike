@@ -48,10 +48,10 @@ commands. [Supported activities](supported-activities.md) owns sport support.
   gzip-wrapped entries, and nested Garmin ZIPs within configured expansion
   limits. Try FIT before TCX before GPX. Link entries to the parent archive
   job. Persist counters during processing and preserve partial progress.
-- Strava credentials, discovery, quota, fetching, and delivery belong to the
-  gateway. Bike retains versioned summary/streams JSON and parses it directly.
-  Initial and incremental connection sync cover the last 30 days; older
-  history requires an archive. Replay makes no provider requests.
+- Bike Rust owns Strava credentials, discovery, quota and fetching through the
+  generated SDK. Native action DAGs retain raw responses and summary/streams
+  transforms, then invoke the same activity import pipeline. Incremental sync
+  uses a cursor; full backfill is explicit. Replay uses retained local sources.
 
 ## Normalization
 
@@ -71,6 +71,11 @@ The graph endpoint and executor derive from the same definition. Dependencies
 determine order; stage status is recorded execution evidence, never inferred
 from a node's position. [Segment processing](segment-processing.md) owns
 matching and effort rules.
+
+The [Bike-owned Strava integration](strava-integration.md)
+composes this graph into named insert/update/upsert/delete/sync/backfill workflows
+and adds immutable raw/transform objects with source-first acquisition. Existing stage and replay
+contracts remain the reusable foundation.
 
 ### Attempts and stage summaries
 
@@ -168,7 +173,7 @@ evidence must win regardless of arrival order.
 Bike generates no replacement TCX/GPX. Genuine rider TCX remains supported.
 Reject generated artifact labels and the retired Bike export header, including
 mislabeled copies. Recover authentic originals before retained provider JSON;
-recent gaps may use an explicitly requested incremental gateway refresh.
+recent gaps may use an explicitly requested incremental Strava sync.
 Preserve summaries/GPS and sole retained bytes for unresolved gaps. Withhold
 unavailable sources from heatmaps and invalidate existing contributions.
 Promotion is not completed recovery until replay succeeds. Cleanup removes
@@ -224,11 +229,10 @@ recording claims, checksum, retention reason, and metadata-parser version.
 Record raw-present, summary-only, or unavailable recoverability. Retain one blob
 per identical owned checksum; measure bytes, memory, metadata time, and decodes.
 
-### Unchanged gateway constraint
+### Non-cycling Strava sources
 
-Non-cycling gateway events currently deliver deletion without summary or GPS.
-Bike honors removal and keeps receipts without inventing an activity catalog.
-ACT05 does not change the gateway or authorize Bike-owned provider fetching.
+Native workflows retain non-cycling summaries, skip streams and cycling analytics,
+and remove an existing mapped ride when its verified current kind changes.
 
 ## Heatmap admission proposal
 

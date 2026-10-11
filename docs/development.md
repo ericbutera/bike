@@ -47,9 +47,8 @@ no cache volume. See the [maps specification](specs/maps.md).
 4. Inspect the route, signals, and derived metrics. Available fields depend on
    the source recording.
 
-File import works without provider credentials. Connecting Strava is a separate
-integration setup; the root stack does not start the gateway. See the
-[gateway guide](../strava-gateway/README.md) for its processes and configuration.
+File import works without provider credentials. Connecting Strava uses Rust webhook handlers and worker DAGs. The
+[Strava specification](specs/strava-integration.md) defines setup and behavior.
 
 ## Configuration and ports
 
@@ -105,7 +104,6 @@ the actual image and tool arguments from mise.
 ```sh
 mise trust bike-rs/mise.toml
 mise trust bike-ui/mise.toml
-mise trust strava-gateway/mise.toml
 mise run hooks:install
 mise tasks
 ```
@@ -114,19 +112,19 @@ The following broad tasks are CI entrypoints and reference commands. Do not
 repeat them locally during iteration; publish updates to the draft PR and use
 that revision's CI results for full validation.
 
-| Command from the root              | Checks                                                                |
-| ---------------------------------- | --------------------------------------------------------------------- |
-| `mise run rust:check`              | Rust formatting, Clippy, workspace tests                              |
-| `mise run lint`                    | `lint:rs`, `lint:go`, `lint:ui`, and `lint:maps`                      |
-| `mise run hooks:check`             | All repository-root prek checks against tracked files                 |
-| `mise run ui:check`                | UI ESLint, typecheck, tests, build, format, client freshness          |
-| `mise run test`                    | Map renderer tests                                                    |
-| `mise run strava:test`             | Gateway unit tests with coverage; PostgreSQL checks remain opt-in     |
-| `mise run generate:protobuf:check` | Checked-in gateway protobuf bindings                                  |
-| `mise run contracts:check`         | Canonical contract and shared asset copies                            |
-| `mise run test:integration`        | Real Axum routes and SeaORM queries with isolated SQLite fixture data |
-| `mise run compose:config`          | Complete local Compose configuration                                  |
-| `mise run check`                   | Combined Rust, UI, renderer, gateway, protobuf checks                 |
+| Command from the root              | Checks                                                                     |
+| ---------------------------------- | -------------------------------------------------------------------------- |
+| `mise run rust:check`              | Rust formatting, Clippy, workspace tests                                   |
+| `mise run lint`                    | `lint:rs`, `lint:go`, `lint:ui`, and `lint:maps`                           |
+| `mise run hooks:check`             | All repository-root prek checks against tracked files                      |
+| `mise run ui:check`                | UI ESLint, typecheck, tests, build, format, client freshness               |
+| `mise run test`                    | Map renderer tests                                                         |
+| `mise run test:strava:docker`      | Native DAG and cutover checks with disposable PostgreSQL and a fake vendor |
+| `mise run generate:protobuf:check` | Checked-in map protobuf bindings                                           |
+| `mise run contracts:check`         | Canonical contract and shared asset copies                                 |
+| `mise run test:integration`        | Real Axum routes and SeaORM queries with isolated SQLite fixture data      |
+| `mise run compose:config`          | Complete local Compose configuration                                       |
+| `mise run check`                   | Combined Rust, UI, renderer and protobuf checks                            |
 
 The repository-root `prek.toml` routes checks to each owning mise task.
 `mise run format:staged` runs the same checks for staged files. ESLint uses zero-warning enforcement; Clippy denies warnings.
@@ -167,7 +165,7 @@ Run other owning checks in the same environment, for example
 `coverage:unit` also supports direct execution where tooling is installed,
 including CI. Both tasks collect unit coverage for all implemented services
 without integration or E2E execution. Use `rust:coverage`, `ui:coverage`,
-`renderer:coverage`, or `strava:coverage` to select an owning component.
+`renderer:coverage`, or `test:strava:coverage:docker` to select an owning component.
 The [happy-path checklist](coverage-checklist.md) records
 the initially uncovered paths and progress adding unit tests.
 Each component also provides `mise run coverage` from its own directory. The
@@ -179,14 +177,13 @@ Each Rust collection cleans the instrumented workspace artifacts and prior
 measurements so stale test executables cannot corrupt or inflate the report.
 Downloaded dependencies and their build cache remain reusable.
 
-| Service / project | Implementation | HTML report                                          |
-| ----------------- | -------------- | ---------------------------------------------------- |
-| Bike API          | Rust           | `.artifacts/coverage/api/html/index.html`            |
-| Bike worker       | Rust           | `.artifacts/coverage/worker/html/index.html`         |
-| Shared Bike core  | Rust           | `.artifacts/coverage/bike-core/html/index.html`      |
-| Bike UI           | Next.js        | `.artifacts/coverage/bike-ui/html/index.html`        |
-| Map renderer      | Go             | `.artifacts/coverage/map-renderer/html/index.html`   |
-| Strava gateway    | Go             | `.artifacts/coverage/strava-gateway/html/index.html` |
+| Service / project | Implementation | HTML report                                        |
+| ----------------- | -------------- | -------------------------------------------------- |
+| Bike API          | Rust           | `.artifacts/coverage/api/html/index.html`          |
+| Bike worker       | Rust           | `.artifacts/coverage/worker/html/index.html`       |
+| Shared Bike core  | Rust           | `.artifacts/coverage/bike-core/html/index.html`    |
+| Bike UI           | Next.js        | `.artifacts/coverage/bike-ui/html/index.html`      |
+| Map renderer      | Go             | `.artifacts/coverage/map-renderer/html/index.html` |
 
 Open an HTML file in a browser to inspect coverage by directory, file, and
 source line. Each collection replaces its generated reports so removed source
@@ -203,12 +200,14 @@ Reports cover `bike-core`, API, and worker. The root `rust:coverage`
 task also runs the native SQLite HTTP integration suite;
 `coverage:unit` selects library and binary unit tests only. PostgreSQL tests
 marked `#[ignore]` require an explicitly selected disposable database and are
-not run by either task. Large real-archive tests marked `#[ignore]` also remain
+collected separately by `test:strava:coverage:docker`. CI combines these native
+workflow and cutover measurements with unit coverage before the changed-line gate.
+Large real-archive tests marked `#[ignore]` also remain
 excluded. Stable Rust coverage does not instrument doctests or
 collect branch coverage. Upstream excludes separate test files, generated output,
 and dependencies by default; inline test modules may appear in source coverage.
 All paths under `migration/` are excluded from reports. The migration crate
-still compiles when needed by application code. One workspace measurement is
+still compiles when needed by application code. Unit and PostgreSQL workflow measurements are combined and
 rendered into separate API, worker, and shared-core reports; shared-core lines
 are not counted again in the service reports.
 
@@ -219,7 +218,7 @@ It measures unit/component and route-handler tests, not Playwright browser
 execution. Async server components need additional validation of framework
 rendering and navigation beyond isolated unit tests.
 
-The map renderer and Strava gateway use native `go test` coverage across all
+The map renderer uses native `go test` coverage across all
 handwritten packages, including packages without tests. Generated protobuf
 bindings are excluded. Browser asset lint/parity/smoke checks remain separate
 from Go unit coverage. Gateway PostgreSQL tests remain opt-in and are not
@@ -245,7 +244,7 @@ Coverage shows execution, not the strength of assertions.
 ### CI coverage policy and viewing reports
 
 Every owning `test` task produces unit coverage as part of its test run.
-Woodpecker's Rust, UI, map-renderer, and Strava gateway test steps call those
+Woodpecker's Rust, UI and map-renderer test steps call those
 tasks; each unit suite runs once. Rust then runs its existing integration tests and
 doctests separately, without including their execution in the unit reports.
 Its instrumented build cache persists at `/cache/bike/target/llvm-cov-target`;
@@ -310,15 +309,15 @@ mise --cd bike-ui run generate:typescript
 mise --cd bike-ui run openapi:check
 ```
 
-The Strava gRPC definition lives in
-[`proto/bike/strava/v1/gateway.proto`](../proto/bike/strava/v1/gateway.proto).
+The Strava SDK is generated from the pinned vendor OpenAPI contract in
+`contracts/strava/`. Regenerate it with the standard generator and verify it:
 
 ```sh
-mise run generate:protobuf
-mise run generate:protobuf:check
+mise run strava:sdk
+mise run strava:sdk:check
 ```
 
-Rust client bindings are generated during the Cargo build. Intentional asset
+Map RPC client bindings are generated during the Cargo build. Intentional asset
 copies are explicit in root mise tasks. After changing an owning asset, run
 `mise run assets:sync`, review the diff, and run `mise run contracts:check`.
 

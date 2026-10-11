@@ -103,7 +103,6 @@ here so integration coverage does not hide missing unit happy paths.
 - [ ] [bike-rs/bike-core/src/platform/feature_flags/admin_controller.rs](../bike-rs/bike-core/src/platform/feature_flags/admin_controller.rs)
 - [ ] [bike-rs/bike-core/src/platform/feature_flags/controller.rs](../bike-rs/bike-core/src/platform/feature_flags/controller.rs)
 - [ ] [bike-rs/bike-core/src/platform/metrics_controller.rs](../bike-rs/bike-core/src/platform/metrics_controller.rs)
-- [ ] [bike-rs/bike-core/src/strava_gateway_metrics.rs](../bike-rs/bike-core/src/strava_gateway_metrics.rs)
 - [ ] [bike-rs/bike-core/src/synthetics.rs](../bike-rs/bike-core/src/synthetics.rs)
 - [ ] [bike-rs/bike-core/src/xc_goal_backfill.rs](../bike-rs/bike-core/src/xc_goal_backfill.rs)
 

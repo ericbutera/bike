@@ -13,6 +13,28 @@ use std::collections::HashMap;
 pub const BIKE_ACTIVITY_SPORT: &str = "ride";
 
 impl Model {
+    pub async fn owned_strava_activities(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+    ) -> Result<Vec<Self>, DbErr> {
+        Entity::find()
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::Source.eq("strava_sync"))
+            .all(db)
+            .await
+    }
+    pub async fn strava_activity(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        vendor_id: i64,
+    ) -> Result<Option<Self>, DbErr> {
+        Entity::find()
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::Source.eq("strava_sync"))
+            .filter(Column::SourceCorrelationId.eq(vendor_id.to_string()))
+            .one(db)
+            .await
+    }
     pub async fn cycling_ids_page(
         db: &impl ConnectionTrait,
         user_id: i32,

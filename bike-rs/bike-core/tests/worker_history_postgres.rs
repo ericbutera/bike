@@ -15,7 +15,10 @@ use uuid::Uuid;
 async fn migrated_database() -> (DatabaseConnection, DatabaseConnection, String) {
     let (admin, db, schema) = isolated_database().await;
     let migrations = Migrator::migrations();
-    for migration in &migrations[migrations.len() - 2..] {
+    for migration in migrations.iter().filter(|migration| {
+        migration.name().contains("pipeline_history")
+            || migration.name().contains("pipeline_diagnostics")
+    }) {
         migration.up(&SchemaManager::new(&db)).await.unwrap();
     }
     (admin, db, schema)
@@ -257,10 +260,16 @@ async fn migration_and_concurrent_claims_preserve_receipt_retry_history_and_fore
     let (admin, db, schema) = isolated_database().await;
     let manager = SchemaManager::new(&db);
     let migrations = Migrator::migrations();
-    let migration = &migrations[migrations.len() - 2];
+    let migration = migrations
+        .iter()
+        .find(|migration| migration.name() == "m20261010_000001_pipeline_history")
+        .unwrap();
     assert_eq!(migration.name(), "m20261010_000001_pipeline_history");
     migration.up(&manager).await.unwrap();
-    let diagnostics = migrations.last().unwrap();
+    let diagnostics = migrations
+        .iter()
+        .find(|migration| migration.name() == "m20261010_000002_pipeline_diagnostics")
+        .unwrap();
     assert_eq!(diagnostics.name(), "m20261010_000002_pipeline_diagnostics");
     diagnostics.up(&manager).await.unwrap();
     let mut origin = PipelineContext::received("upload", Some("postgres-request".into()));

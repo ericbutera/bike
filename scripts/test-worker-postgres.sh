@@ -34,6 +34,10 @@ else
   worker_test_host="$(docker inspect --format '{{ .NetworkSettings.Networks.bridge.IPAddress }}' "$worker_test_name")"
 fi
 export BIKE_WORKER_TEST_DATABASE_URL="postgres://worker_test:worker_test@$worker_test_host:$worker_test_port/worker_test"
-mise --cd bike-rs run test:workers:postgres
-export TEST_DATABASE_URL="$BIKE_WORKER_TEST_DATABASE_URL"
-mise --cd strava-gateway run test:postgres
+if [ "${1:-all}" != strava ]; then mise --cd bike-rs run test:workers:postgres; fi
+export BIKE_STRAVA_TEST_DATABASE_URL="$BIKE_WORKER_TEST_DATABASE_URL"
+if [ "${BIKE_STRAVA_COVERAGE:-false}" = true ]; then
+  mise --cd bike-rs run coverage:strava:postgres
+else
+  mise --cd bike-rs run test:strava:postgres
+fi

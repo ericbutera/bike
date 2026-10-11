@@ -18,6 +18,7 @@ docker run --rm --init \
   --mount type=volume,source=bike-checks-renderer-deps,target=/workspace/map-renderer/node_modules \
   --env MISE_DATA_DIR=/cache/mise --env MISE_CACHE_DIR=/cache/mise-cache \
   --env MISE_TRUSTED_CONFIG_PATHS=/workspace --env MISE_YES=1 \
+  --env "BIKE_DOCKER_HOST_WORKSPACE=$repo" \
   --env MISE_TASK_RUN_AUTO_INSTALL=true \
   --env CARGO_HOME=/cache/cargo --env RUSTUP_HOME=/cache/rustup \
   --env "CARGO_TARGET_DIR=/cache/target/$build_cache" \

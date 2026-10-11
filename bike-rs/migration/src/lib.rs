@@ -60,6 +60,7 @@ mod m20261006_000003_activity_recording_environment;
 mod m20261008_000001_activity_import_attempts;
 mod m20261010_000001_pipeline_history;
 mod m20261010_000002_pipeline_diagnostics;
+mod m20261011_000001_strava_workflows;
 
 pub struct Migrator;
 
@@ -70,6 +71,7 @@ impl MigratorTrait for Migrator {
         migrations.sort_by_key(|m| m.name().to_string());
 
         let mut locals: Vec<Box<dyn MigrationTrait>> = vec![
+            Box::new(m20261011_000001_strava_workflows::Migration),
             Box::new(m20261010_000002_pipeline_diagnostics::Migration),
             Box::new(m20261010_000001_pipeline_history::Migration),
             Box::new(m20261008_000001_activity_import_attempts::Migration),

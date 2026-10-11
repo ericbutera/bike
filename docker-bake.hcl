@@ -40,7 +40,7 @@ function "cache_to" {
 }
 
 group "default" {
-  targets = ["api", "worker", "ui", "maps", "strava-gateway", "e2e", "e2e-engine", "checks"]
+  targets = ["api", "worker", "ui", "maps", "e2e", "e2e-engine", "checks"]
 }
 group "rust" { targets = ["api", "worker"] }
 target "checks" {
@@ -96,13 +96,6 @@ target "maps" {
   tags = [image("maps")]
   cache-from = cache_from("maps")
   cache-to = cache_to("maps")
-}
-target "strava-gateway" {
-  context = "strava-gateway"
-  args = { GO_IMAGE = GO_IMAGE, RUNTIME_IMAGE = RUNTIME_IMAGE }
-  tags = [image("strava-gateway")]
-  cache-from = cache_from("strava-gateway")
-  cache-to = cache_to("strava-gateway")
 }
 target "e2e" {
   inherits = ["_node"]

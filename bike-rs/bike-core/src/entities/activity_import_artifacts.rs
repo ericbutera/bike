@@ -57,7 +57,7 @@ impl Entity {
             .await
     }
 
-    pub async fn store_gateway_payload(
+    pub async fn store_strava_payload(
         db: &impl ConnectionTrait,
         import: &activity_imports::Model,
         storage_path: String,

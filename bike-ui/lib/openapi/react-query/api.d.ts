@@ -974,6 +974,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/strava/backfill": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["queue_backfill"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/strava/callback": {
     parameters: {
       query?: never;
@@ -9223,6 +9239,51 @@ export interface operations {
       };
     };
   };
+  queue_backfill: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Queued a full Strava backfill from retained and remote sources */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StravaConnectionResponse"];
+        };
+      };
+      /** @description Not authenticated */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No Strava connection exists */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+      /** @description Strava disconnect is pending */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+    };
+  };
   handle_callback: {
     parameters: {
       query?: never;
@@ -9356,7 +9417,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Removed the authenticated user's Strava connection */
+      /** @description Queued removal of the authenticated user's Strava connection */
       200: {
         headers: {
           [name: string]: unknown;
@@ -9364,7 +9425,7 @@ export interface operations {
         content: {
           /**
            * @example {
-           *       "message": "Strava connection removed."
+           *       "message": "Strava disconnect queued."
            *     }
            */
           "application/json": components["schemas"]["MessageResponse"];

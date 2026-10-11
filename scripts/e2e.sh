@@ -87,16 +87,14 @@ select_image BIKE_E2E_IMAGE "${BIKE_E2E_IMAGE:-bike-e2e:review}"
 select_image BIKE_POSTGRES_IMAGE "${BIKE_POSTGRES_IMAGE:?Run through mise}"
 if [[ -n "${CI:-}" ]]; then
   : >.artifacts/e2e-images.env
-  select_image BIKE_GATEWAY_IMAGE "${BIKE_GATEWAY_IMAGE:?CI must select the gateway image}"
   # Native checks and builds validate these release components; browser tests
-  # start neither the worker nor the provider gateway.
+  # Workers are exercised by the owning worker persistence checks.
   select_image BIKE_WORKER_IMAGE "${BIKE_WORKER_IMAGE:?CI must select the worker image}"
   printf 'BIKE_TESTED_REVISION=%s\n' "${CI_COMMIT_SHA:?}" >"$release_digests"
   record_digest BIKE_TESTED_API_DIGEST "$BIKE_API_IMAGE"
   record_digest BIKE_TESTED_WORKER_DIGEST "$BIKE_WORKER_IMAGE"
   record_digest BIKE_TESTED_UI_DIGEST "$BIKE_UI_IMAGE"
   record_digest BIKE_TESTED_MAP_DIGEST "$BIKE_RENDERER_IMAGE"
-  record_digest BIKE_TESTED_GATEWAY_DIGEST "$BIKE_GATEWAY_IMAGE"
 fi
 
 # Mark ownership before creation so partial-startup failures also get cleanup.

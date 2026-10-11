@@ -150,6 +150,7 @@ impl TaskWorker {
         };
         let context = PipelineContext::from_payload(&task.payload);
         let origin = context.as_ref().ok().and_then(Option::as_ref);
+        let strava = &task.payload["strava"];
         let task_span = tracing::info_span!(
             "background_task.process",
             task.id = task.id,
@@ -158,6 +159,11 @@ impl TaskWorker {
             pipeline_run_id = origin.map(|context| context.run_id.as_str()),
             pipeline_started_at = origin.map(|context| context.pipeline_started_at.to_rfc3339()),
             request_id = origin.and_then(|context| context.request_id.as_deref()),
+            correlation_id = strava["correlation_id"].as_str(),
+            workflow_id = strava["workflow_id"].as_str(),
+            parent_workflow_id = strava["parent_workflow_id"].as_str(),
+            strava_activity_id = strava["strava_activity_id"].as_i64(),
+            athlete_id = strava["athlete_id"].as_i64(),
             trace_id = tracing::field::Empty,
             span_id = tracing::field::Empty,
             task.status = tracing::field::Empty,

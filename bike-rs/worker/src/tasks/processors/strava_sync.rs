@@ -1,25 +1,20 @@
 use async_trait::async_trait;
 use bike_core::background_jobs::worker::TaskProcessor;
-use bike_core::config::Config;
 use bike_core::jobs::StravaSyncTask;
 use bike_core::observability;
-use bike_core::strava::process_strava_sync;
-use sea_orm::DatabaseConnection;
+use bike_core::{entities::strava_connections, strava_workflow};
+use sea_orm::{DatabaseConnection, EntityTrait};
 use std::error::Error;
 use tracing::field;
 use tracing::Instrument;
 
 pub struct StravaSync {
     db: DatabaseConnection,
-    uploads_dir: String,
 }
 
 impl StravaSync {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self {
-            db,
-            uploads_dir: Config::get().uploads_dir.clone(),
-        }
+        Self { db }
     }
 }
 
@@ -46,10 +41,19 @@ impl TaskProcessor for StravaSync {
         observability::set_span_parent_from_carrier(&span, task.trace_context.as_ref());
         observability::record_span_trace_context(&span);
 
-        process_strava_sync(&self.db, &self.uploads_dir, task.connection_id)
-            .instrument(span)
-            .await
-            .map_err(|error| std::io::Error::other(error.message))?;
+        async {
+            // Historical queue records feed the native DAG instead of reviving
+            // the retired direct synchronization implementation.
+            if let Some(connection) = strava_connections::Entity::find_by_id(task.connection_id)
+                .one(&self.db)
+                .await?
+            {
+                strava_workflow::queue_sync(&self.db, &connection, false).await?;
+            }
+            Ok::<(), Box<dyn Error + Send + Sync>>(())
+        }
+        .instrument(span)
+        .await?;
 
         Ok(())
     }

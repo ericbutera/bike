@@ -22,6 +22,7 @@ impl ProcessorDefinition {
             "activity_archive_import"
             | "reprocess_user_activity_imports"
             | "reprocess_archive_fit_activity_imports"
+            | "strava_workflow"
             | "regenerate_user_segments" => 7200,
             _ => 1800,
         };

@@ -3148,6 +3148,34 @@ paths:
                 $ref: '#/components/schemas/ApiErrorResponse'
       security:
       - bearer_auth: []
+  /strava/backfill:
+    post:
+      tags:
+      - strava
+      operationId: queue_backfill
+      responses:
+        '200':
+          description: Queued a full Strava backfill from retained and remote sources
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StravaConnectionResponse'
+        '401':
+          description: Not authenticated
+        '404':
+          description: No Strava connection exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '409':
+          description: Strava disconnect is pending
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+      security:
+      - bearer_auth: []
   /strava/callback:
     get:
       tags:
@@ -3230,13 +3258,13 @@ paths:
       operationId: disconnect_connection
       responses:
         '200':
-          description: Removed the authenticated user's Strava connection
+          description: Queued removal of the authenticated user's Strava connection
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
               example:
-                message: Strava connection removed.
+                message: Strava disconnect queued.
         '401':
           description: Not authenticated
         '409':

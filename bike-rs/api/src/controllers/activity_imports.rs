@@ -1,6 +1,7 @@
 use crate::activity_import_lock::{
     describe_source, describe_stage, load_user_activity_import_lock,
     release_user_activity_import_lock, ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD,
+    ACTIVITY_IMPORT_LOCK_SOURCE_STRAVA_SYNC,
 };
 use crate::activity_location::location_from_derived_json;
 use crate::app_error::{ApiErrorResponse, AppError};
@@ -333,6 +334,20 @@ impl ActivityArchiveImportJobResponse {
 }
 
 impl ActivityProcessingStateResponse {
+    fn strava_workflow(workflow: bike_core::entities::strava_workflows::Model) -> Self {
+        Self {
+            is_active: true,
+            source: Some(ACTIVITY_IMPORT_LOCK_SOURCE_STRAVA_SYNC.into()),
+            source_label: Some("Strava sync".into()),
+            stage: Some(workflow.status.clone()),
+            stage_label: Some(workflow.status.clone()),
+            message: Some(format!(
+                "Strava {} workflow {} is {}.",
+                workflow.action, workflow.id, workflow.status
+            )),
+        }
+    }
+
     fn inactive() -> Self {
         Self {
             is_active: false,
@@ -494,6 +509,13 @@ pub async fn get_activity_processing_state(
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<ActivityProcessingStateResponse>, AppError> {
     let Some(lock) = load_user_activity_import_lock(&state.db, user.id).await? else {
+        if let Some(workflow) =
+            bike_core::strava_workflow::active_user_collection(&state.db, user.id).await?
+        {
+            return Ok(Json(ActivityProcessingStateResponse::strava_workflow(
+                workflow,
+            )));
+        }
         return Ok(Json(ActivityProcessingStateResponse::inactive()));
     };
 

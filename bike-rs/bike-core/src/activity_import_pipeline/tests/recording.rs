@@ -412,7 +412,7 @@ async fn recovery_promotes_retained_json_without_fetching_and_checks_provider_id
     tokio::fs::write(Path::new(&dir).join(&path), &upload.bytes)
         .await
         .unwrap();
-    activity_import_artifacts::Entity::store_gateway_payload(&db, &import, path, &upload)
+    activity_import_artifacts::Entity::store_strava_payload(&db, &import, path, &upload)
         .await
         .unwrap();
     assert!(plan_recovery(&db, &dir, import.clone(), Utc::now())
@@ -493,7 +493,7 @@ async fn recovery_retains_noncycling_provider_input_without_ride_jobs_or_data_lo
     tokio::fs::write(Path::new(&dir).join(&path), &upload.bytes)
         .await
         .unwrap();
-    activity_import_artifacts::Entity::store_gateway_payload(&db, &import, path, &upload)
+    activity_import_artifacts::Entity::store_strava_payload(&db, &import, path, &upload)
         .await
         .unwrap();
     let original = activities::Model::find_owned(&db, import.activity_id.unwrap(), 1)

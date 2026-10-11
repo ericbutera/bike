@@ -6,17 +6,49 @@ use bike_core::{
         pipeline::PipelineContext,
         worker::{TaskProcessor, TaskWorker},
     },
-    entities::{
-        activities, activity_imports, segment_summaries, segments, strava_delivery_intents,
-        strava_gateway_watermarks,
-    },
-    strava_gateway_delivery::intent::{accept, DeliverySource},
+    entities::{activities, activity_imports, segment_summaries, segments},
 };
 use chrono::Utc;
-use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, Set,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, Set};
 use serde_json::json;
+
+#[tokio::test]
+async fn pipeline_strava_sync_and_reconcile_share_one_native_workflow() {
+    use bike_core::entities::{strava_connections, strava_workflows};
+    let db = database().await;
+    let connection = strava_connections::ActiveModel {
+        user_id: Set(1),
+        athlete_id: Set(35999641),
+        access_token: Set("fixture-access".into()),
+        refresh_token: Set("fixture-refresh".into()),
+        scopes: Set("activity:read_all".into()),
+        expires_at: Set(Utc::now() + chrono::Duration::hours(1)),
+        last_sync_status: Set("never".into()),
+        last_sync_imported_count: Set(0),
+        last_sync_duplicate_count: Set(0),
+        last_sync_failed_count: Set(0),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+    let sync = StravaSync::new(db.clone());
+    sync.process(1, json!({"data":{"connection_id":connection.id}}))
+        .await
+        .unwrap();
+    let reconcile = StravaReconcile::new(db.clone());
+    assert_eq!(reconcile.schedule(), Some("0 0 */6 * * *"));
+    reconcile.process(2, json!({})).await.unwrap();
+    reconcile.process(3, json!({})).await.unwrap();
+    let workflows = strava_workflows::Entity::find().all(&db).await.unwrap();
+    assert_eq!(workflows.len(), 1);
+    assert_eq!(workflows[0].action, "sync");
+    assert_eq!(workflows[0].athlete_id, connection.athlete_id);
+    assert_eq!(
+        background_tasks::Entity::find().count(&db).await.unwrap(),
+        1
+    );
+}
 
 async fn enqueue_in_pipeline(
     db: &sea_orm::DatabaseConnection,
@@ -212,21 +244,22 @@ async fn pipeline_registry_contains_every_default_processor() {
         .await
         .unwrap()
         .registered_task_types();
-    assert_eq!(registry.len(), 14); // Email is registered separately.
-    assert!(registry.contains(&"receive_strava_delivery".into()));
+    assert_eq!(registry.len(), 15); // Email is registered separately.
+    assert!(registry.contains(&"strava_workflow".into()));
+    assert!(registry.contains(&"strava_reconcile".into()));
     assert!(registry.contains(&"regenerate_activity_segments".into()));
 }
 
 #[tokio::test]
 async fn pipeline_processors_report_missing_owned_source_as_a_retryable_failure() {
     let db = database().await;
-    let delivery = ReceiveStravaDelivery::new(db.clone());
-    assert!(delivery
-        .process(1, json!({"data":{"delivery_id":"missing"}}))
+    let workflow = StravaWorkflow::new(db.clone());
+    assert!(workflow
+        .process(1, json!({"data":{"workflow_id":"missing"}}))
         .await
         .unwrap_err()
         .to_string()
-        .contains("Delivery intent not found"));
+        .contains("Strava workflow was not found"));
     let archive = ActivityArchiveImport::new(db);
     assert!(archive
         .process(1, json!({"data":{"job_id":999}}))
@@ -234,165 +267,6 @@ async fn pipeline_processors_report_missing_owned_source_as_a_retryable_failure(
         .unwrap_err()
         .to_string()
         .contains("Archive job disappeared"));
-}
-
-#[tokio::test]
-async fn pipeline_obsolete_delivery_clears_owned_source_and_redelivery_is_idempotent() {
-    let db = database().await;
-    strava_gateway_watermarks::ActiveModel {
-        athlete_id: Set(7),
-        activity_id: Set(42),
-        event_time: Set(2),
-        operation: Set("delete".into()),
-    }
-    .insert(&db)
-    .await
-    .unwrap();
-    let origin = PipelineContext::received("strava_webhook", Some("worker-receipt".into()));
-    PipelineContext::scope(Some(origin.clone()), accept(&db, delete_delivery_source()))
-        .await
-        .unwrap();
-    let processor = ReceiveStravaDelivery::new(db.clone());
-    assert_eq!(processor.task_type(), "receive_strava_delivery");
-    for _ in 0..2 {
-        PipelineContext::scope(
-            Some(origin.clone()),
-            processor.process(1, json!({"data":{"delivery_id":"rust:42"}})),
-        )
-        .await
-        .unwrap();
-    }
-    let intent = strava_delivery_intents::Entity::find_by_id("rust:42")
-        .one(&db)
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(intent.source.is_none());
-    assert!(intent.completed_at.is_some());
-    assert_eq!(
-        background_tasks::Entity::find().count(&db).await.unwrap(),
-        1
-    );
-    assert!(processor.process(1, json!({"data":{}})).await.is_err());
-}
-
-fn delete_delivery_source() -> DeliverySource {
-    DeliverySource {
-        delivery_id: "rust:42".into(),
-        athlete_id: 7,
-        user_id: 7,
-        activity_id: 42,
-        event_time: 1,
-        operation: "delete".into(),
-        payload: None,
-    }
-}
-
-async fn accept_then_abandon_delivery(
-    db: &sea_orm::DatabaseConnection,
-    origin: &PipelineContext,
-) -> background_tasks::Model {
-    strava_gateway_watermarks::ActiveModel {
-        athlete_id: Set(7),
-        activity_id: Set(42),
-        event_time: Set(2),
-        operation: Set("delete".into()),
-    }
-    .insert(db)
-    .await
-    .unwrap();
-    assert!(
-        PipelineContext::scope(Some(origin.clone()), accept(db, delete_delivery_source()))
-            .await
-            .unwrap()
-    );
-    let task = background_tasks::Entity::find()
-        .one(db)
-        .await
-        .unwrap()
-        .unwrap();
-    let crashed = task.claim(db).await.unwrap().unwrap();
-    let stale = Utc::now() - chrono::Duration::minutes(10);
-    background_tasks::Entity::update_many()
-        .col_expr(background_tasks::Column::UpdatedAt, Expr::value(stale))
-        .filter(background_tasks::Column::Id.eq(task.id))
-        .exec(db)
-        .await
-        .unwrap();
-    bike_core::background_jobs::entities::task_attempts::Entity::update_many()
-        .col_expr(
-            bike_core::background_jobs::entities::task_attempts::Column::HeartbeatAt,
-            Expr::value(stale),
-        )
-        .filter(bike_core::background_jobs::entities::task_attempts::Column::TaskId.eq(task.id))
-        .exec(db)
-        .await
-        .unwrap();
-    crashed
-}
-
-async fn wait_for_delivery_completion(
-    db: &sea_orm::DatabaseConnection,
-    task_id: i32,
-) -> background_tasks::Model {
-    loop {
-        let task = background_tasks::Entity::find_by_id(task_id)
-            .one(db)
-            .await
-            .unwrap()
-            .unwrap();
-        if task.status == "completed" {
-            return task;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    }
-}
-
-#[tokio::test]
-async fn pipeline_restart_completes_an_http_accepted_delivery_after_its_executor_crashes() {
-    let db = database().await;
-    let origin = PipelineContext::received("strava_webhook", Some("crash-receipt".into()));
-    let crashed = accept_then_abandon_delivery(&db, &origin).await;
-    assert!(!accept(&db, delete_delivery_source()).await.unwrap());
-    let worker = register_default_processors(TaskWorker::new(db.clone()), db.clone())
-        .await
-        .unwrap();
-    let running = tokio::spawn(worker.run());
-    let completed = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        wait_for_delivery_completion(&db, crashed.id),
-    )
-    .await;
-    running.abort();
-    assert!(running.await.unwrap_err().is_cancelled());
-    let finished = completed.expect("restarted worker did not finish the accepted delivery");
-    assert_eq!(finished.attempts, 2);
-    assert_eq!(finished.payload, crashed.payload);
-    assert!(!accept(&db, delete_delivery_source()).await.unwrap());
-    assert_eq!(
-        background_tasks::Entity::find().count(&db).await.unwrap(),
-        1
-    );
-    let intent = strava_delivery_intents::Entity::find_by_id("rust:42")
-        .one(&db)
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(intent.completed_at.is_some());
-    assert!(intent.source.is_none());
-    let output = pipeline_outputs::Entity::find()
-        .filter(pipeline_outputs::Column::Kind.eq("gateway_delivery"))
-        .one(&db)
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(output.available_at.is_some());
-    assert_eq!(output.run_id, origin.run_id);
-    assert!(crashed
-        .finish_execution(&db, Ok(()))
-        .await
-        .unwrap()
-        .is_none());
 }
 
 #[tokio::test]

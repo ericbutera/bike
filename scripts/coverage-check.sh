@@ -46,13 +46,21 @@ printf '%s\n' "$base" >.artifacts/coverage/diff/base-revision.txt
 printf 'Changed-line coverage base: %s; minimum: %s%% per project\n' "$base" "$COVERAGE_MINIMUM"
 
 check_project() {
-  local project="$1" id source include report
+  local project="$1" id source include report path
   id="$(jq -r .id <<<"$project")"
   source="$(jq -r .source <<<"$project")"
   include="$(jq -r .include <<<"$project")"
   report=".artifacts/coverage/$id/lcov.info"
   local -a exclude=()
   while IFS= read -r pattern; do exclude+=("$pattern"); done < <(jq -r '.exclude[]' <<<"$project")
+  # Resolve the manifest pattern through Git so diff-cover does not repeatedly
+  # walk ignored node_modules and build caches for every changed source path.
+  # Keep tracked and untracked source files in the same native coverage gate.
+  local -a include_paths=()
+  while IFS= read -r -d '' path; do
+    include_paths+=("$path")
+  done < <(git ls-files -z --cached --others --exclude-standard -- ":(glob)$include")
+  if ((${#include_paths[@]} == 0)); then include_paths=("$source/"); fi
   if [[ ! -s "$report" ]]; then
     printf 'Missing or empty %s coverage report\n' "$id" >&2
     return 1
@@ -67,7 +75,7 @@ check_project() {
     return 1
   fi
   printf '\nCoverage project: %s\n' "$id"
-  diff-cover "$report" --compare-branch "$base" --include "$include" \
+  diff-cover "$report" --compare-branch "$base" --include "${include_paths[@]}" \
     --exclude "${exclude[@]}" '*/migration/*' '*/migrations/*' \
     --include-untracked --show-uncovered --total-percent-float \
     --fail-under "$COVERAGE_MINIMUM" \

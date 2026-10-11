@@ -40,7 +40,7 @@ id = "coverage-policy"
 name = "Changed-line coverage policy fixtures"
 language = "system"
 entry = "mise run coverage:test"
-files = "^scripts/coverage-.*\\.sh$|^coverage-projects\\.json$|^(strava-gateway|map-renderer|bike-rs)/mise\\.toml$|^mise\\.toml$|^prek\\.toml$"
+files = "^scripts/coverage-.*\\.sh$|^coverage-projects\\.json$|^(map-renderer|bike-rs)/mise\\.toml$|^mise\\.toml$|^prek\\.toml$"
 pass_filenames = false
 
 [[repos.hooks]]
@@ -73,6 +73,14 @@ name = "Rust Clippy"
 language = "system"
 entry = "mise --cd bike-rs run lint"
 files = "^bike-rs/.*\\.(rs|toml)$|^mise\\.toml$"
+pass_filenames = false
+
+[[repos.hooks]]
+id = "strava-sdk"
+name = "Generated Strava SDK freshness"
+language = "system"
+entry = "mise run strava:sdk:check"
+files = "^contracts/strava/|^bike-rs/strava-sdk/|^scripts/strava-sdk\\.sh$|^mise\\.toml$"
 pass_filenames = false
 
 [[repos.hooks]]
@@ -113,14 +121,6 @@ name = "Renderer and shared JavaScript lint and formatting"
 language = "system"
 entry = "mise run lint:maps"
 files = "^map-renderer/.*\\.(mjs|html|json|toml)$|^integration-tests/.*\\.js$|^mise\\.toml$"
-pass_filenames = false
-
-[[repos.hooks]]
-id = "gateway-vet"
-name = "Gateway Go lint and formatting"
-language = "system"
-entry = "mise --cd strava-gateway run lint"
-files = "^strava-gateway/(.*\\.(go|mod|sum)|mise\\.toml|\\.golangci\\.yml)$|^mise\\.toml$"
 pass_filenames = false
 
 [[repos.hooks]]

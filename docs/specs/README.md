@@ -24,7 +24,7 @@ The specs are intentionally written as product contracts instead of implementati
 - [Reassessment report](reassessment-report.md)
 - [Account integrations](account-integrations.md)
 - [Strava integration](strava-integration.md)
-- [Strava gateway fanout](strava-fanout.md)
+- [Retired Strava gateway record](strava-fanout.md)
 - [Admin operations](admin-operations.md)
 - [Auth configuration](auth-configuration.md)
 - [Production synthetics](production-synthetics.md)

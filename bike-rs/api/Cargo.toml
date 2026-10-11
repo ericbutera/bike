@@ -58,6 +58,7 @@ hex = "0.4"
 petgraph = "0.8.3"
 
 [dev-dependencies]
+migration = { path = "../migration" }
 tonic = { version = "0.14.6", features = ["transport"] }
 tokio-stream = { version = "0.1", features = ["net"] }
 tempfile = "3.27.0"

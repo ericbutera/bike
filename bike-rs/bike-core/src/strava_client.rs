@@ -5,23 +5,20 @@ use crate::provider_rate_limit::{
     reconcile_provider_quota_usage, reserve_provider_quota, ProviderQuotaBucketSpec,
     ProviderQuotaReservation,
 };
+use crate::strava_objects::{ObjectStore, ResponseObject};
 use crate::strava_provider_payload::{StravaActivityStreams, StravaActivitySummary};
 use crate::workflow_error::WorkflowError as AppError;
 use axum::http::StatusCode;
 use chrono::{DateTime, Duration, Utc};
 use reqwest::header::{HeaderMap, RETRY_AFTER};
-use reqwest::{Client, RequestBuilder};
+use reqwest::Client;
 use sea_orm::DatabaseConnection;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
+use strava_sdk::apis::{activities_api, configuration::Configuration, strava_api, streams_api};
 use tracing::field;
 use tracing::Instrument;
 
-pub(crate) const STRAVA_TOKEN_URL: &str = "https://www.strava.com/api/v3/oauth/token";
-pub(crate) const STRAVA_DEAUTHORIZE_URL: &str = "https://www.strava.com/oauth/deauthorize";
-pub(crate) const STRAVA_API_BASE_URL: &str = "https://www.strava.com/api/v3";
-pub(crate) const STRAVA_PUSH_SUBSCRIPTIONS_URL: &str =
-    "https://www.strava.com/api/v3/push_subscriptions";
 const STRAVA_PROVIDER: &str = "strava";
 const STRAVA_OVERALL_15_MINUTE_BUCKET: &str = "overall_15_minute";
 const STRAVA_OVERALL_DAILY_BUCKET: &str = "overall_daily";
@@ -32,10 +29,27 @@ const STRAVA_OVERALL_DAILY_LIMIT: i32 = 4_000;
 const STRAVA_READ_15_MINUTE_LIMIT: i32 = 200;
 const STRAVA_READ_DAILY_LIMIT: i32 = 2_000;
 
+#[derive(Clone)]
 pub(crate) struct StravaApiClient {
-    client: Client,
+    client: reqwest_middleware::ClientWithMiddleware,
     db: DatabaseConnection,
     config: &'static Config,
+    base_url: String,
+}
+
+#[derive(Clone)]
+pub(crate) struct RequestArchive {
+    pub store: ObjectStore,
+    pub key: String,
+}
+tokio::task_local! { static ARCHIVE: RequestArchive; }
+impl RequestArchive {
+    pub(crate) async fn scope<F: std::future::Future>(self, future: F) -> F::Output {
+        ARCHIVE.scope(self, future).await
+    }
+    fn current() -> Option<Self> {
+        ARCHIVE.try_with(Clone::clone).ok()
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -110,28 +124,65 @@ impl StravaApiClient {
             })?;
 
         Ok(Self {
-            client,
+            client: reqwest_middleware::ClientBuilder::new(client)
+                .with(crate::strava_transport::ExchangeRecorder {
+                    store: ObjectStore::new(&config.uploads_dir),
+                })
+                .build(),
             db: db.clone(),
             config,
+            base_url: if config.environment == "production" {
+                "https://www.strava.com".into()
+            } else {
+                std::env::var("STRAVA_API_ORIGIN")
+                    .unwrap_or_else(|_| "https://www.strava.com".into())
+            },
         })
+    }
+
+    fn sdk(&self, access_token: Option<&str>) -> Configuration {
+        Configuration {
+            client: self.client.clone(),
+            base_path: format!("{}/api/v3", self.base_url),
+            oauth_access_token: access_token.map(str::to_owned),
+            user_agent: Some(format!("{}/strava-sync", self.config.app_name)),
+            ..Configuration::default()
+        }
+    }
+
+    fn oauth_sdk(&self, access_token: Option<&str>) -> Configuration {
+        Configuration {
+            base_path: self.base_url.clone(),
+            ..self.sdk(access_token)
+        }
     }
 
     pub(crate) async fn exchange_authorization_code(
         &self,
         code: &str,
     ) -> Result<StravaAuthorizationTokenResponse, AppError> {
-        self.send_json(
-            self.client.post(STRAVA_TOKEN_URL).form(&[
-                ("client_id", self.config.strava_client_id.as_str()),
-                ("client_secret", self.config.strava_client_secret.as_str()),
-                ("code", code),
-                ("grant_type", "authorization_code"),
-            ]),
-            StravaRequestClass::OverallOnly,
-            "exchange_authorization_code",
-            "exchange a Strava authorization code",
-        )
-        .await
+        let archive = RequestArchive {
+            store: ObjectStore::new(&self.config.uploads_dir),
+            key: format!(
+                "strava/credentials/authorization/{}",
+                crate::strava_objects::checksum(code.as_bytes())
+            ),
+        };
+        archive
+            .scope(self.send_json(
+                strava_api::oauth_token(
+                    &self.oauth_sdk(None),
+                    &self.config.strava_client_id,
+                    &self.config.strava_client_secret,
+                    "authorization_code",
+                    Some(code),
+                    None,
+                ),
+                StravaRequestClass::OverallOnly,
+                "exchange_authorization_code",
+                "exchange a Strava authorization code",
+            ))
+            .await
     }
 
     pub(crate) async fn refresh_access_token(
@@ -139,12 +190,14 @@ impl StravaApiClient {
         refresh_token: &str,
     ) -> Result<StravaRefreshTokenResponse, AppError> {
         self.send_json(
-            self.client.post(STRAVA_TOKEN_URL).form(&[
-                ("client_id", self.config.strava_client_id.as_str()),
-                ("client_secret", self.config.strava_client_secret.as_str()),
-                ("refresh_token", refresh_token),
-                ("grant_type", "refresh_token"),
-            ]),
+            strava_api::oauth_token(
+                &self.oauth_sdk(None),
+                &self.config.strava_client_id,
+                &self.config.strava_client_secret,
+                "refresh_token",
+                None,
+                Some(refresh_token),
+            ),
             StravaRequestClass::OverallOnly,
             "refresh_access_token",
             "refresh a Strava access token",
@@ -159,15 +212,14 @@ impl StravaApiClient {
         page: usize,
         per_page: usize,
     ) -> Result<Vec<StravaActivitySummary>, AppError> {
-        let mut request = self
-            .client
-            .get(format!("{STRAVA_API_BASE_URL}/athlete/activities"))
-            .bearer_auth(access_token)
-            .query(&[("page", page), ("per_page", per_page)]);
-
-        if let Some(after_epoch) = after_epoch {
-            request = request.query(&[("after", after_epoch)]);
-        }
+        let configuration = self.sdk(Some(access_token));
+        let request = activities_api::get_logged_in_athlete_activities(
+            &configuration,
+            None,
+            after_epoch.map(|value| value as i32),
+            Some(page as i32),
+            Some(per_page as i32),
+        );
 
         self.send_json(
             request,
@@ -184,18 +236,7 @@ impl StravaApiClient {
         activity_id: i64,
     ) -> Result<StravaActivityStreams, AppError> {
         self.send_json(
-            self.client
-                .get(format!(
-                    "{STRAVA_API_BASE_URL}/activities/{activity_id}/streams"
-                ))
-                .bearer_auth(access_token)
-                .query(&[
-                    (
-                        "keys",
-                        "time,distance,latlng,altitude,velocity_smooth,heartrate,cadence,watts,temp,moving,grade_smooth",
-                    ),
-                    ("key_by_type", "true"),
-                ]),
+            streams_api::get_activity_streams(&self.sdk(Some(access_token)), activity_id, "time,distance,latlng,altitude,velocity_smooth,heartrate,cadence,watts,temp,moving,grade_smooth".split(',').map(str::to_owned).collect(), true),
             StravaRequestClass::Read,
             "get_activity_streams",
             "fetch Strava activity streams",
@@ -204,10 +245,8 @@ impl StravaApiClient {
     }
 
     pub(crate) async fn deauthorize(&self, access_token: &str) -> Result<(), AppError> {
-        self.send_json::<serde_json::Value>(
-            self.client
-                .post(STRAVA_DEAUTHORIZE_URL)
-                .query(&[("access_token", access_token)]),
+        self.send_json::<serde_json::Value, _, _>(
+            strava_api::deauthorize(&self.oauth_sdk(Some(access_token))),
             StravaRequestClass::OverallOnly,
             "deauthorize",
             "deauthorize the Strava app",
@@ -220,10 +259,11 @@ impl StravaApiClient {
         &self,
     ) -> Result<Vec<StravaPushSubscription>, AppError> {
         self.send_json(
-            self.client.get(STRAVA_PUSH_SUBSCRIPTIONS_URL).query(&[
-                ("client_id", self.config.strava_client_id.as_str()),
-                ("client_secret", self.config.strava_client_secret.as_str()),
-            ]),
+            strava_api::list_push_subscriptions(
+                &self.sdk(None),
+                &self.config.strava_client_id,
+                &self.config.strava_client_secret,
+            ),
             StravaRequestClass::Read,
             "list_push_subscriptions",
             "list Strava webhook subscriptions",
@@ -236,15 +276,13 @@ impl StravaApiClient {
     ) -> Result<StravaPushSubscription, AppError> {
         let callback_url = self.config.strava_webhook_callback_url();
         self.send_json(
-            self.client.post(STRAVA_PUSH_SUBSCRIPTIONS_URL).form(&[
-                ("client_id", self.config.strava_client_id.as_str()),
-                ("client_secret", self.config.strava_client_secret.as_str()),
-                ("callback_url", callback_url.as_str()),
-                (
-                    "verify_token",
-                    self.config.strava_webhook_verify_token.as_str(),
-                ),
-            ]),
+            strava_api::create_push_subscription(
+                &self.sdk(None),
+                &self.config.strava_client_id,
+                &self.config.strava_client_secret,
+                &callback_url,
+                &self.config.strava_webhook_verify_token,
+            ),
             StravaRequestClass::OverallOnly,
             "create_push_subscription",
             "create a Strava webhook subscription",
@@ -252,16 +290,32 @@ impl StravaApiClient {
         .await
     }
 
-    async fn send_json<T>(
+    async fn send_json<T, R, E>(
         &self,
-        request: RequestBuilder,
+        request: impl std::future::Future<Output = Result<R, E>>,
         request_class: StravaRequestClass,
         operation: &'static str,
         action: &str,
     ) -> Result<T, AppError>
     where
         T: DeserializeOwned,
+        R: DeserializeOwned,
     {
+        if let Some(archive) = RequestArchive::current() {
+            if let Some(saved) = archive.store.response(&archive.key).await? {
+                tracing::info!(operation, object_path = %saved.body.path, outcome = "reused", "Reusing saved Strava response");
+                let bytes = archive.store.response_bytes(&saved).await?;
+                // Replays honor the generated response model as live calls do.
+                let _: R = decode_response(&bytes, action)?;
+                return decode_response(&bytes, action);
+            }
+        }
+        if !crate::strava_workflow::provider_work_enabled() {
+            return Err(AppError::too_many_requests(
+                "Strava provider work is paused for cutover",
+                Some(Utc::now() + Duration::minutes(1)),
+            ));
+        }
         let span = tracing::info_span!(
             "strava.client.call",
             "otel.kind" = "client",
@@ -292,26 +346,32 @@ impl StravaApiClient {
             );
             let response = async move {
                 observability::record_current_trace_context();
-                request.send().await
+                crate::strava_transport::capture(request).await
             }
             .instrument(http_span.clone())
             .await;
             observability::record_span_trace_context(&http_span);
-            match &response {
-                Ok(response) => {
-                    let status_label = response.status().as_u16().to_string();
+            match &response.1 {
+                Some(response) => {
+                    let status_label = response.status.as_u16().to_string();
                     http_span.record("status", field::display(&status_label));
-                    if let Some(retry_at) = parse_retry_after_header(response.headers(), Utc::now())
+                    if let Some(retry_at) = parse_retry_after_header(&response.headers, Utc::now())
                     {
                         http_span.record("retry_at", field::display(retry_at));
                     }
                 }
-                Err(_) => {
+                None => {
                     http_span.record("status", "transport_error");
                 }
             }
-            self.parse_json_response(response, request_class, operation, action)
-                .await
+            self.parse_json_response(
+                response.1,
+                response.0.is_ok(),
+                request_class,
+                operation,
+                action,
+            )
+            .await
         }
         .instrument(span)
         .await
@@ -375,7 +435,8 @@ impl StravaApiClient {
 
     async fn parse_json_response<T>(
         &self,
-        response: Result<reqwest::Response, reqwest::Error>,
+        response: Option<crate::strava_transport::RawResponse>,
+        sdk_accepted: bool,
         request_class: StravaRequestClass,
         operation: &'static str,
         action: &str,
@@ -383,7 +444,7 @@ impl StravaApiClient {
     where
         T: DeserializeOwned,
     {
-        let response = response.map_err(|error| {
+        let response = response.ok_or_else(|| {
             tracing::Span::current().record("status", "transport_error");
             metrics::record_provider_api_request(
                 STRAVA_PROVIDER,
@@ -391,10 +452,14 @@ impl StravaApiClient {
                 request_class.as_str(),
                 "transport_error",
             );
-            tracing::error!(error = ?error, action, operation, "Strava request failed");
+            tracing::error!(
+                action,
+                operation,
+                "Generated Strava SDK request failed; inspect the retained exchange"
+            );
             AppError::internal(format!("Failed to {action}"))
         })?;
-        let status = response.status();
+        let status = response.status;
         let status_label = status.as_u16().to_string();
         tracing::Span::current().record("status", field::display(&status_label));
         metrics::record_provider_api_request(
@@ -403,12 +468,13 @@ impl StravaApiClient {
             request_class.as_str(),
             &status_label,
         );
-        reconcile_strava_rate_limit_headers(&self.db, response.headers(), request_class).await;
-        let retry_after = parse_retry_after_header(response.headers(), Utc::now());
+        reconcile_strava_rate_limit_headers(&self.db, &response.headers, request_class).await;
+        let retry_after = parse_retry_after_header(&response.headers, Utc::now());
 
+        let headers = response.headers;
+        let bytes = response.bytes;
         if !status.is_success() {
-            let headers = response.headers().clone();
-            let body = response.text().await.unwrap_or_default();
+            let body = String::from_utf8_lossy(&bytes);
             return Err(strava_error_from_response(
                 status,
                 &headers,
@@ -420,12 +486,113 @@ impl StravaApiClient {
             ));
         }
 
-        response.json::<T>().await.map_err(|error| {
-            tracing::error!(error = ?error, action, "failed to parse Strava response");
-            AppError::internal(format!(
-                "Failed to parse Strava response while trying to {action}"
-            ))
+        if !sdk_accepted {
+            return Err(AppError::internal(format!("Generated Strava SDK rejected the response while trying to {action}; inspect the retained exchange")));
+        }
+        decode_response(&bytes, action)
+    }
+
+    pub(crate) async fn get_activity(
+        &self,
+        access_token: &str,
+        activity_id: i64,
+    ) -> Result<StravaActivitySummary, AppError> {
+        self.send_json(
+            activities_api::get_activity_by_id(
+                &self.sdk(Some(access_token)),
+                activity_id,
+                Some(false),
+            ),
+            StravaRequestClass::Read,
+            "get_activity",
+            "fetch a Strava activity",
+        )
+        .await
+    }
+
+    pub(crate) async fn list_activity_page(
+        &self,
+        access_token: &str,
+        after: Option<i64>,
+        page: i32,
+    ) -> Result<Vec<serde_json::Value>, AppError> {
+        let after = after
+            .map(i32::try_from)
+            .transpose()
+            .map_err(|_| AppError::bad_request("Strava listing timestamp is out of range"))?;
+        self.send_json(
+            activities_api::get_logged_in_athlete_activities(
+                &self.sdk(Some(access_token)),
+                None,
+                after,
+                Some(page),
+                Some(100),
+            ),
+            StravaRequestClass::Read,
+            "list_activities",
+            "list Strava activities",
+        )
+        .await
+    }
+}
+
+fn decode_response<T: DeserializeOwned>(bytes: &[u8], action: &str) -> Result<T, AppError> {
+    serde_json::from_slice(bytes).map_err(|error| {
+        AppError::internal(format!(
+            "Failed to parse saved Strava response while trying to {action}: {error}"
+        ))
+    })
+}
+
+pub(crate) async fn retain_response(
+    store: &ObjectStore,
+    fallback_prefix: &str,
+    response: &crate::strava_transport::RawResponse,
+    encrypted: bool,
+) -> Result<Option<ResponseObject>, AppError> {
+    let archive = RequestArchive::current().unwrap_or_else(|| RequestArchive {
+        store: store.clone(),
+        key: format!("{fallback_prefix}/response"),
+    });
+    let status = response.status;
+    let key = if status.is_success() {
+        archive.key
+    } else {
+        format!("{}/attempts/{}", archive.key, uuid::Uuid::new_v4())
+    };
+    let retained_headers = response
+        .headers
+        .iter()
+        .filter(|(name, _)| {
+            name.as_str().starts_with("x-")
+                || ["content-type", "retry-after"].contains(&name.as_str())
         })
+        .filter_map(|(name, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|value| (name.to_string(), value.to_owned()))
+        })
+        .collect();
+    let saved = if encrypted {
+        archive
+            .store
+            .save_encrypted_response(&key, status.as_u16(), retained_headers, &response.bytes)
+            .await?
+    } else {
+        archive
+            .store
+            .save_response(&key, status.as_u16(), retained_headers, &response.bytes)
+            .await?
+    };
+    tracing::info!(object_path = %saved.body.path, status = status.as_u16(), outcome = "fetched", "Saved Strava response before decoding");
+    Ok(Some(saved))
+}
+
+pub(crate) fn exchange_prefix(id: uuid::Uuid) -> String {
+    match RequestArchive::current() {
+        Some(archive) => format!("{}/exchanges/{id}", archive.key),
+        None => format!("strava/exchanges/{id}"),
     }
 }
 
