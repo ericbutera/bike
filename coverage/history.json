@@ -1,5 +1,79 @@
 [
   {
+    "commit": "2c75fafde14e1f7276074e745ebe8df2c5efd303",
+    "created_at": "2026-10-11T21:52:34Z",
+    "base_revision": "55d578673c7abc9f859768b72205856ed1dcea95",
+    "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/303",
+    "minimum_changed_line_percent": 80,
+    "projects": {
+      "api": {
+        "name": "Bike API",
+        "language": "Rust",
+        "source": "bike-rs/api",
+        "lines": 7874,
+        "covered": 4645,
+        "percent": 58.99161798323597,
+        "changed": {
+          "lines": 0,
+          "covered": 0,
+          "percent": 100.0
+        }
+      },
+      "worker": {
+        "name": "Bike worker",
+        "language": "Rust",
+        "source": "bike-rs/worker",
+        "lines": 608,
+        "covered": 314,
+        "percent": 51.64473684210527,
+        "changed": {
+          "lines": 0,
+          "covered": 0,
+          "percent": 100.0
+        }
+      },
+      "bike-core": {
+        "name": "Shared Bike core",
+        "language": "Rust",
+        "source": "bike-rs/bike-core",
+        "lines": 37194,
+        "covered": 27001,
+        "percent": 72.59504221110932,
+        "changed": {
+          "lines": 0,
+          "covered": 0,
+          "percent": 100.0
+        }
+      },
+      "bike-ui": {
+        "name": "Bike UI",
+        "language": "Next.js",
+        "source": "bike-ui",
+        "lines": 5761,
+        "covered": 3505,
+        "percent": 60.84,
+        "changed": {
+          "lines": 30,
+          "covered": 26,
+          "percent": 86.67
+        }
+      },
+      "map-renderer": {
+        "name": "Map renderer",
+        "language": "Go",
+        "source": "map-renderer",
+        "lines": 444,
+        "covered": 361,
+        "percent": 81.30630630630631,
+        "changed": {
+          "lines": 0,
+          "covered": 0,
+          "percent": 100.0
+        }
+      }
+    }
+  },
+  {
     "commit": "55d578673c7abc9f859768b72205856ed1dcea95",
     "created_at": "2026-10-11T20:25:07Z",
     "base_revision": "c42eed1ac14f84f1f8766041f888ae8c347daf34",
@@ -753,33 +827,6 @@
           "covered": 0,
           "percent": 100.0
         }
-      }
-    }
-  },
-  {
-    "commit": "56021f836490babc7388c63a23685e38308b01bc",
-    "created_at": "2026-10-09T21:41:00Z",
-    "base_revision": "b604fabac5fad42dc36fd6974cc7779b66dce59a",
-    "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/241",
-    "minimum_changed_line_percent": 80,
-    "rust": {
-      "lines": 46884,
-      "covered": 23539,
-      "percent": 50.206893609760264,
-      "changed": {
-        "lines": 0,
-        "covered": 0,
-        "percent": 100.0
-      }
-    },
-    "nextjs": {
-      "lines": 5656,
-      "covered": 3379,
-      "percent": 59.74,
-      "changed": {
-        "lines": 0,
-        "covered": 0,
-        "percent": 100.0
       }
     }
   }
