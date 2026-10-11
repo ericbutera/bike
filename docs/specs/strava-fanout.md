@@ -138,6 +138,25 @@ deauthorization must not be undone by an older retry.
 5. Reconciliation periodically compares gateway checkpoints with Strava for
    missed events and backfill. Backfills are resumable and use the same outbox.
 
+- Scheduled reconciliation runs every six hours over the rolling 30-day window.
+  Its origin is persisted through sync checkpoints and synthetic activity events;
+  these events are distinct from Strava webhook callbacks.
+- After fetching an activity and its streams, scheduled reconciliation compares
+  their content hash with the latest delivery for that athlete, activity and
+  target, including any intervening deletion or deauthorization. Only a delivered
+  upsert from the current site-link period with identical content permits a skip.
+- An unchanged reconciliation outbox row becomes terminal `unchanged`, retains
+  its artifact hash, and sends no delivery to Bike. It creates no Bike receipt,
+  import work, or `gateway.delivery.received`/`gateway.delivery.applied` events.
+  Repeated unchanged checks compare with the last actual delivery.
+- New or changed content, pending/failed deliveries, deletion, deauthorization,
+  and a reconnected link require delivery. Real webhook events and explicit
+  initial, incremental or full resyncs retain delivery behavior, including when
+  their content matches a previous artifact.
+- Provider listing, detail and stream requests still consume shared quota;
+  content comparison removes repeated downstream work, not provider requests.
+  Existing receipts and integration history remain intact.
+
 Rate-limited sync jobs remain `queued` and persist `waiting_reason` with their
 next eligible time. Connection status returns these as `last_sync_wait_reason`
 and `last_sync_next_attempt_at` over both HTTP and gRPC; the Rust API passes the

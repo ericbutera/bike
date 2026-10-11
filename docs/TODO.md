@@ -6,6 +6,12 @@ Keep private activity data out of committed reports and fixtures.
 
 ## Active work
 
+- **STRAVA01 — Pending production verification:** Skip unchanged scheduled reconciliation
+  deliveries under the [gateway contract](specs/strava-fanout.md#durable-workflow).
+  Preserve explicit resyncs and actual webhook updates. Production verification
+  must confirm a repeated reconciliation creates no Bike receipt/import work,
+  while a changed activity still delivers. Existing integration history remains.
+
 - **MAP01 — Deployed:** Rust owns the activity-map endpoint, authorization,
   cache, and revalidation; Go runs the stateless Chromium snapshot worker.
   The [maps specification](specs/maps.md) defines behavior and acceptance;

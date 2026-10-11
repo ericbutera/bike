@@ -240,6 +240,17 @@ func TestReconciliationQueuesEachEnabledLinkAtMostOncePerWindow(t *testing.T) {
 		WHERE athlete_id=$1 AND target='rust'`, athleteID).Scan(&jobs); err != nil || jobs != 1 {
 		t.Fatalf("reconciliation jobs: %d, %v", jobs, err)
 	}
+	job, err := syncs.Claim(ctx)
+	if err != nil || job == nil || !job.Reconciliation {
+		t.Fatalf("scheduled reconciliation claim: %+v, %v", job, err)
+	}
+	if err := syncs.CompletePage(ctx, *job, []int64{321}); err != nil {
+		t.Fatal(err)
+	}
+	event, err := (Jobs{DB: pool}).ClaimEvent(ctx)
+	if err != nil || event == nil || !event.Event.Reconciliation || event.Event.SubscriptionID != 0 {
+		t.Fatalf("scheduled reconciliation origin: %+v, %v", event, err)
+	}
 }
 
 func TestQuotaReservationsAreSharedAndBlockWhenExhausted(t *testing.T) {
@@ -321,7 +332,7 @@ func TestSyncPageQueuesTargetDeliveryAndCompletes(t *testing.T) {
 	if err != nil || job == nil {
 		t.Fatalf("claim sync: %v, %v", job, err)
 	}
-	if job.AthleteID != 9 || job.Target != "rust" || job.Page != 1 || job.AfterEpoch <= 0 {
+	if job.AthleteID != 9 || job.Target != "rust" || job.Page != 1 || job.AfterEpoch <= 0 || job.Reconciliation {
 		t.Fatalf("unexpected sync job: %+v", job)
 	}
 	if err := syncs.Fail(ctx, *job, "unsupported activity list"); err != nil {

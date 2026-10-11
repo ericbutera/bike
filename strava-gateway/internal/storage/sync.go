@@ -24,17 +24,18 @@ func (syncs Syncs) QueueDepth(ctx context.Context) (int64, error) {
 }
 
 type SyncJob struct {
-	CreatedAt     time.Time
-	ID            int64
-	AthleteID     int64
-	Target        string
-	Mode          string
-	Page          int
-	AfterEpoch    int64
-	Attempts      int
-	WaitingReason string
-	TraceParent   *string
-	TraceState    *string
+	CreatedAt      time.Time
+	ID             int64
+	AthleteID      int64
+	Target         string
+	Mode           string
+	Page           int
+	AfterEpoch     int64
+	Attempts       int
+	WaitingReason  string
+	Reconciliation bool
+	TraceParent    *string
+	TraceState     *string
 }
 
 // QueueDueReconciliation revisits the rolling activity window for each live
@@ -42,8 +43,8 @@ type SyncJob struct {
 // duplicate work, while the latest job timestamp bounds provider usage.
 func (syncs Syncs) QueueDueReconciliation(ctx context.Context, now time.Time) (int64, error) {
 	command, err := syncs.DB.Exec(ctx, `INSERT INTO gateway_sync_jobs
-		(athlete_id,target,mode,after_epoch)
-		SELECT links.athlete_id,links.target,'incremental',$2
+		(athlete_id,target,mode,after_epoch,reconciliation)
+		SELECT links.athlete_id,links.target,'incremental',$2,true
 		FROM gateway_site_links AS links
 		JOIN gateway_connections AS connections ON connections.athlete_id=links.athlete_id
 		WHERE links.enabled AND links.target='rust' AND connections.revoked_at IS NULL
@@ -121,9 +122,9 @@ func (syncs Syncs) Claim(ctx context.Context) (claimed *SyncJob, err error) {
 	    attempts=jobs.attempts+1, updated_at=now()
 	FROM candidate WHERE jobs.id=candidate.id
 	RETURNING jobs.id,jobs.athlete_id,jobs.target,jobs.mode,jobs.page,
-	    coalesce(jobs.after_epoch,0),jobs.attempts,coalesce(jobs.waiting_reason,''),jobs.traceparent,jobs.tracestate,jobs.created_at`).Scan(
+	    coalesce(jobs.after_epoch,0),jobs.attempts,coalesce(jobs.waiting_reason,''),jobs.traceparent,jobs.tracestate,jobs.created_at,jobs.reconciliation`).Scan(
 		&job.ID, &job.AthleteID, &job.Target, &job.Mode, &job.Page,
-		&job.AfterEpoch, &job.Attempts, &job.WaitingReason, &job.TraceParent, &job.TraceState, &job.CreatedAt)
+		&job.AfterEpoch, &job.Attempts, &job.WaitingReason, &job.TraceParent, &job.TraceState, &job.CreatedAt, &job.Reconciliation)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -159,6 +160,7 @@ func (syncs Syncs) CompletePage(ctx context.Context, job SyncJob, ids []int64) (
 		event := webhook.Event{
 			AspectType: "update", EventTime: time.Now().Unix(), ObjectID: id,
 			ObjectType: "activity", OwnerID: job.AthleteID,
+			Reconciliation: job.Reconciliation,
 		}
 		payload, err := json.Marshal(event)
 		if err != nil {

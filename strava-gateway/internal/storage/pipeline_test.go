@@ -54,6 +54,7 @@ func TestWorkerSyncClaimPreservesOriginalClockAndLegacyClockStaysUnknown(t *test
 	db := receiptDatabase{row: receiptRow(func(destinations ...any) error {
 		*destinations[0].(*int64) = 42
 		*destinations[10].(*time.Time) = received
+		*destinations[11].(*bool) = true
 		return nil
 	})}
 	job, err := (Syncs{DB: db}).Claim(context.Background())
@@ -62,6 +63,9 @@ func TestWorkerSyncClaimPreservesOriginalClockAndLegacyClockStaysUnknown(t *test
 	}
 	if receipt := syncReceipt(*job); receipt == nil || !receipt.Equal(received) {
 		t.Fatalf("sync receipt: %v", receipt)
+	}
+	if !job.Reconciliation {
+		t.Fatal("sync claim lost the scheduled reconciliation origin")
 	}
 	if syncReceipt(SyncJob{}) != nil {
 		t.Fatal("legacy sync clock must stay unknown")

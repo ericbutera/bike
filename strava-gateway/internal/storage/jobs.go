@@ -120,6 +120,11 @@ func (jobs Jobs) CompleteEvent(ctx context.Context, job EventJob, operation stri
 	} else if operation == "upsert" {
 		return errors.New("upsert requires an artifact")
 	}
+	if operation == "upsert" && job.Event.SubscriptionID == 0 && job.Event.Reconciliation {
+		if err := skipUnchangedReconciliation(ctx, tx, job, *hash); err != nil {
+			return err
+		}
+	}
 	if _, err := tx.Exec(ctx, `UPDATE strava_delivery_outbox SET status='pending',
 		operation=$2, artifact_sha256=$3, next_attempt_at=now(), updated_at=now()
 		WHERE event_id=$1 AND target='rust' AND status IN ('waiting_for_fetch','pending')`, job.ID, operation, hash); err != nil {
@@ -134,6 +139,29 @@ func (jobs Jobs) CompleteEvent(ctx context.Context, job EventJob, operation stri
 		return errors.New("event lease was lost")
 	}
 	return tx.Commit(ctx)
+}
+
+// Only the latest delivery after the current site link was established can
+// prove unchanged content. Pending, failed, deleted or revoked state must be
+// reconciled again; an older matching artifact must not hide a later change.
+func skipUnchangedReconciliation(ctx context.Context, tx pgx.Tx, job EventJob, hash string) error {
+	_, err := tx.Exec(ctx, `UPDATE strava_delivery_outbox AS current
+		SET status='unchanged',artifact_sha256=$4,updated_at=now()
+		WHERE current.event_id=$1 AND current.target='rust' AND current.status='waiting_for_fetch'
+		AND EXISTS (
+		  SELECT 1 FROM (
+		    SELECT prior.status,prior.operation,prior.artifact_sha256
+		    FROM strava_delivery_outbox AS prior
+		    JOIN strava_webhook_events AS events ON events.id=prior.event_id
+		    JOIN gateway_site_links AS links ON links.athlete_id=events.owner_id AND links.target=prior.target
+		    WHERE events.owner_id=$2 AND prior.target=current.target AND prior.event_id<>$1
+		      AND ((events.object_type='activity' AND events.object_id=$3) OR prior.operation='deauthorize')
+		      AND prior.status<>'unchanged' AND links.enabled AND prior.created_at>=links.updated_at
+		    ORDER BY events.event_time DESC,prior.id DESC LIMIT 1
+		  ) AS latest
+		  WHERE latest.status='delivered' AND latest.operation='upsert' AND latest.artifact_sha256=$4
+		)`, job.ID, job.Event.OwnerID, job.Event.ObjectID, hash)
+	return err
 }
 
 func (jobs Jobs) RetryEvent(ctx context.Context, job EventJob, next time.Time, failure string, permanent bool) error {

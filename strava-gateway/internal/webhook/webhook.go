@@ -28,6 +28,7 @@ type Event struct {
 	OwnerID        int64             `json:"owner_id"`
 	SubscriptionID int64             `json:"subscription_id"`
 	Updates        map[string]string `json:"updates"`
+	Reconciliation bool              `json:"bike_reconciliation,omitempty"`
 }
 
 func (event Event) Valid(subscriptionID int64) bool {
