@@ -8,6 +8,19 @@ The race viewer should feel stable while the race is changing quickly. The map m
 
 Downhill segments especially need close inspection because efforts can be short, fast, and tightly bunched. The viewer must make it practical to zoom in far enough to separate overlapping markers without the app immediately overriding that choice.
 
+## Map Appearance
+
+- Follow the [shared map appearance contract](maps.md#shared-map-appearance)
+  for the segment viewer and race viewer: use the same Route light/Fiord
+  backgrounds as activity previews and heatmaps, with blue `#0060df` overlay
+  lines by default in both themes.
+- Segment and compared-effort colors may differ to distinguish selections and
+  riders. Keep those colors consistent with their cards and legends over the
+  shared background.
+- MAPS15 in the [Bike backlog](../TODO.md#active-work) tracks applying and
+  verifying this look at `/segments/16` and
+  `/segments/16/race?efforts=7286%2C7249%2C6945`.
+
 ## Map Zoom
 
 The viewer should expose map zoom as an intentional control, not only as an incidental map gesture.
@@ -53,6 +66,8 @@ Gap labels on cards should be derived from the current live leader even though t
 
 ## Acceptance Criteria
 
+- Segment and race maps match activity previews and heatmap backgrounds in both
+  themes; blue is the default overlay color, with permitted segment/effort colors.
 - A rider can set a race-viewer zoom level and playback does not immediately reset it while following leaders.
 - Manual zoom remains useful on downhill segments where selected markers are tightly bunched.
 - Playback speed uses the fixed value set `0.10x`, `0.25x`, `0.5x`, `0.75x`, `1x`, `1.25x`, `1.5x`, `2x`, `3x`, and `4x`.

@@ -1,5 +1,6 @@
 import { act, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { LayerSpecification } from "maplibre-gl";
 import MapLibreRouteMapClient from "../MapLibreRouteMapClient";
 
 const mapMocks = vi.hoisted(() => ({
@@ -10,6 +11,7 @@ const mapMocks = vi.hoisted(() => ({
   addControl: vi.fn(),
   createMap: vi.fn(),
   sources: new Map<string, { setData: ReturnType<typeof vi.fn> }>(),
+  layers: new Map<string, LayerSpecification>(),
   handlers: new Map<string, Array<(event?: any) => void>>(),
   zoom: 13,
 }));
@@ -29,11 +31,7 @@ vi.mock("maplibre-gl", () => {
   }
 
   class MockMap {
-    constructor() {
-      const layers = new globalThis.Map<
-        string,
-        { id: string; type?: string }
-      >();
+    constructor(options: unknown) {
       const canvas = { style: { cursor: "" } };
 
       const map = {
@@ -41,11 +39,11 @@ vi.mock("maplibre-gl", () => {
         addSource: vi.fn((id: string) => {
           mapMocks.sources.set(id, { setData: vi.fn() });
         }),
-        addLayer: vi.fn((layer: { id: string; type?: string }) => {
-          layers.set(layer.id, layer);
+        addLayer: vi.fn((layer: LayerSpecification) => {
+          mapMocks.layers.set(layer.id, layer);
         }),
         getSource: vi.fn((id: string) => mapMocks.sources.get(id)),
-        getLayer: vi.fn((id: string) => layers.get(id)),
+        getLayer: vi.fn((id: string) => mapMocks.layers.get(id)),
         getStyle: vi.fn(() => ({
           layers: [{ id: "road-label", type: "symbol" }],
         })),
@@ -91,7 +89,7 @@ vi.mock("maplibre-gl", () => {
         remove: vi.fn(),
       };
 
-      mapMocks.createMap(map);
+      mapMocks.createMap(map, options);
 
       return map;
     }
@@ -114,11 +112,12 @@ describe("MapLibreRouteMapClient", () => {
     document.documentElement.setAttribute("data-theme", "light");
     vi.clearAllMocks();
     mapMocks.sources.clear();
+    mapMocks.layers.clear();
     mapMocks.handlers.clear();
     mapMocks.zoom = 13;
   });
 
-  it("switches the activity map to Fiord and restores its route and camera", async () => {
+  it("uses the shared backgrounds and blue route across themes, preserving overlays and camera", async () => {
     const routePoints = [
       { elapsed_seconds: 0, latitude: 45, longitude: -85 },
       { elapsed_seconds: 60, latitude: 45.01, longitude: -85.01 },
@@ -126,8 +125,10 @@ describe("MapLibreRouteMapClient", () => {
     render(
       <MapLibreRouteMapClient
         routePoints={routePoints}
-        overlays={[{ id: "segment", points: routePoints, color: "#e11d48" }]}
-        defaultBasemap="route-light"
+        overlays={[
+          { id: "segment", points: routePoints, color: "#e11d48" },
+          { id: "route-highlight", points: routePoints },
+        ]}
         ariaLabel="Activity route map"
         emptyMessage="No route"
       />,
@@ -137,12 +138,20 @@ describe("MapLibreRouteMapClient", () => {
       expect(mapMocks.sources.has("activity-route")).toBe(true);
     });
     expect(mapMocks.sources.has("cycling-trails")).toBe(false);
+    expect(mapMocks.createMap).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ style: "/map-styles/route-light-v1.json" }),
+    );
+    expect(mapMocks.layers.get("activity-route-line")?.paint).toEqual(
+      expect.objectContaining({ "line-color": "#0060df" }),
+    );
 
     await act(async () => {
       document.documentElement.setAttribute("data-theme", "dark");
     });
     await act(async () => {
       mapMocks.sources.clear();
+      mapMocks.layers.clear();
       for (const handler of mapMocks.handlers.get("style.load") ?? []) {
         handler();
       }
@@ -156,7 +165,59 @@ describe("MapLibreRouteMapClient", () => {
       expect(mapMocks.sources.has("activity-route-endpoints")).toBe(true);
       expect(mapMocks.sources.has("cycling-trails")).toBe(false);
       expect(mapMocks.jumpTo).toHaveBeenCalled();
+      expect(mapMocks.layers.get("activity-route-line")?.paint).toEqual(
+        expect.objectContaining({ "line-color": "#0060df" }),
+      );
+      const overlays = mapMocks.sources.get("activity-route-overlays")?.setData
+        .mock.lastCall?.[0];
+      expect(overlays.features[0].properties.color).toBe("#e11d48");
+      expect(overlays.features[1].properties.color).toBe("#0060df");
     });
+  });
+
+  it("returns from an explicit basemap to the current theme without refitting the camera", async () => {
+    document.documentElement.setAttribute("data-theme", "dark");
+    const props = {
+      routePoints: [
+        { elapsed_seconds: 0, latitude: 45, longitude: -85 },
+        { elapsed_seconds: 60, latitude: 45.01, longitude: -85.01 },
+      ],
+      ariaLabel: "Segment race viewer map",
+      emptyMessage: "No route",
+    };
+    const { rerender } = render(
+      <MapLibreRouteMapClient {...props} selectedBasemap="default" />,
+    );
+    await waitFor(() => expect(mapMocks.fitBounds).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(mapMocks.setStyle).toHaveBeenLastCalledWith(
+        "/map-styles/fiord-v1.json",
+      ),
+    );
+
+    rerender(<MapLibreRouteMapClient {...props} selectedBasemap="street" />);
+    await waitFor(() =>
+      expect(mapMocks.setStyle).toHaveBeenLastCalledWith(
+        "https://tiles.openfreemap.org/styles/positron",
+      ),
+    );
+
+    rerender(<MapLibreRouteMapClient {...props} selectedBasemap="default" />);
+    await waitFor(() =>
+      expect(mapMocks.setStyle).toHaveBeenLastCalledWith(
+        "/map-styles/fiord-v1.json",
+      ),
+    );
+    await act(async () => {
+      mapMocks.sources.clear();
+      mapMocks.layers.clear();
+      mapMocks.handlers.get("style.load")?.forEach((handler) => handler());
+    });
+    expect(mapMocks.layers.get("activity-route-line")?.paint).toEqual(
+      expect.objectContaining({ "line-color": "#0060df" }),
+    );
+    expect(mapMocks.fitBounds).toHaveBeenCalledTimes(1);
+    expect(mapMocks.jumpTo).toHaveBeenCalled();
   });
 
   it("does not refit bounds when only playback markers change", async () => {
@@ -186,7 +247,7 @@ describe("MapLibreRouteMapClient", () => {
     await waitFor(() => {
       expect(mapMocks.fitBounds).toHaveBeenCalledTimes(1);
     });
-    expect(mapMocks.sources.has("cycling-trails")).toBe(true);
+    expect(mapMocks.sources.has("cycling-trails")).toBe(false);
 
     expect(mapMocks.fitBounds).toHaveBeenLastCalledWith(
       expect.any(Object),

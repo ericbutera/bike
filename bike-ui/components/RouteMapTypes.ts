@@ -1,7 +1,7 @@
 import { type ActivityRoutePoint } from "../lib/queries";
+import { type RouteMapBasemap } from "../lib/mapAppearance";
 
-export type RouteMapBasemap =
-  "topo" | "street" | "satellite" | "route-light" | "fiord";
+export type { RouteMapBasemap } from "../lib/mapAppearance";
 
 export type RouteMapFollowViewport = {
   point: ActivityRoutePoint;
@@ -13,7 +13,7 @@ export type RouteMapFollowViewportBehavior = "ease" | "jump";
 export type RouteOverlay = {
   id: string;
   points: ActivityRoutePoint[];
-  color: string;
+  color?: string;
   label?: string;
   weight?: number;
   onClick?: () => void;

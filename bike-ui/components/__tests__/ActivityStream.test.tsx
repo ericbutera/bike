@@ -179,7 +179,7 @@ describe("ActivityStream", () => {
     });
     expect(routeThumbnail).toHaveAttribute("src");
     expect(routeThumbnail.getAttribute("src")).toContain(
-      "/activity-previews/thumbnail/6?activityId=2",
+      "/activity-previews/thumbnail/7?activityId=2",
     );
     const latestEffortArticle = screen
       .getByRole("heading", { level: 3, name: "Latest Effort" })

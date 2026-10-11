@@ -174,6 +174,35 @@ describe("SegmentRaceViewer", () => {
     vi.clearAllMocks();
   });
 
+  it("starts with the shared map and preserves rider colors when changing basemaps", () => {
+    renderRaceViewer();
+
+    expect(screen.getByRole("button", { name: "Map" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    const initialMap = mocks.renderMapLibreRouteMap.mock.lastCall?.[0];
+    expect(initialMap.selectedBasemap).toBe("default");
+    const markerColors = initialMap.movingMarkers.map(
+      (marker: { color: string }) => marker.color,
+    );
+    expect(new Set(markerColors).size).toBe(3);
+
+    fireEvent.click(screen.getByRole("button", { name: "Street" }));
+    expect(
+      mocks.renderMapLibreRouteMap.mock.lastCall?.[0].selectedBasemap,
+    ).toBe("street");
+
+    fireEvent.click(screen.getByRole("button", { name: "Map" }));
+    const restoredMap = mocks.renderMapLibreRouteMap.mock.lastCall?.[0];
+    expect(restoredMap.selectedBasemap).toBe("default");
+    expect(
+      restoredMap.movingMarkers.map(
+        (marker: { color: string }) => marker.color,
+      ),
+    ).toEqual(markerColors);
+  });
+
   it("exposes ride date and attempt number on each effort card", () => {
     renderRaceViewer();
 

@@ -5,6 +5,7 @@ import {
   ROUTE_PREVIEW_STYLE_VERSION,
 } from "../../lib/routePreview";
 import { getServerConfig } from "../../lib/config";
+import { DEFAULT_ROUTE_COLOR } from "../../lib/mapAppearance";
 import { syntheticRequestHeaders } from "../../lib/serverApi";
 import { headersWithTraceContext } from "../../lib/trace-context";
 
@@ -106,7 +107,7 @@ function buildDirectionArrowMarkup(rawGuidePoints: string): string {
           180) /
         Math.PI;
 
-      return `<path d="M -7.8 -5.1 L 7.8 0 L -7.8 5.1 L -3.0 0 Z" fill="#e8fffb" stroke="#0b5a53" stroke-width="1.1" stroke-linejoin="round" transform="translate(${point.x.toFixed(1)} ${point.y.toFixed(1)}) rotate(${angle.toFixed(1)})" />`;
+      return `<path d="M -7.8 -5.1 L 7.8 0 L -7.8 5.1 L -3.0 0 Z" fill="#ffffff" stroke="${DEFAULT_ROUTE_COLOR}" stroke-width="1.1" stroke-linejoin="round" transform="translate(${point.x.toFixed(1)} ${point.y.toFixed(1)}) rotate(${angle.toFixed(1)})" />`;
     })
     .join("");
 }
@@ -150,7 +151,7 @@ function buildPreviewSvg(
   const routeMarkup = geometry
     ? `
       <path d="${geometry.pathData}" fill="none" stroke="#0f2631" stroke-width="${routeCasingWidth}" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.78" />
-      <path d="${geometry.pathData}" fill="none" stroke="#16b8a5" stroke-width="${routeCoreWidth}" stroke-linecap="round" stroke-linejoin="round" />
+      <path d="${geometry.pathData}" fill="none" stroke="${DEFAULT_ROUTE_COLOR}" stroke-width="${routeCoreWidth}" stroke-linecap="round" stroke-linejoin="round" />
       ${directionArrows}
       <circle cx="${geometry.startPoint.x.toFixed(1)}" cy="${geometry.startPoint.y.toFixed(1)}" r="${startRadius}" fill="#0f172a" stroke="#f8fafc" stroke-width="${startStrokeWidth}" />
       <circle cx="${geometry.endPoint.x.toFixed(1)}" cy="${geometry.endPoint.y.toFixed(1)}" r="${endRadius}" fill="#f8fafc" stroke="#0f172a" stroke-width="${endStrokeWidth}" />

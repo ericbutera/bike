@@ -50,6 +50,18 @@ Keep private activity data out of committed reports and fixtures.
   data, not a rider login or provider synchronization. Pulumi emitted transient
   rollout and successful migration-container warnings; runtime logs were clean.
 
+- **MAPS15 — Implemented locally:** Apply one consistent map look across Bike.
+  The [shared appearance contract](specs/maps.md#shared-map-appearance) requires
+  the activity-preview/heatmap backgrounds on every map and blue `#0060df`
+  overlay lines by default in both themes. Segment/effort colors and explicit
+  heatmap palette choices are permitted. Activity, segment, builder, and race
+  maps now default to shared theme styles; heatmaps reuse the same style selector.
+  Race controls offer Map to restore the shared background. Unspecified overlays
+  and SVG fallback routes use blue; SVG style version 7 refreshes cached previews.
+  102 focused tests, eight real-MapLibre browser checks with synthetic API/basemap
+  fixtures, UI lint/type/format hooks, and shared-asset checks pass in Docker.
+  Live provider appearance, full CI, and deployment remain pending.
+
 **WORK01 — Release verification:** Deliver received-to-available pipeline visibility using the
 existing worker. Follow the [visibility plan](plans/pipeline-visibility.md):
 connect all processors and gateway work with durable run/attempt lineage,

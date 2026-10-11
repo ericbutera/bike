@@ -51,6 +51,10 @@ activities, not visits along a path.
 
 ## Counting and appearance
 
+Follow the [shared map appearance contract](maps.md#shared-map-appearance):
+Route light/Fiord backgrounds match all other Bike maps, blue `#0060df` is the
+default in both themes, and a rider's explicit palette selection is permitted.
+
 One **distinct stored activity** counts once at a location. Ten laps in one
 activity count once; ten separate activities count ten times. Direction, GPS
 sample density, and import retries do not increase heat. Source deduplication
