@@ -1,11 +1,9 @@
 //! Bounded diagnostics over the shared durable queue. Domain source data is never copied here.
-mod anomalies;
 mod graph;
 mod health;
 mod statistics;
 #[cfg(test)]
 mod statistics_tests;
-pub use anomalies::completed;
 pub use graph::{GraphCursor, PipelineGraph, PipelinePage};
 pub use health::sample;
 pub use statistics::{Distribution, ProcessorSummary};

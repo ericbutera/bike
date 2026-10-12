@@ -121,101 +121,6 @@ async fn percentiles_cover_all_attempts_and_empty_registered_processors_stay_unk
         .await
         .unwrap();
 }
-async fn measured_sample(
-    db: &DatabaseConnection,
-    started: chrono::DateTime<chrono::Utc>,
-    seconds: i64,
-    version: &str,
-) -> background_tasks::Model {
-    use bike_core::background_jobs::entities::work_units;
-    use sea_orm::{ActiveModelTrait, Set};
-    let task = completed_sample(
-        db,
-        started,
-        seconds,
-        version,
-        "fitness:incremental:read2:compute2",
-    )
-    .await;
-    work_units::ActiveModel {
-        task_id: Set(task.id),
-        attempt: Set(task.attempts),
-        kind: Set("fitness".into()),
-        work_key: Set(format!("user:{}", task.id)),
-        revision: Set(task.id.to_string()),
-        processing_version: Set(version.into()),
-        mode: Set("incremental".into()),
-        reason: Set("source_change".into()),
-        started_at: Set(started),
-        finished_at: Set(started + Duration::seconds(seconds)),
-        outcome: Set("published".into()),
-        counts: Set(Some(
-            json!({"inputs_read":20,"units_computed":10,"rows_written":10,"outputs_published":1}),
-        )),
-        ..Default::default()
-    }
-    .insert(db)
-    .await
-    .unwrap();
-    task
-}
-#[tokio::test]
-#[ignore = "Set BIKE_WORKER_TEST_DATABASE_URL to a disposable PostgreSQL database"]
-async fn relative_anomalies_need_thirty_prior_comparable_samples_and_exclude_future_versions() {
-    use bike_core::background_jobs::{
-        diagnostics, entities::task_anomalies, worker::WorkerMetrics,
-    };
-    use sea_orm::{ColumnTrait, QueryFilter};
-    let (admin, db, schema) = migrated_database().await;
-    let start = chrono::Utc::now() - Duration::hours(2);
-    let metrics = WorkerMetrics::new("baseline_fixture");
-    for index in 0..29 {
-        measured_sample(&db, start + Duration::minutes(index), 10, "1").await;
-    }
-    let cold = measured_sample(&db, start + Duration::minutes(40), 100, "1").await;
-    diagnostics::completed(&db, &metrics, &cold).await.unwrap();
-    assert_eq!(
-        task_anomalies::Entity::find()
-            .filter(task_anomalies::Column::Reason.eq("duration_outlier"))
-            .count(&db)
-            .await
-            .unwrap(),
-        0
-    );
-    for index in 0..5 {
-        measured_sample(&db, start + Duration::minutes(45 + index), 1000, "9").await;
-        measured_sample(
-            &db,
-            chrono::Utc::now() + Duration::minutes(index),
-            1000,
-            "1",
-        )
-        .await;
-    }
-    let candidate = measured_sample(&db, start + Duration::minutes(60), 100, "1").await;
-    diagnostics::completed(&db, &metrics, &candidate)
-        .await
-        .unwrap();
-    diagnostics::completed(&db, &metrics, &candidate)
-        .await
-        .unwrap();
-    let flags = task_anomalies::Entity::find()
-        .filter(task_anomalies::Column::TaskId.eq(candidate.id))
-        .filter(task_anomalies::Column::Reason.eq("duration_outlier"))
-        .all(&db)
-        .await
-        .unwrap();
-    assert_eq!(flags.len(), 1);
-    assert_eq!(flags[0].baseline_samples, 30);
-    assert_eq!(flags[0].observed, 100.0);
-    assert_eq!(flags[0].expected, 30.0);
-    assert_eq!(flags[0].policy_version, 1);
-    admin
-        .execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
-        .await
-        .unwrap();
-}
-
 async fn isolated_database() -> (DatabaseConnection, DatabaseConnection, String) {
     let url = std::env::var("BIKE_WORKER_TEST_DATABASE_URL").expect("disposable PostgreSQL URL");
     let admin = Database::connect(&url).await.unwrap();
@@ -280,7 +185,6 @@ async fn migration_and_concurrent_claims_preserve_receipt_retry_history_and_fore
     )
     .await
     .unwrap();
-    assert_compact_candidates(&db).await;
     let (left, right) = tokio::join!(pending.claim(&db), pending.claim(&db));
     let claims: Vec<_> = [left.unwrap(), right.unwrap()]
         .into_iter()
@@ -332,12 +236,4 @@ async fn migration_and_concurrent_claims_preserve_receipt_retry_history_and_fore
         .execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
         .await
         .unwrap();
-}
-
-async fn assert_compact_candidates(db: &DatabaseConnection) {
-    let candidates = background_tasks::Model::diagnostic_candidates(db)
-        .await
-        .unwrap();
-    assert_eq!(candidates.len(), 1);
-    assert_eq!(candidates[0].payload, json!({}));
 }

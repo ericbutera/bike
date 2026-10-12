@@ -1,4 +1,4 @@
-use crate::background_jobs::{execution::WorkCounts, worker::catalog::ProcessorDefinition};
+use crate::background_jobs::execution::WorkCounts;
 use prometheus::{
     Counter, HistogramOpts, HistogramVec, IntCounterVec, IntGauge, IntGaugeVec, Opts, Registry,
 };
@@ -63,9 +63,6 @@ struct HealthMetrics {
     registered: IntGaugeVec,
     states: IntGaugeVec,
     ages: IntGaugeVec,
-    budgets: IntGaugeVec,
-    anomaly_transitions: IntCounterVec,
-    active_anomalies: IntGaugeVec,
     outputs: IntGaugeVec,
     unready: IntGaugeVec,
 }
@@ -89,24 +86,6 @@ impl HealthMetrics {
                 "task_age_seconds",
                 "Oldest eligible runtime heartbeat or meaningful progress age",
                 &["type", "signal"],
-            ),
-            budgets: gauge(
-                registry,
-                "processor_budget_seconds",
-                "Configured initial processor budgets",
-                &["type", "signal"],
-            ),
-            anomaly_transitions: counter(
-                registry,
-                "task_anomalies_total",
-                "New anomaly transitions",
-                &["type", "reason"],
-            ),
-            active_anomalies: gauge(
-                registry,
-                "active_anomalies",
-                "Active durable anomaly records",
-                &["type", "reason"],
             ),
             outputs: gauge(
                 registry,
@@ -205,21 +184,11 @@ impl DiagnosticMetrics {
                 .with_label_values(&[task_type])
                 .inc_by(0);
             self.timings.logical.with_label_values(&[task_type]);
-            let definition = ProcessorDefinition::for_type(task_type);
-            for (signal, budget) in [
-                ("eligible", definition.queue_budget_seconds),
-                ("runtime", definition.runtime_budget_seconds),
-                ("heartbeat", 120),
-                ("progress", definition.progress_budget_seconds),
-            ] {
+            for signal in ["eligible", "runtime", "heartbeat", "progress"] {
                 self.health
                     .ages
                     .with_label_values(&[task_type, signal])
                     .set(0);
-                self.health
-                    .budgets
-                    .with_label_values(&[task_type, signal])
-                    .set(budget);
             }
             for state in [
                 "queued",
@@ -309,20 +278,6 @@ impl super::WorkerMetrics {
             .ages
             .with_label_values(&[task_type, signal])
             .set(seconds);
-    }
-    pub fn record_anomaly(&self, task_type: &str, reason: &str) {
-        self.diagnostics
-            .health
-            .anomaly_transitions
-            .with_label_values(&[task_type, reason])
-            .inc();
-    }
-    pub fn set_anomalies(&self, task_type: &str, reason: &str, count: i64) {
-        self.diagnostics
-            .health
-            .active_anomalies
-            .with_label_values(&[task_type, reason])
-            .set(count);
     }
     pub fn set_pending_outputs(&self, kind: &str, count: i64) {
         self.diagnostics

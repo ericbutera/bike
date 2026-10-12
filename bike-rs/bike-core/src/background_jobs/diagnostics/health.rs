@@ -15,7 +15,6 @@ pub async fn sample(
 ) -> Result<(), DbErr> {
     sample_snapshots(db, metrics, task_types).await?;
     super::super::batches::reconcile(db).await?;
-    super::anomalies::evaluate(db, metrics).await?;
     super::reconcile_available(db, metrics).await?;
     for kind in [
         "activity",

@@ -278,7 +278,7 @@ impl TaskWorker {
             record_superseded_execution();
             return Ok(());
         };
-        self.record_task_outcome(&task.task_type, &updated);
+        self.record_task_outcome(&updated);
         self.record_diagnostic_result(&updated, duration).await;
         Ok(())
     }
@@ -302,11 +302,6 @@ impl TaskWorker {
                 &task.task_type,
                 (chrono::Utc::now() - task.created_at).num_milliseconds() as f64 / 1000.0,
             );
-        }
-        if let Err(error) =
-            crate::background_jobs::diagnostics::completed(&self.db, metrics, task).await
-        {
-            error!(%error,"Failed to evaluate completed attempt diagnostics");
         }
     }
 
@@ -335,24 +330,34 @@ impl TaskWorker {
         }
     }
 
-    fn record_task_outcome(&self, task_type: &str, updated: &background_tasks::Model) {
+    fn record_task_outcome(&self, updated: &background_tasks::Model) {
         tracing::Span::current().record("task.status", updated.status.as_str());
         if updated.status == "completed" {
+            if let Some(metrics) = &self.metrics {
+                metrics.record_completed(&updated.task_type);
+            }
             info!("Completed background task");
         } else {
-            warn!(error = updated.error, "Background task failed");
-        }
-        self.record_outcome_metric(task_type, &updated.status);
-    }
-
-    fn record_outcome_metric(&self, task_type: &str, status: &str) {
-        let Some(metrics) = &self.metrics else {
-            return;
-        };
-        if status == "completed" {
-            metrics.record_completed(task_type);
-        } else {
-            metrics.record_failed(task_type);
+            if let Some(metrics) = &self.metrics {
+                metrics.record_failed(&updated.task_type);
+            }
+            let origin = PipelineContext::current();
+            let trace = crate::observability::current_trace_ids();
+            error!(
+                event = "worker_execution_error",
+                task_id = updated.id,
+                task_type = updated.task_type,
+                attempt = updated.attempts,
+                status = updated.status,
+                error = updated.error,
+                request_id = origin
+                    .as_ref()
+                    .and_then(|context| context.request_id.as_deref()),
+                trace_id = trace.as_ref().map(|(trace_id, _)| trace_id.as_str()),
+                span_id = trace.as_ref().map(|(_, span_id)| span_id.as_str()),
+                pipeline_run_id = origin.as_ref().map(|context| context.run_id.as_str()),
+                "Worker execution failed"
+            );
         }
     }
 

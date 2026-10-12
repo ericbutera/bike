@@ -53,6 +53,56 @@ async fn startup_recovery_enqueues_a_distinct_maintenance_origin() {
     assert!(origin.pipeline_started_at <= task.created_at);
 }
 
+#[tokio::test]
+async fn execution_errors_count_retries_and_terminal_failure_once() {
+    let db = database(true).await;
+    let metrics = Arc::new(WorkerMetrics::new("worker_error_test"));
+    let worker = TaskWorker::new(db.clone()).with_metrics(metrics.clone());
+    let first = enqueue(&db).await.claim(&db).await.unwrap().unwrap();
+    worker
+        .record_result(&first, Err("retry error".into()), 0.1)
+        .await
+        .unwrap();
+    background_tasks::Entity::update_many()
+        .col_expr(
+            background_tasks::Column::ScheduledFor,
+            sea_orm::sea_query::Expr::value(None::<chrono::DateTime<chrono::Utc>>),
+        )
+        .filter(background_tasks::Column::Id.eq(first.id))
+        .exec(&db)
+        .await
+        .unwrap();
+    let retry = background_tasks::Entity::find_by_id(first.id)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(retry.status, "pending");
+    let second = retry.claim(&db).await.unwrap().unwrap();
+    worker
+        .record_result(&second, Err("terminal error".into()), 0.1)
+        .await
+        .unwrap();
+    // A late duplicate result must not count the same execution again.
+    worker
+        .record_result(&second, Err("duplicate".into()), 0.1)
+        .await
+        .unwrap();
+    let task = background_tasks::Entity::find_by_id(first.id)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(task.status, "failed");
+    assert_eq!(task.error.as_deref(), Some("terminal error"));
+    let body = axum::body::to_bytes(metrics.render_response().into_body(), 1024 * 1024)
+        .await
+        .unwrap();
+    let output = String::from_utf8(body.to_vec()).unwrap();
+    assert!(output
+        .contains("worker_error_test_tasks_failed_total{type=\"rebuild_fitness_freshness\"} 2"));
+}
+
 #[async_trait]
 impl TaskProcessor for HandoffProcessor {
     fn task_type(&self) -> &str {
@@ -219,6 +269,27 @@ fn assert_retry_spans(exporter: &InMemorySpanExporter) {
             .count(),
         2
     );
+    let errors = spans
+        .iter()
+        .flat_map(|span| span.events.iter())
+        .filter(|event| event.name == "Worker execution failed")
+        .collect::<Vec<_>>();
+    assert_eq!(errors.len(), 1);
+    for (key, value) in [
+        ("event", "worker_execution_error"),
+        ("task_type", "rebuild_fitness_freshness"),
+        ("status", "pending"),
+        ("error", "fixture retry"),
+        ("request_id", "request-handoff"),
+        ("trace_id", "01010101010101010101010101010101"),
+    ] {
+        assert!(
+            errors[0].attributes.iter().any(|attribute|
+                attribute.key.as_str() == key && attribute.value.as_str() == value
+            ),
+            "execution error log must include {key}"
+        );
+    }
 }
 
 async fn assert_attempt_metrics(metrics: &WorkerMetrics) {

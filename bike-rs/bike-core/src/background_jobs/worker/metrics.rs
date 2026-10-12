@@ -41,7 +41,10 @@ impl WorkerMetrics {
             .expect("failed to register tasks_completed metric");
 
         let tasks_failed = IntCounterVec::new(
-            Opts::new("tasks_failed_total", "Number of failed background tasks"),
+            Opts::new(
+                "tasks_failed_total",
+                "Number of failed execution attempts, including retries",
+            ),
             &["type"],
         )
         .expect("failed to create tasks_failed metric");
