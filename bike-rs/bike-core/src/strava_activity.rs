@@ -6,9 +6,9 @@ use crate::activity_import_pipeline::{
 };
 use crate::auth::entities::users;
 use crate::entities::{activities, activity_import_artifacts, activity_imports};
-use crate::jobs::JobQueue as TaskQueue;
 use crate::strava::build_activity_upload;
 use crate::strava_provider_payload::{StravaActivityStreams, StravaActivitySummary};
+use crate::strava_workflow::rebuild::Rebuild;
 use crate::training_profile::load_training_profile;
 use crate::workflow_error::WorkflowError as AppError;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait};
@@ -25,11 +25,10 @@ pub struct ActivityPayload {
 
 pub(crate) async fn upsert_activity(
     db: &DatabaseConnection,
-    tasks: &TaskQueue,
     uploads_dir: &str,
     user_id: i32,
     payload: &ActivityPayload,
-) -> Result<(), AppError> {
+) -> Result<Rebuild, AppError> {
     let user = users::Entity::find_by_id(user_id)
         .one(db)
         .await?
@@ -43,7 +42,7 @@ pub(crate) async fn upsert_activity(
         .one(db)
         .await?;
     if let Some(activity) = existing {
-        update_existing_activity(db, tasks, uploads_dir, activity, import_payload, &profile).await
+        update_existing_activity(db, uploads_dir, activity, import_payload, &profile).await
     } else {
         let result = persist_activity_upload_with_artifacts(
             db,
@@ -62,28 +61,23 @@ pub(crate) async fn upsert_activity(
         )
         .await?;
         if let PersistActivityUploadOutcome::Imported(imported) = result {
-            crate::activity_import_lifecycle::complete_activity_imports(
-                db,
-                tasks,
-                user_id,
-                &[imported.import.id],
+            return Ok(Rebuild::import(
+                imported.import.id,
                 imported.affected_segment_ids,
-                Some(imported.fitness_dirty_from_day),
-            )
-            .await?;
+                imported.fitness_dirty_from_day,
+            ));
         }
-        Ok(())
+        Ok(Rebuild::default())
     }
 }
 
 async fn update_existing_activity(
     db: &DatabaseConnection,
-    tasks: &TaskQueue,
     uploads_dir: &str,
     activity: activities::Model,
     import_payload: ActivityUploadPayload,
     profile: &crate::training_profile::TrainingProfile,
-) -> Result<(), AppError> {
+) -> Result<Rebuild, AppError> {
     let import_id = activity
         .activity_import_id
         .ok_or_else(|| AppError::internal("Strava activity has no import record"))?;
@@ -102,16 +96,11 @@ async fn update_existing_activity(
         Some(profile),
     )
     .await?;
-    crate::activity_import_lifecycle::complete_activity_imports(
-        db,
-        tasks,
-        activity.user_id,
-        &[import_id],
+    Ok(Rebuild::import(
+        import_id,
         result.affected_segment_ids,
-        Some(prior_day.min(result.fitness_dirty_from_day)),
-    )
-    .await?;
-    Ok(())
+        prior_day.min(result.fitness_dirty_from_day),
+    ))
 }
 
 async fn replace_stored_artifacts(

@@ -10,10 +10,4 @@ pub enum TaskError {
 
     #[error("Task not found")]
     NotFound,
-
-    #[error("Task processing error: {0}")]
-    Processing(String),
-
-    #[error("Max attempts reached")]
-    MaxAttemptsReached,
 }

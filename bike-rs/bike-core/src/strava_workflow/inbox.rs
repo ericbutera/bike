@@ -56,6 +56,7 @@ pub async fn accept_webhook(
         event_time: event.event_time,
         parent: None,
         activity: None,
+        listing_page: None,
         raw: Some(raw),
         after: None,
     };
@@ -113,8 +114,9 @@ pub async fn queue_sync(
         event_time: accepted_at.timestamp(),
         parent: None,
         activity: None,
+        listing_page: None,
         raw: None,
-        after,
+        after: Some(after),
     };
     accept(
         &txn,
@@ -155,6 +157,7 @@ pub async fn queue_disconnect(
         event_time: chrono::Utc::now().timestamp(),
         parent: None,
         activity: None,
+        listing_page: None,
         raw: None,
         after: None,
     };
@@ -316,13 +319,14 @@ fn collection_after(
     cursor: Option<chrono::DateTime<chrono::Utc>>,
     backfill: bool,
     now: chrono::DateTime<chrono::Utc>,
-) -> Option<i64> {
+) -> i64 {
+    let initial = now - chrono::Duration::days(super::INITIAL_BACKFILL_DAYS);
     if backfill {
-        return None;
+        initial
+    } else {
+        cursor.unwrap_or(initial)
     }
-    Some(cursor.map(|at| at.timestamp() - 86_400).unwrap_or_else(|| {
-        (now - chrono::Duration::days(super::INITIAL_BACKFILL_DAYS)).timestamp()
-    }))
+    .timestamp()
 }
 
 fn webhook_action(event: &StravaWebhookEvent) -> Option<&'static str> {
@@ -350,16 +354,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn onboarding_is_fifteen_days_and_full_history_requires_explicit_backfill() {
+    fn sync_uses_its_offset_and_backfill_always_uses_fifteen_days() {
         let now = chrono::DateTime::from_timestamp(1_800_000_000, 0).unwrap();
         assert_eq!(
             collection_after(None, false, now),
-            Some((now - chrono::Duration::days(15)).timestamp())
+            (now - chrono::Duration::days(15)).timestamp()
         );
-        assert_eq!(collection_after(None, true, now), None);
+        assert_eq!(
+            collection_after(Some(now), true, now),
+            (now - chrono::Duration::days(15)).timestamp()
+        );
         assert_eq!(
             collection_after(Some(now - chrono::Duration::days(2)), false, now),
-            Some((now - chrono::Duration::days(3)).timestamp())
+            (now - chrono::Duration::days(2)).timestamp()
         );
     }
 

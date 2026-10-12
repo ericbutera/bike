@@ -61,6 +61,13 @@ impl ObjectStore {
         Ok(bytes)
     }
 
+    pub async fn read_json<T: serde::de::DeserializeOwned>(
+        &self,
+        object: &ObjectRef,
+    ) -> Result<T, WorkflowError> {
+        serde_json::from_slice(&self.read(object).await?).map_err(json_error)
+    }
+
     pub async fn write(&self, prefix: &str, bytes: &[u8]) -> Result<ObjectRef, WorkflowError> {
         let hash = checksum(bytes);
         let relative = format!("{prefix}/{hash}.json");

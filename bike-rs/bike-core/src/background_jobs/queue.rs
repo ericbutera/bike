@@ -4,7 +4,7 @@ use chrono::Utc;
 use std::sync::Arc;
 use tracing::{debug, Instrument};
 
-/// TaskQueue provides a high-level interface for enqueuing and managing background tasks
+/// Enqueues background tasks with trace and pipeline context.
 pub struct TaskQueue<S: TaskStorage> {
     storage: Arc<S>,
 }
@@ -61,31 +61,6 @@ impl<S: TaskStorage> TaskQueue<S> {
         }
         .instrument(span.clone())
         .await
-    }
-
-    /// Find pending tasks ready to be processed
-    pub async fn find_pending(&self, limit: usize) -> Result<Vec<TaskRecord>, TaskError> {
-        self.storage.find_pending(limit).await
-    }
-
-    /// Mark task as processing
-    pub async fn mark_processing(&self, id: &str) -> Result<TaskRecord, TaskError> {
-        self.storage.mark_processing(id).await
-    }
-
-    /// Mark task as completed
-    pub async fn mark_completed(&self, id: &str) -> Result<TaskRecord, TaskError> {
-        self.storage.mark_completed(id).await
-    }
-
-    /// Mark task as failed
-    pub async fn mark_failed(&self, id: &str, error: String) -> Result<TaskRecord, TaskError> {
-        self.storage.mark_failed(id, error).await
-    }
-
-    /// Get task by ID
-    pub async fn get_task(&self, id: &str) -> Result<Option<TaskRecord>, TaskError> {
-        self.storage.get_task(id).await
     }
 }
 

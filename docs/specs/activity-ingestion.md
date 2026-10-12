@@ -73,11 +73,14 @@ commands. [Supported activities](supported-activities.md) owns sport support.
 - Bike Rust owns Strava credentials, discovery, quota and fetching through the
   generated SDK. Native action DAGs retain raw responses and summary/streams
   transforms, then invoke the same activity import pipeline. Incremental sync
-  uses a cursor; full backfill is explicit. Replay uses retained local sources.
+  uses the saved offset; backfill pulls the last 15 days. A final rebuild stage
+  schedules affected derived work. Replay uses retained local sources.
 
 ## Normalization
 
-Every full activity-processing path uses the same graph and stage behavior:
+- Every full activity-processing path uses the same graph and stage behavior.
+- Reprocessing runs the complete import graph; bulk reprocessing uses bounded
+  worker pages.
 
 | Stage                      | Result                                        | Summary facts                                         |
 | -------------------------- | --------------------------------------------- | ----------------------------------------------------- |
@@ -95,9 +98,11 @@ from a node's position. [Segment processing](segment-processing.md) owns
 matching and effort rules.
 
 The [Bike-owned Strava integration](strava-integration.md)
-composes this graph into named insert/update/upsert/delete/sync/backfill workflows
-and adds immutable raw/transform objects with source-first acquisition. Existing stage and replay
-contracts remain the reusable foundation.
+composes this graph into named insert/update/upsert/delete/sync/backfill workflows.
+Its activity and streams stages acquire immutable raw objects; apply runs this
+existing import graph and a final rebuild stage durably queues derived work. Source checkpoints and
+collection children reference stored objects rather than copying raw payloads.
+Existing stage and replay contracts remain the reusable foundation.
 
 ### Attempts and stage summaries
 

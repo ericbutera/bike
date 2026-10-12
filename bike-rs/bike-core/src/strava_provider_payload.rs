@@ -351,17 +351,6 @@ pub fn strava_activity_sport_kind(activity: &StravaActivitySummary) -> StravaSpo
     }
 }
 
-pub fn strava_activity_sport_label(activity: &StravaActivitySummary) -> String {
-    activity
-        .sport_type
-        .as_deref()
-        .or(activity.legacy_type.as_deref())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("Activity")
-        .to_string()
-}
-
 pub fn recording_context(
     activity: &StravaActivitySummary,
 ) -> crate::activity_recording::RecordingContext {

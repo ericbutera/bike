@@ -962,7 +962,6 @@ async fn every_ingestion_node_keeps_virtual_and_real_heatmap_behavior() {
             source_correlation_id: None,
             deduplication: ActivityUploadDeduplication::Disabled,
             training_profile: Some(&profile),
-            cache_refresh: ReprocessCacheRefresh::Immediate,
         };
         let attempt = begin_processing_attempt(&run).await.unwrap();
         let mut state = load_activity_processing_state(&run, attempt).await.unwrap();

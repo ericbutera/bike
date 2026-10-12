@@ -26,7 +26,8 @@
 - Verify actual deployed image identity, migration completion and readiness.
 - Confirm accepted webhooks have source objects, correlated workflows and jobs.
 - Initial signup/connection sync requests only the previous 15 days; verify the
-  accepted cutoff on every listing page. Full-history backfill is explicit.
+  accepted cutoff on every listing page. Backfill uses the same 15-day window;
+  incremental sync uses the saved offset.
 - Sync and backfill expose stage outcomes and saved object paths.
 - Find an activity/workflow ID in the Strava dashboard's Loki logs and Tempo
   traces; confirm trace-to-log navigation and selected-range aggregate counts.

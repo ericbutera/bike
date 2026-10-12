@@ -2,12 +2,10 @@ use crate::background_jobs::{DurableStorage, TaskQueue};
 use crate::jobs::email::{
     enqueue_email_notification, EmailNotificationTask, EMAIL_NOTIFICATION_TASK_TYPE,
 };
-use crate::observability::{self, TraceContextCarrier};
+use crate::observability::TraceContextCarrier;
 use chrono::Utc;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
-use tracing::field;
-use tracing::Instrument;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueuedJobReference {
@@ -154,19 +152,6 @@ impl JobQueue {
             return Ok(());
         }
         self.queue.enqueue(task_type, job).await.map(|_| ())
-    }
-
-    async fn enqueue_job_with_options(
-        &self,
-        job: Job,
-        scheduled_for: Option<chrono::DateTime<Utc>>,
-        max_attempts: i32,
-    ) -> Result<(), crate::background_jobs::TaskError> {
-        let task_type = job.task_type().to_string();
-        self.queue
-            .enqueue_with_options(task_type, job, scheduled_for, max_attempts)
-            .await
-            .map(|_| ())
     }
 
     pub async fn email_notification(
@@ -355,58 +340,6 @@ impl JobQueue {
             .await
             .map(|_| ())
             .map_err(|error| error.to_string())
-    }
-
-    pub async fn sync_strava_connection(&self, connection_id: i32) -> Result<(), String> {
-        self.sync_strava_connection_with_options(connection_id, None, 3)
-            .await
-    }
-
-    pub async fn sync_strava_connection_with_options(
-        &self,
-        connection_id: i32,
-        scheduled_for: Option<chrono::DateTime<Utc>>,
-        max_attempts: i32,
-    ) -> Result<(), String> {
-        let span = tracing::info_span!(
-            "task.enqueue",
-            task_type = "strava_sync",
-            connection_id,
-            scheduled_for = scheduled_for.map(|value| value.to_rfc3339()),
-            trace_id = field::Empty,
-            span_id = field::Empty,
-        );
-
-        async move {
-            observability::record_current_trace_context();
-            let job = Job::StravaSync(StravaSyncTask {
-                connection_id,
-                trace_context: observability::inject_current_trace_context(),
-            });
-            let task_type = job.task_type().to_string();
-
-            self.queue
-                .enqueue_with_options(task_type, job, scheduled_for, max_attempts)
-                .await
-                .map(|_| ())
-                .map_err(|error| error.to_string())
-        }
-        .instrument(span)
-        .await
-    }
-
-    pub async fn enqueue(&self, job: Job) -> Result<(), crate::background_jobs::TaskError> {
-        self.enqueue_with_options(job, None, 3).await
-    }
-
-    pub async fn enqueue_with_options(
-        &self,
-        job: Job,
-        scheduled_for: Option<chrono::DateTime<Utc>>,
-        max_attempts: i32,
-    ) -> Result<(), crate::background_jobs::TaskError> {
-        self.enqueue_job_with_options(job, scheduled_for, max_attempts)
-            .await
     }
 }
 

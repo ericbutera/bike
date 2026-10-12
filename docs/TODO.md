@@ -48,6 +48,13 @@ Keep private activity data out of committed reports and fixtures.
   fixture checks. Companion dashboard and datasource updates are prepared.
   Merge, deployment and live vendor/Grafana verification remain pending.
 
+  [PR #41](https://github.com/ericbutera/bike/pull/41) simplifies the provider
+  workflows to explicit stage chains: sync from the saved offset, backfill the
+  last 15 days, webhook create/update/delete, and one final rebuild. It reuses
+  retained raw objects and removes retired direct-sync/webhook code, unused
+  queue-management wrappers and inline reprocessing. Focused native PostgreSQL
+  checks and Rust lint pass; CI and deployment remain pending.
+
 - **MAP01 — Deployed:** Rust owns the activity-map endpoint, authorization,
   cache, and revalidation; Go runs the stateless Chromium snapshot worker.
   The [maps specification](specs/maps.md) defines behavior and acceptance;

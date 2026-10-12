@@ -19,6 +19,28 @@ impl Run<'_> {
         T: Serialize + DeserializeOwned + Send + Sync + 'a,
         F: std::future::Future<Output = Result<T, WorkflowError>> + Send + 'a,
     {
+        Box::pin(self.run_stage(
+            stage,
+            input,
+            Box::pin(async move {
+                let output = future.await?;
+                self.store
+                    .transform(&self.stage_prefix(stage, input), &output)
+                    .await
+            }),
+        ))
+    }
+
+    pub(super) fn source_stage<'a, T, F>(
+        &'a self,
+        stage: &'a str,
+        input: &'a str,
+        future: F,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<T, WorkflowError>> + Send + 'a>>
+    where
+        T: Serialize + DeserializeOwned + Send + Sync + 'a,
+        F: std::future::Future<Output = Result<ObjectRef, WorkflowError>> + Send + 'a,
+    {
         Box::pin(self.run_stage(stage, input, Box::pin(future)))
     }
 
@@ -27,31 +49,36 @@ impl Run<'_> {
         stage: &str,
         input: &str,
         future: std::pin::Pin<
-            Box<dyn std::future::Future<Output = Result<T, WorkflowError>> + Send + '_>,
+            Box<dyn std::future::Future<Output = Result<ObjectRef, WorkflowError>> + Send + '_>,
         >,
     ) -> Result<T, WorkflowError>
     where
         T: Serialize + DeserializeOwned + Send + Sync,
     {
         let key = format!("{stage}:v1:{input}");
-        if let Some(output) = self.saved_stage(&key).await? {
-            return Ok(output);
-        }
-        if let Some(output) = self.recover_stage(stage, input, &key).await? {
-            return Ok(output);
-        }
         let span = tracing::info_span!("strava.stage", stage, input_hash = input, correlation_id = %self.row.correlation_id(), workflow_id = %self.row.id, parent_workflow_id = self.source.parent.as_deref(), strava_activity_id = self.row.activity_id, athlete_id = self.row.athlete_id, trace_id = tracing::field::Empty, span_id = tracing::field::Empty);
         crate::observability::record_span_trace_context(&span);
-        let output = match future.instrument(span).await {
-            Ok(output) => output,
+        let result = async {
+            if let Some(output) = self.saved_stage(&key).await? {
+                return Ok(output);
+            }
+            if let Some(output) = self.recover_stage(stage, input, &key).await? {
+                return Ok(output);
+            }
+            let object = future.await?;
+            let output: T = self.store.read_json(&object).await?;
+            self.store.save_reference(&self.stage_prefix(stage, input), &object).await?;
+            self.complete_stage(stage, input, &key, &object, &output).await?;
+            tracing::info!(stage, object_path = %object.path, outcome = "completed", "Saved Strava stage output");
+            Ok(output)
+        }.instrument(span).await;
+        match result {
+            Ok(output) => Ok(output),
             Err(error) => {
                 self.record_stage_failure(stage, input, &error).await?;
-                return Err(error);
+                Err(error)
             }
-        };
-        self.persist_stage_output(stage, input, &key, &output)
-            .await?;
-        Ok(output)
+        }
     }
 
     async fn recover_stage<T: Serialize + DeserializeOwned>(
@@ -70,22 +97,6 @@ impl Run<'_> {
             return Ok(Some(output));
         }
         Ok(None)
-    }
-
-    async fn persist_stage_output<T: Serialize>(
-        &self,
-        stage: &str,
-        input: &str,
-        key: &str,
-        output: &T,
-    ) -> Result<(), WorkflowError> {
-        let prefix = self.stage_prefix(stage, input);
-        let object = self.store.transform(&prefix, output).await?;
-        self.store.save_reference(&prefix, &object).await?;
-        self.complete_stage(stage, input, key, &object, output)
-            .await?;
-        tracing::info!(stage, object_path = %object.path, outcome = "completed", "Saved Strava stage output");
-        Ok(())
     }
 
     async fn record_stage_failure(

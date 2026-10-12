@@ -12,7 +12,6 @@ use crate::activity_import_pipeline::{
 use crate::analytics::{
     mark_segment_activity_changes, mark_user_activity_change, mark_user_fitness_dirty,
 };
-use crate::analytics::{rebuild_activity_analytics_cache, rebuild_segment_analytics_cache};
 use crate::dedupe::{activity_duplicate_candidate_key, activity_models_match_for_dedupe};
 use crate::entities::{
     activities, activity_analytics, activity_imports, activity_training_analyses, segment_efforts,
@@ -96,10 +95,6 @@ impl ActivityReprocessProgress {
         self.failed_count += 1;
     }
 
-    fn processed_count(&self) -> usize {
-        self.succeeded_count + self.failed_count
-    }
-
     fn dedup_ids(&mut self) {
         self.activity_ids.sort_unstable();
         self.activity_ids.dedup();
@@ -165,29 +160,6 @@ impl<'a> SingleActivityReprocessContext<'a> {
     fn set_activity_id(&mut self, activity_id: i32) {
         self.activity_id = activity_id;
     }
-}
-
-pub async fn refresh_activity_derived_state<C>(
-    db: &C,
-    user_id: i32,
-    activity_id: i32,
-    route_points: &[ActivityRoutePoint],
-) -> Result<Vec<i32>, AppError>
-where
-    C: ConnectionTrait + TransactionTrait,
-{
-    let affected_segment_ids = refresh_activity_derived_state_without_cache_rebuilds(
-        db,
-        user_id,
-        activity_id,
-        route_points,
-    )
-    .await?;
-
-    rebuild_segment_analytics_cache(db, &affected_segment_ids).await?;
-    rebuild_activity_analytics_cache(db, &[activity_id]).await?;
-
-    Ok(affected_segment_ids)
 }
 
 pub async fn refresh_activity_derived_state_without_cache_rebuilds<C>(
@@ -469,171 +441,6 @@ pub async fn process_user_segment_regeneration(
     crate::segment_regeneration::process_user_segment_regeneration(db, user_id)
         .await
         .map_err(|error| AppError::internal(error.message))
-}
-
-pub async fn reprocess_imported_activities_for_user(
-    db: &DatabaseConnection,
-    uploads_dir: &str,
-    tasks: &TaskQueue,
-    user_id: i32,
-    archive_fits_only: bool,
-) -> Result<(usize, usize), AppError> {
-    let activities = load_imported_activities_for_user(db, user_id).await?;
-    let import_ids = activity_import_ids(&activities);
-
-    if import_ids.is_empty() {
-        return Ok((0, 0));
-    }
-
-    let imports_by_id = load_activity_imports_by_id(db, user_id, import_ids).await?;
-    let activities = activities
-        .into_iter()
-        .filter(|activity| {
-            !archive_fits_only
-                || activity
-                    .activity_import_id
-                    .and_then(|import_id| imports_by_id.get(&import_id))
-                    .is_some_and(is_archive_fit_import)
-        })
-        .collect::<Vec<_>>();
-    let total_activity_count = activities.len();
-    if activities.is_empty() {
-        return Ok((0, 0));
-    }
-
-    tracing::info!(
-        user_id,
-        total_activity_count,
-        archive_fits_only,
-        "starting user activity import reprocessing"
-    );
-
-    let training_profile = load_training_profile(db, user_id).await?;
-    let mut progress = ActivityReprocessProgress::default();
-
-    for activity in activities {
-        reprocess_user_activity_import(
-            db,
-            uploads_dir,
-            user_id,
-            activity,
-            &imports_by_id,
-            &training_profile,
-            &mut progress,
-        )
-        .await;
-        log_user_reprocessing_progress(user_id, total_activity_count, &progress);
-    }
-
-    let reprocessed_count = progress.succeeded_count;
-    let failed_count = progress.failed_count;
-    finalize_user_activity_reprocessing(db, tasks, user_id, progress).await?;
-
-    Ok((reprocessed_count, failed_count))
-}
-
-fn is_archive_fit_import(activity_import: &activity_imports::Model) -> bool {
-    activity_import.source == "archive_url_import"
-        && activity_import.format.eq_ignore_ascii_case("fit")
-}
-
-async fn load_imported_activities_for_user(
-    db: &DatabaseConnection,
-    user_id: i32,
-) -> Result<Vec<activities::Model>, AppError> {
-    activities::Entity::find()
-        .filter(activities::Column::UserId.eq(user_id))
-        .filter(activities::Column::ActivityImportId.is_not_null())
-        .all(db)
-        .await
-        .map_err(AppError::from)
-}
-
-fn activity_import_ids(activities: &[activities::Model]) -> Vec<i32> {
-    activities
-        .iter()
-        .filter_map(|activity| activity.activity_import_id)
-        .collect()
-}
-
-async fn load_activity_imports_by_id(
-    db: &DatabaseConnection,
-    user_id: i32,
-    import_ids: Vec<i32>,
-) -> Result<HashMap<i32, activity_imports::Model>, AppError> {
-    Ok(activity_imports::Entity::find()
-        .filter(activity_imports::Column::UserId.eq(user_id))
-        .filter(activity_imports::Column::Id.is_in(import_ids))
-        .all(db)
-        .await?
-        .into_iter()
-        .map(|activity_import| (activity_import.id, activity_import))
-        .collect())
-}
-
-async fn reprocess_user_activity_import(
-    db: &DatabaseConnection,
-    uploads_dir: &str,
-    user_id: i32,
-    activity: activities::Model,
-    imports_by_id: &HashMap<i32, activity_imports::Model>,
-    training_profile: &TrainingProfile,
-    progress: &mut ActivityReprocessProgress,
-) {
-    let Some(activity_import_id) = activity.activity_import_id else {
-        return;
-    };
-    let activity_id = activity.id;
-    let Some(activity_import) = imports_by_id.get(&activity_import_id).cloned() else {
-        progress.record_failure();
-        tracing::warn!(
-            user_id,
-            activity_id,
-            activity_import_id,
-            "skipping activity reprocess because the linked import record is missing"
-        );
-        return;
-    };
-
-    match reprocess_activity_from_import(
-        db,
-        uploads_dir,
-        user_id,
-        activity,
-        activity_import.clone(),
-        Some(training_profile),
-    )
-    .await
-    {
-        Ok(reprocessed) => progress.record_success(activity_import_id, reprocessed),
-        Err(error) => {
-            progress.record_failure();
-            tracing::warn!(
-                user_id,
-                activity_id,
-                error = %error.message,
-                "failed to reprocess imported activity from stored source file"
-            );
-        }
-    }
-}
-
-fn log_user_reprocessing_progress(
-    user_id: i32,
-    total_activity_count: usize,
-    progress: &ActivityReprocessProgress,
-) {
-    let processed_count = progress.processed_count();
-    if processed_count.is_multiple_of(25) || processed_count == total_activity_count {
-        tracing::info!(
-            user_id,
-            processed_count,
-            total_activity_count,
-            reprocessed_count = progress.succeeded_count,
-            failed_count = progress.failed_count,
-            "user activity import reprocessing progress"
-        );
-    }
 }
 
 async fn finalize_user_activity_reprocessing(
@@ -1024,50 +831,6 @@ async fn finalize_single_activity_reprocessing(
         activity_import_id: finalization.activity_import_id,
         affected_segment_count,
     })
-}
-
-pub async fn process_user_activity_import_reprocessing(
-    db: &DatabaseConnection,
-    uploads_dir: &str,
-    tasks: &TaskQueue,
-    user_id: i32,
-    archive_fits_only: bool,
-) -> Result<(), AppError> {
-    ensure_user_activity_import_lock_stage(
-        db,
-        user_id,
-        ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING,
-        ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
-    )
-    .await?;
-
-    let result =
-        reprocess_imported_activities_for_user(db, uploads_dir, tasks, user_id, archive_fits_only)
-            .await;
-    let release_result = release_user_activity_import_lock(
-        db,
-        user_id,
-        ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING,
-    )
-    .await;
-
-    match (result, release_result) {
-        (Err(error), _) => Err(error),
-        (Ok(_), Err(error)) => Err(error.into()),
-        (Ok((reprocessed_count, failed_count)), Ok(())) => {
-            tracing::info!(
-                user_id,
-                reprocessed_count,
-                failed_count,
-                "completed user activity import reprocessing"
-            );
-            if failed_count > 0 {
-                Err(AppError::internal(format!("Reprocessed {reprocessed_count} activities; {failed_count} imports failed. See import history for recovery.")))
-            } else {
-                Ok(())
-            }
-        }
-    }
 }
 
 async fn remove_upload_file(path: PathBuf) {

@@ -25,9 +25,7 @@ impl Run<'_> {
             .await?
             .ok_or_else(|| WorkflowError::internal("Strava child workflow was not retained"))?;
         if row.status != "completed" {
-            if let Some(raw) = &source.raw {
-                self.store.read(raw).await?;
-            }
+            source.verify(&self.store).await?;
             let child = Run {
                 db: self.db,
                 row: row.clone(),
@@ -35,7 +33,6 @@ impl Run<'_> {
                 connection: self.connection.clone(),
                 client: self.client.clone(),
                 store: self.store.clone(),
-                token: self.token.clone(),
             };
             let span = tracing::info_span!(
                 "strava.workflow",

@@ -1,4 +1,4 @@
-use super::{graph, Run, Source};
+use super::{Run, Source};
 use crate::{
     entities::{activities, strava_activity_states},
     workflow_error::WorkflowError,
@@ -7,28 +7,12 @@ use sea_orm::EntityTrait;
 
 impl Run<'_> {
     pub(super) async fn deauthorize(&self) -> Result<(), WorkflowError> {
-        let mut captured: Option<Vec<i64>> = None;
-        for stage in graph("deauthorize")? {
-            match stage {
-                "capture_cleanup" => {
-                    captured = Some(
-                        self.stage(stage, &self.row.id, self.capture_revocation())
-                            .await?,
-                    )
-                }
-                "revoke" => {
-                    self.stage(stage, &self.row.id, self.revoke()).await?;
-                }
-                "cleanup" => {
-                    let ids = captured
-                        .as_ref()
-                        .ok_or_else(|| WorkflowError::internal("Missing revocation capture"))?;
-                    self.stage(stage, &self.row.id, self.cleanup_revocation(ids))
-                        .await?;
-                }
-                _ => return Err(WorkflowError::internal("Unsupported revocation DAG stage")),
-            }
-        }
+        let ids = self
+            .stage("capture_cleanup", &self.row.id, self.capture_revocation())
+            .await?;
+        self.stage("revoke", &self.row.id, self.revoke()).await?;
+        self.stage("cleanup", &self.row.id, self.cleanup_revocation(&ids))
+            .await?;
         Ok(())
     }
 
@@ -49,16 +33,11 @@ impl Run<'_> {
 
     async fn revoke(&self) -> Result<serde_json::Value, WorkflowError> {
         if self.source.revoke_remote {
-            let connection = crate::strava::ensure_fresh_access_token(
-                self.db,
-                &self.client,
-                self.connection.clone(),
-            )
-            .await?;
-            let token = crate::strava_credentials::open(&connection.access_token)?;
-            self.archive(None, "", "deauthorization")
-                .scope(self.client.deauthorize(&token))
-                .await?;
+            let archive = self.archive(None, "", "deauthorization");
+            if archive.store.response(&archive.key).await?.is_none() {
+                let token = self.access_token().await?;
+                archive.scope(self.client.deauthorize(&token)).await?;
+            }
         }
         Ok(serde_json::json!({"outcome":"revoked","requested_remote":self.source.revoke_remote}))
     }
@@ -82,6 +61,7 @@ impl Run<'_> {
                 event_time,
                 parent: Some(self.row.id.clone()),
                 activity: None,
+                listing_page: None,
                 raw: None,
                 after: None,
             };

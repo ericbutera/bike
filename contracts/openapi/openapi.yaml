@@ -3149,7 +3149,7 @@ paths:
       operationId: queue_backfill
       responses:
         '200':
-          description: Queued a full Strava backfill from retained and remote sources
+          description: Queued a Strava backfill for the last 15 days
           content:
             application/json:
               schema:
