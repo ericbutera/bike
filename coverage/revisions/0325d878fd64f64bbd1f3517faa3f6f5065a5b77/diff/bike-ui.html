@@ -1,0 +1,684 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+    <head>
+        <meta http-equiv='Content-Type' content='text/html; charset=utf-8'>
+        <title>Diff Coverage</title>
+        <style>
+            .src-snippet { margin-top: 2em; }
+            .src-name { font-weight: bold; }
+            .snippets {
+                border-top: 1px solid #bdbdbd;
+                border-bottom: 1px solid #bdbdbd;
+            }
+            pre { line-height: 125%; }
+td.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+span.linenos { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+td.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+.hll { background-color: #ffcccc }
+.c { color: #3D7B7B; font-style: italic } /* Comment */
+.err { border: 1px solid #F00 } /* Error */
+.k { color: #008000; font-weight: bold } /* Keyword */
+.o { color: #666 } /* Operator */
+.ch { color: #3D7B7B; font-style: italic } /* Comment.Hashbang */
+.cm { color: #3D7B7B; font-style: italic } /* Comment.Multiline */
+.cp { color: #9C6500 } /* Comment.Preproc */
+.cpf { color: #3D7B7B; font-style: italic } /* Comment.PreprocFile */
+.c1 { color: #3D7B7B; font-style: italic } /* Comment.Single */
+.cs { color: #3D7B7B; font-style: italic } /* Comment.Special */
+.gd { color: #A00000 } /* Generic.Deleted */
+.ge { font-style: italic } /* Generic.Emph */
+.ges { font-weight: bold; font-style: italic } /* Generic.EmphStrong */
+.gr { color: #E40000 } /* Generic.Error */
+.gh { color: #000080; font-weight: bold } /* Generic.Heading */
+.gi { color: #008400 } /* Generic.Inserted */
+.go { color: #717171 } /* Generic.Output */
+.gp { color: #000080; font-weight: bold } /* Generic.Prompt */
+.gs { font-weight: bold } /* Generic.Strong */
+.gu { color: #800080; font-weight: bold } /* Generic.Subheading */
+.gt { color: #04D } /* Generic.Traceback */
+.kc { color: #008000; font-weight: bold } /* Keyword.Constant */
+.kd { color: #008000; font-weight: bold } /* Keyword.Declaration */
+.kn { color: #008000; font-weight: bold } /* Keyword.Namespace */
+.kp { color: #008000 } /* Keyword.Pseudo */
+.kr { color: #008000; font-weight: bold } /* Keyword.Reserved */
+.kt { color: #B00040 } /* Keyword.Type */
+.m { color: #666 } /* Literal.Number */
+.s { color: #BA2121 } /* Literal.String */
+.na { color: #687822 } /* Name.Attribute */
+.nb { color: #008000 } /* Name.Builtin */
+.nc { color: #00F; font-weight: bold } /* Name.Class */
+.no { color: #800 } /* Name.Constant */
+.nd { color: #A2F } /* Name.Decorator */
+.ni { color: #717171; font-weight: bold } /* Name.Entity */
+.ne { color: #CB3F38; font-weight: bold } /* Name.Exception */
+.nf { color: #00F } /* Name.Function */
+.nl { color: #767600 } /* Name.Label */
+.nn { color: #00F; font-weight: bold } /* Name.Namespace */
+.nt { color: #008000; font-weight: bold } /* Name.Tag */
+.nv { color: #19177C } /* Name.Variable */
+.ow { color: #A2F; font-weight: bold } /* Operator.Word */
+.w { color: #BBB } /* Text.Whitespace */
+.mb { color: #666 } /* Literal.Number.Bin */
+.mf { color: #666 } /* Literal.Number.Float */
+.mh { color: #666 } /* Literal.Number.Hex */
+.mi { color: #666 } /* Literal.Number.Integer */
+.mo { color: #666 } /* Literal.Number.Oct */
+.sa { color: #BA2121 } /* Literal.String.Affix */
+.sb { color: #BA2121 } /* Literal.String.Backtick */
+.sc { color: #BA2121 } /* Literal.String.Char */
+.dl { color: #BA2121 } /* Literal.String.Delimiter */
+.sd { color: #BA2121; font-style: italic } /* Literal.String.Doc */
+.s2 { color: #BA2121 } /* Literal.String.Double */
+.se { color: #AA5D1F; font-weight: bold } /* Literal.String.Escape */
+.sh { color: #BA2121 } /* Literal.String.Heredoc */
+.si { color: #A45A77; font-weight: bold } /* Literal.String.Interpol */
+.sx { color: #008000 } /* Literal.String.Other */
+.sr { color: #A45A77 } /* Literal.String.Regex */
+.s1 { color: #BA2121 } /* Literal.String.Single */
+.ss { color: #19177C } /* Literal.String.Symbol */
+.bp { color: #008000 } /* Name.Builtin.Pseudo */
+.fm { color: #00F } /* Name.Function.Magic */
+.vc { color: #19177C } /* Name.Variable.Class */
+.vg { color: #19177C } /* Name.Variable.Global */
+.vi { color: #19177C } /* Name.Variable.Instance */
+.vm { color: #19177C } /* Name.Variable.Magic */
+.il { color: #666 } /* Literal.Number.Integer.Long */
+.diff-cover-covered-line { background-color: #ddffdd; }
+        </style>
+    </head>
+    <body>
+        <h1>Diff Coverage</h1>
+        <p>Diff: cd46e69f4c2c7148a0dd0a077a522ebe66bb82ae...HEAD, staged, unstaged and untracked changes</p>
+        <ul>
+            <li><b>Total</b>: 187 lines</li>
+            <li><b>Missing</b>: 35 lines</li>
+            <li><b>Coverage</b>: 81.28%</li>
+        </ul>
+        <table border="1">
+            <tr>
+                <th>Source File</th>
+                <th>Diff Coverage (%)</th>
+                <th>Missing Lines</th>
+            </tr>
+            <tr>
+                <td>bike-ui/app/admin/activities/page.tsx</td>
+                <td>84.0%</td>
+                <td>107,204,210,221</td>
+            </tr>
+            <tr>
+                <td>bike-ui/app/admin/integrations/page.tsx</td>
+                <td>94.4%</td>
+                <td>32,107</td>
+            </tr>
+            <tr>
+                <td>bike-ui/app/admin/tasks/page.tsx</td>
+                <td>0.0%</td>
+                <td>23</td>
+            </tr>
+            <tr>
+                <td>bike-ui/components/admin/ProcessorOverview.tsx</td>
+                <td>68.2%</td>
+                <td>65-66,68-71,105</td>
+            </tr>
+            <tr>
+                <td>bike-ui/components/admin/TasksPageContent.tsx</td>
+                <td>76.2%</td>
+                <td>100,146,215,260-261,270,279,282,456,461</td>
+            </tr>
+            <tr>
+                <td>bike-ui/components/imports/ImportHistory.tsx</td>
+                <td>85.7%</td>
+                <td>63,65,67,197</td>
+            </tr>
+            <tr>
+                <td>bike-ui/components/ui/DataGrid.tsx</td>
+                <td>79.3%</td>
+                <td>30,33,40,52,60,100</td>
+            </tr>
+            <tr>
+                <td>bike-ui/components/ui/GenericList.tsx</td>
+                <td>75.0%</td>
+                <td>164</td>
+            </tr>
+        </table>
+        <div class="src-snippet">
+            <div class="src-name">bike-ui/app/admin/activities/page.tsx</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">103</span>
+<span class="normal">104</span>
+<span class="normal">105</span>
+<span class="normal">106</span>
+<span class="normal">107</span>
+<span class="normal">108</span>
+<span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/app/admin/activities/page.tsx-103" name="bike-ui/app/admin/activities/page.tsx-103"></a><span class="w">        </span><span class="nx">className</span><span class="o">:</span><span class="w"> </span><span class="s2">"whitespace-nowrap"</span><span class="p">,</span>
+<a id="bike-ui/app/admin/activities/page.tsx-104" name="bike-ui/app/admin/activities/page.tsx-104"></a><span class="w">        </span><span class="nx">render</span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="nx">activity</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span>
+<a id="bike-ui/app/admin/activities/page.tsx-105" name="bike-ui/app/admin/activities/page.tsx-105"></a><span class="w">          </span><span class="nx">activity</span><span class="p">.</span><span class="nx">import_status</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span>
+<a id="bike-ui/app/admin/activities/page.tsx-106" name="bike-ui/app/admin/activities/page.tsx-106"></a><span class="w">            </span><span class="p">&lt;</span><span class="nt">span</span>
+<a id="bike-ui/app/admin/activities/page.tsx-107" name="bike-ui/app/admin/activities/page.tsx-107"></a><span class="hll"><span class="w">              </span><span class="na">title</span><span class="o">=</span><span class="p">{</span><span class="nx">activity</span><span class="p">.</span><span class="nx">import_processing_stage</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="kc">undefined</span><span class="p">}</span>
+</span><a id="bike-ui/app/admin/activities/page.tsx-108" name="bike-ui/app/admin/activities/page.tsx-108"></a><span class="w">              </span><span class="na">className</span><span class="o">=</span><span class="p">{</span><span class="nx">importStatusClass</span><span class="p">(</span><span class="nx">activity</span><span class="p">.</span><span class="nx">import_status</span><span class="p">)}</span>
+<a id="bike-ui/app/admin/activities/page.tsx-109" name="bike-ui/app/admin/activities/page.tsx-109"></a><span class="w">            </span><span class="p">&gt;</span>
+<a id="bike-ui/app/admin/activities/page.tsx-110" name="bike-ui/app/admin/activities/page.tsx-110"></a><span class="w">              </span><span class="p">{</span><span class="nx">activity</span><span class="p">.</span><span class="nx">import_status</span><span class="p">}</span>
+<a id="bike-ui/app/admin/activities/page.tsx-111" name="bike-ui/app/admin/activities/page.tsx-111"></a><span class="w">            </span><span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">200</span>
+<span class="normal">201</span>
+<span class="normal">202</span>
+<span class="normal">203</span>
+<span class="normal">204</span>
+<span class="normal">205</span>
+<span class="normal">206</span>
+<span class="normal">207</span>
+<span class="normal">208</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/app/admin/activities/page.tsx-200" name="bike-ui/app/admin/activities/page.tsx-200"></a><span class="w">              </span><span class="na">title</span><span class="o">=</span><span class="s">"Activity owner ID"</span>
+<a id="bike-ui/app/admin/activities/page.tsx-201" name="bike-ui/app/admin/activities/page.tsx-201"></a><span class="w">              </span><span class="na">placeholder</span><span class="o">=</span><span class="s">"Any user"</span>
+<a id="bike-ui/app/admin/activities/page.tsx-202" name="bike-ui/app/admin/activities/page.tsx-202"></a><span class="w">              </span><span class="na">className</span><span class="o">=</span><span class="s">"input input-sm input-bordered w-32"</span>
+<a id="bike-ui/app/admin/activities/page.tsx-203" name="bike-ui/app/admin/activities/page.tsx-203"></a><span class="w">              </span><span class="na">value</span><span class="o">=</span><span class="p">{</span><span class="nx">params</span><span class="p">.</span><span class="nx">user_id</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="s2">""</span><span class="p">}</span>
+<a id="bike-ui/app/admin/activities/page.tsx-204" name="bike-ui/app/admin/activities/page.tsx-204"></a><span class="hll"><span class="w">              </span><span class="na">onChange</span><span class="o">=</span><span class="p">{(</span><span class="nx">event</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">setFilter</span><span class="p">(</span><span class="s2">"user_id"</span><span class="p">,</span><span class="w"> </span><span class="nx">event</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">value</span><span class="p">)}</span>
+</span><a id="bike-ui/app/admin/activities/page.tsx-205" name="bike-ui/app/admin/activities/page.tsx-205"></a><span class="w">            </span><span class="p">/&gt;</span>
+<a id="bike-ui/app/admin/activities/page.tsx-206" name="bike-ui/app/admin/activities/page.tsx-206"></a><span class="w">            </span><span class="p">&lt;</span><span class="nt">select</span>
+<a id="bike-ui/app/admin/activities/page.tsx-207" name="bike-ui/app/admin/activities/page.tsx-207"></a><span class="w">              </span><span class="na">aria-label</span><span class="o">=</span><span class="s">"Activity source"</span>
+<a id="bike-ui/app/admin/activities/page.tsx-208" name="bike-ui/app/admin/activities/page.tsx-208"></a><span class="w">              </span><span class="na">className</span><span class="o">=</span><span class="s">"select select-sm select-bordered w-40"</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">206</span>
+<span class="normal">207</span>
+<span class="normal">208</span>
+<span class="normal">209</span>
+<span class="normal">210</span>
+<span class="normal">211</span>
+<span class="normal">212</span>
+<span class="normal">213</span>
+<span class="normal">214</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/app/admin/activities/page.tsx-206" name="bike-ui/app/admin/activities/page.tsx-206"></a><span class="w">            </span><span class="p">&lt;</span><span class="nt">select</span>
+<a id="bike-ui/app/admin/activities/page.tsx-207" name="bike-ui/app/admin/activities/page.tsx-207"></a><span class="w">              </span><span class="na">aria-label</span><span class="o">=</span><span class="s">"Activity source"</span>
+<a id="bike-ui/app/admin/activities/page.tsx-208" name="bike-ui/app/admin/activities/page.tsx-208"></a><span class="w">              </span><span class="na">className</span><span class="o">=</span><span class="s">"select select-sm select-bordered w-40"</span>
+<a id="bike-ui/app/admin/activities/page.tsx-209" name="bike-ui/app/admin/activities/page.tsx-209"></a><span class="w">              </span><span class="na">value</span><span class="o">=</span><span class="p">{</span><span class="nx">params</span><span class="p">.</span><span class="nx">source</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="s2">""</span><span class="p">}</span>
+<a id="bike-ui/app/admin/activities/page.tsx-210" name="bike-ui/app/admin/activities/page.tsx-210"></a><span class="hll"><span class="w">              </span><span class="na">onChange</span><span class="o">=</span><span class="p">{(</span><span class="nx">event</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">setFilter</span><span class="p">(</span><span class="s2">"source"</span><span class="p">,</span><span class="w"> </span><span class="nx">event</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">value</span><span class="p">)}</span>
+</span><a id="bike-ui/app/admin/activities/page.tsx-211" name="bike-ui/app/admin/activities/page.tsx-211"></a><span class="w">            </span><span class="p">&gt;</span>
+<a id="bike-ui/app/admin/activities/page.tsx-212" name="bike-ui/app/admin/activities/page.tsx-212"></a><span class="w">              </span><span class="p">&lt;</span><span class="nt">option</span><span class="w"> </span><span class="na">value</span><span class="o">=</span><span class="s">""</span><span class="p">&gt;</span><span class="nx">All</span><span class="w"> </span><span class="nx">sources</span><span class="p">&lt;/</span><span class="nt">option</span><span class="p">&gt;</span>
+<a id="bike-ui/app/admin/activities/page.tsx-213" name="bike-ui/app/admin/activities/page.tsx-213"></a><span class="w">              </span><span class="p">&lt;</span><span class="nt">option</span><span class="w"> </span><span class="na">value</span><span class="o">=</span><span class="s">"manual_upload"</span><span class="p">&gt;</span><span class="nx">Upload</span><span class="p">&lt;/</span><span class="nt">option</span><span class="p">&gt;</span>
+<a id="bike-ui/app/admin/activities/page.tsx-214" name="bike-ui/app/admin/activities/page.tsx-214"></a><span class="w">              </span><span class="p">&lt;</span><span class="nt">option</span><span class="w"> </span><span class="na">value</span><span class="o">=</span><span class="s">"archive_url_import"</span><span class="p">&gt;</span><span class="nx">Archive</span><span class="p">&lt;/</span><span class="nt">option</span><span class="p">&gt;</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">217</span>
+<span class="normal">218</span>
+<span class="normal">219</span>
+<span class="normal">220</span>
+<span class="normal">221</span>
+<span class="normal">222</span>
+<span class="normal">223</span>
+<span class="normal">224</span>
+<span class="normal">225</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/app/admin/activities/page.tsx-217" name="bike-ui/app/admin/activities/page.tsx-217"></a><span class="w">            </span><span class="p">&lt;</span><span class="nt">select</span>
+<a id="bike-ui/app/admin/activities/page.tsx-218" name="bike-ui/app/admin/activities/page.tsx-218"></a><span class="w">              </span><span class="na">aria-label</span><span class="o">=</span><span class="s">"Activity sport"</span>
+<a id="bike-ui/app/admin/activities/page.tsx-219" name="bike-ui/app/admin/activities/page.tsx-219"></a><span class="w">              </span><span class="na">className</span><span class="o">=</span><span class="s">"select select-sm select-bordered w-40"</span>
+<a id="bike-ui/app/admin/activities/page.tsx-220" name="bike-ui/app/admin/activities/page.tsx-220"></a><span class="w">              </span><span class="na">value</span><span class="o">=</span><span class="p">{</span><span class="nx">params</span><span class="p">.</span><span class="nx">sport</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="s2">""</span><span class="p">}</span>
+<a id="bike-ui/app/admin/activities/page.tsx-221" name="bike-ui/app/admin/activities/page.tsx-221"></a><span class="hll"><span class="w">              </span><span class="na">onChange</span><span class="o">=</span><span class="p">{(</span><span class="nx">event</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">setFilter</span><span class="p">(</span><span class="s2">"sport"</span><span class="p">,</span><span class="w"> </span><span class="nx">event</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">value</span><span class="p">)}</span>
+</span><a id="bike-ui/app/admin/activities/page.tsx-222" name="bike-ui/app/admin/activities/page.tsx-222"></a><span class="w">            </span><span class="p">&gt;</span>
+<a id="bike-ui/app/admin/activities/page.tsx-223" name="bike-ui/app/admin/activities/page.tsx-223"></a><span class="w">              </span><span class="p">&lt;</span><span class="nt">option</span><span class="w"> </span><span class="na">value</span><span class="o">=</span><span class="s">""</span><span class="p">&gt;</span><span class="nx">All</span><span class="w"> </span><span class="nx">sports</span><span class="p">&lt;/</span><span class="nt">option</span><span class="p">&gt;</span>
+<a id="bike-ui/app/admin/activities/page.tsx-224" name="bike-ui/app/admin/activities/page.tsx-224"></a><span class="w">              </span><span class="p">{</span><span class="nx">ACTIVITY_SPORT_OPTIONS</span><span class="p">.</span><span class="nx">map</span><span class="p">((</span><span class="nx">sport</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">(</span>
+<a id="bike-ui/app/admin/activities/page.tsx-225" name="bike-ui/app/admin/activities/page.tsx-225"></a><span class="w">                </span><span class="p">&lt;</span><span class="nt">option</span><span class="w"> </span><span class="na">key</span><span class="o">=</span><span class="p">{</span><span class="nx">sport</span><span class="p">.</span><span class="nx">value</span><span class="p">}</span><span class="w"> </span><span class="na">value</span><span class="o">=</span><span class="p">{</span><span class="nx">sport</span><span class="p">.</span><span class="nx">value</span><span class="p">}&gt;</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+        <div class="src-snippet">
+            <div class="src-name">bike-ui/app/admin/integrations/page.tsx</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">28</span>
+<span class="normal">29</span>
+<span class="normal">30</span>
+<span class="normal">31</span>
+<span class="normal">32</span>
+<span class="normal">33</span>
+<span class="normal">34</span>
+<span class="normal">35</span>
+<span class="normal">36</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/app/admin/integrations/page.tsx-28" name="bike-ui/app/admin/integrations/page.tsx-28"></a><span class="kd">function</span><span class="w"> </span><span class="nx">AdminIntegrationsContent</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-ui/app/admin/integrations/page.tsx-29" name="bike-ui/app/admin/integrations/page.tsx-29"></a><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">router</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">useRouter</span><span class="p">();</span>
+<a id="bike-ui/app/admin/integrations/page.tsx-30" name="bike-ui/app/admin/integrations/page.tsx-30"></a><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">searchParams</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">useSearchParams</span><span class="p">();</span>
+<a id="bike-ui/app/admin/integrations/page.tsx-31" name="bike-ui/app/admin/integrations/page.tsx-31"></a><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="p">[</span><span class="nx">ids</span><span class="p">,</span><span class="w"> </span><span class="nx">setIds</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">useState</span><span class="p">({</span>
+<a id="bike-ui/app/admin/integrations/page.tsx-32" name="bike-ui/app/admin/integrations/page.tsx-32"></a><span class="hll"><span class="w">    </span><span class="nx">user_id</span><span class="o">:</span><span class="w"> </span><span class="kt">searchParams.get</span><span class="p">(</span><span class="s2">"user_id"</span><span class="p">)</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span>
+</span><a id="bike-ui/app/admin/integrations/page.tsx-33" name="bike-ui/app/admin/integrations/page.tsx-33"></a><span class="w">    </span><span class="nx">activity_id</span><span class="o">:</span><span class="w"> </span><span class="kt">searchParams.get</span><span class="p">(</span><span class="s2">"activity_id"</span><span class="p">)</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span>
+<a id="bike-ui/app/admin/integrations/page.tsx-34" name="bike-ui/app/admin/integrations/page.tsx-34"></a><span class="w">    </span><span class="nx">import_id</span><span class="o">:</span><span class="w"> </span><span class="kt">searchParams.get</span><span class="p">(</span><span class="s2">"import_id"</span><span class="p">)</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span>
+<a id="bike-ui/app/admin/integrations/page.tsx-35" name="bike-ui/app/admin/integrations/page.tsx-35"></a><span class="w">  </span><span class="p">});</span>
+<a id="bike-ui/app/admin/integrations/page.tsx-36" name="bike-ui/app/admin/integrations/page.tsx-36"></a><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="p">[</span><span class="nx">provider</span><span class="p">,</span><span class="w"> </span><span class="nx">setProvider</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">useState</span><span class="p">(</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">103</span>
+<span class="normal">104</span>
+<span class="normal">105</span>
+<span class="normal">106</span>
+<span class="normal">107</span>
+<span class="normal">108</span>
+<span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/app/admin/integrations/page.tsx-103" name="bike-ui/app/admin/integrations/page.tsx-103"></a><span class="w">            </span><span class="p">&lt;</span><span class="nt">select</span>
+<a id="bike-ui/app/admin/integrations/page.tsx-104" name="bike-ui/app/admin/integrations/page.tsx-104"></a><span class="w">              </span><span class="na">aria-label</span><span class="o">=</span><span class="s">"Provider"</span>
+<a id="bike-ui/app/admin/integrations/page.tsx-105" name="bike-ui/app/admin/integrations/page.tsx-105"></a><span class="w">              </span><span class="na">className</span><span class="o">=</span><span class="s">"select select-sm select-bordered w-44"</span>
+<a id="bike-ui/app/admin/integrations/page.tsx-106" name="bike-ui/app/admin/integrations/page.tsx-106"></a><span class="w">              </span><span class="na">value</span><span class="o">=</span><span class="p">{</span><span class="nx">provider</span><span class="p">}</span>
+<a id="bike-ui/app/admin/integrations/page.tsx-107" name="bike-ui/app/admin/integrations/page.tsx-107"></a><span class="hll"><span class="w">              </span><span class="na">onChange</span><span class="o">=</span><span class="p">{(</span><span class="nx">event</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">setProvider</span><span class="p">(</span><span class="nx">event</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">value</span><span class="p">)}</span>
+</span><a id="bike-ui/app/admin/integrations/page.tsx-108" name="bike-ui/app/admin/integrations/page.tsx-108"></a><span class="w">            </span><span class="p">&gt;</span>
+<a id="bike-ui/app/admin/integrations/page.tsx-109" name="bike-ui/app/admin/integrations/page.tsx-109"></a><span class="w">              </span><span class="p">&lt;</span><span class="nt">option</span><span class="w"> </span><span class="na">value</span><span class="o">=</span><span class="s">""</span><span class="p">&gt;</span><span class="nx">All</span><span class="w"> </span><span class="nx">providers</span><span class="p">&lt;/</span><span class="nt">option</span><span class="p">&gt;</span>
+<a id="bike-ui/app/admin/integrations/page.tsx-110" name="bike-ui/app/admin/integrations/page.tsx-110"></a><span class="w">              </span><span class="p">&lt;</span><span class="nt">option</span><span class="w"> </span><span class="na">value</span><span class="o">=</span><span class="s">"strava"</span><span class="p">&gt;</span><span class="nx">Strava</span><span class="p">&lt;/</span><span class="nt">option</span><span class="p">&gt;</span>
+<a id="bike-ui/app/admin/integrations/page.tsx-111" name="bike-ui/app/admin/integrations/page.tsx-111"></a><span class="w">              </span><span class="p">&lt;</span><span class="nt">option</span><span class="w"> </span><span class="na">value</span><span class="o">=</span><span class="s">"activity_processing"</span><span class="p">&gt;</span><span class="nx">Activity</span><span class="w"> </span><span class="nx">processing</span><span class="p">&lt;/</span><span class="nt">option</span><span class="p">&gt;</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+        <div class="src-snippet">
+            <div class="src-name">bike-ui/app/admin/tasks/page.tsx</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">19</span>
+<span class="normal">20</span>
+<span class="normal">21</span>
+<span class="normal">22</span>
+<span class="normal">23</span>
+<span class="normal">24</span>
+<span class="normal">25</span>
+<span class="normal">26</span>
+<span class="normal">27</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/app/admin/tasks/page.tsx-19" name="bike-ui/app/admin/tasks/page.tsx-19"></a><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">params</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">useSearchParams</span><span class="p">();</span>
+<a id="bike-ui/app/admin/tasks/page.tsx-20" name="bike-ui/app/admin/tasks/page.tsx-20"></a><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">(</span>
+<a id="bike-ui/app/admin/tasks/page.tsx-21" name="bike-ui/app/admin/tasks/page.tsx-21"></a><span class="w">    </span><span class="p">&lt;</span><span class="nt">div</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"grid gap-6"</span><span class="p">&gt;</span>
+<a id="bike-ui/app/admin/tasks/page.tsx-22" name="bike-ui/app/admin/tasks/page.tsx-22"></a><span class="w">      </span><span class="p">&lt;</span><span class="nt">TasksPageContent</span>
+<a id="bike-ui/app/admin/tasks/page.tsx-23" name="bike-ui/app/admin/tasks/page.tsx-23"></a><span class="hll"><span class="w">        </span><span class="na">initialCorrelationId</span><span class="o">=</span><span class="p">{</span><span class="nx">params</span><span class="p">.</span><span class="nx">get</span><span class="p">(</span><span class="s2">"correlation_id"</span><span class="p">)</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="s2">""</span><span class="p">}</span>
+</span><a id="bike-ui/app/admin/tasks/page.tsx-24" name="bike-ui/app/admin/tasks/page.tsx-24"></a><span class="w">      </span><span class="p">/&gt;</span>
+<a id="bike-ui/app/admin/tasks/page.tsx-25" name="bike-ui/app/admin/tasks/page.tsx-25"></a><span class="w">    </span><span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="bike-ui/app/admin/tasks/page.tsx-26" name="bike-ui/app/admin/tasks/page.tsx-26"></a><span class="w">  </span><span class="p">);</span>
+<a id="bike-ui/app/admin/tasks/page.tsx-27" name="bike-ui/app/admin/tasks/page.tsx-27"></a><span class="p">}</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+        <div class="src-snippet">
+            <div class="src-name">bike-ui/components/admin/ProcessorOverview.tsx</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">61</span>
+<span class="normal">62</span>
+<span class="normal">63</span>
+<span class="normal">64</span>
+<span class="normal">65</span>
+<span class="normal">66</span>
+<span class="normal">67</span>
+<span class="normal">68</span>
+<span class="normal">69</span>
+<span class="normal">70</span>
+<span class="normal">71</span>
+<span class="normal">72</span>
+<span class="normal">73</span>
+<span class="normal">74</span>
+<span class="normal">75</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/admin/ProcessorOverview.tsx-61" name="bike-ui/components/admin/ProcessorOverview.tsx-61"></a><span class="w">  </span><span class="p">);</span>
+<a id="bike-ui/components/admin/ProcessorOverview.tsx-62" name="bike-ui/components/admin/ProcessorOverview.tsx-62"></a><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">(</span>
+<a id="bike-ui/components/admin/ProcessorOverview.tsx-63" name="bike-ui/components/admin/ProcessorOverview.tsx-63"></a><span class="w">    </span><span class="p">&lt;</span><span class="nt">ListCard</span>
+<a id="bike-ui/components/admin/ProcessorOverview.tsx-64" name="bike-ui/components/admin/ProcessorOverview.tsx-64"></a><span class="w">      </span><span class="na">title</span><span class="o">=</span><span class="s">"All registered processors"</span>
+<a id="bike-ui/components/admin/ProcessorOverview.tsx-65" name="bike-ui/components/admin/ProcessorOverview.tsx-65"></a><span class="hll"><span class="w">      </span><span class="na">onSearch</span><span class="o">=</span><span class="p">{()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+</span><a id="bike-ui/components/admin/ProcessorOverview.tsx-66" name="bike-ui/components/admin/ProcessorOverview.tsx-66"></a><span class="hll"><span class="w">        </span><span class="ow">void</span><span class="w"> </span><span class="nx">query</span><span class="p">.</span><span class="nx">refetch</span><span class="p">();</span>
+</span><a id="bike-ui/components/admin/ProcessorOverview.tsx-67" name="bike-ui/components/admin/ProcessorOverview.tsx-67"></a><span class="w">      </span><span class="p">}}</span>
+<a id="bike-ui/components/admin/ProcessorOverview.tsx-68" name="bike-ui/components/admin/ProcessorOverview.tsx-68"></a><span class="hll"><span class="w">      </span><span class="na">onClear</span><span class="o">=</span><span class="p">{()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+</span><a id="bike-ui/components/admin/ProcessorOverview.tsx-69" name="bike-ui/components/admin/ProcessorOverview.tsx-69"></a><span class="hll"><span class="w">        </span><span class="nx">setHours</span><span class="p">(</span><span class="mf">24</span><span class="p">);</span>
+</span><a id="bike-ui/components/admin/ProcessorOverview.tsx-70" name="bike-ui/components/admin/ProcessorOverview.tsx-70"></a><span class="hll"><span class="w">        </span><span class="nx">setOutcome</span><span class="p">(</span><span class="s2">"completed"</span><span class="p">);</span>
+</span><a id="bike-ui/components/admin/ProcessorOverview.tsx-71" name="bike-ui/components/admin/ProcessorOverview.tsx-71"></a><span class="hll"><span class="w">        </span><span class="nx">setSearch</span><span class="p">(</span><span class="s2">""</span><span class="p">);</span>
+</span><a id="bike-ui/components/admin/ProcessorOverview.tsx-72" name="bike-ui/components/admin/ProcessorOverview.tsx-72"></a><span class="w">      </span><span class="p">}}</span>
+<a id="bike-ui/components/admin/ProcessorOverview.tsx-73" name="bike-ui/components/admin/ProcessorOverview.tsx-73"></a><span class="w">      </span><span class="na">filters</span><span class="o">=</span><span class="p">{</span>
+<a id="bike-ui/components/admin/ProcessorOverview.tsx-74" name="bike-ui/components/admin/ProcessorOverview.tsx-74"></a><span class="w">        </span><span class="p">&lt;&gt;</span>
+<a id="bike-ui/components/admin/ProcessorOverview.tsx-75" name="bike-ui/components/admin/ProcessorOverview.tsx-75"></a><span class="w">          </span><span class="p">&lt;</span><span class="nt">select</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">101</span>
+<span class="normal">102</span>
+<span class="normal">103</span>
+<span class="normal">104</span>
+<span class="normal">105</span>
+<span class="normal">106</span>
+<span class="normal">107</span>
+<span class="normal">108</span>
+<span class="normal">109</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/admin/ProcessorOverview.tsx-101" name="bike-ui/components/admin/ProcessorOverview.tsx-101"></a><span class="w">            </span><span class="na">aria-label</span><span class="o">=</span><span class="s">"Search processors"</span>
+<a id="bike-ui/components/admin/ProcessorOverview.tsx-102" name="bike-ui/components/admin/ProcessorOverview.tsx-102"></a><span class="w">            </span><span class="na">placeholder</span><span class="o">=</span><span class="s">"Search processors"</span>
+<a id="bike-ui/components/admin/ProcessorOverview.tsx-103" name="bike-ui/components/admin/ProcessorOverview.tsx-103"></a><span class="w">            </span><span class="na">className</span><span class="o">=</span><span class="s">"input input-sm input-bordered w-56"</span>
+<a id="bike-ui/components/admin/ProcessorOverview.tsx-104" name="bike-ui/components/admin/ProcessorOverview.tsx-104"></a><span class="w">            </span><span class="na">value</span><span class="o">=</span><span class="p">{</span><span class="nx">search</span><span class="p">}</span>
+<a id="bike-ui/components/admin/ProcessorOverview.tsx-105" name="bike-ui/components/admin/ProcessorOverview.tsx-105"></a><span class="hll"><span class="w">            </span><span class="na">onChange</span><span class="o">=</span><span class="p">{(</span><span class="nx">event</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">setSearch</span><span class="p">(</span><span class="nx">event</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">value</span><span class="p">)}</span>
+</span><a id="bike-ui/components/admin/ProcessorOverview.tsx-106" name="bike-ui/components/admin/ProcessorOverview.tsx-106"></a><span class="w">          </span><span class="p">/&gt;</span>
+<a id="bike-ui/components/admin/ProcessorOverview.tsx-107" name="bike-ui/components/admin/ProcessorOverview.tsx-107"></a><span class="w">        </span><span class="p">&lt;/&gt;</span>
+<a id="bike-ui/components/admin/ProcessorOverview.tsx-108" name="bike-ui/components/admin/ProcessorOverview.tsx-108"></a><span class="w">      </span><span class="p">}</span>
+<a id="bike-ui/components/admin/ProcessorOverview.tsx-109" name="bike-ui/components/admin/ProcessorOverview.tsx-109"></a><span class="w">    </span><span class="p">&gt;</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+        <div class="src-snippet">
+            <div class="src-name">bike-ui/components/admin/TasksPageContent.tsx</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal"> 96</span>
+<span class="normal"> 97</span>
+<span class="normal"> 98</span>
+<span class="normal"> 99</span>
+<span class="normal">100</span>
+<span class="normal">101</span>
+<span class="normal">102</span>
+<span class="normal">103</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/admin/TasksPageContent.tsx-96" name="bike-ui/components/admin/TasksPageContent.tsx-96"></a><span class="w">    </span><span class="nx">setFilters</span><span class="p">((</span><span class="nx">current</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">({</span><span class="w"> </span><span class="p">...</span><span class="nx">current</span><span class="p">,</span><span class="w"> </span><span class="p">[</span><span class="nx">key</span><span class="p">]</span><span class="o">:</span><span class="w"> </span><span class="nx">value</span><span class="w"> </span><span class="p">}));</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-97" name="bike-ui/components/admin/TasksPageContent.tsx-97"></a><span class="w">    </span><span class="nx">setPage</span><span class="p">(</span><span class="mf">1</span><span class="p">);</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-98" name="bike-ui/components/admin/TasksPageContent.tsx-98"></a><span class="w">  </span><span class="p">}</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-99" name="bike-ui/components/admin/TasksPageContent.tsx-99"></a>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-100" name="bike-ui/components/admin/TasksPageContent.tsx-100"></a><span class="hll"><span class="w">  </span><span class="kd">function</span><span class="w"> </span><span class="nx">applyFilters</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+</span><a id="bike-ui/components/admin/TasksPageContent.tsx-101" name="bike-ui/components/admin/TasksPageContent.tsx-101"></a><span class="w">    </span><span class="nx">setFilters</span><span class="p">({</span><span class="w"> </span><span class="p">...</span><span class="nx">draft</span><span class="w"> </span><span class="p">});</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-102" name="bike-ui/components/admin/TasksPageContent.tsx-102"></a><span class="w">    </span><span class="nx">setPage</span><span class="p">(</span><span class="mf">1</span><span class="p">);</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-103" name="bike-ui/components/admin/TasksPageContent.tsx-103"></a><span class="w">  </span><span class="p">}</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/admin/TasksPageContent.tsx-142" name="bike-ui/components/admin/TasksPageContent.tsx-142"></a><span class="w">      </span><span class="nx">className</span><span class="o">:</span><span class="w"> </span><span class="s2">"whitespace-nowrap"</span><span class="p">,</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-143" name="bike-ui/components/admin/TasksPageContent.tsx-143"></a><span class="w">      </span><span class="nx">render</span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="nx">task</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">(</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-144" name="bike-ui/components/admin/TasksPageContent.tsx-144"></a><span class="w">        </span><span class="p">&lt;</span><span class="nt">span</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-145" name="bike-ui/components/admin/TasksPageContent.tsx-145"></a><span class="w">          </span><span class="na">title</span><span class="o">=</span><span class="p">{</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-146" name="bike-ui/components/admin/TasksPageContent.tsx-146"></a><span class="hll"><span class="w">            </span><span class="nx">task</span><span class="p">.</span><span class="nx">durationMs</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="kc">null</span>
+</span><a id="bike-ui/components/admin/TasksPageContent.tsx-147" name="bike-ui/components/admin/TasksPageContent.tsx-147"></a><span class="w">              </span><span class="o">?</span><span class="w"> </span><span class="nx">undefined</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-148" name="bike-ui/components/admin/TasksPageContent.tsx-148"></a><span class="w">              </span><span class="o">:</span><span class="w"> </span><span class="kt">Math.round</span><span class="p">(</span><span class="nx">task</span><span class="p">.</span><span class="nx">durationMs</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">1000</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s2">"s"</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-149" name="bike-ui/components/admin/TasksPageContent.tsx-149"></a><span class="w">          </span><span class="p">}</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-150" name="bike-ui/components/admin/TasksPageContent.tsx-150"></a><span class="w">        </span><span class="p">&gt;</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">211</span>
+<span class="normal">212</span>
+<span class="normal">213</span>
+<span class="normal">214</span>
+<span class="normal">215</span>
+<span class="normal">216</span>
+<span class="normal">217</span>
+<span class="normal">218</span>
+<span class="normal">219</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/admin/TasksPageContent.tsx-211" name="bike-ui/components/admin/TasksPageContent.tsx-211"></a><span class="w">              </span><span class="na">aria-label</span><span class="o">=</span><span class="s">"Filter error text"</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-212" name="bike-ui/components/admin/TasksPageContent.tsx-212"></a><span class="w">              </span><span class="na">placeholder</span><span class="o">=</span><span class="s">"Filter error text"</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-213" name="bike-ui/components/admin/TasksPageContent.tsx-213"></a><span class="w">              </span><span class="na">className</span><span class="o">=</span><span class="s">"input input-sm w-40"</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-214" name="bike-ui/components/admin/TasksPageContent.tsx-214"></a><span class="w">              </span><span class="na">value</span><span class="o">=</span><span class="p">{</span><span class="nx">draft</span><span class="p">.</span><span class="nx">error</span><span class="p">}</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-215" name="bike-ui/components/admin/TasksPageContent.tsx-215"></a><span class="hll"><span class="w">              </span><span class="na">onChange</span><span class="o">=</span><span class="p">{(</span><span class="nx">event</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">setDraftField</span><span class="p">(</span><span class="s2">"error"</span><span class="p">,</span><span class="w"> </span><span class="nx">event</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">value</span><span class="p">)}</span>
+</span><a id="bike-ui/components/admin/TasksPageContent.tsx-216" name="bike-ui/components/admin/TasksPageContent.tsx-216"></a><span class="w">            </span><span class="p">/&gt;</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-217" name="bike-ui/components/admin/TasksPageContent.tsx-217"></a><span class="w">            </span><span class="p">&lt;</span><span class="nt">select</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-218" name="bike-ui/components/admin/TasksPageContent.tsx-218"></a><span class="w">              </span><span class="na">aria-label</span><span class="o">=</span><span class="s">"Filter task type"</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-219" name="bike-ui/components/admin/TasksPageContent.tsx-219"></a><span class="w">              </span><span class="na">className</span><span class="o">=</span><span class="s">"select select-sm w-40"</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">256</span>
+<span class="normal">257</span>
+<span class="normal">258</span>
+<span class="normal">259</span>
+<span class="normal">260</span>
+<span class="normal">261</span>
+<span class="normal">262</span>
+<span class="normal">263</span>
+<span class="normal">264</span>
+<span class="normal">265</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/admin/TasksPageContent.tsx-256" name="bike-ui/components/admin/TasksPageContent.tsx-256"></a><span class="w">              </span><span class="na">aria-label</span><span class="o">=</span><span class="s">"From date"</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-257" name="bike-ui/components/admin/TasksPageContent.tsx-257"></a><span class="w">              </span><span class="na">title</span><span class="o">=</span><span class="s">"From"</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-258" name="bike-ui/components/admin/TasksPageContent.tsx-258"></a><span class="w">              </span><span class="na">className</span><span class="o">=</span><span class="s">"input input-sm w-40"</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-259" name="bike-ui/components/admin/TasksPageContent.tsx-259"></a><span class="w">              </span><span class="na">value</span><span class="o">=</span><span class="p">{</span><span class="nx">draft</span><span class="p">.</span><span class="nx">fromDate</span><span class="p">}</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-260" name="bike-ui/components/admin/TasksPageContent.tsx-260"></a><span class="hll"><span class="w">              </span><span class="na">onChange</span><span class="o">=</span><span class="p">{(</span><span class="nx">event</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span>
+</span><a id="bike-ui/components/admin/TasksPageContent.tsx-261" name="bike-ui/components/admin/TasksPageContent.tsx-261"></a><span class="hll"><span class="w">                </span><span class="nx">setDraftField</span><span class="p">(</span><span class="s2">"fromDate"</span><span class="p">,</span><span class="w"> </span><span class="nx">event</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">value</span><span class="p">)</span>
+</span><a id="bike-ui/components/admin/TasksPageContent.tsx-262" name="bike-ui/components/admin/TasksPageContent.tsx-262"></a><span class="w">              </span><span class="p">}</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-263" name="bike-ui/components/admin/TasksPageContent.tsx-263"></a><span class="w">            </span><span class="p">/&gt;</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-264" name="bike-ui/components/admin/TasksPageContent.tsx-264"></a><span class="w">            </span><span class="p">&lt;</span><span class="nt">input</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-265" name="bike-ui/components/admin/TasksPageContent.tsx-265"></a><span class="w">              </span><span class="na">type</span><span class="o">=</span><span class="s">"date"</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">266</span>
+<span class="normal">267</span>
+<span class="normal">268</span>
+<span class="normal">269</span>
+<span class="normal">270</span>
+<span class="normal">271</span>
+<span class="normal">272</span>
+<span class="normal">273</span>
+<span class="normal">274</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/admin/TasksPageContent.tsx-266" name="bike-ui/components/admin/TasksPageContent.tsx-266"></a><span class="w">              </span><span class="na">aria-label</span><span class="o">=</span><span class="s">"To date"</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-267" name="bike-ui/components/admin/TasksPageContent.tsx-267"></a><span class="w">              </span><span class="na">title</span><span class="o">=</span><span class="s">"To"</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-268" name="bike-ui/components/admin/TasksPageContent.tsx-268"></a><span class="w">              </span><span class="na">className</span><span class="o">=</span><span class="s">"input input-sm w-40"</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-269" name="bike-ui/components/admin/TasksPageContent.tsx-269"></a><span class="w">              </span><span class="na">value</span><span class="o">=</span><span class="p">{</span><span class="nx">draft</span><span class="p">.</span><span class="nx">toDate</span><span class="p">}</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-270" name="bike-ui/components/admin/TasksPageContent.tsx-270"></a><span class="hll"><span class="w">              </span><span class="na">onChange</span><span class="o">=</span><span class="p">{(</span><span class="nx">event</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">setDraftField</span><span class="p">(</span><span class="s2">"toDate"</span><span class="p">,</span><span class="w"> </span><span class="nx">event</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">value</span><span class="p">)}</span>
+</span><a id="bike-ui/components/admin/TasksPageContent.tsx-271" name="bike-ui/components/admin/TasksPageContent.tsx-271"></a><span class="w">            </span><span class="p">/&gt;</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-272" name="bike-ui/components/admin/TasksPageContent.tsx-272"></a><span class="w">          </span><span class="p">&lt;/&gt;</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-273" name="bike-ui/components/admin/TasksPageContent.tsx-273"></a><span class="w">        </span><span class="p">}</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-274" name="bike-ui/components/admin/TasksPageContent.tsx-274"></a><span class="w">      </span><span class="p">&gt;</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">275</span>
+<span class="normal">276</span>
+<span class="normal">277</span>
+<span class="normal">278</span>
+<span class="normal">279</span>
+<span class="normal">280</span>
+<span class="normal">281</span>
+<span class="normal">282</span>
+<span class="normal">283</span>
+<span class="normal">284</span>
+<span class="normal">285</span>
+<span class="normal">286</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/admin/TasksPageContent.tsx-275" name="bike-ui/components/admin/TasksPageContent.tsx-275"></a><span class="w">        </span><span class="p">&lt;</span><span class="nt">DataGrid</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-276" name="bike-ui/components/admin/TasksPageContent.tsx-276"></a><span class="w">          </span><span class="na">rows</span><span class="o">=</span><span class="p">{</span><span class="nx">tasks</span><span class="p">}</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-277" name="bike-ui/components/admin/TasksPageContent.tsx-277"></a><span class="w">          </span><span class="na">columns</span><span class="o">=</span><span class="p">{</span><span class="nx">columns</span><span class="p">}</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-278" name="bike-ui/components/admin/TasksPageContent.tsx-278"></a><span class="w">          </span><span class="na">isLoading</span><span class="o">=</span><span class="p">{</span><span class="nx">query</span><span class="p">.</span><span class="nx">isLoading</span><span class="p">}</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-279" name="bike-ui/components/admin/TasksPageContent.tsx-279"></a><span class="hll"><span class="w">          </span><span class="na">error</span><span class="o">=</span><span class="p">{</span><span class="nx">query</span><span class="p">.</span><span class="nx">error</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="s2">"Unable to load tasks."</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kc">undefined</span><span class="p">}</span>
+</span><a id="bike-ui/components/admin/TasksPageContent.tsx-280" name="bike-ui/components/admin/TasksPageContent.tsx-280"></a><span class="w">          </span><span class="na">emptyMessage</span><span class="o">=</span><span class="s">"No tasks found matching criteria."</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-281" name="bike-ui/components/admin/TasksPageContent.tsx-281"></a><span class="w">          </span><span class="na">label</span><span class="o">=</span><span class="s">"Background task history"</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-282" name="bike-ui/components/admin/TasksPageContent.tsx-282"></a><span class="hll"><span class="w">          </span><span class="na">onRowClick</span><span class="o">=</span><span class="p">{(</span><span class="nx">task</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">setSelectedId</span><span class="p">(</span><span class="nx">task</span><span class="p">.</span><span class="nx">id</span><span class="p">)}</span>
+</span><a id="bike-ui/components/admin/TasksPageContent.tsx-283" name="bike-ui/components/admin/TasksPageContent.tsx-283"></a><span class="w">        </span><span class="p">/&gt;</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-284" name="bike-ui/components/admin/TasksPageContent.tsx-284"></a><span class="w">        </span><span class="p">{</span><span class="nx">total</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mf">0</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-285" name="bike-ui/components/admin/TasksPageContent.tsx-285"></a><span class="w">          </span><span class="p">&lt;</span><span class="nt">Pagination</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-286" name="bike-ui/components/admin/TasksPageContent.tsx-286"></a><span class="w">            </span><span class="na">className</span><span class="o">=</span><span class="s">"mt-4"</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">452</span>
+<span class="normal">453</span>
+<span class="normal">454</span>
+<span class="normal">455</span>
+<span class="normal">456</span>
+<span class="normal">457</span>
+<span class="normal">458</span>
+<span class="normal">459</span>
+<span class="normal">460</span>
+<span class="normal">461</span>
+<span class="normal">462</span>
+<span class="normal">463</span>
+<span class="normal">464</span>
+<span class="normal">465</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/admin/TasksPageContent.tsx-452" name="bike-ui/components/admin/TasksPageContent.tsx-452"></a><span class="w">            </span><span class="p">&gt;</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-453" name="bike-ui/components/admin/TasksPageContent.tsx-453"></a><span class="w">              </span><span class="p">&lt;</span><span class="nt">FontAwesomeIcon</span><span class="w"> </span><span class="na">icon</span><span class="o">=</span><span class="p">{</span><span class="nx">faRotateRight</span><span class="p">}</span><span class="w"> </span><span class="p">/&gt;</span><span class="w"> </span><span class="nx">Rerun</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-454" name="bike-ui/components/admin/TasksPageContent.tsx-454"></a><span class="w">            </span><span class="p">&lt;/</span><span class="nt">button</span><span class="p">&gt;</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-455" name="bike-ui/components/admin/TasksPageContent.tsx-455"></a><span class="w">          </span><span class="p">&lt;/</span><span class="nt">li</span><span class="p">&gt;</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-456" name="bike-ui/components/admin/TasksPageContent.tsx-456"></a><span class="hll"><span class="w">          </span><span class="p">{</span><span class="nx">canCancel</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span>
+</span><a id="bike-ui/components/admin/TasksPageContent.tsx-457" name="bike-ui/components/admin/TasksPageContent.tsx-457"></a><span class="w">            </span><span class="p">&lt;</span><span class="nt">li</span><span class="p">&gt;</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-458" name="bike-ui/components/admin/TasksPageContent.tsx-458"></a><span class="w">              </span><span class="p">&lt;</span><span class="nt">button</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-459" name="bike-ui/components/admin/TasksPageContent.tsx-459"></a><span class="w">                </span><span class="na">type</span><span class="o">=</span><span class="s">"button"</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-460" name="bike-ui/components/admin/TasksPageContent.tsx-460"></a><span class="w">                </span><span class="na">disabled</span><span class="o">=</span><span class="p">{</span><span class="nx">pending</span><span class="p">}</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-461" name="bike-ui/components/admin/TasksPageContent.tsx-461"></a><span class="hll"><span class="w">                </span><span class="na">onClick</span><span class="o">=</span><span class="p">{()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="nx">onAction</span><span class="p">(</span><span class="s2">"cancel"</span><span class="p">,</span><span class="w"> </span><span class="nx">task</span><span class="p">.</span><span class="nx">id</span><span class="p">)}</span>
+</span><a id="bike-ui/components/admin/TasksPageContent.tsx-462" name="bike-ui/components/admin/TasksPageContent.tsx-462"></a><span class="w">              </span><span class="p">&gt;</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-463" name="bike-ui/components/admin/TasksPageContent.tsx-463"></a><span class="w">                </span><span class="p">&lt;</span><span class="nt">FontAwesomeIcon</span><span class="w"> </span><span class="na">icon</span><span class="o">=</span><span class="p">{</span><span class="nx">faBan</span><span class="p">}</span><span class="w"> </span><span class="p">/&gt;</span><span class="w"> </span><span class="nx">Cancel</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-464" name="bike-ui/components/admin/TasksPageContent.tsx-464"></a><span class="w">              </span><span class="p">&lt;/</span><span class="nt">button</span><span class="p">&gt;</span>
+<a id="bike-ui/components/admin/TasksPageContent.tsx-465" name="bike-ui/components/admin/TasksPageContent.tsx-465"></a><span class="w">            </span><span class="p">&lt;/</span><span class="nt">li</span><span class="p">&gt;</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+        <div class="src-snippet">
+            <div class="src-name">bike-ui/components/imports/ImportHistory.tsx</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">59</span>
+<span class="normal">60</span>
+<span class="normal">61</span>
+<span class="normal">62</span>
+<span class="normal">63</span>
+<span class="normal">64</span>
+<span class="normal">65</span>
+<span class="normal">66</span>
+<span class="normal">67</span>
+<span class="normal">68</span>
+<span class="normal">69</span>
+<span class="normal">70</span>
+<span class="normal">71</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/imports/ImportHistory.tsx-59" name="bike-ui/components/imports/ImportHistory.tsx-59"></a><span class="w">    </span><span class="nx">className</span><span class="o">:</span><span class="w"> </span><span class="s2">"max-w-xs truncate"</span><span class="p">,</span>
+<a id="bike-ui/components/imports/ImportHistory.tsx-60" name="bike-ui/components/imports/ImportHistory.tsx-60"></a><span class="w">    </span><span class="nx">render</span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="nx">item</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">(</span>
+<a id="bike-ui/components/imports/ImportHistory.tsx-61" name="bike-ui/components/imports/ImportHistory.tsx-61"></a><span class="w">      </span><span class="p">&lt;</span><span class="nt">span</span>
+<a id="bike-ui/components/imports/ImportHistory.tsx-62" name="bike-ui/components/imports/ImportHistory.tsx-62"></a><span class="w">        </span><span class="na">className</span><span class="o">=</span><span class="p">{</span>
+<a id="bike-ui/components/imports/ImportHistory.tsx-63" name="bike-ui/components/imports/ImportHistory.tsx-63"></a><span class="hll"><span class="w">          </span><span class="nx">item</span><span class="p">.</span><span class="nx">processing_error</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="s2">"text-error"</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s2">"text-base-content/50"</span>
+</span><a id="bike-ui/components/imports/ImportHistory.tsx-64" name="bike-ui/components/imports/ImportHistory.tsx-64"></a><span class="w">        </span><span class="p">}</span>
+<a id="bike-ui/components/imports/ImportHistory.tsx-65" name="bike-ui/components/imports/ImportHistory.tsx-65"></a><span class="hll"><span class="w">        </span><span class="na">title</span><span class="o">=</span><span class="p">{</span><span class="nx">item</span><span class="p">.</span><span class="nx">processing_error</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="kc">undefined</span><span class="p">}</span>
+</span><a id="bike-ui/components/imports/ImportHistory.tsx-66" name="bike-ui/components/imports/ImportHistory.tsx-66"></a><span class="w">      </span><span class="p">&gt;</span>
+<a id="bike-ui/components/imports/ImportHistory.tsx-67" name="bike-ui/components/imports/ImportHistory.tsx-67"></a><span class="hll"><span class="w">        </span><span class="p">{</span><span class="nx">item</span><span class="p">.</span><span class="nx">processing_error</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="s2">"—"</span><span class="p">}</span>
+</span><a id="bike-ui/components/imports/ImportHistory.tsx-68" name="bike-ui/components/imports/ImportHistory.tsx-68"></a><span class="w">      </span><span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span>
+<a id="bike-ui/components/imports/ImportHistory.tsx-69" name="bike-ui/components/imports/ImportHistory.tsx-69"></a><span class="w">    </span><span class="p">),</span>
+<a id="bike-ui/components/imports/ImportHistory.tsx-70" name="bike-ui/components/imports/ImportHistory.tsx-70"></a><span class="w">  </span><span class="p">},</span>
+<a id="bike-ui/components/imports/ImportHistory.tsx-71" name="bike-ui/components/imports/ImportHistory.tsx-71"></a><span class="w">  </span><span class="p">{</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">193</span>
+<span class="normal">194</span>
+<span class="normal">195</span>
+<span class="normal">196</span>
+<span class="normal">197</span>
+<span class="normal">198</span>
+<span class="normal">199</span>
+<span class="normal">200</span>
+<span class="normal">201</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/imports/ImportHistory.tsx-193" name="bike-ui/components/imports/ImportHistory.tsx-193"></a><span class="w">          </span><span class="nx">User</span><span class="w"> </span><span class="nx">ID</span><span class="w"> </span><span class="nx">must</span><span class="w"> </span><span class="nx">be</span><span class="w"> </span><span class="nx">positive</span>
+<a id="bike-ui/components/imports/ImportHistory.tsx-194" name="bike-ui/components/imports/ImportHistory.tsx-194"></a><span class="w">        </span><span class="p">&lt;/</span><span class="nt">p</span><span class="p">&gt;</span>
+<a id="bike-ui/components/imports/ImportHistory.tsx-195" name="bike-ui/components/imports/ImportHistory.tsx-195"></a><span class="w">      </span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="p">(</span>
+<a id="bike-ui/components/imports/ImportHistory.tsx-196" name="bike-ui/components/imports/ImportHistory.tsx-196"></a><span class="w">        </span><span class="p">&lt;</span><span class="nt">DataGrid</span>
+<a id="bike-ui/components/imports/ImportHistory.tsx-197" name="bike-ui/components/imports/ImportHistory.tsx-197"></a><span class="hll"><span class="w">          </span><span class="na">rows</span><span class="o">=</span><span class="p">{</span><span class="nx">query</span><span class="p">.</span><span class="nx">data</span><span class="o">?</span><span class="p">.</span><span class="nx">items</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="p">[]}</span>
+</span><a id="bike-ui/components/imports/ImportHistory.tsx-198" name="bike-ui/components/imports/ImportHistory.tsx-198"></a><span class="w">          </span><span class="na">columns</span><span class="o">=</span><span class="p">{</span><span class="nx">columns</span><span class="p">}</span>
+<a id="bike-ui/components/imports/ImportHistory.tsx-199" name="bike-ui/components/imports/ImportHistory.tsx-199"></a><span class="w">          </span><span class="na">isLoading</span><span class="o">=</span><span class="p">{</span><span class="nx">query</span><span class="p">.</span><span class="nx">isLoading</span><span class="p">}</span>
+<a id="bike-ui/components/imports/ImportHistory.tsx-200" name="bike-ui/components/imports/ImportHistory.tsx-200"></a><span class="w">          </span><span class="na">error</span><span class="o">=</span><span class="p">{</span><span class="nx">query</span><span class="p">.</span><span class="nx">error</span><span class="o">?</span><span class="p">.</span><span class="nx">message</span><span class="p">}</span>
+<a id="bike-ui/components/imports/ImportHistory.tsx-201" name="bike-ui/components/imports/ImportHistory.tsx-201"></a><span class="w">          </span><span class="na">emptyMessage</span><span class="o">=</span><span class="s">"No imports match these filters."</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+        <div class="src-snippet">
+            <div class="src-name">bike-ui/components/ui/DataGrid.tsx</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">26</span>
+<span class="normal">27</span>
+<span class="normal">28</span>
+<span class="normal">29</span>
+<span class="normal">30</span>
+<span class="normal">31</span>
+<span class="normal">32</span>
+<span class="normal">33</span>
+<span class="normal">34</span>
+<span class="normal">35</span>
+<span class="normal">36</span>
+<span class="normal">37</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/ui/DataGrid.tsx-26" name="bike-ui/components/ui/DataGrid.tsx-26"></a><span class="p">})</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-27" name="bike-ui/components/ui/DataGrid.tsx-27"></a><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">(</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-28" name="bike-ui/components/ui/DataGrid.tsx-28"></a><span class="w">    </span><span class="p">&lt;</span><span class="nt">div</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"card min-w-0 bg-base-100 shadow-xl"</span><span class="p">&gt;</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-29" name="bike-ui/components/ui/DataGrid.tsx-29"></a><span class="w">      </span><span class="p">&lt;</span><span class="nt">div</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"card-body min-w-0"</span><span class="p">&gt;</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-30" name="bike-ui/components/ui/DataGrid.tsx-30"></a><span class="hll"><span class="w">        </span><span class="p">{</span><span class="nx">title</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nx">actions</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nx">filters</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span>
+</span><a id="bike-ui/components/ui/DataGrid.tsx-31" name="bike-ui/components/ui/DataGrid.tsx-31"></a><span class="w">          </span><span class="p">&lt;</span><span class="nt">div</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"mb-4 flex flex-col gap-4"</span><span class="p">&gt;</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-32" name="bike-ui/components/ui/DataGrid.tsx-32"></a><span class="w">            </span><span class="p">&lt;</span><span class="nt">div</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"flex flex-wrap items-center justify-between gap-3"</span><span class="p">&gt;</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-33" name="bike-ui/components/ui/DataGrid.tsx-33"></a><span class="hll"><span class="w">              </span><span class="p">{</span><span class="nx">title</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span>
+</span><a id="bike-ui/components/ui/DataGrid.tsx-34" name="bike-ui/components/ui/DataGrid.tsx-34"></a><span class="w">                </span><span class="p">&lt;</span><span class="nt">h2</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"card-title m-0 text-2xl font-bold"</span><span class="p">&gt;{</span><span class="nx">title</span><span class="p">}&lt;/</span><span class="nt">h2</span><span class="p">&gt;</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-35" name="bike-ui/components/ui/DataGrid.tsx-35"></a><span class="w">              </span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">}</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-36" name="bike-ui/components/ui/DataGrid.tsx-36"></a><span class="w">              </span><span class="p">{</span><span class="nx">actions</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-37" name="bike-ui/components/ui/DataGrid.tsx-37"></a><span class="w">                </span><span class="p">&lt;</span><span class="nt">div</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"flex items-center gap-3"</span><span class="p">&gt;{</span><span class="nx">actions</span><span class="p">}&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">36</span>
+<span class="normal">37</span>
+<span class="normal">38</span>
+<span class="normal">39</span>
+<span class="normal">40</span>
+<span class="normal">41</span>
+<span class="normal">42</span>
+<span class="normal">43</span>
+<span class="normal">44</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/ui/DataGrid.tsx-36" name="bike-ui/components/ui/DataGrid.tsx-36"></a><span class="w">              </span><span class="p">{</span><span class="nx">actions</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-37" name="bike-ui/components/ui/DataGrid.tsx-37"></a><span class="w">                </span><span class="p">&lt;</span><span class="nt">div</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"flex items-center gap-3"</span><span class="p">&gt;{</span><span class="nx">actions</span><span class="p">}&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-38" name="bike-ui/components/ui/DataGrid.tsx-38"></a><span class="w">              </span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">}</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-39" name="bike-ui/components/ui/DataGrid.tsx-39"></a><span class="w">            </span><span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-40" name="bike-ui/components/ui/DataGrid.tsx-40"></a><span class="hll"><span class="w">            </span><span class="p">{</span><span class="nx">filters</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span>
+</span><a id="bike-ui/components/ui/DataGrid.tsx-41" name="bike-ui/components/ui/DataGrid.tsx-41"></a><span class="w">              </span><span class="p">&lt;</span><span class="nt">form</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-42" name="bike-ui/components/ui/DataGrid.tsx-42"></a><span class="w">                </span><span class="na">className</span><span class="o">=</span><span class="s">"flex w-full flex-wrap items-center justify-end gap-2 rounded-lg bg-base-200/50 p-2"</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-43" name="bike-ui/components/ui/DataGrid.tsx-43"></a><span class="w">                </span><span class="na">onSubmit</span><span class="o">=</span><span class="p">{(</span><span class="nx">event</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-44" name="bike-ui/components/ui/DataGrid.tsx-44"></a><span class="w">                  </span><span class="nx">event</span><span class="p">.</span><span class="nx">preventDefault</span><span class="p">();</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">48</span>
+<span class="normal">49</span>
+<span class="normal">50</span>
+<span class="normal">51</span>
+<span class="normal">52</span>
+<span class="normal">53</span>
+<span class="normal">54</span>
+<span class="normal">55</span>
+<span class="normal">56</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/ui/DataGrid.tsx-48" name="bike-ui/components/ui/DataGrid.tsx-48"></a><span class="w">                </span><span class="p">&lt;</span><span class="nt">div</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"flex flex-1 flex-wrap justify-end gap-2"</span><span class="p">&gt;</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-49" name="bike-ui/components/ui/DataGrid.tsx-49"></a><span class="w">                  </span><span class="p">{</span><span class="nx">filters</span><span class="p">}</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-50" name="bike-ui/components/ui/DataGrid.tsx-50"></a><span class="w">                </span><span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-51" name="bike-ui/components/ui/DataGrid.tsx-51"></a><span class="w">                </span><span class="p">&lt;</span><span class="nt">div</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"join"</span><span class="p">&gt;</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-52" name="bike-ui/components/ui/DataGrid.tsx-52"></a><span class="hll"><span class="w">                  </span><span class="p">{</span><span class="nx">onSearch</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span>
+</span><a id="bike-ui/components/ui/DataGrid.tsx-53" name="bike-ui/components/ui/DataGrid.tsx-53"></a><span class="w">                    </span><span class="p">&lt;</span><span class="nt">button</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-54" name="bike-ui/components/ui/DataGrid.tsx-54"></a><span class="w">                      </span><span class="na">className</span><span class="o">=</span><span class="s">"join-item btn btn-sm btn-neutral"</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-55" name="bike-ui/components/ui/DataGrid.tsx-55"></a><span class="w">                      </span><span class="na">type</span><span class="o">=</span><span class="s">"submit"</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-56" name="bike-ui/components/ui/DataGrid.tsx-56"></a><span class="w">                    </span><span class="p">&gt;</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">56</span>
+<span class="normal">57</span>
+<span class="normal">58</span>
+<span class="normal">59</span>
+<span class="normal">60</span>
+<span class="normal">61</span>
+<span class="normal">62</span>
+<span class="normal">63</span>
+<span class="normal">64</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/ui/DataGrid.tsx-56" name="bike-ui/components/ui/DataGrid.tsx-56"></a><span class="w">                    </span><span class="p">&gt;</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-57" name="bike-ui/components/ui/DataGrid.tsx-57"></a><span class="w">                      </span><span class="nx">Search</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-58" name="bike-ui/components/ui/DataGrid.tsx-58"></a><span class="w">                    </span><span class="p">&lt;/</span><span class="nt">button</span><span class="p">&gt;</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-59" name="bike-ui/components/ui/DataGrid.tsx-59"></a><span class="w">                  </span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">}</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-60" name="bike-ui/components/ui/DataGrid.tsx-60"></a><span class="hll"><span class="w">                  </span><span class="p">{</span><span class="nx">onClear</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span>
+</span><a id="bike-ui/components/ui/DataGrid.tsx-61" name="bike-ui/components/ui/DataGrid.tsx-61"></a><span class="w">                    </span><span class="p">&lt;</span><span class="nt">button</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-62" name="bike-ui/components/ui/DataGrid.tsx-62"></a><span class="w">                      </span><span class="na">className</span><span class="o">=</span><span class="s">"join-item btn btn-sm btn-ghost border-base-300"</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-63" name="bike-ui/components/ui/DataGrid.tsx-63"></a><span class="w">                      </span><span class="na">type</span><span class="o">=</span><span class="s">"button"</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-64" name="bike-ui/components/ui/DataGrid.tsx-64"></a><span class="w">                      </span><span class="na">onClick</span><span class="o">=</span><span class="p">{</span><span class="nx">onClear</span><span class="p">}</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal"> 96</span>
+<span class="normal"> 97</span>
+<span class="normal"> 98</span>
+<span class="normal"> 99</span>
+<span class="normal">100</span>
+<span class="normal">101</span>
+<span class="normal">102</span>
+<span class="normal">103</span>
+<span class="normal">104</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/ui/DataGrid.tsx-96" name="bike-ui/components/ui/DataGrid.tsx-96"></a><span class="w">  </span><span class="nx">label?</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-97" name="bike-ui/components/ui/DataGrid.tsx-97"></a><span class="w">  </span><span class="nx">onRowClick</span><span class="o">?:</span><span class="w"> </span><span class="p">(</span><span class="nx">row</span><span class="o">:</span><span class="w"> </span><span class="kt">T</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="ow">void</span><span class="p">;</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-98" name="bike-ui/components/ui/DataGrid.tsx-98"></a><span class="p">})</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-99" name="bike-ui/components/ui/DataGrid.tsx-99"></a><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">isLoading</span><span class="p">)</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-100" name="bike-ui/components/ui/DataGrid.tsx-100"></a><span class="hll"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="p">&lt;</span><span class="nt">div</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"p-6 text-sm text-base-content/70"</span><span class="p">&gt;</span><span class="nx">Loading</span><span class="p">...&lt;/</span><span class="nt">div</span><span class="p">&gt;;</span>
+</span><a id="bike-ui/components/ui/DataGrid.tsx-101" name="bike-ui/components/ui/DataGrid.tsx-101"></a><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">error</span><span class="p">)</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-102" name="bike-ui/components/ui/DataGrid.tsx-102"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="p">(</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-103" name="bike-ui/components/ui/DataGrid.tsx-103"></a><span class="w">      </span><span class="p">&lt;</span><span class="nt">div</span><span class="w"> </span><span class="na">role</span><span class="o">=</span><span class="s">"alert"</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"p-6 text-sm text-error"</span><span class="p">&gt;</span>
+<a id="bike-ui/components/ui/DataGrid.tsx-104" name="bike-ui/components/ui/DataGrid.tsx-104"></a><span class="w">        </span><span class="p">{</span><span class="nx">error</span><span class="p">}</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+        <div class="src-snippet">
+            <div class="src-name">bike-ui/components/ui/GenericList.tsx</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">160</span>
+<span class="normal">161</span>
+<span class="normal">162</span>
+<span class="normal">163</span>
+<span class="normal">164</span>
+<span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/ui/GenericList.tsx-160" name="bike-ui/components/ui/GenericList.tsx-160"></a><span class="w">        </span><span class="na">isLoading</span><span class="o">=</span><span class="p">{</span><span class="nx">result</span><span class="p">.</span><span class="nx">isLoading</span><span class="p">}</span>
+<a id="bike-ui/components/ui/GenericList.tsx-161" name="bike-ui/components/ui/GenericList.tsx-161"></a><span class="w">        </span><span class="na">error</span><span class="o">=</span><span class="p">{</span>
+<a id="bike-ui/components/ui/GenericList.tsx-162" name="bike-ui/components/ui/GenericList.tsx-162"></a><span class="w">          </span><span class="nx">result</span><span class="p">.</span><span class="nx">error</span><span class="w"> </span><span class="ow">instanceof</span><span class="w"> </span><span class="ne">Error</span>
+<a id="bike-ui/components/ui/GenericList.tsx-163" name="bike-ui/components/ui/GenericList.tsx-163"></a><span class="w">            </span><span class="o">?</span><span class="w"> </span><span class="nx">result.error.message</span>
+<a id="bike-ui/components/ui/GenericList.tsx-164" name="bike-ui/components/ui/GenericList.tsx-164"></a><span class="hll"><span class="w">            </span><span class="o">:</span><span class="w"> </span><span class="kt">result.error</span>
+</span><a id="bike-ui/components/ui/GenericList.tsx-165" name="bike-ui/components/ui/GenericList.tsx-165"></a><span class="w">              </span><span class="o">?</span><span class="w"> </span><span class="s2">"Unable to load this list."</span>
+<a id="bike-ui/components/ui/GenericList.tsx-166" name="bike-ui/components/ui/GenericList.tsx-166"></a><span class="w">              </span><span class="o">:</span><span class="w"> </span><span class="kc">undefined</span>
+<a id="bike-ui/components/ui/GenericList.tsx-167" name="bike-ui/components/ui/GenericList.tsx-167"></a><span class="w">        </span><span class="p">}</span>
+<a id="bike-ui/components/ui/GenericList.tsx-168" name="bike-ui/components/ui/GenericList.tsx-168"></a><span class="w">        </span><span class="na">emptyMessage</span><span class="o">=</span><span class="p">{</span><span class="nx">emptyMessage</span><span class="p">}</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+    </body>
+</html>
