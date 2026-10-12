@@ -1683,6 +1683,10 @@ export function useAdminActivities(opts?: {
   enabled?: boolean;
   page?: number;
   perPage?: number;
+  q?: string;
+  userId?: number;
+  source?: string;
+  sport?: string;
 }) {
   const page = Math.max(1, opts?.page ?? 1);
   const perPage = Math.max(1, opts?.perPage ?? 25);
@@ -1690,7 +1694,16 @@ export function useAdminActivities(opts?: {
     "get",
     "/admin/activities",
     {
-      params: { query: { page, per_page: perPage } },
+      params: {
+        query: {
+          page,
+          per_page: perPage,
+          q: opts?.q,
+          user_id: opts?.userId,
+          source: opts?.source,
+          sport: opts?.sport,
+        },
+      },
     },
     { enabled: opts?.enabled ?? true },
   );

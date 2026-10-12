@@ -6161,6 +6161,14 @@ export interface operations {
         page?: number;
         /** @description Number of items per page */
         per_page?: number;
+        /** @description Activity title search or exact activity ID. */
+        q?: string | null;
+        /** @description Positive owner ID. */
+        user_id?: number | null;
+        /** @description Exact import source. */
+        source?: string | null;
+        /** @description Normalized sport, including legacy stored spellings. */
+        sport?: string | null;
       };
       header?: never;
       path?: never;
@@ -6195,6 +6203,15 @@ export interface operations {
            *     }
            */
           "application/json": components["schemas"]["PaginatedResponse_AdminActivityResponse"];
+        };
+      };
+      /** @description Invalid filters */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
         };
       };
       /** @description Unauthorized */

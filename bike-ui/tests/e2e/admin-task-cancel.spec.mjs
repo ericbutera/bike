@@ -11,8 +11,9 @@ test("the shared admin task page cancels a processing task", async ({
     const page = await context.newPage();
     await openRoute(page, target, "/admin/tasks");
     await expect(
-      page.getByRole("heading", { name: "Background Tasks" }),
+      page.getByRole("heading", { name: "Completed tasks" }),
     ).toBeVisible();
+    await page.getByLabel("Filter task status").selectOption("");
 
     const task = page
       .getByRole("table", { name: "Background task history" })

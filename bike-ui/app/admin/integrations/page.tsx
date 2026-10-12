@@ -1,6 +1,7 @@
 "use client";
 
 import IntegrationEventFeed from "@/components/IntegrationEventFeed";
+import { ListCard } from "@/components/ui/DataGrid";
 import { useAdminIntegrationEvents } from "@/lib/queries";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useDeferredValue, useEffect, useState } from "react";
@@ -16,217 +17,152 @@ export default function AdminIntegrationsPage() {
   );
 }
 
+const emptyIds = { user_id: "", activity_id: "", import_id: "" };
+
+function validId(value: string) {
+  return (
+    !value.trim() || (Number.isInteger(Number(value)) && Number(value) > 0)
+  );
+}
+
 function AdminIntegrationsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [userIdFilter, setUserIdFilter] = useState(
-    searchParams.get("user_id") ?? "",
-  );
-  const [activityIdFilter, setActivityIdFilter] = useState(
-    searchParams.get("activity_id") ?? "",
-  );
-  const [importIdFilter, setImportIdFilter] = useState(
-    searchParams.get("import_id") ?? "",
-  );
-  const [providerFilter, setProviderFilter] = useState(
+  const [ids, setIds] = useState({
+    user_id: searchParams.get("user_id") ?? "",
+    activity_id: searchParams.get("activity_id") ?? "",
+    import_id: searchParams.get("import_id") ?? "",
+  });
+  const [provider, setProvider] = useState(
     searchParams.get("provider") ?? "strava",
   );
-  const deferredUserIdFilter = useDeferredValue(userIdFilter);
-  const deferredActivityIdFilter = useDeferredValue(activityIdFilter);
-  const deferredImportIdFilter = useDeferredValue(importIdFilter);
-  const trimmedUserIdFilter = deferredUserIdFilter.trim();
-  const trimmedActivityIdFilter = deferredActivityIdFilter.trim();
-  const trimmedImportIdFilter = deferredImportIdFilter.trim();
-  const parsedUserId = Number.parseInt(trimmedUserIdFilter, 10);
-  const parsedActivityId = Number.parseInt(trimmedActivityIdFilter, 10);
-  const parsedImportId = Number.parseInt(trimmedImportIdFilter, 10);
-  const hasInvalidUserId =
-    trimmedUserIdFilter.length > 0 &&
-    (!Number.isFinite(parsedUserId) || parsedUserId < 1);
-  const hasInvalidActivityId =
-    trimmedActivityIdFilter.length > 0 &&
-    (!Number.isFinite(parsedActivityId) || parsedActivityId < 1);
-  const hasInvalidImportId =
-    trimmedImportIdFilter.length > 0 &&
-    (!Number.isFinite(parsedImportId) || parsedImportId < 1);
-
-  useEffect(() => {
-    const params = new URLSearchParams();
-    if (providerFilter) {
-      params.set("provider", providerFilter);
-    }
-    if (!hasInvalidUserId && trimmedUserIdFilter) {
-      params.set("user_id", trimmedUserIdFilter);
-    }
-    if (!hasInvalidActivityId && trimmedActivityIdFilter) {
-      params.set("activity_id", trimmedActivityIdFilter);
-    }
-    if (!hasInvalidImportId && trimmedImportIdFilter) {
-      params.set("import_id", trimmedImportIdFilter);
-    }
-
-    const nextQuery = params.toString();
-    const currentQuery = searchParams.toString();
-    if (nextQuery !== currentQuery) {
-      router.replace(`/admin/integrations${nextQuery ? `?${nextQuery}` : ""}`, {
-        scroll: false,
-      });
-    }
-  }, [
-    hasInvalidActivityId,
-    hasInvalidImportId,
-    hasInvalidUserId,
-    providerFilter,
-    router,
-    searchParams,
-    trimmedActivityIdFilter,
-    trimmedImportIdFilter,
-    trimmedUserIdFilter,
-  ]);
-
+  const [search, setSearch] = useState("");
+  const deferredIds = useDeferredValue(ids);
   const eventsQuery = useAdminIntegrationEvents({
-    provider: providerFilter || undefined,
-    userId: hasInvalidUserId || !trimmedUserIdFilter ? null : parsedUserId,
+    provider: provider || undefined,
+    userId:
+      validId(deferredIds.user_id) && deferredIds.user_id
+        ? Number(deferredIds.user_id)
+        : null,
     activityId:
-      hasInvalidActivityId || !trimmedActivityIdFilter
-        ? null
-        : parsedActivityId,
+      validId(deferredIds.activity_id) && deferredIds.activity_id
+        ? Number(deferredIds.activity_id)
+        : null,
     importId:
-      hasInvalidImportId || !trimmedImportIdFilter ? null : parsedImportId,
+      validId(deferredIds.import_id) && deferredIds.import_id
+        ? Number(deferredIds.import_id)
+        : null,
+    enabled: Object.values(deferredIds).every(validId),
     limit: 100,
     refetchIntervalMs: 5000,
   });
 
-  return (
-    <div className="grid gap-6 p-6">
-      <section className="rounded-2xl border border-base-300 bg-base-100 p-6 shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold">Integration events</h2>
-            <p className="mt-2 max-w-3xl text-sm text-base-content/70">
-              Review webhook deliveries, import checkpoints, sync lifecycle
-              changes, duplicate matches, and processing failures from the Bike
-              admin area.
-            </p>
-          </div>
-          <span className="badge badge-outline uppercase">
-            {providerFilter || "All providers"}
-          </span>
-        </div>
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (provider) params.set("provider", provider);
+    Object.entries(deferredIds).forEach(([key, value]) => {
+      if (value.trim() && validId(value)) params.set(key, value.trim());
+    });
+    const nextQuery = params.toString();
+    if (nextQuery !== searchParams.toString()) {
+      router.replace(`/admin/integrations${nextQuery ? `?${nextQuery}` : ""}`, {
+        scroll: false,
+      });
+    }
+  }, [deferredIds, provider, router, searchParams]);
 
-        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,16rem)_minmax(0,14rem)_minmax(0,14rem)_minmax(0,14rem)_auto] xl:items-end">
-          <label className="form-control">
-            <div className="label">
-              <span className="label-text font-medium">Provider</span>
-            </div>
+  const term = search.trim().toLowerCase();
+  const events = (eventsQuery.data ?? []).filter(
+    (event) =>
+      !term ||
+      [
+        event.message,
+        event.event_type,
+        event.level,
+        JSON.stringify(event.payload),
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(term),
+  );
+
+  return (
+    <div className="grid gap-6">
+      <ListCard
+        title="Integration events"
+        onSearch={() => {
+          if (Object.values(ids).every(validId)) void eventsQuery.refetch();
+        }}
+        onClear={() => {
+          setIds(emptyIds);
+          setProvider("");
+          setSearch("");
+        }}
+        filters={
+          <>
             <select
-              className="select select-bordered"
-              value={providerFilter}
-              onChange={(event) => {
-                setProviderFilter(event.target.value);
-              }}
+              aria-label="Provider"
+              className="select select-sm select-bordered w-44"
+              value={provider}
+              onChange={(event) => setProvider(event.target.value)}
             >
+              <option value="">All providers</option>
               <option value="strava">Strava</option>
               <option value="activity_processing">Activity processing</option>
-              <option value="">All providers</option>
             </select>
-            <div className="label min-h-6" />
-          </label>
-
-          <label className="form-control">
-            <div className="label">
-              <span className="label-text font-medium">Filter by user id</span>
-            </div>
+            {(
+              [
+                ["user_id", "User ID", "Any user"],
+                ["activity_id", "Activity ID", "Any activity"],
+                ["import_id", "Import ID", "Any import"],
+              ] as const
+            ).map(([key, label, placeholder]) => (
+              <input
+                key={key}
+                type="number"
+                min={1}
+                step={1}
+                aria-label={label}
+                aria-invalid={!validId(ids[key])}
+                title={label}
+                placeholder={placeholder}
+                className="input input-sm input-bordered w-32"
+                value={ids[key]}
+                onChange={(event) =>
+                  setIds((current) => ({
+                    ...current,
+                    [key]: event.target.value,
+                  }))
+                }
+              />
+            ))}
             <input
-              type="number"
-              min={1}
-              className="input input-bordered"
-              placeholder="Any user"
-              value={userIdFilter}
-              onChange={(event) => {
-                setUserIdFilter(event.target.value);
-              }}
+              type="search"
+              aria-label="Search recent integration events"
+              placeholder="Search recent events"
+              title="Search the latest 100 matching events"
+              className="input input-sm input-bordered w-56"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
             />
-            <div className="label min-h-6">
-              <span className="label-text-alt text-error">
-                {hasInvalidUserId ? "Enter a positive integer user id." : ""}
-              </span>
-            </div>
-          </label>
-
-          <label className="form-control">
-            <div className="label">
-              <span className="label-text font-medium">Activity id</span>
-            </div>
-            <input
-              type="number"
-              min={1}
-              className="input input-bordered"
-              placeholder="Any activity"
-              value={activityIdFilter}
-              onChange={(event) => {
-                setActivityIdFilter(event.target.value);
-              }}
-            />
-            <div className="label min-h-6">
-              <span className="label-text-alt text-error">
-                {hasInvalidActivityId
-                  ? "Enter a positive integer activity id."
-                  : ""}
-              </span>
-            </div>
-          </label>
-
-          <label className="form-control">
-            <div className="label">
-              <span className="label-text font-medium">Import id</span>
-            </div>
-            <input
-              type="number"
-              min={1}
-              className="input input-bordered"
-              placeholder="Any import"
-              value={importIdFilter}
-              onChange={(event) => {
-                setImportIdFilter(event.target.value);
-              }}
-            />
-            <div className="label min-h-6">
-              <span className="label-text-alt text-error">
-                {hasInvalidImportId
-                  ? "Enter a positive integer import id."
-                  : ""}
-              </span>
-            </div>
-          </label>
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="btn btn-ghost"
-              disabled={!userIdFilter && !activityIdFilter && !importIdFilter}
-              onClick={() => {
-                setUserIdFilter("");
-                setActivityIdFilter("");
-                setImportIdFilter("");
-              }}
-            >
-              Clear ids
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-base-300 bg-base-100 p-6 shadow-sm">
-        <IntegrationEventFeed
-          events={eventsQuery.data ?? []}
-          isLoading={eventsQuery.isLoading}
-          error={eventsQuery.error}
-          emptyMessage="No integration events matched the current filter."
-          showUserId
-          showProvider
-        />
-      </section>
+          </>
+        }
+      >
+        {!Object.values(ids).every(validId) ? (
+          <p role="alert" className="text-error">
+            IDs must be positive integers.
+          </p>
+        ) : (
+          <IntegrationEventFeed
+            events={events}
+            isLoading={eventsQuery.isLoading}
+            error={eventsQuery.error}
+            emptyMessage="No integration events matched the current filter."
+            showUserId
+            showProvider
+          />
+        )}
+      </ListCard>
     </div>
   );
 }

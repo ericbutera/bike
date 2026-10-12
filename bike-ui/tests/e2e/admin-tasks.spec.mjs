@@ -26,9 +26,15 @@ test("admin tasks expose the same filters, timing, and detail in Bike", async ({
     );
 
     await expect(
-      page.getByRole("heading", { name: "Background Tasks" }),
+      page.getByRole("heading", { name: "Completed tasks" }),
     ).toBeVisible();
     const table = page.getByRole("table", { name: "Background task history" });
+    const history = page.locator(".card").filter({ has: table });
+    await expect(page.getByLabel("Filter task status")).toHaveValue(
+      "completed",
+    );
+    await expect(table.locator("tbody tr")).toHaveCount(3);
+    await page.getByLabel("Filter task status").selectOption("");
     await expect(
       page.getByRole("heading", { name: "All registered processors" }),
     ).toBeVisible();
@@ -66,29 +72,41 @@ test("admin tasks expose the same filters, timing, and detail in Bike", async ({
     await detail.getByRole("button", { name: "Close" }).click();
 
     await page.getByLabel("Filter task status").selectOption("completed");
-    await page.getByRole("button", { name: "Search" }).click();
+    await history.getByRole("button", { name: "Search", exact: true }).click();
     await expect(table.locator("tbody tr")).toHaveCount(3);
-    await page.getByRole("button", { name: "Clear" }).click();
+    await history.getByRole("button", { name: "Clear", exact: true }).click();
+    await expect(page.getByLabel("Filter task status")).toHaveValue(
+      "completed",
+    );
+    await page.getByLabel("Filter task status").selectOption("");
     await expect(table.locator("tbody tr")).toHaveCount(5);
 
     await page
       .getByLabel("Filter task type")
       .selectOption("regenerate_segment_efforts");
-    await page.getByRole("button", { name: "Search" }).click();
+    await history.getByRole("button", { name: "Search", exact: true }).click();
     await expect(table.locator("tbody tr")).toHaveCount(3);
-    await page.getByRole("button", { name: "Clear" }).click();
+    await history.getByRole("button", { name: "Clear", exact: true }).click();
+    await expect(page.getByLabel("Filter task status")).toHaveValue(
+      "completed",
+    );
+    await page.getByLabel("Filter task status").selectOption("");
 
     await page.locator('input[type="date"]').first().fill("2025-06-05");
     await page.locator('input[type="date"]').last().fill("2025-06-06");
-    await page.getByRole("button", { name: "Search" }).click();
+    await history.getByRole("button", { name: "Search", exact: true }).click();
     await expect(table.locator("tbody tr")).toHaveCount(1);
     await expect(table.locator("tbody tr")).toContainText(
       "regenerate_segment_efforts",
     );
-    await page.getByRole("button", { name: "Clear" }).click();
+    await history.getByRole("button", { name: "Clear", exact: true }).click();
+    await expect(page.getByLabel("Filter task status")).toHaveValue(
+      "completed",
+    );
+    await page.getByLabel("Filter task status").selectOption("");
 
     await page.getByPlaceholder("Filter error text").fill("synthetic");
-    await page.getByRole("button", { name: "Search" }).click();
+    await history.getByRole("button", { name: "Search", exact: true }).click();
     await expect(table.locator("tbody tr")).toHaveCount(1);
     await expect(table.locator("tbody tr")).toContainText(
       "synthetic worker failure",

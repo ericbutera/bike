@@ -9,14 +9,10 @@ import {
   type ReactNode,
 } from "react";
 import Pagination from "./Pagination";
+import { DataGrid, ListCard, type Column } from "./DataGrid";
 import { useKeyedState } from "../../lib/useKeyedState";
 
-export type Column<T, P extends object> = {
-  key: string;
-  header: ReactNode;
-  className?: string;
-  render: (row: T, params?: P) => ReactNode;
-};
+export type { Column } from "./DataGrid";
 
 type ListMetadata = {
   page?: number;
@@ -60,6 +56,7 @@ export default function GenericList<T, P extends object>({
   useQuery: (params: P) => {
     data?: T[];
     isLoading?: boolean;
+    error?: unknown;
     raw?: { metadata?: ListMetadata };
   };
   columns: Column<T, P>[];
@@ -148,98 +145,40 @@ export default function GenericList<T, P extends object>({
     router.push(hrefFor(updated), { scroll: false });
   };
 
-  const showHeader = title || actions || renderFilters;
   return (
-    <div className="card bg-base-100 shadow-xl">
-      <div className="card-body">
-        {showHeader ? (
-          <div className="mb-4 flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              {title ? (
-                <div className="flex items-center gap-3">
-                  <h2 className="card-title m-0 text-2xl font-bold">{title}</h2>
-                </div>
-              ) : null}
-              {actions ? (
-                <div className="flex items-center gap-3">{actions}</div>
-              ) : null}
-            </div>
-            {renderFilters ? (
-              <div className="flex w-full flex-wrap items-center justify-end gap-2 rounded-lg bg-base-200/50 p-2">
-                <div className="flex flex-1 flex-wrap justify-end gap-2">
-                  {renderFilters(localParams, setFilter)}
-                </div>
-                <div className="join">
-                  <button
-                    className="join-item btn btn-sm btn-neutral"
-                    type="button"
-                    onClick={handleSearch}
-                  >
-                    Search
-                  </button>
-                  <button
-                    className="join-item btn btn-sm btn-ghost border-base-300"
-                    type="button"
-                    onClick={handleClear}
-                  >
-                    Clear
-                  </button>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        {result.isLoading ? (
-          <div className="p-6 text-sm text-base-content/70">Loading...</div>
-        ) : rows.length === 0 ? (
-          <div className="p-6 text-sm text-base-content/70">{emptyMessage}</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="table table-zebra w-full">
-              <thead>
-                <tr>
-                  {columns.map((column) => (
-                    <th className={column.className} key={column.key}>
-                      {column.header}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, index) => {
-                  const id = (row as { id?: string | number }).id;
-                  const rowKey = id === undefined ? `row-${index}` : String(id);
-                  return (
-                    <tr
-                      key={rowKey}
-                      className={
-                        onRowClick ? "cursor-pointer hover:bg-base-200" : ""
-                      }
-                      onClick={() => onRowClick?.(row)}
-                    >
-                      {columns.map((column) => (
-                        <td className={column.className} key={column.key}>
-                          {column.render(row, localParams)}
-                        </td>
-                      ))}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {total > 0 && perPage > 0 ? (
-          <div className="mt-4">
-            <Pagination
-              page={page}
-              perPage={perPage}
-              total={total}
-              onPageChange={handlePageChange}
-            />
-          </div>
-        ) : null}
-      </div>
-    </div>
+    <ListCard
+      title={title}
+      actions={actions}
+      filters={renderFilters?.(localParams, setFilter)}
+      onSearch={handleSearch}
+      onClear={handleClear}
+    >
+      <DataGrid
+        rows={rows}
+        columns={columns}
+        params={localParams}
+        isLoading={result.isLoading}
+        error={
+          result.error instanceof Error
+            ? result.error.message
+            : result.error
+              ? "Unable to load this list."
+              : undefined
+        }
+        emptyMessage={emptyMessage}
+        label={typeof title === "string" ? title : undefined}
+        onRowClick={onRowClick}
+      />
+      {total > 0 && perPage > 0 ? (
+        <div className="mt-4">
+          <Pagination
+            page={page}
+            perPage={perPage}
+            total={total}
+            onPageChange={handlePageChange}
+          />
+        </div>
+      ) : null}
+    </ListCard>
   );
 }

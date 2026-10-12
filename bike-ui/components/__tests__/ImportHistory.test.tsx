@@ -3,13 +3,15 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ImportHistory from "../imports/ImportHistory";
 
-const mocks = vi.hoisted(() => ({ history: vi.fn() }));
+const mocks = vi.hoisted(() => ({ history: vi.fn(), refetch: vi.fn() }));
 vi.mock("../../lib/queries", () => ({
   useActivityImportHistory: mocks.history,
 }));
 
 beforeEach(() => {
+  mocks.refetch.mockReset();
   mocks.history.mockReset().mockReturnValue({
+    refetch: mocks.refetch,
     isFetching: false,
     error: null,
     data: {
@@ -43,6 +45,18 @@ describe("Import history", () => {
     );
     expect(screen.getByText("No activity yet")).toBeInTheDocument();
     expect(screen.getByText("Invalid GPX")).toBeInTheDocument();
+    expect(screen.getByText("Invalid GPX")).toHaveAttribute(
+      "title",
+      "Invalid GPX",
+    );
+    expect(screen.getByRole("columnheader", { name: "Outcome" })).toBeVisible();
+    expect(screen.getByRole("columnheader", { name: "Stage" })).toBeVisible();
+    const source = screen.getByRole("combobox", { name: "Source" });
+    const table = screen.getByRole("table", { name: "Import history" });
+    expect(source.closest(".card")).toBe(table.closest(".card"));
+    expect(
+      source.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("paginates and resets to the first page when filters change", async () => {
@@ -94,6 +108,48 @@ describe("Import history", () => {
     expect(
       screen.getByRole("link", { name: "Show all imports" }),
     ).toHaveAttribute("href", "/admin/imports");
+  });
+
+  it("refreshes the selected filters and clears them back to page one", async () => {
+    const user = userEvent.setup();
+    render(<ImportHistory />);
+    await user.type(screen.getByRole("spinbutton", { name: "User ID" }), "7");
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Source" }),
+      "archive_url_import",
+    );
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Outcome" }),
+      "failed",
+    );
+    await user.click(screen.getByRole("button", { name: "2" }));
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    expect(mocks.refetch).toHaveBeenCalledOnce();
+    expect(mocks.history).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        page: 2,
+        user_id: 7,
+        source: "archive_url_import",
+        status: "failed",
+      }),
+      { enabled: true },
+    );
+    await user.click(screen.getByRole("button", { name: "Clear" }));
+    expect(screen.getByRole("spinbutton", { name: "User ID" })).toHaveValue(
+      null,
+    );
+    expect(screen.getByRole("combobox", { name: "Source" })).toHaveValue("");
+    expect(screen.getByRole("combobox", { name: "Outcome" })).toHaveValue("");
+    expect(mocks.history).toHaveBeenLastCalledWith(
+      {
+        page: 1,
+        user_id: undefined,
+        source: undefined,
+        status: undefined,
+        archive_job_id: undefined,
+      },
+      { enabled: true },
+    );
   });
 
   it("selects another owner and blocks invalid owner IDs", async () => {

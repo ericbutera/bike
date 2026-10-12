@@ -48,7 +48,6 @@ export const frontendRoutes = [
   { name: "upload-import", path: "/upload", surface: "imports" },
   { name: "admin-dashboard", path: "/admin", surface: "admin" },
   { name: "admin-activities", path: "/admin/activities", surface: "admin" },
-  { name: "admin-analytics", path: "/admin/analytics", surface: "admin" },
   {
     name: "admin-feature-flags",
     path: "/admin/feature-flags",
