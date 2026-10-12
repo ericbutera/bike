@@ -1,0 +1,1 @@
+{"report_name": "LCOV", "diff_name": "13c8f8a2b45bb340cceb7cdff0b3d4fccad2971c...HEAD, staged, unstaged and untracked changes", "src_stats": {"bike-rs/api/src/controllers/strava.rs": {"percent_covered": 100.0, "violation_lines": [], "covered_lines": [266], "violations": []}}, "total_num_lines": 1, "total_num_violations": 0, "total_percent_covered": 100.0, "num_changed_lines": 2}
