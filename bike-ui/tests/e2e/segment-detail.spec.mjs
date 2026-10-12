@@ -57,7 +57,9 @@ test("segment detail renders the shared workspace and supports core interactions
     if (expectedEffortCount > 10) {
       const pageCount = Math.ceil(expectedEffortCount / 10);
       for (let pageNumber = 2; pageNumber <= pageCount; pageNumber += 1) {
-        await effortsCard.getByRole("button", { name: "Next page" }).click();
+        await effortsCard
+          .getByRole("button", { name: String(pageNumber), exact: true })
+          .click();
         await expect(
           page.getByText(
             `Showing ${(pageNumber - 1) * 10 + 1}-${Math.min(pageNumber * 10, expectedEffortCount)} of ${expectedEffortCount} efforts`,
@@ -72,7 +74,7 @@ test("segment detail renders the shared workspace and supports core interactions
       }
       for (let pageNumber = pageCount - 1; pageNumber >= 1; pageNumber -= 1) {
         await effortsCard
-          .getByRole("button", { name: "Previous page" })
+          .getByRole("button", { name: String(pageNumber), exact: true })
           .click();
         await expect(
           page.getByText(

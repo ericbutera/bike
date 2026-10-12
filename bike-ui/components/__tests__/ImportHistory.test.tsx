@@ -48,7 +48,7 @@ describe("Import history", () => {
   it("paginates and resets to the first page when filters change", async () => {
     const user = userEvent.setup();
     render(<ImportHistory />);
-    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await user.click(screen.getByRole("button", { name: "2" }));
     expect(mocks.history).toHaveBeenLastCalledWith(
       {
         page: 2,

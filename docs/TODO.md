@@ -6,6 +6,14 @@ Keep private activity data out of committed reports and fixtures.
 
 ## Active work
 
+- **UI01 — Ready for review:** Correct shared numbered
+  pagination under the [UI component contract](specs/ui-components.md#pagination).
+  Double arrows jump to the first/last page; single arrows move one page.
+  Hide arrows at their boundary and hide all arrows when all page numbers fit.
+  55 focused UI tests cover page 5 back to page 1, including activity data and
+  URL restoration. UI ESLint, TypeScript, Prettier, and applicable prek hooks
+  pass in Docker. Full CI, browser E2E, integration, and deployment remain pending.
+
 - **STRAVA01 — Partially deployed:** Skip unchanged scheduled reconciliation
   deliveries under the [retired gateway record](specs/strava-fanout.md).
   Revision `7edad07b` is deployed and unchanged upserts can be skipped. Repeated
