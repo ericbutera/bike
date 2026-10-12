@@ -1,8 +1,8 @@
 {
-  "commit": "c9d28a7fa58eb3d77762ac0cac6b30a7cdeff579",
-  "created_at": "2026-10-12T00:06:58Z",
-  "base_revision": "2c75fafde14e1f7276074e745ebe8df2c5efd303",
-  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/305",
+  "commit": "2a1de4588bafe20f9208f2482efdc116e89a2bd1",
+  "created_at": "2026-10-12T01:19:23Z",
+  "base_revision": "c9d28a7fa58eb3d77762ac0cac6b30a7cdeff579",
+  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/307",
   "minimum_changed_line_percent": 80,
   "projects": {
     "api": {
@@ -52,9 +52,9 @@
       "covered": 3547,
       "percent": 61.09,
       "changed": {
-        "lines": 174,
-        "covered": 146,
-        "percent": 83.91
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
       }
     },
     "map-renderer": {
