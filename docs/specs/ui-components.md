@@ -2,6 +2,25 @@
 
 Bike UI components should keep workflow behavior close to the component that owns the interaction. Parent components should compose workflows, not hold incidental modal state or helper functions that only exist to support one child dialog.
 
+## Pagination
+
+- Numbered pagination uses the shared `Pagination` component for activity,
+  generic list, admin task, import history, and segment effort lists.
+- Show up to five page numbers by default, centered on the current page where
+  possible and shifted to stay within the first and last pages.
+- Double-left `«` jumps directly to page 1; double-right `»` jumps directly to
+  the last page.
+- Single-left `‹` moves back one page; single-right `›` moves forward one page.
+- Place first/previous controls before the numbers and next/last controls after
+  them. Give each arrow an accessible label describing its destination.
+- Hide first/previous controls on page 1 and next/last controls on the last page.
+- Hide all arrow controls when every page number fits in the visible range,
+  including when a caller customizes the number of visible pages.
+- Hide pagination when the result fits on one page. Mark the selected number
+  with `aria-current="page"`; selecting it again does not request a page change.
+- A first-page jump must restore page 1 data and the owning page's URL state,
+  including when page 1 is outside the visible number range on page 5.
+
 ## Modal Behavior
 
 Modals should be self-contained by default.
@@ -35,5 +54,6 @@ Tests should exercise the workflow through the visible trigger and dialog contro
 
 ## Code Anchors
 
+- Shared numbered pagination: `bike-ui/components/ui/Pagination.tsx`
 - Segment rename modal: `bike-ui/components/SegmentRenameModal.tsx`
 - Segment list UI: `bike-ui/components/SegmentsPanel.tsx`

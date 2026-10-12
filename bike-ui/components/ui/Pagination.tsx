@@ -25,6 +25,7 @@ export default function Pagination({
   };
 
   const pagesToShow = Math.max(1, Math.min(visiblePages, totalPages));
+  const hasHiddenPages = pagesToShow < totalPages;
   let start = page - Math.floor(pagesToShow / 2);
   if (start < 1) start = 1;
   let end = start + pagesToShow - 1;
@@ -36,19 +37,32 @@ export default function Pagination({
   return (
     <div className={`flex justify-center ${className}`}>
       <div className="join">
-        <button
-          aria-label="Previous page"
-          className="join-item btn"
-          disabled={page === 1}
-          onClick={() => handlePageClick(page - 1)}
-        >
-          «
-        </button>
+        {hasHiddenPages && page > 1 ? (
+          <>
+            <button
+              type="button"
+              aria-label="First page"
+              className="join-item btn"
+              onClick={() => handlePageClick(1)}
+            >
+              «
+            </button>
+            <button
+              type="button"
+              aria-label="Previous page"
+              className="join-item btn"
+              onClick={() => handlePageClick(page - 1)}
+            >
+              ‹
+            </button>
+          </>
+        ) : null}
         {Array.from(
           { length: end - start + 1 },
           (_, index) => start + index,
         ).map((pageNumber) => (
           <button
+            type="button"
             aria-current={pageNumber === page ? "page" : undefined}
             className={`join-item btn ${pageNumber === page ? "btn-active" : ""}`}
             key={pageNumber}
@@ -57,14 +71,26 @@ export default function Pagination({
             {pageNumber}
           </button>
         ))}
-        <button
-          aria-label="Next page"
-          className="join-item btn"
-          disabled={page === totalPages}
-          onClick={() => handlePageClick(page + 1)}
-        >
-          »
-        </button>
+        {hasHiddenPages && page < totalPages ? (
+          <>
+            <button
+              type="button"
+              aria-label="Next page"
+              className="join-item btn"
+              onClick={() => handlePageClick(page + 1)}
+            >
+              ›
+            </button>
+            <button
+              type="button"
+              aria-label="Last page"
+              className="join-item btn"
+              onClick={() => handlePageClick(totalPages)}
+            >
+              »
+            </button>
+          </>
+        ) : null}
       </div>
     </div>
   );

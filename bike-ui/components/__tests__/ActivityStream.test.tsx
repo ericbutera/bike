@@ -337,8 +337,8 @@ describe("ActivityStream", () => {
         metadata: {
           page: currentPage,
           per_page: 10,
-          total: 25,
-          total_pages: 3,
+          total: 65,
+          total_pages: 7,
         },
         isError: false,
         isFetching: false,
@@ -357,6 +357,38 @@ describe("ActivityStream", () => {
     });
     expect(
       screen.getByRole("heading", { level: 3, name: "Page 2" }),
+    ).toBeInTheDocument();
+  });
+
+  it("jumps from page five to page one and restores activity data and the URL", async () => {
+    const user = userEvent.setup();
+    mocks.useActivities.mockImplementation(({ page }: { page: number }) => ({
+      data: [makeActivity({ id: page, title: `Page ${page}` })],
+      metadata: { page, per_page: 10, total: 101, total_pages: 11 },
+      isError: false,
+      isFetching: false,
+      error: null,
+    }));
+    render(<ActivityStream />);
+
+    await user.click(screen.getByRole("button", { name: "5" }));
+    expect(mocks.routerReplace).toHaveBeenLastCalledWith("/?page=5", {
+      scroll: false,
+    });
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Page 5" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "First page" }));
+    expect(mocks.routerReplace).toHaveBeenLastCalledWith("/", {
+      scroll: false,
+    });
+    expect(mocks.useActivities).toHaveBeenLastCalledWith({
+      page: 1,
+      perPage: 10,
+    });
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Page 1" }),
     ).toBeInTheDocument();
   });
 
@@ -395,7 +427,7 @@ describe("ActivityStream", () => {
       "Parity page 2 ride 1",
     );
 
-    await user.click(screen.getByRole("button", { name: "Previous page" }));
+    await user.click(screen.getByRole("button", { name: "1" }));
 
     expect(mocks.routerReplace).toHaveBeenLastCalledWith("/", {
       scroll: false,

@@ -13,7 +13,7 @@ test("a second-page effort reaches the race viewer through its URL", async ({
     await expect(page.getByText("Showing 1-10 of 11 efforts")).toBeVisible();
 
     const efforts = page.getByLabel("Segment efforts table");
-    await page.getByRole("button", { name: "Next page" }).click();
+    await page.getByRole("button", { name: "2", exact: true }).click();
     await expect(page.getByText("Showing 11-11 of 11 efforts")).toBeVisible();
     await expect(efforts.locator("tbody tr")).toHaveCount(1);
     await efforts
