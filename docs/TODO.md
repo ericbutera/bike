@@ -6,6 +6,14 @@ Keep private activity data out of committed reports and fixtures.
 
 ## Active work
 
+- **STRAVA03 — Ready for review:** Simplify account Strava sync history under
+  the [account integration contract](specs/account-integrations.md#strava).
+  Show dates and confirmed activity updates/removals, with available activity
+  names and links. Keep processing details in administration; remove raw status
+  messages, sync cursors, and scope tokens from the account summary.
+  26 focused UI tests, ESLint, TypeScript, and formatting pass in Docker.
+  Full CI and deployment remain pending.
+
 - **UI01 — Ready for review:** Correct shared numbered
   pagination under the [UI component contract](specs/ui-components.md#pagination).
   Double arrows jump to the first/last page; single arrows move one page.

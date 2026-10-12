@@ -34,7 +34,27 @@ Bike requires enough Strava scope to import private "Only You" activities. Exist
 
 After connection, Bike queues an initial sync. The rider can also manually queue a re-sync. Disconnecting removes the connection unless a user-scoped Strava sync is queued or running.
 
-Strava integration events should record meaningful connection, sync, webhook, and error history for both user feedback and admin debugging.
+Strava integration events record meaningful connection, sync, webhook, and error
+history. Account history presents activity changes; administration retains the
+processing details.
+
+- Account sync history shows only the date and activities actually updated or
+  removed. Link available Bike activities to their detail pages and use their
+  names when available; otherwise identify the activity without inventing a name.
+- Show each confirmed change once. Ignore acceptance, intermediate and completion
+  stages, failures, unchanged activities, exclusions, stale work, and deletions
+  of already absent activities. These events do not establish an activity change.
+- Removed activities remain identifiable and have no link to a deleted Bike page.
+- Do not render raw messages, payloads, severity, event/stage names, athlete IDs,
+  workflow IDs, import IDs, user IDs, or connection IDs in account history.
+- The account connection summary uses a plain-language sync status and the last
+  finished date. Keep workflow messages, sync cursors, and OAuth scope tokens out
+  of the rider's display.
+- When no confirmed changes are present in recent history, say there are no
+  recent activity changes to show. Do not infer that an entire sync changed
+  nothing from a bounded event feed.
+- Admin integration history retains diagnostic messages, correlation IDs,
+  processing stages, and payloads.
 
 Runtime configuration must set `STRAVA_CLIENT_ID` and `STRAVA_CLIENT_SECRET` for both the API and worker. `STRAVA_OAUTH_SCOPES` defaults to `activity:read_all`. The Strava application callback URL should point at `API_URL/api/strava/callback`; in the default local compose setup, that is `http://localhost:3000/api/strava/callback`.
 

@@ -429,36 +429,18 @@ function AuthenticatedAccountPage() {
                   </div>
                 </div>
 
-                {stravaConnection.scopes.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {stravaConnection.scopes.map((scope) => (
-                      <span key={scope} className="badge badge-ghost badge-sm">
-                        {scope}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-
                 <div className="rounded-box border border-base-300 bg-base-100 p-4">
                   <div className="font-medium text-base-content">
                     {formatStravaSyncStatus(stravaConnection.last_sync_status)}
                   </div>
                   <div className="mt-2 space-y-2 text-sm text-base-content/70">
                     <div>
-                      {stravaConnection.last_sync_message ??
-                        "Bike has the connection and is ready to sync."}
-                    </div>
-                    <div>
-                      Last finished:{" "}
-                      {formatActivityTimestamp(
-                        stravaConnection.last_sync_finished_at ?? "",
-                      )}
-                    </div>
-                    <div>
-                      Cursor:{" "}
-                      {formatActivityTimestamp(
-                        stravaConnection.last_synced_activity_started_at ?? "",
-                      )}
+                      Last sync:{" "}
+                      {stravaConnection.last_sync_finished_at
+                        ? formatActivityTimestamp(
+                            stravaConnection.last_sync_finished_at,
+                          )
+                        : "Not synced yet"}
                     </div>
                   </div>
                 </div>
@@ -564,14 +546,14 @@ function AuthenticatedAccountPage() {
       <AppCard bodyClassName="gap-6">
         <CardHeader
           title="Strava sync history"
-          description="Recent OAuth, webhook, sync, and disconnect events for this account."
+          description="Recent activity changes from Strava."
         />
 
         <IntegrationEventFeed
           events={stravaEventsQuery.data ?? []}
           isLoading={stravaEventsQuery.isLoading}
           error={stravaEventsQuery.error}
-          emptyMessage="No Strava history yet. Connect Strava or queue a sync to start recording events."
+          emptyMessage="No recent activity changes to show."
         />
       </AppCard>
 

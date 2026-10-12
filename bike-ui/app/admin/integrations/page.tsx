@@ -154,6 +154,7 @@ function AdminIntegrationsContent() {
           </p>
         ) : (
           <IntegrationEventFeed
+            audience="admin"
             events={events}
             isLoading={eventsQuery.isLoading}
             error={eventsQuery.error}
