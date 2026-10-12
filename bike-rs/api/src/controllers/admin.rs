@@ -502,11 +502,7 @@ async fn provider_rate_limit_bucket_stats(db: &DatabaseConnection) -> Vec<NamedS
     let now = Utc::now();
     rows.into_iter()
         .flat_map(|row| {
-            let effective_used_count = if row.reset_at <= now {
-                0
-            } else {
-                row.used_count
-            };
+            let effective_used_count = row.effective_used_count(now);
             let remaining_count = row.limit_count.saturating_sub(effective_used_count).max(0);
             let reset_desc = if row.reset_at <= now {
                 "reset is due".to_string()

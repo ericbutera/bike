@@ -38,6 +38,14 @@ impl ActiveModelBehavior for ActiveModel {
 }
 
 impl Model {
+    pub fn effective_used_count(&self, now: DateTime<Utc>) -> i32 {
+        if self.reset_at <= now {
+            0
+        } else {
+            self.used_count
+        }
+    }
+
     pub async fn list_ordered<C>(db: &C) -> Result<Vec<Model>, DbErr>
     where
         C: ConnectionTrait,

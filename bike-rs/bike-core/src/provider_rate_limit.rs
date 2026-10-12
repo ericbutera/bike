@@ -122,7 +122,7 @@ fn quota_reservation_pause(
 
     for spec in specs {
         let row = quota_bucket_row(provider, spec, &row_by_bucket)?;
-        let used_count = effective_used_count(row, now);
+        let used_count = row.effective_used_count(now);
 
         if used_count + spec.units > spec.limit_count
             && retry_at.is_none_or(|current| row.reset_at > current)
@@ -152,14 +152,6 @@ fn quota_bucket_row<'a>(
             provider, spec.bucket
         ))
     })
-}
-
-fn effective_used_count(row: &provider_rate_limit_buckets::Model, now: DateTime<Utc>) -> i32 {
-    if row.reset_at <= now {
-        0
-    } else {
-        row.used_count
-    }
 }
 
 async fn reserve_quota_bucket_rows<C>(

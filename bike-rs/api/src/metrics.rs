@@ -107,6 +107,7 @@ fn directory_bytes(root: &Path) -> std::io::Result<u64> {
 }
 
 async fn refresh_database_metrics(state: &AppStorage) -> Result<(), DbErr> {
+    bike_core::provider_metrics::refresh_provider_rate_limit_metrics(&state.db).await?;
     let connected_athletes = strava_connections::Entity::find()
         .count(&state.db)
         .await?
@@ -121,6 +122,10 @@ async fn refresh_database_metrics(state: &AppStorage) -> Result<(), DbErr> {
 
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "metrics_scrape_tests.rs"]
+pub(crate) mod scrape_tests;
 
 #[cfg(test)]
 mod tests {

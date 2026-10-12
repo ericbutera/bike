@@ -153,6 +153,11 @@ flowchart LR
   workflow for its eligible time. Do not sleep in a worker or fetch around the gate.
 - Token exchanges and subscription operations also use this wrapper and ledger.
 - Only Bike Rust consumes this Strava application's quota after cutover.
+- API metrics scrapes reload quota gauges from the persisted ledger, including
+  after a process restart without another provider request. Expired windows
+  report zero current usage and their full remaining limit; the recorded reset
+  deadline remains visible. Missing buckets remain unknown. Database failures
+  fail the scrape rather than presenting a fresh successful snapshot.
 
 ## Verification
 
