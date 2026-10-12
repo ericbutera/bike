@@ -61,6 +61,18 @@ pub struct SegmentTitle {
 }
 
 impl Model {
+    pub async fn metrics_counts(
+        db: &DatabaseConnection,
+        now: DateTime<Utc>,
+    ) -> Result<crate::platform::aggregator::StoredRecordCounts, DbErr> {
+        crate::platform::aggregator::Aggregator::stored_records::<Entity>(
+            db,
+            Column::CreatedAt,
+            now,
+        )
+        .await
+    }
+
     pub async fn mark_activity_changes<C>(
         db: &C,
         segment_ids: &[i32],

@@ -80,7 +80,13 @@ async fn metrics_response_reloads_quota_without_provider_requests() {
 async fn metrics_response_rejects_a_failed_quota_snapshot() {
     let _guard = SCRAPE_TEST_LOCK.lock().await;
     init_metrics();
-    let db = Database::connect("sqlite::memory:").await.unwrap();
-    let response = metrics_route(State(Arc::new(AppStorage::for_test(db)))).await;
+    let db = metrics_database().await;
+    let storage = Arc::new(AppStorage::for_test(db.clone()));
+    let ready = metrics_route(State(storage.clone())).await;
+    assert_eq!(ready.status(), StatusCode::OK);
+    db.execute_unprepared("DROP TABLE provider_rate_limit_buckets")
+        .await
+        .unwrap();
+    let response = metrics_route(State(storage)).await;
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
 }

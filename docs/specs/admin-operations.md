@@ -13,7 +13,6 @@ Admin navigation exposes operational pages for:
 - analytics and manual tasks;
 - users;
 - feature flags;
-- metrics;
 - integration events;
 - import history and stage replay;
 - background tasks.
@@ -87,9 +86,27 @@ defines source filtering, durable attempts, recovery, and replay invariants.
 
 ## Metrics
 
-Bike exposes app metrics in addition to shared system metrics. Metrics should be suitable for dashboards and alerting without leaking sensitive user data.
-
-The app metrics page should distinguish Bike-specific stats from framework or infrastructure metrics.
+- Grafana's Bike System Health owns the former admin metrics information.
+  `/admin/metrics`, `/api/admin/metrics` and `/api/admin/metrics/app` are removed,
+  together with their navigation, client hooks and JSON/OpenAPI contracts.
+- Prometheus `/metrics` scrapes reload retained activity/import/segment totals,
+  their rolling 30-day creation counts, new accounts over 24 hours, and retained
+  auth events/refresh-token rows over 30 days from PostgreSQL.
+- These are database-backed gauges, not lifetime event counters. Labels are
+  bounded record kinds, windows and event types; user IDs, tokens, emails and
+  other personal data never become labels. A failed database query fails the
+  scrape rather than reporting a fresh zero.
+- Auth event counts include retained legacy password-auth records; they are
+  not the identity provider's audit. Consumed/deleted refresh tokens are absent
+  from the retained-token count, so it must not be labeled cumulative issuance.
+- Reuse existing worker queue gauges and terminal outcome counters for current
+  runnable work and selected-range completed/failed tasks. Retained failed-task
+  rows must not substitute for incident counts.
+- Reuse connected-Strava-account and shared quota gauges; expired and missing
+  quota windows follow the [provider contract](strava-integration.md#api-limits).
+- Grafana deduplicates shared snapshots across replicas with `max` and handles
+  counter resets per instance before summing outcomes. Missing samples remain
+  unknown; rolling-window cards state their fixed windows explicitly.
 
 ## Backfills And Manual Tasks
 
@@ -142,7 +159,6 @@ the ingestion contract.
 - Integration event API: `bike-rs/api/src/controllers/integration_events.rs`
 - Metrics: `bike-rs/api/src/metrics.rs`
 - Admin task UI: `bike-ui/components/admin/AdminTaskTools.tsx`
-- Admin metrics UI: `bike-ui/components/admin/BikeMetricsSection.tsx`
 - Admin navigation: `bike-ui/components/admin/Nav.tsx`
 
 ## Follow-up tracking

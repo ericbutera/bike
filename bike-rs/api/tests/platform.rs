@@ -71,6 +71,19 @@ async fn protected_reads_reject_invalid_bearer_tokens() {
 }
 
 #[tokio::test]
+async fn retired_admin_metrics_routes_are_not_served() {
+    let app = support::platform_app().await;
+    for path in ["/api/admin/metrics", "/api/admin/metrics/app"] {
+        let response = app
+            .clone()
+            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 404, "retired route {path}");
+    }
+}
+
+#[tokio::test]
 async fn preference_updates_persist_and_invalid_profiles_leave_state_unchanged() {
     let app = support::platform_app().await;
     let original = get_json(&app, "/api/preferences").await;

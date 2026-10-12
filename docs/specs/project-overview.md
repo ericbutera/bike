@@ -18,7 +18,7 @@ The current Bike product includes:
 - user-managed heart-rate zones, estimated FTP, and unit preferences;
 - fitness/fatigue/form analytics;
 - XC and DH training progress screens with deterministic recommendations;
-- admin metrics, backfill, task, and integration-event tooling.
+- Grafana operational metrics, admin backfill, task, and integration-event tooling.
 
 The current product does not treat training plans, Garmin cloud activity sync, Garmin workout push, multi-target event history, or power-zone planning as shipped behavior. Those ideas may become future features, but specs should not describe them as current functionality until implementation lands.
 

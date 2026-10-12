@@ -4,14 +4,12 @@ use utoipa::openapi::server::Server;
 pub mod paths {
     pub use crate::platform::feature_flags::admin_controller::{list_flags, update_flag};
     pub use crate::platform::feature_flags::controller::public_flags;
-    pub use crate::platform::metrics_controller::get_metrics;
 
     // expose utoipa marker types for the paths
     pub use crate::platform::feature_flags::admin_controller::{
         __path_list_flags, __path_update_flag,
     };
     pub use crate::platform::feature_flags::controller::__path_public_flags;
-    pub use crate::platform::metrics_controller::__path_get_metrics;
 }
 
 pub mod schemas {
@@ -20,7 +18,6 @@ pub mod schemas {
         FeatureFlagResponse, UpdateFlagRequest,
     };
     pub use crate::platform::feature_flags::controller::PublicFlagResponse;
-    pub use crate::platform::system_metrics::SystemMetrics;
 }
 
 pub mod tags {

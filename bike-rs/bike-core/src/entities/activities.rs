@@ -13,6 +13,18 @@ use std::collections::HashMap;
 pub const BIKE_ACTIVITY_SPORT: &str = "ride";
 
 impl Model {
+    pub async fn metrics_counts(
+        db: &DatabaseConnection,
+        now: DateTime<Utc>,
+    ) -> Result<crate::platform::aggregator::StoredRecordCounts, DbErr> {
+        crate::platform::aggregator::Aggregator::stored_records::<Entity>(
+            db,
+            Column::CreatedAt,
+            now,
+        )
+        .await
+    }
+
     pub async fn owned_strava_activities(
         db: &impl ConnectionTrait,
         user_id: i32,
