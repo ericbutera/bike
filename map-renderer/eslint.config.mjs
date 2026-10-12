@@ -5,6 +5,7 @@ import html from "eslint-plugin-html";
 export default [
   {
     files: [
+      "scripts/**/*.mjs",
       "map-renderer/**/*.mjs",
       "map-renderer/**/*.html",
       "integration-tests/**/*.js",
@@ -15,7 +16,7 @@ export default [
     linterOptions: { reportUnusedDisableDirectives: "error" },
   },
   {
-    files: ["map-renderer/**/*.mjs"],
+    files: ["map-renderer/**/*.mjs", "scripts/**/*.mjs"],
     languageOptions: { globals: globals.node },
   },
   {

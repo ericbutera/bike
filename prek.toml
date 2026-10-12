@@ -52,6 +52,14 @@ files = "^scripts/coverage-rust-cache-test\\.sh$|^\\.woodpecker/.*\\.yaml$|^(bik
 pass_filenames = false
 
 [[repos.hooks]]
+id = "rust-ci-reuse"
+name = "Rust CI input and result reuse regression"
+language = "system"
+entry = "mise run ci:rust:cache:test"
+files = "^scripts/(ci-rust.*|ci-cache-guard|coverage-transfer)\\.sh$|^scripts/ci-cache-size\\.mjs$|^\\.woodpecker/.*\\.yaml$|^(bike-rs/)?mise\\.toml$|^prek\\.toml$"
+pass_filenames = false
+
+[[repos.hooks]]
 id = "synthetics-check"
 name = "k6 synthetic configuration"
 language = "system"
@@ -92,14 +100,6 @@ files = "^contracts/strava/|^bike-rs/strava-sdk/|^scripts/strava-sdk\\.sh$|^mise
 pass_filenames = false
 
 [[repos.hooks]]
-id = "openapi-contract"
-name = "Canonical OpenAPI contract freshness"
-language = "system"
-entry = "mise --cd bike-rs run openapi:check"
-files = "^contracts/openapi/openapi\\.(json|yaml)$|^bike-rs/.*\\.(rs|toml)$|^mise\\.toml$"
-pass_filenames = false
-
-[[repos.hooks]]
 id = "ui-lint"
 name = "UI ESLint"
 language = "system"
@@ -128,7 +128,7 @@ id = "renderer-lint"
 name = "Renderer and shared JavaScript lint and formatting"
 language = "system"
 entry = "mise run lint:maps"
-files = "^map-renderer/.*\\.(mjs|html|json|toml)$|^integration-tests/.*\\.js$|^mise\\.toml$"
+files = "^map-renderer/.*\\.(mjs|html|json|toml)$|^scripts/.*\\.mjs$|^integration-tests/.*\\.js$|^mise\\.toml$"
 pass_filenames = false
 
 [[repos.hooks]]

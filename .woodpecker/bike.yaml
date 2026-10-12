@@ -88,6 +88,26 @@ steps:
     commands:
       - mise run ci:runtime
 
+  - name: test-rust-cache
+    failure: fail
+    image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
+    depends_on: [prepare]
+    when:
+      - event: [push, pull_request]
+        path:
+          include:
+            - scripts/coverage-rust-cache-test.sh
+            - bike-rs/mise.toml
+            - mise.toml
+            - .woodpecker/**
+            - prek.toml
+          on_empty: false
+      - event: manual
+    environment: *mise_environment
+    volumes: *mise_cache
+    commands:
+      - mise run ci:rust:cache:regression
+
   - name: test-ui-unit
     failure: fail
     image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
@@ -110,13 +130,13 @@ steps:
     image: ghcr.io/jdx/mise:2026.10.3-debian@sha256:58c4c847f5518a9a87a9a582886a485443dbca5eb024426577f58d586a0990c6
     failure: fail
     depends_on:
-      [
-        test-rust,
-        test-ui-unit,
-        test-map-renderer,
-        test-runtime-tooling,
-        retain-unit-coverage,
-      ]
+      - test-rust
+      - test-ui-unit
+      - test-map-renderer
+      - test-runtime-tooling
+      - name: test-rust-cache
+        optional: true
+      - retain-unit-coverage
     environment:
       <<: *mise_environment
       BIKE_BUILDKIT_ADDR: tcp://bike-buildkit.woodpecker.svc.cluster.local:1234

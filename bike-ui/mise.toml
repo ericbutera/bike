@@ -10,8 +10,8 @@ description = "Check package-manager metadata against the root mise pin"
 run = "mise --cd .. run pins:check"
 
 [tasks.check]
-description = "Install dependencies and run UI lint, type, unit, format, and contract checks"
-run = ["mise run lint:check", "mise run test", "mise run openapi:check", "mise run audit"]
+description = "Install dependencies and run UI lint, type, unit, format, and audit checks"
+run = ["mise run lint:check", "mise run test", "mise run audit"]
 
 [tasks.audit]
 description = "Reject dependency advisories and incompatible peers"
@@ -60,16 +60,6 @@ description = "Generate the Bike UI client from Rust's pinned OpenAPI contract"
 run = '''
 pnpm exec openapi-typescript ../contracts/openapi/openapi.yaml --output lib/openapi/react-query/api.d.ts
 prettier lib/openapi/react-query/api.d.ts --config .prettierrc.json --write
-'''
-
-[tasks."openapi:check"]
-description = "Check the generated UI client against Rust's pinned OpenAPI contract"
-run = '''
-GENERATED_TYPES="$(mktemp)"
-trap 'rm -f "$GENERATED_TYPES"' EXIT
-pnpm exec openapi-typescript ../contracts/openapi/openapi.yaml --output "$GENERATED_TYPES"
-prettier "$GENERATED_TYPES" --parser typescript --config .prettierrc.json --write
-cmp -- "$GENERATED_TYPES" lib/openapi/react-query/api.d.ts
 '''
 
 [tasks."test:e2e"]

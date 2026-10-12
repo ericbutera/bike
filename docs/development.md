@@ -117,7 +117,7 @@ that revision's CI results for full validation.
 | `mise run rust:check`              | Rust formatting, Clippy, workspace tests                                   |
 | `mise run lint`                    | `lint:rs`, `lint:go`, `lint:ui`, and `lint:maps`                           |
 | `mise run hooks:check`             | All repository-root prek checks against tracked files                      |
-| `mise run ui:check`                | UI ESLint, typecheck, tests, build, format, client freshness               |
+| `mise run ui:check`                | UI ESLint, typecheck, tests, build, format, dependency audit               |
 | `mise run test`                    | Map renderer tests                                                         |
 | `mise run test:strava:docker`      | Native DAG and cutover checks with disposable PostgreSQL and a fake vendor |
 | `mise run generate:protobuf:check` | Checked-in map protobuf bindings                                           |
@@ -244,9 +244,13 @@ Coverage shows execution, not the strength of assertions.
 ### CI coverage policy and viewing reports
 
 Every owning `test` task produces unit coverage as part of its test run.
-Woodpecker's Rust, UI and map-renderer test steps call those
-tasks; each unit suite runs once. Rust then runs its existing integration tests and
-doctests separately, without including their execution in the unit reports.
+Woodpecker reuses completed Rust verification and its combined reports when all
+backend inputs match a successful run, including across different PRs. A UI-only
+change then invokes no backend Cargo commands. Missing evidence or changed
+backend inputs runs the full checks; manual pipelines force a fresh run. See the
+[Rust CI contract](specs/rust-ci.md) for inputs, invalidation, and failure rules.
+UI and map-renderer checks continue to run. When Rust checks run, each unit suite
+runs once, followed by existing integration tests and doctests separately.
 Its instrumented build cache persists at
 `/cache/bike/target/${CI_COMMIT_REF}/llvm-cov-target` on the shared runner volume.
 The first instrumented dependency build is required for each ref; subsequent
@@ -259,9 +263,12 @@ or introduce a pipeline number in the target path.
 
 `mise run checks:docker coverage:cache:test` builds a small Rust fixture twice
 using the configured workflow paths, removes source and test files between
-runs, and verifies dependency freshness plus the resulting coverage. Prek and
-`ci:runtime` enforce this regression. Formatting, lint, types, audits, and
-contract checks remain in the owning check tasks.
+runs, and verifies dependency freshness plus the resulting coverage. It also
+checks that binary generation reuses integration-test dependencies under the
+same warning-denying flags. Prek and the conditional `test-rust-cache` CI step
+enforce this regression when tooling changes. `ci:rust:cache:test` verifies
+cross-PR result reuse and failure handling using fake expensive suites.
+Formatting, lint, types, audits, and contract checks remain in owning tasks.
 
 After all owning test steps finish, `mise run ci:coverage` checks their existing
 reports through `mise run coverage:check`, without compiling or running tests.
@@ -320,9 +327,7 @@ copies and frontend types together:
 
 ```sh
 mise --cd bike-rs run generate:openapi
-mise --cd bike-rs run openapi:check
 mise --cd bike-ui run generate:typescript
-mise --cd bike-ui run openapi:check
 ```
 
 The Strava SDK is generated from the pinned vendor OpenAPI contract in
@@ -388,7 +393,7 @@ too, so dependency hard links do not cross filesystems.
 | The UI is unavailable after the first build | Inspect `docker compose ps` and API/UI logs through `mise exec`; the initial Rust compilation can take time. |
 | An upload stays queued                      | Inspect worker logs and the import trace; both API and worker must be running.                               |
 | A tool version is missing                   | Run `mise install` in the owning component directory.                                                        |
-| A generated client is stale                 | Regenerate OpenAPI and TypeScript, then run `openapi:check`.                                                 |
+| A generated client is stale                 | Regenerate OpenAPI and TypeScript explicitly, then run the UI type check.                                    |
 
 Update the owning [product specification](specs/README.md) when
 behavior changes. Track unfinished work in [`TODO.md`](TODO.md), and use

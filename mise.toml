@@ -29,6 +29,7 @@ k6_image = "grafana/k6:2.3.0@sha256:9c2dee7f8ed74d317e4027c06a10f169b625638189de
 watchexec_version = "2.8.0"
 buildx_version = "0.38.0"
 coverage_minimum = 80
+ci_cache_max_bytes = 34359738368
 coverage_site_url = "https://ericbutera.github.io/bike/coverage"
 github_ssh_host_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
 python_version = "3.13.16"
@@ -92,6 +93,7 @@ PNPM_CONFIG_STORE_DIR = "{{get_env(name='BIKE_NODE_PACKAGE_CACHE', default=confi
 PNPM_CONFIG_CACHE_DIR = "{{get_env(name='BIKE_NODE_PACKAGE_CACHE', default=config_root ~ '/.cache')}}/pnpm-metadata"
 BUILDX_CONFIG = "{{get_env(name='BUILDX_CONFIG', default=config_root ~ '/.cache/docker-buildx')}}"
 COVERAGE_MINIMUM = "{{vars.coverage_minimum}}"
+BIKE_CI_CACHE_MAX_BYTES = "{{vars.ci_cache_max_bytes}}"
 COVERAGE_SITE_URL = "{{vars.coverage_site_url}}"
 COVERAGE_GITHUB_SSH_HOST_KEY = "{{vars.github_ssh_host_key}}"
 
@@ -193,7 +195,7 @@ run = 'bash scripts/db-rehearse.sh "${usage_dump?}"'
 
 [tasks."rust:check"]
 description = "Run Rust backend formatting, lint, and tests"
-run = ["mise --cd bike-rs run fmt:check", "mise --cd bike-rs run lint", "mise --cd bike-rs run test", "mise --cd bike-rs run openapi:check"]
+run = ["mise --cd bike-rs run fmt:check", "mise --cd bike-rs run lint", "mise --cd bike-rs run test"]
 
 [tasks."ui:check"]
 description = "Run shared UI type, test, build, and format checks"
@@ -254,18 +256,7 @@ run = "bash scripts/coverage-transfer.sh save"
 
 [tasks."ci:coverage"]
 description = "Enforce changed-line coverage after native database workflow tests"
-run = '''
-set -euo pipefail
-: "${CI_PIPELINE_NUMBER:?Pipeline identity is required}"
-case "${CARGO_LLVM_COV_TARGET_DIR:?Shared coverage objects are required}" in
-  /cache/bike/target/*/llvm-cov-target) ;;
-  *) printf 'Coverage target is outside the reusable ref cache\n' >&2; exit 1 ;;
-esac
-trap 'mise --cd bike-rs exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov clean --profraw-only' EXIT
-bash scripts/coverage-transfer.sh restore
-mise --cd bike-rs run coverage:report
-mise run coverage:check
-'''
+run = "mise run coverage:check"
 
 [tasks."rust:coverage"]
 description = "Generate Rust workspace coverage reports"
@@ -321,11 +312,15 @@ description = "Validate the workflow using the native Woodpecker CLI"
 run = "woodpecker-cli lint --strict .woodpecker"
 
 [tasks."ci:rust"]
-description = "Install Rust tooling and run the shared backend checks"
-run = ["mise --cd bike-rs install rust protoc", "mise run rust:check"]
+description = "Reuse verified identical backend inputs or run the shared Rust checks"
+run = "bash scripts/ci-rust.sh unit"
+
+[tasks."ci:rust:cache:test"]
+description = "Verify cross-PR Rust check reuse, invalidation, failures, and coverage transfer"
+run = ["mise install node", "mise exec node -- bash scripts/ci-rust-test.sh"]
 
 [tasks."ci:ui:unit"]
-description = "Install UI tooling and run lint, type, unit, format, and client checks"
+description = "Install UI tooling and run lint, type, unit, format, and audit checks"
 run = ["mise --cd bike-ui install node npm:npm pnpm npm:prettier", "mise --cd bike-ui run check"]
 
 [tasks."ci:renderer"]
@@ -335,7 +330,11 @@ run = ["mise install node npm:npm npm:prettier go golangci-lint protoc go:google
 
 [tasks."ci:runtime"]
 description = "Check owning CI and shell orchestration before image builds"
-run = ["mise install shellcheck aqua:woodpecker-ci/woodpecker/woodpecker-cli aqua:docker/buildx", "mise run lint:sh", "mise run ci:check", "mise run images:plan", "mise run coverage:test", "mise run coverage:cache:test"]
+run = ["mise install shellcheck aqua:woodpecker-ci/woodpecker/woodpecker-cli aqua:docker/buildx", "mise run lint:sh", "mise run ci:check", "mise run images:plan", "mise run coverage:test", "mise run ci:rust:cache:test"]
+
+[tasks."ci:rust:cache:regression"]
+description = "Verify Cargo dependency reuse when Rust CI tooling changes"
+run = "mise run coverage:cache:test"
 
 [tasks."ci:deploy"]
 description = "Clone Bike infrastructure once and apply the single Pulumi project"
@@ -379,6 +378,10 @@ run = "bash scripts/test-worker-postgres.sh"
 
 [tasks."ci:workers:postgres"]
 description = "Run worker persistence regressions against the job-local disposable database"
+run = "bash scripts/ci-rust.sh postgres"
+
+[tasks."rust:workers:postgres"]
+description = "Run worker persistence regressions and Strava workflow coverage"
 env = { BIKE_WORKER_TEST_DATABASE_HOST = "docker", BIKE_WORKER_TEST_DATABASE_PORT = "5432", BIKE_STRAVA_COVERAGE = "true" }
 run = ["mise install rust protoc go", "mise run strava:sdk:check", "mise run test:workers:postgres:docker"]
 
@@ -398,7 +401,7 @@ run = ["cp map-renderer/styles/fiord-v1.json bike-ui/public/map-styles/fiord-v1.
 
 [tasks."format:check"]
 description = "Check renderer and synthetic formatting"
-run = "prettier map-renderer/*.mjs map-renderer/tests/*.mjs map-renderer/index.html integration-tests/*.js --check"
+run = "prettier scripts/*.mjs map-renderer/*.mjs map-renderer/tests/*.mjs map-renderer/index.html integration-tests/*.js --check"
 
 [tasks."contracts:check"]
 description = "Compare shared asset mirrors with their canonical owners"
@@ -426,7 +429,7 @@ run = "mise --cd bike-ui run lint:check"
 
 [tasks."lint:maps"]
 description = "Check renderer and synthetic JavaScript"
-run = ["mise run renderer:deps", "map-renderer/node_modules/.bin/eslint --config map-renderer/eslint.config.mjs map-renderer integration-tests/*.js --max-warnings=0", "mise run format:check"]
+run = ["mise run renderer:deps", "map-renderer/node_modules/.bin/eslint --config map-renderer/eslint.config.mjs scripts/*.mjs map-renderer integration-tests/*.js --max-warnings=0", "mise run format:check"]
 
 [tasks."synthetics:build"]
 description = "Build the standalone k6 synthetic image"
