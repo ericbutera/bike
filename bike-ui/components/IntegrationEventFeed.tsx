@@ -2,6 +2,9 @@
 
 import { formatActivityTimestamp } from "@/lib/activityFormatting";
 import type { IntegrationEvent } from "@/lib/queries";
+import StravaSyncHistory, {
+  getStravaActivityChanges,
+} from "./StravaSyncHistory";
 import { CenteredLoading, ErrorCard } from "./ui/QueryState";
 
 type IntegrationEventFeedProps = {
@@ -9,6 +12,7 @@ type IntegrationEventFeedProps = {
   isLoading: boolean;
   error: unknown;
   emptyMessage: string;
+  audience?: "account" | "admin";
   showUserId?: boolean;
   showProvider?: boolean;
 };
@@ -18,25 +22,42 @@ export default function IntegrationEventFeed({
   isLoading,
   error,
   emptyMessage,
+  audience = "account",
   showUserId = false,
   showProvider = false,
 }: IntegrationEventFeedProps) {
+  const activityChanges =
+    audience === "account" ? getStravaActivityChanges(events) : [];
+
   if (isLoading) {
     return <CenteredLoading />;
   }
 
   if (error) {
     return (
-      <ErrorCard error={error} fallback="Unable to load integration events." />
+      <ErrorCard
+        error={error}
+        fallback={
+          audience === "account"
+            ? "Unable to load Strava sync history."
+            : "Unable to load integration events."
+        }
+      />
     );
   }
 
-  if (events.length === 0) {
+  if (
+    audience === "account" ? activityChanges.length === 0 : events.length === 0
+  ) {
     return (
       <div className="rounded-box border border-dashed border-base-300 bg-base-200/60 px-4 py-6 text-sm text-base-content/65">
         {emptyMessage}
       </div>
     );
+  }
+
+  if (audience === "account") {
+    return <StravaSyncHistory changes={activityChanges} />;
   }
 
   return (
