@@ -72,16 +72,6 @@ pub struct DeduplicatedActivityImport {
     pub existing_import: Option<activity_imports::Model>,
 }
 
-pub struct PersistActivityUploadRequest<'a> {
-    pub uploads_dir: &'a str,
-    pub user_storage_key: &'a str,
-    pub user_id: i32,
-    pub upload: ActivityUploadPayload,
-    pub source: &'a str,
-    pub deduplication: ActivityUploadDeduplication,
-    pub training_profile: Option<&'a TrainingProfile>,
-}
-
 pub struct PersistActivityUploadWithArtifactsRequest<'a> {
     pub uploads_dir: &'a str,
     pub user_storage_key: &'a str,
@@ -339,12 +329,6 @@ pub fn infer_activity_type(title: &str, original_filename: &str) -> ActivityType
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ReprocessCacheRefresh {
-    Immediate,
-    Deferred,
-}
-
 struct ActivityProcessingRun<'a> {
     db: &'a DatabaseConnection,
     uploads_dir: &'a str,
@@ -354,7 +338,6 @@ struct ActivityProcessingRun<'a> {
     source_correlation_id: Option<String>,
     deduplication: ActivityUploadDeduplication,
     training_profile: Option<&'a TrainingProfile>,
-    cache_refresh: ReprocessCacheRefresh,
 }
 
 struct ActivityProcessingState {
@@ -383,16 +366,6 @@ struct ActivitySaveData {
     estimated_ftp_watts: Option<i32>,
     heart_rate_zones_json: Option<crate::training_profile::StoredActivityHeartRateZones>,
     derived_data_json: crate::activity_details::StoredActivityDerivedData,
-}
-
-struct ReprocessActivityImportRequest<'a> {
-    db: &'a DatabaseConnection,
-    uploads_dir: &'a str,
-    user_id: i32,
-    activity: activities::Model,
-    activity_import: activity_imports::Model,
-    training_profile: Option<&'a TrainingProfile>,
-    cache_refresh: ReprocessCacheRefresh,
 }
 
 pub async fn mark_activity_import_processing_stage(
@@ -505,9 +478,6 @@ async fn execute_activity_processing_graph(
         if let Some(outcome) = outcome {
             execution::finish_active(run.db, &state.import_model, "duplicate", None).await?;
             return Ok(outcome);
-        }
-        if should_stop_activity_processing(run, node) {
-            break;
         }
     }
 
@@ -690,14 +660,6 @@ async fn run_activity_processing_node(
     }
 
     Ok(None)
-}
-
-fn should_stop_activity_processing(
-    run: &ActivityProcessingRun<'_>,
-    node: ActivityProcessingNode,
-) -> bool {
-    run.cache_refresh == ReprocessCacheRefresh::Deferred
-        && node == ActivityProcessingNode::SegmentsBuilt
 }
 
 fn activity_processing_result(
@@ -1133,29 +1095,6 @@ fn activity_model_ref(state: &ActivityProcessingState) -> Result<&activities::Mo
     })
 }
 
-pub async fn persist_activity_upload(
-    db: &DatabaseConnection,
-    request: PersistActivityUploadRequest<'_>,
-) -> Result<PersistActivityUploadOutcome, AppError> {
-    let source_quality = original_source_quality_for_format(&request.upload.format);
-    persist_activity_upload_with_artifacts(
-        db,
-        PersistActivityUploadWithArtifactsRequest {
-            uploads_dir: request.uploads_dir,
-            user_storage_key: request.user_storage_key,
-            user_id: request.user_id,
-            upload: request.upload,
-            primary_artifact_kind: ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL,
-            primary_source_quality: source_quality,
-            additional_artifacts: Vec::new(),
-            source: request.source,
-            deduplication: request.deduplication,
-            training_profile: request.training_profile,
-        },
-    )
-    .await
-}
-
 pub async fn persist_activity_upload_with_artifacts(
     db: &DatabaseConnection,
     request: PersistActivityUploadWithArtifactsRequest<'_>,
@@ -1206,7 +1145,6 @@ pub async fn persist_activity_upload_with_artifacts(
         source_correlation_id,
         deduplication: request.deduplication,
         training_profile: request.training_profile,
-        cache_refresh: ReprocessCacheRefresh::Immediate,
     })
     .await;
 
@@ -1453,7 +1391,6 @@ pub async fn process_stored_activity_import(
         source_correlation_id: None,
         deduplication,
         training_profile,
-        cache_refresh: ReprocessCacheRefresh::Immediate,
     })
     .await
 }
@@ -1478,19 +1415,23 @@ pub async fn finalize_activity_import_batch(
     .map_err(|error| AppError::internal(error.message))
 }
 
-async fn reprocess_activity_from_import_with_cache_refresh(
-    request: ReprocessActivityImportRequest<'_>,
+pub async fn reprocess_activity_from_import(
+    db: &DatabaseConnection,
+    uploads_dir: &str,
+    user_id: i32,
+    activity: activities::Model,
+    activity_import: activity_imports::Model,
+    training_profile: Option<&TrainingProfile>,
 ) -> Result<ReprocessedActivityImport, AppError> {
     let outcome = run_activity_processing_graph(ActivityProcessingRun {
-        db: request.db,
-        uploads_dir: request.uploads_dir,
-        user_id: request.user_id,
-        import: request.activity_import,
-        existing_activity: Some(request.activity),
+        db,
+        uploads_dir,
+        user_id,
+        import: activity_import,
+        existing_activity: Some(activity),
         source_correlation_id: None,
         deduplication: ActivityUploadDeduplication::Disabled,
-        training_profile: request.training_profile,
-        cache_refresh: request.cache_refresh,
+        training_profile,
     })
     .await?;
 
@@ -1504,46 +1445,6 @@ async fn reprocess_activity_from_import_with_cache_refresh(
             "Reprocessing an existing activity cannot produce a duplicate outcome",
         )),
     }
-}
-
-pub async fn reprocess_activity_from_import(
-    db: &DatabaseConnection,
-    uploads_dir: &str,
-    user_id: i32,
-    activity: activities::Model,
-    activity_import: activity_imports::Model,
-    training_profile: Option<&TrainingProfile>,
-) -> Result<ReprocessedActivityImport, AppError> {
-    reprocess_activity_from_import_with_cache_refresh(ReprocessActivityImportRequest {
-        db,
-        uploads_dir,
-        user_id,
-        activity,
-        activity_import,
-        training_profile,
-        cache_refresh: ReprocessCacheRefresh::Immediate,
-    })
-    .await
-}
-
-pub async fn reprocess_activity_from_import_deferred_caches(
-    db: &DatabaseConnection,
-    uploads_dir: &str,
-    user_id: i32,
-    activity: activities::Model,
-    activity_import: activity_imports::Model,
-    training_profile: Option<&TrainingProfile>,
-) -> Result<ReprocessedActivityImport, AppError> {
-    reprocess_activity_from_import_with_cache_refresh(ReprocessActivityImportRequest {
-        db,
-        uploads_dir,
-        user_id,
-        activity,
-        activity_import,
-        training_profile,
-        cache_refresh: ReprocessCacheRefresh::Deferred,
-    })
-    .await
 }
 
 pub fn validate_activity_format(filename: &str) -> Result<String, AppError> {
@@ -1845,13 +1746,17 @@ mod tests {
         source: &str,
         training_profile: &TrainingProfile,
     ) -> Result<PersistActivityUploadOutcome, AppError> {
-        persist_activity_upload(
+        let source_quality = original_source_quality_for_format(&upload.format);
+        persist_activity_upload_with_artifacts(
             db,
-            PersistActivityUploadRequest {
+            PersistActivityUploadWithArtifactsRequest {
                 uploads_dir,
                 user_storage_key: "test-user",
                 user_id: 1,
                 upload,
+                primary_artifact_kind: ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL,
+                primary_source_quality: source_quality,
+                additional_artifacts: Vec::new(),
                 source,
                 deduplication: ActivityUploadDeduplication::Enabled,
                 training_profile: Some(training_profile),
@@ -2608,58 +2513,6 @@ mod tests {
                 .await
                 .expect("count replayed training analyses"),
             1,
-        );
-
-        let _ = std::fs::remove_dir_all(&uploads_dir);
-    }
-
-    #[tokio::test]
-    async fn deferred_reprocess_skips_immediate_training_analysis_rebuild() {
-        let db = test_db().await;
-        let uploads_dir = test_uploads_dir();
-        let training_profile = TrainingProfile::default();
-
-        let imported = match persist_test_activity_upload(
-            &db,
-            &uploads_dir,
-            cycling_gpx_upload(),
-            "manual_upload",
-            &training_profile,
-        )
-        .await
-        .expect("import activity")
-        {
-            PersistActivityUploadOutcome::Imported(imported) => imported,
-            PersistActivityUploadOutcome::Duplicate(_) => panic!("expected imported activity"),
-        };
-
-        activity_training_analyses::Entity::delete_many()
-            .filter(activity_training_analyses::Column::ActivityId.eq(imported.activity.id))
-            .exec(&db)
-            .await
-            .expect("clear activity training analysis");
-
-        mark_activity_imports_processed(&db, &[imported.import.id])
-            .await
-            .unwrap();
-        reprocess_activity_from_import_deferred_caches(
-            &db,
-            &uploads_dir,
-            1,
-            imported.activity.clone(),
-            imported.import.clone(),
-            Some(&training_profile),
-        )
-        .await
-        .expect("reprocess activity with deferred cache refresh");
-
-        assert_eq!(
-            activity_training_analyses::Entity::find()
-                .filter(activity_training_analyses::Column::ActivityId.eq(imported.activity.id))
-                .count(&db)
-                .await
-                .expect("count activity training analyses"),
-            0,
         );
 
         let _ = std::fs::remove_dir_all(&uploads_dir);

@@ -5,8 +5,8 @@ use super::storage::{TaskRecord, TaskStatus as RecordStatus, TaskStorage};
 use async_trait::async_trait;
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait, NotSet, Set,
-    TransactionSession, TransactionTrait,
+    ActiveModelTrait, ConnectionTrait, DatabaseConnection, DbErr, NotSet, Set, TransactionSession,
+    TransactionTrait,
 };
 
 pub use super::entities::background_tasks::*;
@@ -19,17 +19,6 @@ pub struct DurableStorage {
 impl DurableStorage {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
-    }
-
-    async fn task(&self, id: &str) -> Result<Model, TaskError> {
-        let id = id
-            .parse::<i32>()
-            .map_err(|_| TaskError::Storage("Invalid task ID".into()))?;
-        Entity::find_by_id(id)
-            .one(&self.db)
-            .await
-            .map_err(storage_error)?
-            .ok_or(TaskError::NotFound)
     }
 }
 
@@ -120,49 +109,5 @@ impl TaskStorage for DurableStorage {
             .await
             .map(Into::into)
             .map_err(storage_error)
-    }
-
-    async fn find_pending(&self, limit: usize) -> Result<Vec<TaskRecord>, TaskError> {
-        Ok(Model::find_pending(&self.db, limit as u64)
-            .await
-            .map_err(storage_error)?
-            .into_iter()
-            .map(Into::into)
-            .collect())
-    }
-
-    async fn mark_processing(&self, id: &str) -> Result<TaskRecord, TaskError> {
-        self.task(id)
-            .await?
-            .mark_processing(&self.db)
-            .await
-            .map(Into::into)
-            .map_err(storage_error)
-    }
-
-    async fn mark_completed(&self, id: &str) -> Result<TaskRecord, TaskError> {
-        self.task(id)
-            .await?
-            .mark_completed(&self.db)
-            .await
-            .map(Into::into)
-            .map_err(storage_error)
-    }
-
-    async fn mark_failed(&self, id: &str, error: String) -> Result<TaskRecord, TaskError> {
-        self.task(id)
-            .await?
-            .mark_failed(&self.db, error)
-            .await
-            .map(Into::into)
-            .map_err(storage_error)
-    }
-
-    async fn get_task(&self, id: &str) -> Result<Option<TaskRecord>, TaskError> {
-        match self.task(id).await {
-            Ok(task) => Ok(Some(task.into())),
-            Err(TaskError::NotFound) => Ok(None),
-            Err(error) => Err(error),
-        }
     }
 }

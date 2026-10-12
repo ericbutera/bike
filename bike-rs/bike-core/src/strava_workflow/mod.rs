@@ -5,7 +5,9 @@ mod collection;
 pub(crate) mod import_objects;
 mod inbox;
 pub(crate) mod intents;
+pub(crate) mod rebuild;
 mod revocation;
+mod sources;
 mod stage;
 pub use inbox::{
     accept_webhook, active_user_collection, queue_disconnect, queue_reconciliation, queue_sync,
@@ -38,8 +40,19 @@ pub struct Source {
     pub event_time: i64,
     pub parent: Option<String>,
     pub activity: Option<serde_json::Value>,
+    #[serde(default)]
+    pub listing_page: Option<crate::strava_objects::ObjectRef>,
     pub raw: Option<crate::strava_objects::ObjectRef>,
     pub after: Option<i64>,
+}
+
+impl Source {
+    async fn verify(&self, store: &ObjectStore) -> Result<(), WorkflowError> {
+        for object in [&self.raw, &self.listing_page].into_iter().flatten() {
+            store.read(object).await?;
+        }
+        Ok(())
+    }
 }
 
 pub(crate) struct Run<'a> {
@@ -49,27 +62,20 @@ pub(crate) struct Run<'a> {
     connection: strava_connections::Model,
     client: StravaApiClient,
     store: ObjectStore,
-    token: String,
 }
 
 pub fn graph(action: &str) -> Result<Vec<&'static str>, WorkflowError> {
     let stages = match action {
-        "insert" | "update" | "upsert" => {
-            vec!["activity", "streams", "normalize", "apply", "derived"]
+        "insert" | "update" => vec!["activity", "streams", "apply", "rebuild"],
+        "upsert" => {
+            vec!["activity", "streams", "apply"]
         }
-        "delete" => vec!["capture_delete", "delete", "derived"],
-        "sync" | "backfill" => vec!["discover", "children", "complete"],
+        "delete" => vec!["capture_delete", "delete", "rebuild"],
+        "sync" | "backfill" => vec!["discover", "children", "rebuild"],
         "deauthorize" => vec!["capture_cleanup", "revoke", "cleanup"],
         _ => return Err(WorkflowError::bad_request("Unknown Strava workflow action")),
     };
-    let mut dag = petgraph::graph::DiGraph::<&str, ()>::new();
-    let nodes: Vec<_> = stages.iter().map(|stage| dag.add_node(stage)).collect();
-    for edge in nodes.windows(2) {
-        dag.add_edge(edge[0], edge[1], ());
-    }
-    petgraph::algo::toposort(&dag, None)
-        .map(|order| order.into_iter().map(|node| dag[node]).collect())
-        .map_err(|_| WorkflowError::internal("Strava workflow graph contains a cycle"))
+    Ok(stages)
 }
 
 pub async fn execute(db: &DatabaseConnection, id: &str) -> Result<(), WorkflowError> {
@@ -79,12 +85,6 @@ pub async fn execute(db: &DatabaseConnection, id: &str) -> Result<(), WorkflowEr
         .ok_or_else(|| WorkflowError::not_found("Strava workflow was not found"))?;
     if row.status == "completed" {
         return Ok(());
-    }
-    if !provider_work_enabled() {
-        return Err(WorkflowError::too_many_requests(
-            "Strava provider work is paused for cutover",
-            Some(chrono::Utc::now() + chrono::Duration::minutes(1)),
-        ));
     }
     // One connection owns refresh and provider work. PostgreSQL releases this
     // transaction-scoped lease automatically if the worker dies.
@@ -154,25 +154,15 @@ async fn execute_owned(
     connection: strava_connections::Model,
     client: StravaApiClient,
 ) -> Result<(), WorkflowError> {
-    if let Some(raw) = &source.raw {
-        ObjectStore::new(&Config::get().uploads_dir)
-            .read(raw)
-            .await?;
-    }
-    let connection = if matches!(row.action.as_str(), "delete" | "deauthorize") {
-        connection
-    } else {
-        crate::strava::ensure_fresh_access_token(db, &client, connection).await?
-    };
-    let token = crate::strava_credentials::open(&connection.access_token)?;
+    let store = ObjectStore::new(&Config::get().uploads_dir);
+    source.verify(&store).await?;
     let run = Run {
         db,
-        store: ObjectStore::new(&Config::get().uploads_dir),
+        store,
         row,
         source,
         connection,
         client,
-        token,
     };
     Box::pin(run.execute()).await
 }

@@ -80,12 +80,6 @@ pub(crate) struct StravaAthleteSummary {
 }
 
 #[derive(Debug, Deserialize)]
-pub(crate) struct StravaPushSubscription {
-    pub(crate) id: i64,
-    pub(crate) callback_url: String,
-}
-
-#[derive(Debug, Deserialize)]
 struct StravaFault {
     message: Option<String>,
 }
@@ -205,31 +199,6 @@ impl StravaApiClient {
         .await
     }
 
-    pub(crate) async fn list_activities(
-        &self,
-        access_token: &str,
-        after_epoch: Option<i64>,
-        page: usize,
-        per_page: usize,
-    ) -> Result<Vec<StravaActivitySummary>, AppError> {
-        let configuration = self.sdk(Some(access_token));
-        let request = activities_api::get_logged_in_athlete_activities(
-            &configuration,
-            None,
-            after_epoch.map(|value| value as i32),
-            Some(page as i32),
-            Some(per_page as i32),
-        );
-
-        self.send_json(
-            request,
-            StravaRequestClass::Read,
-            "list_activities",
-            "list Strava activities",
-        )
-        .await
-    }
-
     pub(crate) async fn get_activity_streams(
         &self,
         access_token: &str,
@@ -253,41 +222,6 @@ impl StravaApiClient {
         )
         .await
         .map(|_| ())
-    }
-
-    pub(crate) async fn list_push_subscriptions(
-        &self,
-    ) -> Result<Vec<StravaPushSubscription>, AppError> {
-        self.send_json(
-            strava_api::list_push_subscriptions(
-                &self.sdk(None),
-                &self.config.strava_client_id,
-                &self.config.strava_client_secret,
-            ),
-            StravaRequestClass::Read,
-            "list_push_subscriptions",
-            "list Strava webhook subscriptions",
-        )
-        .await
-    }
-
-    pub(crate) async fn create_push_subscription(
-        &self,
-    ) -> Result<StravaPushSubscription, AppError> {
-        let callback_url = self.config.strava_webhook_callback_url();
-        self.send_json(
-            strava_api::create_push_subscription(
-                &self.sdk(None),
-                &self.config.strava_client_id,
-                &self.config.strava_client_secret,
-                &callback_url,
-                &self.config.strava_webhook_verify_token,
-            ),
-            StravaRequestClass::OverallOnly,
-            "create_push_subscription",
-            "create a Strava webhook subscription",
-        )
-        .await
     }
 
     async fn send_json<T, R, E>(

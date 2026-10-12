@@ -1,4 +1,4 @@
-use super::{graph, stage::json_error, Run, Source};
+use super::{activity::Effect, rebuild::Rebuild, stage::json_error, Run, Source};
 use crate::{
     entities::{strava_connections, strava_workflows},
     strava_objects::checksum,
@@ -9,7 +9,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct DiscoveryPage {
-    values: Vec<serde_json::Value>,
     observed_at: chrono::DateTime<chrono::Utc>,
     raw: crate::strava_objects::ObjectRef,
 }
@@ -18,6 +17,8 @@ struct Summary {
     imported: i32,
     unchanged: i32,
     latest: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default)]
+    rebuild: Rebuild,
 }
 
 impl Run<'_> {
@@ -30,7 +31,7 @@ impl Run<'_> {
             self.row.action, self.row.id
         )));
         running.update(self.db).await?;
-        let result = self.collection_graph().await;
+        let result = self.collection_steps().await;
         if let Err(error) = &result {
             let mut failed: strava_connections::ActiveModel = self.connection.clone().into();
             failed.last_sync_status = Set(if error.status
@@ -48,42 +49,42 @@ impl Run<'_> {
         result
     }
 
-    async fn collection_graph(&self) -> Result<(), WorkflowError> {
-        let mut pages: Option<Vec<DiscoveryPage>> = None;
-        let mut summary: Option<Summary> = None;
-        for node in graph(&self.row.action)? {
-            match node {
-                "discover" => pages = Some(self.stage(node, &self.row.id, self.discover()).await?),
-                "children" => {
-                    let pages = pages
-                        .as_ref()
-                        .ok_or_else(|| WorkflowError::internal("Missing discovery checkpoint"))?;
-                    summary = Some(self.stage(node, &self.row.id, self.children(pages)).await?);
-                }
-                "complete" => {
-                    let summary = summary
-                        .as_ref()
-                        .ok_or_else(|| WorkflowError::internal("Missing children checkpoint"))?;
-                    self.stage(node, &self.row.id, self.complete(summary))
-                        .await?;
-                }
-                _ => return Err(WorkflowError::internal("Unsupported collection DAG stage")),
-            }
-        }
+    async fn collection_steps(&self) -> Result<(), WorkflowError> {
+        let pages = self
+            .stage("discover", &self.row.id, self.pull_pages())
+            .await?;
+        let summary = self
+            .stage("children", &self.row.id, self.apply_pages(&pages))
+            .await?;
+        self.stage(
+            "rebuild",
+            &self.row.id,
+            summary.rebuild.run(self.db, self.connection.user_id),
+        )
+        .await?;
+        self.complete(&summary).await?;
         Ok(())
     }
 
-    async fn discover(&self) -> Result<Vec<DiscoveryPage>, WorkflowError> {
+    fn after(&self) -> i64 {
+        self.source.after.unwrap_or_else(|| {
+            (self.row.accepted_at - chrono::Duration::days(super::INITIAL_BACKFILL_DAYS))
+                .timestamp()
+        })
+    }
+
+    async fn pull_pages(&self) -> Result<Vec<DiscoveryPage>, WorkflowError> {
         let mut pages = Vec::new();
         for page in 1..=10_000 {
             let archive = self.archive(None, "", &format!("pages/{page}"));
-            let values = archive
-                .clone()
-                .scope(
+            let raw = self
+                .fetch_source(archive.clone(), |token| async move {
                     self.client
-                        .list_activity_page(&self.token, self.source.after, page),
-                )
+                        .list_activity_page(&token, Some(self.after()), page)
+                        .await
+                })
                 .await?;
+            let values: Vec<serde_json::Value> = self.store.read_json(&raw).await?;
             let saved = archive
                 .store
                 .response(&archive.key)
@@ -91,9 +92,8 @@ impl Run<'_> {
                 .ok_or_else(|| WorkflowError::internal("Strava listing was not retained"))?;
             let finished = values.len() < 100;
             pages.push(DiscoveryPage {
-                values,
                 observed_at: saved.observed_at,
-                raw: saved.body,
+                raw,
             });
             if finished {
                 return Ok(pages);
@@ -104,11 +104,24 @@ impl Run<'_> {
         ))
     }
 
-    async fn children(&self, pages: &[DiscoveryPage]) -> Result<Summary, WorkflowError> {
+    async fn apply_pages(&self, pages: &[DiscoveryPage]) -> Result<Summary, WorkflowError> {
         let mut summary = Summary::default();
         for page in pages.iter().rev() {
-            self.store.read(&page.raw).await?;
-            for value in page.values.iter().rev() {
+            let values: Vec<serde_json::Value> = self.store.read_json(&page.raw).await?;
+            for value in values.iter().rev() {
+                let started_at = value
+                    .get("start_date")
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+                    .ok_or_else(|| {
+                        WorkflowError::bad_request(
+                            "Strava listing activity has no valid start date",
+                        )
+                    })?
+                    .with_timezone(&chrono::Utc);
+                if started_at.timestamp() <= self.after() {
+                    continue;
+                }
                 let id = value
                     .get("id")
                     .and_then(serde_json::Value::as_i64)
@@ -122,41 +135,44 @@ impl Run<'_> {
                     generation: self.source.generation,
                     event_time: page.observed_at.timestamp(),
                     parent: Some(self.row.id.clone()),
-                    activity: Some(value.clone()),
-                    raw: Some(page.raw.clone()),
+                    activity: None,
+                    listing_page: Some(page.raw.clone()),
+                    raw: None,
                     after: None,
                 };
                 let completed = self.child_activity(&child, "upsert", id, source).await?;
-                let latest = value
-                    .get("start_date")
-                    .and_then(serde_json::Value::as_str)
-                    .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
-                    .map(|at| at.with_timezone(&chrono::Utc));
-                summary.latest = summary.latest.max(latest);
-                let applied = self.child_applied(&completed).await?;
-                if applied {
+                summary.latest = summary.latest.max(Some(started_at));
+                let effect = self.child_effect(&completed).await?;
+                if effect
+                    .as_ref()
+                    .is_some_and(|effect| effect.outcome == "applied")
+                {
                     summary.imported += 1;
                 } else {
                     summary.unchanged += 1;
+                }
+                if let Some(effect) = effect {
+                    summary.rebuild.merge(effect.rebuild);
                 }
             }
         }
         Ok(summary)
     }
 
-    async fn child_applied(&self, row: &strava_workflows::Model) -> Result<bool, WorkflowError> {
+    async fn child_effect(
+        &self,
+        row: &strava_workflows::Model,
+    ) -> Result<Option<Effect>, WorkflowError> {
         let Some(saved) = row
             .checkpoint
             .as_object()
             .and_then(|stages| stages.iter().find(|(key, _)| key.starts_with("apply:")))
             .map(|(_, value)| value)
         else {
-            return Ok(false);
+            return Ok(None);
         };
         let object = serde_json::from_value(saved.clone()).map_err(json_error)?;
-        let output: serde_json::Value =
-            serde_json::from_slice(&self.store.read(&object).await?).map_err(json_error)?;
-        Ok(output["outcome"] == "applied")
+        self.store.read_json(&object).await.map(Some)
     }
 
     async fn complete(&self, summary: &Summary) -> Result<Summary, WorkflowError> {

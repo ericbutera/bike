@@ -106,6 +106,9 @@ Admin pages require an authenticated admin user. Non-admin users should not be a
   Retained task errors remain available in task history without driving alerts.
 - Database task snapshots provide admin history and queue diagnostics only;
   worker failure alerts rely on execution counters.
+- The task-storage interface accepts jobs. Workers claim, heartbeat and finish
+  executions through the owning task model; admin reads and actions use the same
+  model. Unused queue-management wrappers are removed.
 - Task graphs use pages of 50 tasks, 25 work units and 100 outputs. Archive and
   bulk producers queue bounded pages; their child barrier retains the exact lock
   until descendants finish. An admin rerun starts a fresh run outside the old

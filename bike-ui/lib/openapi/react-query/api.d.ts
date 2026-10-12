@@ -9124,7 +9124,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Queued a full Strava backfill from retained and remote sources */
+      /** @description Queued a Strava backfill for the last 15 days */
       200: {
         headers: {
           [name: string]: unknown;

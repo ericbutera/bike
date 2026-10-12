@@ -52,7 +52,7 @@ pub struct TaskRecord {
     pub completed_at: Option<DateTime<Utc>>,
 }
 
-/// Trait for task storage implementations
+/// Storage boundary for durable task acceptance.
 #[async_trait::async_trait]
 pub trait TaskStorage: Send + Sync {
     /// Enqueue a new task
@@ -63,35 +63,4 @@ pub trait TaskStorage: Send + Sync {
         scheduled_for: Option<DateTime<Utc>>,
         max_attempts: i32,
     ) -> Result<TaskRecord, crate::background_jobs::error::TaskError>;
-
-    /// Find pending tasks ready to be processed
-    async fn find_pending(
-        &self,
-        limit: usize,
-    ) -> Result<Vec<TaskRecord>, crate::background_jobs::error::TaskError>;
-
-    /// Mark task as processing
-    async fn mark_processing(
-        &self,
-        id: &str,
-    ) -> Result<TaskRecord, crate::background_jobs::error::TaskError>;
-
-    /// Mark task as completed
-    async fn mark_completed(
-        &self,
-        id: &str,
-    ) -> Result<TaskRecord, crate::background_jobs::error::TaskError>;
-
-    /// Mark task as failed
-    async fn mark_failed(
-        &self,
-        id: &str,
-        error: String,
-    ) -> Result<TaskRecord, crate::background_jobs::error::TaskError>;
-
-    /// Get task by ID
-    async fn get_task(
-        &self,
-        id: &str,
-    ) -> Result<Option<TaskRecord>, crate::background_jobs::error::TaskError>;
 }

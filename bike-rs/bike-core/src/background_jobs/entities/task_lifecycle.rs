@@ -68,12 +68,6 @@ impl Model {
         Ok(task)
     }
 
-    pub async fn mark_processing(&self, db: &DatabaseConnection) -> Result<Self, DbErr> {
-        self.claim(db)
-            .await?
-            .ok_or_else(|| DbErr::Custom("Task was already claimed or is not eligible".into()))
-    }
-
     pub async fn heartbeat(&self, db: &DatabaseConnection) -> Result<bool, DbErr> {
         let transaction = db.begin().await?;
         let now = Utc::now();

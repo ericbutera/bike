@@ -1,9 +1,8 @@
-use super::{graph, stage::json_error, Run};
+use super::{rebuild::Rebuild, stage::json_error, Run};
 use crate::{
     entities::{activities, activity_import_artifacts, activity_imports, strava_activity_states},
-    jobs::JobQueue,
     strava_activity::ActivityPayload,
-    strava_objects::checksum,
+    strava_objects::{checksum, ObjectRef},
     strava_provider_payload::{
         strava_activity_is_bike, StoredStravaProviderPayload, StravaActivityStreams,
         StravaActivitySummary,
@@ -18,14 +17,28 @@ struct DeleteCapture {
     activity: Option<activities::Model>,
     segment_ids: Vec<i32>,
 }
+impl DeleteCapture {
+    fn rebuild(&self) -> Rebuild {
+        Rebuild {
+            import_ids: Vec::new(),
+            segment_ids: self.segment_ids.clone(),
+            dirty_from: self
+                .activity
+                .as_ref()
+                .map(|activity| activity.started_at.date_naive()),
+        }
+    }
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct Effect {
-    outcome: String,
+pub(super) struct Effect {
+    pub(super) outcome: String,
     hash: Option<String>,
     #[serde(default)]
     activity_id: Option<i32>,
     #[serde(default)]
     import_id: Option<i32>,
+    #[serde(default)]
+    pub(super) rebuild: Rebuild,
 }
 
 impl Run<'_> {
@@ -47,10 +60,10 @@ impl Run<'_> {
             .await?;
             return Ok(());
         }
-        if self.row.action == "delete" {
-            self.delete().await
-        } else {
-            self.upsert().await
+        match self.row.action.as_str() {
+            "delete" => self.delete().await,
+            "insert" | "update" | "upsert" => self.upsert().await,
+            _ => Err(WorkflowError::bad_request("Unknown Strava workflow action")),
         }
     }
 
@@ -59,65 +72,38 @@ impl Run<'_> {
             .row
             .activity_id
             .ok_or_else(|| WorkflowError::bad_request("Missing Strava activity ID"))?;
-        let mut activity: Option<StravaActivitySummary> = None;
-        let mut streams = StravaActivityStreams::default();
-        let mut payload: Option<ActivityPayload> = None;
-        let mut effect: Option<Effect> = None;
-        for node in graph(&self.row.action)? {
-            match node {
-                "activity" => {
-                    activity = Some(
-                        self.stage(node, &self.row.id, self.resolve_activity(id))
-                            .await?,
-                    )
-                }
-                "streams" => {
-                    let activity = activity
-                        .as_ref()
-                        .ok_or_else(|| WorkflowError::internal("Activity stage is missing"))?;
-                    streams = self
-                        .stage(
-                            node,
-                            &stream_revision(activity)?,
-                            self.resolve_streams(activity),
-                        )
-                        .await?;
-                }
-                "normalize" => {
-                    let value = ActivityPayload {
-                        activity: activity
-                            .clone()
-                            .ok_or_else(|| WorkflowError::internal("Activity stage is missing"))?,
-                        streams: streams.clone(),
-                    };
-                    let input = checksum(&serde_json::to_vec(&value).map_err(json_error)?);
-                    payload = Some(self.stage(node, &input, async { Ok(value) }).await?);
-                }
-                "apply" => {
-                    let payload = payload
-                        .as_ref()
-                        .ok_or_else(|| WorkflowError::internal("Normalize stage is missing"))?;
-                    let hash = checksum(
-                        &crate::strava::build_activity_upload(&payload.activity, &payload.streams)?
-                            .bytes,
-                    );
-                    effect = Some(self.stage(node, &hash, self.apply(payload, &hash)).await?);
-                }
-                "derived" => {
-                    let effect = effect
-                        .as_ref()
-                        .ok_or_else(|| WorkflowError::internal("Apply stage is missing"))?;
-                    self.stage(node, &self.row.id, async { Ok(effect.clone()) })
-                        .await?;
-                }
-                _ => return Err(WorkflowError::internal("Unsupported activity DAG stage")),
-            }
+        let activity: StravaActivitySummary = self
+            .source_stage("activity", &self.row.id, self.resolve_activity(id))
+            .await?;
+        let streams = self
+            .source_stage(
+                "streams",
+                &stream_revision(&activity)?,
+                self.resolve_streams(&activity),
+            )
+            .await?;
+        let payload = ActivityPayload { activity, streams };
+        let hash = checksum(
+            &crate::strava::build_activity_upload(&payload.activity, &payload.streams)?.bytes,
+        );
+        let effect = self
+            .stage("apply", &hash, self.apply(&payload, &hash))
+            .await?;
+        // Collection children return their changes to the parent's single rebuild.
+        if self.row.action != "upsert" {
+            self.stage(
+                "rebuild",
+                &self.row.id,
+                effect.rebuild.run(self.db, self.connection.user_id),
+            )
+            .await?;
         }
         Ok(())
     }
 
-    async fn resolve_activity(&self, id: i64) -> Result<StravaActivitySummary, WorkflowError> {
-        let activity = if let Some(activity) = &self.source.activity {
+    async fn resolve_activity(&self, id: i64) -> Result<ObjectRef, WorkflowError> {
+        let summary = self.source.activity_summary(&self.store, id).await?;
+        let object = if let Some(activity) = &summary {
             let mut value = self
                 .legacy_payload(id)
                 .await?
@@ -131,9 +117,18 @@ impl Run<'_> {
             for (key, field) in fields {
                 value[key] = field.clone();
             }
-            serde_json::from_value(value).map_err(json_error)?
+            self.store
+                .transform(
+                    &format!(
+                        "strava/{}/{id}/transforms/listed-activity/v1/{}",
+                        self.row.athlete_id,
+                        checksum(&serde_json::to_vec(&value).map_err(json_error)?)
+                    ),
+                    &value,
+                )
+                .await?
         } else {
-            self.archive(
+            let archive = self.archive(
                 Some(id),
                 &format!(
                     "{}-{}",
@@ -141,36 +136,48 @@ impl Run<'_> {
                     checksum(self.row.id.as_bytes())
                 ),
                 "activity",
-            )
-            .scope(self.client.get_activity(&self.token, id))
+            );
+            self.fetch_source(archive, |token| async move {
+                self.client.get_activity(&token, id).await
+            })
             .await?
         };
+        let activity: StravaActivitySummary = self.store.read_json(&object).await?;
         if activity.id != id {
             return Err(WorkflowError::bad_request(
                 "Strava response activity ID does not match the workflow",
             ));
         }
-        Ok(activity)
+        Ok(object)
     }
 
     async fn resolve_streams(
         &self,
         activity: &StravaActivitySummary,
-    ) -> Result<StravaActivityStreams, WorkflowError> {
+    ) -> Result<ObjectRef, WorkflowError> {
         if !strava_activity_is_bike(activity) {
-            return Ok(StravaActivityStreams::default());
+            return self
+                .store
+                .transform(
+                    &format!(
+                        "strava/{}/{}/transforms/excluded-streams/v1",
+                        self.row.athlete_id, activity.id
+                    ),
+                    &StravaActivityStreams::default(),
+                )
+                .await;
         }
         let revision = stream_revision(activity)?;
         let archive = self.archive(Some(activity.id), &revision, "streams");
         if let Some(saved) = archive.store.response(&archive.key).await? {
-            return serde_json::from_slice(&archive.store.read(&saved.body).await?)
-                .map_err(json_error);
+            return Ok(saved.body);
         }
         // Previously retained imports are valid local sources too. Preserve their
         // legacy provenance rather than claiming they contain original HTTP bytes.
         if let Some(existing) = self.legacy_payload(activity.id).await? {
             if stream_revision(&existing.activity)? == revision {
-                self.store
+                return self
+                    .store
                     .transform(
                         &format!(
                             "strava/{}/{}/transforms/legacy-streams/v1/{revision}",
@@ -178,13 +185,13 @@ impl Run<'_> {
                         ),
                         &existing.streams,
                     )
-                    .await?;
-                return Ok(existing.streams);
+                    .await;
             }
         }
-        archive
-            .scope(self.client.get_activity_streams(&self.token, activity.id))
-            .await
+        self.fetch_source(archive, |token| async move {
+            self.client.get_activity_streams(&token, activity.id).await
+        })
+        .await
     }
 
     async fn legacy_payload(
@@ -218,26 +225,15 @@ impl Run<'_> {
 
     async fn apply(&self, payload: &ActivityPayload, hash: &str) -> Result<Effect, WorkflowError> {
         if !strava_activity_is_bike(&payload.activity) {
-            if activities::Model::strava_activity(
-                self.db,
-                self.connection.user_id,
-                payload.activity.id,
-            )
-            .await?
-            .is_some()
-            {
-                self.delete().await?;
-            } else {
-                self.save_state(Some(hash.into()), false).await?;
-            }
-            return Ok(Effect {
-                outcome: "excluded".into(),
-                hash: None,
-                activity_id: None,
-                import_id: None,
-            });
+            let capture = self
+                .stage("capture_delete", &self.row.id, self.capture_delete())
+                .await?;
+            let mut effect = self.remove_activity(&capture).await?;
+            effect.outcome = "excluded".into();
+            return Ok(effect);
         }
         let mut changed = true;
+        let mut rebuild = Rebuild::default();
         if let Some(activity) = activities::Model::strava_activity(
             self.db,
             self.connection.user_id,
@@ -256,7 +252,7 @@ impl Run<'_> {
                     artifact.artifact_kind == "provider_payload" && artifact.checksum_sha256 == hash
                 });
                 if !changed {
-                    self.resume_import(&activity, import_id).await?;
+                    rebuild = self.resume_import(&activity, import_id).await?;
                 }
             }
         }
@@ -266,10 +262,9 @@ impl Run<'_> {
                 athlete_id: self.row.athlete_id,
                 activity_id: payload.activity.id,
             };
-            objects
+            rebuild = objects
                 .scope(Box::pin(crate::strava_activity::upsert_activity(
                     self.db,
-                    &JobQueue::new(self.db.clone()),
                     &crate::config::Config::get().uploads_dir,
                     self.connection.user_id,
                     payload,
@@ -288,6 +283,7 @@ impl Run<'_> {
             hash: Some(hash.into()),
             activity_id: activity.as_ref().map(|activity| activity.id),
             import_id: activity.and_then(|activity| activity.activity_import_id),
+            rebuild,
         })
     }
 
@@ -295,13 +291,13 @@ impl Run<'_> {
         &self,
         activity: &activities::Model,
         import_id: i32,
-    ) -> Result<(), WorkflowError> {
+    ) -> Result<Rebuild, WorkflowError> {
         let import =
             activity_imports::Entity::find_owned(self.db, self.connection.user_id, import_id)
                 .await?
                 .ok_or_else(|| WorkflowError::internal("Strava import record was not found"))?;
         if import.status == crate::activity_import_lifecycle::ACTIVITY_IMPORT_STATUS_PROCESSED {
-            return Ok(());
+            return Ok(Rebuild::default());
         }
         let profile =
             crate::training_profile::load_training_profile(self.db, self.connection.user_id)
@@ -326,81 +322,28 @@ impl Run<'_> {
                 ),
             )
             .await?;
-        crate::activity_import_lifecycle::complete_activity_imports(
-            self.db,
-            &JobQueue::new(self.db.clone()),
-            self.connection.user_id,
-            &[import_id],
+        Ok(Rebuild::import(
+            import_id,
             result.affected_segment_ids,
-            Some(
-                activity
-                    .started_at
-                    .date_naive()
-                    .min(result.fitness_dirty_from_day),
-            ),
-        )
-        .await?;
-        Ok(())
+            activity
+                .started_at
+                .date_naive()
+                .min(result.fitness_dirty_from_day),
+        ))
     }
 
     async fn delete(&self) -> Result<(), WorkflowError> {
-        let mut capture: Option<DeleteCapture> = None;
-        for node in graph("delete")? {
-            match node {
-                "capture_delete" => {
-                    capture = Some(
-                        self.stage(node, &self.row.id, self.capture_delete())
-                            .await?,
-                    )
-                }
-                "delete" => {
-                    let capture = capture
-                        .as_ref()
-                        .ok_or_else(|| WorkflowError::internal("Missing delete checkpoint"))?;
-                    self.stage(node, &self.row.id, async {
-                        if let Some(activity) = &capture.activity {
-                            if activities::Entity::find_by_id(activity.id)
-                                .one(self.db)
-                                .await?
-                                .is_some()
-                            {
-                                crate::activity_lifecycle::delete_activity_with_derived_state(
-                                    self.db,
-                                    &crate::config::Config::get().uploads_dir,
-                                    self.connection.user_id,
-                                    activity.clone(),
-                                )
-                                .await?;
-                            }
-                        }
-                        self.save_state(None, true).await?;
-                        Ok(Effect {
-                            outcome: if capture.activity.is_some() {
-                                "deleted"
-                            } else {
-                                "already_absent"
-                            }
-                            .into(),
-                            hash: None,
-                            activity_id: capture.activity.as_ref().map(|activity| activity.id),
-                            import_id: capture
-                                .activity
-                                .as_ref()
-                                .and_then(|activity| activity.activity_import_id),
-                        })
-                    })
-                    .await?;
-                }
-                "derived" => {
-                    let capture = capture
-                        .as_ref()
-                        .ok_or_else(|| WorkflowError::internal("Missing delete checkpoint"))?;
-                    self.stage("delete_derived", &self.row.id, self.delete_derived(capture))
-                        .await?;
-                }
-                _ => return Err(WorkflowError::internal("Unsupported delete DAG stage")),
-            }
-        }
+        let capture = self
+            .stage("capture_delete", &self.row.id, self.capture_delete())
+            .await?;
+        self.stage("delete", &self.row.id, self.remove_activity(&capture))
+            .await?;
+        self.stage(
+            "rebuild",
+            &self.row.id,
+            capture.rebuild().run(self.db, self.connection.user_id),
+        )
+        .await?;
         Ok(())
     }
 
@@ -422,34 +365,38 @@ impl Run<'_> {
         })
     }
 
-    async fn delete_derived(
-        &self,
-        capture: &DeleteCapture,
-    ) -> Result<serde_json::Value, WorkflowError> {
+    async fn remove_activity(&self, capture: &DeleteCapture) -> Result<Effect, WorkflowError> {
         if let Some(activity) = &capture.activity {
-            let changed_at = self.row.accepted_at;
-            crate::analytics::mark_user_fitness_dirty(
-                self.db,
-                self.connection.user_id,
-                activity.started_at.date_naive(),
-                changed_at,
-            )
-            .await?;
-            crate::analytics::mark_segment_activity_changes(
-                self.db,
-                &capture.segment_ids,
-                changed_at,
-            )
-            .await?;
-            let tasks = JobQueue::new(self.db.clone());
-            tasks
-                .rebuild_fitness_freshness(self.connection.user_id)
+            if activities::Entity::find_by_id(activity.id)
+                .one(self.db)
+                .await?
+                .is_some()
+            {
+                crate::activity_lifecycle::delete_activity_with_derived_state(
+                    self.db,
+                    &crate::config::Config::get().uploads_dir,
+                    self.connection.user_id,
+                    activity.clone(),
+                )
                 .await?;
-            tasks
-                .rebuild_segment_analytics(capture.segment_ids.clone())
-                .await?;
+            }
         }
-        Ok(serde_json::json!({"outcome":"completed","segment_ids":capture.segment_ids}))
+        self.save_state(None, true).await?;
+        Ok(Effect {
+            outcome: if capture.activity.is_some() {
+                "deleted"
+            } else {
+                "already_absent"
+            }
+            .into(),
+            hash: None,
+            activity_id: capture.activity.as_ref().map(|activity| activity.id),
+            import_id: capture
+                .activity
+                .as_ref()
+                .and_then(|activity| activity.activity_import_id),
+            rebuild: capture.rebuild(),
+        })
     }
 
     async fn save_state(&self, hash: Option<String>, deleted: bool) -> Result<(), WorkflowError> {

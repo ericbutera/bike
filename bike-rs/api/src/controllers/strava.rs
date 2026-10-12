@@ -193,7 +193,7 @@ pub async fn queue_sync(
     post,
     path = "/strava/backfill",
     responses(
-        (status = 200, description = "Queued a full Strava backfill from retained and remote sources", body = StravaConnectionResponse),
+        (status = 200, description = "Queued a Strava backfill for the last 15 days", body = StravaConnectionResponse),
         (status = 401, description = "Not authenticated"),
         (status = 404, description = "No Strava connection exists", body = ApiErrorResponse),
         (status = 409, description = "Strava disconnect is pending", body = ApiErrorResponse),
@@ -263,7 +263,7 @@ pub async fn handle_callback(
             .as_deref()
             .ok_or_else(|| AppError::bad_request("Missing Strava authorization state"))?;
 
-        strava::exchange_code_for_connection(&state.db, &state.tasks, code, state_token)
+        strava::exchange_code_for_connection(&state.db, code, state_token)
             .await
             .map_err(AppError::from)
     }

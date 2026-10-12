@@ -17,11 +17,11 @@ use chrono::{Duration, Utc};
 use migration::{Migrator, MigratorTrait};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Database, DatabaseConnection, EntityTrait, PaginatorTrait,
-    QueryFilter, Set,
+    QueryFilter, QueryOrder, Set,
 };
 use serde_json::{json, Value};
 use std::sync::{
-    atomic::{AtomicU16, AtomicUsize, Ordering},
+    atomic::{AtomicBool, AtomicU16, AtomicUsize, Ordering},
     Arc, Mutex,
 };
 use tower::ServiceExt;
@@ -33,10 +33,12 @@ struct Vendor {
     detail_calls: AtomicUsize,
     stream_calls: AtomicUsize,
     list_calls: AtomicUsize,
+    token_calls: AtomicUsize,
     detail_status: AtomicU16,
     revocations: AtomicUsize,
     historical: Mutex<Option<Value>>,
     list_cutoffs: Mutex<Vec<Option<i64>>>,
+    ignore_cutoff: AtomicBool,
 }
 async fn activity(
     State(vendor): State<Arc<Vendor>>,
@@ -74,7 +76,8 @@ async fn listing(
         let started = chrono::DateTime::parse_from_rfc3339(value["start_date"].as_str().unwrap())
             .unwrap()
             .timestamp();
-        query.after.is_none_or(|after| started > after)
+        vendor.ignore_cutoff.load(Ordering::SeqCst)
+            || query.after.is_none_or(|after| started > after)
     });
     Json(json!(values))
 }
@@ -82,6 +85,13 @@ async fn listing(
 async fn revoke(State(vendor): State<Arc<Vendor>>) -> Json<Value> {
     vendor.revocations.fetch_add(1, Ordering::SeqCst);
     Json(json!({"access_token":"fake-access"}))
+}
+
+async fn refresh(State(vendor): State<Arc<Vendor>>) -> Json<Value> {
+    vendor.token_calls.fetch_add(1, Ordering::SeqCst);
+    Json(
+        json!({"token_type":"Bearer", "access_token":"fake-access", "refresh_token":"fake-refresh", "expires_at":(Utc::now() + Duration::hours(6)).timestamp(), "scope":"activity:read_all", "athlete":{"id":35999641}}),
+    )
 }
 
 struct Fixture {
@@ -118,6 +128,7 @@ impl Fixture {
             .route("/api/v3/activities/:id/streams", get(streams))
             .route("/api/v3/athlete/activities", get(listing))
             .route("/oauth/deauthorize", post(revoke))
+            .route("/oauth/token", post(refresh))
             .with_state(vendor.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         std::env::set_var(
@@ -258,11 +269,6 @@ impl Fixture {
             .await
             .unwrap();
         for stage in strava_workflow::graph(&row.action).unwrap() {
-            let stage = if stage == "derived" && row.action == "delete" {
-                "delete_derived"
-            } else {
-                stage
-            };
             let (_, saved) = row
                 .checkpoint
                 .as_object()
@@ -276,7 +282,17 @@ impl Fixture {
                 .path
                 .starts_with(&format!("strava/{}/", row.athlete_id)));
             if let Some(activity) = row.activity_id {
-                assert!(reference.path.contains(&format!("/{activity}/transforms/")));
+                assert!(reference.path.contains(&format!("/{activity}/")));
+                if matches!(stage, "activity" | "streams")
+                    && row.source["parent"].is_null()
+                    && !reference.path.contains("/excluded-streams/")
+                {
+                    assert!(
+                        reference.path.contains("/raw/"),
+                        "source checkpoint {stage} references the original response: {}",
+                        reference.path
+                    );
+                }
             }
             let _: Value = serde_json::from_slice(&store.read(&reference).await.unwrap()).unwrap();
             assert!(
@@ -359,6 +375,8 @@ impl Fixture {
         two.unwrap();
         assert_eq!(self.calls(), (1, 1, 0));
         self.assert_dag_completed(&id).await;
+        self.retry_after_derived_intent_commit(&id).await;
+        self.retry_from_raw_sources(&id).await;
         self.assert_metadata_update().await;
     }
 
@@ -404,6 +422,122 @@ impl Fixture {
             (2, 1, 0),
             "metadata edits reuse stored streams"
         );
+        assert_eq!(
+            self.vendor.token_calls.load(Ordering::SeqCst),
+            1,
+            "a new activity revision refreshes an expired token only on a cache miss"
+        );
+    }
+
+    async fn retry_from_raw_sources(&self, id: &str) {
+        let jobs = background_tasks::Entity::find()
+            .count(&self.db)
+            .await
+            .unwrap();
+        let before = self.local(887654322).await.unwrap();
+        let row = strava_workflows::Entity::find_by_id(id)
+            .one(&self.db)
+            .await
+            .unwrap()
+            .unwrap();
+        // Lose every stage reference and checkpoint while keeping the captured HTTP
+        // responses. This forces source recovery and repeats the apply boundary.
+        for key in row
+            .checkpoint
+            .as_object()
+            .unwrap()
+            .keys()
+            .filter(|key| !key.starts_with("job:"))
+        {
+            let mut parts = key.splitn(3, ':');
+            let stage = parts.next().unwrap();
+            parts.next().unwrap();
+            let input = parts.next().unwrap();
+            let prefix = format!(
+                "strava/{}/{}/transforms/{stage}/v1/{}/workflows/{id}/reference.json",
+                row.athlete_id,
+                row.activity_id.unwrap(),
+                bike_core::strava_objects::checksum(input.as_bytes())
+            );
+            tokio::fs::remove_file(std::path::Path::new(&Config::get().uploads_dir).join(prefix))
+                .await
+                .unwrap();
+        }
+        let mut checkpoint = row.checkpoint.clone();
+        checkpoint
+            .as_object_mut()
+            .unwrap()
+            .retain(|key, _| key.starts_with("job:"));
+        let mut retry: strava_workflows::ActiveModel = row.into();
+        retry.checkpoint = Set(checkpoint);
+        retry.status = Set("failed".into());
+        retry.update(&self.db).await.unwrap();
+        let mut connection: strava_connections::ActiveModel = self.connection.clone().into();
+        connection.expires_at = Set(Utc::now() - Duration::hours(1));
+        connection.update(&self.db).await.unwrap();
+        std::env::set_var("STRAVA_PROVIDER_WORK_ENABLED", "false");
+        let result = strava_workflow::execute(&self.db, id).await;
+        std::env::remove_var("STRAVA_PROVIDER_WORK_ENABLED");
+        result.unwrap();
+        assert_eq!(self.calls(), (1, 1, 0));
+        assert_eq!(self.vendor.token_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            self.local(887654322).await.unwrap().updated_at,
+            before.updated_at
+        );
+        assert_eq!(
+            background_tasks::Entity::find()
+                .count(&self.db)
+                .await
+                .unwrap(),
+            jobs
+        );
+        self.assert_dag_completed(id).await;
+        self.corrupt_source_blocks_remote_fetch(id).await;
+    }
+
+    async fn corrupt_source_blocks_remote_fetch(&self, id: &str) {
+        let row = strava_workflows::Entity::find_by_id(id)
+            .one(&self.db)
+            .await
+            .unwrap()
+            .unwrap();
+        let saved = row
+            .checkpoint
+            .as_object()
+            .unwrap()
+            .iter()
+            .find(|(key, _)| key.starts_with("streams:"))
+            .unwrap()
+            .1;
+        let object: bike_core::strava_objects::ObjectRef =
+            serde_json::from_value(saved.clone()).unwrap();
+        let store = bike_core::strava_objects::ObjectStore::new(&Config::get().uploads_dir);
+        let bytes = store.read(&object).await.unwrap();
+        let path = std::path::Path::new(&Config::get().uploads_dir).join(&object.path);
+        tokio::fs::write(&path, b"corrupt").await.unwrap();
+        let mut failed: strava_workflows::ActiveModel = row.into();
+        failed.status = Set("failed".into());
+        failed.update(&self.db).await.unwrap();
+        let error = strava_workflow::execute(&self.db, id).await.unwrap_err();
+        assert!(error.message.contains("checksum verification"));
+        let failures = integration_events::Entity::find()
+            .filter(integration_events::Column::EventType.eq("workflow.stage.failed"))
+            .all(&self.db)
+            .await
+            .unwrap();
+        assert!(failures.iter().any(|event| event
+            .payload
+            .as_ref()
+            .is_some_and(|payload| payload["workflow_id"] == id && payload["stage"] == "streams")));
+        assert_eq!(
+            self.calls(),
+            (1, 1, 0),
+            "corrupt local inputs fail instead of fetching replacements"
+        );
+        assert_eq!(self.vendor.token_calls.load(Ordering::SeqCst), 0);
+        tokio::fs::write(&path, &bytes).await.unwrap();
+        strava_workflow::execute(&self.db, id).await.unwrap();
     }
     async fn privacy_update_keeps_the_activity(&self) {
         self.vendor.activity.lock().unwrap()["private"] = json!(true);
@@ -430,12 +564,11 @@ impl Fixture {
     }
 
     async fn sync_collection(&self, backfill: bool) {
-        if !backfill {
-            let mut old = self.vendor.activity.lock().unwrap().clone();
-            old["id"] = json!(887654999);
-            old["start_date"] = json!((Utc::now() - Duration::days(16)).to_rfc3339());
-            *self.vendor.historical.lock().unwrap() = Some(old);
-        }
+        let mut old = self.vendor.activity.lock().unwrap().clone();
+        old["id"] = json!(887654999);
+        old["start_date"] = json!((Utc::now() - Duration::days(16)).to_rfc3339());
+        *self.vendor.historical.lock().unwrap() = Some(old);
+        self.vendor.ignore_cutoff.store(backfill, Ordering::SeqCst);
         let path = if backfill {
             "/api/strava/backfill"
         } else {
@@ -450,6 +583,7 @@ impl Fixture {
             .id;
         self.assert_queued_collection_visible(&id, backfill).await;
         self.execute(&id).await;
+        self.vendor.ignore_cutoff.store(false, Ordering::SeqCst);
         let row = strava_workflows::Entity::find_by_id(&id)
             .one(&self.db)
             .await
@@ -469,7 +603,7 @@ impl Fixture {
         *self.vendor.historical.lock().unwrap() = None;
         assert!(
             self.local(887654999).await.is_none(),
-            "signup must not import older than 15 days"
+            "sync and backfill must respect their accepted cutoff"
         );
         self.assert_dag_completed(&id).await;
         assert_eq!(
@@ -498,12 +632,87 @@ impl Fixture {
             .await
             .unwrap()
             .unwrap();
+        let discovery = row
+            .checkpoint
+            .as_object()
+            .unwrap()
+            .iter()
+            .find(|(key, _)| key.starts_with("discover:"))
+            .unwrap()
+            .1;
+        let object = serde_json::from_value(discovery.clone()).unwrap();
+        let pages: Value = bike_core::strava_objects::ObjectStore::new(&Config::get().uploads_dir)
+            .read_json(&object)
+            .await
+            .unwrap();
+        assert!(
+            pages[0].get("values").is_none(),
+            "discovery checkpoints store page references instead of copied listings"
+        );
+        let children = strava_workflows::Entity::find()
+            .all(&self.db)
+            .await
+            .unwrap();
+        assert!(children
+            .iter()
+            .filter(|child| child.source["parent"] == id)
+            .all(|child| child.source["activity"].is_null()
+                && child.source["listing_page"].is_object()));
         let mut retry: strava_workflows::ActiveModel = row.into();
         retry.checkpoint = Set(json!({}));
         retry.status = Set("failed".into());
         retry.update(&self.db).await.unwrap();
         self.execute(id).await;
         assert_eq!(self.calls(), calls);
+        let connection = strava_connections::Entity::find_by_id(self.connection.id)
+            .one(&self.db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            connection.last_sync_status, "succeeded",
+            "a cached retry restores terminal sync status"
+        );
+        self.resume_legacy_child(id).await;
+    }
+
+    async fn resume_legacy_child(&self, parent: &str) {
+        let row = strava_workflows::Entity::find()
+            .all(&self.db)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|row| row.source["parent"] == parent)
+            .unwrap();
+        let object = serde_json::from_value(row.source["listing_page"].clone()).unwrap();
+        let values: Vec<Value> =
+            bike_core::strava_objects::ObjectStore::new(&Config::get().uploads_dir)
+                .read_json(&object)
+                .await
+                .unwrap();
+        let mut source = row.source.clone();
+        source.as_object_mut().unwrap().remove("listing_page");
+        source["activity"] = values
+            .into_iter()
+            .find(|value| value["id"] == row.activity_id.unwrap())
+            .unwrap();
+        source["raw"] = serde_json::to_value(object).unwrap();
+        let id = format!("legacy-{}", uuid::Uuid::new_v4());
+        let mut legacy: strava_workflows::ActiveModel = row.into();
+        legacy.id = Set(id.clone());
+        legacy.source = Set(source);
+        legacy.checkpoint = Set(json!({}));
+        legacy.status = Set("accepted".into());
+        legacy.completed_at = Set(None);
+        legacy.insert(&self.db).await.unwrap();
+        let calls = self.calls();
+        strava_workflow::execute(&self.db, &id).await.unwrap();
+        self.assert_dag_completed(&id).await;
+        assert_eq!(
+            self.calls(),
+            calls,
+            "pre-change listing sources remain resumable without fetching"
+        );
     }
 
     async fn assert_queued_collection_visible(&self, id: &str, backfill: bool) {
@@ -513,12 +722,21 @@ impl Fixture {
             .unwrap()
             .unwrap();
         if backfill {
-            assert!(row.source["after"].is_null());
-        } else {
             assert_eq!(
                 row.source["after"].as_i64().unwrap(),
                 row.source["event_time"].as_i64().unwrap() - 15 * 86_400
             );
+        } else {
+            let connection = strava_connections::Entity::find_by_id(self.connection.id)
+                .one(&self.db)
+                .await
+                .unwrap()
+                .unwrap();
+            let expected = connection
+                .last_synced_activity_started_at
+                .map(|at| at.timestamp())
+                .unwrap_or(row.source["event_time"].as_i64().unwrap() - 15 * 86_400);
+            assert_eq!(row.source["after"].as_i64().unwrap(), expected);
         }
         let state = self
             .account_request("GET", "/api/activity-imports/processing-state")
@@ -781,6 +999,96 @@ impl Fixture {
         assert!(response["last_sync_next_attempt_at"].is_string());
     }
 
+    async fn changed_collection_rebuilds_once_at_the_end(&self) {
+        {
+            let mut activity = self.vendor.activity.lock().unwrap();
+            activity["id"] = json!(887654326);
+            activity["start_date"] = json!((Utc::now() - Duration::days(1)).to_rfc3339());
+            activity["start_date_local"] = activity["start_date"].clone();
+            let mut other = activity.clone();
+            other["id"] = json!(887654327);
+            other["start_date"] = json!((Utc::now() - Duration::days(2)).to_rfc3339());
+            other["start_date_local"] = other["start_date"].clone();
+            *self.vendor.historical.lock().unwrap() = Some(other);
+        }
+        let before = background_tasks::Entity::find()
+            .filter(background_tasks::Column::TaskType.eq("rebuild_fitness_freshness"))
+            .count(&self.db)
+            .await
+            .unwrap();
+        let connection = strava_connections::Entity::find_by_id(self.connection.id)
+            .one(&self.db)
+            .await
+            .unwrap()
+            .unwrap();
+        let id = strava_workflow::queue_sync(&self.db, &connection, false)
+            .await
+            .unwrap();
+        self.execute(&id).await;
+        self.assert_dag_completed(&id).await;
+        let after = background_tasks::Entity::find()
+            .filter(background_tasks::Column::TaskType.eq("rebuild_fitness_freshness"))
+            .count(&self.db)
+            .await
+            .unwrap();
+        assert_eq!(
+            after,
+            before + 1,
+            "two changed activities schedule one final fitness rebuild"
+        );
+        for activity_id in [887654326, 887654327] {
+            let activity = self.local(activity_id).await.unwrap();
+            let import = bike_core::entities::activity_imports::Entity::find_by_id(
+                activity.activity_import_id.unwrap(),
+            )
+            .one(&self.db)
+            .await
+            .unwrap()
+            .unwrap();
+            assert_eq!(import.status, "processed");
+        }
+        self.assert_collection_rebuild_order(&id).await;
+        self.retry_after_derived_intent_commit(&id).await;
+        *self.vendor.historical.lock().unwrap() = None;
+    }
+
+    async fn assert_collection_rebuild_order(&self, id: &str) {
+        let rows = strava_workflows::Entity::find()
+            .all(&self.db)
+            .await
+            .unwrap();
+        let children: Vec<_> = rows
+            .iter()
+            .filter(|row| row.source["parent"] == id)
+            .collect();
+        assert_eq!(children.len(), 2);
+        assert!(children.iter().all(|row| !row
+            .checkpoint
+            .as_object()
+            .unwrap()
+            .keys()
+            .any(|key| key.starts_with("job:"))));
+        let stages: Vec<_> = integration_events::Entity::find()
+            .filter(integration_events::Column::EventType.eq("workflow.stage"))
+            .order_by_asc(integration_events::Column::Id)
+            .all(&self.db)
+            .await
+            .unwrap()
+            .into_iter()
+            .filter_map(|event| {
+                event
+                    .payload
+                    .filter(|payload| payload["workflow_id"] == id)
+                    .map(|payload| payload["stage"].as_str().unwrap().to_owned())
+            })
+            .collect();
+        assert_eq!(
+            stages,
+            strava_workflow::graph("sync").unwrap(),
+            "the stage catalog matches the explicit execution chain"
+        );
+    }
+
     async fn disconnect_is_idempotent(&self) {
         let offset = Utc::now().timestamp() - self.base_time + 5;
         let id = self.accept(&self.event("create", offset, 887654323)).await;
@@ -870,6 +1178,50 @@ impl Fixture {
         assert_eq!(self.vendor.revocations.load(Ordering::SeqCst), revocations);
     }
 
+    async fn oauth_initial_sync_uses_the_native_queue(&self) {
+        let state =
+            bike_core::strava::create_state_token(Config::get(), self.connection.user_id).unwrap();
+        let calls = self.calls();
+        let token_calls = self.vendor.token_calls.load(Ordering::SeqCst);
+        let response = self
+            .app
+            .clone()
+            .oneshot(
+                Request::get(format!(
+                    "/api/strava/callback?code=fixture-code&state={state}"
+                ))
+                .body(axum::body::Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        let connection = bike_core::strava::load_connection(&self.db, self.connection.user_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let run = strava_workflows::Model::active_collection(&self.db, connection.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(run.action, "sync");
+        assert_eq!(
+            run.source["after"].as_i64().unwrap(),
+            run.source["event_time"].as_i64().unwrap() - 15 * 86_400
+        );
+        assert_eq!(
+            self.calls(),
+            calls,
+            "the OAuth callback only queues provider work"
+        );
+        assert_eq!(
+            self.vendor.token_calls.load(Ordering::SeqCst),
+            token_calls + 1
+        );
+        self.execute(&run.id).await;
+        self.assert_dag_completed(&run.id).await;
+    }
+
     async fn retry_after_derived_intent_commit(&self, id: &str) {
         let count = bike_core::background_jobs::background_tasks::Entity::find()
             .count(&self.db)
@@ -885,7 +1237,7 @@ impl Fixture {
             .as_object()
             .unwrap()
             .iter()
-            .find(|(key, _)| key.starts_with("delete_derived:"))
+            .find(|(key, _)| key.starts_with("rebuild:"))
             .unwrap()
             .1
             .clone();
@@ -905,7 +1257,7 @@ impl Fixture {
         checkpoint
             .as_object_mut()
             .unwrap()
-            .retain(|key, _| !key.starts_with("delete_derived:") && !key.starts_with("derived:"));
+            .retain(|key, _| !key.starts_with("rebuild:"));
         let mut retry: strava_workflows::ActiveModel = row.into();
         retry.checkpoint = Set(checkpoint);
         retry.status = Set("failed".into());
@@ -953,7 +1305,9 @@ async fn native_actions_reuse_sources_and_apply_once() {
     Box::pin(fixture.quota_pause_and_resume()).await;
     Box::pin(fixture.delete_and_reject_stale_work()).await;
     Box::pin(fixture.sport_update_removes_only_the_cycling_activity()).await;
+    Box::pin(fixture.changed_collection_rebuilds_once_at_the_end()).await;
     Box::pin(fixture.disconnect_is_idempotent()).await;
     Box::pin(fixture.vendor_revocation_uses_local_cleanup()).await;
+    Box::pin(fixture.oauth_initial_sync_uses_the_native_queue()).await;
     fixture.server.abort();
 }

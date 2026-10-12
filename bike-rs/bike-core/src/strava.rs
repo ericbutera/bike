@@ -1,37 +1,21 @@
 use crate::activity_import_lock::{
-    acquire_user_activity_import_lock, ensure_user_activity_import_lock_stage,
     load_user_activity_import_lock, release_user_activity_import_lock,
-    ACTIVITY_IMPORT_LOCK_SOURCE_STRAVA_SYNC, ACTIVITY_IMPORT_LOCK_STAGE_QUEUED,
-    ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
+    ACTIVITY_IMPORT_LOCK_SOURCE_STRAVA_SYNC,
 };
-use crate::activity_import_pipeline::{
-    finalize_activity_import_batch, mark_activity_imports_processed,
-    persist_activity_upload_with_artifacts, ActivityUploadDeduplication, ActivityUploadPayload,
-    PersistActivityUploadOutcome, PersistActivityUploadWithArtifactsRequest,
-    ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD, ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS,
-};
-use crate::activity_lifecycle::{
-    delete_activity_with_derived_state, resume_incomplete_activity_imports_for_user,
-};
-use crate::analytics::{mark_segment_activity_changes, mark_user_fitness_dirty};
-use crate::auth::entities::users;
+use crate::activity_import_pipeline::ActivityUploadPayload;
 use crate::background_jobs::background_tasks;
 use crate::config::Config;
-use crate::entities::{activities, strava_connections};
+use crate::entities::strava_connections;
 use crate::integration_events_service::{
     self, NewIntegrationEvent, INTEGRATION_LEVEL_ERROR, INTEGRATION_LEVEL_INFO,
     INTEGRATION_LEVEL_SUCCESS, INTEGRATION_LEVEL_WARNING, INTEGRATION_PROVIDER_STRAVA,
 };
-use crate::jobs::{JobQueue as TaskQueue, StravaSyncTask};
-use crate::observability;
+use crate::jobs::StravaSyncTask;
 use crate::strava_client::{StravaApiClient, StravaAuthorizationTokenResponse};
 use crate::strava_provider_payload::{
-    strava_activity_is_bike, strava_activity_sport_label, StoredStravaProviderPayload,
-    StravaActivityStreams, StravaActivitySummary,
+    StoredStravaProviderPayload, StravaActivityStreams, StravaActivitySummary,
 };
-use crate::training_profile::{load_training_profile, TrainingProfile};
 use crate::workflow_error::WorkflowError as AppError;
-use axum::http::StatusCode;
 use chrono::{DateTime, Duration, Utc};
 use hmac::{Hmac, Mac};
 use reqwest::Url;
@@ -40,8 +24,6 @@ use sea_orm::{
 };
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
-use tracing::field;
-use tracing::Instrument;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -51,7 +33,6 @@ pub const STRAVA_AUTHORIZE_URL: &str = "https://www.strava.com/oauth/authorize";
 pub const STRAVA_SYNC_STATUS_NEVER: &str = "never";
 pub const STRAVA_SYNC_STATUS_QUEUED: &str = "queued";
 pub const STRAVA_SYNC_STATUS_RUNNING: &str = "running";
-pub const STRAVA_SYNC_STATUS_SUCCEEDED: &str = "succeeded";
 pub const STRAVA_SYNC_STATUS_FAILED: &str = "failed";
 const STRAVA_REQUIRED_ACTIVITY_SCOPE: &str = "activity:read_all";
 const STRAVA_STATE_MAX_AGE_MINUTES: i64 = 10;
@@ -261,7 +242,6 @@ pub async fn load_connection(
 
 pub async fn exchange_code_for_connection(
     db: &DatabaseConnection,
-    tasks: &TaskQueue,
     code: &str,
     state_token: &str,
 ) -> Result<strava_connections::Model, AppError> {
@@ -298,20 +278,10 @@ pub async fn exchange_code_for_connection(
         let connection =
             upsert_connection_from_token(db, verified_state.user_id, token_response).await?;
 
-        match queue_sync_task_for_connection(db, tasks, &connection, "Initial Strava sync queued.")
-            .await
-        {
-            Ok(connection) => Ok(connection),
-            Err(error) if error.status == StatusCode::CONFLICT => {
-                set_sync_message(
-                    db,
-                    &connection,
-                    "Strava connected. Start a sync after the current import finishes.",
-                )
-                .await
-            }
-            Err(error) => Err(error),
-        }
+        crate::strava_workflow::queue_sync(db, &connection, false).await?;
+        load_connection(db, connection.user_id)
+            .await?
+            .ok_or_else(|| AppError::not_found("Strava connection was removed"))
     }
     .await;
 
@@ -349,15 +319,6 @@ pub async fn exchange_code_for_connection(
     }
 }
 
-pub async fn ensure_webhook_subscription_registered(
-    db: &DatabaseConnection,
-) -> Result<(), AppError> {
-    if !crate::strava_workflow::provider_work_enabled() {
-        return Ok(());
-    }
-    ensure_webhook_subscription(db, Config::get()).await
-}
-
 pub fn verify_webhook_subscription(
     config: &Config,
     query: &StravaWebhookSubscriptionQuery,
@@ -386,251 +347,6 @@ pub fn verify_webhook_subscription(
     })
 }
 
-pub async fn handle_webhook_event(
-    db: &DatabaseConnection,
-    tasks: &TaskQueue,
-    event: &StravaWebhookEvent,
-) -> Result<(), AppError> {
-    record_webhook_received(db, event).await;
-
-    match event.object_type.as_str() {
-        "athlete" => handle_athlete_webhook_event(db, event).await?,
-        "activity" => handle_activity_webhook_event(db, tasks, event).await?,
-        _ => {}
-    }
-
-    Ok(())
-}
-
-async fn record_webhook_received(db: &DatabaseConnection, event: &StravaWebhookEvent) {
-    record_strava_event_best_effort(
-        db,
-        None,
-        None,
-        "webhook.received",
-        INTEGRATION_LEVEL_INFO,
-        format!(
-            "Received Strava webhook {} {}.",
-            event.object_type, event.aspect_type
-        ),
-        Some(serde_json::json!(event)),
-    )
-    .await;
-}
-
-async fn handle_athlete_webhook_event(
-    db: &DatabaseConnection,
-    event: &StravaWebhookEvent,
-) -> Result<(), AppError> {
-    if event.aspect_type == "update" && athlete_update_revokes_access(event) {
-        disconnect_connection_by_athlete_id(db, event.owner_id).await?;
-    }
-
-    Ok(())
-}
-
-async fn handle_activity_webhook_event(
-    db: &DatabaseConnection,
-    tasks: &TaskQueue,
-    event: &StravaWebhookEvent,
-) -> Result<(), AppError> {
-    let Some(connection) = load_connection_by_athlete_id(db, event.owner_id).await? else {
-        record_activity_webhook_missing_connection(db, event).await;
-        return Ok(());
-    };
-
-    let resolved = resolve_connection_sync_state(db, &connection).await?;
-    if event.aspect_type == "delete" {
-        handle_activity_delete_webhook(db, tasks, event, &resolved.connection).await
-    } else {
-        handle_activity_update_webhook(db, tasks, event, &resolved).await
-    }
-}
-
-async fn handle_activity_delete_webhook(
-    db: &DatabaseConnection,
-    tasks: &TaskQueue,
-    event: &StravaWebhookEvent,
-    connection: &strava_connections::Model,
-) -> Result<(), AppError> {
-    let deleted = delete_strava_activity_by_correlation_id(
-        db,
-        &Config::get().uploads_dir,
-        tasks,
-        connection.user_id,
-        event.object_id,
-    )
-    .await?;
-
-    record_activity_delete_webhook_result(db, connection, event, deleted).await;
-    Ok(())
-}
-
-async fn handle_activity_update_webhook(
-    db: &DatabaseConnection,
-    tasks: &TaskQueue,
-    event: &StravaWebhookEvent,
-    resolved: &ResolvedStravaConnectionSyncState,
-) -> Result<(), AppError> {
-    if let Some(active_sync_status) = resolved.active_sync_status {
-        record_activity_webhook_active_sync(db, event, &resolved.connection, active_sync_status)
-            .await;
-        return Ok(());
-    }
-
-    if !scopes_allow_activity_import(&resolved.connection.scopes) {
-        record_activity_webhook_missing_scope(db, event, &resolved.connection).await;
-        return Ok(());
-    }
-
-    let _ = queue_sync_task_for_connection(
-        db,
-        tasks,
-        &resolved.connection,
-        "Strava webhook update queued a sync.",
-    )
-    .await;
-
-    Ok(())
-}
-
-async fn record_activity_delete_webhook_result(
-    db: &DatabaseConnection,
-    connection: &strava_connections::Model,
-    event: &StravaWebhookEvent,
-    deleted: bool,
-) {
-    let (level, message) = if deleted {
-        (
-            INTEGRATION_LEVEL_SUCCESS,
-            format!(
-                "Strava webhook deleted imported activity {}.",
-                event.object_id
-            ),
-        )
-    } else {
-        (
-            INTEGRATION_LEVEL_WARNING,
-            format!(
-                "Strava webhook delete for activity {} did not match an imported Bike activity.",
-                event.object_id
-            ),
-        )
-    };
-
-    record_connection_strava_event_best_effort(
-        db,
-        connection,
-        "webhook.activity_delete",
-        level,
-        message,
-        Some(serde_json::json!({
-            "activity_id": event.object_id,
-            "aspect_type": event.aspect_type,
-        })),
-    )
-    .await;
-}
-
-async fn record_activity_webhook_active_sync(
-    db: &DatabaseConnection,
-    event: &StravaWebhookEvent,
-    connection: &strava_connections::Model,
-    active_sync_status: &str,
-) {
-    record_connection_strava_event_best_effort(
-        db,
-        connection,
-        "webhook.activity_ignored",
-        INTEGRATION_LEVEL_WARNING,
-        "Ignored Strava activity webhook because a sync is already active.",
-        Some(serde_json::json!({
-            "activity_id": event.object_id,
-            "aspect_type": event.aspect_type,
-            "active_sync_status": active_sync_status,
-        })),
-    )
-    .await;
-}
-
-async fn record_activity_webhook_missing_scope(
-    db: &DatabaseConnection,
-    event: &StravaWebhookEvent,
-    connection: &strava_connections::Model,
-) {
-    record_connection_strava_event_best_effort(
-        db,
-        connection,
-        "webhook.activity_ignored",
-        INTEGRATION_LEVEL_WARNING,
-        &missing_activity_scope_message(),
-        Some(serde_json::json!({
-            "activity_id": event.object_id,
-            "aspect_type": event.aspect_type,
-            "granted_scopes": parse_scope_list(&connection.scopes),
-        })),
-    )
-    .await;
-}
-
-async fn record_activity_webhook_missing_connection(
-    db: &DatabaseConnection,
-    event: &StravaWebhookEvent,
-) {
-    record_strava_event_best_effort(
-        db,
-        None,
-        None,
-        "webhook.activity_ignored",
-        INTEGRATION_LEVEL_WARNING,
-        "Ignored Strava activity webhook because no Bike connection matched the athlete.",
-        Some(serde_json::json!({
-            "owner_id": event.owner_id,
-            "activity_id": event.object_id,
-            "aspect_type": event.aspect_type,
-        })),
-    )
-    .await;
-}
-
-pub async fn queue_connection_sync(
-    db: &DatabaseConnection,
-    tasks: &TaskQueue,
-    user_id: i32,
-) -> Result<strava_connections::Model, AppError> {
-    ensure_strava_configured(Config::get())?;
-
-    let connection = load_connection(db, user_id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Connect Strava before starting a sync"))?;
-    let resolved = resolve_connection_sync_state(db, &connection).await?;
-
-    if resolved.active_sync_status.is_some() {
-        return Ok(resolved.connection);
-    }
-
-    ensure_connection_scopes_allow_activity_import(&resolved.connection)?;
-
-    queue_sync_task_for_connection(db, tasks, &resolved.connection, "Strava sync queued.").await
-}
-
-pub async fn disconnect_connection(db: &DatabaseConnection, user_id: i32) -> Result<(), AppError> {
-    let Some(connection) = load_connection(db, user_id).await? else {
-        return Ok(());
-    };
-
-    disconnect_connection_internal(
-        db,
-        &connection,
-        true,
-        "User requested Strava disconnect.",
-        Some(serde_json::json!({
-            "trigger": "user",
-        })),
-    )
-    .await
-}
-
 pub async fn forget_local_connection(
     db: &DatabaseConnection,
     user_id: i32,
@@ -641,748 +357,10 @@ pub async fn forget_local_connection(
     disconnect_connection_internal(
         db,
         &connection,
-        false,
         "Removed the local Strava connection after the cleanup workflow.",
         Some(serde_json::json!({ "trigger": "workflow" })),
     )
     .await
-}
-
-pub async fn process_strava_sync(
-    db: &DatabaseConnection,
-    uploads_dir: &str,
-    connection_id: i32,
-) -> Result<(), AppError> {
-    let Some(connection) = load_sync_connection(db, connection_id).await? else {
-        tracing::info!(
-            connection_id,
-            "skipping Strava sync because the connection no longer exists"
-        );
-        return Ok(());
-    };
-    ensure_user_activity_import_lock_stage(
-        db,
-        connection.user_id,
-        ACTIVITY_IMPORT_LOCK_SOURCE_STRAVA_SYNC,
-        ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
-    )
-    .await?;
-
-    let sync_span = strava_sync_span(&connection);
-    let result = run_strava_sync_workflow(db, uploads_dir, connection.clone())
-        .instrument(sync_span.clone())
-        .await;
-
-    finish_strava_sync_attempt(db, &connection, &sync_span, result).await
-}
-
-struct StravaSyncRunContext {
-    connection: strava_connections::Model,
-    client: StravaApiClient,
-    tasks: TaskQueue,
-    user_storage_key: String,
-    training_profile: TrainingProfile,
-    after_epoch: Option<i64>,
-}
-
-struct StravaSyncProgress {
-    imported_count: i32,
-    duplicate_count: i32,
-    failed_count: i32,
-    skipped_count: i32,
-    affected_segment_ids: Vec<i32>,
-    imported_import_ids: Vec<i32>,
-    fitness_dirty_from_day: Option<chrono::NaiveDate>,
-    latest_started_at: Option<DateTime<Utc>>,
-}
-
-enum StravaActivityImportOutcome {
-    Imported {
-        import_id: i32,
-        affected_segment_ids: Vec<i32>,
-        fitness_dirty_from_day: chrono::NaiveDate,
-    },
-    Duplicate,
-    Failed,
-    SkippedUnsupportedSport,
-    ConnectionRemoved,
-}
-
-impl StravaSyncProgress {
-    fn new(connection: &strava_connections::Model) -> Self {
-        Self {
-            imported_count: 0,
-            duplicate_count: 0,
-            failed_count: 0,
-            skipped_count: 0,
-            affected_segment_ids: Vec::new(),
-            imported_import_ids: Vec::new(),
-            fitness_dirty_from_day: None,
-            latest_started_at: connection.last_synced_activity_started_at,
-        }
-    }
-
-    fn record_activity_seen(&mut self, activity: &StravaActivitySummary) {
-        self.latest_started_at = Some(match self.latest_started_at {
-            Some(current) if current >= activity.start_date => current,
-            _ => activity.start_date,
-        });
-    }
-
-    fn record_imported(
-        &mut self,
-        import_id: i32,
-        affected_segment_ids: Vec<i32>,
-        fitness_dirty_from_day: chrono::NaiveDate,
-    ) {
-        self.imported_count += 1;
-        self.imported_import_ids.push(import_id);
-        self.affected_segment_ids.extend(affected_segment_ids);
-        self.fitness_dirty_from_day = Some(match self.fitness_dirty_from_day {
-            Some(current) => current.min(fitness_dirty_from_day),
-            None => fitness_dirty_from_day,
-        });
-    }
-}
-
-async fn load_sync_connection(
-    db: &DatabaseConnection,
-    connection_id: i32,
-) -> Result<Option<strava_connections::Model>, AppError> {
-    strava_connections::Entity::find_by_id(connection_id)
-        .one(db)
-        .await
-        .map_err(AppError::from)
-}
-
-fn strava_sync_span(connection: &strava_connections::Model) -> tracing::Span {
-    tracing::info_span!(
-        "strava.sync.workflow",
-        provider = INTEGRATION_PROVIDER_STRAVA,
-        connection_id = connection.id,
-        user_id = connection.user_id,
-        status = field::Empty,
-        retry_at = field::Empty,
-        trace_id = field::Empty,
-        span_id = field::Empty,
-    )
-}
-
-async fn run_strava_sync_workflow(
-    db: &DatabaseConnection,
-    uploads_dir: &str,
-    connection: strava_connections::Model,
-) -> Result<(), AppError> {
-    observability::record_current_trace_context();
-    let context = prepare_strava_sync_context(db, uploads_dir, connection).await?;
-    let Some(progress) = import_strava_activity_pages(db, uploads_dir, &context).await? else {
-        return Ok(());
-    };
-
-    complete_strava_sync(db, &context, progress).await
-}
-
-async fn prepare_strava_sync_context(
-    db: &DatabaseConnection,
-    uploads_dir: &str,
-    connection: strava_connections::Model,
-) -> Result<StravaSyncRunContext, AppError> {
-    let connection = mark_sync_running(db, &connection).await?;
-    let client = StravaApiClient::new(db, Config::get())?;
-    let connection = ensure_fresh_access_token(db, &client, connection).await?;
-    ensure_connection_scopes_allow_activity_import(&connection)?;
-
-    let user = users::Entity::find_by_id(connection.user_id)
-        .one(db)
-        .await?
-        .ok_or_else(|| {
-            AppError::internal(format!(
-                "User {} for Strava sync was not found",
-                connection.user_id
-            ))
-        })?;
-    let tasks = TaskQueue::new(db.clone());
-    resume_incomplete_activity_imports_for_user(db, uploads_dir, &tasks, connection.user_id)
-        .await?;
-
-    let training_profile = load_training_profile(db, connection.user_id).await?;
-    let latest_user_activity_started_at =
-        load_latest_user_activity_started_at(db, connection.user_id).await?;
-    let after_epoch = strava_sync_after_epoch(
-        connection.last_synced_activity_started_at,
-        latest_user_activity_started_at,
-        Utc::now(),
-    );
-
-    Ok(StravaSyncRunContext {
-        connection,
-        client,
-        tasks,
-        user_storage_key: user.pid.to_string(),
-        training_profile,
-        after_epoch,
-    })
-}
-
-async fn import_strava_activity_pages(
-    db: &DatabaseConnection,
-    uploads_dir: &str,
-    context: &StravaSyncRunContext,
-) -> Result<Option<StravaSyncProgress>, AppError> {
-    let mut page = 1usize;
-    let mut progress = StravaSyncProgress::new(&context.connection);
-
-    loop {
-        if stop_if_connection_removed(db, &context.connection).await? {
-            return Ok(None);
-        }
-
-        let activities = list_strava_sync_page(context, page).await?;
-        if activities.is_empty() {
-            break;
-        }
-
-        if !import_strava_activity_page(db, uploads_dir, context, &mut progress, &activities)
-            .await?
-        {
-            return Ok(None);
-        }
-
-        if activities.len() < 100 {
-            break;
-        }
-
-        page += 1;
-    }
-
-    if stop_if_connection_removed(db, &context.connection).await? {
-        Ok(None)
-    } else {
-        Ok(Some(progress))
-    }
-}
-
-async fn list_strava_sync_page(
-    context: &StravaSyncRunContext,
-    page: usize,
-) -> Result<Vec<StravaActivitySummary>, AppError> {
-    context
-        .client
-        .list_activities(
-            &context.connection.access_token,
-            context.after_epoch,
-            page,
-            100,
-        )
-        .await
-        .inspect_err(|error| {
-            tracing::error!(message = %error.message, page, "failed to list Strava activities");
-        })
-}
-
-async fn import_strava_activity_page(
-    db: &DatabaseConnection,
-    uploads_dir: &str,
-    context: &StravaSyncRunContext,
-    progress: &mut StravaSyncProgress,
-    activities: &[StravaActivitySummary],
-) -> Result<bool, AppError> {
-    for activity in activities.iter().rev() {
-        if stop_if_connection_removed(db, &context.connection).await? {
-            return Ok(false);
-        }
-
-        progress.record_activity_seen(activity);
-        match import_strava_activity(db, uploads_dir, context, activity).await? {
-            StravaActivityImportOutcome::Imported {
-                import_id,
-                affected_segment_ids,
-                fitness_dirty_from_day,
-            } => progress.record_imported(import_id, affected_segment_ids, fitness_dirty_from_day),
-            StravaActivityImportOutcome::Duplicate => progress.duplicate_count += 1,
-            StravaActivityImportOutcome::Failed => progress.failed_count += 1,
-            StravaActivityImportOutcome::SkippedUnsupportedSport => progress.skipped_count += 1,
-            StravaActivityImportOutcome::ConnectionRemoved => return Ok(false),
-        }
-    }
-
-    Ok(true)
-}
-
-async fn import_strava_activity(
-    db: &DatabaseConnection,
-    uploads_dir: &str,
-    context: &StravaSyncRunContext,
-    activity: &StravaActivitySummary,
-) -> Result<StravaActivityImportOutcome, AppError> {
-    if !strava_activity_is_bike(activity) {
-        record_skipped_strava_activity(activity);
-        return Ok(StravaActivityImportOutcome::SkippedUnsupportedSport);
-    }
-
-    let Some(streams) = fetch_strava_activity_streams(context, activity).await? else {
-        return Ok(StravaActivityImportOutcome::Failed);
-    };
-    let Some(import_payload) = build_strava_activity_import_payload(activity, &streams) else {
-        return Ok(StravaActivityImportOutcome::Failed);
-    };
-
-    if stop_if_connection_removed(db, &context.connection).await? {
-        return Ok(StravaActivityImportOutcome::ConnectionRemoved);
-    }
-
-    persist_strava_activity_upload(db, uploads_dir, context, activity, import_payload).await
-}
-
-fn record_skipped_strava_activity(activity: &StravaActivitySummary) {
-    tracing::info!(
-        activity_id = activity.id,
-        sport = %strava_activity_sport_label(activity),
-        "skipping Strava activity because Bike only imports cycling activities"
-    );
-}
-
-async fn fetch_strava_activity_streams(
-    context: &StravaSyncRunContext,
-    activity: &StravaActivitySummary,
-) -> Result<Option<StravaActivityStreams>, AppError> {
-    match context
-        .client
-        .get_activity_streams(&context.connection.access_token, activity.id)
-        .await
-    {
-        Ok(value) => Ok(Some(value)),
-        Err(error) if is_rate_limit_error(&error) => Err(error),
-        Err(error) => {
-            tracing::warn!(
-                activity_id = activity.id,
-                message = %error.message,
-                "failed to fetch Strava activity streams"
-            );
-            Ok(None)
-        }
-    }
-}
-
-fn build_strava_activity_import_payload(
-    activity: &StravaActivitySummary,
-    streams: &StravaActivityStreams,
-) -> Option<ActivityUploadPayload> {
-    match build_activity_upload(activity, streams) {
-        Ok(value) => Some(value),
-        Err(error) => {
-            tracing::warn!(
-                activity_id = activity.id,
-                message = %error.message,
-                "failed to retain Strava provider payload"
-            );
-            None
-        }
-    }
-}
-
-async fn persist_strava_activity_upload(
-    db: &DatabaseConnection,
-    uploads_dir: &str,
-    context: &StravaSyncRunContext,
-    activity: &StravaActivitySummary,
-    import_payload: ActivityUploadPayload,
-) -> Result<StravaActivityImportOutcome, AppError> {
-    let persist_request = PersistActivityUploadWithArtifactsRequest {
-        uploads_dir,
-        user_storage_key: &context.user_storage_key,
-        user_id: context.connection.user_id,
-        upload: import_payload,
-        primary_artifact_kind: ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD,
-        primary_source_quality: ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS,
-        additional_artifacts: Vec::new(),
-        source: "strava_sync",
-        deduplication: ActivityUploadDeduplication::Enabled,
-        training_profile: Some(&context.training_profile),
-    };
-
-    let persist_span = tracing::info_span!(
-        "strava.activity_import.persist",
-        provider = INTEGRATION_PROVIDER_STRAVA,
-        connection_id = context.connection.id,
-        user_id = context.connection.user_id,
-        activity_id = activity.id,
-        trace_id = field::Empty,
-        span_id = field::Empty,
-    );
-    let persist_result = persist_activity_upload_with_artifacts(db, persist_request)
-        .instrument(persist_span)
-        .await;
-
-    match persist_result {
-        Ok(PersistActivityUploadOutcome::Imported(persisted)) => {
-            Ok(StravaActivityImportOutcome::Imported {
-                import_id: persisted.import.id,
-                affected_segment_ids: persisted.affected_segment_ids,
-                fitness_dirty_from_day: persisted.fitness_dirty_from_day,
-            })
-        }
-        Ok(PersistActivityUploadOutcome::Duplicate(_)) => {
-            Ok(StravaActivityImportOutcome::Duplicate)
-        }
-        Err(error) => {
-            tracing::warn!(
-                activity_id = activity.id,
-                message = %error.message,
-                "failed to persist Strava activity upload"
-            );
-            Ok(StravaActivityImportOutcome::Failed)
-        }
-    }
-}
-
-async fn complete_strava_sync(
-    db: &DatabaseConnection,
-    context: &StravaSyncRunContext,
-    progress: StravaSyncProgress,
-) -> Result<(), AppError> {
-    finalize_strava_imported_activities(db, context, &progress).await?;
-    if progress.failed_count > 0
-        && progress.imported_count == 0
-        && progress.duplicate_count == 0
-        && progress.skipped_count == 0
-    {
-        let message = "Strava sync could not import any activities".to_string();
-        mark_sync_failed(
-            db,
-            &context.connection,
-            &message,
-            progress.imported_count,
-            progress.duplicate_count,
-            progress.failed_count,
-        )
-        .await?;
-        return Err(AppError::internal(message));
-    }
-
-    let message = build_sync_summary_message(
-        progress.imported_count,
-        progress.duplicate_count,
-        progress.failed_count,
-        progress.skipped_count,
-    );
-    mark_sync_succeeded(
-        db,
-        &context.connection,
-        progress.latest_started_at,
-        progress.imported_count,
-        progress.duplicate_count,
-        progress.failed_count,
-        &message,
-    )
-    .await?;
-
-    Ok(())
-}
-
-async fn finalize_strava_imported_activities(
-    db: &DatabaseConnection,
-    context: &StravaSyncRunContext,
-    progress: &StravaSyncProgress,
-) -> Result<(), AppError> {
-    if progress.imported_count == 0 {
-        return Ok(());
-    }
-
-    let finalize_span = tracing::info_span!(
-        "strava.activity_import.finalize_batch",
-        provider = INTEGRATION_PROVIDER_STRAVA,
-        connection_id = context.connection.id,
-        user_id = context.connection.user_id,
-        imported_count = progress.imported_count,
-        trace_id = field::Empty,
-        span_id = field::Empty,
-    );
-    finalize_activity_import_batch(
-        db,
-        &context.tasks,
-        context.connection.user_id,
-        progress.affected_segment_ids.clone(),
-        progress.fitness_dirty_from_day,
-        Utc::now(),
-    )
-    .instrument(finalize_span)
-    .await?;
-    mark_activity_imports_processed(db, &progress.imported_import_ids).await
-}
-
-async fn finish_strava_sync_attempt(
-    db: &DatabaseConnection,
-    connection: &strava_connections::Model,
-    sync_span: &tracing::Span,
-    result: Result<(), AppError>,
-) -> Result<(), AppError> {
-    let paused_retry_at =
-        record_strava_sync_attempt_status(db, connection, sync_span, &result).await;
-    let release_result = release_user_activity_import_lock(
-        db,
-        connection.user_id,
-        ACTIVITY_IMPORT_LOCK_SOURCE_STRAVA_SYNC,
-    )
-    .await;
-
-    if let Some(retry_at) = paused_retry_at {
-        release_result?;
-        requeue_paused_strava_sync(db, connection.id, retry_at).await?;
-        return Ok(());
-    }
-
-    match (result, release_result) {
-        (Err(error), _) => Err(error),
-        (Ok(_), Err(error)) => Err(error.into()),
-        (Ok(_), Ok(())) => Ok(()),
-    }
-}
-
-async fn record_strava_sync_attempt_status(
-    db: &DatabaseConnection,
-    connection: &strava_connections::Model,
-    sync_span: &tracing::Span,
-    result: &Result<(), AppError>,
-) -> Option<DateTime<Utc>> {
-    match result {
-        Ok(()) => {
-            sync_span.record("status", "succeeded");
-            None
-        }
-        Err(error) if is_rate_limit_error(error) => {
-            record_strava_rate_limited_sync(db, connection, sync_span, error).await
-        }
-        Err(error) => {
-            sync_span.record("status", "failed");
-            let _ = mark_sync_failed_if_running(db, connection.id, &error.message).await;
-            None
-        }
-    }
-}
-
-async fn record_strava_rate_limited_sync(
-    db: &DatabaseConnection,
-    connection: &strava_connections::Model,
-    sync_span: &tracing::Span,
-    error: &AppError,
-) -> Option<DateTime<Utc>> {
-    let retry_at = error.retry_at?;
-    sync_span.record("status", "rate_limited");
-    sync_span.record("retry_at", field::display(retry_at));
-    let _ = mark_sync_paused_by_rate_limit(db, connection.id, &error.message, retry_at).await;
-    Some(retry_at)
-}
-
-async fn requeue_paused_strava_sync(
-    db: &DatabaseConnection,
-    connection_id: i32,
-    retry_at: DateTime<Utc>,
-) -> Result<(), AppError> {
-    let span = tracing::info_span!(
-        "strava.sync.requeue",
-        provider = INTEGRATION_PROVIDER_STRAVA,
-        connection_id,
-        retry_at = %retry_at,
-        trace_id = field::Empty,
-        span_id = field::Empty,
-    );
-
-    async move {
-        observability::record_current_trace_context();
-        let tasks = TaskQueue::new(db.clone());
-        tasks
-            .sync_strava_connection_with_options(connection_id, Some(retry_at), 3)
-            .await
-            .map_err(|message| {
-                AppError::internal(format!("Failed to requeue paused Strava sync: {message}"))
-            })
-    }
-    .instrument(span)
-    .await
-}
-
-async fn ensure_webhook_subscription(
-    db: &DatabaseConnection,
-    config: &Config,
-) -> Result<(), AppError> {
-    if !config.strava_webhook_enabled() {
-        return Ok(());
-    }
-
-    let client = StravaApiClient::new(db, Config::get())?;
-    let callback_url = config.strava_webhook_callback_url();
-    let subscriptions = match client.list_push_subscriptions().await {
-        Ok(subscriptions) => subscriptions,
-        Err(error) => {
-            record_strava_event_best_effort(
-                db,
-                None,
-                None,
-                "webhook.subscription_failed",
-                INTEGRATION_LEVEL_ERROR,
-                error.message.clone(),
-                Some(serde_json::json!({
-                    "stage": "list_push_subscriptions",
-                    "callback_url": callback_url,
-                })),
-            )
-            .await;
-            return Err(error);
-        }
-    };
-
-    if subscriptions
-        .iter()
-        .any(|subscription| subscription.callback_url == callback_url)
-    {
-        return Ok(());
-    }
-
-    let subscription = match client.create_push_subscription().await {
-        Ok(subscription) => subscription,
-        Err(error) => {
-            record_strava_event_best_effort(
-                db,
-                None,
-                None,
-                "webhook.subscription_failed",
-                INTEGRATION_LEVEL_ERROR,
-                error.message.clone(),
-                Some(serde_json::json!({
-                    "stage": "create_push_subscription",
-                    "callback_url": callback_url,
-                })),
-            )
-            .await;
-            return Err(error);
-        }
-    };
-    tracing::info!(
-        subscription_id = subscription.id,
-        callback_url,
-        "created Strava webhook subscription"
-    );
-
-    record_strava_event_best_effort(
-        db,
-        None,
-        None,
-        "webhook.subscription_created",
-        INTEGRATION_LEVEL_SUCCESS,
-        format!("Created Strava webhook subscription {}.", subscription.id),
-        Some(serde_json::json!({
-            "subscription_id": subscription.id,
-            "callback_url": callback_url,
-        })),
-    )
-    .await;
-
-    Ok(())
-}
-
-async fn load_latest_user_activity_started_at(
-    db: &DatabaseConnection,
-    user_id: i32,
-) -> Result<Option<DateTime<Utc>>, AppError> {
-    activities::Entity::find()
-        .filter(activities::Column::UserId.eq(user_id))
-        .order_by_desc(activities::Column::StartedAt)
-        .one(db)
-        .await
-        .map(|activity| activity.map(|activity| activity.started_at))
-        .map_err(AppError::from)
-}
-
-async fn load_connection_by_athlete_id(
-    db: &DatabaseConnection,
-    athlete_id: i64,
-) -> Result<Option<strava_connections::Model>, AppError> {
-    strava_connections::Entity::find()
-        .filter(strava_connections::Column::AthleteId.eq(athlete_id))
-        .one(db)
-        .await
-        .map_err(AppError::from)
-}
-
-async fn disconnect_connection_by_athlete_id(
-    db: &DatabaseConnection,
-    athlete_id: i64,
-) -> Result<(), AppError> {
-    let Some(connection) = load_connection_by_athlete_id(db, athlete_id).await? else {
-        return Ok(());
-    };
-
-    record_connection_strava_event_best_effort(
-        db,
-        &connection,
-        "webhook.athlete_deauthorized",
-        INTEGRATION_LEVEL_WARNING,
-        "Strava webhook reported that the athlete revoked access.",
-        Some(serde_json::json!({
-            "athlete_id": athlete_id,
-        })),
-    )
-    .await;
-
-    disconnect_connection_internal(
-        db,
-        &connection,
-        false,
-        "Strava revoked access via webhook.",
-        Some(serde_json::json!({
-            "trigger": "webhook",
-            "athlete_id": athlete_id,
-        })),
-    )
-    .await
-}
-
-fn athlete_update_revokes_access(event: &StravaWebhookEvent) -> bool {
-    event
-        .updates
-        .as_ref()
-        .and_then(|updates| updates.get("authorized"))
-        .and_then(|value| {
-            value.as_str().or_else(|| {
-                value
-                    .as_bool()
-                    .map(|flag| if flag { "true" } else { "false" })
-            })
-        })
-        == Some("false")
-}
-
-fn strava_sync_after_started_at(
-    last_synced_activity_started_at: Option<DateTime<Utc>>,
-    latest_user_activity_started_at: Option<DateTime<Utc>>,
-) -> Option<DateTime<Utc>> {
-    match (
-        last_synced_activity_started_at,
-        latest_user_activity_started_at,
-    ) {
-        (Some(last_synced), Some(latest_user_activity)) => {
-            Some(last_synced.max(latest_user_activity))
-        }
-        (Some(last_synced), None) => Some(last_synced),
-        (None, Some(latest_user_activity)) => Some(latest_user_activity),
-        (None, None) => None,
-    }
-}
-
-fn strava_sync_after_epoch(
-    last_synced_activity_started_at: Option<DateTime<Utc>>,
-    latest_user_activity_started_at: Option<DateTime<Utc>>,
-    now: DateTime<Utc>,
-) -> Option<i64> {
-    let cutoff = now - Duration::days(crate::strava_workflow::INITIAL_BACKFILL_DAYS);
-    let cursor = strava_sync_after_started_at(
-        last_synced_activity_started_at,
-        latest_user_activity_started_at,
-    )
-    .map(|timestamp| timestamp - Duration::minutes(5))
-    .unwrap_or(cutoff);
-    Some(cursor.max(cutoff).timestamp())
 }
 
 fn ensure_strava_configured(config: &Config) -> Result<(), AppError> {
@@ -1519,246 +497,6 @@ pub(crate) async fn ensure_fresh_access_token(
     active_model.update(db).await.map_err(AppError::from)
 }
 
-async fn mark_sync_queued(
-    db: &DatabaseConnection,
-    connection: &strava_connections::Model,
-    message: &str,
-) -> Result<strava_connections::Model, AppError> {
-    let mut active_model: strava_connections::ActiveModel = connection.clone().into();
-    active_model.last_sync_status = Set(STRAVA_SYNC_STATUS_QUEUED.to_string());
-    active_model.last_sync_message = Set(Some(message.to_string()));
-    let connection = active_model.update(db).await.map_err(AppError::from)?;
-    record_connection_strava_event_best_effort(
-        db,
-        &connection,
-        "sync.queued",
-        INTEGRATION_LEVEL_INFO,
-        message,
-        None,
-    )
-    .await;
-    Ok(connection)
-}
-
-async fn mark_sync_running(
-    db: &DatabaseConnection,
-    connection: &strava_connections::Model,
-) -> Result<strava_connections::Model, AppError> {
-    let mut active_model: strava_connections::ActiveModel = connection.clone().into();
-    active_model.last_sync_status = Set(STRAVA_SYNC_STATUS_RUNNING.to_string());
-    active_model.last_sync_message = Set(None);
-    active_model.last_sync_started_at = Set(Some(Utc::now()));
-    active_model.last_sync_finished_at = Set(None);
-    active_model.last_sync_imported_count = Set(0);
-    active_model.last_sync_duplicate_count = Set(0);
-    active_model.last_sync_failed_count = Set(0);
-    let connection = active_model.update(db).await.map_err(AppError::from)?;
-    record_connection_strava_event_best_effort(
-        db,
-        &connection,
-        "sync.running",
-        INTEGRATION_LEVEL_INFO,
-        "Strava sync started.",
-        None,
-    )
-    .await;
-    Ok(connection)
-}
-
-async fn mark_sync_succeeded(
-    db: &DatabaseConnection,
-    connection: &strava_connections::Model,
-    latest_started_at: Option<DateTime<Utc>>,
-    imported_count: i32,
-    duplicate_count: i32,
-    failed_count: i32,
-    message: &str,
-) -> Result<strava_connections::Model, AppError> {
-    let mut active_model: strava_connections::ActiveModel = connection.clone().into();
-    active_model.last_synced_activity_started_at = Set(latest_started_at);
-    active_model.last_sync_status = Set(STRAVA_SYNC_STATUS_SUCCEEDED.to_string());
-    active_model.last_sync_message = Set(Some(message.to_string()));
-    active_model.last_sync_finished_at = Set(Some(Utc::now()));
-    active_model.last_sync_imported_count = Set(imported_count);
-    active_model.last_sync_duplicate_count = Set(duplicate_count);
-    active_model.last_sync_failed_count = Set(failed_count);
-    let connection = active_model.update(db).await.map_err(AppError::from)?;
-    record_connection_strava_event_best_effort(
-        db,
-        &connection,
-        "sync.succeeded",
-        INTEGRATION_LEVEL_SUCCESS,
-        message,
-        Some(serde_json::json!({
-            "imported_count": imported_count,
-            "duplicate_count": duplicate_count,
-            "failed_count": failed_count,
-            "last_synced_activity_started_at": latest_started_at,
-        })),
-    )
-    .await;
-    Ok(connection)
-}
-
-async fn mark_sync_failed(
-    db: &DatabaseConnection,
-    connection: &strava_connections::Model,
-    message: &str,
-    imported_count: i32,
-    duplicate_count: i32,
-    failed_count: i32,
-) -> Result<strava_connections::Model, AppError> {
-    let mut active_model: strava_connections::ActiveModel = connection.clone().into();
-    active_model.last_sync_status = Set(STRAVA_SYNC_STATUS_FAILED.to_string());
-    active_model.last_sync_message = Set(Some(message.to_string()));
-    active_model.last_sync_finished_at = Set(Some(Utc::now()));
-    active_model.last_sync_imported_count = Set(imported_count);
-    active_model.last_sync_duplicate_count = Set(duplicate_count);
-    active_model.last_sync_failed_count = Set(failed_count);
-    let connection = active_model.update(db).await.map_err(AppError::from)?;
-    record_connection_strava_event_best_effort(
-        db,
-        &connection,
-        "sync.failed",
-        INTEGRATION_LEVEL_ERROR,
-        message,
-        Some(serde_json::json!({
-            "imported_count": imported_count,
-            "duplicate_count": duplicate_count,
-            "failed_count": failed_count,
-        })),
-    )
-    .await;
-    Ok(connection)
-}
-
-async fn mark_sync_failed_if_running(
-    db: &DatabaseConnection,
-    connection_id: i32,
-    message: &str,
-) -> Result<(), AppError> {
-    let Some(connection) = strava_connections::Entity::find_by_id(connection_id)
-        .one(db)
-        .await?
-    else {
-        return Ok(());
-    };
-
-    if connection.last_sync_status != STRAVA_SYNC_STATUS_RUNNING {
-        return Ok(());
-    }
-
-    mark_sync_failed(db, &connection, message, 0, 0, 0)
-        .await
-        .map(|_| ())
-}
-
-async fn mark_sync_paused_by_rate_limit(
-    db: &DatabaseConnection,
-    connection_id: i32,
-    message: &str,
-    retry_at: DateTime<Utc>,
-) -> Result<(), AppError> {
-    let span = tracing::info_span!(
-        "strava.sync.pause_checkpoint",
-        provider = INTEGRATION_PROVIDER_STRAVA,
-        connection_id,
-        retry_at = %retry_at,
-        trace_id = field::Empty,
-        span_id = field::Empty,
-    );
-
-    async move {
-        observability::record_current_trace_context();
-        let Some(connection) = strava_connections::Entity::find_by_id(connection_id)
-            .one(db)
-            .await?
-        else {
-            return Ok(());
-        };
-
-        let mut active_model: strava_connections::ActiveModel = connection.clone().into();
-        active_model.last_sync_status = Set(STRAVA_SYNC_STATUS_QUEUED.to_string());
-        active_model.last_sync_message = Set(Some(format!(
-            "Strava rate limit reached. Sync will resume after {retry_at}."
-        )));
-        let connection = active_model.update(db).await.map_err(AppError::from)?;
-
-        record_connection_strava_event_best_effort(
-            db,
-            &connection,
-            "sync.rate_limit_paused",
-            INTEGRATION_LEVEL_WARNING,
-            message,
-            Some(serde_json::json!({
-                "retry_at": retry_at,
-            })),
-        )
-        .await;
-
-        Ok(())
-    }
-    .instrument(span)
-    .await
-}
-
-async fn set_sync_message(
-    db: &DatabaseConnection,
-    connection: &strava_connections::Model,
-    message: &str,
-) -> Result<strava_connections::Model, AppError> {
-    let mut active_model: strava_connections::ActiveModel = connection.clone().into();
-    active_model.last_sync_message = Set(Some(message.to_string()));
-    active_model.update(db).await.map_err(AppError::from)
-}
-
-async fn queue_sync_task_for_connection(
-    db: &DatabaseConnection,
-    _tasks: &TaskQueue,
-    connection: &strava_connections::Model,
-    queued_message: &str,
-) -> Result<strava_connections::Model, AppError> {
-    acquire_user_activity_import_lock(
-        db,
-        connection.user_id,
-        ACTIVITY_IMPORT_LOCK_SOURCE_STRAVA_SYNC,
-        ACTIVITY_IMPORT_LOCK_STAGE_QUEUED,
-    )
-    .await?;
-
-    let queued_connection = match mark_sync_queued(db, connection, queued_message).await {
-        Ok(connection) => connection,
-        Err(error) => {
-            release_user_activity_import_lock(
-                db,
-                connection.user_id,
-                ACTIVITY_IMPORT_LOCK_SOURCE_STRAVA_SYNC,
-            )
-            .await?;
-            return Err(error);
-        }
-    };
-
-    if let Err(message) = crate::strava_workflow::queue_sync(db, &queued_connection, false).await {
-        tracing::error!(connection_id = queued_connection.id, %message, "failed to enqueue Strava sync task");
-        let failed_message = format!("Failed to queue Strava sync: {message}");
-        let _ = mark_sync_failed(db, &queued_connection, &failed_message, 0, 0, 0).await;
-        release_user_activity_import_lock(
-            db,
-            connection.user_id,
-            ACTIVITY_IMPORT_LOCK_SOURCE_STRAVA_SYNC,
-        )
-        .await?;
-        return Err(AppError::internal(failed_message));
-    }
-
-    Ok(queued_connection)
-}
-
-fn is_rate_limit_error(error: &AppError) -> bool {
-    error.status == StatusCode::TOO_MANY_REQUESTS
-}
-
 pub(crate) fn build_activity_upload(
     activity: &StravaActivitySummary,
     streams: &StravaActivityStreams,
@@ -1780,48 +518,6 @@ pub(crate) fn build_activity_upload(
         source_correlation_id: Some(activity.id.to_string()),
         bytes,
     })
-}
-
-pub(crate) async fn delete_strava_activity_by_correlation_id(
-    db: &DatabaseConnection,
-    uploads_dir: &str,
-    tasks: &TaskQueue,
-    user_id: i32,
-    source_correlation_id: i64,
-) -> Result<bool, AppError> {
-    let Some(activity) = activities::Entity::find()
-        .filter(activities::Column::UserId.eq(user_id))
-        .filter(activities::Column::Source.eq("strava_sync"))
-        .filter(activities::Column::SourceCorrelationId.eq(source_correlation_id.to_string()))
-        .one(db)
-        .await?
-    else {
-        return Ok(false);
-    };
-
-    delete_strava_activity(db, uploads_dir, tasks, user_id, activity).await?;
-    Ok(true)
-}
-
-pub(crate) async fn delete_strava_activity(
-    db: &DatabaseConnection,
-    uploads_dir: &str,
-    tasks: &TaskQueue,
-    user_id: i32,
-    activity: activities::Model,
-) -> Result<(), AppError> {
-    let fitness_dirty_from_day = activity.started_at.date_naive();
-    let affected_segment_ids =
-        delete_activity_with_derived_state(db, uploads_dir, user_id, activity).await?;
-    let changed_at = Utc::now();
-    mark_user_fitness_dirty(db, user_id, fitness_dirty_from_day, changed_at).await?;
-    mark_segment_activity_changes(db, &affected_segment_ids, changed_at).await?;
-    tasks.rebuild_fitness_freshness(user_id).await?;
-    tasks
-        .rebuild_segment_analytics(affected_segment_ids)
-        .await?;
-
-    Ok(())
 }
 
 pub async fn resolve_connection_sync_state(
@@ -1908,16 +604,6 @@ pub async fn resolve_connection_sync_state(
     })
 }
 
-async fn connection_still_exists(
-    db: &DatabaseConnection,
-    connection_id: i32,
-) -> Result<bool, AppError> {
-    Ok(strava_connections::Entity::find_by_id(connection_id)
-        .one(db)
-        .await?
-        .is_some())
-}
-
 async fn find_active_connection_sync_tasks(
     db: &DatabaseConnection,
     connection_id: i32,
@@ -1972,34 +658,9 @@ fn task_targets_connection(task: &background_tasks::Model, connection_id: i32) -
     .unwrap_or(false)
 }
 
-async fn stop_if_connection_removed(
-    db: &DatabaseConnection,
-    connection: &strava_connections::Model,
-) -> Result<bool, AppError> {
-    if connection_still_exists(db, connection.id).await? {
-        return Ok(false);
-    }
-
-    tracing::info!(
-        connection_id = connection.id,
-        "stopping Strava sync because the connection was removed"
-    );
-    record_connection_strava_event_best_effort(
-        db,
-        connection,
-        "sync.cancelled",
-        INTEGRATION_LEVEL_WARNING,
-        "Stopped Strava sync because the connection was removed.",
-        None,
-    )
-    .await;
-    Ok(true)
-}
-
 async fn disconnect_connection_internal(
     db: &DatabaseConnection,
     connection: &strava_connections::Model,
-    should_deauthorize_remote: bool,
     reason: &str,
     payload: Option<serde_json::Value>,
 ) -> Result<(), AppError> {
@@ -2012,7 +673,7 @@ async fn disconnect_connection_internal(
         reason,
         Some(serde_json::json!({
             "active_sync_status": resolved.active_sync_status,
-            "should_deauthorize_remote": should_deauthorize_remote,
+            "cleanup_local": true,
         })),
     )
     .await;
@@ -2038,25 +699,6 @@ async fn disconnect_connection_internal(
         ACTIVITY_IMPORT_LOCK_SOURCE_STRAVA_SYNC,
     )
     .await?;
-
-    if should_deauthorize_remote && should_attempt_remote_strava_deauthorize() {
-        let client = StravaApiClient::new(db, Config::get())?;
-        if let Err(error) = client.deauthorize(&resolved.connection.access_token).await {
-            tracing::warn!(message = %error.message, "failed to deauthorize Strava connection before delete");
-            record_connection_strava_event_best_effort(
-                db,
-                &resolved.connection,
-                "disconnect.remote_deauthorize_failed",
-                INTEGRATION_LEVEL_WARNING,
-                format!(
-                    "Failed to deauthorize Strava during disconnect: {}",
-                    error.message
-                ),
-                None,
-            )
-            .await;
-        }
-    }
 
     strava_connections::Entity::delete_by_id(resolved.connection.id)
         .exec(db)
@@ -2131,47 +773,6 @@ async fn record_strava_event_best_effort(
     }
 }
 
-#[cfg(not(test))]
-fn should_attempt_remote_strava_deauthorize() -> bool {
-    Config::get().strava_enabled()
-}
-
-#[cfg(test)]
-fn should_attempt_remote_strava_deauthorize() -> bool {
-    false
-}
-
-fn build_sync_summary_message(
-    imported_count: i32,
-    duplicate_count: i32,
-    failed_count: i32,
-    skipped_count: i32,
-) -> String {
-    if imported_count == 0 && duplicate_count == 0 && failed_count == 0 && skipped_count == 0 {
-        return "No new Strava activities found.".to_string();
-    }
-
-    let mut parts = Vec::new();
-    if imported_count > 0 {
-        parts.push(format!("Imported {imported_count}"));
-    }
-    if duplicate_count > 0 {
-        parts.push(format!("Skipped {duplicate_count} duplicates"));
-    }
-    if failed_count > 0 {
-        parts.push(format!("{failed_count} failed"));
-    }
-    if skipped_count > 0 {
-        parts.push(format!("Skipped {skipped_count} non-cycling"));
-    }
-
-    if parts.is_empty() {
-        "Strava sync finished.".to_string()
-    } else {
-        format!("{}.", parts.join(". "))
-    }
-}
-
 fn requested_oauth_scopes(config: &Config) -> Vec<String> {
     let mut scopes = config.strava_oauth_scope_list();
     if !scopes
@@ -2220,8 +821,9 @@ mod tests {
     use crate::entities::integration_events as integration_events_entity;
     use crate::entities::segment_efforts;
     use crate::strava_provider_payload::StravaStream;
+    use axum::http::StatusCode;
     use chrono::Duration as ChronoDuration;
-    use sea_orm::{ActiveModelTrait, ConnectionTrait, Database, EntityTrait, QueryOrder, Schema};
+    use sea_orm::{ActiveModelTrait, ConnectionTrait, Database, EntityTrait, Schema};
 
     async fn test_db() -> DatabaseConnection {
         let db = Database::connect("sqlite::memory:")
@@ -2297,17 +899,6 @@ mod tests {
         insert_connection_with_scopes(db, user_id, last_sync_status, "activity:read_all").await
     }
 
-    async fn load_event_types(db: &DatabaseConnection) -> Vec<String> {
-        integration_events_entity::Entity::find()
-            .order_by_asc(integration_events_entity::Column::Id)
-            .all(db)
-            .await
-            .expect("load integration events")
-            .into_iter()
-            .map(|event| event.event_type)
-            .collect()
-    }
-
     fn test_config() -> Config {
         Config {
             grafana_url: None,
@@ -2320,7 +911,6 @@ mod tests {
             strava_client_secret: "secret".to_string(),
             strava_oauth_scopes: "activity:read_all profile:read_all".to_string(),
             strava_webhook_verify_token: "verify-token".to_string(),
-            strava_webhook_callback_url: None,
             uploads_dir: "./uploads".to_string(),
             map_renderer_grpc_address: None,
             map_service_token: String::new(),
@@ -2395,64 +985,6 @@ mod tests {
         assert!(url
             .as_str()
             .contains("scope=read%2Cprofile%3Aread_all%2Cactivity%3Aread%2Cactivity%3Aread_all"));
-    }
-
-    #[test]
-    fn strava_sync_after_started_at_prefers_latest_existing_activity() {
-        let last_synced_activity_started_at = DateTime::parse_from_rfc3339("2024-05-01T10:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let latest_user_activity_started_at = DateTime::parse_from_rfc3339("2026-05-11T13:23:17Z")
-            .unwrap()
-            .with_timezone(&Utc);
-
-        assert_eq!(
-            strava_sync_after_started_at(
-                Some(last_synced_activity_started_at),
-                Some(latest_user_activity_started_at),
-            ),
-            Some(latest_user_activity_started_at),
-        );
-    }
-
-    #[test]
-    fn legacy_sync_never_fetches_history_older_than_fifteen_days() {
-        let now = DateTime::from_timestamp(1_800_000_000, 0).unwrap();
-        let cutoff = now - Duration::days(crate::strava_workflow::INITIAL_BACKFILL_DAYS);
-        assert_eq!(
-            strava_sync_after_epoch(None, None, now),
-            Some(cutoff.timestamp())
-        );
-        assert_eq!(
-            strava_sync_after_epoch(Some(now - Duration::days(90)), None, now),
-            Some(cutoff.timestamp())
-        );
-        assert_eq!(
-            strava_sync_after_epoch(None, Some(now - Duration::days(90)), now),
-            Some(cutoff.timestamp())
-        );
-        assert_eq!(
-            strava_sync_after_epoch(Some(now - Duration::days(1)), None, now),
-            Some((now - Duration::days(1) - Duration::minutes(5)).timestamp())
-        );
-    }
-
-    #[test]
-    fn strava_sync_after_started_at_keeps_newer_strava_cursor() {
-        let last_synced_activity_started_at = DateTime::parse_from_rfc3339("2026-05-12T10:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let latest_user_activity_started_at = DateTime::parse_from_rfc3339("2026-05-11T13:23:17Z")
-            .unwrap()
-            .with_timezone(&Utc);
-
-        assert_eq!(
-            strava_sync_after_started_at(
-                Some(last_synced_activity_started_at),
-                Some(latest_user_activity_started_at),
-            ),
-            Some(last_synced_activity_started_at),
-        );
     }
 
     #[test]
@@ -2599,12 +1131,15 @@ mod tests {
     async fn disconnect_connection_cancels_pending_sync_task_and_releases_lock() {
         let db = test_db().await;
         let connection = insert_connection(&db, 8, STRAVA_SYNC_STATUS_QUEUED).await;
-        let queue = TaskQueue::new(db.clone());
-
-        queue
-            .sync_strava_connection(connection.id)
-            .await
-            .expect("enqueue sync task");
+        background_tasks::Model::enqueue(
+            &db,
+            "strava_sync".into(),
+            serde_json::json!({"type": "StravaSync", "data": {"connection_id": connection.id}}),
+            None,
+            3,
+        )
+        .await
+        .expect("enqueue historical sync task");
         acquire_user_activity_import_lock(
             &db,
             connection.user_id,
@@ -2614,7 +1149,7 @@ mod tests {
         .await
         .expect("acquire sync lock");
 
-        disconnect_connection(&db, connection.user_id)
+        forget_local_connection(&db, connection.user_id)
             .await
             .expect("disconnect Strava");
 
@@ -2643,38 +1178,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn process_strava_sync_is_noop_when_connection_is_missing() {
-        let db = test_db().await;
-
-        process_strava_sync(&db, "/tmp", 999)
-            .await
-            .expect("missing connection should be treated as a no-op");
-    }
-
-    #[tokio::test]
-    async fn requeue_paused_strava_sync_sets_scheduled_for() {
-        let db = test_db().await;
-        let retry_at = DateTime::parse_from_rfc3339("2026-09-12T12:15:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-
-        requeue_paused_strava_sync(&db, 123, retry_at)
-            .await
-            .expect("requeue paused sync");
-
-        let task = background_tasks::Entity::find()
-            .one(&db)
-            .await
-            .expect("load task")
-            .expect("queued task exists");
-        assert_eq!(task.task_type, STRAVA_SYNC_TASK_TYPE);
-        assert_eq!(task.status, background_tasks::TaskStatus::Pending.as_str());
-        assert_eq!(task.max_attempts, 3);
-        assert_eq!(task.scheduled_for, Some(retry_at));
-        assert!(task_targets_connection(&task, 123));
-    }
-
-    #[tokio::test]
     async fn weak_connection_scope_returns_activity_scope_error() {
         let db = test_db().await;
         let connection =
@@ -2684,179 +1187,5 @@ mod tests {
 
         assert_eq!(error.status, StatusCode::BAD_REQUEST);
         assert_eq!(error.message, missing_activity_scope_message());
-    }
-
-    #[tokio::test]
-    async fn webhook_athlete_deauthorization_disconnects_connection_and_logs_events() {
-        let db = test_db().await;
-        let connection = insert_connection(&db, 9, STRAVA_SYNC_STATUS_NEVER).await;
-        let tasks = TaskQueue::new(db.clone());
-
-        handle_webhook_event(
-            &db,
-            &tasks,
-            &StravaWebhookEvent {
-                aspect_type: "update".to_string(),
-                event_time: Utc::now().timestamp(),
-                object_id: connection.athlete_id,
-                object_type: "athlete".to_string(),
-                owner_id: connection.athlete_id,
-                subscription_id: 1,
-                updates: Some(serde_json::json!({
-                    "authorized": false,
-                })),
-            },
-        )
-        .await
-        .expect("handle athlete revoke webhook");
-
-        assert!(load_connection(&db, connection.user_id)
-            .await
-            .expect("load connection")
-            .is_none());
-
-        let event_types = load_event_types(&db).await;
-        assert!(event_types.contains(&"webhook.received".to_string()));
-        assert!(event_types.contains(&"webhook.athlete_deauthorized".to_string()));
-        assert!(event_types.contains(&"disconnect.completed".to_string()));
-    }
-
-    #[tokio::test]
-    async fn webhook_activity_update_queues_sync_and_logs_events() {
-        let db = test_db().await;
-        let connection = insert_connection(&db, 10, STRAVA_SYNC_STATUS_NEVER).await;
-        let tasks = TaskQueue::new(db.clone());
-
-        handle_webhook_event(
-            &db,
-            &tasks,
-            &StravaWebhookEvent {
-                aspect_type: "create".to_string(),
-                event_time: Utc::now().timestamp(),
-                object_id: 4_242,
-                object_type: "activity".to_string(),
-                owner_id: connection.athlete_id,
-                subscription_id: 1,
-                updates: None,
-            },
-        )
-        .await
-        .expect("handle activity update webhook");
-
-        let queued_connection = load_connection(&db, connection.user_id)
-            .await
-            .expect("load connection")
-            .expect("connection still exists");
-        assert_eq!(
-            queued_connection.last_sync_status,
-            STRAVA_SYNC_STATUS_QUEUED
-        );
-
-        let task = background_tasks::Entity::find()
-            .one(&db)
-            .await
-            .expect("load task")
-            .expect("queued task exists");
-        assert_eq!(task.status, background_tasks::TaskStatus::Pending.as_str());
-        assert_eq!(task.task_type, "strava_workflow");
-        let workflow = crate::entities::strava_workflows::Entity::find_by_id(
-            task.payload["data"]["workflow_id"]
-                .as_str()
-                .expect("workflow ID"),
-        )
-        .one(&db)
-        .await
-        .expect("load workflow")
-        .expect("retained workflow");
-        assert_eq!(workflow.connection_id, connection.id);
-
-        let event_types = load_event_types(&db).await;
-        assert!(event_types.contains(&"webhook.received".to_string()));
-        assert!(event_types.contains(&"sync.queued".to_string()));
-    }
-
-    #[tokio::test]
-    async fn webhook_activity_update_without_required_scope_is_ignored() {
-        let db = test_db().await;
-        let connection =
-            insert_connection_with_scopes(&db, 11, STRAVA_SYNC_STATUS_NEVER, "activity:read").await;
-        let tasks = TaskQueue::new(db.clone());
-
-        handle_webhook_event(
-            &db,
-            &tasks,
-            &StravaWebhookEvent {
-                aspect_type: "create".to_string(),
-                event_time: Utc::now().timestamp(),
-                object_id: 8_484,
-                object_type: "activity".to_string(),
-                owner_id: connection.athlete_id,
-                subscription_id: 1,
-                updates: None,
-            },
-        )
-        .await
-        .expect("handle activity update webhook with missing scope");
-
-        assert!(background_tasks::Entity::find()
-            .all(&db)
-            .await
-            .expect("load background tasks")
-            .is_empty());
-
-        let events = integration_events_entity::Entity::find()
-            .order_by_asc(integration_events_entity::Column::Id)
-            .all(&db)
-            .await
-            .expect("load integration events");
-        assert!(events
-            .iter()
-            .any(|event| event.event_type == "webhook.activity_ignored"
-                && event.message == missing_activity_scope_message()));
-        assert!(!events.iter().any(|event| event.event_type == "sync.queued"));
-    }
-
-    #[tokio::test]
-    async fn webhook_activity_delete_without_connection_logs_ignored_event() {
-        let db = test_db().await;
-        let tasks = TaskQueue::new(db.clone());
-
-        handle_webhook_event(
-            &db,
-            &tasks,
-            &StravaWebhookEvent {
-                aspect_type: "delete".to_string(),
-                event_time: Utc::now().timestamp(),
-                object_id: 5_555,
-                object_type: "activity".to_string(),
-                owner_id: 999_999,
-                subscription_id: 1,
-                updates: None,
-            },
-        )
-        .await
-        .expect("handle activity delete webhook");
-
-        let background_tasks = background_tasks::Entity::find()
-            .order_by_asc(background_tasks::Column::Id)
-            .all(&db)
-            .await
-            .expect("load queued tasks");
-        assert!(background_tasks.is_empty());
-
-        assert!(activities::Entity::find()
-            .all(&db)
-            .await
-            .expect("load activities")
-            .is_empty());
-        assert!(analytics_user_states::Entity::find()
-            .all(&db)
-            .await
-            .expect("load analytics state")
-            .is_empty());
-
-        let event_types = load_event_types(&db).await;
-        assert!(event_types.contains(&"webhook.received".to_string()));
-        assert!(event_types.contains(&"webhook.activity_ignored".to_string()));
     }
 }
