@@ -10,7 +10,8 @@ Admin tools should be boring, explicit, and recoverable. They exist to repair or
 
 Admin navigation exposes operational pages for:
 
-- analytics and manual tasks;
+- manual tasks;
+- activities;
 - users;
 - feature flags;
 - integration events;
@@ -18,6 +19,31 @@ Admin navigation exposes operational pages for:
 - background tasks.
 
 Admin pages require an authenticated admin user. Non-admin users should not be able to reach admin-only operations through either UI or API.
+
+## List presentation
+
+- Use the Users page's shared card and zebra data grid for integration events,
+  import history, activities, registered processors, and task history.
+- Keep compact dropdowns and search inputs in a toolbar above the grid, aligned
+  to the right, with Search and Clear controls. Wrap controls on smaller screens
+  and allow wide grids to scroll horizontally.
+- Integration events keep provider and positive user/activity/import ID filters.
+  Text search covers the latest 100 matching events and is labeled accordingly.
+- Import history keeps owner, source, outcome, archive scope, pagination, and
+  links to import diagnostics. Outcome, stage, error, and format have separate
+  columns; long filenames and errors expose their full text in tooltips.
+- Activities filter the full stored population by title or exact activity ID,
+  positive owner ID, source, and normalized sport (including legacy spellings)
+  before counting and pagination. Filters reset pagination. ID, owner, sport,
+  source, format, import ID, and import status
+  use separate columns. Long titles use tooltips.
+- Tasks has two independent cards: All registered processors and task history.
+  Processor window, outcome, and name filters affect only the processor grid.
+  Task history defaults to completed tasks, retains status/type/error/date and
+  correlation search, pagination, detail inspection, rerun, and cancellation.
+  A correlation deep link opens all matching statuses, including queued work.
+- `/admin/analytics` and its navigation entry are removed. Analytics maintenance
+  remains available through Manual tasks.
 
 ## Task processing history
 

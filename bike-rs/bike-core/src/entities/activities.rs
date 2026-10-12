@@ -6,11 +6,111 @@ use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DbErr, FromQueryResult, QueryFilter, QueryOrder, QuerySelect, Set,
+    ColumnTrait, ConnectionTrait, DbErr, FromQueryResult, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set,
 };
 use std::collections::HashMap;
 
 pub const BIKE_ACTIVITY_SPORT: &str = "ride";
+
+#[derive(Debug, Default, serde::Deserialize, utoipa::IntoParams)]
+pub struct AdminListFilters {
+    /// Activity title search or exact activity ID.
+    pub q: Option<String>,
+    /// Positive owner ID.
+    pub user_id: Option<i32>,
+    /// Exact import source.
+    pub source: Option<String>,
+    /// Normalized sport, including legacy stored spellings.
+    pub sport: Option<String>,
+}
+
+#[derive(Debug, FromQueryResult)]
+pub struct AdminListRow {
+    pub id: i32,
+    pub user_id: i32,
+    pub title: String,
+    pub sport: String,
+    pub source: String,
+    pub started_at: DateTime<Utc>,
+    pub format: Option<String>,
+    pub activity_import_id: Option<i32>,
+}
+
+impl Model {
+    pub async fn admin_page(
+        db: &impl ConnectionTrait,
+        filters: &AdminListFilters,
+        page: u64,
+        per_page: u64,
+    ) -> Result<(Vec<AdminListRow>, u64), DbErr> {
+        let query = Self::admin_query(filters);
+        let total = query.clone().count(db).await?;
+        let rows = query
+            .select_only()
+            .columns([
+                Column::Id,
+                Column::UserId,
+                Column::Title,
+                Column::Sport,
+                Column::Source,
+                Column::StartedAt,
+                Column::Format,
+                Column::ActivityImportId,
+            ])
+            .order_by_desc(Column::StartedAt)
+            .order_by_desc(Column::Id)
+            .into_model::<AdminListRow>()
+            .paginate(db, per_page.clamp(1, 100))
+            .fetch_page(page.max(1) - 1)
+            .await?;
+        Ok((rows, total))
+    }
+
+    fn admin_query(filters: &AdminListFilters) -> sea_orm::Select<Entity> {
+        use sea_orm::sea_query::{Expr, Func};
+        use sea_orm::{Condition, ExprTrait};
+        let mut query = Entity::find();
+        if let Some(term) = filters
+            .q
+            .as_deref()
+            .map(str::trim)
+            .filter(|term| !term.is_empty())
+        {
+            query = query.filter(
+                Condition::any()
+                    .add(
+                        Expr::expr(Func::lower(Column::Title.into_expr()))
+                            .like(format!("%{}%", term.to_lowercase())),
+                    )
+                    .add_option(term.parse::<i32>().ok().map(|id| Column::Id.eq(id))),
+            );
+        }
+        query.filter(
+            Condition::all()
+                .add_option(filters.user_id.map(|id| Column::UserId.eq(id)))
+                .add_option(
+                    filters
+                        .source
+                        .as_deref()
+                        .filter(|value| !value.is_empty())
+                        .map(|source| Column::Source.eq(source)),
+                )
+                .add_option(
+                    filters
+                        .sport
+                        .as_deref()
+                        .filter(|value| !value.is_empty())
+                        .map(|sport| {
+                            crate::activity_sport::activity_sport_from_stored(sport).map_or_else(
+                                || Column::Sport.eq(sport),
+                                |sport| Column::Sport.is_in(sport.stored_values().iter().copied()),
+                            )
+                        }),
+                ),
+        )
+    }
+}
 
 impl Model {
     pub async fn metrics_counts(
@@ -473,4 +573,83 @@ pub struct RecordingCandidate {
     pub source: String,
     pub title: String,
     pub derived_data_json: Option<StoredActivityDerivedData>,
+}
+
+#[cfg(test)]
+mod admin_list_tests {
+    use super::*;
+    use sea_orm::{Database, Schema};
+
+    async fn fixture() -> sea_orm::DatabaseConnection {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute(&Schema::new(db.get_database_backend()).create_table_from_entity(Entity))
+            .await
+            .unwrap();
+        for (id, owner, title, source, sport) in [
+            (1, 7, "Hill morning", "manual_upload", "road_ride"),
+            (2, 7, "Hill evening", "manual_upload", "Ride"),
+            (3, 8, "Hill other owner", "manual_upload", "road_ride"),
+            (4, 7, "Hill Strava", "strava_sync", "road_ride"),
+            (5, 7, "Hill trail run", "manual_upload", "run"),
+        ] {
+            ActiveModel {
+                id: Set(id),
+                user_id: Set(owner),
+                title: Set(title.into()),
+                source: Set(source.into()),
+                sport: Set(sport.into()),
+                activity_type: Set("activity".into()),
+                started_at: Set(DateTime::parse_from_rfc3339("2026-10-10T12:00:00Z")
+                    .unwrap()
+                    .with_timezone(&Utc)),
+                ..Default::default()
+            }
+            .insert(&db)
+            .await
+            .unwrap();
+        }
+        db
+    }
+
+    #[tokio::test]
+    async fn admin_filters_count_and_paginate_the_full_matching_population() {
+        let db = fixture().await;
+        let filters = AdminListFilters {
+            q: Some(" HILL ".into()),
+            user_id: Some(7),
+            source: Some("manual_upload".into()),
+            sport: Some("road_ride".into()),
+        };
+        let (first, total) = Model::admin_page(&db, &filters, 1, 1).await.unwrap();
+        assert_eq!(total, 2);
+        assert_eq!(first[0].id, 2);
+        let (second, total) = Model::admin_page(&db, &filters, 2, 1).await.unwrap();
+        assert_eq!(total, 2);
+        assert_eq!(second[0].id, 1);
+        let (empty, total) = Model::admin_page(&db, &filters, 3, 1).await.unwrap();
+        assert!(empty.is_empty());
+        assert_eq!(total, 2);
+    }
+
+    #[tokio::test]
+    async fn admin_activity_id_search_and_empty_filters_preserve_list_behavior() {
+        let db = fixture().await;
+        let (rows, total) = Model::admin_page(
+            &db,
+            &AdminListFilters {
+                q: Some("3".into()),
+                ..Default::default()
+            },
+            1,
+            25,
+        )
+        .await
+        .unwrap();
+        assert_eq!(total, 1);
+        assert_eq!(rows[0].id, 3);
+        let (_, total) = Model::admin_page(&db, &AdminListFilters::default(), 1, 25)
+            .await
+            .unwrap();
+        assert_eq!(total, 5);
+    }
 }

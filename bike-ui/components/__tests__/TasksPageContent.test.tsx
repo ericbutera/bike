@@ -95,6 +95,44 @@ describe("TasksPageContent", () => {
     );
   });
 
+  it("separates processors from completed history and keeps their filters independent", async () => {
+    const user = userEvent.setup();
+    render(<TasksPageContent />);
+    const processors = screen
+      .getByRole("heading", { name: "All registered processors" })
+      .closest(".card");
+    const history = screen
+      .getByRole("heading", { name: "Completed tasks" })
+      .closest(".card");
+    expect(processors).not.toBe(history);
+    expect(history).toContainElement(
+      screen.getByRole("table", { name: "Background task history" }),
+    );
+    expect(mocks.useAdminTasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: "completed" }),
+    );
+    await user.selectOptions(screen.getByLabelText("Processor window"), "168");
+    expect(mocks.useAdminTasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: "completed" }),
+    );
+    expect(screen.getByLabelText("Filter task status")).toHaveValue(
+      "completed",
+    );
+    await user.selectOptions(
+      screen.getByLabelText("Filter task status"),
+      "failed",
+    );
+    expect(screen.getByRole("heading", { name: "Task history" })).toBeVisible();
+    expect(screen.getByLabelText("Processor window")).toHaveValue("168");
+  });
+
+  it("opens correlation links across statuses so queued descendants remain visible", () => {
+    render(<TasksPageContent initialCorrelationId="request-123" />);
+    expect(mocks.useAdminTasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ correlationId: "request-123", status: "" }),
+    );
+  });
+
   it("filters registered and historical processors and retains the selection on an empty page", () => {
     const distribution = { samples: 0, p50_seconds: null, p90_seconds: null };
     mocks.useWorkerProcessors.mockReturnValue({

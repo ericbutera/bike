@@ -52,8 +52,20 @@ The self-contained workflow component should have a narrow prop surface:
 
 Tests should exercise the workflow through the visible trigger and dialog controls. A parent component test may cover the integrated behavior, but implementation details such as parent-owned modal draft state should not be required.
 
+## List presentation
+
+- `ListCard` owns the common list title and right-aligned filter toolbar, with
+  compact inputs, dropdowns, Search, and Clear above its content.
+- `DataGrid` owns zebra rows, column rendering, loading/error/empty states,
+  horizontal overflow, and optional row selection. Long cell values use
+  truncation with a tooltip or separate columns.
+- `GenericList` combines these components with URL filters and pagination;
+  pages with independent filters reuse the same presentation components.
+
 ## Code Anchors
 
 - Shared numbered pagination: `bike-ui/components/ui/Pagination.tsx`
 - Segment rename modal: `bike-ui/components/SegmentRenameModal.tsx`
 - Segment list UI: `bike-ui/components/SegmentsPanel.tsx`
+- Shared grid: `bike-ui/components/ui/DataGrid.tsx`
+- URL-driven list: `bike-ui/components/ui/GenericList.tsx`

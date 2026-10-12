@@ -6,9 +6,10 @@ import {
   faRotateRight,
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import Pagination from "../ui/Pagination";
+import { DataGrid, ListCard, type Column } from "../ui/DataGrid";
 import TaskProcessingHistory from "./TaskProcessingHistory";
 import ProcessorOverview from "./ProcessorOverview";
 import {
@@ -41,7 +42,7 @@ const emptyFilters: TaskFilters = {
   correlationId: "",
   error: "",
   taskType: "",
-  status: "",
+  status: "completed",
   fromDate: "",
   toDate: "",
 };
@@ -55,10 +56,12 @@ export default function TasksPageContent({
   const [draft, setDraft] = useState<TaskFilters>({
     ...emptyFilters,
     correlationId: initialCorrelationId,
+    status: initialCorrelationId ? "" : emptyFilters.status,
   });
   const [filters, setFilters] = useState<TaskFilters>({
     ...emptyFilters,
     correlationId: initialCorrelationId,
+    status: initialCorrelationId ? "" : emptyFilters.status,
   });
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -94,8 +97,7 @@ export default function TasksPageContent({
     setPage(1);
   }
 
-  function applyFilters(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function applyFilters() {
     setFilters({ ...draft });
     setPage(1);
   }
@@ -125,235 +127,170 @@ export default function TasksPageContent({
     }
   }
 
+  const columns: Column<TimedTask>[] = [
+    { key: "id", header: "ID", render: (task) => task.id },
+    {
+      key: "type",
+      header: "Type",
+      className: "whitespace-nowrap",
+      render: (task) => task.task_type,
+    },
+    { key: "status", header: "Status", render: (task) => task.status },
+    {
+      key: "duration",
+      header: "Duration",
+      className: "whitespace-nowrap",
+      render: (task) => (
+        <span
+          title={
+            task.durationMs === null
+              ? undefined
+              : Math.round(task.durationMs / 1000) + "s"
+          }
+        >
+          {formatDuration(task.durationMs)}
+        </span>
+      ),
+    },
+    {
+      key: "attempts",
+      header: "Attempts",
+      render: (task) => `${task.attempts}/${task.max_attempts}`,
+    },
+    {
+      key: "error",
+      header: "Error",
+      className: "max-w-xs truncate",
+      render: (task) => (
+        <span title={task.error ?? undefined}>{task.error || "—"}</span>
+      ),
+    },
+    {
+      key: "created",
+      header: "Created",
+      className: "whitespace-nowrap",
+      render: (task) => formatDate(task.created_at),
+    },
+    {
+      key: "actions",
+      header: "",
+      className: "text-right",
+      render: (task) => (
+        <TaskActions
+          task={task}
+          pending={cancel.isPending || rerun.isPending}
+          onAction={runAction}
+        />
+      ),
+    },
+  ];
+
   return (
-    <div className="card bg-base-100 shadow-xl">
-      <div className="card-body">
-        <div className="mb-4 flex flex-col gap-4">
-          <h2 className="card-title m-0 text-2xl font-bold">
-            Background Tasks
-          </h2>
-          <ProcessorOverview />
-          <form
-            onSubmit={applyFilters}
-            className="flex w-full flex-wrap items-center justify-end gap-2 rounded-lg bg-base-200/50 p-2"
-          >
-            <div className="flex flex-1 flex-wrap justify-end gap-2">
-              <input
-                type="search"
-                aria-label="Request, trace, or pipeline ID"
-                placeholder="Request, trace, or pipeline ID"
-                className="input input-sm w-64"
-                value={draft.correlationId}
-                onChange={(event) =>
-                  setDraftField("correlationId", event.target.value)
-                }
-              />
-              <input
-                type="search"
-                aria-label="Filter error text"
-                placeholder="Filter error text"
-                className="input input-sm w-40"
-                value={draft.error}
-                onChange={(event) => setDraftField("error", event.target.value)}
-              />
-              <select
-                aria-label="Filter task type"
-                className="select select-sm w-40"
-                value={draft.taskType}
-                onChange={(event) =>
-                  setDraftField("taskType", event.target.value)
-                }
-              >
-                <option value="">All Types</option>
-                {taskTypes.map((type) => (
-                  <option key={type} value={type}>
-                    {type.replaceAll("_", " ")}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="Filter task status"
-                className="select select-sm w-40"
-                value={draft.status}
-                onChange={(event) =>
-                  setDraftField("status", event.target.value)
-                }
-              >
-                <option value="">All Statuses</option>
-                {(
-                  [
-                    "pending",
-                    "processing",
-                    "running",
-                    "canceled",
-                    "completed",
-                    "failed",
-                  ] as const
-                ).map((status) => (
-                  <option key={status} value={status}>
-                    {status[0].toUpperCase() + status.slice(1)}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="date"
-                aria-label="From date"
-                title="From"
-                className="input input-sm w-40"
-                value={draft.fromDate}
-                onChange={(event) =>
-                  setDraftField("fromDate", event.target.value)
-                }
-              />
-              <input
-                type="date"
-                aria-label="To date"
-                title="To"
-                className="input input-sm w-40"
-                value={draft.toDate}
-                onChange={(event) =>
-                  setDraftField("toDate", event.target.value)
-                }
-              />
-            </div>
-            <div className="join">
-              <button
-                className="join-item btn btn-sm btn-neutral"
-                type="submit"
-              >
-                Search
-              </button>
-              <button
-                className="join-item btn btn-sm btn-ghost border-base-300"
-                type="button"
-                onClick={clearFilters}
-              >
-                Clear
-              </button>
-            </div>
-          </form>
-        </div>
-
-        {query.isLoading ? (
-          <p className="p-6 text-sm text-base-content/70">Loading tasks…</p>
-        ) : null}
-        {query.error ? (
-          <p role="alert" className="p-6 text-sm text-error">
-            Unable to load tasks.
-          </p>
-        ) : null}
-        {!query.isLoading && !query.error && tasks.length === 0 ? (
-          <p className="p-6 text-sm text-base-content/70">
-            No tasks found matching criteria.
-          </p>
-        ) : null}
-        {tasks.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table
-              aria-label="Background task history"
-              className="table table-zebra w-full min-w-[820px]"
-            >
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Type</th>
-                  <th>Status</th>
-                  <th>Duration</th>
-                  <th>Attempts</th>
-                  <th>Error</th>
-                  <th>Created</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {tasks.map((task) => {
-                  const canCancel =
-                    task.status === "processing" || task.status === "running";
-                  const actionPending = cancel.isPending || rerun.isPending;
-                  return (
-                    <tr
-                      key={task.id}
-                      className="cursor-pointer"
-                      onClick={() => setSelectedId(task.id)}
-                    >
-                      <td>{task.id}</td>
-                      <td>{task.task_type}</td>
-                      <td>{task.status}</td>
-                      <td
-                        title={
-                          task.durationMs === null
-                            ? undefined
-                            : String(Math.round(task.durationMs / 1000)) + "s"
-                        }
-                      >
-                        {formatDuration(task.durationMs)}
-                      </td>
-                      <td>
-                        {task.attempts}/{task.max_attempts}
-                      </td>
-                      <td
-                        className="max-w-xs truncate"
-                        title={task.error ?? ""}
-                      >
-                        {task.error}
-                      </td>
-                      <td>{formatDate(task.created_at)}</td>
-                      <td
-                        className="text-right"
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        <details className="dropdown dropdown-end">
-                          <summary
-                            className="btn btn-ghost btn-xs list-none"
-                            aria-label={"Task " + task.id + " actions"}
-                          >
-                            <FontAwesomeIcon icon={faGear} />
-                          </summary>
-                          <ul className="dropdown-content menu z-20 mt-2 w-40 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
-                            <li>
-                              <button
-                                type="button"
-                                disabled={actionPending}
-                                onClick={() => void runAction("rerun", task.id)}
-                              >
-                                <FontAwesomeIcon icon={faRotateRight} /> Rerun
-                              </button>
-                            </li>
-                            {canCancel ? (
-                              <li>
-                                <button
-                                  type="button"
-                                  disabled={actionPending}
-                                  onClick={() =>
-                                    void runAction("cancel", task.id)
-                                  }
-                                >
-                                  <FontAwesomeIcon icon={faBan} /> Cancel
-                                </button>
-                              </li>
-                            ) : null}
-                          </ul>
-                        </details>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-        {total > 0 ? (
-          <div className="mt-4">
-            <Pagination
-              page={page}
-              perPage={perPage}
-              total={total}
-              onPageChange={setPage}
+    <>
+      <ProcessorOverview />
+      <ListCard
+        title={
+          filters.status === "completed" ? "Completed tasks" : "Task history"
+        }
+        onSearch={applyFilters}
+        onClear={clearFilters}
+        filters={
+          <>
+            <input
+              type="search"
+              aria-label="Request, trace, or pipeline ID"
+              placeholder="Request, trace, or pipeline ID"
+              className="input input-sm w-64"
+              value={draft.correlationId}
+              onChange={(event) =>
+                setDraftField("correlationId", event.target.value)
+              }
             />
-          </div>
+            <input
+              type="search"
+              aria-label="Filter error text"
+              placeholder="Filter error text"
+              className="input input-sm w-40"
+              value={draft.error}
+              onChange={(event) => setDraftField("error", event.target.value)}
+            />
+            <select
+              aria-label="Filter task type"
+              className="select select-sm w-40"
+              value={draft.taskType}
+              onChange={(event) =>
+                setDraftField("taskType", event.target.value)
+              }
+            >
+              <option value="">All Types</option>
+              {taskTypes.map((type) => (
+                <option key={type} value={type}>
+                  {type.replaceAll("_", " ")}
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label="Filter task status"
+              className="select select-sm w-40"
+              value={draft.status}
+              onChange={(event) => setDraftField("status", event.target.value)}
+            >
+              <option value="">All Statuses</option>
+              {(
+                [
+                  "pending",
+                  "processing",
+                  "running",
+                  "canceled",
+                  "completed",
+                  "failed",
+                ] as const
+              ).map((status) => (
+                <option key={status} value={status}>
+                  {status[0].toUpperCase() + status.slice(1)}
+                </option>
+              ))}
+            </select>
+            <input
+              type="date"
+              aria-label="From date"
+              title="From"
+              className="input input-sm w-40"
+              value={draft.fromDate}
+              onChange={(event) =>
+                setDraftField("fromDate", event.target.value)
+              }
+            />
+            <input
+              type="date"
+              aria-label="To date"
+              title="To"
+              className="input input-sm w-40"
+              value={draft.toDate}
+              onChange={(event) => setDraftField("toDate", event.target.value)}
+            />
+          </>
+        }
+      >
+        <DataGrid
+          rows={tasks}
+          columns={columns}
+          isLoading={query.isLoading}
+          error={query.error ? "Unable to load tasks." : undefined}
+          emptyMessage="No tasks found matching criteria."
+          label="Background task history"
+          onRowClick={(task) => setSelectedId(task.id)}
+        />
+        {total > 0 ? (
+          <Pagination
+            className="mt-4"
+            page={page}
+            perPage={perPage}
+            total={total}
+            onPageChange={setPage}
+          />
         ) : null}
-      </div>
-
+      </ListCard>
       {selectedId !== null ? (
         <div
           className="modal modal-open"
@@ -436,7 +373,7 @@ export default function TasksPageContent({
           </div>
         </div>
       ) : null}
-    </div>
+    </>
   );
 }
 
@@ -485,4 +422,50 @@ function durationMs(task: AdminTask) {
 
 function addDurations(tasks: AdminTask[]): TimedTask[] {
   return tasks.map((task) => ({ ...task, durationMs: durationMs(task) }));
+}
+
+function TaskActions({
+  task,
+  pending,
+  onAction,
+}: {
+  task: AdminTask;
+  pending: boolean;
+  onAction: (action: "cancel" | "rerun", id: number) => Promise<void>;
+}) {
+  const canCancel = task.status === "processing" || task.status === "running";
+  return (
+    <div onClick={(event) => event.stopPropagation()}>
+      <details className="dropdown dropdown-end">
+        <summary
+          className="btn btn-ghost btn-xs list-none"
+          aria-label={"Task " + task.id + " actions"}
+        >
+          <FontAwesomeIcon icon={faGear} />
+        </summary>
+        <ul className="dropdown-content menu z-20 mt-2 w-40 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
+          <li>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => void onAction("rerun", task.id)}
+            >
+              <FontAwesomeIcon icon={faRotateRight} /> Rerun
+            </button>
+          </li>
+          {canCancel ? (
+            <li>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => void onAction("cancel", task.id)}
+              >
+                <FontAwesomeIcon icon={faBan} /> Cancel
+              </button>
+            </li>
+          ) : null}
+        </ul>
+      </details>
+    </div>
+  );
 }

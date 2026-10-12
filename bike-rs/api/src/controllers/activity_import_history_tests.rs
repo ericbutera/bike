@@ -4,7 +4,7 @@ use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use axum::Router;
 use bike_core::auth::entities::users;
-use bike_core::entities::{activity_import_attempts, activity_imports};
+use bike_core::entities::{activities, activity_import_attempts, activity_imports};
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ConnectionTrait, EntityTrait, Schema, Set};
 use serde_json::{json, Value};
@@ -75,7 +75,8 @@ fn request(method: &str, path: &str) -> Request<Body> {
         .unwrap()
 }
 
-const ADMIN_REQUESTS: [(&str, &str); 4] = [
+const ADMIN_REQUESTS: [(&str, &str); 5] = [
+    ("GET", "/api/admin/activities"),
     ("GET", "/api/admin/activity-imports/history"),
     ("GET", "/api/admin/activity-imports/1/trace"),
     (
@@ -86,7 +87,7 @@ const ADMIN_REQUESTS: [(&str, &str); 4] = [
 ];
 
 #[tokio::test]
-async fn history_and_replay_require_an_authenticated_administrator() {
+async fn activity_history_and_replay_require_an_authenticated_administrator() {
     for (role, expected) in [
         (None, StatusCode::UNAUTHORIZED),
         (Some(false), StatusCode::FORBIDDEN),
@@ -125,6 +126,94 @@ async fn get_json(router: Router, path: &str) -> Value {
     let response = router.oneshot(request("GET", path)).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     serde_json::from_slice(&to_bytes(response.into_body(), 1_000_000).await.unwrap()).unwrap()
+}
+
+async fn activity_fixture() -> Fixture {
+    let fixture = Fixture::new(Some(true)).await;
+    let db = &fixture.state.db;
+    db.execute(
+        &Schema::new(db.get_database_backend()).create_table_from_entity(activities::Entity),
+    )
+    .await
+    .unwrap();
+    let started_at = Utc::now();
+    for (id, owner, title, source, sport, import_id) in [
+        (1, 7, "Hill morning", "manual_upload", "road_ride", Some(1)),
+        (2, 7, "Hill evening", "manual_upload", "Ride", None),
+        (3, 8, "Other ride", "strava_sync", "ride", None),
+        (4, 7, "Hill run", "manual_upload", "run", None),
+    ] {
+        activities::ActiveModel {
+            id: Set(id),
+            user_id: Set(owner),
+            title: Set(title.into()),
+            source: Set(source.into()),
+            sport: Set(sport.into()),
+            activity_type: Set("activity".into()),
+            activity_import_id: Set(import_id),
+            format: Set(Some("gpx".into())),
+            started_at: Set(started_at),
+            ..Default::default()
+        }
+        .insert(db)
+        .await
+        .unwrap();
+    }
+    fixture
+}
+
+#[tokio::test]
+async fn administrator_activity_filters_preserve_totals_and_import_hydration() {
+    let fixture = activity_fixture().await;
+    let filters = "q=%20HILL%20&user_id=7&source=manual_upload&sport=road_ride&per_page=1";
+    let first = get_json(
+        fixture.router(),
+        &format!("/api/admin/activities?{filters}&page=1"),
+    )
+    .await;
+    assert_eq!(first["metadata"]["total"], 2);
+    assert_eq!(first["metadata"]["total_pages"], 2);
+    assert_eq!(first["data"].as_array().unwrap().len(), 1);
+    assert_eq!(first["data"][0]["id"], 2);
+    assert!(first["data"][0]["import_status"].is_null());
+    let second = get_json(
+        fixture.router(),
+        &format!("/api/admin/activities?{filters}&page=2"),
+    )
+    .await;
+    assert_eq!(second["metadata"]["total"], 2);
+    assert_eq!(second["data"][0]["id"], 1);
+    assert_eq!(second["data"][0]["user_id"], 7);
+    assert_eq!(second["data"][0]["format"], "gpx");
+    assert_eq!(second["data"][0]["activity_import_id"], 1);
+    assert_eq!(second["data"][0]["import_version"], 2);
+    assert_eq!(second["data"][0]["import_status"], "failed");
+    assert_eq!(
+        second["data"][0]["import_processing_stage"],
+        "activity_parsed"
+    );
+    let exact = get_json(fixture.router(), "/api/admin/activities?q=3").await;
+    assert_eq!(exact["metadata"]["total"], 1);
+    assert_eq!(exact["data"][0]["id"], 3);
+    let empty = get_json(fixture.router(), "/api/admin/activities?q=missing").await;
+    assert_eq!(empty["metadata"]["total"], 0);
+    assert!(empty["data"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn administrator_activity_list_rejects_invalid_owner_filters() {
+    let fixture = activity_fixture().await;
+    for owner in ["0", "-1", "invalid"] {
+        let response = fixture
+            .router()
+            .oneshot(request(
+                "GET",
+                &format!("/api/admin/activities?user_id={owner}"),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{owner}");
+    }
 }
 
 #[tokio::test]

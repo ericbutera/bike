@@ -2,21 +2,79 @@
 import { useState } from "react";
 import { useWorkerProcessors } from "../../lib/queries";
 import type { components } from "../../lib/openapi/react-query/api";
+import { DataGrid, ListCard, type Column } from "../ui/DataGrid";
 
 type Distribution = components["schemas"]["Distribution"];
+type Processor = components["schemas"]["ProcessorSummary"];
+const columns: Column<Processor>[] = [
+  {
+    key: "processor",
+    header: "Processor",
+    className: "whitespace-nowrap",
+    render: (processor) => processor.task_type,
+  },
+  {
+    key: "eligible",
+    header: "Eligible / scheduled",
+    className: "whitespace-nowrap",
+    render: (processor) => `${processor.queued} / ${processor.scheduled}`,
+  },
+  {
+    key: "running",
+    header: "Running / retrying / failed",
+    className: "whitespace-nowrap",
+    render: (processor) =>
+      `${processor.running} / ${processor.retrying} / ${processor.failed}`,
+  },
+  {
+    key: "attempt",
+    header: "Attempt p50 / p90 · n",
+    className: "whitespace-nowrap",
+    render: (processor) => <Percentiles distribution={processor.attempt} />,
+  },
+  {
+    key: "wait",
+    header: "Eligible wait p50 / p90 · n",
+    className: "whitespace-nowrap",
+    render: (processor) => (
+      <Percentiles distribution={processor.eligible_wait} />
+    ),
+  },
+  {
+    key: "completion",
+    header: "Logical completion p50 / p90 · n",
+    className: "whitespace-nowrap",
+    render: (processor) => (
+      <Percentiles distribution={processor.logical_completion} />
+    ),
+  },
+];
+
 export default function ProcessorOverview() {
   const [hours, setHours] = useState(24);
   const [outcome, setOutcome] = useState("completed");
+  const [search, setSearch] = useState("");
   const query = useWorkerProcessors(hours, outcome);
+  const term = search.trim().toLowerCase();
+  const rows = (query.data ?? []).filter((processor) =>
+    processor.task_type.toLowerCase().includes(term),
+  );
   return (
-    <section aria-label="Processor overview" className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <h3 className="font-semibold">All registered processors</h3>
-        <label>
-          Window{" "}
+    <ListCard
+      title="All registered processors"
+      onSearch={() => {
+        void query.refetch();
+      }}
+      onClear={() => {
+        setHours(24);
+        setOutcome("completed");
+        setSearch("");
+      }}
+      filters={
+        <>
           <select
             aria-label="Processor window"
-            className="select select-sm"
+            className="select select-sm select-bordered w-40"
             value={hours}
             onChange={(event) => setHours(Number(event.target.value))}
           >
@@ -26,12 +84,9 @@ export default function ProcessorOverview() {
               </option>
             ))}
           </select>
-        </label>
-        <label>
-          Attempt outcome{" "}
           <select
             aria-label="Attempt outcome"
-            className="select select-sm"
+            className="select select-sm select-bordered w-40"
             value={outcome}
             onChange={(event) => setOutcome(event.target.value)}
           >
@@ -41,53 +96,30 @@ export default function ProcessorOverview() {
               ),
             )}
           </select>
-        </label>
-      </div>
+          <input
+            type="search"
+            aria-label="Search processors"
+            placeholder="Search processors"
+            className="input input-sm input-bordered w-56"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </>
+      }
+    >
+      <DataGrid
+        rows={rows}
+        columns={columns}
+        isLoading={query.isLoading}
+        error={query.error ? "Unable to load processor statistics." : undefined}
+        emptyMessage="No processors match these filters."
+        label="Registered processors"
+      />
       <p className="text-sm text-base-content/70">
         Percentiles cover the full selected window. Logical completion includes
         waits and retries of successful tasks. N/A means no samples.
       </p>
-      {query.error ? (
-        <p role="alert">Unable to load processor statistics.</p>
-      ) : null}
-      <div className="overflow-x-auto">
-        <table className="table table-sm">
-          <thead>
-            <tr>
-              <th>Processor</th>
-              <th>Eligible / scheduled</th>
-              <th>Running / retrying / failed</th>
-              <th>Attempt p50 / p90 · n</th>
-              <th>Eligible wait p50 / p90 · n</th>
-              <th>Logical completion p50 / p90 · n</th>
-            </tr>
-          </thead>
-          <tbody>
-            {query.data?.map((processor) => (
-              <tr key={processor.task_type}>
-                <td>{processor.task_type}</td>
-                <td>
-                  {processor.queued} / {processor.scheduled}
-                </td>
-                <td>
-                  {processor.running} / {processor.retrying} /{" "}
-                  {processor.failed}
-                </td>
-                <td>
-                  <Percentiles distribution={processor.attempt} />
-                </td>
-                <td>
-                  <Percentiles distribution={processor.eligible_wait} />
-                </td>
-                <td>
-                  <Percentiles distribution={processor.logical_completion} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
+    </ListCard>
   );
 }
 function Percentiles({ distribution }: { distribution: Distribution }) {

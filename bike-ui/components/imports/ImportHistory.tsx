@@ -3,9 +3,91 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useActivityImportHistory } from "../../lib/queries";
-import { AppCard } from "../ui/Card";
+import { DataGrid, ListCard, type Column } from "../ui/DataGrid";
 import Pagination from "../ui/Pagination";
-import { LoadingSpinner } from "../ui/QueryState";
+
+type ImportItem = NonNullable<
+  ReturnType<typeof useActivityImportHistory>["data"]
+>["items"][number];
+
+const columns: Column<ImportItem>[] = [
+  {
+    key: "id",
+    header: "ID",
+    className: "whitespace-nowrap",
+    render: (item) => item.id,
+  },
+  {
+    key: "filename",
+    header: "Import",
+    className: "max-w-xs truncate",
+    render: (item) => (
+      <Link
+        title={item.original_filename}
+        className="link link-primary font-medium"
+        href={`/admin/imports/${item.id}`}
+      >
+        {item.original_filename}
+      </Link>
+    ),
+  },
+  {
+    key: "source",
+    header: "Source",
+    className: "whitespace-nowrap",
+    render: (item) => item.source,
+  },
+  {
+    key: "format",
+    header: "Format",
+    render: (item) => (
+      <span title={`${item.size_bytes.toLocaleString()} bytes`}>
+        {item.format.toUpperCase()}
+      </span>
+    ),
+  },
+  { key: "status", header: "Outcome", render: (item) => item.status },
+  {
+    key: "stage",
+    header: "Stage",
+    className: "whitespace-nowrap",
+    render: (item) => item.processing_stage,
+  },
+  {
+    key: "error",
+    header: "Error",
+    className: "max-w-xs truncate",
+    render: (item) => (
+      <span
+        className={
+          item.processing_error ? "text-error" : "text-base-content/50"
+        }
+        title={item.processing_error ?? undefined}
+      >
+        {item.processing_error || "—"}
+      </span>
+    ),
+  },
+  {
+    key: "received",
+    header: "Received",
+    className: "whitespace-nowrap",
+    render: (item) => new Date(item.created_at).toLocaleString(),
+  },
+  {
+    key: "activity",
+    header: "Activity",
+    className: "whitespace-nowrap",
+    render: (item) =>
+      item.activity_id ? (
+        <Link className="link" href={`/activities/${item.activity_id}`}>
+          #{item.activity_id}
+        </Link>
+      ) : (
+        "No activity yet"
+      ),
+  },
+];
 
 export default function ImportHistory({
   archiveJobId,
@@ -28,32 +110,31 @@ export default function ImportHistory({
     },
     { enabled: validUserId },
   );
+
   return (
-    <AppCard>
-      <div className="flex items-center justify-between gap-4">
-        <h2 className="text-2xl font-semibold">Imports</h2>
-        <Link href="/upload" className="btn btn-primary">
+    <ListCard
+      title="Import history"
+      actions={
+        <Link href="/upload" className="btn btn-sm btn-primary">
           Upload activity
         </Link>
-      </div>
-      <p className="mt-2 text-base-content/70">
-        Follow every upload, archive entry, and Strava import. Open an import to
-        inspect its stages or replay it.
-      </p>
-      <div className="my-6 flex flex-wrap gap-4">
-        {archiveJobId ? (
-          <p className="w-full">
-            Archive job #{archiveJobId} ·{" "}
-            <Link className="link" href="/admin/imports">
-              Show all imports
-            </Link>
-          </p>
-        ) : null}
-        <label>
-          User ID
+      }
+      onSearch={() => {
+        if (validUserId) void query.refetch();
+      }}
+      onClear={() => {
+        setSource("");
+        setStatus("");
+        setUserId("");
+        setPage(1);
+      }}
+      filters={
+        <>
           <input
             aria-label="User ID"
-            className="input input-bordered ml-2 w-40"
+            aria-invalid={!validUserId}
+            title="User ID"
+            className="input input-sm input-bordered w-40"
             type="number"
             min="1"
             step="1"
@@ -64,15 +145,9 @@ export default function ImportHistory({
               setPage(1);
             }}
           />
-        </label>
-        {!validUserId ? (
-          <p className="text-error">User ID must be positive</p>
-        ) : null}
-        <label>
-          Source
           <select
             aria-label="Source"
-            className="select select-bordered ml-2"
+            className="select select-sm select-bordered w-40"
             value={source}
             onChange={(event) => {
               setSource(event.target.value);
@@ -84,12 +159,9 @@ export default function ImportHistory({
             <option value="archive_url_import">Archive</option>
             <option value="strava_sync">Strava</option>
           </select>
-        </label>
-        <label>
-          Outcome
           <select
             aria-label="Outcome"
-            className="select select-bordered ml-2"
+            className="select select-sm select-bordered w-40"
             value={status}
             onChange={(event) => {
               setStatus(event.target.value);
@@ -105,82 +177,40 @@ export default function ImportHistory({
               ),
             )}
           </select>
-        </label>
-        {query.isFetching ? <LoadingSpinner size="sm" /> : null}
-      </div>
-      {query.error ? (
-        <div className="alert alert-error">{query.error.message}</div>
+        </>
+      }
+    >
+      {archiveJobId ? (
+        <p className="text-sm">
+          Archive job #{archiveJobId} ·{" "}
+          <Link className="link" href="/admin/imports">
+            Show all imports
+          </Link>
+        </p>
       ) : null}
-      <div className="overflow-x-auto">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Import</th>
-              <th>Source</th>
-              <th>Outcome / stage</th>
-              <th>Received</th>
-              <th>Activity</th>
-            </tr>
-          </thead>
-          <tbody>
-            {query.data?.items.map((item) => (
-              <tr key={item.id}>
-                <td>
-                  <Link
-                    className="link link-primary font-medium"
-                    href={`/admin/imports/${item.id}`}
-                  >
-                    {item.original_filename}
-                  </Link>
-                  <div className="text-xs">
-                    {item.format.toUpperCase()} ·{" "}
-                    {item.size_bytes.toLocaleString()} bytes
-                  </div>
-                </td>
-                <td>{item.source}</td>
-                <td>
-                  {item.status}
-                  <div className="text-xs text-base-content/65">
-                    {item.processing_stage}
-                  </div>
-                  {item.processing_error ? (
-                    <p className="max-w-sm text-sm text-error">
-                      {item.processing_error}
-                    </p>
-                  ) : null}
-                </td>
-                <td className="whitespace-nowrap">
-                  {new Date(item.created_at).toLocaleString()}
-                </td>
-                <td>
-                  {item.activity_id ? (
-                    <Link
-                      className="link"
-                      href={`/activities/${item.activity_id}`}
-                    >
-                      #{item.activity_id}
-                    </Link>
-                  ) : (
-                    "No activity yet"
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {query.data?.total === 0 ? (
-        <p className="py-8 text-center">No imports match these filters.</p>
-      ) : null}
-      {query.data ? (
+      {!validUserId ? (
+        <p role="alert" className="text-error">
+          User ID must be positive
+        </p>
+      ) : (
+        <DataGrid
+          rows={query.data?.items ?? []}
+          columns={columns}
+          isLoading={query.isLoading}
+          error={query.error?.message}
+          emptyMessage="No imports match these filters."
+          label="Import history"
+        />
+      )}
+      {query.data && validUserId ? (
         <Pagination
-          className="mt-6"
+          className="mt-4"
           page={page}
           perPage={query.data.per_page}
           total={query.data.total}
           onPageChange={setPage}
         />
       ) : null}
-    </AppCard>
+    </ListCard>
   );
 }

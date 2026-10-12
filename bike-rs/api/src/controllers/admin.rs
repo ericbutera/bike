@@ -28,11 +28,8 @@ use bike_core::auth::AdminUserContext;
 use bike_core::entities::{activities, activity_imports, segments};
 use bike_core::integration_events_service as integration_event_service;
 use bike_core::platform::data::pagination::{PaginatedResponse, PaginationParams};
-use chrono::{DateTime, Utc};
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, FromQueryResult, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect,
-};
+use chrono::Utc;
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -71,21 +68,9 @@ pub struct AdminActivityImportTraceResponse {
     pub trace: Option<activity_imports_controller::ActivityImportTraceResponse>,
 }
 
-#[derive(Debug, FromQueryResult)]
-struct AdminActivityListRow {
-    id: i32,
-    user_id: i32,
-    title: String,
-    sport: String,
-    source: String,
-    started_at: DateTime<Utc>,
-    format: Option<String>,
-    activity_import_id: Option<i32>,
-}
-
 impl AdminActivityResponse {
     fn from_list_row(
-        activity: AdminActivityListRow,
+        activity: activities::AdminListRow,
         import: Option<&activity_imports::Model>,
     ) -> Self {
         Self {
@@ -149,11 +134,12 @@ pub fn routes() -> Router<Arc<AppStorage>> {
     get,
     path = "/admin/activities",
     operation_id = "admin_list_activities",
-    params(PaginationParams),
+    params(PaginationParams, activities::AdminListFilters),
     responses(
         (status = 200, description = "Paginated activities for administrators", body = PaginatedResponse<AdminActivityResponse>, example = json!({"data": [{"id": 42,"user_id": 12,"title": "Saturday hill repeats","sport": "ride","source": "manual_upload","started_at": "2026-09-26T13:00:00Z"}],"metadata": {"page": 1,"per_page": 20,"total": 1,"total_pages": 1}})),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
+        (status = 400, description = "Invalid filters", body = ApiErrorResponse),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     ),
     security(("bearer_auth" = [])),
@@ -163,25 +149,14 @@ pub async fn list_admin_activities(
     _admin: AdminUserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
     Query(params): Query<PaginationParams>,
+    Query(filters): Query<activities::AdminListFilters>,
 ) -> Result<Json<PaginatedResponse<AdminActivityResponse>>, AppError> {
+    if filters.user_id.is_some_and(|id| id <= 0) {
+        return Err(AppError::bad_request("User ID must be positive"));
+    }
     let (page, per_page) = params.normalized();
-    let total = activities::Entity::find().count(&state.db).await? as i64;
-    let activities = activities::Entity::find()
-        .select_only()
-        .column(activities::Column::Id)
-        .column(activities::Column::UserId)
-        .column(activities::Column::Title)
-        .column(activities::Column::Sport)
-        .column(activities::Column::Source)
-        .column(activities::Column::StartedAt)
-        .column(activities::Column::Format)
-        .column(activities::Column::ActivityImportId)
-        .order_by_desc(activities::Column::StartedAt)
-        .order_by_desc(activities::Column::Id)
-        .into_model::<AdminActivityListRow>()
-        .paginate(&state.db, per_page as u64)
-        .fetch_page((page - 1) as u64)
-        .await?;
+    let (activities, total) =
+        activities::Model::admin_page(&state.db, &filters, page as u64, per_page as u64).await?;
     let import_ids = activities
         .iter()
         .filter_map(|activity| activity.activity_import_id)
@@ -210,7 +185,7 @@ pub async fn list_admin_activities(
             .collect(),
         page,
         per_page,
-        total,
+        total as i64,
     )))
 }
 

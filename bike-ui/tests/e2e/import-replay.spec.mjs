@@ -194,7 +194,11 @@ for (const target of targets) {
     const { api, diagnostics, replays } = await fixture(page, target);
     await page.goto(new URL("/admin/imports", target.url).toString());
     await expect(
-      page.getByRole("heading", { name: "Imports", exact: true }),
+      page.getByRole("heading", {
+        name: "Import history",
+        exact: true,
+        level: 1,
+      }),
     ).toBeVisible();
     await page
       .getByRole("link", { name: "synthetic-ride.gpx", exact: true })

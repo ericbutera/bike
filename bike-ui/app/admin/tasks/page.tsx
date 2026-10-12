@@ -18,8 +18,10 @@ export default function AdminTasksPage() {
 function LinkedTasksPage() {
   const params = useSearchParams();
   return (
-    <TasksPageContent
-      initialCorrelationId={params.get("correlation_id") ?? ""}
-    />
+    <div className="grid gap-6">
+      <TasksPageContent
+        initialCorrelationId={params.get("correlation_id") ?? ""}
+      />
+    </div>
   );
 }
