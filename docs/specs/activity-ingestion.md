@@ -38,7 +38,7 @@ commands. [Supported activities](supported-activities.md) owns sport support.
   cards. Missing measurements stay explicit.
 - Related worker runs use visible selectable cards instead of dropdowns of run
   IDs. Receipt, durable acceptance, and publication use separate progress cards;
-  timing, attempts, work evidence, anomalies, and outputs use labeled fields.
+  timing, attempts, work evidence, and outputs use labeled fields.
   The complete worker dependency graph and correlation IDs expand on demand.
   Activity processing completion and output readiness remain distinct.
 - Progress refreshes while work is queued or running. Loading, empty, denied,

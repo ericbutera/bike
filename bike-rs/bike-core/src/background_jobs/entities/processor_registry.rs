@@ -17,9 +17,6 @@ impl ActiveModelBehavior for ActiveModel {}
 
 impl Model {
     pub async fn register(db: &impl ConnectionTrait, task_types: &[String]) -> Result<(), DbErr> {
-        if let Ok(raw) = std::env::var("WORKER_PROCESSOR_BUDGETS") {
-            crate::background_jobs::worker::catalog::validate_budget_json(&raw, task_types)?;
-        }
         if task_types.is_empty() {
             return Ok(());
         }

@@ -1,60 +1,30 @@
-# Worker pipeline diagnostics
+# Worker operations
 
-## BikeWorkerPipelineBlocked
+## BikeWorkerFailures
 
-Open the alert's Bike overview dashboard and anomalous-run table. Follow its task
-ID into admin tasks, then inspect the attempt, reason, observed value, budget,
-heartbeat and meaningful progress. A fresh heartbeat does not prove progress.
-From an activity's processing action, select the run and check its output revision.
+- Each failed execution increments `bike_rust_worker_tasks_failed_total` once.
+  Failed retries count; successful executions increment the completion counter.
+- The alert uses `sum(increase(...[1h])) > 0`. It clears after those errors leave
+  the last-hour window.
+- Open the worker dashboard's error logs and the task's retained error in admin.
+  Repair the underlying error and rerun failed work when needed.
+- Search logs in the alert's time window for `event=worker_execution_error`.
+  Each counter increment logs the error, task, attempt, request ID and trace ID.
+  Use those IDs to follow the original request and related jobs through traces.
+  Legacy work without an originating request has no fabricated request ID.
+- Grafana error cards use the selected time range and the same execution counter.
+  Old failed task rows never become new errors.
+- Persisted anomaly evaluation, processor health budgets,
+  `BikeWorkerPipelineBlocked`, `BikeWorkerAnomalousRuns` and
+  `BikeWorkerDiagnosticsUnavailable` are retired.
 
-Queue age excludes future schedules. Runtime measures one claimed execution;
-logical completion includes waits and retries. Receipt-to-available uses committed
-matching publications and a successful task tree. Failed downstream output stays
-unready. Admin rerun creates a new origin; automatic retry preserves the receipt.
+- Queue depth and task history remain dashboard diagnostics. Database-derived
+  backlog and capacity alerts are retired.
 
-Default runtime budgets are processor-specific; progress is capped at 900 seconds,
-queue eligibility at 1800 seconds and heartbeat age at 120 seconds.
-`WORKER_PROCESSOR_BUDGETS` accepts per-processor JSON overrides, for example
-`{"prepare_heatmap":{"runtime_seconds":2700,"progress_seconds":900,"queue_seconds":1800}}`.
-Unknown processor/signal names or values outside 1–86400 fail startup.
-The actual registry and metrics expose these budgets.
+## History and verification
 
-## BikeWorkerAnomalousRuns
-
-The anomalous-run table and admin detail show the same versioned evidence.
-Duration outliers require at least 30 earlier completed runs with the same
-processor, processing version and actual workload cohort. The threshold is three
-times their p90 with a processor-specific floor. Warm-up has no relative flag.
-Repeated revision means published work repeated on the same accepted input;
-stale publication means a superseded computation was prevented from publishing.
-Clock skew stays explicit rather than becoming a plausible zero duration.
-
-Compare actual domain counts by processor/kind/mode: inputs read, units computed,
-rows written and outputs published. Counts cover measured stage operations,
-not physical disk I/O or CPU instructions. A shared task appears under each
-origin but contributes execution metrics once.
-
-## BikeWorkerDiagnosticsUnavailable
-
-Confirm the actual processor registry is present when the worker scrape is up.
-Check migration/startup logs and the deployed image before trusting empty charts.
-Legacy tasks, missing spans and cold histograms remain unknown.
-`GRAFANA_URL` enables admin log/trace links.
-
-## BikeWorkerCapacityPressure
-
-Compare sustained busy wall time with eligible queue age, pod CPU, CPU throttling,
-memory and storage. Busy wall time is not CPU utilization. Rising input/compute/
-write counts without matching new outputs can indicate redundant rebuilds.
-Scheduled tasks and gateway quota waits need separate interpretation.
-
-Closed diagnostic history expires after 30 days in bounded batches. Active and
-unready runs remain available for investigation. Authoritative imports, stages
-and source artifacts follow their owning lifecycle. Temporary accepted delivery
-source is cleared after durable execution. Bulk archive source is removed after
-the child barrier closes, with restartable cleanup.
-
-After deployment, verify live worker/gateway
-images, migrations, actual trace/log links, one upload/webhook through
-receipt-to-available and the four provisioned dashboards. Synthetic fixture
-footprint does not establish production memory or disk requirements.
+- Admin task errors, attempts and pipeline links remain diagnostic history.
+- Historical migrations are preserved; this simplification requires no new fields
+  or data repair.
+- Verify the deployed image, worker readiness, live counters and dashboard after
+  release. Source tests alone do not establish production recovery.

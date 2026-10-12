@@ -95,15 +95,22 @@ Admin pages require an authenticated admin user. Non-admin users should not be a
 - Clickable links, enabled buttons, disclosure summaries (including View
   complete pipeline), and task/processor rows use a pointer cursor. Ordinary
   text remains selectable.
-- Meaningful import stage/work completion advances progress; a heartbeat alone
-  does not. Anomalies store reason, observed/expected value, policy version,
-  evaluation time and sample count. Relative duration needs 30 earlier comparable
-  completed runs. The same records drive dashboards and alerts.
+- Every failed worker execution increments the error counter once, including
+  failed retries. Successful executions increment the success counter.
+- Each error increment emits an error log with the error, task ID/type, attempt,
+  status, request ID, trace ID, span ID and pipeline run ID when available.
+  Trace-parent propagation and related-job links remain available for investigation.
+- Dashboards count counter increases within their selected time range; the
+  worker error alert counts increases during the last hour.
+- Persisted anomaly evaluation and processor health budgets are retired.
+  Retained task errors remain available in task history without driving alerts.
+- Database task snapshots provide admin history and queue diagnostics only;
+  worker failure alerts rely on execution counters.
 - Task graphs use pages of 50 tasks, 25 work units and 100 outputs. Archive and
   bulk producers queue bounded pages; their child barrier retains the exact lock
   until descendants finish. An admin rerun starts a fresh run outside the old
   batch. See the [visibility plan](../plans/pipeline-visibility.md) for operational
-  acceptance and the [worker runbook](../production-failures.md#bikeworkerpipelineblocked).
+  acceptance and the [worker runbook](../production-failures.md#bikeworkerfailures).
   Barrier reconciliation visits every running batch in ordered pages; active
   batches cannot prevent later completed batches from releasing their locks.
 
