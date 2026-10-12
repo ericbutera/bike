@@ -59,23 +59,8 @@ steps:
     commands:
       - mise run ci:mise:prepare
 
-  - name: test-worker-postgres
-    depends_on: [prepare]
-    failure: fail
-    image: localhost:32500/bike-checks:${CI_COMMIT_SHA}
-    environment:
-      <<: *mise_environment
-      DOCKER_HOST: unix:///woodpecker/src/.artifacts/dind-state/docker.sock
-      CARGO_HOME: /cache/bike/cargo
-      RUSTUP_HOME: /cache/bike/rustup
-      CARGO_TARGET_DIR: /cache/bike/target/${CI_COMMIT_REF}
-      CARGO_LLVM_COV_TARGET_DIR: /cache/bike/target/${CI_COMMIT_REF}/llvm-cov-target
-    volumes: *mise_cache
-    commands:
-      - mise run ci:workers:postgres
-
   - name: test-ui-e2e
-    depends_on: [test-worker-postgres]
+    depends_on: [prepare]
     failure: fail
     image: localhost:32500/bike-e2e:${CI_COMMIT_SHA}
     environment:
@@ -86,24 +71,10 @@ steps:
     commands:
       - mise run ci:e2e
 
-  - name: coverage
-    depends_on: [test-ui-e2e]
-    failure: fail
-    image: localhost:32500/bike-checks:${CI_COMMIT_SHA}
-    environment:
-      <<: *mise_environment
-      CARGO_HOME: /cache/bike/cargo
-      RUSTUP_HOME: /cache/bike/rustup
-      CARGO_TARGET_DIR: /cache/bike/target/${CI_COMMIT_REF}
-      CARGO_LLVM_COV_TARGET_DIR: /cache/bike/target/${CI_COMMIT_REF}/llvm-cov-target
-    volumes: *mise_cache
-    commands:
-      - mise run ci:coverage
-
   - name: publish-coverage
     failure: fail
     image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
-    depends_on: [coverage]
+    depends_on: [test-ui-e2e]
     when:
       - event: [push, manual]
         branch: main
@@ -114,10 +85,11 @@ steps:
         from_secret: coverage_publish_key
     volumes: *mise_cache
     commands:
+      - mise run ci:coverage:restore
       - mise run coverage:publish
 
   - name: deploy
-    depends_on: [test-ui-e2e, coverage]
+    depends_on: [test-ui-e2e]
     when:
       - event: [push, manual]
         branch: main

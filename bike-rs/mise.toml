@@ -62,6 +62,10 @@ run = [
   "cargo test --workspace --locked --doc",
 ]
 
+[tasks."test:ci"]
+description = "Collect Rust unit coverage and run integrations after shared CI preparation"
+run = ["mise run coverage:unit:collect", "mise run test:non-unit"]
+
 [tasks."test:workers"]
 description = "Run focused queue, pipeline history, and worker metric regressions"
 env = { RUSTFLAGS = "-D warnings" }
@@ -115,9 +119,14 @@ env = { RUSTFLAGS = "-D warnings", CARGO_LLVM_COV_DENY_WARNINGS = "1" }
 run = [
   "mise install rust protoc aqua:taiki-e/cargo-llvm-cov",
   "mise exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov clean --workspace",
-  "mise exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov --workspace --locked --lib --bins --no-report",
+  "mise run coverage:unit:collect",
   "mise run coverage:report",
 ]
+
+[tasks."coverage:unit:collect"]
+description = "Collect unit measurements without cleaning another concurrent stage's profiles"
+env = { RUSTFLAGS = "-D warnings", CARGO_LLVM_COV_DENY_WARNINGS = "1" }
+run = "mise exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov --workspace --locked --lib --bins --no-report"
 
 [tasks."coverage:report"]
 description = "Render API, worker, and shared-core coverage from one test run"

@@ -23,8 +23,9 @@ node_image = "node:{{vars.node_version}}-trixie@sha256:1278a37eb510ec1606fba0e80
 node_alpine_image = "node:{{vars.node_version}}-alpine3.24@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1"
 go_image = "golang:{{vars.go_version}}-trixie@sha256:8f58fd67ea075142d947a60e0caa4317746a55118d312f027793d382c7741734"
 playwright_image = "mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27"
-docker_cli_image = "docker:29.4.0-cli@sha256:2efe7c8e806b35050def6ba1ba0ddad67b521a0a6d37f4910b3d88f11b495d03"
-docker_dind_image = "docker:29.4.0-dind@sha256:a6dd5322747a95cd8e3207bd8d415a8fd20ec34e9c00f06dc019cbd912013489"
+docker_version = "29.4.0"
+docker_cli_image = "docker:{{vars.docker_version}}-cli@sha256:2efe7c8e806b35050def6ba1ba0ddad67b521a0a6d37f4910b3d88f11b495d03"
+docker_dind_image = "docker:{{vars.docker_version}}-dind@sha256:a6dd5322747a95cd8e3207bd8d415a8fd20ec34e9c00f06dc019cbd912013489"
 k6_image = "grafana/k6:2.3.0@sha256:9c2dee7f8ed74d317e4027c06a10f169b625638189de8d4555d0b3486a5aeb34"
 watchexec_version = "2.8.0"
 buildx_version = "0.38.0"
@@ -55,11 +56,13 @@ k6 = "{{vars.k6_version}}"
 golangci-lint = "2.14.0"
 "aqua:woodpecker-ci/woodpecker/woodpecker-cli" = "3.19.0"
 "aqua:docker/buildx" = "{{vars.buildx_version}}"
+"aqua:docker/cli" = "{{vars.docker_version}}"
 python = "{{vars.python_version}}"
 uv = "0.12.23"
 "pipx:diff-cover" = { version = "10.6.0", uvx_args = "--python {{vars.python_version}}" }
 "aqua:cli/cli" = "2.102.0"
 jq = "1.8.2"
+"aqua:mikefarah/yq" = "4.54.1"
 
 [env]
 _.path = { path = ["{% if tools['npm:npm'] is defined %}{{tools['npm:npm'].path}}/node_modules/.bin{% endif %}"], tools = true }
@@ -119,8 +122,8 @@ description = "Exercise native Strava workflows in disposable PostgreSQL with a 
 run = "bash scripts/test-worker-postgres.sh strava"
 
 [tasks."pins:sync"]
-description = "Regenerate pnpm manifest and lock metadata from mise's version pin"
-run = ['npm --prefix bike-ui pkg set "packageManager=pnpm@${PNPM_VERSION?}"', "mise --cd bike-ui exec -- pnpm install --lockfile-only"]
+description = "Regenerate package metadata and the native CI database image from mise pins"
+run = ['npm --prefix bike-ui pkg set "packageManager=pnpm@${PNPM_VERSION?}"', "mise --cd bike-ui exec -- pnpm install --lockfile-only", "mise install aqua:mikefarah/yq", "mise exec aqua:mikefarah/yq -- yq --inplace '(.services[] | select(.name == \"postgres\").image) = strenv(BIKE_POSTGRES_IMAGE) | (.services[] | select(.name == \"docker\").image) = strenv(DOCKER_DIND_IMAGE)' .woodpecker/bike.yaml"]
 
 [tasks."pins:check"]
 description = "Verify generated package-manager metadata agrees with mise"
@@ -251,11 +254,15 @@ description = "Publish generated reports to the free GitHub Pages site"
 run = ["mise install jq", "mise exec jq -- bash scripts/coverage-publish.sh"]
 
 [tasks."ci:coverage:retain"]
-description = "Retain unit coverage for the existing database validation workflow"
+description = "Retain combined coverage for publication after browser tests"
 run = "bash scripts/coverage-transfer.sh save"
 
+[tasks."ci:coverage:restore"]
+description = "Restore validated reports in the browser workflow before publication"
+run = "bash scripts/coverage-transfer.sh restore"
+
 [tasks."ci:coverage"]
-description = "Enforce changed-line coverage after native database workflow tests"
+description = "Enforce changed-line coverage after the parallel test stages finish"
 run = "mise run coverage:check"
 
 [tasks."rust:coverage"]
@@ -309,11 +316,27 @@ run = ["mise install aqua:docker/buildx", "bash scripts/ci-images.sh"]
 
 [tasks."ci:check"]
 description = "Validate the workflow using the native Woodpecker CLI"
-run = "woodpecker-cli lint --strict .woodpecker"
+run = ["woodpecker-cli lint --strict .woodpecker", "mise install aqua:mikefarah/yq", "mise exec aqua:mikefarah/yq -- bash scripts/check-ci.sh"]
+
+[tasks."ci:rust:prepare"]
+description = "Restore completed Rust verification or prepare shared coverage before parallel tests"
+run = "bash scripts/ci-rust.sh prepare"
 
 [tasks."ci:rust"]
 description = "Reuse verified identical backend inputs or run the shared Rust checks"
 run = "bash scripts/ci-rust.sh unit"
+
+[tasks."rust:ci:unit"]
+description = "Run shared Rust lint and collect unit coverage prepared by CI"
+run = ["mise run lint:rs", "mise --cd bike-rs run test:ci"]
+
+[tasks."ci:rust:report"]
+description = "Join parallel Rust measurements and publish completed verification"
+run = "bash scripts/ci-rust.sh report"
+
+[tasks."ci:rust:sdk"]
+description = "Validate generated SDK bindings using the disposable check engine"
+run = "bash scripts/ci-rust.sh sdk"
 
 [tasks."ci:rust:cache:test"]
 description = "Verify cross-PR Rust check reuse, invalidation, failures, and coverage transfer"
@@ -382,8 +405,13 @@ run = "bash scripts/ci-rust.sh postgres"
 
 [tasks."rust:workers:postgres"]
 description = "Run worker persistence regressions and Strava workflow coverage"
-env = { BIKE_WORKER_TEST_DATABASE_HOST = "docker", BIKE_WORKER_TEST_DATABASE_PORT = "5432", BIKE_STRAVA_COVERAGE = "true" }
+env = { BIKE_STRAVA_COVERAGE = "true" }
 run = ["mise install rust protoc go", "mise run strava:sdk:check", "mise run test:workers:postgres:docker"]
+
+[tasks."rust:workers:postgres:collect"]
+description = "Collect native database coverage while SDK freshness runs separately"
+env = { BIKE_STRAVA_COVERAGE = "true" }
+run = ["mise install rust protoc go", "mise run test:workers:postgres:docker"]
 
 
 

@@ -52,7 +52,7 @@ targets=()
 while IFS= read -r target; do targets+=("$target"); done < <(
   awk '/CARGO_LLVM_COV_TARGET_DIR:/ { print $2 }' .woodpecker/*.yaml
 )
-test "${#targets[@]}" = 3
+test "${#targets[@]}" = 1
 export CARGO_TARGET_DIR="$fixture/ordinary" RUSTFLAGS='-D warnings'
 export CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=1 CARGO_PROFILE_TEST_DEBUG=1
 export CARGO_LLVM_COV_DENY_WARNINGS=1 CARGO_LLVM_COV_TARGET_DIR
@@ -67,12 +67,16 @@ for pipeline in 1 2; do
   (
     cd "$fixture/app"
     cargo llvm-cov clean --workspace
-    cargo llvm-cov --workspace --lib --bins --no-report -vv >"$fixture/unit-$pipeline.log" 2>&1
-    cargo llvm-cov --workspace --test '*' --no-report >"$fixture/tests-$pipeline.log" 2>&1
+    cargo llvm-cov --workspace --lib --bins --no-report -vv >"$fixture/unit-$pipeline.log" 2>&1 &
+    unit_pid=$!
+    cargo llvm-cov --workspace --test '*' --no-report -vv >"$fixture/tests-$pipeline.log" 2>&1 &
+    postgres_pid=$!
+    wait "$unit_pid"
+    wait "$postgres_pid"
     cargo llvm-cov report --lcov --output-path "$fixture/report-$pipeline.lcov" -vv >"$fixture/report-$pipeline.log" 2>&1
   )
   if ((pipeline == 1)); then
-    grep -q 'Compiling cache-dependency' "$fixture/unit-$pipeline.log"
+    grep -q 'Compiling cache-dependency' "$fixture/unit-$pipeline.log" "$fixture/tests-$pipeline.log"
   else
     grep -q 'Fresh cache-dependency' "$fixture/unit-$pipeline.log"
   fi

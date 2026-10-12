@@ -36,6 +36,29 @@ clone:
       partial: false
       depth: 0
 
+services:
+  - name: docker
+    # Generated from mise's docker_dind_image by mise run pins:sync.
+    image: docker:29.4.0-dind@sha256:a6dd5322747a95cd8e3207bd8d415a8fd20ec34e9c00f06dc019cbd912013489
+    privileged: true
+    environment:
+      BIKE_E2E_ENGINE_STATE_DIR: /woodpecker/src/.artifacts/sdk-engine
+    commands:
+      - sh scripts/ci-e2e-engine.sh
+
+  - name: postgres
+    # Generated from mise's postgres_image by mise run pins:sync.
+    image: postgres:17.11-trixie@sha256:ae69c452f483507a6b99fb654cf93aad7fe156ffd2c56247707eef4e36d3c12b
+    ports: [5432]
+    environment:
+      POSTGRES_USER: worker_test
+      POSTGRES_PASSWORD: worker_test
+      POSTGRES_DB: worker_test
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --auth-local=scram-sha-256
+    backend_options:
+      kubernetes:
+        workspaceVolume: false
+
 steps:
   # Preparation shares tooling and image pins; it does not run product tests.
   - name: prepare
@@ -51,6 +74,8 @@ steps:
       MISE_YES: "1"
       CARGO_HOME: /cache/bike/cargo
       RUSTUP_HOME: /cache/bike/rustup
+      CARGO_TARGET_DIR: /cache/bike/target/${CI_COMMIT_REF}
+      CARGO_LLVM_COV_TARGET_DIR: /cache/bike/target/${CI_COMMIT_REF}/llvm-cov-target
       UV_CACHE_DIR: /cache/bike/uv
       BIKE_NODE_PACKAGE_CACHE: /cache/bike/node-packages
       BIKE_GO_CACHE: /cache/bike/go
@@ -61,37 +86,67 @@ steps:
       - mise run ci:mise:prepare
       - mise run ci:cache:prepare
 
-  - name: test-rust
-    failure: fail
-    image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
-    depends_on: [prepare]
-    environment:
-      <<: *mise_environment
-      TEST_MODE: "1"
-      CARGO_HOME: /cache/bike/cargo
-      RUSTUP_HOME: /cache/bike/rustup
-      # Clean workspace coverage objects at collection start; retain compiled
-      # dependencies across runs. Unit and DAG checks share this ref's target.
-      CARGO_TARGET_DIR: /cache/bike/target/${CI_COMMIT_REF}
-      CARGO_LLVM_COV_TARGET_DIR: /cache/bike/target/${CI_COMMIT_REF}/llvm-cov-target
-    volumes:
-      - woodpecker-cache:/cache
-    commands:
-      - .artifacts/bin/mise run ci:rust
-
-  - name: test-runtime-tooling
+  - name: prepare-tests
     failure: fail
     image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
     depends_on: [prepare]
     environment: *mise_environment
     volumes: *mise_cache
     commands:
+      - mise run ci:rust:prepare
+
+  - name: test-rust
+    failure: fail
+    image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
+    depends_on: [prepare-tests]
+    environment:
+      <<: *mise_environment
+      TEST_MODE: "1"
+      CARGO_HOME: /cache/bike/cargo
+      RUSTUP_HOME: /cache/bike/rustup
+    volumes:
+      - woodpecker-cache:/cache
+    commands:
+      - .artifacts/bin/mise run ci:rust
+
+  - name: test-worker-postgres
+    failure: fail
+    image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
+    depends_on: [prepare-tests]
+    environment:
+      <<: *mise_environment
+      BIKE_WORKER_TEST_DATABASE_URL: postgres://worker_test:worker_test@postgres:5432/worker_test
+      BIKE_WORKER_TEST_DATABASE_HOST: postgres
+      BIKE_WORKER_TEST_DATABASE_PORT: "5432"
+    volumes: *mise_cache
+    commands:
+      - .artifacts/bin/mise run ci:workers:postgres
+
+  - name: test-runtime-tooling
+    failure: fail
+    image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
+    depends_on: [prepare-tests]
+    environment: *mise_environment
+    volumes: *mise_cache
+    commands:
       - mise run ci:runtime
+
+  - name: test-strava-sdk
+    failure: fail
+    image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
+    depends_on: [prepare-tests]
+    environment:
+      <<: *mise_environment
+      DOCKER_HOST: unix:///woodpecker/src/.artifacts/sdk-engine/docker.sock
+      BIKE_E2E_ENGINE_STATE_DIR: /woodpecker/src/.artifacts/sdk-engine
+    volumes: *mise_cache
+    commands:
+      - mise run ci:rust:sdk
 
   - name: test-rust-cache
     failure: fail
     image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
-    depends_on: [prepare]
+    depends_on: [prepare-tests]
     when:
       - event: [push, pull_request]
         path:
@@ -111,7 +166,7 @@ steps:
   - name: test-ui-unit
     failure: fail
     image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
-    depends_on: [prepare]
+    depends_on: [prepare-tests]
     environment: *mise_environment
     volumes: *mise_cache
     commands:
@@ -120,7 +175,7 @@ steps:
   - name: test-map-renderer
     failure: fail
     image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
-    depends_on: [prepare]
+    depends_on: [prepare-tests]
     environment: *mise_environment
     volumes: *mise_cache
     commands:
@@ -131,6 +186,8 @@ steps:
     failure: fail
     depends_on:
       - test-rust
+      - test-worker-postgres
+      - test-strava-sdk
       - test-ui-unit
       - test-map-renderer
       - test-runtime-tooling
@@ -150,11 +207,21 @@ steps:
     commands:
       - mise run ci:images
 
-  - name: retain-unit-coverage
+  - name: collect-rust-coverage
     failure: fail
     image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
-    depends_on: [test-rust, test-ui-unit, test-map-renderer]
+    depends_on: [test-rust, test-worker-postgres, test-strava-sdk]
     environment: *mise_environment
     volumes: *mise_cache
     commands:
+      - mise run ci:rust:report
+
+  - name: retain-unit-coverage
+    failure: fail
+    image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
+    depends_on: [collect-rust-coverage, test-ui-unit, test-map-renderer]
+    environment: *mise_environment
+    volumes: *mise_cache
+    commands:
+      - mise run ci:coverage
       - mise run ci:coverage:retain

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Share measured reports between the existing unit and database CI workflows.
+# Share validated test reports with the later browser/publication workflow.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 : "${CI_PIPELINE_NUMBER:?Pipeline identity is required}"

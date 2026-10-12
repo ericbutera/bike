@@ -9,9 +9,12 @@ Kubernetes.
 
 Woodpecker reads [`.woodpecker/bike.yaml`](../.woodpecker/bike.yaml). Each run
 uses one monorepo checkout, then follows **checkout → tooling preparation → owning
-checks → one Bake image build → E2E → main-only Pulumi apply**. Preparation shares
-mise and prepares the native package cache. Bake builds all seven image targets
-after every test step passes. Deployment waits for the builds and E2E.
+parallel checks → coverage join → one Bake image build → E2E → main-only Pulumi
+apply**. Preparation shares mise, prepares the native package cache, and restores
+verified Rust results or clears the coverage collection once. All unit/native
+test stages then run independently. Bake builds all seven image targets after
+every test step and the changed-line coverage gate pass. Deployment waits for
+the builds and E2E.
 Every test step uses `failure: fail`: a nonzero exit fails the pipeline and blocks
 all builds and deployment. A failed build also blocks deployment.
 Pull requests targeting `main` run those same test and build steps;
@@ -44,6 +47,16 @@ the copied executable. No committed installer or additional system-package setup
 is needed. Language tool versions come from the owning `mise.toml`; shared Node,
 Go, formatter, and hook pins are inherited from the root. Mise selects and
 installs the language toolchain.
+The PostgreSQL tests run alongside the other tests in the first workflow,
+using its disposable native database service and compiler-equipped runner.
+They do not wait for a production image. Rust stages collect measurements
+without cleaning each other's profiles, then join coverage after both pass.
+`test-ui-e2e` remains in the dependent workflow because it consumes the built
+production images. Coverage reports are retained before the build and restored
+for main-branch publication after browser testing.
+Generated SDK freshness runs in a separate parallel stage, using the pinned
+Docker CLI and a disposable native engine that requires no production build.
+SDK validation and UI E2E reuse the same clean engine shutdown handler.
 CI installs only the tools needed by each check and shares its tool cache.
 Rust CI can restore complete successful verification for identical backend inputs
 across PRs. The log names the original verified revision and pipeline; missing,
