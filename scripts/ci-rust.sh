@@ -6,8 +6,15 @@ cd "$(dirname "$0")/.."
 : "${CI_PIPELINE_NUMBER:?This task requires a CI pipeline identity}"
 # Keep CI artifacts small without changing LLVM coverage instrumentation.
 export CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=1 CARGO_PROFILE_TEST_DEBUG=1
-stage="${1:?Use unit or postgres}"
-case "$stage" in unit|postgres) ;; *) exit 1 ;; esac
+stage="${1:?Use prepare, unit, postgres, sdk, or report}"
+case "$stage" in prepare|unit|postgres|sdk|report) ;; *) exit 1 ;; esac
+if [[ "$stage" == sdk ]]; then
+  : "${BIKE_E2E_ENGINE_STATE_DIR:?CI must select the disposable SDK engine directory}"
+  source scripts/ci-engine-stop.sh
+  trap stop_ci_engine EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+fi
 
 # Include source, fixtures, vendored dependencies, contracts, tool/image pins,
 # and all orchestration. UI and documentation alone cannot change Rust results.
@@ -73,44 +80,68 @@ save_verified() {
   prune_verified
 }
 
-if [[ "$stage" == postgres ]]; then
-  # Transfer belongs here, before native coverage is merged. Restoring again
-  # after native tests would overwrite their measurements with unit reports.
-  bash scripts/coverage-transfer.sh restore
-  test "$(cat "$receipt")" = "$key"
-fi
-
-# Hold a read lock while extracting so another successful manual run cannot
-# replace the archive between checksum verification and extraction.
-if (flock --shared 9; restore_verified) 9>"$cache/$key.lock"; then
+if [[ "$stage" == prepare ]]; then
+  rm -f -- "$receipt" "$reports/rust-unit-reused" "$reports/rust-unit-passed" "$reports/rust-postgres-passed" "$reports/rust-sdk-passed"
+  # Restore once, before parallel stages write measurements or reports.
+  if (flock --shared 9; restore_verified) 9>"$cache/$key.lock"; then
+    touch "$reports/rust-unit-reused"
+  else
+    printf 'Rust verification cache MISS %s; preparing coverage\n' "$key"
+    mise install node
+    mise --cd bike-rs install rust protoc aqua:taiki-e/cargo-llvm-cov
+    bash scripts/ci-cache-guard.sh mise --cd bike-rs exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov clean --workspace
+  fi
   printf '%s\n' "$key" >"$receipt"
-  touch "$reports/rust-unit-reused"
   exit 0
 fi
-printf 'Rust verification cache MISS %s; running %s checks\n' "$key" "$stage"
-mise install node
+
+test "$(cat "$receipt")" = "$key"
+if [[ "$stage" == unit || "$stage" == postgres || "$stage" == sdk ]]; then
+  rm -f -- "$reports/rust-$stage-passed"
+  if [[ -f "$reports/rust-unit-reused" ]]; then
+    printf 'Rust verification cache HIT %s; %s checks restored at preparation\n' "$key" "$stage"
+    if [[ "$stage" == sdk ]]; then finish_ci_engine; trap - EXIT; fi
+    printf '%s\n' "$key" >"$reports/rust-$stage-passed"
+    exit 0
+  fi
+  printf 'Rust verification cache MISS %s; running %s checks\n' "$key" "$stage"
+fi
 
 case "$stage" in
   unit)
-    rm -f -- "$receipt" "$reports/rust-unit-reused"
-    mise --cd bike-rs install rust protoc
-    bash scripts/ci-cache-guard.sh mise exec rust protoc -- mise run rust:check
-    printf '%s\n' "$key" >"$receipt"
+    bash scripts/ci-cache-guard.sh mise exec rust protoc -- mise run rust:ci:unit
+    printf '%s\n' "$key" >"$reports/rust-unit-passed"
     ;;
   postgres)
-    # The previous workflow must have actually validated these exact inputs.
-    # Keep the native coverage target and clean only its measurements afterward.
+    bash scripts/ci-cache-guard.sh mise run rust:workers:postgres:collect
+    printf '%s\n' "$key" >"$reports/rust-postgres-passed"
+    ;;
+  sdk)
+    mise install aqua:docker/cli jq
+    for attempt in {1..60}; do
+      if mise exec aqua:docker/cli -- docker info >/dev/null 2>&1; then break; fi
+      if [[ "$attempt" == 60 ]]; then
+        printf 'Disposable SDK engine did not become ready\n' >&2
+        mise exec aqua:docker/cli -- docker info >&2
+        exit 1
+      fi
+      sleep 1
+    done
+    mise run strava:sdk:check
+    finish_ci_engine
+    trap - EXIT
+    printf '%s\n' "$key" >"$reports/rust-sdk-passed"
+    ;;
+  report)
+    # A failed or interrupted parallel stage cannot publish passing evidence.
+    test "$(cat "$reports/rust-unit-passed")" = "$key"
+    test "$(cat "$reports/rust-postgres-passed")" = "$key"
+    test "$(cat "$reports/rust-sdk-passed")" = "$key"
+    if [[ -f "$reports/rust-unit-reused" ]]; then exit 0; fi
     case "${CARGO_LLVM_COV_TARGET_DIR:?Shared coverage objects are required}" in
       /cache/bike/target/*/llvm-cov-target) ;;
       *) printf 'Coverage target is outside the reusable ref cache\n' >&2; exit 1 ;;
     esac
-    if [[ -f "$reports/rust-unit-reused" ]]; then
-      # Retention or a lost volume can evict a result between the two workflows.
-      # Recollect units before merging native coverage in that case.
-      mise --cd bike-rs install rust protoc
-      bash scripts/ci-cache-guard.sh mise exec rust protoc -- mise run rust:check
-    fi
-    bash scripts/ci-cache-guard.sh mise run rust:workers:postgres
     mise --cd bike-rs run coverage:report
     mise --cd bike-rs exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov clean --profraw-only
     save_verified
