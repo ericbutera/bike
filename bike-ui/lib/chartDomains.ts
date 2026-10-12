@@ -4,15 +4,15 @@ export function maxFiniteValue(
   values: Iterable<number | null | undefined>,
   fallback = 0,
 ) {
-  let maxValue = Number.NEGATIVE_INFINITY;
+  let maximum = Number.NEGATIVE_INFINITY;
 
   for (const value of values) {
     if (typeof value === "number" && Number.isFinite(value)) {
-      maxValue = Math.max(maxValue, value);
+      maximum = Math.max(maximum, value);
     }
   }
 
-  return maxValue === Number.NEGATIVE_INFINITY ? fallback : maxValue;
+  return maximum === Number.NEGATIVE_INFINITY ? fallback : maximum;
 }
 
 export function zeroBasedDomain(
