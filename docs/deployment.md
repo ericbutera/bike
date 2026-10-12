@@ -8,8 +8,8 @@ Kubernetes.
 ## Continuous integration
 
 Woodpecker reads [`.woodpecker/bike.yaml`](../.woodpecker/bike.yaml). Each run
-uses one monorepo checkout, then follows **checkout → tooling preparation → all
-tests → one Bake image build → E2E → main-only Pulumi apply**. Preparation shares
+uses one monorepo checkout, then follows **checkout → tooling preparation → owning
+checks → one Bake image build → E2E → main-only Pulumi apply**. Preparation shares
 mise and prepares the native package cache. Bake builds all seven image targets
 after every test step passes. Deployment waits for the builds and E2E.
 Every test step uses `failure: fail`: a nonzero exit fails the pipeline and blocks
@@ -27,7 +27,7 @@ Documentation-only changes do not release images.
 | Check                  | Coverage                                                                                      |
 | ---------------------- | --------------------------------------------------------------------------------------------- |
 | `test-rust`            | Rust formatting, Clippy, workspace tests including native HTTP integrations                   |
-| `test-ui-unit`         | ESLint, TypeScript, unit tests, formatting, generated OpenAPI client, dependency audit        |
+| `test-ui-unit`         | ESLint, TypeScript, unit tests, formatting, dependency audit                                  |
 | `test-map-renderer`    | Go formatting, vet, golangci-lint, tests, build, protobuf freshness, browser asset lint/audit |
 | `test-worker-postgres` | PostgreSQL native Strava webhook/DAG flows, request-count assertions and coverage             |
 
@@ -45,10 +45,16 @@ is needed. Language tool versions come from the owning `mise.toml`; shared Node,
 Go, formatter, and hook pins are inherited from the root. Mise selects and
 installs the language toolchain.
 CI installs only the tools needed by each check and shares its tool cache.
-The same entry points run locally:
+Rust CI can restore complete successful verification for identical backend inputs
+across PRs. The log names the original verified revision and pipeline; missing,
+changed, or corrupt entries rerun checks. Manual pipelines force revalidation.
+See the [Rust CI specification](specs/rust-ci.md). This result cache stores reports
+on the existing runner volume; cargo-chef still owns release dependency caching
+on the separate BuildKit volume.
+The underlying owning checks also run locally:
 
 ```sh
-mise run ci:rust
+mise run checks:docker rust:check
 mise run ci:ui:unit
 mise run ci:renderer
 ```

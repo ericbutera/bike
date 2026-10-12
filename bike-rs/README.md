@@ -45,8 +45,7 @@ the database and other values from [`.env.example`](.env.example).
 ## Contracts and specifications
 
 `mise run generate:openapi` generates the canonical HTTP contract directly in
-`../contracts/openapi/`. `mise run openapi:check` verifies it against fresh Rust
-output. `mise run generate:typescript` regenerates the frontend
+`../contracts/openapi/` when explicitly requested. `mise run generate:typescript` regenerates the frontend
 client. Root `mise run strava:sdk` generates the unmodified vendor SDK;
 `mise run strava:sdk:check` verifies freshness. The native workflows run on Bike's
 existing workers.

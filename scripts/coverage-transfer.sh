@@ -3,12 +3,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 : "${CI_PIPELINE_NUMBER:?Pipeline identity is required}"
-store="/cache/bike/coverage-reports/$CI_PIPELINE_NUMBER"
+root="${BIKE_COVERAGE_TRANSFER_ROOT:-/cache/bike/coverage-reports}"
+store="$root/$CI_PIPELINE_NUMBER"
 case "${1:?Use save or restore}" in
   save)
     mkdir -p "$store"
     cp -a .artifacts/coverage/. "$store/"
-    find /cache/bike/coverage-reports -mindepth 1 -maxdepth 1 -type d -mtime +7 -exec rm -rf -- {} +
+    find "$root" -mindepth 1 -maxdepth 1 -type d -mtime +7 -exec rm -rf -- {} +
     ;;
   restore)
     test -s "$store/bike-ui/lcov.info"

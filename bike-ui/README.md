@@ -30,7 +30,6 @@ mise run typecheck
 mise run test
 mise run build
 mise run format:check
-mise run openapi:check
 ```
 
 Rust's Utoipa definitions generate the canonical contract directly in

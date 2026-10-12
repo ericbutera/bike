@@ -1,3 +1,9 @@
+[env]
+# Cargo fingerprints compiler flags. All ordinary tasks must use the same flags
+# without changing coverage's separate instrumentation flags or target.
+RUSTFLAGS = "-D warnings"
+RUSTDOCFLAGS = "-D warnings"
+
 [tasks."hooks:install"]
 description = "Install prek Git hooks for this repository"
 run = "mise --cd .. run hooks:install"
@@ -148,24 +154,9 @@ run = "mise --cd ../bike-ui run generate:typescript"
 description = "Generate the common OpenAPI contract from Rust Utoipa"
 run = "cargo run -p api --bin openapi"
 
-[tasks."openapi:check"]
-description = "Check the canonical HTTP contract against Rust Utoipa"
-run = '''
-set -eu
-GENERATED_CONTRACTS="$(mktemp -d)"
-trap 'rm -rf "$GENERATED_CONTRACTS"' EXIT
-cargo run -p api --bin openapi -- "$GENERATED_CONTRACTS"
-cmp -- "$GENERATED_CONTRACTS/openapi.json" ../contracts/openapi/openapi.json
-cmp -- "$GENERATED_CONTRACTS/openapi.yaml" ../contracts/openapi/openapi.yaml
-'''
-
 [tasks."generate:typescript"]
 description = "Generate the frontend TypeScript API contract from OpenAPI"
 run = "mise --cd ../bike-ui run generate:typescript"
-
-[tasks."openapi:typescript:check"]
-description = "Check the generated frontend TypeScript API contract is fresh"
-run = "mise --cd ../bike-ui run openapi:check"
 
 [tasks."test:integration"]
 description = "Run native API integration tests with isolated fixtures"

@@ -41,6 +41,11 @@ RUST
 printf 'pub fn value() -> u32 { 3 }\n' >"$fixture/app/src/removed.rs"
 printf '#[test]\nfn followup() { assert_eq!(cache_app::followup(), 2); }\n' >"$fixture/app/tests/followup.rs"
 printf '#[test]\nfn removed_test() { assert_eq!(cache_app::current(), 1); }\n' >"$fixture/app/tests/removed_test.rs"
+printf 'fn main() { assert_eq!(cache_app::current(), 1); }\n' >"$fixture/app/src/main.rs"
+# Use the real task environment: task-local flag differences caused OpenAPI to
+# rebuild a dependency graph that the integration-test task had just compiled.
+cp bike-rs/mise.toml "$fixture/app/mise.toml"
+printf '\n[tools]\nrust = "%s"\n' "$(mise current rust)" >>"$fixture/app/mise.toml"
 
 # Every CI stage must select the same reusable target in both pipeline runs.
 targets=()
@@ -49,6 +54,7 @@ while IFS= read -r target; do targets+=("$target"); done < <(
 )
 test "${#targets[@]}" = 3
 export CARGO_TARGET_DIR="$fixture/ordinary" RUSTFLAGS='-D warnings'
+export CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=1 CARGO_PROFILE_TEST_DEBUG=1
 export CARGO_LLVM_COV_DENY_WARNINGS=1 CARGO_LLVM_COV_TARGET_DIR
 for pipeline in 1 2; do
   for target in "${targets[@]}"; do
@@ -92,6 +98,17 @@ for pipeline in 1 2; do
   )
   test -n "$(find "$CARGO_LLVM_COV_TARGET_DIR/debug/deps" -name 'libcache_dependency-*.rlib' -print -quit)"
 done
+# Ordinary tests and a subsequent binary build must reuse the same dependency.
+# Unset the fixture's flags so the owning mise environment is what is tested.
+(
+  unset RUSTFLAGS
+  mise --cd "$fixture/app" run test:non-unit >"$fixture/ordinary-test.log" 2>&1
+  mise --cd "$fixture/app" exec -- cargo run -vv >"$fixture/ordinary-bin.log" 2>&1
+)
+grep -q 'Fresh cache-dependency' "$fixture/ordinary-bin.log"
+if grep -q 'Compiling cache-dependency' "$fixture/ordinary-bin.log"; then
+  printf 'Binary generation recompiled ordinary test dependencies\n' >&2; exit 1
+fi
 # The gate must preserve objects, not replace the native profile-only cleanup.
-grep -Fq 'cargo llvm-cov clean --profraw-only' "$repo/mise.toml"
+grep -Fq 'cargo llvm-cov clean --profraw-only' "$repo/scripts/ci-rust.sh"
 printf 'Rust cache regression passed: warm dependency reused, removed sources/tests absent.\n'

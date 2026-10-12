@@ -28,6 +28,7 @@ The specs are intentionally written as product contracts instead of implementati
 - [Admin operations](admin-operations.md)
 - [Auth configuration](auth-configuration.md)
 - [Production synthetics](production-synthetics.md)
+- [Rust CI verification and reuse](rust-ci.md)
 
 ## Spec Rules
 
