@@ -1,0 +1,554 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+    <head>
+        <meta http-equiv='Content-Type' content='text/html; charset=utf-8'>
+        <title>Diff Coverage</title>
+        <style>
+            .src-snippet { margin-top: 2em; }
+            .src-name { font-weight: bold; }
+            .snippets {
+                border-top: 1px solid #bdbdbd;
+                border-bottom: 1px solid #bdbdbd;
+            }
+            pre { line-height: 125%; }
+td.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+span.linenos { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+td.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+.hll { background-color: #ffcccc }
+.c { color: #3D7B7B; font-style: italic } /* Comment */
+.err { border: 1px solid #F00 } /* Error */
+.k { color: #008000; font-weight: bold } /* Keyword */
+.o { color: #666 } /* Operator */
+.ch { color: #3D7B7B; font-style: italic } /* Comment.Hashbang */
+.cm { color: #3D7B7B; font-style: italic } /* Comment.Multiline */
+.cp { color: #9C6500 } /* Comment.Preproc */
+.cpf { color: #3D7B7B; font-style: italic } /* Comment.PreprocFile */
+.c1 { color: #3D7B7B; font-style: italic } /* Comment.Single */
+.cs { color: #3D7B7B; font-style: italic } /* Comment.Special */
+.gd { color: #A00000 } /* Generic.Deleted */
+.ge { font-style: italic } /* Generic.Emph */
+.ges { font-weight: bold; font-style: italic } /* Generic.EmphStrong */
+.gr { color: #E40000 } /* Generic.Error */
+.gh { color: #000080; font-weight: bold } /* Generic.Heading */
+.gi { color: #008400 } /* Generic.Inserted */
+.go { color: #717171 } /* Generic.Output */
+.gp { color: #000080; font-weight: bold } /* Generic.Prompt */
+.gs { font-weight: bold } /* Generic.Strong */
+.gu { color: #800080; font-weight: bold } /* Generic.Subheading */
+.gt { color: #04D } /* Generic.Traceback */
+.kc { color: #008000; font-weight: bold } /* Keyword.Constant */
+.kd { color: #008000; font-weight: bold } /* Keyword.Declaration */
+.kn { color: #008000; font-weight: bold } /* Keyword.Namespace */
+.kp { color: #008000 } /* Keyword.Pseudo */
+.kr { color: #008000; font-weight: bold } /* Keyword.Reserved */
+.kt { color: #B00040 } /* Keyword.Type */
+.m { color: #666 } /* Literal.Number */
+.s { color: #BA2121 } /* Literal.String */
+.na { color: #687822 } /* Name.Attribute */
+.nb { color: #008000 } /* Name.Builtin */
+.nc { color: #00F; font-weight: bold } /* Name.Class */
+.no { color: #800 } /* Name.Constant */
+.nd { color: #A2F } /* Name.Decorator */
+.ni { color: #717171; font-weight: bold } /* Name.Entity */
+.ne { color: #CB3F38; font-weight: bold } /* Name.Exception */
+.nf { color: #00F } /* Name.Function */
+.nl { color: #767600 } /* Name.Label */
+.nn { color: #00F; font-weight: bold } /* Name.Namespace */
+.nt { color: #008000; font-weight: bold } /* Name.Tag */
+.nv { color: #19177C } /* Name.Variable */
+.ow { color: #A2F; font-weight: bold } /* Operator.Word */
+.w { color: #BBB } /* Text.Whitespace */
+.mb { color: #666 } /* Literal.Number.Bin */
+.mf { color: #666 } /* Literal.Number.Float */
+.mh { color: #666 } /* Literal.Number.Hex */
+.mi { color: #666 } /* Literal.Number.Integer */
+.mo { color: #666 } /* Literal.Number.Oct */
+.sa { color: #BA2121 } /* Literal.String.Affix */
+.sb { color: #BA2121 } /* Literal.String.Backtick */
+.sc { color: #BA2121 } /* Literal.String.Char */
+.dl { color: #BA2121 } /* Literal.String.Delimiter */
+.sd { color: #BA2121; font-style: italic } /* Literal.String.Doc */
+.s2 { color: #BA2121 } /* Literal.String.Double */
+.se { color: #AA5D1F; font-weight: bold } /* Literal.String.Escape */
+.sh { color: #BA2121 } /* Literal.String.Heredoc */
+.si { color: #A45A77; font-weight: bold } /* Literal.String.Interpol */
+.sx { color: #008000 } /* Literal.String.Other */
+.sr { color: #A45A77 } /* Literal.String.Regex */
+.s1 { color: #BA2121 } /* Literal.String.Single */
+.ss { color: #19177C } /* Literal.String.Symbol */
+.bp { color: #008000 } /* Name.Builtin.Pseudo */
+.fm { color: #00F } /* Name.Function.Magic */
+.vc { color: #19177C } /* Name.Variable.Class */
+.vg { color: #19177C } /* Name.Variable.Global */
+.vi { color: #19177C } /* Name.Variable.Instance */
+.vm { color: #19177C } /* Name.Variable.Magic */
+.il { color: #666 } /* Literal.Number.Integer.Long */
+.diff-cover-covered-line { background-color: #ddffdd; }
+        </style>
+    </head>
+    <body>
+        <h1>Diff Coverage</h1>
+        <p>Diff: 2c75fafde14e1f7276074e745ebe8df2c5efd303...HEAD, staged, unstaged and untracked changes</p>
+        <ul>
+            <li><b>Total</b>: 174 lines</li>
+            <li><b>Missing</b>: 28 lines</li>
+            <li><b>Coverage</b>: 83.91%</li>
+        </ul>
+        <table border="1">
+            <tr>
+                <th>Source File</th>
+                <th>Diff Coverage (%)</th>
+                <th>Missing Lines</th>
+            </tr>
+            <tr>
+                <td>bike-ui/app/admin/activities/page.tsx</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-ui/components/activity-detail/ActivityImportTracePanel.tsx</td>
+                <td>64.3%</td>
+                <td>68,74,122,145,168,182,187,192,221-222</td>
+            </tr>
+            <tr>
+                <td>bike-ui/components/admin/ActivityPipelines.tsx</td>
+                <td>90.0%</td>
+                <td>20</td>
+            </tr>
+            <tr>
+                <td>bike-ui/components/admin/PipelineEvidenceLinks.tsx</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-ui/components/admin/PipelinePanel.tsx</td>
+                <td>70.0%</td>
+                <td>28,109-112,198</td>
+            </tr>
+            <tr>
+                <td>bike-ui/components/admin/PipelineTaskEvidence.tsx</td>
+                <td>71.8%</td>
+                <td>59,74,96,113,118,140-141,146,150,154,158</td>
+            </tr>
+            <tr>
+                <td>bike-ui/components/imports/ImportDetail.tsx</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-ui/components/ui/ProcessingDetails.tsx</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-ui/components/ui/ProcessingGraph.tsx</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-ui/lib/taskTiming.ts</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+        </table>
+        <div class="src-snippet">
+            <div class="src-name">bike-ui/components/activity-detail/ActivityImportTracePanel.tsx</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">64</span>
+<span class="normal">65</span>
+<span class="normal">66</span>
+<span class="normal">67</span>
+<span class="normal">68</span>
+<span class="normal">69</span>
+<span class="normal">70</span>
+<span class="normal">71</span>
+<span class="normal">72</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-64" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-64"></a><span class="w">                </span><span class="nx">Follow</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">connections</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="nx">top</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">bottom</span><span class="p">.</span><span class="w"> </span><span class="nx">Select</span><span class="w"> </span><span class="nx">a</span><span class="w"> </span><span class="nx">stage</span><span class="w"> </span><span class="k">for</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-65" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-65"></a><span class="w">                </span><span class="nx">its</span><span class="w"> </span><span class="nx">result</span><span class="w"> </span><span class="nx">and</span><span class="w"> </span><span class="nx">recovery</span><span class="w"> </span><span class="nx">action</span><span class="p">.</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-66" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-66"></a><span class="w">              </span><span class="p">&lt;/</span><span class="nt">p</span><span class="p">&gt;</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-67" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-67"></a><span class="w">            </span><span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-68" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-68"></a><span class="hll"><span class="w">            </span><span class="p">{</span><span class="o">!</span><span class="nx">trace</span><span class="p">.</span><span class="nx">attempts</span><span class="o">?</span><span class="p">.</span><span class="nx">length</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span>
+</span><a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-69" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-69"></a><span class="w">              </span><span class="p">&lt;</span><span class="nt">p</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"text-sm"</span><span class="p">&gt;</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-70" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-70"></a><span class="w">                </span><span class="nx">Historical</span><span class="w"> </span><span class="nx">import</span><span class="o">:</span><span class="w"> </span><span class="kt">stage</span><span class="w"> </span><span class="nx">summaries</span><span class="w"> </span><span class="nx">are</span><span class="w"> </span><span class="nx">unavailable</span><span class="w"> </span><span class="nx">until</span><span class="w"> </span><span class="nx">replay</span><span class="p">.</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-71" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-71"></a><span class="w">              </span><span class="p">&lt;/</span><span class="nt">p</span><span class="p">&gt;</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-72" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-72"></a><span class="w">            </span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">}</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">70</span>
+<span class="normal">71</span>
+<span class="normal">72</span>
+<span class="normal">73</span>
+<span class="normal">74</span>
+<span class="normal">75</span>
+<span class="normal">76</span>
+<span class="normal">77</span>
+<span class="normal">78</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-70" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-70"></a><span class="w">                </span><span class="nx">Historical</span><span class="w"> </span><span class="nx">import</span><span class="o">:</span><span class="w"> </span><span class="kt">stage</span><span class="w"> </span><span class="nx">summaries</span><span class="w"> </span><span class="nx">are</span><span class="w"> </span><span class="nx">unavailable</span><span class="w"> </span><span class="nx">until</span><span class="w"> </span><span class="nx">replay</span><span class="p">.</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-71" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-71"></a><span class="w">              </span><span class="p">&lt;/</span><span class="nt">p</span><span class="p">&gt;</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-72" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-72"></a><span class="w">            </span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">}</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-73" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-73"></a><span class="w">          </span><span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-74" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-74"></a><span class="hll"><span class="w">          </span><span class="p">{</span><span class="nx">trace</span><span class="p">.</span><span class="nx">attempts</span><span class="o">?</span><span class="p">.</span><span class="nx">length</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span>
+</span><a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-75" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-75"></a><span class="w">            </span><span class="p">&lt;</span><span class="nt">section</span><span class="w"> </span><span class="na">aria-label</span><span class="o">=</span><span class="s">"Import attempts"</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"space-y-3"</span><span class="p">&gt;</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-76" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-76"></a><span class="w">              </span><span class="p">&lt;</span><span class="nt">h4</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"font-semibold"</span><span class="p">&gt;</span><span class="nx">Attempt</span><span class="w"> </span><span class="nx">history</span><span class="p">&lt;/</span><span class="nt">h4</span><span class="p">&gt;</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-77" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-77"></a><span class="w">              </span><span class="p">&lt;</span><span class="nt">div</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"flex flex-wrap gap-2"</span><span class="p">&gt;</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-78" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-78"></a><span class="w">                </span><span class="p">{</span><span class="nx">trace</span><span class="p">.</span><span class="nx">attempts</span><span class="p">.</span><span class="nx">map</span><span class="p">((</span><span class="nx">item</span><span class="p">,</span><span class="w"> </span><span class="nx">index</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">(</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">118</span>
+<span class="normal">119</span>
+<span class="normal">120</span>
+<span class="normal">121</span>
+<span class="normal">122</span>
+<span class="normal">123</span>
+<span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-118" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-118"></a><span class="w">                    </span><span class="p">},</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-119" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-119"></a><span class="w">                    </span><span class="p">{</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-120" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-120"></a><span class="w">                      </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="s2">"Source format and quality"</span><span class="p">,</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-121" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-121"></a><span class="w">                      </span><span class="nx">value</span><span class="o">:</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-122" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-122"></a><span class="hll"><span class="w">                        </span><span class="p">[</span>
+</span><a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-123" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-123"></a><span class="w">                          </span><span class="nx">attempt</span><span class="p">.</span><span class="nx">source</span><span class="p">.</span><span class="nx">format</span><span class="o">?</span><span class="p">.</span><span class="nx">toUpperCase</span><span class="p">(),</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-124" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-124"></a><span class="w">                          </span><span class="nx">attempt</span><span class="p">.</span><span class="nx">source</span><span class="p">.</span><span class="nx">quality</span><span class="o">?</span><span class="p">.</span><span class="nx">replaceAll</span><span class="p">(</span><span class="s2">"_"</span><span class="p">,</span><span class="w"> </span><span class="s2">" "</span><span class="p">),</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-125" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-125"></a><span class="w">                        </span><span class="p">]</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-126" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-126"></a><span class="w">                          </span><span class="p">.</span><span class="nx">filter</span><span class="p">(</span><span class="nb">Boolean</span><span class="p">)</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-141" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-141"></a><span class="w">                    </span><span class="p">{</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-142" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-142"></a><span class="w">                      </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="s2">"Finished"</span><span class="p">,</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-143" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-143"></a><span class="w">                      </span><span class="nx">value</span><span class="o">:</span><span class="w"> </span><span class="kt">formatTaskDate</span><span class="p">(</span><span class="nx">attempt</span><span class="p">.</span><span class="nx">finished_at</span><span class="p">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-144" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-144"></a><span class="w">                    </span><span class="p">},</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-145" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-145"></a><span class="hll"><span class="w">                    </span><span class="p">...(</span><span class="nx">attempt</span><span class="p">.</span><span class="nx">reused_attempt_id</span>
+</span><a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-146" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-146"></a><span class="w">                      </span><span class="o">?</span><span class="w"> </span><span class="p">[</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-147" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-147"></a><span class="w">                          </span><span class="p">{</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-148" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-148"></a><span class="w">                            </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="s2">"Earlier results"</span><span class="p">,</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-149" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-149"></a><span class="w">                            </span><span class="nx">value</span><span class="o">:</span><span class="w"> </span><span class="sb">`Reused from attempt #</span><span class="si">${</span><span class="nx">attempt</span><span class="p">.</span><span class="nx">reused_attempt_id</span><span class="si">}</span><span class="sb">`</span><span class="p">,</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">164</span>
+<span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span>
+<span class="normal">171</span>
+<span class="normal">172</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-164" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-164"></a><span class="w">              </span><span class="na">edges</span><span class="o">=</span><span class="p">{</span><span class="nx">trace</span><span class="p">.</span><span class="nx">graph</span><span class="p">.</span><span class="nx">edges</span><span class="p">}</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-165" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-165"></a><span class="w">              </span><span class="na">selected</span><span class="o">=</span><span class="p">{</span><span class="nx">selected</span><span class="o">?</span><span class="p">.</span><span class="nx">id</span><span class="p">}</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-166" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-166"></a><span class="w">              </span><span class="na">onSelect</span><span class="o">=</span><span class="p">{</span><span class="nx">setSelectedStage</span><span class="p">}</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-167" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-167"></a><span class="w">            </span><span class="p">/&gt;</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-168" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-168"></a><span class="hll"><span class="w">            </span><span class="p">{</span><span class="nx">selected</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span>
+</span><a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-169" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-169"></a><span class="w">              </span><span class="p">&lt;</span><span class="nt">section</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-170" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-170"></a><span class="w">                </span><span class="na">aria-label</span><span class="o">=</span><span class="s">"Selected stage"</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-171" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-171"></a><span class="w">                </span><span class="na">className</span><span class="o">=</span><span class="s">"space-y-4 rounded-box border border-base-300 p-4 xl:sticky xl:top-4"</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-172" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-172"></a><span class="w">              </span><span class="p">&gt;</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span>
+<span class="normal">181</span>
+<span class="normal">182</span>
+<span class="normal">183</span>
+<span class="normal">184</span>
+<span class="normal">185</span>
+<span class="normal">186</span>
+<span class="normal">187</span>
+<span class="normal">188</span>
+<span class="normal">189</span>
+<span class="normal">190</span>
+<span class="normal">191</span>
+<span class="normal">192</span>
+<span class="normal">193</span>
+<span class="normal">194</span>
+<span class="normal">195</span>
+<span class="normal">196</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-178" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-178"></a><span class="w">                  </span><span class="p">{</span><span class="nx">selected</span><span class="p">.</span><span class="nx">summary</span><span class="o">?</span><span class="p">.</span><span class="nx">map</span><span class="p">((</span><span class="nx">fact</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">(</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-179" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-179"></a><span class="w">                    </span><span class="p">&lt;</span><span class="nt">li</span><span class="w"> </span><span class="na">key</span><span class="o">=</span><span class="p">{</span><span class="nx">fact</span><span class="p">}&gt;{</span><span class="nx">fact</span><span class="p">}&lt;/</span><span class="nt">li</span><span class="p">&gt;</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-180" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-180"></a><span class="w">                  </span><span class="p">))}</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-181" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-181"></a><span class="w">                </span><span class="p">&lt;/</span><span class="nt">ul</span><span class="p">&gt;</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-182" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-182"></a><span class="hll"><span class="w">                </span><span class="p">{</span><span class="o">!</span><span class="nx">selected</span><span class="p">.</span><span class="nx">summary</span><span class="o">?</span><span class="p">.</span><span class="nx">length</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span>
+</span><a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-183" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-183"></a><span class="w">                  </span><span class="p">&lt;</span><span class="nt">p</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"text-sm text-base-content/60"</span><span class="p">&gt;</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-184" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-184"></a><span class="w">                    </span><span class="nx">No</span><span class="w"> </span><span class="nx">summary</span><span class="w"> </span><span class="nx">was</span><span class="w"> </span><span class="nx">recorded</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="k">this</span><span class="w"> </span><span class="nx">stage</span><span class="p">.</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-185" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-185"></a><span class="w">                  </span><span class="p">&lt;/</span><span class="nt">p</span><span class="p">&gt;</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-186" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-186"></a><span class="w">                </span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">}</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-187" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-187"></a><span class="hll"><span class="w">                </span><span class="p">{</span><span class="nx">selected</span><span class="p">.</span><span class="nx">error</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span>
+</span><a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-188" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-188"></a><span class="w">                  </span><span class="p">&lt;</span><span class="nt">p</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"text-sm text-error"</span><span class="w"> </span><span class="na">role</span><span class="o">=</span><span class="s">"alert"</span><span class="p">&gt;</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-189" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-189"></a><span class="w">                    </span><span class="p">{</span><span class="nx">selected</span><span class="p">.</span><span class="nx">error</span><span class="p">}</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-190" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-190"></a><span class="w">                  </span><span class="p">&lt;/</span><span class="nt">p</span><span class="p">&gt;</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-191" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-191"></a><span class="w">                </span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">}</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-192" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-192"></a><span class="hll"><span class="w">                </span><span class="p">{</span><span class="nx">selected</span><span class="p">.</span><span class="nx">reused_attempt_id</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span>
+</span><a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-193" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-193"></a><span class="w">                  </span><span class="p">&lt;</span><span class="nt">p</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"text-sm"</span><span class="p">&gt;</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-194" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-194"></a><span class="w">                    </span><span class="nx">Reused</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="nx">attempt</span><span class="w"> </span><span class="err">#</span><span class="p">{</span><span class="nx">selected</span><span class="p">.</span><span class="nx">reused_attempt_id</span><span class="p">}</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-195" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-195"></a><span class="w">                  </span><span class="p">&lt;/</span><span class="nt">p</span><span class="p">&gt;</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-196" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-196"></a><span class="w">                </span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">}</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">217</span>
+<span class="normal">218</span>
+<span class="normal">219</span>
+<span class="normal">220</span>
+<span class="normal">221</span>
+<span class="normal">222</span>
+<span class="normal">223</span>
+<span class="normal">224</span>
+<span class="normal">225</span>
+<span class="normal">226</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-217" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-217"></a><span class="w">                    </span><span class="p">{</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-218" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-218"></a><span class="w">                      </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="s2">"Depends on"</span><span class="p">,</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-219" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-219"></a><span class="w">                      </span><span class="nx">value</span><span class="o">:</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-220" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-220"></a><span class="w">                        </span><span class="kt">trace.graph.edges</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-221" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-221"></a><span class="hll"><span class="w">                          </span><span class="p">.</span><span class="nx">filter</span><span class="p">((</span><span class="nx">edge</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">edge</span><span class="p">.</span><span class="nx">to</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="nx">selected</span><span class="p">.</span><span class="nx">id</span><span class="p">)</span>
+</span><a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-222" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-222"></a><span class="hll"><span class="w">                          </span><span class="p">.</span><span class="nx">map</span><span class="p">((</span><span class="nx">edge</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">stageLabel</span><span class="p">(</span><span class="nx">nodes</span><span class="p">,</span><span class="w"> </span><span class="nx">edge</span><span class="p">.</span><span class="kr">from</span><span class="p">))</span>
+</span><a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-223" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-223"></a><span class="w">                          </span><span class="p">.</span><span class="nx">join</span><span class="p">(</span><span class="s2">", "</span><span class="p">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="s2">"No earlier stage"</span><span class="p">,</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-224" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-224"></a><span class="w">                    </span><span class="p">},</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-225" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-225"></a><span class="w">                  </span><span class="p">]}</span>
+<a id="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-226" name="bike-ui/components/activity-detail/ActivityImportTracePanel.tsx-226"></a><span class="w">                </span><span class="p">/&gt;</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+        <div class="src-snippet">
+            <div class="src-name">bike-ui/components/admin/ActivityPipelines.tsx</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">16</span>
+<span class="normal">17</span>
+<span class="normal">18</span>
+<span class="normal">19</span>
+<span class="normal">20</span>
+<span class="normal">21</span>
+<span class="normal">22</span>
+<span class="normal">23</span>
+<span class="normal">24</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/admin/ActivityPipelines.tsx-16" name="bike-ui/components/admin/ActivityPipelines.tsx-16"></a><span class="w">    </span><span class="o">?</span><span class="w"> </span><span class="nx">selected</span>
+<a id="bike-ui/components/admin/ActivityPipelines.tsx-17" name="bike-ui/components/admin/ActivityPipelines.tsx-17"></a><span class="w">    </span><span class="o">:</span><span class="w"> </span><span class="kt">query.data?.run_ids</span><span class="p">[</span><span class="mf">0</span><span class="p">];</span>
+<a id="bike-ui/components/admin/ActivityPipelines.tsx-18" name="bike-ui/components/admin/ActivityPipelines.tsx-18"></a><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">(</span>
+<a id="bike-ui/components/admin/ActivityPipelines.tsx-19" name="bike-ui/components/admin/ActivityPipelines.tsx-19"></a><span class="w">    </span><span class="p">&lt;</span><span class="nt">section</span><span class="w"> </span><span class="na">aria-label</span><span class="o">=</span><span class="s">"Activity processing pipelines"</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"space-y-3"</span><span class="p">&gt;</span>
+<a id="bike-ui/components/admin/ActivityPipelines.tsx-20" name="bike-ui/components/admin/ActivityPipelines.tsx-20"></a><span class="hll"><span class="w">      </span><span class="p">{</span><span class="nx">query</span><span class="p">.</span><span class="nx">isLoading</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span>
+</span><a id="bike-ui/components/admin/ActivityPipelines.tsx-21" name="bike-ui/components/admin/ActivityPipelines.tsx-21"></a><span class="w">        </span><span class="p">&lt;</span><span class="nt">p</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"flex items-center gap-2"</span><span class="p">&gt;</span>
+<a id="bike-ui/components/admin/ActivityPipelines.tsx-22" name="bike-ui/components/admin/ActivityPipelines.tsx-22"></a><span class="w">          </span><span class="p">&lt;</span><span class="nt">LoadingSpinner</span><span class="w"> </span><span class="na">size</span><span class="o">=</span><span class="s">"sm"</span><span class="w"> </span><span class="p">/&gt;</span>
+<a id="bike-ui/components/admin/ActivityPipelines.tsx-23" name="bike-ui/components/admin/ActivityPipelines.tsx-23"></a><span class="w">          </span><span class="nx">Loading</span><span class="w"> </span><span class="nx">worker</span><span class="w"> </span><span class="nx">runs</span><span class="err">…</span>
+<a id="bike-ui/components/admin/ActivityPipelines.tsx-24" name="bike-ui/components/admin/ActivityPipelines.tsx-24"></a><span class="w">        </span><span class="p">&lt;/</span><span class="nt">p</span><span class="p">&gt;</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+        <div class="src-snippet">
+            <div class="src-name">bike-ui/components/admin/PipelinePanel.tsx</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">24</span>
+<span class="normal">25</span>
+<span class="normal">26</span>
+<span class="normal">27</span>
+<span class="normal">28</span>
+<span class="normal">29</span>
+<span class="normal">30</span>
+<span class="normal">31</span>
+<span class="normal">32</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/admin/PipelinePanel.tsx-24" name="bike-ui/components/admin/PipelinePanel.tsx-24"></a><span class="w">  </span><span class="p">});</span>
+<a id="bike-ui/components/admin/PipelinePanel.tsx-25" name="bike-ui/components/admin/PipelinePanel.tsx-25"></a><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">run</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">query</span><span class="p">.</span><span class="nx">data</span><span class="p">;</span>
+<a id="bike-ui/components/admin/PipelinePanel.tsx-26" name="bike-ui/components/admin/PipelinePanel.tsx-26"></a><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">task</span><span class="w"> </span><span class="o">=</span>
+<a id="bike-ui/components/admin/PipelinePanel.tsx-27" name="bike-ui/components/admin/PipelinePanel.tsx-27"></a><span class="w">    </span><span class="nx">run</span><span class="o">?</span><span class="p">.</span><span class="nx">tasks</span><span class="p">.</span><span class="nx">find</span><span class="p">((</span><span class="nx">task</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">task</span><span class="p">.</span><span class="nx">id</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="nx">taskId</span><span class="p">)</span><span class="w"> </span><span class="o">??</span>
+<a id="bike-ui/components/admin/PipelinePanel.tsx-28" name="bike-ui/components/admin/PipelinePanel.tsx-28"></a><span class="hll"><span class="w">    </span><span class="p">(</span><span class="nx">selected</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nx">run</span><span class="o">?</span><span class="p">.</span><span class="nx">tasks</span><span class="p">[</span><span class="mf">0</span><span class="p">]</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kc">undefined</span><span class="p">);</span>
+</span><a id="bike-ui/components/admin/PipelinePanel.tsx-29" name="bike-ui/components/admin/PipelinePanel.tsx-29"></a><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">gateway</span><span class="w"> </span><span class="o">=</span>
+<a id="bike-ui/components/admin/PipelinePanel.tsx-30" name="bike-ui/components/admin/PipelinePanel.tsx-30"></a><span class="w">    </span><span class="nx">selected</span><span class="o">?</span><span class="p">.</span><span class="nx">startsWith</span><span class="p">(</span><span class="s2">"gateway_"</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">run</span>
+<a id="bike-ui/components/admin/PipelinePanel.tsx-31" name="bike-ui/components/admin/PipelinePanel.tsx-31"></a><span class="w">      </span><span class="o">?</span><span class="w"> </span><span class="nx">gatewaySteps</span><span class="p">(</span><span class="nx">run</span><span class="p">)[</span><span class="nb">Number</span><span class="p">(</span><span class="nx">selected</span><span class="p">.</span><span class="nx">split</span><span class="p">(</span><span class="s2">"_"</span><span class="p">)[</span><span class="mf">1</span><span class="p">])]</span>
+<a id="bike-ui/components/admin/PipelinePanel.tsx-32" name="bike-ui/components/admin/PipelinePanel.tsx-32"></a><span class="w">      </span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">105</span>
+<span class="normal">106</span>
+<span class="normal">107</span>
+<span class="normal">108</span>
+<span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span>
+<span class="normal">112</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/admin/PipelinePanel.tsx-105" name="bike-ui/components/admin/PipelinePanel.tsx-105"></a><span class="w">              </span><span class="p">&lt;</span><span class="nt">button</span>
+<a id="bike-ui/components/admin/PipelinePanel.tsx-106" name="bike-ui/components/admin/PipelinePanel.tsx-106"></a><span class="w">                </span><span class="na">type</span><span class="o">=</span><span class="s">"button"</span>
+<a id="bike-ui/components/admin/PipelinePanel.tsx-107" name="bike-ui/components/admin/PipelinePanel.tsx-107"></a><span class="w">                </span><span class="na">key</span><span class="o">=</span><span class="p">{</span><span class="nx">item</span><span class="p">.</span><span class="nx">id</span><span class="p">}</span>
+<a id="bike-ui/components/admin/PipelinePanel.tsx-108" name="bike-ui/components/admin/PipelinePanel.tsx-108"></a><span class="w">                </span><span class="na">aria-pressed</span><span class="o">=</span><span class="p">{</span><span class="nx">item</span><span class="p">.</span><span class="nx">id</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="nx">task</span><span class="o">?</span><span class="p">.</span><span class="nx">id</span><span class="p">}</span>
+<a id="bike-ui/components/admin/PipelinePanel.tsx-109" name="bike-ui/components/admin/PipelinePanel.tsx-109"></a><span class="hll"><span class="w">                </span><span class="na">className</span><span class="o">=</span><span class="p">{</span><span class="sb">`rounded-box border p-3 text-left </span><span class="si">${</span><span class="nx">item</span><span class="p">.</span><span class="nx">id</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="nx">task</span><span class="o">?</span><span class="p">.</span><span class="nx">id</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="s2">"border-primary bg-primary/5"</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s2">"border-base-300"</span><span class="si">}</span><span class="sb">`</span><span class="p">}</span>
+</span><a id="bike-ui/components/admin/PipelinePanel.tsx-110" name="bike-ui/components/admin/PipelinePanel.tsx-110"></a><span class="hll"><span class="w">                </span><span class="na">onClick</span><span class="o">=</span><span class="p">{()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+</span><a id="bike-ui/components/admin/PipelinePanel.tsx-111" name="bike-ui/components/admin/PipelinePanel.tsx-111"></a><span class="hll"><span class="w">                  </span><span class="nx">setSelected</span><span class="p">(</span><span class="sb">`task_</span><span class="si">${</span><span class="nx">item</span><span class="p">.</span><span class="nx">id</span><span class="si">}</span><span class="sb">`</span><span class="p">);</span>
+</span><a id="bike-ui/components/admin/PipelinePanel.tsx-112" name="bike-ui/components/admin/PipelinePanel.tsx-112"></a><span class="hll"><span class="w">                  </span><span class="nx">setWorkAfter</span><span class="p">(</span><span class="mf">0</span><span class="p">);</span>
+</span><a id="bike-ui/components/admin/PipelinePanel.tsx-113" name="bike-ui/components/admin/PipelinePanel.tsx-113"></a><span class="w">                </span><span class="p">}}</span>
+<a id="bike-ui/components/admin/PipelinePanel.tsx-114" name="bike-ui/components/admin/PipelinePanel.tsx-114"></a><span class="w">              </span><span class="p">&gt;</span>
+<a id="bike-ui/components/admin/PipelinePanel.tsx-115" name="bike-ui/components/admin/PipelinePanel.tsx-115"></a><span class="w">                </span><span class="p">&lt;</span><span class="nt">span</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"block text-sm font-semibold"</span><span class="p">&gt;</span>
+<a id="bike-ui/components/admin/PipelinePanel.tsx-116" name="bike-ui/components/admin/PipelinePanel.tsx-116"></a><span class="w">                  </span><span class="nx">Task</span><span class="w"> </span><span class="err">#</span><span class="p">{</span><span class="nx">item</span><span class="p">.</span><span class="nx">id</span><span class="p">}</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="nx">item</span><span class="p">.</span><span class="nx">task_type</span><span class="p">.</span><span class="nx">replaceAll</span><span class="p">(</span><span class="s2">"_"</span><span class="p">,</span><span class="w"> </span><span class="s2">" "</span><span class="p">)}</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">194</span>
+<span class="normal">195</span>
+<span class="normal">196</span>
+<span class="normal">197</span>
+<span class="normal">198</span>
+<span class="normal">199</span>
+<span class="normal">200</span>
+<span class="normal">201</span>
+<span class="normal">202</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/admin/PipelinePanel.tsx-194" name="bike-ui/components/admin/PipelinePanel.tsx-194"></a><span class="w">                      </span><span class="p">{</span><span class="w"> </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="s2">"Revision"</span><span class="p">,</span><span class="w"> </span><span class="nx">value</span><span class="o">:</span><span class="w"> </span><span class="kt">output.revision</span><span class="w"> </span><span class="p">},</span>
+<a id="bike-ui/components/admin/PipelinePanel.tsx-195" name="bike-ui/components/admin/PipelinePanel.tsx-195"></a><span class="w">                      </span><span class="p">{</span>
+<a id="bike-ui/components/admin/PipelinePanel.tsx-196" name="bike-ui/components/admin/PipelinePanel.tsx-196"></a><span class="w">                        </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="s2">"Published"</span><span class="p">,</span>
+<a id="bike-ui/components/admin/PipelinePanel.tsx-197" name="bike-ui/components/admin/PipelinePanel.tsx-197"></a><span class="w">                        </span><span class="nx">value</span><span class="o">:</span>
+<a id="bike-ui/components/admin/PipelinePanel.tsx-198" name="bike-ui/components/admin/PipelinePanel.tsx-198"></a><span class="hll"><span class="w">                          </span><span class="kt">formatTaskDate</span><span class="p">(</span><span class="nx">output</span><span class="p">.</span><span class="nx">available_at</span><span class="p">)</span><span class="w"> </span><span class="o">||</span>
+</span><a id="bike-ui/components/admin/PipelinePanel.tsx-199" name="bike-ui/components/admin/PipelinePanel.tsx-199"></a><span class="w">                          </span><span class="s2">"Pending or not recorded"</span><span class="p">,</span>
+<a id="bike-ui/components/admin/PipelinePanel.tsx-200" name="bike-ui/components/admin/PipelinePanel.tsx-200"></a><span class="w">                      </span><span class="p">},</span>
+<a id="bike-ui/components/admin/PipelinePanel.tsx-201" name="bike-ui/components/admin/PipelinePanel.tsx-201"></a><span class="w">                    </span><span class="p">]}</span>
+<a id="bike-ui/components/admin/PipelinePanel.tsx-202" name="bike-ui/components/admin/PipelinePanel.tsx-202"></a><span class="w">                  </span><span class="p">/&gt;</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+        <div class="src-snippet">
+            <div class="src-name">bike-ui/components/admin/PipelineTaskEvidence.tsx</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">55</span>
+<span class="normal">56</span>
+<span class="normal">57</span>
+<span class="normal">58</span>
+<span class="normal">59</span>
+<span class="normal">60</span>
+<span class="normal">61</span>
+<span class="normal">62</span>
+<span class="normal">63</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-55" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-55"></a><span class="w">            </span><span class="nx">value</span><span class="o">:</span><span class="w"> </span><span class="kt">duration</span><span class="p">(</span><span class="nx">run</span><span class="p">.</span><span class="nx">received_at</span><span class="p">,</span><span class="w"> </span><span class="nx">task</span><span class="p">.</span><span class="nx">attempts</span><span class="p">[</span><span class="mf">0</span><span class="p">]</span><span class="o">?</span><span class="p">.</span><span class="nx">started_at</span><span class="p">),</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-56" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-56"></a><span class="w">          </span><span class="p">},</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-57" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-57"></a><span class="w">          </span><span class="p">{</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-58" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-58"></a><span class="w">            </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="s2">"Parent task"</span><span class="p">,</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-59" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-59"></a><span class="hll"><span class="w">            </span><span class="nx">value</span><span class="o">:</span><span class="w"> </span><span class="kt">task.parent_task_id</span>
+</span><a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-60" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-60"></a><span class="w">              </span><span class="o">?</span><span class="w"> </span><span class="sb">`#</span><span class="si">${</span><span class="nx">task</span><span class="p">.</span><span class="nx">parent_task_id</span><span class="si">}</span><span class="sb">`</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-61" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-61"></a><span class="w">              </span><span class="o">:</span><span class="w"> </span><span class="s2">"No parent task"</span><span class="p">,</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-62" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-62"></a><span class="w">          </span><span class="p">},</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-63" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-63"></a><span class="w">        </span><span class="p">]}</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">70</span>
+<span class="normal">71</span>
+<span class="normal">72</span>
+<span class="normal">73</span>
+<span class="normal">74</span>
+<span class="normal">75</span>
+<span class="normal">76</span>
+<span class="normal">77</span>
+<span class="normal">78</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-70" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-70"></a><span class="w">          </span><span class="p">&lt;</span><span class="nt">ProcessingFacts</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-71" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-71"></a><span class="w">            </span><span class="na">facts</span><span class="o">=</span><span class="p">{[</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-72" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-72"></a><span class="w">              </span><span class="p">{</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-73" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-73"></a><span class="w">                </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="s2">"Step duration"</span><span class="p">,</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-74" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-74"></a><span class="hll"><span class="w">                </span><span class="nx">value</span><span class="o">:</span><span class="w"> </span><span class="kt">duration</span><span class="p">(</span><span class="nx">started</span><span class="p">,</span><span class="w"> </span><span class="nx">finished</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="p">(</span><span class="nx">running</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nx">now</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kt">null</span><span class="p">)),</span>
+</span><a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-75" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-75"></a><span class="w">              </span><span class="p">},</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-76" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-76"></a><span class="w">              </span><span class="p">{</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-77" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-77"></a><span class="w">                </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="s2">"Receipt to step start"</span><span class="p">,</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-78" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-78"></a><span class="w">                </span><span class="nx">value</span><span class="o">:</span><span class="w"> </span><span class="kt">duration</span><span class="p">(</span><span class="nx">run</span><span class="p">.</span><span class="nx">received_at</span><span class="p">,</span><span class="w"> </span><span class="nx">started</span><span class="p">),</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal"> 92</span>
+<span class="normal"> 93</span>
+<span class="normal"> 94</span>
+<span class="normal"> 95</span>
+<span class="normal"> 96</span>
+<span class="normal"> 97</span>
+<span class="normal"> 98</span>
+<span class="normal"> 99</span>
+<span class="normal">100</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-92" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-92"></a><span class="w">              </span><span class="p">{</span><span class="w"> </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="s2">"Work key"</span><span class="p">,</span><span class="w"> </span><span class="nx">value</span><span class="o">:</span><span class="w"> </span><span class="kt">work.work_key</span><span class="w"> </span><span class="p">},</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-93" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-93"></a><span class="w">              </span><span class="p">{</span><span class="w"> </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="s2">"Revision"</span><span class="p">,</span><span class="w"> </span><span class="nx">value</span><span class="o">:</span><span class="w"> </span><span class="kt">work.revision</span><span class="w"> </span><span class="p">},</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-94" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-94"></a><span class="w">            </span><span class="p">]}</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-95" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-95"></a><span class="w">          </span><span class="p">/&gt;</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-96" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-96"></a><span class="hll"><span class="w">          </span><span class="p">{</span><span class="nx">work</span><span class="p">.</span><span class="nx">error</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span>
+</span><a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-97" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-97"></a><span class="w">            </span><span class="p">&lt;</span><span class="nt">p</span><span class="w"> </span><span class="na">role</span><span class="o">=</span><span class="s">"alert"</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"text-error"</span><span class="p">&gt;</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-98" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-98"></a><span class="w">              </span><span class="p">{</span><span class="nx">work</span><span class="p">.</span><span class="nx">error</span><span class="p">}</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-99" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-99"></a><span class="w">            </span><span class="p">&lt;/</span><span class="nt">p</span><span class="p">&gt;</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-100" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-100"></a><span class="w">          </span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">}</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span>
+<span class="normal">112</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span>
+<span class="normal">119</span>
+<span class="normal">120</span>
+<span class="normal">121</span>
+<span class="normal">122</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-109" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-109"></a><span class="w">            </span><span class="p">{</span><span class="nx">stage</span><span class="p">.</span><span class="nx">summary</span><span class="p">.</span><span class="nx">map</span><span class="p">((</span><span class="nx">fact</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">(</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-110" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-110"></a><span class="w">              </span><span class="p">&lt;</span><span class="nt">li</span><span class="w"> </span><span class="na">key</span><span class="o">=</span><span class="p">{</span><span class="nx">fact</span><span class="p">}&gt;{</span><span class="nx">fact</span><span class="p">}&lt;/</span><span class="nt">li</span><span class="p">&gt;</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-111" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-111"></a><span class="w">            </span><span class="p">))}</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-112" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-112"></a><span class="w">          </span><span class="p">&lt;/</span><span class="nt">ul</span><span class="p">&gt;</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-113" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-113"></a><span class="hll"><span class="w">          </span><span class="p">{</span><span class="nx">stage</span><span class="p">.</span><span class="nx">error</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span>
+</span><a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-114" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-114"></a><span class="w">            </span><span class="p">&lt;</span><span class="nt">p</span><span class="w"> </span><span class="na">role</span><span class="o">=</span><span class="s">"alert"</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"text-error"</span><span class="p">&gt;</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-115" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-115"></a><span class="w">              </span><span class="p">{</span><span class="nx">stage</span><span class="p">.</span><span class="nx">error</span><span class="p">}</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-116" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-116"></a><span class="w">            </span><span class="p">&lt;/</span><span class="nt">p</span><span class="p">&gt;</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-117" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-117"></a><span class="w">          </span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">}</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-118" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-118"></a><span class="hll"><span class="w">          </span><span class="p">{</span><span class="nx">stage</span><span class="p">.</span><span class="nx">reused_attempt_id</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span>
+</span><a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-119" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-119"></a><span class="w">            </span><span class="p">&lt;</span><span class="nt">p</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"text-sm"</span><span class="p">&gt;</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-120" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-120"></a><span class="w">              </span><span class="nx">Reused</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="nx">attempt</span><span class="w"> </span><span class="err">#</span><span class="p">{</span><span class="nx">stage</span><span class="p">.</span><span class="nx">reused_attempt_id</span><span class="p">}</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-121" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-121"></a><span class="w">            </span><span class="p">&lt;/</span><span class="nt">p</span><span class="p">&gt;</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-122" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-122"></a><span class="w">          </span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">}</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span>
+<span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span>
+<span class="normal">161</span>
+<span class="normal">162</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-136" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-136"></a><span class="w">              </span><span class="p">{</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-137" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-137"></a><span class="w">                </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="s2">"Duration"</span><span class="p">,</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-138" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-138"></a><span class="w">                </span><span class="nx">value</span><span class="o">:</span><span class="w"> </span><span class="kt">duration</span><span class="p">(</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-139" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-139"></a><span class="w">                  </span><span class="nx">attempt</span><span class="p">.</span><span class="nx">started_at</span><span class="p">,</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-140" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-140"></a><span class="hll"><span class="w">                  </span><span class="nx">attempt</span><span class="p">.</span><span class="nx">finished_at</span><span class="w"> </span><span class="o">??</span>
+</span><a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-141" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-141"></a><span class="hll"><span class="w">                    </span><span class="p">(</span><span class="nx">attempt</span><span class="p">.</span><span class="nx">outcome</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">"running"</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nx">now</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kt">null</span><span class="p">),</span>
+</span><a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-142" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-142"></a><span class="w">                </span><span class="p">),</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-143" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-143"></a><span class="w">              </span><span class="p">},</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-144" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-144"></a><span class="w">              </span><span class="p">{</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-145" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-145"></a><span class="w">                </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="s2">"Started"</span><span class="p">,</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-146" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-146"></a><span class="hll"><span class="w">                </span><span class="nx">value</span><span class="o">:</span><span class="w"> </span><span class="kt">formatTaskDate</span><span class="p">(</span><span class="nx">attempt</span><span class="p">.</span><span class="nx">started_at</span><span class="p">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+</span><a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-147" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-147"></a><span class="w">              </span><span class="p">},</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-148" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-148"></a><span class="w">              </span><span class="p">{</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-149" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-149"></a><span class="w">                </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="s2">"Heartbeat"</span><span class="p">,</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-150" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-150"></a><span class="hll"><span class="w">                </span><span class="nx">value</span><span class="o">:</span><span class="w"> </span><span class="kt">formatTaskDate</span><span class="p">(</span><span class="nx">attempt</span><span class="p">.</span><span class="nx">heartbeat_at</span><span class="p">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+</span><a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-151" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-151"></a><span class="w">              </span><span class="p">},</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-152" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-152"></a><span class="w">              </span><span class="p">{</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-153" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-153"></a><span class="w">                </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="s2">"Progress"</span><span class="p">,</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-154" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-154"></a><span class="hll"><span class="w">                </span><span class="nx">value</span><span class="o">:</span><span class="w"> </span><span class="kt">formatTaskDate</span><span class="p">(</span><span class="nx">attempt</span><span class="p">.</span><span class="nx">progress_at</span><span class="p">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+</span><a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-155" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-155"></a><span class="w">              </span><span class="p">},</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-156" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-156"></a><span class="w">            </span><span class="p">]}</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-157" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-157"></a><span class="w">          </span><span class="p">/&gt;</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-158" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-158"></a><span class="hll"><span class="w">          </span><span class="p">{</span><span class="nx">attempt</span><span class="p">.</span><span class="nx">error</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span>
+</span><a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-159" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-159"></a><span class="w">            </span><span class="p">&lt;</span><span class="nt">p</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">"mt-2 text-sm text-error"</span><span class="w"> </span><span class="na">role</span><span class="o">=</span><span class="s">"alert"</span><span class="p">&gt;</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-160" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-160"></a><span class="w">              </span><span class="p">{</span><span class="nx">attempt</span><span class="p">.</span><span class="nx">error</span><span class="p">}</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-161" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-161"></a><span class="w">            </span><span class="p">&lt;/</span><span class="nt">p</span><span class="p">&gt;</span>
+<a id="bike-ui/components/admin/PipelineTaskEvidence.tsx-162" name="bike-ui/components/admin/PipelineTaskEvidence.tsx-162"></a><span class="w">          </span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">}</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+    </body>
+</html>
