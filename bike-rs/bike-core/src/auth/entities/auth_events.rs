@@ -31,22 +31,14 @@ impl Model {
     pub async fn count_event_type_since(
         db: &DatabaseConnection,
         event_type: &EventType,
-        days: i64,
+        since: DateTime<Utc>,
     ) -> Result<u64, DbErr> {
         let et = event_type.to_string();
         Entity::find()
             .filter(Column::EventType.eq(et))
-            .filter(Column::Ts.gte(chrono::Utc::now() - chrono::Duration::days(days)))
+            .filter(Column::Ts.gte(since))
             .count(db)
             .await
-    }
-
-    pub async fn count_password_resets_last_30d(db: &DatabaseConnection) -> Result<u64, DbErr> {
-        Self::count_event_type_since(db, &EventType::PasswordResetRequest, 30).await
-    }
-
-    pub async fn count_failed_logins_last_30d(db: &DatabaseConnection) -> Result<u64, DbErr> {
-        Self::count_event_type_since(db, &EventType::LoginFailed, 30).await
     }
 
     pub async fn record(

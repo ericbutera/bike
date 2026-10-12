@@ -20,7 +20,6 @@ use bike_core::auth;
 use bike_core::auth::AdminUserContext;
 use bike_core::background_jobs;
 use bike_core::platform::feature_flags;
-use bike_core::platform::metrics_controller;
 use serde_json::json;
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -73,10 +72,6 @@ fn platform_routes() -> Router<Arc<AppStorage>> {
             background_jobs::admin::api_routes::<AppStorage, AdminUserContext<AppStorage>>(),
         )
         .nest("/api/admin/users", auth::admin_routes())
-        .nest(
-            "/api/admin/metrics",
-            metrics_controller::admin_routes::<AppStorage>(),
-        )
 }
 
 fn activity_routes() -> Router<Arc<AppStorage>> {

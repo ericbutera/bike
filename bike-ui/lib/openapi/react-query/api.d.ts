@@ -390,42 +390,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/admin/metrics": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Get glass-managed system metrics (auth, background tasks, etc.)
-     * @description Glass automatically expands this response as new subsystems are added.
-     */
-    get: operations["admin_get_metrics"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/admin/metrics/app": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get: operations["admin_app_metrics"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/admin/segments/regenerate": {
     parameters: {
       query?: never;
@@ -2918,21 +2882,6 @@ export interface components {
     MessageResponse: {
       message: string;
     };
-    /**
-     * @description A named, displayable metric with a machine-readable key and human-readable label.
-     *     Used in sectioned admin metrics responses so the UI can map keys to icons/links.
-     */
-    NamedStat: {
-      /** @description Short time-range description, e.g. "last 30 days". */
-      desc: string;
-      error?: string | null;
-      /** @description Machine-readable identifier — used by the UI to look up icons and links. */
-      key: string;
-      /** @description Human-readable display label. */
-      label: string;
-      /** Format: int64 */
-      value: number;
-    };
     OAuthProviderMetadata: {
       id: string;
       label: string;
@@ -4250,18 +4199,6 @@ export interface components {
        */
       subscription_id: number;
       updates?: unknown;
-    };
-    /**
-     * @description System-wide metrics automatically aggregated from all glass subsystems.
-     *
-     *     Add new subsystem fields here (and populate them in `collect`) when new
-     *     system-level metric categories are added to glass. Consuming controllers
-     *     embed this via `#[serde(flatten)]` so new sections appear in the JSON
-     *     response without any controller changes.
-     */
-    SystemMetrics: {
-      auth: components["schemas"]["NamedStat"][];
-      background_tasks: components["schemas"]["NamedStat"][];
     };
     TaskAttemptResponse: {
       /** Format: int32 */
@@ -7120,84 +7057,6 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ApiErrorResponse"];
         };
-      };
-    };
-  };
-  admin_get_metrics: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Glass system metrics */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["SystemMetrics"];
-        };
-      };
-      /** @description Unauthorized */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  admin_app_metrics: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Bike app metrics */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          /**
-           * @example [
-           *       {
-           *         "desc": "last 30 days",
-           *         "key": "active_users",
-           *         "label": "Active users",
-           *         "value": 12
-           *       }
-           *     ]
-           */
-          "application/json": components["schemas"]["NamedStat"][];
-        };
-      };
-      /** @description Unauthorized */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
       };
     };
   };

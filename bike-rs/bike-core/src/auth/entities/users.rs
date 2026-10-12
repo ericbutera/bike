@@ -39,6 +39,18 @@ pub enum Relation {}
 impl ActiveModelBehavior for ActiveModel {}
 
 impl Model {
+    pub async fn count_created_since(
+        db: &DatabaseConnection,
+        since: DateTime<Utc>,
+    ) -> Result<u64, DbErr> {
+        crate::platform::aggregator::Aggregator::created_since::<Entity>(
+            db,
+            Column::CreatedAt,
+            since,
+        )
+        .await
+    }
+
     pub fn is_synthetic(&self) -> bool {
         self.oauth_provider.as_deref() == Some(SYNTHETIC_PROVIDER)
     }

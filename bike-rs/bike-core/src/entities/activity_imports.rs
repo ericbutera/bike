@@ -37,6 +37,18 @@ pub struct Model {
 pub enum Relation {}
 
 impl Entity {
+    pub async fn metrics_counts(
+        db: &DatabaseConnection,
+        now: DateTime<Utc>,
+    ) -> Result<crate::platform::aggregator::StoredRecordCounts, DbErr> {
+        crate::platform::aggregator::Aggregator::stored_records::<Entity>(
+            db,
+            Column::CreatedAt,
+            now,
+        )
+        .await
+    }
+
     pub async fn find_for_administration(
         db: &impl ConnectionTrait,
         import_id: i32,

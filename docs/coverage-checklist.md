@@ -118,7 +118,6 @@ here so integration coverage does not hide missing unit happy paths.
 - [ ] [bike-ui/app/admin/integrations/page.tsx](../bike-ui/app/admin/integrations/page.tsx)
 - [ ] [bike-ui/app/admin/layout.tsx](../bike-ui/app/admin/layout.tsx)
 - [ ] [bike-ui/app/admin/manual-tasks/page.tsx](../bike-ui/app/admin/manual-tasks/page.tsx)
-- [ ] [bike-ui/app/admin/metrics/page.tsx](../bike-ui/app/admin/metrics/page.tsx)
 - [ ] [bike-ui/app/admin/page.tsx](../bike-ui/app/admin/page.tsx)
 - [ ] [bike-ui/app/admin/tasks/page.tsx](../bike-ui/app/admin/tasks/page.tsx)
 - [ ] [bike-ui/app/admin/users/page.tsx](../bike-ui/app/admin/users/page.tsx)
@@ -152,7 +151,6 @@ here so integration coverage does not hide missing unit happy paths.
 - [x] [bike-ui/components/ThemeToggle.tsx](../bike-ui/components/ThemeToggle.tsx) — 97.05% lines; theme selection and persistence ([tests](../bike-ui/components/__tests__/ThemeToggle.test.tsx)).
 - [x] [bike-ui/components/activity-detail/ActivityImportTracePanel.tsx](../bike-ui/components/activity-detail/ActivityImportTracePanel.tsx) — recorded stages, summaries, and replay ([tests](../bike-ui/components/__tests__/ActivityImportTracePanel.test.tsx)).
 - [ ] [bike-ui/components/admin/AdminUsersPageContent.tsx](../bike-ui/components/admin/AdminUsersPageContent.tsx)
-- [ ] [bike-ui/components/admin/BikeMetricsSection.tsx](../bike-ui/components/admin/BikeMetricsSection.tsx)
 - [x] [bike-ui/components/admin/LocalAdminLayout.tsx](../bike-ui/components/admin/LocalAdminLayout.tsx) — 100.00% lines; admin content and successful metric display ([tests](../bike-ui/components/__tests__/PageShells.test.tsx)).
 - [x] [bike-ui/components/admin/Nav.tsx](../bike-ui/components/admin/Nav.tsx) — 100.00% lines; current-route sidebar selection ([tests](../bike-ui/components/__tests__/PageShells.test.tsx)).
 - [x] [bike-ui/components/reports/Charts.tsx](../bike-ui/components/reports/Charts.tsx) — 12.96% lines; UTC year labels only; chart rendering remains untested ([tests](../bike-ui/components/reports/Charts.test.ts)).

@@ -46,6 +46,7 @@ static FAILED_ACTIVITY_IMPORTS: Lazy<IntGauge> = Lazy::new(|| {
 
 /// Initialize all API metrics.  Must be called once at startup.
 pub fn init_metrics() {
+    crate::database_metrics::init();
     bike_core::platform::api_metrics::init_api_metrics("bike_rust_api");
     init_provider_metrics();
     Lazy::force(&STRAVA_CONNECTED_ATHLETES);
@@ -107,6 +108,7 @@ fn directory_bytes(root: &Path) -> std::io::Result<u64> {
 }
 
 async fn refresh_database_metrics(state: &AppStorage) -> Result<(), DbErr> {
+    crate::database_metrics::refresh(&state.db).await?;
     bike_core::provider_metrics::refresh_provider_rate_limit_metrics(&state.db).await?;
     let connected_athletes = strava_connections::Entity::find()
         .count(&state.db)

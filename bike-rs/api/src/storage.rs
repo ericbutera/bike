@@ -5,7 +5,6 @@ use bike_core::auth::{AuthRouteStorage, AuthStorage};
 use bike_core::background_jobs::admin::BackgroundTasksStorage;
 use bike_core::config::Config;
 use bike_core::platform::feature_flags::{FeatureFlagService, FeatureFlagStorage};
-use bike_core::platform::metrics_controller::MetricsStorage;
 use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
 use uuid::Uuid;
 
@@ -195,12 +194,6 @@ impl OAuthRouteStorage for AppStorage {
 
     fn oauth_provider_enabled(&self, provider: &str) -> bool {
         bike_core::auth::OAuthProviderService::is_provider_enabled(provider)
-    }
-}
-
-impl MetricsStorage for AppStorage {
-    fn db(&self) -> &DatabaseConnection {
-        &self.db
     }
 }
 

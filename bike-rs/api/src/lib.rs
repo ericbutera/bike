@@ -3,6 +3,7 @@ pub mod activity_import_lock;
 pub mod activity_location;
 pub mod app_error;
 pub mod controllers;
+mod database_metrics;
 pub mod feature_flags_keys;
 pub mod metrics;
 pub mod openapi;

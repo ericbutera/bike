@@ -23,6 +23,18 @@ pub enum Relation {}
 impl ActiveModelBehavior for ActiveModel {}
 
 impl Model {
+    pub async fn count_created_since(
+        db: &DatabaseConnection,
+        since: DateTime<Utc>,
+    ) -> Result<u64, DbErr> {
+        crate::platform::aggregator::Aggregator::created_since::<Entity>(
+            db,
+            Column::CreatedAt,
+            since,
+        )
+        .await
+    }
+
     pub async fn find_by_token(
         db: &DatabaseConnection,
         token: &str,

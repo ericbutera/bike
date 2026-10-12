@@ -1,29 +1,32 @@
-use crate::platform::aggregator::NamedStat;
+use crate::entities::{activities, activity_imports, segments};
+use crate::platform::aggregator::StoredRecordCounts;
 use crate::platform::auth_metrics::AuthMetrics;
-use crate::platform::background_task_metrics::BackgroundTaskMetrics;
-use sea_orm::DatabaseConnection;
-use serde::Serialize;
-use utoipa::ToSchema;
+use chrono::Utc;
+use sea_orm::{DatabaseConnection, DbErr};
 
-/// System-wide metrics automatically aggregated from all glass subsystems.
-///
-/// Add new subsystem fields here (and populate them in `collect`) when new
-/// system-level metric categories are added to glass. Consuming controllers
-/// embed this via `#[serde(flatten)]` so new sections appear in the JSON
-/// response without any controller changes.
-#[derive(Debug, Serialize, ToSchema)]
+/// One database-backed snapshot for Prometheus; a failed query fails the snapshot.
+#[derive(Debug)]
 pub struct SystemMetrics {
-    pub auth: Vec<NamedStat>,
-    pub background_tasks: Vec<NamedStat>,
+    pub auth: AuthMetrics,
+    pub activities: StoredRecordCounts,
+    pub activity_imports: StoredRecordCounts,
+    pub segments: StoredRecordCounts,
 }
 
 impl SystemMetrics {
-    pub async fn collect(db: &DatabaseConnection) -> Self {
-        let (auth, background_tasks) =
-            tokio::join!(AuthMetrics::fetch(db), BackgroundTaskMetrics::fetch(db),);
-        Self {
-            auth: auth.into_named_stats(),
-            background_tasks,
-        }
+    pub async fn collect(db: &DatabaseConnection) -> Result<Self, DbErr> {
+        let now = Utc::now();
+        let (auth, activities, activity_imports, segments) = tokio::try_join!(
+            AuthMetrics::fetch(db, now),
+            activities::Model::metrics_counts(db, now),
+            activity_imports::Entity::metrics_counts(db, now),
+            segments::Model::metrics_counts(db, now),
+        )?;
+        Ok(Self {
+            auth,
+            activities,
+            activity_imports,
+            segments,
+        })
     }
 }

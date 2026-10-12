@@ -2245,81 +2245,6 @@
         ]
       }
     },
-    "/admin/metrics": {
-      "get": {
-        "tags": [
-          "admin"
-        ],
-        "summary": "Get glass-managed system metrics (auth, background tasks, etc.)",
-        "description": "Glass automatically expands this response as new subsystems are added.",
-        "operationId": "admin_get_metrics",
-        "responses": {
-          "200": {
-            "description": "Glass system metrics",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SystemMetrics"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "403": {
-            "description": "Forbidden"
-          }
-        },
-        "security": [
-          {
-            "bearer_auth": []
-          }
-        ]
-      }
-    },
-    "/admin/metrics/app": {
-      "get": {
-        "tags": [
-          "admin"
-        ],
-        "operationId": "admin_app_metrics",
-        "responses": {
-          "200": {
-            "description": "Bike app metrics",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/NamedStat"
-                  }
-                },
-                "example": [
-                  {
-                    "desc": "last 30 days",
-                    "key": "active_users",
-                    "label": "Active users",
-                    "value": 12
-                  }
-                ]
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "403": {
-            "description": "Forbidden"
-          }
-        },
-        "security": [
-          {
-            "bearer_auth": []
-          }
-        ]
-      }
-    },
     "/admin/segments/regenerate": {
       "post": {
         "tags": [
@@ -9175,40 +9100,6 @@
           }
         }
       },
-      "NamedStat": {
-        "type": "object",
-        "description": "A named, displayable metric with a machine-readable key and human-readable label.\nUsed in sectioned admin metrics responses so the UI can map keys to icons/links.",
-        "required": [
-          "key",
-          "label",
-          "desc",
-          "value"
-        ],
-        "properties": {
-          "desc": {
-            "type": "string",
-            "description": "Short time-range description, e.g. \"last 30 days\"."
-          },
-          "error": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "key": {
-            "type": "string",
-            "description": "Machine-readable identifier — used by the UI to look up icons and links."
-          },
-          "label": {
-            "type": "string",
-            "description": "Human-readable display label."
-          },
-          "value": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
-      },
       "OAuthProviderMetadata": {
         "type": "object",
         "required": [
@@ -12235,28 +12126,6 @@
           "owner_id": 12345678,
           "subscription_id": 12345,
           "updates": {}
-        }
-      },
-      "SystemMetrics": {
-        "type": "object",
-        "description": "System-wide metrics automatically aggregated from all glass subsystems.\n\nAdd new subsystem fields here (and populate them in `collect`) when new\nsystem-level metric categories are added to glass. Consuming controllers\nembed this via `#[serde(flatten)]` so new sections appear in the JSON\nresponse without any controller changes.",
-        "required": [
-          "auth",
-          "background_tasks"
-        ],
-        "properties": {
-          "auth": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/NamedStat"
-            }
-          },
-          "background_tasks": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/NamedStat"
-            }
-          }
         }
       },
       "TaskAttemptResponse": {

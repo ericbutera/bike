@@ -19,9 +19,6 @@ export default function AdminAnalyticsPage() {
               <Link href="/admin/manual-tasks" className="btn btn-primary">
                 Open task tools
               </Link>
-              <Link href="/admin/metrics" className="btn btn-ghost">
-                View metrics
-              </Link>
             </div>
           </section>
         </div>
