@@ -55,6 +55,14 @@ Strava is the first live cloud activity integration. The gateway handles OAuth r
 
 Manual Garmin export import is a first-class ingestion path. Official Garmin cloud activity sync is additive if it becomes available; Bike should not depend on private or reverse-engineered Garmin Connect endpoints for core behavior.
 
+## Generated coverage reports
+
+- Coverage reports are generated artifacts published on `gh-pages`; application
+  source history remains on `main`.
+- Each report commit uses its source revision's author name and email for both
+  author and committer. Publishing credentials grant access without defining a
+  separate contributor named `coverage`.
+
 ## Product Risks
 
 Garmin cloud access can be uncertain, so manual FIT/TCX/GPX import must remain a durable path.

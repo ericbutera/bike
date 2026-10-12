@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Isolated coverage-policy, native Go adapter, and static-site unit fixtures.
+# Isolated coverage-policy, native Go adapter, static-site and publishing fixtures.
 set -euo pipefail
 while IFS= read -r variable; do unset "$variable"; done < <(git rev-parse --local-env-vars)
 cd "$(dirname "$0")/.."
@@ -9,7 +9,7 @@ fixture="$(mktemp -d "${TMPDIR:-/tmp}/bike-coverage-test.XXXXXX")"
 cleanup() {
   local result=$?
   if ((result != 0)); then
-    for log in "$fixture/pass.log" "$fixture/fail.log" "$fixture/go.log"; do
+    for log in "$fixture/pass.log" "$fixture/fail.log" "$fixture/go.log" "$fixture/publication.log"; do
       if [[ -f "$log" ]]; then cat "$log" >&2; fi
     done
   fi
@@ -125,6 +125,40 @@ jq '[. + {commit:"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"} | .projects["map-re
 bash "$repo/scripts/coverage-site.sh" "$site" >"$fixture/pass.log" 2>&1
 grep -Fq 'Language changed; new baseline' "$site/coverage/index.html"
 
+test_publication_identity() {
+  local remote="file://$fixture/remote.git" revision expected actual state
+  git init --bare --quiet --initial-branch=main "$fixture/remote.git"
+  git -C "$fixture" branch -m main
+  cp "$repo/scripts/coverage-publish.sh" "$repo/scripts/coverage-site.sh" "$fixture/scripts/"
+  cp "$repo/mise.toml" "$fixture/"
+  git config --file "$fixture/publication.gitconfig" --add "url.$remote.insteadOf" 'https://github.com/ericbutera/bike.git'
+  git config --file "$fixture/publication.gitconfig" --add "url.$remote.insteadOf" 'ssh://git@ssh.github.com:443/ericbutera/bike.git'
+  # The real publisher creates and then updates a local bare remote. Git's URL
+  # mappings keep both production transports inside this disposable fixture.
+  for state in initial existing; do
+    if [[ "$state" == existing ]]; then
+      git -C "$fixture" -c user.name='Source author fixture' -c user.email='source-author@example.test' \
+        commit --quiet --allow-empty -m 'test: subsequent publication source'
+    fi
+    revision="$(git -C "$fixture" rev-parse HEAD)"
+    git -C "$fixture" push --quiet "$remote" HEAD:main
+    (
+      export GIT_CONFIG_GLOBAL="$fixture/publication.gitconfig" GIT_CONFIG_NOSYSTEM=1
+      export MISE_TRUSTED_CONFIG_PATHS="$fixture"
+      export COVERAGE_PUBLISH_KEY=fixture-unused-key COVERAGE_GITHUB_SSH_HOST_KEY=fixture-unused-host-key
+      export COVERAGE_SITE_URL=http://coverage.example.test
+      export CI_PIPELINE_EVENT=push CI_COMMIT_BRANCH=main CI_COMMIT_SHA="$revision"
+      bash "$fixture/scripts/coverage-publish.sh"
+    ) 2>&1 | tee "$fixture/publication.log"
+    expected="$(git -C "$fixture" log -1 --format='%an <%ae>')"
+    actual="$(git --git-dir="$fixture/remote.git" log -1 --format='%an <%ae>|%cn <%ce>' gh-pages)"
+    test "$actual" = "$expected|$expected"
+    git --git-dir="$fixture/remote.git" show gh-pages:coverage/latest-summary.json \
+      | jq -e --arg revision "$revision" '.commit == $revision' >/dev/null
+  done
+}
+test_publication_identity
+
 # A real Go module proves report identity and paths.
 jq 'map(if .id == "map-renderer" then .language = "Go" | .include = "map-renderer/**/*.go" | .exclude = ["*_test.go", "*.pb.go"] else . end)' "$fixture/coverage-projects.json" >"$fixture/projects.next.json"
 mv "$fixture/projects.next.json" "$fixture/coverage-projects.json"
@@ -160,4 +194,4 @@ GO
   test -s "$fixture/.artifacts/coverage/$id/html/index.html"
   test ! -e "$fixture/.artifacts/coverage/$id/html/retired.mjs.html"
 done < <(jq -r '.[] | select(.language == "Go") | .id' "$fixture/coverage-projects.json")
-printf 'Coverage fixtures passed: six independent gates, legacy/migrations, historical reports, and two native Go projects.\n'
+printf 'Coverage fixtures passed: independent gates, legacy/migrations, historical reports, publisher identities, and native Go projects.\n'

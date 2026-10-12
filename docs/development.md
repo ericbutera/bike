@@ -289,6 +289,8 @@ to `.artifacts/coverage/diff/`. Run `mise run coverage:test` for isolated toolin
 fixtures proving independent thresholds, legacy/migration exemptions, invalid
 source-path or missing-report failure, historical report compatibility, and
 native collection from two independent Go modules; prek and CI run these same fixtures.
+They also exercise the real publisher against a disposable local bare Git remote,
+checking author and committer identities for both new and existing report branches.
 
 View published reports at **[Bike test coverage](https://ericbutera.github.io/bike/coverage/)**.
 GitHub Pages is free for this public repository; Codecov and other paid services
@@ -307,6 +309,9 @@ print uncovered lines without receiving publishing credentials. Reports can
 publish after a changed-line failure so failed main coverage remains inspectable;
 the failed gate still blocks image builds and deployment. Superseded main runs
 skip publication to preserve the latest source revision.
+
+The [report attribution contract](specs/project-overview.md#generated-coverage-reports)
+defines the author and committer identities used by the publisher.
 
 ## Regenerate contracts and shared assets
 

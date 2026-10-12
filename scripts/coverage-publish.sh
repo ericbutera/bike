@@ -34,8 +34,8 @@ else
   git -C "$site/repo" remote add origin "$remote"
 fi
 mise run coverage:site -- "$site/repo"
-git -C "$site/repo" config user.name 'Bike coverage'
-git -C "$site/repo" config user.email 'coverage@users.noreply.github.com'
+git -C "$site/repo" config user.name "$(git log -1 --format=%an)"
+git -C "$site/repo" config user.email "$(git log -1 --format=%ae)"
 git -C "$site/repo" add .
 git -C "$site/repo" commit --quiet -m "docs: coverage reports for $(git rev-parse --short=12 HEAD)"
 git -C "$site/repo" push --quiet "ssh://git@ssh.github.com:443/$repository.git" gh-pages
