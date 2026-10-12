@@ -69,7 +69,7 @@ test("admin tasks expose the same filters, timing, and detail in Bike", async ({
     await expect(detail).toContainText(
       "Original receipt and task lineage were not recorded for this task.",
     );
-    await detail.getByRole("button", { name: "Close" }).click();
+    await detail.getByRole("button", { name: "Close", exact: true }).click();
 
     await page.getByLabel("Filter task status").selectOption("completed");
     await history.getByRole("button", { name: "Search", exact: true }).click();

@@ -12,6 +12,7 @@ import Pagination from "../ui/Pagination";
 import { DataGrid, ListCard, type Column } from "../ui/DataGrid";
 import TaskProcessingHistory from "./TaskProcessingHistory";
 import ProcessorOverview from "./ProcessorOverview";
+import Modal from "../ui/Modal";
 import {
   formatTaskDate as formatDate,
   formatTaskDuration as formatDuration,
@@ -187,7 +188,7 @@ export default function TasksPageContent({
 
   return (
     <>
-      <ProcessorOverview />
+      <ProcessorOverview onSelectTask={setSelectedId} />
       <ListCard
         title={
           filters.status === "completed" ? "Completed tasks" : "Task history"
@@ -292,86 +293,61 @@ export default function TasksPageContent({
         ) : null}
       </ListCard>
       {selectedId !== null ? (
-        <div
-          className="modal modal-open"
-          role="dialog"
-          aria-modal="true"
-          aria-label={"Task " + selectedId + " detail"}
-          onClick={() => setSelectedId(null)}
+        <Modal
+          title={`Task #${selectedId} — ${selectedTask?.task_type ?? detail?.task_type ?? "Detail"}`}
+          onClose={() => setSelectedId(null)}
         >
-          <div
-            className="modal-box max-w-3xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h3 className="text-lg font-bold">
-              Task #{selectedId} —{" "}
-              {selectedTask?.task_type ?? detail?.task_type}
-            </h3>
-            {detailQuery.isLoading ? (
-              <p className="mt-4">Loading task…</p>
-            ) : null}
-            {detailQuery.error ? (
-              <p role="alert" className="mt-4 text-error">
-                Unable to load task detail.
-              </p>
-            ) : null}
-            {detail ? (
-              <>
-                <dl className="mt-4 grid grid-cols-1 items-start gap-4 text-sm sm:grid-cols-2">
-                  <TaskField label="Status" value={detail.status} />
-                  <TaskField
-                    label="Attempts"
-                    value={
-                      String(detail.attempts) +
-                      "/" +
-                      String(detail.max_attempts)
-                    }
-                  />
-                  <TaskField
-                    label="Scheduled"
-                    value={formatDate(detail.scheduled_for)}
-                  />
-                  <TaskField label="Error" value={detail.error} />
-                  <TaskField
-                    label="Started"
-                    value={formatDate(detail.started_at)}
-                  />
-                  <TaskField
-                    label="Completed"
-                    value={formatDate(detail.completed_at)}
-                  />
-                  <TaskField
-                    label="Created"
-                    value={formatDate(detail.created_at)}
-                  />
-                  <TaskField
-                    label="Updated"
-                    value={formatDate(detail.updated_at)}
-                  />
-                </dl>
-                <TaskProcessingHistory
-                  detail={detail}
-                  onSelectTask={setSelectedId}
+          {detailQuery.isLoading ? <p className="mt-4">Loading task…</p> : null}
+          {detailQuery.error ? (
+            <p role="alert" className="mt-4 text-error">
+              Unable to load task detail.
+            </p>
+          ) : null}
+          {detail ? (
+            <>
+              <dl className="mt-4 grid grid-cols-1 items-start gap-4 text-sm sm:grid-cols-2">
+                <TaskField label="Status" value={detail.status} />
+                <TaskField
+                  label="Attempts"
+                  value={
+                    String(detail.attempts) + "/" + String(detail.max_attempts)
+                  }
                 />
-                <div className="mt-4 text-sm">
-                  <strong>Payload:</strong>
-                  <pre className="mt-1 max-h-48 w-full max-w-full overflow-auto rounded bg-base-200 p-2 text-xs">
-                    {formatPayload(detail.payload)}
-                  </pre>
-                </div>
-              </>
-            ) : null}
-            <div className="modal-action">
-              <button
-                className="btn"
-                type="button"
-                onClick={() => setSelectedId(null)}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
+                <TaskField
+                  label="Scheduled"
+                  value={formatDate(detail.scheduled_for)}
+                />
+                <TaskField label="Error" value={detail.error} />
+                <TaskField
+                  label="Started"
+                  value={formatDate(detail.started_at)}
+                />
+                <TaskField
+                  label="Completed"
+                  value={formatDate(detail.completed_at)}
+                />
+                <TaskField
+                  label="Created"
+                  value={formatDate(detail.created_at)}
+                />
+                <TaskField
+                  label="Updated"
+                  value={formatDate(detail.updated_at)}
+                />
+              </dl>
+              <TaskProcessingHistory
+                detail={detail}
+                onSelectTask={setSelectedId}
+              />
+              <div className="mt-4 text-sm">
+                <strong>Payload:</strong>
+                <pre className="mt-1 max-h-48 w-full max-w-full overflow-auto rounded bg-base-200 p-2 text-xs">
+                  {formatPayload(detail.payload)}
+                </pre>
+              </div>
+            </>
+          ) : null}
+        </Modal>
       ) : null}
     </>
   );

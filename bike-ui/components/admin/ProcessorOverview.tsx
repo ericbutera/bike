@@ -3,15 +3,28 @@ import { useState } from "react";
 import { useWorkerProcessors } from "../../lib/queries";
 import type { components } from "../../lib/openapi/react-query/api";
 import { DataGrid, ListCard, type Column } from "../ui/DataGrid";
+import ProcessorHistoryModal from "./ProcessorHistoryModal";
 
 type Distribution = components["schemas"]["Distribution"];
 type Processor = components["schemas"]["ProcessorSummary"];
-const columns: Column<Processor>[] = [
+type ProcessorActions = { onSelect: (processor: Processor) => void };
+const columns: Column<Processor, ProcessorActions>[] = [
   {
     key: "processor",
     header: "Processor",
     className: "whitespace-nowrap",
-    render: (processor) => processor.task_type,
+    render: (processor, actions) => (
+      <button
+        type="button"
+        className="link link-primary"
+        onClick={(event) => {
+          event.stopPropagation();
+          actions?.onSelect(processor);
+        }}
+      >
+        {processor.task_type}
+      </button>
+    ),
   },
   {
     key: "eligible",
@@ -50,10 +63,15 @@ const columns: Column<Processor>[] = [
   },
 ];
 
-export default function ProcessorOverview() {
+export default function ProcessorOverview({
+  onSelectTask,
+}: {
+  onSelectTask: (id: number) => void;
+}) {
   const [hours, setHours] = useState(24);
   const [outcome, setOutcome] = useState("completed");
   const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<Processor | null>(null);
   const query = useWorkerProcessors(hours, outcome);
   const term = search.trim().toLowerCase();
   const rows = (query.data ?? []).filter((processor) =>
@@ -110,6 +128,8 @@ export default function ProcessorOverview() {
       <DataGrid
         rows={rows}
         columns={columns}
+        params={{ onSelect: setSelected }}
+        onRowClick={setSelected}
         isLoading={query.isLoading}
         error={query.error ? "Unable to load processor statistics." : undefined}
         emptyMessage="No processors match these filters."
@@ -119,6 +139,17 @@ export default function ProcessorOverview() {
         Percentiles cover the full selected window. Logical completion includes
         waits and retries of successful tasks. N/A means no samples.
       </p>
+      {selected ? (
+        <ProcessorHistoryModal
+          key={selected.task_type}
+          taskType={selected.task_type}
+          onClose={() => setSelected(null)}
+          onSelectTask={(id) => {
+            setSelected(null);
+            onSelectTask(id);
+          }}
+        />
+      ) : null}
     </ListCard>
   );
 }

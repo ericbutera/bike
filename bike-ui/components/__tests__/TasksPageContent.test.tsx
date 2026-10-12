@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import TasksPageContent from "../admin/TasksPageContent";
@@ -81,6 +87,63 @@ describe("TasksPageContent", () => {
       });
     });
     expect(mocks.refetchTasks).toHaveBeenCalled();
+  });
+
+  it("opens a processor run in the shared task detail dialog", async () => {
+    const distribution = { samples: 0, p50_seconds: null, p90_seconds: null };
+    mocks.useWorkerProcessors.mockReturnValue({
+      data: [
+        {
+          task_type: "rebuild_fitness_freshness",
+          queued: 0,
+          scheduled: 0,
+          running: 0,
+          retrying: 0,
+          failed: 0,
+          attempt: distribution,
+          eligible_wait: distribution,
+          logical_completion: distribution,
+        },
+      ],
+    });
+    mocks.useAdminTask.mockReturnValue({
+      data: {
+        id: 42,
+        task_type: "rebuild_fitness_freshness",
+        status: "completed",
+        attempts: 1,
+        max_attempts: 3,
+        scheduled_for: "2026-01-02T11:59:00Z",
+        started_at: "2026-01-02T12:00:00Z",
+        completed_at: "2026-01-02T12:00:01Z",
+        created_at: "2026-01-02T11:59:00Z",
+        updated_at: "2026-01-02T12:00:01Z",
+        payload: { user_id: 7 },
+        attempt_history: [],
+        pipelines: [],
+      },
+    });
+    const user = userEvent.setup();
+    render(<TasksPageContent />);
+    await user.click(
+      screen.getByRole("button", { name: "rebuild_fitness_freshness" }),
+    );
+    expect(
+      within(screen.getByRole("dialog")).getByText("Last 10 runs"),
+    ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "#42" }));
+    const detail = screen.getByRole("dialog", {
+      name: "Task #42 — rebuild_fitness_freshness",
+    });
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(within(detail).getByText("Processing history")).toBeVisible();
+    expect(within(detail).getByText(/"user_id": 7/)).toBeVisible();
+    expect(mocks.useAdminTask).toHaveBeenLastCalledWith(42);
+    await user.click(within(detail).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Filter task status")).toHaveValue(
+      "completed",
+    );
   });
 
   it("searches task lineage by the correlation ID from an error log", async () => {
