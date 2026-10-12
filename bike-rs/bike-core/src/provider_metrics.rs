@@ -1,5 +1,8 @@
+use crate::entities::provider_rate_limit_buckets;
+use chrono::Utc;
 use once_cell::sync::Lazy;
 use prometheus::{register_int_counter_vec, register_int_gauge_vec, IntCounterVec, IntGaugeVec};
+use sea_orm::{ConnectionTrait, DbErr};
 
 const STRAVA_PROVIDER: &str = "strava";
 const PROVIDER_API_REQUEST_COUNTER_CLASSES: &[&str] = &["overall", "read"];
@@ -132,6 +135,24 @@ pub fn set_provider_rate_limit_bucket(
         .set(reset_timestamp);
 }
 
+pub async fn refresh_provider_rate_limit_metrics<C>(db: &C) -> Result<(), DbErr>
+where
+    C: ConnectionTrait,
+{
+    let rows = provider_rate_limit_buckets::Model::list_ordered(db).await?;
+    let now = Utc::now();
+    for row in rows {
+        set_provider_rate_limit_bucket(
+            &row.provider,
+            &row.bucket,
+            row.limit_count,
+            row.effective_used_count(now),
+            row.reset_at.timestamp(),
+        );
+    }
+    Ok(())
+}
+
 fn record_provider_api_request_window_counters(provider: &str, request_class: &str) {
     for counter_class in provider_api_request_counter_classes(request_class) {
         PROVIDER_API_REQUESTS_15_MINUTES_TOTAL
@@ -156,6 +177,10 @@ fn provider_api_request_counter_classes(request_class: &str) -> &'static [&'stat
         _ => &["overall"],
     }
 }
+
+#[cfg(test)]
+#[path = "provider_metrics_tests.rs"]
+mod snapshot_tests;
 
 #[cfg(test)]
 mod tests {
