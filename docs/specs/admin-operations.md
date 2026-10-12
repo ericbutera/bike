@@ -82,6 +82,19 @@ Admin pages require an authenticated admin user. Non-admin users should not be a
   sample states, full-population p50/p90, sample count, outcome and window.
   Queued, scheduled, running, retrying and failed counts are distinct.
   Gateway queue operations and runtime distributions are in the gateway dashboard.
+- Selecting a registered processor opens a modal with its latest 10 task runs,
+  newest queued task first, across all statuses and dates. Processor statistics
+  and task-history filters do not limit these runs. Show task ID, status,
+  attempts, runtime, queued/started/finished timestamps, and full errors through
+  tooltips. Missing timestamps and runtime remain unknown. Selecting a run
+  opens the existing task detail, including attempts, payload, and pipeline.
+- Each registered processor type has a plain-language description available
+  through the modal's question-mark help icon on hover or keyboard focus.
+  Unrecognized future types explain that a specific description is unavailable.
+  Modals contain keyboard focus and close with Escape, the backdrop, or Close.
+- Clickable links, enabled buttons, disclosure summaries (including View
+  complete pipeline), and task/processor rows use a pointer cursor. Ordinary
+  text remains selectable.
 - Meaningful import stage/work completion advances progress; a heartbeat alone
   does not. Anomalies store reason, observed/expected value, policy version,
   evaluation time and sample count. Relative duration needs 30 earlier comparable

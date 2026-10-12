@@ -10,6 +10,15 @@ body {
   min-height: 100vh;
 }
 
+@layer base {
+  a[href],
+  button:enabled,
+  summary,
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+}
+
 .maplibregl-map {
   height: 100%;
   width: 100%;

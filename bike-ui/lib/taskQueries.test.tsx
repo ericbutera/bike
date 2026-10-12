@@ -31,6 +31,23 @@ afterEach(() => {
 });
 
 describe("admin task queries", () => {
+  it("requests ten recent runs for exactly one processor without status or date filters", async () => {
+    fetchMock.mockResolvedValue(
+      Response.json({ data: [], metadata: { total: 25, per_page: 10 } }),
+    );
+    const { result } = renderHook(
+      () =>
+        useAdminTasks({ taskType: "prepare_heatmap", page: 1, perPage: 10 }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.data).toEqual([]));
+    const url = new URL((fetchMock.mock.calls[0][0] as Request).url);
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      task_type: "prepare_heatmap",
+      page: "1",
+      per_page: "10",
+    });
+  });
   it("does not fetch an unselected pipeline and sends work and output pagination to the API", async () => {
     const { unmount } = renderHook(() => usePipelineGraph(null), { wrapper });
     expect(fetchMock).not.toHaveBeenCalled();

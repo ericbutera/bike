@@ -1,6 +1,9 @@
 "use client";
 
-import { faCircleInfo } from "@fortawesome/free-solid-svg-icons";
+import {
+  faCircleInfo,
+  faCircleQuestion,
+} from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -10,6 +13,7 @@ type InfoTooltipProps = {
   tip: string;
   position?: "top" | "right" | "bottom" | "left";
   className?: string;
+  icon?: "info" | "help";
 };
 
 type TooltipCoordinates = {
@@ -23,12 +27,14 @@ export default function InfoTooltip({
   tip,
   position = "right",
   className,
+  icon = "info",
 }: InfoTooltipProps) {
   const tooltipId = useId();
   const triggerRef = useRef<HTMLSpanElement | null>(null);
   const [coordinates, setCoordinates] = useState<TooltipCoordinates | null>(
     null,
   );
+  const [container, setContainer] = useState<Element | null>(null);
 
   function openTooltip() {
     const trigger = triggerRef.current;
@@ -36,6 +42,7 @@ export default function InfoTooltip({
       return;
     }
 
+    setContainer(trigger.closest("dialog") ?? document.body);
     setCoordinates(coordinatesFor(trigger.getBoundingClientRect(), position));
   }
 
@@ -56,9 +63,13 @@ export default function InfoTooltip({
         onFocus={openTooltip}
         onBlur={closeTooltip}
       >
-        <FontAwesomeIcon icon={faCircleInfo} className="h-4 w-4" aria-hidden />
+        <FontAwesomeIcon
+          icon={icon === "help" ? faCircleQuestion : faCircleInfo}
+          className="h-4 w-4"
+          aria-hidden
+        />
       </span>
-      {coordinates
+      {coordinates && container
         ? createPortal(
             <span
               id={tooltipId}
@@ -68,7 +79,7 @@ export default function InfoTooltip({
             >
               {tip}
             </span>,
-            document.body,
+            container,
           )
         : null}
     </>
