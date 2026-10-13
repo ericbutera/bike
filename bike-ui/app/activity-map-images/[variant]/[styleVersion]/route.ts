@@ -1,7 +1,4 @@
-import {
-  apiBaseUrls,
-  syntheticRequestHeaders,
-} from "../../../../lib/serverApi";
+import { apiBaseUrls } from "../../../../lib/serverApi";
 import { headersWithTraceContext } from "../../../../lib/trace-context";
 
 export const runtime = "nodejs";
@@ -18,9 +15,7 @@ export async function GET(
   context: { params: Promise<{ variant: string; styleVersion: string }> },
 ) {
   const { variant, styleVersion } = await context.params;
-  const syntheticHeaders = syntheticRequestHeaders(request.headers);
-  if (syntheticHeaders === null) return imageError(403);
-  const forwarded = new Headers({ Accept: "image/png", ...syntheticHeaders });
+  const forwarded = new Headers({ Accept: "image/png" });
   for (const name of ["cookie", "authorization", "if-none-match"]) {
     const value = request.headers.get(name);
     if (value) forwarded.set(name, value);

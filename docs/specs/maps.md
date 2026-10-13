@@ -85,8 +85,8 @@ flowchart LR
 
 - The Rust API owns viewer authentication, activity ownership, route selection,
   PNG caching, conditional responses, and cache maintenance.
-- The Next.js image route forwards viewer cookies/authorization, allowed
-  synthetic credentials, W3C trace context, and `If-None-Match` to the API.
+- The Next.js image route forwards viewer cookies/authorization, W3C trace
+  context, and `If-None-Match` to the API.
   It does not fetch activity JSON, submit coordinates, or hold the worker token.
 - Rust checks current ownership before every cache lookup and every conditional
   response. A cached image or matching ETag never grants access. Missing,
@@ -132,7 +132,6 @@ size, or DPR default is inferred by the HTTP endpoint.
 - The UI preserves successful PNG/304 headers and bodies, forwards
   400/401/403/404 status, and maps API unavailability and other failures to 502.
   UI error responses have an empty body and `Cache-Control: no-store`.
-  Rejected synthetic credentials return 403 before contacting the API.
 - A cache hit remains usable while the snapshot worker is unavailable. A miss
   makes one snapshot RPC; the API does not retry a failed RPC automatically.
 

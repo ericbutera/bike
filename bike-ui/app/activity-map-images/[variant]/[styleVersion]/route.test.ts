@@ -34,8 +34,6 @@ describe("activity map images", () => {
             authorization: "Bearer owner",
             cookie: "bike-session=owner",
             "if-none-match": '"older-map"',
-            "x-bike-synthetic-key": "internal-test-key",
-            "x-forwarded-for": "10.1.2.3",
           },
         },
       ),
@@ -49,7 +47,6 @@ describe("activity map images", () => {
     expect(forwarded.get("authorization")).toBe("Bearer owner");
     expect(forwarded.get("cookie")).toBe("bike-session=owner");
     expect(forwarded.get("if-none-match")).toBe('"older-map"');
-    expect(forwarded.get("x-bike-synthetic-key")).toBe("internal-test-key");
     expect(fetchMock.mock.calls[0]?.[1]?.body).toBeUndefined();
     expect(response.headers.get("Content-Type")).toBe("image/png");
     expect(response.headers.get("Cache-Control")).toBe("private, no-cache");
@@ -91,24 +88,6 @@ describe("activity map images", () => {
     );
     expect(response.status).toBe(403);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("rejects a synthetic credential from a forwarded public request before fetching", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch");
-    const response = await GET(
-      new Request(
-        "http://localhost/activity-map-images/full/1?activityId=7&theme=light&dpr=1",
-        {
-          headers: {
-            "x-bike-synthetic-key": "internal-test-key",
-            forwarded: "",
-          },
-        },
-      ),
-      context,
-    );
-    expect(response.status).toBe(403);
-    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("uses the local API fallback after a connection failure", async () => {

@@ -6,7 +6,6 @@ import {
 } from "../../lib/routePreview";
 import { getServerConfig } from "../../lib/config";
 import { DEFAULT_ROUTE_COLOR } from "../../lib/mapAppearance";
-import { syntheticRequestHeaders } from "../../lib/serverApi";
 import { headersWithTraceContext } from "../../lib/trace-context";
 
 export const runtime = "nodejs";
@@ -193,8 +192,6 @@ async function loadActivityRoutePoints(
 ): Promise<{ points: RoutePreviewCoordinate[]; denied?: number }> {
   const cookie = request.headers.get("cookie");
   const authorization = request.headers.get("authorization");
-  const syntheticHeaders = syntheticRequestHeaders(request.headers);
-  if (syntheticHeaders === null) return { points: [], denied: 403 };
 
   for (const apiBaseUrl of resolveActivityApiBaseUrls()) {
     try {
@@ -204,7 +201,6 @@ async function loadActivityRoutePoints(
             Accept: "application/json",
             ...(cookie ? { cookie } : {}),
             ...(authorization ? { authorization } : {}),
-            ...syntheticHeaders,
           },
           request.headers,
         ),
@@ -276,7 +272,7 @@ export async function handlePreviewRequest(
   });
 
   if (usesActivityGeometry) {
-    headers.set("Vary", "Cookie, Authorization, X-Bike-Synthetic-Key");
+    headers.set("Vary", "Cookie, Authorization");
   }
 
   if (requestedVersion !== ROUTE_PREVIEW_STYLE_VERSION) {

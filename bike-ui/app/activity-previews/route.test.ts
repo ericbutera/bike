@@ -54,9 +54,7 @@ describe("handlePreviewRequest", () => {
       "ingress-request-7",
     );
     expect(response.headers.get("Content-Type")).toBe("image/svg+xml");
-    expect(response.headers.get("Vary")).toBe(
-      "Cookie, Authorization, X-Bike-Synthetic-Key",
-    );
+    expect(response.headers.get("Vary")).toBe("Cookie, Authorization");
 
     const body = await response.text();
 

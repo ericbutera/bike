@@ -10,7 +10,6 @@ pub mod integration_events;
 pub mod reports;
 pub mod segments;
 pub mod strava;
-pub mod synthetics;
 pub mod training_goals;
 pub mod user_preferences;
 
@@ -33,7 +32,6 @@ pub struct HealthResponse {
 
 pub fn routes() -> Router<Arc<AppStorage>> {
     Router::new()
-        .route("/api/synthetics/scenario", get(synthetics::scenario))
         .merge(platform_routes())
         .merge(activity_routes())
         .route(

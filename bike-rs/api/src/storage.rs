@@ -18,7 +18,6 @@ pub struct AppStorage {
     pub session_service: AppSessionService,
     pub uploads_dir: String,
     pub local_admin_user_pid: Option<Uuid>,
-    pub synthetic_auth: Option<bike_core::synthetics::SyntheticAuth>,
 }
 
 impl AppStorage {
@@ -33,7 +32,6 @@ impl AppStorage {
             db,
             uploads_dir: "/tmp".into(),
             local_admin_user_pid: None,
-            synthetic_auth: None,
         }
     }
 
@@ -60,22 +58,6 @@ impl AppStorage {
         let uploads_dir = Config::get().uploads_dir.clone();
         std::fs::create_dir_all(&uploads_dir).expect("Failed to create uploads directory");
 
-        let synthetic_auth = if let Some(key) = &Config::get().synthetic_key {
-            assert!(
-                key.len() >= 32,
-                "BIKE_SYNTHETIC_KEY must have at least 32 characters"
-            );
-            let user = bike_core::synthetics::ensure_scenario(&db)
-                .await
-                .expect("Failed to provision the isolated synthetic scenario");
-            Some(bike_core::synthetics::SyntheticAuth {
-                key: key.clone(),
-                user_pid: user.pid,
-            })
-        } else {
-            None
-        };
-
         Self {
             map_images: create_map_image_service(Config::get()).await,
             heatmaps: std::sync::Arc::new(bike_core::heatmaps::service::HeatmapService::default()),
@@ -85,7 +67,6 @@ impl AppStorage {
             session_service,
             uploads_dir,
             local_admin_user_pid,
-            synthetic_auth,
         }
     }
 }
@@ -162,10 +143,6 @@ impl AuthStorage for AppStorage {
 
     fn local_admin_user_pid(&self) -> Option<Uuid> {
         self.local_admin_user_pid
-    }
-
-    fn synthetic_auth(&self) -> Option<&bike_core::synthetics::SyntheticAuth> {
-        self.synthetic_auth.as_ref()
     }
 }
 

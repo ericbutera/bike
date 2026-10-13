@@ -285,20 +285,3 @@ async fn administrator_replay_queues_another_owners_import_without_changing_owne
         .unwrap();
     assert_eq!(missing.status(), StatusCode::NOT_FOUND);
 }
-
-#[tokio::test]
-async fn synthetic_credentials_do_not_authorize_administrative_history() {
-    let mut fixture = Fixture::new(Some(true)).await;
-    let key = "fixture-synthetic-key-32-characters";
-    fixture.state.synthetic_auth = Some(bike_core::synthetics::SyntheticAuth {
-        key: key.into(),
-        user_pid: fixture.state.local_admin_user_pid.unwrap(),
-    });
-    let request = Request::builder()
-        .uri("/api/admin/activity-imports/history")
-        .header(bike_core::synthetics::AUTH_HEADER, key)
-        .body(Body::empty())
-        .unwrap();
-    let response = fixture.router().oneshot(request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
-}
