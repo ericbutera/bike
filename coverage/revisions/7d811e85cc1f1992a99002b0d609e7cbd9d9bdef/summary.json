@@ -1,0 +1,74 @@
+{
+  "commit": "7d811e85cc1f1992a99002b0d609e7cbd9d9bdef",
+  "created_at": "2026-10-13T18:03:02Z",
+  "base_revision": "41ee034c5a0935a3f7a4d6463bb5bf332d98dd2b",
+  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/374",
+  "minimum_changed_line_percent": 80,
+  "projects": {
+    "api": {
+      "name": "Bike API",
+      "language": "Rust",
+      "source": "bike-rs/api",
+      "lines": 7503,
+      "covered": 4527,
+      "percent": 60.33586565373851,
+      "changed": {
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
+      }
+    },
+    "worker": {
+      "name": "Bike worker",
+      "language": "Rust",
+      "source": "bike-rs/worker",
+      "lines": 736,
+      "covered": 438,
+      "percent": 59.5108695652174,
+      "changed": {
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
+      }
+    },
+    "bike-core": {
+      "name": "Shared Bike core",
+      "language": "Rust",
+      "source": "bike-rs/bike-core",
+      "lines": 35719,
+      "covered": 27486,
+      "percent": 76.950642515188,
+      "changed": {
+        "lines": 1,
+        "covered": 1,
+        "percent": 100.0
+      }
+    },
+    "bike-ui": {
+      "name": "Bike UI",
+      "language": "Next.js",
+      "source": "bike-ui",
+      "lines": 5914,
+      "covered": 3817,
+      "percent": 64.54,
+      "changed": {
+        "lines": 1,
+        "covered": 1,
+        "percent": 100.0
+      }
+    },
+    "map-renderer": {
+      "name": "Map renderer",
+      "language": "Go",
+      "source": "map-renderer",
+      "lines": 444,
+      "covered": 361,
+      "percent": 81.30630630630631,
+      "changed": {
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
+      }
+    }
+  }
+}
