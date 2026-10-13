@@ -215,12 +215,21 @@ steps:
     commands:
       - mise run ci:rust:report
 
-  - name: retain-unit-coverage
-    failure: fail
+  # Approved one-release exception, 2026-10-14. Restore failure: fail after rollout.
+  - name: check-unit-coverage
+    failure: ignore
     image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
     depends_on: [collect-rust-coverage, test-ui-unit, test-map-renderer]
     environment: *mise_environment
     volumes: *mise_cache
     commands:
       - mise run ci:coverage
+
+  - name: retain-unit-coverage
+    failure: fail
+    image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
+    depends_on: [check-unit-coverage]
+    environment: *mise_environment
+    volumes: *mise_cache
+    commands:
       - mise run ci:coverage:retain

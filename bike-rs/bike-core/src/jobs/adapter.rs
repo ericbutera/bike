@@ -1,8 +1,5 @@
 use crate::background_jobs::{DurableStorage, TaskQueue};
-use crate::jobs::email::{
-    enqueue_email_notification, EmailNotificationTask, EMAIL_NOTIFICATION_TASK_TYPE,
-};
-use crate::observability::TraceContextCarrier;
+use crate::jobs::email::{enqueue_email_notification, EmailNotificationTask};
 use chrono::Utc;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
@@ -29,7 +26,6 @@ pub enum Job {
     RegenerateUserSegments(RegenerateUserSegmentsTask),
     RegenerateActivitySegments(RegenerateActivitySegmentsTask),
     ActivityArchiveImport(ActivityArchiveImportTask),
-    StravaSync(StravaSyncTask),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,59 +94,46 @@ pub struct ActivityArchiveImportTask {
     pub job_id: i32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StravaSyncTask {
-    pub connection_id: i32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub trace_context: Option<TraceContextCarrier>,
-}
-
 impl Job {
-    pub fn task_type(&self) -> &'static str {
+    pub fn kind(&self) -> super::JobType {
         match self {
-            Job::PrepareHeatmap(_) => "prepare_heatmap",
-            Job::EmailNotification(_) => EMAIL_NOTIFICATION_TASK_TYPE,
-            Job::RebuildFitnessFreshness(_) => "rebuild_fitness_freshness",
-            Job::RebuildSegmentAnalytics(_) => "rebuild_segment_analytics",
-            Job::RegenerateSegmentEfforts(_) => "regenerate_segment_efforts",
-            Job::ProcessActivityImport(_) => "process_activity_import",
-            Job::ReprocessUserActivityImports(_) => "reprocess_user_activity_imports",
-            Job::ReprocessArchiveFitActivityImports(_) => "reprocess_archive_fit_activity_imports",
-            Job::ReprocessActivityImport(_) => "reprocess_activity_import",
-            Job::BackfillUserXcTraining(_) => "backfill_user_xc_training",
-            Job::RegenerateUserSegments(_) => "regenerate_user_segments",
-            Job::RegenerateActivitySegments(_) => "regenerate_activity_segments",
-            Job::ActivityArchiveImport(_) => "activity_archive_import",
-            Job::StravaSync(_) => "strava_sync",
+            Self::PrepareHeatmap(_) => super::JobType::PrepareHeatmap,
+            Self::EmailNotification(_) => super::JobType::EmailNotification,
+            Self::RebuildFitnessFreshness(_) => super::JobType::RebuildFitnessFreshness,
+            Self::RebuildSegmentAnalytics(_) => super::JobType::RebuildSegmentAnalytics,
+            Self::RegenerateSegmentEfforts(_) => super::JobType::RegenerateSegmentEfforts,
+            Self::ProcessActivityImport(_) => super::JobType::ProcessActivityImport,
+            Self::ReprocessUserActivityImports(_) => super::JobType::ReprocessUserActivityImports,
+            Self::ReprocessArchiveFitActivityImports(_) => {
+                super::JobType::ReprocessArchiveFitActivityImports
+            }
+            Self::ReprocessActivityImport(_) => super::JobType::ReprocessActivityImport,
+            Self::BackfillUserXcTraining(_) => super::JobType::BackfillUserXcTraining,
+            Self::RegenerateUserSegments(_) => super::JobType::RegenerateUserSegments,
+            Self::RegenerateActivitySegments(_) => super::JobType::RegenerateActivitySegments,
+            Self::ActivityArchiveImport(_) => super::JobType::ActivityArchiveImport,
         }
+    }
+
+    pub fn task_type(&self) -> &'static str {
+        self.kind().as_str()
     }
 }
 
 #[derive(Clone)]
 pub struct JobQueue {
     queue: TaskQueue<DurableStorage>,
-    db: DatabaseConnection,
 }
 
 impl JobQueue {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
-            queue: TaskQueue::new(DurableStorage::new(db.clone())),
-            db,
+            queue: TaskQueue::new(DurableStorage::new(db)),
         }
     }
 
     async fn enqueue_job(&self, job: Job) -> Result<(), crate::background_jobs::TaskError> {
         let task_type = job.task_type().to_string();
-        if crate::strava::workflow::intents::enqueue(
-            &self.db,
-            &task_type,
-            &serde_json::to_value(&job)?,
-        )
-        .await?
-        {
-            return Ok(());
-        }
         self.queue.enqueue(task_type, job).await.map(|_| ())
     }
 
@@ -248,7 +231,7 @@ impl JobQueue {
         }
         self.queue
             .enqueue_with_options(
-                "process_activity_import".into(),
+                super::JobType::ProcessActivityImport.as_str().into(),
                 serde_json::json!({"data": data}),
                 None,
                 1,
@@ -401,22 +384,45 @@ mod tests {
                 "activity_archive_import",
                 json!({"type": "ActivityArchiveImport", "data": {"job_id": 77}}),
             ),
-            (
-                Job::StravaSync(StravaSyncTask {
-                    connection_id: 99,
-                    trace_context: None,
-                }),
-                "strava_sync",
-                json!({"type": "StravaSync", "data": {"connection_id": 99}}),
-            ),
         ];
 
-        for (job, task_type, expected_payload) in jobs {
+        for (job, task_type, expected_payload) in jobs.into_iter().chain(additional_job_cases()) {
             assert_eq!(job.task_type(), task_type);
             assert_eq!(
                 serde_json::to_value(job).expect("serialize job"),
                 expected_payload
             );
         }
+    }
+
+    fn additional_job_cases() -> [(Job, &'static str, serde_json::Value); 4] {
+        [
+            (
+                Job::PrepareHeatmap(PrepareHeatmapTask { activities: vec![] }),
+                "prepare_heatmap",
+                json!({"type": "PrepareHeatmap", "data": {"activities": []}}),
+            ),
+            (
+                Job::EmailNotification(EmailNotificationTask {
+                    to: "fixture@example.test".into(),
+                    subject: "Fixture".into(),
+                    message: "Fixture message".into(),
+                }),
+                "email_notification",
+                json!({"type": "EmailNotification", "data": {"to": "fixture@example.test", "subject": "Fixture", "message": "Fixture message"}}),
+            ),
+            (
+                Job::ReprocessArchiveFitActivityImports(ReprocessArchiveFitActivityImportsTask {
+                    user_id: 12,
+                }),
+                "reprocess_archive_fit_activity_imports",
+                json!({"type": "ReprocessArchiveFitActivityImports", "data": {"user_id": 12}}),
+            ),
+            (
+                Job::RegenerateActivitySegments(RegenerateActivitySegmentsTask { activity_id: 34 }),
+                "regenerate_activity_segments",
+                json!({"type": "RegenerateActivitySegments", "data": {"activity_id": 34}}),
+            ),
+        ]
     }
 }

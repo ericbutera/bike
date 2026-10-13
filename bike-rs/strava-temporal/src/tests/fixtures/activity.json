@@ -1,0 +1,11 @@
+{
+  "id": 99133701,
+  "name": "Fixture ride",
+  "sport_type": "Ride",
+  "type": "Ride",
+  "distance": 30.0,
+  "moving_time": 10,
+  "elapsed_time": 10,
+  "start_date": "2026-10-01T12:00:00Z",
+  "trainer": false
+}

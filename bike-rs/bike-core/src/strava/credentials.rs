@@ -7,11 +7,14 @@ use aes_gcm::{
 use base64::{engine::general_purpose::STANDARD, Engine};
 
 fn cipher() -> Result<Aes256Gcm, WorkflowError> {
-    let key = match std::env::var("STRAVA_TOKEN_ENCRYPTION_KEY") {
-        Ok(key) => STANDARD
+    let key = match std::env::var("STRAVA_TOKEN_ENCRYPTION_KEY")
+        .ok()
+        .filter(|key| !key.is_empty())
+    {
+        Some(key) => STANDARD
             .decode(key)
             .map_err(|_| WorkflowError::internal("Invalid Strava credential encryption key"))?,
-        Err(_) if Config::get().environment != "production" => {
+        None if Config::get().environment != "production" => {
             use sha2::Digest;
             sha2::Sha256::digest(format!(
                 "bike:strava:credentials:{}",
@@ -19,7 +22,7 @@ fn cipher() -> Result<Aes256Gcm, WorkflowError> {
             ))
             .to_vec()
         }
-        Err(_) => {
+        None => {
             return Err(WorkflowError::internal(
                 "STRAVA_TOKEN_ENCRYPTION_KEY is required",
             ))

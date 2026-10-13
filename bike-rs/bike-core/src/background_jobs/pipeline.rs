@@ -20,8 +20,6 @@ pub struct PipelineContext {
     pub request_id: Option<String>,
     pub parent_task_id: Option<i32>,
     pub trace_context: Option<TraceContextCarrier>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub gateway_history: Option<serde_json::Value>,
 }
 
 impl PipelineContext {
@@ -33,7 +31,6 @@ impl PipelineContext {
             request_id,
             parent_task_id: None,
             trace_context: inject_current_trace_context(),
-            gateway_history: None,
         }
     }
 

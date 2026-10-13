@@ -93,7 +93,8 @@ async fn recover_abandoned_imports(
         .select_only()
         .column(activity_imports::Column::UserId)
         .distinct()
-        .filter(activity_imports::Column::Status.eq(ACTIVITY_IMPORT_STATUS_PROCESSING));
+        .filter(activity_imports::Column::Status.eq(ACTIVITY_IMPORT_STATUS_PROCESSING))
+        .filter(activity_imports::Column::Source.ne("strava_sync"));
     if let Some(source) = source {
         query = query.filter(activity_imports::Column::Source.eq(source));
     }

@@ -4,8 +4,6 @@ use sea_orm::{
     ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 
-const STALE_HEARTBEAT_SECONDS: i64 = 300;
-
 impl Model {
     /// Every processor uses the same heartbeat lease. Recover a bounded oldest
     /// page; successful recovery removes it from subsequent candidate scans.
@@ -16,7 +14,11 @@ impl Model {
     ) -> Result<u64, DbErr> {
         let candidates = Entity::find()
             .filter(Column::Status.eq("processing"))
-            .filter(Column::UpdatedAt.lte(now - Duration::seconds(STALE_HEARTBEAT_SECONDS)))
+            .filter(Column::UpdatedAt.lte(
+                now - Duration::seconds(
+                    crate::config::Config::get().worker_recovery_timeout_seconds,
+                ),
+            ))
             .order_by_asc(Column::UpdatedAt)
             .order_by_asc(Column::Id)
             .limit(limit)

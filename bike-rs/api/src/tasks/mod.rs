@@ -5,5 +5,5 @@ pub use adapter::{
     BackfillUserXcTrainingTask, ProcessActivityImportTask, QueuedTaskReference,
     RebuildFitnessFreshnessTask, RebuildSegmentAnalyticsTask, RegenerateSegmentEffortsTask,
     RegenerateUserSegmentsTask, ReprocessActivityImportTask, ReprocessUserActivityImportsTask,
-    StravaSyncTask, Task, TaskQueue,
+    Task, TaskQueue,
 };

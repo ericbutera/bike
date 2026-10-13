@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use bike_core::jobs::JobType;
 use bike_core::{
     background_jobs::worker::{TaskProcessor, WorkerError},
     jobs::RegenerateActivitySegmentsTask,
@@ -15,7 +16,7 @@ impl RegenerateActivitySegments {
 #[async_trait]
 impl TaskProcessor for RegenerateActivitySegments {
     fn task_type(&self) -> &str {
-        "regenerate_activity_segments"
+        JobType::RegenerateActivitySegments.as_str()
     }
     async fn process(&self, _task_id: i32, payload: serde_json::Value) -> Result<(), WorkerError> {
         let task: RegenerateActivitySegmentsTask =

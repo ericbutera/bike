@@ -5,6 +5,8 @@ user workflows, background processing, service boundaries, and operational
 contracts. Code implements these specifications; tests verify that implementation.
 Update the owning spec in the same change as any intended behavior change.
 
+- [Strava integration](strava-temporal.md): supported webhooks, native processors, typed DAG steps, and job history.
+
 ## Spec Rules
 
 - Specs describe the intended behavior first. Code anchors are supporting references, not substitutes for the product contract.

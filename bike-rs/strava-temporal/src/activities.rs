@@ -1,0 +1,371 @@
+//! Each named Temporal activity calls one provider or Bike domain operation.
+use bike_core::{
+    strava::{
+        events::StravaEvent,
+        logging::{AttemptStatus, ExchangeContext, TemporalIds},
+        native::*,
+    },
+    workflow_error::WorkflowError,
+};
+use std::{future::Future, sync::Arc, time::Duration};
+use temporalio_common::error::ApplicationFailure;
+use temporalio_macros::activities;
+use temporalio_sdk::activities::{ActivityContext, ActivityError};
+use tracing::Instrument;
+
+pub use strava_activities::{
+    AcceptChild, BeginDisconnect, CaptureDeletion, CollectionWindow, CompleteActivity,
+    CompleteBackfill, CompleteSync, DeleteActivity, DeleteSource, FetchActivity, FetchStreams,
+    ListActivityPage, NormalizeActivity, PersistActivity, PublishHeatmap, RebuildActivity,
+    RebuildFitness, RebuildSegments, RemoveConnection, RevokeConnection, ScanConnections,
+};
+
+pub struct StravaActivities {
+    operations: StravaOperations,
+}
+impl StravaActivities {
+    pub fn new(db: sea_orm::DatabaseConnection) -> Self {
+        Self {
+            operations: StravaOperations::new(db),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_operations(operations: StravaOperations) -> Self {
+        Self { operations }
+    }
+}
+
+#[activities]
+impl StravaActivities {
+    #[activity(name = "strava_scan_connections")]
+    pub async fn scan_connections(
+        self: Arc<Self>,
+        ctx: ActivityContext,
+        request: ScanRequest,
+    ) -> Result<ScanPage, ActivityError> {
+        let info = ctx.info();
+        let span = tracing::info_span!("strava.scan", correlation_id = %request.correlation_id,
+            temporal_namespace = info.namespace,
+            temporal_workflow_id = info.workflow_id, temporal_run_id = info.workflow_run_id,
+            temporal_activity_id = info.activity_id, temporal_attempt = info.attempt,
+            trace_id = tracing::field::Empty, span_id = tracing::field::Empty);
+        bike_core::observability::record_span_trace_context(&span);
+        self.operations
+            .scan_connections(request)
+            .instrument(span)
+            .await
+            .map_err(activity_error)
+    }
+    #[activity(name = "strava_resolve_collection_window")]
+    pub async fn collection_window(
+        self: Arc<Self>,
+        ctx: ActivityContext,
+        input: StravaEvent,
+    ) -> Result<CollectionInput, ActivityError> {
+        run(ctx, input.clone(), self.operations.collection_window(input)).await
+    }
+    #[activity(name = "strava_accept_child_event")]
+    pub async fn accept_child(
+        self: Arc<Self>,
+        ctx: ActivityContext,
+        input: ChildEvent,
+    ) -> Result<StravaEvent, ActivityError> {
+        run(ctx, input.parent, self.operations.accept_child(input.child)).await
+    }
+    #[activity(name = "strava_complete_sync")]
+    pub async fn complete_sync(
+        self: Arc<Self>,
+        ctx: ActivityContext,
+        input: CollectionResult,
+    ) -> Result<CollectionResult, ActivityError> {
+        run(
+            ctx,
+            input.event.clone(),
+            self.operations.complete_sync(input),
+        )
+        .await
+    }
+    #[activity(name = "strava_complete_backfill")]
+    pub async fn complete_backfill(
+        self: Arc<Self>,
+        ctx: ActivityContext,
+        input: CollectionResult,
+    ) -> Result<CollectionResult, ActivityError> {
+        run(
+            ctx,
+            input.event.clone(),
+            self.operations.complete_backfill(input),
+        )
+        .await
+    }
+    #[activity(name = "strava_begin_disconnect")]
+    pub async fn begin_disconnect(
+        self: Arc<Self>,
+        ctx: ActivityContext,
+        input: StravaEvent,
+    ) -> Result<Vec<i64>, ActivityError> {
+        run(ctx, input.clone(), self.operations.begin_disconnect(input)).await
+    }
+    #[activity(name = "strava_revoke_connection")]
+    pub async fn revoke_connection(
+        self: Arc<Self>,
+        ctx: ActivityContext,
+        input: StravaEvent,
+    ) -> Result<StravaEvent, ActivityError> {
+        run(ctx, input.clone(), self.operations.revoke_connection(input)).await
+    }
+    #[activity(name = "strava_remove_connection")]
+    pub async fn remove_connection(
+        self: Arc<Self>,
+        ctx: ActivityContext,
+        input: StravaEvent,
+    ) -> Result<StravaEvent, ActivityError> {
+        run(ctx, input.clone(), self.operations.remove_connection(input)).await
+    }
+    #[activity(name = "strava_fetch_activity")]
+    pub async fn fetch_activity(
+        self: Arc<Self>,
+        ctx: ActivityContext,
+        input: StravaEvent,
+    ) -> Result<ActivitySource, ActivityError> {
+        run(ctx, input.clone(), self.operations.fetch_activity(input)).await
+    }
+    #[activity(name = "strava_fetch_streams")]
+    pub async fn fetch_streams(
+        self: Arc<Self>,
+        ctx: ActivityContext,
+        input: ActivitySource,
+    ) -> Result<ActivitySources, ActivityError> {
+        run(
+            ctx,
+            input.event.clone(),
+            self.operations.fetch_streams(input),
+        )
+        .await
+    }
+    #[activity(name = "strava_normalize_activity")]
+    pub async fn normalize_activity(
+        self: Arc<Self>,
+        ctx: ActivityContext,
+        input: ActivitySources,
+    ) -> Result<NormalizedActivity, ActivityError> {
+        run(
+            ctx,
+            input.event.clone(),
+            self.operations.normalize_activity(input),
+        )
+        .await
+    }
+    #[activity(name = "strava_persist_activity")]
+    pub async fn persist_activity(
+        self: Arc<Self>,
+        ctx: ActivityContext,
+        input: NormalizedActivity,
+    ) -> Result<ActivityChange, ActivityError> {
+        run(
+            ctx,
+            input.event.clone(),
+            self.operations.persist_activity(input),
+        )
+        .await
+    }
+    #[activity(name = "strava_capture_deletion")]
+    pub async fn capture_deletion(
+        self: Arc<Self>,
+        ctx: ActivityContext,
+        input: StravaEvent,
+    ) -> Result<ActivityChange, ActivityError> {
+        run(ctx, input.clone(), self.operations.capture_deletion(input)).await
+    }
+    #[activity(name = "strava_delete_activity")]
+    pub async fn delete_activity(
+        self: Arc<Self>,
+        ctx: ActivityContext,
+        input: ActivityChange,
+    ) -> Result<ActivityChange, ActivityError> {
+        run(
+            ctx,
+            input.event.clone(),
+            self.operations.delete_activity(input),
+        )
+        .await
+    }
+    #[activity(name = "strava_delete_source")]
+    pub async fn delete_source(
+        self: Arc<Self>,
+        ctx: ActivityContext,
+        input: ActivityChange,
+    ) -> Result<ActivityChange, ActivityError> {
+        run(
+            ctx,
+            input.event.clone(),
+            self.operations.delete_source(input),
+        )
+        .await
+    }
+    #[activity(name = "strava_rebuild_activity")]
+    pub async fn rebuild_activity(
+        self: Arc<Self>,
+        ctx: ActivityContext,
+        input: ActivityChange,
+    ) -> Result<ActivityChange, ActivityError> {
+        run(
+            ctx,
+            input.event.clone(),
+            self.operations.rebuild_activity(input),
+        )
+        .await
+    }
+    #[activity(name = "strava_rebuild_fitness")]
+    pub async fn rebuild_fitness(
+        self: Arc<Self>,
+        ctx: ActivityContext,
+        input: ActivityChange,
+    ) -> Result<ActivityChange, ActivityError> {
+        run(
+            ctx,
+            input.event.clone(),
+            self.operations.rebuild_fitness(input),
+        )
+        .await
+    }
+    #[activity(name = "strava_rebuild_segments")]
+    pub async fn rebuild_segments(
+        self: Arc<Self>,
+        ctx: ActivityContext,
+        input: ActivityChange,
+    ) -> Result<ActivityChange, ActivityError> {
+        run(
+            ctx,
+            input.event.clone(),
+            self.operations.rebuild_segments(input),
+        )
+        .await
+    }
+    #[activity(name = "strava_publish_heatmap")]
+    pub async fn publish_heatmap(
+        self: Arc<Self>,
+        ctx: ActivityContext,
+        input: ActivityChange,
+    ) -> Result<ActivityChange, ActivityError> {
+        run(
+            ctx,
+            input.event.clone(),
+            self.operations.publish_heatmap(input),
+        )
+        .await
+    }
+    #[activity(name = "strava_complete_activity")]
+    pub async fn complete_activity(
+        self: Arc<Self>,
+        ctx: ActivityContext,
+        input: ActivityChange,
+    ) -> Result<ActivityChange, ActivityError> {
+        run(
+            ctx,
+            input.event.clone(),
+            self.operations.complete_activity(input),
+        )
+        .await
+    }
+    #[activity(name = "strava_list_activity_page")]
+    pub async fn list_activity_page(
+        self: Arc<Self>,
+        ctx: ActivityContext,
+        input: PageInput,
+    ) -> Result<ActivityPage, ActivityError> {
+        run(
+            ctx,
+            input.collection.event.clone(),
+            self.operations.list_page(input),
+        )
+        .await
+    }
+}
+
+async fn run<T>(
+    ctx: ActivityContext,
+    event: StravaEvent,
+    future: impl Future<Output = Result<T, WorkflowError>>,
+) -> Result<T, ActivityError> {
+    let info = ctx.info();
+    use crate::workflows::*;
+    use bike_core::strava::events::StravaOperation;
+    use temporalio_workflow::common::WorkflowDefinition;
+    let expected_workflow = match event.operation {
+        StravaOperation::Create | StravaOperation::Update | StravaOperation::Upsert => {
+            UpsertActivity::run.name()
+        }
+        StravaOperation::Delete => DeleteActivity::run.name(),
+        StravaOperation::Sync => SyncActivities::run.name(),
+        StravaOperation::Backfill => BackfillActivities::run.name(),
+        StravaOperation::Disconnect => DisconnectStrava::run.name(),
+    };
+    if info.workflow_type.as_deref() != Some(expected_workflow) {
+        return Err(ApplicationFailure::non_retryable(std::io::Error::other(
+            "Strava event operation does not match its Temporal workflow",
+        ))
+        .into());
+    }
+    if !info
+        .workflow_id
+        .as_deref()
+        .is_some_and(|id| id.starts_with(&event.workflow_id()))
+    {
+        return Err(ApplicationFailure::non_retryable(std::io::Error::other(
+            "Strava event does not belong to this Temporal execution",
+        ))
+        .into());
+    }
+    let context = ExchangeContext {
+        event,
+        temporal: TemporalIds {
+            temporal_namespace: info.namespace.clone(),
+            temporal_workflow_id: info.workflow_id.clone().unwrap_or_default(),
+            temporal_run_id: info.workflow_run_id.clone().unwrap_or_default(),
+            temporal_activity_id: info.activity_id.clone(),
+            temporal_attempt: info.attempt,
+        },
+    };
+    let logging = context.clone();
+    context
+        .scope(&info.activity_type, async {
+            logging.attempt(&info.activity_type, AttemptStatus::Started);
+            tokio::pin!(future);
+            let mut heartbeat = tokio::time::interval(Duration::from_secs(5));
+            let result = loop {
+                tokio::select! {
+                    result = &mut future => break result.map_err(activity_error),
+                    () = ctx.cancelled() => break Err(ActivityError::cancelled()),
+                    _ = heartbeat.tick() => ctx.record_heartbeat(info.attempt).await?,
+                }
+            };
+            match &result {
+                Ok(_) => logging.attempt(&info.activity_type, AttemptStatus::Completed),
+                Err(ActivityError::Cancelled { .. }) => {
+                    logging.attempt(&info.activity_type, AttemptStatus::Cancelled)
+                }
+                Err(_) => logging.attempt(&info.activity_type, AttemptStatus::Failed),
+            }
+            result
+        })
+        .await
+}
+
+fn activity_error(error: WorkflowError) -> ActivityError {
+    let delay = error.retry_at.map(|at| {
+        (at - chrono::Utc::now())
+            .to_std()
+            .unwrap_or(Duration::from_secs(1))
+            .max(Duration::from_secs(1))
+    });
+    let retryable = error.retry_at.is_some() || error.status.as_u16() == 429;
+    let terminal = error.status.is_client_error() && !retryable;
+    ApplicationFailure::builder(error)
+        .type_name("StravaOperationFailure".to_owned())
+        .non_retryable(terminal)
+        .maybe_next_retry_delay(delay)
+        .build()
+        .into()
+}

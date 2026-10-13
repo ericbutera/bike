@@ -19,5 +19,5 @@ pub mod segment_user_summaries;
 pub mod segments;
 pub mod strava_activity_states;
 pub mod strava_connections;
-pub mod strava_workflows;
+pub mod strava_events;
 pub mod user_preferences;

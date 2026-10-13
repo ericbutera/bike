@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use bike_core::background_jobs::batches::reprocess_page;
 use bike_core::background_jobs::worker::TaskProcessor;
+use bike_core::jobs::JobType;
 use bike_core::jobs::ReprocessUserActivityImportsTask;
 use sea_orm::DatabaseConnection;
 use std::error::Error;
@@ -31,9 +32,9 @@ impl ReprocessUserActivityImports {
 impl TaskProcessor for ReprocessUserActivityImports {
     fn task_type(&self) -> &str {
         if self.archive_fits_only {
-            "reprocess_archive_fit_activity_imports"
+            JobType::ReprocessArchiveFitActivityImports.as_str()
         } else {
-            "reprocess_user_activity_imports"
+            JobType::ReprocessUserActivityImports.as_str()
         }
     }
 

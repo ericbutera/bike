@@ -1722,9 +1722,9 @@ export interface components {
     /**
      * @example {
      *       "is_active": true,
-     *       "message": "Strava sync is currently running.",
-     *       "source": "strava_sync",
-     *       "source_label": "Strava sync",
+     *       "message": "Manual upload is currently running.",
+     *       "source": "manual_upload",
+     *       "source_label": "Manual upload",
      *       "stage": "running",
      *       "stage_label": "running"
      *     }
@@ -1732,11 +1732,11 @@ export interface components {
     ActivityProcessingStateResponse: {
       /** @example true */
       is_active: boolean;
-      /** @example Strava sync is currently running. */
+      /** @example Manual upload is currently running. */
       message?: string | null;
-      /** @example strava_sync */
+      /** @example manual_upload */
       source?: string | null;
-      /** @example Strava sync */
+      /** @example Manual upload */
       source_label?: string | null;
       /** @example running */
       stage?: string | null;
@@ -3109,7 +3109,6 @@ export interface components {
       available_at?: string | null;
       ended_at?: string | null;
       entrypoint: string;
-      gateway_history?: unknown;
       grafana_url?: string | null;
       /** Format: int64 */
       next_output_offset?: number | null;
@@ -4076,6 +4075,12 @@ export interface components {
       /** @example https://www.strava.com/oauth/authorize?client_id=12345&response_type=code */
       authorization_url: string;
     };
+    StravaBackfillRequest: {
+      /** Format: date-time */
+      end_date: string;
+      /** Format: date-time */
+      start_date: string;
+    };
     /**
      * @example {
      *       "athlete_id": 12345678,
@@ -4087,9 +4092,7 @@ export interface components {
      *       "last_sync_failed_count": 0,
      *       "last_sync_finished_at": "2026-09-27T12:00:00Z",
      *       "last_sync_imported_count": 3,
-     *       "last_sync_next_attempt_at": null,
      *       "last_sync_status": "succeeded",
-     *       "last_sync_wait_reason": null,
      *       "scopes": [
      *         "read",
      *         "activity:read_all"
@@ -4132,17 +4135,10 @@ export interface components {
        */
       last_sync_imported_count: number;
       last_sync_message?: string | null;
-      /**
-       * Format: date-time
-       * @example 2026-10-02T12:00:30Z
-       */
-      last_sync_next_attempt_at?: string | null;
       /** Format: date-time */
       last_sync_started_at?: string | null;
       /** @example succeeded */
       last_sync_status: string;
-      /** @example rate_limit */
-      last_sync_wait_reason?: string | null;
       /** Format: date-time */
       last_synced_activity_started_at?: string | null;
       /**
@@ -4199,6 +4195,8 @@ export interface components {
        */
       subscription_id: number;
       updates?: unknown;
+    } & {
+      [key: string]: unknown;
     };
     TaskAttemptResponse: {
       /** Format: int32 */
@@ -6058,9 +6056,9 @@ export interface operations {
           /**
            * @example {
            *       "is_active": true,
-           *       "message": "Strava sync is currently running.",
-           *       "source": "strava_sync",
-           *       "source_label": "Strava sync",
+           *       "message": "Manual upload is currently running.",
+           *       "source": "manual_upload",
+           *       "source_label": "Manual upload",
            *       "stage": "running",
            *       "stage_label": "running"
            *     }
@@ -9122,9 +9120,13 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["StravaBackfillRequest"];
+      };
+    };
     responses: {
-      /** @description Queued a Strava backfill for the last 15 days */
+      /** @description Accepted a Strava backfill for the requested date range */
       200: {
         headers: {
           [name: string]: unknown;
@@ -9254,9 +9256,7 @@ export interface operations {
            *       "last_sync_failed_count": 0,
            *       "last_sync_finished_at": "2026-09-27T12:00:00Z",
            *       "last_sync_imported_count": 3,
-           *       "last_sync_next_attempt_at": null,
            *       "last_sync_status": "succeeded",
-           *       "last_sync_wait_reason": null,
            *       "scopes": [
            *         "read",
            *         "activity:read_all"
@@ -9358,9 +9358,7 @@ export interface operations {
            *       "last_sync_duplicate_count": 1,
            *       "last_sync_failed_count": 0,
            *       "last_sync_imported_count": 3,
-           *       "last_sync_next_attempt_at": null,
            *       "last_sync_status": "queued",
-           *       "last_sync_wait_reason": null,
            *       "scopes": [
            *         "read",
            *         "activity:read_all"

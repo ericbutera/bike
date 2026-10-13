@@ -4,28 +4,7 @@ export type PipelineTask = components["schemas"]["PipelineTask"];
 const label = (value: string) => value.replace(/[<>\[\]"&\r\n\\]/g, " ");
 const stageId = (task: number, attempt: number, stage: string) =>
   `stage_${task}_${attempt}_${stage.replace(/[^a-zA-Z0-9_]/g, "_")}`;
-export type GatewayStep = {
-  kind: string;
-  started_at: string;
-  finished_at: string;
-  attempts?: number;
-};
-export function gatewaySteps(run: PipelineGraph): GatewayStep[] {
-  if (!Array.isArray(run.gateway_history)) return [];
-  return run.gateway_history.filter(
-    (value): value is GatewayStep =>
-      typeof value === "object" &&
-      value !== null &&
-      "kind" in value &&
-      typeof value.kind === "string" &&
-      "started_at" in value &&
-      typeof value.started_at === "string" &&
-      "finished_at" in value &&
-      typeof value.finished_at === "string",
-  );
-}
-/** Gateway intervals can overlap. Task edges use persisted parents; inline stages
- * use the import owner's dependencies, never a guessed chronological chain. */
+/** Task edges use persisted parents and the import owner's dependencies. */
 export function pipelineMermaid(run: PipelineGraph): string {
   const lines = [
     "flowchart TD",
@@ -33,13 +12,6 @@ export function pipelineMermaid(run: PipelineGraph): string {
     'accepted["API durable acceptance"]',
     "receipt --> accepted",
   ];
-  gatewaySteps(run).forEach((step, index) => {
-    lines.push(
-      `gateway_${index}["${label(step.kind)}"]`,
-      `receipt --> gateway_${index}`,
-      `gateway_${index} --> accepted`,
-    );
-  });
   const ids = new Set(run.tasks.map((task) => task.id));
   for (const task of run.tasks) taskNodes(lines, task, ids);
   run.outputs.forEach((output, index) => {

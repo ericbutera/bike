@@ -10,6 +10,17 @@ pub enum ActivityType {
 }
 
 impl ActivityType {
+    pub fn infer(title: &str, filename: &str) -> Self {
+        let haystack = format!("{title} {filename}").to_ascii_lowercase();
+        if haystack
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .any(|token| matches!(token, "race" | "raceday" | "result" | "results"))
+        {
+            Self::Race
+        } else {
+            Self::Training
+        }
+    }
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Training => "training",

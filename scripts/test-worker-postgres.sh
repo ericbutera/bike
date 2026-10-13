@@ -3,9 +3,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 : "${BIKE_POSTGRES_IMAGE:?Run through the owning mise task}"
+worker_test_name=""
+cleanup() {
+  if [[ -n "$worker_test_name" ]]; then docker rm --force --volumes "$worker_test_name" >/dev/null; fi
+}
+trap cleanup EXIT
 start_database() {
   worker_test_name="bike-worker-fixtures-${CI_PIPELINE_NUMBER:-local}-$$"
-  trap 'docker rm --force --volumes "$worker_test_name" >/dev/null' EXIT
   for attempt in {1..30}; do
     if docker info >/dev/null 2>&1; then break; fi
     if [ "$attempt" -eq 30 ]; then printf 'Disposable Docker engine did not become ready\n' >&2; exit 1; fi
@@ -46,10 +50,4 @@ else
     sleep 1
   done
 fi
-if [ "${1:-all}" != strava ]; then mise --cd bike-rs run test:workers:postgres; fi
-export BIKE_STRAVA_TEST_DATABASE_URL="$BIKE_WORKER_TEST_DATABASE_URL"
-if [ "${BIKE_STRAVA_COVERAGE:-false}" = true ]; then
-  mise --cd bike-rs run coverage:strava:postgres
-else
-  mise --cd bike-rs run test:strava:postgres
-fi
+mise --cd bike-rs run test:workers:postgres

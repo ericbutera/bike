@@ -1,6 +1,5 @@
 pub mod processors;
 mod startup;
-pub mod strava;
 
 use bike_core::background_jobs::worker::{TaskWorker, WorkerError};
 use bike_core::config::Config;
@@ -51,5 +50,5 @@ pub async fn register_default_processors(
         .register_processor(regenerate_activity_segments)
         .register_processor(activity_archive_import)
         .register_processor(prepare_heatmap);
-    Ok(strava::register(worker, db))
+    Ok(worker)
 }

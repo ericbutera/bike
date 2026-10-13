@@ -126,6 +126,10 @@ Do not start commits with the word add (eg: `feat: added architecture diagram`),
   framework/library features before repeating behavior on individual pages.
 - Honor cyclomatic/cognitive complexity, function-size, and argument-count
   limits. Split cohesive steps; avoid vague helpers and parameter bags.
+- Use at most two comparisons or predicate calls in a boolean condition.
+  Express ownership and identity policy through named model predicates.
+- Keep workflow steps explicit. Reuse a typed activity-execution helper for
+  SDK invocation and error adaptation instead of repeating that plumbing.
 - Verify changed behavior with focused happy-path coverage and regression
   checks for observed bugs. Distinguish local, CI, and deployed evidence.
 - Keep prek commands, filters, tool/version pins, and required hook stages

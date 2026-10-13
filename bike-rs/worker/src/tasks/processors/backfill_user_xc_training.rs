@@ -6,6 +6,7 @@ use bike_core::activity_import_lock::{
 };
 use bike_core::activity_training_analysis::backfill_user_activity_training_analysis_cache;
 use bike_core::background_jobs::worker::TaskProcessor;
+use bike_core::jobs::JobType;
 use bike_core::jobs::{BackfillUserXcTrainingTask, JobQueue};
 use bike_core::xc_goal_backfill::{
     mark_user_xc_goal_backfill_completed, set_user_xc_goal_backfill_state, XcGoalBackfillError,
@@ -36,7 +37,7 @@ impl BackfillUserXcTraining {
 #[async_trait]
 impl TaskProcessor for BackfillUserXcTraining {
     fn task_type(&self) -> &str {
-        "backfill_user_xc_training"
+        JobType::BackfillUserXcTraining.as_str()
     }
 
     async fn process(&self, _task_id: i32, payload: serde_json::Value) -> WorkerResult<()> {

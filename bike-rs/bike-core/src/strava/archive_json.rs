@@ -92,7 +92,7 @@ fn phone_streams(series: &Series, start_epoch: f64) -> Result<Value, AppError> {
                     time
                 };
                 let seconds = Some(seconds)
-                    .filter(|v| v.is_finite() && *v >= 0.0 && *v <= f64::from(i32::MAX))
+                    .filter(valid_elapsed_time)
                     .ok_or_else(|| AppError::bad_request("Invalid Strava archive elapsed time"))?;
                 Ok(json!(seconds.floor() as i32))
             })
@@ -105,6 +105,11 @@ fn phone_streams(series: &Series, start_epoch: f64) -> Result<Value, AppError> {
         ));
     }
     Ok(Value::Object(streams))
+}
+
+fn valid_elapsed_time(value: &f64) -> bool {
+    let in_range = *value >= 0.0 && *value <= f64::from(i32::MAX);
+    value.is_finite() && in_range
 }
 
 #[cfg(test)]

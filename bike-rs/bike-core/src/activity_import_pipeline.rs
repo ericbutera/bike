@@ -1,4 +1,3 @@
-use crate::activity_details::serialize_derived_activity_data;
 use crate::activity_import_execution::{self as execution, ProcessingCheckpoint, StageRecord};
 use crate::activity_lifecycle::refresh_activity_derived_state_without_cache_rebuilds;
 use crate::activity_parser::{parse_activity_artifact, ActivityParserArtifact, ParsedActivityData};
@@ -6,16 +5,14 @@ use crate::activity_training_analysis::rebuild_activity_training_analysis_cache;
 use crate::activity_type::ActivityType;
 use crate::analytics::{rebuild_activity_analytics_cache, rebuild_segment_analytics_cache};
 use crate::dedupe::activity_dedupe_matches_model;
+use crate::entities::activities::parsed::{build_save_data, ActivitySaveData};
 use crate::entities::{
     activities, activity_import_artifacts, activity_import_attempts, activity_imports,
     activity_training_analyses,
 };
 use crate::integration_events_service::INTEGRATION_LEVEL_INFO;
 use crate::jobs::JobQueue as TaskQueue;
-use crate::training_profile::{
-    load_training_profile, serialize_activity_heart_rate_zones, summarize_heart_rate_zones,
-    TrainingProfile,
-};
+use crate::training_profile::{load_training_profile, TrainingProfile};
 use crate::workflow_error::WorkflowError as AppError;
 use chrono::{DateTime, NaiveDate, Utc};
 use petgraph::algo::toposort;
@@ -317,16 +314,7 @@ pub async fn recover_stale_manual_activity_imports_for_user(
 }
 
 pub fn infer_activity_type(title: &str, original_filename: &str) -> ActivityType {
-    let haystack = format!("{title} {original_filename}").to_ascii_lowercase();
-
-    if haystack
-        .split(|character: char| !character.is_ascii_alphanumeric())
-        .any(|token| matches!(token, "race" | "raceday" | "result" | "results"))
-    {
-        ActivityType::Race
-    } else {
-        ActivityType::Training
-    }
+    ActivityType::infer(title, original_filename)
 }
 
 struct ActivityProcessingRun<'a> {
@@ -359,13 +347,6 @@ struct ActivityProcessingArtifact {
     format: String,
     source_quality: String,
     storage_path: String,
-}
-
-struct ActivitySaveData {
-    activity_type: ActivityType,
-    estimated_ftp_watts: Option<i32>,
-    heart_rate_zones_json: Option<crate::training_profile::StoredActivityHeartRateZones>,
-    derived_data_json: crate::activity_details::StoredActivityDerivedData,
 }
 
 pub async fn mark_activity_import_processing_stage(
@@ -435,6 +416,7 @@ async fn record_activity_processing_event(
 async fn run_activity_processing_graph(
     run: ActivityProcessingRun<'_>,
 ) -> Result<PersistActivityUploadOutcome, AppError> {
+    run.import.require_sql_processing()?;
     let attempt = begin_processing_attempt(&run).await?;
     let result = execute_activity_processing_graph(&run, attempt.clone()).await;
     if let Err(error) = &result {
@@ -846,7 +828,7 @@ async fn save_activity_node(
 ) -> Result<(), AppError> {
     let parsed = parsed_activity_ref(state)?.clone();
     let training_profile = load_processing_training_profile(run).await?;
-    let save_data = build_activity_save_data(
+    let save_data = build_save_data(
         &parsed,
         &state.parsing_artifact.original_filename,
         &training_profile,
@@ -896,30 +878,6 @@ async fn load_processing_training_profile(
     }
 }
 
-fn build_activity_save_data(
-    parsed: &ParsedActivityData,
-    original_filename: &str,
-    training_profile: &TrainingProfile,
-) -> Result<ActivitySaveData, AppError> {
-    let heart_rate_zones = summarize_heart_rate_zones(
-        &parsed.derived_data.route_points,
-        &parsed.derived_data.chart_points,
-        parsed
-            .draft
-            .moving_time_seconds
-            .or(parsed.draft.total_time_seconds),
-        parsed.draft.average_heart_rate_bpm,
-        training_profile.heart_rate_zone_bounds_bpm.as_deref(),
-    );
-
-    Ok(ActivitySaveData {
-        activity_type: infer_activity_type(&parsed.draft.title, original_filename),
-        estimated_ftp_watts: training_profile.estimated_ftp_watts,
-        heart_rate_zones_json: serialize_activity_heart_rate_zones(&heart_rate_zones)?,
-        derived_data_json: serialize_derived_activity_data(&parsed.derived_data)?,
-    })
-}
-
 async fn update_activity_from_parsed(
     db: &DatabaseConnection,
     activity: activities::Model,
@@ -932,7 +890,13 @@ async fn update_activity_from_parsed(
         && parsing_artifact.artifact_kind == ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL)
         .then(|| activity.title.clone());
     let mut active_model: activities::ActiveModel = activity.into();
-    apply_common_activity_fields(&mut active_model, parsing_artifact, parsed, save_data);
+    activities::parsed::apply_fields(
+        &mut active_model,
+        &parsing_artifact.original_filename,
+        &parsing_artifact.format,
+        parsed,
+        save_data,
+    );
     active_model.activity_type = Set(activity_type);
     if let Some(title) = archive_title {
         active_model.title = Set(title);
@@ -954,38 +918,14 @@ async fn insert_activity_from_parsed(
         source_correlation_id: Set(run.source_correlation_id.clone()),
         ..Default::default()
     };
-    apply_common_activity_fields(&mut active_model, parsing_artifact, parsed, save_data);
+    activities::parsed::apply_fields(
+        &mut active_model,
+        &parsing_artifact.original_filename,
+        &parsing_artifact.format,
+        parsed,
+        save_data,
+    );
     active_model.insert(run.db).await.map_err(AppError::from)
-}
-
-fn apply_common_activity_fields(
-    active_model: &mut activities::ActiveModel,
-    parsing_artifact: &ActivityProcessingArtifact,
-    parsed: &ParsedActivityData,
-    save_data: ActivitySaveData,
-) {
-    active_model.title = Set(parsed.draft.title.clone());
-    active_model.sport = Set(parsed.draft.sport.clone());
-    active_model.original_filename = Set(Some(parsing_artifact.original_filename.clone()));
-    active_model.format = Set(Some(parsing_artifact.format.clone()));
-    active_model.activity_type = Set(save_data.activity_type.as_str().to_string());
-    active_model.started_at = Set(parsed.draft.started_at);
-    active_model.ended_at = Set(parsed.draft.ended_at);
-    active_model.distance_meters = Set(parsed.draft.distance_meters);
-    active_model.moving_time_seconds = Set(parsed.draft.moving_time_seconds);
-    active_model.total_time_seconds = Set(parsed.draft.total_time_seconds);
-    active_model.elevation_gain_meters = Set(parsed.draft.elevation_gain_meters);
-    active_model.elevation_loss_meters = Set(parsed.draft.elevation_loss_meters);
-    active_model.average_speed_mps = Set(parsed.draft.average_speed_mps);
-    active_model.max_speed_mps = Set(parsed.draft.max_speed_mps);
-    active_model.average_heart_rate_bpm = Set(parsed.draft.average_heart_rate_bpm);
-    active_model.max_heart_rate_bpm = Set(parsed.draft.max_heart_rate_bpm);
-    active_model.average_cadence_rpm = Set(parsed.draft.average_cadence_rpm);
-    active_model.max_cadence_rpm = Set(parsed.draft.max_cadence_rpm);
-    active_model.calories = Set(parsed.draft.calories);
-    active_model.estimated_ftp_watts = Set(save_data.estimated_ftp_watts);
-    active_model.heart_rate_zones_json = Set(save_data.heart_rate_zones_json);
-    active_model.derived_data_json = Set(Some(save_data.derived_data_json));
 }
 
 async fn build_segments_node(
@@ -2359,43 +2299,6 @@ mod tests {
         assert_eq!(
             activity_imports::Entity::find().count(&db).await.unwrap(),
             2
-        );
-
-        let _ = std::fs::remove_dir_all(&uploads_dir);
-    }
-
-    #[tokio::test]
-    async fn strava_uploads_deduplicate_by_source_correlation_id() {
-        let db = test_db().await;
-        let uploads_dir = test_uploads_dir();
-        let training_profile = TrainingProfile::default();
-
-        let first = persist_test_activity_upload(
-            &db,
-            &uploads_dir,
-            fit_upload(Some("strava-123")),
-            "strava_sync",
-            &training_profile,
-        )
-        .await
-        .expect("import first Strava upload");
-        assert!(matches!(first, PersistActivityUploadOutcome::Imported(_)));
-
-        let second = persist_test_activity_upload(
-            &db,
-            &uploads_dir,
-            fit_upload(Some("strava-123")),
-            "strava_sync",
-            &training_profile,
-        )
-        .await
-        .expect("import second Strava upload");
-        assert!(matches!(second, PersistActivityUploadOutcome::Duplicate(_)));
-
-        assert_eq!(activities::Entity::find().count(&db).await.unwrap(), 1);
-        assert_eq!(
-            activity_imports::Entity::find().count(&db).await.unwrap(),
-            1
         );
 
         let _ = std::fs::remove_dir_all(&uploads_dir);

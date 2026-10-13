@@ -172,7 +172,7 @@ mise run rust:check         # Rust formatting, Clippy, and tests.
 mise run coverage           # Unit coverage for every implemented service.
 mise run ui:check           # UI types, tests, build, formatting, generated client.
 mise run test               # Map renderer tests.
-mise run test:strava:docker # Native DAGs with PostgreSQL and a fake vendor.
+mise run test:strava:unit # Isolated workflows with fixture-backed dependency mocks.
 ```
 
 `mise run test:integration` runs the native API integration suite with an isolated

@@ -9,6 +9,7 @@ use bike_core::activity_import_pipeline::{
 use bike_core::background_jobs::worker::TaskProcessor;
 use bike_core::config::Config;
 use bike_core::entities::{activities, activity_import_attempts, activity_imports};
+use bike_core::jobs::JobType;
 use bike_core::jobs::{JobQueue, ProcessActivityImportTask};
 use bike_core::workflow_error::WorkflowError;
 use chrono::NaiveDate;
@@ -40,7 +41,7 @@ impl ProcessActivityImport {
 #[async_trait]
 impl TaskProcessor for ProcessActivityImport {
     fn task_type(&self) -> &str {
-        "process_activity_import"
+        JobType::ProcessActivityImport.as_str()
     }
 
     async fn process(&self, _task_id: i32, payload: serde_json::Value) -> WorkerResult<()> {

@@ -22,6 +22,14 @@
     ]
   },
   {
+    "id": "strava-temporal",
+    "name": "Strava Temporal worker",
+    "language": "Rust",
+    "source": "bike-rs/strava-temporal",
+    "include": "bike-rs/strava-temporal/**/*.rs",
+    "exclude": ["*/tests/*", "*_tests.rs"]
+  },
+  {
     "id": "bike-core",
     "name": "Shared Bike core",
     "language": "Rust",

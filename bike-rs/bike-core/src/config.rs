@@ -13,6 +13,7 @@ pub struct Config {
     pub strava_client_secret: String,
     pub strava_oauth_scopes: String,
     pub strava_webhook_verify_token: String,
+    pub worker_recovery_timeout_seconds: i64,
     pub uploads_dir: String,
     pub map_renderer_grpc_address: Option<String>,
     pub map_service_token: String,
@@ -67,6 +68,12 @@ impl Config {
                 .unwrap_or_else(|_| "activity:read_all".to_string()),
             strava_webhook_verify_token: env::var("STRAVA_WEBHOOK_VERIFY_TOKEN")
                 .unwrap_or_default(),
+            worker_recovery_timeout_seconds: worker_recovery_timeout(
+                env::var("WORKER_RECOVERY_TIMEOUT_SECONDS")
+                    .ok()
+                    .filter(|value| !value.is_empty())
+                    .as_deref(),
+            ),
             uploads_dir: env::var("UPLOADS_DIR").unwrap_or_else(|_| "./uploads".to_string()),
             map_renderer_grpc_address: env_endpoint("MAP_RENDERER_GRPC_ADDRESS"),
             map_service_token: env::var("MAP_SERVICE_TOKEN").unwrap_or_default(),
@@ -135,6 +142,18 @@ fn env_endpoint(name: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+fn worker_recovery_timeout(value: Option<&str>) -> i64 {
+    let seconds = value
+        .unwrap_or("300")
+        .parse::<u32>()
+        .expect("WORKER_RECOVERY_TIMEOUT_SECONDS must be a positive integer");
+    assert!(
+        seconds > 0,
+        "WORKER_RECOVERY_TIMEOUT_SECONDS must be a positive integer"
+    );
+    i64::from(seconds)
+}
+
 fn env_bool(name: &str, default: bool) -> bool {
     env::var(name)
         .ok()
@@ -151,4 +170,22 @@ fn is_production(environment: &str) -> bool {
         environment.trim().to_ascii_lowercase().as_str(),
         "production" | "prod"
     )
+}
+
+#[cfg(test)]
+mod recovery_timeout_tests {
+    use super::worker_recovery_timeout;
+
+    #[test]
+    fn shared_recovery_timeout_uses_its_default_and_override() {
+        assert_eq!(worker_recovery_timeout(None), 300);
+        assert_eq!(worker_recovery_timeout(Some("120")), 120);
+    }
+
+    #[test]
+    fn invalid_recovery_timeouts_are_rejected() {
+        for value in ["0", "-1", "invalid", "9223372036854775808"] {
+            assert!(std::panic::catch_unwind(|| worker_recovery_timeout(Some(value))).is_err());
+        }
+    }
 }

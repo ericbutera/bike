@@ -5,6 +5,7 @@ use bike_core::heatmaps::{
     projection::{PendingProjection, Projection},
 };
 use bike_core::jobs::adapter::{PrepareHeatmapActivity, PrepareHeatmapTask};
+use bike_core::jobs::JobType;
 use sea_orm::DatabaseConnection;
 use serde::Deserialize;
 use std::error::Error;
@@ -38,7 +39,7 @@ impl PrepareHeatmapPayload {
 #[async_trait]
 impl TaskProcessor for PrepareHeatmap {
     fn task_type(&self) -> &str {
-        "prepare_heatmap"
+        JobType::PrepareHeatmap.as_str()
     }
 
     async fn process(

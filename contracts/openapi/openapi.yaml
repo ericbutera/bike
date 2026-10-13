@@ -680,9 +680,9 @@ paths:
                 $ref: '#/components/schemas/ActivityProcessingStateResponse'
               example:
                 is_active: true
-                message: Strava sync is currently running.
-                source: strava_sync
-                source_label: Strava sync
+                message: Manual upload is currently running.
+                source: manual_upload
+                source_label: Manual upload
                 stage: running
                 stage_label: running
         '401':
@@ -3147,9 +3147,15 @@ paths:
       tags:
       - strava
       operationId: queue_backfill
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StravaBackfillRequest'
+        required: true
       responses:
         '200':
-          description: Queued a Strava backfill for the last 15 days
+          description: Accepted a Strava backfill for the requested date range
           content:
             application/json:
               schema:
@@ -3230,9 +3236,7 @@ paths:
                 last_sync_failed_count: 0
                 last_sync_finished_at: 2026-09-27T12:00:00Z
                 last_sync_imported_count: 3
-                last_sync_next_attempt_at: null
                 last_sync_status: succeeded
-                last_sync_wait_reason: null
                 scopes:
                 - read
                 - activity:read_all
@@ -3295,9 +3299,7 @@ paths:
                 last_sync_duplicate_count: 1
                 last_sync_failed_count: 0
                 last_sync_imported_count: 3
-                last_sync_next_attempt_at: null
                 last_sync_status: queued
-                last_sync_wait_reason: null
                 scopes:
                 - read
                 - activity:read_all
@@ -4330,17 +4332,17 @@ components:
           type:
           - string
           - 'null'
-          example: Strava sync is currently running.
+          example: Manual upload is currently running.
         source:
           type:
           - string
           - 'null'
-          example: strava_sync
+          example: manual_upload
         source_label:
           type:
           - string
           - 'null'
-          example: Strava sync
+          example: Manual upload
         stage:
           type:
           - string
@@ -4353,9 +4355,9 @@ components:
           example: running
       example:
         is_active: true
-        message: Strava sync is currently running.
-        source: strava_sync
-        source_label: Strava sync
+        message: Manual upload is currently running.
+        source: manual_upload
+        source_label: Manual upload
         stage: running
         stage_label: running
     ActivityResponse:
@@ -6644,7 +6646,6 @@ components:
           - 'null'
         entrypoint:
           type: string
-        gateway_history: {}
         grafana_url:
           type:
           - string
@@ -8240,6 +8241,18 @@ components:
           example: https://www.strava.com/oauth/authorize?client_id=12345&response_type=code
       example:
         authorization_url: https://www.strava.com/oauth/authorize?client_id=12345&response_type=code
+    StravaBackfillRequest:
+      type: object
+      required:
+      - start_date
+      - end_date
+      properties:
+        end_date:
+          type: string
+          format: date-time
+        start_date:
+          type: string
+          format: date-time
     StravaConnectionResponse:
       type: object
       required:
@@ -8299,12 +8312,6 @@ components:
           type:
           - string
           - 'null'
-        last_sync_next_attempt_at:
-          type:
-          - string
-          - 'null'
-          format: date-time
-          example: 2026-10-02T12:00:30Z
         last_sync_started_at:
           type:
           - string
@@ -8313,11 +8320,6 @@ components:
         last_sync_status:
           type: string
           example: succeeded
-        last_sync_wait_reason:
-          type:
-          - string
-          - 'null'
-          example: rate_limit
         last_synced_activity_started_at:
           type:
           - string
@@ -8340,9 +8342,7 @@ components:
         last_sync_failed_count: 0
         last_sync_finished_at: 2026-09-27T12:00:00Z
         last_sync_imported_count: 3
-        last_sync_next_attempt_at: null
         last_sync_status: succeeded
-        last_sync_wait_reason: null
         scopes:
         - read
         - activity:read_all
@@ -8389,6 +8389,7 @@ components:
           format: int64
           example: 12345
         updates: {}
+      additionalProperties: {}
       example:
         aspect_type: create
         event_time: 1790500000

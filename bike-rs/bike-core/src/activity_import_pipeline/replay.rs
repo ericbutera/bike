@@ -16,6 +16,7 @@ pub async fn plan_activity_import_replay(
     import: &activity_imports::Model,
     requested_stage: &str,
 ) -> Result<ActivityImportReplayPlan, AppError> {
+    import.require_sql_processing()?;
     let nodes = activity_processing_topological_order()?;
     let requested_index = nodes
         .iter()

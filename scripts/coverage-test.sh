@@ -112,7 +112,7 @@ site="$fixture/site"
 mkdir -p "$site/coverage"
 printf '[{"commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","created_at":"2026-01-01T00:00:00Z","rust":{"percent":50},"nextjs":{"percent":70}}]\n' >"$site/coverage/history.json"
 bash "$repo/scripts/coverage-site.sh" "$site" >"$fixture/pass.log" 2>&1
-jq -e '.projects | length == 5' "$site/coverage/latest-summary.json" >/dev/null
+jq -e --argjson count "${#ids[@]}" '.projects | length == $count' "$site/coverage/latest-summary.json" >/dev/null
 jq -e '.projects["map-renderer"].percent == 80 and .projects["worker"].changed.percent == 80' "$site/coverage/latest-summary.json" >/dev/null
 grep -Fq 'Rust workspace (legacy)' "$site/coverage/index.html"
 grep -Fq '+10 percentage points' "$site/coverage/index.html"

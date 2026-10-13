@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use bike_core::analytics::rebuild_fitness_freshness_cache;
 use bike_core::background_jobs::worker::TaskProcessor;
+use bike_core::jobs::JobType;
 use bike_core::jobs::RebuildFitnessFreshnessTask;
 use sea_orm::DatabaseConnection;
 use std::error::Error;
@@ -18,7 +19,7 @@ impl RebuildFitnessFreshness {
 #[async_trait]
 impl TaskProcessor for RebuildFitnessFreshness {
     fn task_type(&self) -> &str {
-        "rebuild_fitness_freshness"
+        JobType::RebuildFitnessFreshness.as_str()
     }
 
     async fn process(

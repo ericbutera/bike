@@ -13,7 +13,6 @@ async fn seed_expired_evidence(db: &sea_orm::DatabaseConnection) {
         available_at: Set(Some(old)),
         request_id: Set(None),
         trace_id: Set(None),
-        gateway_history: Set(None),
     }
     .insert(db)
     .await

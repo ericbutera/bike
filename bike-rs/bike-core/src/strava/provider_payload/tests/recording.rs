@@ -28,7 +28,7 @@ fn native_json_retains_unmodeled_summary_fields_and_virtual_recorder_evidence() 
 }
 
 #[test]
-fn gateway_payload_preserves_each_independent_virtual_signal() {
+fn provider_payload_preserves_each_independent_virtual_signal() {
     for (sport, legacy, trainer, name, expected) in [
         (
             "VirtualRide",

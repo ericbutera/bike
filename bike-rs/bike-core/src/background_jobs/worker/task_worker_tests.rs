@@ -132,24 +132,22 @@ async fn worker_restores_trace_and_pipeline_across_retry_and_handoff() {
     let provider = SdkTracerProvider::builder()
         .with_simple_exporter(exporter.clone())
         .build();
-    // Scope this fixture to application traces. SQLite drops query spans on
-    // threads that do not share this test's thread-local tracing dispatcher.
-    let subscriber = tracing_subscriber::registry()
-        .with(tracing_opentelemetry::layer().with_tracer(provider.tracer("worker-test")))
-        .with(tracing_subscriber::filter::filter_fn(|metadata| {
-            metadata.target().starts_with("bike_core::background_jobs")
-        }));
+    let subscriber = worker_test_subscriber(&provider);
     async {
-        let mut origin = PipelineContext::received("upload", Some("request-handoff".into()));
         let trace_id = "01010101010101010101010101010101";
-        origin.trace_context = Some(HashMap::from([(
-            "traceparent".into(),
-            format!("00-{trace_id}-0202020202020202-01"),
-        )]));
-        let task = PipelineContext::scope(Some(origin.clone()),
-            background_tasks::Model::enqueue(&db, "rebuild_fitness_freshness".into(),
-                json!({"strava":{"correlation_id":"887654322","workflow_id":"activity-workflow","parent_workflow_id":"signup-workflow","strava_activity_id":887654322,"athlete_id":123}}),
-                None, 2)).await.unwrap();
+        let origin = upload_trace_context(trace_id);
+        let task = PipelineContext::scope(
+            Some(origin.clone()),
+            background_tasks::Model::enqueue(
+                &db,
+                "rebuild_fitness_freshness".into(),
+                json!({"data":{"user_id":7}}),
+                None,
+                2,
+            ),
+        )
+        .await
+        .unwrap();
         let processor = Arc::new(HandoffProcessor {
             db: db.clone(),
             calls: AtomicUsize::new(0),
@@ -206,6 +204,24 @@ async fn worker_restores_trace_and_pipeline_across_retry_and_handoff() {
     .await;
 }
 
+fn upload_trace_context(trace_id: &str) -> PipelineContext {
+    let mut origin = PipelineContext::received("upload", Some("request-handoff".into()));
+    origin.trace_context = Some(HashMap::from([(
+        "traceparent".into(),
+        format!("00-{trace_id}-0202020202020202-01"),
+    )]));
+    origin
+}
+
+fn worker_test_subscriber(provider: &SdkTracerProvider) -> impl tracing::Subscriber + Send + Sync {
+    // SQLite spans can drop on threads outside this scoped test dispatcher.
+    tracing_subscriber::registry()
+        .with(tracing_opentelemetry::layer().with_tracer(provider.tracer("worker-test")))
+        .with(tracing_subscriber::filter::filter_fn(|metadata| {
+            metadata.target().starts_with("bike_core::background_jobs")
+        }))
+}
+
 fn assert_attempt_traces(
     history: &[task_attempts::Model],
     trace_id: &str,
@@ -237,19 +253,13 @@ fn assert_retry_spans(exporter: &InMemorySpanExporter) {
         .iter()
         .filter(|span| span.name == "background_task.process")
     {
-        for (key, value) in [
-            ("correlation_id", "887654322"),
-            ("workflow_id", "activity-workflow"),
-            ("parent_workflow_id", "signup-workflow"),
-        ] {
-            assert!(
-                span.attributes
-                    .iter()
-                    .any(|attribute| attribute.key.as_str() == key
-                        && attribute.value.as_str() == value),
-                "queued retry must export {key} for Grafana correlation"
-            );
-        }
+        assert!(
+            span.attributes
+                .iter()
+                .any(|attribute| attribute.key.as_str() == "request_id"
+                    && attribute.value.as_str() == "request-handoff"),
+            "queued retry must export request_id for Grafana correlation"
+        );
     }
     assert!(
         spans

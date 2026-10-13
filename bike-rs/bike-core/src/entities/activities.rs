@@ -10,6 +10,7 @@ use sea_orm::{
     QuerySelect, Set,
 };
 use std::collections::HashMap;
+pub(crate) mod parsed;
 
 pub const BIKE_ACTIVITY_SPORT: &str = "ride";
 
@@ -38,6 +39,30 @@ pub struct AdminListRow {
 }
 
 impl Model {
+    pub async fn native_strava_ids(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+    ) -> Result<Vec<i64>, DbErr> {
+        let values = Entity::find()
+            .select_only()
+            .column(Column::SourceCorrelationId)
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::Source.eq("strava_sync"))
+            .order_by_asc(Column::Id)
+            .limit(50)
+            .into_tuple::<Option<String>>()
+            .all(db)
+            .await?;
+        values
+            .into_iter()
+            .flatten()
+            .map(|value| {
+                value
+                    .parse::<i64>()
+                    .map_err(|error| DbErr::Custom(error.to_string()))
+            })
+            .collect()
+    }
     pub async fn admin_page(
         db: &impl ConnectionTrait,
         filters: &AdminListFilters,
@@ -171,25 +196,25 @@ impl Model {
         archive_only: bool,
     ) -> Result<Vec<i32>, DbErr> {
         use sea_orm::QueryTrait;
-        let query = Entity::find()
+        let imports = super::activity_imports::Entity::find()
+            .select_only()
+            .column(super::activity_imports::Column::Id)
+            .filter(super::activity_imports::Column::UserId.eq(user_id))
+            .filter(super::activity_imports::Column::Source.ne("strava_sync"));
+        let imports = if archive_only {
+            imports
+                .filter(super::activity_imports::Column::Source.eq("archive_url_import"))
+                .filter(super::activity_imports::Column::Format.eq("fit"))
+        } else {
+            imports
+        };
+        Entity::find()
             .select_only()
             .column(Column::Id)
             .filter(Column::UserId.eq(user_id))
             .filter(Column::Id.gt(after))
-            .filter(Column::ActivityImportId.is_not_null());
-        let query = if archive_only {
-            let imports = super::activity_imports::Entity::find()
-                .select_only()
-                .column(super::activity_imports::Column::Id)
-                .filter(super::activity_imports::Column::UserId.eq(user_id))
-                .filter(super::activity_imports::Column::Source.eq("archive_url_import"))
-                .filter(super::activity_imports::Column::Format.eq("fit"))
-                .into_query();
-            query.filter(Column::ActivityImportId.in_subquery(imports))
-        } else {
-            query
-        };
-        query
+            .filter(Column::Source.ne("strava_sync"))
+            .filter(Column::ActivityImportId.in_subquery(imports.into_query()))
             .order_by_asc(Column::Id)
             .limit(16)
             .into_tuple::<i32>()

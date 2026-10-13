@@ -34,7 +34,6 @@ pub async fn database() -> DatabaseConnection {
         schema.create_table_from_entity(segment_summaries::Entity),
         schema.create_table_from_entity(segment_user_summaries::Entity),
         schema.create_table_from_entity(strava_connections::Entity),
-        schema.create_table_from_entity(strava_workflows::Entity),
         schema.create_table_from_entity(strava_activity_states::Entity),
         schema.create_table_from_entity(integration_events::Entity),
         schema.create_table_from_entity(bike_core::platform::feature_flags::entities::Entity),

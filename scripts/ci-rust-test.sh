@@ -41,7 +41,7 @@ case "$*" in
   '--cd bike-rs run coverage:report')
     test -s .artifacts/coverage/unit-measured
     test -s .artifacts/coverage/postgres-measured
-    for project in api worker bike-core; do
+    for project in api worker bike-core strava-temporal; do
       mkdir -p ".artifacts/coverage/$project/html"
       for file in html/index.html lcov.info coverage-summary.json; do
         cat .artifacts/coverage/unit-measured .artifacts/coverage/postgres-measured >".artifacts/coverage/$project/$file"
@@ -259,11 +259,10 @@ exit 0
 SH
 chmod +x "$fixture/bin/docker" "$fixture/bin/timeout" "$fixture/bin/sleep"
 export BIKE_POSTGRES_IMAGE=synthetic-postgres BIKE_WORKER_TEST_DATABASE_HOST=postgres BIKE_WORKER_TEST_DATABASE_PORT=5432
-export BIKE_WORKER_TEST_DATABASE_URL=postgres://worker_test:worker_test@postgres:5432/worker_test BIKE_STRAVA_COVERAGE=true
+export BIKE_WORKER_TEST_DATABASE_URL=postgres://worker_test:worker_test@postgres:5432/worker_test
 : >"$FIXTURE_COMMANDS"
 bash scripts/test-worker-postgres.sh
 grep -Fxq -- '--cd bike-rs run test:workers:postgres' "$FIXTURE_COMMANDS"
-grep -Fxq -- '--cd bike-rs run coverage:strava:postgres' "$FIXTURE_COMMANDS"
 : >"$FIXTURE_COMMANDS"
 export FIXTURE_PG_READY=false
 if bash scripts/test-worker-postgres.sh >"$fixture/not-ready.log" 2>&1; then exit 1; fi
