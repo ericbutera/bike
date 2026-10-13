@@ -56,7 +56,7 @@ Git worktree for feature, test, and documentation branches, and perform edits,
 builds, tests, and commits there. Do not switch the primary checkout to a task
 branch unless the user explicitly requests it.
 
-Make draft PRs for work and update them continuously during review. Keep them
+Make PRs for work and update them continuously during review. Keep them
 open for review unless the user explicitly requests integration or a production
 fix. Do not leave authorized PR updates only in a local commit.
 

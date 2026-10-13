@@ -5,31 +5,6 @@ user workflows, background processing, service boundaries, and operational
 contracts. Code implements these specifications; tests verify that implementation.
 Update the owning spec in the same change as any intended behavior change.
 
-The specs are intentionally written as product contracts instead of implementation logs. Task status and priority live only in the [Bike TODO](../TODO.md); specs keep the behavior, technical constraints, and evidence needed to complete those items.
-
-## Specs
-
-- [Project overview](project-overview.md)
-- [Supported activities](supported-activities.md)
-- [Activity ingestion](activity-ingestion.md)
-- [Maps and snapshot service](maps.md)
-- [Personal heatmaps](heatmaps.md)
-- [Activity experience](activity-experience.md)
-- [Segment processing](segment-processing.md)
-- [Segment race viewer](segment-race-viewer.md)
-- [UI components](ui-components.md)
-- [Training analytics](training-analytics.md)
-- [Cycling trends reports](cycling-trends-reports.md)
-- [XC event readiness](xc-event-readiness.md)
-- [Reassessment report](reassessment-report.md)
-- [Account integrations](account-integrations.md)
-- [Strava integration](strava-integration.md)
-- [Retired Strava gateway record](strava-fanout.md)
-- [Admin operations](admin-operations.md)
-- [Auth configuration](auth-configuration.md)
-- [Production synthetics](production-synthetics.md)
-- [Rust CI verification and reuse](rust-ci.md)
-
 ## Spec Rules
 
 - Specs describe the intended behavior first. Code anchors are supporting references, not substitutes for the product contract.
