@@ -37,6 +37,13 @@ beforeEach(() => {
 });
 
 describe("Import history", () => {
+  it("refreshes the current list only on request", async () => {
+    const user = userEvent.setup();
+    render(<ImportHistory />);
+    expect(mocks.refetch).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(mocks.refetch).toHaveBeenCalledOnce();
+  });
   it("opens failed imports before they have an activity", () => {
     render(<ImportHistory />);
     expect(screen.getByRole("link", { name: "broken.gpx" })).toHaveAttribute(

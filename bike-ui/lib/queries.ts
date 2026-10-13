@@ -6,6 +6,11 @@ import type { components } from "./openapi/react-query/api";
 
 const USER_CONTEXT_STALE_TIME_MS = 30 * 60 * 1000;
 const USER_CONTEXT_GC_TIME_MS = 60 * 60 * 1000;
+const ADMIN_IMPORT_QUERY_OPTIONS = {
+  refetchInterval: false,
+  refetchOnWindowFocus: false,
+  refetchOnReconnect: false,
+} as const;
 
 export type PaginationMetadata = {
   page: number;
@@ -1748,7 +1753,7 @@ export function useActivityImportTrace(
     {
       params: { path: { id: enabled ? numericImportId : 0 } },
     },
-    { enabled, refetchInterval: 3000 },
+    { ...ADMIN_IMPORT_QUERY_OPTIONS, enabled },
   );
 
   return {
@@ -1772,7 +1777,7 @@ export function useAdminActivityImportTrace(
     {
       params: { path: { id: enabled ? numericActivityId : 0 } },
     },
-    { enabled },
+    { ...ADMIN_IMPORT_QUERY_OPTIONS, enabled },
   );
   const data = response.data as AdminActivityImportTraceResponse | undefined;
 
@@ -2212,7 +2217,7 @@ export function useActivityImportHistory(
     {
       params: { query },
     },
-    { refetchInterval: 3000, enabled: opts?.enabled ?? true },
+    { ...ADMIN_IMPORT_QUERY_OPTIONS, enabled: opts?.enabled ?? true },
   );
   return response;
 }

@@ -190,8 +190,8 @@ repository root.
 - Shared UI choices: `bike-ui/lib/activitySports.ts`
 - File summary parsing: `bike-rs/bike-core/src/activity_summary.rs`
 - FIT session/sub-sport handling: `bike-rs/bike-core/src/fit_support.rs`
-- Provider classification: `bike-rs/bike-core/src/strava_provider_payload.rs`
-- Native provider admission: `bike-rs/bike-core/src/strava_provider_payload.rs`, `strava_activity_is_bike`
+- Provider classification: `bike-rs/bike-core/src/strava/provider_payload.rs`
+- Native provider admission: `bike-rs/bike-core/src/strava/provider_payload.rs`, `strava_activity_is_bike`
 - Non-cycling graph guards: `bike-rs/bike-core/src/activity_import_pipeline.rs`
 - Cycling query scope: `bike-rs/bike-core/src/entities/activities.rs`
 - Derived detail model: `bike-rs/bike-core/src/activity_data.rs`

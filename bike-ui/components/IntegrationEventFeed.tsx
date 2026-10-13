@@ -2,9 +2,7 @@
 
 import { formatActivityTimestamp } from "@/lib/activityFormatting";
 import type { IntegrationEvent } from "@/lib/queries";
-import StravaSyncHistory, {
-  getStravaActivityChanges,
-} from "./StravaSyncHistory";
+import StravaSyncHistory, { getStravaSyncHistory } from "./StravaSyncHistory";
 import { CenteredLoading, ErrorCard } from "./ui/QueryState";
 
 type IntegrationEventFeedProps = {
@@ -26,8 +24,8 @@ export default function IntegrationEventFeed({
   showUserId = false,
   showProvider = false,
 }: IntegrationEventFeedProps) {
-  const activityChanges =
-    audience === "account" ? getStravaActivityChanges(events) : [];
+  const syncHistory =
+    audience === "account" ? getStravaSyncHistory(events) : [];
 
   if (isLoading) {
     return <CenteredLoading />;
@@ -46,9 +44,7 @@ export default function IntegrationEventFeed({
     );
   }
 
-  if (
-    audience === "account" ? activityChanges.length === 0 : events.length === 0
-  ) {
+  if (audience === "account" ? syncHistory.length === 0 : events.length === 0) {
     return (
       <div className="rounded-box border border-dashed border-base-300 bg-base-200/60 px-4 py-6 text-sm text-base-content/65">
         {emptyMessage}
@@ -57,7 +53,7 @@ export default function IntegrationEventFeed({
   }
 
   if (audience === "account") {
-    return <StravaSyncHistory changes={activityChanges} />;
+    return <StravaSyncHistory entries={syncHistory} />;
   }
 
   return (

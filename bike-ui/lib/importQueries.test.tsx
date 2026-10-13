@@ -14,7 +14,7 @@ const api = vi.hoisted(() => ({
   replay: vi.fn(),
 }));
 vi.mock("./api", () => ({
-  $api: {},
+  $api: { useQuery: api.query },
   $typedApi: { useQuery: api.query, useMutation: api.mutation },
 }));
 
@@ -26,14 +26,19 @@ beforeEach(() => {
 });
 
 describe("import query hooks", () => {
-  it("polls import history with the selected archive and source filters", () => {
+  it("loads import history on demand with the selected archive and source filters", () => {
     const query = { page: 2, source: "manual_upload", archive_job_id: 9 };
     const { result } = renderHook(() => useActivityImportHistory(query));
     expect(api.query).toHaveBeenCalledWith(
       "get",
       "/admin/activity-imports/history",
       { params: { query } },
-      { refetchInterval: 3000, enabled: true },
+      {
+        refetchInterval: false,
+        refetchOnWindowFocus: false,
+        refetchOnReconnect: false,
+        enabled: true,
+      },
     );
     expect(result.current.data).toEqual({ total: 1 });
   });

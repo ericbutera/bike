@@ -88,15 +88,10 @@ pub async fn list_strava_history(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<Vec<IntegrationEventResponse>>, AppError> {
-    let events = integration_event_service::list_recent_events(
+    let events = integration_event_service::list_account_strava_events(
         &state.db,
-        integration_event_service::IntegrationEventListOptions {
-            provider: Some(integration_event_service::INTEGRATION_PROVIDER_STRAVA.to_string()),
-            user_id: Some(user.id),
-            activity_id: None,
-            import_id: None,
-            limit: USER_HISTORY_LIMIT,
-        },
+        user.id,
+        USER_HISTORY_LIMIT,
     )
     .await?;
 
@@ -154,3 +149,7 @@ pub async fn list_admin_integration_events(
             .collect(),
     ))
 }
+
+#[cfg(test)]
+#[path = "integration_events_tests.rs"]
+mod tests;

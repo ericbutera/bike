@@ -1,6 +1,6 @@
 use crate::activity_details::{derive_activity_detail_data, ActivityDerivedData};
 use crate::activity_summary::{summarize_activity_upload, ActivityDraft};
-use crate::strava_provider_payload::parse_strava_provider_payload;
+use crate::strava::provider_payload::parse_strava_provider_payload;
 use crate::workflow_error::WorkflowError as AppError;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -24,7 +24,7 @@ pub fn parse_activity_artifact(
         return Err(retired_source_error());
     }
     if artifact.artifact_kind == "original" && artifact.source_quality == "strava_archive_json" {
-        return crate::strava_archive_json::parse(artifact.bytes);
+        return crate::strava::archive_json::parse(artifact.bytes);
     }
     if artifact.artifact_kind == "provider_payload" && artifact.source_quality == "strava_streams" {
         return parse_strava_provider_payload(artifact.bytes);

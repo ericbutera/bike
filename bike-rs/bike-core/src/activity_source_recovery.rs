@@ -510,7 +510,7 @@ fn verify_provider_identity(
     activity: &activities::Model,
 ) -> Result<(), AppError> {
     if artifact.artifact_kind == "provider_payload" {
-        let payload: crate::strava_provider_payload::StoredStravaProviderPayload =
+        let payload: crate::strava::provider_payload::StoredStravaProviderPayload =
             serde_json::from_slice(bytes)
                 .map_err(|_| AppError::bad_request("Invalid retained provider source"))?;
         let id = payload.activity.id.to_string();

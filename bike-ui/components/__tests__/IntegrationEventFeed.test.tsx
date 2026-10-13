@@ -171,10 +171,13 @@ describe("IntegrationEventFeed", () => {
     expect(
       screen.getAllByRole("columnheader").map((cell) => cell.textContent),
     ).toEqual(["Date", "Activities modified"]);
-    expect(screen.getAllByRole("row")).toHaveLength(2);
-    expect(
-      screen.getByText(formatActivityTimestamp(changed.created_at)),
-    ).toHaveAttribute("datetime", changed.created_at);
+    expect(screen.getAllByRole("row")).toHaveLength(3);
+    expect(screen.getByText("Sync completed.")).toBeInTheDocument();
+    for (const date of screen.getAllByText(
+      formatActivityTimestamp(changed.created_at),
+    )) {
+      expect(date).toHaveAttribute("datetime", changed.created_at);
+    }
     const activityLink = screen.getByRole("link", { name: "Morning ride" });
     expect(activityLink).toHaveAttribute("href", "/activities/42");
     expect(activityLink.closest("td")).toHaveTextContent(
@@ -349,5 +352,117 @@ describe("IntegrationEventFeed", () => {
       "Unable to load Strava sync history.",
     );
     expect(screen.queryByText(/internal-workflow/)).not.toBeInTheDocument();
+  });
+
+  it("keeps a new queued sync and previous syncs visible without activity modifications", () => {
+    render(
+      <IntegrationEventFeed
+        events={[
+          stravaEvent(
+            { action: "sync", workflow_id: "new-run" },
+            { event_type: "workflow.accepted" },
+          ),
+          stravaEvent(
+            {
+              action: "sync",
+              stage: "complete",
+              outcome: "completed",
+              workflow_id: "old-run",
+            },
+            { id: 2 },
+          ),
+          stravaEvent(
+            { action: "sync", workflow_id: "old-run" },
+            { id: 3, event_type: "workflow.accepted" },
+          ),
+          stravaEvent(null, {
+            id: 4,
+            event_type: "sync.succeeded",
+            payload: { imported_count: 3 },
+          }),
+          stravaEvent(null, {
+            id: 5,
+            event_type: "sync_completed",
+            payload: { imported_count: 0 },
+          }),
+        ]}
+        isLoading={false}
+        error={null}
+        emptyMessage="No history"
+      />,
+    );
+    expect(screen.getByText("Sync queued.")).toBeInTheDocument();
+    expect(screen.getByText("Sync completed.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Sync completed. 3 activities imported."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Sync completed. 0 activities imported."),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("row")).toHaveLength(5);
+    expect(
+      screen.queryByText(/internal-workflow|Athlete:|Workflow:|Payload/),
+    ).not.toBeInTheDocument();
+    expect(mocks.activity).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["sync.started", {}, "Sync in progress."],
+    ["sync.failed", {}, "Sync needs attention."],
+    ["sync.cancelled", {}, "Sync cancelled."],
+    ["sync.paused", {}, "Sync paused."],
+    ["sync.resumed", {}, "Sync in progress."],
+    ["sync.future", {}, "Sync update."],
+    [
+      "sync.completed",
+      { imported_count: 1 },
+      "Sync completed. 1 activity imported.",
+    ],
+    ["sync.completed", { imported_count: -1 }, "Sync completed."],
+    [
+      "workflow.stage",
+      { action: "backfill", stage: "discover" },
+      "Sync in progress.",
+    ],
+    [
+      "workflow.stage",
+      { action: "sync", stage: "children" },
+      "Sync in progress.",
+    ],
+    ["workflow.stage.failed", { stage: "children" }, "Sync needs attention."],
+  ])("shows a plain sync state for %s", (event_type, payload, summary) => {
+    render(
+      <IntegrationEventFeed
+        events={[stravaEvent(payload, { event_type })]}
+        isLoading={false}
+        error={null}
+        emptyMessage="No history"
+      />,
+    );
+    expect(screen.getByText(summary)).toBeInTheDocument();
+    expect(
+      screen.queryByText("Strava sync: complete completed."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("preserves older deletion history without confusing provider IDs with Bike IDs", () => {
+    render(
+      <IntegrationEventFeed
+        events={[
+          stravaEvent(
+            { activity_id: 42 },
+            { event_type: "webhook.activity_delete", level: "success" },
+          ),
+        ]}
+        isLoading={false}
+        error={null}
+        emptyMessage="No history"
+      />,
+    );
+    expect(
+      screen.getByText("Strava activity 42").closest("td"),
+    ).toHaveTextContent("Removed: Strava activity 42");
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(mocks.activity).toHaveBeenCalledWith(null);
   });
 });

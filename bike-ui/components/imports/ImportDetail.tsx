@@ -29,14 +29,24 @@ export default function ImportDetail({ importId }: { importId: string }) {
             </div>
           ) : null}
         </div>
-        {query.data?.import.activity_id ? (
-          <Link
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
             className="btn btn-outline"
-            href={`/activities/${query.data.import.activity_id}`}
+            disabled={query.isFetching}
+            onClick={() => void query.refetch()}
           >
-            View activity
-          </Link>
-        ) : null}
+            Refresh
+          </button>
+          {query.data?.import.activity_id ? (
+            <Link
+              className="btn btn-outline"
+              href={`/activities/${query.data.import.activity_id}`}
+            >
+              View activity
+            </Link>
+          ) : null}
+        </div>
       </div>
       {query.data ? (
         <section

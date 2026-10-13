@@ -11,13 +11,6 @@ mod regenerate_user_segments;
 pub use regenerate_activity_segments::RegenerateActivitySegments;
 mod reprocess_activity_import;
 mod reprocess_user_activity_imports;
-mod strava_reconcile;
-mod strava_retention;
-pub use strava_retention::StravaRetention;
-mod strava_sync;
-pub use strava_reconcile::StravaReconcile;
-mod strava_workflow;
-pub use strava_workflow::StravaWorkflow;
 
 pub use activity_archive_import::ActivityArchiveImport;
 pub use backfill_user_xc_training::BackfillUserXcTraining;
@@ -30,4 +23,3 @@ pub use regenerate_segment_efforts::RegenerateSegmentEfforts;
 pub use regenerate_user_segments::RegenerateUserSegments;
 pub use reprocess_activity_import::ReprocessActivityImport;
 pub use reprocess_user_activity_imports::ReprocessUserActivityImports;
-pub use strava_sync::StravaSync;

@@ -46,6 +46,10 @@ pub enum Relation {}
 impl ActiveModelBehavior for ActiveModel {}
 
 impl Model {
+    pub async fn load(db: &impl ConnectionTrait, id: &str) -> Result<Option<Self>, DbErr> {
+        Entity::find_by_id(id).one(db).await
+    }
+
     pub fn correlation_id(&self) -> String {
         self.activity_id
             .map(|id| id.to_string())
@@ -73,6 +77,9 @@ impl Model {
             .await?;
         for row in rows {
             if let Some(pause) = row.checkpoint.get("pause") {
+                if pause["reason"] == "children" {
+                    continue;
+                }
                 let at: DateTimeUtc = serde_json::from_value(pause["retry_at"].clone())
                     .map_err(|error| DbErr::Custom(error.to_string()))?;
                 if at > chrono::Utc::now() {

@@ -115,9 +115,19 @@ export default function ImportHistory({
     <ListCard
       title="Import history"
       actions={
-        <Link href="/upload" className="btn btn-sm btn-primary">
-          Upload activity
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn btn-sm btn-outline"
+            disabled={query.isFetching || !validUserId}
+            onClick={() => void query.refetch()}
+          >
+            Refresh
+          </button>
+          <Link href="/upload" className="btn btn-sm btn-primary">
+            Upload activity
+          </Link>
+        </div>
       }
       onSearch={() => {
         if (validUserId) void query.refetch();

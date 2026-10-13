@@ -182,7 +182,8 @@ pub async fn queue_sync(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<StravaConnectionResponse>, AppError> {
-    let connection = bike_core::strava_workflow::queue_user_sync(&state.db, user.id, false).await?;
+    let connection =
+        bike_core::strava::workflow::queue_user_sync(&state.db, user.id, false).await?;
 
     Ok(Json(
         response_from_model(&state.db, Some(&connection)).await?,
@@ -205,7 +206,7 @@ pub async fn queue_backfill(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<StravaConnectionResponse>, AppError> {
-    let connection = bike_core::strava_workflow::queue_user_sync(&state.db, user.id, true).await?;
+    let connection = bike_core::strava::workflow::queue_user_sync(&state.db, user.id, true).await?;
     Ok(Json(
         response_from_model(&state.db, Some(&connection)).await?,
     ))
@@ -229,7 +230,7 @@ pub async fn disconnect_connection(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<auth_openapi::schemas::MessageResponse>, AppError> {
-    bike_core::strava_workflow::queue_disconnect(&state.db, user.id).await?;
+    bike_core::strava::workflow::queue_disconnect(&state.db, user.id).await?;
     Ok(Json(auth_openapi::schemas::MessageResponse {
         message: "Strava disconnect queued.".to_string(),
     }))
@@ -367,7 +368,7 @@ pub async fn handle_webhook_event(
 ) -> Result<Json<auth_openapi::schemas::MessageResponse>, AppError> {
     let event: strava::StravaWebhookEvent = serde_json::from_slice(&body)
         .map_err(|_| AppError::bad_request("Invalid Strava webhook body"))?;
-    bike_core::strava_workflow::accept_webhook(&state.db, &event, &body).await?;
+    bike_core::strava::workflow::accept_webhook(&state.db, &event, &body).await?;
 
     Ok(Json(auth_openapi::schemas::MessageResponse {
         message: "ok".to_string(),

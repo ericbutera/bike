@@ -142,7 +142,7 @@ impl JobQueue {
 
     async fn enqueue_job(&self, job: Job) -> Result<(), crate::background_jobs::TaskError> {
         let task_type = job.task_type().to_string();
-        if crate::strava_workflow::intents::enqueue(
+        if crate::strava::workflow::intents::enqueue(
             &self.db,
             &task_type,
             &serde_json::to_value(&job)?,
