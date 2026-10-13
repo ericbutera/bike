@@ -1,5 +1,79 @@
 [
   {
+    "commit": "41ee034c5a0935a3f7a4d6463bb5bf332d98dd2b",
+    "created_at": "2026-10-13T12:48:00Z",
+    "base_revision": "83498dc9713c86f8deba96555290751c6712047a",
+    "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/370",
+    "minimum_changed_line_percent": 80,
+    "projects": {
+      "api": {
+        "name": "Bike API",
+        "language": "Rust",
+        "source": "bike-rs/api",
+        "lines": 7530,
+        "covered": 4532,
+        "percent": 60.18592297476759,
+        "changed": {
+          "lines": 9,
+          "covered": 9,
+          "percent": 100.0
+        }
+      },
+      "worker": {
+        "name": "Bike worker",
+        "language": "Rust",
+        "source": "bike-rs/worker",
+        "lines": 736,
+        "covered": 439,
+        "percent": 59.64673913043478,
+        "changed": {
+          "lines": 142,
+          "covered": 140,
+          "percent": 98.59
+        }
+      },
+      "bike-core": {
+        "name": "Shared Bike core",
+        "language": "Rust",
+        "source": "bike-rs/bike-core",
+        "lines": 36038,
+        "covered": 27537,
+        "percent": 76.4110105999223,
+        "changed": {
+          "lines": 843,
+          "covered": 813,
+          "percent": 96.44
+        }
+      },
+      "bike-ui": {
+        "name": "Bike UI",
+        "language": "Next.js",
+        "source": "bike-ui",
+        "lines": 5924,
+        "covered": 3827,
+        "percent": 64.6,
+        "changed": {
+          "lines": 65,
+          "covered": 63,
+          "percent": 96.92
+        }
+      },
+      "map-renderer": {
+        "name": "Map renderer",
+        "language": "Go",
+        "source": "map-renderer",
+        "lines": 444,
+        "covered": 361,
+        "percent": 81.30630630630631,
+        "changed": {
+          "lines": 0,
+          "covered": 0,
+          "percent": 100.0
+        }
+      }
+    }
+  },
+  {
     "commit": "92dbd4056cd3db36151cd1414b23e5b5a12c3964",
     "created_at": "2026-10-13T01:03:27Z",
     "base_revision": "f73e6a378831ef2cb576d65a7fb4b8da1b08b607",
@@ -648,80 +722,6 @@
           "lines": 0,
           "covered": 0,
           "percent": 100.0
-        }
-      },
-      "map-renderer": {
-        "name": "Map renderer",
-        "language": "Go",
-        "source": "map-renderer",
-        "lines": 444,
-        "covered": 361,
-        "percent": 81.30630630630631,
-        "changed": {
-          "lines": 0,
-          "covered": 0,
-          "percent": 100.0
-        }
-      }
-    }
-  },
-  {
-    "commit": "c9d28a7fa58eb3d77762ac0cac6b30a7cdeff579",
-    "created_at": "2026-10-12T00:06:58Z",
-    "base_revision": "2c75fafde14e1f7276074e745ebe8df2c5efd303",
-    "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/305",
-    "minimum_changed_line_percent": 80,
-    "projects": {
-      "api": {
-        "name": "Bike API",
-        "language": "Rust",
-        "source": "bike-rs/api",
-        "lines": 7874,
-        "covered": 4645,
-        "percent": 58.99161798323597,
-        "changed": {
-          "lines": 0,
-          "covered": 0,
-          "percent": 100.0
-        }
-      },
-      "worker": {
-        "name": "Bike worker",
-        "language": "Rust",
-        "source": "bike-rs/worker",
-        "lines": 608,
-        "covered": 314,
-        "percent": 51.64473684210527,
-        "changed": {
-          "lines": 0,
-          "covered": 0,
-          "percent": 100.0
-        }
-      },
-      "bike-core": {
-        "name": "Shared Bike core",
-        "language": "Rust",
-        "source": "bike-rs/bike-core",
-        "lines": 37194,
-        "covered": 27001,
-        "percent": 72.59504221110932,
-        "changed": {
-          "lines": 0,
-          "covered": 0,
-          "percent": 100.0
-        }
-      },
-      "bike-ui": {
-        "name": "Bike UI",
-        "language": "Next.js",
-        "source": "bike-ui",
-        "lines": 5806,
-        "covered": 3547,
-        "percent": 61.09,
-        "changed": {
-          "lines": 174,
-          "covered": 146,
-          "percent": 83.91
         }
       },
       "map-renderer": {
