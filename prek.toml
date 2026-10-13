@@ -60,14 +60,6 @@ files = "^scripts/(ci-rust.*|ci-engine-stop|ci-cache-guard|coverage-transfer|tes
 pass_filenames = false
 
 [[repos.hooks]]
-id = "synthetics-check"
-name = "k6 synthetic configuration"
-language = "system"
-entry = "mise run synthetics:check"
-files = "^integration-tests/.*\\.js$"
-pass_filenames = false
-
-[[repos.hooks]]
 id = "compose-runtime"
 name = "Shared development and E2E runtime configuration"
 language = "system"
@@ -128,7 +120,7 @@ id = "renderer-lint"
 name = "Renderer and shared JavaScript lint and formatting"
 language = "system"
 entry = "mise run lint:maps"
-files = "^map-renderer/.*\\.(mjs|html|json|toml)$|^scripts/.*\\.mjs$|^integration-tests/.*\\.js$|^mise\\.toml$"
+files = "^map-renderer/.*\\.(mjs|html|json|toml)$|^scripts/.*\\.mjs$|^mise\\.toml$"
 pass_filenames = false
 
 [[repos.hooks]]

@@ -8,7 +8,6 @@ export default [
       "scripts/**/*.mjs",
       "map-renderer/**/*.mjs",
       "map-renderer/**/*.html",
-      "integration-tests/**/*.js",
     ],
     rules: {
       ...js.configs.recommended.rules,
@@ -23,9 +22,5 @@ export default [
     files: ["map-renderer/**/*.html"],
     plugins: { html },
     languageOptions: { globals: globals.browser },
-  },
-  {
-    files: ["integration-tests/**/*.js"],
-    languageOptions: { globals: { __ENV: "readonly" } },
   },
 ];

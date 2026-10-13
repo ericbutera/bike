@@ -12,7 +12,6 @@ when:
         - contracts/**
         - proto/**
         - map-renderer/**
-        - integration-tests/**
         - scripts/**
         - compose*.yaml
         - docker-bake.hcl

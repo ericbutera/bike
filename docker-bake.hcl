@@ -12,7 +12,6 @@ variable "PLAYWRIGHT_IMAGE" { default = null }
 variable "DOCKER_CLI_IMAGE" { default = null }
 variable "DOCKER_DIND_IMAGE" { default = null }
 variable "GO_IMAGE" { default = null }
-variable "K6_IMAGE" { default = null }
 variable "IMAGE_REGISTRY" { default = "" }
 variable "IMAGE_TAG" { default = "review" }
 variable "CACHE_REGISTRY" { default = "" }
@@ -111,9 +110,4 @@ target "e2e-engine" {
   tags = [image("e2e-engine")]
   cache-from = cache_from("e2e-engine")
   cache-to = cache_to("e2e-engine")
-}
-target "synthetics" {
-  context = "integration-tests"
-  args = { K6_IMAGE = K6_IMAGE }
-  tags = [image("synthetics")]
 }
