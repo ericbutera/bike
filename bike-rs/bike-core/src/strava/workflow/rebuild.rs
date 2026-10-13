@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 /// The changed imports, segments and date range handed from apply to rebuild.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub(crate) struct Rebuild {
+pub struct Rebuild {
     pub import_ids: Vec<i32>,
     pub segment_ids: Vec<i32>,
     pub dirty_from: Option<NaiveDate>,

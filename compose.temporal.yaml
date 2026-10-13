@@ -1,0 +1,135 @@
+# Local Temporal shares PostgreSQL with Bike, using its own databases.
+services:
+  temporal-worker:
+    image: bike-dev-worker
+    build:
+      context: ./bike-rs
+      dockerfile: Dockerfile.dev
+      target: worker
+      args:
+        RUST_IMAGE: ${RUST_IMAGE:?Run Compose through mise}
+        WATCHEXEC_VERSION: ${WATCHEXEC_VERSION:?Run Compose through mise}
+        MISE_IMAGE: ${MISE_IMAGE:?Run Compose through mise}
+        PROTOC_VERSION: ${PROTOC_VERSION:?Run Compose through mise}
+    command: [cargo, run, --locked, --bin, temporal-worker]
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/bike
+      UPLOADS_DIR: /app/uploads
+      RUST_LOG: info,sqlx=warn
+      RUSTFLAGS: -D warnings
+      TEMPORAL_ADDRESS: ${BIKE_TEMPORAL_ADDRESS:-http://temporal:7233}
+      TEMPORAL_NAMESPACE: bike
+      TEMPORAL_TASK_QUEUE: bike-strava
+      CARGO_HOME: /cargo
+      STRAVA_CLIENT_ID: ${STRAVA_CLIENT_ID:-}
+      STRAVA_CLIENT_SECRET: ${STRAVA_CLIENT_SECRET:-}
+    volumes:
+      - ./bike-rs:/app
+      - ${BIKE_UPLOADS_DIR:-./bike-rs/uploads}:/app/uploads
+      - temporal_worker_cargo:/cargo
+      - temporal_worker_target:/app/target
+    stop_grace_period: 1m
+    depends_on:
+      temporal-namespace:
+        condition: service_completed_successfully
+      migration:
+        condition: service_completed_successfully
+
+  temporal-databases:
+    image: ${BIKE_POSTGRES_IMAGE:?Run Compose through mise}
+    entrypoint: [psql]
+    command:
+      [
+        --host=postgres,
+        --username=postgres,
+        --dbname=postgres,
+        --set=ON_ERROR_STOP=1,
+        --file=/setup/databases.sql,
+      ]
+    environment:
+      PGPASSWORD: postgres
+    volumes:
+      - ./docker/temporal/databases.sql:/setup/databases.sql:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  temporal-schema:
+    image: ${BIKE_TEMPORAL_TOOLS_IMAGE:?Run Compose through mise}
+    entrypoint: [sh, /setup/schema.sh]
+    environment:
+      SQL_HOST: postgres
+      SQL_PORT: 5432
+      SQL_USER: postgres
+      SQL_PASSWORD: postgres
+      SQL_PLUGIN: postgres12
+    volumes:
+      - ./scripts/temporal-schema.sh:/setup/schema.sh:ro
+    depends_on:
+      temporal-databases:
+        condition: service_completed_successfully
+
+  temporal:
+    image: ${BIKE_TEMPORAL_SERVER_IMAGE:?Run Compose through mise}
+    command:
+      [
+        temporal-server,
+        --config-file,
+        /etc/temporal/config/server.yaml,
+        --allow-no-auth,
+        start,
+      ]
+    volumes:
+      - ./docker/temporal/server.yaml:/etc/temporal/config/server.yaml:ro
+      - ./docker/temporal/dynamicconfig.yaml:/etc/temporal/config/dynamicconfig.yaml:ro
+    ports:
+      - "127.0.0.1:${BIKE_TEMPORAL_PORT:-7233}:7233"
+    stop_grace_period: 1m
+    healthcheck:
+      test:
+        [
+          CMD,
+          wget,
+          --quiet,
+          --output-document=/dev/null,
+          http://127.0.0.1:7243/api/v1/system-info,
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    depends_on:
+      temporal-schema:
+        condition: service_completed_successfully
+
+  temporal-namespace:
+    image: ${BIKE_TEMPORAL_TOOLS_IMAGE:?Run Compose through mise}
+    entrypoint: [sh, /setup/namespace.sh]
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: bike
+    volumes:
+      - ./scripts/temporal-namespace.sh:/setup/namespace.sh:ro
+    depends_on:
+      temporal:
+        condition: service_healthy
+
+  temporal-ui:
+    image: ${BIKE_TEMPORAL_UI_IMAGE:?Run Compose through mise}
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_DEFAULT_NAMESPACE: bike
+      TEMPORAL_UI_PORT: 8080
+    ports:
+      - "127.0.0.1:${BIKE_TEMPORAL_UI_PORT:-8080}:8080"
+    healthcheck:
+      test: [CMD, wget, --quiet, --spider, http://127.0.0.1:8080/]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    depends_on:
+      temporal-namespace:
+        condition: service_completed_successfully
+
+volumes:
+  temporal_worker_cargo:
+  temporal_worker_target:

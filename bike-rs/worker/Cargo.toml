@@ -8,6 +8,10 @@ autobins = false
 name = "worker"
 path = "src/main.rs"
 
+[[bin]]
+name = "temporal-worker"
+path = "src/temporal_main.rs"
+
 [lib]
 name = "worker"
 path = "src/lib.rs"
@@ -26,6 +30,12 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
+temporalio-client = { workspace = true }
+temporalio-common = { workspace = true }
+temporalio-macros = { workspace = true }
+temporalio-sdk = { workspace = true }
+temporalio-workflow = { workspace = true }
+futures = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

@@ -13,7 +13,7 @@ use sea_orm::{EntityTrait, TransactionTrait};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct DeleteCapture {
+pub(super) struct DeleteCapture {
     activity: Option<activities::Model>,
     segment_ids: Vec<i32>,
 }
@@ -30,15 +30,27 @@ impl DeleteCapture {
     }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub(super) struct Effect {
-    pub(super) outcome: String,
+pub struct Effect {
+    pub outcome: String,
     hash: Option<String>,
     #[serde(default)]
-    activity_id: Option<i32>,
+    pub activity_id: Option<i32>,
     #[serde(default)]
-    import_id: Option<i32>,
+    pub import_id: Option<i32>,
     #[serde(default)]
-    pub(super) rebuild: Rebuild,
+    pub rebuild: Rebuild,
+}
+
+impl Effect {
+    pub(super) fn superseded() -> Self {
+        Self {
+            outcome: "superseded".into(),
+            hash: None,
+            activity_id: None,
+            import_id: None,
+            rebuild: Rebuild::default(),
+        }
+    }
 }
 
 impl Run<'_> {
@@ -101,7 +113,7 @@ impl Run<'_> {
         Ok(())
     }
 
-    async fn resolve_activity(&self, id: i64) -> Result<ObjectRef, WorkflowError> {
+    pub(super) async fn resolve_activity(&self, id: i64) -> Result<ObjectRef, WorkflowError> {
         let summary = self.source.activity_summary(&self.store, id).await?;
         let object = if let Some(activity) = &summary {
             let mut value = self
@@ -151,7 +163,7 @@ impl Run<'_> {
         Ok(object)
     }
 
-    async fn resolve_streams(
+    pub(super) async fn resolve_streams(
         &self,
         activity: &StravaActivitySummary,
     ) -> Result<ObjectRef, WorkflowError> {
@@ -244,7 +256,11 @@ impl Run<'_> {
         serde_json::from_slice(&bytes).map(Some).map_err(json_error)
     }
 
-    async fn apply(&self, payload: &ActivityPayload, hash: &str) -> Result<Effect, WorkflowError> {
+    pub(super) async fn apply(
+        &self,
+        payload: &ActivityPayload,
+        hash: &str,
+    ) -> Result<Effect, WorkflowError> {
         if !strava_activity_is_bike(&payload.activity) {
             let capture = self
                 .stage("capture_delete", &self.row.id, self.capture_delete())
@@ -368,7 +384,7 @@ impl Run<'_> {
         Ok(())
     }
 
-    async fn capture_delete(&self) -> Result<DeleteCapture, WorkflowError> {
+    pub(super) async fn capture_delete(&self) -> Result<DeleteCapture, WorkflowError> {
         let id = self
             .row
             .activity_id
@@ -386,7 +402,10 @@ impl Run<'_> {
         })
     }
 
-    async fn remove_activity(&self, capture: &DeleteCapture) -> Result<Effect, WorkflowError> {
+    pub(super) async fn remove_activity(
+        &self,
+        capture: &DeleteCapture,
+    ) -> Result<Effect, WorkflowError> {
         if let Some(activity) = &capture.activity {
             if activities::Entity::find_by_id(activity.id)
                 .one(self.db)
@@ -441,7 +460,7 @@ impl Run<'_> {
     }
 }
 
-fn stream_revision(activity: &StravaActivitySummary) -> Result<String, WorkflowError> {
+pub(super) fn stream_revision(activity: &StravaActivitySummary) -> Result<String, WorkflowError> {
     // Names, privacy, and descriptions do not invalidate a recording.
     Ok(checksum(&serde_json::to_vec(&serde_json::json!({"id":activity.id,"start_date":activity.start_date,"elapsed_time":activity.elapsed_time,"moving_time":activity.moving_time,"distance":activity.distance,"upload_id":activity.additional_fields.get("upload_id")})).map_err(json_error)?))
 }

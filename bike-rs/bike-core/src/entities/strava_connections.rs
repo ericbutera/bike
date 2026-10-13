@@ -7,6 +7,10 @@ use sea_orm::{
 };
 
 impl Model {
+    pub async fn load(db: &impl ConnectionTrait, id: i32) -> Result<Option<Self>, DbErr> {
+        Entity::find_by_id(id).one(db).await
+    }
+
     /// Provider execution and refresh share a transaction-scoped connection lease.
     pub async fn execution_lease(
         db: &DatabaseConnection,

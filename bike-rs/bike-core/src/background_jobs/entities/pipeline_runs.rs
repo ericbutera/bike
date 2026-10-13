@@ -21,7 +21,70 @@ pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct PublicationState {
+    pub pending_tasks: usize,
+    pub pending_outputs: usize,
+    pub failed_task: Option<i32>,
+}
+
+impl PublicationState {
+    pub fn ready(&self) -> bool {
+        self.pending_tasks == 0 && self.pending_outputs == 0 && self.failed_task.is_none()
+    }
+}
+
 impl Model {
+    pub async fn publication_state(
+        db: &DatabaseConnection,
+        run_id: &str,
+    ) -> Result<PublicationState, DbErr> {
+        use super::{background_tasks, pipeline_outputs, pipeline_tasks};
+        use sea_orm::{
+            AccessMode, ColumnTrait, IsolationLevel, QueryFilter, QuerySelect, TransactionTrait,
+        };
+        let snapshot = db
+            .begin_with_config(
+                Some(IsolationLevel::RepeatableRead),
+                Some(AccessMode::ReadOnly),
+            )
+            .await?;
+        let ids = pipeline_tasks::Entity::find()
+            .select_only()
+            .column(pipeline_tasks::Column::TaskId)
+            .filter(pipeline_tasks::Column::RunId.eq(run_id))
+            .into_tuple::<i32>()
+            .all(&snapshot)
+            .await?;
+        let tasks = background_tasks::Entity::find()
+            .select_only()
+            .columns([
+                background_tasks::Column::Id,
+                background_tasks::Column::Status,
+            ])
+            .filter(background_tasks::Column::Id.is_in(ids.iter().copied()))
+            .into_tuple::<(i32, String)>()
+            .all(&snapshot)
+            .await?;
+        let outputs = pipeline_outputs::Entity::find()
+            .filter(pipeline_outputs::Column::RunId.eq(run_id))
+            .filter(pipeline_outputs::Column::Required.eq(true))
+            .all(&snapshot)
+            .await?;
+        snapshot.commit().await?;
+        Ok(PublicationState {
+            pending_tasks: tasks
+                .iter()
+                .filter(|(_, status)| matches!(status.as_str(), "pending" | "processing"))
+                .count(),
+            pending_outputs: outputs
+                .iter()
+                .filter(|output| output.status != "available" || output.available_at.is_none())
+                .count(),
+            failed_task: failed_task(&ids, &tasks),
+        })
+    }
+
     pub async fn record_task(
         db: &impl ConnectionTrait,
         context: &crate::background_jobs::pipeline::PipelineContext,
@@ -73,5 +136,51 @@ impl Model {
         .exec_without_returning(db)
         .await?;
         Ok(())
+    }
+}
+
+fn failed_task(ids: &[i32], tasks: &[(i32, String)]) -> Option<i32> {
+    ids.iter()
+        .find(|id| {
+            !tasks.iter().any(|(task_id, status)| {
+                task_id == *id && matches!(status.as_str(), "pending" | "processing" | "completed")
+            })
+        })
+        .copied()
+}
+
+#[cfg(test)]
+mod publication_tests {
+    use super::*;
+
+    #[test]
+    fn missing_failed_canceled_and_unknown_tasks_block_publication() {
+        for status in [None, Some("failed"), Some("canceled"), Some("unknown")] {
+            let tasks = status
+                .map(|status| vec![(42, status.into())])
+                .unwrap_or_default();
+            assert_eq!(failed_task(&[42], &tasks), Some(42));
+        }
+    }
+
+    #[test]
+    fn publication_requires_tasks_and_outputs_to_finish() {
+        assert!(PublicationState::default().ready());
+        assert!(!PublicationState {
+            pending_tasks: 1,
+            ..Default::default()
+        }
+        .ready());
+        assert!(!PublicationState {
+            pending_outputs: 1,
+            ..Default::default()
+        }
+        .ready());
+        assert!(!PublicationState {
+            failed_task: Some(42),
+            ..Default::default()
+        }
+        .ready());
+        assert_eq!(failed_task(&[42], &[(42, "completed".into())]), None);
     }
 }

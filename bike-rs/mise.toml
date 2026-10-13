@@ -93,14 +93,22 @@ description = "Verify native Strava DAGs, effects, retries, and vendor request c
 env = { RUSTFLAGS = "-D warnings" }
 run = '''
 : "${BIKE_STRAVA_TEST_DATABASE_URL:?Set this to a disposable PostgreSQL database}"
-cargo test -p api --test strava_workflows_postgres -- --ignored --nocapture
+cargo test -p api --test strava_workflows_postgres native_actions_reuse_sources_and_apply_once -- --ignored --nocapture
 '''
+
+[tasks."test:temporal:unit"]
+description = "Verify Temporal Strava retry classification"
+run = "cargo test -p worker --lib temporal --locked"
+
+[tasks."test:temporal:postgres"]
+description = "Verify named Temporal operations with fake Strava and real derived processors"
+run = "cargo test -p api --test strava_workflows_postgres temporal_operations_complete_through_named_steps --locked -- --ignored --nocapture"
 
 [tasks."coverage:strava:postgres"]
 description = "Collect native Strava PostgreSQL workflow coverage"
 env = { RUSTFLAGS = "-D warnings", CARGO_LLVM_COV_DENY_WARNINGS = "1" }
 run = [
-  "mise exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov -p api --locked --no-report --test strava_workflows_postgres -- --ignored --nocapture",
+  "mise exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov -p api --locked --no-report --test strava_workflows_postgres native_actions_reuse_sources_and_apply_once -- --ignored --nocapture",
 ]
 
 [tasks.coverage]

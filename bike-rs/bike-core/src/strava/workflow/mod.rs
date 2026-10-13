@@ -12,6 +12,7 @@ pub(crate) mod rebuild;
 mod revocation;
 mod sources;
 mod stage;
+pub mod steps;
 
 #[cfg(test)]
 mod tests;

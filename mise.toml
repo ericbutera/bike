@@ -16,6 +16,10 @@ go_version = "1.27.1"
 postgres_image = "postgres:17.11-trixie@sha256:ae69c452f483507a6b99fb654cf93aad7fe156ffd2c56247707eef4e36d3c12b"
 postgres_upgrade_image = "postgres:18.6-trixie@sha256:fc973eb97c9fd04bfa1840e0f510719a584ccb3be8debfe6a4144637a9dfe8cf"
 tracing_image = "cr.jaegertracing.io/jaegertracing/jaeger:2.22.0"
+temporal_version = "1.32.1"
+temporal_server_image = "temporalio/server:{{vars.temporal_version}}@sha256:acecbab5b0b8ae9cf4012b508866ca97feda3709577bf157b537239f40029049"
+temporal_tools_image = "temporalio/admin-tools:{{vars.temporal_version}}@sha256:9ef0dc5b063bf4ffd5c1512de72e0e73e225bd2c7006a18ce69bd592a8862a83"
+temporal_ui_image = "temporalio/ui:2.55.0@sha256:3899d5cf749b5555c9f798d46f2423b1d6190ea391ca713db5d1bba961759e58"
 runtime_image = "debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f"
 rust_image = "rust:{{vars.rust_version}}-trixie@sha256:6ff07edce8775d0f64be7aba9197229407301bddf2054d62c27b541a6238a181"
 node_image = "node:{{vars.node_version}}-trixie@sha256:1278a37eb510ec1606fba0e80f554bcc941ae0b44f35ae373c4822ae7717c64d"
@@ -87,6 +91,9 @@ BIKE_POSTGRES_IMAGE = "{{vars.postgres_image}}"
 BIKE_POSTGRES_UPGRADE_IMAGE = "{{vars.postgres_upgrade_image}}"
 STRAVA_SDK_GENERATOR_IMAGE = "{{vars.strava_sdk_generator_image}}"
 BIKE_TRACING_IMAGE = "{{vars.tracing_image}}"
+BIKE_TEMPORAL_SERVER_IMAGE = "{{vars.temporal_server_image}}"
+BIKE_TEMPORAL_TOOLS_IMAGE = "{{vars.temporal_tools_image}}"
+BIKE_TEMPORAL_UI_IMAGE = "{{vars.temporal_ui_image}}"
 NPM_CONFIG_CACHE = "{{get_env(name='BIKE_NODE_PACKAGE_CACHE', default=config_root ~ '/.cache')}}/npm"
 PNPM_CONFIG_STORE_DIR = "{{get_env(name='BIKE_NODE_PACKAGE_CACHE', default=config_root ~ '/.cache')}}/pnpm-store"
 PNPM_CONFIG_CACHE_DIR = "{{get_env(name='BIKE_NODE_PACKAGE_CACHE', default=config_root ~ '/.cache')}}/pnpm-metadata"
@@ -116,6 +123,10 @@ run = "bash scripts/test-worker-postgres.sh strava"
 [tasks."test:strava:docker"]
 description = "Exercise native Strava workflows in disposable PostgreSQL with a fake vendor"
 run = "bash scripts/test-worker-postgres.sh strava"
+
+[tasks."test:temporal:postgres"]
+description = "Run Strava Temporal fixtures in the owning Rust suite"
+run = "mise --cd bike-rs run test:temporal:postgres"
 
 [tasks."pins:sync"]
 description = "Regenerate package metadata and the native CI database image from mise pins"
@@ -185,6 +196,17 @@ run = "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-bike} docker compose up -d -
 [tasks."compose:down"]
 description = "Stop the shared Bike services Compose stack"
 run = "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-bike} docker compose down"
+
+[tasks."temporal:health"]
+description = "Check the local Temporal service and Bike namespace"
+run = [
+  "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-bike} docker compose run --rm --no-deps --entrypoint temporal temporal-namespace --address temporal:7233 operator cluster health",
+  "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-bike} docker compose run --rm --no-deps --entrypoint temporal temporal-namespace --address temporal:7233 --namespace bike operator namespace describe",
+]
+
+[tasks."test:temporal:docker"]
+description = "Verify native Strava workflows with local Temporal and an isolated database"
+run = "bash scripts/test-temporal.sh"
 
 [tasks."db:rehearse"]
 description = "Restore a private Bike custom-format dump into isolated PostgreSQL 17/18 volumes and verify recovery"

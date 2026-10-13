@@ -10,6 +10,7 @@ git_common="$(git rev-parse --path-format=absolute --git-common-dir)"
 docker build --file Dockerfile.checks --tag bike-checks:local \
   --build-arg MISE_IMAGE --build-arg RUST_IMAGE --build-arg DOCKER_CLI_IMAGE .
 docker run --rm --init \
+  --network "${BIKE_CHECKS_NETWORK:-bridge}" \
   --mount "type=bind,source=$repo,target=/workspace" \
   --mount "type=bind,source=$git_common,target=$git_common" \
   --mount type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock \
@@ -20,6 +21,7 @@ docker run --rm --init \
   --env MISE_TRUSTED_CONFIG_PATHS=/workspace --env MISE_YES=1 \
   --env "BIKE_DOCKER_HOST_WORKSPACE=$repo" \
   --env MISE_TASK_RUN_AUTO_INSTALL=true \
+  --env BIKE_STRAVA_TEST_DATABASE_URL --env BIKE_TEMPORAL_TEST_ADDRESS \
   --env CARGO_HOME=/cache/cargo --env RUSTUP_HOME=/cache/rustup \
   --env "CARGO_TARGET_DIR=/cache/target/$build_cache" \
   --env "CARGO_LLVM_COV_TARGET_DIR=/cache/target/$build_cache/llvm-cov-target" \

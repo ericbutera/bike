@@ -46,16 +46,21 @@ Open **[localhost:3001](http://localhost:3001)**. The local environment enables 
 development account, so no Strava credentials or external identity provider are
 needed. The first build downloads dependencies and compiles the Rust services.
 
-The stack starts PostgreSQL, the Rust API and worker, the Next.js UI, and the map
-renderer. API and worker services reload Rust source changes; the UI reloads
+The stack starts PostgreSQL, the Rust API and worker, the Next.js UI, the map
+renderer, and Temporal with its UI. API and worker services reload Rust source changes; the UI reloads
 frontend changes. Database migrations finish before the API and worker start.
 Activity data persists across restarts.
 
-| Service    | Local address                           |
-| ---------- | --------------------------------------- |
-| Bike UI    | [localhost:3001](http://localhost:3001) |
-| HTTP API   | `http://localhost:3000/api`             |
-| PostgreSQL | `localhost:5432`                        |
+| Service       | Local address                                                     |
+| ------------- | ----------------------------------------------------------------- |
+| Bike UI       | [localhost:3001](http://localhost:3001)                           |
+| HTTP API      | `http://localhost:3000/api`                                       |
+| PostgreSQL    | `localhost:5432`                                                  |
+| Temporal UI   | [localhost:8080](http://localhost:8080/namespaces/bike/workflows) |
+| Temporal gRPC | `localhost:7233`                                                  |
+
+Temporal uses the `bike` namespace. The Rust workflow migration is tracked in
+the [checklist](docs/TODO.md); existing Bike tasks still use the PostgreSQL queue.
 
 To try the import workflow, open [Upload](http://localhost:3001/upload) and select
 a FIT, TCX, or GPX activity. Sample GPX recordings are checked in under

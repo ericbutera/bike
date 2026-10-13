@@ -1,4 +1,4 @@
 name: bike
 
 include:
-  - path: [compose.runtime.yaml, compose.dev.yaml]
+  - path: [compose.runtime.yaml, compose.dev.yaml, compose.temporal.yaml]

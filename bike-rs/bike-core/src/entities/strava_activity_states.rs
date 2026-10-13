@@ -18,6 +18,14 @@ pub struct Model {
 pub enum Relation {}
 impl ActiveModelBehavior for ActiveModel {}
 impl Model {
+    pub async fn load(
+        db: &impl ConnectionTrait,
+        athlete_id: i64,
+        activity_id: i64,
+    ) -> Result<Option<Self>, DbErr> {
+        Entity::find_by_id((athlete_id, activity_id)).one(db).await
+    }
+
     pub async fn save(self, db: &impl ConnectionTrait) -> Result<(), DbErr> {
         Entity::insert(ActiveModel {
             athlete_id: Set(self.athlete_id),

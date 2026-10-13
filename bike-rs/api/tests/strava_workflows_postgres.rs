@@ -25,6 +25,9 @@ use std::sync::{
 };
 use tower::ServiceExt;
 
+#[path = "strava_workflows_postgres/temporal.rs"]
+mod temporal;
+
 #[derive(Default)]
 struct Vendor {
     activity: Mutex<Value>,
@@ -1451,5 +1454,13 @@ async fn native_actions_reuse_sources_and_apply_once() {
     Box::pin(fixture.vendor_revocation_uses_local_cleanup()).await;
     Box::pin(fixture.oauth_initial_sync_uses_the_native_queue()).await;
     Box::pin(fixture.retention_preserves_rebuild_and_backfill_sources()).await;
+    fixture.server.abort();
+}
+
+#[tokio::test]
+#[ignore = "Requires disposable PostgreSQL and Temporal; run mise run test:temporal:docker"]
+async fn temporal_operations_complete_through_named_steps() {
+    let fixture = Box::pin(Fixture::new()).await;
+    Box::pin(temporal::verify(&fixture)).await;
     fixture.server.abort();
 }
