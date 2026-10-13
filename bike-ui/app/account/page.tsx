@@ -212,6 +212,14 @@ function AuthenticatedAccountPage() {
       ? 5000
       : false,
   });
+  const refetchStravaEvents = stravaEventsQuery.refetch;
+  useEffect(() => {
+    void refetchStravaEvents();
+  }, [
+    stravaConnection.last_sync_status,
+    stravaConnection.last_sync_finished_at,
+    refetchStravaEvents,
+  ]);
   const heartRateZonesConfigured =
     hasConfiguredHeartRateZoneBounds(heartRateZoneBounds);
 
@@ -546,14 +554,14 @@ function AuthenticatedAccountPage() {
       <AppCard bodyClassName="gap-6">
         <CardHeader
           title="Strava sync history"
-          description="Recent activity changes from Strava."
+          description="Recent syncs and activity changes from Strava."
         />
 
         <IntegrationEventFeed
           events={stravaEventsQuery.data ?? []}
           isLoading={stravaEventsQuery.isLoading}
           error={stravaEventsQuery.error}
-          emptyMessage="No recent activity changes to show."
+          emptyMessage="No Strava sync history yet."
         />
       </AppCard>
 

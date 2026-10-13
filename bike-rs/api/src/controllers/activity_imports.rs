@@ -510,7 +510,7 @@ pub async fn get_activity_processing_state(
 ) -> Result<Json<ActivityProcessingStateResponse>, AppError> {
     let Some(lock) = load_user_activity_import_lock(&state.db, user.id).await? else {
         if let Some(workflow) =
-            bike_core::strava_workflow::active_user_collection(&state.db, user.id).await?
+            bike_core::strava::workflow::active_user_collection(&state.db, user.id).await?
         {
             return Ok(Json(ActivityProcessingStateResponse::strava_workflow(
                 workflow,

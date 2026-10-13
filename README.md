@@ -179,7 +179,6 @@ mise run test:strava:docker # Native DAGs with PostgreSQL and a fake vendor.
 SQLite fixture. `mise run contracts:check` compares canonical contracts and shared asset copies.
 `mise run check` runs the combined component, protobuf, and contract checks.
 
-Production synthetics use a standalone k6 image for API health and UI availability. See the [production check instructions](integration-tests/README.md).
 Browser regressions live with the [UI](bike-ui/tests/e2e/README.md).
 
 Local coverage reports and their scope are documented in the

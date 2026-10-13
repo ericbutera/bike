@@ -1313,13 +1313,15 @@ async fn store_activity_upload_source(
     if request.source == "strava_sync"
         && request.primary_artifact_kind == ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD
     {
-        return Ok(crate::strava_objects::ObjectStore::new(request.uploads_dir)
-            .write(
-                &format!("strava/sources/{}", request.user_id),
-                &request.upload.bytes,
-            )
-            .await?
-            .path);
+        return Ok(
+            crate::strava::objects::ObjectStore::new(request.uploads_dir)
+                .write(
+                    &format!("strava/sources/{}", request.user_id),
+                    &request.upload.bytes,
+                )
+                .await?
+                .path,
+        );
     }
     let relative =
         activity_import_storage_path(request.user_storage_key, &request.upload.format, Utc::now());

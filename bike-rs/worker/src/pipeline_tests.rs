@@ -1,3 +1,4 @@
+use crate::tasks::strava::{LegacyWorkflow, StravaReconcile, StravaRetention, StravaSync};
 use crate::{pipeline_fixture_tests::database, tasks::*};
 use bike_core::{
     background_jobs::{
@@ -274,7 +275,10 @@ async fn pipeline_registry_contains_every_default_processor() {
         .await
         .unwrap()
         .registered_task_types();
-    assert_eq!(registry.len(), 16); // Email is registered separately.
+    assert_eq!(registry.len(), 22); // Email is registered separately.
+    for action in bike_core::strava::workflow::Action::ALL {
+        assert!(registry.contains(&action.task_type().into()));
+    }
     assert!(registry.contains(&"strava_workflow".into()));
     assert!(registry.contains(&"strava_reconcile".into()));
     assert!(registry.contains(&"strava_retention".into()));
@@ -284,7 +288,7 @@ async fn pipeline_registry_contains_every_default_processor() {
 #[tokio::test]
 async fn pipeline_processors_report_missing_owned_source_as_a_retryable_failure() {
     let db = database().await;
-    let workflow = StravaWorkflow::new(db.clone());
+    let workflow = LegacyWorkflow::new(db.clone());
     assert!(workflow
         .process(1, json!({"data":{"workflow_id":"missing"}}))
         .await

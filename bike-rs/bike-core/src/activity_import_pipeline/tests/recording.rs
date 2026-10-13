@@ -405,7 +405,7 @@ async fn recovery_promotes_retained_json_without_fetching_and_checks_provider_id
         .exec(&db)
         .await
         .unwrap();
-    let payload: crate::strava_provider_payload::StoredStravaProviderPayload =
+    let payload: crate::strava::provider_payload::StoredStravaProviderPayload =
         serde_json::from_slice(include_bytes!("../../../testdata/strava-real-ride.json")).unwrap();
     let upload = crate::strava::build_activity_upload(&payload.activity, &payload.streams).unwrap();
     let path = format!("retained_{}.json", Uuid::new_v4());
@@ -485,7 +485,7 @@ async fn recovery_retains_noncycling_provider_input_without_ride_jobs_or_data_lo
         .exec(&db)
         .await
         .unwrap();
-    let mut payload: crate::strava_provider_payload::StoredStravaProviderPayload =
+    let mut payload: crate::strava::provider_payload::StoredStravaProviderPayload =
         serde_json::from_slice(include_bytes!("../../../testdata/strava-real-ride.json")).unwrap();
     payload.activity.sport_type = Some("Run".into());
     let upload = crate::strava::build_activity_upload(&payload.activity, &payload.streams).unwrap();

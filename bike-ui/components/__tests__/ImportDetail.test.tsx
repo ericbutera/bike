@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import ImportDetail from "../imports/ImportDetail";
 
@@ -79,5 +79,29 @@ describe("import detail", () => {
     expect(
       screen.queryByText(/Worker runs for activity/),
     ).not.toBeInTheDocument();
+  });
+
+  it("refreshes the selected import only when requested", () => {
+    const refetch = vi.fn();
+    mocks.trace.mockReturnValue({
+      data: { import: { id: 17, status: "processing" } },
+      isLoading: false,
+      isFetching: false,
+      error: null,
+      refetch,
+    });
+    const { rerender } = render(<ImportDetail importId="17" />);
+    expect(refetch).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(refetch).toHaveBeenCalledOnce();
+    mocks.trace.mockReturnValue({
+      data: { import: { id: 17, status: "processing" } },
+      isLoading: false,
+      isFetching: true,
+      error: null,
+      refetch,
+    });
+    rerender(<ImportDetail importId="17" />);
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeDisabled();
   });
 });

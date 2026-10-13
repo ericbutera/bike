@@ -26,13 +26,25 @@ const descriptions: Record<string, string> = {
   reprocess_user_activity_imports:
     "Queues reprocessing of a user's retained activity imports in bounded batches.",
   strava_reconcile:
-    "Checks connected Strava accounts for activities that need synchronization and queues reconciliation workflows.",
+    "Checks connected Strava accounts on a schedule and queues a separate synchronization task for each account.",
+  strava_activity_create:
+    "Imports an activity created in Strava and queues its downstream processing.",
+  strava_activity_update:
+    "Refreshes an activity changed in Strava and queues processing for its updated data.",
+  strava_activity_upsert:
+    "Applies one activity discovered by a sync or backfill, preserving its parent's combined processing step.",
+  strava_activity_delete:
+    "Removes a deleted Strava activity and updates its affected training and segment data.",
+  strava_backfill:
+    "Discovers recent historical Strava activities and queues individual activity tasks, then finishes when they complete.",
+  strava_disconnect:
+    "Disconnects Strava and queues removal of its activities, retaining the connection until cleanup completes.",
   strava_retention:
     "Prunes temporary Strava files and completed workflow history after 30 days while keeping activity sources and active work.",
   strava_sync:
-    "Starts the current Strava synchronization workflow for a connection, including older queued sync requests.",
+    "Discovers new Strava activities, queues individual activity tasks, and finishes the sync after they complete.",
   strava_workflow:
-    "Executes a durable Strava workflow, including provider requests, activity synchronization, and downstream processing, resuming when retries are required.",
+    "Resumes an older queued Strava workflow. New requests use the processor for their specific operation.",
 };
 
 export function processorDescription(taskType: string) {

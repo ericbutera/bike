@@ -1,9 +1,35 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, ConnectionTrait, DbErr, QueryFilter, Set};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbErr, QueryFilter, Set,
+    TransactionTrait,
+};
 
 impl Model {
+    /// Provider execution and refresh share a transaction-scoped connection lease.
+    pub async fn execution_lease(
+        db: &DatabaseConnection,
+        id: i32,
+    ) -> Result<Option<DatabaseTransaction>, DbErr> {
+        if db.get_database_backend() != sea_orm::DatabaseBackend::Postgres {
+            return Ok(None);
+        }
+        let lease = db.begin().await?;
+        // PostgreSQL advisory locks need the database's native lock primitive.
+        lease
+            .execute_unprepared("SELECT pg_advisory_xact_lock_shared(7393, 0)")
+            .await?;
+        lease
+            .execute_raw(sea_orm::Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT pg_advisory_xact_lock(7391, $1)",
+                [id.into()],
+            ))
+            .await?;
+        Ok(Some(lease))
+    }
+
     pub async fn for_athlete(
         db: &impl ConnectionTrait,
         athlete_id: i64,

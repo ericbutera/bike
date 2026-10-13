@@ -14,7 +14,7 @@ use worker::tasks::{register_default_processors, register_email_processors};
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let _observability = observability::init_observability("bike-rust-worker");
     provider_metrics::init_provider_metrics();
-    bike_core::strava_retention::init_metrics();
+    bike_core::strava::retention::init_metrics();
 
     let cfg = Config::init_from_env();
     let db = bike_core::db::connect_database(&cfg.database_url).await?;

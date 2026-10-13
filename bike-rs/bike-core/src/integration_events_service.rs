@@ -11,6 +11,16 @@ pub const INTEGRATION_LEVEL_ERROR: &str = "error";
 pub use integration_event_entity::ListOptions as IntegrationEventListOptions;
 pub use integration_event_entity::NewEvent as NewIntegrationEvent;
 
+pub async fn list_account_strava_events(
+    db: &DatabaseConnection,
+    user_id: i32,
+    limit: u64,
+) -> Result<Vec<integration_event_entity::Model>, AppError> {
+    integration_event_entity::Entity::account_strava_history(db, user_id, limit)
+        .await
+        .map_err(AppError::from)
+}
+
 pub async fn record_event(
     db: &impl ConnectionTrait,
     event: NewIntegrationEvent,

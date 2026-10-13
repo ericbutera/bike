@@ -10,8 +10,7 @@ use bike_core::{
     background_jobs::{background_tasks, worker::TaskProcessor},
     config::Config,
     entities::{activities, integration_events, strava_connections, strava_workflows},
-    strava::StravaWebhookEvent,
-    strava_workflow,
+    strava::{self, StravaWebhookEvent},
 };
 use chrono::{Duration, Utc};
 use migration::{Migrator, MigratorTrait};
@@ -242,18 +241,43 @@ impl Fixture {
             .id
     }
     async fn execute(&self, id: &str) {
-        let job = background_tasks::Entity::find()
-            .filter(background_tasks::Column::TaskType.eq("strava_workflow"))
+        self.process_workflow_job(id).await;
+        let children = strava_workflows::Entity::find()
             .all(&self.db)
             .await
-            .unwrap()
+            .unwrap();
+        for child in children
             .into_iter()
-            .find(|job| job.payload["data"]["workflow_id"] == id)
-            .unwrap();
-        worker::tasks::processors::StravaWorkflow::new(self.db.clone())
-            .process(job.id, job.payload)
+            .filter(|child| child.source["parent"] == id && child.status != "completed")
+        {
+            self.process_workflow_job(&child.id).await;
+        }
+        self.process_workflow_job(id).await;
+    }
+
+    async fn process_workflow_job(&self, id: &str) {
+        let job = background_tasks::Model::latest_strava_workflow_task(&self.db, id)
             .await
+            .unwrap()
             .unwrap();
+        let row = strava_workflows::Model::load(&self.db, id)
+            .await
+            .unwrap()
+            .unwrap();
+        let action = row.action.parse::<strava::workflow::Action>().unwrap();
+        assert_eq!(job.task_type, action.task_type());
+        let context =
+            bike_core::background_jobs::pipeline::PipelineContext::from_payload(&job.payload)
+                .unwrap()
+                .map(|context| context.for_task(job.id));
+        bike_core::background_jobs::pipeline::PipelineContext::scope(
+            context,
+            worker::tasks::strava::processor(self.db.clone(), action)
+                .process(job.id, job.payload.clone()),
+        )
+        .await
+        .unwrap();
+        job.mark_completed(&self.db).await.unwrap();
     }
     async fn assert_dag_completed(&self, id: &str) {
         let row = strava_workflows::Entity::find_by_id(id)
@@ -262,13 +286,13 @@ impl Fixture {
             .unwrap()
             .unwrap();
         assert_eq!(row.status, "completed");
-        let store = bike_core::strava_objects::ObjectStore::new(&Config::get().uploads_dir);
+        let store = bike_core::strava::objects::ObjectStore::new(&Config::get().uploads_dir);
         let events = integration_events::Entity::find()
             .filter(integration_events::Column::ConnectionId.eq(row.connection_id))
             .all(&self.db)
             .await
             .unwrap();
-        for stage in strava_workflow::graph(&row.action).unwrap() {
+        for stage in strava::workflow::graph(&row.action).unwrap() {
             let (_, saved) = row
                 .checkpoint
                 .as_object()
@@ -276,7 +300,7 @@ impl Fixture {
                 .iter()
                 .find(|(key, _)| key.starts_with(&format!("{stage}:")))
                 .unwrap();
-            let reference: bike_core::strava_objects::ObjectRef =
+            let reference: bike_core::strava::objects::ObjectRef =
                 serde_json::from_value(saved.clone()).unwrap();
             assert!(reference
                 .path
@@ -368,8 +392,8 @@ impl Fixture {
         let id = self.accept(&event).await;
         self.assert_duplicate_webhook(&event).await;
         let (one, two) = tokio::join!(
-            strava_workflow::execute(&self.db, &id),
-            strava_workflow::execute(&self.db, &id)
+            strava::workflow::execute(&self.db, &id),
+            strava::workflow::execute(&self.db, &id)
         );
         one.unwrap();
         two.unwrap();
@@ -457,7 +481,7 @@ impl Fixture {
                 "strava/{}/{}/transforms/{stage}/v1/{}/workflows/{id}/reference.json",
                 row.athlete_id,
                 row.activity_id.unwrap(),
-                bike_core::strava_objects::checksum(input.as_bytes())
+                bike_core::strava::objects::checksum(input.as_bytes())
             );
             tokio::fs::remove_file(std::path::Path::new(&Config::get().uploads_dir).join(prefix))
                 .await
@@ -476,7 +500,7 @@ impl Fixture {
         connection.expires_at = Set(Utc::now() - Duration::hours(1));
         connection.update(&self.db).await.unwrap();
         std::env::set_var("STRAVA_PROVIDER_WORK_ENABLED", "false");
-        let result = strava_workflow::execute(&self.db, id).await;
+        let result = strava::workflow::execute(&self.db, id).await;
         std::env::remove_var("STRAVA_PROVIDER_WORK_ENABLED");
         result.unwrap();
         assert_eq!(self.calls(), (1, 1, 0));
@@ -510,16 +534,16 @@ impl Fixture {
             .find(|(key, _)| key.starts_with("streams:"))
             .unwrap()
             .1;
-        let object: bike_core::strava_objects::ObjectRef =
+        let object: bike_core::strava::objects::ObjectRef =
             serde_json::from_value(saved.clone()).unwrap();
-        let store = bike_core::strava_objects::ObjectStore::new(&Config::get().uploads_dir);
+        let store = bike_core::strava::objects::ObjectStore::new(&Config::get().uploads_dir);
         let bytes = store.read(&object).await.unwrap();
         let path = std::path::Path::new(&Config::get().uploads_dir).join(&object.path);
         tokio::fs::write(&path, b"corrupt").await.unwrap();
         let mut failed: strava_workflows::ActiveModel = row.into();
         failed.status = Set("failed".into());
         failed.update(&self.db).await.unwrap();
-        let error = strava_workflow::execute(&self.db, id).await.unwrap_err();
+        let error = strava::workflow::execute(&self.db, id).await.unwrap_err();
         assert!(error.message.contains("checksum verification"));
         let failures = integration_events::Entity::find()
             .filter(integration_events::Column::EventType.eq("workflow.stage.failed"))
@@ -537,7 +561,7 @@ impl Fixture {
         );
         assert_eq!(self.vendor.token_calls.load(Ordering::SeqCst), 0);
         tokio::fs::write(&path, &bytes).await.unwrap();
-        strava_workflow::execute(&self.db, id).await.unwrap();
+        strava::workflow::execute(&self.db, id).await.unwrap();
     }
     async fn privacy_update_keeps_the_activity(&self) {
         self.vendor.activity.lock().unwrap()["private"] = json!(true);
@@ -641,7 +665,7 @@ impl Fixture {
             .unwrap()
             .1;
         let object = serde_json::from_value(discovery.clone()).unwrap();
-        let pages: Value = bike_core::strava_objects::ObjectStore::new(&Config::get().uploads_dir)
+        let pages: Value = bike_core::strava::objects::ObjectStore::new(&Config::get().uploads_dir)
             .read_json(&object)
             .await
             .unwrap();
@@ -686,7 +710,7 @@ impl Fixture {
             .unwrap();
         let object = serde_json::from_value(row.source["listing_page"].clone()).unwrap();
         let values: Vec<Value> =
-            bike_core::strava_objects::ObjectStore::new(&Config::get().uploads_dir)
+            bike_core::strava::objects::ObjectStore::new(&Config::get().uploads_dir)
                 .read_json(&object)
                 .await
                 .unwrap();
@@ -706,7 +730,7 @@ impl Fixture {
         legacy.completed_at = Set(None);
         legacy.insert(&self.db).await.unwrap();
         let calls = self.calls();
-        strava_workflow::execute(&self.db, &id).await.unwrap();
+        strava::workflow::execute(&self.db, &id).await.unwrap();
         self.assert_dag_completed(&id).await;
         assert_eq!(
             self.calls(),
@@ -858,7 +882,7 @@ impl Fixture {
                 .clone(),
         )
         .unwrap();
-        let bytes = bike_core::strava_objects::ObjectStore::new(&Config::get().uploads_dir)
+        let bytes = bike_core::strava::objects::ObjectStore::new(&Config::get().uploads_dir)
             .read(&object)
             .await
             .unwrap();
@@ -881,7 +905,7 @@ impl Fixture {
         for (offset, status) in [(3, 503), (4, 404)] {
             self.vendor.detail_status.store(status, Ordering::SeqCst);
             last = self.accept(&self.event("update", offset, 887654322)).await;
-            assert!(strava_workflow::execute(&self.db, &last).await.is_err());
+            assert!(strava::workflow::execute(&self.db, &last).await.is_err());
             let after = self.local(887654322).await.unwrap();
             assert_eq!(after.id, before.id);
             assert_eq!(
@@ -922,14 +946,14 @@ impl Fixture {
         let offset = Utc::now().timestamp() - self.base_time + 1;
         let id = self.accept(&self.event("update", offset, 887654322)).await;
         let calls = self.calls();
-        let error = strava_workflow::execute(&self.db, &id).await.unwrap_err();
+        let error = strava::workflow::execute(&self.db, &id).await.unwrap_err();
         assert_eq!(error.status, StatusCode::TOO_MANY_REQUESTS);
         assert_eq!(
             self.calls(),
             calls,
             "exhausted quota makes no vendor request"
         );
-        strava_workflow::resume_at(&self.db, &id, error.retry_at.unwrap())
+        strava::workflow::resume_at(&self.db, &id, error.retry_at.unwrap())
             .await
             .unwrap();
         self.execute(&id).await;
@@ -1021,7 +1045,7 @@ impl Fixture {
             .await
             .unwrap()
             .unwrap();
-        let id = strava_workflow::queue_sync(&self.db, &connection, false)
+        let id = strava::workflow::queue_sync(&self.db, &connection, false)
             .await
             .unwrap();
         self.execute(&id).await;
@@ -1084,7 +1108,7 @@ impl Fixture {
             .collect();
         assert_eq!(
             stages,
-            strava_workflow::graph("sync").unwrap(),
+            strava::workflow::graph("sync").unwrap(),
             "the stage catalog matches the explicit execution chain"
         );
     }
@@ -1104,7 +1128,7 @@ impl Fixture {
             .unwrap()
             .id;
         assert_eq!(
-            strava_workflow::queue_disconnect(&self.db, self.connection.user_id)
+            strava::workflow::queue_disconnect(&self.db, self.connection.user_id)
                 .await
                 .unwrap(),
             Some(disconnect.clone())
@@ -1241,7 +1265,7 @@ impl Fixture {
             .unwrap()
             .1
             .clone();
-        let object: bike_core::strava_objects::ObjectRef = serde_json::from_value(saved).unwrap();
+        let object: bike_core::strava::objects::ObjectRef = serde_json::from_value(saved).unwrap();
         let directory = std::path::Path::new(&Config::get().uploads_dir).join(&object.path);
         tokio::fs::remove_file(directory.parent().unwrap().join("reference.json"))
             .await
@@ -1277,7 +1301,10 @@ impl Fixture {
         // This harness calls the processor directly; model the worker's queue ack
         // before advancing the retention clock beyond the completed runs' TTL.
         let jobs = background_tasks::Entity::find()
-            .filter(background_tasks::Column::TaskType.eq("strava_workflow"))
+            .filter(
+                background_tasks::Column::TaskType
+                    .is_in(strava::workflow::Action::ALL.map(|action| action.task_type())),
+            )
             .all(&self.db)
             .await
             .unwrap();
@@ -1307,24 +1334,24 @@ impl Fixture {
                 .unwrap();
         assert!(!sources.is_empty());
         let result =
-            bike_core::strava_retention::run(&self.db, uploads, Utc::now() + Duration::days(31))
+            bike_core::strava::retention::run(&self.db, uploads, Utc::now() + Duration::days(31))
                 .await
                 .unwrap();
         assert!(result.files > 0);
         assert!(result.workflows > 0);
         for source in &sources {
-            let object = bike_core::strava_objects::ObjectRef {
+            let object = bike_core::strava::objects::ObjectRef {
                 path: source.storage_path.clone(),
                 sha256: source.checksum_sha256.clone(),
                 bytes: source.size_bytes as usize,
             };
-            bike_core::strava_objects::ObjectStore::new(uploads)
+            bike_core::strava::objects::ObjectStore::new(uploads)
                 .read(&object)
                 .await
                 .unwrap();
         }
         let before = self.calls();
-        let connection = strava_workflow::queue_user_sync(&self.db, self.connection.user_id, true)
+        let connection = strava::workflow::queue_user_sync(&self.db, self.connection.user_id, true)
             .await
             .unwrap();
         let run = strava_workflows::Model::active_collection(&self.db, connection.id)
@@ -1373,7 +1400,7 @@ impl Fixture {
             .unwrap();
         let db = self.db.clone();
         let mut pruning = tokio::spawn(async move {
-            worker::tasks::processors::StravaRetention::new(db)
+            worker::tasks::strava::StravaRetention::new(db)
                 .process(0, json!({}))
                 .await
         });
@@ -1409,7 +1436,7 @@ async fn native_actions_reuse_sources_and_apply_once() {
     let fixture = Box::pin(Fixture::new()).await;
     Box::pin(fixture.webhook_verification_and_rejections()).await;
     for action in ["insert", "update", "upsert", "delete", "sync", "backfill"] {
-        assert!(!strava_workflow::graph(action).unwrap().is_empty());
+        assert!(!strava::workflow::graph(action).unwrap().is_empty());
     }
     Box::pin(fixture.insert_and_update()).await;
     Box::pin(fixture.privacy_update_keeps_the_activity()).await;
