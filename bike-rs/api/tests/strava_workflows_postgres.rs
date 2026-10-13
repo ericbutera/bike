@@ -1425,7 +1425,6 @@ fn webhook_app(db: DatabaseConnection, uploads_dir: &str, user_pid: uuid::Uuid) 
         db,
         uploads_dir: uploads_dir.into(),
         local_admin_user_pid: Some(user_pid),
-        synthetic_auth: None,
     });
     api::controllers::routes().with_state(state)
 }

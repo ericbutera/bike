@@ -474,8 +474,3 @@ run = ["mise run compose:config", "mise run e2e:config"]
 [tasks."ci:e2e"]
 description = "Test this revision's prepared registry images on the job-local engine"
 run = "bash scripts/ci-e2e.sh"
-
-[tasks."e2e:run"]
-description = "Run browser tests against an explicitly configured test environment"
-usage = 'arg "[spec]" default="tests/e2e/platform-synthetic.spec.mjs"'
-run = 'docker run --rm --init --ipc=host --env BIKE_UI_URL --env BIKE_API_URL --env BIKE_PUBLIC_URL --env BIKE_SYNTHETIC_KEY --env BIKE_TEST_ACTIVITY_ID --env BIKE_TEST_SEGMENT_ID --env BIKE_TEST_RACE_EFFORT_IDS bike-e2e:review "${usage_spec?}"'

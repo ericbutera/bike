@@ -62,10 +62,6 @@ pnpm exec openapi-typescript ../contracts/openapi/openapi.yaml --output lib/open
 prettier lib/openapi/react-query/api.d.ts --config .prettierrc.json --write
 '''
 
-[tasks."test:e2e"]
-description = "Run the connected activity, segment, and race browser check"
-run = "pnpm run test:e2e"
-
 [tasks."test:e2e:all"]
 description = "Run browser regressions against the configured Bike UI"
 run = "pnpm run test:e2e:all"

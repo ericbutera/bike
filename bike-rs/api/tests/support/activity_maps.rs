@@ -54,7 +54,6 @@ impl proto::map_service_server::MapService for SnapshotWorker {
             "Bearer snapshot-secret"
         );
         assert!(!call.metadata().contains_key("cookie"));
-        assert!(!call.metadata().contains_key("x-bike-synthetic-key"));
         assert!(call.metadata().contains_key("grpc-timeout"));
         let request = call.into_inner();
         assert_eq!(request.theme, "dark");

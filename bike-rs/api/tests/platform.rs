@@ -6,8 +6,6 @@ mod activity_map_tests;
 #[path = "support/ingestion.rs"]
 mod ingestion_tests;
 mod support;
-#[path = "support/synthetics.rs"]
-mod synthetic_tests;
 
 use axum::{body::Body, http::Request, Router};
 use serde_json::Value;

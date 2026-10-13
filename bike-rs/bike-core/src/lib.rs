@@ -34,7 +34,6 @@ pub mod segment_regeneration;
 pub mod segment_support;
 pub mod services;
 pub mod strava;
-pub mod synthetics;
 pub mod tasks;
 pub mod training_data;
 pub mod training_profile;

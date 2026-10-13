@@ -73,7 +73,7 @@ models, rather than committed SQL datasets or database dumps.
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `baseline`          | `activity-actions`, `activity-detail`, `activity-edit`, `activity-import-duplicate`, `activity-import-new`, `activity-lifecycle`, `activity-list` | Activity reads, edits, upload/queue operations, deletion; no worker                                         |
 | `baseline`          | `segment-actions`, `segment-builder`, `segment-delete`, `segment-detail`, `segment-import`, `segment-list`, `race-viewer`, `xc-target`            | Segment/effort reads, construction/import, edits/deletion, race playback                                    |
-| `baseline`          | `admin-tasks`, `admin-users`, `archive-import-queue`, `training-reports`, `frontend-matrix`, `platform-synthetic`                                 | Admin/task/user/report reads and actions, archive queue, connected read journey                             |
+| `baseline`          | `admin-tasks`, `admin-users`, `archive-import-queue`, `training-reports`, `frontend-matrix`                                                       | Admin/task/user/report reads and actions, archive queue                                                     |
 | `baseline`          | `four-view-states`                                                                                                                                | Real successful reads and missing-record API checks; loading/empty/error UI responses explicitly controlled |
 | `baseline`          | `warm-reset`                                                                                                                                      | Real deletion followed by data restoration and live pooled reads; unchanged database/service identities     |
 | `laps`              | `activity-laps`                                                                                                                                   | Seeded lap summaries                                                                                        |
@@ -135,16 +135,6 @@ models, rather than committed SQL datasets or database dumps.
   `/cache/bike/e2e/<pipeline-number>/<project>/`, printed in the job log; the
   ephemeral checkout is not the only copy. Runs older than seven days are
   removed by the owning CI task. Docker TLS certificates are not copied there.
-
-## Explicit external monitoring
-
-`mise run e2e:run` retains the separate read-only platform browser monitor against
-explicit URLs. Set `BIKE_SYNTHETIC_KEY`, `BIKE_UI_URL`, `BIKE_API_URL` (including
-`/api`), and `BIKE_PUBLIC_URL`. It discovers the production fixture identifiers,
-checks public credential rejection, and keeps credential-bearing traces disabled.
-It does not provision or reset production data, verify live OAuth/Strava, or
-replace the disposable suite. The [k6 monitor](../../../integration-tests/README.md)
-continues to establish availability separately.
 
 For a standalone local diagram check, use
 `mise --cd bike-ui run test:e2e:diagrams`. Other direct UI Playwright tasks require
