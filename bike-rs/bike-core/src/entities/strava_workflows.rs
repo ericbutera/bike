@@ -1,6 +1,30 @@
 use sea_orm::entity::prelude::*;
 use sea_orm::{ActiveModelTrait, ColumnTrait, ConnectionTrait, QueryFilter, Set};
 
+impl Entity {
+    pub async fn retention_history(db: &impl ConnectionTrait) -> Result<Vec<Model>, DbErr> {
+        Self::find().all(db).await
+    }
+
+    pub async fn prune_completed(
+        db: &impl ConnectionTrait,
+        ids: &[String],
+        cutoff: DateTimeUtc,
+    ) -> Result<u64, DbErr> {
+        let mut deleted = 0;
+        for batch in ids.chunks(500) {
+            deleted += Self::delete_many()
+                .filter(Column::Id.is_in(batch.iter().cloned()))
+                .filter(Column::Status.eq("completed"))
+                .filter(Column::CompletedAt.lt(cutoff))
+                .exec(db)
+                .await?
+                .rows_affected;
+        }
+        Ok(deleted)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "strava_workflows")]
 pub struct Model {

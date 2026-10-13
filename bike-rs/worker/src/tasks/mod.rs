@@ -36,11 +36,13 @@ pub async fn register_default_processors(
     let prepare_heatmap = Arc::new(PrepareHeatmap::new(db.clone()));
     let strava_workflow = Arc::new(StravaWorkflow::new(db.clone()));
     let strava_reconcile = Arc::new(StravaReconcile::new(db.clone()));
+    let strava_retention = Arc::new(StravaRetention::new(db.clone()));
     let strava_sync = Arc::new(StravaSync::new(db));
     let recover_imports = Arc::new(RecoverActivityImportsOnStartup);
 
     Ok(worker
         .register_startup_hook(recover_imports)
+        .register_startup_hook(strava_retention.clone())
         .register_processor(backfill_user_xc_training)
         .register_processor(rebuild_fitness_freshness)
         .register_processor(rebuild_segment_analytics)
@@ -55,5 +57,6 @@ pub async fn register_default_processors(
         .register_processor(strava_sync)
         .register_processor(strava_workflow)
         .register_processor(strava_reconcile)
+        .register_processor(strava_retention)
         .register_processor(prepare_heatmap))
 }

@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DbErr, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-    QuerySelect, Set,
+    QuerySelect, QueryTrait, Set,
 };
 
 use super::activity_imports;
@@ -32,6 +32,47 @@ pub struct Model {
 pub enum Relation {}
 
 impl Entity {
+    pub async fn storage_paths(db: &impl ConnectionTrait) -> Result<Vec<String>, DbErr> {
+        Self::find()
+            .select_only()
+            .column(Column::StoragePath)
+            .into_tuple()
+            .all(db)
+            .await
+    }
+
+    pub async fn strava_sources(db: &impl ConnectionTrait) -> Result<Vec<Model>, DbErr> {
+        Self::find()
+            .filter(Column::ArtifactKind.is_in(["original", "provider_payload"]))
+            .filter(Column::Format.is_in(["json", "fit", "tcx", "gpx"]))
+            .filter(
+                Column::ActivityImportId.in_subquery(
+                    activity_imports::Entity::find()
+                        .select_only()
+                        .column(activity_imports::Column::Id)
+                        .filter(activity_imports::Column::Source.eq("strava_sync"))
+                        .into_query(),
+                ),
+            )
+            .all(db)
+            .await
+    }
+
+    pub async fn strava_payload(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        import_id: i32,
+    ) -> Result<Option<Model>, DbErr> {
+        Self::find()
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::ActivityImportId.eq(import_id))
+            .filter(Column::ArtifactKind.eq("provider_payload"))
+            .filter(Column::SourceQuality.eq("strava_streams"))
+            .filter(Column::Format.eq("json"))
+            .one(db)
+            .await
+    }
+
     pub async fn shares_path(db: &impl ConnectionTrait, artifact: &Model) -> Result<bool, DbErr> {
         Ok(Self::find()
             .filter(Column::StoragePath.eq(&artifact.storage_path))

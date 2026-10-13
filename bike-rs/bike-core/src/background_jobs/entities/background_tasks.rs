@@ -64,6 +64,23 @@ impl TaskStatus {
 }
 
 impl Model {
+    pub async fn active_strava_workflow_ids(
+        db: &impl ConnectionTrait,
+    ) -> Result<std::collections::BTreeSet<String>, DbErr> {
+        let payloads: Vec<Json> = Entity::find()
+            .select_only()
+            .column(Column::Payload)
+            .filter(Column::TaskType.eq("strava_workflow"))
+            .filter(Column::Status.is_in(["pending", "processing"]))
+            .into_tuple()
+            .all(db)
+            .await?;
+        Ok(payloads
+            .iter()
+            .filter_map(|payload| payload["data"]["workflow_id"].as_str().map(str::to_owned))
+            .collect())
+    }
+
     pub fn with_correlation(query: sea_orm::Select<Entity>, id: &str) -> sea_orm::Select<Entity> {
         use super::{pipeline_runs, pipeline_tasks, task_attempts};
         let runs = pipeline_runs::Entity::find()

@@ -32,6 +32,11 @@ pub async fn accept_webhook(
     let Some(action) = webhook_action(event) else {
         return Ok(false);
     };
+    let txn = db.begin().await?;
+    if db.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
+        txn.execute_unprepared("SELECT pg_advisory_xact_lock_shared(7393, 0)")
+            .await?;
+    }
     let store = ObjectStore::new(&crate::config::Config::get().uploads_dir);
     let raw = store
         .write(
@@ -60,7 +65,6 @@ pub async fn accept_webhook(
         raw: Some(raw),
         after: None,
     };
-    let txn = db.begin().await?;
     let inserted = accept(
         &txn,
         &connection,

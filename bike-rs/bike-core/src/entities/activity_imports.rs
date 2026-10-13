@@ -37,6 +37,15 @@ pub struct Model {
 pub enum Relation {}
 
 impl Entity {
+    pub async fn storage_paths(db: &impl ConnectionTrait) -> Result<Vec<String>, DbErr> {
+        Self::find()
+            .select_only()
+            .column(Column::StoragePath)
+            .into_tuple()
+            .all(db)
+            .await
+    }
+
     pub async fn metrics_counts(
         db: &DatabaseConnection,
         now: DateTime<Utc>,

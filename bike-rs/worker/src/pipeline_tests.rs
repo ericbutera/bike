@@ -50,6 +50,36 @@ async fn pipeline_strava_sync_and_reconcile_share_one_native_workflow() {
     );
 }
 
+#[tokio::test]
+async fn pipeline_strava_retention_startup_queues_hourly_maintenance() {
+    use bike_core::background_jobs::worker::WorkerStartupHook;
+    let db = database().await;
+    let retention = StravaRetention::new(db.clone());
+    assert_eq!(retention.task_type(), "strava_retention");
+    assert_eq!(retention.schedule(), Some("0 0 * * * *"));
+    let context = PipelineContext::received("worker_startup", None);
+    PipelineContext::scope(
+        Some(context.clone()),
+        WorkerStartupHook::run(&retention, &db),
+    )
+    .await
+    .unwrap();
+    let job = background_tasks::Entity::find()
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(job.task_type, "strava_retention");
+    assert_eq!(job.status, "pending");
+    assert_eq!(
+        PipelineContext::from_payload(&job.payload)
+            .unwrap()
+            .unwrap()
+            .run_id,
+        context.run_id
+    );
+}
+
 async fn enqueue_in_pipeline(
     db: &sea_orm::DatabaseConnection,
     origin: &PipelineContext,
@@ -244,9 +274,10 @@ async fn pipeline_registry_contains_every_default_processor() {
         .await
         .unwrap()
         .registered_task_types();
-    assert_eq!(registry.len(), 15); // Email is registered separately.
+    assert_eq!(registry.len(), 16); // Email is registered separately.
     assert!(registry.contains(&"strava_workflow".into()));
     assert!(registry.contains(&"strava_reconcile".into()));
+    assert!(registry.contains(&"strava_retention".into()));
     assert!(registry.contains(&"regenerate_activity_segments".into()));
 }
 

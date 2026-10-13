@@ -25,6 +25,37 @@ pub struct ListOptions {
 }
 
 impl Entity {
+    pub async fn prune_strava_workflows(
+        db: &impl ConnectionTrait,
+        ids: &[String],
+    ) -> Result<u64, DbErr> {
+        use sea_orm::{ColumnTrait, QueryFilter};
+        let payload = Column::Payload.into_expr();
+        let workflow = match db.get_database_backend() {
+            DatabaseBackend::Sqlite => Func::cust(Alias::new("json_extract"))
+                .args([payload, Expr::val("$.workflow_id")])
+                .into(),
+            DatabaseBackend::MySql => Func::cust(Alias::new("JSON_UNQUOTE"))
+                .arg(
+                    Func::cust(Alias::new("JSON_EXTRACT"))
+                        .args([payload, Expr::val("$.workflow_id")]),
+                )
+                .into(),
+            _ => PgExpr::cast_json_field(payload, "workflow_id"),
+        };
+        let mut deleted = 0;
+        for batch in ids.chunks(500) {
+            deleted += Self::delete_many()
+                .filter(Column::Provider.eq("strava"))
+                .filter(Column::EventType.starts_with("workflow."))
+                .filter(workflow.clone().is_in(batch.iter().cloned()))
+                .exec(db)
+                .await?
+                .rows_affected;
+        }
+        Ok(deleted)
+    }
+
     pub async fn record(db: &impl ConnectionTrait, event: NewEvent) -> Result<Model, DbErr> {
         ActiveModel {
             user_id: Set(event.user_id),
