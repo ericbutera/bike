@@ -1,4 +1,3 @@
-use crate::tasks::strava::{LegacyWorkflow, StravaReconcile, StravaRetention, StravaSync};
 use crate::{pipeline_fixture_tests::database, tasks::*};
 use bike_core::{
     background_jobs::{
@@ -12,74 +11,6 @@ use bike_core::{
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, Set};
 use serde_json::json;
-
-#[tokio::test]
-async fn pipeline_strava_sync_and_reconcile_share_one_native_workflow() {
-    use bike_core::entities::{strava_connections, strava_workflows};
-    let db = database().await;
-    let connection = strava_connections::ActiveModel {
-        user_id: Set(1),
-        athlete_id: Set(35999641),
-        access_token: Set("fixture-access".into()),
-        refresh_token: Set("fixture-refresh".into()),
-        scopes: Set("activity:read_all".into()),
-        expires_at: Set(Utc::now() + chrono::Duration::hours(1)),
-        last_sync_status: Set("never".into()),
-        last_sync_imported_count: Set(0),
-        last_sync_duplicate_count: Set(0),
-        last_sync_failed_count: Set(0),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
-    let sync = StravaSync::new(db.clone());
-    sync.process(1, json!({"data":{"connection_id":connection.id}}))
-        .await
-        .unwrap();
-    let reconcile = StravaReconcile::new(db.clone());
-    assert_eq!(reconcile.schedule(), Some("0 0 */6 * * *"));
-    reconcile.process(2, json!({})).await.unwrap();
-    reconcile.process(3, json!({})).await.unwrap();
-    let workflows = strava_workflows::Entity::find().all(&db).await.unwrap();
-    assert_eq!(workflows.len(), 1);
-    assert_eq!(workflows[0].action, "sync");
-    assert_eq!(workflows[0].athlete_id, connection.athlete_id);
-    assert_eq!(
-        background_tasks::Entity::find().count(&db).await.unwrap(),
-        1
-    );
-}
-
-#[tokio::test]
-async fn pipeline_strava_retention_startup_queues_hourly_maintenance() {
-    use bike_core::background_jobs::worker::WorkerStartupHook;
-    let db = database().await;
-    let retention = StravaRetention::new(db.clone());
-    assert_eq!(retention.task_type(), "strava_retention");
-    assert_eq!(retention.schedule(), Some("0 0 * * * *"));
-    let context = PipelineContext::received("worker_startup", None);
-    PipelineContext::scope(
-        Some(context.clone()),
-        WorkerStartupHook::run(&retention, &db),
-    )
-    .await
-    .unwrap();
-    let job = background_tasks::Entity::find()
-        .one(&db)
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(job.task_type, "strava_retention");
-    assert_eq!(job.status, "pending");
-    assert_eq!(
-        PipelineContext::from_payload(&job.payload)
-            .unwrap()
-            .unwrap()
-            .run_id,
-        context.run_id
-    );
-}
 
 async fn enqueue_in_pipeline(
     db: &sea_orm::DatabaseConnection,
@@ -275,26 +206,14 @@ async fn pipeline_registry_contains_every_default_processor() {
         .await
         .unwrap()
         .registered_task_types();
-    assert_eq!(registry.len(), 22); // Email is registered separately.
-    for action in bike_core::strava::workflow::Action::ALL {
-        assert!(registry.contains(&action.task_type().into()));
-    }
-    assert!(registry.contains(&"strava_workflow".into()));
-    assert!(registry.contains(&"strava_reconcile".into()));
-    assert!(registry.contains(&"strava_retention".into()));
+    assert_eq!(registry.len(), 12); // Email is registered separately.
+    assert!(registry.iter().all(|name| !name.starts_with("strava_")));
     assert!(registry.contains(&"regenerate_activity_segments".into()));
 }
 
 #[tokio::test]
 async fn pipeline_processors_report_missing_owned_source_as_a_retryable_failure() {
     let db = database().await;
-    let workflow = LegacyWorkflow::new(db.clone());
-    assert!(workflow
-        .process(1, json!({"data":{"workflow_id":"missing"}}))
-        .await
-        .unwrap_err()
-        .to_string()
-        .contains("Strava workflow was not found"));
     let archive = ActivityArchiveImport::new(db);
     assert!(archive
         .process(1, json!({"data":{"job_id":999}}))

@@ -47,8 +47,9 @@ the database and other values from [`.env.example`](.env.example).
 `mise run generate:openapi` generates the canonical HTTP contract directly in
 `../contracts/openapi/` when explicitly requested. `mise run generate:typescript` regenerates the frontend
 client. Root `mise run strava:sdk` generates the unmodified vendor SDK;
-`mise run strava:sdk:check` verifies freshness. The native workflows run on Bike's
-existing workers.
+`mise run strava:sdk:check` verifies freshness. Native Strava workflows run on
+the dedicated [Temporal worker](strava-temporal/), described in
+[the Strava spec](../docs/specs/strava-temporal.md).
 
 [Product specifications](../docs/specs/README.md) describe intended behavior and
 should change with it. Track unfinished work in the root [backlog](../docs/TODO.md).

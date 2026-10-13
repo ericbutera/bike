@@ -1,7 +1,6 @@
 use crate::activity_import_lock::{
     describe_source, describe_stage, load_user_activity_import_lock,
     release_user_activity_import_lock, ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD,
-    ACTIVITY_IMPORT_LOCK_SOURCE_STRAVA_SYNC,
 };
 use crate::activity_location::location_from_derived_json;
 use crate::app_error::{ApiErrorResponse, AppError};
@@ -172,19 +171,19 @@ pub struct ActivityImportTraceEventResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-#[schema(example = json!({"is_active": true,"source": "strava_sync","source_label": "Strava sync","stage": "running","stage_label": "running","message": "Strava sync is currently running."}))]
+#[schema(example = json!({"is_active": true,"source": "manual_upload","source_label": "Manual upload","stage": "running","stage_label": "running","message": "Manual upload is currently running."}))]
 pub struct ActivityProcessingStateResponse {
     #[schema(example = true)]
     pub is_active: bool,
-    #[schema(example = "strava_sync")]
+    #[schema(example = "manual_upload")]
     pub source: Option<String>,
-    #[schema(example = "Strava sync")]
+    #[schema(example = "Manual upload")]
     pub source_label: Option<String>,
     #[schema(example = "running")]
     pub stage: Option<String>,
     #[schema(example = "running")]
     pub stage_label: Option<String>,
-    #[schema(example = "Strava sync is currently running.")]
+    #[schema(example = "Manual upload is currently running.")]
     pub message: Option<String>,
 }
 
@@ -334,20 +333,6 @@ impl ActivityArchiveImportJobResponse {
 }
 
 impl ActivityProcessingStateResponse {
-    fn strava_workflow(workflow: bike_core::entities::strava_workflows::Model) -> Self {
-        Self {
-            is_active: true,
-            source: Some(ACTIVITY_IMPORT_LOCK_SOURCE_STRAVA_SYNC.into()),
-            source_label: Some("Strava sync".into()),
-            stage: Some(workflow.status.clone()),
-            stage_label: Some(workflow.status.clone()),
-            message: Some(format!(
-                "Strava {} workflow {} is {}.",
-                workflow.action, workflow.id, workflow.status
-            )),
-        }
-    }
-
     fn inactive() -> Self {
         Self {
             is_active: false,
@@ -495,7 +480,7 @@ pub async fn list_activity_archive_import_jobs(
     get,
     path = "/activity-imports/processing-state",
     responses(
-        (status = 200, description = "Current activity processing state for the authenticated user", body = ActivityProcessingStateResponse, example = json!({"is_active": true,"source": "strava_sync","source_label": "Strava sync","stage": "running","stage_label": "running","message": "Strava sync is currently running."})),
+        (status = 200, description = "Current activity processing state for the authenticated user", body = ActivityProcessingStateResponse, example = json!({"is_active": true,"source": "manual_upload","source_label": "Manual upload","stage": "running","stage_label": "running","message": "Manual upload is currently running."})),
         (status = 401, description = "Not authenticated"),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     ),
@@ -509,13 +494,6 @@ pub async fn get_activity_processing_state(
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<ActivityProcessingStateResponse>, AppError> {
     let Some(lock) = load_user_activity_import_lock(&state.db, user.id).await? else {
-        if let Some(workflow) =
-            bike_core::strava::workflow::active_user_collection(&state.db, user.id).await?
-        {
-            return Ok(Json(ActivityProcessingStateResponse::strava_workflow(
-                workflow,
-            )));
-        }
         return Ok(Json(ActivityProcessingStateResponse::inactive()));
     };
 

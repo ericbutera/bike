@@ -2,7 +2,7 @@
 
 import { formatActivityTimestamp } from "@/lib/activityFormatting";
 import type { IntegrationEvent } from "@/lib/queries";
-import StravaSyncHistory, { getStravaSyncHistory } from "./StravaSyncHistory";
+import StravaEventHistory from "./StravaEventHistory";
 import { CenteredLoading, ErrorCard } from "./ui/QueryState";
 
 type IntegrationEventFeedProps = {
@@ -24,9 +24,6 @@ export default function IntegrationEventFeed({
   showUserId = false,
   showProvider = false,
 }: IntegrationEventFeedProps) {
-  const syncHistory =
-    audience === "account" ? getStravaSyncHistory(events) : [];
-
   if (isLoading) {
     return <CenteredLoading />;
   }
@@ -37,14 +34,14 @@ export default function IntegrationEventFeed({
         error={error}
         fallback={
           audience === "account"
-            ? "Unable to load Strava sync history."
+            ? "Unable to load Strava event history."
             : "Unable to load integration events."
         }
       />
     );
   }
 
-  if (audience === "account" ? syncHistory.length === 0 : events.length === 0) {
+  if (events.length === 0) {
     return (
       <div className="rounded-box border border-dashed border-base-300 bg-base-200/60 px-4 py-6 text-sm text-base-content/65">
         {emptyMessage}
@@ -53,7 +50,7 @@ export default function IntegrationEventFeed({
   }
 
   if (audience === "account") {
-    return <StravaSyncHistory entries={syncHistory} />;
+    return <StravaEventHistory events={events} />;
   }
 
   return (
@@ -124,6 +121,16 @@ export default function IntegrationEventFeed({
                     <p className="text-sm leading-6 text-base-content/80">
                       {event.message}
                     </p>
+                    {typeof payload?.temporal_workflow_id === "string" ? (
+                      <a
+                        className="link link-primary"
+                        target="_blank"
+                        rel="noreferrer"
+                        href={`${process.env.NEXT_PUBLIC_TEMPORAL_UI_URL ?? "http://localhost:8080"}/namespaces/${encodeURIComponent(String(payload.temporal_namespace ?? "bike"))}/workflows/${encodeURIComponent(payload.temporal_workflow_id)}`}
+                      >
+                        View job in Temporal
+                      </a>
+                    ) : null}
                     {payloadMetrics.length > 0 ? (
                       <div className="flex flex-wrap gap-2">
                         {payloadMetrics.map((metric) => (

@@ -2,7 +2,7 @@ use crate::background_jobs::storage::TaskStorage;
 use crate::background_jobs::TaskQueue;
 use serde::{Deserialize, Serialize};
 
-pub const EMAIL_NOTIFICATION_TASK_TYPE: &str = "email_notification";
+pub const EMAIL_NOTIFICATION_TASK_TYPE: &str = super::JobType::EmailNotification.as_str();
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmailNotificationTask {

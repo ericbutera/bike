@@ -535,6 +535,9 @@ pub async fn apply_recovery(
     let Some(source) = plan.source.take() else {
         return Ok(false);
     };
+    if plan.reprocessing_required {
+        plan.import.require_sql_processing()?;
+    }
     let mut artifact = source.artifact;
     let mut copied_path = None;
     if artifact.activity_import_id != plan.import_id {
@@ -629,47 +632,17 @@ async fn commit_recovery(
         model.activity_import_id = Set(plan.import_id);
         artifact = model.insert(&transaction).await?;
     }
-    if plan.reprocessing_required {
-        enqueue_recovery(&transaction, plan.activity_id).await?;
-    } else {
-        let mut activity: activities::ActiveModel = current.into();
-        activity.original_filename = Set(Some(artifact.original_filename.clone()));
-        activity.format = Set(Some(artifact.format.clone()));
-        activity.update(&transaction).await?;
-    }
+    let mut activity: activities::ActiveModel = current.into();
+    activity.original_filename = Set(Some(artifact.original_filename.clone()));
+    activity.format = Set(Some(artifact.format.clone()));
+    activity.update(&transaction).await?;
     if !plan.import.promote_source(&transaction, &artifact).await? {
         return Err(AppError::bad_request(
             "Recovery import changed; plan it again",
         ));
     }
-    if plan.reprocessing_required {
-        activity_imports::Entity::mark_recovery_pending(
-            &transaction,
-            plan.import.user_id,
-            plan.import_id,
-        )
-        .await?;
-    }
     transaction.commit().await?;
     Ok(true)
-}
-
-async fn enqueue_recovery(
-    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
-    activity_id: i32,
-) -> Result<(), AppError> {
-    let job = crate::jobs::Job::ReprocessActivityImport(crate::jobs::ReprocessActivityImportTask {
-        activity_id,
-    });
-    crate::background_jobs::durable::Model::enqueue(
-        db,
-        job.task_type().to_string(),
-        serde_json::to_value(job).map_err(|error| AppError::internal(error.to_string()))?,
-        None,
-        3,
-    )
-    .await?;
-    Ok(())
 }
 
 /// Remove a retired generated file only after a verified replacement finished replay.

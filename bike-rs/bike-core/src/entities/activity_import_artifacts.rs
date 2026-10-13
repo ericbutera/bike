@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DbErr, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-    QuerySelect, QueryTrait, Set,
+    QuerySelect, QueryTrait, Set, TryIntoModel,
 };
 
 use super::activity_imports;
@@ -112,7 +112,7 @@ impl Entity {
                 artifact.artifact_kind == "provider_payload"
                     && artifact.source_quality == "strava_streams"
             });
-        let mut model: ActiveModel = existing.clone().map(Into::into).unwrap_or_default();
+        let mut model: ActiveModel = existing.map(Into::into).unwrap_or_default();
         model.activity_import_id = Set(import.id);
         model.user_id = Set(import.user_id);
         model.artifact_kind = Set("provider_payload".into());
@@ -123,11 +123,7 @@ impl Entity {
         model.size_bytes = Set(upload.bytes.len() as i64);
         model.mime_type = Set(upload.mime_type.clone());
         model.checksum_sha256 = Set(hex::encode(Sha256::digest(&upload.bytes)));
-        if existing.is_some() {
-            model.update(db).await
-        } else {
-            model.insert(db).await
-        }
+        model.save(db).await?.try_into_model()
     }
 
     pub async fn for_import(

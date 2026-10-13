@@ -3,6 +3,7 @@ use bike_core::archive_import::queue_archive_page;
 use bike_core::background_jobs::worker::TaskProcessor;
 use bike_core::config::Config;
 use bike_core::jobs::ActivityArchiveImportTask;
+use bike_core::jobs::JobType;
 use sea_orm::DatabaseConnection;
 use std::error::Error;
 
@@ -23,7 +24,7 @@ impl ActivityArchiveImport {
 #[async_trait]
 impl TaskProcessor for ActivityArchiveImport {
     fn task_type(&self) -> &str {
-        "activity_archive_import"
+        JobType::ActivityArchiveImport.as_str()
     }
 
     async fn process(

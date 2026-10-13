@@ -3,5 +3,4 @@ pub use crate::jobs::{
     ProcessActivityImportTask, QueuedJobReference as QueuedTaskReference,
     RebuildFitnessFreshnessTask, RebuildSegmentAnalyticsTask, RegenerateSegmentEffortsTask,
     RegenerateUserSegmentsTask, ReprocessActivityImportTask, ReprocessUserActivityImportsTask,
-    StravaSyncTask,
 };

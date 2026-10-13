@@ -1,6 +1,83 @@
 use super::*;
 
 #[tokio::test]
+async fn strava_imports_cannot_enter_sql_replay_or_processing() {
+    let db = test_db().await;
+    let dir = test_uploads_dir();
+    let imported = completed_import(&db, &dir).await;
+    let mut import: activity_imports::ActiveModel = imported.import.into();
+    import.source = Set("strava_sync".into());
+    import.status = Set("processing".into());
+    let import = import.update(&db).await.unwrap();
+    let error = queue_activity_import_replay(&db, &dir, &import, "raw_stored")
+        .await
+        .unwrap_err();
+    assert!(error.message.contains("Strava sync or backfill"));
+    assert!(process_stored_activity_import(
+        &db,
+        &dir,
+        1,
+        import.clone(),
+        ActivityUploadDeduplication::Enabled,
+        None,
+    )
+    .await
+    .is_err());
+    assert!(
+        reprocess_activity_from_import(&db, &dir, 1, imported.activity, import.clone(), None,)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        activity_imports::Entity::find_by_id(import.id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap(),
+        import
+    );
+    assert_eq!(
+        activity_import_attempts::Entity::recent(&db, 1, import.id)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        background_tasks::Entity::find().count(&db).await.unwrap(),
+        0
+    );
+    assert!(activity_imports::Entity::processing_for_user(&db, 1, None)
+        .await
+        .unwrap()
+        .is_empty());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test]
+async fn sql_reprocessing_pages_include_manual_imports_and_exclude_strava() {
+    let db = test_db().await;
+    let dir = test_uploads_dir();
+    let manual = completed_import(&db, &dir).await;
+    let mut strava: activities::ActiveModel = manual.activity.clone().into();
+    strava.id = sea_orm::ActiveValue::NotSet;
+    strava.source = Set("strava_sync".into());
+    strava.insert(&db).await.unwrap();
+    assert_eq!(
+        activities::Model::imported_ids_page(&db, 1, 0, false)
+            .await
+            .unwrap(),
+        vec![manual.activity.id]
+    );
+    assert!(
+        plan_activity_import_replay(&db, &dir, &manual.import, "raw_stored")
+            .await
+            .is_ok()
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test]
 async fn replay_queue_failure_rolls_back_import_and_attempt_state() {
     let db = test_db().await;
     let dir = test_uploads_dir();

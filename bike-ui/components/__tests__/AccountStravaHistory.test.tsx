@@ -81,14 +81,13 @@ describe("account Strava sync history", () => {
         {
           id: 7,
           provider: "strava",
-          event_type: "workflow.stage",
+          event_type: "strava.event.accepted",
           level: "info",
-          message: "Internal completion",
+          message: "Strava Sync requested.",
           payload: {
-            action: "sync",
-            stage: "complete",
-            outcome: "completed",
-            workflow_id: "private",
+            operation: "sync",
+            temporal_workflow_id: "private",
+            temporal_namespace: "bike",
           },
           created_at: "2026-10-13T12:00:00Z",
         },
@@ -100,9 +99,8 @@ describe("account Strava sync history", () => {
     rerender(<AccountPage />);
     expect(mocks.events).toHaveBeenLastCalledWith({ refetchIntervalMs: false });
     expect(mocks.refetch).toHaveBeenCalledOnce();
-    expect(screen.getByText("Sync completed.")).toBeInTheDocument();
-    expect(
-      screen.queryByText(/Internal completion|private/),
-    ).not.toBeInTheDocument();
+    expect(screen.getByText("Up to date")).toBeInTheDocument();
+    expect(screen.getByText("Strava Sync requested.")).toBeInTheDocument();
+    expect(screen.queryByText(/private/)).not.toBeInTheDocument();
   });
 });

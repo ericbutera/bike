@@ -42,11 +42,6 @@ pub fn routes() -> Router<Arc<AppStorage>> {
         .merge(segment_routes())
         .merge(preference_routes())
         .merge(integration_routes())
-        .route(
-            "/webhooks/strava-gateway",
-            get(strava::handle_webhook_verification).post(strava::handle_webhook_event),
-        )
-        .route("/oauth/gateway/callback", get(strava::handle_callback))
         .route("/api/maps/heatmap", get(heatmaps::metadata))
         .route("/api/maps/heatmap/zones", get(heatmaps::zones))
         .route("/api/maps/heatmap/tiles/:z/:x/:y", get(heatmaps::tile))
@@ -192,6 +187,12 @@ fn integration_routes() -> Router<Arc<AppStorage>> {
     Router::new()
         .nest("/api/integration-events", integration_events::routes())
         .nest("/api/strava", strava::routes())
+        // Preserve URLs already registered with Strava; both use native intake.
+        .route(
+            "/webhooks/strava-gateway",
+            get(strava::handle_webhook_verification).post(strava::handle_webhook_event),
+        )
+        .route("/oauth/gateway/callback", get(strava::handle_callback))
 }
 
 async fn root() -> Json<serde_json::Value> {

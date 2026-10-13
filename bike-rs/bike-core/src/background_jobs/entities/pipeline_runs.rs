@@ -13,7 +13,6 @@ pub struct Model {
     pub request_id: Option<String>,
     pub trace_id: Option<String>,
     pub available_at: Option<DateTimeUtc>,
-    pub gateway_history: Option<Json>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -67,7 +66,6 @@ impl Model {
                 context.trace_context.as_ref(),
             )),
             available_at: Set(None),
-            gateway_history: Set(context.gateway_history.clone()),
         })
         .on_conflict(OnConflict::column(Column::Id).do_nothing().to_owned())
         .exec_without_returning(db)

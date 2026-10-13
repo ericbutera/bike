@@ -35,7 +35,7 @@ Bike follows the repo shape used by the surrounding workspace:
 - `map-renderer`: internal Go service running Chromium snapshots over gRPC.
   It owns browser lifecycle and rendering, with no activity database or PNG cache.
 
-Bike owns auth, database wiring, background jobs, feature flags, and metrics in `bike-core`. PostgreSQL is the normalized system of record. The separate Strava gateway owns provider callbacks, credentials, fetching, quota handling, and signed delivery to the Rust receiver.
+Bike owns auth, database wiring, feature flags, metrics, Strava callbacks, credentials, and provider requests in `bike-core`. PostgreSQL stores normalized data. Temporal runs Strava workflows.
 
 The [maps specification](maps.md) owns image permissions, compatibility,
 caching, the snapshot boundary, and its OpenTelemetry contract. The
@@ -51,7 +51,7 @@ Derived outputs such as heart-rate zones, segment efforts, activity analytics, f
 
 ## Integrations Strategy
 
-Strava is the first live cloud activity integration. The gateway handles OAuth refresh tokens, webhooks, resumable provider sync, and artifact storage. The Rust receiver imports delivered activities, records integration events, and respects user-scoped activity import locks.
+Strava is the first live cloud activity integration. The Rust API accepts durable Strava events. Named native Temporal workflows fetch and normalize activities, write domain data, and publish derived data. See [the Strava specification](strava-temporal.md).
 
 Manual Garmin export import is a first-class ingestion path. Official Garmin cloud activity sync is additive if it becomes available; Bike should not depend on private or reverse-engineered Garmin Connect endpoints for core behavior.
 

@@ -64,64 +64,6 @@ impl TaskStatus {
 }
 
 impl Model {
-    pub async fn active_strava_workflow_ids(
-        db: &impl ConnectionTrait,
-    ) -> Result<std::collections::BTreeSet<String>, DbErr> {
-        let payloads: Vec<Json> = Entity::find()
-            .select_only()
-            .column(Column::Payload)
-            .filter(Column::TaskType.is_in(Self::strava_workflow_task_types()))
-            .filter(Column::Status.is_in(["pending", "processing"]))
-            .into_tuple()
-            .all(db)
-            .await?;
-        Ok(payloads
-            .iter()
-            .filter_map(|payload| payload["data"]["workflow_id"].as_str().map(str::to_owned))
-            .collect())
-    }
-
-    fn strava_workflow_task_types() -> Vec<&'static str> {
-        crate::strava::workflow::Action::ALL
-            .into_iter()
-            .map(|action| action.task_type())
-            .chain(std::iter::once("strava_workflow"))
-            .collect()
-    }
-
-    pub async fn latest_strava_workflow_task(
-        db: &impl ConnectionTrait,
-        workflow_id: &str,
-    ) -> Result<Option<Self>, DbErr> {
-        use sea_orm::sea_query::{Alias, Expr, Func};
-        let payload = Column::Payload.into_expr();
-        let workflow: Expr = match db.get_database_backend() {
-            sea_orm::DatabaseBackend::Postgres => Func::cust(Alias::new("jsonb_extract_path_text"))
-                .args([payload, Expr::val("data"), Expr::val("workflow_id")])
-                .into(),
-            sea_orm::DatabaseBackend::MySql => Func::cust(Alias::new("JSON_UNQUOTE"))
-                .arg(
-                    Func::cust(Alias::new("JSON_EXTRACT"))
-                        .args([payload, Expr::val("$.data.workflow_id")]),
-                )
-                .into(),
-            sea_orm::DatabaseBackend::Sqlite => Func::cust(Alias::new("json_extract"))
-                .args([payload, Expr::val("$.data.workflow_id")])
-                .into(),
-            _ => {
-                return Err(DbErr::Custom(
-                    "Unsupported database for Strava task lookup".into(),
-                ))
-            }
-        };
-        Entity::find()
-            .filter(Column::TaskType.is_in(Self::strava_workflow_task_types()))
-            .filter(workflow.eq(workflow_id))
-            .order_by_desc(Column::Id)
-            .one(db)
-            .await
-    }
-
     pub fn with_correlation(query: sea_orm::Select<Entity>, id: &str) -> sea_orm::Select<Entity> {
         use super::{pipeline_runs, pipeline_tasks, task_attempts};
         let runs = pipeline_runs::Entity::find()

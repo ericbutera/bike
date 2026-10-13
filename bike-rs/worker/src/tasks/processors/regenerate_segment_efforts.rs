@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use bike_core::background_jobs::worker::TaskProcessor;
+use bike_core::jobs::JobType;
 use bike_core::jobs::RegenerateSegmentEffortsTask;
 use bike_core::segment_regeneration::regenerate_segment_efforts;
 use sea_orm::DatabaseConnection;
@@ -18,7 +19,7 @@ impl RegenerateSegmentEfforts {
 #[async_trait]
 impl TaskProcessor for RegenerateSegmentEfforts {
     fn task_type(&self) -> &str {
-        "regenerate_segment_efforts"
+        JobType::RegenerateSegmentEfforts.as_str()
     }
 
     async fn process(

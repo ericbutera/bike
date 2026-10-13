@@ -8,6 +8,10 @@ autobins = false
 name = "worker"
 path = "src/main.rs"
 
+[[bin]]
+name = "temporal-worker"
+path = "src/temporal_main.rs"
+
 [lib]
 name = "worker"
 path = "src/lib.rs"
@@ -16,6 +20,9 @@ path = "src/lib.rs"
 workspace = true
 
 [dependencies]
+axum = { workspace = true }
+strava-temporal = { path = "../strava-temporal" }
+temporalio-sdk = { workspace = true }
 bike-core = { path = "../bike-core" }
 tokio = { workspace = true }
 tracing = { workspace = true }

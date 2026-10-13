@@ -4,6 +4,18 @@
 pub const REFRESH_COOKIE_NAME: &str = "refresh_token";
 pub const OAUTH_STATE_COOKIE_NAME: &str = "oauth_state";
 
+pub fn cookie_value<'a>(headers: &'a axum::http::HeaderMap, name: &str) -> Option<&'a str> {
+    let prefix = format!("{name}=");
+    let mut values = headers
+        .get_all(axum::http::header::COOKIE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(';'))
+        .filter_map(|cookie| cookie.trim().strip_prefix(&prefix));
+    let value = values.next()?;
+    values.next().is_none().then_some(value)
+}
+
 pub fn oauth_state_cookie_value(state: &str, frontend_url: &str) -> String {
     oauth_cookie(state, frontend_url, 600)
 }
@@ -28,12 +40,7 @@ pub fn validate_oauth_state(
     let state = state
         .filter(|state| !state.is_empty())
         .ok_or_else(|| super::AuthError::bad_request("OAuth callback state is required"))?;
-    let cookie = headers
-        .get_all(axum::http::header::COOKIE)
-        .iter()
-        .filter_map(|value| value.to_str().ok())
-        .flat_map(|value| value.split(';'))
-        .find_map(|cookie| cookie.trim().strip_prefix("oauth_state="));
+    let cookie = cookie_value(headers, OAUTH_STATE_COOKIE_NAME);
     if cookie.map(super::entities::oauth_states::Model::hash)
         != Some(super::entities::oauth_states::Model::hash(state))
     {

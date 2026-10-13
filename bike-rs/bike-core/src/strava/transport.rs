@@ -41,6 +41,9 @@ impl Middleware for ExchangeRecorder {
         next: Next<'_>,
     ) -> reqwest_middleware::Result<reqwest::Response> {
         let id = uuid::Uuid::new_v4();
+        let method = request.method().to_string();
+        let path = request.url().path().to_owned();
+        let context = super::logging::ExchangeContext::current();
         let prefix = crate::strava::client::exchange_prefix(id);
         let confidential = request.url().path().starts_with("/oauth/");
         let request_evidence = serde_json::json!({
@@ -52,11 +55,17 @@ impl Middleware for ExchangeRecorder {
         let request_object = self
             .encrypted(&format!("{prefix}/request"), &request_evidence)
             .await?;
+        if let Some(context) = &context {
+            context.exchange(&id.to_string(), &method, &path, None, None);
+        }
         tracing::info!(method = %request.method(), path = request.url().path(), request_object = %request_object.path, "Sending generated Strava SDK request");
         let response = match next.run(request, extensions).await {
             Ok(response) => response,
             Err(error) => {
-                self.encrypted(&format!("{prefix}/result"), &serde_json::json!({"request":request_object,"outcome":"transport_error","observed_at":chrono::Utc::now()})).await?;
+                if let Some(context) = &context {
+                    context.exchange(&id.to_string(), &method, &path, None, None);
+                }
+                self.encrypted(&format!("{prefix}/result"), &serde_json::json!({"request":request_object,"status":super::logging::ProviderResponseStatus::TransportError,"observed_at":chrono::Utc::now()})).await?;
                 return Err(error);
             }
         };
@@ -70,6 +79,19 @@ impl Middleware for ExchangeRecorder {
             headers: parts.headers.clone(),
             bytes: bytes.clone(),
         };
+        if let Some(context) = &context {
+            let request_id = raw
+                .headers
+                .get("x-request-id")
+                .and_then(|value| value.to_str().ok());
+            context.exchange(
+                &id.to_string(),
+                &method,
+                &path,
+                Some(raw.status.as_u16()),
+                request_id,
+            );
+        }
         self.encrypted(&format!("{prefix}/result"), &serde_json::json!({
             "request":request_object,"status":raw.status.as_u16(),"version":format!("{:?}",parts.version),
             "headers_base64":headers(&raw.headers),"body_base64":STANDARD.encode(&bytes),"observed_at":chrono::Utc::now()

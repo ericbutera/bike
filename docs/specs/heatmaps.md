@@ -115,8 +115,9 @@ make it contribute. Outdoor-only choices belong to MAPS12.
 Imports and edits durably mark projections pending without waiting for
 preparation. While enabled, the worker reconciles up to **16 activity IDs every
 15 seconds** and prepares them sequentially. Backfill uses the same builder.
-A crashed preparation task resumes through the shared worker's five-minute
-heartbeat recovery, preserving its activity generations and attempt history.
+A crashed preparation task resumes through shared heartbeat recovery, preserving
+its activity generations and attempt history. `WORKER_RECOVERY_TIMEOUT_SECONDS`
+configures both heartbeat and projection queue recovery; it defaults to 300 seconds.
 A live heartbeat prevents reclaiming that task; deduplication keeps one eligible
 task for the same projection generation.
 
@@ -271,7 +272,7 @@ counts remain outside the current scope.
    map pass verification. Geography remains an audit tool, not a product fence.
 
 All classification and evidence handling belongs to Bike. It requires no
-Strava gateway changes or read-time gateway access.
+Read-time Strava API access.
 
 ## Primary technical references
 

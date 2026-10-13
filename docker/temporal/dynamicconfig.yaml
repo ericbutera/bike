@@ -1,0 +1,4 @@
+history.cacheSizeBasedLimit:
+  - value: true
+history.hostLevelCacheMaxSizeBytes:
+  - value: 134217728

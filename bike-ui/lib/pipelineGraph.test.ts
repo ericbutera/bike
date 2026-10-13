@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import {
-  gatewaySteps,
   pipelineMermaid,
   type PipelineGraph,
   type PipelineTask,
@@ -14,31 +13,6 @@ const root: PipelineGraph = {
   tasks: [],
 };
 describe("pipelineMermaid", () => {
-  it("keeps overlapping gateway intervals as siblings and ignores malformed history", () => {
-    const history = [
-      {
-        kind: "gateway_receive_to_fetch",
-        started_at: root.received_at,
-        finished_at: root.accepted_at,
-      },
-      {
-        kind: "gateway_delivery_wait",
-        started_at: root.received_at,
-        finished_at: root.accepted_at,
-        attempts: 2,
-      },
-      { kind: "invalid", started_at: 4 },
-      null,
-    ];
-    const run = { ...root, gateway_history: history };
-    expect(gatewaySteps(run)).toHaveLength(2);
-    expect(gatewaySteps({ ...root, gateway_history: {} })).toEqual([]);
-    const graph = pipelineMermaid(run);
-    expect(graph).toContain("receipt --> gateway_0");
-    expect(graph).toContain("receipt --> gateway_1");
-    expect(graph).not.toContain("gateway_0 --> gateway_1");
-  });
-
   it("links only matching published work to a required output revision", () => {
     const work = {
       id: 1,

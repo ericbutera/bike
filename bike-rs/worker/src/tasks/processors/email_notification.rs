@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use bike_core::background_jobs::worker::TaskProcessor;
 use bike_core::config::Config;
 use bike_core::jobs::email::EmailNotificationTask;
+use bike_core::jobs::JobType;
 use bike_core::platform::email::{EmailService, SmtpConfig};
 use serde_json::json;
 use std::error::Error;
@@ -36,7 +37,7 @@ impl EmailNotification {
 #[async_trait]
 impl TaskProcessor for EmailNotification {
     fn task_type(&self) -> &str {
-        "email_notification"
+        JobType::EmailNotification.as_str()
     }
 
     async fn process(

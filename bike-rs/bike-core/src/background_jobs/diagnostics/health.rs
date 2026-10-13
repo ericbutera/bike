@@ -17,13 +17,7 @@ pub async fn sample(
     super::super::batches::reconcile(db).await?;
     super::reconcile_available(db, metrics).await?;
     for kind in [
-        "activity",
-        "fitness",
-        "heatmap",
-        "segments",
-        "import",
-        "gateway_delivery",
-        "batch",
+        "activity", "fitness", "heatmap", "segments", "import", "batch",
     ] {
         let count = pipeline_outputs::Entity::find()
             .filter(pipeline_outputs::Column::Kind.eq(kind))
@@ -34,8 +28,6 @@ pub async fn sample(
     }
     for entrypoint in [
         "request",
-        "strava_webhook",
-        "strava_sync",
         "scheduler",
         "worker_startup",
         "heatmap_reconciliation",

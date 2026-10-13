@@ -23,6 +23,7 @@ use crate::segment_support::{
 use crate::training_profile::{load_training_profile, TrainingProfile};
 use crate::workflow_error::WorkflowError as AppError;
 use chrono::{NaiveDate, Utc};
+use sea_orm::TransactionSession;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder, TransactionTrait,
@@ -182,68 +183,82 @@ where
     Ok(affected_segment_ids)
 }
 
-pub async fn delete_activity_with_derived_state(
-    db: &DatabaseConnection,
+pub async fn delete_activity_with_derived_state<C: ConnectionTrait + TransactionTrait>(
+    db: &C,
     uploads_dir: &str,
     user_id: i32,
     activity: activities::Model,
 ) -> Result<Vec<i32>, AppError> {
-    let mut upload_path_to_remove = None;
     let txn = db.begin().await?;
-    let affected_segment_ids = load_segment_ids_for_activity(&txn, activity.id).await?;
+    let deleted = delete_activity_records(&txn, user_id, activity).await?;
+    txn.commit().await?;
+    if let Some(source) = deleted.source {
+        remove_upload_file(Path::new(uploads_dir).join(source)).await;
+    }
+    Ok(deleted.segment_ids)
+}
 
-    clear_segment_efforts_for_activity(&txn, user_id, activity.id).await?;
+pub struct DeletedActivity {
+    pub segment_ids: Vec<i32>,
+    pub source: Option<String>,
+}
+
+pub async fn delete_activity_records(
+    db: &impl ConnectionTrait,
+    user_id: i32,
+    activity: activities::Model,
+) -> Result<DeletedActivity, AppError> {
+    let mut source = None;
+    let affected_segment_ids = load_segment_ids_for_activity(db, activity.id).await?;
+
+    clear_segment_efforts_for_activity(db, user_id, activity.id).await?;
 
     activity_analytics::Entity::delete_many()
         .filter(activity_analytics::Column::ActivityId.eq(activity.id))
-        .exec(&txn)
+        .exec(db)
         .await?;
 
     activity_training_analyses::Entity::delete_many()
         .filter(activity_training_analyses::Column::ActivityId.eq(activity.id))
-        .exec(&txn)
+        .exec(db)
         .await?;
 
     activities::Entity::delete_many()
         .filter(activities::Column::UserId.eq(user_id))
         .filter(activities::Column::Id.eq(activity.id))
-        .exec(&txn)
+        .exec(db)
         .await?;
 
     if let Some(activity_import_id) = activity.activity_import_id {
         let remaining_references = activities::Entity::find()
             .filter(activities::Column::UserId.eq(user_id))
             .filter(activities::Column::ActivityImportId.eq(Some(activity_import_id)))
-            .count(&txn)
+            .count(db)
             .await?;
 
         if remaining_references == 0 {
             let linked_import = activity_imports::Entity::find()
                 .filter(activity_imports::Column::Id.eq(activity_import_id))
                 .filter(activity_imports::Column::UserId.eq(user_id))
-                .one(&txn)
+                .one(db)
                 .await?;
 
             if let Some(linked_import) = linked_import {
-                upload_path_to_remove =
-                    Some(Path::new(uploads_dir).join(&linked_import.storage_path));
+                source = Some(linked_import.storage_path);
 
                 activity_imports::Entity::delete_many()
                     .filter(activity_imports::Column::Id.eq(activity_import_id))
                     .filter(activity_imports::Column::UserId.eq(user_id))
-                    .exec(&txn)
+                    .exec(db)
                     .await?;
             }
         }
     }
 
-    txn.commit().await?;
-
-    if let Some(upload_path) = upload_path_to_remove {
-        remove_upload_file(upload_path).await;
-    }
-
-    Ok(affected_segment_ids)
+    Ok(DeletedActivity {
+        segment_ids: affected_segment_ids,
+        source,
+    })
 }
 
 pub async fn cleanup_duplicate_activities_for_user(
@@ -516,6 +531,7 @@ async fn load_incomplete_activity_imports_for_user(
 ) -> Result<Vec<activity_imports::Model>, AppError> {
     activity_imports::Entity::find()
         .filter(activity_imports::Column::UserId.eq(user_id))
+        .filter(activity_imports::Column::Source.ne("strava_sync"))
         .filter(activity_imports::Column::Status.is_in([
             ACTIVITY_IMPORT_STATUS_PROCESSING,
             ACTIVITY_IMPORT_STATUS_FAILED,
@@ -762,10 +778,16 @@ async fn load_activity_for_reprocessing(
     db: &DatabaseConnection,
     activity_id: i32,
 ) -> Result<activities::Model, AppError> {
-    activities::Entity::find_by_id(activity_id)
+    let activity = activities::Entity::find_by_id(activity_id)
         .one(db)
         .await?
-        .ok_or_else(|| AppError::not_found(format!("Activity {activity_id} was not found")))
+        .ok_or_else(|| AppError::not_found(format!("Activity {activity_id} was not found")))?;
+    if activity.source == "strava_sync" {
+        return Err(AppError::bad_request(
+            "Use Strava sync or backfill for Strava imports",
+        ));
+    }
+    Ok(activity)
 }
 
 fn activity_import_id_for_reprocessing(activity: &activities::Model) -> Result<i32, AppError> {

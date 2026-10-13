@@ -88,19 +88,17 @@ run = '''
 cargo test -p bike-core --test worker_history_postgres -- --ignored --nocapture
 '''
 
-[tasks."test:strava:postgres"]
-description = "Verify native Strava DAGs, effects, retries, and vendor request counts"
+[tasks."test:strava:unit"]
+description = "Test Strava workflows, domain handlers, and shared configuration with isolated mocks"
 env = { RUSTFLAGS = "-D warnings" }
-run = '''
-: "${BIKE_STRAVA_TEST_DATABASE_URL:?Set this to a disposable PostgreSQL database}"
-cargo test -p api --test strava_workflows_postgres -- --ignored --nocapture
-'''
-
-[tasks."coverage:strava:postgres"]
-description = "Collect native Strava PostgreSQL workflow coverage"
-env = { RUSTFLAGS = "-D warnings", CARGO_LLVM_COV_DENY_WARNINGS = "1" }
 run = [
-  "mise exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov -p api --locked --no-report --test strava_workflows_postgres -- --ignored --nocapture",
+  "cargo test -p bike-core --locked --lib strava_native_unit",
+  "cargo test -p bike-core --locked --lib entities::strava_activity_states::tests",
+  "cargo test -p bike-core --locked --lib strava_oauth_unit",
+  "cargo test -p bike-core --locked --lib strava_webhook_unit",
+  "cargo test -p bike-core --locked --lib recovery_timeout_tests",
+  "cargo test -p bike-core --locked --lib bike_jobs_serialize_for_worker_payload_contract",
+  "cargo test -p strava-temporal --locked --lib",
 ]
 
 [tasks.coverage]
@@ -135,7 +133,7 @@ run = ["mise install jq", "mise exec jq -- bash ../scripts/coverage-rust-report.
 
 [tasks.fmt]
 description = "Format the Rust workspace"
-run = "cargo fmt --package bike-core --package api --package worker --package migration"
+run = "cargo fmt --package bike-core --package api --package worker --package migration --package strava-temporal"
 
 [tasks."test:heatmaps:postgres"]
 description = "Run heatmap regressions against a disposable PostgreSQL database"
@@ -147,7 +145,7 @@ cargo test -p bike-core --test heatmaps_postgres -- --ignored
 [tasks."fmt:check"]
 description = "Check Rust formatting without writing changes"
 run = [
-  "cargo fmt --package bike-core --package api --package worker --package migration --check",
+  "cargo fmt --package bike-core --package api --package worker --package migration --package strava-temporal --check",
 ]
 
 [tasks.lint]

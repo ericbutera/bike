@@ -1,7 +1,8 @@
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::storage::AppStorage;
 use axum::extract::{Query, State};
-use axum::response::Redirect;
+use axum::http::{header, HeaderMap};
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use bike_core::auth::openapi as auth_openapi;
@@ -14,7 +15,7 @@ use bike_core::integration_events_service::{
 };
 use bike_core::strava;
 use sea_orm::DatabaseConnection;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
@@ -28,7 +29,7 @@ pub struct StravaAuthorizeResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-#[schema(example = json!({"configured": true,"connected": true,"athlete_id": 12345678,"athlete_name": "Alex Rider","athlete_username": "alex-rider","scopes": ["read","activity:read_all"],"last_sync_status": "succeeded","last_sync_wait_reason": null,"last_sync_next_attempt_at": null,"last_sync_imported_count": 3,"last_sync_duplicate_count": 1,"last_sync_failed_count": 0,"last_sync_finished_at": "2026-09-27T12:00:00Z"}))]
+#[schema(example = json!({"configured": true,"connected": true,"athlete_id": 12345678,"athlete_name": "Alex Rider","athlete_username": "alex-rider","scopes": ["read","activity:read_all"],"last_sync_status": "succeeded","last_sync_imported_count": 3,"last_sync_duplicate_count": 1,"last_sync_failed_count": 0,"last_sync_finished_at": "2026-09-27T12:00:00Z"}))]
 pub struct StravaConnectionResponse {
     #[schema(example = true)]
     pub configured: bool,
@@ -45,10 +46,6 @@ pub struct StravaConnectionResponse {
     pub scopes: Vec<String>,
     #[schema(example = "succeeded")]
     pub last_sync_status: String,
-    #[schema(example = "rate_limit")]
-    pub last_sync_wait_reason: Option<String>,
-    #[schema(example = "2026-10-02T12:00:30Z")]
-    pub last_sync_next_attempt_at: Option<chrono::DateTime<chrono::Utc>>,
     pub last_sync_message: Option<String>,
     pub last_sync_started_at: Option<chrono::DateTime<chrono::Utc>>,
     #[schema(example = "2026-09-27T12:00:00Z")]
@@ -62,13 +59,7 @@ pub struct StravaConnectionResponse {
     pub last_sync_failed_count: i32,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct StravaCallbackQuery {
-    pub code: Option<String>,
-    pub scope: Option<String>,
-    pub state: Option<String>,
-    pub error: Option<String>,
-}
+pub use bike_core::strava::oauth_state::AuthorizationCallback as StravaCallbackQuery;
 
 pub fn routes() -> Router<Arc<AppStorage>> {
     Router::new()
@@ -103,8 +94,10 @@ pub fn routes() -> Router<Arc<AppStorage>> {
 pub async fn begin_connect(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
-) -> Result<Json<StravaAuthorizeResponse>, AppError> {
-    let url = match strava::create_authorization_url_for_user(Config::get(), user.id) {
+) -> Result<Response, AppError> {
+    let authorization =
+        strava::create_authorization_url_for_user(&state.db, Config::get(), user.id).await;
+    let authorization = match authorization {
         Ok(url) => {
             record_strava_event_best_effort(
                 &state.db,
@@ -133,16 +126,22 @@ pub async fn begin_connect(
         }
     };
 
-    Ok(Json(StravaAuthorizeResponse {
-        authorization_url: url.to_string(),
-    }))
+    let cookie =
+        strava::oauth_state::session_cookie(&authorization.browser_session, &Config::get().api_url);
+    Ok((
+        [(header::SET_COOKIE, cookie)],
+        Json(StravaAuthorizeResponse {
+            authorization_url: authorization.url.to_string(),
+        }),
+    )
+        .into_response())
 }
 
 #[utoipa::path(
     get,
     path = "/strava/connection",
     responses(
-        (status = 200, description = "Current Strava connection state for the authenticated user", body = StravaConnectionResponse, example = json!({"configured": true,"connected": true,"athlete_id": 12345678,"athlete_name": "Alex Rider","athlete_username": "alex-rider","scopes": ["read","activity:read_all"],"last_sync_status": "succeeded","last_sync_wait_reason": null,"last_sync_next_attempt_at": null,"last_sync_imported_count": 3,"last_sync_duplicate_count": 1,"last_sync_failed_count": 0,"last_sync_finished_at": "2026-09-27T12:00:00Z"})),
+        (status = 200, description = "Current Strava connection state for the authenticated user", body = StravaConnectionResponse, example = json!({"configured": true,"connected": true,"athlete_id": 12345678,"athlete_name": "Alex Rider","athlete_username": "alex-rider","scopes": ["read","activity:read_all"],"last_sync_status": "succeeded","last_sync_imported_count": 3,"last_sync_duplicate_count": 1,"last_sync_failed_count": 0,"last_sync_finished_at": "2026-09-27T12:00:00Z"})),
         (status = 401, description = "Not authenticated"),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     ),
@@ -166,7 +165,7 @@ pub async fn get_connection(
     post,
     path = "/strava/sync",
     responses(
-        (status = 200, description = "Queued a Strava sync for the authenticated user", body = StravaConnectionResponse, example = json!({"configured": true,"connected": true,"athlete_id": 12345678,"athlete_name": "Alex Rider","scopes": ["read","activity:read_all"],"last_sync_status": "queued","last_sync_wait_reason": null,"last_sync_next_attempt_at": null,"last_sync_imported_count": 3,"last_sync_duplicate_count": 1,"last_sync_failed_count": 0})),
+        (status = 200, description = "Queued a Strava sync for the authenticated user", body = StravaConnectionResponse, example = json!({"configured": true,"connected": true,"athlete_id": 12345678,"athlete_name": "Alex Rider","scopes": ["read","activity:read_all"],"last_sync_status": "queued","last_sync_imported_count": 3,"last_sync_duplicate_count": 1,"last_sync_failed_count": 0})),
         (status = 400, description = "Strava integration is not configured", body = ApiErrorResponse),
         (status = 409, description = "Another activity import is already running or queued", body = ApiErrorResponse),
         (status = 401, description = "Not authenticated"),
@@ -182,8 +181,10 @@ pub async fn queue_sync(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<StravaConnectionResponse>, AppError> {
-    let connection =
-        bike_core::strava::workflow::queue_user_sync(&state.db, user.id, false).await?;
+    bike_core::strava::events::request_sync(&state.db, user.id).await?;
+    let connection = strava::load_connection(&state.db, user.id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Strava connection was removed"))?;
 
     Ok(Json(
         response_from_model(&state.db, Some(&connection)).await?,
@@ -193,8 +194,9 @@ pub async fn queue_sync(
 #[utoipa::path(
     post,
     path = "/strava/backfill",
+    request_body = StravaBackfillRequest,
     responses(
-        (status = 200, description = "Queued a Strava backfill for the last 15 days", body = StravaConnectionResponse),
+        (status = 200, description = "Accepted a Strava backfill for the requested date range", body = StravaConnectionResponse),
         (status = 401, description = "Not authenticated"),
         (status = 404, description = "No Strava connection exists", body = ApiErrorResponse),
         (status = 409, description = "Strava disconnect is pending", body = ApiErrorResponse),
@@ -205,11 +207,27 @@ pub async fn queue_sync(
 pub async fn queue_backfill(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
+    Json(input): Json<StravaBackfillRequest>,
 ) -> Result<Json<StravaConnectionResponse>, AppError> {
-    let connection = bike_core::strava::workflow::queue_user_sync(&state.db, user.id, true).await?;
+    bike_core::strava::events::request_backfill(
+        &state.db,
+        user.id,
+        input.start_date,
+        input.end_date,
+    )
+    .await?;
+    let connection = strava::load_connection(&state.db, user.id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Strava connection was removed"))?;
     Ok(Json(
         response_from_model(&state.db, Some(&connection)).await?,
     ))
+}
+
+#[derive(serde::Deserialize, utoipa::ToSchema)]
+pub struct StravaBackfillRequest {
+    pub start_date: chrono::DateTime<chrono::Utc>,
+    pub end_date: chrono::DateTime<chrono::Utc>,
 }
 
 #[utoipa::path(
@@ -230,7 +248,7 @@ pub async fn disconnect_connection(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<auth_openapi::schemas::MessageResponse>, AppError> {
-    bike_core::strava::workflow::queue_disconnect(&state.db, user.id).await?;
+    bike_core::strava::events::request_disconnect(&state.db, user.id).await?;
     Ok(Json(auth_openapi::schemas::MessageResponse {
         message: "Strava disconnect queued.".to_string(),
     }))
@@ -247,37 +265,25 @@ pub async fn disconnect_connection(
 pub async fn handle_callback(
     State(state): State<Arc<AppStorage>>,
     Query(query): Query<StravaCallbackQuery>,
-) -> Redirect {
+    headers: HeaderMap,
+) -> Response {
     let result = async {
-        if let Some(error) = query.error.as_deref() {
-            return Err(AppError::bad_request(format!(
-                "Strava authorization was not completed: {error}"
-            )));
-        }
-
-        let code = query
-            .code
-            .as_deref()
-            .ok_or_else(|| AppError::bad_request("Missing Strava authorization code"))?;
-        let state_token = query
-            .state
-            .as_deref()
-            .ok_or_else(|| AppError::bad_request("Missing Strava authorization state"))?;
-
-        strava::exchange_code_for_connection(&state.db, code, state_token)
+        let browser = strava::oauth_state::browser_session(&headers, &Config::get().api_url)?;
+        strava::oauth_state::OAuthState::new(&Config::get().jwt_secret)
+            .callback(&state.db, &state.db, &query, browser, chrono::Utc::now())
             .await
             .map_err(AppError::from)
     }
     .await;
 
-    match result {
+    let redirect = match result {
         Ok(connection) => Redirect::to(&strava::build_frontend_account_redirect(
             Config::get(),
             "connected",
             connection.last_sync_message.as_deref(),
         )),
         Err(error) => {
-            if query.error.is_some() || query.code.is_none() || query.state.is_none() {
+            if query.is_incomplete() {
                 record_strava_event_best_effort(
                     &state.db,
                     None,
@@ -300,7 +306,9 @@ pub async fn handle_callback(
                 Some(&error.message),
             ))
         }
-    }
+    };
+    let cookie = strava::oauth_state::clear_session_cookie(&Config::get().api_url);
+    ([(header::SET_COOKIE, cookie)], redirect).into_response()
 }
 
 #[utoipa::path(
@@ -364,11 +372,16 @@ pub async fn handle_webhook_verification(
 )]
 pub async fn handle_webhook_event(
     State(state): State<Arc<AppStorage>>,
+    headers: axum::http::HeaderMap,
     body: axum::body::Bytes,
 ) -> Result<Json<auth_openapi::schemas::MessageResponse>, AppError> {
     let event: strava::StravaWebhookEvent = serde_json::from_slice(&body)
         .map_err(|_| AppError::bad_request("Invalid Strava webhook body"))?;
-    bike_core::strava::workflow::accept_webhook(&state.db, &event, &body).await?;
+    let request_id = headers
+        .get("x-request-id")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    bike_core::strava::events::accept_webhook(&state.db, &event, request_id).await?;
 
     Ok(Json(auth_openapi::schemas::MessageResponse {
         message: "ok".to_string(),
@@ -385,12 +398,6 @@ async fn response_from_model(
         None => None,
     };
     let connection = resolved.as_ref().map(|state| &state.connection);
-    let waiting = match connection {
-        Some(connection) => {
-            bike_core::entities::strava_workflows::Model::waiting(db, connection.id).await?
-        }
-        None => None,
-    };
 
     Ok(StravaConnectionResponse {
         configured: config.strava_enabled(),
@@ -406,15 +413,6 @@ async fn response_from_model(
         last_sync_status: connection
             .map(|connection| connection.last_sync_status.clone())
             .unwrap_or_else(|| strava::STRAVA_SYNC_STATUS_NEVER.to_string()),
-        last_sync_wait_reason: waiting
-            .as_ref()
-            .and_then(|pause| pause["reason"].as_str())
-            .map(ToOwned::to_owned),
-        last_sync_next_attempt_at: waiting
-            .as_ref()
-            .map(|pause| serde_json::from_value(pause["retry_at"].clone()))
-            .transpose()
-            .map_err(|_| AppError::internal("Invalid saved Strava retry time"))?,
         last_sync_message: connection.and_then(|connection| connection.last_sync_message.clone()),
         last_sync_started_at: connection.and_then(|connection| connection.last_sync_started_at),
         last_sync_finished_at: connection.and_then(|connection| connection.last_sync_finished_at),

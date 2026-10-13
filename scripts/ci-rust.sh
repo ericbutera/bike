@@ -60,13 +60,13 @@ prune_verified() {
 
 save_verified() {
   local temporary project artifact
-  for project in api worker bike-core; do
+  for project in api worker bike-core strava-temporal; do
     for artifact in html/index.html lcov.info coverage-summary.json; do
       test -s "$reports/$project/$artifact"
     done
   done
   temporary="$(mktemp -d "$cache/.publish.XXXXXX")"
-  tar -czf "$temporary/reports.tar.gz" -C "$reports" api worker bike-core
+  tar -czf "$temporary/reports.tar.gz" -C "$reports" api worker bike-core strava-temporal
   (cd "$temporary" && sha256sum reports.tar.gz >reports.sha256)
   printf 'commit %s, pipeline %s\n' "$(git rev-parse HEAD)" "$CI_PIPELINE_NUMBER" >"$temporary/source"
   # Readers see either a complete previous entry or a complete new entry.

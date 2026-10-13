@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use bike_core::background_jobs::batches::segments_page;
 use bike_core::background_jobs::worker::TaskProcessor;
+use bike_core::jobs::JobType;
 use bike_core::jobs::RegenerateUserSegmentsTask;
 use sea_orm::DatabaseConnection;
 use std::error::Error;
@@ -18,7 +19,7 @@ impl RegenerateUserSegments {
 #[async_trait]
 impl TaskProcessor for RegenerateUserSegments {
     fn task_type(&self) -> &str {
-        "regenerate_user_segments"
+        JobType::RegenerateUserSegments.as_str()
     }
 
     async fn process(

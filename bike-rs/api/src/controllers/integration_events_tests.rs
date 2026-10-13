@@ -73,58 +73,39 @@ fn event(event_type: &str, payload: serde_json::Value) -> integration_events::Ne
 }
 
 #[tokio::test]
-async fn account_history_returns_queued_and_previous_syncs_despite_processing_noise() {
+async fn account_history_returns_root_events_despite_child_event_noise() {
     let fixture = Fixture::new().await;
-    let completed = fixture
-        .record(event("sync_completed", json!({"imported_count": 0})))
-        .await;
-    let changed = fixture
-        .record(event(
-            "workflow.stage",
-            json!({
-                "stage": "apply", "outcome": "applied", "activity_id": 42
-            }),
-        ))
-        .await;
+    let accepted = "strava.event.accepted";
     let queued = fixture
         .record(event(
-            "workflow.accepted",
+            accepted,
             json!({
-                "action": "sync", "workflow_id": "current"
+                "operation":"sync", "temporal_workflow_id":"strava-current"
             }),
         ))
         .await;
-    let mut foreign = event("sync_completed", json!({}));
+    let mut foreign = event(accepted, json!({}));
     foreign.user_id = Some(2);
     fixture.record(foreign).await;
-    let mut other_provider = event("sync_completed", json!({}));
-    other_provider.provider = "other".into();
-    fixture.record(other_provider).await;
+    let mut other = event(accepted, json!({}));
+    other.provider = "other".into();
+    fixture.record(other).await;
     for _ in 0..30 {
         fixture
             .record(event(
-                "workflow.stage",
+                accepted,
                 json!({
-                    "stage": "apply", "outcome": "unchanged", "activity_id": 42
+                    "operation":"upsert", "parent_event_id":"strava-current"
                 }),
             ))
             .await;
     }
-
     let rows = fixture.history().await;
-    assert_eq!(
-        rows.iter().map(|row| row.id).collect::<Vec<_>>(),
-        [queued.id, changed.id, completed.id]
-    );
-    assert!(rows
-        .iter()
-        .all(|row| row.user_id == Some(1) && row.provider == "strava"));
-    assert_eq!(rows[0].event_type, "workflow.accepted");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].id, queued.id);
     assert_eq!(rows[0].payload, queued.payload);
     assert_eq!(rows[0].connection_id, Some(7));
     assert_eq!(rows[0].created_at, queued.created_at);
-    assert_eq!(rows[1].payload.as_ref().unwrap()["activity_id"], 42);
-    assert_eq!(rows[2].payload.as_ref().unwrap()["imported_count"], 0);
 }
 
 #[tokio::test]
@@ -134,7 +115,7 @@ async fn account_history_limits_meaningful_events_to_the_newest_twenty_five() {
     for _ in 0..30 {
         ids.push(
             fixture
-                .record(event("sync.completed", json!({"imported_count": 0})))
+                .record(event("strava.event.accepted", json!({"operation":"sync"})))
                 .await
                 .id,
         );

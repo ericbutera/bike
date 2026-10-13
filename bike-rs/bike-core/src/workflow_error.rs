@@ -95,6 +95,19 @@ impl std::fmt::Display for WorkflowError {
 
 impl std::error::Error for WorkflowError {}
 
+impl From<crate::auth::error::AuthError> for WorkflowError {
+    fn from(error: crate::auth::error::AuthError) -> Self {
+        Self {
+            status: error.code,
+            message: error.message,
+            errors: None,
+            retry_at: error
+                .retry_after_seconds
+                .map(|seconds| Utc::now() + chrono::Duration::seconds(seconds)),
+        }
+    }
+}
+
 impl From<sea_orm::DbErr> for WorkflowError {
     fn from(error: sea_orm::DbErr) -> Self {
         tracing::error!(error = ?error, "database request failed");

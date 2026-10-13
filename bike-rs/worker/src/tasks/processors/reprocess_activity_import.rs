@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use bike_core::activity_lifecycle::process_single_activity_import_reprocessing;
 use bike_core::background_jobs::worker::TaskProcessor;
 use bike_core::config::Config;
+use bike_core::jobs::JobType;
 use bike_core::jobs::{JobQueue, ReprocessActivityImportTask};
 use sea_orm::DatabaseConnection;
 use std::error::Error;
@@ -25,7 +26,7 @@ impl ReprocessActivityImport {
 #[async_trait]
 impl TaskProcessor for ReprocessActivityImport {
     fn task_type(&self) -> &str {
-        "reprocess_activity_import"
+        JobType::ReprocessActivityImport.as_str()
     }
 
     async fn process(

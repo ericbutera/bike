@@ -1,33 +1,89 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbErr, QueryFilter, Set,
-    TransactionTrait,
-};
+use sea_orm::{ColumnTrait, ConnectionTrait, DbErr, QueryFilter, Set};
 
 impl Model {
-    /// Provider execution and refresh share a transaction-scoped connection lease.
-    pub async fn execution_lease(
-        db: &DatabaseConnection,
-        id: i32,
-    ) -> Result<Option<DatabaseTransaction>, DbErr> {
-        if db.get_database_backend() != sea_orm::DatabaseBackend::Postgres {
-            return Ok(None);
+    pub async fn begin_disconnect(
+        db: &impl ConnectionTrait,
+        event: &crate::strava::events::StravaEvent,
+    ) -> Result<(), DbErr> {
+        let connection = Self::lock_event(db, event).await?;
+        let requested = connection.disconnect_requested_at.unwrap_or_else(Utc::now);
+        let mut active: ActiveModel = connection.into();
+        active.disconnect_requested_at = Set(Some(requested));
+        active.update(db).await?;
+        Ok(())
+    }
+    pub async fn complete_native_sync(
+        db: &impl ConnectionTrait,
+        result: &crate::strava::native::CollectionResult,
+    ) -> Result<(), DbErr> {
+        let connection = Self::lock_event(db, &result.event).await?;
+        let cursor = connection.last_synced_activity_started_at;
+        let mut active: ActiveModel = connection.into();
+        if result.event.operation == crate::strava::events::StravaOperation::Sync {
+            active.last_synced_activity_started_at =
+                Set(cursor.into_iter().chain(result.last_started_at).max());
         }
-        let lease = db.begin().await?;
-        // PostgreSQL advisory locks need the database's native lock primitive.
-        lease
-            .execute_unprepared("SELECT pg_advisory_xact_lock_shared(7393, 0)")
+        active.last_sync_status = Set("succeeded".into());
+        active.last_sync_finished_at = Set(Some(Utc::now()));
+        active.last_sync_imported_count = Set(result.imported);
+        active.last_sync_duplicate_count = Set(result.unchanged);
+        active.last_sync_failed_count = Set(0);
+        active.last_sync_message = Set(None);
+        active.update(db).await?;
+        Ok(())
+    }
+
+    pub async fn remove_native(
+        db: &impl ConnectionTrait,
+        event: &crate::strava::events::StravaEvent,
+    ) -> Result<(), DbErr> {
+        let Some(connection) = Self::load(db, event.connection_id).await? else {
+            return Ok(());
+        };
+        event
+            .validate_connection(&connection)
+            .map_err(|error| DbErr::Custom(error.to_string()))?;
+        Entity::delete_many()
+            .filter(Column::Id.eq(event.connection_id))
+            .filter(Column::CreatedAt.eq(event.connection_generation))
+            .exec(db)
             .await?;
-        lease
-            .execute_raw(sea_orm::Statement::from_sql_and_values(
-                sea_orm::DatabaseBackend::Postgres,
-                "SELECT pg_advisory_xact_lock(7391, $1)",
-                [id.into()],
-            ))
-            .await?;
-        Ok(Some(lease))
+        Ok(())
+    }
+    pub async fn load(db: &impl ConnectionTrait, id: i32) -> Result<Option<Self>, DbErr> {
+        Entity::find_by_id(id).one(db).await
+    }
+
+    pub async fn for_event(
+        db: &impl ConnectionTrait,
+        event: &crate::strava::events::StravaEvent,
+    ) -> Result<Self, crate::workflow_error::WorkflowError> {
+        let connection = Self::load(db, event.connection_id).await?.ok_or_else(|| {
+            crate::workflow_error::WorkflowError::not_found("Strava connection no longer exists")
+        })?;
+        event.validate_connection(&connection)?;
+        Ok(connection)
+    }
+
+    pub async fn lock_event(
+        db: &impl ConnectionTrait,
+        event: &crate::strava::events::StravaEvent,
+    ) -> Result<Self, DbErr> {
+        use sea_orm::QuerySelect;
+        let connection = Entity::find_by_id(event.connection_id)
+            .lock_exclusive()
+            .one(db)
+            .await?
+            .ok_or(DbErr::RecordNotFound(
+                "Strava connection was removed".into(),
+            ))?;
+        event
+            .validate_connection(&connection)
+            .map_err(|error| DbErr::Custom(error.to_string()))?;
+        Ok(connection)
     }
 
     pub async fn for_athlete(
@@ -42,6 +98,16 @@ impl Model {
     pub async fn all_connected(db: &impl ConnectionTrait) -> Result<Vec<Self>, DbErr> {
         Entity::find().all(db).await
     }
+    pub async fn scan_page(db: &impl ConnectionTrait, after_id: i32) -> Result<Vec<Self>, DbErr> {
+        use sea_orm::{QueryOrder, QuerySelect};
+        Entity::find()
+            .filter(Column::Id.gt(after_id))
+            .filter(Column::DisconnectRequestedAt.is_null())
+            .order_by_asc(Column::Id)
+            .limit(20)
+            .all(db)
+            .await
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
@@ -49,6 +115,7 @@ impl Model {
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
+    pub disconnect_requested_at: Option<DateTime<Utc>>,
     pub user_id: i32,
     pub athlete_id: i64,
     pub athlete_username: Option<String>,

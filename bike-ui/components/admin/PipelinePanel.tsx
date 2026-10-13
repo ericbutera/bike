@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { usePipelineGraph } from "../../lib/queries";
-import { pipelineMermaid, gatewaySteps } from "../../lib/pipelineGraph";
+import { pipelineMermaid } from "../../lib/pipelineGraph";
 import {
   formatTaskDate,
   formatTaskInterval as duration,
@@ -26,10 +26,6 @@ export default function PipelinePanel({ runId }: { runId: string }) {
   const task =
     run?.tasks.find((task) => task.id === taskId) ??
     (selected == null ? run?.tasks[0] : undefined);
-  const gateway =
-    selected?.startsWith("gateway_") && run
-      ? gatewaySteps(run)[Number(selected.split("_")[1])]
-      : null;
   return (
     <section aria-label="Pipeline graph" className="space-y-3">
       {query.isLoading ? <p>Loading pipeline…</p> : null}
@@ -133,22 +129,6 @@ export default function PipelinePanel({ runId }: { runId: string }) {
               />
             </div>
           </details>
-          {gateway ? (
-            <ProcessingFacts
-              facts={[
-                { label: "Provider step", value: gateway.kind },
-                {
-                  label: "Duration",
-                  value: duration(gateway.started_at, gateway.finished_at),
-                },
-                {
-                  label: "Receipt to result",
-                  value: duration(run.received_at, gateway.finished_at),
-                },
-                { label: "Attempts", value: gateway.attempts },
-              ]}
-            />
-          ) : null}
           {task ? (
             <TaskEvidence run={run} task={task} selected={selected} />
           ) : (

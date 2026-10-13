@@ -1,9 +1,7 @@
 use super::*;
 use crate::activity_data::{deserialize_derived_activity_data, serialize_derived_activity_data};
 use crate::activity_recording::{RecordingContext, RecordingEnvironment};
-use crate::activity_source_recovery::{
-    apply_recovery, plan_recovery, retire_generated_artifact, RecoveryOutcome,
-};
+use crate::activity_source_recovery::{apply_recovery, plan_recovery, RecoveryOutcome};
 use sea_orm::IntoActiveModel;
 
 fn recording_upload(virtual_ride: bool) -> ActivityUploadPayload {
@@ -155,187 +153,6 @@ async fn legacy_generated_copy(
 }
 
 #[tokio::test]
-async fn archive_backfill_replaces_generated_source_for_virtual_and_real_rides() {
-    for virtual_ride in [true, false] {
-        let db = test_db().await;
-        let dir = test_uploads_dir();
-        assert_archive_recovery(&db, &dir, virtual_ride).await;
-        std::fs::remove_dir_all(dir).unwrap();
-    }
-}
-
-#[tokio::test]
-#[ignore = "requires BIKE_TEST_DATABASE_URL pointing to disposable PostgreSQL"]
-async fn archive_recovery_on_postgres_retains_sources_and_queues_replay_atomically() {
-    for virtual_ride in [true, false] {
-        let url = std::env::var("BIKE_TEST_DATABASE_URL").expect("disposable PostgreSQL URL");
-        let db = Database::connect(
-            sea_orm::ConnectOptions::new(url)
-                .max_connections(1)
-                .to_owned(),
-        )
-        .await
-        .unwrap();
-        let schema = format!("source_recovery_{}", Uuid::new_v4().simple());
-        db.execute_unprepared(&format!(
-            "CREATE SCHEMA {schema}; SET search_path TO {schema}"
-        ))
-        .await
-        .unwrap();
-        let db = create_test_tables(db).await;
-        let dir = test_uploads_dir();
-        assert_archive_recovery(&db, &dir, virtual_ride).await;
-        std::fs::remove_dir_all(dir).unwrap();
-        db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
-            .await
-            .unwrap();
-    }
-}
-
-async fn assert_archive_recovery(db: &DatabaseConnection, dir: &str, virtual_ride: bool) {
-    let original = import_recording(db, dir, virtual_ride).await;
-    let import = legacy_generated_copy(db, dir, &original.activity).await;
-    let generated = generated_source(db, &import).await;
-    assert!(!retire_generated_artifact(db, dir, generated.clone(), true)
-        .await
-        .unwrap());
-    assert_legacy_source_rejected(db, &import).await;
-    let plan = plan_recovery(db, dir, import.clone(), Utc::now())
-        .await
-        .unwrap();
-    assert_eq!(plan.outcome, RecoveryOutcome::ArchiveOriginal);
-    assert!(apply_recovery(db, dir, plan).await.unwrap());
-    assert!(!retire_generated_artifact(db, dir, generated.clone(), true)
-        .await
-        .unwrap());
-    assert_replay_job(db, import.activity_id.unwrap()).await;
-    let promoted =
-        assert_retained_original(db, dir, import.id, &original.import, virtual_ride).await;
-    assert_recovered_activity(db, dir, &import, promoted, virtual_ride).await;
-    assert_generated_cleanup(db, dir, generated).await;
-    assert!(Path::new(dir).join(original.import.storage_path).exists());
-}
-
-async fn assert_retained_original(
-    db: &DatabaseConnection,
-    dir: &str,
-    import_id: i32,
-    original: &activity_imports::Model,
-    virtual_ride: bool,
-) -> activity_imports::Model {
-    let promoted = activity_imports::Entity::find_by_id(import_id)
-        .one(db)
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(promoted.format, "fit");
-    assert_ne!(promoted.storage_path, original.storage_path);
-    let bytes = tokio::fs::read(Path::new(dir).join(&promoted.storage_path))
-        .await
-        .unwrap();
-    assert_eq!(bytes, recording_upload(virtual_ride).bytes);
-    promoted
-}
-
-async fn assert_legacy_source_rejected(db: &DatabaseConnection, import: &activity_imports::Model) {
-    assert!(load_best_activity_parsing_artifact(db, import)
-        .await
-        .is_err());
-    let stored = activity_imports::Entity::find_owned(db, import.user_id, import.id)
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(stored.format, "tcx");
-}
-
-async fn generated_source(
-    db: &DatabaseConnection,
-    import: &activity_imports::Model,
-) -> activity_import_artifacts::Model {
-    activity_import_artifacts::Entity::for_import(db, import.user_id, import.id)
-        .await
-        .unwrap()
-        .into_iter()
-        .find(|a| a.artifact_kind == "generated_export")
-        .unwrap()
-}
-
-async fn assert_generated_cleanup(
-    db: &DatabaseConnection,
-    dir: &str,
-    generated: activity_import_artifacts::Model,
-) {
-    assert!(retire_generated_artifact(db, dir, generated.clone(), false)
-        .await
-        .unwrap());
-    assert!(Path::new(dir).join(&generated.storage_path).exists());
-    assert!(retire_generated_artifact(db, dir, generated.clone(), true)
-        .await
-        .unwrap());
-    assert!(!Path::new(dir).join(&generated.storage_path).exists());
-    assert!(activity_import_artifacts::Entity::find_by_id(generated.id)
-        .one(db)
-        .await
-        .unwrap()
-        .is_none());
-}
-
-async fn assert_replay_job(db: &DatabaseConnection, activity_id: i32) {
-    let jobs = background_tasks::Entity::find()
-        .filter(background_tasks::Column::TaskType.eq("reprocess_activity_import"))
-        .all(db)
-        .await
-        .unwrap();
-    assert_eq!(jobs.len(), 1);
-    assert_eq!(jobs[0].payload["data"]["activity_id"], activity_id);
-    assert_eq!(jobs[0].status, "pending");
-}
-
-async fn assert_recovered_activity(
-    db: &DatabaseConnection,
-    dir: &str,
-    import: &activity_imports::Model,
-    promoted: activity_imports::Model,
-    virtual_ride: bool,
-) {
-    let activity = activities::Model::find_owned(db, import.activity_id.unwrap(), 1)
-        .await
-        .unwrap()
-        .unwrap();
-    let replayed = reprocess_activity_from_import(
-        db,
-        dir,
-        1,
-        activity,
-        promoted.clone(),
-        Some(&TrainingProfile::default()),
-    )
-    .await
-    .unwrap();
-    assert_eq!(replayed.activity.title, "Rider title");
-    mark_activity_imports_processed(db, &[import.id])
-        .await
-        .unwrap();
-    assert_eq!(replayed.activity.activity_type, "race");
-    assert_eq!(
-        replayed.activity.source_correlation_id.as_deref(),
-        Some("1111")
-    );
-    assert_eq!(
-        replayed.activity.recording_context().excluded(),
-        virtual_ride
-    );
-    let derived = deserialize_derived_activity_data(replayed.activity.derived_data_json.as_ref());
-    assert_eq!(
-        crate::heatmaps::preparation::prepare_route(&derived).is_empty(),
-        virtual_ride
-    );
-    let rerun = plan_recovery(db, dir, promoted, Utc::now()).await.unwrap();
-    assert_eq!(rerun.outcome, RecoveryOutcome::NativeSource);
-    assert!(!apply_recovery(db, dir, rerun).await.unwrap());
-}
-
-#[tokio::test]
 async fn archive_recovery_rejects_other_owners_corrupt_sources_and_stale_plans() {
     let db = test_db().await;
     let dir = test_uploads_dir();
@@ -377,26 +194,7 @@ async fn archive_recovery_rejects_other_owners_corrupt_sources_and_stale_plans()
 }
 
 #[tokio::test]
-async fn archive_recovery_uses_retained_duplicate_import_without_second_activity() {
-    let db = test_db().await;
-    let dir = test_uploads_dir();
-    let original = import_recording(&db, &dir, true).await;
-    let import = legacy_generated_copy(&db, &dir, &original.activity).await;
-    let mut archive = original.import.into_active_model();
-    archive.activity_id = Set(import.activity_id);
-    archive.update(&db).await.unwrap();
-    activities::Entity::delete_by_id(original.activity.id)
-        .exec(&db)
-        .await
-        .unwrap();
-    let plan = plan_recovery(&db, &dir, import, Utc::now()).await.unwrap();
-    assert_eq!(plan.outcome, RecoveryOutcome::ArchiveOriginal);
-    assert!(apply_recovery(&db, &dir, plan).await.unwrap());
-    std::fs::remove_dir_all(dir).unwrap();
-}
-
-#[tokio::test]
-async fn recovery_promotes_retained_json_without_fetching_and_checks_provider_identity() {
+async fn recovery_checks_provider_identity_and_refuses_sql_replay_for_strava() {
     let db = test_db().await;
     let dir = test_uploads_dir();
     let original = import_recording(&db, &dir, false).await;
@@ -429,18 +227,21 @@ async fn recovery_promotes_retained_json_without_fetching_and_checks_provider_id
         .await
         .unwrap();
     assert_eq!(plan.outcome, RecoveryOutcome::RetainedProvider);
-    assert!(apply_recovery(&db, &dir, plan).await.unwrap());
-    let promoted = activity_imports::Entity::find_by_id(import.id)
+    assert!(apply_recovery(&db, &dir, plan)
+        .await
+        .unwrap_err()
+        .message
+        .contains("Strava sync or backfill"));
+    let retained = activity_imports::Entity::find_by_id(import.id)
         .one(&db)
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(promoted.format, "json");
-    let plan = plan_recovery(&db, &dir, promoted, Utc::now())
-        .await
-        .unwrap();
-    assert_eq!(plan.outcome, RecoveryOutcome::NativeSource);
-    assert!(!apply_recovery(&db, &dir, plan).await.unwrap());
+    assert_eq!(retained, import);
+    assert_eq!(
+        background_tasks::Entity::find().count(&db).await.unwrap(),
+        0
+    );
     std::fs::remove_dir_all(dir).unwrap();
 }
 
@@ -730,65 +531,6 @@ async fn retained_source_refresh_recovers_recording_evidence_without_changing_gp
 }
 
 #[tokio::test]
-async fn authentic_phone_archive_replays_original_json_and_keeps_virtual_archive_evidence() {
-    use crate::activity_source_recovery::{register_archive_source, ArchivedActivitySource};
-    for virtual_ride in [false, true] {
-        let db = test_db().await;
-        let dir = test_uploads_dir();
-        let original = import_recording(&db, &dir, false).await;
-        let import = legacy_generated_copy(&db, &dir, &original.activity).await;
-        let bytes = synthetic_phone_bytes(&original.activity);
-        activities::Entity::delete_by_id(original.activity.id)
-            .exec(&db)
-            .await
-            .unwrap();
-        let path = format!("phone_{}.json", Uuid::new_v4());
-        tokio::fs::write(Path::new(&dir).join(&path), &bytes)
-            .await
-            .unwrap();
-        register_archive_source(
-            &db,
-            &dir,
-            1,
-            ArchivedActivitySource {
-                import_id: import.id,
-                provider_activity_id: 1111,
-                format: "json".into(),
-                original_filename: "phone.json".into(),
-                storage_path: path.clone(),
-                checksum_sha256: hex::encode(Sha256::digest(&bytes)),
-                recording_label: Some(if virtual_ride { "Virtual Ride" } else { "Ride" }.into()),
-            },
-            true,
-        )
-        .await
-        .unwrap();
-        let plan = plan_recovery(&db, &dir, import.clone(), Utc::now())
-            .await
-            .unwrap();
-        assert!(apply_recovery(&db, &dir, plan).await.unwrap());
-        let promoted = activity_imports::Entity::find_owned(&db, 1, import.id)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_recovered_activity(&db, &dir, &import, promoted, virtual_ride).await;
-        assert_eq!(
-            tokio::fs::read(Path::new(&dir).join(path)).await.unwrap(),
-            bytes
-        );
-        std::fs::remove_dir_all(dir).unwrap();
-    }
-}
-
-fn synthetic_phone_bytes(activity: &activities::Model) -> Vec<u8> {
-    let derived = deserialize_derived_activity_data(activity.derived_data_json.as_ref());
-    serde_json::to_vec(&serde_json::json!({
-        "metadata":{"activity_name":"Synthetic phone ride", "activity_type":"Ride", "start_date":activity.started_at.to_rfc3339(), "elapsed_time":activity.total_time_seconds, "timer_time":activity.moving_time_seconds},
-        "data":[{"fields":["time","latlng"], "values":derived.route_points.iter().map(|point| serde_json::json!([activity.started_at.timestamp()+i64::from(point.elapsed_seconds),[point.latitude,point.longitude]])).collect::<Vec<_>>() }]
-    })).unwrap()
-}
-
-#[tokio::test]
 async fn virtual_and_real_imports_preserve_context_through_all_stages_and_reprocessing() {
     for virtual_ride in [true, false] {
         let db = test_db().await;
@@ -1028,7 +770,7 @@ async fn authoritative_fit_geometry_does_not_discard_indoor_flags_from_provider_
                 primary_artifact_kind: ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL,
                 primary_source_quality: ACTIVITY_IMPORT_SOURCE_QUALITY_FIT_ORIGINAL,
                 additional_artifacts: vec![provider_artifact(trainer)],
-                source: "strava_sync",
+                source: "archive_url_import",
                 deduplication: ActivityUploadDeduplication::Enabled,
                 training_profile: Some(&TrainingProfile::default()),
             },
@@ -1067,7 +809,7 @@ async fn repeated_provider_identity_preserves_new_trainer_evidence() {
                 primary_artifact_kind: ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL,
                 primary_source_quality: ACTIVITY_IMPORT_SOURCE_QUALITY_FIT_ORIGINAL,
                 additional_artifacts: vec![provider_artifact(trainer)],
-                source: "strava_sync",
+                source: "archive_url_import",
                 deduplication: ActivityUploadDeduplication::Enabled,
                 training_profile: Some(&TrainingProfile::default()),
             },

@@ -138,10 +138,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
     if run.refresh_recent && recent_gaps {
-        let connection = bike_core::strava::load_connection(&db, run.user_id)
-            .await?
-            .ok_or("Strava connection was not found")?;
-        strava::workflow::queue_sync(&db, &connection, false).await?;
+        strava::events::request_sync(&db, run.user_id).await?;
     }
     println!(
         "{}",

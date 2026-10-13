@@ -234,18 +234,12 @@ impl StravaApiClient {
     {
         if let Some(archive) = RequestArchive::current() {
             if let Some(saved) = archive.store.response(&archive.key).await? {
-                tracing::info!(operation, object_path = %saved.body.path, outcome = "reused", "Reusing saved Strava response");
+                tracing::info!(operation, object_path = %saved.body.path, response_status = super::logging::ProviderResponseStatus::Reused.as_str(), "Reusing saved Strava response");
                 let bytes = archive.store.response_bytes(&saved).await?;
                 // Replays honor the generated response model as live calls do.
                 let _: R = decode_response(&bytes, action)?;
                 return decode_response(&bytes, action);
             }
-        }
-        if !crate::strava::workflow::provider_work_enabled() {
-            return Err(AppError::too_many_requests(
-                "Strava provider work is paused for cutover",
-                Some(Utc::now() + Duration::minutes(1)),
-            ));
         }
         let span = tracing::info_span!(
             "strava.client.call",
@@ -516,7 +510,7 @@ pub(crate) async fn retain_response(
             .save_response(&key, status.as_u16(), retained_headers, &response.bytes)
             .await?
     };
-    tracing::info!(object_path = %saved.body.path, status = status.as_u16(), outcome = "fetched", "Saved Strava response before decoding");
+    tracing::info!(object_path = %saved.body.path, status = status.as_u16(), response_status = super::logging::ProviderResponseStatus::Fetched.as_str(), "Saved Strava response before decoding");
     Ok(Some(saved))
 }
 
