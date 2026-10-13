@@ -88,15 +88,7 @@ pub async fn execute(db: &DatabaseConnection, id: &str) -> Result<(), WorkflowEr
     }
     // One connection owns refresh and provider work. PostgreSQL releases this
     // transaction-scoped lease automatically if the worker dies.
-    let lease = db.begin().await?;
-    if db.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
-        lease
-            .execute_unprepared(&format!(
-                "SELECT pg_advisory_xact_lock(7391, {})",
-                row.connection_id
-            ))
-            .await?;
-    }
+    let lease = execution_lease(db, row.connection_id).await?;
     // A concurrent delivery may have completed while this worker waited.
     let mut row = strava_workflows::Entity::find_by_id(id)
         .one(db)
@@ -145,6 +137,24 @@ pub async fn execute(db: &DatabaseConnection, id: &str) -> Result<(), WorkflowEr
         .await?;
     lease.commit().await?;
     result
+}
+
+async fn execution_lease(
+    db: &DatabaseConnection,
+    connection_id: i32,
+) -> Result<sea_orm::DatabaseTransaction, WorkflowError> {
+    let lease = db.begin().await?;
+    if db.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
+        lease
+            .execute_unprepared("SELECT pg_advisory_xact_lock_shared(7393, 0)")
+            .await?;
+        lease
+            .execute_unprepared(&format!(
+                "SELECT pg_advisory_xact_lock(7391, {connection_id})"
+            ))
+            .await?;
+    }
+    Ok(lease)
 }
 
 async fn execute_owned(

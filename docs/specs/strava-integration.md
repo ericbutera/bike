@@ -142,7 +142,27 @@ flowchart LR
   listing run reuses its saved pages.
 - Preserve legacy payloads with their original provenance. They are useful sources,
   but they cannot establish the exact original HTTP exchange.
-- Retain originals and transforms after activity removal for diagnosis and replay.
+- Run storage retention at worker startup and hourly. Temporary responses,
+  transforms, exchange captures and completed workflow history expire after
+  30 days. File age uses modification time; history age uses completion time.
+- Keep the current provider JSON (including streams) and every referenced original
+  FIT/TCX/GPX without a TTL. Recalculation and recording reuse read these local
+  sources even after the temporary request cache expires. Do not generate a
+  substitute GPX/TCX when an original recording file is unavailable.
+- Store new provider JSON content-addressed under `strava/sources/{user}`.
+  Existing import paths remain supported. Prune superseded `strava_*.json`
+  payloads only when no import or artifact references them and they are 30 days old.
+- Keep unfinished workflows, recent completed workflows, their parent/child
+  dependencies, completed work awaiting its queue acknowledgement, and recursively
+  referenced input/output objects. Preserve whole
+  response/reference directories so retained manifests cannot point to deleted bytes.
+- Serialize retention with provider execution and other retention workers. Build
+  and verify the protected object set before deleting anything. Never follow
+  symlinks or prune unrelated uploads. Interrupted cleanup is safe to retry.
+- Publish actual stored file counts and bytes by bounded kind (`source`, `raw`,
+  `transform`, `metadata`), successful scan time, and files/bytes pruned counters.
+  Retention errors use the existing worker error counter and correlated log line;
+  database history is not an alert source.
 - A received response is saved before decoding. A process failure before durable
   capture can still require another request; local checkpoints cannot promise
   exactly-once execution at the remote service.

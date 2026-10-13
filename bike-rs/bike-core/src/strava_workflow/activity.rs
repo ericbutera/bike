@@ -212,14 +212,31 @@ impl Run<'_> {
         else {
             return Ok(None);
         };
-        if import.format != "json" {
-            return Ok(None);
-        }
-        let bytes = tokio::fs::read(
-            std::path::Path::new(&crate::config::Config::get().uploads_dir)
-                .join(import.storage_path),
+        let artifact = activity_import_artifacts::Entity::strava_payload(
+            self.db,
+            self.connection.user_id,
+            import_id,
         )
         .await?;
+        let object = if let Some(artifact) = artifact {
+            ObjectRef {
+                path: artifact.storage_path,
+                sha256: artifact.checksum_sha256,
+                bytes: usize::try_from(artifact.size_bytes)
+                    .map_err(|_| WorkflowError::internal("Invalid Strava source size"))?,
+            }
+        } else if import.format == "json" {
+            // Pre-artifact imports remain readable without inventing provenance.
+            let bytes = tokio::fs::read(
+                std::path::Path::new(&crate::config::Config::get().uploads_dir)
+                    .join(import.storage_path),
+            )
+            .await?;
+            return serde_json::from_slice(&bytes).map(Some).map_err(json_error);
+        } else {
+            return Ok(None);
+        };
+        let bytes = self.store.read(&object).await?;
         serde_json::from_slice(&bytes).map(Some).map_err(json_error)
     }
 

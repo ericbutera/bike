@@ -222,6 +222,14 @@ working copies are temporary; an archive URL is not retained source data.
 Import versions describe replay compatibility: historical version 1 remains
 readable; artifact-aware version 2 supports multiple sources/native JSON.
 
+- Keep the current authoritative Strava JSON/streams and referenced original
+  FIT/TCX/GPX without a TTL so replay and recalculation remain local.
+- The [Strava retention policy](strava-integration.md#retention-and-reuse)
+  expires temporary exchanges/transforms/history after 30 days, protects active
+  work, and verifies retained sources before deleting superseded objects.
+- Preserve original recordings when available. Do not manufacture replacement
+  GPX/TCX sources for provider JSON-only activities.
+
 Activities currently store scalar summaries and normalized GPS/chart/lap and
 recording context in `derived_data_json`. Version 2 objects and historical
 version 1 arrays remain readable. Coordinates are degrees and point times

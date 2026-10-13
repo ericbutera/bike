@@ -40,6 +40,7 @@ pub mod strava_client;
 pub mod strava_credentials;
 pub mod strava_objects;
 pub mod strava_provider_payload;
+pub mod strava_retention;
 mod strava_transport;
 pub mod strava_workflow;
 pub mod synthetics;

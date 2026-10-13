@@ -53,7 +53,17 @@ Keep private activity data out of committed reports and fixtures.
   last 15 days, webhook create/update/delete, and one final rebuild. It reuses
   retained raw objects and removes retired direct-sync/webhook code, unused
   queue-management wrappers and inline reprocessing. Focused native PostgreSQL
-  checks and Rust lint pass; CI and deployment remain pending.
+  checks and Rust lint pass. Main pipeline 357 passed and deployed `f73e6a37`;
+  all four application workloads and migrations were verified. Two production
+  backfills completed without errors or alerts, reused retained activity/stream
+  data without detail/stream requests, and made one discovery request each.
+
+- **STRAVA04 — Ready for review:** Show object storage on the Strava Grafana
+  dashboard and enforce [30-day temporary retention](specs/strava-integration.md#retention-and-reuse).
+  Keep current JSON/streams, original recording artifacts and active workflow
+  dependencies; no generated recording substitutes. Five retention regressions,
+  native PostgreSQL expiry/backfill/recalculation and focused Rust lint pass.
+  Dashboard Promtool fixtures, Go lint and vet pass. CI and deployment are pending.
 
 - **MAP01 — Deployed:** Rust owns the activity-map endpoint, authorization,
   cache, and revalidation; Go runs the stateless Chromium snapshot worker.

@@ -1229,6 +1229,7 @@ pub async fn store_activity_upload_import_with_artifacts(
     db: &impl sea_orm::ConnectionTrait,
     request: StoreActivityUploadImportRequest<'_>,
 ) -> Result<activity_imports::Model, AppError> {
+    let relative_path = store_activity_upload_source(&request).await?;
     let StoreActivityUploadImportRequest {
         uploads_dir,
         user_storage_key,
@@ -1239,14 +1240,6 @@ pub async fn store_activity_upload_import_with_artifacts(
         additional_artifacts,
         source,
     } = request;
-    let relative_path = activity_import_storage_path(user_storage_key, &upload.format, Utc::now());
-    let full_path = Path::new(uploads_dir).join(&relative_path);
-
-    if let Some(parent) = full_path.parent() {
-        tokio::fs::create_dir_all(parent).await?;
-    }
-
-    tokio::fs::write(&full_path, &upload.bytes).await?;
     let primary_artifact = ActivityImportArtifactPayload {
         artifact_kind: primary_artifact_kind.to_string(),
         format: upload.format.clone(),
@@ -1312,6 +1305,30 @@ pub async fn store_activity_upload_import_with_artifacts(
     .await;
 
     Ok(import_model)
+}
+
+async fn store_activity_upload_source(
+    request: &StoreActivityUploadImportRequest<'_>,
+) -> Result<String, AppError> {
+    if request.source == "strava_sync"
+        && request.primary_artifact_kind == ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD
+    {
+        return Ok(crate::strava_objects::ObjectStore::new(request.uploads_dir)
+            .write(
+                &format!("strava/sources/{}", request.user_id),
+                &request.upload.bytes,
+            )
+            .await?
+            .path);
+    }
+    let relative =
+        activity_import_storage_path(request.user_storage_key, &request.upload.format, Utc::now());
+    let full_path = Path::new(request.uploads_dir).join(&relative);
+    if let Some(parent) = full_path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    tokio::fs::write(full_path, &request.upload.bytes).await?;
+    Ok(relative)
 }
 
 pub fn original_source_quality_for_format(format: &str) -> &'static str {

@@ -13,8 +13,6 @@ use crate::training_profile::load_training_profile;
 use crate::workflow_error::WorkflowError as AppError;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait};
 use serde::Deserialize;
-use std::path::Path;
-use uuid::Uuid;
 
 #[derive(Debug, serde::Serialize, Deserialize)]
 pub struct ActivityPayload {
@@ -109,20 +107,17 @@ async fn replace_stored_artifacts(
     activity_import: &activity_imports::Model,
     payload: &ActivityUploadPayload,
 ) -> Result<activity_imports::Model, AppError> {
-    let parent = Path::new(&activity_import.storage_path)
-        .parent()
-        .ok_or_else(|| AppError::internal("Strava import path has no parent"))?;
-    let relative_path = parent.join(format!("strava_{}.json", Uuid::new_v4()));
-    let full_path = Path::new(uploads_dir).join(&relative_path);
-    if let Some(parent) = full_path.parent() {
-        tokio::fs::create_dir_all(parent).await?;
-    }
-    tokio::fs::write(&full_path, &payload.bytes).await?;
+    let object = crate::strava_objects::ObjectStore::new(uploads_dir)
+        .write(
+            &format!("strava/sources/{}", activity_import.user_id),
+            &payload.bytes,
+        )
+        .await?;
     let transaction = db.begin().await?;
     let artifact = activity_import_artifacts::Entity::store_strava_payload(
         &transaction,
         activity_import,
-        relative_path.to_string_lossy().into_owned(),
+        object.path,
         payload,
     )
     .await?;

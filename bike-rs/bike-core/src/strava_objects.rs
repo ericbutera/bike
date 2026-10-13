@@ -234,7 +234,7 @@ impl ObjectStore {
             .await
     }
 
-    fn path(&self, relative: &str) -> Result<PathBuf, WorkflowError> {
+    pub(crate) fn path(&self, relative: &str) -> Result<PathBuf, WorkflowError> {
         if relative.is_empty()
             || Path::new(relative)
                 .components()

@@ -16,8 +16,8 @@ use bike_core::{
 use chrono::{Duration, Utc};
 use migration::{Migrator, MigratorTrait};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Database, DatabaseConnection, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
 };
 use serde_json::{json, Value};
 use std::sync::{
@@ -1272,6 +1272,120 @@ impl Fixture {
             "an ambiguous derived-stage retry never duplicates its queued jobs"
         );
     }
+
+    async fn acknowledge_completed_workflow_jobs(&self) {
+        // This harness calls the processor directly; model the worker's queue ack
+        // before advancing the retention clock beyond the completed runs' TTL.
+        let jobs = background_tasks::Entity::find()
+            .filter(background_tasks::Column::TaskType.eq("strava_workflow"))
+            .all(&self.db)
+            .await
+            .unwrap();
+        for job in jobs {
+            let id = job.payload["data"]["workflow_id"].as_str().unwrap();
+            let row = strava_workflows::Entity::find_by_id(id)
+                .one(&self.db)
+                .await
+                .unwrap()
+                .unwrap();
+            if row.status == "completed" {
+                let mut completed: background_tasks::ActiveModel = job.into();
+                completed.status = Set("completed".into());
+                completed.completed_at = Set(Some(Utc::now()));
+                completed.update(&self.db).await.unwrap();
+            }
+        }
+    }
+
+    async fn retention_preserves_rebuild_and_backfill_sources(&self) {
+        self.retention_waits_for_active_execution().await;
+        self.acknowledge_completed_workflow_jobs().await;
+        let uploads = &Config::get().uploads_dir;
+        let sources =
+            bike_core::entities::activity_import_artifacts::Entity::strava_sources(&self.db)
+                .await
+                .unwrap();
+        assert!(!sources.is_empty());
+        let result =
+            bike_core::strava_retention::run(&self.db, uploads, Utc::now() + Duration::days(31))
+                .await
+                .unwrap();
+        assert!(result.files > 0);
+        assert!(result.workflows > 0);
+        for source in &sources {
+            let object = bike_core::strava_objects::ObjectRef {
+                path: source.storage_path.clone(),
+                sha256: source.checksum_sha256.clone(),
+                bytes: source.size_bytes as usize,
+            };
+            bike_core::strava_objects::ObjectStore::new(uploads)
+                .read(&object)
+                .await
+                .unwrap();
+        }
+        let before = self.calls();
+        let connection = strava_workflow::queue_user_sync(&self.db, self.connection.user_id, true)
+            .await
+            .unwrap();
+        let run = strava_workflows::Model::active_collection(&self.db, connection.id)
+            .await
+            .unwrap()
+            .unwrap();
+        self.execute(&run.id).await;
+        self.assert_dag_completed(&run.id).await;
+        assert_eq!(
+            self.calls(),
+            (before.0, before.1, before.2 + 1),
+            "expired temporary caches must reuse retained JSON/streams; only discovery is remote"
+        );
+        let id = self.vendor.activity.lock().unwrap()["id"].as_i64().unwrap();
+        let activity = self.local(id).await.unwrap();
+        let import = bike_core::entities::activity_imports::Entity::find_owned(
+            &self.db,
+            activity.user_id,
+            activity.activity_import_id.unwrap(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        bike_core::activity_import_pipeline::reprocess_activity_from_import(
+            &self.db,
+            uploads,
+            activity.user_id,
+            activity,
+            import,
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            self.calls(),
+            (before.0, before.1, before.2 + 1),
+            "recalculation uses retained sources without a provider call"
+        );
+    }
+
+    async fn retention_waits_for_active_execution(&self) {
+        let lease = self.db.begin().await.unwrap();
+        lease
+            .execute_unprepared("SELECT pg_advisory_xact_lock_shared(7393, 0)")
+            .await
+            .unwrap();
+        let db = self.db.clone();
+        let mut pruning = tokio::spawn(async move {
+            worker::tasks::processors::StravaRetention::new(db)
+                .process(0, json!({}))
+                .await
+        });
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(100), &mut pruning)
+                .await
+                .is_err(),
+            "cleanup must wait for an active capture/provider lease"
+        );
+        lease.commit().await.unwrap();
+        pruning.await.unwrap().unwrap();
+    }
 }
 
 fn webhook_app(db: DatabaseConnection, uploads_dir: &str, user_pid: uuid::Uuid) -> Router {
@@ -1309,5 +1423,6 @@ async fn native_actions_reuse_sources_and_apply_once() {
     Box::pin(fixture.disconnect_is_idempotent()).await;
     Box::pin(fixture.vendor_revocation_uses_local_cleanup()).await;
     Box::pin(fixture.oauth_initial_sync_uses_the_native_queue()).await;
+    Box::pin(fixture.retention_preserves_rebuild_and_backfill_sources()).await;
     fixture.server.abort();
 }

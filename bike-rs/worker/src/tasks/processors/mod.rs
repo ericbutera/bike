@@ -12,6 +12,8 @@ pub use regenerate_activity_segments::RegenerateActivitySegments;
 mod reprocess_activity_import;
 mod reprocess_user_activity_imports;
 mod strava_reconcile;
+mod strava_retention;
+pub use strava_retention::StravaRetention;
 mod strava_sync;
 pub use strava_reconcile::StravaReconcile;
 mod strava_workflow;

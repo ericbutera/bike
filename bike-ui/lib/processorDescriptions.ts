@@ -27,6 +27,8 @@ const descriptions: Record<string, string> = {
     "Queues reprocessing of a user's retained activity imports in bounded batches.",
   strava_reconcile:
     "Checks connected Strava accounts for activities that need synchronization and queues reconciliation workflows.",
+  strava_retention:
+    "Prunes temporary Strava files and completed workflow history after 30 days while keeping activity sources and active work.",
   strava_sync:
     "Starts the current Strava synchronization workflow for a connection, including older queued sync requests.",
   strava_workflow:
