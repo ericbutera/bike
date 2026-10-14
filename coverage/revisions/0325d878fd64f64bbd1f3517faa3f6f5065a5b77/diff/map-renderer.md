@@ -1,5 +1,0 @@
-# Diff Coverage
-## Diff: cd46e69f4c2c7148a0dd0a077a522ebe66bb82ae...HEAD, staged, unstaged and untracked changes
-
-No lines with coverage information in this diff.
-

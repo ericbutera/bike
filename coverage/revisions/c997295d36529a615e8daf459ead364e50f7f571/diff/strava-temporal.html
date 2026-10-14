@@ -1,0 +1,214 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+    <head>
+        <meta http-equiv='Content-Type' content='text/html; charset=utf-8'>
+        <title>Diff Coverage</title>
+        <style>
+            .src-snippet { margin-top: 2em; }
+            .src-name { font-weight: bold; }
+            .snippets {
+                border-top: 1px solid #bdbdbd;
+                border-bottom: 1px solid #bdbdbd;
+            }
+            pre { line-height: 125%; }
+td.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+span.linenos { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+td.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+.hll { background-color: #ffcccc }
+.c { color: #3D7B7B; font-style: italic } /* Comment */
+.err { border: 1px solid #F00 } /* Error */
+.k { color: #008000; font-weight: bold } /* Keyword */
+.o { color: #666 } /* Operator */
+.ch { color: #3D7B7B; font-style: italic } /* Comment.Hashbang */
+.cm { color: #3D7B7B; font-style: italic } /* Comment.Multiline */
+.cp { color: #9C6500 } /* Comment.Preproc */
+.cpf { color: #3D7B7B; font-style: italic } /* Comment.PreprocFile */
+.c1 { color: #3D7B7B; font-style: italic } /* Comment.Single */
+.cs { color: #3D7B7B; font-style: italic } /* Comment.Special */
+.gd { color: #A00000 } /* Generic.Deleted */
+.ge { font-style: italic } /* Generic.Emph */
+.ges { font-weight: bold; font-style: italic } /* Generic.EmphStrong */
+.gr { color: #E40000 } /* Generic.Error */
+.gh { color: #000080; font-weight: bold } /* Generic.Heading */
+.gi { color: #008400 } /* Generic.Inserted */
+.go { color: #717171 } /* Generic.Output */
+.gp { color: #000080; font-weight: bold } /* Generic.Prompt */
+.gs { font-weight: bold } /* Generic.Strong */
+.gu { color: #800080; font-weight: bold } /* Generic.Subheading */
+.gt { color: #04D } /* Generic.Traceback */
+.kc { color: #008000; font-weight: bold } /* Keyword.Constant */
+.kd { color: #008000; font-weight: bold } /* Keyword.Declaration */
+.kn { color: #008000; font-weight: bold } /* Keyword.Namespace */
+.kp { color: #008000 } /* Keyword.Pseudo */
+.kr { color: #008000; font-weight: bold } /* Keyword.Reserved */
+.kt { color: #B00040 } /* Keyword.Type */
+.m { color: #666 } /* Literal.Number */
+.s { color: #BA2121 } /* Literal.String */
+.na { color: #687822 } /* Name.Attribute */
+.nb { color: #008000 } /* Name.Builtin */
+.nc { color: #00F; font-weight: bold } /* Name.Class */
+.no { color: #800 } /* Name.Constant */
+.nd { color: #A2F } /* Name.Decorator */
+.ni { color: #717171; font-weight: bold } /* Name.Entity */
+.ne { color: #CB3F38; font-weight: bold } /* Name.Exception */
+.nf { color: #00F } /* Name.Function */
+.nl { color: #767600 } /* Name.Label */
+.nn { color: #00F; font-weight: bold } /* Name.Namespace */
+.nt { color: #008000; font-weight: bold } /* Name.Tag */
+.nv { color: #19177C } /* Name.Variable */
+.ow { color: #A2F; font-weight: bold } /* Operator.Word */
+.w { color: #BBB } /* Text.Whitespace */
+.mb { color: #666 } /* Literal.Number.Bin */
+.mf { color: #666 } /* Literal.Number.Float */
+.mh { color: #666 } /* Literal.Number.Hex */
+.mi { color: #666 } /* Literal.Number.Integer */
+.mo { color: #666 } /* Literal.Number.Oct */
+.sa { color: #BA2121 } /* Literal.String.Affix */
+.sb { color: #BA2121 } /* Literal.String.Backtick */
+.sc { color: #BA2121 } /* Literal.String.Char */
+.dl { color: #BA2121 } /* Literal.String.Delimiter */
+.sd { color: #BA2121; font-style: italic } /* Literal.String.Doc */
+.s2 { color: #BA2121 } /* Literal.String.Double */
+.se { color: #AA5D1F; font-weight: bold } /* Literal.String.Escape */
+.sh { color: #BA2121 } /* Literal.String.Heredoc */
+.si { color: #A45A77; font-weight: bold } /* Literal.String.Interpol */
+.sx { color: #008000 } /* Literal.String.Other */
+.sr { color: #A45A77 } /* Literal.String.Regex */
+.s1 { color: #BA2121 } /* Literal.String.Single */
+.ss { color: #19177C } /* Literal.String.Symbol */
+.bp { color: #008000 } /* Name.Builtin.Pseudo */
+.fm { color: #00F } /* Name.Function.Magic */
+.vc { color: #19177C } /* Name.Variable.Class */
+.vg { color: #19177C } /* Name.Variable.Global */
+.vi { color: #19177C } /* Name.Variable.Instance */
+.vm { color: #19177C } /* Name.Variable.Magic */
+.il { color: #666 } /* Literal.Number.Integer.Long */
+.diff-cover-covered-line { background-color: #ddffdd; }
+        </style>
+    </head>
+    <body>
+        <h1>Diff Coverage</h1>
+        <p>Diff: 70078f649704a8a21cd025e3c5c2f992dd43f8d4...HEAD, staged, unstaged and untracked changes</p>
+        <ul>
+            <li><b>Total</b>: 146 lines</li>
+            <li><b>Missing</b>: 5 lines</li>
+            <li><b>Coverage</b>: 96.58%</li>
+        </ul>
+        <table border="1">
+            <tr>
+                <th>Source File</th>
+                <th>Diff Coverage (%)</th>
+                <th>Missing Lines</th>
+            </tr>
+            <tr>
+                <td>bike-rs/strava-temporal/src/activities.rs</td>
+                <td>90.5%</td>
+                <td>383,396</td>
+            </tr>
+            <tr>
+                <td>bike-rs/strava-temporal/src/client.rs</td>
+                <td>91.7%</td>
+                <td>24-25,191</td>
+            </tr>
+            <tr>
+                <td>bike-rs/strava-temporal/src/handoff_metrics.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/strava-temporal/src/metrics.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+        </table>
+        <div class="src-snippet">
+            <div class="src-name">bike-rs/strava-temporal/src/activities.rs</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">379</span>
+<span class="normal">380</span>
+<span class="normal">381</span>
+<span class="normal">382</span>
+<span class="normal">383</span>
+<span class="normal">384</span>
+<span class="normal">385</span>
+<span class="normal">386</span>
+<span class="normal">387</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/strava-temporal/src/activities.rs-379" name="bike-rs/strava-temporal/src/activities.rs-379"></a><span class="w">        </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">status</span><span class="p">,</span><span class="w"> </span><span class="n">terminal</span><span class="p">)</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="p">[(</span><span class="mi">400</span><span class="p">,</span><span class="w"> </span><span class="kc">true</span><span class="p">),</span><span class="w"> </span><span class="p">(</span><span class="mi">404</span><span class="p">,</span><span class="w"> </span><span class="kc">true</span><span class="p">),</span><span class="w"> </span><span class="p">(</span><span class="mi">429</span><span class="p">,</span><span class="w"> </span><span class="kc">false</span><span class="p">),</span><span class="w"> </span><span class="p">(</span><span class="mi">500</span><span class="p">,</span><span class="w"> </span><span class="kc">false</span><span class="p">)]</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/strava-temporal/src/activities.rs-380" name="bike-rs/strava-temporal/src/activities.rs-380"></a><span class="w">            </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">WorkflowError</span><span class="p">::</span><span class="n">internal</span><span class="p">(</span><span class="s">"fixture failure"</span><span class="p">);</span>
+<a id="bike-rs/strava-temporal/src/activities.rs-381" name="bike-rs/strava-temporal/src/activities.rs-381"></a><span class="w">            </span><span class="n">error</span><span class="p">.</span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">status</span><span class="p">.</span><span class="n">try_into</span><span class="p">().</span><span class="n">unwrap</span><span class="p">();</span>
+<a id="bike-rs/strava-temporal/src/activities.rs-382" name="bike-rs/strava-temporal/src/activities.rs-382"></a><span class="w">            </span><span class="kd">let</span><span class="w"> </span><span class="n">ActivityError</span><span class="p">::</span><span class="n">Application</span><span class="p">(</span><span class="n">failure</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">activity_error</span><span class="p">(</span><span class="n">error</span><span class="p">)</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/strava-temporal/src/activities.rs-383" name="bike-rs/strava-temporal/src/activities.rs-383"></a><span class="hll"><span class="w">                </span><span class="fm">panic!</span><span class="p">(</span><span class="s">"Expected application failure"</span><span class="p">)</span>
+</span><a id="bike-rs/strava-temporal/src/activities.rs-384" name="bike-rs/strava-temporal/src/activities.rs-384"></a><span class="w">            </span><span class="p">};</span>
+<a id="bike-rs/strava-temporal/src/activities.rs-385" name="bike-rs/strava-temporal/src/activities.rs-385"></a><span class="w">            </span><span class="fm">assert_eq!</span><span class="p">(</span><span class="n">failure</span><span class="p">.</span><span class="n">is_non_retryable</span><span class="p">(),</span><span class="w"> </span><span class="n">terminal</span><span class="p">);</span>
+<a id="bike-rs/strava-temporal/src/activities.rs-386" name="bike-rs/strava-temporal/src/activities.rs-386"></a><span class="w">            </span><span class="fm">assert_eq!</span><span class="p">(</span><span class="n">failure</span><span class="p">.</span><span class="n">type_name</span><span class="p">(),</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="s">"StravaOperationFailure"</span><span class="p">));</span>
+<a id="bike-rs/strava-temporal/src/activities.rs-387" name="bike-rs/strava-temporal/src/activities.rs-387"></a><span class="w">        </span><span class="p">}</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">392</span>
+<span class="normal">393</span>
+<span class="normal">394</span>
+<span class="normal">395</span>
+<span class="normal">396</span>
+<span class="normal">397</span>
+<span class="normal">398</span>
+<span class="normal">399</span>
+<span class="normal">400</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/strava-temporal/src/activities.rs-392" name="bike-rs/strava-temporal/src/activities.rs-392"></a><span class="w">        </span><span class="k">for</span><span class="w"> </span><span class="n">seconds</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="p">[</span><span class="mi">120</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">120</span><span class="p">]</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/strava-temporal/src/activities.rs-393" name="bike-rs/strava-temporal/src/activities.rs-393"></a><span class="w">            </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">WorkflowError</span><span class="p">::</span><span class="n">bad_request</span><span class="p">(</span><span class="s">"fixture provider pause"</span><span class="p">);</span>
+<a id="bike-rs/strava-temporal/src/activities.rs-394" name="bike-rs/strava-temporal/src/activities.rs-394"></a><span class="w">            </span><span class="n">error</span><span class="p">.</span><span class="n">retry_at</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="n">chrono</span><span class="p">::</span><span class="n">Utc</span><span class="p">::</span><span class="n">now</span><span class="p">()</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">chrono</span><span class="p">::</span><span class="n">Duration</span><span class="p">::</span><span class="n">seconds</span><span class="p">(</span><span class="n">seconds</span><span class="p">));</span>
+<a id="bike-rs/strava-temporal/src/activities.rs-395" name="bike-rs/strava-temporal/src/activities.rs-395"></a><span class="w">            </span><span class="kd">let</span><span class="w"> </span><span class="n">ActivityError</span><span class="p">::</span><span class="n">Application</span><span class="p">(</span><span class="n">failure</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">activity_error</span><span class="p">(</span><span class="n">error</span><span class="p">)</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/strava-temporal/src/activities.rs-396" name="bike-rs/strava-temporal/src/activities.rs-396"></a><span class="hll"><span class="w">                </span><span class="fm">panic!</span><span class="p">(</span><span class="s">"Expected application failure"</span><span class="p">)</span>
+</span><a id="bike-rs/strava-temporal/src/activities.rs-397" name="bike-rs/strava-temporal/src/activities.rs-397"></a><span class="w">            </span><span class="p">};</span>
+<a id="bike-rs/strava-temporal/src/activities.rs-398" name="bike-rs/strava-temporal/src/activities.rs-398"></a><span class="w">            </span><span class="fm">assert!</span><span class="p">(</span><span class="o">!</span><span class="n">failure</span><span class="p">.</span><span class="n">is_non_retryable</span><span class="p">());</span>
+<a id="bike-rs/strava-temporal/src/activities.rs-399" name="bike-rs/strava-temporal/src/activities.rs-399"></a><span class="w">            </span><span class="kd">let</span><span class="w"> </span><span class="n">delay</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">failure</span><span class="p">.</span><span class="n">next_retry_delay</span><span class="p">().</span><span class="n">unwrap</span><span class="p">();</span>
+<a id="bike-rs/strava-temporal/src/activities.rs-400" name="bike-rs/strava-temporal/src/activities.rs-400"></a><span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="n">seconds</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">{</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+        <div class="src-snippet">
+            <div class="src-name">bike-rs/strava-temporal/src/client.rs</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">20</span>
+<span class="normal">21</span>
+<span class="normal">22</span>
+<span class="normal">23</span>
+<span class="normal">24</span>
+<span class="normal">25</span>
+<span class="normal">26</span>
+<span class="normal">27</span>
+<span class="normal">28</span>
+<span class="normal">29</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/strava-temporal/src/client.rs-20" name="bike-rs/strava-temporal/src/client.rs-20"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">task_queue</span><span class="p">:</span><span class="w"> </span><span class="nb">String</span><span class="p">,</span>
+<a id="bike-rs/strava-temporal/src/client.rs-21" name="bike-rs/strava-temporal/src/client.rs-21"></a><span class="p">}</span>
+<a id="bike-rs/strava-temporal/src/client.rs-22" name="bike-rs/strava-temporal/src/client.rs-22"></a><span class="k">impl</span><span class="w"> </span><span class="n">TemporalConfig</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/strava-temporal/src/client.rs-23" name="bike-rs/strava-temporal/src/client.rs-23"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">from_env</span><span class="p">()</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">Self</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/strava-temporal/src/client.rs-24" name="bike-rs/strava-temporal/src/client.rs-24"></a><span class="hll"><span class="w">        </span><span class="bp">Self</span><span class="p">::</span><span class="n">from_lookup</span><span class="p">(</span><span class="o">|</span><span class="n">name</span><span class="o">|</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">env</span><span class="p">::</span><span class="n">var</span><span class="p">(</span><span class="n">name</span><span class="p">).</span><span class="n">ok</span><span class="p">())</span>
+</span><a id="bike-rs/strava-temporal/src/client.rs-25" name="bike-rs/strava-temporal/src/client.rs-25"></a><span class="hll"><span class="w">    </span><span class="p">}</span>
+</span><a id="bike-rs/strava-temporal/src/client.rs-26" name="bike-rs/strava-temporal/src/client.rs-26"></a>
+<a id="bike-rs/strava-temporal/src/client.rs-27" name="bike-rs/strava-temporal/src/client.rs-27"></a><span class="w">    </span><span class="k">fn</span><span class="w"> </span><span class="nf">from_lookup</span><span class="p">(</span><span class="n">lookup</span><span class="p">:</span><span class="w"> </span><span class="nc">impl</span><span class="w"> </span><span class="nb">Fn</span><span class="p">(</span><span class="o">&amp;</span><span class="kt">str</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Option</span><span class="o">&lt;</span><span class="nb">String</span><span class="o">&gt;</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">Self</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/strava-temporal/src/client.rs-28" name="bike-rs/strava-temporal/src/client.rs-28"></a><span class="w">        </span><span class="bp">Self</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/strava-temporal/src/client.rs-29" name="bike-rs/strava-temporal/src/client.rs-29"></a><span class="w">            </span><span class="n">address</span><span class="p">:</span><span class="w"> </span><span class="nc">lookup</span><span class="p">(</span><span class="s">"TEMPORAL_ADDRESS"</span><span class="p">).</span><span class="n">unwrap_or_else</span><span class="p">(</span><span class="o">||</span><span class="w"> </span><span class="s">"http://temporal:7233"</span><span class="p">.</span><span class="n">into</span><span class="p">()),</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">187</span>
+<span class="normal">188</span>
+<span class="normal">189</span>
+<span class="normal">190</span>
+<span class="normal">191</span>
+<span class="normal">192</span>
+<span class="normal">193</span>
+<span class="normal">194</span>
+<span class="normal">195</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/strava-temporal/src/client.rs-187" name="bike-rs/strava-temporal/src/client.rs-187"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">next_sample</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tokio</span><span class="p">::</span><span class="n">time</span><span class="p">::</span><span class="n">Instant</span><span class="p">::</span><span class="n">now</span><span class="p">();</span>
+<a id="bike-rs/strava-temporal/src/client.rs-188" name="bike-rs/strava-temporal/src/client.rs-188"></a><span class="w">    </span><span class="k">loop</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/strava-temporal/src/client.rs-189" name="bike-rs/strava-temporal/src/client.rs-189"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">tokio</span><span class="p">::</span><span class="n">time</span><span class="p">::</span><span class="n">Instant</span><span class="p">::</span><span class="n">now</span><span class="p">()</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">next_sample</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/strava-temporal/src/client.rs-190" name="bike-rs/strava-temporal/src/client.rs-190"></a><span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="kd">let</span><span class="w"> </span><span class="nb">Err</span><span class="p">(</span><span class="n">error</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">metrics</span><span class="p">.</span><span class="n">sample</span><span class="p">(</span><span class="o">&amp;</span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="n">chrono</span><span class="p">::</span><span class="n">Utc</span><span class="p">::</span><span class="n">now</span><span class="p">()).</span><span class="k">await</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/strava-temporal/src/client.rs-191" name="bike-rs/strava-temporal/src/client.rs-191"></a><span class="hll"><span class="w">                </span><span class="n">tracing</span><span class="p">::</span><span class="n">error</span><span class="o">!</span><span class="p">(</span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">%</span><span class="n">error</span><span class="p">,</span><span class="w"> </span><span class="s">"Strava handoff backlog sample failed"</span><span class="p">);</span>
+</span><a id="bike-rs/strava-temporal/src/client.rs-192" name="bike-rs/strava-temporal/src/client.rs-192"></a><span class="w">            </span><span class="p">}</span>
+<a id="bike-rs/strava-temporal/src/client.rs-193" name="bike-rs/strava-temporal/src/client.rs-193"></a><span class="w">            </span><span class="n">next_sample</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tokio</span><span class="p">::</span><span class="n">time</span><span class="p">::</span><span class="n">Instant</span><span class="p">::</span><span class="n">now</span><span class="p">()</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">Duration</span><span class="p">::</span><span class="n">from_secs</span><span class="p">(</span><span class="mi">30</span><span class="p">);</span>
+<a id="bike-rs/strava-temporal/src/client.rs-194" name="bike-rs/strava-temporal/src/client.rs-194"></a><span class="w">        </span><span class="p">}</span>
+<a id="bike-rs/strava-temporal/src/client.rs-195" name="bike-rs/strava-temporal/src/client.rs-195"></a><span class="w">        </span><span class="n">dispatch_pending</span><span class="p">(</span><span class="o">&amp;</span><span class="n">client</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">config</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">db</span><span class="p">).</span><span class="k">await</span><span class="o">?</span><span class="p">;</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+    </body>
+</html>
