@@ -20,7 +20,11 @@ afterEach(() => {
   }
 });
 
-function runImageWorkflow(event: string, validationExit = "0") {
+function runImageWorkflow(
+  event: string,
+  validationExit = "0",
+  publication = "published",
+) {
   const fixture = mkdtempSync(join(tmpdir(), "bike-ci-images-"));
   fixtures.push(fixture);
   const scripts = join(fixture, "scripts");
@@ -30,6 +34,44 @@ function runImageWorkflow(event: string, validationExit = "0") {
     mkdirSync(directory);
   }
   const calls = join(fixture, "calls.log");
+  const targets = ["api", "worker", "ui", "maps", "e2e"];
+  const plan = join(fixture, "plan.json");
+  const metadata = join(fixture, "metadata.json");
+  writeFileSync(
+    plan,
+    JSON.stringify({
+      target: Object.fromEntries(
+        targets.map((target) => [
+          target,
+          {
+            tags: [`registry.registry:5000/bike-${target}:${"a".repeat(40)}`],
+            output: [
+              {
+                type: "image",
+                push: publication === "disabled-push" ? "false" : "true",
+              },
+            ],
+          },
+        ]),
+      ),
+    }),
+  );
+  writeFileSync(
+    metadata,
+    JSON.stringify(
+      Object.fromEntries(
+        targets.map((target, index) => [
+          target,
+          {
+            "containerimage.digest":
+              publication === "missing-metadata"
+                ? null
+                : `sha256:${String(index + 1).repeat(64)}`,
+          },
+        ]),
+      ),
+    ),
+  );
   copyFileSync(
     resolve("../scripts/ci-images.sh"),
     join(scripts, "ci-images.sh"),
@@ -40,6 +82,23 @@ function runImageWorkflow(event: string, validationExit = "0") {
 set -euo pipefail
 printf '%s|%s\\n' "$*" "$IMAGE_REGISTRY" >>"$CALL_LOG"
 if [[ "$2" == images:validate ]]; then exit "$VALIDATION_EXIT"; fi
+if [[ "$*" == 'run images:push -- --print' ]]; then cat "$PUBLICATION_PLAN"; exit 0; fi
+if [[ "$2" == images:push ]]; then cp "$PUBLICATION_METADATA" .artifacts/image-builds.json; fi
+`,
+    { mode: 0o755 },
+  );
+  writeFileSync(
+    join(binaries, "curl"),
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf 'curl %s\\n' "$*" >>"$CALL_LOG"
+url="${"${!#}"}"
+image="${"${url#*/v2/bike-}"}"
+target="${"${image%%/*}"}"
+if [[ "$target" == e2e && "$PUBLICATION_CASE" == missing-tag ]]; then exit 22; fi
+digest="$(jq -r --arg target "$target" '.[$target]["containerimage.digest"]' "$PUBLICATION_METADATA")"
+if [[ "$PUBLICATION_CASE" == wrong-digest ]]; then digest="sha256:${"f".repeat(64)}"; fi
+printf 'HTTP/1.1 200 OK\\r\\nDocker-Content-Digest: %s\\r\\n\\r\\n' "$digest"
 `,
     { mode: 0o755 },
   );
@@ -57,6 +116,9 @@ if [[ "$2" == images:validate ]]; then exit "$VALIDATION_EXIT"; fi
       TMPDIR: temporary,
       CALL_LOG: calls,
       VALIDATION_EXIT: validationExit,
+      PUBLICATION_PLAN: plan,
+      PUBLICATION_METADATA: metadata,
+      PUBLICATION_CASE: publication,
       CI_COMMIT_SHA: "a".repeat(40),
       CI_PIPELINE_NUMBER: "fixture",
       CI_PIPELINE_EVENT: event,
@@ -85,6 +147,9 @@ describe("CI image workflow", () => {
       expect(result.status).toBe(0);
       expect(result.calls).toContain("run images:validate|");
       expect(result.calls).toContain("run images:push|registry.registry:5000");
+      expect(
+        result.calls.filter((call) => call.startsWith("curl ")),
+      ).toHaveLength(5);
       expect(result.calls).toContain("rm bike-ci-fixture");
       expect(result.temporary).toEqual([]);
     },
@@ -99,4 +164,26 @@ describe("CI image workflow", () => {
     expect(result.calls).toContain("rm bike-ci-fixture");
     expect(result.temporary).toEqual([]);
   });
+
+  it("rejects a plan that can omit publication before building", () => {
+    const result = runImageWorkflow("push", "0", "disabled-push");
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      "Image publication plan must push every target",
+    );
+    expect(result.calls).not.toContain(
+      "run images:push|registry.registry:5000",
+    );
+    expect(result.temporary).toEqual([]);
+  });
+
+  it.each(["missing-tag", "wrong-digest", "missing-metadata"])(
+    "fails publication verification for %s and removes credentials",
+    (publication) => {
+      const result = runImageWorkflow("push", "0", publication);
+      expect(result.status).not.toBe(0);
+      expect(result.calls).toContain("rm bike-ci-fixture");
+      expect(result.temporary).toEqual([]);
+    },
+  );
 });

@@ -143,7 +143,7 @@ run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load"
 
 [tasks."images:push"]
 description = "Build and push immutable release images using the shared Bake targets"
-run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --push --set '*.output=type=image,oci-artifact=false' --progress=plain --metadata-file .artifacts/image-builds.json"
+run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --set '*.output=type=image,push=true,oci-artifact=false' --progress=plain --metadata-file .artifacts/image-builds.json"
 
 [tasks."images:plan"]
 description = "Resolve the local or CI release build graph without building images"
@@ -312,7 +312,7 @@ done
 
 [tasks."ci:images"]
 description = "Connect to persistent BuildKit and publish this revision's Bake targets"
-run = ["mise install aqua:docker/buildx", "bash scripts/ci-images.sh"]
+run = ["mise install aqua:docker/buildx jq", "bash scripts/ci-images.sh"]
 
 [tasks."ci:check"]
 description = "Validate the workflow using the native Woodpecker CLI"
@@ -344,7 +344,7 @@ run = ["mise install node", "mise exec node -- bash scripts/ci-rust-test.sh"]
 
 [tasks."ci:ui:unit"]
 description = "Install UI tooling and run lint, type, unit, format, and audit checks"
-run = ["mise --cd bike-ui install node npm:npm pnpm npm:prettier", "mise --cd bike-ui run check"]
+run = ["mise install jq", "mise --cd bike-ui install node npm:npm pnpm npm:prettier", "mise --cd bike-ui run check"]
 
 [tasks."ci:renderer"]
 description = "Install renderer tooling and run the shared renderer checks"

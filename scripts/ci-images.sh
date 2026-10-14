@@ -40,4 +40,31 @@ export IMAGE_TAG="$CI_COMMIT_SHA"
 mkdir -p .artifacts
 # Build cache belongs to this persistent builder; the registry holds releases.
 IMAGE_REGISTRY='' mise run images:validate
+mise run images:push -- --print >"$certificates/publish-plan.json"
+if ! jq --exit-status 'all(.target[]; any(.output[]; .push == "true"))' \
+  "$certificates/publish-plan.json" >/dev/null; then
+  printf 'Image publication plan must push every target\n' >&2
+  exit 1
+fi
 mise run images:push
+jq --exit-status --raw-output --slurpfile builds .artifacts/image-builds.json \
+  '.target | to_entries[] | .key as $target | .value.tags[] |
+    [., $builds[0][$target]["containerimage.digest"]] | @tsv' \
+  "$certificates/publish-plan.json" >"$certificates/published-images.tsv"
+while IFS=$'\t' read -r reference expected; do
+  if [[ ! "$expected" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    printf 'Missing publication digest for %s\n' "$reference" >&2
+    exit 1
+  fi
+  image="${reference#"$IMAGE_REGISTRY/"}"
+  actual="$(curl --fail --silent --show-error --head --max-time 30 \
+    --header 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
+    "http://$IMAGE_REGISTRY/v2/${image%:*}/manifests/${image##*:}" |
+    awk 'tolower($1) == "docker-content-digest:" {gsub("\r", "", $2); print $2}')"
+  if [[ "$actual" != "$expected" ]]; then
+    printf 'Published digest mismatch for %s: expected %s, received %s\n' \
+      "$reference" "$expected" "$actual" >&2
+    exit 1
+  fi
+  printf 'Verified published image %s@%s\n' "$reference" "$actual"
+done <"$certificates/published-images.tsv"
