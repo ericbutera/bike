@@ -6,6 +6,7 @@ use crate::activity_data::deserialize_derived_activity_data;
 use crate::background_jobs::execution::{measured, WorkCounts, WorkScope};
 use sea_orm::{DatabaseConnection, DbErr};
 
+#[tracing::instrument(name = "heatmap.rebuild", skip_all, fields(activity_id = pending.activity_id, generation = pending.generation))]
 pub async fn prepare_activity(
     db: &DatabaseConnection,
     pending: PendingProjection,

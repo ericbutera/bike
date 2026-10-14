@@ -315,6 +315,7 @@ where
     Ok(())
 }
 
+#[tracing::instrument(name = "fitness.rebuild", skip_all, fields(user_id))]
 pub async fn rebuild_fitness_freshness_cache(
     db: &DatabaseConnection,
     user_id: i32,
@@ -539,6 +540,7 @@ where
     Ok(inserted > 0)
 }
 
+#[tracing::instrument(name = "segments.rebuild", skip_all, fields(segment_count = segment_ids.len()))]
 pub async fn rebuild_segment_analytics_cache<C>(
     db: &C,
     segment_ids: &[i32],
@@ -831,6 +833,7 @@ where
     Ok(())
 }
 
+#[tracing::instrument(name = "activity.analytics.rebuild", skip_all, fields(activity_count = activity_ids.len()))]
 pub async fn rebuild_activity_analytics_cache<C>(
     db: &C,
     activity_ids: &[i32],

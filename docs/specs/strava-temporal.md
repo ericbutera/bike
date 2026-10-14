@@ -101,6 +101,23 @@
 
 ## IDs and logs
 
+- Export each existing Temporal activity-attempt span under its registered step
+  name, such as `strava_delete_activity` or `strava_rebuild_fitness`. Retain its
+  correlation fields and incoming trace parent; naming does not add another span.
+- Group callback validation and durable event storage under `strava.webhook.accept`
+  so the request's intake queries also have an application-level parent.
+- Group database work under a few shared domain spans: `activity.delete.records`,
+  `activity.analytics.rebuild`, `segments.rebuild`, `fitness.rebuild`, and
+  `heatmap.rebuild`. Cover the whole call, including input reads and publication,
+  whether invoked by the API, a SQL worker, or a native Temporal activity.
+- Label activity list, detail, and deletion calls as `activity.list`, `activity.get`,
+  and `activity.delete`; label the fitness API call as `fitness.get`. Rebuild
+  spans nest under the calling operation when work runs inline. Queued work
+  retains the existing propagated trace context and worker parent.
+- Keep these spans at `INFO` so production filters retain the stage parents.
+  Use stable names and selected IDs/counts as fields; skip automatic argument
+  recording so credentials, source paths, and activity/provider bodies stay out.
+  Instrument workflow boundaries, not every helper, query, item, or idle poll.
 - Use **Strava event**, never receipt. A Strava event ID is assigned by Bike;
   [Strava's webhook payload](https://developers.strava.com/docs/webhooks/)
   contains no unique event ID.
@@ -266,6 +283,9 @@ flowchart LR
   without duplicate logs; resumed activations recheck replay state.
 - Verify a real child activity restores the incoming trace and tracestate through
   an in-memory OpenTelemetry provider while storage remains mocked.
+- Assert exported stage names and database ancestry with in-memory traces and
+  mocked persistence; include failed reads and a successful fitness
+  publication.
 - Exercise real named handlers through Temporal's in-process `ActivityEnvironment`.
   Test provider and storage failures, normalization, create/update persistence,
   deletion retry/rollback, incremental windows, and backfill cursor preservation.
