@@ -7,16 +7,31 @@ use sea_orm::MockExecResult;
 
 #[tokio::test]
 async fn persist_creates_a_bike_activity_import_and_provider_artifact_atomically() {
-    verify_upsert(false).await;
+    verify_upsert(false, "Ride").await;
 }
 
 #[tokio::test]
 async fn persist_updates_the_owned_activity_and_import_without_creating_duplicates() {
-    verify_upsert(true).await;
+    verify_upsert(true, "Ride").await;
 }
 
-async fn verify_upsert(update: bool) {
-    let fixture = HandlerFixture::new();
+#[tokio::test]
+async fn non_cycling_summary_creates_a_feed_activity_without_marking_cycling_fitness_dirty() {
+    verify_upsert(false, "Walk").await;
+}
+
+#[tokio::test]
+async fn changing_a_ride_to_a_walk_invalidates_its_previous_cycling_fitness() {
+    verify_upsert(true, "Walk").await;
+}
+
+async fn verify_upsert(update: bool, sport: &str) {
+    let mut fixture = HandlerFixture::new();
+    std::sync::Arc::get_mut(&mut fixture.provider)
+        .unwrap()
+        .payload
+        .activity
+        .sport_type = Some(sport.into());
     let normalization = fixture.operations(MockDatabase::new(DatabaseBackend::Postgres));
     let input = normalization
         .normalize_activity(fixture.sources().await)
@@ -36,6 +51,7 @@ async fn verify_upsert(update: bool) {
     assert_eq!(change.status, ActivityStatus::Applied);
     assert_eq!(change.bike_activity_id, Some(42));
     assert_eq!(change.import_id, Some(18));
+    assert_eq!(change.dirty_from.is_some(), sport == "Ride" || update);
     assert_eq!(
         change.event.strava_activity_id,
         fixture.domain.event.strava_activity_id
@@ -73,15 +89,23 @@ fn upsert_mock(fixture: &HandlerFixture, update: bool) -> MockDatabase {
     if update {
         mock = mock.append_query_results([vec![imports::import(domain)]]);
     }
-    mock.append_query_results([vec![imports::import(domain)]])
+    let mock = mock
+        .append_query_results([vec![imports::import(domain)]])
         .append_query_results([Vec::<activity_import_artifacts::Model>::new()])
         .append_query_results([vec![imports::artifact(domain)]])
         .append_query_results([existing])
         .append_query_results([vec![activity]])
-        .append_query_results([vec![state(domain)]])
-        .append_query_results([Vec::<analytics_user_states::Model>::new()])
-        .append_query_results([vec![fitness_state(domain)]])
-        .append_query_results([vec![audit(domain)], vec![audit(domain)]])
+        .append_query_results([vec![state(domain)]]);
+    let mock = if crate::strava::provider_payload::strava_activity_is_bike(
+        &fixture.provider.payload.activity,
+    ) || update
+    {
+        mock.append_query_results([Vec::<analytics_user_states::Model>::new()])
+            .append_query_results([vec![fitness_state(domain)]])
+    } else {
+        mock
+    };
+    mock.append_query_results([vec![audit(domain)], vec![audit(domain)]])
         .append_exec_results([executed(), executed()])
 }
 

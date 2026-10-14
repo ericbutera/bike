@@ -121,6 +121,8 @@ pub struct CollectionResult {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CollectionProgress {
     pub next_page: i32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_page: Option<ActivityPage>,
     pub imported: i32,
     pub unchanged: i32,
     pub last_started_at: Option<chrono::DateTime<chrono::Utc>>,

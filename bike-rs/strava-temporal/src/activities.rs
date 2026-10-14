@@ -55,6 +55,7 @@ impl StravaActivities {
             .scan_connections(request)
             .instrument(span)
             .await
+            .and_then(checked_output)
             .map_err(activity_error)
     }
     #[activity(name = "strava_resolve_collection_window")]
@@ -284,7 +285,7 @@ impl StravaActivities {
     }
 }
 
-async fn run<T>(
+async fn run<T: serde::Serialize>(
     ctx: ActivityContext,
     event: StravaEvent,
     future: impl Future<Output = Result<T, WorkflowError>>,
@@ -336,7 +337,7 @@ async fn run<T>(
             let mut heartbeat = tokio::time::interval(Duration::from_secs(5));
             let result = loop {
                 tokio::select! {
-                    result = &mut future => break result.map_err(activity_error),
+                    result = &mut future => break result.and_then(checked_output).map_err(activity_error),
                     () = ctx.cancelled() => break Err(ActivityError::cancelled()),
                     _ = heartbeat.tick() => ctx.record_heartbeat(info.attempt).await?,
                 }
@@ -351,6 +352,11 @@ async fn run<T>(
             result
         })
         .await
+}
+
+pub(crate) fn checked_output<T: serde::Serialize>(output: T) -> Result<T, WorkflowError> {
+    bike_core::strava::payload::validate_temporal(&output)?;
+    Ok(output)
 }
 
 fn activity_error(error: WorkflowError) -> ActivityError {
@@ -403,5 +409,14 @@ mod tests {
                 assert!(delay > Duration::from_secs(100));
             }
         }
+    }
+
+    #[test]
+    fn oversized_activity_output_is_a_non_retryable_failure() {
+        let error = checked_output(vec![i32::MAX; 30_000]).unwrap_err();
+        let ActivityError::Application(failure) = activity_error(error) else {
+            panic!("Expected a terminal application failure")
+        };
+        assert!(failure.is_non_retryable());
     }
 }

@@ -101,6 +101,35 @@ async fn deletion_removes_only_the_owned_remote_activity_and_retains_dependencie
 }
 
 #[tokio::test]
+async fn non_cycling_capture_and_deletion_do_not_invalidate_fitness() {
+    let fixture = Fixture::new();
+    let mut activity = fixture.activity();
+    activity.sport = "walk".into();
+    let db = MockDatabase::new(DatabaseBackend::Postgres)
+        .append_query_results([vec![fixture.connection.clone()]])
+        .append_query_results([vec![fixture.customer.clone()]])
+        .append_query_results([vec![activity.clone()]])
+        .append_query_results([Vec::<BTreeMap<String, Value>>::new()])
+        .append_query_results([vec![activity]])
+        .append_query_results([Vec::<BTreeMap<String, Value>>::new()])
+        .append_exec_results((0..4).map(|_| executed()))
+        .into_connection();
+    let operations = StravaOperations::new(db);
+    let mut change = operations
+        .capture_deletion(fixture.event.clone())
+        .await
+        .unwrap();
+    assert_eq!(change.dirty_from, None);
+    StravaOperations::delete_owned_activity(&operations.db, &mut change)
+        .await
+        .unwrap();
+    assert_eq!(change.status, ActivityStatus::Deleted);
+    assert_eq!(change.dirty_from, None);
+    let log = format!("{:?}", operations.db.into_transaction_log());
+    assert!(!log.contains("fitness"));
+}
+
+#[tokio::test]
 async fn deletion_storage_failure_rolls_back_without_recording_a_success() {
     let fixture = Fixture::new();
     let db = MockDatabase::new(DatabaseBackend::Postgres)

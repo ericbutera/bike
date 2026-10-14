@@ -395,6 +395,7 @@ mod tests;
     request_body(content = strava::StravaWebhookEvent, example = json!({"aspect_type": "create","event_time": 1790500000,"object_id": 1234567890,"object_type": "activity","owner_id": 12345678,"subscription_id": 12345,"updates": {}})),
     responses(
         (status = 200, description = "Accepted a Strava webhook event", body = auth_openapi::schemas::MessageResponse, example = json!({"message": "ok"})),
+        (status = 413, description = "Strava event exceeds the 256 KiB Temporal JSON budget", body = ApiErrorResponse),
     ),
     tag = "strava"
 )]

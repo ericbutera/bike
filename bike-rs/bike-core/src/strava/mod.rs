@@ -9,6 +9,7 @@ pub mod native;
 pub mod oauth_state;
 pub mod objects;
 pub mod paths;
+pub mod payload;
 pub mod provider_payload;
 mod transport;
 

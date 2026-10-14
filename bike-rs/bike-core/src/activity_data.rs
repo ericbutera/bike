@@ -9,6 +9,18 @@ const STORAGE_ELEVATION_SCALE: f64 = 10.0;
 const STORAGE_SPEED_SCALE: f64 = 100.0;
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, ToSchema)]
+pub struct ActivitySourceMetadata {
+    pub description: Option<String>,
+    pub gear: Option<ActivityGear>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+pub struct ActivityGear {
+    pub id: String,
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ActivityDerivedData {
     #[serde(
         default,
@@ -94,6 +106,7 @@ pub struct ActivityRoutePoint {
 #[derive(Debug, Clone, PartialEq, FromJsonQueryResult)]
 pub struct StoredActivityDerivedData {
     v: u8,
+    source_metadata: Option<ActivitySourceMetadata>,
     recording: crate::activity_recording::RecordingContext,
     laps: Vec<ActivityLap>,
     chart_points: Vec<ActivityChartPoint>,
@@ -104,6 +117,7 @@ impl Default for StoredActivityDerivedData {
     fn default() -> Self {
         Self {
             v: STORAGE_FORMAT_VERSION,
+            source_metadata: None,
             recording: Default::default(),
             laps: Vec::new(),
             chart_points: Vec::new(),
@@ -115,6 +129,8 @@ impl Default for StoredActivityDerivedData {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct StoredActivityDerivedDataV2 {
     v: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source_metadata: Option<ActivitySourceMetadata>,
     #[serde(
         default,
         skip_serializing_if = "crate::activity_recording::RecordingContext::is_empty"
@@ -198,6 +214,7 @@ impl Serialize for StoredActivityDerivedData {
     {
         StoredActivityDerivedDataV2 {
             v: STORAGE_FORMAT_VERSION,
+            source_metadata: self.source_metadata.clone(),
             recording: self.recording.clone(),
             laps: self.laps.clone(),
             chart_points: self.chart_points.clone(),
@@ -231,6 +248,7 @@ impl<'de> Deserialize<'de> for StoredActivityDerivedData {
 
             Ok(Self {
                 v: STORAGE_FORMAT_VERSION,
+                source_metadata: value.source_metadata,
                 recording: value.recording,
                 laps: value.laps,
                 chart_points: value.chart_points,
@@ -279,6 +297,7 @@ impl From<&ActivityDerivedData> for StoredActivityDerivedData {
     fn from(value: &ActivityDerivedData) -> Self {
         Self {
             v: STORAGE_FORMAT_VERSION,
+            source_metadata: None,
             recording: value.recording.clone(),
             laps: value.laps.clone(),
             chart_points: value.chart_points.clone(),
@@ -302,6 +321,7 @@ impl From<CompactStoredActivityDerivedDataV1> for StoredActivityDerivedData {
     fn from(value: CompactStoredActivityDerivedDataV1) -> Self {
         Self {
             v: STORAGE_FORMAT_VERSION,
+            source_metadata: None,
             recording: value.recording,
             laps: value.laps.into_iter().map(ActivityLap::from).collect(),
             chart_points: value
@@ -315,6 +335,17 @@ impl From<CompactStoredActivityDerivedDataV1> for StoredActivityDerivedData {
                 .map(ActivityRoutePoint::from)
                 .collect(),
         }
+    }
+}
+
+impl StoredActivityDerivedData {
+    pub fn source_metadata(&self) -> Option<&ActivitySourceMetadata> {
+        self.source_metadata.as_ref()
+    }
+
+    pub fn with_source_metadata(mut self, metadata: ActivitySourceMetadata) -> Self {
+        self.source_metadata = Some(metadata);
+        self
     }
 }
 

@@ -168,6 +168,9 @@ fn build_fitness_freshness_rows_from_loads(
 }
 
 pub fn estimated_training_load(activity: &activities::Model) -> Option<f64> {
+    if !activity.is_bike_activity() {
+        return None;
+    }
     estimated_training_load_from_fields(
         activity.moving_time_seconds,
         activity.total_time_seconds,
@@ -1205,6 +1208,24 @@ mod tests {
             created_at: timestamp,
             updated_at: timestamp,
         }
+    }
+
+    #[test]
+    fn non_cycling_summaries_do_not_change_cycling_load_or_fitness() {
+        let ride = make_activity(1, "2026-05-01T12:00:00Z", Some(3600), Some(140), Some(170));
+        let day = ride.started_at.date_naive();
+        let expected = build_fitness_freshness_rows(std::slice::from_ref(&ride), day, day);
+        for sport in ["run", "walk", "hike", "swim", "workout", "pickleball"] {
+            let mut summary = ride.clone();
+            summary.sport = sport.into();
+            assert_eq!(estimated_training_load(&summary), None, "{sport}");
+            assert_eq!(
+                build_fitness_freshness_rows(&[ride.clone(), summary], day, day),
+                expected,
+                "{sport}"
+            );
+        }
+        assert!(estimated_training_load(&ride).unwrap() > 0.0);
     }
 
     #[test]

@@ -35,7 +35,8 @@ mise run format:check
 Rust's Utoipa definitions generate the canonical contract directly in
 `../contracts/openapi/`. After updating the contract,
 run `mise run generate:typescript` here to regenerate
-`lib/openapi/react-query/api.d.ts`.
+`lib/openapi/react-query/api.ts`, including runtime enum values generated from
+the backend enums.
 
 ## Maps
 

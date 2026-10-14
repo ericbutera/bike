@@ -78,7 +78,8 @@ endpoints. Worker preparation and feature flags are described in the
 
 - Rust generates the canonical HTTP contract directly in `contracts/openapi/`.
   The frontend and test harnesses consume its YAML and JSON representations.
-- `bike-ui/lib/openapi/react-query/api.d.ts` is generated from that contract.
+- `bike-ui/lib/openapi/react-query/api.ts` is generated from that contract,
+  including runtime enum values for frontend controls.
 - Versioned protobuf definitions under `proto/` describe the internal renderer interface.
 - `mise run assets:sync` copies canonical assets into required build contexts;
   `mise run contracts:check` compares those copies with their owners.

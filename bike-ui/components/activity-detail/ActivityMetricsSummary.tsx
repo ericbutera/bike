@@ -148,6 +148,12 @@ export default function ActivityMetricsSummary({
               value={activity.format?.toUpperCase() ?? "--"}
             />
             <DenseDetailRow label="Source" value={activity.source} />
+            {activity.gear && (
+              <DenseDetailRow
+                label="Gear"
+                value={activity.gear.name ?? activity.gear.id}
+              />
+            )}
             <DenseDetailRow
               label="Uploaded file"
               value={activity.original_filename ?? "--"}
@@ -171,6 +177,11 @@ export default function ActivityMetricsSummary({
           </dl>
         </div>
       </div>
+      {activity.description && (
+        <p className="whitespace-pre-wrap text-sm text-base-content/80">
+          {activity.description}
+        </p>
+      )}
     </>
   );
 }

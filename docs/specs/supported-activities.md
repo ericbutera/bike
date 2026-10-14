@@ -7,8 +7,9 @@ This specification owns support tiers and the activity inventory. The
 [ingestion specification](activity-ingestion.md) owns retention and processing;
 the [heatmap specification](heatmaps.md) owns geographic
 contribution. Task status stays in [the Bike backlog](../TODO.md).
-The inventory reflects inspected code on 2026-10-06, not a new production
-verification. Expansion work below is proposed, not implemented behavior.
+The original inventory reflects inspected code on 2026-10-06. Summary retention
+and central vocabulary were updated on 2026-10-14 and await rollout. Expansion
+work below remains proposed; it is separate from retaining activity summaries.
 
 ## Support tiers
 
@@ -21,16 +22,35 @@ verification. Expansion work below is proposed, not implemented behavior.
   surfaces, without a complete sport-specific product contract. Non-cycling
   activities are excluded from cycling segments, fitness, training, and reports.
   A visible filter does not establish full support or live sync.
-- **Recognized only:** a label survives normalization, but dedicated UI, source
-  delivery, metrics, and coverage are incomplete. Preserve available originals
-  under the deferred-retention proposal rather than interpreting them as rides.
-- **Unsupported/unknown:** no declared product support. Retain available inputs
-  and metadata under the deferred-retention proposal; do not guess cycling.
+- **Recognized only:** retain the summary, provider label, and available source;
+  dedicated UI, metrics, and analytics remain incomplete.
+- **Unsupported/unknown:** retain the summary, available input, and metadata
+  without guessing cycling. Unknown labels do not establish product support.
 
 `sport` identifies the discipline. `activity_type` remains the separate
 Training/Race classification. Recording environment and recorder evidence are
 independent of both. Indoor cycling is supported but contributes no real-world
 heatmap geometry.
+
+## Central activity vocabulary and retention
+
+- Backend `ActivitySport` owns the filter vocabulary and cycling classification.
+  `ActivityType` owns Training/Race. Alias normalization and database cycling
+  query values live with `ActivitySport`; provider adapters reuse this policy.
+- Utoipa exports both enums in OpenAPI. The existing client generator uses
+  `openapi-typescript --enum-values` to produce `api.ts`, including string union
+  types and runtime value arrays. Frontend filters and classification controls
+  consume those arrays. Display labels/descriptions remain frontend concerns.
+- The current filter vocabulary includes Run, Walk, Hike, Mountain bike,
+  Indoor trainer ride, Road ride, Swim, and Workout. Adding a filter sport requires
+  changing the backend enum and normalization, then regenerating the contract.
+- Retain every incoming activity summary regardless of filter membership. Preserve
+  unrecognized sport labels and the complete provider source; an unknown sport
+  must never be guessed to be cycling or rejected by an enum deserializer.
+- Only cycling contributes to cycling training, fitness, segments, and reports.
+  Creating, updating, or deleting a non-cycling summary cannot invalidate cycling
+  fitness. Changing a ride into a non-cycling summary removes its previous cycling
+  contribution and clears old cycling analysis.
 
 ## Supported cycling
 
@@ -72,10 +92,10 @@ every XC metric for each subtype.
 
 | Activity                                    | Current behavior                                                                                                                                                                         | Missing for full support                                                                                                                                                            |
 | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Hike                                        | `hike`/`hiking` normalize to `hike`; Hike filter exists. Compatible file/archive inputs can retain summaries and GPS for generic detail display.                                         | No sport-specific Strava promotion, hiking segments/training/reports, or documented end-to-end hiking coverage. Deferred retention is proposed, not implemented.                    |
-| Walk                                        | `walk`/`walking` normalize to `walk`; Walk filter exists. Same generic file/detail compatibility as hiking.                                                                              | No live Strava delivery or walking-specific metrics/analytics.                                                                                                                     |
-| Run, including trail and virtual run labels | Recognized labels normalize to `run`; Run filter exists. A retained running FIT fixture verifies basic summary parsing. Compatible files can expose generic telemetry, laps, and routes. | No sport-specific Strava promotion, running pace/cadence presentation, running segments, training, or reports. Trail/virtual distinctions are not separate list sports.             |
-| Swim                                        | `swim`/`swimming` normalize to `swim`; generic FIT session/lap fields may survive parsing. **Recognized only**, not a complete swim experience.                                          | No Swim filter or Strava activity promotion; no dedicated pool lengths, stroke/rest model, swim pace, or analytics. Generic parsing does not prove correct pool/open-water support. |
+| Hike | `hike`/`hiking` normalize to `hike`; Hike filter exists. Strava summaries appear in the feed; compatible files can retain GPS for generic detail display. | No hiking segments, training, reports, or documented live hiking import coverage. |
+| Walk | `walk`/`walking` normalize to `walk`; Walk filter exists. Strava summaries appear in the feed with description and gear when supplied. | No walking-specific metrics or analytics; the 2026-10-14 summary change awaits rollout. |
+| Run, including trail and virtual run labels | Labels normalize to `run`; Run filter exists. Strava summaries appear in the feed. Compatible files can expose generic telemetry, laps, and routes. | No running pace/cadence presentation, segments, training, or reports. Trail/virtual distinctions are not separate list sports. |
+| Swim | `swim`/`swimming` normalize to `swim`; Swim filter exists. Strava summaries appear in the feed; generic FIT session/lap fields may survive parsing. | No dedicated pool lengths, stroke/rest model, swim pace, or analytics. |
 
 Hike is semi-supported, alongside walk and run. None is supported in cycling
 analytics. Non-cycling file imports currently still parse detail and execute
@@ -91,9 +111,12 @@ still proposes withholding unknown recording provenance; that stricter rule
 is not implemented. A future map for another sport needs its own admission
 rules.
 
-Native Rust Strava retains non-cycling source metadata and skips its streams.
-It does not promote those summaries into a sport-specific activity experience.
-Archives/uploads remain the available original-file path for recordings.
+Native Rust Strava promotes all summaries into the activity feed, including
+walks, hikes, runs, swims, and other sports. Preserve distance, duration, elevation,
+description, and gear ID/name when provided. Non-cycling and manual activities skip
+provider streams and retain no invented GPS or sensors. Cycling calculations remain
+limited to cycling sports. Archives/uploads remain the original-file path for
+non-cycling recordings; sport-specific analytics are still outside this contract.
 
 ## Proposed expansion and implementation lift
 
@@ -178,7 +201,8 @@ Verify these boundaries with synthetic fixtures and owning database tests:
 - Two users remain isolated across storage, jobs, queries, caches, and maps.
 
 Future global maps also need participation and removal checks. This spec does
-not promote run/swim to full support or change production behavior. ACT05 and
+not promote run/swim to full support. The summary and vocabulary changes await
+rollout. ACT05 and
 MAPS12 own the pending deferred retention and stricter recording admission implementation.
 
 ## Code anchors

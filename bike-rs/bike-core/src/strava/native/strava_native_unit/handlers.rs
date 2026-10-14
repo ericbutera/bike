@@ -7,6 +7,33 @@ use crate::{
 use axum::http::StatusCode;
 
 #[tokio::test]
+async fn non_cycling_summary_clears_old_cycling_training_analysis_without_touching_rides() {
+    let fixture = super::fixture::Fixture::new();
+    for sport in ["walk", "ride"] {
+        let mut activity = fixture.activity();
+        activity.sport = sport.into();
+        let db = MockDatabase::new(DatabaseBackend::Postgres)
+            .append_exec_results([sea_orm::MockExecResult {
+                rows_affected: 1,
+                last_insert_id: 0,
+            }])
+            .into_connection();
+        crate::entities::activity_training_analyses::Model::clear_for_non_cycling(&db, &activity)
+            .await
+            .unwrap();
+        let log = db.into_transaction_log();
+        if sport == "walk" {
+            assert_eq!(log.len(), 1);
+            assert!(log[0].statements()[0]
+                .sql
+                .contains("DELETE FROM \"activity_training_analyses\""));
+        } else {
+            assert!(log.is_empty());
+        }
+    }
+}
+
+#[tokio::test]
 async fn fetches_fixture_activity_and_streams_with_mocked_ownership_and_storage() {
     let fixture = HandlerFixture::new();
     let db = fixture
@@ -39,6 +66,44 @@ async fn fetches_fixture_activity_and_streams_with_mocked_ownership_and_storage(
 }
 
 #[tokio::test]
+async fn multi_megabyte_provider_data_stays_in_storage_across_workflow_boundaries() {
+    let mut fixture = HandlerFixture::new();
+    let extension = "a".repeat(3 * 1024 * 1024);
+    Arc::get_mut(&mut fixture.provider)
+        .unwrap()
+        .payload
+        .activity
+        .additional_fields
+        .insert("provider_extension".into(), serde_json::json!(extension));
+    let db = fixture
+        .connection_mock()
+        .append_query_results([vec![fixture.domain.connection.clone()]])
+        .append_query_results([vec![fixture.domain.customer.clone()]]);
+    let operations = fixture.operations(db);
+    let source = operations
+        .fetch_activity(fixture.domain.event.clone())
+        .await
+        .unwrap();
+    assert!(source.activity.bytes > 2 * 1024 * 1024);
+    crate::strava::payload::validate_temporal(&source).unwrap();
+    let sources = operations.fetch_streams(source).await.unwrap();
+    crate::strava::payload::validate_temporal(&sources).unwrap();
+    let normalized = operations.normalize_activity(sources).await.unwrap();
+    crate::strava::payload::validate_temporal(&normalized).unwrap();
+    let retained: StoredStravaProviderPayload = operations
+        .store
+        .read_json(&normalized.source)
+        .await
+        .unwrap();
+    assert_eq!(
+        retained.activity.additional_fields["provider_extension"],
+        extension
+    );
+    assert!(normalized.parsed.is_some());
+    assert!(serde_json::to_vec(&normalized).unwrap().len() < 4096);
+}
+
+#[tokio::test]
 async fn normalizes_a_fixture_ride_without_provider_or_persistence_calls() {
     let fixture = HandlerFixture::new();
     let operations = fixture.operations(MockDatabase::new(DatabaseBackend::Postgres));
@@ -68,7 +133,7 @@ async fn normalizes_a_fixture_ride_without_provider_or_persistence_calls() {
 }
 
 #[tokio::test]
-async fn non_cycling_activity_skips_provider_streams_and_normalization() {
+async fn non_cycling_activity_keeps_a_normalized_summary_without_provider_streams() {
     let mut fixture = HandlerFixture::new();
     let provider = Arc::get_mut(&mut fixture.provider).unwrap();
     provider.payload.activity.sport_type = Some("Run".into());
@@ -83,7 +148,47 @@ async fn non_cycling_activity_skips_provider_streams_and_normalization() {
     let empty: StravaActivityStreams = operations.store.read_json(&sources.streams).await.unwrap();
     assert!(empty.time.is_none());
     let normalized = operations.normalize_activity(sources).await.unwrap();
-    assert!(normalized.parsed.is_none());
+    let parsed: ParsedActivityData = operations
+        .store
+        .read_json(normalized.parsed.as_ref().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(parsed.draft.sport, "run");
+    assert!(parsed.derived_data.route_points.is_empty());
+    assert!(fixture.provider.calls.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn manual_cycling_summary_does_not_request_missing_streams() {
+    let mut fixture = HandlerFixture::new();
+    let provider = Arc::get_mut(&mut fixture.provider).unwrap();
+    provider
+        .payload
+        .activity
+        .additional_fields
+        .insert("manual".into(), serde_json::json!(true));
+    provider
+        .payload
+        .activity
+        .additional_fields
+        .insert("total_elevation_gain".into(), serde_json::json!(407.5));
+    let sources = fixture.sources().await;
+    let operations = fixture.operations(fixture.connection_mock());
+    let sources = operations
+        .fetch_streams(ActivitySource {
+            event: sources.event,
+            activity: sources.activity,
+        })
+        .await
+        .unwrap();
+    let normalized = operations.normalize_activity(sources).await.unwrap();
+    let parsed: ParsedActivityData = operations
+        .store
+        .read_json(normalized.parsed.as_ref().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(parsed.draft.elevation_gain_meters, Some(407.5));
+    assert!(parsed.derived_data.route_points.is_empty());
     assert!(fixture.provider.calls.lock().unwrap().is_empty());
 }
 

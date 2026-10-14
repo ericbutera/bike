@@ -101,6 +101,8 @@ where
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(example = json!({"id": 42,"title": "Saturday hill repeats","sport": "ride","source": "manual_upload","activity_type": "training","original_filename": "saturday-hills.fit","format": "fit","started_at": "2026-09-26T13:00:00Z","ended_at": "2026-09-26T14:12:00Z","location": "Detroit, Michigan","distance_meters": 25430.5,"moving_time_seconds": 4200,"total_time_seconds": 4320,"elevation_gain_meters": 312.4,"average_speed_mps": 6.05,"average_heart_rate_bpm": 148,"estimated_ftp_watts": 245,"route_points": [{"elapsed_seconds": 900,"latitude": 42.3314,"longitude": -83.0458,"distance_meters": 4200.5,"elevation_meters": 183.2}],"can_regenerate": true,"can_download_source_file": true}))]
 pub struct ActivityResponse {
+    pub description: Option<String>,
+    pub gear: Option<bike_core::activity_data::ActivityGear>,
     pub activity_import_id: Option<i32>,
     #[schema(example = 42)]
     pub id: i32,
@@ -242,8 +244,16 @@ impl ActivityResponse {
         can_regenerate: bool,
     ) -> Self {
         let relative_effort = relative_effort(&model);
+        let metadata = model
+            .derived_data_json
+            .as_ref()
+            .and_then(|data| data.source_metadata())
+            .cloned()
+            .unwrap_or_default();
 
         Self {
+            description: metadata.description,
+            gear: metadata.gear,
             activity_import_id: model.activity_import_id,
             id: model.id,
             title: model.title,
@@ -1076,6 +1086,27 @@ mod tests {
     use bike_core::activity_details::{serialize_derived_activity_data, StoredActivityDerivedData};
     use bike_core::activity_training_analysis::ActivityTrainingAnalysisResponse;
     use bike_core::platform::data::pagination::PaginatedResponse;
+
+    #[test]
+    fn feed_and_detail_keep_source_description_and_gear() {
+        let mut model = activity_response_test_model(Utc::now());
+        let metadata = bike_core::activity_data::ActivitySourceMetadata {
+            description: Some("Fixture description".into()),
+            gear: Some(bike_core::activity_data::ActivityGear {
+                id: "fixture-bike".into(),
+                name: Some("Fixture bicycle".into()),
+            }),
+        };
+        model.derived_data_json =
+            Some(activity_response_derived_data_json().with_source_metadata(metadata.clone()));
+        let summary =
+            ActivityResponse::from_summary_with_achievement_highlights(model.clone(), vec![]);
+        let detail = ActivityResponse::from_detail(model, vec![]);
+        for response in [summary, detail] {
+            assert_eq!(response.description, metadata.description);
+            assert_eq!(response.gear, metadata.gear);
+        }
+    }
 
     #[test]
     fn activity_response_maps_model_fields() {

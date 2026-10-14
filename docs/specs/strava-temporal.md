@@ -13,6 +13,20 @@
 - Bike uses the shared Temporal service in production and Docker Compose locally.
 - API path: Strava → `/api/strava/webhook` → durable Strava event → Temporal
   workflow → named activity → Strava or Bike domain operation.
+- Retain **all activity summaries**, including walks, hikes, runs, swims, workouts,
+  and manual entries, in the activity feed with their normalized sport, title,
+  distance, duration, elevation gain, description, and gear ID/name when supplied.
+  Retain the complete provider response in object storage. Description and gear
+  are optional; gear-name absence preserves the ID without another provider call.
+- Request streams only for recorded cycling activities. Manual rides and other
+  sports use the summary and empty streams; missing manual streams cannot fail
+  the import. Prefer Strava's reported elevation gain over deriving it from samples.
+- Keep summary-only sports out of cycling segments, training, fitness, and
+  heatmaps through the existing sport filters. Manual entries have no invented
+  GPS, sensor samples, or route. Walk/Hike filters use their own normalized sport.
+- Use the [central backend activity vocabulary](supported-activities.md#central-activity-vocabulary-and-retention)
+  for cycling policy and generated frontend filter/classification values. Unknown
+  provider sports remain stored without contributing to cycling calculations.
 - Preserve `/webhooks/strava-gateway` and `/oauth/gateway/callback`, already
   registered externally, as aliases to the same native handlers. Keep ingress
   routing and the existing TLS secret. These aliases do not retain gateway code.
@@ -75,7 +89,8 @@
   Failed writes roll back; retries reuse the stored mutation.
 - Scheduled sync reads as get request → get page → get children → complete children
   → continue or finish. Await every started child and carry the total failures
-  across pages; use a shared helper to construct non-retryable workflow errors.
+  across pages. Failed child starts count too; continue starting later customers.
+  Cancellation remains cancellation. Use a shared helper for non-retryable errors.
 - Use at most two expressions per boolean condition and named ownership predicates.
   A shared typed activity function adapts SDK calls and failures; each workflow
   still names its activity steps explicitly.
@@ -111,6 +126,13 @@
   continue-as-new. Suppress logs during replay; never change workflow inputs or
   decisions based on tracing state. Keep request, trace, and parent event IDs on
   activity attempts and provider exchange logs too.
+- Serialize trace carriers with sorted keys, so reconstruction after a worker
+  restart preserves the exact JSON bytes of activity and child inputs.
+- Use native SDK patch markers for changed workflow decisions: continuation
+  inside a populated page, recovery from failed customer starts, and rejection
+  of oversized scheduling inputs. Histories without these markers preserve their
+  previous decisions during replay; new executions use the new policy. Activity
+  result checks and API acceptance checks apply immediately outside workflow replay.
 - Index events by customer, remote athlete, remote activity, and workflow ID.
   Support those searches in Temporal and the integration history view.
 
@@ -147,6 +169,35 @@
 All processors below are separate [native activity methods](../../bike-rs/strava-temporal/src/activities.rs).
 Inputs/outputs are [typed domain values](../../bike-rs/bike-core/src/strava/native/types.rs).
 Object references point to retained source files; provider bodies are not carried in workflow history.
+
+## Payload and history budgets
+
+- Retain raw activity responses, stream responses, normalized sources, and parsed
+  activities in Bike's existing persistent upload-volume object store. Temporal
+  carries their path, SHA-256, and byte count; source size does not affect input size.
+- Limit each Strava value crossing a Temporal boundary to **256 KiB of serialized
+  UTF-8 JSON**, including the complete event, nested values, and dependency IDs.
+  This leaves room for SDK metadata below the server's warning threshold.
+- Validate before durable webhook acceptance, workflow handoff, activity/child
+  scheduling, continue-as-new, and returning activity results. Oversized callbacks
+  return HTTP 413. Oversized worker values produce non-retryable application
+  failures, with size and limit in the error and no provider body in the message.
+- Temporal Server 1.32.1 defaults: payload warning **512 KiB**, payload rejection
+  **2 MiB**, event-history transaction maximum **4 MiB**, history warning **10 MiB**
+  or **10,240 events**, history rejection **50 MiB** or **51,200 events**. The deployed
+  dynamic configuration does not override these limits. Source:
+  [versioned server defaults](https://github.com/temporalio/temporal/blob/v1.32.1/common/dynamicconfig/constants.go)
+  and [Temporal service limits](https://docs.temporal.io/self-hosted-guide/defaults).
+- Sync and backfill list 100 activities per provider page. Continue as new after
+  25 pages or the server's history suggestion. Check the suggestion after every
+  completed child, preserving the remaining page IDs in continuation input; never
+  re-list that partially completed page or count its completed children twice.
+  Carry the original fixed window, next page, counts, latest start,
+  event/correlation IDs, request ID, and trace carrier. Advance the sync cursor
+  only after the final page and publication; backfill never advances it.
+- Scheduled scans continue as new after each 20-connection page. Await every
+  started customer, carry failures and correlation ID into the next run, and fail
+  the final run with the cumulative count when any customer failed.
 
 | Temporal activity | Input → output |
 | --- | --- |
@@ -223,6 +274,21 @@ flowchart LR
   units cover supported events, validation, reconnect fences, and durable deduplication.
 - Persistence/migration, provider HTTP, replay/retry timing, and deployed delivery
   remain separate verification gaps. Do not infer them from mocked unit results.
+- Reconstruct an unfinished native SDK workflow from its recorded completion
+  activations to simulate a worker restart. Require byte-identical historical and
+  pending commands; resume a running child and publication without scheduling the
+  completed fetch/normalization/persistence steps again.
+- Exercise 5,100 activities over 51 populated pages and three runs for both sync
+  and backfill, server-suggested continuation, and 60 scheduled customers over
+  three pages with out-of-order completion, execution failure, and start failure.
+- Exercise a retained provider body larger than 2 MiB through fetch, streams,
+  and normalization. Require boundary values to remain below 256 KiB while the
+  complete body survives in object storage. This is a fixture-backed domain and
+  serialization check; it does not send a large payload to the live server.
+- Keep a separate read-only native SDK replay tool for exported JSON or a live
+  workflow: `mise exec -- cargo run --locked -p strava-temporal --example replay --
+  --file history.json` (from `bike-rs`); use `--workflow workflow-id` with the owning
+  Temporal environment to fetch history. It never registers or executes activities.
 
 ## Find a job
 
@@ -238,6 +304,32 @@ flowchart LR
 - Scheduled scans use the first native run UUID as correlation ID across customer children.
 
 ## Evidence and remaining gaps
+
+- 2026-10-14: observed a real Strava create for activity `20582557310` on
+  `POST /webhooks/strava-gateway` at `14:26:41 UTC`. Subscription `374570`;
+  event `89f2d159-4723-47d2-a3a4-ef2f525f24f7`; trace
+  `83126ef1c10370831a84c3d0cc816701`. Create run
+  `01a13ace-eea9-77db-9e34-607e551eaec5` and Upsert run
+  `01a13ace-eef6-7016-9076-665f1cfc28a7` completed. The deployed version excluded
+  its manual Walk summary (`already_absent`); the new summary behavior awaits rollout.
+- 2026-10-14: a second real create for `20582644055` reached the same POST route
+  at `14:34:05 UTC`, event `507437e9-5cbd-4623-996e-1710b3129bdd`, trace
+  `43669f123df376c8c0965be1a2379fe5`. Its retained activity response contained a
+  manual MountainBikeRide, 10,718.2 m distance, 407.5 m elevation gain, description,
+  and gear ID/name. The deployed workflow failed on streams HTTP 404. The fix
+  skips that request for manual activities; native reimport after rollout remains required.
+- The new native SDK replay tool successfully replayed the real Walk Create
+  and Upsert histories, plus completed Sync `strava-ff834edc-cfbd-5f7a-bf2a-e910f1c26926`,
+  using fresh workers and current workflow code. It fetched history
+  read-only and executed no provider or database activities. This proves history
+  compatibility separately from a live process-interruption drill.
+- 2026-10-14: 127 focused Rust units and five UI units passed in Docker. These
+  include large stored provider bodies/streams, restart reconstruction, 5,100
+  activity scans, 60 customer scans with ten failures, summary metadata, and
+  non-cycling create/update/delete boundaries. UI lint, types, and formatting
+  passed. Old histories retain pre-patch continuation/start-failure/input-budget
+  decisions; a restarted patched scan retains its failed-start count. Full CI
+  and post-rollout verification are separate gates.
 
 - 2026-10-14: the release has an explicitly approved one-release exception to
   the 80% changed-line coverage gate. Tests, lint, coverage report retention,
@@ -276,7 +368,8 @@ flowchart LR
   resuming API, SQL worker, and native Temporal worker.
 - Unit guarantees remain bounded; deployment readiness and callback checks do
   not establish production behavior for every operation. Natural webhook POST
-  delivery, backfill, create, delete, and disconnect still lack live evidence.
+  delivery and create are observed above; backfill, delete, and disconnect still
+  lack live evidence.
 - [TODO](../TODO.md) tracks production worker/scrapes/UI, cutover, coordinated
   backups, source retention, replay under restart, large histories, and load.
 
