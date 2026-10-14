@@ -56,7 +56,7 @@ id = "rust-ci-reuse"
 name = "Rust CI input and result reuse regression"
 language = "system"
 entry = "mise run ci:rust:cache:test"
-files = "^scripts/(ci-rust.*|ci-engine-stop|ci-cache-guard|coverage-transfer|test-worker-postgres)\\.sh$|^scripts/ci-cache-size\\.mjs$|^\\.woodpecker/.*\\.yaml$|^(bike-rs/)?mise\\.toml$|^prek\\.toml$"
+files = "^scripts/(ci-rust.*|ci-engine-stop|coverage-transfer|test-worker-postgres)\\.sh$|^\\.woodpecker/.*\\.yaml$|^(bike-rs/)?mise\\.toml$|^prek\\.toml$"
 pass_filenames = false
 
 [[repos.hooks]]
@@ -120,7 +120,7 @@ id = "renderer-lint"
 name = "Renderer and shared JavaScript lint and formatting"
 language = "system"
 entry = "mise run lint:maps"
-files = "^map-renderer/.*\\.(mjs|html|json|toml)$|^scripts/.*\\.mjs$|^mise\\.toml$"
+files = "^map-renderer/.*\\.(mjs|html|json|toml)$|^mise\\.toml$"
 pass_filenames = false
 
 [[repos.hooks]]

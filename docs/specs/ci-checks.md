@@ -2,8 +2,9 @@
 
 - Local Docker checks, prek hooks, and CI call the owning mise tasks with pinned
   tooling. Formatter, compiler, and linter warnings fail checks.
-- `lint:maps` and `format:check` cover the renderer and shared JavaScript under
-  `map-renderer/` and `scripts/`. Require every selected source pattern to exist;
+- `lint:maps` and `format:check` cover JavaScript under `map-renderer/`.
+  Retire the obsolete script glob with the removed byte-guard scanner.
+  Require every selected source pattern to exist;
   do not suppress unmatched paths or skip validation when files are removed.
 - The retired standalone k6 synthetic suite has no tooling pins, tasks, hooks,
   lint patterns, workflow path filters, or image targets.
@@ -18,9 +19,35 @@
   creation. The application no longer reads or writes that table.
 - Ordinary generated test fixtures continue to cover authentication, uploads,
   activities, segments, maps, and races in the owning suites.
-- Preserve the 32 GiB native-cache guard. When it stops compilation, wait for
-  coordinated idle retention to reclaim stale targets before retrying CI. Do not
-  remove active targets or raise the threshold to make a run pass.
+- Keep one native Rust compiler workspace at `/cache/bike/target/shared` for
+  all branches. Woodpecker's `bike` workflow concurrency is one so different
+  revisions cannot clean, replace, or report against the shared objects at once.
+  Unit and PostgreSQL steps within that workflow continue in parallel.
+- Expire the shared compiler cache after seven idle days, reports after two
+  days, and successful verification receipts after seven idle days. Shared
+  downloaded tool/package stores expire after seven idle days; prepare refreshes
+  their `.last-used` markers so read-only reuse counts as activity. Cleanup
+  coordinates with the maintenance Lease and scheduler pause. Do not terminate
+  builds or evict current cache data based on byte counts.
+- The persistent BuildKit volume owns build layers and compiler/package cache
+  mounts. Do not export a second build cache to the image registry. The registry
+  stores immutable release images; unprotected Bike images expire after seven
+  days, while live and rollback references and their OCI descendants survive.
+- Publish only API, worker, UI, maps, and browser E2E images. The checks image
+  remains an explicit local Bake target and is built by `checks:docker`; current
+  CI uses native steps and does not consume a registry copy of that tool image.
+- Release-image validation produces no images or layers. Clear the registry
+  image destination only for `images:validate`; publish immutable releases in
+  `images:push`.
+- Release pushes preserve provenance using BuildKit's compatible attestation
+  image manifest format (`oci-artifact=false`). Do not disable provenance or
+  suppress unknown-media-type diagnostics.
+- Both native-test and E2E Docker daemons use the immutable Docker-in-Docker
+  image pin from mise. `pins:sync` refreshes both workflow services and
+  `ci:check` rejects drift. Do not rebuild or republish a Bike engine image
+  that is identical to its upstream base; it adds no application behavior,
+  cannot produce useful build-cache layers, and can trigger missing local
+  distribution-source metadata warnings when registry blobs already exist.
 - Validate this retirement by running the actual renderer lint and formatting
   tasks, native Woodpecker validation, and release image-plan resolution in
   Docker. CI owns the full suites, coverage, builds, and browser tests.

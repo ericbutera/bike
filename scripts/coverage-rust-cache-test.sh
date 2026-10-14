@@ -61,7 +61,7 @@ for pipeline in 1 2; do
     target="${target//\$\{CI_COMMIT_REF\}/refs/heads/cache-fixture}"
     target="${target//\$\{CI_PIPELINE_NUMBER\}/$pipeline}"
     target="${target/\/cache\/bike\/target/$fixture/target}"
-    test "$target" = "$fixture/target/refs/heads/cache-fixture/llvm-cov-target"
+    test "$target" = "$fixture/target/shared/llvm-cov-target"
     CARGO_LLVM_COV_TARGET_DIR="$target"
   done
   (

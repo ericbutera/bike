@@ -4,18 +4,14 @@ import html from "eslint-plugin-html";
 
 export default [
   {
-    files: [
-      "scripts/**/*.mjs",
-      "map-renderer/**/*.mjs",
-      "map-renderer/**/*.html",
-    ],
+    files: ["map-renderer/**/*.mjs", "map-renderer/**/*.html"],
     rules: {
       ...js.configs.recommended.rules,
     },
     linterOptions: { reportUnusedDisableDirectives: "error" },
   },
   {
-    files: ["map-renderer/**/*.mjs", "scripts/**/*.mjs"],
+    files: ["map-renderer/**/*.mjs"],
     languageOptions: { globals: globals.node },
   },
   {

@@ -37,19 +37,7 @@ docker-cli-plugin-docker-buildx inspect --builder "$builder" --bootstrap
 export BUILDX_BUILDER="$builder"
 export IMAGE_REGISTRY=registry.registry:5000
 export IMAGE_TAG="$CI_COMMIT_SHA"
-export CACHE_REGISTRY="$IMAGE_REGISTRY"
-case "${CI_PIPELINE_EVENT:?CI event is required}" in
-  pull_request) export CACHE_SCOPE="pr-${CI_COMMIT_PULL_REQUEST:?CI PR identity is required}" ;;
-  *) export CACHE_SCOPE="branch-${CI_COMMIT_SOURCE_BRANCH:-${CI_COMMIT_BRANCH:?}}" ;;
-esac
-# Registry tags cannot contain slashes or spaces. Include a hash of the full
-# branch identity to distinguish branch names that normalize identically.
-if [[ "$CACHE_SCOPE" == branch-* ]]; then
-  cache_hash="$(printf '%s' "$CACHE_SCOPE" | sha256sum)"
-  cache_label="$(printf '%s' "$CACHE_SCOPE" | tr -c 'a-zA-Z0-9_.-' '-' | cut -c 1-80)"
-  export CACHE_SCOPE="${cache_label}-${cache_hash:0:12}"
-  if [[ "${CI_COMMIT_BRANCH:-}" == main ]]; then export CACHE_SCOPE=main; fi
-fi
 mkdir -p .artifacts
-mise run images:validate
+# Build cache belongs to this persistent builder; the registry holds releases.
+IMAGE_REGISTRY='' mise run images:validate
 mise run images:push

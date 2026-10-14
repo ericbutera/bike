@@ -32,7 +32,6 @@ docker_dind_image = "docker:{{vars.docker_version}}-dind@sha256:a6dd5322747a95cd
 watchexec_version = "2.8.0"
 buildx_version = "0.38.0"
 coverage_minimum = 80
-ci_cache_max_bytes = 34359738368
 coverage_site_url = "https://ericbutera.github.io/bike/coverage"
 github_ssh_host_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
 python_version = "3.13.16"
@@ -99,7 +98,6 @@ PNPM_CONFIG_STORE_DIR = "{{get_env(name='BIKE_NODE_PACKAGE_CACHE', default=confi
 PNPM_CONFIG_CACHE_DIR = "{{get_env(name='BIKE_NODE_PACKAGE_CACHE', default=config_root ~ '/.cache')}}/pnpm-metadata"
 BUILDX_CONFIG = "{{get_env(name='BUILDX_CONFIG', default=config_root ~ '/.cache/docker-buildx')}}"
 COVERAGE_MINIMUM = "{{vars.coverage_minimum}}"
-BIKE_CI_CACHE_MAX_BYTES = "{{vars.ci_cache_max_bytes}}"
 COVERAGE_SITE_URL = "{{vars.coverage_site_url}}"
 COVERAGE_GITHUB_SSH_HOST_KEY = "{{vars.github_ssh_host_key}}"
 
@@ -121,7 +119,7 @@ run = "mise --cd bike-rs run test:strava:unit"
 
 [tasks."pins:sync"]
 description = "Regenerate package metadata and the native CI database image from mise pins"
-run = ['npm --prefix bike-ui pkg set "packageManager=pnpm@${PNPM_VERSION?}"', "mise --cd bike-ui exec -- pnpm install --lockfile-only", "mise install aqua:mikefarah/yq", "mise exec aqua:mikefarah/yq -- yq --inplace '(.services[] | select(.name == \"postgres\").image) = strenv(BIKE_POSTGRES_IMAGE) | (.services[] | select(.name == \"docker\").image) = strenv(DOCKER_DIND_IMAGE)' .woodpecker/bike.yaml"]
+run = ['npm --prefix bike-ui pkg set "packageManager=pnpm@${PNPM_VERSION?}"', "mise --cd bike-ui exec -- pnpm install --lockfile-only", "mise install aqua:mikefarah/yq", "mise exec aqua:mikefarah/yq -- yq --inplace '(.services[] | select(.name == \"postgres\").image) = strenv(BIKE_POSTGRES_IMAGE) | (.services[] | select(.name == \"docker\").image) = strenv(DOCKER_DIND_IMAGE)' .woodpecker/bike.yaml", "mise exec aqua:mikefarah/yq -- yq --inplace '(.services[] | select(.name == \"docker\").image) = strenv(DOCKER_DIND_IMAGE)' .woodpecker/e2e.yaml"]
 
 [tasks."pins:check"]
 description = "Verify generated package-manager metadata agrees with mise"
@@ -145,7 +143,7 @@ run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load"
 
 [tasks."images:push"]
 description = "Build and push immutable release images using the shared Bake targets"
-run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --push --progress=plain --metadata-file .artifacts/image-builds.json"
+run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --push --set '*.output=type=image,oci-artifact=false' --progress=plain --metadata-file .artifacts/image-builds.json"
 
 [tasks."images:plan"]
 description = "Resolve the local or CI release build graph without building images"
@@ -172,7 +170,6 @@ for dockerfile in bike-ui/Dockerfile bike-ui/Dockerfile.dev; do
   docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg NODE_ALPINE_IMAGE --build-arg NPM_VERSION --build-arg PNPM_VERSION --file "$dockerfile" bike-ui
 done
 docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg NODE_IMAGE --build-arg NPM_VERSION --build-arg PNPM_VERSION --build-arg PLAYWRIGHT_IMAGE --build-arg DOCKER_CLI_IMAGE --file bike-ui/Dockerfile.e2e .
-docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg DOCKER_DIND_IMAGE --file bike-ui/Dockerfile.e2e-engine .
 docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg NODE_IMAGE --build-arg GO_IMAGE --build-arg RUNTIME_IMAGE --build-arg NPM_VERSION --file map-renderer/Dockerfile .
 '''
 
@@ -299,12 +296,18 @@ fi
 '''
 
 [tasks."ci:cache:prepare"]
-description = "Prepare shared package cache permissions for native CI checks"
+description = "Mark shared tool/package stores in use and prepare native CI permissions"
 run = '''
 if [ -n "${BIKE_NODE_PACKAGE_CACHE:-}" ]; then
   mkdir -p "$BIKE_NODE_PACKAGE_CACHE/runtime"
   chmod 700 "$BIKE_NODE_PACKAGE_CACHE/runtime"
 fi
+for cache_dir in "${MISE_DATA_DIR:-}" "${MISE_CACHE_DIR:-}" "${CARGO_HOME:-}" "${RUSTUP_HOME:-}" "${UV_CACHE_DIR:-}" "${BIKE_NODE_PACKAGE_CACHE:-}" "${BIKE_GO_CACHE:-}"; do
+  if [ -n "$cache_dir" ]; then
+    mkdir -p "$cache_dir"
+    touch "$cache_dir/.last-used"
+  fi
+done
 '''
 
 [tasks."ci:images"]
@@ -424,7 +427,7 @@ run = ["cp map-renderer/styles/fiord-v1.json bike-ui/public/map-styles/fiord-v1.
 
 [tasks."format:check"]
 description = "Check renderer and shared JavaScript formatting"
-run = "prettier scripts/*.mjs map-renderer/*.mjs map-renderer/tests/*.mjs map-renderer/index.html --check"
+run = "prettier map-renderer/*.mjs map-renderer/tests/*.mjs map-renderer/index.html --check"
 
 [tasks."contracts:check"]
 description = "Compare shared asset mirrors with their canonical owners"
@@ -448,7 +451,7 @@ run = "mise --cd bike-ui run lint:check"
 
 [tasks."lint:maps"]
 description = "Check renderer and shared JavaScript"
-run = ["mise run renderer:deps", "map-renderer/node_modules/.bin/eslint --config map-renderer/eslint.config.mjs scripts/*.mjs map-renderer --max-warnings=0", "mise run format:check"]
+run = ["mise run renderer:deps", "map-renderer/node_modules/.bin/eslint --config map-renderer/eslint.config.mjs map-renderer --max-warnings=0", "mise run format:check"]
 
 [tasks."e2e:build"]
 description = "Build the standalone browser test image"

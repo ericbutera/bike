@@ -89,7 +89,7 @@ if [[ "$stage" == prepare ]]; then
     printf 'Rust verification cache MISS %s; preparing coverage\n' "$key"
     mise install node
     mise --cd bike-rs install rust protoc aqua:taiki-e/cargo-llvm-cov
-    bash scripts/ci-cache-guard.sh mise --cd bike-rs exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov clean --workspace
+    mise --cd bike-rs exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov clean --workspace
   fi
   printf '%s\n' "$key" >"$receipt"
   exit 0
@@ -109,11 +109,11 @@ fi
 
 case "$stage" in
   unit)
-    bash scripts/ci-cache-guard.sh mise exec rust protoc -- mise run rust:ci:unit
+    mise exec rust protoc -- mise run rust:ci:unit
     printf '%s\n' "$key" >"$reports/rust-unit-passed"
     ;;
   postgres)
-    bash scripts/ci-cache-guard.sh mise run rust:workers:postgres:collect
+    mise run rust:workers:postgres:collect
     printf '%s\n' "$key" >"$reports/rust-postgres-passed"
     ;;
   sdk)
@@ -139,8 +139,8 @@ case "$stage" in
     test "$(cat "$reports/rust-sdk-passed")" = "$key"
     if [[ -f "$reports/rust-unit-reused" ]]; then exit 0; fi
     case "${CARGO_LLVM_COV_TARGET_DIR:?Shared coverage objects are required}" in
-      /cache/bike/target/*/llvm-cov-target) ;;
-      *) printf 'Coverage target is outside the reusable ref cache\n' >&2; exit 1 ;;
+      /cache/bike/target/shared/llvm-cov-target) ;;
+      *) printf 'Coverage target is outside the shared compiler cache\n' >&2; exit 1 ;;
     esac
     mise --cd bike-rs run coverage:report
     mise --cd bike-rs exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov clean --profraw-only
