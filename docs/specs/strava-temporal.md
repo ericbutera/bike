@@ -279,3 +279,64 @@ flowchart LR
   delivery, backfill, create, delete, and disconnect still lack live evidence.
 - [TODO](../TODO.md) tracks production worker/scrapes/UI, cutover, coordinated
   backups, source retention, replay under restart, large histories, and load.
+
+## Alerts and isolated coverage
+
+- Sample all events with `submitted_at IS NULL` every 30 seconds, including
+  delayed retries. This measures durable handoff, not running workflows.
+- Export pending count, oldest acceptance timestamp (zero when empty), and last
+  successful sample timestamp on the native worker's provider endpoint.
+- Failed sampling preserves the previous values and timestamp. IDs remain in
+  logs and Temporal search attributes; backlog gauges have no custom labels.
+- Use Temporal's `temporal_workflow_failed_total` for terminal failures.
+  Activity retries are a separate metric and do not page as workflow failures.
+- Unit-test HTTP adapters, all named activity handlers, workflow start mapping,
+  schedule configuration, duplicate starts, handoff retries, and shutdown.
+  Use SeaORM mocks, fixture provider/storage, SDK ActivityEnvironment, and the
+  SDK callback-based RPC override; use no database or Temporal server.
+- Keep the 80% changed-line coverage requirement independently for each service.
+  CI publishes the measured reports; source checks alone do not prove coverage.
+- Shut down and drain the worker when handoff, metrics, or signal handling ends,
+  including errors. Dropping the SDK metrics owner aborts its task on every exit.
+
+### BikeStravaWorkflowFailed
+
+- Fires after one minute when a native workflow fails within the last six hours,
+  including the first observed failure counter series and counter resets.
+- Prometheus sends the warning to Alertmanager and its existing ntfy receiver.
+  Activity retries, successful workflows, and other queues do not trigger it.
+  Root and child failures can produce two workflow alerts for one customer incident;
+  workflow/event/activity IDs stay in history and correlated logs, not metric labels.
+- 2026-10-14: the real failure of
+  `strava-507437e9-5cbd-4623-996e-1710b3129bdd` and its `:upsert` child triggered
+  Prometheus alerts at `16:13:18 UTC`. Alertmanager marked both active and routed
+  them to ntfy; notification `nELxsbEcvAda` arrived at `16:13:48 UTC`. No synthetic
+  workflow or manual alert was injected. Only this rule was enabled; handoff
+  backlog/freshness alerts await the corresponding exporter rollout.
+- Open failed history in Temporal, then search logs by workflow/event/customer/
+  activity ID. Check the failed step before retrying; partial writes may exist.
+
+### BikeStravaHandoffStalled
+
+- Fires when an accepted event is over five minutes old for five more minutes,
+  while backlog samples are less than ninety seconds old.
+- Search `strava.handoff` logs and `handoff_error`; check Temporal availability,
+  namespace/search attributes, and database access. Events retry automatically.
+- Do not delete pending events or create generic SQL worker tasks to recover.
+
+### BikeStravaHandoffTelemetryStale
+
+- Fires after two minutes when samples are over ninety seconds old or absent.
+  Backlog health is unknown; the stale backlog alert is suppressed.
+- Check native worker startup, `Strava handoff backlog sample failed` logs,
+  database access, and the provider metrics endpoint.
+- Scrape health also monitors both native `provider` and `sdk` endpoints.
+
+### Coverage evidence
+
+- CI 394 on `1496503a` passed the unchanged 80% changed-line gate:
+  API 89.74%, worker 94.44%, Temporal 96.58%, core 100%.
+- All 72 focused isolated units, formatting, and Clippy passed.
+- These are changed-line values, not a guarantee for the entire integration.
+  Process bootstrap, SDK metrics-exporter startup, and OS signal wiring still
+  need isolated coverage; deployment and alert delivery remain on the TODO.

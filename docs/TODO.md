@@ -30,10 +30,13 @@
 - [ ] Verify Grafana values, time ranges, missing data, and alert delivery against running services.
 - [x] Publish the Bike and infrastructure PRs for review.
 - [x] Restore blocking 80% changed-line coverage after the 2026-10-14 release; the approved exception covered one release only. Coverage reports remain required.
-- [ ] Cover API adapters (13.7%), worker startup (20%), and Temporal handlers/client setup (64.1%) with isolated mocked units. These are CI pipeline 385 changed-line values; domain coverage passed at 87.4%.
+- [x] Verify isolated adapter/lifecycle/handler coverage with the normal 80% gate. CI 394: API 89.74%, worker 94.44%, Temporal 96.58%, core 100% on changed lines; 72 focused units pass.
+- [ ] Cover remaining process bootstrap and SDK metrics-exporter startup with mocked dependencies. Socket/database startup and OS signal wiring remain outside the isolated tests.
 - [x] Deploy the native worker, both metrics scrapes, and six search attributes to Nibelheim.
 - [ ] Provide authenticated Temporal history access.
-- [ ] Add native workflow-failure and event-handoff backlog alerts with fixtures.
+- [x] Define native workflow-failure, event-handoff backlog/freshness, and both scrape-endpoint alerts with fixtures.
+- [ ] Deploy the native handoff exporter before its alerts; verify real metric samples and alert delivery.
+- [ ] Repair retained alert runbook links to retired documentation.
 - [x] Verify the deployed image, migrations, registered URL, and a real customer activity exchange. Scheduled sync upserted Strava activity `20424619693` as Bike activity `1676` on 2026-10-14.
 - [x] Coordinate cutover and backups for the native writer, Temporal history, and retained activity files; review storage protection before retirement. Both disks validated backup `20261014T110418Z` with all three writers paused and resumed.
 - [x] Verify shared trace continuity after enabling the native Temporal crate targets. A repeated real sync returned one unchanged activity and zero failures; list, activity, and streams exchanges shared trace `8d61988be672f15ffda11303fee1fe77`.

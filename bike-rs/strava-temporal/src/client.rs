@@ -21,24 +21,38 @@ pub struct TemporalConfig {
 }
 impl TemporalConfig {
     pub fn from_env() -> Self {
+        Self::from_lookup(|name| std::env::var(name).ok())
+    }
+
+    fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> Self {
         Self {
-            address: std::env::var("TEMPORAL_ADDRESS")
-                .unwrap_or_else(|_| "http://temporal:7233".into()),
-            namespace: std::env::var("TEMPORAL_NAMESPACE").unwrap_or_else(|_| "bike".into()),
-            task_queue: std::env::var("TEMPORAL_TASK_QUEUE")
-                .unwrap_or_else(|_| "bike-strava".into()),
+            address: lookup("TEMPORAL_ADDRESS").unwrap_or_else(|| "http://temporal:7233".into()),
+            namespace: lookup("TEMPORAL_NAMESPACE").unwrap_or_else(|| "bike".into()),
+            task_queue: lookup("TEMPORAL_TASK_QUEUE").unwrap_or_else(|| "bike-strava".into()),
         }
     }
 }
 
 pub async fn connect(config: &TemporalConfig) -> Result<Client, Error> {
-    let options = ConnectionOptions::new(config.address.parse::<temporalio_client::Url>()?)
-        .identity("bike-strava-temporal")
-        .connect_timeout(Duration::from_secs(10))
-        .build();
+    connect_with_options(connection_options(config)?, &config.namespace).await
+}
+
+pub(crate) fn connection_options(config: &TemporalConfig) -> Result<ConnectionOptions, Error> {
+    Ok(
+        ConnectionOptions::new(config.address.parse::<temporalio_client::Url>()?)
+            .identity("bike-strava-temporal")
+            .connect_timeout(Duration::from_secs(10))
+            .build(),
+    )
+}
+
+pub(crate) async fn connect_with_options(
+    options: ConnectionOptions,
+    namespace: &str,
+) -> Result<Client, Error> {
     Ok(Client::new(
         Connection::connect(options).await?,
-        ClientOptions::new(config.namespace.clone()).build(),
+        ClientOptions::new(namespace.to_owned()).build(),
     )?)
 }
 
@@ -169,12 +183,29 @@ pub async fn dispatch_events(
     config: TemporalConfig,
     db: DatabaseConnection,
 ) -> Result<(), Error> {
+    let metrics = crate::handoff_metrics::HandoffMetrics::new(prometheus::default_registry())?;
+    let mut next_sample = tokio::time::Instant::now();
     loop {
-        for row in bike_core::entities::strava_events::Model::pending(&db).await? {
-            dispatch_event(&client, &config, &db, row).await?;
+        if tokio::time::Instant::now() >= next_sample {
+            if let Err(error) = metrics.sample(&db, chrono::Utc::now()).await {
+                tracing::error!(error = %error, "Strava handoff backlog sample failed");
+            }
+            next_sample = tokio::time::Instant::now() + Duration::from_secs(30);
         }
+        dispatch_pending(&client, &config, &db).await?;
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
+}
+
+async fn dispatch_pending(
+    client: &Client,
+    config: &TemporalConfig,
+    db: &DatabaseConnection,
+) -> Result<(), Error> {
+    for row in bike_core::entities::strava_events::Model::pending(db).await? {
+        dispatch_event(client, config, db, row).await?;
+    }
+    Ok(())
 }
 
 async fn dispatch_event(
@@ -215,3 +246,6 @@ pub(crate) fn handoff_span(
         strava_activity_id = row.activity_id, temporal_namespace = config.namespace,
         temporal_workflow_id = row.workflow_id)
 }
+
+#[cfg(test)]
+mod tests;

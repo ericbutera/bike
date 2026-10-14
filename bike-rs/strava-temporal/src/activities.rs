@@ -369,3 +369,39 @@ fn activity_error(error: WorkflowError) -> ActivityError {
         .build()
         .into()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn provider_rate_limits_retry_but_invalid_requests_are_terminal() {
+        for (status, terminal) in [(400, true), (404, true), (429, false), (500, false)] {
+            let mut error = WorkflowError::internal("fixture failure");
+            error.status = status.try_into().unwrap();
+            let ActivityError::Application(failure) = activity_error(error) else {
+                panic!("Expected application failure")
+            };
+            assert_eq!(failure.is_non_retryable(), terminal);
+            assert_eq!(failure.type_name(), Some("StravaOperationFailure"));
+        }
+    }
+
+    #[test]
+    fn provider_retry_time_is_retained_and_expired_delays_have_a_one_second_minimum() {
+        for seconds in [120, -120] {
+            let mut error = WorkflowError::bad_request("fixture provider pause");
+            error.retry_at = Some(chrono::Utc::now() + chrono::Duration::seconds(seconds));
+            let ActivityError::Application(failure) = activity_error(error) else {
+                panic!("Expected application failure")
+            };
+            assert!(!failure.is_non_retryable());
+            let delay = failure.next_retry_delay().unwrap();
+            if seconds < 0 {
+                assert_eq!(delay, Duration::from_secs(1));
+            } else {
+                assert!(delay > Duration::from_secs(100));
+            }
+        }
+    }
+}

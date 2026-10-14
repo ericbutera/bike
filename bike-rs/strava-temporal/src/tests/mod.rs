@@ -1,7 +1,7 @@
 mod activity;
 mod collection;
 mod disconnect;
-mod fixture;
+pub(crate) mod fixture;
 mod handlers;
 mod logging;
 mod runtime;

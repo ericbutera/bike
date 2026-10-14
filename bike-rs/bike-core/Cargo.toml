@@ -10,6 +10,9 @@ path = "src/lib.rs"
 [lints]
 workspace = true
 
+[features]
+test-fixtures = []
+
 [dependencies]
 async-trait = { workspace = true }
 cron = "0.12"
