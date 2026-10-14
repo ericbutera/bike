@@ -1,8 +1,8 @@
 {
-  "commit": "ab2314985b2253ddd78e984ec670094cd2449298",
-  "created_at": "2026-10-14T19:43:19Z",
-  "base_revision": "9c6dfc844578160d456898a7995f2c29b5016059",
-  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/410",
+  "commit": "13e1e78e59c384f43afc08ac846720779665358a",
+  "created_at": "2026-10-14T20:15:58Z",
+  "base_revision": "ab2314985b2253ddd78e984ec670094cd2449298",
+  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/413",
   "minimum_changed_line_percent": 80,
   "projects": {
     "api": {
@@ -23,8 +23,8 @@
       "language": "Rust",
       "source": "bike-rs/worker",
       "lines": 792,
-      "covered": 384,
-      "percent": 48.48484848484848,
+      "covered": 386,
+      "percent": 48.73737373737374,
       "changed": {
         "lines": 0,
         "covered": 0,
