@@ -16,6 +16,6 @@ export default defineConfig([
     ".next/**",
     ".artifacts/**",
     "next-env.d.ts",
-    "lib/openapi/react-query/api.d.ts",
+    "lib/openapi/react-query/api.ts",
   ]),
 ]);

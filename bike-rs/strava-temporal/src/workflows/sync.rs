@@ -31,9 +31,10 @@ impl SyncActivities {
         let result = match collection::upsert_pages(ctx, input).await? {
             collection::CollectionStep::Completed(result) => result,
             collection::CollectionStep::Continue(event) => {
+                options::validate_input(ctx, &event)?;
                 return ctx
                     .continue_as_new(event, Default::default())
-                    .map(|never| match never {})
+                    .map(|never| match never {});
             }
         };
         run(ctx, CompleteSync, result).await

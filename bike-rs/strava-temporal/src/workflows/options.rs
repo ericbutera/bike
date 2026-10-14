@@ -19,6 +19,7 @@ pub(super) async fn start_child_workflow<W, D: WorkflowDefinition<Input = Strava
 where
     D::Output: TemporalDeserializable + 'static,
 {
+    validate_input(ctx, &event)?;
     let workflow_id = options
         .workflow_id
         .clone()
@@ -71,7 +72,11 @@ pub(super) async fn run<W, A: ActivityDefinition>(
     ctx: &mut WorkflowContext<W>,
     definition: A,
     input: A::Input,
-) -> WorkflowResult<A::Output> {
+) -> WorkflowResult<A::Output>
+where
+    A::Input: serde::Serialize,
+{
+    validate_input(ctx, &input)?;
     let name = definition.name();
     let summary = name
         .strip_prefix("strava_")
@@ -80,6 +85,16 @@ pub(super) async fn run<W, A: ActivityDefinition>(
     ctx.execute_activity(definition, input, activity(&summary))
         .await
         .map_err(termination)
+}
+
+pub(super) fn validate_input<W, T: serde::Serialize>(
+    ctx: &WorkflowContext<W>,
+    input: &T,
+) -> WorkflowResult<()> {
+    match bike_core::strava::payload::validate_temporal(input) {
+        Err(error) if ctx.patched("strava-payload-budget-v1") => Err(failure(error.to_string())),
+        _ => Ok(()),
+    }
 }
 
 pub(super) fn activity(summary: &str) -> ActivityOptions {

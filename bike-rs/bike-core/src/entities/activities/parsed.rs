@@ -78,6 +78,7 @@ impl Model {
         import: &crate::entities::activity_imports::Model,
         parsed: &ParsedActivityData,
         profile: &TrainingProfile,
+        summary: &crate::strava::provider_payload::StravaActivitySummary,
     ) -> Result<Self, WorkflowError> {
         let existing = Self::strava_activity(db, event.bike_user_id, event.activity_id()?).await?;
         let update = existing.is_some();
@@ -91,12 +92,74 @@ impl Model {
             &import.original_filename,
             "json",
             parsed,
-            build_save_data(parsed, &import.original_filename, profile)?,
+            build_strava_save_data(parsed, &import.original_filename, profile, summary)?,
         );
         if update {
             active.update(db).await.map_err(WorkflowError::from)
         } else {
             active.insert(db).await.map_err(WorkflowError::from)
+        }
+    }
+}
+
+fn build_strava_save_data(
+    parsed: &ParsedActivityData,
+    filename: &str,
+    profile: &TrainingProfile,
+    summary: &crate::strava::provider_payload::StravaActivitySummary,
+) -> Result<ActivitySaveData, WorkflowError> {
+    let mut data = build_save_data(parsed, filename, profile)?;
+    data.derived_data_json = data
+        .derived_data_json
+        .with_source_metadata(summary.source_metadata());
+    if !crate::activity_sport::is_bike_activity_sport(&parsed.draft.sport) {
+        data.estimated_ftp_watts = None;
+        data.heart_rate_zones_json = None;
+    }
+    Ok(data)
+}
+
+#[cfg(test)]
+mod strava_native_unit {
+    use super::*;
+
+    #[test]
+    fn summary_storage_preserves_gear_and_description_and_excludes_non_cycling_training() {
+        use crate::strava::provider_payload::{
+            parse_strava_provider_payload, StoredStravaProviderPayload,
+        };
+        let mut payload: StoredStravaProviderPayload =
+            serde_json::from_slice(crate::strava::fixtures::REAL_RIDE).unwrap();
+        payload.activity.additional_fields.insert(
+            "description".into(),
+            serde_json::json!("Fixture description"),
+        );
+        payload.activity.additional_fields.insert(
+            "gear".into(),
+            serde_json::json!({"id":"fixture-bike","name":"Fixture bicycle"}),
+        );
+        for sport in ["Ride", "Walk", "Swim", "Workout"] {
+            payload.activity.sport_type = Some(sport.into());
+            let parsed =
+                parse_strava_provider_payload(&serde_json::to_vec(&payload).unwrap()).unwrap();
+            let profile = TrainingProfile {
+                estimated_ftp_watts: Some(250),
+                ..Default::default()
+            };
+            let saved =
+                build_strava_save_data(&parsed, "fixture.json", &profile, &payload.activity)
+                    .unwrap();
+            let json = serde_json::to_vec(&saved.derived_data_json).unwrap();
+            let restored: crate::activity_data::StoredActivityDerivedData =
+                serde_json::from_slice(&json).unwrap();
+            assert_eq!(
+                restored.source_metadata(),
+                Some(&payload.activity.source_metadata())
+            );
+            if sport != "Ride" {
+                assert!(saved.estimated_ftp_watts.is_none());
+                assert!(saved.heart_rate_zones_json.is_none());
+            }
         }
     }
 }

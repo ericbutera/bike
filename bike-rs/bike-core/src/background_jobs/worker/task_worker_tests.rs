@@ -206,7 +206,7 @@ async fn worker_restores_trace_and_pipeline_across_retry_and_handoff() {
 
 fn upload_trace_context(trace_id: &str) -> PipelineContext {
     let mut origin = PipelineContext::received("upload", Some("request-handoff".into()));
-    origin.trace_context = Some(HashMap::from([(
+    origin.trace_context = Some(crate::observability::TraceContextCarrier::from([(
         "traceparent".into(),
         format!("00-{trace_id}-0202020202020202-01"),
     )]));

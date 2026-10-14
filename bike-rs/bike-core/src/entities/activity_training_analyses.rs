@@ -27,6 +27,18 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
 
+impl Model {
+    pub async fn clear_for_non_cycling(
+        db: &impl ConnectionTrait,
+        activity: &super::activities::Model,
+    ) -> Result<(), DbErr> {
+        if !activity.is_bike_activity() {
+            Entity::delete_by_id(activity.id).exec(db).await?;
+        }
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl ActiveModelBehavior for ActiveModel {
     async fn before_save<C>(mut self, _db: &C, insert: bool) -> Result<Self, DbErr>

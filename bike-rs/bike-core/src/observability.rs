@@ -7,7 +7,7 @@ use opentelemetry_otlp::{Protocol, WithExportConfig};
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::trace::{Sampler, SdkTracerProvider, TracerProviderBuilder};
 use opentelemetry_sdk::Resource;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use tracing::field;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use tracing_subscriber::filter::dynamic_filter_fn;
@@ -16,7 +16,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::Layer as _;
 
-pub type TraceContextCarrier = HashMap<String, String>;
+pub type TraceContextCarrier = BTreeMap<String, String>;
 
 pub struct ObservabilityGuard {
     tracer_provider: Option<SdkTracerProvider>,

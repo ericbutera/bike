@@ -132,6 +132,8 @@ Do not start commits with the word add (eg: `feat: added architecture diagram`),
   SDK invocation and error adaptation instead of repeating that plumbing.
 - Verify changed behavior with focused happy-path coverage and regression
   checks for observed bugs. Distinguish local, CI, and deployed evidence.
+- Pair bug fixes with small unit tests that reproduce the failure and verify
+  the corrected behavior. Reuse existing mocks and fixtures.
 - Keep prek commands, filters, tool/version pins, and required hook stages
   aligned with mise tasks and CI. Update affected enforcement in the same
   change as quality tooling; validate and run hooks without bypassing them.

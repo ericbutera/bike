@@ -71,6 +71,7 @@ impl WebhookIntake {
         event.strava_activity_id = (webhook.object_type == "activity").then_some(webhook.object_id);
         event.webhook = Some(webhook.clone());
         event.request_id = request_id;
+        super::super::payload::validate_temporal(&event)?;
         store.accept(event).await.map(Some)
     }
 
@@ -184,6 +185,7 @@ async fn accept(
     db: &DatabaseConnection,
     event: StravaEvent,
 ) -> Result<strava_events::Model, WorkflowError> {
+    super::super::payload::validate_temporal(&event)?;
     let row = strava_events::Model::accept(db, &event).await?;
     tracing::info!(correlation_id = row.correlation_id, strava_event_id = row.id,
         bike_customer_id = %row.customer_id, bike_user_id = row.user_id,

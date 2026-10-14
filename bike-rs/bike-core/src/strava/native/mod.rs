@@ -92,7 +92,12 @@ impl StravaOperations {
     ) -> Result<ActivitySources, WorkflowError> {
         let activity: StravaActivitySummary = self.store.read_json(&input.activity).await?;
         self.connection(&input.event).await?;
-        let streams = if strava_activity_is_bike(&activity) {
+        let manual = activity
+            .additional_fields
+            .get("manual")
+            .and_then(serde_json::Value::as_bool)
+            == Some(true);
+        let streams = if strava_activity_is_bike(&activity) && !manual {
             self.provider.streams(&input.event).await?
         } else {
             self.store
@@ -126,19 +131,6 @@ impl StravaOperations {
             .store
             .read_json::<StravaActivityStreams>(&input.streams)
             .await?;
-        if !strava_activity_is_bike(&activity) {
-            let payload =
-                super::provider_payload::StoredStravaProviderPayload::new(activity, streams);
-            let source = self
-                .store
-                .transform(&self.key(&input.event, "normalized-source"), &payload)
-                .await?;
-            return Ok(NormalizedActivity {
-                event: input.event,
-                source,
-                parsed: None,
-            });
-        }
         let upload = super::build_activity_upload(&activity, &streams)?;
         let parsed = crate::activity_parser::parse_activity_artifact(
             crate::activity_parser::ActivityParserArtifact {
@@ -218,6 +210,7 @@ impl StravaOperations {
     }
 
     pub async fn accept_child(&self, event: StravaEvent) -> Result<StravaEvent, WorkflowError> {
+        super::payload::validate_temporal(&event)?;
         self.connection(&event).await?;
         let stored = crate::entities::strava_events::Model::accept(&self.db, &event).await?;
         let event = serde_json::from_value(stored.event.clone())

@@ -110,7 +110,10 @@ export type ActivityTrainingAnalysis = {
   sustained_climb_count: number;
 };
 
-export type Activity = {
+export type Activity = Pick<
+  components["schemas"]["ActivityResponse"],
+  "description" | "gear"
+> & {
   activity_import_id?: number | null;
   id: number;
   title: string;

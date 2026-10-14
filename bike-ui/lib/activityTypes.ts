@@ -1,39 +1,41 @@
-export const ACTIVITY_TYPES = {
-  Training: "training",
-  Race: "race",
-} as const;
+import { activityTypeValues, type components } from "./openapi/react-query/api";
 
-export type ActivityType = (typeof ACTIVITY_TYPES)[keyof typeof ACTIVITY_TYPES];
+export type ActivityType = components["schemas"]["ActivityType"];
 
-export const ACTIVITY_TYPE_OPTIONS = [
-  {
-    value: ACTIVITY_TYPES.Training,
+export const ACTIVITY_TYPES = Object.fromEntries(
+  activityTypeValues.map((value) => [
+    value.charAt(0).toUpperCase() + value.slice(1),
+    value,
+  ]),
+) as { [Value in ActivityType as Capitalize<Value>]: Value };
+
+const activityTypePresentation = {
+  training: {
     label: "Training",
-    description: "Counts as training volume and progression.",
+    description:
+      "Cycling activities count toward training volume and progression.",
   },
-  {
-    value: ACTIVITY_TYPES.Race,
+  race: {
     label: "Race",
-    description: "Treated as an outcome for XC race insights.",
+    description: "Cycling races are outcomes for XC race insights.",
   },
-] satisfies Array<{
-  value: ActivityType;
-  label: string;
-  description: string;
-}>;
+} satisfies Record<ActivityType, { label: string; description: string }>;
+
+export const ACTIVITY_TYPE_OPTIONS = activityTypeValues.map((value) => ({
+  value,
+  ...activityTypePresentation[value],
+}));
 
 export function normalizeActivityType(
   value: ActivityType | string | null | undefined,
 ): ActivityType {
-  return value === ACTIVITY_TYPES.Race
-    ? ACTIVITY_TYPES.Race
+  return activityTypeValues.includes(value as ActivityType)
+    ? (value as ActivityType)
     : ACTIVITY_TYPES.Training;
 }
 
 export function formatActivityTypeLabel(
   value: ActivityType | string | null | undefined,
 ) {
-  return normalizeActivityType(value) === ACTIVITY_TYPES.Race
-    ? "Race"
-    : "Training";
+  return activityTypePresentation[normalizeActivityType(value)].label;
 }

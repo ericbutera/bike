@@ -43,6 +43,9 @@ pub struct WorkflowMock {
     commands: Rc<Commands>,
     completion: Option<WorkflowCompletion>,
     replaying: bool,
+    activations: Vec<WorkflowActivation>,
+    issued: Vec<WorkflowCommand>,
+    continue_as_new_suggested: bool,
 }
 impl WorkflowMock {
     pub fn new<W>(input: <W::Run as WorkflowDefinition>::Input) -> Self
@@ -54,6 +57,18 @@ impl WorkflowMock {
     }
 
     pub fn with_replay<W>(input: <W::Run as WorkflowDefinition>::Input, replaying: bool) -> Self
+    where
+        W: WorkflowImplementation + Default,
+        <W::Run as WorkflowDefinition>::Input: Send,
+    {
+        Self::with_patches::<W>(input, replaying, vec![])
+    }
+
+    fn with_patches<W>(
+        input: <W::Run as WorkflowDefinition>::Input,
+        replaying: bool,
+        patches: Vec<WorkflowActivationJob>,
+    ) -> Self
     where
         W: WorkflowImplementation + Default,
         <W::Run as WorkflowDefinition>::Input: Send,
@@ -82,8 +97,21 @@ impl WorkflowMock {
             commands,
             completion: None,
             replaying,
+            activations: vec![],
+            issued: vec![],
+            continue_as_new_suggested: false,
         };
         mock.set_replaying(replaying);
+        mock.instance
+            .activate(
+                WorkflowActivation {
+                    is_replaying: replaying,
+                    jobs: patches,
+                    ..Default::default()
+                },
+                Waker::noop(),
+            )
+            .unwrap();
         mock.poll();
         mock
     }
@@ -94,11 +122,68 @@ impl WorkflowMock {
             .activate(
                 WorkflowActivation {
                     is_replaying: replaying,
+                    continue_as_new_suggested: self.continue_as_new_suggested,
                     ..Default::default()
                 },
                 Waker::noop(),
             )
             .unwrap();
+    }
+
+    /// Reconstruct an evicted worker's state from recorded completions.
+    /// Historical commands must match exactly; dependencies are never called.
+    pub fn restart<W>(self, input: <W::Run as WorkflowDefinition>::Input) -> Self
+    where
+        W: WorkflowImplementation + Default,
+        <W::Run as WorkflowDefinition>::Input: Send,
+    {
+        assert!(
+            self.completion.is_none(),
+            "Only restart an unfinished workflow"
+        );
+        let patches = self
+            .issued
+            .iter()
+            .filter_map(|command| match &command.variant {
+                Some(workflow_command::Variant::SetPatchMarker(marker)) => {
+                    Some(WorkflowActivationJob {
+                        variant: Some(Variant::NotifyHasPatch(
+                            workflow_activation::NotifyHasPatch {
+                                patch_id: marker.patch_id.clone(),
+                            },
+                        )),
+                    })
+                }
+                _ => None,
+            })
+            .collect();
+        let mut restarted = Self::with_patches::<W>(input, true, patches);
+        for mut activation in self.activations {
+            activation.is_replaying = true;
+            restarted.apply_activation(activation);
+        }
+        for expected in self.issued {
+            assert_eq!(
+                restarted.pop_command(),
+                expected,
+                "Replay changed a command"
+            );
+        }
+        assert_eq!(
+            *restarted.commands.0.borrow(),
+            *self.commands.0.borrow(),
+            "Replay changed pending work"
+        );
+        restarted.set_replaying(false);
+        restarted
+    }
+
+    pub fn assert_failure_message(&self, expected: &str) {
+        self.assert_failed();
+        let Some(WorkflowCompletion::Failed(failure)) = &self.completion else {
+            unreachable!()
+        };
+        assert!(failure.message.contains(expected), "{}", failure.message);
     }
 
     pub fn activity(&mut self, name: &str, input: &impl Serialize, output: &impl Serialize) {
@@ -158,7 +243,7 @@ impl WorkflowMock {
         ));
     }
 
-    pub fn start_child(&mut self, name: &str, input: &StravaEvent) -> u32 {
+    fn child_command(&mut self, name: &str, input: &StravaEvent) -> u32 {
         let workflow_command::Variant::StartChildWorkflowExecution(command) = self.next_command()
         else {
             panic!("Expected child {name}")
@@ -187,7 +272,11 @@ impl WorkflowMock {
                 id.to_string()
             );
         }
-        let seq = command.seq;
+        command.seq
+    }
+
+    pub fn start_child(&mut self, name: &str, input: &StravaEvent) -> u32 {
+        let seq = self.child_command(name, input);
         self.activate(Variant::ResolveChildWorkflowExecutionStart(
             workflow_activation::ResolveChildWorkflowExecutionStart {
                 seq,
@@ -201,6 +290,31 @@ impl WorkflowMock {
             },
         ));
         seq
+    }
+
+    pub fn fail_child_start(&mut self, name: &str, input: &StravaEvent) {
+        let seq = self.child_command(name, input);
+        self.activate(Variant::ResolveChildWorkflowExecutionStart(
+            workflow_activation::ResolveChildWorkflowExecutionStart {
+                seq,
+                status: Some(
+                    workflow_activation::resolve_child_workflow_execution_start::Status::Failed(
+                        workflow_activation::ResolveChildWorkflowExecutionStartFailure {
+                            cause: child_workflow::StartChildWorkflowExecutionFailedCause::WorkflowAlreadyExists as i32,
+                            ..Default::default()
+                        },
+                    ),
+                ),
+            },
+        ));
+    }
+
+    pub fn suggest_continue_as_new(&mut self) {
+        self.apply_activation(WorkflowActivation {
+            is_replaying: self.replaying,
+            continue_as_new_suggested: true,
+            ..Default::default()
+        });
     }
 
     pub fn complete_child(&mut self, seq: u32, output: &impl Serialize) {
@@ -302,25 +416,29 @@ impl WorkflowMock {
         self.pop_command().variant.unwrap()
     }
     fn pop_command(&mut self) -> WorkflowCommand {
-        self.commands
+        let command = self
+            .commands
             .0
             .borrow_mut()
             .pop_front()
-            .expect("Expected a mocked dependency call")
+            .expect("Expected a mocked dependency call");
+        self.issued.push(command.clone());
+        command
     }
     fn activate(&mut self, variant: Variant) {
-        self.instance
-            .activate(
-                WorkflowActivation {
-                    is_replaying: self.replaying,
-                    jobs: vec![WorkflowActivationJob {
-                        variant: Some(variant),
-                    }],
-                    ..Default::default()
-                },
-                Waker::noop(),
-            )
-            .unwrap();
+        self.apply_activation(WorkflowActivation {
+            is_replaying: self.replaying,
+            continue_as_new_suggested: self.continue_as_new_suggested,
+            jobs: vec![WorkflowActivationJob {
+                variant: Some(variant),
+            }],
+            ..Default::default()
+        });
+    }
+    fn apply_activation(&mut self, activation: WorkflowActivation) {
+        self.continue_as_new_suggested = activation.continue_as_new_suggested;
+        self.activations.push(activation.clone());
+        self.instance.activate(activation, Waker::noop()).unwrap();
         self.poll();
     }
     fn poll(&mut self) {
@@ -331,6 +449,14 @@ impl WorkflowMock {
             .completion
         {
             self.completion = Some(*completion);
+        }
+        while self.commands.0.borrow().front().is_some_and(|command| {
+            matches!(
+                command.variant,
+                Some(workflow_command::Variant::SetPatchMarker(_))
+            )
+        }) {
+            self.pop_command();
         }
     }
 }

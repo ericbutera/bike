@@ -249,6 +249,32 @@ async fn registered_normalization_handler_returns_real_fixture_transforms() {
 }
 
 #[tokio::test]
+async fn large_provider_streams_are_normalized_in_storage_and_return_only_references() {
+    let fixture = Fixture::new(StravaOperation::Upsert);
+    let storage = storage(&fixture);
+    let mut input = fixture.sources();
+    let points = 150_000;
+    let streams = serde_json::json!({
+        "time": {"data": (0..points).collect::<Vec<_>>()},
+        "distance": {"data": (0..points).map(|i| i * 3).collect::<Vec<_>>()},
+        "latlng": {"data": (0..points).map(|i| [45.0, -120.0 + f64::from(i) * 0.00001]).collect::<Vec<_>>()}
+    });
+    let bytes = serde_json::to_vec(&streams).unwrap();
+    input.streams = storage.write("large-streams", &bytes).await.unwrap();
+    assert!(input.streams.bytes > 2 * 1024 * 1024);
+    let result = environment(&fixture.event, storage.clone())
+        .run(StravaActivities::normalize_activity, input.clone())
+        .await
+        .unwrap();
+    let objects = storage.objects.lock().unwrap();
+    assert_eq!(objects[&input.streams.path], bytes);
+    assert!(result.source.bytes > 2 * 1024 * 1024);
+    assert!(result.parsed.as_ref().unwrap().bytes > 2 * 1024 * 1024);
+    assert!(serde_json::to_vec(&result).unwrap().len() < 4096);
+    bike_core::strava::payload::validate_temporal(&result).unwrap();
+}
+
+#[tokio::test]
 async fn registered_handler_rejects_wrong_workflow_identity_before_external_work() {
     let fixture = Fixture::new(StravaOperation::Upsert);
     let environment = environment(&fixture.event, Arc::new(Storage::default()));

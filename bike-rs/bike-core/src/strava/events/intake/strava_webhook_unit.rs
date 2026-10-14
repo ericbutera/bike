@@ -81,6 +81,19 @@ impl WebhookStore for Store {
 }
 
 #[tokio::test]
+async fn oversized_webhook_is_rejected_before_durable_acceptance() {
+    let store = Store::new();
+    let mut webhook = store.webhook("activity", "update");
+    webhook.updates = Some(serde_json::json!({
+        "title": "x".repeat(crate::strava::payload::MAX_TEMPORAL_JSON_BYTES)
+    }));
+    let error = store.accept(&webhook).await.unwrap_err();
+    assert_eq!(error.status.as_u16(), 413);
+    assert!(store.events.lock().unwrap().is_empty());
+    assert_eq!(*store.calls.lock().unwrap(), vec!["connection", "customer"]);
+}
+
+#[tokio::test]
 async fn supported_unsigned_events_keep_customer_activity_and_request_identity() {
     let store = Store::new();
     for (aspect, expected) in [

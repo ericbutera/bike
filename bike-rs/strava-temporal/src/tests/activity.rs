@@ -6,6 +6,28 @@ use bike_core::strava::{events::StravaOperation, native::ActivityChange};
 use temporalio_workflow::common::WorkflowDefinition;
 
 #[test]
+fn restarted_upsert_replays_persisted_steps_and_resumes_publication() {
+    let fixture = Fixture::new(StravaOperation::Upsert);
+    let change = fixture.change(ActivityStatus::Applied);
+    let mut workflow = WorkflowMock::new::<UpsertActivity>(fixture.event.clone());
+    persist(&mut workflow, &fixture, &change);
+    let mut workflow = workflow.restart::<UpsertActivity>(fixture.event.clone());
+    for activity in [
+        StravaActivities::rebuild_activity.name(),
+        StravaActivities::rebuild_segments.name(),
+        StravaActivities::rebuild_fitness.name(),
+        StravaActivities::publish_heatmap.name(),
+        StravaActivities::complete_activity.name(),
+    ] {
+        workflow.activity(activity, &change, &change);
+    }
+    assert_eq!(
+        workflow.result::<ActivityChange>().bike_activity_id,
+        Some(42)
+    );
+}
+
+#[test]
 fn create_uses_an_upsert_child_and_returns_its_bike_activity_id() {
     let fixture = Fixture::new(StravaOperation::Create);
     let mut workflow = WorkflowMock::new::<CreateActivity>(fixture.event.clone());

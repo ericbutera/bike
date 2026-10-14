@@ -5293,6 +5293,16 @@
                 }
               }
             }
+          },
+          "413": {
+            "description": "Strava event exceeds the 256 KiB Temporal JSON budget",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -5950,6 +5960,23 @@
           "heart_rate_bpm": 148,
           "power_watts": 235,
           "speed_mps": 6.4
+        }
+      },
+      "ActivityGear": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         }
       },
       "ActivityHeartRateZoneSummary": {
@@ -6720,6 +6747,12 @@
               "$ref": "#/components/schemas/ActivityChartPoint"
             }
           },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "distance_meters": {
             "type": [
               "number",
@@ -6765,6 +6798,16 @@
               "null"
             ],
             "example": "fit"
+          },
+          "gear": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ActivityGear"
+              }
+            ]
           },
           "heart_rate_zones": {
             "type": "array",
@@ -7098,7 +7141,9 @@
           "hike",
           "mountain_bike",
           "indoor_trainer_ride",
-          "road_ride"
+          "road_ride",
+          "swim",
+          "workout"
         ],
         "example": "road_ride"
       },
@@ -9275,6 +9320,12 @@
                     "$ref": "#/components/schemas/ActivityChartPoint"
                   }
                 },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "distance_meters": {
                   "type": [
                     "number",
@@ -9320,6 +9371,16 @@
                     "null"
                   ],
                   "example": "fit"
+                },
+                "gear": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ActivityGear"
+                    }
+                  ]
                 },
                 "heart_rate_zones": {
                   "type": "array",

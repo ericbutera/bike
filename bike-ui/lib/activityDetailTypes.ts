@@ -1,3 +1,5 @@
+import type { components } from "./openapi/react-query/api";
+
 export type ActivityRoutePoint = {
   elapsed_seconds: number;
   latitude: number;
@@ -51,7 +53,10 @@ export type ActivityLap = {
   max_heart_rate_bpm?: number | null;
 };
 
-export type Activity = {
+export type Activity = Pick<
+  components["schemas"]["ActivityResponse"],
+  "description" | "gear"
+> & {
   id: number;
   title: string;
   sport: string;

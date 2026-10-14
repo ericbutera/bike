@@ -49,6 +49,7 @@ impl DisconnectStrava {
             options::execute_child_workflow(ctx, DeleteActivity::run, child, options).await?;
         }
         if more {
+            options::validate_input(ctx, &event)?;
             return ctx
                 .continue_as_new(event, Default::default())
                 .map(|never| match never {});

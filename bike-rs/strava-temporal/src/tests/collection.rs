@@ -186,7 +186,7 @@ fn assert_event_log(fields: &serde_json::Value, event: &StravaEvent) {
     assert_eq!(fields["temporal_namespace"], "bike");
 }
 
-fn open_collection(workflow: &mut WorkflowMock, fixture: &Fixture) -> CollectionInput {
+pub(super) fn open_collection(workflow: &mut WorkflowMock, fixture: &Fixture) -> CollectionInput {
     let mut input = fixture.collection();
     workflow.activity(
         StravaActivities::collection_window.name(),
@@ -197,7 +197,11 @@ fn open_collection(workflow: &mut WorkflowMock, fixture: &Fixture) -> Collection
     input
 }
 
-fn accept_child(workflow: &mut WorkflowMock, parent: &StravaEvent, id: i64) -> StravaEvent {
+pub(super) fn accept_child(
+    workflow: &mut WorkflowMock,
+    parent: &StravaEvent,
+    id: i64,
+) -> StravaEvent {
     let child = parent.for_activity(id, StravaOperation::Upsert);
     workflow.activity(
         StravaActivities::accept_child.name(),

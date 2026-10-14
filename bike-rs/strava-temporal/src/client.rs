@@ -138,6 +138,7 @@ pub async fn start_event(
     config: &TemporalConfig,
     event: StravaEvent,
 ) -> Result<Option<String>, Error> {
+    bike_core::strava::payload::validate_temporal(&event)?;
     let options = start_options(config, &event);
     let result = match event.operation {
         StravaOperation::Create => client

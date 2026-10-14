@@ -22,24 +22,18 @@ impl StravaOperations {
         let summary: super::super::provider_payload::StoredStravaProviderPayload =
             serde_json::from_slice(&bytes)
                 .map_err(|error| WorkflowError::bad_request(error.to_string()))?;
-        if !super::super::provider_payload::strava_activity_is_bike(&summary.activity) {
-            return self
-                .delete_activity(self.capture_deletion(input.event).await?)
-                .await;
-        }
         let parsed_ref = input
             .parsed
             .as_ref()
-            .ok_or_else(|| WorkflowError::bad_request("Cycling activity has no normalized data"))?;
+            .ok_or_else(|| WorkflowError::bad_request("Strava activity has no normalized data"))?;
         let parsed: ParsedActivityData = self.store.read_json(parsed_ref).await?;
         let profile =
             crate::training_profile::load_training_profile(&self.db, input.event.bike_user_id)
                 .await?;
-        self.persist_bike_activity(input, parsed, summary, profile)
-            .await
+        self.persist_summary(input, parsed, summary, profile).await
     }
 
-    async fn persist_bike_activity(
+    async fn persist_summary(
         &self,
         input: NormalizedActivity,
         parsed: ParsedActivityData,
@@ -87,9 +81,15 @@ impl StravaOperations {
             &upload,
         )
         .await?;
-        let saved =
-            activities::Model::save_parsed_strava(&txn, &input.event, &import, &parsed, &profile)
-                .await?;
+        let saved = activities::Model::save_parsed_strava(
+            &txn,
+            &input.event,
+            &import,
+            &parsed,
+            &profile,
+            &summary.activity,
+        )
+        .await?;
         strava_activity_states::Model::apply_event(
             &txn,
             &input.event,
@@ -98,25 +98,42 @@ impl StravaOperations {
         )
         .await?;
         let dirty_from =
-            existing
-                .as_ref()
-                .map_or(parsed.draft.started_at.date_naive(), |activity| {
-                    activity
-                        .started_at
-                        .date_naive()
-                        .min(parsed.draft.started_at.date_naive())
-                });
+            Self::mark_fitness_change(&txn, &input.event, &parsed.draft, existing.as_ref()).await?;
+        let mut change = ActivityChange::applied(
+            input.event,
+            saved.id,
+            import.id,
+            parsed.draft.started_at.date_naive(),
+        );
+        change.dirty_from = dirty_from;
+        strava_events::Model::record_mutation(&txn, &change).await?;
+        txn.commit().await?;
+        Ok(change)
+    }
+
+    async fn mark_fitness_change(
+        db: &impl sea_orm::ConnectionTrait,
+        event: &StravaEvent,
+        draft: &crate::activity_summary::ActivityDraft,
+        previous: Option<&activities::Model>,
+    ) -> Result<Option<chrono::NaiveDate>, WorkflowError> {
+        let cycling_changed = crate::activity_sport::is_bike_activity_sport(&draft.sport)
+            || previous.is_some_and(activities::Model::is_bike_activity);
+        if !cycling_changed {
+            return Ok(None);
+        }
+        let started_on = draft.started_at.date_naive();
+        let dirty_from = previous.map_or(started_on, |activity| {
+            activity.started_at.date_naive().min(started_on)
+        });
         crate::analytics::mark_user_fitness_dirty(
-            &txn,
-            input.event.bike_user_id,
+            db,
+            event.bike_user_id,
             dirty_from,
             chrono::Utc::now(),
         )
         .await?;
-        let change = ActivityChange::applied(input.event, saved.id, import.id, dirty_from);
-        strava_events::Model::record_mutation(&txn, &change).await?;
-        txn.commit().await?;
-        Ok(change)
+        Ok(Some(dirty_from))
     }
 
     async fn persist_unchanged(
@@ -128,7 +145,9 @@ impl StravaOperations {
         change.event.bike_activity_id = Some(activity.id);
         change.bike_activity_id = Some(activity.id);
         change.import_id = activity.activity_import_id;
-        change.dirty_from = Some(activity.started_at.date_naive());
+        change.dirty_from = activity
+            .is_bike_activity()
+            .then_some(activity.started_at.date_naive());
         strava_activity_states::Model::apply_event(
             db,
             &input.event,
@@ -164,7 +183,9 @@ impl StravaOperations {
             bike_activity_id: Some(activity.id),
             import_id: activity.activity_import_id,
             segment_ids,
-            dirty_from: Some(activity.started_at.date_naive()),
+            dirty_from: activity
+                .is_bike_activity()
+                .then_some(activity.started_at.date_naive()),
             removed_source: None,
         })
     }
@@ -230,11 +251,13 @@ impl StravaOperations {
             return Ok(());
         };
         let started_on = activity.started_at.date_naive();
-        change.dirty_from = Some(
-            change
-                .dirty_from
-                .map_or(started_on, |day| day.min(started_on)),
-        );
+        if activity.is_bike_activity() {
+            change.dirty_from = Some(
+                change
+                    .dirty_from
+                    .map_or(started_on, |day| day.min(started_on)),
+            );
+        }
         change.bike_activity_id = Some(activity.id);
         change.event.bike_activity_id = Some(activity.id);
         let deleted = crate::activity_lifecycle::delete_activity_records(
@@ -299,11 +322,17 @@ impl StravaOperations {
                 )
                 .await?;
                 crate::analytics::rebuild_activity_analytics_cache(&txn, &[id]).await?;
-                crate::activity_training_analysis::rebuild_activity_training_analysis_cache(
-                    &txn,
-                    &[id],
+                crate::entities::activity_training_analyses::Model::clear_for_non_cycling(
+                    &txn, &activity,
                 )
                 .await?;
+                if activity.is_bike_activity() {
+                    crate::activity_training_analysis::rebuild_activity_training_analysis_cache(
+                        &txn,
+                        &[id],
+                    )
+                    .await?;
+                }
             }
         }
         txn.commit().await?;

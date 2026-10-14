@@ -21,6 +21,11 @@ struct CustomerSync {
     child: StartedSync,
     log: ChildLog,
 }
+#[derive(Default)]
+struct CustomerChildren {
+    started: Vec<CustomerSync>,
+    failed: u32,
+}
 #[workflow_methods]
 impl ScheduledSync {
     #[run]
@@ -31,6 +36,7 @@ impl ScheduledSync {
         let request = Self::get_request(request, ctx.run_id())?;
         logging::scan_started(ctx, &request);
         let result = Self::scan(ctx, request.clone()).await;
+        let result = options::workflow_result(ctx, result);
         logging::scan_finished(ctx, &request, &result);
         result
     }
@@ -38,7 +44,8 @@ impl ScheduledSync {
     async fn scan(ctx: &mut WorkflowContext<Self>, mut request: ScanRequest) -> WorkflowResult<()> {
         let page = Self::get_page(ctx, &request).await?;
         let children = Self::get_children(ctx, page.events).await?;
-        request.failed_customers += Self::complete_children(ctx, children).await;
+        request.failed_customers += children.failed;
+        request.failed_customers += Self::complete_children(ctx, children.started).await;
         Self::finish_page(ctx, request, page.next_connection_id)
     }
 
@@ -64,16 +71,23 @@ impl ScheduledSync {
     async fn get_children(
         ctx: &mut WorkflowContext<Self>,
         events: Vec<StravaEvent>,
-    ) -> WorkflowResult<Vec<CustomerSync>> {
-        let mut children = Vec::new();
+    ) -> WorkflowResult<CustomerChildren> {
+        let mut children = CustomerChildren::default();
         for event in events {
             let options = ChildWorkflowOptions::builder()
                 .workflow_id(event.workflow_id())
                 .search_attributes(crate::client::search_attributes(&event))
                 .build();
-            let (child, log) =
-                options::start_child_workflow(ctx, SyncActivities::run, event, options).await?;
-            children.push(CustomerSync { child, log });
+            match options::start_child_workflow(ctx, SyncActivities::run, event, options).await {
+                Ok((child, log)) => children.started.push(CustomerSync { child, log }),
+                Err(error) if ctx.cancellation_token().is_cancelled() => return Err(error),
+                Err(error) => {
+                    if !ctx.patched("strava-scheduled-start-failure-v1") {
+                        return Err(error);
+                    }
+                    children.failed += 1;
+                }
+            }
         }
         Ok(children)
     }
@@ -116,13 +130,12 @@ impl ScheduledSync {
         request: ScanRequest,
         after_connection_id: i32,
     ) -> WorkflowResult<()> {
-        ctx.continue_as_new(
-            Some(ScanRequest {
-                after_connection_id,
-                ..request
-            }),
-            Default::default(),
-        )
-        .map(|never| match never {})
+        let request = Some(ScanRequest {
+            after_connection_id,
+            ..request
+        });
+        options::validate_input(ctx, &request)?;
+        ctx.continue_as_new(request, Default::default())
+            .map(|never| match never {})
     }
 }

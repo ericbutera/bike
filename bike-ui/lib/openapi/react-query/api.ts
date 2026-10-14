@@ -1312,6 +1312,10 @@ export interface components {
        */
       speed_mps?: number | null;
     };
+    ActivityGear: {
+      id: string;
+      name?: string | null;
+    };
     /**
      * @example {
      *       "duration_seconds": 1800,
@@ -1799,6 +1803,7 @@ export interface components {
       /** @example true */
       can_regenerate?: boolean;
       chart_points?: components["schemas"]["ActivityChartPoint"][];
+      description?: string | null;
       /**
        * Format: double
        * @example 25430.5
@@ -1823,6 +1828,7 @@ export interface components {
       estimated_ftp_watts?: number | null;
       /** @example fit */
       format?: string | null;
+      gear?: null | components["schemas"]["ActivityGear"];
       heart_rate_zones?: components["schemas"]["ActivityHeartRateZoneSummary"][];
       /**
        * Format: int32
@@ -2005,7 +2011,9 @@ export interface components {
       | "hike"
       | "mountain_bike"
       | "indoor_trainer_ride"
-      | "road_ride";
+      | "road_ride"
+      | "swim"
+      | "workout";
     ActivityTrainingAnalysisResponse: {
       /** Format: double */
       aerobic_decoupling_percent?: number | null;
@@ -2916,6 +2924,7 @@ export interface components {
         /** @example true */
         can_regenerate?: boolean;
         chart_points?: components["schemas"]["ActivityChartPoint"][];
+        description?: string | null;
         /**
          * Format: double
          * @example 25430.5
@@ -2940,6 +2949,7 @@ export interface components {
         estimated_ftp_watts?: number | null;
         /** @example fit */
         format?: string | null;
+        gear?: null | components["schemas"]["ActivityGear"];
         heart_rate_zones?: components["schemas"]["ActivityHeartRateZoneSummary"][];
         /**
          * Format: int32
@@ -9485,6 +9495,15 @@ export interface operations {
           "application/json": components["schemas"]["MessageResponse"];
         };
       };
+      /** @description Strava event exceeds the 256 KiB Temporal JSON budget */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
     };
   };
   get_dh_goal_progress: {
@@ -9753,3 +9772,170 @@ export interface operations {
     };
   };
 }
+type FlattenedDeepRequired<T> = {
+  [K in keyof T]-?: FlattenedDeepRequired<
+    T[K] extends unknown[] | undefined | null
+      ? Extract<T[K], unknown[]>[number]
+      : T[K]
+  >;
+};
+type ReadonlyArray<T> = [Exclude<T, undefined>] extends [unknown[]]
+  ? Readonly<Exclude<T, undefined>>
+  : Readonly<Exclude<T, undefined>[]>;
+export const activityRideFocusValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["ActivityRideFocus"]
+> = ["xc_endurance", "mixed_xc", "dh_session", "other"];
+export const activitySportValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["ActivitySport"]
+> = [
+  "run",
+  "walk",
+  "hike",
+  "mountain_bike",
+  "indoor_trainer_ride",
+  "road_ride",
+  "swim",
+  "workout",
+];
+export const activityTypeValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["ActivityType"]
+> = ["training", "race"];
+export const reassessmentTargetSourceValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["ReassessmentTargetSource"]
+> = ["saved_goal", "missing_goal"];
+export const reassessmentVerdictValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["ReassessmentVerdict"]
+> = ["on_track", "plausible_but_risky", "needs_more_evidence", "missing_data"];
+export const reportBoundaryValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["ReportBoundary"]
+> = [
+  "day",
+  "week",
+  "month",
+  "3month",
+  "6month",
+  "1year",
+  "2year",
+  "3year",
+  "5year",
+  "all",
+];
+export const reportFilterKeyValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["ReportFilterKey"]
+> = ["activity_ids", "min_duration", "min_distance"];
+export const reportIdValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["ReportId"]
+> = [
+  "ride_summary",
+  "endurance",
+  "climbing",
+  "fatigue",
+  "compare_rides",
+  "reassessment",
+  "distance",
+  "elevation",
+  "activity_type_time",
+  "aggregate_trends",
+];
+export const reportMetricDirectionValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["ReportMetricDirection"]
+> = ["higher", "lower", "neutral"];
+export const segmentModeValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["SegmentMode"]
+> = ["xc", "dh"];
+export const themeValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["Theme"]
+> = ["light", "dark"];
+export const trainingGoalDirectionValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["TrainingGoalDirection"]
+> = ["at_least", "at_most"];
+export const trainingGoalKeyValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["TrainingGoalKey"]
+> = [
+  "weekly_z2_average",
+  "weekly_climbing_average",
+  "aerobic_decoupling",
+  "dh_laps_per_session",
+  "dh_repeat_fade",
+  "dh_rolling_top3_gap",
+];
+export const trainingMetricUnitValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["TrainingMetricUnit"]
+> = [
+  "seconds",
+  "meters",
+  "percent",
+  "count",
+  "meters_per_second",
+  "meters_per_kilometer",
+  "meters_per_hour",
+];
+export const trainingRecommendationKeyValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["TrainingRecommendationKey"]
+> = [
+  "build_xc_baseline",
+  "repeat_comparable_endurance_ride",
+  "increase_endurance_volume",
+  "add_climbing_endurance",
+  "hold_steady_endurance",
+  "maintain_endurance_rhythm",
+  "recover_before_next_xc_ride",
+  "use_positive_form_for_xc_benchmark",
+  "mark_dh_segments",
+  "add_dh_repeats",
+  "reduce_dh_fade",
+  "chase_dh_consistency",
+  "maintain_dh_momentum",
+  "recover_before_next_dh_session",
+  "use_positive_form_for_dh_benchmark",
+];
+export const trainingRecommendationPriorityValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["TrainingRecommendationPriority"]
+> = ["high", "medium", "low"];
+export const variantValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["Variant"]
+> = ["thumbnail", "full"];
+export const xcEventProfileValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["XcEventProfile"]
+> = [
+  "xc_marathon",
+  "technical_singletrack",
+  "endurance_mtb",
+  "ultra_mtb",
+  "custom",
+];
+export const xcReadinessGateKeyValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["XcReadinessGateKey"]
+> = [
+  "long_ride_distance",
+  "big_climb_day",
+  "climb_density",
+  "target_finish_pace",
+  "aerobic_decoupling",
+  "recovery",
+];
+export const xcReadinessStatusValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["XcReadinessStatus"]
+> = ["on_track", "watch", "falling_behind", "missing_data"];
+export const xcTrainingDeficitKeyValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["XcTrainingDeficitKey"]
+> = [
+  "long_ride",
+  "big_climb_day",
+  "event_specificity",
+  "finish_pace",
+  "aerobic_durability",
+  "recovery",
+];
+export const xcTrainingPurposeValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["XcTrainingPurpose"]
+> = [
+  "base_endurance",
+  "climb_durability",
+  "tempo",
+  "threshold",
+  "punch_vo2",
+  "technical_fatigue",
+  "recovery",
+  "data_quality",
+];

@@ -98,6 +98,33 @@ impl StoredStravaProviderPayload {
     }
 }
 
+impl StravaActivitySummary {
+    pub fn source_metadata(&self) -> crate::activity_data::ActivitySourceMetadata {
+        let field = |name| {
+            self.additional_fields
+                .get(name)
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+        };
+        let gear = self.additional_fields.get("gear");
+        let gear_id = gear
+            .and_then(|gear| gear.get("id"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned)
+            .or_else(|| field("gear_id"));
+        crate::activity_data::ActivitySourceMetadata {
+            description: field("description"),
+            gear: gear_id.map(|id| crate::activity_data::ActivityGear {
+                id,
+                name: gear
+                    .and_then(|gear| gear.get("name"))
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned),
+            }),
+        }
+    }
+}
+
 pub fn parse_strava_provider_payload(bytes: &[u8]) -> Result<ParsedActivityData, AppError> {
     let payload: StoredStravaProviderPayload = serde_json::from_slice(bytes).map_err(|error| {
         AppError::validation_field(
@@ -117,16 +144,6 @@ pub fn parse_strava_provider_payload(bytes: &[u8]) -> Result<ParsedActivityData,
             format!("Unsupported Strava provider payload version: {}", payload.v),
         ));
     }
-    if !strava_activity_is_bike(&payload.activity) {
-        return Err(AppError::validation_field(
-            "file",
-            format!(
-                "Strava activity {} is not a supported cycling activity",
-                payload.provider_activity_id.unwrap_or(payload.activity.id)
-            ),
-        ));
-    }
-
     let draft = build_strava_activity_draft(&payload.activity, &payload.streams);
     let mut derived_data = build_strava_derived_data(&draft, &payload.streams);
     derived_data.recording = recording_context(&payload.activity);
@@ -179,7 +196,12 @@ fn build_strava_activity_draft(
         distance_meters: positive_f64(distance_meters),
         moving_time_seconds,
         total_time_seconds,
-        elevation_gain_meters,
+        elevation_gain_meters: activity
+            .additional_fields
+            .get("total_elevation_gain")
+            .and_then(serde_json::Value::as_f64)
+            .and_then(|value| positive_f64(Some(value)))
+            .or(elevation_gain_meters),
         elevation_loss_meters,
         average_speed_mps: positive_f64(activity.average_speed_mps().or(average_speed_mps)),
         max_speed_mps: positive_f64(
@@ -338,13 +360,14 @@ fn downsample_chart_points(
 }
 
 pub fn strava_activity_is_bike(activity: &StravaActivitySummary) -> bool {
-    strava_activity_sport_kind(activity) == StravaSportKind::Bike
+    crate::activity_sport::is_bike_activity_sport(&normalized_strava_sport_token(activity))
 }
 
 pub fn strava_activity_sport_kind(activity: &StravaActivitySummary) -> StravaSportKind {
+    if strava_activity_is_bike(activity) {
+        return StravaSportKind::Bike;
+    }
     match normalized_strava_sport_token(activity).as_str() {
-        "ride" | "virtualride" | "mountainbikeride" | "gravelride" | "ebikeride"
-        | "emountainbikeride" | "velomobile" | "handcycle" => StravaSportKind::Bike,
         "run" | "virtualrun" | "trailrun" | "walk" | "hike" => StravaSportKind::Run,
         "swim" => StravaSportKind::Swim,
         _ => StravaSportKind::Other,
@@ -385,17 +408,7 @@ fn normalize_strava_sport(activity: &StravaActivitySummary) -> String {
         {
             "indoor_trainer_ride".to_string()
         }
-        StravaSportKind::Bike => normalize_activity_sport(&normalized_strava_sport_token(activity)),
-        StravaSportKind::Run => "run".to_string(),
-        StravaSportKind::Swim => "swim".to_string(),
-        StravaSportKind::Other => {
-            let token = normalized_strava_sport_token(activity);
-            if token.is_empty() {
-                "activity".to_string()
-            } else {
-                token
-            }
-        }
+        _ => normalize_activity_sport(&normalized_strava_sport_token(activity)),
     }
 }
 
@@ -636,23 +649,25 @@ mod tests {
     }
 
     #[test]
-    fn rejects_non_cycling_provider_payloads() {
-        for sport_type in ["Run", "TrailRun", "Walk", "Hike"] {
+    fn retains_all_provider_summaries_with_their_normalized_sport() {
+        for (sport_type, expected) in [
+            ("Run", "run"),
+            ("TrailRun", "run"),
+            ("Walk", "walk"),
+            ("Hike", "hike"),
+            ("Swim", "swim"),
+            ("Workout", "workout"),
+            ("Pickleball", "pickleball"),
+        ] {
             let payload = StoredStravaProviderPayload::new(
                 test_activity_with_sport(Some(sport_type), Some(sport_type)),
                 test_streams(),
             );
 
-            let error =
-                parse_strava_provider_payload(&serde_json::to_vec(&payload).unwrap()).unwrap_err();
-
-            assert!(
-                error
-                    .message
-                    .contains("is not a supported cycling activity"),
-                "{}",
-                error.message
-            );
+            let parsed =
+                parse_strava_provider_payload(&serde_json::to_vec(&payload).unwrap()).unwrap();
+            assert_eq!(parsed.draft.sport, expected);
+            assert_eq!(parsed.draft.title, payload.activity.name);
         }
     }
 

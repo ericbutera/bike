@@ -93,6 +93,10 @@ description = "Test Strava workflows, domain handlers, and shared configuration 
 env = { RUSTFLAGS = "-D warnings" }
 run = [
   "cargo test -p bike-core --locked --lib strava_native_unit",
+  "cargo test -p bike-core --locked --lib strava::provider_payload::tests",
+  "cargo test -p bike-core --locked --lib activity_sport::tests",
+  "cargo test -p bike-core --locked --lib analytics::tests::non_cycling_summaries_do_not_change_cycling_load_or_fitness",
+  "cargo test -p api --locked --lib controllers::activities::tests::feed_and_detail_keep_source_description_and_gear",
   "cargo test -p bike-core --locked --lib entities::strava_activity_states::tests",
   "cargo test -p bike-core --locked --lib strava_oauth_unit",
   "cargo test -p bike-core --locked --lib strava_webhook_unit",
