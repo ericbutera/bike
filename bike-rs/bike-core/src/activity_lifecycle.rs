@@ -203,6 +203,7 @@ pub struct DeletedActivity {
     pub source: Option<String>,
 }
 
+#[tracing::instrument(name = "activity.delete.records", skip_all, fields(user_id, activity_id = activity.id))]
 pub async fn delete_activity_records(
     db: &impl ConnectionTrait,
     user_id: i32,

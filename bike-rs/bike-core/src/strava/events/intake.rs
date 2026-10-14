@@ -110,6 +110,7 @@ fn is_old_deauthorization(
         && webhook.event_time < connection.created_at.timestamp()
 }
 
+#[tracing::instrument(name = "strava.webhook.accept", skip_all, fields(strava_athlete_id = webhook.owner_id, object_type = webhook.object_type, aspect_type = webhook.aspect_type))]
 pub async fn accept_webhook(
     db: &DatabaseConnection,
     webhook: &StravaWebhookEvent,

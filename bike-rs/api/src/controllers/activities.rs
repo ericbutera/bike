@@ -674,6 +674,7 @@ async fn load_activity_achievement_highlights_by_activity_ids(
         ("bearer_auth" = [])
     )
 )]
+#[tracing::instrument(name = "activity.list", skip_all, fields(user_id = user.id))]
 pub async fn list_activities(
     UserContext { user, .. }: UserContext<AppStorage>,
     Query(params): Query<ActivityListParams>,
@@ -727,6 +728,7 @@ pub async fn list_activities(
         ("bearer_auth" = [])
     )
 )]
+#[tracing::instrument(name = "activity.get", skip_all, fields(user_id = user.id, activity_id = id))]
 pub async fn get_activity(
     Path(id): Path<i32>,
     UserContext { user, .. }: UserContext<AppStorage>,
@@ -916,6 +918,7 @@ pub async fn update_activity(
         ("bearer_auth" = [])
     )
 )]
+#[tracing::instrument(name = "activity.delete", skip_all, fields(user_id = user.id, activity_id = id))]
 pub async fn delete_activity(
     Path(id): Path<i32>,
     UserContext { user, .. }: UserContext<AppStorage>,

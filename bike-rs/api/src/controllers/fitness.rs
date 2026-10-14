@@ -66,6 +66,7 @@ pub struct FitnessFreshnessResponse {
         ("bearer_auth" = [])
     )
 )]
+#[tracing::instrument(name = "fitness.get", skip_all, fields(user_id = user.id))]
 pub async fn get_fitness_freshness(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
