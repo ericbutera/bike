@@ -42,6 +42,12 @@
 - Release pushes preserve provenance using BuildKit's compatible attestation
   image manifest format (`oci-artifact=false`). Do not disable provenance or
   suppress unknown-media-type diagnostics.
+- Set `push=true` in the same image-exporter definition as `oci-artifact=false`.
+  Buildx 0.38.0 applies separate `--push` and output overrides in varying order;
+  a successful export can otherwise omit publication for individual targets.
+- Preflight the resolved publication plan, then verify every planned registry
+  tag against its exported manifest digest. Missing tags, metadata, or mismatched
+  digests fail the image step before E2E can try to pull an unpublished image.
 - Both native-test and E2E Docker daemons use the immutable Docker-in-Docker
   image pin from mise. `pins:sync` refreshes both workflow services and
   `ci:check` rejects drift. Do not rebuild or republish a Bike engine image
