@@ -29,12 +29,14 @@
 - [x] Replace retired panels, alerts, and trace sampling; retain metrics for other Bike workers.
 - [ ] Verify Grafana values, time ranges, missing data, and alert delivery against running services.
 - [x] Publish the Bike and infrastructure PRs for review.
-- [ ] Restore blocking 80% changed-line coverage immediately after this deployment; the 2026-10-14 exception applies to one release only. Coverage reports remain required.
+- [x] Restore blocking 80% changed-line coverage after the 2026-10-14 release; the approved exception covered one release only. Coverage reports remain required.
 - [ ] Cover API adapters (13.7%), worker startup (20%), and Temporal handlers/client setup (64.1%) with isolated mocked units. These are CI pipeline 385 changed-line values; domain coverage passed at 87.4%.
-- [ ] Deploy the native worker, metrics scrapes, and six search attributes to Nibelheim; provide authenticated Temporal history access.
+- [x] Deploy the native worker, both metrics scrapes, and six search attributes to Nibelheim.
+- [ ] Provide authenticated Temporal history access.
 - [ ] Add native workflow-failure and event-handoff backlog alerts with fixtures.
-- [ ] Verify the deployed image, migrations, registered URL, and a real customer activity exchange before claiming production success.
-- [ ] Coordinate cutover and backups for the native writer, Temporal history, and retained activity files; review storage protection before retirement.
+- [x] Verify the deployed image, migrations, registered URL, and a real customer activity exchange. Scheduled sync upserted Strava activity `20424619693` as Bike activity `1676` on 2026-10-14.
+- [x] Coordinate cutover and backups for the native writer, Temporal history, and retained activity files; review storage protection before retirement. Both disks validated backup `20261014T110418Z` with all three writers paused and resumed.
+- [ ] Verify shared trace continuity after enabling the native Temporal crate targets; the first live job correlated correctly by customer/activity/Temporal IDs but its event trace carrier was empty.
 - [ ] Define event/source retention without deleting inputs needed by active workflows.
 - [ ] Test worker restart/replay, large histories, failed customers across scheduled-scan pages, and production load/resource use.
 - [ ] Resolve Temporal's initial `Frontend is not healthy yet` startup warning; keep diagnostics enabled.
