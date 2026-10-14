@@ -85,8 +85,8 @@ including the correct Alpine or Debian native packages. CI connects to a
 persistent BuildKit service managed in the Woodpecker Pulumi stack; its dedicated
 PVC retains package/compiler caches and layers across jobs. Native CI checks
 retain their separate package store on `woodpecker-cache`. Package caches stay
-outside the runtime images. See the [build and deployment guide](docs/deployment.md)
-for registry cache recovery and builder operations.
+outside the runtime images. See the [CI specification](docs/specs/ci-checks.md)
+for cache ownership, TTL cleanup, and builder operations.
 
 ## Architecture
 

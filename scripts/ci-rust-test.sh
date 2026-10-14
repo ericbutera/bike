@@ -6,10 +6,9 @@ cd "$(dirname "$0")/.."
 fixture="$(mktemp -d "${TMPDIR:-/tmp}/bike-ci-rust-test.XXXXXX")"
 trap 'rm -rf -- "$fixture"' EXIT
 mkdir -p "$fixture/repo/scripts" "$fixture/bin" "$fixture/docker-bin"
-cp scripts/ci-rust.sh scripts/ci-cache-guard.sh scripts/coverage-transfer.sh "$fixture/repo/scripts/"
+cp scripts/ci-rust.sh scripts/coverage-transfer.sh "$fixture/repo/scripts/"
 cp scripts/test-worker-postgres.sh "$fixture/repo/scripts/"
 cp scripts/ci-engine-stop.sh "$fixture/repo/scripts/"
-cp scripts/ci-cache-size.mjs "$fixture/repo/scripts/"
 cat >"$fixture/bin/mise" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -61,9 +60,8 @@ export PATH="$fixture/bin:/usr/bin:/bin" FIXTURE_COMMANDS="$fixture/commands" FI
 # Docker is unavailable until the owning mise execution selects its tool path.
 if command -v docker >/dev/null; then exit 1; fi
 export BIKE_RUST_CHECK_CACHE="$fixture/cache" BIKE_COVERAGE_TRANSFER_ROOT="$fixture/transfer"
-export BIKE_CI_CACHE_ROOT="$fixture/cache" BIKE_CI_CACHE_MAX_BYTES=10485760
 export CI_PIPELINE_NUMBER=1 CI_PIPELINE_EVENT=pull_request CI_COMMIT_REF=refs/pull/1/merge
-export CARGO_LLVM_COV_TARGET_DIR=/cache/bike/target/refs/pull/1/merge/llvm-cov-target
+export CARGO_LLVM_COV_TARGET_DIR=/cache/bike/target/shared/llvm-cov-target
 export BIKE_E2E_ENGINE_STATE_DIR=.artifacts/sdk-engine
 cd "$fixture/repo"
 git init --quiet --initial-branch=main
@@ -213,36 +211,6 @@ grep -Fxq 'run rust:workers:postgres:collect' "$FIXTURE_COMMANDS"
 printf 'dirty\n' >>bike-rs/api/src/renamed.rs
 if bash scripts/ci-rust.sh unit >"$fixture/dirty.log" 2>&1; then exit 1; fi
 printf 'Rust CI reuse passed: UI-only/new PR executes zero backend commands; backend changes, failures, manual runs, corrupt caches, and dirty inputs are enforced.\n'
-
-# The real guard refuses over-budget builds and terminates a growing process.
-mkdir -p "$fixture/guard"
-export BIKE_CI_CACHE_ROOT="$fixture/guard" BIKE_CI_CACHE_MAX_BYTES=32768 BIKE_CI_CACHE_POLL_SECONDS=0.1
-dd if=/dev/zero of="$fixture/guard/payload" bs=1024 count=64 status=none
-if bash scripts/ci-cache-guard.sh touch "$fixture/should-not-run" >"$fixture/guard.log" 2>&1; then exit 1; fi
-test ! -e "$fixture/should-not-run"
-rm "$fixture/guard/payload"
-if bash scripts/ci-cache-guard.sh bash -c 'dd if=/dev/zero of="$BIKE_CI_CACHE_ROOT/payload" bs=1024 count=64 status=none; sleep 30' >"$fixture/guard.log" 2>&1; then exit 1; fi
-grep -q 'CI cache budget exceeded' "$fixture/guard.log"
-printf 'Disk guard passed: over-budget compilation refused and growing process group stopped.\n'
-
-# Real compilers replace temporary files during measurement; that is not an
-# over-budget condition. Exercise the same create/rename/unlink race on disk.
-export BIKE_CI_CACHE_MAX_BYTES=10485760 BIKE_CI_CACHE_POLL_SECONDS=0.01
-bash scripts/ci-cache-guard.sh bash -c '
-  for ((i=0; i<400; i++)); do
-    mkdir "$BIKE_CI_CACHE_ROOT/rmeta$i"
-    printf "temporary object\n" >"$BIKE_CI_CACHE_ROOT/rmeta$i/object.tmp"
-    mv "$BIKE_CI_CACHE_ROOT/rmeta$i/object.tmp" "$BIKE_CI_CACHE_ROOT/rmeta$i/object.o"
-    rm -r "$BIKE_CI_CACHE_ROOT/rmeta$i"
-  done
-'
-printf 'Disk measurement passed while compiler temporary files were replaced.\n'
-ln "$fixture/guard/payload" "$fixture/guard/hardlink"
-expected="$(du -skx "$fixture/guard")"
-expected="${expected%%[[:space:]]*}"
-test "$(node scripts/ci-cache-size.mjs "$fixture/guard")" -eq "$((expected * 1024))"
-if node scripts/ci-cache-size.mjs "$fixture/missing" >"$fixture/missing.log" 2>&1; then exit 1; fi
-printf 'Disk accounting passed: hard links count once and a missing root fails.\n'
 
 # Native CI uses only its supplied service; it cannot create/remove Docker data.
 cat >"$fixture/bin/docker" <<'SH'

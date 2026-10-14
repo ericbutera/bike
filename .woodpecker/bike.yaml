@@ -23,6 +23,9 @@ when:
   - event: manual
 
 # Keep the shared mise executable on PATH in every runner step.
+# One mutable compiler workspace serves all refs; steps within it stay parallel.
+concurrency: 1
+
 workspace:
   base: /woodpecker
   path: src
@@ -73,8 +76,8 @@ steps:
       MISE_YES: "1"
       CARGO_HOME: /cache/bike/cargo
       RUSTUP_HOME: /cache/bike/rustup
-      CARGO_TARGET_DIR: /cache/bike/target/${CI_COMMIT_REF}
-      CARGO_LLVM_COV_TARGET_DIR: /cache/bike/target/${CI_COMMIT_REF}/llvm-cov-target
+      CARGO_TARGET_DIR: /cache/bike/target/shared
+      CARGO_LLVM_COV_TARGET_DIR: /cache/bike/target/shared/llvm-cov-target
       UV_CACHE_DIR: /cache/bike/uv
       BIKE_NODE_PACKAGE_CACHE: /cache/bike/node-packages
       BIKE_GO_CACHE: /cache/bike/go
