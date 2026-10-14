@@ -36,7 +36,8 @@
 - [ ] Add native workflow-failure and event-handoff backlog alerts with fixtures.
 - [x] Verify the deployed image, migrations, registered URL, and a real customer activity exchange. Scheduled sync upserted Strava activity `20424619693` as Bike activity `1676` on 2026-10-14.
 - [x] Coordinate cutover and backups for the native writer, Temporal history, and retained activity files; review storage protection before retirement. Both disks validated backup `20261014T110418Z` with all three writers paused and resumed.
-- [ ] Verify shared trace continuity after enabling the native Temporal crate targets; the first live job correlated correctly by customer/activity/Temporal IDs but its event trace carrier was empty.
+- [x] Verify shared trace continuity after enabling the native Temporal crate targets. A repeated real sync returned one unchanged activity and zero failures; list, activity, and streams exchanges shared trace `8d61988be672f15ffda11303fee1fe77`.
+- [ ] Observe a Strava-originated webhook through the registered POST route; public GET verification has passed.
 - [ ] Define event/source retention without deleting inputs needed by active workflows.
 - [ ] Test worker restart/replay, large histories, failed customers across scheduled-scan pages, and production load/resource use.
 - [ ] Resolve Temporal's initial `Frontend is not healthy yet` startup warning; keep diagnostics enabled.

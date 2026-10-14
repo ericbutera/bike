@@ -267,10 +267,15 @@ flowchart LR
 - The live job exposed a trace filter gap: new native crate targets were omitted.
   Include them as application trace roots. An isolated in-memory tracer unit
   verifies that a filtered scan produces a carrier and its child retains the
-  same trace ID. Verify continuity live after deploying this correction.
+  same trace ID. Revision `bd300cf8` passed the restored coverage gate and
+  deployed successfully. A repeated real sync returned one unchanged activity
+  and zero failures. Its customer and activity events retained the same carrier;
+  list, activity, and streams exchanges shared trace
+  `8d61988be672f15ffda11303fee1fe77`.
 - Both backup disks validated generation `20261014T110418Z` after pausing and
   resuming API, SQL worker, and native Temporal worker.
 - Unit guarantees remain bounded; deployment readiness and callback checks do
-  not establish production behavior for every operation.
+  not establish production behavior for every operation. Natural webhook POST
+  delivery, backfill, create, delete, and disconnect still lack live evidence.
 - [TODO](../TODO.md) tracks production worker/scrapes/UI, cutover, coordinated
   backups, source retention, replay under restart, large histories, and load.
