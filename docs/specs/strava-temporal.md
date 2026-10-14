@@ -170,6 +170,33 @@ All processors below are separate [native activity methods](../../bike-rs/strava
 Inputs/outputs are [typed domain values](../../bike-rs/bike-core/src/strava/native/types.rs).
 Object references point to retained source files; provider bodies are not carried in workflow history.
 
+## Event and source retention
+
+- Temporal keeps closed workflow histories for seven days. Open executions,
+  continue-as-new chains, and pending handoffs remain protected regardless of age.
+- Keep canonical activity sources and referenced import artifacts for the
+  activity's lifetime. Do not apply a scratch-file age policy to these sources.
+- Retain successful workflow scratch for at least **14 days** after the latest
+  execution in its chain closes. Retain failed workflow scratch and accepted-event
+  audit rows for at least **90 days** after the final execution closes; an active
+  recovery request extends protection until its new execution finishes.
+- Preserve per-activity generation, ordering, and deletion watermarks when audit
+  rows expire. Do not remove a parent while a retained child references it.
+- Mark references from active and still-retained Temporal histories, pending
+  handoffs/recovery, current activity imports/artifacts, and unexpired provider
+  cache indexes before considering a blob for removal. A shared content hash
+  remains protected while any owner references it.
+- Require complete paginated inventories and revalidate candidates before
+  deletion. If Temporal, SQL, storage inventory, or the write/pin coordination
+  fails, retain the candidate. Age alone never establishes that an input is unused.
+- Remove expired cache indexes before unreferenced bodies. Coordinate concurrent
+  writers with retention so an old blob newly referenced during collection cannot
+  be swept. Test active/resettable history, canonical import, shared-reference,
+  pagination, inventory-failure, and deletion-race cases before enabling cleanup.
+- Start with a dry-run report of candidates, protected roots, allocated bytes,
+  and retention reasons. Production garbage collection is not enabled by this
+  policy definition; its implementation remains in the TODO.
+
 ## Payload and history budgets
 
 - Retain raw activity responses, stream responses, normalized sources, and parsed
@@ -311,18 +338,72 @@ flowchart LR
   `83126ef1c10370831a84c3d0cc816701`. Create run
   `01a13ace-eea9-77db-9e34-607e551eaec5` and Upsert run
   `01a13ace-eef6-7016-9076-665f1cfc28a7` completed. The deployed version excluded
-  its manual Walk summary (`already_absent`); the new summary behavior awaits rollout.
+  its manual Walk summary (`already_absent`) before the summary fix was deployed.
+  A real delete webhook arrived at `14:40:21 UTC`, event
+  `9b4365ff-d180-4fdb-9f2c-b51b351cc5ad`; the deleted summary must remain absent.
 - 2026-10-14: a second real create for `20582644055` reached the same POST route
   at `14:34:05 UTC`, event `507437e9-5cbd-4623-996e-1710b3129bdd`, trace
   `43669f123df376c8c0965be1a2379fe5`. Its retained activity response contained a
   manual MountainBikeRide, 10,718.2 m distance, 407.5 m elevation gain, description,
   and gear ID/name. The deployed workflow failed on streams HTTP 404. The fix
-  skips that request for manual activities; native reimport after rollout remains required.
+  skips that request for manual activities; successful recovery is recorded below.
+- 2026-10-14: [CI 403](https://ci.nibelheim.dev/repos/3/pipeline/403) deployed
+  revision `535cdf3e37d00fadd5609b41b7dfaf28e07f9b1e` after unit, integration,
+  lint, blocking changed-line coverage, and all 83 browser checks passed.
+  All five workloads were ready, the matching migration Job was `Complete`
+  with no pending migrations, and public `/api/health` returned healthy.
+  The live native worker image was
+  `bike-worker@sha256:58bd6161cdfb61eaaf6141b95377ca9cf8307d012b223f1cdad7beae4da36e80`.
+  The release log emitted a Pulumi warning for the migration container's
+  successful exit 0; retain this diagnostic as a release-tool gap, not a clean pass.
+- Reset the failed Create for `20582644055` at its first workflow task after
+  the updated worker was ready. New Create run
+  `af733b44-882a-4cda-ac9f-e134ea6f97f5` and its recreated Upsert run
+  `01a13ba7-94fd-79a7-bbdb-226a9a748ce0` completed at `18:23:21 UTC`.
+  Event `507437e9-5cbd-4623-996e-1710b3129bdd` is `applied`; Bike activity
+  `1679` stores MountainBikeRide, 10,718.2 m distance, 407.5 m elevation gain,
+  the supplied description, and gear ID/name. No independent child reset was needed.
+- A subsequent real delete for `20582644055` arrived at `19:31:24 UTC`, event
+  `8399473f-84e7-4a30-a803-817113c08dd0`; its terminal mutation is `deleted`.
+  Preserve that newer deletion rather than retrying its earlier create again.
+- Triggered the existing native schedule once after recovery. Scan
+  `bike-strava-scan-2026-10-14T18:23:48Z`, run
+  `01a13ba8-007b-7b35-b26c-6985e16536a4`, and its customer Sync completed
+  with two unchanged activities and no duplicate ride. The deleted Walk
+  remained absent; a live retained non-cycling summary still needs observation.
+- Live production samples over an inspected six-hour range showed native worker
+  memory peaking at 15.6 MiB of its 512 MiB limit and shared Temporal at 130.4 MiB
+  of 1 GiB. Maximum five-minute mean CPU was 2.7m and 38.3m respectively.
+  Shared PostgreSQL used 10,636,435 bytes for `temporal` and 11,685,011 bytes for
+  `temporal_visibility` at the storage observation. These are observed small-load
+  values; large-backfill capacity and shared database resource load remain unqualified.
+- 2026-10-14: verified a real native-worker stop/restart using retained ride
+  `20424619693`. With no other Strava workflows running, stopped the worker,
+  queued a reset of Upsert `strava-04182920-01d9-5566-a554-a69e09f43364` at
+  workflow-task event 28, and restored one worker replica. This retained the four
+  completed fetch/streams/normalize/persist activities and their object references.
+  Replacement pod `temporal-worker-b54fb764c-jmkrv` replayed those completions;
+  new run `4d1bf832-c9e5-453d-875c-5d8a615ff90f` completed from
+  `20:15:48.259 UTC` to `20:15:49.915 UTC` (1.66 seconds). Historical provider
+  completions kept their original timestamps; only the remaining publication
+  activities ran again. Bike activity `1676` stayed unique with identical sport,
+  distance, elevation, and source metadata. New worker diagnostics were clean.
+  This controlled stop/reset/restart does not establish recovery from killing
+  a process during an executing provider or persistence activity.
+- The real replayed fetch/streams/normalize activity results were 953, 1,193,
+  and 1,212 serialized JSON bytes. They carried object references; the corresponding
+  stored normalized source was 97,651 bytes. Oversized-source proof remains the
+  separate 3 MiB provider-body and 150,000-point stream fixtures, not this small
+  live activity. Live namespace retention was confirmed as `604800s` (seven days).
 - The new native SDK replay tool successfully replayed the real Walk Create
   and Upsert histories, plus completed Sync `strava-ff834edc-cfbd-5f7a-bf2a-e910f1c26926`,
   using fresh workers and current workflow code. It fetched history
   read-only and executed no provider or database activities. This proves history
   compatibility separately from a live process-interruption drill.
+- Read-only live SDK replay also passed the failed manual ride Create/Upsert
+  histories before reset. The example's file mode rejects Temporal CLI camelCase
+  JSON exports with `missing field event_id`; use its verified `--workflow`
+  history-fetch mode until export-format compatibility is addressed.
 - 2026-10-14: 127 focused Rust units and five UI units passed in Docker. These
   include large stored provider bodies/streams, restart reconstruction, 5,100
   activity scans, 60 customer scans with ten failures, summary metadata, and

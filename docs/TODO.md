@@ -41,14 +41,17 @@
 - [x] Coordinate cutover and backups for the native writer, Temporal history, and retained activity files; review storage protection before retirement. Both disks validated backup `20261014T110418Z` with all three writers paused and resumed.
 - [x] Verify shared trace continuity after enabling the native Temporal crate targets. A repeated real sync returned one unchanged activity and zero failures; list, activity, and streams exchanges shared trace `8d61988be672f15ffda11303fee1fe77`.
 - [x] Observe Strava-originated POSTs on the registered route. Real creates `20582557310` and `20582644055` reached `/webhooks/strava-gateway` on 2026-10-14; see the Strava spec for outcomes.
-- [x] Retain all Strava summaries, descriptions, and gear in the feed; skip streams for manual rides and non-cycling summaries. Local implementation and fixture checks; rollout remains below.
+- [x] Retain all Strava summaries, descriptions, and gear in the feed; skip streams for manual rides and non-cycling summaries. Fixture checks and the live manual ride recovery passed on 2026-10-14.
 - [x] Centralize sport/cycling policy and Training/Race in backend enums; generate frontend types and runtime options through OpenAPI. Preserve unknown provider sports without admitting them to cycling calculations.
 - [x] Bound Strava Temporal JSON to 256 KiB, keeping large provider bodies and parsed data in object storage. Cover oversized callbacks/results, a 3 MiB provider body, and 150,000-point streams with isolated units.
-- [ ] Define event/source retention without deleting inputs needed by active workflows.
-- [ ] Test worker restart/replay, large histories, failed customers across scheduled-scan pages
-- [ ] production load/resource use.
+- [x] Define event/source retention and protected reference roots in the Strava spec. Keep canonical activity sources; retain successful workflow scratch for at least 14 days and failed scratch/audit events for at least 90 days after the final execution closes.
+- [ ] Implement reference-aware retention with dry-run reports, complete Temporal inventory, and deletion-race protection; retain inputs when any required inventory is unavailable.
 - [x] Test restart reconstruction, populated large histories, and failures across scheduled-scan pages with isolated native workflow units. Cover child-start failures and continuation within a page.
-- [ ] Verify deployment and native reimport for the two manual Strava activities; confirm summaries, description, gear, cycling exclusions, and real worker interruption/recovery timing.
-- [ ] Verify production load/resource use.
+- [x] Deploy the summary fix and rerun failed Create/Upsert for `20582644055`; Bike activity `1679` retains distance, elevation, description, and gear. A subsequent scheduled scan completed without duplicates.
+- [ ] Observe a live non-cycling summary that remains present in Strava. Walk `20582557310` received a real delete webhook at `14:40:21 UTC`, so it correctly remains absent after the rollout; fixture coverage verifies cycling exclusions.
+- [x] Verify a live native-worker stop/restart with recorded-history replay. Queued reset of retained ride `20424619693` resumed after four recorded completions and finished in 1.66 seconds; Bike activity `1676` remained unchanged and unique.
+- [ ] Verify an interruption while a provider or persistence activity is actively executing. The controlled stop/reset/restart drill queued its partial history while the worker was stopped.
+- [ ] Resolve the release-tool warning that reports a successfully completed migration container as a warning. CI 403 applied revision `535cdf3e`; Kubernetes confirmed Job `Complete`, exit 0, and no pending migrations. Do not describe this release log as warning-free.
+- [x] Measure observed production resource use through Prometheus. Over the inspected six hours, native worker memory peaked at 15.6 MiB of 512 MiB and shared Temporal at 130.4 MiB of 1 GiB; maximum five-minute mean CPU was 2.7m and 38.3m respectively. This records the actual small workload, not a capacity benchmark.
+- [ ] Qualify capacity for large backfills and sustained customer concurrency, including shared PostgreSQL resource use.
 - [ ] Resolve Temporal's initial `Frontend is not healthy yet` startup warning; keep diagnostics enabled.
-- [ ] Verify strava integration -> temporal works with large payloads. Normally this is done by storing the raw data in object storage and passing a ref to the worker. If temporal is able to handle large inputs, that is fine, but we need to know the limit and have a guardrail to prevent errors
