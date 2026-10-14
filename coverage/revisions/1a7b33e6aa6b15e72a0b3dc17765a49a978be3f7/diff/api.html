@@ -1,0 +1,396 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+    <head>
+        <meta http-equiv='Content-Type' content='text/html; charset=utf-8'>
+        <title>Diff Coverage</title>
+        <style>
+            .src-snippet { margin-top: 2em; }
+            .src-name { font-weight: bold; }
+            .snippets {
+                border-top: 1px solid #bdbdbd;
+                border-bottom: 1px solid #bdbdbd;
+            }
+            pre { line-height: 125%; }
+td.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+span.linenos { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+td.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+.hll { background-color: #ffcccc }
+.c { color: #3D7B7B; font-style: italic } /* Comment */
+.err { border: 1px solid #F00 } /* Error */
+.k { color: #008000; font-weight: bold } /* Keyword */
+.o { color: #666 } /* Operator */
+.ch { color: #3D7B7B; font-style: italic } /* Comment.Hashbang */
+.cm { color: #3D7B7B; font-style: italic } /* Comment.Multiline */
+.cp { color: #9C6500 } /* Comment.Preproc */
+.cpf { color: #3D7B7B; font-style: italic } /* Comment.PreprocFile */
+.c1 { color: #3D7B7B; font-style: italic } /* Comment.Single */
+.cs { color: #3D7B7B; font-style: italic } /* Comment.Special */
+.gd { color: #A00000 } /* Generic.Deleted */
+.ge { font-style: italic } /* Generic.Emph */
+.ges { font-weight: bold; font-style: italic } /* Generic.EmphStrong */
+.gr { color: #E40000 } /* Generic.Error */
+.gh { color: #000080; font-weight: bold } /* Generic.Heading */
+.gi { color: #008400 } /* Generic.Inserted */
+.go { color: #717171 } /* Generic.Output */
+.gp { color: #000080; font-weight: bold } /* Generic.Prompt */
+.gs { font-weight: bold } /* Generic.Strong */
+.gu { color: #800080; font-weight: bold } /* Generic.Subheading */
+.gt { color: #04D } /* Generic.Traceback */
+.kc { color: #008000; font-weight: bold } /* Keyword.Constant */
+.kd { color: #008000; font-weight: bold } /* Keyword.Declaration */
+.kn { color: #008000; font-weight: bold } /* Keyword.Namespace */
+.kp { color: #008000 } /* Keyword.Pseudo */
+.kr { color: #008000; font-weight: bold } /* Keyword.Reserved */
+.kt { color: #B00040 } /* Keyword.Type */
+.m { color: #666 } /* Literal.Number */
+.s { color: #BA2121 } /* Literal.String */
+.na { color: #687822 } /* Name.Attribute */
+.nb { color: #008000 } /* Name.Builtin */
+.nc { color: #00F; font-weight: bold } /* Name.Class */
+.no { color: #800 } /* Name.Constant */
+.nd { color: #A2F } /* Name.Decorator */
+.ni { color: #717171; font-weight: bold } /* Name.Entity */
+.ne { color: #CB3F38; font-weight: bold } /* Name.Exception */
+.nf { color: #00F } /* Name.Function */
+.nl { color: #767600 } /* Name.Label */
+.nn { color: #00F; font-weight: bold } /* Name.Namespace */
+.nt { color: #008000; font-weight: bold } /* Name.Tag */
+.nv { color: #19177C } /* Name.Variable */
+.ow { color: #A2F; font-weight: bold } /* Operator.Word */
+.w { color: #BBB } /* Text.Whitespace */
+.mb { color: #666 } /* Literal.Number.Bin */
+.mf { color: #666 } /* Literal.Number.Float */
+.mh { color: #666 } /* Literal.Number.Hex */
+.mi { color: #666 } /* Literal.Number.Integer */
+.mo { color: #666 } /* Literal.Number.Oct */
+.sa { color: #BA2121 } /* Literal.String.Affix */
+.sb { color: #BA2121 } /* Literal.String.Backtick */
+.sc { color: #BA2121 } /* Literal.String.Char */
+.dl { color: #BA2121 } /* Literal.String.Delimiter */
+.sd { color: #BA2121; font-style: italic } /* Literal.String.Doc */
+.s2 { color: #BA2121 } /* Literal.String.Double */
+.se { color: #AA5D1F; font-weight: bold } /* Literal.String.Escape */
+.sh { color: #BA2121 } /* Literal.String.Heredoc */
+.si { color: #A45A77; font-weight: bold } /* Literal.String.Interpol */
+.sx { color: #008000 } /* Literal.String.Other */
+.sr { color: #A45A77 } /* Literal.String.Regex */
+.s1 { color: #BA2121 } /* Literal.String.Single */
+.ss { color: #19177C } /* Literal.String.Symbol */
+.bp { color: #008000 } /* Name.Builtin.Pseudo */
+.fm { color: #00F } /* Name.Function.Magic */
+.vc { color: #19177C } /* Name.Variable.Class */
+.vg { color: #19177C } /* Name.Variable.Global */
+.vi { color: #19177C } /* Name.Variable.Instance */
+.vm { color: #19177C } /* Name.Variable.Magic */
+.il { color: #666 } /* Literal.Number.Integer.Long */
+.diff-cover-covered-line { background-color: #ddffdd; }
+        </style>
+    </head>
+    <body>
+        <h1>Diff Coverage</h1>
+        <p>Diff: 7d811e85cc1f1992a99002b0d609e7cbd9d9bdef...HEAD, staged, unstaged and untracked changes</p>
+        <ul>
+            <li><b>Total</b>: 51 lines</li>
+            <li><b>Missing</b>: 44 lines</li>
+            <li><b>Coverage</b>: 13.73%</li>
+        </ul>
+        <table border="1">
+            <tr>
+                <th>Source File</th>
+                <th>Diff Coverage (%)</th>
+                <th>Missing Lines</th>
+            </tr>
+            <tr>
+                <td>bike-rs/api/src/controllers/activity_imports.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/api/src/controllers/mod.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/api/src/controllers/strava.rs</td>
+                <td>4.3%</td>
+                <td>97-100,129-137,184-187,210,212-221,251,268-269,271-273,279,286,310-311,375,380-384</td>
+            </tr>
+        </table>
+        <div class="src-snippet">
+            <div class="src-name">bike-rs/api/src/controllers/strava.rs</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal"> 93</span>
+<span class="normal"> 94</span>
+<span class="normal"> 95</span>
+<span class="normal"> 96</span>
+<span class="normal"> 97</span>
+<span class="normal"> 98</span>
+<span class="normal"> 99</span>
+<span class="normal">100</span>
+<span class="normal">101</span>
+<span class="normal">102</span>
+<span class="normal">103</span>
+<span class="normal">104</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/api/src/controllers/strava.rs-93" name="bike-rs/api/src/controllers/strava.rs-93"></a><span class="cp">)]</span>
+<a id="bike-rs/api/src/controllers/strava.rs-94" name="bike-rs/api/src/controllers/strava.rs-94"></a><span class="k">pub</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">begin_connect</span><span class="p">(</span>
+<a id="bike-rs/api/src/controllers/strava.rs-95" name="bike-rs/api/src/controllers/strava.rs-95"></a><span class="w">    </span><span class="n">UserContext</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">user</span><span class="p">,</span><span class="w"> </span><span class="o">..</span><span class="w"> </span><span class="p">}:</span><span class="w"> </span><span class="nc">UserContext</span><span class="o">&lt;</span><span class="n">AppStorage</span><span class="o">&gt;</span><span class="p">,</span>
+<a id="bike-rs/api/src/controllers/strava.rs-96" name="bike-rs/api/src/controllers/strava.rs-96"></a><span class="w">    </span><span class="n">State</span><span class="p">(</span><span class="n">state</span><span class="p">):</span><span class="w"> </span><span class="nc">State</span><span class="o">&lt;</span><span class="n">Arc</span><span class="o">&lt;</span><span class="n">AppStorage</span><span class="o">&gt;&gt;</span><span class="p">,</span>
+<a id="bike-rs/api/src/controllers/strava.rs-97" name="bike-rs/api/src/controllers/strava.rs-97"></a><span class="hll"><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="n">Response</span><span class="p">,</span><span class="w"> </span><span class="n">AppError</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-98" name="bike-rs/api/src/controllers/strava.rs-98"></a><span class="hll"><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">authorization</span><span class="w"> </span><span class="o">=</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-99" name="bike-rs/api/src/controllers/strava.rs-99"></a><span class="hll"><span class="w">        </span><span class="n">strava</span><span class="p">::</span><span class="n">create_authorization_url_for_user</span><span class="p">(</span><span class="o">&amp;</span><span class="n">state</span><span class="p">.</span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="n">Config</span><span class="p">::</span><span class="n">get</span><span class="p">(),</span><span class="w"> </span><span class="n">user</span><span class="p">.</span><span class="n">id</span><span class="p">).</span><span class="k">await</span><span class="p">;</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-100" name="bike-rs/api/src/controllers/strava.rs-100"></a><span class="hll"><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">authorization</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">match</span><span class="w"> </span><span class="n">authorization</span><span class="w"> </span><span class="p">{</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-101" name="bike-rs/api/src/controllers/strava.rs-101"></a><span class="w">        </span><span class="nb">Ok</span><span class="p">(</span><span class="n">url</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/api/src/controllers/strava.rs-102" name="bike-rs/api/src/controllers/strava.rs-102"></a><span class="w">            </span><span class="n">record_strava_event_best_effort</span><span class="p">(</span>
+<a id="bike-rs/api/src/controllers/strava.rs-103" name="bike-rs/api/src/controllers/strava.rs-103"></a><span class="w">                </span><span class="o">&amp;</span><span class="n">state</span><span class="p">.</span><span class="n">db</span><span class="p">,</span>
+<a id="bike-rs/api/src/controllers/strava.rs-104" name="bike-rs/api/src/controllers/strava.rs-104"></a><span class="w">                </span><span class="nb">Some</span><span class="p">(</span><span class="n">user</span><span class="p">.</span><span class="n">id</span><span class="p">),</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">125</span>
+<span class="normal">126</span>
+<span class="normal">127</span>
+<span class="normal">128</span>
+<span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span>
+<span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/api/src/controllers/strava.rs-125" name="bike-rs/api/src/controllers/strava.rs-125"></a><span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="nb">Err</span><span class="p">(</span><span class="n">error</span><span class="p">.</span><span class="n">into</span><span class="p">());</span>
+<a id="bike-rs/api/src/controllers/strava.rs-126" name="bike-rs/api/src/controllers/strava.rs-126"></a><span class="w">        </span><span class="p">}</span>
+<a id="bike-rs/api/src/controllers/strava.rs-127" name="bike-rs/api/src/controllers/strava.rs-127"></a><span class="w">    </span><span class="p">};</span>
+<a id="bike-rs/api/src/controllers/strava.rs-128" name="bike-rs/api/src/controllers/strava.rs-128"></a>
+<a id="bike-rs/api/src/controllers/strava.rs-129" name="bike-rs/api/src/controllers/strava.rs-129"></a><span class="hll"><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">cookie</span><span class="w"> </span><span class="o">=</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-130" name="bike-rs/api/src/controllers/strava.rs-130"></a><span class="hll"><span class="w">        </span><span class="n">strava</span><span class="p">::</span><span class="n">oauth_state</span><span class="p">::</span><span class="n">session_cookie</span><span class="p">(</span><span class="o">&amp;</span><span class="n">authorization</span><span class="p">.</span><span class="n">browser_session</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">Config</span><span class="p">::</span><span class="n">get</span><span class="p">().</span><span class="n">api_url</span><span class="p">);</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-131" name="bike-rs/api/src/controllers/strava.rs-131"></a><span class="hll"><span class="w">    </span><span class="nb">Ok</span><span class="p">((</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-132" name="bike-rs/api/src/controllers/strava.rs-132"></a><span class="hll"><span class="w">        </span><span class="p">[(</span><span class="n">header</span><span class="p">::</span><span class="n">SET_COOKIE</span><span class="p">,</span><span class="w"> </span><span class="n">cookie</span><span class="p">)],</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-133" name="bike-rs/api/src/controllers/strava.rs-133"></a><span class="hll"><span class="w">        </span><span class="n">Json</span><span class="p">(</span><span class="n">StravaAuthorizeResponse</span><span class="w"> </span><span class="p">{</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-134" name="bike-rs/api/src/controllers/strava.rs-134"></a><span class="hll"><span class="w">            </span><span class="n">authorization_url</span><span class="p">:</span><span class="w"> </span><span class="nc">authorization</span><span class="p">.</span><span class="n">url</span><span class="p">.</span><span class="n">to_string</span><span class="p">(),</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-135" name="bike-rs/api/src/controllers/strava.rs-135"></a><span class="hll"><span class="w">        </span><span class="p">}),</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-136" name="bike-rs/api/src/controllers/strava.rs-136"></a><span class="hll"><span class="w">    </span><span class="p">)</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-137" name="bike-rs/api/src/controllers/strava.rs-137"></a><span class="hll"><span class="w">        </span><span class="p">.</span><span class="n">into_response</span><span class="p">())</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-138" name="bike-rs/api/src/controllers/strava.rs-138"></a><span class="p">}</span>
+<a id="bike-rs/api/src/controllers/strava.rs-139" name="bike-rs/api/src/controllers/strava.rs-139"></a>
+<a id="bike-rs/api/src/controllers/strava.rs-140" name="bike-rs/api/src/controllers/strava.rs-140"></a><span class="cp">#[utoipa::path(</span>
+<a id="bike-rs/api/src/controllers/strava.rs-141" name="bike-rs/api/src/controllers/strava.rs-141"></a><span class="cp">    get,</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">180</span>
+<span class="normal">181</span>
+<span class="normal">182</span>
+<span class="normal">183</span>
+<span class="normal">184</span>
+<span class="normal">185</span>
+<span class="normal">186</span>
+<span class="normal">187</span>
+<span class="normal">188</span>
+<span class="normal">189</span>
+<span class="normal">190</span>
+<span class="normal">191</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/api/src/controllers/strava.rs-180" name="bike-rs/api/src/controllers/strava.rs-180"></a><span class="k">pub</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">queue_sync</span><span class="p">(</span>
+<a id="bike-rs/api/src/controllers/strava.rs-181" name="bike-rs/api/src/controllers/strava.rs-181"></a><span class="w">    </span><span class="n">UserContext</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">user</span><span class="p">,</span><span class="w"> </span><span class="o">..</span><span class="w"> </span><span class="p">}:</span><span class="w"> </span><span class="nc">UserContext</span><span class="o">&lt;</span><span class="n">AppStorage</span><span class="o">&gt;</span><span class="p">,</span>
+<a id="bike-rs/api/src/controllers/strava.rs-182" name="bike-rs/api/src/controllers/strava.rs-182"></a><span class="w">    </span><span class="n">State</span><span class="p">(</span><span class="n">state</span><span class="p">):</span><span class="w"> </span><span class="nc">State</span><span class="o">&lt;</span><span class="n">Arc</span><span class="o">&lt;</span><span class="n">AppStorage</span><span class="o">&gt;&gt;</span><span class="p">,</span>
+<a id="bike-rs/api/src/controllers/strava.rs-183" name="bike-rs/api/src/controllers/strava.rs-183"></a><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="n">Json</span><span class="o">&lt;</span><span class="n">StravaConnectionResponse</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">AppError</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/api/src/controllers/strava.rs-184" name="bike-rs/api/src/controllers/strava.rs-184"></a><span class="hll"><span class="w">    </span><span class="n">bike_core</span><span class="p">::</span><span class="n">strava</span><span class="p">::</span><span class="n">events</span><span class="p">::</span><span class="n">request_sync</span><span class="p">(</span><span class="o">&amp;</span><span class="n">state</span><span class="p">.</span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="n">user</span><span class="p">.</span><span class="n">id</span><span class="p">).</span><span class="k">await</span><span class="o">?</span><span class="p">;</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-185" name="bike-rs/api/src/controllers/strava.rs-185"></a><span class="hll"><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">connection</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">strava</span><span class="p">::</span><span class="n">load_connection</span><span class="p">(</span><span class="o">&amp;</span><span class="n">state</span><span class="p">.</span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="n">user</span><span class="p">.</span><span class="n">id</span><span class="p">)</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-186" name="bike-rs/api/src/controllers/strava.rs-186"></a><span class="hll"><span class="w">        </span><span class="p">.</span><span class="k">await</span><span class="o">?</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-187" name="bike-rs/api/src/controllers/strava.rs-187"></a><span class="hll"><span class="w">        </span><span class="p">.</span><span class="n">ok_or_else</span><span class="p">(</span><span class="o">||</span><span class="w"> </span><span class="n">AppError</span><span class="p">::</span><span class="n">not_found</span><span class="p">(</span><span class="s">"Strava connection was removed"</span><span class="p">))</span><span class="o">?</span><span class="p">;</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-188" name="bike-rs/api/src/controllers/strava.rs-188"></a>
+<a id="bike-rs/api/src/controllers/strava.rs-189" name="bike-rs/api/src/controllers/strava.rs-189"></a><span class="w">    </span><span class="nb">Ok</span><span class="p">(</span><span class="n">Json</span><span class="p">(</span>
+<a id="bike-rs/api/src/controllers/strava.rs-190" name="bike-rs/api/src/controllers/strava.rs-190"></a><span class="w">        </span><span class="n">response_from_model</span><span class="p">(</span><span class="o">&amp;</span><span class="n">state</span><span class="p">.</span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="o">&amp;</span><span class="n">connection</span><span class="p">)).</span><span class="k">await</span><span class="o">?</span><span class="p">,</span>
+<a id="bike-rs/api/src/controllers/strava.rs-191" name="bike-rs/api/src/controllers/strava.rs-191"></a><span class="w">    </span><span class="p">))</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">206</span>
+<span class="normal">207</span>
+<span class="normal">208</span>
+<span class="normal">209</span>
+<span class="normal">210</span>
+<span class="normal">211</span>
+<span class="normal">212</span>
+<span class="normal">213</span>
+<span class="normal">214</span>
+<span class="normal">215</span>
+<span class="normal">216</span>
+<span class="normal">217</span>
+<span class="normal">218</span>
+<span class="normal">219</span>
+<span class="normal">220</span>
+<span class="normal">221</span>
+<span class="normal">222</span>
+<span class="normal">223</span>
+<span class="normal">224</span>
+<span class="normal">225</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/api/src/controllers/strava.rs-206" name="bike-rs/api/src/controllers/strava.rs-206"></a><span class="cp">)]</span>
+<a id="bike-rs/api/src/controllers/strava.rs-207" name="bike-rs/api/src/controllers/strava.rs-207"></a><span class="k">pub</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">queue_backfill</span><span class="p">(</span>
+<a id="bike-rs/api/src/controllers/strava.rs-208" name="bike-rs/api/src/controllers/strava.rs-208"></a><span class="w">    </span><span class="n">UserContext</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">user</span><span class="p">,</span><span class="w"> </span><span class="o">..</span><span class="w"> </span><span class="p">}:</span><span class="w"> </span><span class="nc">UserContext</span><span class="o">&lt;</span><span class="n">AppStorage</span><span class="o">&gt;</span><span class="p">,</span>
+<a id="bike-rs/api/src/controllers/strava.rs-209" name="bike-rs/api/src/controllers/strava.rs-209"></a><span class="w">    </span><span class="n">State</span><span class="p">(</span><span class="n">state</span><span class="p">):</span><span class="w"> </span><span class="nc">State</span><span class="o">&lt;</span><span class="n">Arc</span><span class="o">&lt;</span><span class="n">AppStorage</span><span class="o">&gt;&gt;</span><span class="p">,</span>
+<a id="bike-rs/api/src/controllers/strava.rs-210" name="bike-rs/api/src/controllers/strava.rs-210"></a><span class="hll"><span class="w">    </span><span class="n">Json</span><span class="p">(</span><span class="n">input</span><span class="p">):</span><span class="w"> </span><span class="nc">Json</span><span class="o">&lt;</span><span class="n">StravaBackfillRequest</span><span class="o">&gt;</span><span class="p">,</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-211" name="bike-rs/api/src/controllers/strava.rs-211"></a><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="n">Json</span><span class="o">&lt;</span><span class="n">StravaConnectionResponse</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">AppError</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/api/src/controllers/strava.rs-212" name="bike-rs/api/src/controllers/strava.rs-212"></a><span class="hll"><span class="w">    </span><span class="n">bike_core</span><span class="p">::</span><span class="n">strava</span><span class="p">::</span><span class="n">events</span><span class="p">::</span><span class="n">request_backfill</span><span class="p">(</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-213" name="bike-rs/api/src/controllers/strava.rs-213"></a><span class="hll"><span class="w">        </span><span class="o">&amp;</span><span class="n">state</span><span class="p">.</span><span class="n">db</span><span class="p">,</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-214" name="bike-rs/api/src/controllers/strava.rs-214"></a><span class="hll"><span class="w">        </span><span class="n">user</span><span class="p">.</span><span class="n">id</span><span class="p">,</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-215" name="bike-rs/api/src/controllers/strava.rs-215"></a><span class="hll"><span class="w">        </span><span class="n">input</span><span class="p">.</span><span class="n">start_date</span><span class="p">,</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-216" name="bike-rs/api/src/controllers/strava.rs-216"></a><span class="hll"><span class="w">        </span><span class="n">input</span><span class="p">.</span><span class="n">end_date</span><span class="p">,</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-217" name="bike-rs/api/src/controllers/strava.rs-217"></a><span class="hll"><span class="w">    </span><span class="p">)</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-218" name="bike-rs/api/src/controllers/strava.rs-218"></a><span class="hll"><span class="w">    </span><span class="p">.</span><span class="k">await</span><span class="o">?</span><span class="p">;</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-219" name="bike-rs/api/src/controllers/strava.rs-219"></a><span class="hll"><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">connection</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">strava</span><span class="p">::</span><span class="n">load_connection</span><span class="p">(</span><span class="o">&amp;</span><span class="n">state</span><span class="p">.</span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="n">user</span><span class="p">.</span><span class="n">id</span><span class="p">)</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-220" name="bike-rs/api/src/controllers/strava.rs-220"></a><span class="hll"><span class="w">        </span><span class="p">.</span><span class="k">await</span><span class="o">?</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-221" name="bike-rs/api/src/controllers/strava.rs-221"></a><span class="hll"><span class="w">        </span><span class="p">.</span><span class="n">ok_or_else</span><span class="p">(</span><span class="o">||</span><span class="w"> </span><span class="n">AppError</span><span class="p">::</span><span class="n">not_found</span><span class="p">(</span><span class="s">"Strava connection was removed"</span><span class="p">))</span><span class="o">?</span><span class="p">;</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-222" name="bike-rs/api/src/controllers/strava.rs-222"></a><span class="w">    </span><span class="nb">Ok</span><span class="p">(</span><span class="n">Json</span><span class="p">(</span>
+<a id="bike-rs/api/src/controllers/strava.rs-223" name="bike-rs/api/src/controllers/strava.rs-223"></a><span class="w">        </span><span class="n">response_from_model</span><span class="p">(</span><span class="o">&amp;</span><span class="n">state</span><span class="p">.</span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="o">&amp;</span><span class="n">connection</span><span class="p">)).</span><span class="k">await</span><span class="o">?</span><span class="p">,</span>
+<a id="bike-rs/api/src/controllers/strava.rs-224" name="bike-rs/api/src/controllers/strava.rs-224"></a><span class="w">    </span><span class="p">))</span>
+<a id="bike-rs/api/src/controllers/strava.rs-225" name="bike-rs/api/src/controllers/strava.rs-225"></a><span class="p">}</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">247</span>
+<span class="normal">248</span>
+<span class="normal">249</span>
+<span class="normal">250</span>
+<span class="normal">251</span>
+<span class="normal">252</span>
+<span class="normal">253</span>
+<span class="normal">254</span>
+<span class="normal">255</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/api/src/controllers/strava.rs-247" name="bike-rs/api/src/controllers/strava.rs-247"></a><span class="k">pub</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">disconnect_connection</span><span class="p">(</span>
+<a id="bike-rs/api/src/controllers/strava.rs-248" name="bike-rs/api/src/controllers/strava.rs-248"></a><span class="w">    </span><span class="n">UserContext</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">user</span><span class="p">,</span><span class="w"> </span><span class="o">..</span><span class="w"> </span><span class="p">}:</span><span class="w"> </span><span class="nc">UserContext</span><span class="o">&lt;</span><span class="n">AppStorage</span><span class="o">&gt;</span><span class="p">,</span>
+<a id="bike-rs/api/src/controllers/strava.rs-249" name="bike-rs/api/src/controllers/strava.rs-249"></a><span class="w">    </span><span class="n">State</span><span class="p">(</span><span class="n">state</span><span class="p">):</span><span class="w"> </span><span class="nc">State</span><span class="o">&lt;</span><span class="n">Arc</span><span class="o">&lt;</span><span class="n">AppStorage</span><span class="o">&gt;&gt;</span><span class="p">,</span>
+<a id="bike-rs/api/src/controllers/strava.rs-250" name="bike-rs/api/src/controllers/strava.rs-250"></a><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="n">Json</span><span class="o">&lt;</span><span class="n">auth_openapi</span><span class="p">::</span><span class="n">schemas</span><span class="p">::</span><span class="n">MessageResponse</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">AppError</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/api/src/controllers/strava.rs-251" name="bike-rs/api/src/controllers/strava.rs-251"></a><span class="hll"><span class="w">    </span><span class="n">bike_core</span><span class="p">::</span><span class="n">strava</span><span class="p">::</span><span class="n">events</span><span class="p">::</span><span class="n">request_disconnect</span><span class="p">(</span><span class="o">&amp;</span><span class="n">state</span><span class="p">.</span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="n">user</span><span class="p">.</span><span class="n">id</span><span class="p">).</span><span class="k">await</span><span class="o">?</span><span class="p">;</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-252" name="bike-rs/api/src/controllers/strava.rs-252"></a><span class="w">    </span><span class="nb">Ok</span><span class="p">(</span><span class="n">Json</span><span class="p">(</span><span class="n">auth_openapi</span><span class="p">::</span><span class="n">schemas</span><span class="p">::</span><span class="n">MessageResponse</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/api/src/controllers/strava.rs-253" name="bike-rs/api/src/controllers/strava.rs-253"></a><span class="w">        </span><span class="n">message</span><span class="p">:</span><span class="w"> </span><span class="s">"Strava disconnect queued."</span><span class="p">.</span><span class="n">to_string</span><span class="p">(),</span>
+<a id="bike-rs/api/src/controllers/strava.rs-254" name="bike-rs/api/src/controllers/strava.rs-254"></a><span class="w">    </span><span class="p">}))</span>
+<a id="bike-rs/api/src/controllers/strava.rs-255" name="bike-rs/api/src/controllers/strava.rs-255"></a><span class="p">}</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">264</span>
+<span class="normal">265</span>
+<span class="normal">266</span>
+<span class="normal">267</span>
+<span class="normal">268</span>
+<span class="normal">269</span>
+<span class="normal">270</span>
+<span class="normal">271</span>
+<span class="normal">272</span>
+<span class="normal">273</span>
+<span class="normal">274</span>
+<span class="normal">275</span>
+<span class="normal">276</span>
+<span class="normal">277</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/api/src/controllers/strava.rs-264" name="bike-rs/api/src/controllers/strava.rs-264"></a><span class="cp">)]</span>
+<a id="bike-rs/api/src/controllers/strava.rs-265" name="bike-rs/api/src/controllers/strava.rs-265"></a><span class="k">pub</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">handle_callback</span><span class="p">(</span>
+<a id="bike-rs/api/src/controllers/strava.rs-266" name="bike-rs/api/src/controllers/strava.rs-266"></a><span class="w">    </span><span class="n">State</span><span class="p">(</span><span class="n">state</span><span class="p">):</span><span class="w"> </span><span class="nc">State</span><span class="o">&lt;</span><span class="n">Arc</span><span class="o">&lt;</span><span class="n">AppStorage</span><span class="o">&gt;&gt;</span><span class="p">,</span>
+<a id="bike-rs/api/src/controllers/strava.rs-267" name="bike-rs/api/src/controllers/strava.rs-267"></a><span class="w">    </span><span class="n">Query</span><span class="p">(</span><span class="n">query</span><span class="p">):</span><span class="w"> </span><span class="nc">Query</span><span class="o">&lt;</span><span class="n">StravaCallbackQuery</span><span class="o">&gt;</span><span class="p">,</span>
+<a id="bike-rs/api/src/controllers/strava.rs-268" name="bike-rs/api/src/controllers/strava.rs-268"></a><span class="hll"><span class="w">    </span><span class="n">headers</span><span class="p">:</span><span class="w"> </span><span class="nc">HeaderMap</span><span class="p">,</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-269" name="bike-rs/api/src/controllers/strava.rs-269"></a><span class="hll"><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">Response</span><span class="w"> </span><span class="p">{</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-270" name="bike-rs/api/src/controllers/strava.rs-270"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/api/src/controllers/strava.rs-271" name="bike-rs/api/src/controllers/strava.rs-271"></a><span class="hll"><span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="n">browser</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">strava</span><span class="p">::</span><span class="n">oauth_state</span><span class="p">::</span><span class="n">browser_session</span><span class="p">(</span><span class="o">&amp;</span><span class="n">headers</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">Config</span><span class="p">::</span><span class="n">get</span><span class="p">().</span><span class="n">api_url</span><span class="p">)</span><span class="o">?</span><span class="p">;</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-272" name="bike-rs/api/src/controllers/strava.rs-272"></a><span class="hll"><span class="w">        </span><span class="n">strava</span><span class="p">::</span><span class="n">oauth_state</span><span class="p">::</span><span class="n">OAuthState</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="o">&amp;</span><span class="n">Config</span><span class="p">::</span><span class="n">get</span><span class="p">().</span><span class="n">jwt_secret</span><span class="p">)</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-273" name="bike-rs/api/src/controllers/strava.rs-273"></a><span class="hll"><span class="w">            </span><span class="p">.</span><span class="n">callback</span><span class="p">(</span><span class="o">&amp;</span><span class="n">state</span><span class="p">.</span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">state</span><span class="p">.</span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">query</span><span class="p">,</span><span class="w"> </span><span class="n">browser</span><span class="p">,</span><span class="w"> </span><span class="n">chrono</span><span class="p">::</span><span class="n">Utc</span><span class="p">::</span><span class="n">now</span><span class="p">())</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-274" name="bike-rs/api/src/controllers/strava.rs-274"></a><span class="w">            </span><span class="p">.</span><span class="k">await</span>
+<a id="bike-rs/api/src/controllers/strava.rs-275" name="bike-rs/api/src/controllers/strava.rs-275"></a><span class="w">            </span><span class="p">.</span><span class="n">map_err</span><span class="p">(</span><span class="n">AppError</span><span class="p">::</span><span class="n">from</span><span class="p">)</span>
+<a id="bike-rs/api/src/controllers/strava.rs-276" name="bike-rs/api/src/controllers/strava.rs-276"></a><span class="w">    </span><span class="p">}</span>
+<a id="bike-rs/api/src/controllers/strava.rs-277" name="bike-rs/api/src/controllers/strava.rs-277"></a><span class="w">    </span><span class="p">.</span><span class="k">await</span><span class="p">;</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">275</span>
+<span class="normal">276</span>
+<span class="normal">277</span>
+<span class="normal">278</span>
+<span class="normal">279</span>
+<span class="normal">280</span>
+<span class="normal">281</span>
+<span class="normal">282</span>
+<span class="normal">283</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/api/src/controllers/strava.rs-275" name="bike-rs/api/src/controllers/strava.rs-275"></a><span class="w">            </span><span class="p">.</span><span class="n">map_err</span><span class="p">(</span><span class="n">AppError</span><span class="p">::</span><span class="n">from</span><span class="p">)</span>
+<a id="bike-rs/api/src/controllers/strava.rs-276" name="bike-rs/api/src/controllers/strava.rs-276"></a><span class="w">    </span><span class="p">}</span>
+<a id="bike-rs/api/src/controllers/strava.rs-277" name="bike-rs/api/src/controllers/strava.rs-277"></a><span class="w">    </span><span class="p">.</span><span class="k">await</span><span class="p">;</span>
+<a id="bike-rs/api/src/controllers/strava.rs-278" name="bike-rs/api/src/controllers/strava.rs-278"></a>
+<a id="bike-rs/api/src/controllers/strava.rs-279" name="bike-rs/api/src/controllers/strava.rs-279"></a><span class="hll"><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">redirect</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">match</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="p">{</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-280" name="bike-rs/api/src/controllers/strava.rs-280"></a><span class="w">        </span><span class="nb">Ok</span><span class="p">(</span><span class="n">connection</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">Redirect</span><span class="p">::</span><span class="n">to</span><span class="p">(</span><span class="o">&amp;</span><span class="n">strava</span><span class="p">::</span><span class="n">build_frontend_account_redirect</span><span class="p">(</span>
+<a id="bike-rs/api/src/controllers/strava.rs-281" name="bike-rs/api/src/controllers/strava.rs-281"></a><span class="w">            </span><span class="n">Config</span><span class="p">::</span><span class="n">get</span><span class="p">(),</span>
+<a id="bike-rs/api/src/controllers/strava.rs-282" name="bike-rs/api/src/controllers/strava.rs-282"></a><span class="w">            </span><span class="s">"connected"</span><span class="p">,</span>
+<a id="bike-rs/api/src/controllers/strava.rs-283" name="bike-rs/api/src/controllers/strava.rs-283"></a><span class="w">            </span><span class="n">connection</span><span class="p">.</span><span class="n">last_sync_message</span><span class="p">.</span><span class="n">as_deref</span><span class="p">(),</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">282</span>
+<span class="normal">283</span>
+<span class="normal">284</span>
+<span class="normal">285</span>
+<span class="normal">286</span>
+<span class="normal">287</span>
+<span class="normal">288</span>
+<span class="normal">289</span>
+<span class="normal">290</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/api/src/controllers/strava.rs-282" name="bike-rs/api/src/controllers/strava.rs-282"></a><span class="w">            </span><span class="s">"connected"</span><span class="p">,</span>
+<a id="bike-rs/api/src/controllers/strava.rs-283" name="bike-rs/api/src/controllers/strava.rs-283"></a><span class="w">            </span><span class="n">connection</span><span class="p">.</span><span class="n">last_sync_message</span><span class="p">.</span><span class="n">as_deref</span><span class="p">(),</span>
+<a id="bike-rs/api/src/controllers/strava.rs-284" name="bike-rs/api/src/controllers/strava.rs-284"></a><span class="w">        </span><span class="p">)),</span>
+<a id="bike-rs/api/src/controllers/strava.rs-285" name="bike-rs/api/src/controllers/strava.rs-285"></a><span class="w">        </span><span class="nb">Err</span><span class="p">(</span><span class="n">error</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/api/src/controllers/strava.rs-286" name="bike-rs/api/src/controllers/strava.rs-286"></a><span class="hll"><span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="n">query</span><span class="p">.</span><span class="n">is_incomplete</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-287" name="bike-rs/api/src/controllers/strava.rs-287"></a><span class="w">                </span><span class="n">record_strava_event_best_effort</span><span class="p">(</span>
+<a id="bike-rs/api/src/controllers/strava.rs-288" name="bike-rs/api/src/controllers/strava.rs-288"></a><span class="w">                    </span><span class="o">&amp;</span><span class="n">state</span><span class="p">.</span><span class="n">db</span><span class="p">,</span>
+<a id="bike-rs/api/src/controllers/strava.rs-289" name="bike-rs/api/src/controllers/strava.rs-289"></a><span class="w">                    </span><span class="nb">None</span><span class="p">,</span>
+<a id="bike-rs/api/src/controllers/strava.rs-290" name="bike-rs/api/src/controllers/strava.rs-290"></a><span class="w">                    </span><span class="s">"oauth.connect_failed"</span><span class="p">,</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">306</span>
+<span class="normal">307</span>
+<span class="normal">308</span>
+<span class="normal">309</span>
+<span class="normal">310</span>
+<span class="normal">311</span>
+<span class="normal">312</span>
+<span class="normal">313</span>
+<span class="normal">314</span>
+<span class="normal">315</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/api/src/controllers/strava.rs-306" name="bike-rs/api/src/controllers/strava.rs-306"></a><span class="w">                </span><span class="nb">Some</span><span class="p">(</span><span class="o">&amp;</span><span class="n">error</span><span class="p">.</span><span class="n">message</span><span class="p">),</span>
+<a id="bike-rs/api/src/controllers/strava.rs-307" name="bike-rs/api/src/controllers/strava.rs-307"></a><span class="w">            </span><span class="p">))</span>
+<a id="bike-rs/api/src/controllers/strava.rs-308" name="bike-rs/api/src/controllers/strava.rs-308"></a><span class="w">        </span><span class="p">}</span>
+<a id="bike-rs/api/src/controllers/strava.rs-309" name="bike-rs/api/src/controllers/strava.rs-309"></a><span class="w">    </span><span class="p">};</span>
+<a id="bike-rs/api/src/controllers/strava.rs-310" name="bike-rs/api/src/controllers/strava.rs-310"></a><span class="hll"><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">cookie</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">strava</span><span class="p">::</span><span class="n">oauth_state</span><span class="p">::</span><span class="n">clear_session_cookie</span><span class="p">(</span><span class="o">&amp;</span><span class="n">Config</span><span class="p">::</span><span class="n">get</span><span class="p">().</span><span class="n">api_url</span><span class="p">);</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-311" name="bike-rs/api/src/controllers/strava.rs-311"></a><span class="hll"><span class="w">    </span><span class="p">([(</span><span class="n">header</span><span class="p">::</span><span class="n">SET_COOKIE</span><span class="p">,</span><span class="w"> </span><span class="n">cookie</span><span class="p">)],</span><span class="w"> </span><span class="n">redirect</span><span class="p">).</span><span class="n">into_response</span><span class="p">()</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-312" name="bike-rs/api/src/controllers/strava.rs-312"></a><span class="p">}</span>
+<a id="bike-rs/api/src/controllers/strava.rs-313" name="bike-rs/api/src/controllers/strava.rs-313"></a>
+<a id="bike-rs/api/src/controllers/strava.rs-314" name="bike-rs/api/src/controllers/strava.rs-314"></a><span class="cp">#[utoipa::path(</span>
+<a id="bike-rs/api/src/controllers/strava.rs-315" name="bike-rs/api/src/controllers/strava.rs-315"></a><span class="cp">    get,</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">371</span>
+<span class="normal">372</span>
+<span class="normal">373</span>
+<span class="normal">374</span>
+<span class="normal">375</span>
+<span class="normal">376</span>
+<span class="normal">377</span>
+<span class="normal">378</span>
+<span class="normal">379</span>
+<span class="normal">380</span>
+<span class="normal">381</span>
+<span class="normal">382</span>
+<span class="normal">383</span>
+<span class="normal">384</span>
+<span class="normal">385</span>
+<span class="normal">386</span>
+<span class="normal">387</span>
+<span class="normal">388</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/api/src/controllers/strava.rs-371" name="bike-rs/api/src/controllers/strava.rs-371"></a><span class="cp">    tag = </span><span class="s">"strava"</span>
+<a id="bike-rs/api/src/controllers/strava.rs-372" name="bike-rs/api/src/controllers/strava.rs-372"></a><span class="cp">)]</span>
+<a id="bike-rs/api/src/controllers/strava.rs-373" name="bike-rs/api/src/controllers/strava.rs-373"></a><span class="k">pub</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">handle_webhook_event</span><span class="p">(</span>
+<a id="bike-rs/api/src/controllers/strava.rs-374" name="bike-rs/api/src/controllers/strava.rs-374"></a><span class="w">    </span><span class="n">State</span><span class="p">(</span><span class="n">state</span><span class="p">):</span><span class="w"> </span><span class="nc">State</span><span class="o">&lt;</span><span class="n">Arc</span><span class="o">&lt;</span><span class="n">AppStorage</span><span class="o">&gt;&gt;</span><span class="p">,</span>
+<a id="bike-rs/api/src/controllers/strava.rs-375" name="bike-rs/api/src/controllers/strava.rs-375"></a><span class="hll"><span class="w">    </span><span class="n">headers</span><span class="p">:</span><span class="w"> </span><span class="nc">axum</span><span class="p">::</span><span class="n">http</span><span class="p">::</span><span class="n">HeaderMap</span><span class="p">,</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-376" name="bike-rs/api/src/controllers/strava.rs-376"></a><span class="w">    </span><span class="n">body</span><span class="p">:</span><span class="w"> </span><span class="nc">axum</span><span class="p">::</span><span class="n">body</span><span class="p">::</span><span class="n">Bytes</span><span class="p">,</span>
+<a id="bike-rs/api/src/controllers/strava.rs-377" name="bike-rs/api/src/controllers/strava.rs-377"></a><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="n">Json</span><span class="o">&lt;</span><span class="n">auth_openapi</span><span class="p">::</span><span class="n">schemas</span><span class="p">::</span><span class="n">MessageResponse</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">AppError</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/api/src/controllers/strava.rs-378" name="bike-rs/api/src/controllers/strava.rs-378"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">event</span><span class="p">:</span><span class="w"> </span><span class="nc">strava</span><span class="p">::</span><span class="n">StravaWebhookEvent</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">serde_json</span><span class="p">::</span><span class="n">from_slice</span><span class="p">(</span><span class="o">&amp;</span><span class="n">body</span><span class="p">)</span>
+<a id="bike-rs/api/src/controllers/strava.rs-379" name="bike-rs/api/src/controllers/strava.rs-379"></a><span class="w">        </span><span class="p">.</span><span class="n">map_err</span><span class="p">(</span><span class="o">|</span><span class="n">_</span><span class="o">|</span><span class="w"> </span><span class="n">AppError</span><span class="p">::</span><span class="n">bad_request</span><span class="p">(</span><span class="s">"Invalid Strava webhook body"</span><span class="p">))</span><span class="o">?</span><span class="p">;</span>
+<a id="bike-rs/api/src/controllers/strava.rs-380" name="bike-rs/api/src/controllers/strava.rs-380"></a><span class="hll"><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">request_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">headers</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-381" name="bike-rs/api/src/controllers/strava.rs-381"></a><span class="hll"><span class="w">        </span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">"x-request-id"</span><span class="p">)</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-382" name="bike-rs/api/src/controllers/strava.rs-382"></a><span class="hll"><span class="w">        </span><span class="p">.</span><span class="n">and_then</span><span class="p">(</span><span class="o">|</span><span class="n">value</span><span class="o">|</span><span class="w"> </span><span class="n">value</span><span class="p">.</span><span class="n">to_str</span><span class="p">().</span><span class="n">ok</span><span class="p">())</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-383" name="bike-rs/api/src/controllers/strava.rs-383"></a><span class="hll"><span class="w">        </span><span class="p">.</span><span class="n">map</span><span class="p">(</span><span class="kt">str</span><span class="p">::</span><span class="n">to_owned</span><span class="p">);</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-384" name="bike-rs/api/src/controllers/strava.rs-384"></a><span class="hll"><span class="w">    </span><span class="n">bike_core</span><span class="p">::</span><span class="n">strava</span><span class="p">::</span><span class="n">events</span><span class="p">::</span><span class="n">accept_webhook</span><span class="p">(</span><span class="o">&amp;</span><span class="n">state</span><span class="p">.</span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">event</span><span class="p">,</span><span class="w"> </span><span class="n">request_id</span><span class="p">).</span><span class="k">await</span><span class="o">?</span><span class="p">;</span>
+</span><a id="bike-rs/api/src/controllers/strava.rs-385" name="bike-rs/api/src/controllers/strava.rs-385"></a>
+<a id="bike-rs/api/src/controllers/strava.rs-386" name="bike-rs/api/src/controllers/strava.rs-386"></a><span class="w">    </span><span class="nb">Ok</span><span class="p">(</span><span class="n">Json</span><span class="p">(</span><span class="n">auth_openapi</span><span class="p">::</span><span class="n">schemas</span><span class="p">::</span><span class="n">MessageResponse</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/api/src/controllers/strava.rs-387" name="bike-rs/api/src/controllers/strava.rs-387"></a><span class="w">        </span><span class="n">message</span><span class="p">:</span><span class="w"> </span><span class="s">"ok"</span><span class="p">.</span><span class="n">to_string</span><span class="p">(),</span>
+<a id="bike-rs/api/src/controllers/strava.rs-388" name="bike-rs/api/src/controllers/strava.rs-388"></a><span class="w">    </span><span class="p">}))</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+    </body>
+</html>
