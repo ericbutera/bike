@@ -45,7 +45,10 @@
 - [x] Centralize sport/cycling policy and Training/Race in backend enums; generate frontend types and runtime options through OpenAPI. Preserve unknown provider sports without admitting them to cycling calculations.
 - [x] Bound Strava Temporal JSON to 256 KiB, keeping large provider bodies and parsed data in object storage. Cover oversized callbacks/results, a 3 MiB provider body, and 150,000-point streams with isolated units.
 - [ ] Define event/source retention without deleting inputs needed by active workflows.
+- [ ] Test worker restart/replay, large histories, failed customers across scheduled-scan pages
+- [ ] production load/resource use.
 - [x] Test restart reconstruction, populated large histories, and failures across scheduled-scan pages with isolated native workflow units. Cover child-start failures and continuation within a page.
 - [ ] Verify deployment and native reimport for the two manual Strava activities; confirm summaries, description, gear, cycling exclusions, and real worker interruption/recovery timing.
 - [ ] Verify production load/resource use.
 - [ ] Resolve Temporal's initial `Frontend is not healthy yet` startup warning; keep diagnostics enabled.
+- [ ] Verify strava integration -> temporal works with large payloads. Normally this is done by storing the raw data in object storage and passing a ref to the worker. If temporal is able to handle large inputs, that is fine, but we need to know the limit and have a guardrail to prevent errors
