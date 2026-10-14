@@ -241,9 +241,9 @@ flowchart LR
 
 - 2026-10-14: the release has an explicitly approved one-release exception to
   the 80% changed-line coverage gate. Tests, lint, coverage report retention,
-  image builds, and existing release checks remain blocking. Restore blocking
-  coverage immediately after rollout; isolated adapter/startup coverage remains
-  on the TODO.
+  image builds, and existing release checks remained blocking. The follow-up
+  restores blocking coverage after rollout; isolated adapter/startup coverage
+  remains on the TODO.
 - 2026-10-13: read-only Strava API confirmed subscription `374570` uses
   `https://bike.nibelheim.dev/webhooks/strava-gateway`. Live GET challenge passed;
   OAuth rejection returned HTTP 303. Ingress routes both aliases to `api:3000`.
@@ -255,7 +255,22 @@ flowchart LR
   stable queue payloads. No PostgreSQL or SQLite database is opened by these tests.
 - 2026-10-13: 92 isolated units passed: 38 domain/persistence, 14 OAuth, nine
   webhook, 28 Temporal workflow/handler/logging, and three configuration/queue tests.
-- These are bounded unit guarantees. The new implementation is not deployed;
-  production delivery is unverified until rollout and a real activity exchange.
+- 2026-10-14: revision `1a7b33e6` deployed with all five Bike workloads ready
+  and all three new migrations applied. Both native worker exporters are
+  scraped successfully. All six correlation search attributes are registered.
+  Public GET verification passed on both webhook routes; both OAuth aliases
+  rejected invalid state with HTTP 303. The existing release suite passed
+  83 browser checks. A real scheduled sync fetched activity `20424619693` and
+  its streams with HTTP 200, upserted Bike activity `1676`, and completed all
+  three parent/child workflows with zero failures. Root correlation ID:
+  `01a13a17-43ff-7af6-999c-e5f409989648`.
+- The live job exposed a trace filter gap: new native crate targets were omitted.
+  Include them as application trace roots. An isolated in-memory tracer unit
+  verifies that a filtered scan produces a carrier and its child retains the
+  same trace ID. Verify continuity live after deploying this correction.
+- Both backup disks validated generation `20261014T110418Z` after pausing and
+  resuming API, SQL worker, and native Temporal worker.
+- Unit guarantees remain bounded; deployment readiness and callback checks do
+  not establish production behavior for every operation.
 - [TODO](../TODO.md) tracks production worker/scrapes/UI, cutover, coordinated
   backups, source retention, replay under restart, large histories, and load.

@@ -295,12 +295,10 @@ fn should_export_otel_span(name: &str, target: &str, has_exported_parent: bool) 
 }
 
 fn is_application_trace_target(target: &str) -> bool {
-    target == "api"
-        || target.starts_with("api::")
-        || target == "worker"
-        || target.starts_with("worker::")
-        || target == "bike_core"
-        || target.starts_with("bike_core::")
+    matches!(
+        target.split("::").next(),
+        Some("api" | "worker" | "bike_core" | "temporal_worker" | "strava_temporal")
+    )
 }
 
 pub fn inject_current_trace_context() -> Option<TraceContextCarrier> {
@@ -457,15 +455,50 @@ mod tests {
         ));
         assert!(should_export_otel_span("worker.run", "worker", false));
         assert!(should_export_otel_span(
-            "worker.strava_sync",
-            "worker::tasks::processors::strava_sync",
+            "strava.scan",
+            "strava_temporal::activities",
             false,
         ));
+        assert!(should_export_otel_span("startup", "temporal_worker", false));
         assert!(should_export_otel_span(
             "background_task.process",
             "bike_core::background_jobs::worker",
             false,
         ));
+    }
+
+    #[test]
+    fn native_scan_preserves_trace_identity_for_child_activity() {
+        use opentelemetry::trace::TracerProvider as _;
+        use tracing_subscriber::{layer::SubscriberExt, Layer};
+
+        opentelemetry::global::set_text_map_propagator(
+            opentelemetry_sdk::propagation::TraceContextPropagator::new(),
+        );
+        let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder().build();
+        let subscriber = tracing_subscriber::registry().with(
+            tracing_opentelemetry::layer()
+                .with_tracer(provider.tracer("strava-unit"))
+                .with_filter(tracing_subscriber::filter::filter_fn(|metadata| {
+                    should_export_otel_span(metadata.name(), metadata.target(), false)
+                })),
+        );
+        tracing::subscriber::with_default(subscriber, || {
+            let scan = tracing::info_span!(target: "strava_temporal::activities", "strava.scan");
+            let carrier = {
+                let _scan = scan.enter();
+                super::inject_current_trace_context().expect("Native scan must have trace context")
+            };
+            let child =
+                tracing::info_span!(target: "bike_core::strava::logging", "strava.activity");
+            super::set_span_parent_from_carrier(&child, Some(&carrier));
+            let _child = child.enter();
+            let child_carrier = super::inject_current_trace_context().unwrap();
+            assert_eq!(
+                super::trace_id_from_carrier(Some(&child_carrier)),
+                super::trace_id_from_carrier(Some(&carrier)),
+            );
+        });
     }
 
     #[test]
