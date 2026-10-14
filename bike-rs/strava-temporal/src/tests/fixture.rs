@@ -38,6 +38,28 @@ impl Fixture {
             activity: object("activity", include_bytes!("fixtures/activity.json")),
         }
     }
+    pub fn row(&self, status: ActivityStatus) -> bike_core::entities::strava_events::Model {
+        let event = &self.event;
+        let now = chrono::Utc::now();
+        bike_core::entities::strava_events::Model {
+            id: event.strava_event_id.to_string(),
+            event_key: "fixture-event".into(),
+            correlation_id: event.correlation_id.to_string(),
+            parent_event_id: event.parent_event_id.map(|id| id.to_string()),
+            user_id: event.bike_user_id,
+            customer_id: event.bike_customer_id,
+            athlete_id: event.strava_athlete_id,
+            activity_id: event.strava_activity_id,
+            workflow_id: event.workflow_id(),
+            event: serde_json::to_value(event).unwrap(),
+            status,
+            mutation: None,
+            accepted_at: now,
+            submitted_at: None,
+            next_attempt_at: now,
+            handoff_error: None,
+        }
+    }
     pub fn sources(&self) -> ActivitySources {
         ActivitySources {
             event: self.event.clone(),

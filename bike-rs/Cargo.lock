@@ -5553,6 +5553,8 @@ dependencies = [
  "futures",
  "opentelemetry",
  "opentelemetry_sdk",
+ "prometheus",
+ "prost",
  "sea-orm",
  "serde",
  "serde_json",

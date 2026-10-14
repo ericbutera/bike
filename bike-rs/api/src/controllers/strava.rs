@@ -95,13 +95,20 @@ pub async fn begin_connect(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Response, AppError> {
-    let authorization =
-        strava::create_authorization_url_for_user(&state.db, Config::get(), user.id).await;
+    authorize_response(&state.db, Config::get(), user.id).await
+}
+
+async fn authorize_response(
+    db: &DatabaseConnection,
+    config: &Config,
+    user_id: i32,
+) -> Result<Response, AppError> {
+    let authorization = strava::create_authorization_url_for_user(db, config, user_id).await;
     let authorization = match authorization {
         Ok(url) => {
             record_strava_event_best_effort(
-                &state.db,
-                Some(user.id),
+                db,
+                Some(user_id),
                 "oauth.connect_started",
                 INTEGRATION_LEVEL_INFO,
                 "Started Strava OAuth connect flow.",
@@ -112,8 +119,8 @@ pub async fn begin_connect(
         }
         Err(error) => {
             record_strava_event_best_effort(
-                &state.db,
-                Some(user.id),
+                db,
+                Some(user_id),
                 "oauth.connect_failed",
                 INTEGRATION_LEVEL_ERROR,
                 error.message.clone(),
@@ -127,7 +134,7 @@ pub async fn begin_connect(
     };
 
     let cookie =
-        strava::oauth_state::session_cookie(&authorization.browser_session, &Config::get().api_url);
+        strava::oauth_state::session_cookie(&authorization.browser_session, &config.api_url);
     Ok((
         [(header::SET_COOKIE, cookie)],
         Json(StravaAuthorizeResponse {
@@ -267,10 +274,20 @@ pub async fn handle_callback(
     Query(query): Query<StravaCallbackQuery>,
     headers: HeaderMap,
 ) -> Response {
+    callback_response(&state.db, Config::get(), &state.db, &query, &headers).await
+}
+
+async fn callback_response(
+    db: &DatabaseConnection,
+    config: &Config,
+    exchange: &impl strava::oauth_state::AuthorizationExchange,
+    query: &StravaCallbackQuery,
+    headers: &HeaderMap,
+) -> Response {
     let result = async {
-        let browser = strava::oauth_state::browser_session(&headers, &Config::get().api_url)?;
-        strava::oauth_state::OAuthState::new(&Config::get().jwt_secret)
-            .callback(&state.db, &state.db, &query, browser, chrono::Utc::now())
+        let browser = strava::oauth_state::browser_session(headers, &config.api_url)?;
+        strava::oauth_state::OAuthState::new(&config.jwt_secret)
+            .callback(db, exchange, query, browser, chrono::Utc::now())
             .await
             .map_err(AppError::from)
     }
@@ -278,14 +295,14 @@ pub async fn handle_callback(
 
     let redirect = match result {
         Ok(connection) => Redirect::to(&strava::build_frontend_account_redirect(
-            Config::get(),
+            config,
             "connected",
             connection.last_sync_message.as_deref(),
         )),
         Err(error) => {
             if query.is_incomplete() {
                 record_strava_event_best_effort(
-                    &state.db,
+                    db,
                     None,
                     "oauth.connect_failed",
                     INTEGRATION_LEVEL_ERROR,
@@ -301,13 +318,13 @@ pub async fn handle_callback(
             }
 
             Redirect::to(&strava::build_frontend_account_redirect(
-                Config::get(),
+                config,
                 "error",
                 Some(&error.message),
             ))
         }
     };
-    let cookie = strava::oauth_state::clear_session_cookie(&Config::get().api_url);
+    let cookie = strava::oauth_state::clear_session_cookie(&config.api_url);
     ([(header::SET_COOKIE, cookie)], redirect).into_response()
 }
 
@@ -324,10 +341,18 @@ pub async fn handle_webhook_verification(
     State(state): State<Arc<AppStorage>>,
     Query(query): Query<strava::StravaWebhookSubscriptionQuery>,
 ) -> Result<Json<strava::StravaWebhookChallengeResponse>, AppError> {
-    match strava::verify_webhook_subscription(Config::get(), &query) {
+    verify_webhook_response(&state.db, Config::get(), query).await
+}
+
+async fn verify_webhook_response(
+    db: &DatabaseConnection,
+    config: &Config,
+    query: strava::StravaWebhookSubscriptionQuery,
+) -> Result<Json<strava::StravaWebhookChallengeResponse>, AppError> {
+    match strava::verify_webhook_subscription(config, &query) {
         Ok(response) => {
             record_strava_event_best_effort(
-                &state.db,
+                db,
                 None,
                 "webhook.verification_succeeded",
                 INTEGRATION_LEVEL_INFO,
@@ -343,7 +368,7 @@ pub async fn handle_webhook_verification(
         }
         Err(error) => {
             record_strava_event_best_effort(
-                &state.db,
+                db,
                 None,
                 "webhook.verification_failed",
                 INTEGRATION_LEVEL_ERROR,
@@ -360,6 +385,9 @@ pub async fn handle_webhook_verification(
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
 
 #[utoipa::path(
     post,

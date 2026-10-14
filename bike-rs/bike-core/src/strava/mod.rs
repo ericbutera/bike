@@ -12,6 +12,10 @@ pub mod paths;
 pub mod provider_payload;
 mod transport;
 
+#[cfg(feature = "test-fixtures")]
+#[path = "tests/fixtures.rs"]
+pub mod test_fixtures;
+
 #[cfg(test)]
 pub(crate) mod fixtures;
 

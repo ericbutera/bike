@@ -39,7 +39,8 @@ impl ActivityMutation {
     }
 }
 use sea_orm::{
-    entity::prelude::*, sea_query::OnConflict, QueryOrder, QuerySelect, Set, TransactionTrait,
+    entity::prelude::*, sea_query::OnConflict, FromQueryResult, QueryOrder, QuerySelect, Set,
+    Statement, TransactionTrait,
 };
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
@@ -66,6 +67,25 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
 impl ActiveModelBehavior for ActiveModel {}
+
+#[derive(Debug, PartialEq, FromQueryResult)]
+pub struct HandoffBacklog {
+    pub pending: i64,
+    pub oldest_accepted_at: Option<DateTimeUtc>,
+}
+
+impl HandoffBacklog {
+    pub async fn load(db: &impl ConnectionTrait) -> Result<Self, DbErr> {
+        Self::find_by_statement(Statement::from_string(
+            db.get_database_backend(),
+            "SELECT COUNT(*)::bigint AS pending, MIN(accepted_at) AS oldest_accepted_at
+             FROM strava_events WHERE submitted_at IS NULL",
+        ))
+        .one(db)
+        .await?
+        .ok_or_else(|| DbErr::RecordNotFound("Strava handoff backlog was not returned".into()))
+    }
+}
 
 impl Model {
     pub async fn collection_counts(

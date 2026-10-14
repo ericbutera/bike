@@ -1,5 +1,5 @@
 use super::{fixture::Fixture, logging::Logs};
-use crate::{activities::StravaActivities, workflows::UpsertActivity};
+use crate::{activities::StravaActivities, workflows::*};
 use bike_core::{
     strava::{
         events::{StravaEvent, StravaOperation},
@@ -23,6 +23,7 @@ use temporalio_workflow::common::WorkflowDefinition;
 struct Storage {
     objects: Mutex<HashMap<String, Vec<u8>>>,
     traces: Mutex<Vec<bike_core::observability::TraceContextCarrier>>,
+    removed: Mutex<Vec<String>>,
 }
 
 #[async_trait::async_trait]
@@ -50,54 +51,103 @@ impl ActivityStorage for Storage {
             bytes: bytes.len(),
         })
     }
-    async fn remove(&self, _path: &str) -> Result<(), WorkflowError> {
-        panic!("Unexpected storage deletion")
+    async fn remove(&self, path: &str) -> Result<(), WorkflowError> {
+        self.removed.lock().unwrap().push(path.into());
+        self.objects.lock().unwrap().remove(path);
+        Ok(())
     }
 }
 
-struct Provider;
+struct Provider {
+    storage: Arc<Storage>,
+    calls: Mutex<Vec<&'static str>>,
+}
+
+impl Provider {
+    async fn response(
+        &self,
+        event: &StravaEvent,
+        resource: &'static str,
+        bytes: &[u8],
+    ) -> Result<ObjectRef, WorkflowError> {
+        self.calls.lock().unwrap().push(resource);
+        self.storage
+            .write(
+                &format!("fixture/{}/{resource}", event.strava_event_id),
+                bytes,
+            )
+            .await
+    }
+}
 #[async_trait::async_trait]
 impl StravaProvider for Provider {
-    async fn activity(&self, _event: &StravaEvent) -> Result<ObjectRef, WorkflowError> {
-        panic!("Unexpected provider activity fetch")
+    async fn activity(&self, event: &StravaEvent) -> Result<ObjectRef, WorkflowError> {
+        self.response(event, "activity", include_bytes!("fixtures/activity.json"))
+            .await
     }
-    async fn streams(&self, _event: &StravaEvent) -> Result<ObjectRef, WorkflowError> {
-        panic!("Unexpected provider streams fetch")
+    async fn streams(&self, event: &StravaEvent) -> Result<ObjectRef, WorkflowError> {
+        self.response(event, "streams", include_bytes!("fixtures/streams.json"))
+            .await
     }
     async fn page(
         &self,
         _input: &PageInput,
     ) -> Result<Vec<bike_core::strava::provider_payload::StravaActivitySummary>, WorkflowError>
     {
-        panic!("Unexpected provider page fetch")
+        self.calls.lock().unwrap().push("page");
+        Ok(vec![serde_json::from_slice(include_bytes!(
+            "fixtures/activity.json"
+        ))
+        .unwrap()])
     }
     async fn revoke(&self, _event: &StravaEvent) -> Result<(), WorkflowError> {
-        panic!("Unexpected provider revocation")
+        self.calls.lock().unwrap().push("revoke");
+        Ok(())
     }
 }
 
 fn environment(event: &StravaEvent, storage: Arc<Storage>) -> ActivityEnvironment {
-    let operations = StravaOperations::with_dependencies(
-        MockDatabase::new(DatabaseBackend::Postgres).into_connection(),
-        Arc::new(Provider),
-        storage,
-    );
+    environment_with_database(event, storage, MockDatabase::new(DatabaseBackend::Postgres)).0
+}
+
+fn environment_with_database(
+    event: &StravaEvent,
+    storage: Arc<Storage>,
+    db: MockDatabase,
+) -> (ActivityEnvironment, Arc<Provider>) {
+    let provider = Arc::new(Provider {
+        storage: storage.clone(),
+        calls: Mutex::default(),
+    });
+    let operations =
+        StravaOperations::with_dependencies(db.into_connection(), provider.clone(), storage);
+    let workflow = match event.operation {
+        StravaOperation::Create | StravaOperation::Update | StravaOperation::Upsert => {
+            UpsertActivity::run.name()
+        }
+        StravaOperation::Delete => DeleteActivity::run.name(),
+        StravaOperation::Sync => SyncActivities::run.name(),
+        StravaOperation::Backfill => BackfillActivities::run.name(),
+        StravaOperation::Disconnect => DisconnectStrava::run.name(),
+    };
     let info = TestActivityInfoOptions::builder()
         .namespace("bike")
         .workflow_run_id(Some("child-native-run".into()))
-        .workflow_type(Some(UpsertActivity::run.name().into()))
+        .workflow_type(Some(workflow.into()))
         .workflow_id(Some(event.workflow_id()))
         .deadline(None)
         .build();
-    ActivityEnvironment::builder_with_default()
+    let environment = ActivityEnvironment::builder_with_default()
         .info(info)
         .register_activities(StravaActivities::with_operations(operations))
-        .build()
+        .build();
+    (environment, provider)
 }
 
 fn storage(fixture: &Fixture) -> Arc<Storage> {
     Arc::new(Storage {
         traces: Mutex::default(),
+        removed: Mutex::default(),
         objects: Mutex::new(
             [
                 (
@@ -113,6 +163,8 @@ fn storage(fixture: &Fixture) -> Arc<Storage> {
         ),
     })
 }
+
+mod operations;
 
 #[tokio::test]
 async fn child_handler_restores_remote_trace_and_logs_its_native_execution() {

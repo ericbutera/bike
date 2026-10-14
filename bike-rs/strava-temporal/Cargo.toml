@@ -22,8 +22,10 @@ temporalio-sdk = { workspace = true }
 temporalio-workflow = { workspace = true }
 futures = { workspace = true }
 tonic = { workspace = true }
+prometheus = { workspace = true }
 
 [dev-dependencies]
+bike-core = { path = "../bike-core", features = ["test-fixtures"] }
 opentelemetry = { workspace = true }
 opentelemetry_sdk = { workspace = true }
 tracing-opentelemetry = { workspace = true }
@@ -31,4 +33,5 @@ async-trait = { workspace = true }
 tracing-subscriber = { workspace = true }
 sea-orm = { workspace = true, features = ["mock"] }
 temporalio-sdk = { workspace = true, features = ["testing"] }
+prost = "0.14"
 

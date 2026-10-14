@@ -8,6 +8,12 @@ pub struct MetricsServer {
     pub abort_handle: tokio::task::AbortHandle,
 }
 
+impl Drop for MetricsServer {
+    fn drop(&mut self) {
+        self.abort_handle.abort();
+    }
+}
+
 pub fn start(
     address: std::net::SocketAddr,
 ) -> Result<(RuntimeOptions, MetricsServer), crate::client::Error> {
@@ -30,4 +36,20 @@ pub fn start(
             abort_handle: server.abort_handle,
         },
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn dropping_metrics_owner_aborts_its_task_on_error_or_shutdown() {
+        let task = tokio::spawn(std::future::pending::<()>());
+        let server = MetricsServer {
+            bound_addr: "127.0.0.1:9092".parse().unwrap(),
+            abort_handle: task.abort_handle(),
+        };
+        drop(server);
+        assert!(task.await.unwrap_err().is_cancelled());
+    }
 }
