@@ -1,9 +1,9 @@
 [
   {
     "commit": "c997295d36529a615e8daf459ead364e50f7f571",
-    "created_at": "2026-10-14T17:28:50Z",
+    "created_at": "2026-10-14T18:08:19Z",
     "base_revision": "70078f649704a8a21cd025e3c5c2f992dd43f8d4",
-    "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/399",
+    "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/401",
     "minimum_changed_line_percent": 80,
     "projects": {
       "api": {
