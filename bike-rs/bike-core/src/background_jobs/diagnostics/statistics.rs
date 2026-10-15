@@ -1,6 +1,6 @@
 use super::super::entities::{background_tasks, processor_registry};
 use chrono::Utc;
-use sea_orm::{DatabaseConnection, DbBackend, DbErr, EntityTrait, FromQueryResult, Statement};
+use sea_orm::{DatabaseConnection, DbErr, FromQueryResult};
 use serde::Serialize;
 use std::collections::HashMap;
 use utoipa::ToSchema;
@@ -36,8 +36,7 @@ impl ProcessorSummary {
         let mut attempts = distributions(db, window_hours, outcome, "attempt").await?;
         let mut waits = distributions(db, window_hours, outcome, "wait").await?;
         let mut logical = distributions(db, window_hours, "completed", "logical").await?;
-        Ok(processor_registry::Entity::find()
-            .all(db)
+        Ok(processor_registry::Model::registered(db)
             .await?
             .into_iter()
             .map(|processor| {
@@ -66,13 +65,6 @@ impl ProcessorSummary {
             .collect())
     }
 }
-#[derive(FromQueryResult)]
-struct ProcessorDistribution {
-    task_type: String,
-    samples: i64,
-    p50_seconds: Option<f64>,
-    p90_seconds: Option<f64>,
-}
 
 /// Ordered-set aggregates cover the full selected population, grouped in one query.
 async fn distributions(
@@ -81,40 +73,9 @@ async fn distributions(
     outcome: &str,
     signal: &str,
 ) -> Result<HashMap<String, Distribution>, DbErr> {
-    if db.get_database_backend() != DbBackend::Postgres {
-        return Ok(HashMap::new());
-    }
-    let (expression, table, time, condition) = match signal {
-        "logical" => (
-            "EXTRACT(EPOCH FROM (t.completed_at-t.created_at))",
-            "background_tasks t",
-            "t.completed_at",
-            "t.status='completed'",
-        ),
-        "wait" => (
-            "EXTRACT(EPOCH FROM (a.started_at-a.eligible_at))",
-            "background_task_attempts a JOIN background_tasks t ON t.id=a.task_id",
-            "a.finished_at",
-            "a.eligible_at IS NOT NULL AND a.outcome=$2",
-        ),
-        _ => (
-            "EXTRACT(EPOCH FROM (a.finished_at-a.started_at))",
-            "background_task_attempts a JOIN background_tasks t ON t.id=a.task_id",
-            "a.finished_at",
-            "a.outcome=$2",
-        ),
-    };
-    let sql = format!("SELECT task_type, COUNT(*)::bigint samples, percentile_cont(0.5) WITHIN GROUP (ORDER BY duration) p50_seconds, percentile_cont(0.9) WITHIN GROUP (ORDER BY duration) p90_seconds FROM (SELECT t.task_type, {expression} duration FROM {table} WHERE {time}>=$1 AND {time}<=CURRENT_TIMESTAMP AND {condition}) durations WHERE duration>=0 GROUP BY task_type");
-    let mut values = vec![(Utc::now() - chrono::Duration::hours(hours)).into()];
-    if signal != "logical" {
-        values.push(outcome.into());
-    }
-    let rows = ProcessorDistribution::find_by_statement(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        sql,
-        values,
-    ))
-    .all(db)
+    let rows = super::super::entities::task_attempts::Model::processor_distributions(
+        db, hours, outcome, signal,
+    )
     .await?;
     Ok(rows
         .into_iter()

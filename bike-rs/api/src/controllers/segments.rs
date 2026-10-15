@@ -14,21 +14,19 @@ use bike_core::activity_summary::summarize_activity_upload;
 use bike_core::analytics::rebuild_activity_analytics_cache;
 use bike_core::auth::entities::users;
 use bike_core::auth::UserContext;
-use bike_core::dedupe::segment_dedupe_key;
+
+use bike_core::entities::activities::EffortActivitySummaryRow;
+use bike_core::entities::segments::SegmentListRow;
 use bike_core::entities::{
     activities, segment_efforts, segment_summaries, segment_user_summaries, segments,
 };
 use chrono::{DateTime, Datelike, Utc};
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, FromQueryResult, IntoActiveModel,
-    QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
-};
+use sea_orm::{ActiveModelTrait, ConnectionTrait, IntoActiveModel, Set, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
-const SEGMENT_DEDUPE_DISTANCE_BUCKET_METERS: f64 = 5.0;
 const DEFAULT_ANALYSIS_SPLIT_COUNT: usize = 10;
 const DEFAULT_ANALYSIS_EFFORT_LIMIT: usize = 50;
 const MAX_ANALYSIS_EFFORT_LIMIT: usize = 1000;
@@ -240,45 +238,6 @@ pub struct SegmentAnalysisSectionEffortResponse {
     pub average_speed_mps: Option<f64>,
 }
 
-#[derive(Clone, Debug, FromQueryResult)]
-struct SegmentListRow {
-    id: i32,
-    title: String,
-    source: String,
-    mode: String,
-    starred: bool,
-    original_filename: Option<String>,
-    format: Option<String>,
-    distance_meters: Option<f64>,
-    source_activity_id: Option<i32>,
-    source_start_route_point_index: Option<i32>,
-    source_end_route_point_index: Option<i32>,
-    last_activity_change_at: DateTime<Utc>,
-    created_at: DateTime<Utc>,
-}
-
-#[derive(Clone, Debug, FromQueryResult)]
-struct SegmentDedupeCandidateRow {
-    id: i32,
-    distance_meters: Option<f64>,
-    route_data_json: Option<bike_core::activity_details::StoredRoutePointSeries>,
-}
-
-#[derive(Clone, Debug, FromQueryResult)]
-struct EffortActivityRow {
-    id: i32,
-    title: String,
-    started_at: DateTime<Utc>,
-    derived_data_json: Option<bike_core::activity_details::StoredActivityDerivedData>,
-}
-
-#[derive(Clone, Debug, FromQueryResult)]
-struct EffortActivitySummaryRow {
-    id: i32,
-    title: String,
-    started_at: DateTime<Utc>,
-}
-
 #[derive(Clone, Debug)]
 struct SegmentAnalysisEffortSource {
     effort_id: i32,
@@ -309,12 +268,6 @@ struct SampledAnalysisEffort {
 #[derive(Clone, Debug)]
 struct SegmentAnalysisSample {
     elapsed_seconds: f64,
-}
-
-#[derive(Clone, Debug, FromQueryResult)]
-struct RiderNameRow {
-    id: i32,
-    name: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, ToSchema)]
@@ -453,7 +406,7 @@ pub async fn list_segments(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<Vec<SegmentResponse>>, AppError> {
-    let mut segment_rows = load_segment_list_rows(&state.db, user.id).await?;
+    let mut segment_rows = segments::Model::list_for_user(&state.db, user.id).await?;
     let segment_ids = segment_rows
         .iter()
         .map(|segment| segment.id)
@@ -504,10 +457,7 @@ pub async fn get_segment(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<SegmentResponse>, AppError> {
-    let segment = segments::Entity::find()
-        .filter(segments::Column::Id.eq(id))
-        .filter(segments::Column::UserId.eq(user.id))
-        .one(&state.db)
+    let segment = segments::Model::find_owned(&state.db, id, user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Segment not found"))?;
     Ok(Json(
@@ -537,10 +487,7 @@ pub async fn get_segment_comparison(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<SegmentComparisonResponse>, AppError> {
-    let segment = segments::Entity::find()
-        .filter(segments::Column::Id.eq(id))
-        .filter(segments::Column::UserId.eq(user.id))
-        .one(&state.db)
+    let segment = segments::Model::find_owned(&state.db, id, user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Segment not found"))?;
 
@@ -571,10 +518,7 @@ pub async fn get_segment_yearly_bests(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<SegmentYearlyBestsResponse>, AppError> {
-    let segment = segments::Entity::find()
-        .filter(segments::Column::Id.eq(id))
-        .filter(segments::Column::UserId.eq(user.id))
-        .one(&state.db)
+    let segment = segments::Model::find_owned(&state.db, id, user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Segment not found"))?;
 
@@ -608,10 +552,7 @@ pub async fn get_segment_effort_analysis(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<SegmentEffortAnalysisResponse>, AppError> {
-    let segment = segments::Entity::find()
-        .filter(segments::Column::Id.eq(id))
-        .filter(segments::Column::UserId.eq(user.id))
-        .one(&state.db)
+    let segment = segments::Model::find_owned(&state.db, id, user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Segment not found"))?;
 
@@ -645,10 +586,7 @@ pub async fn update_segment(
     State(state): State<Arc<AppStorage>>,
     Json(payload): Json<UpdateSegmentRequest>,
 ) -> Result<Json<SegmentResponse>, AppError> {
-    let segment = segments::Entity::find()
-        .filter(segments::Column::Id.eq(id))
-        .filter(segments::Column::UserId.eq(user.id))
-        .one(&state.db)
+    let segment = segments::Model::find_owned(&state.db, id, user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Segment not found"))?;
     let title = match payload.title.as_ref() {
@@ -717,16 +655,10 @@ pub async fn update_segment_from_activity(
     State(state): State<Arc<AppStorage>>,
     Json(payload): Json<CreateSegmentFromActivityRequest>,
 ) -> Result<Json<SegmentResponse>, AppError> {
-    let segment = segments::Entity::find()
-        .filter(segments::Column::Id.eq(id))
-        .filter(segments::Column::UserId.eq(user.id))
-        .one(&state.db)
+    let segment = segments::Model::find_owned(&state.db, id, user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Segment not found"))?;
-    let activity = activities::Entity::find()
-        .filter(activities::Column::Id.eq(payload.activity_id))
-        .filter(activities::Column::UserId.eq(user.id))
-        .one(&state.db)
+    let activity = activities::Model::find_owned(&state.db, payload.activity_id, user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Activity not found"))?;
     let title = normalize_segment_title(&payload.title)?;
@@ -742,7 +674,8 @@ pub async fn update_segment_from_activity(
         .and_then(|point| point.distance_meters);
 
     if let Some(existing_segment) =
-        find_duplicate_segment(&state.db, user.id, distance_meters, &segment_route_points).await?
+        segments::Model::find_duplicate(&state.db, user.id, distance_meters, &segment_route_points)
+            .await?
     {
         if existing_segment.id != segment.id {
             return Err(AppError::validation_field(
@@ -796,14 +729,11 @@ pub async fn delete_segment(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<StatusCode, AppError> {
-    let segment = segments::Entity::find()
-        .filter(segments::Column::Id.eq(id))
-        .filter(segments::Column::UserId.eq(user.id))
-        .one(&state.db)
+    let segment = segments::Model::find_owned(&state.db, id, user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Segment not found"))?;
 
-    delete_segment_with_related_state(&state.db, segment.id).await?;
+    segment.delete_with_derived_state(&state.db).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -832,7 +762,7 @@ pub async fn create_segment_from_activity(
 ) -> Result<(StatusCode, Json<SegmentResponse>), AppError> {
     let source = load_activity_segment_builder_source(&state.db, user.id, payload).await?;
 
-    if let Some(existing_segment) = find_duplicate_segment(
+    if let Some(existing_segment) = segments::Model::find_duplicate(
         &state.db,
         user.id,
         source.distance_meters,
@@ -894,7 +824,7 @@ pub async fn import_segment(
         ));
     }
 
-    if let Some(existing_segment) = find_duplicate_segment(
+    if let Some(existing_segment) = segments::Model::find_duplicate(
         &state.db,
         user.id,
         segment_summary.distance_meters,
@@ -1078,10 +1008,7 @@ async fn load_activity_segment_builder_source(
     user_id: i32,
     payload: CreateSegmentFromActivityRequest,
 ) -> Result<ActivitySegmentBuilderSource, AppError> {
-    let activity = activities::Entity::find()
-        .filter(activities::Column::Id.eq(payload.activity_id))
-        .filter(activities::Column::UserId.eq(user_id))
-        .one(db)
+    let activity = activities::Model::find_owned(db, payload.activity_id, user_id)
         .await?
         .ok_or_else(|| AppError::not_found("Activity not found"))?;
     let title = normalize_segment_title(&payload.title)?;
@@ -1170,64 +1097,6 @@ async fn insert_activity_segment(
     .await?)
 }
 
-async fn find_duplicate_segment(
-    db: &sea_orm::DatabaseConnection,
-    user_id: i32,
-    distance_meters: Option<f64>,
-    route_points: &[ActivityRoutePoint],
-) -> Result<Option<segments::Model>, AppError> {
-    let Some(target_key) = segment_dedupe_key(distance_meters, route_points) else {
-        return Ok(None);
-    };
-
-    let mut candidate_query = segments::Entity::find()
-        .select_only()
-        .column(segments::Column::Id)
-        .column(segments::Column::DistanceMeters)
-        .column(segments::Column::RouteDataJson)
-        .filter(segments::Column::UserId.eq(user_id));
-
-    if let Some((minimum_distance, maximum_distance)) =
-        segment_dedupe_distance_bucket(distance_meters)
-    {
-        candidate_query = candidate_query
-            .filter(segments::Column::DistanceMeters.gte(minimum_distance))
-            .filter(segments::Column::DistanceMeters.lt(maximum_distance));
-    } else {
-        candidate_query = candidate_query.filter(segments::Column::DistanceMeters.is_null());
-    }
-
-    let candidates = candidate_query
-        .into_model::<SegmentDedupeCandidateRow>()
-        .all(db)
-        .await?;
-
-    for segment in candidates {
-        let candidate_route_points =
-            deserialize_segment_route_points(segment.route_data_json.as_ref());
-        if segment_dedupe_key(segment.distance_meters, &candidate_route_points).as_deref()
-            == Some(target_key.as_str())
-        {
-            return segments::Entity::find()
-                .filter(segments::Column::Id.eq(segment.id))
-                .filter(segments::Column::UserId.eq(user_id))
-                .one(db)
-                .await
-                .map_err(AppError::from);
-        }
-    }
-
-    Ok(None)
-}
-
-fn segment_dedupe_distance_bucket(distance_meters: Option<f64>) -> Option<(f64, f64)> {
-    let distance_meters = distance_meters.filter(|value| value.is_finite() && *value > 0.0)?;
-    let minimum = (distance_meters / SEGMENT_DEDUPE_DISTANCE_BUCKET_METERS).floor()
-        * SEGMENT_DEDUPE_DISTANCE_BUCKET_METERS;
-
-    Some((minimum, minimum + SEGMENT_DEDUPE_DISTANCE_BUCKET_METERS))
-}
-
 async fn load_activity_ids_for_segments<C>(
     db: &C,
     segment_ids: &[i32],
@@ -1235,58 +1104,7 @@ async fn load_activity_ids_for_segments<C>(
 where
     C: ConnectionTrait,
 {
-    if segment_ids.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let mut activity_ids = segment_efforts::Entity::find()
-        .select_only()
-        .column(segment_efforts::Column::ActivityId)
-        .filter(segment_efforts::Column::SegmentId.is_in(segment_ids.iter().copied()))
-        .into_tuple::<i32>()
-        .all(db)
-        .await?;
-
-    activity_ids.sort_unstable();
-    activity_ids.dedup();
-
-    Ok(activity_ids)
-}
-
-async fn delete_segment_with_related_state(
-    db: &sea_orm::DatabaseConnection,
-    segment_id: i32,
-) -> Result<(), AppError> {
-    let activity_ids = load_activity_ids_for_segments(db, &[segment_id]).await?;
-    let txn = db.begin().await?;
-
-    segment_user_summaries::Entity::delete_many()
-        .filter(segment_user_summaries::Column::SegmentId.eq(segment_id))
-        .exec(&txn)
-        .await?;
-
-    segment_summaries::Entity::delete_many()
-        .filter(segment_summaries::Column::SegmentId.eq(segment_id))
-        .exec(&txn)
-        .await?;
-
-    segment_efforts::Entity::delete_many()
-        .filter(segment_efforts::Column::SegmentId.eq(segment_id))
-        .exec(&txn)
-        .await?;
-
-    segments::Entity::delete_many()
-        .filter(segments::Column::Id.eq(segment_id))
-        .exec(&txn)
-        .await?;
-
-    if !activity_ids.is_empty() {
-        rebuild_activity_analytics_cache(&txn, &activity_ids).await?;
-    }
-
-    txn.commit().await?;
-
-    Ok(())
+    Ok(segment_efforts::Model::activity_ids_for_segments(db, segment_ids).await?)
 }
 
 async fn load_segment_summary_response(
@@ -1343,13 +1161,7 @@ async fn load_segment_yearly_bests_response(
     segment: &segments::Model,
     user_id: i32,
 ) -> Result<SegmentYearlyBestsResponse, AppError> {
-    let efforts = segment_efforts::Entity::find()
-        .filter(segment_efforts::Column::SegmentId.eq(segment.id))
-        .filter(segment_efforts::Column::UserId.eq(user_id))
-        .order_by_asc(segment_efforts::Column::DurationSeconds)
-        .order_by_asc(segment_efforts::Column::Id)
-        .all(db)
-        .await?;
+    let efforts = segment_efforts::Model::ranked_for_user_segment(db, user_id, segment.id).await?;
     if efforts.is_empty() {
         return Ok(SegmentYearlyBestsResponse {
             segment_id: segment.id,
@@ -1362,15 +1174,7 @@ async fn load_segment_yearly_bests_response(
         .iter()
         .map(|effort| effort.activity_id)
         .collect::<Vec<_>>();
-    let activity_models = activities::Entity::find()
-        .select_only()
-        .column(activities::Column::Id)
-        .column(activities::Column::Title)
-        .column(activities::Column::StartedAt)
-        .filter(activities::Column::Id.is_in(activity_ids.iter().copied()))
-        .into_model::<EffortActivitySummaryRow>()
-        .all(db)
-        .await?;
+    let activity_models = activities::Model::effort_summaries(db, &activity_ids).await?;
     let activities_by_id = activity_models
         .into_iter()
         .map(|activity| (activity.id, activity))
@@ -1441,13 +1245,7 @@ async fn load_segment_effort_analysis_response(
 ) -> Result<SegmentEffortAnalysisResponse, AppError> {
     let split_count = normalized_analysis_split_count(query.split_count)?;
     let effort_limit = normalized_analysis_effort_limit(query.effort_limit)?;
-    let efforts = segment_efforts::Entity::find()
-        .filter(segment_efforts::Column::SegmentId.eq(segment.id))
-        .filter(segment_efforts::Column::UserId.eq(user_id))
-        .order_by_asc(segment_efforts::Column::DurationSeconds)
-        .order_by_asc(segment_efforts::Column::Id)
-        .all(db)
-        .await?;
+    let efforts = segment_efforts::Model::ranked_for_user_segment(db, user_id, segment.id).await?;
 
     if efforts.is_empty() {
         return Err(AppError::not_found("No efforts found for this segment"));
@@ -1457,16 +1255,7 @@ async fn load_segment_effort_analysis_response(
         .iter()
         .map(|effort| effort.activity_id)
         .collect::<Vec<_>>();
-    let activity_models = activities::Entity::find()
-        .select_only()
-        .column(activities::Column::Id)
-        .column(activities::Column::Title)
-        .column(activities::Column::StartedAt)
-        .column(activities::Column::DerivedDataJson)
-        .filter(activities::Column::Id.is_in(activity_ids.iter().copied()))
-        .into_model::<EffortActivityRow>()
-        .all(db)
-        .await?;
+    let activity_models = activities::Model::effort_sources(db, &activity_ids).await?;
     let activities_by_id = activity_models
         .into_iter()
         .map(|activity| (activity.id, activity))
@@ -2071,31 +1860,6 @@ fn sort_segment_rows_by_latest_activity_started_at(
     });
 }
 
-async fn load_segment_list_rows(
-    db: &sea_orm::DatabaseConnection,
-    user_id: i32,
-) -> Result<Vec<SegmentListRow>, AppError> {
-    Ok(segments::Entity::find()
-        .select_only()
-        .column(segments::Column::Id)
-        .column(segments::Column::Title)
-        .column(segments::Column::Source)
-        .column(segments::Column::Mode)
-        .column(segments::Column::Starred)
-        .column(segments::Column::OriginalFilename)
-        .column(segments::Column::Format)
-        .column(segments::Column::DistanceMeters)
-        .column(segments::Column::SourceActivityId)
-        .column(segments::Column::SourceStartRoutePointIndex)
-        .column(segments::Column::SourceEndRoutePointIndex)
-        .column(segments::Column::LastActivityChangeAt)
-        .column(segments::Column::CreatedAt)
-        .filter(segments::Column::UserId.eq(user_id))
-        .into_model::<SegmentListRow>()
-        .all(db)
-        .await?)
-}
-
 fn stale_list_segment_ids(
     segment_rows: &[SegmentListRow],
     summary_by_segment_id: &HashMap<i32, segment_summaries::Model>,
@@ -2177,9 +1941,7 @@ async fn load_segment_summaries(
         return Ok(HashMap::new());
     }
 
-    Ok(segment_summaries::Entity::find()
-        .filter(segment_summaries::Column::SegmentId.is_in(segment_ids.iter().copied()))
-        .all(db)
+    Ok(segment_summaries::Entity::for_segments(db, segment_ids)
         .await?
         .into_iter()
         .map(|summary| (summary.segment_id, summary))
@@ -2195,14 +1957,13 @@ async fn load_segment_user_summaries(
         return Ok(HashMap::new());
     }
 
-    Ok(segment_user_summaries::Entity::find()
-        .filter(segment_user_summaries::Column::UserId.eq(user_id))
-        .filter(segment_user_summaries::Column::SegmentId.is_in(segment_ids.iter().copied()))
-        .all(db)
-        .await?
-        .into_iter()
-        .map(|summary| (summary.segment_id, summary))
-        .collect())
+    Ok(
+        segment_user_summaries::Model::list_by_user_segment_ids(db, user_id, segment_ids)
+            .await?
+            .into_iter()
+            .map(|summary| (summary.segment_id, summary))
+            .collect(),
+    )
 }
 
 async fn load_effort_responses(
@@ -2213,12 +1974,7 @@ async fn load_effort_responses(
         return Ok(Vec::new());
     }
 
-    let efforts = segment_efforts::Entity::find()
-        .filter(segment_efforts::Column::SegmentId.is_in(segment_ids.iter().copied()))
-        .order_by_asc(segment_efforts::Column::DurationSeconds)
-        .order_by_asc(segment_efforts::Column::Id)
-        .all(db)
-        .await?;
+    let efforts = segment_efforts::Model::ranked_for_segments(db, segment_ids).await?;
     let activity_ids = efforts
         .iter()
         .map(|effort| effort.activity_id)
@@ -2227,24 +1983,8 @@ async fn load_effort_responses(
         .iter()
         .map(|effort| effort.user_id)
         .collect::<Vec<_>>();
-    let activity_models = activities::Entity::find()
-        .select_only()
-        .column(activities::Column::Id)
-        .column(activities::Column::Title)
-        .column(activities::Column::StartedAt)
-        .column(activities::Column::DerivedDataJson)
-        .filter(activities::Column::Id.is_in(activity_ids.iter().copied()))
-        .into_model::<EffortActivityRow>()
-        .all(db)
-        .await?;
-    let rider_models = users::Entity::find()
-        .select_only()
-        .column(users::Column::Id)
-        .column(users::Column::Name)
-        .filter(users::Column::Id.is_in(rider_user_ids.iter().copied()))
-        .into_model::<RiderNameRow>()
-        .all(db)
-        .await?;
+    let activity_models = activities::Model::effort_sources(db, &activity_ids).await?;
+    let rider_models = users::Model::rider_names(db, &rider_user_ids).await?;
     let activities_by_id = activity_models
         .into_iter()
         .map(|activity| (activity.id, activity))
@@ -2584,17 +2324,12 @@ mod tests {
                 segment_id: 10,
                 user_id: 7,
                 activity_id: 100,
-                effort_index: 1,
                 duration_seconds: 320,
-                start_elapsed_seconds: 0,
                 end_elapsed_seconds: 320,
-                start_route_point_index: 0,
-                end_route_point_index: 1,
                 distance_meters: Some(1800.0),
-                overall_rank: None,
-                user_rank: None,
                 created_at: now,
                 updated_at: now,
+                ..bike_core::test_support::segment_effort()
             },
             segment_efforts::Model {
                 id: 2,
@@ -2603,32 +2338,23 @@ mod tests {
                 activity_id: 101,
                 effort_index: 2,
                 duration_seconds: 305,
-                start_elapsed_seconds: 0,
                 end_elapsed_seconds: 305,
-                start_route_point_index: 0,
-                end_route_point_index: 1,
                 distance_meters: Some(1800.0),
-                overall_rank: None,
-                user_rank: None,
                 created_at: now,
                 updated_at: now,
+                ..bike_core::test_support::segment_effort()
             },
             segment_efforts::Model {
                 id: 3,
                 segment_id: 10,
                 user_id: 9,
                 activity_id: 102,
-                effort_index: 1,
                 duration_seconds: 300,
-                start_elapsed_seconds: 0,
                 end_elapsed_seconds: 300,
-                start_route_point_index: 0,
-                end_route_point_index: 1,
                 distance_meters: Some(1800.0),
-                overall_rank: None,
-                user_rank: None,
                 created_at: now,
                 updated_at: now,
+                ..bike_core::test_support::segment_effort()
             },
         ];
 

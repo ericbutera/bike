@@ -28,12 +28,11 @@ use bike_core::entities::{
     activities, activity_analytics, activity_import_artifacts, activity_imports, segment_efforts,
     segment_user_summaries, segments,
 };
-use bike_core::platform::data::pagination::{Paginatable, PaginatedResponse, PaginationParams};
+use bike_core::platform::data::pagination::{PaginatedResponse, PaginationParams};
 use bike_core::training_profile::{
     deserialize_activity_heart_rate_zones, ActivityHeartRateZoneSummary,
 };
 use chrono::{DateTime, Utc};
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Component, Path as FsPath, PathBuf};
@@ -681,17 +680,8 @@ pub async fn list_activities(
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<PaginatedResponse<ActivityResponse>>, AppError> {
     let pagination = params.pagination();
-    let mut query = activities::Entity::find().filter(activities::Column::UserId.eq(user.id));
-    if let Some(sport) = params.sport {
-        query =
-            query.filter(activities::Column::Sport.is_in(sport.stored_values().iter().copied()));
-    }
-
-    let activities = query
-        .order_by_desc(activities::Column::StartedAt)
-        .order_by_desc(activities::Column::Id)
-        .fetch_paginated(&state.db, &pagination)
-        .await?;
+    let activities =
+        activities::Model::paginate_for_user(&state.db, user.id, &pagination, params.sport).await?;
 
     let activity_ids = activities
         .data
@@ -734,10 +724,7 @@ pub async fn get_activity(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<ActivityResponse>, AppError> {
-    let activity = activities::Entity::find()
-        .filter(activities::Column::Id.eq(id))
-        .filter(activities::Column::UserId.eq(user.id))
-        .one(&state.db)
+    let activity = activities::Model::find_owned(&state.db, id, user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Activity not found"))?;
     let segment_efforts = load_activity_segment_efforts(&state.db, user.id, activity.id).await?;
@@ -745,7 +732,7 @@ pub async fn get_activity(
         load_activity_training_analysis_by_activity_id(&state.db, activity.id).await?;
     let can_download_source_file = match activity.activity_import_id {
         Some(import_id) => {
-            load_downloadable_original_source_artifact(&state.db, user.id, import_id)
+            activity_import_artifacts::Entity::downloadable_original(&state.db, user.id, import_id)
                 .await?
                 .is_some()
         }
@@ -756,34 +743,6 @@ pub async fn get_activity(
     response.can_download_source_file = can_download_source_file;
 
     Ok(Json(response))
-}
-
-async fn load_downloadable_original_source_artifact(
-    db: &sea_orm::DatabaseConnection,
-    user_id: i32,
-    activity_import_id: i32,
-) -> Result<Option<activity_import_artifacts::Model>, AppError> {
-    let artifacts = activity_import_artifacts::Entity::find()
-        .filter(activity_import_artifacts::Column::UserId.eq(user_id))
-        .filter(activity_import_artifacts::Column::ActivityImportId.eq(activity_import_id))
-        .filter(activity_import_artifacts::Column::ArtifactKind.eq("original"))
-        .all(db)
-        .await?;
-
-    Ok(artifacts
-        .into_iter()
-        .filter(|artifact| matches!(artifact.format.as_str(), "fit" | "tcx" | "gpx"))
-        .max_by_key(|artifact| match artifact.source_quality.as_str() {
-            "fit_original" => 500,
-            "tcx_original" => 400,
-            "gpx_original" => 300,
-            _ => match artifact.format.as_str() {
-                "fit" => 490,
-                "tcx" => 390,
-                "gpx" => 290,
-                _ => 0,
-            },
-        }))
 }
 
 #[utoipa::path(
@@ -808,19 +767,19 @@ pub async fn download_activity_source_file(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Response, AppError> {
-    let activity = activities::Entity::find()
-        .filter(activities::Column::Id.eq(id))
-        .filter(activities::Column::UserId.eq(user.id))
-        .one(&state.db)
+    let activity = activities::Model::find_owned(&state.db, id, user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Activity not found"))?;
     let activity_import_id = activity
         .activity_import_id
         .ok_or_else(|| AppError::not_found("Activity source file not found"))?;
-    let source_artifact =
-        load_downloadable_original_source_artifact(&state.db, user.id, activity_import_id)
-            .await?
-            .ok_or_else(|| AppError::not_found("Activity source file not found"))?;
+    let source_artifact = activity_import_artifacts::Entity::downloadable_original(
+        &state.db,
+        user.id,
+        activity_import_id,
+    )
+    .await?
+    .ok_or_else(|| AppError::not_found("Activity source file not found"))?;
     let source_path =
         resolve_activity_import_storage_path(&state.uploads_dir, &source_artifact.storage_path)?;
     let bytes = match tokio::fs::read(&source_path).await {
@@ -876,22 +835,12 @@ pub async fn update_activity(
     State(state): State<Arc<AppStorage>>,
     Json(request): Json<UpdateActivityRequest>,
 ) -> Result<Json<ActivityResponse>, AppError> {
-    let activity = activities::Entity::find()
-        .filter(activities::Column::Id.eq(id))
-        .filter(activities::Column::UserId.eq(user.id))
-        .one(&state.db)
+    let activity = activities::Model::find_owned(&state.db, id, user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Activity not found"))?;
-    let mut active_model: activities::ActiveModel = activity.into();
-
-    if let Some(activity_type) = request.activity_type {
-        active_model.activity_type = Set(activity_type.as_str().to_string());
-    }
-    if let Some(title) = request.title {
-        active_model.title = Set(normalize_activity_title(&title)?);
-    }
-
-    let updated = active_model.update(&state.db).await?;
+    let updated = activity
+        .update_details(&state.db, request.title, request.activity_type)
+        .await?;
     let segment_efforts = load_activity_segment_efforts(&state.db, user.id, updated.id).await?;
     let training_analysis =
         load_activity_training_analysis_by_activity_id(&state.db, updated.id).await?;
@@ -924,10 +873,7 @@ pub async fn delete_activity(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<StatusCode, AppError> {
-    let activity = activities::Entity::find()
-        .filter(activities::Column::Id.eq(id))
-        .filter(activities::Column::UserId.eq(user.id))
-        .one(&state.db)
+    let activity = activities::Model::find_owned(&state.db, id, user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Activity not found"))?;
 
@@ -970,21 +916,16 @@ pub async fn regenerate_activity(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<ActivityResponse>, AppError> {
-    let activity = activities::Entity::find()
-        .filter(activities::Column::Id.eq(id))
-        .filter(activities::Column::UserId.eq(user.id))
-        .one(&state.db)
+    let activity = activities::Model::find_owned(&state.db, id, user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Activity not found"))?;
     let activity_import_id = activity
         .activity_import_id
         .ok_or_else(|| AppError::bad_request("Only uploaded activities can be regenerated"))?;
-    let activity_import = activity_imports::Entity::find()
-        .filter(activity_imports::Column::Id.eq(activity_import_id))
-        .filter(activity_imports::Column::UserId.eq(user.id))
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| AppError::not_found("Activity import not found"))?;
+    let activity_import =
+        activity_imports::Entity::find_owned(&state.db, user.id, activity_import_id)
+            .await?
+            .ok_or_else(|| AppError::not_found("Activity import not found"))?;
     let reprocessed = reprocess_activity_from_import(
         &state.db,
         &state.uploads_dir,
@@ -1011,19 +952,6 @@ pub async fn regenerate_activity(
         updated,
         segment_efforts,
     )))
-}
-
-fn normalize_activity_title(raw_title: &str) -> Result<String, AppError> {
-    let title = raw_title.trim();
-
-    if title.is_empty() {
-        return Err(AppError::validation_field(
-            "title",
-            "Activity title is required",
-        ));
-    }
-
-    Ok(title.to_string())
 }
 
 fn activity_source_content_type(format: &str) -> &'static str {
@@ -1253,7 +1181,6 @@ mod tests {
                 title: "Evening Ride".to_string(),
                 sport: "ride".to_string(),
                 source: "manual_upload".to_string(),
-                source_correlation_id: None,
                 original_filename: Some("evening-ride.gpx".to_string()),
                 format: Some("gpx".to_string()),
                 activity_type: bike_core::activity_type::ActivityType::Training
@@ -1273,11 +1200,9 @@ mod tests {
                 average_cadence_rpm: Some(86),
                 max_cadence_rpm: Some(108),
                 calories: Some(640),
-                estimated_ftp_watts: None,
-                heart_rate_zones_json: None,
-                derived_data_json: None,
                 created_at: now,
                 updated_at: now,
+                ..bike_core::test_support::activity()
             },
             Vec::new(),
         );
@@ -1310,21 +1235,6 @@ mod tests {
                 .map(|value| value.sustained_climb_count),
             Some(2)
         );
-    }
-
-    #[test]
-    fn normalize_activity_title_trims_whitespace() {
-        assert_eq!(
-            normalize_activity_title("  Lunch Loop  ").unwrap(),
-            "Lunch Loop"
-        );
-    }
-
-    #[test]
-    fn normalize_activity_title_rejects_blank_titles() {
-        let error = normalize_activity_title("   ").unwrap_err();
-
-        assert_eq!(error.status, StatusCode::BAD_REQUEST);
     }
 
     #[test]
@@ -1437,7 +1347,6 @@ mod tests {
                 title: "Morning Ride".to_string(),
                 sport: "ride".to_string(),
                 source: "manual_upload".to_string(),
-                source_correlation_id: None,
                 original_filename: Some("morning-ride.gpx".to_string()),
                 format: Some("gpx".to_string()),
                 activity_type: bike_core::activity_type::ActivityType::Training
@@ -1457,8 +1366,6 @@ mod tests {
                 average_cadence_rpm: Some(86),
                 max_cadence_rpm: Some(104),
                 calories: Some(860),
-                estimated_ftp_watts: None,
-                heart_rate_zones_json: None,
                 derived_data_json: Some(
                     serialize_derived_activity_data(&ActivityDerivedData {
                         recording: Default::default(),
@@ -1480,6 +1387,7 @@ mod tests {
                 ),
                 created_at: now,
                 updated_at: now,
+                ..bike_core::test_support::activity()
             }],
             2,
             10,
@@ -1520,7 +1428,6 @@ mod tests {
                 title: "Morning Ride".to_string(),
                 sport: "ride".to_string(),
                 source: "manual_upload".to_string(),
-                source_correlation_id: None,
                 original_filename: Some("morning-ride.gpx".to_string()),
                 format: Some("gpx".to_string()),
                 activity_type: bike_core::activity_type::ActivityType::Training
@@ -1540,8 +1447,6 @@ mod tests {
                 average_cadence_rpm: Some(86),
                 max_cadence_rpm: Some(104),
                 calories: Some(860),
-                estimated_ftp_watts: None,
-                heart_rate_zones_json: None,
                 derived_data_json: Some(
                     serialize_derived_activity_data(&ActivityDerivedData {
                         recording: Default::default(),
@@ -1553,6 +1458,7 @@ mod tests {
                 ),
                 created_at: now,
                 updated_at: now,
+                ..bike_core::test_support::activity()
             },
             Vec::new(),
         );
@@ -1607,7 +1513,6 @@ mod tests {
                 title: "Morning Ride".to_string(),
                 sport: "ride".to_string(),
                 source: "manual_upload".to_string(),
-                source_correlation_id: None,
                 original_filename: Some("morning-ride.gpx".to_string()),
                 format: Some("gpx".to_string()),
                 activity_type: bike_core::activity_type::ActivityType::Training
@@ -1627,8 +1532,6 @@ mod tests {
                 average_cadence_rpm: Some(86),
                 max_cadence_rpm: Some(104),
                 calories: Some(860),
-                estimated_ftp_watts: None,
-                heart_rate_zones_json: None,
                 derived_data_json: Some(
                     serialize_derived_activity_data(&ActivityDerivedData {
                         recording: Default::default(),
@@ -1640,6 +1543,7 @@ mod tests {
                 ),
                 created_at: now,
                 updated_at: now,
+                ..bike_core::test_support::activity()
             },
             Vec::new(),
         );

@@ -7,9 +7,7 @@ use crate::activity_import_lock::{
 use crate::entities::user_preferences;
 use crate::jobs::JobQueue;
 use chrono::{DateTime, Utc};
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, Set,
-};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, DbErr, Set};
 use std::error::Error;
 use std::fmt;
 
@@ -129,11 +127,7 @@ pub async fn set_user_xc_goal_backfill_state(
     status: Option<&str>,
     completed_at: Option<DateTime<Utc>>,
 ) -> Result<(), XcGoalBackfillError> {
-    let Some(model) = user_preferences::Entity::find()
-        .filter(user_preferences::Column::UserId.eq(user_id))
-        .one(db)
-        .await?
-    else {
+    let Some(model) = user_preferences::Model::for_user(db, user_id).await? else {
         return Ok(());
     };
 

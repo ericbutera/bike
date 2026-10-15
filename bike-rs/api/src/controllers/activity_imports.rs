@@ -20,13 +20,9 @@ use bike_core::auth::UserContext;
 use bike_core::config::Config;
 use bike_core::entities::{activities, activity_archive_import_jobs, activity_imports};
 use chrono::{DateTime, Utc};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::Serialize;
-use std::collections::HashMap;
 use std::sync::Arc;
 use utoipa::ToSchema;
-
-const ACTIVITY_IMPORT_LIST_LIMIT: u64 = 25;
 
 #[derive(ToSchema)]
 struct ActivityImportUploadForm {
@@ -362,58 +358,9 @@ pub async fn list_activity_imports(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<Vec<ActivityImportResponse>>, AppError> {
-    let imports = activity_imports::Entity::find()
-        .filter(activity_imports::Column::UserId.eq(user.id))
-        .filter(activity_imports::Column::Source.eq(ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD))
-        .order_by_desc(activity_imports::Column::CreatedAt)
-        .limit(ACTIVITY_IMPORT_LIST_LIMIT)
-        .all(&state.db)
-        .await?;
-
-    let import_ids = imports.iter().map(|model| model.id).collect::<Vec<_>>();
-    let activity_ids = imports
-        .iter()
-        .filter_map(|model| model.activity_id)
-        .collect::<Vec<_>>();
-    let activities_by_import_id = if import_ids.is_empty() {
-        HashMap::new()
-    } else {
-        let mut activities_by_import_id = activities::Entity::find()
-            .filter(activities::Column::UserId.eq(user.id))
-            .filter(
-                activities::Column::ActivityImportId
-                    .is_in(import_ids.iter().copied().map(Some).collect::<Vec<_>>()),
-            )
-            .all(&state.db)
-            .await?
-            .into_iter()
-            .filter_map(|activity| {
-                activity
-                    .activity_import_id
-                    .map(|import_id| (import_id, activity))
-            })
-            .collect::<HashMap<_, _>>();
-
-        if !activity_ids.is_empty() {
-            let imports_by_activity_id = imports
-                .iter()
-                .filter_map(|model| model.activity_id.map(|activity_id| (activity_id, model.id)))
-                .collect::<HashMap<_, _>>();
-
-            for activity in activities::Entity::find()
-                .filter(activities::Column::UserId.eq(user.id))
-                .filter(activities::Column::Id.is_in(activity_ids.iter().copied()))
-                .all(&state.db)
-                .await?
-            {
-                if let Some(import_id) = imports_by_activity_id.get(&activity.id) {
-                    activities_by_import_id.insert(*import_id, activity);
-                }
-            }
-        }
-
-        activities_by_import_id
-    };
+    let imports = activity_imports::Entity::recent_manual_uploads(&state.db, user.id).await?;
+    let activities_by_import_id =
+        activities::Model::linked_to_imports(&state.db, user.id, &imports).await?;
 
     Ok(Json(
         imports
@@ -462,12 +409,7 @@ pub async fn list_activity_archive_import_jobs(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<Vec<ActivityArchiveImportJobResponse>>, AppError> {
-    let jobs = activity_archive_import_jobs::Entity::find()
-        .filter(activity_archive_import_jobs::Column::UserId.eq(user.id))
-        .order_by_desc(activity_archive_import_jobs::Column::CreatedAt)
-        .limit(10)
-        .all(&state.db)
-        .await?;
+    let jobs = activity_archive_import_jobs::Entity::recent_for_user(&state.db, user.id).await?;
 
     Ok(Json(
         jobs.into_iter()
@@ -536,9 +478,7 @@ pub async fn get_activity_archive_import_job(
     State(state): State<Arc<AppStorage>>,
     Path(id): Path<i32>,
 ) -> Result<Json<ActivityArchiveImportJobResponse>, AppError> {
-    let job = activity_archive_import_jobs::Entity::find_by_id(id)
-        .filter(activity_archive_import_jobs::Column::UserId.eq(user.id))
-        .one(&state.db)
+    let job = activity_archive_import_jobs::Entity::find_owned(&state.db, user.id, id)
         .await?
         .ok_or_else(|| AppError::not_found("Archive import job not found"))?;
 
@@ -828,7 +768,7 @@ mod tests {
 
     #[test]
     fn activity_archive_import_job_response_maps_error_samples() {
-        let now = Utc::now();
+        let now = bike_core::test_support::timestamp();
         let response =
             ActivityArchiveImportJobResponse::from_model(activity_archive_import_jobs::Model {
                 id: 5,
@@ -837,7 +777,6 @@ mod tests {
                 archive_url: "https://example.com/export.zip".to_string(),
                 resolved_url: Some("https://cdn.example.com/export.zip".to_string()),
                 status: "succeeded".to_string(),
-                failure_message: None,
                 error_samples_json: Some(
                     serde_json::to_string(&vec!["bad.fit: parse failed".to_string()])
                         .expect("serialize error samples"),
@@ -847,11 +786,11 @@ mod tests {
                 imported_count: 7,
                 duplicate_count: 1,
                 skipped_unsupported_count: 2,
-                failed_count: 0,
                 created_at: now,
                 started_at: Some(now),
                 finished_at: Some(now),
                 updated_at: now,
+                ..bike_core::test_support::archive_import_job()
             });
 
         assert_eq!(response.id, 5);

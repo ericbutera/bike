@@ -10,7 +10,7 @@ use bike_core::training_profile::{
     validate_estimated_ftp_watts, validate_heart_rate_zone_bounds_bpm,
 };
 use chrono::{DateTime, NaiveDate, Utc};
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+use sea_orm::{ActiveModelTrait, Set};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -98,10 +98,7 @@ pub async fn get_preferences(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<UserPreferencesResponse>, AppError> {
-    let model = user_preferences::Entity::find()
-        .filter(user_preferences::Column::UserId.eq(user.id))
-        .one(&state.db)
-        .await?;
+    let model = user_preferences::Model::for_user(&state.db, user.id).await?;
 
     Ok(Json(response_from_model(model.as_ref())))
 }
@@ -142,10 +139,7 @@ pub async fn update_preferences(
     let heart_rate_zone_bounds_json =
         serialize_heart_rate_zone_bounds(heart_rate_zone_bounds_bpm.as_deref())?;
 
-    let existing_model = user_preferences::Entity::find()
-        .filter(user_preferences::Column::UserId.eq(user.id))
-        .one(&state.db)
-        .await?;
+    let existing_model = user_preferences::Model::for_user(&state.db, user.id).await?;
     let previous_start_date = existing_model
         .as_ref()
         .and_then(|model| model.xc_goal_start_date);
@@ -197,9 +191,7 @@ pub async fn update_preferences(
         clear_user_xc_goal_backfill_state(&state.db, user.id).await?;
     }
 
-    let latest_model = user_preferences::Entity::find()
-        .filter(user_preferences::Column::UserId.eq(user.id))
-        .one(&state.db)
+    let latest_model = user_preferences::Model::for_user(&state.db, user.id)
         .await?
         .unwrap_or(model);
 

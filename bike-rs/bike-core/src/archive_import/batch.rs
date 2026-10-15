@@ -1,7 +1,7 @@
 use super::*;
 use crate::background_jobs::{batches, entities::worker_batches};
 use crate::jobs::{Job, ProcessActivityImportTask};
-use sea_orm::{ColumnTrait, ConnectionTrait, QueryFilter, QuerySelect, TransactionTrait};
+use sea_orm::{ConnectionTrait, TransactionTrait};
 /// Each producer invocation stores at most sixteen raw sources and commits the
 /// children and cursor together. The retained archive belongs to the batch.
 pub async fn queue_archive_page(
@@ -23,16 +23,13 @@ pub async fn queue_archive_page(
     let scan = scan_archive_entries(&archive)?;
     let txn = db.begin().await?;
     batches::lock_origins(&txn, batch.id).await?;
-    let stored = worker_batches::Entity::find_by_id(batch.id)
-        .lock_exclusive()
-        .one(&txn)
+    let stored = worker_batches::Model::lock(&txn, batch.id)
         .await?
         .ok_or_else(|| AppError::internal("Archive batch disappeared"))?;
     if stored.cursor != batch.cursor || stored.sealed {
         return Ok(());
     }
-    let job = activity_archive_import_jobs::Entity::find_by_id(job_id)
-        .one(&txn)
+    let job = activity_archive_import_jobs::Entity::find_for_batch(&txn, job_id)
         .await?
         .ok_or_else(|| AppError::not_found("Archive job disappeared"))?;
     let mut jobs = Vec::new();
@@ -66,11 +63,10 @@ async fn load_or_start(
     id: i32,
     job_id: i32,
 ) -> Result<worker_batches::Model, AppError> {
-    if let Some(batch) = worker_batches::Entity::find_by_id(id).one(db).await? {
+    if let Some(batch) = worker_batches::Model::find_by_id(db, id).await? {
         return Ok(batch);
     }
-    let job = activity_archive_import_jobs::Entity::find_by_id(job_id)
-        .one(db)
+    let job = activity_archive_import_jobs::Entity::find_for_batch(db, job_id)
         .await?
         .ok_or_else(|| AppError::not_found("Archive job disappeared"))?;
     let lock = mark_user_activity_import_lock_stage(
@@ -178,66 +174,5 @@ pub async fn finish_queued_archive_batch(
     batch: &worker_batches::Model,
     tasks: &[crate::background_jobs::entities::diagnostic_reads::TaskMetadata],
 ) -> Result<bool, sea_orm::DbErr> {
-    if batch.kind != "archive" {
-        return Ok(false);
-    }
-    let id = batch.source["job_id"]
-        .as_i64()
-        .and_then(|id| i32::try_from(id).ok())
-        .ok_or_else(|| sea_orm::DbErr::Custom("Archive job ID missing".into()))?;
-    let job = activity_archive_import_jobs::Entity::find_by_id(id)
-        .one(db)
-        .await?
-        .ok_or_else(|| sea_orm::DbErr::RecordNotFound("Archive job missing".into()))?;
-    let imports = crate::entities::activity_imports::Entity::find()
-        .filter(crate::entities::activity_imports::Column::ArchiveJobId.eq(id))
-        .select_only()
-        .column(crate::entities::activity_imports::Column::Status)
-        .into_tuple::<String>()
-        .all(db)
-        .await?;
-    let imported = imports
-        .iter()
-        .filter(|status| status.as_str() == "processed")
-        .count() as i32;
-    let duplicate = imports
-        .iter()
-        .filter(|status| status.as_str() == "duplicate")
-        .count() as i32;
-    let failed = (job.supported_entry_count - imported - duplicate).max(0);
-    let task_failed = tasks.iter().any(|task| task.status != "completed");
-    let has_failure = task_failed || failed > 0 || job.supported_entry_count == 0;
-    let mut errors = decode_error_samples(job.error_samples_json.as_deref());
-    errors.extend(tasks.iter().filter_map(|task| task.error.clone()));
-    if job.supported_entry_count == 0 && errors.is_empty() {
-        errors.push("Archive contained no supported activity files".into());
-    }
-    errors.truncate(10);
-    activity_archive_import_jobs::Entity::update_many()
-        .set(activity_archive_import_jobs::ActiveModel {
-            imported_count: Set(imported),
-            duplicate_count: Set(duplicate),
-            failed_count: Set(failed),
-            status: Set(if !has_failure {
-                "succeeded"
-            } else if imported + duplicate > 0 {
-                "partial"
-            } else {
-                "failed"
-            }
-            .into()),
-            failure_message: Set(errors.first().cloned()),
-            error_samples_json: Set(Some(
-                serde_json::to_string(&errors)
-                    .map_err(|error| sea_orm::DbErr::Custom(error.to_string()))?,
-            )),
-            resolved_url: Set(batch.source["resolved_url"].as_str().map(str::to_owned)),
-            finished_at: Set(Some(Utc::now())),
-            updated_at: Set(Utc::now()),
-            ..Default::default()
-        })
-        .filter(activity_archive_import_jobs::Column::Id.eq(id))
-        .exec(db)
-        .await?;
-    Ok(has_failure)
+    activity_archive_import_jobs::Model::finish_batch(db, batch, tasks).await
 }

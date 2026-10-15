@@ -8,15 +8,16 @@
   support; retain scenario overrides and generated-ID insert helpers.
 - [x] Require simple call sites, entity-owned queries, and fixture reuse in
   `AGENTS.md`.
-- [ ] Move the audited activity/import controller queries onto owning models.
-- [ ] Move segment access, dedupe, leaderboard reads, and deletion persistence
+- [x] Move the audited activity/import controller queries onto owning models;
+  preserve owned pagination, import hydration, source selection, and list limits.
+- [x] Move segment access, dedupe, leaderboard reads, and deletion persistence
   onto entities and cohesive domain operations.
-- [ ] Consolidate preferences, fitness, report, and goal queries on their owners.
-- [ ] Move import recovery/lifecycle, batch, and worker persistence queries onto
+- [x] Consolidate preferences, fitness, report, and goal queries on their owners.
+- [x] Move import recovery/lifecycle, batch, and worker persistence queries onto
   owning entities; preserve cancellation, retry, locks, and revision fences.
-- [ ] Move diagnostic/retention, heatmap, auth, feature-flag, and Strava query
+- [x] Move diagnostic/retention, heatmap, auth, feature-flag, and Strava query
   construction behind owning methods; preserve transaction and privacy policy.
-- [ ] Consolidate remaining repeated model families from the fixture audit,
+- [x] Consolidate remaining repeated model families from the fixture audit,
   excluding intentional partial updates and scenario-specific overrides.
 
 ## Strava

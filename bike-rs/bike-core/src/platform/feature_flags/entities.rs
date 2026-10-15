@@ -21,3 +21,41 @@ pub struct Model {
 pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}
+
+impl Model {
+    pub async fn list_all(db: &impl ConnectionTrait) -> Result<Vec<Self>, DbErr> {
+        use sea_orm::QueryOrder;
+        Entity::find()
+            .order_by_asc(Column::FeatureKey)
+            .all(db)
+            .await
+    }
+    pub async fn by_key(db: &impl ConnectionTrait, key: &str) -> Result<Option<Self>, DbErr> {
+        use sea_orm::QueryFilter;
+        Entity::find()
+            .filter(Column::FeatureKey.eq(key))
+            .one(db)
+            .await
+    }
+    pub async fn enabled(db: &impl ConnectionTrait, key: &str) -> Result<bool, DbErr> {
+        use sea_orm::{QueryFilter, QuerySelect};
+        Ok(Entity::find()
+            .select_only()
+            .column(Column::Enabled)
+            .filter(Column::FeatureKey.eq(key))
+            .into_tuple::<bool>()
+            .one(db)
+            .await?
+            .unwrap_or(false))
+    }
+    pub async fn set_enabled(
+        self,
+        db: &impl ConnectionTrait,
+        enabled: bool,
+    ) -> Result<Self, DbErr> {
+        let mut active: ActiveModel = self.into();
+        active.enabled = sea_orm::Set(enabled);
+        active.updated_at = sea_orm::Set(chrono::Utc::now());
+        active.update(db).await
+    }
+}

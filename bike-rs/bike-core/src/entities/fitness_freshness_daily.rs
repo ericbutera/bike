@@ -79,3 +79,33 @@ impl Model {
         Ok(())
     }
 }
+
+impl Model {
+    pub async fn between_days(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        start: Option<NaiveDate>,
+        end: NaiveDate,
+    ) -> Result<Vec<Self>, DbErr> {
+        let mut query = Entity::find()
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::Day.lte(end))
+            .order_by_asc(Column::Day);
+        if let Some(start) = start {
+            query = query.filter(Column::Day.gte(start));
+        }
+        query.all(db).await
+    }
+    pub async fn latest_at_or_before(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        end: NaiveDate,
+    ) -> Result<Option<Self>, DbErr> {
+        Entity::find()
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::Day.lte(end))
+            .order_by_desc(Column::Day)
+            .one(db)
+            .await
+    }
+}

@@ -1,3 +1,4 @@
+use sea_orm::QueryOrder;
 use sea_orm::{entity::prelude::*, sea_query::OnConflict, ConnectionTrait, QuerySelect, Set};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
@@ -80,5 +81,42 @@ impl Model {
         .exec_without_returning(db)
         .await?;
         Ok(())
+    }
+}
+
+impl Model {
+    pub async fn delete_for_runs(db: &impl ConnectionTrait, ids: &[String]) -> Result<(), DbErr> {
+        use sea_orm::QueryFilter;
+        Entity::delete_many()
+            .filter(Column::RunId.is_in(ids.iter().cloned()))
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+}
+
+impl Model {
+    pub async fn activity_run_page(
+        db: &DatabaseConnection,
+        activity_id: i32,
+        after: Option<String>,
+    ) -> Result<Vec<String>, DbErr> {
+        let query = Entity::find()
+            .filter(Column::Kind.eq("activity"))
+            .filter(Column::SubjectId.eq(activity_id));
+        let query = if let Some(after) = after {
+            query.filter(Column::RunId.gt(after))
+        } else {
+            query
+        };
+        let run_ids = query
+            .select_only()
+            .column(Column::RunId)
+            .order_by_asc(Column::RunId)
+            .limit(21)
+            .into_tuple::<String>()
+            .all(db)
+            .await?;
+        Ok(run_ids)
     }
 }

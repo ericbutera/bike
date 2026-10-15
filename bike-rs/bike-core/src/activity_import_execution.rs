@@ -174,16 +174,13 @@ async fn record_activity_lineage(
         entities::{pipeline_outputs, pipeline_runs, pipeline_subjects},
         pipeline::PipelineContext,
     };
-    use sea_orm::EntityTrait;
+
     let Some(context) = PipelineContext::current() else {
         return Ok(());
     };
     pipeline_runs::Model::record_origin(db, &context).await?;
     pipeline_subjects::Model::attach(db, &context.run_id, "activity", activity_id).await?;
-    if let Some(activity) = crate::entities::activities::Entity::find_by_id(activity_id)
-        .one(db)
-        .await?
-    {
+    if let Some(activity) = crate::entities::activities::Model::find_by_id(db, activity_id).await? {
         let revision = activity.updated_at.timestamp_micros().to_string();
         pipeline_outputs::Model::require(db, "activity", activity_id, revision.clone()).await?;
         pipeline_outputs::Model::publish(
@@ -197,9 +194,7 @@ async fn record_activity_lineage(
     }
     if crate::heatmaps::projection::Projection::enabled(db).await? {
         if let Some(projection) =
-            crate::entities::heatmap_projections::Entity::find_by_id(activity_id)
-                .one(db)
-                .await?
+            crate::entities::heatmap_projections::Model::for_activity(db, activity_id).await?
         {
             let revision = crate::heatmaps::projection::Projection::revision(projection.generation);
             pipeline_outputs::Model::require(db, "heatmap", activity_id, revision.clone()).await?;

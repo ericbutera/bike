@@ -54,3 +54,14 @@ pub fn connection() -> strava_connections::Model {
         updated_at: at,
     }
 }
+
+pub fn new_customer() -> users::ActiveModel {
+    let mut active: users::ActiveModel = customer().into();
+    active.id = sea_orm::ActiveValue::NotSet;
+    active
+}
+pub fn new_connection() -> strava_connections::ActiveModel {
+    let mut active: strava_connections::ActiveModel = connection().into();
+    active.id = sea_orm::ActiveValue::NotSet;
+    active
+}

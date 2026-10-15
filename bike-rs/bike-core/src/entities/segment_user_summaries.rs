@@ -75,3 +75,29 @@ impl Model {
             .await
     }
 }
+
+impl Entity {
+    pub async fn delete_for_segment(
+        db: &impl ConnectionTrait,
+        segment_id: i32,
+    ) -> Result<(), DbErr> {
+        Self::delete_many()
+            .filter(Column::SegmentId.eq(segment_id))
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+}
+
+impl Entity {
+    pub async fn clear_segments(
+        db: &impl ConnectionTrait,
+        ids: &[i32],
+    ) -> Result<sea_orm::DeleteResult, DbErr> {
+        use sea_orm::QueryFilter;
+        Self::delete_many()
+            .filter(Column::SegmentId.is_in(ids.iter().copied()))
+            .exec(db)
+            .await
+    }
+}

@@ -33,3 +33,21 @@ pub enum Relation {
     Task,
 }
 impl ActiveModelBehavior for ActiveModel {}
+
+impl Model {
+    pub async fn delete_for_tasks(db: &impl ConnectionTrait, ids: &[i32]) -> Result<(), DbErr> {
+        use sea_orm::QueryFilter;
+        Entity::delete_many()
+            .filter(Column::TaskId.is_in(ids.iter().copied()))
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+}
+
+impl Model {
+    pub async fn for_task(db: &impl ConnectionTrait, id: i32) -> Result<Vec<Self>, DbErr> {
+        use sea_orm::QueryFilter;
+        Entity::find().filter(Column::TaskId.eq(id)).all(db).await
+    }
+}

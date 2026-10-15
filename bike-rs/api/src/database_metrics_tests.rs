@@ -17,7 +17,9 @@ async fn insert_auth_records(db: &DatabaseConnection, created_at: DateTime<Utc>,
         disabled: Set(false),
         created_at: Set(created_at),
         updated_at: Set(created_at),
-        ..Default::default()
+        is_admin: Set(None),
+        email_verified_at: Set(None),
+        ..bike_core::test_support::new_customer()
     }
     .insert(db)
     .await

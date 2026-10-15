@@ -152,3 +152,43 @@ impl Model {
         Ok(())
     }
 }
+
+impl Model {
+    pub async fn delete_for_runs(db: &impl ConnectionTrait, ids: &[String]) -> Result<(), DbErr> {
+        use sea_orm::QueryFilter;
+        Entity::delete_many()
+            .filter(Column::RunId.is_in(ids.iter().cloned()))
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+}
+
+impl Model {
+    pub async fn for_run(db: &impl ConnectionTrait, id: &str) -> Result<Vec<Self>, DbErr> {
+        Entity::find().filter(Column::RunId.eq(id)).all(db).await
+    }
+    pub async fn page_for_run(
+        db: &impl ConnectionTrait,
+        id: &str,
+        offset: u64,
+    ) -> Result<Vec<Self>, DbErr> {
+        use sea_orm::{QueryOrder, QuerySelect};
+        Entity::find()
+            .filter(Column::RunId.eq(id))
+            .order_by_asc(Column::Kind)
+            .order_by_asc(Column::TargetId)
+            .offset(offset)
+            .limit(101)
+            .all(db)
+            .await
+    }
+    pub async fn pending_count(db: &impl ConnectionTrait, kind: &str) -> Result<u64, DbErr> {
+        use sea_orm::PaginatorTrait;
+        Entity::find()
+            .filter(Column::Kind.eq(kind))
+            .filter(Column::Status.eq("pending"))
+            .count(db)
+            .await
+    }
+}

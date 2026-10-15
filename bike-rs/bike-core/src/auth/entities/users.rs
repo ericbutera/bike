@@ -133,3 +133,79 @@ impl Model {
             .await
     }
 }
+
+#[derive(Clone, Debug, sea_orm::FromQueryResult)]
+pub struct RiderNameRow {
+    pub id: i32,
+    pub name: String,
+}
+impl Model {
+    pub async fn rider_names(
+        db: &impl ConnectionTrait,
+        user_ids: &[i32],
+    ) -> Result<Vec<RiderNameRow>, DbErr> {
+        use sea_orm::QuerySelect;
+        Entity::find()
+            .select_only()
+            .columns([Column::Id, Column::Name])
+            .filter(Column::Id.is_in(user_ids.iter().copied()))
+            .into_model::<RiderNameRow>()
+            .all(db)
+            .await
+    }
+}
+
+impl Model {
+    pub async fn find_optional(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+    ) -> Result<Option<Self>, DbErr> {
+        Entity::find_by_id(user_id).one(db).await
+    }
+}
+
+impl Model {
+    pub async fn by_provider_identity(
+        db: &impl ConnectionTrait,
+        provider: &str,
+        subject: &str,
+    ) -> Result<Option<Self>, DbErr> {
+        Entity::find()
+            .filter(Column::OauthSubject.eq(subject))
+            .filter(Column::OauthProvider.eq(provider))
+            .one(db)
+            .await
+    }
+    pub async fn link_oauth_identity(
+        &self,
+        db: &impl ConnectionTrait,
+        provider: &str,
+        subject: String,
+    ) -> Result<Self, DbErr> {
+        let mut active: ActiveModel = self.clone().into();
+        active.oauth_subject = Set(Some(subject));
+        active.oauth_provider = Set(Some(provider.to_owned()));
+        active.update(db).await
+    }
+    pub async fn create_oauth_user(
+        db: &impl ConnectionTrait,
+        provider: &str,
+        provider_user: crate::auth::services::oauth::OAuthUserInfo,
+    ) -> Result<Self, DbErr> {
+        let display_name = provider_user.display_name();
+        ActiveModel {
+            pid: Set(Uuid::new_v4()),
+            email: Set(provider_user.email.clone()),
+            password: Set(None),
+            oauth_subject: Set(Some(provider_user.subject)),
+            oauth_provider: Set(Some(provider.to_owned())),
+            name: Set(display_name),
+            email_verified_at: Set(Some(chrono::Utc::now())),
+            api_key: Set(Uuid::new_v4().to_string()),
+            disabled: Set(false),
+            ..Default::default()
+        }
+        .insert(db)
+        .await
+    }
+}

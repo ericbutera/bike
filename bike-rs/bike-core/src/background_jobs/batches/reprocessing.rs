@@ -5,7 +5,7 @@ use crate::{
     jobs::{Job, ReprocessActivityImportTask},
     workflow_error::WorkflowError,
 };
-use sea_orm::{DatabaseConnection, EntityTrait};
+use sea_orm::DatabaseConnection;
 
 pub async fn reprocess_page(
     db: &DatabaseConnection,
@@ -15,7 +15,7 @@ pub async fn reprocess_page(
     batch_id: Option<i32>,
 ) -> Result<(), WorkflowError> {
     let id = batch_id.unwrap_or(task_id);
-    let batch = match worker_batches::Entity::find_by_id(id).one(db).await? {
+    let batch = match worker_batches::Model::find_by_id(db, id).await? {
         Some(batch) => batch,
         None => {
             let lock = ensure_user_activity_import_lock_stage(

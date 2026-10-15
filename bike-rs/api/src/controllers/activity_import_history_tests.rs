@@ -59,7 +59,8 @@ async fn insert_user(db: &sea_orm::DatabaseConnection, pid: Uuid, admin: bool) {
         disabled: Set(false),
         created_at: Set(Utc::now()),
         updated_at: Set(Utc::now()),
-        ..Default::default()
+        email_verified_at: Set(None),
+        ..bike_core::test_support::new_customer()
     }
     .insert(db)
     .await

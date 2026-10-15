@@ -3,8 +3,18 @@
 //! Override scenario fields with struct update syntax. Use `new_activity_import`
 //! for database inserts so unrelated seeds never reuse the fixture primary key.
 mod accounts;
+mod analytics;
+pub use analytics::{
+    analytics_user_state, fitness_day, new_fitness_day, new_segment_effort, segment_effort,
+};
+mod heatmaps;
+pub use heatmaps::heatmap_projection;
+mod imports;
+mod segments;
+pub use segments::segment;
 
-pub use accounts::{connection, customer};
+pub use accounts::{connection, customer, new_connection, new_customer};
+pub use imports::{archive_import_job, import_artifact};
 
 use crate::entities::{activities, activity_imports};
 use chrono::{DateTime, Utc};
@@ -97,11 +107,27 @@ mod tests {
         let connection = connection();
         let activity = activity();
         let import = activity_import();
+        let artifact = import_artifact();
+        let archive = archive_import_job();
+        let state = analytics_user_state();
+        let day = fitness_day();
+        let effort = segment_effort();
         assert_eq!(activity.user_id, customer.id);
         assert_eq!(import.user_id, customer.id);
         assert_eq!(connection.user_id, customer.id);
+        assert_eq!(artifact.user_id, customer.id);
+        assert_eq!(artifact.activity_import_id, import.id);
+        assert_eq!(archive.user_id, customer.id);
+        assert_eq!(state.user_id, customer.id);
+        assert_eq!(day.user_id, customer.id);
+        assert_eq!(effort.user_id, customer.id);
         assert_eq!(activity.created_at, customer.created_at);
         assert_eq!(import.created_at, customer.created_at);
+        assert_eq!(artifact.created_at, customer.created_at);
+        assert_eq!(archive.created_at, customer.created_at);
+        assert_eq!(state.created_at, customer.created_at);
+        assert_eq!(day.created_at, customer.created_at);
+        assert_eq!(effort.created_at, customer.created_at);
         assert_eq!(activity, super::activity());
         assert_eq!(import, activity_import());
     }

@@ -34,8 +34,7 @@ pub(super) async fn begin_processing_attempt(
         attempt.id.to_string(),
     )
     .await?;
-    activity_import_attempts::Entity::find_by_id(attempt.id)
-        .one(run.db)
+    activity_import_attempts::Entity::find_for_execution(run.db, attempt.id)
         .await?
         .ok_or_else(|| AppError::internal("Ingestion attempt disappeared"))
 }

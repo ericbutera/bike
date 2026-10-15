@@ -14,8 +14,8 @@ use crate::training_data::{
 };
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    Set, TransactionSession, TransactionTrait,
+    ActiveModelTrait, ConnectionTrait, DatabaseConnection, Set, TransactionSession,
+    TransactionTrait,
 };
 use std::collections::{BTreeMap, HashMap};
 
@@ -209,10 +209,7 @@ pub async fn mark_user_activity_change<C>(
 where
     C: ConnectionTrait,
 {
-    if let Some(model) = analytics_user_states::Entity::find_by_id(user_id)
-        .one(db)
-        .await?
-    {
+    if let Some(model) = analytics_user_states::Model::for_user(db, user_id).await? {
         let mut active_model: analytics_user_states::ActiveModel = model.into();
         active_model.last_activity_change_at = Set(changed_at);
         active_model.update(db).await?;
@@ -238,10 +235,7 @@ pub async fn mark_user_fitness_dirty<C>(
 where
     C: ConnectionTrait,
 {
-    if let Some(model) = analytics_user_states::Entity::find_by_id(user_id)
-        .one(db)
-        .await?
-    {
+    if let Some(model) = analytics_user_states::Model::for_user(db, user_id).await? {
         let next_dirty_from_day = model
             .fitness_dirty_from_day
             .map(|existing| existing.min(dirty_from_day))
@@ -387,9 +381,7 @@ async fn load_fitness_freshness_rebuild_input(
     user_id: i32,
     end_date: NaiveDate,
 ) -> Result<FitnessFreshnessRebuildInput, sea_orm::DbErr> {
-    let state = analytics_user_states::Entity::find_by_id(user_id)
-        .one(db)
-        .await?;
+    let state = analytics_user_states::Model::for_user(db, user_id).await?;
     let dirty_from_day = state
         .as_ref()
         .and_then(|state| state.fitness_dirty_from_day);
@@ -453,7 +445,8 @@ async fn persist_fitness_freshness_rebuild<C>(
 where
     C: ConnectionTrait,
 {
-    if !mark_fitness_rebuild_complete(db, user_id, input.state, rebuilt_at).await? {
+    if !analytics_user_states::Model::complete_rebuild(db, user_id, input.state, rebuilt_at).await?
+    {
         return Ok(false);
     }
     let row_models = fitness_freshness_active_models(user_id, rows, rebuilt_at);
@@ -488,58 +481,6 @@ fn fitness_freshness_active_models(
         .collect()
 }
 
-async fn mark_fitness_rebuild_complete<C>(
-    db: &C,
-    user_id: i32,
-    state: Option<analytics_user_states::Model>,
-    rebuilt_at: DateTime<Utc>,
-) -> Result<bool, sea_orm::DbErr>
-where
-    C: ConnectionTrait,
-{
-    if let Some(model) = state {
-        let changed = analytics_user_states::Entity::update_many()
-            .col_expr(
-                analytics_user_states::Column::FitnessDirtyFromDay,
-                sea_orm::sea_query::Expr::value(None::<NaiveDate>),
-            )
-            .col_expr(
-                analytics_user_states::Column::LastFitnessRebuildAt,
-                sea_orm::sea_query::Expr::value(rebuilt_at),
-            )
-            .col_expr(
-                analytics_user_states::Column::UpdatedAt,
-                sea_orm::sea_query::Expr::value(rebuilt_at),
-            )
-            .filter(analytics_user_states::Column::UserId.eq(user_id))
-            .filter(
-                analytics_user_states::Column::LastActivityChangeAt
-                    .eq(model.last_activity_change_at),
-            )
-            .filter(analytics_user_states::Column::UpdatedAt.eq(model.updated_at))
-            .exec(db)
-            .await?;
-        return Ok(changed.rows_affected > 0);
-    }
-
-    let inserted = analytics_user_states::Entity::insert(analytics_user_states::ActiveModel {
-        user_id: Set(user_id),
-        last_activity_change_at: Set(rebuilt_at),
-        fitness_dirty_from_day: Set(None),
-        last_fitness_rebuild_at: Set(Some(rebuilt_at)),
-        created_at: Set(rebuilt_at),
-        updated_at: Set(rebuilt_at),
-    })
-    .on_conflict(
-        sea_orm::sea_query::OnConflict::column(analytics_user_states::Column::UserId)
-            .do_nothing()
-            .to_owned(),
-    )
-    .exec_without_returning(db)
-    .await?;
-    Ok(inserted > 0)
-}
-
 #[tracing::instrument(name = "segments.rebuild", skip_all, fields(segment_count = segment_ids.len()))]
 pub async fn rebuild_segment_analytics_cache<C>(
     db: &C,
@@ -558,8 +499,7 @@ async fn rebuild_one_segment_cache<C>(db: &C, id: i32) -> Result<(), sea_orm::Db
 where
     C: ConnectionTrait + TransactionTrait,
 {
-    use sea_orm::QuerySelect;
-    let Some(segment) = segments::Entity::find_by_id(id).one(db).await? else {
+    let Some(segment) = segments::Model::find_by_id(db, id).await? else {
         return Ok(());
     };
     let revision = segment
@@ -584,10 +524,7 @@ where
             let computed = input.efforts.len() as u64;
             let rebuild = build_segment_analytics(input);
             let txn = db.begin().await?;
-            let current = segments::Entity::find_by_id(id)
-                .lock_exclusive()
-                .one(&txn)
-                .await?;
+            let current = segments::Model::lock_for_analytics(&txn, id).await?;
             if current.is_none_or(|current| {
                 current.last_activity_change_at != segment.last_activity_change_at
                     || current.updated_at != segment.updated_at
@@ -763,15 +700,9 @@ async fn persist_segment_analytics_rebuild<C>(
 where
     C: ConnectionTrait,
 {
-    let user_deleted = segment_user_summaries::Entity::delete_many()
-        .filter(segment_user_summaries::Column::SegmentId.is_in(segment_ids.iter().copied()))
-        .exec(db)
-        .await?;
+    let user_deleted = segment_user_summaries::Entity::clear_segments(db, segment_ids).await?;
 
-    let segment_deleted = segment_summaries::Entity::delete_many()
-        .filter(segment_summaries::Column::SegmentId.is_in(segment_ids.iter().copied()))
-        .exec(db)
-        .await?;
+    let segment_deleted = segment_summaries::Entity::clear_segments(db, segment_ids).await?;
 
     let written = user_deleted.rows_affected
         + segment_deleted.rows_affected
@@ -1097,6 +1028,7 @@ fn estimated_heart_rate_ratio_from_fields(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
     #[tokio::test]
     async fn stale_fitness_rebuild_cannot_clear_a_newer_dirty_revision() {
@@ -1142,8 +1074,7 @@ mod tests {
                 .await
                 .unwrap()
         );
-        let stored = analytics_user_states::Entity::find_by_id(7)
-            .one(&db)
+        let stored = analytics_user_states::Model::for_user(&db, 7)
             .await
             .unwrap()
             .unwrap();
@@ -1156,11 +1087,12 @@ mod tests {
                 .unwrap(),
             0
         );
-        assert!(!mark_fitness_rebuild_complete(&db, 7, None, Utc::now())
-            .await
-            .unwrap());
-        assert!(analytics_user_states::Entity::find_by_id(7)
-            .one(&db)
+        assert!(
+            !analytics_user_states::Model::complete_rebuild(&db, 7, None, Utc::now())
+                .await
+                .unwrap()
+        );
+        assert!(analytics_user_states::Model::for_user(&db, 7)
             .await
             .unwrap()
             .unwrap()

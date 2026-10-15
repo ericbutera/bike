@@ -5,6 +5,7 @@ use crate::background_jobs::{
     history_tests::{database, enqueue},
     pipeline::PipelineContext,
 };
+use sea_orm::EntityTrait;
 use sea_orm::{ActiveModelTrait, PaginatorTrait, Set};
 use std::sync::Arc;
 

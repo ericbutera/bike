@@ -6,11 +6,8 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use chrono::{DateTime, Utc};
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, JsonValue, PaginatorTrait, QueryFilter,
-    QueryOrder,
-};
+
+use sea_orm::{DatabaseConnection, JsonValue};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
@@ -191,28 +188,7 @@ where
     ))
 }
 
-#[derive(Debug, Deserialize, IntoParams)]
-#[into_params(parameter_in = Query)]
-pub struct TaskListQuery {
-    /// Exact request, trace, or pipeline run ID.
-    pub correlation_id: Option<String>,
-    pub task_type: Option<String>,
-    pub status: Option<String>,
-    pub error: Option<String>,
-    pub from_date: Option<String>,
-    pub to_date: Option<String>,
-    #[serde(default = "default_page")]
-    pub page: u64,
-    #[serde(default = "default_per_page")]
-    pub per_page: u64,
-}
-
-fn default_page() -> u64 {
-    1
-}
-fn default_per_page() -> u64 {
-    20
-}
+pub use super::entities::background_tasks::TaskListQuery;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PaginationMetadata {
@@ -349,38 +325,7 @@ where
     let page = params.page.max(1);
     let per_page = params.per_page.clamp(1, 100);
 
-    let mut query =
-        background_tasks::Entity::find().order_by_desc(background_tasks::Column::CreatedAt);
-
-    if let Some(id) = &params.correlation_id {
-        query = background_tasks::Model::with_correlation(query, id);
-    }
-
-    if let Some(ref t) = params.task_type {
-        query = query.filter(background_tasks::Column::TaskType.eq(t.clone()));
-    }
-    if let Some(ref s) = params.status {
-        query = query.filter(background_tasks::Column::Status.eq(s.clone()));
-    }
-    if let Some(ref e) = params.error {
-        query = query.filter(background_tasks::Column::Error.contains(e.as_str()));
-    }
-    if let Some(ref d) = params.from_date {
-        if let Ok(parsed) = DateTime::parse_from_rfc3339(d) {
-            query =
-                query.filter(background_tasks::Column::CreatedAt.gte(parsed.with_timezone(&Utc)));
-        }
-    }
-    if let Some(ref d) = params.to_date {
-        if let Ok(parsed) = DateTime::parse_from_rfc3339(d) {
-            query =
-                query.filter(background_tasks::Column::CreatedAt.lte(parsed.with_timezone(&Utc)));
-        }
-    }
-
-    let paginator = query.paginate(db, per_page);
-    let total = paginator.num_items().await? as i64;
-    let items = paginator.fetch_page(page - 1).await?;
+    let (items, total) = background_tasks::Model::admin_page(db, &params).await?;
     let data: Vec<TaskResponse> = items.into_iter().map(TaskResponse::from).collect();
 
     Ok(Json(PaginatedResponse::new(
@@ -417,8 +362,7 @@ where
     A: AdminVerified,
 {
     let db = BackgroundTasksStorage::db(&*state);
-    let task = background_tasks::Entity::find_by_id(id)
-        .one(db)
+    let task = background_tasks::Model::find_by_id(db, id)
         .await?
         .ok_or_else(|| AdminTaskError::not_found("Task not found"))?;
 
@@ -453,8 +397,7 @@ where
     A: AdminVerified,
 {
     let db = BackgroundTasksStorage::db(&*state);
-    let task = background_tasks::Entity::find_by_id(id)
-        .one(db)
+    let task = background_tasks::Model::find_by_id(db, id)
         .await?
         .ok_or_else(|| AdminTaskError::not_found("Task not found"))?;
 
@@ -516,8 +459,7 @@ where
     A: AdminVerified,
 {
     let db = BackgroundTasksStorage::db(&*state);
-    let task = background_tasks::Entity::find_by_id(id)
-        .one(db)
+    let task = background_tasks::Model::find_by_id(db, id)
         .await?
         .ok_or_else(|| AdminTaskError::not_found("Task not found"))?;
 

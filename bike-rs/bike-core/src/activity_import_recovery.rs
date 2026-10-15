@@ -6,10 +6,7 @@ use crate::background_jobs::background_tasks;
 use crate::entities::activity_imports;
 use crate::jobs::{JobQueue, ProcessActivityImportTask};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, Set,
-};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, DbErr, Set};
 use std::fmt;
 
 const MANUAL_UPLOAD_SOURCE: &str = "manual_upload";
@@ -47,16 +44,7 @@ pub async fn recover_stale_manual_activity_imports(
     now: DateTime<Utc>,
 ) -> Result<usize, ActivityImportRecoveryError> {
     let stale_before = now - ChronoDuration::seconds(ACTIVITY_IMPORT_STALE_PROCESSING_SECONDS);
-    let user_ids = activity_imports::Entity::find()
-        .select_only()
-        .column(activity_imports::Column::UserId)
-        .distinct()
-        .filter(activity_imports::Column::Source.eq(MANUAL_UPLOAD_SOURCE))
-        .filter(activity_imports::Column::Status.eq(ACTIVITY_IMPORT_STATUS_PROCESSING))
-        .filter(activity_imports::Column::LastProcessingEventAt.lte(stale_before))
-        .into_tuple::<i32>()
-        .all(db)
-        .await?;
+    let user_ids = activity_imports::Entity::stale_manual_owner_ids(db, stale_before).await?;
 
     let mut recovered_count = 0usize;
     for user_id in user_ids {
@@ -89,16 +77,7 @@ async fn recover_abandoned_imports(
     now: DateTime<Utc>,
     source: Option<&str>,
 ) -> Result<usize, ActivityImportRecoveryError> {
-    let mut query = activity_imports::Entity::find()
-        .select_only()
-        .column(activity_imports::Column::UserId)
-        .distinct()
-        .filter(activity_imports::Column::Status.eq(ACTIVITY_IMPORT_STATUS_PROCESSING))
-        .filter(activity_imports::Column::Source.ne("strava_sync"));
-    if let Some(source) = source {
-        query = query.filter(activity_imports::Column::Source.eq(source));
-    }
-    let user_ids = query.into_tuple::<i32>().all(db).await?;
+    let user_ids = activity_imports::Entity::processing_owner_ids(db, source).await?;
 
     let mut recovered_count = 0usize;
     for user_id in user_ids {
@@ -253,15 +232,7 @@ async fn find_active_process_activity_import_tasks(
     user_id: i32,
     import_id: i32,
 ) -> Result<Vec<background_tasks::Model>, ActivityImportRecoveryError> {
-    let tasks = background_tasks::Entity::find()
-        .filter(background_tasks::Column::TaskType.eq("process_activity_import"))
-        .filter(background_tasks::Column::Status.is_in([
-            background_tasks::TaskStatus::Pending.as_str(),
-            background_tasks::TaskStatus::Processing.as_str(),
-        ]))
-        .order_by_desc(background_tasks::Column::CreatedAt)
-        .all(db)
-        .await?;
+    let tasks = background_tasks::Model::live_import_executors(db).await?;
 
     Ok(tasks
         .into_iter()

@@ -9,7 +9,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use sea_orm::{DatabaseConnection, EntityTrait};
+use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 
 pub trait AuthRouteStorage: Send + Sync + 'static {
@@ -198,9 +198,11 @@ where
     S: AuthRouteStorage + crate::auth::extractors::AuthStorage,
 {
     if let Some(refresh_token) = auth.refresh_token {
-        let _ = refresh_tokens::Entity::delete_by_id(refresh_token)
-            .exec(crate::auth::extractors::AuthStorage::db(&*state))
-            .await;
+        let _ = refresh_tokens::Model::revoke(
+            crate::auth::extractors::AuthStorage::db(&*state),
+            refresh_token,
+        )
+        .await;
     } else if let Some(crate::auth::extractors::AuthIdentity::User(user_identity)) = auth.identity {
         let _ = state.session_service().logout(user_identity.user_pid).await;
     }

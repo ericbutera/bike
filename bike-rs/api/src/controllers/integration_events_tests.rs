@@ -30,7 +30,9 @@ impl Fixture {
             disabled: Set(false),
             created_at: Set(Utc::now()),
             updated_at: Set(Utc::now()),
-            ..Default::default()
+            is_admin: Set(None),
+            email_verified_at: Set(None),
+            ..bike_core::test_support::new_customer()
         }
         .insert(&db)
         .await

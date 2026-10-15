@@ -1,9 +1,7 @@
 use crate::auth::error::AuthError;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::Condition;
-use sea_orm::DatabaseConnection;
-use sea_orm::Set;
+use sea_orm::{Condition, DatabaseConnection, Set};
 use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, serde::Serialize, serde::Deserialize)]
@@ -80,6 +78,16 @@ impl Model {
             AuthError::internal_error(format!("Failed to create refresh token: {}", e))
         })?;
 
+        Ok(())
+    }
+}
+
+impl Model {
+    pub async fn find_token(db: &impl ConnectionTrait, token: &str) -> Result<Option<Self>, DbErr> {
+        Entity::find_by_id(token.to_owned()).one(db).await
+    }
+    pub async fn revoke(db: &impl ConnectionTrait, token: impl Into<String>) -> Result<(), DbErr> {
+        Entity::delete_by_id(token.into()).exec(db).await?;
         Ok(())
     }
 }

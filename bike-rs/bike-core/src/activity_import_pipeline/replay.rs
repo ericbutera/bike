@@ -92,9 +92,8 @@ async fn find_reusable_attempt(
         if metadata.source_json != *source {
             continue;
         }
-        let Some(attempt) = activity_import_attempts::Entity::find_by_id(metadata.id)
-            .one(db)
-            .await?
+        let Some(attempt) =
+            activity_import_attempts::Entity::find_for_execution(db, metadata.id).await?
         else {
             continue;
         };
@@ -194,11 +193,7 @@ async fn queue_replay(
         ));
     }
     let previous = match plan.reused_attempt_id {
-        Some(id) => {
-            activity_import_attempts::Entity::find_by_id(id)
-                .one(&transaction)
-                .await?
-        }
+        Some(id) => activity_import_attempts::Entity::find_for_execution(&transaction, id).await?,
         None => None,
     };
     let attempt = execution::create_attempt(

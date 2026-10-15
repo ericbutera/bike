@@ -4,11 +4,7 @@ pub use reprocessing::reprocess_page;
 mod segments;
 use super::entities::{background_tasks, batch_tasks, pipeline_outputs, worker_batches};
 use chrono::Utc;
-use sea_orm::{
-    sea_query::{Expr, OnConflict},
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QuerySelect,
-    Set, TransactionSession, TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr, TransactionSession, TransactionTrait};
 pub use segments::{affected_segments, segments_page};
 use std::future::Future;
 tokio::task_local! { static CURRENT:Option<i32>; }
@@ -23,23 +19,11 @@ pub async fn record_task(
     batch_id: i32,
     task_id: i32,
 ) -> Result<(), DbErr> {
-    worker_batches::Entity::find_by_id(batch_id)
-        .lock_exclusive()
-        .one(db)
+    worker_batches::Model::lock(db, batch_id)
         .await?
         .filter(|batch| batch.status == "running")
         .ok_or_else(|| DbErr::RecordNotFound("Open batch disappeared".into()))?;
-    batch_tasks::Entity::insert(batch_tasks::ActiveModel {
-        batch_id: Set(batch_id),
-        task_id: Set(task_id),
-    })
-    .on_conflict(
-        OnConflict::columns([batch_tasks::Column::BatchId, batch_tasks::Column::TaskId])
-            .do_nothing()
-            .to_owned(),
-    )
-    .exec_without_returning(db)
-    .await?;
+    batch_tasks::Model::attach(db, batch_id, task_id).await?;
     Ok(())
 }
 pub async fn start(
@@ -51,25 +35,8 @@ pub async fn start(
 ) -> Result<worker_batches::Model, DbErr> {
     let txn = db.begin().await?;
     lock_origins(&txn, id).await?;
-    worker_batches::Entity::insert(worker_batches::ActiveModel {
-        id: Set(id),
-        user_id: Set(user_id),
-        kind: Set(kind.into()),
-        source: Set(source),
-        cursor: Set(0),
-        sealed: Set(false),
-        status: Set("running".into()),
-        updated_at: Set(Utc::now()),
-    })
-    .on_conflict(
-        OnConflict::column(worker_batches::Column::Id)
-            .do_nothing()
-            .to_owned(),
-    )
-    .exec_without_returning(&txn)
-    .await?;
-    let batch = worker_batches::Entity::find_by_id(id)
-        .one(&txn)
+    worker_batches::Model::create_if_absent(&txn, id, user_id, kind, source).await?;
+    let batch = worker_batches::Model::find_by_id(&txn, id)
         .await?
         .ok_or_else(|| DbErr::RecordNotFound("Batch disappeared".into()))?;
     pipeline_outputs::Model::require(&txn, "batch", id, id.to_string()).await?;
@@ -87,9 +54,7 @@ pub async fn schedule_page(
     scope(Some(batch.id), async {
         let txn = db.begin().await?;
         lock_origins(&txn, batch.id).await?;
-        let stored = worker_batches::Entity::find_by_id(batch.id)
-            .lock_exclusive()
-            .one(&txn)
+        let stored = worker_batches::Model::lock(&txn, batch.id)
             .await?
             .ok_or_else(|| DbErr::RecordNotFound("Batch disappeared".into()))?;
         if stored.cursor != batch.cursor || stored.sealed {
@@ -105,16 +70,9 @@ pub async fn schedule_page(
             )
             .await?;
         }
-        worker_batches::Entity::update_many()
-            .col_expr(worker_batches::Column::Cursor, Expr::value(next))
-            .col_expr(worker_batches::Column::Sealed, Expr::value(sealed))
-            .col_expr(worker_batches::Column::UpdatedAt, Expr::value(Utc::now()))
-            .filter(worker_batches::Column::Id.eq(batch.id))
-            .exec(&txn)
-            .await?;
+        batch.advance_page(&txn, next, sealed).await?;
         if !sealed {
-            let parent = background_tasks::Entity::find_by_id(batch.id)
-                .one(&txn)
+            let parent = background_tasks::Model::find_by_id(&txn, batch.id)
                 .await?
                 .ok_or_else(|| DbErr::RecordNotFound("Batch producer disappeared".into()))?;
             let mut payload = parent.payload;
@@ -143,30 +101,13 @@ pub async fn reconcile(db: &DatabaseConnection) -> Result<(), DbErr> {
 async fn close_batch(db: &DatabaseConnection, batch: worker_batches::Model) -> Result<(), DbErr> {
     let txn = db.begin().await?;
     lock_origins(&txn, batch.id).await?;
-    let Some(batch) = worker_batches::Entity::find_by_id(batch.id)
-        .lock_exclusive()
-        .one(&txn)
-        .await?
-    else {
+    let Some(batch) = worker_batches::Model::lock(&txn, batch.id).await? else {
         return Ok(());
     };
     if batch.status != "running" {
         return Ok(());
     }
-    let ids = batch_tasks::Entity::find()
-        .select_only()
-        .column(batch_tasks::Column::TaskId)
-        .filter(batch_tasks::Column::BatchId.eq(batch.id))
-        .into_query();
-    let tasks = background_tasks::Model::metadata_query()
-        .filter(
-            sea_orm::Condition::any()
-                .add(background_tasks::Column::Id.eq(batch.id))
-                .add(background_tasks::Column::Id.in_subquery(ids)),
-        )
-        .into_model::<super::entities::diagnostic_reads::TaskMetadata>()
-        .all(&txn)
-        .await?;
+    let tasks = background_tasks::Model::metadata_for_batch(&txn, batch.id).await?;
     if tasks
         .iter()
         .any(|task| ["pending", "processing"].contains(&task.status.as_str()))
@@ -202,15 +143,7 @@ async fn finish_batch(
         crate::archive_import::finish_queued_archive_batch(db, batch, tasks).await?;
     let failed = failed || archive_failed;
     let now = Utc::now();
-    worker_batches::Entity::update_many()
-        .col_expr(
-            worker_batches::Column::Status,
-            Expr::value(if failed { "partial" } else { "completed" }),
-        )
-        .col_expr(worker_batches::Column::UpdatedAt, Expr::value(now))
-        .filter(worker_batches::Column::Id.eq(batch.id))
-        .exec(db)
-        .await?;
+    batch.finish(db, failed, now).await?;
     let lock_source = match batch.kind.as_str() {
         "archive" => "archive_import",
         "segments" => "segment_regeneration",
@@ -219,12 +152,13 @@ async fn finish_batch(
     let lock_id = batch.source["lock_id"]
         .as_i64()
         .and_then(|id| i32::try_from(id).ok());
-    crate::entities::activity_import_locks::Entity::delete_many()
-        .filter(crate::entities::activity_import_locks::Column::Id.eq(lock_id))
-        .filter(crate::entities::activity_import_locks::Column::UserId.eq(batch.user_id))
-        .filter(crate::entities::activity_import_locks::Column::Source.eq(lock_source))
-        .exec(db)
-        .await?;
+    crate::entities::activity_import_locks::Model::release_batch_lock(
+        db,
+        lock_id,
+        batch.user_id,
+        lock_source,
+    )
+    .await?;
     if !failed {
         pipeline_outputs::Model::publish(db, "batch", batch.id, &batch.id.to_string(), now).await?;
     }
@@ -234,42 +168,22 @@ async fn finish_batch(
 /// the same ordered locks so a descendant enqueue cannot deadlock with closure.
 pub(crate) async fn lock_origins(db: &impl ConnectionTrait, task_id: i32) -> Result<(), DbErr> {
     use super::entities::{pipeline_runs, pipeline_tasks};
-    let mut ids = pipeline_tasks::Entity::find()
-        .select_only()
-        .column(pipeline_tasks::Column::RunId)
-        .filter(pipeline_tasks::Column::TaskId.eq(task_id))
-        .into_tuple::<String>()
-        .all(db)
-        .await?;
+    let mut ids = pipeline_tasks::Model::run_ids_for_task(db, task_id).await?;
     if let Some(origin) = super::pipeline::PipelineContext::current() {
         ids.push(origin.run_id);
     }
     ids.sort_unstable();
     ids.dedup();
     for id in ids {
-        pipeline_runs::Entity::find_by_id(id)
-            .select_only()
-            .column(pipeline_runs::Column::Id)
-            .lock_exclusive()
-            .into_tuple::<String>()
-            .one(db)
-            .await?;
+        pipeline_runs::Model::lock(db, &id).await?;
     }
     Ok(())
 }
-use sea_orm::QueryTrait;
 
 /// Archive files are deleted only after the durable child barrier closes. Keeping
 /// the path until removal succeeds makes cleanup restartable after a crash.
 async fn cleanup_archives(db: &DatabaseConnection) -> Result<(), DbErr> {
-    let batches = worker_batches::Entity::find()
-        .filter(worker_batches::Column::Kind.eq("archive"))
-        .filter(worker_batches::Column::Status.is_in(["completed", "partial"]))
-        .filter(Expr::cust("source ->> 'archive_path' IS NOT NULL"))
-        .order_by_asc(worker_batches::Column::UpdatedAt)
-        .limit(64)
-        .all(db)
-        .await?;
+    let batches = worker_batches::Model::cleanup_candidates(db).await?;
     for mut batch in batches {
         let Some(path) = batch.source["archive_path"].as_str() else {
             continue;
@@ -287,15 +201,11 @@ async fn cleanup_archives(db: &DatabaseConnection) -> Result<(), DbErr> {
             .as_object_mut()
             .ok_or_else(|| DbErr::Custom("Invalid batch source".into()))?
             .remove("archive_path");
-        worker_batches::Entity::update_many()
-            .col_expr(worker_batches::Column::Source, Expr::value(batch.source))
-            .filter(worker_batches::Column::Id.eq(batch.id))
-            .exec(db)
-            .await?;
+        batch.store_source(db).await?;
     }
     Ok(())
 }
-use sea_orm::QueryOrder;
+
 #[cfg(test)]
 struct BatchFixture {
     db: DatabaseConnection,
@@ -312,7 +222,7 @@ impl BatchFixture {
             pipeline::PipelineContext,
         };
         use crate::entities::activity_import_locks;
-        use sea_orm::ActiveModelTrait;
+        use sea_orm::{ActiveModelTrait, Set};
         let db = database(true).await;
         let origin = PipelineContext::received("admin", None);
         let parent = PipelineContext::scope(Some(origin.clone()), enqueue(&db)).await;
@@ -359,6 +269,7 @@ mod tests {
         entities::activity_import_locks,
         jobs::{Job, RebuildFitnessFreshnessTask},
     };
+    use sea_orm::{sea_query::Expr, ColumnTrait, EntityTrait, QueryFilter, Set};
     use sea_orm::{ActiveModelTrait, PaginatorTrait};
     async fn complete(db: &DatabaseConnection, task: &background_tasks::Model) {
         task.claim(db)
@@ -400,8 +311,7 @@ mod tests {
         schedule_page(&db, &batch, 0, true, vec![]).await.unwrap();
         complete(&db, &parent).await;
         reconcile(&db).await.unwrap();
-        let finished = worker_batches::Entity::find_by_id(batch.id)
-            .one(&db)
+        let finished = worker_batches::Model::find_by_id(&db, batch.id)
             .await
             .unwrap()
             .unwrap();
@@ -445,8 +355,7 @@ mod tests {
             background_tasks::Entity::find().count(&db).await.unwrap(),
             1
         );
-        let stored = worker_batches::Entity::find_by_id(batch.id)
-            .one(&db)
+        let stored = worker_batches::Model::find_by_id(&db, batch.id)
             .await
             .unwrap()
             .unwrap();
@@ -490,8 +399,7 @@ mod tests {
         tokio::fs::remove_file(&path).await.unwrap();
         cleanup_archives(&db).await.unwrap();
         cleanup_archives(&db).await.unwrap();
-        let cleaned = worker_batches::Entity::find_by_id(batch.id)
-            .one(&db)
+        let cleaned = worker_batches::Model::find_by_id(&db, batch.id)
             .await
             .unwrap()
             .unwrap();
@@ -541,8 +449,7 @@ mod tests {
         active.mark_completed(&db).await.unwrap();
         reconcile(&db).await.unwrap();
         assert_eq!(
-            worker_batches::Entity::find_by_id(batch.id)
-                .one(&db)
+            worker_batches::Model::find_by_id(&db, batch.id)
                 .await
                 .unwrap()
                 .unwrap()
@@ -552,8 +459,7 @@ mod tests {
         complete(&db, &descendant).await;
         reconcile(&db).await.unwrap();
         assert_eq!(
-            worker_batches::Entity::find_by_id(batch.id)
-                .one(&db)
+            worker_batches::Model::find_by_id(&db, batch.id)
                 .await
                 .unwrap()
                 .unwrap()
@@ -617,8 +523,7 @@ mod tests {
             .unwrap();
         reconcile(&db).await.unwrap();
         assert_eq!(
-            worker_batches::Entity::find_by_id(batch.id)
-                .one(&db)
+            worker_batches::Model::find_by_id(&db, batch.id)
                 .await
                 .unwrap()
                 .unwrap()

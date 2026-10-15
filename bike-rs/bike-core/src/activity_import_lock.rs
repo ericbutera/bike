@@ -1,7 +1,5 @@
 use crate::entities::activity_import_locks;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, Set,
-};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, DbErr, Set};
 use std::error::Error;
 use std::fmt;
 
@@ -172,9 +170,7 @@ pub async fn release_user_activity_import_lock(
         return Ok(());
     }
 
-    activity_import_locks::Entity::delete_by_id(lock.id)
-        .exec(db)
-        .await?;
+    lock.release(db).await?;
 
     Ok(())
 }
@@ -183,9 +179,7 @@ pub async fn load_user_activity_import_lock(
     db: &DatabaseConnection,
     user_id: i32,
 ) -> Result<Option<activity_import_locks::Model>, ActivityImportLockError> {
-    activity_import_locks::Entity::find()
-        .filter(activity_import_locks::Column::UserId.eq(user_id))
-        .one(db)
+    activity_import_locks::Model::for_user(db, user_id)
         .await
         .map_err(ActivityImportLockError::from)
 }

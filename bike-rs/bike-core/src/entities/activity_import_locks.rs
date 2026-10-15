@@ -32,3 +32,35 @@ impl ActiveModelBehavior for ActiveModel {
         Ok(self)
     }
 }
+
+impl Model {
+    pub async fn for_user(db: &impl ConnectionTrait, user_id: i32) -> Result<Option<Self>, DbErr> {
+        use sea_orm::QueryFilter;
+        Entity::find()
+            .filter(Column::UserId.eq(user_id))
+            .one(db)
+            .await
+    }
+    pub async fn release(self, db: &impl ConnectionTrait) -> Result<(), DbErr> {
+        Entity::delete_by_id(self.id).exec(db).await?;
+        Ok(())
+    }
+}
+
+impl Model {
+    pub async fn release_batch_lock(
+        db: &impl ConnectionTrait,
+        id: Option<i32>,
+        user_id: i32,
+        source: &str,
+    ) -> Result<(), DbErr> {
+        use sea_orm::QueryFilter;
+        Entity::delete_many()
+            .filter(Column::Id.eq(id))
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::Source.eq(source))
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+}

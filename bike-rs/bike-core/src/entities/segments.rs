@@ -4,7 +4,8 @@ use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DbErr, FromQueryResult, QueryFilter, QueryOrder, QuerySelect, Set,
+    ColumnTrait, ConnectionTrait, DbErr, FromQueryResult, QueryFilter, QueryOrder, QuerySelect,
+    Set, TransactionSession,
 };
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, serde::Serialize, serde::Deserialize)]
@@ -61,6 +62,44 @@ pub struct SegmentTitle {
 }
 
 impl Model {
+    pub async fn find_owned(
+        db: &impl ConnectionTrait,
+        segment_id: i32,
+        user_id: i32,
+    ) -> Result<Option<Self>, DbErr> {
+        Entity::find_by_id(segment_id)
+            .filter(Column::UserId.eq(user_id))
+            .one(db)
+            .await
+    }
+
+    pub async fn find_by_id(
+        db: &impl ConnectionTrait,
+        segment_id: i32,
+    ) -> Result<Option<Self>, DbErr> {
+        Entity::find_by_id(segment_id).one(db).await
+    }
+
+    pub async fn delete_with_derived_state(
+        &self,
+        db: &(impl ConnectionTrait + sea_orm::TransactionTrait),
+    ) -> Result<(), DbErr> {
+        let activity_ids =
+            super::segment_efforts::Model::activity_ids_for_segment(db, self.id).await?;
+        let txn = db.begin().await?;
+        super::segment_user_summaries::Entity::delete_for_segment(&txn, self.id).await?;
+        super::segment_summaries::Entity::delete_for_segment(&txn, self.id).await?;
+        super::segment_efforts::Entity::delete_for_segment(&txn, self.id).await?;
+        Entity::delete_by_id(self.id)
+            .filter(Column::UserId.eq(self.user_id))
+            .exec(&txn)
+            .await?;
+        if !activity_ids.is_empty() {
+            crate::analytics::rebuild_activity_analytics_cache(&txn, &activity_ids).await?;
+        }
+        txn.commit().await
+    }
+
     pub async fn metrics_counts(
         db: &DatabaseConnection,
         now: DateTime<Utc>,
@@ -141,6 +180,49 @@ impl Model {
         Entity::find()
             .filter(Column::Id.is_in(segment_ids.iter().copied()))
             .all(db)
+            .await
+    }
+}
+
+mod access;
+pub use access::SegmentListRow;
+
+impl Model {
+    pub async fn downhill_for_user(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+    ) -> Result<Vec<Self>, DbErr> {
+        Entity::find()
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::Mode.eq("dh"))
+            .all(db)
+            .await
+    }
+    pub async fn downhill_by_ids(
+        db: &impl ConnectionTrait,
+        segment_ids: &[i32],
+    ) -> Result<Vec<Self>, DbErr> {
+        Entity::find()
+            .filter(Column::Id.is_in(segment_ids.iter().copied()))
+            .filter(Column::Mode.eq("dh"))
+            .all(db)
+            .await
+    }
+    pub async fn all_ids(db: &impl ConnectionTrait) -> Result<Vec<i32>, DbErr> {
+        Entity::find()
+            .select_only()
+            .column(Column::Id)
+            .into_tuple()
+            .all(db)
+            .await
+    }
+    pub async fn lock_for_analytics(
+        db: &impl ConnectionTrait,
+        segment_id: i32,
+    ) -> Result<Option<Self>, DbErr> {
+        Entity::find_by_id(segment_id)
+            .lock_exclusive()
+            .one(db)
             .await
     }
 }

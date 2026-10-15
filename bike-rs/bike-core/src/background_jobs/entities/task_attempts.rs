@@ -55,3 +55,16 @@ impl Model {
             .await
     }
 }
+
+impl Model {
+    pub async fn delete_for_tasks(db: &impl ConnectionTrait, ids: &[i32]) -> Result<(), DbErr> {
+        use sea_orm::QueryFilter;
+        Entity::delete_many()
+            .filter(Column::TaskId.is_in(ids.iter().copied()))
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+}
+
+mod statistics;
