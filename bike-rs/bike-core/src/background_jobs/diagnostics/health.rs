@@ -3,10 +3,7 @@ use super::super::{
     worker::WorkerMetrics,
 };
 use chrono::{DateTime, Utc};
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, DbErr, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-    QuerySelect,
-};
+use sea_orm::{DatabaseConnection, DbErr};
 
 pub async fn sample(
     db: &DatabaseConnection,
@@ -19,11 +16,7 @@ pub async fn sample(
     for kind in [
         "activity", "fitness", "heatmap", "segments", "import", "batch",
     ] {
-        let count = pipeline_outputs::Entity::find()
-            .filter(pipeline_outputs::Column::Kind.eq(kind))
-            .filter(pipeline_outputs::Column::Status.eq("pending"))
-            .count(db)
-            .await?;
+        let count = pipeline_outputs::Model::pending_count(db, kind).await?;
         metrics.set_pending_outputs(kind, count as i64);
     }
     for entrypoint in [
@@ -35,26 +28,7 @@ pub async fn sample(
         "admin_rerun",
         "upload",
     ] {
-        let timestamp = pipeline_runs::Entity::find()
-            .filter(pipeline_runs::Column::Entrypoint.eq(entrypoint))
-            .filter(pipeline_runs::Column::AvailableAt.is_null())
-            .filter(
-                pipeline_runs::Column::Id.in_subquery(
-                    pipeline_outputs::Entity::find()
-                        .select_only()
-                        .column(pipeline_outputs::Column::RunId)
-                        .filter(pipeline_outputs::Column::Required.eq(true))
-                        .filter(pipeline_outputs::Column::AvailableAt.is_null())
-                        .into_query(),
-                ),
-            )
-            .select_only()
-            .column(pipeline_runs::Column::PipelineStartedAt)
-            .order_by_asc(pipeline_runs::Column::PipelineStartedAt)
-            .limit(1)
-            .into_tuple::<DateTime<Utc>>()
-            .one(db)
-            .await?;
+        let timestamp = pipeline_runs::Model::oldest_unready(db, entrypoint).await?;
         metrics.set_unready_age(entrypoint, age(timestamp, Utc::now()));
     }
     Ok(())
@@ -65,7 +39,6 @@ fn age(timestamp: Option<DateTime<Utc>>, now: DateTime<Utc>) -> i64 {
         .map(|time| (now - time).num_seconds().max(0))
         .unwrap_or(0)
 }
-use sea_orm::QueryTrait;
 
 async fn sample_snapshots(
     db: &DatabaseConnection,

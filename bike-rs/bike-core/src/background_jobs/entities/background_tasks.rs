@@ -156,3 +156,19 @@ impl Model {
             .await
     }
 }
+
+impl Model {
+    pub async fn live_import_executors(db: &impl ConnectionTrait) -> Result<Vec<Self>, DbErr> {
+        Entity::find()
+            .filter(Column::TaskType.eq("process_activity_import"))
+            .filter(Column::Status.is_in(["pending", "processing"]))
+            .order_by_desc(Column::CreatedAt)
+            .all(db)
+            .await
+    }
+}
+
+mod diagnostics;
+
+mod admin;
+pub use admin::TaskListQuery;

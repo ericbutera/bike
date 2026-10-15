@@ -14,7 +14,7 @@ use crate::segment_support::{
     replace_segment_efforts_for_segment, SegmentSupportError,
 };
 use chrono::Utc;
-use sea_orm::{DatabaseConnection, DbErr, EntityTrait};
+use sea_orm::{DatabaseConnection, DbErr};
 use std::fmt;
 
 #[derive(Debug)]
@@ -60,8 +60,7 @@ pub async fn regenerate_segment_efforts(
     db: &DatabaseConnection,
     segment_id: i32,
 ) -> Result<(), SegmentRegenerationError> {
-    let segment = segments::Entity::find_by_id(segment_id)
-        .one(db)
+    let segment = segments::Model::find_by_id(db, segment_id)
         .await?
         .ok_or_else(|| {
             SegmentRegenerationError::internal(format!("segment {segment_id} was not found"))
@@ -171,9 +170,7 @@ pub async fn process_activity_segment_regeneration(
     activity_id: i32,
 ) -> Result<(), SegmentRegenerationError> {
     use crate::background_jobs::execution::{measured, WorkCounts, WorkScope};
-    use sea_orm::{ColumnTrait, PaginatorTrait, QueryFilter};
-    let activity = activities::Entity::find_by_id(activity_id)
-        .one(db)
+    let activity = activities::Model::find_by_id(db, activity_id)
         .await?
         .ok_or_else(|| SegmentRegenerationError::internal("Activity disappeared"))?;
     let points =
@@ -186,10 +183,7 @@ pub async fn process_activity_segment_regeneration(
         reason: "user_regeneration",
     };
     measured(db, scope, async {
-        let old_count = segment_efforts::Entity::find()
-            .filter(segment_efforts::Column::ActivityId.eq(activity_id))
-            .count(db)
-            .await?;
+        let old_count = segment_efforts::Model::count_for_activity(db, activity_id).await?;
         let mut affected = load_segment_ids_for_activity(db, activity_id).await?;
         replace_segment_efforts_for_activity(db, activity.user_id, activity_id, &points).await?;
         affected.extend(load_segment_ids_for_activity(db, activity_id).await?);
@@ -197,10 +191,7 @@ pub async fn process_activity_segment_regeneration(
         affected.dedup();
         mark_segment_activity_changes(db, &affected, Utc::now()).await?;
         crate::background_jobs::batches::affected_segments(db, &affected).await?;
-        let count = segment_efforts::Entity::find()
-            .filter(segment_efforts::Column::ActivityId.eq(activity_id))
-            .count(db)
-            .await?;
+        let count = segment_efforts::Model::count_for_activity(db, activity_id).await?;
         Ok::<_, SegmentRegenerationError>((
             (),
             WorkCounts {

@@ -28,3 +28,31 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
 impl ActiveModelBehavior for ActiveModel {}
+
+impl Model {
+    pub async fn delete_for_tasks(db: &impl ConnectionTrait, ids: &[i32]) -> Result<(), DbErr> {
+        use sea_orm::QueryFilter;
+        Entity::delete_many()
+            .filter(Column::TaskId.is_in(ids.iter().copied()))
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+}
+
+impl Model {
+    pub async fn page_for_task(
+        db: &impl ConnectionTrait,
+        id: i32,
+        after: i32,
+    ) -> Result<Vec<Self>, DbErr> {
+        use sea_orm::{QueryFilter, QueryOrder, QuerySelect};
+        Entity::find()
+            .filter(Column::TaskId.eq(id))
+            .filter(Column::Id.gt(after))
+            .order_by_asc(Column::Id)
+            .limit(26)
+            .all(db)
+            .await
+    }
+}

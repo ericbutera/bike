@@ -31,3 +31,19 @@ pub enum Relation {
 }
 
 impl ActiveModelBehavior for ActiveModel {}
+
+impl Model {
+    pub async fn for_activity(
+        db: &impl ConnectionTrait,
+        activity_id: i32,
+    ) -> Result<Option<Self>, DbErr> {
+        Entity::find_by_id(activity_id).one(db).await
+    }
+}
+
+pub mod data;
+pub mod lifecycle;
+
+#[cfg(test)]
+#[path = "heatmap_projection_tests.rs"]
+mod tests;

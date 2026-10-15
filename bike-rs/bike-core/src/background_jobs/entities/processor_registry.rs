@@ -44,3 +44,9 @@ impl Model {
         Ok(())
     }
 }
+
+impl Model {
+    pub async fn registered(db: &impl ConnectionTrait) -> Result<Vec<Self>, DbErr> {
+        Entity::find().all(db).await
+    }
+}

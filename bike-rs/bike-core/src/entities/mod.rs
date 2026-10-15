@@ -21,3 +21,6 @@ pub mod strava_activity_states;
 pub mod strava_connections;
 pub mod strava_events;
 pub mod user_preferences;
+
+#[cfg(test)]
+mod model_boundary_tests;

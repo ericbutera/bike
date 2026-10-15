@@ -4,7 +4,7 @@ use crate::{
     activity_parser::ParsedActivityData,
     entities::{activity_imports, strava_activity_states, strava_events},
 };
-use sea_orm::{ActiveModelTrait, EntityTrait, Set, TransactionTrait};
+use sea_orm::{ActiveModelTrait, Set, TransactionTrait};
 
 #[cfg(test)]
 mod strava_native_unit_deletion;
@@ -310,7 +310,7 @@ impl StravaOperations {
             return Ok(change);
         }
         if let Some(id) = change.bike_activity_id {
-            if let Some(activity) = activities::Entity::find_by_id(id).one(&txn).await? {
+            if let Some(activity) = activities::Model::find_by_id(&txn, id).await? {
                 let derived = crate::activity_data::deserialize_derived_activity_data(
                     activity.derived_data_json.as_ref(),
                 );
@@ -363,9 +363,8 @@ impl StravaOperations {
         change: ActivityChange,
     ) -> Result<ActivityChange, WorkflowError> {
         if let Some(id) = change.bike_activity_id {
-            if let Some(projection) = crate::entities::heatmap_projections::Entity::find_by_id(id)
-                .one(&self.db)
-                .await?
+            if let Some(projection) =
+                crate::entities::heatmap_projections::Model::for_activity(&self.db, id).await?
             {
                 crate::heatmaps::preparation::prepare_activity(
                     &self.db,

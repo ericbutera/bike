@@ -155,3 +155,26 @@ impl ActiveModelBehavior for ActiveModel {
         Ok(self)
     }
 }
+
+impl Model {
+    pub async fn connected_count(db: &impl ConnectionTrait) -> Result<u64, DbErr> {
+        use sea_orm::PaginatorTrait;
+        Entity::find().count(db).await
+    }
+}
+
+impl Model {
+    pub async fn for_user(db: &impl ConnectionTrait, user_id: i32) -> Result<Option<Self>, DbErr> {
+        Entity::find()
+            .filter(Column::UserId.eq(user_id))
+            .one(db)
+            .await
+    }
+    pub async fn remove(&self, db: &impl ConnectionTrait) -> Result<(), DbErr> {
+        Entity::delete_many()
+            .filter(Column::Id.eq(self.id))
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+}

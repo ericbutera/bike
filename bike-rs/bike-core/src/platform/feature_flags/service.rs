@@ -1,7 +1,7 @@
 use super::entities as feature_flags;
 use crate::platform::error::PlatformError;
 use open_feature::OpenFeature;
-use sea_orm::{prelude::*, ActiveValue, QueryOrder};
+use sea_orm::prelude::*;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
@@ -20,10 +20,7 @@ impl FeatureFlagService {
 
     /// Load all feature flags from database into cache
     pub async fn load_cache(&self, db: &DatabaseConnection) -> Result<(), PlatformError> {
-        let flags = feature_flags::Entity::find()
-            .order_by_asc(feature_flags::Column::FeatureKey)
-            .all(db)
-            .await?;
+        let flags = feature_flags::Model::list_all(db).await?;
 
         let mut evaluated = HashMap::new();
 
@@ -54,10 +51,7 @@ impl FeatureFlagService {
     pub async fn list_all(
         db: &DatabaseConnection,
     ) -> Result<Vec<feature_flags::Model>, PlatformError> {
-        let flags = feature_flags::Entity::find()
-            .order_by_asc(feature_flags::Column::FeatureKey)
-            .all(db)
-            .await?;
+        let flags = feature_flags::Model::list_all(db).await?;
         Ok(flags)
     }
 
@@ -66,10 +60,7 @@ impl FeatureFlagService {
         db: &DatabaseConnection,
         feature_key: &str,
     ) -> Result<Option<feature_flags::Model>, PlatformError> {
-        let flag = feature_flags::Entity::find()
-            .filter(feature_flags::Column::FeatureKey.eq(feature_key))
-            .one(db)
-            .await?;
+        let flag = feature_flags::Model::by_key(db, feature_key).await?;
         Ok(flag)
     }
 
@@ -84,11 +75,7 @@ impl FeatureFlagService {
             .await?
             .ok_or_else(|| PlatformError::entity_not_found("Feature flag not found"))?;
 
-        let mut active_model: feature_flags::ActiveModel = flag.into();
-        active_model.enabled = ActiveValue::Set(enabled);
-        active_model.updated_at = ActiveValue::Set(chrono::Utc::now());
-
-        let updated = active_model.update(db).await?;
+        let updated = flag.set_enabled(db, enabled).await?;
 
         // Update cache
         let mut cache = self.cache.write().unwrap();

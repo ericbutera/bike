@@ -12,7 +12,7 @@ use crate::strava::provider_payload::{
 use crate::workflow_error::WorkflowError as AppError;
 use chrono::{DateTime, Duration, Utc};
 use reqwest::Url;
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -167,9 +167,7 @@ pub async fn load_connection(
     db: &DatabaseConnection,
     user_id: i32,
 ) -> Result<Option<strava_connections::Model>, AppError> {
-    strava_connections::Entity::find()
-        .filter(strava_connections::Column::UserId.eq(user_id))
-        .one(db)
+    strava_connections::Model::for_user(db, user_id)
         .await
         .map_err(AppError::from)
 }
@@ -269,10 +267,7 @@ pub async fn forget_local_connection(
     let Some(connection) = load_connection(db, user_id).await? else {
         return Ok(());
     };
-    strava_connections::Entity::delete_many()
-        .filter(strava_connections::Column::Id.eq(connection.id))
-        .exec(db)
-        .await?;
+    connection.remove(db).await?;
     Ok(())
 }
 
@@ -301,10 +296,8 @@ async fn upsert_connection_from_token(
     user_id: i32,
     token_response: StravaAuthorizationTokenResponse,
 ) -> Result<strava_connections::Model, AppError> {
-    if let Some(existing_for_athlete) = strava_connections::Entity::find()
-        .filter(strava_connections::Column::AthleteId.eq(token_response.athlete.id))
-        .one(db)
-        .await?
+    if let Some(existing_for_athlete) =
+        strava_connections::Model::for_athlete(db, token_response.athlete.id).await?
     {
         if existing_for_athlete.user_id != user_id {
             return Err(AppError::bad_request(
@@ -586,7 +579,7 @@ mod tests {
             last_sync_imported_count: Set(0),
             last_sync_duplicate_count: Set(0),
             last_sync_failed_count: Set(0),
-            ..Default::default()
+            ..crate::test_support::new_connection()
         }
         .insert(db)
         .await

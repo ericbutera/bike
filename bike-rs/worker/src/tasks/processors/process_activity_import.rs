@@ -13,7 +13,7 @@ use bike_core::jobs::JobType;
 use bike_core::jobs::{JobQueue, ProcessActivityImportTask};
 use bike_core::workflow_error::WorkflowError;
 use chrono::NaiveDate;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::DatabaseConnection;
 use std::error::Error;
 
 type WorkerResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
@@ -165,9 +165,7 @@ async fn load_import_for_task(
     db: &DatabaseConnection,
     task: &ProcessActivityImportTask,
 ) -> WorkerResult<activity_imports::Model> {
-    activity_imports::Entity::find_by_id(task.import_id)
-        .filter(activity_imports::Column::UserId.eq(task.user_id))
-        .one(db)
+    activity_imports::Entity::find_owned(db, task.user_id, task.import_id)
         .await
         .map_err(worker_db_error)?
         .ok_or_else(|| worker_error(format!("Activity import {} was not found", task.import_id)))
@@ -213,9 +211,7 @@ async fn load_activity_for_import(
     import: &activity_imports::Model,
 ) -> WorkerResult<Option<activities::Model>> {
     if let Some(activity_id) = import.activity_id {
-        let activity = activities::Entity::find_by_id(activity_id)
-            .filter(activities::Column::UserId.eq(user_id))
-            .one(db)
+        let activity = activities::Model::find_owned(db, activity_id, user_id)
             .await
             .map_err(worker_db_error)?;
 
@@ -224,10 +220,11 @@ async fn load_activity_for_import(
         }
     }
 
-    activities::Entity::find()
-        .filter(activities::Column::UserId.eq(user_id))
-        .filter(activities::Column::ActivityImportId.eq(Some(import.id)))
-        .one(db)
+    activities::Model::owned_import_activity(db, user_id, import.id)
         .await
         .map_err(worker_db_error)
 }
+
+#[cfg(test)]
+#[path = "process_activity_import_tests.rs"]
+mod tests;

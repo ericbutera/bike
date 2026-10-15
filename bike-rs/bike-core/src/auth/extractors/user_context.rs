@@ -6,7 +6,7 @@ use axum::{
     extract::{FromRef, FromRequestParts},
     http::request::Parts,
 };
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -88,9 +88,7 @@ where
             None => return Err(AuthError::unauthorized("Missing authentication")),
         };
 
-        let user = users::Entity::find()
-            .filter(users::Column::Pid.eq(user_pid))
-            .one(storage.db())
+        let user = users::Model::find_by_pid(storage.db(), &user_pid)
             .await
             .map_err(|e| AuthError::internal_error(format!("Failed to query user: {}", e)))?
             .ok_or_else(|| AuthError::unauthorized("User not found"))?;
@@ -130,9 +128,7 @@ where
             None => return Err(AuthError::unauthorized("Missing authentication")),
         };
 
-        let user = users::Entity::find()
-            .filter(users::Column::Pid.eq(user_pid))
-            .one(storage.db())
+        let user = users::Model::find_by_pid(storage.db(), &user_pid)
             .await
             .map_err(|e| AuthError::internal_error(format!("Failed to query user: {}", e)))?
             .ok_or_else(|| AuthError::unauthorized("User not found"))?;
@@ -176,9 +172,7 @@ where
             None => return Err(AuthError::unauthorized("Missing authentication")),
         };
 
-        let user = users::Entity::find()
-            .filter(users::Column::Pid.eq(user_pid))
-            .one(storage.db())
+        let user = users::Model::find_by_pid(storage.db(), &user_pid)
             .await
             .map_err(|e| AuthError::internal_error(format!("Failed to query user: {}", e)))?
             .ok_or_else(|| AuthError::unauthorized("User not found"))?;

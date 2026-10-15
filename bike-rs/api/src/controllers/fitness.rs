@@ -8,7 +8,7 @@ use bike_core::analytics::{
 use bike_core::auth::UserContext;
 use bike_core::entities::{analytics_user_states, fitness_freshness_daily};
 use chrono::{Duration, NaiveDate, Utc};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
@@ -111,9 +111,7 @@ async fn load_cached_rows_for_request(
     end_date: NaiveDate,
 ) -> Result<Vec<fitness_freshness_daily::Model>, AppError> {
     let cached_rows = load_cached_rows(db, user_id, requested_start_date, end_date).await?;
-    let freshness_state = analytics_user_states::Entity::find_by_id(user_id)
-        .one(db)
-        .await?;
+    let freshness_state = analytics_user_states::Model::for_user(db, user_id).await?;
 
     if cache_is_usable(
         &cached_rows,
@@ -136,17 +134,13 @@ async fn load_cached_rows(
     requested_start_date: Option<NaiveDate>,
     end_date: NaiveDate,
 ) -> Result<Vec<fitness_freshness_daily::Model>, sea_orm::DbErr> {
-    let mut cached_rows_query = fitness_freshness_daily::Entity::find()
-        .filter(fitness_freshness_daily::Column::UserId.eq(user_id))
-        .filter(fitness_freshness_daily::Column::Day.lte(end_date))
-        .order_by_asc(fitness_freshness_daily::Column::Day);
-
-    if let Some(start_date) = cached_row_query_start_date(requested_start_date) {
-        cached_rows_query =
-            cached_rows_query.filter(fitness_freshness_daily::Column::Day.gte(start_date));
-    }
-
-    cached_rows_query.all(db).await
+    fitness_freshness_daily::Model::between_days(
+        db,
+        user_id,
+        cached_row_query_start_date(requested_start_date),
+        end_date,
+    )
+    .await
 }
 
 fn cache_is_usable(
@@ -237,9 +231,7 @@ mod tests {
     use super::*;
     use bike_core::entities::{activities, analytics_user_states, fitness_freshness_daily};
     use chrono::DateTime;
-    use sea_orm::{
-        ActiveModelTrait, ConnectionTrait, Database, DatabaseConnection, EntityTrait, Schema, Set,
-    };
+    use sea_orm::{ActiveModelTrait, ConnectionTrait, Database, DatabaseConnection, Schema, Set};
 
     async fn test_db() -> DatabaseConnection {
         let db = Database::connect("sqlite::memory:")
@@ -281,13 +273,7 @@ mod tests {
                 id: 1,
                 user_id: 1,
                 day: NaiveDate::from_ymd_opt(2026, 5, 1).unwrap(),
-                activity_count: 1,
-                training_load: 10.0,
-                fitness: 1.0,
-                fatigue: 2.0,
-                form: -1.0,
-                created_at: now,
-                updated_at: now,
+                ..bike_core::test_support::fitness_day()
             },
             fitness_freshness_daily::Model {
                 id: 2,
@@ -298,8 +284,7 @@ mod tests {
                 fitness: 0.8,
                 fatigue: 1.4,
                 form: -0.6,
-                created_at: now,
-                updated_at: now,
+                ..bike_core::test_support::fitness_day()
             },
         ];
 
@@ -308,10 +293,7 @@ mod tests {
             Some(&analytics_user_states::Model {
                 user_id: 1,
                 last_activity_change_at: now,
-                fitness_dirty_from_day: None,
-                last_fitness_rebuild_at: None,
-                created_at: now,
-                updated_at: now,
+                ..bike_core::test_support::analytics_user_state()
             }),
             Some(NaiveDate::from_ymd_opt(2026, 5, 1).unwrap()),
             NaiveDate::from_ymd_opt(2026, 5, 3).unwrap(),
@@ -325,13 +307,9 @@ mod tests {
             id: 1,
             user_id: 1,
             day: NaiveDate::from_ymd_opt(2026, 5, 1).unwrap(),
-            activity_count: 1,
-            training_load: 10.0,
-            fitness: 1.0,
-            fatigue: 2.0,
-            form: -1.0,
             created_at: now,
             updated_at: now,
+            ..bike_core::test_support::fitness_day()
         }];
 
         assert!(!cache_is_usable(
@@ -340,9 +318,7 @@ mod tests {
                 user_id: 1,
                 last_activity_change_at: now,
                 fitness_dirty_from_day: Some(NaiveDate::from_ymd_opt(2026, 5, 1).unwrap()),
-                last_fitness_rebuild_at: None,
-                created_at: now,
-                updated_at: now,
+                ..bike_core::test_support::analytics_user_state()
             }),
             Some(NaiveDate::from_ymd_opt(2026, 5, 1).unwrap()),
             NaiveDate::from_ymd_opt(2026, 5, 2).unwrap(),
@@ -356,13 +332,9 @@ mod tests {
             id: 1,
             user_id: 1,
             day: NaiveDate::from_ymd_opt(2026, 5, 1).unwrap(),
-            activity_count: 1,
-            training_load: 10.0,
-            fitness: 1.0,
-            fatigue: 2.0,
-            form: -1.0,
             created_at: now,
             updated_at: now,
+            ..bike_core::test_support::fitness_day()
         }];
 
         assert!(cache_is_usable(
@@ -372,8 +344,7 @@ mod tests {
                 last_activity_change_at: now,
                 fitness_dirty_from_day: Some(NaiveDate::from_ymd_opt(2026, 5, 5).unwrap()),
                 last_fitness_rebuild_at: Some(now),
-                created_at: now,
-                updated_at: now,
+                ..bike_core::test_support::analytics_user_state()
             }),
             Some(NaiveDate::from_ymd_opt(2026, 5, 1).unwrap()),
             NaiveDate::from_ymd_opt(2026, 5, 2).unwrap(),
@@ -428,7 +399,7 @@ mod tests {
             fitness: Set(2.6785714285714284),
             fatigue: Set(16.071428571428573),
             form: Set(-13.392857142857144),
-            ..Default::default()
+            ..bike_core::test_support::new_fitness_day()
         }
         .insert(&db)
         .await
@@ -453,8 +424,7 @@ mod tests {
         assert_eq!(rows[0].activity_count, 1);
         assert!((rows[0].training_load - 56.25).abs() < f64::EPSILON);
 
-        let freshness_state = analytics_user_states::Entity::find_by_id(1)
-            .one(&db)
+        let freshness_state = analytics_user_states::Model::for_user(&db, 1)
             .await
             .expect("load analytics state")
             .expect("analytics state exists");

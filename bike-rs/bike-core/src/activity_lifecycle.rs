@@ -3,12 +3,13 @@ use crate::activity_import_lock::{
     ensure_user_activity_import_lock_stage, release_user_activity_import_lock,
     ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
 };
-use crate::activity_import_pipeline::{
-    process_stored_activity_import, reprocess_activity_from_import, ActivityUploadDeduplication,
-    PersistActivityUploadOutcome, ReprocessedActivityImport,
-    ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT, ACTIVITY_IMPORT_STATUS_FAILED,
-    ACTIVITY_IMPORT_STATUS_PROCESSING,
-};
+use crate::activity_import_pipeline::process_stored_activity_import;
+use crate::activity_import_pipeline::reprocess_activity_from_import;
+use crate::activity_import_pipeline::ActivityUploadDeduplication;
+use crate::activity_import_pipeline::PersistActivityUploadOutcome;
+use crate::activity_import_pipeline::ReprocessedActivityImport;
+use crate::activity_import_pipeline::ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT;
+use crate::activity_import_pipeline::ACTIVITY_IMPORT_STATUS_FAILED;
 use crate::analytics::{
     mark_segment_activity_changes, mark_user_activity_change, mark_user_fitness_dirty,
 };
@@ -23,11 +24,7 @@ use crate::segment_support::{
 use crate::training_profile::{load_training_profile, TrainingProfile};
 use crate::workflow_error::WorkflowError as AppError;
 use chrono::{NaiveDate, Utc};
-use sea_orm::TransactionSession;
-use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, TransactionSession, TransactionTrait};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::io::ErrorKind;
@@ -246,10 +243,7 @@ pub async fn cleanup_duplicate_activities_for_user(
     tasks: &TaskQueue,
     user_id: i32,
 ) -> Result<DuplicateActivityCleanupSummary, AppError> {
-    let activities = activities::Entity::find()
-        .filter(activities::Column::UserId.eq(user_id))
-        .all(db)
-        .await?;
+    let activities = activities::Model::for_user(db, user_id).await?;
     let cleanup_plan = plan_duplicate_activity_cleanup(activities);
 
     if cleanup_plan.duplicate_activity_ids.is_empty() {
@@ -260,14 +254,15 @@ pub async fn cleanup_duplicate_activities_for_user(
         });
     }
 
-    let activities_by_id = activities::Entity::find()
-        .filter(activities::Column::UserId.eq(user_id))
-        .filter(activities::Column::Id.is_in(cleanup_plan.duplicate_activity_ids.iter().copied()))
-        .all(db)
-        .await?
-        .into_iter()
-        .map(|activity| (activity.id, activity))
-        .collect::<HashMap<_, _>>();
+    let activities_by_id = activities::Model::list_owned_by_ids(
+        db,
+        user_id,
+        cleanup_plan.duplicate_activity_ids.iter().copied(),
+    )
+    .await?
+    .into_iter()
+    .map(|activity| (activity.id, activity))
+    .collect::<HashMap<_, _>>();
     let mut affected_segment_ids = Vec::new();
     let mut fitness_dirty_from_day: Option<chrono::NaiveDate> = None;
 
@@ -508,15 +503,7 @@ async fn load_incomplete_activity_imports_for_user(
     db: &DatabaseConnection,
     user_id: i32,
 ) -> Result<Vec<activity_imports::Model>, AppError> {
-    activity_imports::Entity::find()
-        .filter(activity_imports::Column::UserId.eq(user_id))
-        .filter(activity_imports::Column::Source.ne("strava_sync"))
-        .filter(activity_imports::Column::Status.is_in([
-            ACTIVITY_IMPORT_STATUS_PROCESSING,
-            ACTIVITY_IMPORT_STATUS_FAILED,
-        ]))
-        .order_by_asc(activity_imports::Column::CreatedAt)
-        .all(db)
+    activity_imports::Entity::resumable_for_user(db, user_id)
         .await
         .map_err(AppError::from)
 }
@@ -550,26 +537,17 @@ async fn load_activities_by_activity_import_id(
     user_id: i32,
     activity_import_ids: &[i32],
 ) -> Result<HashMap<i32, activities::Model>, AppError> {
-    Ok(activities::Entity::find()
-        .filter(activities::Column::UserId.eq(user_id))
-        .filter(
-            activities::Column::ActivityImportId.is_in(
-                activity_import_ids
-                    .iter()
-                    .copied()
-                    .map(Some)
-                    .collect::<Vec<_>>(),
-            ),
-        )
-        .all(db)
-        .await?
-        .into_iter()
-        .filter_map(|activity| {
-            activity
-                .activity_import_id
-                .map(|import_id| (import_id, activity))
-        })
-        .collect())
+    Ok(
+        activities::Model::linked_by_import_ids(db, user_id, activity_import_ids)
+            .await?
+            .into_iter()
+            .filter_map(|activity| {
+                activity
+                    .activity_import_id
+                    .map(|import_id| (import_id, activity))
+            })
+            .collect(),
+    )
 }
 
 async fn load_activities_by_id(
@@ -577,10 +555,7 @@ async fn load_activities_by_id(
     user_id: i32,
     activity_ids: &[i32],
 ) -> Result<Vec<activities::Model>, AppError> {
-    activities::Entity::find()
-        .filter(activities::Column::UserId.eq(user_id))
-        .filter(activities::Column::Id.is_in(activity_ids.iter().copied()))
-        .all(db)
+    activities::Model::list_owned_by_ids(db, user_id, activity_ids.iter().copied())
         .await
         .map_err(AppError::from)
 }
@@ -757,8 +732,7 @@ async fn load_activity_for_reprocessing(
     db: &DatabaseConnection,
     activity_id: i32,
 ) -> Result<activities::Model, AppError> {
-    let activity = activities::Entity::find_by_id(activity_id)
-        .one(db)
+    let activity = activities::Model::find_by_id(db, activity_id)
         .await?
         .ok_or_else(|| AppError::not_found(format!("Activity {activity_id} was not found")))?;
     if activity.source == "strava_sync" {
@@ -782,8 +756,7 @@ async fn load_activity_import_for_reprocessing(
     db: &DatabaseConnection,
     activity_import_id: i32,
 ) -> Result<activity_imports::Model, AppError> {
-    activity_imports::Entity::find_by_id(activity_import_id)
-        .one(db)
+    activity_imports::Entity::find_for_administration(db, activity_import_id)
         .await?
         .ok_or_else(|| {
             AppError::not_found(format!(
@@ -848,6 +821,7 @@ async fn remove_upload_file(path: PathBuf) {
 
 #[cfg(test)]
 mod tests {
+    use sea_orm::EntityTrait;
     mod deletion;
 
     use super::*;
@@ -905,8 +879,7 @@ mod tests {
         .await
         .expect("skip missing activity");
 
-        let stored = activity_imports::Entity::find_by_id(failed_import.id)
-            .one(&db)
+        let stored = activity_imports::Entity::find_for_administration(&db, failed_import.id)
             .await
             .expect("load failed import")
             .expect("failed import exists");

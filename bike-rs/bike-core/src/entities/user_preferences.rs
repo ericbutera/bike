@@ -44,3 +44,13 @@ impl ActiveModelBehavior for ActiveModel {
         Ok(self)
     }
 }
+
+impl Model {
+    pub async fn for_user(db: &impl ConnectionTrait, user_id: i32) -> Result<Option<Self>, DbErr> {
+        use sea_orm::QueryFilter;
+        Entity::find()
+            .filter(Column::UserId.eq(user_id))
+            .one(db)
+            .await
+    }
+}

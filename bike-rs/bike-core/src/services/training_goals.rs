@@ -1,17 +1,15 @@
 use crate::activity_training_analysis::{plausible_aerobic_decoupling_percent, ActivityRideFocus};
 use crate::activity_type::ActivityType;
 use crate::analytics::{FATIGUE_WINDOW_DAYS, FITNESS_WINDOW_DAYS};
+use crate::entities::activities::ActivitySummaryRow;
 use crate::entities::{
     activities, activity_training_analyses, analytics_user_states, fitness_freshness_daily,
     segment_efforts, segments, user_preferences,
 };
 use crate::errors::BikeCoreError;
-use crate::training_data::{deserialize_activity_heart_rate_zones, StoredActivityHeartRateZones};
+use crate::training_data::deserialize_activity_heart_rate_zones;
 use chrono::{DateTime, Datelike, Duration, NaiveDate, Utc};
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, FromQueryResult, QueryFilter, QueryOrder,
-    QuerySelect,
-};
+use sea_orm::DatabaseConnection;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use utoipa::ToSchema;
@@ -465,19 +463,6 @@ struct DhEffortSource {
     duration_seconds: i32,
 }
 
-#[derive(Clone, Debug, FromQueryResult)]
-struct ActivitySummaryRow {
-    id: i32,
-    title: String,
-    started_at: DateTime<Utc>,
-    distance_meters: Option<f64>,
-    elevation_gain_meters: Option<f64>,
-    moving_time_seconds: Option<i32>,
-    total_time_seconds: Option<i32>,
-    activity_type: String,
-    heart_rate_zones_json: Option<StoredActivityHeartRateZones>,
-}
-
 pub struct TrainingGoalsService;
 
 impl TrainingGoalsService {
@@ -489,18 +474,16 @@ impl TrainingGoalsService {
         let goal = load_xc_event_goal(db, user_id).await?;
         let freshness =
             load_latest_fitness_freshness_snapshot(db, user_id, now.date_naive()).await?;
-        let analysis_models = activity_training_analyses::Entity::find()
-            .filter(activity_training_analyses::Column::UserId.eq(user_id))
-            .all(db)
-            .await?;
+        let analysis_models = activity_training_analyses::Model::for_user(db, user_id).await?;
         let activity_ids = analysis_models
             .iter()
             .map(|analysis| analysis.activity_id)
             .collect::<Vec<_>>();
-        let activity_by_id = load_activity_summaries_by_ids(db, user_id, &activity_ids).await?;
+        let activity_by_id =
+            activities::Model::training_summaries(db, user_id, &activity_ids).await?;
 
         let mut rides = xc_rides_from_analysis_models(analysis_models, &activity_by_id);
-        let race_activities = load_race_activity_summaries(db, user_id).await?;
+        let race_activities = activities::Model::race_summaries(db, user_id).await?;
 
         append_missing_race_rides(&mut rides, race_activities);
         sort_xc_rides_recent_first(&mut rides);
@@ -515,11 +498,7 @@ impl TrainingGoalsService {
     ) -> Result<DhGoalProgressResponse, BikeCoreError> {
         let freshness =
             load_latest_fitness_freshness_snapshot(db, user_id, now.date_naive()).await?;
-        let segment_models = segments::Entity::find()
-            .filter(segments::Column::UserId.eq(user_id))
-            .filter(segments::Column::Mode.eq("dh"))
-            .all(db)
-            .await?;
+        let segment_models = segments::Model::downhill_for_user(db, user_id).await?;
 
         let segment_ids = segment_models
             .iter()
@@ -528,17 +507,14 @@ impl TrainingGoalsService {
         let effort_models = if segment_ids.is_empty() {
             Vec::new()
         } else {
-            segment_efforts::Entity::find()
-                .filter(segment_efforts::Column::UserId.eq(user_id))
-                .filter(segment_efforts::Column::SegmentId.is_in(segment_ids.clone()))
-                .all(db)
-                .await?
+            segment_efforts::Model::for_owned_segments(db, user_id, &segment_ids).await?
         };
         let activity_ids = effort_models
             .iter()
             .map(|effort| effort.activity_id)
             .collect::<Vec<_>>();
-        let activity_by_id = load_activity_summaries_by_ids(db, user_id, &activity_ids).await?;
+        let activity_by_id =
+            activities::Model::training_summaries(db, user_id, &activity_ids).await?;
         let efforts = dh_effort_sources_from_models(effort_models, &activity_by_id);
 
         Ok(build_dh_goal_progress_response(
@@ -646,31 +622,6 @@ fn dh_effort_source_from_model(
     })
 }
 
-async fn load_race_activity_summaries(
-    db: &sea_orm::DatabaseConnection,
-    user_id: i32,
-) -> Result<Vec<ActivitySummaryRow>, BikeCoreError> {
-    Ok(activities::Entity::find()
-        .select_only()
-        .column(activities::Column::Id)
-        .column(activities::Column::Title)
-        .column(activities::Column::StartedAt)
-        .column(activities::Column::DistanceMeters)
-        .column(activities::Column::ElevationGainMeters)
-        .column(activities::Column::MovingTimeSeconds)
-        .column(activities::Column::TotalTimeSeconds)
-        .column(activities::Column::ActivityType)
-        .column(activities::Column::HeartRateZonesJson)
-        .filter(activities::Column::UserId.eq(user_id))
-        .filter(
-            activities::Column::Sport.is_in(activities::BIKE_ACTIVITY_SPORT_VALUES.iter().copied()),
-        )
-        .filter(activities::Column::ActivityType.eq(ActivityType::Race.as_str()))
-        .into_model::<ActivitySummaryRow>()
-        .all(db)
-        .await?)
-}
-
 fn race_activity_without_analysis(activity: ActivitySummaryRow) -> XcRideProgressResponse {
     let zone_seconds = heart_rate_zone_seconds(&activity);
 
@@ -701,39 +652,6 @@ fn race_activity_without_analysis(activity: ActivitySummaryRow) -> XcRideProgres
     }
 }
 
-async fn load_activity_summaries_by_ids(
-    db: &sea_orm::DatabaseConnection,
-    user_id: i32,
-    activity_ids: &[i32],
-) -> Result<HashMap<i32, ActivitySummaryRow>, BikeCoreError> {
-    if activity_ids.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    Ok(activities::Entity::find()
-        .select_only()
-        .column(activities::Column::Id)
-        .column(activities::Column::Title)
-        .column(activities::Column::StartedAt)
-        .column(activities::Column::DistanceMeters)
-        .column(activities::Column::ElevationGainMeters)
-        .column(activities::Column::MovingTimeSeconds)
-        .column(activities::Column::TotalTimeSeconds)
-        .column(activities::Column::ActivityType)
-        .column(activities::Column::HeartRateZonesJson)
-        .filter(activities::Column::UserId.eq(user_id))
-        .filter(
-            activities::Column::Sport.is_in(activities::BIKE_ACTIVITY_SPORT_VALUES.iter().copied()),
-        )
-        .filter(activities::Column::Id.is_in(activity_ids.iter().copied()))
-        .into_model::<ActivitySummaryRow>()
-        .all(db)
-        .await?
-        .into_iter()
-        .map(|activity| (activity.id, activity))
-        .collect())
-}
-
 fn heart_rate_zone_seconds(activity: &ActivitySummaryRow) -> [i32; 5] {
     let mut zone_seconds = [0; 5];
 
@@ -749,10 +667,7 @@ async fn load_xc_event_goal(
     db: &sea_orm::DatabaseConnection,
     user_id: i32,
 ) -> Result<Option<XcEventGoal>, BikeCoreError> {
-    let preferences = user_preferences::Entity::find()
-        .filter(user_preferences::Column::UserId.eq(user_id))
-        .one(db)
-        .await?;
+    let preferences = user_preferences::Model::for_user(db, user_id).await?;
     let Some(preferences) = preferences else {
         return Ok(None);
     };
@@ -793,9 +708,7 @@ async fn load_latest_fitness_freshness_snapshot(
     user_id: i32,
     end_date: NaiveDate,
 ) -> Result<Option<FitnessFreshnessSnapshot>, BikeCoreError> {
-    let freshness_state = analytics_user_states::Entity::find_by_id(user_id)
-        .one(db)
-        .await?;
+    let freshness_state = analytics_user_states::Model::for_user(db, user_id).await?;
 
     if freshness_state
         .as_ref()
@@ -805,12 +718,8 @@ async fn load_latest_fitness_freshness_snapshot(
         return Ok(None);
     }
 
-    let latest_row = fitness_freshness_daily::Entity::find()
-        .filter(fitness_freshness_daily::Column::UserId.eq(user_id))
-        .filter(fitness_freshness_daily::Column::Day.lte(end_date))
-        .order_by_desc(fitness_freshness_daily::Column::Day)
-        .one(db)
-        .await?;
+    let latest_row =
+        fitness_freshness_daily::Model::latest_at_or_before(db, user_id, end_date).await?;
 
     Ok(latest_row.map(|row| {
         decay_fitness_freshness_snapshot_to_day(

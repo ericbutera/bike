@@ -1,4 +1,4 @@
-use crate::auth::entities::users::{self, Entity as Users};
+use crate::auth::entities::users;
 use crate::auth::error::AuthError;
 use crate::auth::services::provider_settings;
 use oauth2::basic::BasicClient;
@@ -8,11 +8,10 @@ use oauth2::{
     AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, RedirectUrl, Scope,
     TokenResponse, TokenUrl,
 };
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use std::env;
 use tracing::Instrument;
-use uuid::Uuid;
 
 pub(crate) mod oidc;
 
@@ -36,7 +35,7 @@ pub struct OAuthUserInfo {
 }
 
 impl OAuthUserInfo {
-    fn display_name(&self) -> String {
+    pub(crate) fn display_name(&self) -> String {
         self.name
             .clone()
             .or_else(|| self.preferred_username.clone())
@@ -196,12 +195,10 @@ impl OAuthService {
 
         async {
             // First, try to find user by provider subject.
-            if let Some(user) = Users::find()
-                .filter(users::Column::OauthSubject.eq(&provider_user.subject))
-                .filter(users::Column::OauthProvider.eq(provider))
-                .one(db)
-                .await
-                .map_err(|e| AuthError::internal_error(format!("Database error: {}", e)))?
+            if let Some(user) =
+                users::Model::by_provider_identity(db, provider, &provider_user.subject)
+                    .await
+                    .map_err(|e| AuthError::internal_error(format!("Database error: {}", e)))?
             {
                 span.record("auth.user_resolution", "matched_provider_subject");
                 user.ensure_enabled()?;
@@ -209,43 +206,25 @@ impl OAuthService {
             }
 
             // Second, try to find user by email and link this provider.
-            if let Some(mut user) = Users::find()
-                .filter(users::Column::Email.eq(&provider_user.email))
-                .one(db)
+            if let Some(mut user) = users::Model::find_by_email(db, &provider_user.email)
                 .await
                 .map_err(|e| AuthError::internal_error(format!("Database error: {}", e)))?
             {
                 user.ensure_enabled()?;
                 // Link provider account to existing user.
-                let mut active_user: users::ActiveModel = user.clone().into();
-                active_user.oauth_subject = Set(Some(provider_user.subject));
-                active_user.oauth_provider = Set(Some(provider.to_string()));
-
-                user = active_user.update(db).await.map_err(|e| {
-                    AuthError::internal_error(format!("Failed to update user: {}", e))
-                })?;
+                user = user
+                    .link_oauth_identity(db, provider, provider_user.subject)
+                    .await
+                    .map_err(|e| {
+                        AuthError::internal_error(format!("Failed to update user: {}", e))
+                    })?;
 
                 span.record("auth.user_resolution", "linked_existing_email");
                 return Ok(user);
             }
 
             // Create new OAuth-only user.
-            let display_name = provider_user.display_name();
-            let new_user = users::ActiveModel {
-                pid: Set(Uuid::new_v4()),
-                email: Set(provider_user.email.clone()),
-                password: Set(None), // OAuth users don't have a password
-                oauth_subject: Set(Some(provider_user.subject)),
-                oauth_provider: Set(Some(provider.to_string())),
-                name: Set(display_name),
-                email_verified_at: Set(Some(chrono::Utc::now())), // provider verified the email
-                api_key: Set(Uuid::new_v4().to_string()),
-                disabled: Set(false),
-                ..Default::default()
-            };
-
-            let user = new_user
-                .insert(db)
+            let user = users::Model::create_oauth_user(db, provider, provider_user)
                 .await
                 .map_err(|e| AuthError::internal_error(format!("Failed to create user: {}", e)))?;
 

@@ -16,7 +16,7 @@ use crate::training_profile::{load_training_profile, TrainingProfile};
 use crate::workflow_error::WorkflowError as AppError;
 use chrono::Utc;
 use reqwest::{header, redirect::Policy, Client, Url};
-use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, Set};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
 use serde::Serialize;
 use std::env;
 use std::io::{Cursor, Read, Seek};
@@ -149,8 +149,7 @@ pub async fn process_activity_archive_import_job(
     uploads_dir: &str,
     job_id: i32,
 ) -> Result<(), AppError> {
-    let job = activity_archive_import_jobs::Entity::find_by_id(job_id)
-        .one(db)
+    let job = activity_archive_import_jobs::Entity::find_for_batch(db, job_id)
         .await?
         .ok_or_else(|| AppError::internal(format!("Archive import job {job_id} was not found")))?;
 
@@ -1474,8 +1473,7 @@ mod tests {
             ),
             (1, 1, 1)
         );
-        let progress = activity_archive_import_jobs::Entity::find_by_id(job.id)
-            .one(&db)
+        let progress = activity_archive_import_jobs::Entity::find_for_batch(&db, job.id)
             .await
             .unwrap()
             .unwrap();

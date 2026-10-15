@@ -4,10 +4,7 @@ use crate::analytics::{
 use crate::entities::{activity_imports, integration_events};
 use crate::jobs::JobQueue;
 use chrono::{DateTime, NaiveDate, Utc};
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, Set,
-    TransactionTrait,
-};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, DbErr, Set, TransactionTrait};
 use serde_json::Value;
 use std::fmt;
 
@@ -113,10 +110,7 @@ pub async fn mark_activity_imports_processed(
         return Ok(());
     }
 
-    let imports = activity_imports::Entity::find()
-        .filter(activity_imports::Column::Id.is_in(import_ids.iter().copied()))
-        .all(db)
-        .await?;
+    let imports = activity_imports::Entity::by_ids(db, import_ids.iter().copied()).await?;
 
     for import in imports {
         let transaction = db.begin().await?;

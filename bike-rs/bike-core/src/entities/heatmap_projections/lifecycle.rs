@@ -1,0 +1,302 @@
+//! Persistence for disposable heatmap projections. Source activity data stays authoritative.
+use crate::entities::{
+    activities, heatmap_chunks as chunks_entity, heatmap_projections as projections,
+    heatmap_user_states as user_states,
+};
+use crate::heatmaps::{geometry::Chunk, PROJECTION_VERSION};
+use crate::platform::feature_flags::entities as feature_flags;
+use chrono::{DateTime, Utc};
+use sea_orm::sea_query::Expr;
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, DbErr, EntityTrait, ExprTrait,
+    FromQueryResult, JoinType, QueryFilter, QueryOrder, QuerySelect, RelationTrait, Set, Statement,
+    TransactionTrait,
+};
+
+#[derive(Debug, FromQueryResult)]
+pub struct PendingProjection {
+    pub activity_id: i32,
+    pub generation: i64,
+}
+
+pub struct Projection;
+
+impl Projection {
+    /// Invalidate an owned route within the caller's source-change transaction.
+    pub async fn invalidate_owned(
+        db: &impl ConnectionTrait,
+        activity_id: i32,
+        user_id: i32,
+    ) -> Result<(), DbErr> {
+        let changed = projections::Entity::update_many()
+            .set(projections::ActiveModel {
+                status: Set("pending".into()),
+                projection_version: Set(PROJECTION_VERSION),
+                queued_at: Set(None),
+                published_at: Set(None),
+                error: Set(None),
+                min_x: Set(None),
+                min_y: Set(None),
+                max_x: Set(None),
+                max_y: Set(None),
+                ..Default::default()
+            })
+            .col_expr(
+                projections::Column::Generation,
+                Expr::col(projections::Column::Generation).add(1),
+            )
+            .filter(projections::Column::ActivityId.eq(activity_id))
+            .filter(projections::Column::UserId.eq(user_id))
+            .exec(db)
+            .await?;
+        if changed.rows_affected > 0 {
+            if let Some(projection) = projections::Model::for_activity(db, activity_id).await? {
+                crate::background_jobs::entities::pipeline_outputs::Model::advance(
+                    db,
+                    "heatmap",
+                    activity_id,
+                    &format!("{}:{PROJECTION_VERSION}", projection.generation),
+                )
+                .await?;
+            }
+            chunks_entity::Model::clear_activity(db, activity_id).await?;
+            user_states::Model::bump_revision(db, user_id).await?;
+        }
+        Ok(())
+    }
+
+    pub async fn backfill_page(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        after_id: i32,
+    ) -> Result<Vec<PendingProjection>, DbErr> {
+        projections::Entity::find()
+            .select_only()
+            .columns([
+                projections::Column::ActivityId,
+                projections::Column::Generation,
+            ])
+            .filter(projections::Column::UserId.eq(user_id))
+            .filter(projections::Column::ActivityId.gt(after_id))
+            .filter(projections::Column::Status.is_in(["pending", "failed"]))
+            .filter(projections::Column::ProjectionVersion.eq(PROJECTION_VERSION))
+            .order_by_asc(projections::Column::ActivityId)
+            .limit(16)
+            .into_model::<PendingProjection>()
+            .all(db)
+            .await
+    }
+
+    pub async fn enabled(db: &impl ConnectionTrait) -> Result<bool, DbErr> {
+        feature_flags::Model::enabled(db, "heatmaps").await
+    }
+
+    /// Queue and lease rows in the same transaction. Worker crashes and enqueue
+    /// failures cannot strand durable dirty state. Projection and heartbeat leases
+    /// share WORKER_RECOVERY_TIMEOUT_SECONDS.
+    pub async fn enqueue_pending(db: &DatabaseConnection) -> Result<u64, DbErr> {
+        let context =
+            crate::background_jobs::pipeline::PipelineContext::current().unwrap_or_else(|| {
+                crate::background_jobs::pipeline::PipelineContext::received(
+                    "heatmap_reconciliation",
+                    None,
+                )
+            });
+        crate::background_jobs::pipeline::PipelineContext::scope(
+            Some(context),
+            Self::lease_and_enqueue(db),
+        )
+        .await
+    }
+
+    async fn lease_and_enqueue(db: &DatabaseConnection) -> Result<u64, DbErr> {
+        let txn = db.begin().await?;
+        // Native locking is necessary for concurrent outbox consumers. Submission
+        // then uses the shared queue API in this same transaction, including lineage.
+        let leased = PendingProjection::find_by_statement(Statement::from_sql_and_values(DbBackend::Postgres, r#"
+            WITH candidates AS (
+                SELECT p.activity_id FROM heatmap_projections p
+                WHERE p.status='pending' AND p.projection_version=$1 AND (p.queued_at IS NULL OR p.queued_at < now() - make_interval(secs => $2::double precision))
+                AND EXISTS (SELECT 1 FROM activities a WHERE a.id=p.activity_id AND a.source <> 'strava_sync')
+                AND NOT EXISTS (SELECT 1 FROM background_tasks t WHERE t.task_type=$3
+                    AND t.status IN ('pending','processing') AND (t.status='processing' OR t.attempts<t.max_attempts)
+                    AND (t.payload->'data'->'activities') @> jsonb_build_array(jsonb_build_object('activity_id',p.activity_id,'generation',p.generation)))
+                ORDER BY p.activity_id LIMIT 16 FOR UPDATE SKIP LOCKED
+            )
+            UPDATE heatmap_projections p SET queued_at=now() FROM candidates c WHERE p.activity_id=c.activity_id
+            RETURNING p.activity_id, p.generation
+        "#,[PROJECTION_VERSION.into(), crate::config::Config::get().worker_recovery_timeout_seconds.into(), crate::jobs::JobType::PrepareHeatmap.as_str().into()])).all(&txn).await?;
+        if leased.is_empty() {
+            return Ok(0);
+        }
+        let activities: Vec<_> = leased.iter().map(|pending|serde_json::json!({"activity_id":pending.activity_id,"generation":pending.generation})).collect();
+        let task = crate::background_jobs::background_tasks::Model::enqueue(
+            &txn,
+            crate::jobs::JobType::PrepareHeatmap.as_str().into(),
+            serde_json::json!({"type":"PrepareHeatmap","data":{"activities":activities}}),
+            None,
+            3,
+        )
+        .await?;
+        for pending in leased {
+            let revision = Self::revision(pending.generation);
+            crate::background_jobs::entities::pipeline_outputs::Model::advance(
+                &txn,
+                "heatmap",
+                pending.activity_id,
+                &revision,
+            )
+            .await?;
+            crate::background_jobs::entities::pipeline_outputs::Model::attach_waiting_tasks(
+                &txn,
+                "heatmap",
+                pending.activity_id,
+                &revision,
+                task.id,
+            )
+            .await?;
+        }
+        txn.commit().await?;
+        Ok(1)
+    }
+
+    pub fn revision(generation: i64) -> String {
+        format!("{generation}:{PROJECTION_VERSION}")
+    }
+
+    pub async fn pending(
+        db: &impl ConnectionTrait,
+        activity_id: i32,
+        generation: i64,
+    ) -> Result<bool, DbErr> {
+        Ok(projections::Entity::find_by_id(activity_id)
+            .select_only()
+            .column(projections::Column::ActivityId)
+            .filter(projections::Column::Generation.eq(generation))
+            .filter(projections::Column::ProjectionVersion.eq(PROJECTION_VERSION))
+            .filter(projections::Column::Status.is_in(["pending", "failed"]))
+            .into_tuple::<i32>()
+            .one(db)
+            .await?
+            .is_some())
+    }
+
+    pub async fn publish(
+        db: &DatabaseConnection,
+        pending: &PendingProjection,
+        chunks: &[Chunk],
+    ) -> Result<bool, DbErr> {
+        let txn = db.begin().await?;
+        let locked = projections::Entity::find_by_id(pending.activity_id)
+            .select_only()
+            .column(projections::Column::UserId)
+            .filter(projections::Column::Generation.eq(pending.generation))
+            .filter(projections::Column::ProjectionVersion.eq(PROJECTION_VERSION))
+            .filter(projections::Column::Status.is_in(["pending", "failed"]))
+            .lock_exclusive()
+            .into_tuple::<i32>()
+            .one(&txn)
+            .await?;
+        let Some(user_id) = locked else {
+            txn.rollback().await?;
+            return Ok(false);
+        };
+        chunks_entity::Model::clear_activity(&txn, pending.activity_id).await?;
+        // Each insert is capped at 64 chunks / 256 KiB of coordinates.
+        for (batch, group) in chunks.chunks(64).enumerate() {
+            chunks_entity::Model::insert_chunks(&txn, pending.activity_id, batch * 64, group)
+                .await?;
+        }
+        let bounds = chunks.iter().fold([1f64, 1f64, 0f64, 0f64], |b, c| {
+            [
+                b[0].min(c.bounds[0]),
+                b[1].min(c.bounds[1]),
+                b[2].max(c.bounds[2]),
+                b[3].max(c.bounds[3]),
+            ]
+        });
+        let published_at = Utc::now();
+        projections::Entity::update_many()
+            .set(projections::ActiveModel {
+                status: Set(if chunks.is_empty() {
+                    "skipped"
+                } else {
+                    "ready"
+                }
+                .into()),
+                projection_version: Set(PROJECTION_VERSION),
+                error: Set(None),
+                queued_at: Set(None),
+                published_at: Set(Some(published_at)),
+                min_x: Set((!chunks.is_empty()).then_some(bounds[0])),
+                min_y: Set((!chunks.is_empty()).then_some(bounds[1])),
+                max_x: Set((!chunks.is_empty()).then_some(bounds[2])),
+                max_y: Set((!chunks.is_empty()).then_some(bounds[3])),
+                ..Default::default()
+            })
+            .filter(projections::Column::ActivityId.eq(pending.activity_id))
+            .exec(&txn)
+            .await?;
+        user_states::Model::bump_revision(&txn, user_id).await?;
+        crate::background_jobs::entities::pipeline_outputs::Model::publish(
+            &txn,
+            "heatmap",
+            pending.activity_id,
+            &Self::revision(pending.generation),
+            published_at,
+        )
+        .await?;
+        txn.commit().await?;
+        Ok(true)
+    }
+
+    pub async fn record_failure(
+        db: &impl ConnectionTrait,
+        pending: &PendingProjection,
+    ) -> Result<(), DbErr> {
+        // One guarded writable CTE updates the failed generation and its owner
+        // revision together; a newer projection must not invalidate the cache.
+        db.execute_raw(Statement::from_sql_and_values(DbBackend::Postgres,
+            "WITH changed AS (UPDATE heatmap_projections SET status='failed', error='Route preparation failed' WHERE activity_id=$1 AND generation=$2 AND status IN ('pending','failed') RETURNING user_id) UPDATE heatmap_user_states SET revision=revision+1 WHERE user_id IN (SELECT user_id FROM changed)",
+            [pending.activity_id.into(), pending.generation.into()])).await?;
+        Ok(())
+    }
+
+    pub async fn source(
+        db: &impl ConnectionTrait,
+        pending: &PendingProjection,
+    ) -> Result<Option<ProjectionSource>, DbErr> {
+        projections::Entity::find()
+            .select_only()
+            .columns([
+                activities::Column::Sport,
+                activities::Column::Format,
+                activities::Column::Source,
+                activities::Column::Title,
+                activities::Column::DerivedDataJson,
+                activities::Column::UpdatedAt,
+                activities::Column::UserId,
+                activities::Column::StartedAt,
+            ])
+            .join(JoinType::InnerJoin, projections::Relation::Activities.def())
+            .filter(projections::Column::ActivityId.eq(pending.activity_id))
+            .filter(projections::Column::Generation.eq(pending.generation))
+            .filter(projections::Column::ProjectionVersion.eq(PROJECTION_VERSION))
+            .filter(projections::Column::Status.is_in(["pending", "failed"]))
+            .into_model::<ProjectionSource>()
+            .one(db)
+            .await
+    }
+}
+
+#[derive(FromQueryResult)]
+pub struct ProjectionSource {
+    pub user_id: i32,
+    pub started_at: DateTime<Utc>,
+    pub sport: String,
+    pub format: Option<String>,
+    pub source: String,
+    pub title: String,
+    pub derived_data_json: Option<crate::activity_data::StoredActivityDerivedData>,
+    pub updated_at: DateTime<Utc>,
+}

@@ -1,7 +1,9 @@
+use crate::archive_import::decode_error_samples;
+use crate::background_jobs::entities::worker_batches;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ConnectionTrait, DbErr, Set};
+use sea_orm::{ConnectionTrait, DbErr, QueryFilter, QueryOrder, QuerySelect, Set};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -32,6 +34,29 @@ pub struct Model {
 pub enum Relation {}
 
 impl Entity {
+    pub async fn recent_for_user(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+    ) -> Result<Vec<Model>, DbErr> {
+        Self::find()
+            .filter(Column::UserId.eq(user_id))
+            .order_by_desc(Column::CreatedAt)
+            .limit(10)
+            .all(db)
+            .await
+    }
+
+    pub async fn find_owned(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        job_id: i32,
+    ) -> Result<Option<Model>, DbErr> {
+        Self::find_by_id(job_id)
+            .filter(Column::UserId.eq(user_id))
+            .one(db)
+            .await
+    }
+
     pub async fn store_progress(
         db: &impl ConnectionTrait,
         user_id: i32,
@@ -77,5 +102,78 @@ impl ActiveModelBehavior for ActiveModel {
         }
         self.updated_at = Set(now);
         Ok(self)
+    }
+}
+
+impl Entity {
+    pub async fn find_for_batch(
+        db: &impl ConnectionTrait,
+        job_id: i32,
+    ) -> Result<Option<Model>, DbErr> {
+        Self::find_by_id(job_id).one(db).await
+    }
+}
+
+impl Model {
+    pub async fn finish_batch(
+        db: &impl ConnectionTrait,
+        batch: &worker_batches::Model,
+        tasks: &[crate::background_jobs::entities::diagnostic_reads::TaskMetadata],
+    ) -> Result<bool, sea_orm::DbErr> {
+        if batch.kind != "archive" {
+            return Ok(false);
+        }
+        let id = batch.source["job_id"]
+            .as_i64()
+            .and_then(|id| i32::try_from(id).ok())
+            .ok_or_else(|| sea_orm::DbErr::Custom("Archive job ID missing".into()))?;
+        let job = Entity::find_for_batch(db, id)
+            .await?
+            .ok_or_else(|| sea_orm::DbErr::RecordNotFound("Archive job missing".into()))?;
+        let imports = crate::entities::activity_imports::Entity::archive_statuses(db, id).await?;
+        let imported = imports
+            .iter()
+            .filter(|status| status.as_str() == "processed")
+            .count() as i32;
+        let duplicate = imports
+            .iter()
+            .filter(|status| status.as_str() == "duplicate")
+            .count() as i32;
+        let failed = (job.supported_entry_count - imported - duplicate).max(0);
+        let task_failed = tasks.iter().any(|task| task.status != "completed");
+        let has_failure = task_failed || failed > 0 || job.supported_entry_count == 0;
+        let mut errors = decode_error_samples(job.error_samples_json.as_deref());
+        errors.extend(tasks.iter().filter_map(|task| task.error.clone()));
+        if job.supported_entry_count == 0 && errors.is_empty() {
+            errors.push("Archive contained no supported activity files".into());
+        }
+        errors.truncate(10);
+        Entity::update_many()
+            .set(ActiveModel {
+                imported_count: Set(imported),
+                duplicate_count: Set(duplicate),
+                failed_count: Set(failed),
+                status: Set(if !has_failure {
+                    "succeeded"
+                } else if imported + duplicate > 0 {
+                    "partial"
+                } else {
+                    "failed"
+                }
+                .into()),
+                failure_message: Set(errors.first().cloned()),
+                error_samples_json: Set(Some(
+                    serde_json::to_string(&errors)
+                        .map_err(|error| sea_orm::DbErr::Custom(error.to_string()))?,
+                )),
+                resolved_url: Set(batch.source["resolved_url"].as_str().map(str::to_owned)),
+                finished_at: Set(Some(Utc::now())),
+                updated_at: Set(Utc::now()),
+                ..Default::default()
+            })
+            .filter(Column::Id.eq(id))
+            .exec(db)
+            .await?;
+        Ok(has_failure)
     }
 }

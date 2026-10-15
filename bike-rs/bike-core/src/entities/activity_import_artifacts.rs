@@ -32,6 +32,18 @@ pub struct Model {
 pub enum Relation {}
 
 impl Entity {
+    pub async fn downloadable_original(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        import_id: i32,
+    ) -> Result<Option<Model>, DbErr> {
+        Ok(Self::for_import(db, user_id, import_id)
+            .await?
+            .into_iter()
+            .filter(Model::is_downloadable_original)
+            .max_by_key(Model::download_quality))
+    }
+
     pub async fn storage_paths(db: &impl ConnectionTrait) -> Result<Vec<String>, DbErr> {
         Self::find()
             .select_only()
@@ -163,6 +175,26 @@ impl Entity {
             .filter(activity_imports::Column::UserId.eq(user_id))
             .one(db)
             .await
+    }
+}
+
+impl Model {
+    fn is_downloadable_original(&self) -> bool {
+        self.artifact_kind == "original" && matches!(self.format.as_str(), "fit" | "tcx" | "gpx")
+    }
+
+    fn download_quality(&self) -> u16 {
+        match self.source_quality.as_str() {
+            "fit_original" => 500,
+            "tcx_original" => 400,
+            "gpx_original" => 300,
+            _ => match self.format.as_str() {
+                "fit" => 490,
+                "tcx" => 390,
+                "gpx" => 290,
+                _ => 0,
+            },
+        }
     }
 }
 

@@ -1,7 +1,11 @@
 use crate::activity_data::StoredActivityDerivedData;
 use crate::activity_sport::is_bike_activity_sport;
+use crate::activity_sport::ActivitySport;
 pub use crate::activity_sport::BIKE_ACTIVITY_SPORT_VALUES;
+use crate::activity_type::ActivityType;
+use crate::platform::data::pagination::{Paginatable, PaginatedResponse, PaginationParams};
 use crate::training_data::StoredActivityHeartRateZones;
+use crate::workflow_error::WorkflowError;
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::entity::prelude::*;
@@ -39,6 +43,135 @@ pub struct AdminListRow {
 }
 
 impl Model {
+    pub async fn find_by_id(
+        db: &impl ConnectionTrait,
+        activity_id: i32,
+    ) -> Result<Option<Self>, DbErr> {
+        Entity::find_by_id(activity_id).one(db).await
+    }
+
+    pub async fn effort_sources(
+        db: &impl ConnectionTrait,
+        activity_ids: &[i32],
+    ) -> Result<Vec<EffortActivityRow>, DbErr> {
+        Entity::find()
+            .select_only()
+            .columns([
+                Column::Id,
+                Column::Title,
+                Column::StartedAt,
+                Column::DerivedDataJson,
+            ])
+            .filter(Column::Id.is_in(activity_ids.iter().copied()))
+            .into_model::<EffortActivityRow>()
+            .all(db)
+            .await
+    }
+
+    pub async fn effort_summaries(
+        db: &impl ConnectionTrait,
+        activity_ids: &[i32],
+    ) -> Result<Vec<EffortActivitySummaryRow>, DbErr> {
+        Entity::find()
+            .select_only()
+            .columns([Column::Id, Column::Title, Column::StartedAt])
+            .filter(Column::Id.is_in(activity_ids.iter().copied()))
+            .into_model::<EffortActivitySummaryRow>()
+            .all(db)
+            .await
+    }
+
+    pub async fn paginate_for_user(
+        db: &DatabaseConnection,
+        user_id: i32,
+        pagination: &PaginationParams,
+        sport: Option<ActivitySport>,
+    ) -> Result<PaginatedResponse<Self>, DbErr> {
+        let mut query = Entity::find().filter(Column::UserId.eq(user_id));
+        if let Some(sport) = sport {
+            query = query.filter(Column::Sport.is_in(sport.stored_values().iter().copied()));
+        }
+        query
+            .order_by_desc(Column::StartedAt)
+            .order_by_desc(Column::Id)
+            .fetch_paginated(db, pagination)
+            .await
+    }
+
+    /// Resolve import links within one owner, preferring the import's explicit
+    /// activity link over an activity's reverse link to the import.
+    pub async fn linked_to_imports(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        imports: &[super::activity_imports::Model],
+    ) -> Result<HashMap<i32, Self>, DbErr> {
+        if imports.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let import_ids = imports.iter().map(|import| import.id);
+        let mut linked = Entity::find()
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::ActivityImportId.is_in(import_ids))
+            .all(db)
+            .await?
+            .into_iter()
+            .filter_map(|activity| activity.activity_import_id.map(|id| (id, activity)))
+            .collect::<HashMap<_, _>>();
+        let imports_by_activity_id = imports
+            .iter()
+            .filter_map(|import| import.activity_id.map(|id| (id, import.id)))
+            .collect::<HashMap<_, _>>();
+        if !imports_by_activity_id.is_empty() {
+            for activity in
+                Self::list_owned_by_ids(db, user_id, imports_by_activity_id.keys().copied()).await?
+            {
+                if let Some(import_id) = imports_by_activity_id.get(&activity.id) {
+                    linked.insert(*import_id, activity);
+                }
+            }
+        }
+        Ok(linked)
+    }
+
+    pub async fn list_owned_by_ids(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        activity_ids: impl IntoIterator<Item = i32>,
+    ) -> Result<Vec<Self>, DbErr> {
+        Entity::find()
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::Id.is_in(activity_ids))
+            .all(db)
+            .await
+    }
+
+    pub async fn update_details(
+        self,
+        db: &impl ConnectionTrait,
+        title: Option<String>,
+        activity_type: Option<ActivityType>,
+    ) -> Result<Self, WorkflowError> {
+        let mut active: ActiveModel = self.into();
+        if let Some(title) = title {
+            active.title = Set(Self::normalize_title(&title)?);
+        }
+        if let Some(activity_type) = activity_type {
+            active.activity_type = Set(activity_type.as_str().to_string());
+        }
+        Ok(active.update(db).await?)
+    }
+
+    fn normalize_title(raw_title: &str) -> Result<String, WorkflowError> {
+        let title = raw_title.trim();
+        if title.is_empty() {
+            return Err(WorkflowError::validation_field(
+                "title",
+                "Activity title is required",
+            ));
+        }
+        Ok(title.to_string())
+    }
+
     pub async fn native_strava_ids(
         db: &impl ConnectionTrait,
         user_id: i32,
@@ -624,6 +757,107 @@ pub struct RecordingCandidate {
     pub source: String,
     pub title: String,
     pub derived_data_json: Option<StoredActivityDerivedData>,
+}
+
+#[derive(Clone, Debug, sea_orm::FromQueryResult)]
+pub struct EffortActivityRow {
+    pub id: i32,
+    pub title: String,
+    pub started_at: DateTime<Utc>,
+    pub derived_data_json: Option<crate::activity_details::StoredActivityDerivedData>,
+}
+#[derive(Clone, Debug, sea_orm::FromQueryResult)]
+pub struct EffortActivitySummaryRow {
+    pub id: i32,
+    pub title: String,
+    pub started_at: DateTime<Utc>,
+}
+
+mod reports;
+
+mod training;
+pub use training::ActivitySummaryRow;
+
+impl Model {
+    pub async fn for_user(db: &impl ConnectionTrait, user_id: i32) -> Result<Vec<Self>, DbErr> {
+        Entity::find()
+            .filter(Column::UserId.eq(user_id))
+            .all(db)
+            .await
+    }
+    pub async fn owned_import_activity(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        import_id: i32,
+    ) -> Result<Option<Self>, DbErr> {
+        Entity::find()
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::ActivityImportId.eq(Some(import_id)))
+            .one(db)
+            .await
+    }
+    pub async fn linked_by_import_ids(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        import_ids: &[i32],
+    ) -> Result<Vec<Self>, DbErr> {
+        Entity::find()
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::ActivityImportId.is_in(import_ids.iter().copied()))
+            .all(db)
+            .await
+    }
+    pub async fn at_start_for_sports(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        started_at: DateTime<Utc>,
+        sports: &[&str],
+    ) -> Result<Vec<Self>, DbErr> {
+        Entity::find()
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::StartedAt.eq(started_at))
+            .filter(Column::Sport.is_in(sports.iter().copied()))
+            .all(db)
+            .await
+    }
+    pub async fn from_source_identity(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        source: &str,
+        correlation_id: &str,
+    ) -> Result<Option<Self>, DbErr> {
+        Entity::find()
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::Source.eq(source))
+            .filter(Column::SourceCorrelationId.eq(correlation_id))
+            .one(db)
+            .await
+    }
+    pub async fn owner_ids(db: &impl ConnectionTrait) -> Result<Vec<i32>, DbErr> {
+        let mut ids = Entity::find()
+            .select_only()
+            .column(Column::UserId)
+            .filter(Column::UserId.is_not_null())
+            .distinct()
+            .into_tuple::<i32>()
+            .all(db)
+            .await?;
+        ids.sort_unstable();
+        ids.dedup();
+        Ok(ids)
+    }
+    pub async fn for_import_inspection(
+        db: &impl ConnectionTrait,
+        import: &super::activity_imports::Model,
+    ) -> Result<Option<Self>, DbErr> {
+        if let Some(id) = import.activity_id {
+            return Self::find_by_id(db, id).await;
+        }
+        Entity::find()
+            .filter(Column::ActivityImportId.eq(Some(import.id)))
+            .one(db)
+            .await
+    }
 }
 
 #[cfg(test)]

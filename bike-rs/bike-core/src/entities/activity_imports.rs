@@ -40,6 +40,22 @@ pub struct Model {
 pub enum Relation {}
 
 impl Entity {
+    pub async fn recent_manual_uploads(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+    ) -> Result<Vec<Model>, DbErr> {
+        Self::find()
+            .filter(Column::UserId.eq(user_id))
+            .filter(
+                Column::Source
+                    .eq(crate::activity_import_lock::ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD),
+            )
+            .order_by_desc(Column::CreatedAt)
+            .limit(25)
+            .all(db)
+            .await
+    }
+
     pub async fn native_strava_source(
         db: &impl ConnectionTrait,
         event: &crate::strava::events::StravaEvent,
@@ -310,5 +326,71 @@ impl ActiveModelBehavior for ActiveModel {
         }
         self.updated_at = Set(now);
         Ok(self)
+    }
+}
+
+impl Entity {
+    pub async fn by_ids(
+        db: &impl ConnectionTrait,
+        import_ids: impl IntoIterator<Item = i32>,
+    ) -> Result<Vec<Model>, DbErr> {
+        Self::find()
+            .filter(Column::Id.is_in(import_ids))
+            .all(db)
+            .await
+    }
+    pub async fn resumable_for_user(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+    ) -> Result<Vec<Model>, DbErr> {
+        Self::find()
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::Source.ne(STRAVA_SOURCE))
+            .filter(Column::Status.is_in(["processing", "failed"]))
+            .order_by_asc(Column::CreatedAt)
+            .all(db)
+            .await
+    }
+    pub async fn stale_manual_owner_ids(
+        db: &impl ConnectionTrait,
+        stale_before: DateTime<Utc>,
+    ) -> Result<Vec<i32>, DbErr> {
+        Self::find()
+            .select_only()
+            .column(Column::UserId)
+            .distinct()
+            .filter(Column::Source.eq("manual_upload"))
+            .filter(Column::Status.eq("processing"))
+            .filter(Column::LastProcessingEventAt.lte(stale_before))
+            .into_tuple()
+            .all(db)
+            .await
+    }
+    pub async fn processing_owner_ids(
+        db: &impl ConnectionTrait,
+        source: Option<&str>,
+    ) -> Result<Vec<i32>, DbErr> {
+        let mut query = Self::find()
+            .select_only()
+            .column(Column::UserId)
+            .distinct()
+            .filter(Column::Status.eq("processing"))
+            .filter(Column::Source.ne(STRAVA_SOURCE));
+        if let Some(source) = source {
+            query = query.filter(Column::Source.eq(source));
+        }
+        query.into_tuple().all(db).await
+    }
+    pub async fn archive_statuses(
+        db: &impl ConnectionTrait,
+        job_id: i32,
+    ) -> Result<Vec<String>, DbErr> {
+        Self::find()
+            .filter(Column::ArchiveJobId.eq(job_id))
+            .select_only()
+            .column(Column::Status)
+            .into_tuple()
+            .all(db)
+            .await
     }
 }

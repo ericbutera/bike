@@ -63,3 +63,48 @@ impl ActiveModelBehavior for ActiveModel {
         Ok(self)
     }
 }
+
+impl Model {
+    pub async fn for_activity(
+        db: &impl ConnectionTrait,
+        activity_id: i32,
+    ) -> Result<Option<Self>, DbErr> {
+        Entity::find_by_id(activity_id).one(db).await
+    }
+    pub async fn for_activity_ids(
+        db: &impl ConnectionTrait,
+        activity_ids: &[i32],
+    ) -> Result<Vec<Self>, DbErr> {
+        use sea_orm::QueryFilter;
+        Entity::find()
+            .filter(Column::ActivityId.is_in(activity_ids.iter().copied()))
+            .all(db)
+            .await
+    }
+    pub async fn for_user(db: &impl ConnectionTrait, user_id: i32) -> Result<Vec<Self>, DbErr> {
+        use sea_orm::QueryFilter;
+        Entity::find()
+            .filter(Column::UserId.eq(user_id))
+            .all(db)
+            .await
+    }
+    pub async fn for_owned_activity_ids(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        activity_ids: &[i32],
+    ) -> Result<Vec<Self>, DbErr> {
+        use sea_orm::QueryFilter;
+        Entity::find()
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::ActivityId.is_in(activity_ids.iter().copied()))
+            .all(db)
+            .await
+    }
+}
+
+impl Model {
+    pub async fn clear_activity(db: &impl ConnectionTrait, id: i32) -> Result<(), DbErr> {
+        Entity::delete_by_id(id).exec(db).await?;
+        Ok(())
+    }
+}

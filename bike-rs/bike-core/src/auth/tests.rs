@@ -252,7 +252,7 @@ async fn existing_user(db: &DatabaseConnection) -> users::Model {
         email_verified_at: Set(Some(Utc::now())),
         created_at: Set(Utc::now()),
         updated_at: Set(Utc::now()),
-        ..Default::default()
+        ..crate::test_support::new_customer()
     }
     .insert(db)
     .await

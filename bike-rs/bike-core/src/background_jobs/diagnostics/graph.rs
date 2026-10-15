@@ -5,9 +5,7 @@ use super::super::{
     },
     history::TaskAttemptResponse,
 };
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
-};
+use sea_orm::{DatabaseConnection, DbErr};
 use serde::Serialize;
 use utoipa::ToSchema;
 
@@ -68,22 +66,8 @@ impl PipelinePage {
         activity_id: i32,
         after: Option<String>,
     ) -> Result<Self, DbErr> {
-        let query = pipeline_subjects::Entity::find()
-            .filter(pipeline_subjects::Column::Kind.eq("activity"))
-            .filter(pipeline_subjects::Column::SubjectId.eq(activity_id));
-        let query = if let Some(after) = after {
-            query.filter(pipeline_subjects::Column::RunId.gt(after))
-        } else {
-            query
-        };
-        let mut run_ids = query
-            .select_only()
-            .column(pipeline_subjects::Column::RunId)
-            .order_by_asc(pipeline_subjects::Column::RunId)
-            .limit(21)
-            .into_tuple::<String>()
-            .all(db)
-            .await?;
+        let mut run_ids =
+            pipeline_subjects::Model::activity_run_page(db, activity_id, after).await?;
         let next_cursor = if run_ids.len() > 20 {
             run_ids.truncate(20);
             run_ids.last().cloned()
@@ -118,16 +102,11 @@ impl PipelineGraph {
         id: &str,
         cursor: &GraphCursor,
     ) -> Result<Option<Self>, DbErr> {
-        let Some(run) = pipeline_runs::Entity::find_by_id(id).one(db).await? else {
+        let Some(run) = pipeline_runs::Model::find_by_id(db, id).await? else {
             return Ok(None);
         };
-        let mut links = pipeline_tasks::Entity::find()
-            .filter(pipeline_tasks::Column::RunId.eq(id))
-            .filter(pipeline_tasks::Column::TaskId.gt(cursor.after_task.unwrap_or(0)))
-            .order_by_asc(pipeline_tasks::Column::TaskId)
-            .limit(51)
-            .all(db)
-            .await?;
+        let mut links =
+            pipeline_tasks::Model::page_for_run(db, id, cursor.after_task.unwrap_or(0)).await?;
         let next_task_cursor = if links.len() > 50 {
             links.truncate(50);
             links.last().map(|link| link.task_id)
@@ -136,11 +115,7 @@ impl PipelineGraph {
         };
         let mut tasks = Vec::new();
         for link in links {
-            let Some(task) = background_tasks::Model::metadata_query()
-                .filter(background_tasks::Column::Id.eq(link.task_id))
-                .into_model::<super::super::entities::diagnostic_reads::TaskMetadata>()
-                .one(db)
-                .await?
+            let Some(task) = background_tasks::Model::metadata_for_id(db, link.task_id).await?
             else {
                 continue;
             };
@@ -179,22 +154,13 @@ impl PipelineTask {
         parent_task_id: Option<i32>,
         work_after: i32,
     ) -> Result<Self, DbErr> {
-        let mut work = work_units::Entity::find()
-            .filter(work_units::Column::TaskId.eq(task.id))
-            .filter(work_units::Column::Id.gt(work_after))
-            .order_by_asc(work_units::Column::Id)
-            .limit(26)
-            .all(db)
-            .await?;
+        let mut work = work_units::Model::page_for_task(db, task.id, work_after).await?;
         let work_has_more = work.len() > 25;
         work.truncate(25);
         let next_work_cursor = work_has_more
             .then(|| work.last().map(|work| work.id))
             .flatten();
-        let anomalies = task_anomalies::Entity::find()
-            .filter(task_anomalies::Column::TaskId.eq(task.id))
-            .all(db)
-            .await?;
+        let anomalies = task_anomalies::Model::for_task(db, task.id).await?;
         let imports =
             crate::entities::activity_import_attempts::Entity::for_worker_metadata(db, task.id)
                 .await?
@@ -255,49 +221,12 @@ async fn output_page(
     id: &str,
     offset: u64,
 ) -> Result<(Vec<pipeline_outputs::Model>, Option<u64>), DbErr> {
-    let mut outputs = pipeline_outputs::Entity::find()
-        .filter(pipeline_outputs::Column::RunId.eq(id))
-        .order_by_asc(pipeline_outputs::Column::Kind)
-        .order_by_asc(pipeline_outputs::Column::TargetId)
-        .offset(offset)
-        .limit(101)
-        .all(db)
-        .await?;
+    let mut outputs = pipeline_outputs::Model::page_for_run(db, id, offset).await?;
     let next = (outputs.len() > 100).then_some(offset + 100);
     outputs.truncate(100);
     Ok((outputs, next))
 }
 /// End is distinct from publication and unknown while any linked task is active.
 async fn ended_at(db: &DatabaseConnection, id: &str) -> Result<Option<String>, DbErr> {
-    let ids = pipeline_tasks::Entity::find()
-        .select_only()
-        .column(pipeline_tasks::Column::TaskId)
-        .filter(pipeline_tasks::Column::RunId.eq(id))
-        .into_query();
-    let active = background_tasks::Entity::find()
-        .select_only()
-        .column(background_tasks::Column::Id)
-        .filter(background_tasks::Column::Id.in_subquery(ids.clone()))
-        .filter(background_tasks::Column::Status.is_in(["pending", "processing"]))
-        .into_tuple::<i32>()
-        .one(db)
-        .await?;
-    if active.is_some() {
-        return Ok(None);
-    }
-    let end = background_tasks::Entity::find()
-        .filter(background_tasks::Column::Id.in_subquery(ids))
-        .select_only()
-        .expr(sea_orm::sea_query::Func::max(
-            sea_orm::sea_query::Func::coalesce([
-                sea_orm::sea_query::Expr::col(background_tasks::Column::CompletedAt),
-                sea_orm::sea_query::Expr::col(background_tasks::Column::UpdatedAt),
-            ]),
-        ))
-        .into_tuple::<Option<chrono::DateTime<chrono::Utc>>>()
-        .one(db)
-        .await?
-        .flatten();
-    Ok(end.map(|end| end.to_rfc3339()))
+    background_tasks::Model::ended_at(db, id).await
 }
-use sea_orm::QueryTrait;

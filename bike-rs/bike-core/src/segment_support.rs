@@ -4,10 +4,7 @@ use crate::activity_data::{
 };
 use crate::entities::{activities, segment_efforts, segments};
 use sea_orm::DbErr;
-use sea_orm::{
-    ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set, TransactionSession,
-    TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, TransactionSession, TransactionTrait};
 use std::fmt;
 
 #[derive(Debug)]
@@ -85,13 +82,13 @@ const REWORKED_TRAIL_MATCH_PROFILE: MatchProfile = MatchProfile {
 };
 
 #[derive(Debug, Clone, PartialEq)]
-struct MatchedSegmentEffort {
-    start_route_point_index: i32,
-    end_route_point_index: i32,
-    start_elapsed_seconds: i32,
-    end_elapsed_seconds: i32,
-    duration_seconds: i32,
-    distance_meters: Option<f64>,
+pub(crate) struct MatchedSegmentEffort {
+    pub(crate) start_route_point_index: i32,
+    pub(crate) end_route_point_index: i32,
+    pub(crate) start_elapsed_seconds: i32,
+    pub(crate) end_elapsed_seconds: i32,
+    pub(crate) duration_seconds: i32,
+    pub(crate) distance_meters: Option<f64>,
 }
 
 pub fn serialize_segment_route_points(
@@ -151,11 +148,7 @@ pub async fn clear_segment_efforts_for_activity<C>(
 where
     C: ConnectionTrait,
 {
-    segment_efforts::Entity::delete_many()
-        .filter(segment_efforts::Column::UserId.eq(user_id))
-        .filter(segment_efforts::Column::ActivityId.eq(activity_id))
-        .exec(db)
-        .await?;
+    segment_efforts::Entity::delete_for_owned_activity(db, user_id, activity_id).await?;
 
     Ok(())
 }
@@ -205,10 +198,7 @@ where
 {
     if segment_route_points.len() < 2 {
         let affected_activity_ids = load_activity_ids_for_segment(db, segment_id).await?;
-        segment_efforts::Entity::delete_many()
-            .filter(segment_efforts::Column::SegmentId.eq(segment_id))
-            .exec(db)
-            .await?;
+        segment_efforts::Entity::delete_for_segment(db, segment_id).await?;
         return Ok(affected_activity_ids);
     }
 
@@ -235,10 +225,7 @@ where
         }
     }
 
-    segment_efforts::Entity::delete_many()
-        .filter(segment_efforts::Column::SegmentId.eq(segment_id))
-        .exec(db)
-        .await?;
+    segment_efforts::Entity::delete_for_segment(db, segment_id).await?;
 
     for (user_id, activity_id, matches) in replacements {
         insert_matches(db, user_id, segment_id, activity_id, &matches).await?;
@@ -308,31 +295,7 @@ async fn insert_matches<C>(
 where
     C: ConnectionTrait,
 {
-    if matches.is_empty() {
-        return Ok(());
-    }
-
-    let efforts =
-        matches
-            .iter()
-            .enumerate()
-            .map(|(index, matched_effort)| segment_efforts::ActiveModel {
-                user_id: Set(user_id),
-                segment_id: Set(segment_id),
-                activity_id: Set(activity_id),
-                effort_index: Set((index + 1) as i32),
-                start_route_point_index: Set(matched_effort.start_route_point_index),
-                end_route_point_index: Set(matched_effort.end_route_point_index),
-                start_elapsed_seconds: Set(matched_effort.start_elapsed_seconds),
-                end_elapsed_seconds: Set(matched_effort.end_elapsed_seconds),
-                duration_seconds: Set(matched_effort.duration_seconds),
-                distance_meters: Set(matched_effort.distance_meters),
-                ..Default::default()
-            });
-    segment_efforts::Entity::insert_many(efforts)
-        .exec(db)
-        .await?;
-
+    segment_efforts::Entity::store_matches(db, user_id, segment_id, activity_id, matches).await?;
     Ok(())
 }
 

@@ -7,7 +7,7 @@ use axum::{
     async_trait,
     extract::{FromRef, FromRequestParts},
 };
-use sea_orm::{DatabaseConnection, EntityTrait};
+use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -166,8 +166,7 @@ where
 }
 
 async fn verify_refresh_token(db: &DatabaseConnection, token: &str) -> Result<Uuid, AuthError> {
-    let rt = refresh_tokens::Entity::find_by_id(token.to_string())
-        .one(db)
+    let rt = refresh_tokens::Model::find_token(db, token)
         .await?
         .ok_or_else(|| AuthError::unauthorized("Invalid refresh token"))?;
 

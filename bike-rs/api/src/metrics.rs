@@ -10,7 +10,7 @@ use axum::response::Response;
 use bike_core::entities::{activity_imports, strava_connections};
 use once_cell::sync::Lazy;
 use prometheus::{register_int_gauge, Encoder, IntGauge, TextEncoder};
-use sea_orm::{DbErr, EntityTrait, PaginatorTrait};
+use sea_orm::DbErr;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -110,8 +110,7 @@ fn directory_bytes(root: &Path) -> std::io::Result<u64> {
 async fn refresh_database_metrics(state: &AppStorage) -> Result<(), DbErr> {
     crate::database_metrics::refresh(&state.db).await?;
     bike_core::provider_metrics::refresh_provider_rate_limit_metrics(&state.db).await?;
-    let connected_athletes = strava_connections::Entity::find()
-        .count(&state.db)
+    let connected_athletes = strava_connections::Model::connected_count(&state.db)
         .await?
         .min(i64::MAX as u64) as i64;
 

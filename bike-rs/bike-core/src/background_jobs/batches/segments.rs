@@ -5,10 +5,7 @@ use crate::{
     jobs::{Job, RebuildSegmentAnalyticsTask, RegenerateActivitySegmentsTask},
     workflow_error::WorkflowError,
 };
-use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QuerySelect,
-    Set, TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr, TransactionTrait};
 pub async fn segments_page(
     db: &DatabaseConnection,
     task_id: i32,
@@ -16,7 +13,7 @@ pub async fn segments_page(
     batch_id: Option<i32>,
 ) -> Result<(), WorkflowError> {
     let id = batch_id.unwrap_or(task_id);
-    let batch = match worker_batches::Entity::find_by_id(id).one(db).await? {
+    let batch = match worker_batches::Model::find_by_id(db, id).await? {
         Some(batch) => batch,
         None => {
             let lock = ensure_user_activity_import_lock_stage(
@@ -56,9 +53,7 @@ pub async fn affected_segments(db: &DatabaseConnection, ids: &[i32]) -> Result<(
         return Err(DbErr::Custom("Segment batch context is missing".into()));
     };
     let txn = db.begin().await?;
-    let mut batch = worker_batches::Entity::find_by_id(id)
-        .lock_exclusive()
-        .one(&txn)
+    let mut batch = worker_batches::Model::lock(&txn, id)
         .await?
         .ok_or_else(|| DbErr::RecordNotFound("Segment batch disappeared".into()))?;
     let mut all: Vec<i32> = serde_json::from_value(batch.source["segment_ids"].clone())
@@ -67,14 +62,7 @@ pub async fn affected_segments(db: &DatabaseConnection, ids: &[i32]) -> Result<(
     all.sort_unstable();
     all.dedup();
     batch.source["segment_ids"] = serde_json::json!(all);
-    worker_batches::Entity::update_many()
-        .col_expr(
-            worker_batches::Column::Source,
-            sea_orm::sea_query::Expr::value(batch.source),
-        )
-        .filter(worker_batches::Column::Id.eq(id))
-        .exec(&txn)
-        .await?;
+    batch.store_source(&txn).await?;
     txn.commit().await
 }
 /// Aggregate caches run once after all per-activity matching children close.
@@ -87,8 +75,7 @@ pub async fn schedule_segment_caches(
     }
     let ids: Vec<i32> = serde_json::from_value(batch.source["segment_ids"].clone())
         .map_err(|error| DbErr::Custom(error.to_string()))?;
-    let parent = super::background_tasks::Entity::find_by_id(batch.id)
-        .one(db)
+    let parent = super::background_tasks::Model::find_by_id(db, batch.id)
         .await?
         .ok_or_else(|| DbErr::RecordNotFound("Batch producer disappeared".into()))?;
     let origin = crate::background_jobs::pipeline::PipelineContext::from_payload(&parent.payload)
@@ -112,14 +99,12 @@ pub async fn schedule_segment_caches(
             }
             let mut source = batch.source.clone();
             source["caches_scheduled"] = true.into();
-            worker_batches::Entity::update_many()
-                .set(worker_batches::ActiveModel {
-                    source: Set(source),
-                    ..Default::default()
-                })
-                .filter(worker_batches::Column::Id.eq(batch.id))
-                .exec(db)
-                .await?;
+            worker_batches::Model {
+                source,
+                ..batch.clone()
+            }
+            .store_source(db)
+            .await?;
             Ok(!ids.is_empty())
         }),
     )

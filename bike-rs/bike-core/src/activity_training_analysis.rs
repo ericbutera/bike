@@ -3,10 +3,7 @@ use crate::activity_data::{
 };
 use crate::entities::{activities, activity_training_analyses, segment_efforts, segments};
 use crate::training_data::deserialize_activity_heart_rate_zones;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    Set,
-};
+use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, Set};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use utoipa::ToSchema;
@@ -229,13 +226,12 @@ where
     let contexts_by_activity_id =
         load_activity_training_analysis_contexts(db, &activity_ids).await?;
 
-    let existing_models_by_activity_id = activity_training_analyses::Entity::find()
-        .filter(activity_training_analyses::Column::ActivityId.is_in(activity_ids.iter().copied()))
-        .all(db)
-        .await?
-        .into_iter()
-        .map(|model| (model.activity_id, model))
-        .collect::<HashMap<_, _>>();
+    let existing_models_by_activity_id =
+        activity_training_analyses::Model::for_activity_ids(db, &activity_ids)
+            .await?
+            .into_iter()
+            .map(|model| (model.activity_id, model))
+            .collect::<HashMap<_, _>>();
 
     for activity_id in activity_ids {
         let Some(activity) = activities::Model::bike_for_training_analysis(db, activity_id).await?
@@ -315,10 +311,11 @@ pub async fn load_activity_training_analysis_by_activity_id<C>(
 where
     C: ConnectionTrait,
 {
-    Ok(activity_training_analyses::Entity::find_by_id(activity_id)
-        .one(db)
-        .await?
-        .map(response_from_model))
+    Ok(
+        activity_training_analyses::Model::for_activity(db, activity_id)
+            .await?
+            .map(response_from_model),
+    )
 }
 
 fn response_from_model(
@@ -346,10 +343,7 @@ async fn load_activity_training_analysis_contexts<C>(
 where
     C: ConnectionTrait,
 {
-    let effort_models = segment_efforts::Entity::find()
-        .filter(segment_efforts::Column::ActivityId.is_in(activity_ids.iter().copied()))
-        .all(db)
-        .await?;
+    let effort_models = segment_efforts::Model::for_activity_ids(db, activity_ids).await?;
     if effort_models.is_empty() {
         return Ok(HashMap::new());
     }
@@ -361,10 +355,7 @@ where
     segment_ids.sort_unstable();
     segment_ids.dedup();
 
-    let dh_segment_ids = segments::Entity::find()
-        .filter(segments::Column::Id.is_in(segment_ids.iter().copied()))
-        .filter(segments::Column::Mode.eq("dh"))
-        .all(db)
+    let dh_segment_ids = segments::Model::downhill_by_ids(db, &segment_ids)
         .await?
         .into_iter()
         .map(|segment| segment.id)

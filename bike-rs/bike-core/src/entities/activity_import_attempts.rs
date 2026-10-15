@@ -111,3 +111,12 @@ impl Entity {
             == 1)
     }
 }
+
+impl Entity {
+    pub async fn find_for_execution(
+        db: &impl ConnectionTrait,
+        attempt_id: i32,
+    ) -> Result<Option<Model>, DbErr> {
+        Self::find_by_id(attempt_id).one(db).await
+    }
+}

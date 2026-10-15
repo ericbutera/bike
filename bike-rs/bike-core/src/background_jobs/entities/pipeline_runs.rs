@@ -73,3 +73,16 @@ impl Model {
         Ok(())
     }
 }
+
+mod diagnostics;
+
+impl Model {
+    pub async fn delete_for_runs(db: &impl ConnectionTrait, ids: &[String]) -> Result<(), DbErr> {
+        use sea_orm::QueryFilter;
+        Entity::delete_many()
+            .filter(Column::Id.is_in(ids.iter().cloned()))
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+}

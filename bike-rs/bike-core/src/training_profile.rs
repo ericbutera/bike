@@ -1,7 +1,7 @@
 use crate::activity_details::{ActivityChartPoint, ActivityRoutePoint};
 use crate::entities::user_preferences;
 use crate::workflow_error::WorkflowError as AppError;
-use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
+use sea_orm::ConnectionTrait;
 
 pub use crate::training_data::{
     ActivityHeartRateZoneSummary, StoredActivityHeartRateZoneSummary, StoredActivityHeartRateZones,
@@ -31,10 +31,7 @@ pub async fn load_training_profile<C>(db: &C, user_id: i32) -> Result<TrainingPr
 where
     C: ConnectionTrait,
 {
-    let model = user_preferences::Entity::find()
-        .filter(user_preferences::Column::UserId.eq(user_id))
-        .one(db)
-        .await?;
+    let model = user_preferences::Model::for_user(db, user_id).await?;
 
     Ok(training_profile_from_preferences(model.as_ref()))
 }

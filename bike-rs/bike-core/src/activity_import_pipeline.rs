@@ -17,7 +17,7 @@ use crate::workflow_error::WorkflowError as AppError;
 use chrono::{DateTime, NaiveDate, Utc};
 use petgraph::algo::toposort;
 use petgraph::graphmap::DiGraphMap;
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::Path;
@@ -420,9 +420,8 @@ async fn run_activity_processing_graph(
     let attempt = begin_processing_attempt(&run).await?;
     let result = execute_activity_processing_graph(&run, attempt.clone()).await;
     if let Err(error) = &result {
-        let own_attempt = activity_import_attempts::Entity::find_by_id(attempt.id)
-            .one(run.db)
-            .await?;
+        let own_attempt =
+            activity_import_attempts::Entity::find_for_execution(run.db, attempt.id).await?;
         if let Some(own_attempt) = own_attempt.filter(|attempt| attempt.status == "running") {
             mark_activity_import_failed(run.db, &run.import, &own_attempt.current_stage, error)
                 .await?;
@@ -999,9 +998,7 @@ async fn build_training_analysis_node(
 ) -> Result<(), AppError> {
     let activity_id = activity_model_ref(state)?.id;
     if !activity_model_ref(state)?.is_bike_activity() {
-        activity_training_analyses::Entity::delete_by_id(activity_id)
-            .exec(run.db)
-            .await?;
+        activity_training_analyses::Model::clear_activity(run.db, activity_id).await?;
         state.import_model = mark_activity_import_processing_stage(
             run.db,
             &state.import_model,
@@ -1436,12 +1433,13 @@ async fn find_duplicate_activity(
     let sport_values = crate::activity_sport::activity_sport_from_stored(&activity_draft.sport)
         .map(|sport| sport.stored_values().to_vec())
         .unwrap_or_else(|| vec![activity_draft.sport.as_str()]);
-    let candidates = activities::Entity::find()
-        .filter(activities::Column::UserId.eq(user_id))
-        .filter(activities::Column::StartedAt.eq(activity_draft.started_at))
-        .filter(activities::Column::Sport.is_in(sport_values))
-        .all(db)
-        .await?;
+    let candidates = activities::Model::at_start_for_sports(
+        db,
+        user_id,
+        activity_draft.started_at,
+        &sport_values,
+    )
+    .await?;
 
     for activity in candidates {
         if activity_dedupe_matches_model(&activity, activity_draft, &derived_data.route_points) {
@@ -1467,12 +1465,8 @@ async fn find_existing_activity_by_source_correlation(
         return Ok(None);
     };
 
-    let activity = activities::Entity::find()
-        .filter(activities::Column::UserId.eq(user_id))
-        .filter(activities::Column::Source.eq(source.to_string()))
-        .filter(activities::Column::SourceCorrelationId.eq(source_correlation_id.to_string()))
-        .one(db)
-        .await?;
+    let activity =
+        activities::Model::from_source_identity(db, user_id, source, source_correlation_id).await?;
 
     match activity {
         Some(activity) => deduplicated_activity_import_for_model(db, activity)
@@ -1487,11 +1481,7 @@ async fn deduplicated_activity_import_for_model(
     activity: activities::Model,
 ) -> Result<DeduplicatedActivityImport, AppError> {
     let existing_import = match activity.activity_import_id {
-        Some(import_id) => {
-            activity_imports::Entity::find_by_id(import_id)
-                .one(db)
-                .await?
-        }
+        Some(import_id) => activity_imports::Entity::find_for_administration(db, import_id).await?,
         None => None,
     };
 
@@ -1841,8 +1831,7 @@ mod tests {
         assert_eq!(task.attempts, 1);
         assert_eq!(task.started_at, None);
 
-        let import = activity_imports::Entity::find_by_id(import.id)
-            .one(&db)
+        let import = activity_imports::Entity::find_for_administration(&db, import.id)
             .await
             .expect("load import")
             .expect("import exists");
@@ -1918,8 +1907,7 @@ mod tests {
 
         assert_eq!(recovered, 0);
 
-        let import = activity_imports::Entity::find_by_id(import.id)
-            .one(&db)
+        let import = activity_imports::Entity::find_for_administration(&db, import.id)
             .await
             .expect("load import")
             .expect("import exists");

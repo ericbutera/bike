@@ -37,3 +37,40 @@ impl ActiveModelBehavior for ActiveModel {
         Ok(self)
     }
 }
+
+impl Entity {
+    pub async fn delete_for_segment(
+        db: &impl ConnectionTrait,
+        segment_id: i32,
+    ) -> Result<(), DbErr> {
+        use sea_orm::QueryFilter;
+        Self::delete_many()
+            .filter(Column::SegmentId.eq(segment_id))
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+    pub async fn for_segments(
+        db: &impl ConnectionTrait,
+        segment_ids: &[i32],
+    ) -> Result<Vec<Model>, DbErr> {
+        use sea_orm::QueryFilter;
+        Self::find()
+            .filter(Column::SegmentId.is_in(segment_ids.iter().copied()))
+            .all(db)
+            .await
+    }
+}
+
+impl Entity {
+    pub async fn clear_segments(
+        db: &impl ConnectionTrait,
+        ids: &[i32],
+    ) -> Result<sea_orm::DeleteResult, DbErr> {
+        use sea_orm::QueryFilter;
+        Self::delete_many()
+            .filter(Column::SegmentId.is_in(ids.iter().copied()))
+            .exec(db)
+            .await
+    }
+}

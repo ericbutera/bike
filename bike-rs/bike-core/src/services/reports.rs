@@ -9,9 +9,7 @@ use crate::entities::{
 use crate::errors::BikeCoreError;
 use crate::training_data::deserialize_activity_heart_rate_zones;
 use chrono::{DateTime, Datelike, Duration, NaiveDate, TimeZone, Timelike, Utc};
-use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Select,
-};
+use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration as StdDuration;
@@ -879,18 +877,14 @@ async fn build_training_reports(
     }
 
     let envelope = TrainingReportEnvelope::from_context(&context);
-    let activity_models = filter_activities(
-        activities::Entity::find()
-            .filter(activities::Column::UserId.eq(context.user_id))
-            .filter(
-                activities::Column::Sport
-                    .is_in(activities::BIKE_ACTIVITY_SPORT_VALUES.iter().copied()),
-            )
-            .filter(activities::Column::StartedAt.gte(context.range_start))
-            .filter(activities::Column::StartedAt.lte(context.range_end)),
-        &query,
+    let activity_models = activities::Model::report_range(
+        &context.db,
+        context.user_id,
+        context.range_start,
+        context.range_end,
+        query.min_duration_seconds,
+        query.min_distance_meters,
     )
-    .all(&context.db)
     .await?;
 
     match report_id {
@@ -970,17 +964,13 @@ async fn compare_rides_response(
     let selected_models = if selected_ids.is_empty() {
         Vec::new()
     } else {
-        filter_activities(
-            activities::Entity::find()
-                .filter(activities::Column::UserId.eq(context.user_id))
-                .filter(
-                    activities::Column::Sport
-                        .is_in(activities::BIKE_ACTIVITY_SPORT_VALUES.iter().copied()),
-                )
-                .filter(activities::Column::Id.is_in(selected_ids)),
-            query,
+        activities::Model::report_selection(
+            &context.db,
+            context.user_id,
+            &selected_ids,
+            query.min_duration_seconds,
+            query.min_distance_meters,
         )
-        .all(&context.db)
         .await?
     };
 
@@ -993,10 +983,7 @@ async fn reassessment_response(
     context: &TrainingReportBuildContext,
     query: &TrainingReportsQuery,
 ) -> Result<TrainingReportsResponse, BikeCoreError> {
-    let preferences = user_preferences::Entity::find()
-        .filter(user_preferences::Column::UserId.eq(context.user_id))
-        .one(&context.db)
-        .await?;
+    let preferences = user_preferences::Model::for_user(&context.db, context.user_id).await?;
     let range = reassessment_analysis_range(context, preferences.as_ref())?;
     let activities = load_reassessment_activities(context, query, &range).await?;
     let fitness_rows = load_reassessment_fitness_rows(context.user_id, &context.db, &range).await?;
@@ -1081,18 +1068,14 @@ async fn load_reassessment_activities(
     query: &TrainingReportsQuery,
     range: &ReassessmentAnalysisRange,
 ) -> Result<Vec<activities::Model>, BikeCoreError> {
-    filter_activities(
-        activities::Entity::find()
-            .filter(activities::Column::UserId.eq(context.user_id))
-            .filter(
-                activities::Column::Sport
-                    .is_in(activities::BIKE_ACTIVITY_SPORT_VALUES.iter().copied()),
-            )
-            .filter(activities::Column::StartedAt.gte(range.analysis_start))
-            .filter(activities::Column::StartedAt.lte(range.reassessment_end)),
-        query,
+    activities::Model::report_range(
+        &context.db,
+        context.user_id,
+        range.analysis_start,
+        range.reassessment_end,
+        query.min_duration_seconds,
+        query.min_distance_meters,
     )
-    .all(&context.db)
     .await
     .map_err(BikeCoreError::from)
 }
@@ -1102,14 +1085,14 @@ async fn load_reassessment_fitness_rows(
     db: &DatabaseConnection,
     range: &ReassessmentAnalysisRange,
 ) -> Result<Vec<fitness_freshness_daily::Model>, BikeCoreError> {
-    fitness_freshness_daily::Entity::find()
-        .filter(fitness_freshness_daily::Column::UserId.eq(user_id))
-        .filter(fitness_freshness_daily::Column::Day.gte(range.analysis_start.date_naive()))
-        .filter(fitness_freshness_daily::Column::Day.lte(range.reassessment_end.date_naive()))
-        .order_by_asc(fitness_freshness_daily::Column::Day)
-        .all(db)
-        .await
-        .map_err(BikeCoreError::from)
+    fitness_freshness_daily::Model::between_days(
+        db,
+        user_id,
+        Some(range.analysis_start.date_naive()),
+        range.reassessment_end.date_naive(),
+    )
+    .await
+    .map_err(BikeCoreError::from)
 }
 
 async fn build_aggregate_training_reports(
@@ -1141,18 +1124,14 @@ async fn load_report_activities(
     context: &TrainingReportBuildContext,
     query: &TrainingReportsQuery,
 ) -> Result<Vec<activities::Model>, BikeCoreError> {
-    filter_activities(
-        activities::Entity::find()
-            .filter(activities::Column::UserId.eq(context.user_id))
-            .filter(
-                activities::Column::Sport
-                    .is_in(activities::BIKE_ACTIVITY_SPORT_VALUES.iter().copied()),
-            )
-            .filter(activities::Column::StartedAt.gte(context.range_start))
-            .filter(activities::Column::StartedAt.lte(context.range_end)),
-        query,
+    activities::Model::report_range(
+        &context.db,
+        context.user_id,
+        context.range_start,
+        context.range_end,
+        query.min_duration_seconds,
+        query.min_distance_meters,
     )
-    .all(&context.db)
     .await
     .map_err(BikeCoreError::from)
 }
@@ -1169,14 +1148,15 @@ async fn load_report_training_analysis(
         return Ok(HashMap::new());
     }
 
-    Ok(activity_training_analyses::Entity::find()
-        .filter(activity_training_analyses::Column::UserId.eq(context.user_id))
-        .filter(activity_training_analyses::Column::ActivityId.is_in(activity_ids))
-        .all(&context.db)
-        .await?
-        .into_iter()
-        .map(|analysis| (analysis.activity_id, analysis))
-        .collect())
+    Ok(activity_training_analyses::Model::for_owned_activity_ids(
+        &context.db,
+        context.user_id,
+        &activity_ids,
+    )
+    .await?
+    .into_iter()
+    .map(|analysis| (analysis.activity_id, analysis))
+    .collect())
 }
 
 fn aggregate_report_buckets(
@@ -1713,32 +1693,6 @@ fn validate_report_filters(query: &TrainingReportsQuery) -> Result<(), BikeCoreE
     }
 
     Ok(())
-}
-
-fn filter_activities(
-    mut query_builder: Select<activities::Entity>,
-    query: &TrainingReportsQuery,
-) -> Select<activities::Entity> {
-    if let Some(min_duration_seconds) = query
-        .min_duration_seconds
-        .filter(|min_duration_seconds| *min_duration_seconds > 0)
-    {
-        query_builder = query_builder.filter(
-            Condition::any()
-                .add(activities::Column::MovingTimeSeconds.gte(min_duration_seconds))
-                .add(activities::Column::TotalTimeSeconds.gte(min_duration_seconds)),
-        );
-    }
-
-    if let Some(min_distance_meters) = query
-        .min_distance_meters
-        .filter(|min_distance_meters| *min_distance_meters > 0.0)
-    {
-        query_builder =
-            query_builder.filter(activities::Column::DistanceMeters.gte(min_distance_meters));
-    }
-
-    query_builder
 }
 
 fn parse_activity_ids(raw: Option<&str>) -> Result<Vec<i32>, BikeCoreError> {

@@ -29,7 +29,7 @@ use bike_core::entities::{activities, activity_imports, segments};
 use bike_core::integration_events_service as integration_event_service;
 use bike_core::platform::data::pagination::{PaginatedResponse, PaginationParams};
 use chrono::Utc;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect};
+use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -164,9 +164,7 @@ pub async fn list_admin_activities(
     let imports_by_id = if import_ids.is_empty() {
         std::collections::HashMap::new()
     } else {
-        activity_imports::Entity::find()
-            .filter(activity_imports::Column::Id.is_in(import_ids))
-            .all(&state.db)
+        activity_imports::Entity::by_ids(&state.db, import_ids)
             .await?
             .into_iter()
             .map(|import| (import.id, import))
@@ -240,15 +238,13 @@ pub async fn get_admin_activity_import_trace_for_activity(
     State(state): State<Arc<AppStorage>>,
     Path(activity_id): Path<i32>,
 ) -> Result<Json<AdminActivityImportTraceResponse>, AppError> {
-    let activity = activities::Entity::find_by_id(activity_id)
-        .one(&state.db)
+    let activity = activities::Model::find_by_id(&state.db, activity_id)
         .await?
         .ok_or_else(|| AppError::not_found("Activity not found"))?;
     let Some(import_id) = activity.activity_import_id else {
         return Ok(Json(AdminActivityImportTraceResponse { trace: None }));
     };
-    let import = activity_imports::Entity::find_by_id(import_id)
-        .one(&state.db)
+    let import = activity_imports::Entity::find_for_administration(&state.db, import_id)
         .await?
         .ok_or_else(|| AppError::not_found("Activity import not found"))?;
     let trace = build_admin_activity_import_trace(&state.db, import, Some(activity)).await?;
@@ -311,18 +307,7 @@ async fn load_activity_for_admin_import_trace(
     db: &DatabaseConnection,
     import: &activity_imports::Model,
 ) -> Result<Option<activities::Model>, AppError> {
-    if let Some(activity_id) = import.activity_id {
-        return activities::Entity::find_by_id(activity_id)
-            .one(db)
-            .await
-            .map_err(AppError::from);
-    }
-
-    activities::Entity::find()
-        .filter(activities::Column::ActivityImportId.eq(Some(import.id)))
-        .one(db)
-        .await
-        .map_err(AppError::from)
+    Ok(activities::Model::for_import_inspection(db, import).await?)
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -552,8 +537,7 @@ pub async fn backfill_user_xc_training(
     State(state): State<Arc<AppStorage>>,
     Json(request): Json<BackfillUserXcTrainingRequest>,
 ) -> Result<(StatusCode, Json<ReprocessUserActivityImportsResponse>), AppError> {
-    users::Entity::find_by_id(request.user_id)
-        .one(&state.db)
+    users::Model::find_optional(&state.db, request.user_id)
         .await?
         .ok_or_else(|| AppError::not_found(format!("User {} was not found", request.user_id)))?;
 
@@ -591,8 +575,7 @@ pub async fn regenerate_user_segments(
     State(state): State<Arc<AppStorage>>,
     Json(request): Json<RegenerateUserSegmentsRequest>,
 ) -> Result<(StatusCode, Json<RegenerateUserSegmentsResponse>), AppError> {
-    users::Entity::find_by_id(request.user_id)
-        .one(&state.db)
+    users::Model::find_optional(&state.db, request.user_id)
         .await?
         .ok_or_else(|| AppError::not_found(format!("User {} was not found", request.user_id)))?;
 
@@ -646,8 +629,7 @@ pub async fn regenerate_segment_efforts(
     State(state): State<Arc<AppStorage>>,
     Json(request): Json<RegenerateSegmentEffortsRequest>,
 ) -> Result<(StatusCode, Json<RegenerateSegmentEffortsResponse>), AppError> {
-    segments::Entity::find_by_id(request.segment_id)
-        .one(&state.db)
+    segments::Model::find_by_id(&state.db, request.segment_id)
         .await?
         .ok_or_else(|| {
             AppError::not_found(format!("Segment {} was not found", request.segment_id))
@@ -696,8 +678,7 @@ pub async fn reprocess_user_activity_imports(
     State(state): State<Arc<AppStorage>>,
     Json(request): Json<ReprocessUserActivityImportsRequest>,
 ) -> Result<(StatusCode, Json<ReprocessUserActivityImportsResponse>), AppError> {
-    users::Entity::find_by_id(request.user_id)
-        .one(&state.db)
+    users::Model::find_optional(&state.db, request.user_id)
         .await?
         .ok_or_else(|| AppError::not_found(format!("User {} was not found", request.user_id)))?;
 
@@ -763,8 +744,7 @@ pub async fn reprocess_activity_import(
     State(state): State<Arc<AppStorage>>,
     Json(request): Json<ReprocessActivityImportRequest>,
 ) -> Result<(StatusCode, Json<ReprocessActivityImportResponse>), AppError> {
-    let activity = activities::Entity::find_by_id(request.activity_id)
-        .one(&state.db)
+    let activity = activities::Model::find_by_id(&state.db, request.activity_id)
         .await?
         .ok_or_else(|| {
             AppError::not_found(format!("Activity {} was not found", request.activity_id))
@@ -835,8 +815,7 @@ pub async fn cleanup_user_duplicate_activities(
     State(state): State<Arc<AppStorage>>,
     Json(request): Json<CleanupUserDuplicateActivitiesRequest>,
 ) -> Result<(StatusCode, Json<CleanupUserDuplicateActivitiesResponse>), AppError> {
-    users::Entity::find_by_id(request.user_id)
-        .one(&state.db)
+    users::Model::find_optional(&state.db, request.user_id)
         .await?
         .ok_or_else(|| AppError::not_found(format!("User {} was not found", request.user_id)))?;
 
@@ -970,31 +949,11 @@ pub async fn import_activity_archive(
 }
 
 async fn load_user_ids_with_activities(state: &Arc<AppStorage>) -> Result<Vec<i32>, AppError> {
-    let mut user_ids = activities::Entity::find()
-        .select_only()
-        .column(activities::Column::UserId)
-        .filter(activities::Column::UserId.is_not_null())
-        .distinct()
-        .into_tuple::<i32>()
-        .all(&state.db)
-        .await?;
-    user_ids.sort_unstable();
-    user_ids.dedup();
-
-    Ok(user_ids)
+    Ok(activities::Model::owner_ids(&state.db).await?)
 }
 
 async fn load_segment_ids(state: &Arc<AppStorage>) -> Result<Vec<i32>, AppError> {
-    let mut segment_ids = segments::Entity::find()
-        .select_only()
-        .column(segments::Column::Id)
-        .into_tuple::<i32>()
-        .all(&state.db)
-        .await?;
-    segment_ids.sort_unstable();
-    segment_ids.dedup();
-
-    Ok(segment_ids)
+    Ok(segments::Model::all_ids(&state.db).await?)
 }
 
 async fn enqueue_segment_backfill_tasks(

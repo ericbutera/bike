@@ -33,3 +33,35 @@ impl Related<super::heatmap_projections::Entity> for Entity {
 }
 
 impl ActiveModelBehavior for ActiveModel {}
+
+use crate::heatmaps::geometry::Chunk;
+use sea_orm::{ConnectionTrait, DbErr, QueryFilter, Set};
+impl Model {
+    pub async fn insert_chunks(
+        db: &impl ConnectionTrait,
+        activity_id: i32,
+        offset: usize,
+        chunks: &[Chunk],
+    ) -> Result<(), DbErr> {
+        Entity::insert_many(chunks.iter().enumerate().map(|(i, chunk)| ActiveModel {
+            activity_id: Set(activity_id),
+            band: Set(chunk.band),
+            chunk_index: Set((offset + i) as i32),
+            min_x: Set(chunk.bounds[0]),
+            min_y: Set(chunk.bounds[1]),
+            max_x: Set(chunk.bounds[2]),
+            max_y: Set(chunk.bounds[3]),
+            points: Set(chunk.points.clone()),
+        }))
+        .exec_without_returning(db)
+        .await?;
+        Ok(())
+    }
+    pub async fn clear_activity(db: &impl ConnectionTrait, activity_id: i32) -> Result<(), DbErr> {
+        Entity::delete_many()
+            .filter(Column::ActivityId.eq(activity_id))
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+}

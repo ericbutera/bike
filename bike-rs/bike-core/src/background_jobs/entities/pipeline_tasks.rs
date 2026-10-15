@@ -43,3 +43,54 @@ impl Model {
             .await
     }
 }
+
+impl Model {
+    pub async fn delete_for_runs(db: &impl ConnectionTrait, ids: &[String]) -> Result<(), DbErr> {
+        use sea_orm::QueryFilter;
+        Entity::delete_many()
+            .filter(Column::RunId.is_in(ids.iter().cloned()))
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+}
+
+impl Model {
+    pub async fn task_ids(db: &impl ConnectionTrait, id: &str) -> Result<Vec<i32>, DbErr> {
+        use sea_orm::{QueryFilter, QuerySelect};
+        Entity::find()
+            .filter(Column::RunId.eq(id))
+            .select_only()
+            .column(Column::TaskId)
+            .into_tuple()
+            .all(db)
+            .await
+    }
+    pub async fn run_ids_for_task(
+        db: &impl ConnectionTrait,
+        id: i32,
+    ) -> Result<Vec<String>, DbErr> {
+        use sea_orm::{QueryFilter, QuerySelect};
+        Entity::find()
+            .filter(Column::TaskId.eq(id))
+            .select_only()
+            .column(Column::RunId)
+            .into_tuple()
+            .all(db)
+            .await
+    }
+    pub async fn page_for_run(
+        db: &impl ConnectionTrait,
+        id: &str,
+        after: i32,
+    ) -> Result<Vec<Self>, DbErr> {
+        use sea_orm::{QueryFilter, QueryOrder, QuerySelect};
+        Entity::find()
+            .filter(Column::RunId.eq(id))
+            .filter(Column::TaskId.gt(after))
+            .order_by_asc(Column::TaskId)
+            .limit(51)
+            .all(db)
+            .await
+    }
+}
