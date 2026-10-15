@@ -8,8 +8,7 @@ Bike brings ride history, route exploration, segment comparisons, and training
 progress into one place. Import recordings from your cycling computer or connect
 Strava, then explore the data behind your rides.
 
-[Quickstart](#quickstart) · [Development](docs/development.md) ·
-[Architecture](#architecture) · [Specifications](docs/specs/README.md)
+[Quickstart](#quickstart) · [Architecture](#architecture) · [Documentation](docs/)
 
 ## What you can do
 
@@ -73,21 +72,6 @@ mise run compose:down
 See the [development guide](docs/development.md) for port overrides, tracing,
 focused checks, contract generation, and startup troubleshooting.
 
-Release image tasks use `docker-bake.hcl` locally and in Woodpecker. Run
-`mise run rust:images` to compile the API and worker once and load both images,
-or `mise run images:build` for all release/test images. `mise run e2e:prepare`
-builds just the worker-free browser runtime. `mise run images:plan` prints the
-resolved targets and mise pins without building.
-
-Node image builds share BuildKit's `bike-node-packages` download cache across UI,
-browser E2E, and renderer builds. Each image installs its own locked dependencies,
-including the correct Alpine or Debian native packages. CI connects to a
-persistent BuildKit service managed in the Woodpecker Pulumi stack; its dedicated
-PVC retains package/compiler caches and layers across jobs. Native CI checks
-retain their separate package store on `woodpecker-cache`. Package caches stay
-outside the runtime images. See the [CI specification](docs/specs/ci-checks.md)
-for cache ownership, TTL cleanup, and builder operations.
-
 ## Architecture
 
 ```mermaid
@@ -102,43 +86,53 @@ flowchart LR
 
     subgraph Backend["Rust"]
         API
-        Worker
+        Worker["SQL job worker"]
+        TemporalWorker["Temporal worker<br/>Strava workflows and activities"]
     end
 
     subgraph Storage
         DB[(Bike PostgreSQL)]
+        TemporalDB[(Temporal PostgreSQL databases)]
         Files["Activity files"]
+        ProviderObjects["Raw responses and transforms"]
     end
 
     Browser -->|HTTP| UI
     Browser -->|HTTP| API
     UI -->|HTTP| API
-    API -->|Snapshot gRPC| Maps["Go Chromium worker"]
-    API --> MapCache["Private map PNG cache"]
+    API -->|Snapshot gRPC| Maps["map-renderer"]
+    API --> HeatmapTiles["heatmap-tiles"]
     API --> DB
     Worker --> DB
     API --> Files
     Worker --> Files
     Strava -->|OAuth and webhooks| API
-    Worker -->|Generated SDK| Strava
-    Worker --> ProviderObjects[Raw responses and transforms]
+    TemporalWorker --> DB
+    TemporalWorker <--> Temporal["temporal"]
+    Temporal --> TemporalDB
+    TemporalWorker -->|Generated SDK| Strava
+    TemporalWorker --> ProviderObjects
+    API <--> OAuth["App OAuth / OIDC"]
+    Browser --> OpenMaps["OpenFreeMap"]
+    Maps --> OpenMaps
+
+    classDef thirdParty fill:#fff3bf,stroke:#b58b00,color:#332b00
+    class OAuth,Strava,OpenMaps thirdParty
 ```
 
-The Rust API and worker share PostgreSQL-backed jobs and retained activity files.
-Strava DAGs run on those workers and retain provider sources and transforms on the
-same upload volume. See the [architecture guide](docs/architecture.md)
-for service responsibilities, privacy boundaries, and data flow.
+Yellow nodes are third-party services.
 
 ## Built with
 
-| Layer               | Technology                                                       |
-| ------------------- | ---------------------------------------------------------------- |
-| Application backend | Rust, Axum, SeaORM                                               |
-| Frontend            | Next.js, React, TypeScript, React Query                          |
-| Persistence         | PostgreSQL and stored activity files                             |
-| Maps                | MapLibre GL, a separate PNG renderer, Rust heatmap tiles         |
-| Strava integration  | Generated vendor SDK, Rust webhook API and worker DAGs           |
-| Operations          | Docker Compose, Woodpecker CI, Pulumi, Kubernetes, OpenTelemetry |
+| Layer                | Technology                                                       |
+| -------------------- | ---------------------------------------------------------------- |
+| Application backend  | Rust, Axum, SeaORM                                                |
+| Frontend             | Next.js, React, TypeScript, React Query                           |
+| Persistence          | PostgreSQL and stored activity files                             |
+| Strava orchestration | Temporal with a dedicated Rust workflow and activity worker      |
+| Maps                 | MapLibre GL, a separate PNG renderer, Rust heatmap tiles           |
+| Strava integration   | Generated vendor SDK, Rust OAuth/webhook API, Temporal activities |
+| Operations           | Docker Compose, Woodpecker CI, Pulumi, Kubernetes, OpenTelemetry  |
 
 The [specifications](docs/specs/README.md) define system behavior. The Rust
 backend implements application workflows and owns data access. The frontend uses a
@@ -148,57 +142,11 @@ rendering have separate service boundaries; the
 
 ## Repository layout
 
-| Directory                                                      | Responsibility                                                 |
-| -------------------------------------------------------------- | -------------------------------------------------------------- |
-| [`bike-rs/`](bike-rs/README.md)                                | Rust API, core models and services, worker, schema migrations  |
-| [`bike-ui/`](bike-ui/README.md)                                | Rider and admin UI, generated API client                       |
-| [`map-renderer/`](map-renderer/README.md)                      | Internal Go gRPC Chromium snapshots                            |
-| [`contracts/`](contracts/openapi/README.md), [`proto/`](proto) | HTTP and gRPC contracts                                        |
-| [`bike-rs/api/tests/`](bike-rs/api/tests/README.md)            | Native HTTP integration tests and deterministic fixtures       |
-| [`docs/`](docs/README.md)                                      | Development guides, design specifications, operations, backlog |
-
-## Development and verification
-
-Shared tool versions live in the root `mise.toml`; components inherit them and
-own their specialized pins and commands. `lint` calls `lint:rs`, `lint:go`,
-`lint:ui`, and `lint:maps`. Start with the checks for the component you changed:
-
-```sh
-mise tasks                  # Discover available tasks.
-mise run hooks:install       # Install repository-root prek hooks.
-mise run lint               # Run the owning component linters.
-mise run compose:config     # Validate local service wiring.
-mise run rust:check         # Rust formatting, Clippy, and tests.
-mise run coverage           # Unit coverage for every implemented service.
-mise run ui:check           # UI types, tests, build, formatting, generated client.
-mise run test               # Map renderer tests.
-mise run test:strava:unit # Isolated workflows with fixture-backed dependency mocks.
-```
-
-`mise run test:integration` runs the native API integration suite with an isolated
-SQLite fixture. `mise run contracts:check` compares canonical contracts and shared asset copies.
-`mise run check` runs the combined component, protobuf, and contract checks.
-
-Browser regressions live with the [UI](bike-ui/tests/e2e/README.md).
-
-Local coverage reports and their scope are documented in the
-[development guide](docs/development.md#coverage-reports).
-
-## Documentation
-
-- [Development guide](docs/development.md) — setup, commands, configuration, tracing.
-- [Architecture](docs/architecture.md) — service boundaries and data flow.
-- [Deployment and CI](docs/deployment.md) — component workflows, image promotion, infrastructure.
-- [Product specifications](docs/specs/README.md) — activity, segment,
-  training, authentication, and admin behavior.
-- [Personal heatmaps](docs/specs/heatmaps.md) — design and implementation evidence.
-- [Maps specification](docs/specs/maps.md) — private PNGs, cache lifecycle,
-  gRPC snapshots, and tracing.
-- [Snapshot worker](map-renderer/README.md) — runtime commands and style updates.
-- [Strava workflows](docs/specs/strava-integration.md) — client, stages, retention and quotas.
-- [Admin recovery](docs/specs/admin-operations.md#failed-import-recovery) — diagnosis and selective replay.
-- [Active backlog](docs/TODO.md) — remaining work and recorded verification limits.
-
-Production infrastructure is maintained separately. Release jobs
-publish immutable commit tags, run migrations, and promote the owning component.
-The local Compose environment is the starting point for development.
+| Directory                                                   | Responsibility                                                               |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| [`bike-rs/`](bike-rs/README.md)                               | Rust API, core models and services, SQL and Temporal workers, schema migrations |
+| [`bike-ui/`](bike-ui/README.md)                               | Rider and admin UI, generated API client                                      |
+| [`map-renderer/`](map-renderer/README.md)                     | Internal Go gRPC Chromium snapshots                                          |
+| [`contracts/`](contracts/openapi/README.md), [`proto/`](proto) | HTTP and gRPC contracts                                                      |
+| [`bike-rs/api/tests/`](bike-rs/api/tests/README.md)            | Native HTTP integration tests and deterministic fixtures                     |
+| [`docs/`](docs/)                                            | Development guides, design specifications, operations, backlog                |
