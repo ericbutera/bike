@@ -1,33 +1,33 @@
 {
-  "commit": "87f8fa643022dbf795def001041f74ffd2c02e34",
-  "created_at": "2026-10-15T02:07:01Z",
-  "base_revision": "01c5be0d1c20f0d894a6ab74061c4868522a8c53",
-  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/424",
+  "commit": "220ecaaddf2cf996aca01a3d809b181ef9c3cd3f",
+  "created_at": "2026-10-15T03:41:20Z",
+  "base_revision": "87f8fa643022dbf795def001041f74ffd2c02e34",
+  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/429",
   "minimum_changed_line_percent": 80,
   "projects": {
     "api": {
       "name": "Bike API",
       "language": "Rust",
       "source": "bike-rs/api",
-      "lines": 7422,
-      "covered": 4417,
-      "percent": 59.51226084613312,
+      "lines": 7017,
+      "covered": 5183,
+      "percent": 73.86347441926749,
       "changed": {
-        "lines": 4,
-        "covered": 4,
-        "percent": 100.0
+        "lines": 93,
+        "covered": 76,
+        "percent": 81.72
       }
     },
     "worker": {
       "name": "Bike worker",
       "language": "Rust",
       "source": "bike-rs/worker",
-      "lines": 792,
-      "covered": 385,
-      "percent": 48.61111111111111,
+      "lines": 785,
+      "covered": 425,
+      "percent": 54.14012738853502,
       "changed": {
-        "lines": 0,
-        "covered": 0,
+        "lines": 3,
+        "covered": 3,
         "percent": 100.0
       }
     },
@@ -48,13 +48,13 @@
       "name": "Shared Bike core",
       "language": "Rust",
       "source": "bike-rs/bike-core",
-      "lines": 37098,
-      "covered": 28231,
-      "percent": 76.09844196452639,
+      "lines": 38181,
+      "covered": 30102,
+      "percent": 78.84026086273279,
       "changed": {
-        "lines": 219,
-        "covered": 219,
-        "percent": 100.0
+        "lines": 2494,
+        "covered": 2184,
+        "percent": 87.57
       }
     },
     "bike-ui": {
