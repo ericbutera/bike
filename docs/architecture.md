@@ -1,8 +1,9 @@
 # Bike architecture
 
 Bike has one Rust application backend and one Next.js frontend. PostgreSQL holds
-normalized activity records, derived analytics, accounts, and durable jobs.
-Original activity files remain available for download and replay.
+normalized activity records, derived analytics, accounts, accepted Strava events,
+and SQL jobs. Temporal stores workflow execution history in its own PostgreSQL
+databases. Original activity files remain available for download and replay.
 
 ## Service boundaries
 
@@ -12,23 +13,37 @@ flowchart LR
     Browser --> API[Rust API]
     UI --> API
     API --> DB[(Bike PostgreSQL)]
-    Worker[Rust worker] --> DB
+    Worker[Rust SQL job worker] --> DB
     API --> Files[Activity files]
     Worker --> Files
-    API --> Maps[Go Chromium snapshot worker]
-    API --> MapCache[Map PNG cache]
+    API --> Maps["map-renderer"]
+    API --> HeatmapTiles["heatmap-tiles"]
     Strava[Strava] -->|OAuth and webhooks| API
-    Worker -->|Generated SDK| Strava
-    Worker --> ProviderObjects[Retained raw and transformed objects]
+    TemporalWorker["Rust Temporal worker<br/>Strava workflows and activities"] --> DB
+    TemporalWorker <--> Temporal["temporal"]
+    Temporal --> TemporalDB[(Temporal PostgreSQL databases)]
+    TemporalWorker -->|Generated SDK| Strava
+    TemporalWorker --> ProviderObjects[Retained raw and transformed objects]
+    API <--> OAuth["App OAuth / OIDC"]
+    Browser --> OpenMaps["OpenFreeMap"]
+    Maps --> OpenMaps
+
+    classDef thirdParty fill:#fff3bf,stroke:#b58b00,color:#332b00
+    class OAuth,Strava,OpenMaps thirdParty
 ```
 
-| Component    | Owns                                                                                                    |
-| ------------ | ------------------------------------------------------------------------------------------------------- |
-| Rust API     | HTTP adaptation, application services, activity access, authentication, admin operations, map PNG cache |
-| Rust core    | Domain models, database queries, import and segment behavior, analytics, platform modules               |
-| Rust worker  | Activity/archive processing, derived-data rebuilds, queued maintenance                                  |
-| Next.js UI   | Rider/admin presentation, React Query state, generated API client, private map proxy                    |
-| Map renderer | Go gRPC snapshots, Chromium lifecycle, serialized MapLibre rendering, loopback browser assets           |
+Yellow nodes are third-party services.
+
+| Component        | Owns                                                                                                   |
+| ---------------- | ------------------------------------------------------------------------------------------------------ |
+| Rust API         | HTTP adaptation, application services, activity access, authentication, admin operations, map PNG cache |
+| Rust core        | Domain models, database queries, import and segment behavior, analytics, platform modules               |
+| SQL job worker   | Activity/archive processing, derived-data rebuilds, queued maintenance                                  |
+| Temporal worker  | Durable Strava event handoff, native workflows and activities, provider calls, domain operations         |
+| Temporal service | Orchestration, retries, child workflows, cancellation, execution history                                 |
+| Next.js UI       | Rider/admin presentation, React Query state, generated API client, private map proxy                     |
+| map-renderer     | Go gRPC snapshots, Chromium lifecycle, serialized MapLibre rendering, loopback browser assets            |
+| heatmap-tiles    | Rust API tile rendering from prepared activity geometry, through the Next.js authenticated proxy        |
 
 Controllers adapt HTTP requests and responses. Services compose workflows and
 policy. Queries live on their owning entity/model modules. Axum and SeaORM
@@ -53,26 +68,30 @@ Processing then matches segments and rebuilds activity and training analytics.
 Derived data can be regenerated from retained sources when parsers or rules
 change. See the [ingestion specification](specs/activity-ingestion.md).
 
-Strava callbacks are acknowledged after the Rust API commits the original source,
-workflow and existing Bike worker job. Named action DAGs run on the Rust workers;
-the generated vendor SDK, quota ledger, saved stage outputs and activity correlation
-are defined by [the Strava specification](specs/strava-integration.md).
-Raw responses and each transform remain immutable on the existing uploads volume.
-Retries, quota pauses and failures appear in worker administration and integration
-history. [The cutover plan](plans/strava-consolidation.md) switches webhook ownership
-before provider ownership changes.
+- The Rust API handles Strava OAuth and acknowledges webhooks after storing a
+  durable Strava event in Bike PostgreSQL.
+- The dedicated Rust Temporal worker retries event handoff using deterministic
+  workflow IDs, then polls Temporal to execute native workflows and activities.
+- Activities call Strava through the generated SDK and invoke Bike domain
+  operations for persistence, deletion, analytics, and publication. They retain
+  raw provider responses and transforms on the existing uploads volume.
+- Temporal owns retries, child workflows, cancellation, and execution history in
+  separate PostgreSQL databases. The SQL job worker handles other background work.
+- The admin integration feed links accepted events to their native Temporal jobs.
+  See [the Strava Temporal specification](specs/strava-temporal.md) for workflow
+  types, typed activities, correlation, retention, and recovery.
 
 ## Maps and privacy
 
 Interactive activity and segment views use MapLibre. Activity-card PNGs pass
 through the UI's private image route to the Rust API, which owns access and PNG
-caching. A miss calls the Go Chromium worker over gRPC. The
+caching. A miss calls `map-renderer` over gRPC. The
 [maps specification](specs/maps.md) defines the HTTP and gRPC contracts,
 privacy, cache lifecycle, and required OpenTelemetry visibility.
 
-Personal heatmaps use Rust-owned activity projections and private raster tile
-endpoints. Worker preparation and feature flags are described in the
-[heatmap specification](specs/heatmaps.md).
+Personal heatmaps use Rust-owned activity projections and the private
+`heatmap-tiles` route through Next.js. Worker preparation and feature flags are
+described in the [heatmap specification](specs/heatmaps.md).
 
 ## Contracts and ownership
 
@@ -93,11 +112,11 @@ promotion are maintained separately.
 
 Woodpecker jobs run checks for the owning component, publish images with
 immutable commit tags, and call the Pulumi release helper. Backend promotion
-runs migrations before API/worker rollout; the UI and renderer have
-their own image boundaries. Existing namespace and image names are deployment
-identities and do not depend on the repository's display name.
+runs migrations before API, SQL worker, and Temporal worker rollout; the UI and
+renderer have their own image boundaries. Existing namespace and image names are
+deployment identities and do not depend on the repository's display name.
 
 OpenTelemetry supports tracing; internal metrics, dashboards, alerts, and
 protected failure captures support diagnosis. See the
-[Strava workflow specification](specs/strava-integration.md) and
+[Strava workflow specification](specs/strava-temporal.md) and
 [admin recovery procedures](specs/admin-operations.md#failed-import-recovery) for recovery procedures.
