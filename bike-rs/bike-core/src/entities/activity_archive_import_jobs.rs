@@ -6,7 +6,6 @@ use crate::archive_import::{
 use crate::background_jobs::entities::worker_batches;
 use crate::entities::activity_archive_import_jobs;
 use crate::workflow_error::WorkflowError as AppError;
-use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{ActiveModelTrait, DatabaseConnection};
@@ -37,9 +36,11 @@ pub struct Model {
     pub skipped_unsupported_count: i32,
     #[sea_orm(default_value = 0)]
     pub failed_count: i32,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub created_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub updated_at: DateTime<Utc>,
 }
 
@@ -100,20 +101,7 @@ impl Entity {
     }
 }
 
-#[async_trait]
-impl ActiveModelBehavior for ActiveModel {
-    async fn before_save<C>(mut self, _db: &C, insert: bool) -> Result<Self, DbErr>
-    where
-        C: ConnectionTrait,
-    {
-        let now = Utc::now();
-        if insert {
-            self.created_at = Set(now);
-        }
-        self.updated_at = Set(now);
-        Ok(self)
-    }
-}
+crate::timestamps::impl_timestamps!(ActiveModel);
 
 impl Entity {
     pub async fn find_for_batch(

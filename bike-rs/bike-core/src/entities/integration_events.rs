@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::sea_query::{extension::postgres::PgExpr, Alias, Expr, Func};
@@ -149,30 +148,28 @@ pub struct Model {
     pub message: String,
     pub connection_id: Option<i32>,
     pub payload: Option<Json>,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
 
-#[async_trait]
-impl ActiveModelBehavior for ActiveModel {
-    async fn before_save<C>(mut self, _db: &C, insert: bool) -> Result<Self, DbErr>
-    where
-        C: ConnectionTrait,
-    {
-        if insert {
-            self.created_at = Set(Utc::now());
-        }
-
-        Ok(self)
-    }
-}
+impl ActiveModelBehavior for ActiveModel {}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sea_orm::{Database, Schema};
+    use crate::test_support;
+    use sea_orm::{Database, DatabaseConnection, Schema};
+
+    async fn database() -> DatabaseConnection {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute(&Schema::new(db.get_database_backend()).create_table_from_entity(Entity))
+            .await
+            .unwrap();
+        db
+    }
 
     fn history_event(event_type: &str, payload: Json) -> NewEvent {
         NewEvent {
@@ -188,10 +185,7 @@ mod tests {
 
     #[tokio::test]
     async fn account_history_scopes_root_events_before_limiting() {
-        let db = Database::connect("sqlite::memory:").await.unwrap();
-        db.execute(&Schema::new(db.get_database_backend()).create_table_from_entity(Entity))
-            .await
-            .unwrap();
+        let db = database().await;
         let accepted = "strava.event.accepted";
         let mut foreign = history_event(accepted, serde_json::json!({}));
         foreign.user_id = Some(2);
@@ -243,10 +237,7 @@ mod tests {
 
     #[tokio::test]
     async fn sqlite_filters_numeric_and_string_payload_ids_and_scopes_events() {
-        let db = Database::connect("sqlite::memory:").await.unwrap();
-        db.execute(&Schema::new(db.get_database_backend()).create_table_from_entity(Entity))
-            .await
-            .unwrap();
+        let db = database().await;
         for (user_id, provider, payload) in [
             (
                 1,
@@ -274,18 +265,19 @@ mod tests {
                 serde_json::json!({"activity_id":42,"import_id":7}),
             ),
         ] {
-            ActiveModel {
-                user_id: Set(Some(user_id)),
-                provider: Set(provider.into()),
-                event_type: Set("fixture".into()),
-                level: Set("info".into()),
-                message: Set("Fixture event".into()),
-                payload: Set(Some(payload)),
-                ..Default::default()
-            }
-            .insert(&db)
-            .await
-            .unwrap();
+            test_support::insert(
+                &db,
+                ActiveModel {
+                    user_id: Set(Some(user_id)),
+                    provider: Set(provider.into()),
+                    event_type: Set("fixture".into()),
+                    level: Set("info".into()),
+                    message: Set("Fixture event".into()),
+                    payload: Set(Some(payload)),
+                    ..Default::default()
+                },
+            )
+            .await;
         }
         let options = ListOptions {
             user_id: Some(1),

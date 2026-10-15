@@ -222,19 +222,20 @@ impl BatchFixture {
             pipeline::PipelineContext,
         };
         use crate::entities::activity_import_locks;
-        use sea_orm::{ActiveModelTrait, Set};
+        use sea_orm::Set;
         let db = database(true).await;
         let origin = PipelineContext::received("admin", None);
         let parent = PipelineContext::scope(Some(origin.clone()), enqueue(&db)).await;
-        let lock = activity_import_locks::ActiveModel {
-            user_id: Set(7),
-            source: Set("activity_reprocessing".into()),
-            stage: Set("running".into()),
-            ..Default::default()
-        }
-        .insert(&db)
-        .await
-        .unwrap();
+        let lock = crate::test_support::insert(
+            &db,
+            activity_import_locks::ActiveModel {
+                user_id: Set(7),
+                source: Set("activity_reprocessing".into()),
+                stage: Set("running".into()),
+                ..Default::default()
+            },
+        )
+        .await;
         let batch = PipelineContext::scope(
             Some(origin.clone()),
             start(
@@ -260,17 +261,19 @@ impl BatchFixture {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use crate::background_jobs::{
         history_tests::{database, enqueue},
         pipeline::PipelineContext,
     };
+    use crate::test_support;
     use crate::{
         entities::activity_import_locks,
         jobs::{Job, RebuildFitnessFreshnessTask},
     };
+    use sea_orm::PaginatorTrait;
     use sea_orm::{sea_query::Expr, ColumnTrait, EntityTrait, QueryFilter, Set};
-    use sea_orm::{ActiveModelTrait, PaginatorTrait};
     async fn complete(db: &DatabaseConnection, task: &background_tasks::Model) {
         task.claim(db)
             .await
@@ -290,15 +293,16 @@ mod tests {
                 .unwrap();
         }
         let parent = enqueue(&db).await;
-        let lock = activity_import_locks::ActiveModel {
-            user_id: Set(7),
-            source: Set("activity_reprocessing".into()),
-            stage: Set("running".into()),
-            ..Default::default()
-        }
-        .insert(&db)
-        .await
-        .unwrap();
+        let lock = test_support::insert(
+            &db,
+            activity_import_locks::ActiveModel {
+                user_id: Set(7),
+                source: Set("activity_reprocessing".into()),
+                stage: Set("running".into()),
+                ..Default::default()
+            },
+        )
+        .await;
         let batch = start(
             &db,
             parent.id,
@@ -484,15 +488,16 @@ mod tests {
         let db = database(true).await;
         let origin = PipelineContext::received("admin", None);
         let parent = PipelineContext::scope(Some(origin.clone()), enqueue(&db)).await;
-        let newer = activity_import_locks::ActiveModel {
-            user_id: Set(7),
-            source: Set("activity_reprocessing".into()),
-            stage: Set("running".into()),
-            ..Default::default()
-        }
-        .insert(&db)
-        .await
-        .unwrap();
+        let newer = test_support::insert(
+            &db,
+            activity_import_locks::ActiveModel {
+                user_id: Set(7),
+                source: Set("activity_reprocessing".into()),
+                stage: Set("running".into()),
+                ..Default::default()
+            },
+        )
+        .await;
         let batch = PipelineContext::scope(
             Some(origin),
             start(

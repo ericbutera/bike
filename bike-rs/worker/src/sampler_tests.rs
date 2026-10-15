@@ -1,22 +1,24 @@
 use super::*;
 use bike_core::background_jobs::entities::{background_tasks, pipeline_runs, processor_registry};
+use bike_core::test_support;
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, EntityTrait, Set};
+use sea_orm::{EntityTrait, Set};
 
 async fn seed_expired_evidence(db: &sea_orm::DatabaseConnection) {
     let old = Utc::now() - chrono::Duration::days(31);
-    pipeline_runs::ActiveModel {
-        id: Set("closed".into()),
-        pipeline_started_at: Set(old),
-        accepted_at: Set(old),
-        entrypoint: Set("fixture".into()),
-        available_at: Set(Some(old)),
-        request_id: Set(None),
-        trace_id: Set(None),
-    }
-    .insert(db)
-    .await
-    .unwrap();
+    test_support::insert(
+        db,
+        pipeline_runs::ActiveModel {
+            id: Set("closed".into()),
+            pipeline_started_at: Set(old),
+            accepted_at: Set(old),
+            entrypoint: Set("fixture".into()),
+            available_at: Set(Some(old)),
+            request_id: Set(None),
+            trace_id: Set(None),
+        },
+    )
+    .await;
 }
 
 #[tokio::test]

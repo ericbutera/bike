@@ -1,6 +1,5 @@
 use crate::analytics::SegmentUserSummaryAccumulator;
 use crate::entities::segment_user_summaries;
-use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{ColumnTrait, ConnectionTrait, DbErr, QueryFilter, Set};
@@ -13,30 +12,20 @@ pub struct Model {
     pub id: i32,
     pub segment_id: i32,
     pub user_id: i32,
+    #[sea_orm(default_value = 0)]
     pub effort_count: i32,
     pub personal_best_effort_id: Option<i32>,
     pub personal_best_duration_seconds: Option<i32>,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub created_at: DateTime<Utc>,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
 
-#[async_trait]
-impl ActiveModelBehavior for ActiveModel {
-    async fn before_save<C>(mut self, _db: &C, insert: bool) -> Result<Self, DbErr>
-    where
-        C: ConnectionTrait,
-    {
-        let now = Utc::now();
-        if insert {
-            self.created_at = Set(now);
-        }
-        self.updated_at = Set(now);
-        Ok(self)
-    }
-}
+crate::timestamps::impl_timestamps!(ActiveModel);
 
 impl Model {
     pub async fn list_by_user_segment_ids<C>(

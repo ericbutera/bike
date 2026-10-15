@@ -11,16 +11,19 @@ pub struct Model {
     pub id: i32,
     #[sea_orm(unique)]
     pub feature_key: String,
+    #[sea_orm(default_value = false)]
     pub enabled: bool,
     pub description: Option<String>,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub created_at: DateTime<Utc>,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
 
-impl ActiveModelBehavior for ActiveModel {}
+crate::timestamps::impl_timestamps!(ActiveModel);
 
 impl Model {
     pub async fn list_all(db: &impl ConnectionTrait) -> Result<Vec<Self>, DbErr> {
@@ -55,7 +58,6 @@ impl Model {
     ) -> Result<Self, DbErr> {
         let mut active: ActiveModel = self.into();
         active.enabled = sea_orm::Set(enabled);
-        active.updated_at = sea_orm::Set(chrono::Utc::now());
         active.update(db).await
     }
 }

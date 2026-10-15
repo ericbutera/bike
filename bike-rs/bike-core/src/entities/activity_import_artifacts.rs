@@ -2,7 +2,6 @@ use super::activity_imports;
 use crate::activity_import_pipeline::{checksum_sha256_hex, ActivityImportArtifactPayload};
 use crate::entities::activity_import_artifacts;
 use crate::workflow_error::WorkflowError as AppError;
-use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{
@@ -26,7 +25,9 @@ pub struct Model {
     pub size_bytes: i64,
     pub mime_type: Option<String>,
     pub checksum_sha256: String,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub created_at: DateTime<Utc>,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub updated_at: DateTime<Utc>,
 }
 
@@ -200,20 +201,7 @@ impl Model {
     }
 }
 
-#[async_trait]
-impl ActiveModelBehavior for ActiveModel {
-    async fn before_save<C>(mut self, _db: &C, insert: bool) -> Result<Self, DbErr>
-    where
-        C: ConnectionTrait,
-    {
-        let now = Utc::now();
-        if insert {
-            self.created_at = Set(now);
-        }
-        self.updated_at = Set(now);
-        Ok(self)
-    }
-}
+crate::timestamps::impl_timestamps!(ActiveModel);
 
 impl Model {
     pub async fn store_artifact(

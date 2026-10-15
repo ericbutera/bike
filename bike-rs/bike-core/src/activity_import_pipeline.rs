@@ -19,7 +19,7 @@ use petgraph::algo::toposort;
 use petgraph::graphmap::DiGraphMap;
 use sea_orm::DatabaseConnection;
 #[cfg(test)]
-use sea_orm::{ActiveModelTrait, Set};
+use sea_orm::Set;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::Path;
@@ -1442,6 +1442,8 @@ async fn deduplicated_activity_import_for_model(
 
 #[cfg(test)]
 mod tests {
+
+    use crate::test_support;
     mod recording;
     mod replay_tests;
     use super::*;
@@ -1470,9 +1472,13 @@ mod tests {
 
     async fn create_test_tables(db: DatabaseConnection) -> DatabaseConnection {
         let schema = Schema::new(db.get_database_backend());
-        db.execute(&schema.create_table_from_entity(activities::Entity))
-            .await
-            .expect("create activities table");
+        db.execute(&test_support::table_with_timestamp_defaults(
+            &db,
+            activities::Entity,
+            &["created_at", "updated_at"],
+        ))
+        .await
+        .expect("create activities table");
         db.execute(&schema.create_table_from_entity(activity_imports::Entity))
             .await
             .expect("create activity imports table");
@@ -1569,22 +1575,23 @@ mod tests {
         stage: &str,
         last_event_at: DateTime<Utc>,
     ) -> activity_imports::Model {
-        activity_imports::ActiveModel {
-            user_id: Set(1),
-            status: Set(ACTIVITY_IMPORT_STATUS_PROCESSING.to_string()),
-            activity_id: Set(import_id_activity_id),
-            processing_stage: Set(stage.to_string()),
-            last_processing_event_at: Set(Some(last_event_at)),
-            original_filename: Set("stale.gpx".to_string()),
-            storage_path: Set("activity-imports/test/stale.gpx".to_string()),
-            mime_type: Set(None),
-            created_at: Set(last_event_at),
-            updated_at: Set(last_event_at),
-            ..crate::test_support::new_activity_import()
-        }
-        .insert(db)
+        test_support::insert(
+            db,
+            activity_imports::ActiveModel {
+                user_id: Set(1),
+                status: Set(ACTIVITY_IMPORT_STATUS_PROCESSING.to_string()),
+                activity_id: Set(import_id_activity_id),
+                processing_stage: Set(stage.to_string()),
+                last_processing_event_at: Set(Some(last_event_at)),
+                original_filename: Set("stale.gpx".to_string()),
+                storage_path: Set("activity-imports/test/stale.gpx".to_string()),
+                mime_type: Set(None),
+                created_at: Set(last_event_at),
+                updated_at: Set(last_event_at),
+                ..crate::test_support::new_activity_import()
+            },
+        )
         .await
-        .expect("insert processing import")
     }
 
     async fn insert_process_activity_import_task(
@@ -1593,42 +1600,39 @@ mod tests {
         status: &str,
         updated_at: DateTime<Utc>,
     ) -> background_tasks::Model {
-        background_tasks::ActiveModel {
-            task_type: Set(PROCESS_ACTIVITY_IMPORT_TASK_TYPE.to_string()),
-            payload: Set(serde_json::to_value(Task::ProcessActivityImport(
-                ProcessActivityImportTask {
-                    user_id: 1,
-                    import_id,
-                },
-            ))
-            .expect("serialize process import task")),
-            status: Set(status.to_string()),
-            attempts: Set(
-                if status == background_tasks::TaskStatus::Processing.as_str() {
-                    1
-                } else {
-                    0
-                },
-            ),
-            max_attempts: Set(1),
-            error: Set(None),
-            scheduled_for: Set(None),
-            created_at: Set(updated_at),
-            updated_at: Set(updated_at),
-            started_at: Set(
-                if status == background_tasks::TaskStatus::Processing.as_str() {
-                    Some(updated_at)
-                } else {
-                    None
-                },
-            ),
-            completed_at: Set(None),
-            result: Set(None),
-            ..Default::default()
-        }
-        .insert(db)
+        test_support::insert(
+            db,
+            background_tasks::ActiveModel {
+                task_type: Set(PROCESS_ACTIVITY_IMPORT_TASK_TYPE.to_string()),
+                payload: Set(serde_json::to_value(Task::ProcessActivityImport(
+                    ProcessActivityImportTask {
+                        user_id: 1,
+                        import_id,
+                    },
+                ))
+                .expect("serialize process import task")),
+                status: Set(status.to_string()),
+                attempts: Set(
+                    if status == background_tasks::TaskStatus::Processing.as_str() {
+                        1
+                    } else {
+                        0
+                    },
+                ),
+                max_attempts: Set(1),
+                created_at: Set(updated_at),
+                updated_at: Set(updated_at),
+                started_at: Set(
+                    if status == background_tasks::TaskStatus::Processing.as_str() {
+                        Some(updated_at)
+                    } else {
+                        None
+                    },
+                ),
+                ..test_support::new_background_task()
+            },
+        )
         .await
-        .expect("insert process import task")
     }
 
     async fn persist_test_activity_upload(
@@ -2042,23 +2046,24 @@ mod tests {
     async fn parsing_artifact_selection_prefers_original_fit_over_generated_tcx() {
         let db = test_db().await;
         let now = Utc::now();
-        let import = activity_imports::ActiveModel {
-            user_id: Set(1),
-            source: Set("strava_sync".to_string()),
-            format: Set("tcx".to_string()),
-            status: Set(ACTIVITY_IMPORT_STATUS_PROCESSING.to_string()),
-            processing_stage: Set(ACTIVITY_IMPORT_STAGE_RAW_STORED.to_string()),
-            last_processing_event_at: Set(Some(now)),
-            original_filename: Set("generated.tcx".to_string()),
-            storage_path: Set("activity-imports/test/generated.tcx".to_string()),
-            mime_type: Set(None),
-            created_at: Set(now),
-            updated_at: Set(now),
-            ..crate::test_support::new_activity_import()
-        }
-        .insert(&db)
-        .await
-        .expect("insert import");
+        let import = test_support::insert(
+            &db,
+            activity_imports::ActiveModel {
+                user_id: Set(1),
+                source: Set("strava_sync".to_string()),
+                format: Set("tcx".to_string()),
+                status: Set(ACTIVITY_IMPORT_STATUS_PROCESSING.to_string()),
+                processing_stage: Set(ACTIVITY_IMPORT_STAGE_RAW_STORED.to_string()),
+                last_processing_event_at: Set(Some(now)),
+                original_filename: Set("generated.tcx".to_string()),
+                storage_path: Set("activity-imports/test/generated.tcx".to_string()),
+                mime_type: Set(None),
+                created_at: Set(now),
+                updated_at: Set(now),
+                ..crate::test_support::new_activity_import()
+            },
+        )
+        .await;
 
         for (artifact_kind, format, source_quality, filename, storage_path) in [
             (
@@ -2076,22 +2081,23 @@ mod tests {
                 "activity-imports/test/original.fit",
             ),
         ] {
-            activity_import_artifacts::ActiveModel {
-                activity_import_id: Set(import.id),
-                user_id: Set(import.user_id),
-                artifact_kind: Set(artifact_kind.to_string()),
-                format: Set(format.to_string()),
-                source_quality: Set(source_quality.to_string()),
-                original_filename: Set(filename.to_string()),
-                storage_path: Set(storage_path.to_string()),
-                size_bytes: Set(123),
-                mime_type: Set(None),
-                checksum_sha256: Set("checksum".to_string()),
-                ..Default::default()
-            }
-            .insert(&db)
-            .await
-            .expect("insert artifact");
+            test_support::insert(
+                &db,
+                activity_import_artifacts::ActiveModel {
+                    activity_import_id: Set(import.id),
+                    user_id: Set(import.user_id),
+                    artifact_kind: Set(artifact_kind.to_string()),
+                    format: Set(format.to_string()),
+                    source_quality: Set(source_quality.to_string()),
+                    original_filename: Set(filename.to_string()),
+                    storage_path: Set(storage_path.to_string()),
+                    size_bytes: Set(123),
+                    mime_type: Set(None),
+                    checksum_sha256: Set("checksum".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await;
         }
 
         let selected = load_best_activity_parsing_artifact(&db, &import)
@@ -2107,23 +2113,24 @@ mod tests {
     async fn parsing_artifact_selection_prefers_strava_provider_payload_over_generated_tcx() {
         let db = test_db().await;
         let now = Utc::now();
-        let import = activity_imports::ActiveModel {
-            user_id: Set(1),
-            source: Set("strava_sync".to_string()),
-            format: Set("tcx".to_string()),
-            status: Set(ACTIVITY_IMPORT_STATUS_PROCESSING.to_string()),
-            processing_stage: Set(ACTIVITY_IMPORT_STAGE_RAW_STORED.to_string()),
-            last_processing_event_at: Set(Some(now)),
-            original_filename: Set("generated.tcx".to_string()),
-            storage_path: Set("activity-imports/test/generated.tcx".to_string()),
-            mime_type: Set(None),
-            created_at: Set(now),
-            updated_at: Set(now),
-            ..crate::test_support::new_activity_import()
-        }
-        .insert(&db)
-        .await
-        .expect("insert import");
+        let import = test_support::insert(
+            &db,
+            activity_imports::ActiveModel {
+                user_id: Set(1),
+                source: Set("strava_sync".to_string()),
+                format: Set("tcx".to_string()),
+                status: Set(ACTIVITY_IMPORT_STATUS_PROCESSING.to_string()),
+                processing_stage: Set(ACTIVITY_IMPORT_STAGE_RAW_STORED.to_string()),
+                last_processing_event_at: Set(Some(now)),
+                original_filename: Set("generated.tcx".to_string()),
+                storage_path: Set("activity-imports/test/generated.tcx".to_string()),
+                mime_type: Set(None),
+                created_at: Set(now),
+                updated_at: Set(now),
+                ..crate::test_support::new_activity_import()
+            },
+        )
+        .await;
 
         for (artifact_kind, format, source_quality, filename, storage_path) in [
             (
@@ -2141,22 +2148,23 @@ mod tests {
                 "activity-imports/test/strava_activity_99.json",
             ),
         ] {
-            activity_import_artifacts::ActiveModel {
-                activity_import_id: Set(import.id),
-                user_id: Set(import.user_id),
-                artifact_kind: Set(artifact_kind.to_string()),
-                format: Set(format.to_string()),
-                source_quality: Set(source_quality.to_string()),
-                original_filename: Set(filename.to_string()),
-                storage_path: Set(storage_path.to_string()),
-                size_bytes: Set(123),
-                mime_type: Set(None),
-                checksum_sha256: Set("checksum".to_string()),
-                ..Default::default()
-            }
-            .insert(&db)
-            .await
-            .expect("insert artifact");
+            test_support::insert(
+                &db,
+                activity_import_artifacts::ActiveModel {
+                    activity_import_id: Set(import.id),
+                    user_id: Set(import.user_id),
+                    artifact_kind: Set(artifact_kind.to_string()),
+                    format: Set(format.to_string()),
+                    source_quality: Set(source_quality.to_string()),
+                    original_filename: Set(filename.to_string()),
+                    storage_path: Set(storage_path.to_string()),
+                    size_bytes: Set(123),
+                    mime_type: Set(None),
+                    checksum_sha256: Set("checksum".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await;
         }
 
         let selected = load_best_activity_parsing_artifact(&db, &import)

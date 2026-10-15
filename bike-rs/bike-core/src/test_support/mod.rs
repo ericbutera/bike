@@ -4,12 +4,16 @@
 //! for database inserts so unrelated seeds never reuse the fixture primary key.
 mod accounts;
 mod analytics;
+mod defaults;
 pub use analytics::{
     analytics_user_state, fitness_day, new_fitness_day, new_segment_effort, segment_effort,
 };
+pub use defaults::{new_background_task, new_feature_flag, new_user_preferences};
 mod heatmaps;
 pub use heatmaps::heatmap_projection;
 mod imports;
+mod persistence;
+pub use persistence::{insert, update};
 mod schema;
 mod segments;
 pub use schema::table_with_timestamp_defaults;
@@ -101,7 +105,7 @@ pub fn new_activity() -> activities::ActiveModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sea_orm::{ActiveModelTrait, ConnectionTrait, Database, Schema};
+    use sea_orm::{ConnectionTrait, Database, Schema};
 
     #[test]
     fn model_fixtures_share_a_stable_owner_and_clock() {
@@ -148,14 +152,81 @@ mod tests {
         )
         .await
         .unwrap();
-        let first = new_activity_import().insert(&db).await.unwrap();
-        let second = new_activity_import().insert(&db).await.unwrap();
+        let first = insert(&db, new_activity_import()).await;
+        let second = insert(&db, new_activity_import()).await;
         assert_ne!(first.id, second.id);
         assert_eq!(first.user_id, second.user_id);
         assert_eq!(first.original_filename, second.original_filename);
-        let first_activity = new_activity().insert(&db).await.unwrap();
-        let second_activity = new_activity().insert(&db).await.unwrap();
+        let first_activity = insert(&db, new_activity()).await;
+        let second_activity = insert(&db, new_activity()).await;
         assert_ne!(first_activity.id, second_activity.id);
         assert_eq!(first_activity.user_id, second_activity.user_id);
+    }
+
+    #[tokio::test]
+    async fn update_fixture_preserves_omitted_fields_and_explicitly_clears_values() {
+        use sea_orm::Set;
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute(
+            &Schema::new(db.get_database_backend()).create_table_from_entity(activities::Entity),
+        )
+        .await
+        .unwrap();
+        let original = insert(
+            &db,
+            activities::ActiveModel {
+                estimated_ftp_watts: Set(Some(250)),
+                ..new_activity()
+            },
+        )
+        .await;
+        let updated = update(
+            &db,
+            activities::ActiveModel {
+                id: Set(original.id),
+                title: Set("Updated fixture".into()),
+                estimated_ftp_watts: Set(None),
+                ..Default::default()
+            },
+        )
+        .await;
+        assert_eq!(updated.id, original.id);
+        assert_eq!(updated.title, "Updated fixture");
+        assert_eq!(updated.estimated_ftp_watts, None);
+        assert_eq!(updated.user_id, original.user_id);
+        assert_eq!(updated.sport, original.sport);
+        assert_eq!(updated.created_at, original.created_at);
+        assert!(updated.updated_at > original.updated_at);
+    }
+
+    #[tokio::test]
+    async fn database_timestamp_defaults_round_trip_through_version_filters() {
+        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute(&table_with_timestamp_defaults(
+            &db,
+            activities::Entity,
+            &["created_at", "updated_at"],
+        ))
+        .await
+        .unwrap();
+        let model = insert(
+            &db,
+            activities::ActiveModel {
+                created_at: NotSet,
+                updated_at: NotSet,
+                ..new_activity()
+            },
+        )
+        .await;
+        let matching = activities::Entity::find_by_id(model.id)
+            .filter(activities::Column::UpdatedAt.eq(model.updated_at))
+            .one(&db)
+            .await
+            .unwrap();
+        assert!(
+            matching.is_some(),
+            "database timestamps must match SQLx parameters"
+        );
     }
 }

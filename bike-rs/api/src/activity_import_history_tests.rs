@@ -1,6 +1,7 @@
 use super::*;
 use bike_core::activity_import_execution::StageRecord;
-use sea_orm::{ActiveModelTrait, ConnectionTrait, Database, EntityTrait, PaginatorTrait, Schema};
+use bike_core::test_support;
+use sea_orm::{ConnectionTrait, Database, EntityTrait, PaginatorTrait, Schema};
 use serde_json::json;
 
 pub(crate) async fn database() -> DatabaseConnection {
@@ -32,7 +33,7 @@ async fn replay_previews_fallback_and_queues_only_the_reviewed_plan() {
     let mut import = imported(1, 7);
     import.storage_path = "ride.gpx".into();
     let active: activity_imports::ActiveModel = import.into();
-    active.insert(&db).await.unwrap();
+    test_support::insert(&db, active).await;
     let request = || ReplayRequest {
         stage: "activity_saved".into(),
         expected_start_stage: None,
@@ -94,7 +95,7 @@ async fn history_lists_only_owned_imports_even_without_an_activity() {
     let db = database().await;
     for import in [imported(1, 7), imported(2, 8)] {
         let active: activity_imports::ActiveModel = import.into();
-        active.insert(&db).await.unwrap();
+        test_support::insert(&db, active).await;
     }
     let result = history(
         &db,
@@ -159,7 +160,7 @@ async fn attempts_preserve_stage_summaries_without_exposing_private_source_or_ch
         updated_at: now,
     };
     let active: activity_import_attempts::ActiveModel = attempt.into();
-    active.insert(&db).await.unwrap();
+    test_support::insert(&db, active).await;
     let result = attempts(&db, &import).await.unwrap();
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].id, 11);

@@ -6,8 +6,9 @@ use bike_core::entities::{
     activities, activity_import_attempts, activity_imports, provider_rate_limit_buckets, segments,
     strava_connections,
 };
+use bike_core::test_support;
 use chrono::{Duration, Utc};
-use sea_orm::{ActiveModelTrait, ConnectionTrait, Database, DatabaseConnection, Schema, Set};
+use sea_orm::{ConnectionTrait, Database, DatabaseConnection, Schema, Set};
 use std::sync::Arc;
 
 pub(crate) static SCRAPE_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
@@ -39,17 +40,18 @@ async fn metrics_response_reloads_quota_without_provider_requests() {
         ("current", Utc::now() + Duration::minutes(15)),
         ("expired", Utc::now() - Duration::minutes(1)),
     ] {
-        provider_rate_limit_buckets::ActiveModel {
-            provider: Set("quota_scrape_fixture".into()),
-            bucket: Set(bucket.into()),
-            limit_count: Set(200),
-            used_count: Set(17),
-            reset_at: Set(deadline),
-            ..Default::default()
-        }
-        .insert(&db)
-        .await
-        .unwrap();
+        test_support::insert(
+            &db,
+            provider_rate_limit_buckets::ActiveModel {
+                provider: Set("quota_scrape_fixture".into()),
+                bucket: Set(bucket.into()),
+                limit_count: Set(200),
+                used_count: Set(17),
+                reset_at: Set(deadline),
+                ..Default::default()
+            },
+        )
+        .await;
     }
     init_metrics();
     let response = metrics_route(State(Arc::new(AppStorage::for_test(db)))).await;

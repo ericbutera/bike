@@ -14,6 +14,7 @@ pub struct Model {
     pub description: Option<String>,
     pub scopes: Json,
     pub owner_user_id: Option<i32>,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub created_at: DateTime<Utc>,
     pub last_used_at: Option<DateTime<Utc>>,
     pub revoked_at: Option<DateTime<Utc>>,

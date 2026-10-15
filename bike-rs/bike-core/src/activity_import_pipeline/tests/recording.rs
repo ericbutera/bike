@@ -2,6 +2,7 @@ use super::*;
 use crate::activity_data::{deserialize_derived_activity_data, serialize_derived_activity_data};
 use crate::activity_recording::{RecordingContext, RecordingEnvironment};
 use crate::activity_source_recovery::{apply_recovery, plan_recovery, RecoveryOutcome};
+use crate::test_support;
 use sea_orm::IntoActiveModel;
 
 fn recording_upload(virtual_ride: bool) -> ActivityUploadPayload {
@@ -146,10 +147,10 @@ async fn legacy_generated_copy(
     copy.started_at = Set(original.started_at + ChronoDuration::seconds(2));
     copy.activity_import_id = Set(Some(import.id));
     copy.derived_data_json = Set(Some(serialize_derived_activity_data(&derived)));
-    let activity = copy.insert(db).await.unwrap();
+    let activity = test_support::insert(db, copy).await;
     let mut import = import.into_active_model();
     import.activity_id = Set(Some(activity.id));
-    import.update(db).await.unwrap()
+    test_support::update(db, import).await
 }
 
 #[tokio::test]
@@ -163,7 +164,7 @@ async fn archive_recovery_rejects_other_owners_corrupt_sources_and_stale_plans()
         .unwrap();
     let mut changed = import.clone().into_active_model();
     changed.original_filename = Set("changed.tcx".into());
-    let changed = changed.update(&db).await.unwrap();
+    let changed = test_support::update(&db, changed).await;
     assert!(apply_recovery(&db, &dir, plan).await.is_err());
     assert_eq!(
         background_tasks::Entity::find()
@@ -175,14 +176,14 @@ async fn archive_recovery_rejects_other_owners_corrupt_sources_and_stale_plans()
     );
     let mut other_owner = original.activity.clone().into_active_model();
     other_owner.user_id = Set(2);
-    other_owner.update(&db).await.unwrap();
+    test_support::update(&db, other_owner).await;
     let gap = plan_recovery(&db, &dir, changed.clone(), Utc::now())
         .await
         .unwrap();
     assert_eq!(gap.outcome, RecoveryOutcome::ArchiveRequired);
     let mut owned = original.activity.clone().into_active_model();
     owned.user_id = Set(1);
-    owned.update(&db).await.unwrap();
+    test_support::update(&db, owned).await;
     tokio::fs::write(
         Path::new(&dir).join(&original.import.storage_path),
         b"corrupt FIT",
@@ -222,7 +223,7 @@ async fn recovery_checks_provider_identity_and_refuses_sql_replay_for_strava() {
         .unwrap();
     let mut activity = activity.into_active_model();
     activity.source_correlation_id = Set(Some(format!("strava:{}", payload.activity.id)));
-    activity.update(&db).await.unwrap();
+    test_support::update(&db, activity).await;
     let plan = plan_recovery(&db, &dir, import.clone(), Utc::now())
         .await
         .unwrap();
@@ -269,7 +270,7 @@ async fn recovery_refuses_ambiguous_archive_originals() {
     let mut activity = original.activity.into_active_model();
     activity.id = sea_orm::ActiveValue::NotSet;
     activity.activity_import_id = Set(Some(other.id));
-    activity.insert(&db).await.unwrap();
+    test_support::insert(&db, activity).await;
     let plan = plan_recovery(&db, &dir, import, Utc::now()).await.unwrap();
     assert_eq!(plan.outcome, RecoveryOutcome::AmbiguousArchive);
     assert!(!apply_recovery(&db, &dir, plan).await.unwrap());
@@ -304,7 +305,7 @@ async fn recovery_retains_noncycling_provider_input_without_ride_jobs_or_data_lo
     let mut activity = original.clone().into_active_model();
     activity.sport = Set("run".into());
     activity.source_correlation_id = Set(Some(payload.activity.id.to_string()));
-    activity.update(&db).await.unwrap();
+    test_support::update(&db, activity).await;
     let plan = plan_recovery(&db, &dir, import.clone(), Utc::now())
         .await
         .unwrap();
@@ -447,43 +448,46 @@ async fn seed_ready_heatmap(db: &DatabaseConnection, activity_id: i32) {
     db.execute(&schema.create_table_from_entity(heatmap_user_states::Entity))
         .await
         .unwrap();
-    heatmap_projections::ActiveModel {
-        published_at: Set(None),
-        activity_id: Set(activity_id),
-        user_id: Set(1),
-        generation: Set(1),
-        status: Set("ready".into()),
-        projection_version: Set(crate::heatmaps::PROJECTION_VERSION),
-        queued_at: Set(None),
-        error: Set(None),
-        min_x: Set(Some(0.1)),
-        min_y: Set(Some(0.1)),
-        max_x: Set(Some(0.2)),
-        max_y: Set(Some(0.2)),
-    }
-    .insert(db)
-    .await
-    .unwrap();
-    heatmap_chunks::ActiveModel {
-        activity_id: Set(activity_id),
-        band: Set(0),
-        chunk_index: Set(0),
-        min_x: Set(0.1),
-        min_y: Set(0.1),
-        max_x: Set(0.2),
-        max_y: Set(0.2),
-        points: Set(vec![0; 16]),
-    }
-    .insert(db)
-    .await
-    .unwrap();
-    heatmap_user_states::ActiveModel {
-        user_id: Set(1),
-        revision: Set(1),
-    }
-    .insert(db)
-    .await
-    .unwrap();
+    test_support::insert(
+        db,
+        heatmap_projections::ActiveModel {
+            published_at: Set(None),
+            activity_id: Set(activity_id),
+            user_id: Set(1),
+            generation: Set(1),
+            status: Set("ready".into()),
+            projection_version: Set(crate::heatmaps::PROJECTION_VERSION),
+            queued_at: Set(None),
+            error: Set(None),
+            min_x: Set(Some(0.1)),
+            min_y: Set(Some(0.1)),
+            max_x: Set(Some(0.2)),
+            max_y: Set(Some(0.2)),
+        },
+    )
+    .await;
+    test_support::insert(
+        db,
+        heatmap_chunks::ActiveModel {
+            activity_id: Set(activity_id),
+            band: Set(0),
+            chunk_index: Set(0),
+            min_x: Set(0.1),
+            min_y: Set(0.1),
+            max_x: Set(0.2),
+            max_y: Set(0.2),
+            points: Set(vec![0; 16]),
+        },
+    )
+    .await;
+    test_support::insert(
+        db,
+        heatmap_user_states::ActiveModel {
+            user_id: Set(1),
+            revision: Set(1),
+        },
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -626,7 +630,7 @@ async fn matching_copies_inherit_virtual_evidence_in_either_import_order() {
             point.elapsed_seconds += 2;
         }
         changed.derived_data_json = Set(Some(serialize_derived_activity_data(&derived)));
-        changed.update(&db).await.unwrap();
+        test_support::update(&db, changed).await;
         let second = import_recording(&db, &dir, !original_first).await;
         for id in [first.activity.id, second.activity.id] {
             let activity = activities::Entity::find_by_id(id)
@@ -647,7 +651,7 @@ async fn another_users_matching_virtual_route_cannot_hide_a_real_activity() {
     let virtual_activity = import_recording(&db, &dir, true).await;
     let mut other = virtual_activity.activity.into_active_model();
     other.user_id = Set(2);
-    other.update(&db).await.unwrap();
+    test_support::update(&db, other).await;
     let real = import_recording(&db, &dir, false).await;
     assert!(!real.activity.recording_context().excluded());
     assert!(!crate::heatmaps::geometry::prepare(

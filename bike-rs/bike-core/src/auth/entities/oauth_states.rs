@@ -13,6 +13,7 @@ pub struct Model {
     pub provider: String,
     pub nonce: String,
     pub expires_at: DateTime<Utc>,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub created_at: DateTime<Utc>,
 }
 
@@ -41,7 +42,6 @@ impl Model {
             provider: Set(provider.to_string()),
             nonce: Set(nonce.to_string()),
             expires_at: Set(Utc::now() + chrono::Duration::minutes(10)),
-            created_at: Set(Utc::now()),
             ..Default::default()
         }
         .insert(db)

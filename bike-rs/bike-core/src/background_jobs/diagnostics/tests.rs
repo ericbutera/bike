@@ -5,8 +5,9 @@ use crate::background_jobs::{
     history_tests::{database, enqueue},
     pipeline::PipelineContext,
 };
+use crate::test_support;
 use sea_orm::EntityTrait;
-use sea_orm::{ActiveModelTrait, PaginatorTrait, Set};
+use sea_orm::{PaginatorTrait, Set};
 use std::sync::Arc;
 
 #[tokio::test]
@@ -224,7 +225,7 @@ async fn activity_lookup_uses_direct_lineage_and_retention_protects_unready_work
         .unwrap()
         .into();
     closed.available_at = Set(Some(old));
-    closed.update(&db).await.unwrap();
+    test_support::update(&db, closed).await;
     retain(&db).await.unwrap();
     assert!(pipeline_runs::Entity::find_by_id(&left.run_id)
         .one(&db)

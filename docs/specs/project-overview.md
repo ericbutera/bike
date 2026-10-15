@@ -49,6 +49,11 @@ The source data should remain replayable enough to support parser improvements. 
 
 Derived outputs such as heart-rate zones, segment efforts, activity analytics, fitness/fatigue/form, and activity training analysis are caches or read models. They should be rebuilt when source activity or segment data changes.
 
+SeaORM entities declare database insert defaults with `default_value` and
+`default_expr`. The [model specification](model-boundaries.md#insert-defaults-and-timestamps)
+owns timestamp behavior and its workflow exceptions. Schema changes use new
+migrations rather than modifying historical migrations.
+
 ## Integrations Strategy
 
 Strava is the first live cloud activity integration. The Rust API accepts durable Strava events. Named native Temporal workflows fetch and normalize activities, write domain data, and publish derived data. See [the Strava specification](strava-temporal.md).

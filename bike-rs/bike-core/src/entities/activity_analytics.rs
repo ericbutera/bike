@@ -1,7 +1,6 @@
 use crate::activity_achievements::StoredActivityAchievementHighlights;
 use crate::analytics::ActivityAnalyticsAccumulator;
 use crate::entities::activity_analytics;
-use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{ColumnTrait, ConnectionTrait, DbErr, QueryFilter, Set};
@@ -12,13 +11,20 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub activity_id: i32,
     pub user_id: i32,
+    #[sea_orm(default_value = 0)]
     pub segment_effort_count: i32,
+    #[sea_orm(default_value = 0)]
     pub achievement_count: i32,
+    #[sea_orm(default_value = 0)]
     pub kom_count: i32,
+    #[sea_orm(default_value = 0)]
     pub top_10_count: i32,
+    #[sea_orm(default_value = 0)]
     pub pr_count: i32,
     pub achievement_highlights_json: Option<StoredActivityAchievementHighlights>,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub created_at: DateTime<Utc>,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub updated_at: DateTime<Utc>,
 }
 
@@ -35,20 +41,7 @@ impl Entity {
     }
 }
 
-#[async_trait]
-impl ActiveModelBehavior for ActiveModel {
-    async fn before_save<C>(mut self, _db: &C, insert: bool) -> Result<Self, DbErr>
-    where
-        C: ConnectionTrait,
-    {
-        let now = Utc::now();
-        if insert {
-            self.created_at = Set(now);
-        }
-        self.updated_at = Set(now);
-        Ok(self)
-    }
-}
+crate::timestamps::impl_timestamps!(ActiveModel);
 
 impl Model {
     pub async fn delete_by_activity_ids<C>(db: &C, activity_ids: &[i32]) -> Result<(), DbErr>

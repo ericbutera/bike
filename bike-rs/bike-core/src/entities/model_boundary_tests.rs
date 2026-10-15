@@ -7,8 +7,8 @@ use crate::platform::data::pagination::PaginationParams;
 use crate::test_support;
 use crate::test_support::table_with_timestamp_defaults;
 use sea_orm::{
-    ActiveModelTrait, ConnectionTrait, Database, DatabaseConnection, DbBackend, DbErr, EntityTrait,
-    MockDatabase, Schema,
+    ConnectionTrait, Database, DatabaseConnection, DbBackend, DbErr, EntityTrait, MockDatabase,
+    Schema,
 };
 pub(super) async fn database() -> DatabaseConnection {
     let db = Database::connect("sqlite::memory:").await.unwrap();
@@ -30,7 +30,7 @@ pub(super) async fn database() -> DatabaseConnection {
 
 async fn store_activity(db: &DatabaseConnection, activity: activities::Model) -> activities::Model {
     let active: activities::ActiveModel = activity.into();
-    active.insert(db).await.unwrap()
+    test_support::insert(db, active).await
 }
 
 #[tokio::test]
@@ -234,11 +234,7 @@ async fn recent_manual_uploads_keep_source_owner_order_and_twenty_five_item_limi
         let mut active: activity_imports::ActiveModel = import.into();
         active.created_at =
             sea_orm::Set(test_support::timestamp() + chrono::Duration::seconds(id.into()));
-        // Insert directly so the fixture's intentional chronology is retained.
-        activity_imports::Entity::insert(active)
-            .exec(&db)
-            .await
-            .unwrap();
+        test_support::insert(&db, active).await;
     }
     let imports = activity_imports::Entity::recent_manual_uploads(&db, 7)
         .await
@@ -264,10 +260,7 @@ async fn archive_jobs_keep_owner_order_and_ten_item_limit() {
         let mut active: activity_archive_import_jobs::ActiveModel = job.into();
         active.created_at =
             sea_orm::Set(test_support::timestamp() + chrono::Duration::seconds(id.into()));
-        activity_archive_import_jobs::Entity::insert(active)
-            .exec(&db)
-            .await
-            .unwrap();
+        test_support::insert(&db, active).await;
     }
     let jobs = activity_archive_import_jobs::Entity::recent_for_user(&db, 7)
         .await
@@ -321,7 +314,7 @@ async fn downloadable_originals_keep_quality_order_owner_kind_and_supported_form
             ..test_support::import_artifact()
         };
         let active: activity_import_artifacts::ActiveModel = artifact.into();
-        active.insert(&db).await.unwrap();
+        test_support::insert(&db, active).await;
     }
     for expected in [7, 6, 5, 4, 3, 2, 1] {
         let artifact = activity_import_artifacts::Entity::downloadable_original(&db, 7, 18)
@@ -392,9 +385,9 @@ async fn report_reads_keep_owner_cycling_and_duration_or_total_time_policy() {
     assert_eq!(all.len(), 2);
 }
 
-fn segment_effort_table(schema: &Schema) -> sea_orm::sea_query::TableCreateStatement {
+fn segment_effort_table(db: &DatabaseConnection) -> sea_orm::sea_query::TableCreateStatement {
     table_with_timestamp_defaults(
-        schema,
+        db,
         super::segment_efforts::Entity,
         &["created_at", "updated_at"],
     )
@@ -405,8 +398,8 @@ pub(super) async fn segment_database() -> DatabaseConnection {
     let db = database().await;
     let schema = Schema::new(db.get_database_backend());
     for statement in [
-        table_with_timestamp_defaults(&schema, segments::Entity, &["last_activity_change_at"]),
-        segment_effort_table(&schema),
+        table_with_timestamp_defaults(&db, segments::Entity, &["last_activity_change_at"]),
+        segment_effort_table(&db),
         schema.create_table_from_entity(segment_summaries::Entity),
         schema.create_table_from_entity(segment_user_summaries::Entity),
         schema.create_table_from_entity(activity_analytics::Entity),
@@ -422,29 +415,28 @@ async fn segment_deletion_rolls_back_all_related_rows_and_preserves_the_activity
     use sea_orm::{PaginatorTrait, Set};
     let db = segment_database().await;
     let active: segments::ActiveModel = test_support::segment().into();
-    let segment = active.insert(&db).await.unwrap();
+    let segment = test_support::insert(&db, active).await;
     store_activity(&db, test_support::activity()).await;
-    test_support::new_segment_effort()
-        .insert(&db)
-        .await
-        .unwrap();
-    segment_summaries::ActiveModel {
-        segment_id: Set(segment.id),
-        effort_count: Set(1),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
-    segment_user_summaries::ActiveModel {
-        segment_id: Set(segment.id),
-        user_id: Set(segment.user_id),
-        effort_count: Set(1),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    test_support::insert(&db, test_support::new_segment_effort()).await;
+    test_support::insert(
+        &db,
+        segment_summaries::ActiveModel {
+            segment_id: Set(segment.id),
+            effort_count: Set(1),
+            ..Default::default()
+        },
+    )
+    .await;
+    test_support::insert(
+        &db,
+        segment_user_summaries::ActiveModel {
+            segment_id: Set(segment.id),
+            user_id: Set(segment.user_id),
+            effort_count: Set(1),
+            ..Default::default()
+        },
+    )
+    .await;
     db.execute_unprepared("CREATE TRIGGER reject_segment_delete BEFORE DELETE ON segments BEGIN SELECT RAISE(ABORT, 'fixture delete failure'); END").await.unwrap();
     assert!(segment.delete_with_derived_state(&db).await.is_err());
     assert_eq!(
@@ -499,17 +491,11 @@ async fn segment_and_fitness_insert_fixtures_receive_generated_ids() {
     )
     .await
     .unwrap();
-    let a = test_support::new_segment_effort()
-        .insert(&db)
-        .await
-        .unwrap();
-    let b = test_support::new_segment_effort()
-        .insert(&db)
-        .await
-        .unwrap();
+    let a = test_support::insert(&db, test_support::new_segment_effort()).await;
+    let b = test_support::insert(&db, test_support::new_segment_effort()).await;
     assert_ne!(a.id, b.id);
-    let a = test_support::new_fitness_day().insert(&db).await.unwrap();
-    let b = test_support::new_fitness_day().insert(&db).await.unwrap();
+    let a = test_support::insert(&db, test_support::new_fitness_day()).await;
+    let b = test_support::insert(&db, test_support::new_fitness_day()).await;
     assert_ne!(a.id, b.id);
     assert_eq!(a.user_id, b.user_id);
 }
@@ -536,7 +522,7 @@ async fn segment_dedupe_reads_keep_owner_and_route_bucket_policy() {
             ..test_support::segment()
         }
         .into();
-        active.insert(&db).await.unwrap();
+        test_support::insert(&db, active).await;
     }
     assert_eq!(
         segments::Model::find_duplicate(&db, 7, Some(1000.0), &points)
@@ -623,7 +609,7 @@ async fn seed_segment_reads(db: &DatabaseConnection) {
             ..test_support::segment()
         }
         .into();
-        active.insert(db).await.unwrap();
+        test_support::insert(db, active).await;
     }
     for (id, user_id, segment_id, duration_seconds) in [(1, 7, 1, 70), (2, 7, 1, 60), (3, 8, 2, 30)]
     {
@@ -635,7 +621,7 @@ async fn seed_segment_reads(db: &DatabaseConnection) {
             ..test_support::segment_effort()
         }
         .into();
-        active.insert(db).await.unwrap();
+        test_support::insert(db, active).await;
     }
 }
 
@@ -741,7 +727,7 @@ async fn oauth_model_operations_preserve_identity_linking() {
         .await
         .unwrap();
     let active: users::ActiveModel = test_support::customer().into();
-    let user = active.insert(&db).await.unwrap();
+    let user = test_support::insert(&db, active).await;
     let linked = user
         .link_oauth_identity(&db, "fixture", "subject-7".into())
         .await
@@ -828,16 +814,14 @@ async fn feature_flag_model_and_service_keep_storage_and_cache_consistent() {
     db.execute(&Schema::new(db.get_database_backend()).create_table_from_entity(flags::Entity))
         .await
         .unwrap();
-    flags::ActiveModel {
-        feature_key: Set("heatmaps".into()),
-        enabled: Set(false),
-        created_at: Set(test_support::timestamp()),
-        updated_at: Set(test_support::timestamp()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    test_support::insert(
+        &db,
+        flags::ActiveModel {
+            feature_key: Set("heatmaps".into()),
+            ..test_support::new_feature_flag()
+        },
+    )
+    .await;
     let service = FeatureFlagService::new();
     service.load_cache(&db).await.unwrap();
     assert!(!service.is_enabled("heatmaps"));

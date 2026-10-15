@@ -821,6 +821,8 @@ async fn remove_upload_file(path: PathBuf) {
 
 #[cfg(test)]
 mod tests {
+
+    use crate::test_support;
     use sea_orm::EntityTrait;
     mod deletion;
 
@@ -829,7 +831,7 @@ mod tests {
     use crate::activity_import_lifecycle::ACTIVITY_IMPORT_STATUS_CANCELED;
     use crate::entities::integration_events;
     use chrono::{DateTime, Duration};
-    use sea_orm::{ActiveModelTrait, Database, PaginatorTrait, Set};
+    use sea_orm::{Database, PaginatorTrait, Set};
 
     #[tokio::test]
     async fn missing_activity_does_not_rewrite_or_recount_a_failed_import() {
@@ -899,24 +901,25 @@ mod tests {
         processing_error: Option<&str>,
         now: DateTime<Utc>,
     ) -> activity_imports::Model {
-        activity_imports::ActiveModel {
-            user_id: Set(42),
-            source: Set("archive_url_import".to_string()),
-            status: Set(status.to_string()),
-            processing_stage: Set("complete".to_string()),
-            processing_error: Set(processing_error.map(str::to_string)),
-            processing_attempts: Set(66),
-            processed_at: Set(None),
-            last_processing_event_at: Set(Some(now)),
-            original_filename: Set("archive-ride.gpx".to_string()),
-            storage_path: Set("activity-imports/archive-ride.gpx".to_string()),
-            created_at: Set(now),
-            updated_at: Set(now),
-            ..crate::test_support::new_activity_import()
-        }
-        .insert(db)
+        test_support::insert(
+            db,
+            activity_imports::ActiveModel {
+                user_id: Set(42),
+                source: Set("archive_url_import".to_string()),
+                status: Set(status.to_string()),
+                processing_stage: Set("complete".to_string()),
+                processing_error: Set(processing_error.map(str::to_string)),
+                processing_attempts: Set(66),
+                processed_at: Set(None),
+                last_processing_event_at: Set(Some(now)),
+                original_filename: Set("archive-ride.gpx".to_string()),
+                storage_path: Set("activity-imports/archive-ride.gpx".to_string()),
+                created_at: Set(now),
+                updated_at: Set(now),
+                ..crate::test_support::new_activity_import()
+            },
+        )
         .await
-        .expect("insert test import")
     }
 
     fn make_route_point(elapsed_seconds: i32, latitude: f64, longitude: f64) -> ActivityRoutePoint {

@@ -52,15 +52,59 @@ on `activities::Entity`, and deleting the import stays on `activity_imports::Ent
   archive reads, hidden foreign records, and regeneration with a foreign import
   link. A rejected update preserves stored fields; downloads return retained bytes.
 
+## Insert defaults and timestamps
+
+- Declare insert defaults with SeaORM's `default_value` and `default_expr` on
+  the owning entity. PostgreSQL migrations must supply the corresponding defaults;
+  entity attributes alone do not change an existing database.
+- Leave defaulted insert fields `NotSet`. Preserve explicit overrides, including
+  historical timestamps. Omitted fields in update patches remain unset.
+- Use `crate::timestamps::impl_timestamps!(ActiveModel)` for ordinary model
+  updates. The shared SeaORM `before_save` hook refreshes only `updated_at` on
+  updates; it leaves all insert values and `created_at` untouched. Account and
+  feature-flag updates follow the same convention.
+- Bulk updates and raw SQL supply their own update timestamps because they
+  bypass ActiveModel hooks. Event, scheduling, expiry, freshness, and rebuild
+  timestamps remain explicit domain inputs.
+- Queue timestamps are claim identities. Keep the queue's insert hook using one
+  application-clock instant and preserve explicit values; task state transitions
+  continue owning their timestamps. Do not apply the ordinary update hook there.
+- This convention does not introduce soft deletion. Existing deletes retain
+  their ownership, transaction, and derived-state cleanup behavior.
+- Test shared behavior once with mocks and representative existing fixtures.
+  Verify database defaults, overrides, partial updates, and queue bulk inserts
+  without a central list of entity seeds. Keep focused regressions for domain
+  exceptions such as legacy import versions. Migration files contain schema
+  changes; verify application behavior in the owning model tests.
+
 ## Shared fixture contract
 
+- Use fixture factories with shared test helpers. Keep routine setup shared so
+  each test shows only its meaningful inputs, actions, and assertions.
 - Cross-crate Rust model fixtures live in `bike-core::test_support`.
 - Compile them only for unit tests or the existing `test-fixtures` feature.
   Other crates enable that feature in dev-dependencies.
-- Keep one complete default per model. Use a fixed timestamp and coherent
+- Fixtures provide valid, reusable defaults with fixed timestamps and coherent
   owner IDs. Preserve existing provider-specific identities when adapting them.
-- Make scenario differences visible with struct updates; a local helper may
-  describe a scenario but must build on the shared default.
+- Override only fields relevant to the scenario, using struct updates. A local
+  helper may describe a scenario but must build on the shared default.
+- Insert fixtures with `test_support::insert(&db, fixture_with_overrides).await`.
+  Use Rust's `ActiveModel { field: Set(value), ..fixture() }` struct-update syntax
+  to combine fixture fields and explicit overrides without a runtime field map
+  or separate fixture registry.
+- All Rust unit-test fixture inserts and updates use the shared `insert` and
+  `update` helpers in `bike-core::test_support`, including API and worker tests.
+  Pass update ActiveModels with their identity and changed fields only; use
+  `..Default::default()` for omitted fields and `Set(None)` for explicit clears.
+  The helpers accept connections and transactions through `ConnectionTrait`.
+  Direct bulk statements and expected-error operations remain explicit when
+  their database behavior is the assertion being tested.
+- SQLite fixture timestamp defaults must round-trip through SQLx's RFC 3339
+  parameter format so timestamp equality and version fences match PostgreSQL's
+  typed timestamp behavior. Reuse `table_with_timestamp_defaults` for those tables.
+- Insert fixtures provide required business inputs and deterministic timestamps.
+  Leave database-owned defaults unset unless the test exercises an override;
+  set timestamp fields to `NotSet` when testing database-generated timestamps.
 - Use `new_activity()` and `new_activity_import()` for inserts with generated
   primary keys. These return ActiveModels whose IDs are unset.
 - Retain partial ActiveModels used to update specific stored fields. They are

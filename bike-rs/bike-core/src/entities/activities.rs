@@ -6,7 +6,6 @@ use crate::activity_type::ActivityType;
 use crate::platform::data::pagination::{Paginatable, PaginatedResponse, PaginationParams};
 use crate::training_data::StoredActivityHeartRateZones;
 use crate::workflow_error::WorkflowError;
-use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{
@@ -377,6 +376,7 @@ pub struct Model {
     pub source_correlation_id: Option<String>,
     pub original_filename: Option<String>,
     pub format: Option<String>,
+    #[sea_orm(default_value = "training")]
     pub activity_type: String,
     pub started_at: DateTime<Utc>,
     pub ended_at: Option<DateTime<Utc>>,
@@ -395,7 +395,9 @@ pub struct Model {
     pub estimated_ftp_watts: Option<i32>,
     pub heart_rate_zones_json: Option<StoredActivityHeartRateZones>,
     pub derived_data_json: Option<StoredActivityDerivedData>,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub created_at: DateTime<Utc>,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub updated_at: DateTime<Utc>,
 }
 
@@ -428,20 +430,7 @@ impl Entity {
     }
 }
 
-#[async_trait]
-impl ActiveModelBehavior for ActiveModel {
-    async fn before_save<C>(mut self, _db: &C, insert: bool) -> Result<Self, DbErr>
-    where
-        C: ConnectionTrait,
-    {
-        let now = Utc::now();
-        if insert {
-            self.created_at = Set(now);
-        }
-        self.updated_at = Set(now);
-        Ok(self)
-    }
-}
+crate::timestamps::impl_timestamps!(ActiveModel);
 
 #[derive(Clone, Debug, FromQueryResult)]
 pub struct ActivityStartedAtRow {
@@ -862,7 +851,9 @@ impl Model {
 
 #[cfg(test)]
 mod admin_list_tests {
+
     use super::*;
+    use crate::test_support;
     use sea_orm::{Database, Schema};
 
     async fn fixture() -> sea_orm::DatabaseConnection {
@@ -877,21 +868,22 @@ mod admin_list_tests {
             (4, 7, "Hill Strava", "strava_sync", "road_ride"),
             (5, 7, "Hill trail run", "manual_upload", "run"),
         ] {
-            ActiveModel {
-                id: Set(id),
-                user_id: Set(owner),
-                title: Set(title.into()),
-                source: Set(source.into()),
-                sport: Set(sport.into()),
-                activity_type: Set("activity".into()),
-                started_at: Set(DateTime::parse_from_rfc3339("2026-10-10T12:00:00Z")
-                    .unwrap()
-                    .with_timezone(&Utc)),
-                ..Default::default()
-            }
-            .insert(&db)
-            .await
-            .unwrap();
+            test_support::insert(
+                &db,
+                ActiveModel {
+                    id: Set(id),
+                    user_id: Set(owner),
+                    title: Set(title.into()),
+                    source: Set(source.into()),
+                    sport: Set(sport.into()),
+                    activity_type: Set("activity".into()),
+                    started_at: Set(DateTime::parse_from_rfc3339("2026-10-10T12:00:00Z")
+                        .unwrap()
+                        .with_timezone(&Utc)),
+                    ..Default::default()
+                },
+            )
+            .await;
         }
         db
     }

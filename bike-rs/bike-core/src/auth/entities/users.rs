@@ -16,6 +16,7 @@ pub struct Model {
     pub password: Option<String>,
     pub api_key: String,
     pub name: String,
+    #[sea_orm(default_value = false)]
     pub is_admin: Option<bool>,
     #[sea_orm(default_value = false)]
     pub disabled: bool,
@@ -28,14 +29,16 @@ pub struct Model {
     pub magic_link_expiration: Option<DateTime<Utc>>,
     pub oauth_subject: Option<String>,
     pub oauth_provider: Option<String>,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub created_at: DateTime<Utc>,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
 
-impl ActiveModelBehavior for ActiveModel {}
+crate::timestamps::impl_timestamps!(ActiveModel);
 
 impl Model {
     pub async fn count_created_since(

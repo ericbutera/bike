@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support;
 
 #[tokio::test]
 async fn strava_imports_cannot_enter_sql_replay_or_processing() {
@@ -8,7 +9,7 @@ async fn strava_imports_cannot_enter_sql_replay_or_processing() {
     let mut import: activity_imports::ActiveModel = imported.import.into();
     import.source = Set("strava_sync".into());
     import.status = Set("processing".into());
-    let import = import.update(&db).await.unwrap();
+    let import = test_support::update(&db, import).await;
     let error = queue_activity_import_replay(&db, &dir, &import, "raw_stored")
         .await
         .unwrap_err();
@@ -62,7 +63,7 @@ async fn sql_reprocessing_pages_include_manual_imports_and_exclude_strava() {
     let mut strava: activities::ActiveModel = manual.activity.clone().into();
     strava.id = sea_orm::ActiveValue::NotSet;
     strava.source = Set("strava_sync".into());
-    strava.insert(&db).await.unwrap();
+    test_support::insert(&db, strava).await;
     assert_eq!(
         activities::Model::imported_ids_page(&db, 1, 0, false)
             .await
@@ -178,7 +179,7 @@ async fn worker_restart_preserves_interrupted_archive_attempt_and_queues_new_exe
     let imported = completed_import(&db, &dir).await;
     let mut active: activity_imports::ActiveModel = imported.import.clone().into();
     active.source = Set("archive_url_import".into());
-    let import = active.update(&db).await.unwrap();
+    let import = test_support::update(&db, active).await;
     let (_, id) = queue_activity_import_replay(&db, &dir, &import, "activity_parsed")
         .await
         .unwrap();
@@ -321,7 +322,7 @@ async fn recovery_preserves_a_live_archive_parent_even_when_a_completed_entry_is
     let mut active: activity_imports::ActiveModel = imported.import.clone().into();
     active.source = Set("archive_url_import".into());
     active.archive_job_id = Set(Some(9));
-    let import = active.update(&db).await.unwrap();
+    let import = test_support::update(&db, active).await;
     let (_, id) = queue_activity_import_replay(&db, &dir, &import, "activity_saved")
         .await
         .unwrap();
@@ -332,12 +333,12 @@ async fn recovery_preserves_a_live_archive_parent_even_when_a_completed_entry_is
     let stale = now - ChronoDuration::seconds(ACTIVITY_IMPORT_STALE_PROCESSING_SECONDS + 30);
     let mut active: activity_imports::ActiveModel = import.clone().into();
     active.last_processing_event_at = Set(Some(stale));
-    active.update(&db).await.unwrap();
+    test_support::update(&db, active).await;
     let task = insert_process_activity_import_task(&db, import.id, "processing", now).await;
     let mut parent: background_tasks::ActiveModel = task.into();
     parent.task_type = Set("activity_archive_import".into());
     parent.payload = Set(serde_json::json!({"data":{"job_id":9}}));
-    parent.update(&db).await.unwrap();
+    test_support::update(&db, parent).await;
     assert_eq!(
         crate::activity_import_recovery::recover_abandoned_activity_imports_after_worker_start(
             &db,
@@ -367,7 +368,7 @@ async fn queued_replay_rejects_a_checkpoint_changed_before_worker_execution() {
         .unwrap();
     let mut active: activities::ActiveModel = imported.activity.into();
     active.updated_at = Set(Utc::now());
-    let activity = active.update(&db).await.unwrap();
+    let activity = test_support::update(&db, active).await;
     let error = reprocess_activity_from_import(
         &db,
         &dir,
@@ -524,7 +525,7 @@ async fn stale_checkpoints_fall_back_and_corrupt_sources_block_replay() {
     let mut active: activities::ActiveModel = imported.activity.clone().into();
     active.title = Set("Changed after ingest".into());
     active.updated_at = Set(Utc::now());
-    active.update(&db).await.unwrap();
+    test_support::update(&db, active).await;
     let plan = plan_activity_import_replay(&db, &dir, &imported.import, "segments_built")
         .await
         .unwrap();

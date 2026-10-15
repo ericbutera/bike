@@ -441,6 +441,7 @@ pub(crate) fn ensure_connection_scopes_allow_activity_import(
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use crate::entities::activities;
     use crate::entities::activity_import_locks;
@@ -448,9 +449,10 @@ mod tests {
     use crate::entities::integration_events as integration_events_entity;
     use crate::entities::segment_efforts;
     use crate::strava::provider_payload::StravaStream;
+    use crate::test_support;
     use axum::http::StatusCode;
     use chrono::Duration as ChronoDuration;
-    use sea_orm::{ActiveModelTrait, ConnectionTrait, Database, Schema};
+    use sea_orm::{ConnectionTrait, Database, Schema};
 
     async fn test_db() -> DatabaseConnection {
         let db = Database::connect("sqlite::memory:")
@@ -487,29 +489,30 @@ mod tests {
         last_sync_status: &str,
         scopes: &str,
     ) -> strava_connections::Model {
-        strava_connections::ActiveModel {
-            user_id: Set(user_id),
-            athlete_id: Set(10_000 + i64::from(user_id)),
-            athlete_username: Set(Some(format!("athlete-{user_id}"))),
-            athlete_first_name: Set(Some("Test".to_string())),
-            athlete_last_name: Set(Some("Rider".to_string())),
-            athlete_profile_medium_url: Set(None),
-            scopes: Set(scopes.to_string()),
-            access_token: Set("access-token".to_string()),
-            refresh_token: Set("refresh-token".to_string()),
-            expires_at: Set(Utc::now() + ChronoDuration::hours(1)),
-            last_sync_status: Set(last_sync_status.to_string()),
-            last_sync_message: Set(Some("Strava sync queued.".to_string())),
-            last_sync_started_at: Set(None),
-            last_sync_finished_at: Set(None),
-            last_sync_imported_count: Set(0),
-            last_sync_duplicate_count: Set(0),
-            last_sync_failed_count: Set(0),
-            ..crate::test_support::new_connection()
-        }
-        .insert(db)
+        test_support::insert(
+            db,
+            strava_connections::ActiveModel {
+                user_id: Set(user_id),
+                athlete_id: Set(10_000 + i64::from(user_id)),
+                athlete_username: Set(Some(format!("athlete-{user_id}"))),
+                athlete_first_name: Set(Some("Test".to_string())),
+                athlete_last_name: Set(Some("Rider".to_string())),
+                athlete_profile_medium_url: Set(None),
+                scopes: Set(scopes.to_string()),
+                access_token: Set("access-token".to_string()),
+                refresh_token: Set("refresh-token".to_string()),
+                expires_at: Set(Utc::now() + ChronoDuration::hours(1)),
+                last_sync_status: Set(last_sync_status.to_string()),
+                last_sync_message: Set(Some("Strava sync queued.".to_string())),
+                last_sync_started_at: Set(None),
+                last_sync_finished_at: Set(None),
+                last_sync_imported_count: Set(0),
+                last_sync_duplicate_count: Set(0),
+                last_sync_failed_count: Set(0),
+                ..crate::test_support::new_connection()
+            },
+        )
         .await
-        .expect("insert Strava connection")
     }
 
     fn test_config() -> Config {
