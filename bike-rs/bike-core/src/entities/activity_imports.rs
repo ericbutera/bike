@@ -25,6 +25,7 @@ pub struct Model {
     pub archive_job_id: Option<i32>,
     pub processing_stage: String,
     pub processing_error: Option<String>,
+    #[sea_orm(default_value = 0)]
     pub processing_attempts: i32,
     pub processed_at: Option<DateTime<Utc>>,
     pub last_processing_event_at: Option<DateTime<Utc>>,
@@ -394,3 +395,5 @@ impl Entity {
             .await
     }
 }
+
+mod mutations;

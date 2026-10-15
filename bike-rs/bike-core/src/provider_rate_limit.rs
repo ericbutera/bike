@@ -2,7 +2,8 @@ use crate::entities::provider_rate_limit_buckets;
 use crate::provider_metrics as metrics;
 use crate::workflow_error::WorkflowError as AppError;
 use chrono::{DateTime, Duration, Utc};
-use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, Set, TransactionTrait};
+use sea_orm::TransactionTrait;
+use sea_orm::{ConnectionTrait, DatabaseConnection};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -198,16 +199,7 @@ async fn reserve_quota_bucket_row<C>(
 where
     C: ConnectionTrait,
 {
-    let mut active_model: provider_rate_limit_buckets::ActiveModel = row.into();
-    if active_model.reset_at.as_ref() <= &now {
-        active_model.used_count = Set(spec.units);
-        active_model.reset_at = Set(now + spec.window);
-    } else {
-        let used_count = *active_model.used_count.as_ref() + spec.units;
-        active_model.used_count = Set(used_count);
-    }
-    active_model.limit_count = Set(spec.limit_count);
-    Ok(active_model.update(db).await?)
+    row.reserve(db, spec, now).await
 }
 
 pub async fn reconcile_provider_quota_usage(
@@ -218,40 +210,18 @@ pub async fn reconcile_provider_quota_usage(
     used_count: i32,
     reset_at: DateTime<Utc>,
 ) -> Result<(), AppError> {
-    if limit_count <= 0 || used_count < 0 {
-        return Ok(());
-    }
-
-    let now = Utc::now();
-    let Some(row) = provider_rate_limit_buckets::Model::find_bucket(db, provider, bucket).await?
-    else {
-        let row = provider_rate_limit_buckets::ActiveModel {
-            provider: Set(provider.to_string()),
-            bucket: Set(bucket.to_string()),
-            limit_count: Set(limit_count),
-            used_count: Set(used_count),
-            reset_at: Set(reset_at),
-            ..Default::default()
-        };
-        let row = row.insert(db).await?;
+    if let Some(row) = provider_rate_limit_buckets::Model::reconcile_usage(
+        db,
+        provider,
+        bucket,
+        limit_count,
+        used_count,
+        reset_at,
+    )
+    .await?
+    {
         record_provider_rate_limit_bucket_metrics(&row);
-        return Ok(());
-    };
-
-    let should_reconcile =
-        row.reset_at <= now || used_count > row.used_count || limit_count != row.limit_count;
-    if !should_reconcile {
-        record_provider_rate_limit_bucket_metrics(&row);
-        return Ok(());
     }
-
-    let mut active_model: provider_rate_limit_buckets::ActiveModel = row.into();
-    active_model.limit_count = Set(limit_count);
-    active_model.used_count = Set(used_count);
-    active_model.reset_at = Set(reset_at);
-    let updated = active_model.update(db).await?;
-    record_provider_rate_limit_bucket_metrics(&updated);
-
     Ok(())
 }
 
@@ -280,16 +250,7 @@ where
         return Ok(());
     }
 
-    let row = provider_rate_limit_buckets::ActiveModel {
-        provider: Set(spec.provider.to_string()),
-        bucket: Set(spec.bucket.to_string()),
-        limit_count: Set(spec.limit_count),
-        used_count: Set(0),
-        reset_at: Set(now + spec.window),
-        ..Default::default()
-    };
-
-    match row.insert(db).await {
+    match provider_rate_limit_buckets::Model::initialize(db, spec, now).await {
         Ok(row) => {
             record_provider_rate_limit_bucket_metrics(&row);
             Ok(())

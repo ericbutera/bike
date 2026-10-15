@@ -1,3 +1,5 @@
+use crate::analytics::SegmentUserSummaryAccumulator;
+use crate::entities::segment_user_summaries;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
@@ -99,5 +101,26 @@ impl Entity {
             .filter(Column::SegmentId.is_in(ids.iter().copied()))
             .exec(db)
             .await
+    }
+}
+
+impl Model {
+    pub(crate) async fn store_summary(
+        db: &impl ConnectionTrait,
+        segment_id: i32,
+        user_id: i32,
+        summary: SegmentUserSummaryAccumulator,
+    ) -> Result<(), DbErr> {
+        segment_user_summaries::ActiveModel {
+            segment_id: Set(segment_id),
+            user_id: Set(user_id),
+            effort_count: Set(summary.effort_count),
+            personal_best_effort_id: Set(summary.personal_best_effort_id),
+            personal_best_duration_seconds: Set(summary.personal_best_duration_seconds),
+            ..Default::default()
+        }
+        .insert(db)
+        .await?;
+        Ok(())
     }
 }

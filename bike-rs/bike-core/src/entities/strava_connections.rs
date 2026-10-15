@@ -127,12 +127,16 @@ pub struct Model {
     pub refresh_token: String,
     pub expires_at: DateTime<Utc>,
     pub last_synced_activity_started_at: Option<DateTime<Utc>>,
+    #[sea_orm(default_value = "never")]
     pub last_sync_status: String,
     pub last_sync_message: Option<String>,
     pub last_sync_started_at: Option<DateTime<Utc>>,
     pub last_sync_finished_at: Option<DateTime<Utc>>,
+    #[sea_orm(default_value = 0)]
     pub last_sync_imported_count: i32,
+    #[sea_orm(default_value = 0)]
     pub last_sync_duplicate_count: i32,
+    #[sea_orm(default_value = 0)]
     pub last_sync_failed_count: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -178,3 +182,5 @@ impl Model {
         Ok(())
     }
 }
+
+mod mutations;

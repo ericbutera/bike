@@ -266,3 +266,17 @@ impl Model {
             .await
     }
 }
+
+impl Model {
+    pub async fn set_ranks(
+        self,
+        db: &impl ConnectionTrait,
+        overall_rank: i32,
+        user_rank: i32,
+    ) -> Result<Self, DbErr> {
+        let mut active_model: ActiveModel = self.into();
+        active_model.overall_rank = Set(Some(overall_rank));
+        active_model.user_rank = Set(Some(user_rank));
+        active_model.update(db).await
+    }
+}

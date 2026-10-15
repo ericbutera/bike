@@ -5,7 +5,8 @@ use crate::activity_recording_recovery::routes_match;
 use crate::entities::{activities, activity_import_artifacts, activity_imports};
 use crate::workflow_error::WorkflowError as AppError;
 use chrono::{DateTime, Duration, Utc};
-use sea_orm::{ActiveModelTrait, DatabaseConnection, Set, TransactionTrait};
+use sea_orm::DatabaseConnection;
+use sea_orm::{ModelTrait, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::{Component, Path};
@@ -156,10 +157,10 @@ async fn store_archive_source(
         transaction.commit().await?;
         return Ok(());
     }
-    let mut model: activity_import_artifacts::ActiveModel = verified.artifact.into();
-    model.id = sea_orm::ActiveValue::NotSet;
-    model.size_bytes = Set(verified.bytes.len() as i64);
-    model.insert(&transaction).await?;
+    verified
+        .artifact
+        .copy_with_size(&transaction, verified.bytes.len() as i64)
+        .await?;
     transaction.commit().await?;
     Ok(())
 }
@@ -627,15 +628,13 @@ async fn commit_recovery(
         ));
     }
     if artifact.activity_import_id != plan.import_id {
-        let mut model: activity_import_artifacts::ActiveModel = artifact.into();
-        model.id = sea_orm::ActiveValue::NotSet;
-        model.activity_import_id = Set(plan.import_id);
-        artifact = model.insert(&transaction).await?;
+        artifact = artifact
+            .copy_to_import(&transaction, plan.import_id)
+            .await?;
     }
-    let mut activity: activities::ActiveModel = current.into();
-    activity.original_filename = Set(Some(artifact.original_filename.clone()));
-    activity.format = Set(Some(artifact.format.clone()));
-    activity.update(&transaction).await?;
+    current
+        .adopt_source_metadata(&transaction, &artifact)
+        .await?;
     if !plan.import.promote_source(&transaction, &artifact).await? {
         return Err(AppError::bad_request(
             "Recovery import changed; plan it again",
@@ -717,8 +716,7 @@ pub async fn retire_generated_artifact(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
         Err(error) => return Err(error.into()),
     }
-    let model: activity_import_artifacts::ActiveModel = artifact.into();
-    model.delete(&transaction).await?;
+    artifact.delete(&transaction).await?;
     transaction.commit().await?;
     Ok(true)
 }

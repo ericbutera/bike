@@ -161,3 +161,16 @@ impl From<crate::segment_regeneration::SegmentRegenerationError> for WorkflowErr
         Self::internal(error.message)
     }
 }
+
+impl From<crate::xc_goal_backfill::XcGoalBackfillError> for WorkflowError {
+    fn from(error: crate::xc_goal_backfill::XcGoalBackfillError) -> Self {
+        use crate::xc_goal_backfill::XcGoalBackfillError;
+        match error {
+            XcGoalBackfillError::ActivityImportLock(error) => error.into(),
+            XcGoalBackfillError::Database(error) => error.into(),
+            XcGoalBackfillError::Queue(message) => {
+                Self::internal(format!("Failed to queue XC training backfill: {message}"))
+            }
+        }
+    }
+}

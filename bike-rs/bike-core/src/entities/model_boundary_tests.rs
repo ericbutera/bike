@@ -5,12 +5,12 @@ use crate::activity_sport::ActivitySport;
 use crate::activity_type::ActivityType;
 use crate::platform::data::pagination::PaginationParams;
 use crate::test_support;
+use crate::test_support::table_with_timestamp_defaults;
 use sea_orm::{
     ActiveModelTrait, ConnectionTrait, Database, DatabaseConnection, DbBackend, DbErr, EntityTrait,
     MockDatabase, Schema,
 };
-
-async fn database() -> DatabaseConnection {
+pub(super) async fn database() -> DatabaseConnection {
     let db = Database::connect("sqlite::memory:").await.unwrap();
     let schema = Schema::new(db.get_database_backend());
     db.execute(&schema.create_table_from_entity(activities::Entity))
@@ -393,29 +393,19 @@ async fn report_reads_keep_owner_cycling_and_duration_or_total_time_policy() {
 }
 
 fn segment_effort_table(schema: &Schema) -> sea_orm::sea_query::TableCreateStatement {
-    use sea_orm::sea_query::{Expr, Table};
-    let source = schema.create_table_from_entity(super::segment_efforts::Entity);
-    let mut table = Table::create();
-    table.table(super::segment_efforts::Entity);
-    for column in source.get_columns() {
-        let mut column = column.clone();
-        if matches!(
-            column.get_column_name().as_str(),
-            "created_at" | "updated_at"
-        ) {
-            column.default(Expr::current_timestamp());
-        }
-        table.col(&mut column);
-    }
-    table.to_owned()
+    table_with_timestamp_defaults(
+        schema,
+        super::segment_efforts::Entity,
+        &["created_at", "updated_at"],
+    )
 }
 
-async fn segment_database() -> DatabaseConnection {
+pub(super) async fn segment_database() -> DatabaseConnection {
     use super::{activity_analytics, segment_summaries, segment_user_summaries, segments};
     let db = database().await;
     let schema = Schema::new(db.get_database_backend());
     for statement in [
-        schema.create_table_from_entity(segments::Entity),
+        table_with_timestamp_defaults(&schema, segments::Entity, &["last_activity_change_at"]),
         segment_effort_table(&schema),
         schema.create_table_from_entity(segment_summaries::Entity),
         schema.create_table_from_entity(segment_user_summaries::Entity),
@@ -778,6 +768,17 @@ async fn oauth_model_operations_preserve_identity_linking() {
     assert_eq!(
         users::Model::rider_names(&db, &[7]).await.unwrap()[0].name,
         user.name
+    );
+    linked.ensure_admin(&db).await.unwrap();
+    let admin = users::Model::find_optional(&db, linked.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(admin.is_admin, Some(true));
+    admin.ensure_admin(&db).await.unwrap();
+    assert_eq!(
+        users::Model::find_optional(&db, linked.id).await.unwrap(),
+        Some(admin)
     );
 }
 

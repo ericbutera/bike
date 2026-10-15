@@ -1,6 +1,4 @@
-use crate::activity_achievements::{
-    ActivityAchievementHighlight, StoredActivityAchievementHighlights,
-};
+use crate::activity_achievements::ActivityAchievementHighlight;
 use crate::background_jobs::{
     entities::pipeline_outputs,
     execution::{measured, WorkCounts, WorkScope},
@@ -13,10 +11,9 @@ use crate::training_data::{
     deserialize_activity_heart_rate_zones, weighted_zone_intensity, StoredActivityHeartRateZones,
 };
 use chrono::{DateTime, Duration, NaiveDate, Utc};
-use sea_orm::{
-    ActiveModelTrait, ConnectionTrait, DatabaseConnection, Set, TransactionSession,
-    TransactionTrait,
-};
+#[cfg(test)]
+use sea_orm::{ActiveModelTrait, Set};
+use sea_orm::{ConnectionTrait, DatabaseConnection, TransactionSession, TransactionTrait};
 use std::collections::{BTreeMap, HashMap};
 
 pub const FITNESS_WINDOW_DAYS: f64 = 42.0;
@@ -34,32 +31,32 @@ pub struct FitnessFreshnessDay {
 }
 
 #[derive(Debug, Default)]
-struct SegmentSummaryAccumulator {
-    effort_count: i32,
-    leader_user_id: Option<i32>,
-    leader_effort_id: Option<i32>,
-    best_duration_seconds: Option<i32>,
-    latest_activity_started_at: Option<DateTime<Utc>>,
-    latest_activity_id: Option<i32>,
-    latest_effort_id: Option<i32>,
+pub(crate) struct SegmentSummaryAccumulator {
+    pub(crate) effort_count: i32,
+    pub(crate) leader_user_id: Option<i32>,
+    pub(crate) leader_effort_id: Option<i32>,
+    pub(crate) best_duration_seconds: Option<i32>,
+    pub(crate) latest_activity_started_at: Option<DateTime<Utc>>,
+    pub(crate) latest_activity_id: Option<i32>,
+    pub(crate) latest_effort_id: Option<i32>,
 }
 
 #[derive(Debug, Default)]
-struct SegmentUserSummaryAccumulator {
-    effort_count: i32,
-    personal_best_effort_id: Option<i32>,
-    personal_best_duration_seconds: Option<i32>,
+pub(crate) struct SegmentUserSummaryAccumulator {
+    pub(crate) effort_count: i32,
+    pub(crate) personal_best_effort_id: Option<i32>,
+    pub(crate) personal_best_duration_seconds: Option<i32>,
 }
 
 #[derive(Debug, Default)]
-struct ActivityAnalyticsAccumulator {
-    user_id: Option<i32>,
-    segment_effort_count: i32,
-    achievement_count: i32,
-    kom_count: i32,
-    top_10_count: i32,
-    pr_count: i32,
-    achievement_highlights: Vec<ActivityAchievementHighlight>,
+pub(crate) struct ActivityAnalyticsAccumulator {
+    pub(crate) user_id: Option<i32>,
+    pub(crate) segment_effort_count: i32,
+    pub(crate) achievement_count: i32,
+    pub(crate) kom_count: i32,
+    pub(crate) top_10_count: i32,
+    pub(crate) pr_count: i32,
+    pub(crate) achievement_highlights: Vec<ActivityAchievementHighlight>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -209,21 +206,7 @@ pub async fn mark_user_activity_change<C>(
 where
     C: ConnectionTrait,
 {
-    if let Some(model) = analytics_user_states::Model::for_user(db, user_id).await? {
-        let mut active_model: analytics_user_states::ActiveModel = model.into();
-        active_model.last_activity_change_at = Set(changed_at);
-        active_model.update(db).await?;
-    } else {
-        analytics_user_states::ActiveModel {
-            user_id: Set(user_id),
-            last_activity_change_at: Set(changed_at),
-            ..Default::default()
-        }
-        .insert(db)
-        .await?;
-    }
-
-    Ok(())
+    analytics_user_states::Model::mark_changed(db, user_id, changed_at).await
 }
 
 pub async fn mark_user_fitness_dirty<C>(
@@ -235,25 +218,7 @@ pub async fn mark_user_fitness_dirty<C>(
 where
     C: ConnectionTrait,
 {
-    if let Some(model) = analytics_user_states::Model::for_user(db, user_id).await? {
-        let next_dirty_from_day = model
-            .fitness_dirty_from_day
-            .map(|existing| existing.min(dirty_from_day))
-            .unwrap_or(dirty_from_day);
-        let mut active_model: analytics_user_states::ActiveModel = model.into();
-        active_model.last_activity_change_at = Set(changed_at);
-        active_model.fitness_dirty_from_day = Set(Some(next_dirty_from_day));
-        active_model.update(db).await?;
-    } else {
-        analytics_user_states::ActiveModel {
-            user_id: Set(user_id),
-            last_activity_change_at: Set(changed_at),
-            fitness_dirty_from_day: Set(Some(dirty_from_day)),
-            ..Default::default()
-        }
-        .insert(db)
-        .await?;
-    }
+    analytics_user_states::Model::mark_dirty(db, user_id, dirty_from_day, changed_at).await?;
 
     let revision = fitness_revision(changed_at, Utc::now().date_naive());
     pipeline_outputs::Model::advance(db, "fitness", user_id, &revision).await?;
@@ -449,36 +414,15 @@ where
     {
         return Ok(false);
     }
-    let row_models = fitness_freshness_active_models(user_id, rows, rebuilt_at);
-    fitness_freshness_daily::Model::replace_user_rows_from_day(
+    fitness_freshness_daily::Model::replace_days(
         db,
         user_id,
         input.dirty_from_day,
-        row_models,
+        rows,
+        rebuilt_at,
     )
     .await?;
     Ok(true)
-}
-
-fn fitness_freshness_active_models(
-    user_id: i32,
-    rows: Vec<FitnessFreshnessDay>,
-    rebuilt_at: DateTime<Utc>,
-) -> Vec<fitness_freshness_daily::ActiveModel> {
-    rows.into_iter()
-        .map(|row| fitness_freshness_daily::ActiveModel {
-            user_id: Set(user_id),
-            day: Set(row.day),
-            activity_count: Set(row.activity_count),
-            training_load: Set(row.training_load),
-            fitness: Set(row.fitness),
-            fatigue: Set(row.fatigue),
-            form: Set(row.form),
-            created_at: Set(rebuilt_at),
-            updated_at: Set(rebuilt_at),
-            ..Default::default()
-        })
-        .collect()
 }
 
 #[tracing::instrument(name = "segments.rebuild", skip_all, fields(segment_count = segment_ids.len()))]
@@ -719,32 +663,11 @@ where
             .remove(&segment_id)
             .unwrap_or_default();
 
-        segment_summaries::ActiveModel {
-            segment_id: Set(segment_id),
-            effort_count: Set(summary.effort_count),
-            leader_user_id: Set(summary.leader_user_id),
-            leader_effort_id: Set(summary.leader_effort_id),
-            best_duration_seconds: Set(summary.best_duration_seconds),
-            latest_activity_started_at: Set(summary.latest_activity_started_at),
-            latest_activity_id: Set(summary.latest_activity_id),
-            latest_effort_id: Set(summary.latest_effort_id),
-            ..Default::default()
-        }
-        .insert(db)
-        .await?;
+        segment_summaries::Model::store_summary(db, segment_id, summary).await?;
     }
 
     for ((segment_id, user_id), summary) in rebuild.segment_user_summary_by_key {
-        segment_user_summaries::ActiveModel {
-            segment_id: Set(segment_id),
-            user_id: Set(user_id),
-            effort_count: Set(summary.effort_count),
-            personal_best_effort_id: Set(summary.personal_best_effort_id),
-            personal_best_duration_seconds: Set(summary.personal_best_duration_seconds),
-            ..Default::default()
-        }
-        .insert(db)
-        .await?;
+        segment_user_summaries::Model::store_summary(db, segment_id, user_id, summary).await?;
     }
 
     Ok(written)
@@ -757,10 +680,10 @@ async fn update_segment_effort_ranks<C>(
 where
     C: ConnectionTrait,
 {
-    let mut active_model: segment_efforts::ActiveModel = update.effort.into();
-    active_model.overall_rank = Set(Some(update.overall_rank));
-    active_model.user_rank = Set(Some(update.user_rank));
-    active_model.update(db).await?;
+    update
+        .effort
+        .set_ranks(db, update.overall_rank, update.user_rank)
+        .await?;
     Ok(())
 }
 
@@ -902,21 +825,7 @@ where
             continue;
         };
 
-        activity_analytics::ActiveModel {
-            activity_id: Set(activity_id),
-            user_id: Set(user_id),
-            segment_effort_count: Set(analytics.segment_effort_count),
-            achievement_count: Set(analytics.achievement_count),
-            kom_count: Set(analytics.kom_count),
-            top_10_count: Set(analytics.top_10_count),
-            pr_count: Set(analytics.pr_count),
-            achievement_highlights_json: Set(Some(
-                StoredActivityAchievementHighlights::from_items(analytics.achievement_highlights),
-            )),
-            ..Default::default()
-        }
-        .insert(db)
-        .await?;
+        activity_analytics::Model::store_summary(db, activity_id, user_id, analytics).await?;
     }
 
     Ok(())

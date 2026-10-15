@@ -10,7 +10,9 @@ pub use analytics::{
 mod heatmaps;
 pub use heatmaps::heatmap_projection;
 mod imports;
+mod schema;
 mod segments;
+pub use schema::table_with_timestamp_defaults;
 pub use segments::segment;
 
 pub use accounts::{connection, customer, new_connection, new_customer};

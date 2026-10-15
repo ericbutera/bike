@@ -14,9 +14,10 @@ use crate::entities::activity_archive_import_jobs;
 use crate::jobs::JobQueue as TaskQueue;
 use crate::training_profile::{load_training_profile, TrainingProfile};
 use crate::workflow_error::WorkflowError as AppError;
-use chrono::Utc;
 use reqwest::{header, redirect::Policy, Client, Url};
-use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
+use sea_orm::DatabaseConnection;
+#[cfg(test)]
+use sea_orm::{ActiveModelTrait, Set};
 use serde::Serialize;
 use std::env;
 use std::io::{Cursor, Read, Seek};
@@ -96,21 +97,9 @@ pub async fn enqueue_activity_archive_import_job(
     )
     .await?;
 
-    let job = activity_archive_import_jobs::ActiveModel {
-        user_id: Set(user_id),
-        user_storage_key: Set(user_storage_key.to_string()),
-        archive_url: Set(archive_url),
-        status: Set(ACTIVITY_ARCHIVE_IMPORT_STATUS_QUEUED.to_string()),
-        total_entries: Set(0),
-        supported_entry_count: Set(0),
-        imported_count: Set(0),
-        duplicate_count: Set(0),
-        skipped_unsupported_count: Set(0),
-        failed_count: Set(0),
-        ..Default::default()
-    }
-    .insert(db)
-    .await;
+    let job =
+        activity_archive_import_jobs::Model::queue(db, user_id, user_storage_key, archive_url)
+            .await;
 
     let job = match job {
         Ok(job) => job,
@@ -1108,25 +1097,7 @@ async fn mark_activity_archive_import_job_running(
     db: &DatabaseConnection,
     job: &activity_archive_import_jobs::Model,
 ) -> Result<activity_archive_import_jobs::Model, AppError> {
-    activity_archive_import_jobs::ActiveModel {
-        id: Set(job.id),
-        status: Set(ACTIVITY_ARCHIVE_IMPORT_STATUS_RUNNING.to_string()),
-        failure_message: Set(None),
-        error_samples_json: Set(None),
-        resolved_url: Set(None),
-        total_entries: Set(0),
-        supported_entry_count: Set(0),
-        imported_count: Set(0),
-        duplicate_count: Set(0),
-        skipped_unsupported_count: Set(0),
-        failed_count: Set(0),
-        started_at: Set(Some(Utc::now())),
-        finished_at: Set(None),
-        ..Default::default()
-    }
-    .update(db)
-    .await
-    .map_err(AppError::from)
+    activity_archive_import_jobs::Model::mark_running(db, job).await
 }
 
 async fn mark_activity_archive_import_job_finished(
@@ -1134,33 +1105,10 @@ async fn mark_activity_archive_import_job_finished(
     job: &activity_archive_import_jobs::Model,
     summary: &ActivityArchiveImportResponse,
 ) -> Result<activity_archive_import_jobs::Model, AppError> {
-    activity_archive_import_jobs::ActiveModel {
-        id: Set(job.id),
-        resolved_url: Set(Some(summary.source.clone())),
-        status: Set(archive_outcome(summary).into()),
-        failure_message: Set(None),
-        error_samples_json: Set(Some(
-            serde_json::to_string(&summary.error_samples).map_err(|error| {
-                AppError::internal(format!(
-                    "Failed to serialize archive import errors: {error}"
-                ))
-            })?,
-        )),
-        total_entries: Set(summary.total_entries),
-        supported_entry_count: Set(summary.supported_entry_count),
-        imported_count: Set(summary.imported_count),
-        duplicate_count: Set(summary.duplicate_count),
-        skipped_unsupported_count: Set(summary.skipped_unsupported_count),
-        failed_count: Set(summary.failed_count),
-        finished_at: Set(Some(Utc::now())),
-        ..Default::default()
-    }
-    .update(db)
-    .await
-    .map_err(AppError::from)
+    activity_archive_import_jobs::Model::mark_finished(db, job, summary).await
 }
 
-fn archive_outcome(summary: &ActivityArchiveImportResponse) -> &'static str {
+pub(crate) fn archive_outcome(summary: &ActivityArchiveImportResponse) -> &'static str {
     if summary.failed_count == 0 {
         ACTIVITY_ARCHIVE_IMPORT_STATUS_SUCCEEDED
     } else if summary.imported_count + summary.duplicate_count > 0 {
@@ -1176,17 +1124,7 @@ async fn mark_activity_archive_import_job_failed(
     resolved_url: Option<String>,
     failure_message: String,
 ) -> Result<activity_archive_import_jobs::Model, AppError> {
-    activity_archive_import_jobs::ActiveModel {
-        id: Set(job.id),
-        resolved_url: Set(resolved_url),
-        status: Set(ACTIVITY_ARCHIVE_IMPORT_STATUS_FAILED.to_string()),
-        failure_message: Set(Some(failure_message)),
-        finished_at: Set(Some(Utc::now())),
-        ..Default::default()
-    }
-    .update(db)
-    .await
-    .map_err(AppError::from)
+    activity_archive_import_jobs::Model::mark_failed(db, job, resolved_url, failure_message).await
 }
 
 #[cfg(test)]

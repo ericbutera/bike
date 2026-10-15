@@ -84,10 +84,17 @@ async fn database() -> DatabaseConnection {
         schema.create_table_from_entity(segment_efforts::Entity),
         schema.create_table_from_entity(activity_training_analyses::Entity),
         schema.create_table_from_entity(activity_analytics::Entity),
-        schema.create_table_from_entity(segments::Entity),
+        test_support::table_with_timestamp_defaults(
+            &schema,
+            segments::Entity,
+            &["last_activity_change_at"],
+        ),
         schema.create_table_from_entity(segment_summaries::Entity),
         schema.create_table_from_entity(segment_user_summaries::Entity),
         schema.create_table_from_entity(user_preferences::Entity),
+        schema.create_table_from_entity(
+            bike_core::background_jobs::entities::background_tasks::Entity,
+        ),
     ] {
         db.execute(&statement).await.unwrap();
     }
@@ -455,4 +462,136 @@ async fn segment_builder_reuses_owned_duplicate_and_rejects_foreign_activity() {
             404,
         )
         .await;
+}
+
+#[tokio::test]
+async fn segment_patch_rejects_blank_title_before_changing_mode_or_star() {
+    let fixture = Fixture::new().await;
+    seed_segment(&fixture).await;
+    let before = segments::Model::find_owned(&fixture.db, 1, 7)
+        .await
+        .unwrap()
+        .unwrap();
+    let response = fixture
+        .json(
+            "PUT",
+            "/api/segments/1",
+            json!({"title":" ","mode":"dh","starred":true}),
+            400,
+        )
+        .await;
+    assert_eq!(
+        response["errors"]["title"],
+        json!(["Segment name is required"])
+    );
+    let after = segments::Model::find_owned(&fixture.db, 1, 7)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(before, after);
+    let changed = fixture
+        .json(
+            "PUT",
+            "/api/segments/1",
+            json!({"mode":"dh","starred":true}),
+            200,
+        )
+        .await;
+    assert_eq!(changed["mode"], "dh");
+    assert_eq!(changed["starred"], true);
+}
+
+#[tokio::test]
+async fn segment_builder_creation_and_replacement_queue_the_saved_segment() {
+    use bike_core::background_jobs::entities::background_tasks;
+    use sea_orm::EntityTrait;
+    let fixture = Fixture::new().await;
+    seed_segment(&fixture).await;
+    let created = fixture
+        .json(
+            "POST",
+            "/api/segments/from-activity",
+            json!({
+                "activity_id":42,"title":" Short segment ","start_route_point_index":0,
+                "end_route_point_index":1
+            }),
+            201,
+        )
+        .await;
+    let id = created["id"].as_i64().unwrap() as i32;
+    assert_eq!(created["title"], "Short segment");
+    assert_eq!(created["builder_source"]["end_route_point_index"], 1);
+    let replaced = fixture
+        .json(
+            "PUT",
+            &format!("/api/segments/{id}/from-activity"),
+            json!({
+                "activity_id":42,"title":"Replacement","start_route_point_index":1,
+                "end_route_point_index":4
+            }),
+            200,
+        )
+        .await;
+    assert_eq!(replaced["id"], id);
+    let stored = segments::Model::find_owned(&fixture.db, id, 7)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.title, "Replacement");
+    assert_eq!(stored.source_start_route_point_index, Some(1));
+    assert_eq!(stored.source_end_route_point_index, Some(4));
+    let jobs = background_tasks::Entity::find()
+        .all(&fixture.db)
+        .await
+        .unwrap();
+    assert_eq!(jobs.len(), 2);
+    assert!(jobs
+        .iter()
+        .all(|job| job.payload["data"]["segment_id"] == id));
+}
+
+#[tokio::test]
+async fn segment_multipart_import_queues_once_and_reuses_the_owned_route() {
+    use bike_core::background_jobs::entities::background_tasks;
+    use sea_orm::EntityTrait;
+    let fixture = Fixture::new().await;
+    let body=format!("--boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"ridge.gpx\"\r\nContent-Type: application/gpx+xml\r\n\r\n{}\r\n--boundary--\r\n",
+        include_str!("../../tests/fixtures/import-analytics-ride.gpx"));
+    let mut id = None;
+    for status in [201, 200] {
+        let response = fixture
+            .app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/segments")
+                    .header("content-type", "multipart/form-data; boundary=boundary")
+                    .body(Body::from(body.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let actual = response.status();
+        let bytes = to_bytes(response.into_body(), 1_000_000).await.unwrap();
+        assert_eq!(actual, status, "{}", String::from_utf8_lossy(&bytes));
+        let segment: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(segment["source"], "manual_segment_import");
+        if let Some(id) = id {
+            assert_eq!(segment["id"], id);
+        } else {
+            id = segment["id"].as_i64();
+        }
+    }
+    let jobs = background_tasks::Entity::find()
+        .all(&fixture.db)
+        .await
+        .unwrap();
+    assert_eq!(jobs.len(), 1);
+    let stored = segments::Model::find_owned(&fixture.db, id.unwrap() as i32, 7)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.original_filename.as_deref(), Some("ridge.gpx"));
+    assert_eq!(stored.format.as_deref(), Some("gpx"));
 }

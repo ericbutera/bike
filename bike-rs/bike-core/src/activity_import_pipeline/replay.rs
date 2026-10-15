@@ -205,12 +205,9 @@ async fn queue_replay(
         previous.as_ref(),
     )
     .await?;
-    let mut active: activity_imports::ActiveModel = import.clone().into();
-    active.status = Set(ACTIVITY_IMPORT_STATUS_PROCESSING.into());
-    active.processing_stage = Set(plan.start_stage.clone());
-    active.processing_error = Set(None);
-    active.last_processing_event_at = Set(Some(Utc::now()));
-    active.update(&transaction).await?;
+    import
+        .mark_processing(&transaction, &plan.start_stage, None, Utc::now())
+        .await?;
     durable::Model::enqueue(&transaction, "process_activity_import".into(),
         serde_json::json!({"data": {"user_id": import.user_id, "import_id": import.id, "attempt_id": attempt.id}}), None, 1).await?;
     transaction.commit().await?;

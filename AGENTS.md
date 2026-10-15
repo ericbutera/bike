@@ -163,6 +163,18 @@ team's shared standards; personal configuration is not required. Run
   `Entity::find`, `filter`, `join`, `select`, `order_by`, `count`, `update_many`,
   or `delete_many`. This includes one-off queries; reuse is not a prerequisite
   for putting a query on its owner.
+- Construct and persist SeaORM ActiveModels inside their owning entity/model
+  module. Callers pass domain inputs to named operations; they must not build
+  mutation patches, convert stored models into ActiveModels, or receive
+  ActiveModels to finish a write.
+- Share cohesive field mappings on the owning model/type. Use typed inputs,
+  consuming mapping methods, and struct-update syntax so operations specify only
+  meaningful differences. Preserve identity and omitted-versus-cleared fields;
+  creation defaults must not reset unrelated fields during updates.
+- Insert constructors set only business inputs and meaningful overrides. Omit
+  generated IDs, null placeholders, and values already supplied by model/database
+  defaults. Keep defaults in entity metadata or insert behavior; leave omitted
+  update fields unset and retain explicit clears/resets when they change stored state.
 - Search for an existing owning method first. Extend it or add a cohesive,
   purpose-named operation when missing. Keep IDs and ownership scope explicit.
   Return domain values/results, not a query builder for callers to finish.

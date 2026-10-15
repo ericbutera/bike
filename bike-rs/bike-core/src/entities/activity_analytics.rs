@@ -1,4 +1,6 @@
 use crate::activity_achievements::StoredActivityAchievementHighlights;
+use crate::analytics::ActivityAnalyticsAccumulator;
+use crate::entities::activity_analytics;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
@@ -82,5 +84,31 @@ impl Model {
             .filter(Column::ActivityId.is_in(activity_ids.iter().copied()))
             .all(db)
             .await
+    }
+}
+
+impl Model {
+    pub(crate) async fn store_summary(
+        db: &impl ConnectionTrait,
+        activity_id: i32,
+        user_id: i32,
+        analytics: ActivityAnalyticsAccumulator,
+    ) -> Result<(), DbErr> {
+        activity_analytics::ActiveModel {
+            activity_id: Set(activity_id),
+            user_id: Set(user_id),
+            segment_effort_count: Set(analytics.segment_effort_count),
+            achievement_count: Set(analytics.achievement_count),
+            kom_count: Set(analytics.kom_count),
+            top_10_count: Set(analytics.top_10_count),
+            pr_count: Set(analytics.pr_count),
+            achievement_highlights_json: Set(Some(
+                StoredActivityAchievementHighlights::from_items(analytics.achievement_highlights),
+            )),
+            ..Default::default()
+        }
+        .insert(db)
+        .await?;
+        Ok(())
     }
 }

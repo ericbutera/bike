@@ -1,8 +1,15 @@
 use crate::archive_import::decode_error_samples;
+use crate::archive_import::{
+    archive_outcome, ActivityArchiveImportResponse, ACTIVITY_ARCHIVE_IMPORT_STATUS_FAILED,
+    ACTIVITY_ARCHIVE_IMPORT_STATUS_QUEUED, ACTIVITY_ARCHIVE_IMPORT_STATUS_RUNNING,
+};
 use crate::background_jobs::entities::worker_batches;
+use crate::entities::activity_archive_import_jobs;
+use crate::workflow_error::WorkflowError as AppError;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
+use sea_orm::{ActiveModelTrait, DatabaseConnection};
 use sea_orm::{ConnectionTrait, DbErr, QueryFilter, QueryOrder, QuerySelect, Set};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, serde::Serialize, serde::Deserialize)]
@@ -18,11 +25,17 @@ pub struct Model {
     pub status: String,
     pub failure_message: Option<String>,
     pub error_samples_json: Option<String>,
+    #[sea_orm(default_value = 0)]
     pub total_entries: i32,
+    #[sea_orm(default_value = 0)]
     pub supported_entry_count: i32,
+    #[sea_orm(default_value = 0)]
     pub imported_count: i32,
+    #[sea_orm(default_value = 0)]
     pub duplicate_count: i32,
+    #[sea_orm(default_value = 0)]
     pub skipped_unsupported_count: i32,
+    #[sea_orm(default_value = 0)]
     pub failed_count: i32,
     pub created_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
@@ -66,17 +79,14 @@ impl Entity {
         let errors = serde_json::to_string(&summary.error_samples)
             .map_err(|error| DbErr::Custom(error.to_string()))?;
         let result = Self::update_many()
-            .set(ActiveModel {
-                total_entries: Set(summary.total_entries),
-                supported_entry_count: Set(summary.supported_entry_count),
-                imported_count: Set(summary.imported_count),
-                duplicate_count: Set(summary.duplicate_count),
-                skipped_unsupported_count: Set(summary.skipped_unsupported_count),
-                failed_count: Set(summary.failed_count),
-                error_samples_json: Set(Some(errors)),
-                updated_at: Set(Utc::now()),
-                ..Default::default()
-            })
+            .set(
+                ActiveModel {
+                    error_samples_json: Set(Some(errors)),
+                    updated_at: Set(Utc::now()),
+                    ..Default::default()
+                }
+                .with_progress(summary),
+            )
             .filter(Column::Id.eq(job_id))
             .filter(Column::UserId.eq(user_id))
             .exec(db)
@@ -175,5 +185,121 @@ impl Model {
             .exec(db)
             .await?;
         Ok(has_failure)
+    }
+}
+
+impl Model {
+    pub async fn mark_running(
+        db: &DatabaseConnection,
+        job: &activity_archive_import_jobs::Model,
+    ) -> Result<activity_archive_import_jobs::Model, AppError> {
+        activity_archive_import_jobs::ActiveModel {
+            id: Set(job.id),
+            status: Set(ACTIVITY_ARCHIVE_IMPORT_STATUS_RUNNING.to_string()),
+            failure_message: Set(None),
+            error_samples_json: Set(None),
+            resolved_url: Set(None),
+            started_at: Set(Some(Utc::now())),
+            finished_at: Set(None),
+            ..Default::default()
+        }
+        .reset_progress()
+        .update(db)
+        .await
+        .map_err(AppError::from)
+    }
+}
+
+impl Model {
+    pub async fn mark_finished(
+        db: &DatabaseConnection,
+        job: &activity_archive_import_jobs::Model,
+        summary: &ActivityArchiveImportResponse,
+    ) -> Result<activity_archive_import_jobs::Model, AppError> {
+        activity_archive_import_jobs::ActiveModel {
+            id: Set(job.id),
+            resolved_url: Set(Some(summary.source.clone())),
+            status: Set(archive_outcome(summary).into()),
+            failure_message: Set(None),
+            error_samples_json: Set(Some(
+                serde_json::to_string(&summary.error_samples).map_err(|error| {
+                    AppError::internal(format!(
+                        "Failed to serialize archive import errors: {error}"
+                    ))
+                })?,
+            )),
+            finished_at: Set(Some(Utc::now())),
+            ..Default::default()
+        }
+        .with_progress(summary)
+        .update(db)
+        .await
+        .map_err(AppError::from)
+    }
+}
+
+impl Model {
+    pub async fn mark_failed(
+        db: &DatabaseConnection,
+        job: &activity_archive_import_jobs::Model,
+        resolved_url: Option<String>,
+        failure_message: String,
+    ) -> Result<activity_archive_import_jobs::Model, AppError> {
+        activity_archive_import_jobs::ActiveModel {
+            id: Set(job.id),
+            resolved_url: Set(resolved_url),
+            status: Set(ACTIVITY_ARCHIVE_IMPORT_STATUS_FAILED.to_string()),
+            failure_message: Set(Some(failure_message)),
+            finished_at: Set(Some(Utc::now())),
+            ..Default::default()
+        }
+        .update(db)
+        .await
+        .map_err(AppError::from)
+    }
+}
+
+impl Model {
+    pub async fn queue(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        user_storage_key: &str,
+        archive_url: String,
+    ) -> Result<Self, DbErr> {
+        activity_archive_import_jobs::ActiveModel {
+            user_id: Set(user_id),
+            user_storage_key: Set(user_storage_key.to_string()),
+            archive_url: Set(archive_url),
+            status: Set(ACTIVITY_ARCHIVE_IMPORT_STATUS_QUEUED.to_string()),
+            ..Default::default()
+        }
+        .insert(db)
+        .await
+    }
+}
+
+impl ActiveModel {
+    fn with_progress(self, summary: &ActivityArchiveImportResponse) -> Self {
+        Self {
+            total_entries: Set(summary.total_entries),
+            supported_entry_count: Set(summary.supported_entry_count),
+            imported_count: Set(summary.imported_count),
+            duplicate_count: Set(summary.duplicate_count),
+            skipped_unsupported_count: Set(summary.skipped_unsupported_count),
+            failed_count: Set(summary.failed_count),
+            ..self
+        }
+    }
+
+    fn reset_progress(self) -> Self {
+        Self {
+            total_entries: Set(0),
+            supported_entry_count: Set(0),
+            imported_count: Set(0),
+            duplicate_count: Set(0),
+            skipped_unsupported_count: Set(0),
+            failed_count: Set(0),
+            ..self
+        }
     }
 }

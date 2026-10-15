@@ -17,7 +17,9 @@ use crate::workflow_error::WorkflowError as AppError;
 use chrono::{DateTime, NaiveDate, Utc};
 use petgraph::algo::toposort;
 use petgraph::graphmap::DiGraphMap;
-use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
+use sea_orm::DatabaseConnection;
+#[cfg(test)]
+use sea_orm::{ActiveModelTrait, Set};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::Path;
@@ -339,14 +341,14 @@ struct ActivityProcessingState {
 }
 
 #[derive(Debug, Clone)]
-struct ActivityProcessingArtifact {
-    size_bytes: i64,
-    checksum_sha256: Option<String>,
-    artifact_kind: String,
-    original_filename: String,
-    format: String,
-    source_quality: String,
-    storage_path: String,
+pub(crate) struct ActivityProcessingArtifact {
+    pub(crate) size_bytes: i64,
+    pub(crate) checksum_sha256: Option<String>,
+    pub(crate) artifact_kind: String,
+    pub(crate) original_filename: String,
+    pub(crate) format: String,
+    pub(crate) source_quality: String,
+    pub(crate) storage_path: String,
 }
 
 pub async fn mark_activity_import_processing_stage(
@@ -884,23 +886,9 @@ async fn update_activity_from_parsed(
     parsed: &ParsedActivityData,
     save_data: ActivitySaveData,
 ) -> Result<activities::Model, AppError> {
-    let activity_type = activity.activity_type.clone();
-    let archive_title = (activity.source == "strava_sync"
-        && parsing_artifact.artifact_kind == ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL)
-        .then(|| activity.title.clone());
-    let mut active_model: activities::ActiveModel = activity.into();
-    activities::parsed::apply_fields(
-        &mut active_model,
-        &parsing_artifact.original_filename,
-        &parsing_artifact.format,
-        parsed,
-        save_data,
-    );
-    active_model.activity_type = Set(activity_type);
-    if let Some(title) = archive_title {
-        active_model.title = Set(title);
-    }
-    active_model.update(db).await.map_err(AppError::from)
+    activity
+        .update_parsed(db, parsing_artifact, parsed, save_data)
+        .await
 }
 
 async fn insert_activity_from_parsed(
@@ -910,21 +898,15 @@ async fn insert_activity_from_parsed(
     parsed: &ParsedActivityData,
     save_data: ActivitySaveData,
 ) -> Result<activities::Model, AppError> {
-    let mut active_model = activities::ActiveModel {
-        user_id: Set(run.user_id),
-        activity_import_id: Set(Some(import.id)),
-        source: Set(import.source.clone()),
-        source_correlation_id: Set(run.source_correlation_id.clone()),
-        ..Default::default()
-    };
-    activities::parsed::apply_fields(
-        &mut active_model,
-        &parsing_artifact.original_filename,
-        &parsing_artifact.format,
+    activities::Model::insert_parsed(
+        run.db,
+        import,
+        parsing_artifact,
         parsed,
         save_data,
-    );
-    active_model.insert(run.db).await.map_err(AppError::from)
+        run.source_correlation_id.clone(),
+    )
+    .await
 }
 
 async fn build_segments_node(
@@ -1186,26 +1168,9 @@ pub async fn store_activity_upload_import_with_artifacts(
         bytes: upload.bytes.clone(),
     };
 
-    let import_model = activity_imports::ActiveModel {
-        user_id: Set(user_id),
-        import_version: Set(ACTIVITY_IMPORT_VERSION_CURRENT),
-        source: Set(source.to_string()),
-        format: Set(upload.format),
-        status: Set(ACTIVITY_IMPORT_STATUS_PROCESSING.to_string()),
-        activity_id: Set(None),
-        processing_stage: Set(ACTIVITY_IMPORT_STAGE_RAW_STORED.to_string()),
-        processing_error: Set(None),
-        processing_attempts: Set(0),
-        processed_at: Set(None),
-        last_processing_event_at: Set(Some(Utc::now())),
-        original_filename: Set(upload.original_filename),
-        storage_path: Set(relative_path.clone()),
-        size_bytes: Set(upload.bytes.len() as i64),
-        mime_type: Set(upload.mime_type),
-        ..Default::default()
-    }
-    .insert(db)
-    .await?;
+    let import_model =
+        activity_imports::Model::store_upload(db, user_id, source, &upload, relative_path.clone())
+            .await?;
 
     insert_activity_import_artifact(
         db,
@@ -1306,27 +1271,11 @@ async fn insert_activity_import_artifact(
     storage_path: String,
     size_bytes: i64,
 ) -> Result<activity_import_artifacts::Model, AppError> {
-    let checksum_sha256 = checksum_sha256_hex(&artifact.bytes);
-
-    activity_import_artifacts::ActiveModel {
-        activity_import_id: Set(import.id),
-        user_id: Set(import.user_id),
-        artifact_kind: Set(artifact.artifact_kind),
-        format: Set(artifact.format),
-        source_quality: Set(artifact.source_quality),
-        original_filename: Set(artifact.original_filename),
-        storage_path: Set(storage_path),
-        size_bytes: Set(size_bytes),
-        mime_type: Set(artifact.mime_type),
-        checksum_sha256: Set(checksum_sha256),
-        ..Default::default()
-    }
-    .insert(db)
-    .await
-    .map_err(AppError::from)
+    activity_import_artifacts::Model::store_artifact(db, import, artifact, storage_path, size_bytes)
+        .await
 }
 
-fn checksum_sha256_hex(bytes: &[u8]) -> String {
+pub(crate) fn checksum_sha256_hex(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
@@ -1964,6 +1913,15 @@ mod tests {
         .await
         .expect("store raw upload");
 
+        assert_eq!(
+            import.import_version,
+            activity_imports::ACTIVITY_IMPORT_VERSION_CURRENT
+        );
+        assert_eq!(import.processing_attempts, 0);
+        assert!(import.activity_id.is_none());
+        assert!(import.processed_at.is_none());
+        assert!(import.processing_error.is_none());
+        assert!(import.last_processing_event_at.is_some());
         assert_eq!(import.status, ACTIVITY_IMPORT_STATUS_PROCESSING);
         assert_eq!(import.processing_stage, ACTIVITY_IMPORT_STAGE_RAW_STORED);
         assert_eq!(activities::Entity::find().count(&db).await.unwrap(), 0);

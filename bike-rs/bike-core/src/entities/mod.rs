@@ -24,3 +24,6 @@ pub mod user_preferences;
 
 #[cfg(test)]
 mod model_boundary_tests;
+
+#[cfg(test)]
+mod mutation_boundary_tests;

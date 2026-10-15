@@ -4,7 +4,7 @@ use crate::{
     activity_parser::ParsedActivityData,
     entities::{activity_imports, strava_activity_states, strava_events},
 };
-use sea_orm::{ActiveModelTrait, Set, TransactionTrait};
+use sea_orm::TransactionTrait;
 
 #[cfg(test)]
 mod strava_native_unit_deletion;
@@ -388,14 +388,7 @@ impl StravaOperations {
                 activity_imports::Entity::find_owned(&self.db, change.event.bike_user_id, id)
                     .await?
             {
-                let mut active: activity_imports::ActiveModel = import.into();
-                active.status =
-                    Set(crate::activity_import_lifecycle::ACTIVITY_IMPORT_STATUS_PROCESSED.into());
-                active.processing_stage =
-                    Set(crate::activity_import_lifecycle::ACTIVITY_IMPORT_STAGE_COMPLETE.into());
-                active.processed_at = Set(Some(chrono::Utc::now()));
-                active.processing_error = Set(None);
-                active.update(&self.db).await?;
+                import.mark_native_processed(&self.db).await?;
             }
         }
         Ok(change)

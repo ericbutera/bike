@@ -68,12 +68,10 @@ pub(super) async fn start_processing_node(
         state.activity_model.as_ref().map(|activity| activity.id),
     )
     .await?;
-    let mut active: activity_imports::ActiveModel = state.import_model.clone().into();
-    active.status = Set(ACTIVITY_IMPORT_STATUS_PROCESSING.into());
-    active.processing_stage = Set(stage.into());
-    active.processing_error = Set(None);
-    active.last_processing_event_at = Set(Some(Utc::now()));
-    state.import_model = active.update(run.db).await?;
+    state.import_model = state
+        .import_model
+        .mark_processing(run.db, stage, None, Utc::now())
+        .await?;
     Ok(())
 }
 

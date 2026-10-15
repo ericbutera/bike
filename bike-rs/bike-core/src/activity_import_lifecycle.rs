@@ -4,7 +4,8 @@ use crate::analytics::{
 use crate::entities::{activity_imports, integration_events};
 use crate::jobs::JobQueue;
 use chrono::{DateTime, NaiveDate, Utc};
-use sea_orm::{ActiveModelTrait, DatabaseConnection, DbErr, Set, TransactionTrait};
+use sea_orm::TransactionTrait;
+use sea_orm::{DatabaseConnection, DbErr};
 use serde_json::Value;
 use std::fmt;
 
@@ -63,16 +64,9 @@ pub async fn mark_activity_import_processing_stage(
     stage: &str,
     activity_id: Option<i32>,
 ) -> Result<activity_imports::Model, ActivityImportLifecycleError> {
-    let mut active_model: activity_imports::ActiveModel = import.clone().into();
-    active_model.status = Set(ACTIVITY_IMPORT_STATUS_PROCESSING.to_string());
-    active_model.processing_stage = Set(stage.to_string());
-    active_model.processing_error = Set(None);
-    active_model.last_processing_event_at = Set(Some(Utc::now()));
-    if let Some(activity_id) = activity_id {
-        active_model.activity_id = Set(Some(activity_id));
-    }
-
-    let updated = active_model.update(db).await?;
+    let updated = import
+        .mark_processing(db, stage, activity_id, Utc::now())
+        .await?;
     crate::activity_import_execution::record_batch_stage(db, &updated, stage)
         .await
         .map_err(|error| ActivityImportLifecycleError::internal(error.message))?;
@@ -114,13 +108,7 @@ pub async fn mark_activity_imports_processed(
 
     for import in imports {
         let transaction = db.begin().await?;
-        let mut active_model: activity_imports::ActiveModel = import.into();
-        active_model.status = Set(ACTIVITY_IMPORT_STATUS_PROCESSED.to_string());
-        active_model.processing_stage = Set(ACTIVITY_IMPORT_STAGE_COMPLETE.to_string());
-        active_model.processing_error = Set(None);
-        active_model.processed_at = Set(Some(Utc::now()));
-        active_model.last_processing_event_at = Set(Some(Utc::now()));
-        let updated = active_model.update(&transaction).await?;
+        let updated = import.mark_processed(&transaction).await?;
         crate::activity_import_execution::finish_active(&transaction, &updated, "completed", None)
             .await
             .map_err(|error| ActivityImportLifecycleError::internal(error.message))?;
@@ -174,14 +162,10 @@ pub async fn mark_activity_import_failed(
             .as_ref()
             .map_or(stage, |attempt| attempt.current_stage.as_str())
     };
-    let mut active_model: activity_imports::ActiveModel = latest.clone().into();
-    active_model.status = Set(ACTIVITY_IMPORT_STATUS_FAILED.to_string());
-    active_model.processing_stage = Set(stage.to_string());
-    active_model.processing_error = Set(Some(error_message.to_string()));
-    active_model.processing_attempts = Set(latest.processing_attempts.saturating_add(1));
-    active_model.last_processing_event_at = Set(Some(Utc::now()));
     let transaction = db.begin().await?;
-    let updated = active_model.update(&transaction).await?;
+    let updated = latest
+        .mark_failed(&transaction, stage, error_message)
+        .await?;
     crate::activity_import_execution::finish_active(
         &transaction,
         &updated,
@@ -219,14 +203,7 @@ pub async fn mark_activity_import_duplicate(
     import: &activity_imports::Model,
     duplicate_activity_id: i32,
 ) -> Result<activity_imports::Model, ActivityImportLifecycleError> {
-    let mut active_model: activity_imports::ActiveModel = import.clone().into();
-    active_model.status = Set(ACTIVITY_IMPORT_STATUS_DUPLICATE.to_string());
-    active_model.activity_id = Set(Some(duplicate_activity_id));
-    active_model.processing_stage = Set(ACTIVITY_IMPORT_STAGE_COMPLETE.to_string());
-    active_model.processing_error = Set(None);
-    active_model.processed_at = Set(Some(Utc::now()));
-    active_model.last_processing_event_at = Set(Some(Utc::now()));
-    let updated = active_model.update(db).await?;
+    let updated = import.mark_duplicate(db, duplicate_activity_id).await?;
 
     record_activity_processing_event(
         db,
@@ -320,17 +297,18 @@ pub async fn record_activity_processing_event(
     message: String,
     payload: Option<Value>,
 ) {
-    if let Err(error) = (integration_events::ActiveModel {
-        user_id: Set(Some(import.user_id)),
-        provider: Set(ACTIVITY_PROCESSING_PROVIDER.to_string()),
-        event_type: Set(event_type.to_string()),
-        level: Set(level.to_string()),
-        message: Set(message),
-        connection_id: Set(None),
-        payload: Set(payload),
-        ..Default::default()
-    })
-    .insert(db)
+    if let Err(error) = integration_events::Entity::record(
+        db,
+        integration_events::NewEvent {
+            user_id: Some(import.user_id),
+            provider: ACTIVITY_PROCESSING_PROVIDER.to_string(),
+            event_type: event_type.to_string(),
+            level: level.to_string(),
+            message,
+            connection_id: None,
+            payload,
+        },
+    )
     .await
     {
         tracing::warn!(

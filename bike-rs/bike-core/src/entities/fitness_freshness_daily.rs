@@ -1,3 +1,5 @@
+use crate::analytics::FitnessFreshnessDay;
+use crate::entities::fitness_freshness_daily;
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::entity::prelude::*;
@@ -107,5 +109,43 @@ impl Model {
             .order_by_desc(Column::Day)
             .one(db)
             .await
+    }
+}
+
+fn fitness_freshness_active_models(
+    user_id: i32,
+    rows: Vec<FitnessFreshnessDay>,
+    rebuilt_at: DateTime<Utc>,
+) -> Vec<fitness_freshness_daily::ActiveModel> {
+    rows.into_iter()
+        .map(|row| fitness_freshness_daily::ActiveModel {
+            user_id: Set(user_id),
+            day: Set(row.day),
+            activity_count: Set(row.activity_count),
+            training_load: Set(row.training_load),
+            fitness: Set(row.fitness),
+            fatigue: Set(row.fatigue),
+            form: Set(row.form),
+            created_at: Set(rebuilt_at),
+            updated_at: Set(rebuilt_at),
+            ..Default::default()
+        })
+        .collect()
+}
+impl Model {
+    pub async fn replace_days(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        rebuild_from_day: Option<NaiveDate>,
+        rows: Vec<FitnessFreshnessDay>,
+        rebuilt_at: DateTime<Utc>,
+    ) -> Result<(), DbErr> {
+        Self::replace_user_rows_from_day(
+            db,
+            user_id,
+            rebuild_from_day,
+            fitness_freshness_active_models(user_id, rows, rebuilt_at),
+        )
+        .await
     }
 }

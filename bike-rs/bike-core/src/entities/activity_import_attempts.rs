@@ -28,7 +28,27 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
 
-impl ActiveModelBehavior for ActiveModel {}
+#[async_trait::async_trait]
+impl ActiveModelBehavior for ActiveModel {
+    async fn before_save<C>(mut self, _db: &C, insert: bool) -> Result<Self, DbErr>
+    where
+        C: ConnectionTrait,
+    {
+        if insert {
+            let now = chrono::Utc::now();
+            if self.status.is_not_set() {
+                self.status = Set("queued".into());
+            }
+            if self.created_at.is_not_set() {
+                self.created_at = Set(now);
+            }
+            if self.updated_at.is_not_set() {
+                self.updated_at = Set(now);
+            }
+        }
+        Ok(self)
+    }
+}
 
 impl Entity {
     pub async fn for_worker_metadata(
@@ -120,3 +140,5 @@ impl Entity {
         Self::find_by_id(attempt_id).one(db).await
     }
 }
+
+mod mutations;

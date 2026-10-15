@@ -3,7 +3,7 @@ use crate::activity_data::{
 };
 use crate::entities::{activities, activity_training_analyses, segment_efforts, segments};
 use crate::training_data::deserialize_activity_heart_rate_zones;
-use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, Set};
+use sea_orm::{ConnectionTrait, DatabaseConnection};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use utoipa::ToSchema;
@@ -68,7 +68,7 @@ pub enum ActivityRideFocus {
 }
 
 impl ActivityRideFocus {
-    fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::XcEndurance => "xc_endurance",
             Self::MixedXc => "mixed_xc",
@@ -246,46 +246,13 @@ where
                 .unwrap_or_default(),
         );
 
-        if let Some(existing_model) = existing_models_by_activity_id.get(&activity.id).cloned() {
-            let mut active_model: activity_training_analyses::ActiveModel = existing_model.into();
-            active_model.user_id = Set(activity.user_id);
-            active_model.ride_focus = Set(analysis.ride_focus.as_str().to_string());
-            active_model.route_family_key = Set(analysis.route_family_key.clone());
-            active_model.comparable_distance_bucket_meters =
-                Set(analysis.comparable_distance_bucket_meters);
-            active_model.comparable_elevation_gain_bucket_meters =
-                Set(analysis.comparable_elevation_gain_bucket_meters);
-            active_model.aerobic_decoupling_percent = Set(analysis.aerobic_decoupling_percent);
-            active_model.z2_time_seconds = Set(analysis.z2_time_seconds);
-            active_model.z2_distance_meters = Set(analysis.z2_distance_meters);
-            active_model.z2_average_speed_mps = Set(analysis.z2_average_speed_mps);
-            active_model.climbing_time_seconds = Set(analysis.climbing_time_seconds);
-            active_model.climbing_elevation_gain_meters =
-                Set(analysis.climbing_elevation_gain_meters);
-            active_model.sustained_climb_count = Set(analysis.sustained_climb_count);
-            active_model.update(db).await?;
-        } else {
-            activity_training_analyses::ActiveModel {
-                activity_id: Set(activity.id),
-                user_id: Set(activity.user_id),
-                ride_focus: Set(analysis.ride_focus.as_str().to_string()),
-                route_family_key: Set(analysis.route_family_key.clone()),
-                comparable_distance_bucket_meters: Set(analysis.comparable_distance_bucket_meters),
-                comparable_elevation_gain_bucket_meters: Set(
-                    analysis.comparable_elevation_gain_bucket_meters
-                ),
-                aerobic_decoupling_percent: Set(analysis.aerobic_decoupling_percent),
-                z2_time_seconds: Set(analysis.z2_time_seconds),
-                z2_distance_meters: Set(analysis.z2_distance_meters),
-                z2_average_speed_mps: Set(analysis.z2_average_speed_mps),
-                climbing_time_seconds: Set(analysis.climbing_time_seconds),
-                climbing_elevation_gain_meters: Set(analysis.climbing_elevation_gain_meters),
-                sustained_climb_count: Set(analysis.sustained_climb_count),
-                ..Default::default()
-            }
-            .insert(db)
-            .await?;
-        }
+        activity_training_analyses::Model::save_analysis(
+            db,
+            &activity,
+            &analysis,
+            existing_models_by_activity_id.get(&activity.id).cloned(),
+        )
+        .await?;
     }
 
     Ok(())

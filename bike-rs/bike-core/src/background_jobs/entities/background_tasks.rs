@@ -1,9 +1,11 @@
+use crate::background_jobs::pipeline::PipelineContext;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{
     Condition, DatabaseConnection, DbErr, ExprTrait, QueryFilter, QueryOrder, QuerySelect,
     QueryTrait,
 };
+use sea_orm::{Set, TransactionSession, TransactionTrait};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
@@ -15,6 +17,7 @@ pub struct Model {
     pub task_type: String,
     pub payload: Json,
     pub status: String,
+    #[sea_orm(default_value = 0)]
     pub attempts: i32,
     pub max_attempts: i32,
     pub error: Option<String>,
@@ -29,7 +32,27 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
 
-impl ActiveModelBehavior for ActiveModel {}
+#[async_trait::async_trait]
+impl ActiveModelBehavior for ActiveModel {
+    async fn before_save<C>(mut self, _db: &C, insert: bool) -> Result<Self, DbErr>
+    where
+        C: ConnectionTrait,
+    {
+        if insert {
+            let now = Utc::now();
+            if self.status.is_not_set() {
+                self.status = Set(TaskStatus::Pending.as_str().into());
+            }
+            if self.created_at.is_not_set() {
+                self.created_at = Set(now);
+            }
+            if self.updated_at.is_not_set() {
+                self.updated_at = Set(now);
+            }
+        }
+        Ok(self)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TaskStatus {
@@ -172,3 +195,49 @@ mod diagnostics;
 
 mod admin;
 pub use admin::TaskListQuery;
+
+impl Model {
+    pub async fn enqueue(
+        db: &(impl ConnectionTrait + TransactionTrait),
+        task_type: String,
+        mut payload: serde_json::Value,
+        scheduled_for: Option<chrono::DateTime<Utc>>,
+        max_attempts: i32,
+    ) -> Result<Self, DbErr> {
+        PipelineContext::attach(&mut payload).map_err(|error| DbErr::Custom(error.to_string()))?;
+        if let Some(batch_id) = crate::background_jobs::batches::current() {
+            payload["_batch_id"] = batch_id.into();
+        }
+        let context = PipelineContext::from_payload(&payload)
+            .map_err(|error| DbErr::Custom(error.to_string()))?;
+        let transaction = db.begin().await?;
+        let task = ActiveModel {
+            task_type: Set(task_type),
+            payload: Set(payload),
+            max_attempts: Set(max_attempts),
+            scheduled_for: Set(scheduled_for),
+            ..Default::default()
+        }
+        .insert(&transaction)
+        .await?;
+        if let Some(context) = context {
+            crate::background_jobs::entities::pipeline_runs::Model::record_task(
+                &transaction,
+                &context,
+                task.id,
+            )
+            .await?;
+            crate::background_jobs::entities::pipeline_subjects::Model::from_task(
+                &transaction,
+                &context.run_id,
+                &task.payload,
+            )
+            .await?;
+        }
+        if let Some(batch_id) = crate::background_jobs::batches::current() {
+            crate::background_jobs::batches::record_task(&transaction, batch_id, task.id).await?;
+        }
+        transaction.commit().await?;
+        Ok(task)
+    }
+}

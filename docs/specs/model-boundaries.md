@@ -216,3 +216,166 @@ Paths are relative to `bike-rs`. Counts exclude owning entity implementations.
   Worker tests verify explicit import links, owned fallback links, and terminal skips.
 - Model tests cover ranked segment reads, stored match indices, training projections,
   OAuth identity links, and feature-flag storage/cache consistency.
+
+## Mutation boundaries: 2026-10-15
+
+- Baseline: `220ecaad` (PR #58). Preserve the completed query-start audit above
+  as historical evidence; it did not count writes assembled through ActiveModels.
+- The next audit found **24 qualified ActiveModel constructors in 12 caller files**.
+  Including conversion-based updates/deletes and ORM-valued helpers expands
+  the initial inventory to **19 caller files**. These are migration candidates, not
+  24 independent defects. Tests, owning entity modules, and fixture executables
+  use the same exclusions as the query audit.
+- Production callers must not construct, convert, or return ActiveModels for
+  another layer to finish. Owning model methods construct and execute the write.
+- Keep meaningful workflow orchestration in its domain/service module. Use
+  explicit ownership IDs and cohesive commands, source slices, checkpoints,
+  or computed summaries where those values share a real boundary.
+- Preserve partial-update semantics, source identity, generated IDs, timestamps,
+  row locks, transaction scope, compare-and-swap predicates, and publication order.
+
+### Constructor inventory at the baseline
+
+| Caller | Constructors |
+| --- | ---: |
+| api/src/controllers/user_preferences.rs | 1 |
+| api/src/controllers/segments.rs | 2 |
+| bike-core/src/strava/connection.rs | 1 |
+| bike-core/src/analytics.rs | 6 |
+| bike-core/src/activity_import_execution.rs | 1 |
+| bike-core/src/archive_import.rs | 4 |
+| bike-core/src/activity_training_analysis.rs | 1 |
+| bike-core/src/activity_import_lock.rs | 1 |
+| bike-core/src/activity_import_pipeline.rs | 3 |
+| bike-core/src/activity_import_lifecycle.rs | 1 |
+| bike-core/src/provider_rate_limit.rs | 2 |
+| bike-core/src/background_jobs/execution.rs | 1 |
+| **Total** | **24** |
+
+### Mutation acceptance
+
+- Segment models own detail validation/patches, activity-derived route replacement,
+  duplicate builder-source adoption, and uploaded-route insertion. Title changes
+  and activity analytics rebuilds share a transaction. Regeneration is queued after
+  the route update commits. Duplicate adoption retains the stored route/mode/star.
+- Preference models validate a complete update before writing, apply profile/goal
+  fields once, and preserve omitted-value and goal-reset behavior. A small service
+  performs the existing backfill handoff after the save and reloads its resulting
+  state. Backfill enqueue failures retain the existing committed-save behavior.
+- Import models own processing, processed, failed, duplicate, replay, requeue,
+  artifact creation/relinking, and recovery writes. Preserve attempt reuse,
+  failure counters, stage checkpoints, ownership, and revision fences.
+- Analytics owners persist computed daily fitness, segment/user summaries,
+  effort ranks, and activity highlights. Domain code retains calculation and
+  multi-entity transaction orchestration.
+- Lock, quota, credential, account, archive-job, and work-evidence owners apply
+  their own writes, preserving unique-conflict handling, refresh metadata,
+  reservation transactions, and evidence failure policy.
+- Validate the completed PR as a batch with existing mocks/fixtures and focused
+  regression coverage. Keep the 80% changed-line gate and required hooks active.
+- Worker payload parsing, general error mapping cleanup, and nested aggregation
+  remain separate follow-ups.
+
+### Completed mutation migration
+
+- Moved mutation assembly and execution from the 19 initial callers into their
+  owning models, including conversion-based patches, artifact copies/deletion,
+  and fitness-row construction.
+- The final audit also found the unqualified durable-queue constructor in
+  `background_jobs/durable.rs`. Its existing `Model::enqueue` operation now
+  lives in `background_jobs/entities/background_tasks.rs`; the durable adapter
+  retains its public re-export. This brings the completed scope to **20 caller
+  files**, with **zero remaining production ActiveModel constructions or
+  conversions** outside owning modules in the audited runtime files.
+- Segment detail patches, builder sources, route replacement/import, and duplicate
+  adoption live in `entities/segments/mutations.rs`. A builder source validates
+  the owned activity and route slice before use. Existing modes/stars survive
+  route replacement and duplicate adoption.
+- Preference validation and persistence live in
+  `entities/user_preferences/mutations.rs`; the preference service performs
+  the backfill handoff. The HTTP request schema keeps its existing name and fields.
+- Import lifecycle, replay/requeue, parsed activity persistence, archive jobs,
+  artifact copies, attempt checkpoints, analytics summaries, quota reservations,
+  credential encryption/refresh, admin promotion, queue insertion, and work
+  evidence use purpose-named owner methods. Domain modules retain file/network
+  operations, queue handoffs, calculation, and multi-model transaction ordering.
+- Regression cases cover whole-patch validation, no-op writes, segment rename
+  rollback, builder owner checks/deduplication, retained mode/star, preference
+  insert/update/clear and backfill decisions, ingestion failure/reuse, copied
+  artifact identity, encrypted credential refresh, archive transitions, and
+  successful/failed work evidence.
+
+### Validation evidence
+
+- Local affected-library batch plus focused correction run: **509 passing unit
+  cases** across API, core, and worker; **two existing cases remain ignored**.
+  All 42 model/handler boundary cases and the admin bootstrap case pass,
+  including the 18 new regressions.
+- Required workspace Clippy passed with all targets/features and warnings denied.
+  Required formatting and hooks run again against the final staged commit.
+- Core and API reuse a shared SQLite table helper to reproduce the migration's
+  segment freshness and account timestamp defaults.
+  Production migration history and transaction behavior are unchanged.
+- Full changed-line coverage, PostgreSQL, integration, build, and browser gates
+  remain the CI acceptance evidence for this PR.
+
+### Shared field mapping follow-up
+
+- Share cohesive field groups on the owning `ActiveModel`: a builder link, route,
+  activity-derived segment source, athlete profile, sealed tokens, processing stage,
+  completion, and archive progress each have one named mapping.
+- Use consuming `with_…` methods and Rust struct-update syntax. Each operation
+  supplies its meaningful differences and reuses the common field mapping.
+  Creation uses model/database defaults; updates start from the stored
+  model so identity, omitted fields, and unrelated state stay intact.
+- Reuse the existing parsed-activity and validated-preference mappings; keep
+  domain-specific mapping local to its owner.
+- Preserve SeaORM's `Set`, `Unchanged`, and `NotSet` semantics. An omitted update
+  differs from an explicit `Set(None)`; shared mapping must retain that distinction.
+- Builder-link adoption changes the title/link while retaining stored route
+  geometry and import metadata. Route replacement uses the fuller source mapping
+  and retains mode/star. Creation uses the database's default mode/star.
+- Credential connect/refresh share profile and encrypted-token mapping. Refresh
+  keeps the stored scope and athlete profile when those inputs are omitted. A
+  supplied athlete replaces its nullable fields, including explicit null values.
+- Import transitions share stage/completion fields. Failure supplies its own
+  message/attempt count; native completion retains the prior processing-event
+  timestamp; an omitted activity link leaves the current link intact.
+- Archive progress updates and completion share counter mapping. Queue/restart
+  use database defaults and explicit counter resets respectively, preserving each
+  operation's status, errors, and timestamps.
+- Focused regressions check retained route/import metadata, native event/identity
+  preservation, supplied and omitted credential fields, and progress/restart state.
+- Follow-up validation: all **46 focused model/handler boundary cases** pass,
+  including four additional mapping regressions (**22 new cases** in the PR).
+
+### Necessary fields and insert defaults correction
+
+- Insert literals contain only business inputs and meaningful overrides. Omit
+  generated IDs, null placeholders, zero counters, and flags already supplied
+  by the owning model or database. Computed input values remain explicit even
+  when their result happens to be zero.
+- Task enqueue supplies type, payload, retry policy, and schedule. Its owner
+  supplies initial pending status and timestamps; the database supplies attempts.
+- Attempt creation supplies import/source/stage/reuse data. Its owner supplies
+  queued status and timestamps; nullable error and execution times stay unset.
+- Raw upload persistence supplies upload metadata and its processing stage/event.
+  Import version comes from existing model behavior, attempts from the database,
+  and absent activity/completion/error fields stay unset.
+- Segment mode/star, credential sync state, archive counters, quota usage, and
+  user disabled state use their existing database defaults. Entity metadata
+  declares those defaults so generated fixture tables match production.
+- Default ActiveModels remain empty patches. Insert hooks fill only omitted
+  creation fields and preserve explicitly supplied values. Do not introduce
+  creation defaults into update literals or replace them with blanket
+  `default_values()`.
+- Retain explicit clears and resets for existing rows: stage errors, reconnect
+  disconnect state, route source metadata, and archive retry counters.
+- Focused regressions verify task/attempt creation defaults and upload defaults;
+  existing cases cover retained flags, sync state, progress, retries, and updates.
+- Historical migrations remain unchanged; this correction uses existing schema
+  defaults and model insert behavior.
+- Local correction batch: **515 passing API/core/worker library cases**, with
+  **two existing ignored cases**, including **48 model/handler boundary cases**
+  and **24 new regression cases** across the PR. Required formatting and Clippy
+  run against the final staged correction with warnings denied.
