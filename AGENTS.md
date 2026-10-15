@@ -181,6 +181,10 @@ team's shared standards; personal configuration is not required. Run
 - Keep transactions, locks, compare-and-swap fences, pagination, and affected-row
   checks intact when moving queries. Complex domain methods must still honor
   the existing function-size, argument-count, and complexity limits.
+- Use fixture factories with shared test helpers across languages. Fixtures
+  provide valid, reusable defaults; tests override only fields relevant to their
+  scenario. Keep routine test setup shared so each test shows only its meaningful
+  inputs, actions, and assertions.
 - Before constructing a test model, search `bike-core/src/test_support` and the
   owning feature's fixtures. Reuse or extend the canonical fixture instead of
   copying a complete `Model` or `ActiveModel` into another test module.
@@ -193,6 +197,11 @@ team's shared standards; personal configuration is not required. Run
   Partial ActiveModels that update specific stored fields are intentional
   patches, not duplicate seed constructors. Tests may query stored state
   directly to verify results; keep production policy in the owning model.
+- Use `bike_core::test_support::insert` and `update` for successful fixture
+  writes throughout Rust unit tests (`crate::test_support` inside core).
+  Keep scenario overrides visible with struct updates. Update patches use
+  `..Default::default()` so omitted fields remain untouched. Keep direct bulk
+  writes and expected-error calls when they are the behavior under test.
 
 ## mise package manager
 

@@ -10,7 +10,7 @@ use bike_core::entities::{
     segment_user_summaries, segments, user_preferences,
 };
 use bike_core::test_support;
-use sea_orm::{ActiveModelTrait, ConnectionTrait, Database, DatabaseConnection, Schema};
+use sea_orm::{ConnectionTrait, Database, DatabaseConnection, Schema};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -85,7 +85,7 @@ async fn database() -> DatabaseConnection {
         schema.create_table_from_entity(activity_training_analyses::Entity),
         schema.create_table_from_entity(activity_analytics::Entity),
         test_support::table_with_timestamp_defaults(
-            &schema,
+            &db,
             segments::Entity,
             &["last_activity_change_at"],
         ),
@@ -103,7 +103,7 @@ async fn database() -> DatabaseConnection {
 
 async fn seed(db: &DatabaseConnection) {
     let user: users::ActiveModel = test_support::customer().into();
-    user.insert(db).await.unwrap();
+    test_support::insert(db, user).await;
     for (id, user_id, import_id, sport) in [
         (42, 7, Some(18), "ride"),
         (43, 8, None, "ride"),
@@ -117,7 +117,7 @@ async fn seed(db: &DatabaseConnection) {
             ..test_support::activity()
         }
         .into();
-        active.insert(db).await.unwrap();
+        test_support::insert(db, active).await;
     }
     for (id, user_id) in [(18, 7), (19, 8)] {
         let active: activity_imports::ActiveModel = activity_imports::Model {
@@ -126,7 +126,7 @@ async fn seed(db: &DatabaseConnection) {
             ..test_support::activity_import()
         }
         .into();
-        active.insert(db).await.unwrap();
+        test_support::insert(db, active).await;
     }
     for (id, user_id) in [(20, 7), (21, 8)] {
         let active: activity_archive_import_jobs::ActiveModel =
@@ -136,10 +136,10 @@ async fn seed(db: &DatabaseConnection) {
                 ..test_support::archive_import_job()
             }
             .into();
-        active.insert(db).await.unwrap();
+        test_support::insert(db, active).await;
     }
     let artifact: activity_import_artifacts::ActiveModel = test_support::import_artifact().into();
-    artifact.insert(db).await.unwrap();
+    test_support::insert(db, artifact).await;
 }
 
 #[tokio::test]
@@ -283,14 +283,15 @@ async fn seed_segment(fixture: &Fixture) -> i32 {
         .and_then(|point| point.distance_meters);
     let route = bike_core::segment_support::serialize_segment_route_points(&derived.route_points);
     let stored = bike_core::activity_data::serialize_derived_activity_data(&derived);
-    activities::ActiveModel {
-        id: Set(42),
-        derived_data_json: Set(Some(stored)),
-        ..Default::default()
-    }
-    .update(&fixture.db)
-    .await
-    .unwrap();
+    test_support::update(
+        &fixture.db,
+        activities::ActiveModel {
+            id: Set(42),
+            derived_data_json: Set(Some(stored)),
+            ..Default::default()
+        },
+    )
+    .await;
     for (id, user_id) in [(1, 7), (2, 8)] {
         let active: segments::ActiveModel = segments::Model {
             id,
@@ -300,33 +301,35 @@ async fn seed_segment(fixture: &Fixture) -> i32 {
             ..test_support::segment()
         }
         .into();
-        active.insert(&fixture.db).await.unwrap();
+        test_support::insert(&fixture.db, active).await;
     }
-    segment_summaries::ActiveModel {
-        segment_id: Set(1),
-        effort_count: Set(1),
-        best_duration_seconds: Set(Some(60)),
-        ..Default::default()
-    }
-    .insert(&fixture.db)
-    .await
-    .unwrap();
-    segment_user_summaries::ActiveModel {
-        segment_id: Set(1),
-        user_id: Set(7),
-        effort_count: Set(1),
-        personal_best_duration_seconds: Set(Some(60)),
-        ..Default::default()
-    }
-    .insert(&fixture.db)
-    .await
-    .unwrap();
+    test_support::insert(
+        &fixture.db,
+        segment_summaries::ActiveModel {
+            segment_id: Set(1),
+            effort_count: Set(1),
+            best_duration_seconds: Set(Some(60)),
+            ..Default::default()
+        },
+    )
+    .await;
+    test_support::insert(
+        &fixture.db,
+        segment_user_summaries::ActiveModel {
+            segment_id: Set(1),
+            user_id: Set(7),
+            effort_count: Set(1),
+            personal_best_duration_seconds: Set(Some(60)),
+            ..Default::default()
+        },
+    )
+    .await;
     let active: segment_efforts::ActiveModel = segment_efforts::Model {
         end_route_point_index: end,
         ..test_support::segment_effort()
     }
     .into();
-    active.insert(&fixture.db).await.unwrap();
+    test_support::insert(&fixture.db, active).await;
     end
 }
 

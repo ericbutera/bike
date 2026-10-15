@@ -12,7 +12,7 @@ use crate::training_data::{
 };
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 #[cfg(test)]
-use sea_orm::{ActiveModelTrait, Set};
+use sea_orm::Set;
 use sea_orm::{ConnectionTrait, DatabaseConnection, TransactionSession, TransactionTrait};
 use std::collections::{BTreeMap, HashMap};
 
@@ -936,7 +936,9 @@ fn estimated_heart_rate_ratio_from_fields(
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
+    use crate::test_support;
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
     #[tokio::test]
@@ -951,15 +953,16 @@ mod tests {
             db.execute(&statement).await.unwrap();
         }
         let changed = Utc::now() - chrono::Duration::minutes(1);
-        let state = analytics_user_states::ActiveModel {
-            user_id: Set(7),
-            last_activity_change_at: Set(changed),
-            fitness_dirty_from_day: Set(Some(changed.date_naive())),
-            ..Default::default()
-        }
-        .insert(&db)
-        .await
-        .unwrap();
+        let state = test_support::insert(
+            &db,
+            analytics_user_states::ActiveModel {
+                user_id: Set(7),
+                last_activity_change_at: Set(changed),
+                fitness_dirty_from_day: Set(Some(changed.date_naive())),
+                ..Default::default()
+            },
+        )
+        .await;
         let input = FitnessFreshnessRebuildInput {
             state: Some(state),
             dirty_from_day: Some(changed.date_naive()),

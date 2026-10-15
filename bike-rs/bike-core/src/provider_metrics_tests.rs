@@ -1,7 +1,8 @@
 use super::refresh_provider_rate_limit_metrics;
 use crate::entities::provider_rate_limit_buckets;
+use crate::test_support;
 use chrono::{DateTime, Duration, Utc};
-use sea_orm::{ActiveModelTrait, ConnectionTrait, Database, DatabaseConnection, Schema, Set};
+use sea_orm::{ConnectionTrait, Database, DatabaseConnection, Schema, Set};
 
 const PROVIDER: &str = "quota_snapshot_fixture";
 
@@ -15,17 +16,18 @@ async fn quota_database() -> DatabaseConnection {
 }
 
 async fn insert_bucket(db: &DatabaseConnection, bucket: &str, reset_at: DateTime<Utc>) {
-    provider_rate_limit_buckets::ActiveModel {
-        provider: Set(PROVIDER.to_owned()),
-        bucket: Set(bucket.to_owned()),
-        limit_count: Set(200),
-        used_count: Set(17),
-        reset_at: Set(reset_at),
-        ..Default::default()
-    }
-    .insert(db)
-    .await
-    .unwrap();
+    test_support::insert(
+        db,
+        provider_rate_limit_buckets::ActiveModel {
+            provider: Set(PROVIDER.to_owned()),
+            bucket: Set(bucket.to_owned()),
+            limit_count: Set(200),
+            used_count: Set(17),
+            reset_at: Set(reset_at),
+            ..Default::default()
+        },
+    )
+    .await;
 }
 
 fn quota_gauge(name: &str, bucket: &str) -> Option<i64> {

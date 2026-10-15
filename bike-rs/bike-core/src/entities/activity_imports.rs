@@ -1,9 +1,6 @@
-use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{
-    ActiveValue, ConnectionTrait, DbErr, QueryFilter, QueryOrder, QuerySelect, Set, TryIntoModel,
-};
+use sea_orm::{ConnectionTrait, DbErr, QueryFilter, QueryOrder, QuerySelect, Set, TryIntoModel};
 
 pub const ACTIVITY_IMPORT_VERSION_LEGACY: i32 = 1;
 pub const ACTIVITY_IMPORT_VERSION_ARTIFACT_AWARE: i32 = 2;
@@ -17,12 +14,14 @@ pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
     pub user_id: i32,
+    #[sea_orm(default_expr = "Expr::value(ACTIVITY_IMPORT_VERSION_CURRENT)")]
     pub import_version: i32,
     pub source: String,
     pub format: String,
     pub status: String,
     pub activity_id: Option<i32>,
     pub archive_job_id: Option<i32>,
+    #[sea_orm(default_value = "complete")]
     pub processing_stage: String,
     pub processing_error: Option<String>,
     #[sea_orm(default_value = 0)]
@@ -33,7 +32,9 @@ pub struct Model {
     pub storage_path: String,
     pub size_bytes: i64,
     pub mime_type: Option<String>,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub created_at: DateTime<Utc>,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub updated_at: DateTime<Utc>,
 }
 
@@ -312,23 +313,7 @@ impl ActiveModel {
     }
 }
 
-#[async_trait]
-impl ActiveModelBehavior for ActiveModel {
-    async fn before_save<C>(mut self, _db: &C, insert: bool) -> Result<Self, DbErr>
-    where
-        C: ConnectionTrait,
-    {
-        let now = Utc::now();
-        if matches!(self.import_version, ActiveValue::NotSet) {
-            self.import_version = Set(ACTIVITY_IMPORT_VERSION_CURRENT);
-        }
-        if insert {
-            self.created_at = Set(now);
-        }
-        self.updated_at = Set(now);
-        Ok(self)
-    }
-}
+crate::timestamps::impl_timestamps!(ActiveModel);
 
 impl Entity {
     pub async fn by_ids(

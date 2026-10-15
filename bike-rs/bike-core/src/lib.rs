@@ -35,6 +35,7 @@ pub mod segment_support;
 pub mod services;
 pub mod strava;
 pub mod tasks;
+mod timestamps;
 pub mod training_data;
 pub mod training_profile;
 pub mod workflow_error;

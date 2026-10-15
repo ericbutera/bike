@@ -16,13 +16,17 @@ pub struct Model {
     pub id: i32,
     pub task_type: String,
     pub payload: Json,
+    #[sea_orm(default_value = "pending")]
     pub status: String,
     #[sea_orm(default_value = 0)]
     pub attempts: i32,
+    #[sea_orm(default_value = 3)]
     pub max_attempts: i32,
     pub error: Option<String>,
     pub scheduled_for: Option<DateTime<Utc>>,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub created_at: DateTime<Utc>,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub updated_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,
@@ -39,6 +43,7 @@ impl ActiveModelBehavior for ActiveModel {
         C: ConnectionTrait,
     {
         if insert {
+            // Queue claims and causal history share one application-clock identity.
             let now = Utc::now();
             if self.status.is_not_set() {
                 self.status = Set(TaskStatus::Pending.as_str().into());

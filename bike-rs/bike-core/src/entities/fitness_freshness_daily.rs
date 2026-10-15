@@ -1,6 +1,5 @@
 use crate::analytics::FitnessFreshnessDay;
 use crate::entities::fitness_freshness_daily;
-use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{ColumnTrait, ConnectionTrait, DbErr, QueryFilter, QueryOrder, Set};
@@ -12,32 +11,26 @@ pub struct Model {
     pub id: i32,
     pub user_id: i32,
     pub day: NaiveDate,
+    #[sea_orm(default_value = 0)]
     pub activity_count: i32,
+    #[sea_orm(default_value = 0.0)]
     pub training_load: f64,
+    #[sea_orm(default_value = 0.0)]
     pub fitness: f64,
+    #[sea_orm(default_value = 0.0)]
     pub fatigue: f64,
+    #[sea_orm(default_value = 0.0)]
     pub form: f64,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub created_at: DateTime<Utc>,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
 
-#[async_trait]
-impl ActiveModelBehavior for ActiveModel {
-    async fn before_save<C>(mut self, _db: &C, insert: bool) -> Result<Self, DbErr>
-    where
-        C: ConnectionTrait,
-    {
-        let now = Utc::now();
-        if insert {
-            self.created_at = Set(now);
-        }
-        self.updated_at = Set(now);
-        Ok(self)
-    }
-}
+crate::timestamps::impl_timestamps!(ActiveModel);
 
 impl Model {
     pub async fn latest_before_day<C>(

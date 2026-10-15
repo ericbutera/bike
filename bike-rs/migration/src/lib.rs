@@ -64,6 +64,7 @@ mod m20261011_000001_strava_workflows;
 mod m20261013_000001_strava_events;
 mod m20261013_000002_retire_strava_schema;
 mod m20261013_000003_strava_event_status;
+mod m20261015_000001_background_task_insert_defaults;
 
 pub struct Migrator;
 
@@ -133,6 +134,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261006_000001_heatmap_projection_recording_policy::Migration),
             Box::new(m20261006_000002_heatmap_cycling_sources::Migration),
             Box::new(m20261006_000003_activity_recording_environment::Migration),
+            Box::new(m20261015_000001_background_task_insert_defaults::Migration),
         ];
         locals.sort_by_key(|m| m.name().to_string());
 

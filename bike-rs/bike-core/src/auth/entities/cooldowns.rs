@@ -11,34 +11,23 @@ pub struct Model {
     pub subject_id: Option<i32>,
     pub action: String,
     pub last_run: Option<DateTime<Utc>>,
+    #[sea_orm(default_value = 0)]
     pub attempt_count: i32,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub created_at: DateTime<Utc>,
+    #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
 
-use async_trait::async_trait;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait,
-    IntoActiveModel, QueryFilter, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, IntoActiveModel,
+    QueryFilter, Set,
 };
 
-#[async_trait]
-impl ActiveModelBehavior for ActiveModel {
-    async fn before_save<C>(mut self, _db: &C, insert: bool) -> Result<Self, DbErr>
-    where
-        C: ConnectionTrait,
-    {
-        let now = Utc::now();
-        if insert {
-            self.created_at = Set(now);
-        }
-        self.updated_at = Set(now);
-        Ok(self)
-    }
-}
+crate::timestamps::impl_timestamps!(ActiveModel);
 
 impl Model {
     pub async fn find_by(

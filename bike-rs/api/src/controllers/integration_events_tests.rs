@@ -2,7 +2,8 @@ use super::*;
 use axum::extract::FromRequestParts;
 use axum::http::Request;
 use bike_core::auth::entities::users;
-use sea_orm::{ActiveModelTrait, ConnectionTrait, Database, Schema, Set};
+use bike_core::test_support;
+use sea_orm::{ConnectionTrait, Database, Schema, Set};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -21,22 +22,23 @@ impl Fixture {
             db.execute(&table).await.unwrap();
         }
         let pid = Uuid::new_v4();
-        users::ActiveModel {
-            id: Set(1),
-            pid: Set(pid),
-            email: Set("history@example.test".into()),
-            name: Set("History rider".into()),
-            api_key: Set("fixture-key".into()),
-            disabled: Set(false),
-            created_at: Set(Utc::now()),
-            updated_at: Set(Utc::now()),
-            is_admin: Set(None),
-            email_verified_at: Set(None),
-            ..bike_core::test_support::new_customer()
-        }
-        .insert(&db)
-        .await
-        .unwrap();
+        test_support::insert(
+            &db,
+            users::ActiveModel {
+                id: Set(1),
+                pid: Set(pid),
+                email: Set("history@example.test".into()),
+                name: Set("History rider".into()),
+                api_key: Set("fixture-key".into()),
+                disabled: Set(false),
+                created_at: Set(Utc::now()),
+                updated_at: Set(Utc::now()),
+                is_admin: Set(None),
+                email_verified_at: Set(None),
+                ..bike_core::test_support::new_customer()
+            },
+        )
+        .await;
         let mut state = AppStorage::for_test(db);
         state.local_admin_user_pid = Some(pid);
         Self {

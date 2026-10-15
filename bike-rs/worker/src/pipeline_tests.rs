@@ -1,4 +1,5 @@
 use crate::{pipeline_fixture_tests::database, tasks::*};
+use bike_core::test_support;
 use bike_core::{
     background_jobs::{
         entities::{background_tasks, pipeline_outputs, work_units, worker_batches},
@@ -9,7 +10,7 @@ use bike_core::{
     entities::{activities, activity_imports, segment_summaries, segments},
 };
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, Set};
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, Set};
 use serde_json::json;
 
 async fn enqueue_in_pipeline(
@@ -27,34 +28,36 @@ async fn enqueue_in_pipeline(
 }
 
 async fn seed_activity(db: &sea_orm::DatabaseConnection, id: i32) {
-    activity_imports::ActiveModel {
-        id: Set(id),
-        user_id: Set(7),
-        source: Set("archive_url_import".into()),
-        format: Set("fit".into()),
-        status: Set("processed".into()),
-        processing_stage: Set("completed".into()),
-        processing_attempts: Set(1),
-        original_filename: Set(format!("fixture-{id}.fit")),
-        storage_path: Set(format!("fixture-{id}.fit")),
-        size_bytes: Set(1),
-        ..bike_core::test_support::new_activity_import()
-    }
-    .insert(db)
-    .await
-    .unwrap();
-    activities::ActiveModel {
-        id: Set(id),
-        user_id: Set(7),
-        activity_import_id: Set(Some(id)),
-        title: Set(format!("Fixture {id}")),
-        source: Set("archive_url_import".into()),
-        started_at: Set(Utc::now()),
-        ..bike_core::test_support::new_activity()
-    }
-    .insert(db)
-    .await
-    .unwrap();
+    test_support::insert(
+        db,
+        activity_imports::ActiveModel {
+            id: Set(id),
+            user_id: Set(7),
+            source: Set("archive_url_import".into()),
+            format: Set("fit".into()),
+            status: Set("processed".into()),
+            processing_stage: Set("completed".into()),
+            processing_attempts: Set(1),
+            original_filename: Set(format!("fixture-{id}.fit")),
+            storage_path: Set(format!("fixture-{id}.fit")),
+            size_bytes: Set(1),
+            ..bike_core::test_support::new_activity_import()
+        },
+    )
+    .await;
+    test_support::insert(
+        db,
+        activities::ActiveModel {
+            id: Set(id),
+            user_id: Set(7),
+            activity_import_id: Set(Some(id)),
+            title: Set(format!("Fixture {id}")),
+            source: Set("archive_url_import".into()),
+            started_at: Set(Utc::now()),
+            ..bike_core::test_support::new_activity()
+        },
+    )
+    .await;
 }
 
 async fn assert_batch_cursor(db: &sea_orm::DatabaseConnection, id: i32, cursor: i32, sealed: bool) {
@@ -71,18 +74,19 @@ async fn assert_batch_cursor(db: &sea_orm::DatabaseConnection, id: i32, cursor: 
 async fn pipeline_segment_cache_publishes_the_requested_revision_and_actual_work_counts() {
     let db = database().await;
     let revision = Utc::now();
-    let segment = segments::ActiveModel {
-        user_id: Set(7),
-        title: Set("Fixture segment".into()),
-        source: Set("manual".into()),
-        mode: Set("cycling".into()),
-        starred: Set(false),
-        last_activity_change_at: Set(revision),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    let segment = test_support::insert(
+        &db,
+        segments::ActiveModel {
+            user_id: Set(7),
+            title: Set("Fixture segment".into()),
+            source: Set("manual".into()),
+            mode: Set("cycling".into()),
+            starred: Set(false),
+            last_activity_change_at: Set(revision),
+            ..Default::default()
+        },
+    )
+    .await;
     let origin = PipelineContext::received("admin", None);
     let task = enqueue_in_pipeline(
         &db,
@@ -276,7 +280,7 @@ async fn pipeline_archive_redelivery_of_a_sealed_batch_does_not_spawn_more_child
             .unwrap()
             .into();
     batch.sealed = Set(true);
-    batch.update(&db).await.unwrap();
+    test_support::update(&db, batch).await;
     let processor = ActivityArchiveImport::new(db.clone());
     assert_eq!(processor.task_type(), "activity_archive_import");
     processor

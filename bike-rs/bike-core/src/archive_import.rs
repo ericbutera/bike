@@ -17,7 +17,7 @@ use crate::workflow_error::WorkflowError as AppError;
 use reqwest::{header, redirect::Policy, Client, Url};
 use sea_orm::DatabaseConnection;
 #[cfg(test)]
-use sea_orm::{ActiveModelTrait, Set};
+use sea_orm::Set;
 use serde::Serialize;
 use std::env;
 use std::io::{Cursor, Read, Seek};
@@ -1129,6 +1129,7 @@ async fn mark_activity_archive_import_job_failed(
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use crate::background_jobs::background_tasks;
     use crate::entities::{
@@ -1136,6 +1137,7 @@ mod tests {
         activity_training_analyses, analytics_user_states, segment_efforts, segments,
         user_preferences,
     };
+    use crate::test_support;
     use sea_orm::{ConnectionTrait, Database, EntityTrait, PaginatorTrait, Schema};
     use std::io::Write;
     use zip::write::SimpleFileOptions;
@@ -1372,22 +1374,23 @@ mod tests {
             ("broken.gpx", b"invalid"),
             ("readme.txt", b"unsupported"),
         ]);
-        let job = activity_archive_import_jobs::ActiveModel {
-            user_id: Set(1),
-            user_storage_key: Set("test-user".into()),
-            archive_url: Set("https://example.test/archive.zip".into()),
-            status: Set("running".into()),
-            total_entries: Set(0),
-            supported_entry_count: Set(0),
-            imported_count: Set(0),
-            duplicate_count: Set(0),
-            skipped_unsupported_count: Set(0),
-            failed_count: Set(0),
-            ..Default::default()
-        }
-        .insert(&db)
-        .await
-        .unwrap();
+        let job = test_support::insert(
+            &db,
+            activity_archive_import_jobs::ActiveModel {
+                user_id: Set(1),
+                user_storage_key: Set("test-user".into()),
+                archive_url: Set("https://example.test/archive.zip".into()),
+                status: Set("running".into()),
+                total_entries: Set(0),
+                supported_entry_count: Set(0),
+                imported_count: Set(0),
+                duplicate_count: Set(0),
+                skipped_unsupported_count: Set(0),
+                failed_count: Set(0),
+                ..Default::default()
+            },
+        )
+        .await;
         let summary = import_activity_archive_from_path(
             &db,
             &TaskQueue::new(db.clone()),

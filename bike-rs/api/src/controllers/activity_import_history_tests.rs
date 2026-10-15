@@ -5,8 +5,9 @@ use axum::http::{Request, StatusCode};
 use axum::Router;
 use bike_core::auth::entities::users;
 use bike_core::entities::{activities, activity_import_attempts, activity_imports};
+use bike_core::test_support;
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ConnectionTrait, EntityTrait, Schema, Set};
+use sea_orm::{ConnectionTrait, EntityTrait, Schema, Set};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -32,7 +33,7 @@ impl Fixture {
         for mut import in [imported(1, 7), imported(2, 8), imported(3, 1)] {
             import.storage_path = "ride.gpx".into();
             let active: activity_imports::ActiveModel = import.into();
-            active.insert(&db).await.unwrap();
+            test_support::insert(&db, active).await;
         }
         let mut state = AppStorage::for_test(db);
         state.uploads_dir = uploads.path().to_str().unwrap().into();
@@ -49,22 +50,23 @@ impl Fixture {
 }
 
 async fn insert_user(db: &sea_orm::DatabaseConnection, pid: Uuid, admin: bool) {
-    users::ActiveModel {
-        id: Set(1),
-        pid: Set(pid),
-        email: Set("admin-imports@example.test".into()),
-        api_key: Set("fixture-api-key".into()),
-        name: Set("Fixture user".into()),
-        is_admin: Set(Some(admin)),
-        disabled: Set(false),
-        created_at: Set(Utc::now()),
-        updated_at: Set(Utc::now()),
-        email_verified_at: Set(None),
-        ..bike_core::test_support::new_customer()
-    }
-    .insert(db)
-    .await
-    .unwrap();
+    test_support::insert(
+        db,
+        users::ActiveModel {
+            id: Set(1),
+            pid: Set(pid),
+            email: Set("admin-imports@example.test".into()),
+            api_key: Set("fixture-api-key".into()),
+            name: Set("Fixture user".into()),
+            is_admin: Set(Some(admin)),
+            disabled: Set(false),
+            created_at: Set(Utc::now()),
+            updated_at: Set(Utc::now()),
+            email_verified_at: Set(None),
+            ..bike_core::test_support::new_customer()
+        },
+    )
+    .await;
 }
 
 fn request(method: &str, path: &str) -> Request<Body> {
@@ -144,21 +146,22 @@ async fn activity_fixture() -> Fixture {
         (3, 8, "Other ride", "strava_sync", "ride", None),
         (4, 7, "Hill run", "manual_upload", "run", None),
     ] {
-        activities::ActiveModel {
-            id: Set(id),
-            user_id: Set(owner),
-            title: Set(title.into()),
-            source: Set(source.into()),
-            sport: Set(sport.into()),
-            activity_type: Set("activity".into()),
-            activity_import_id: Set(import_id),
-            format: Set(Some("gpx".into())),
-            started_at: Set(started_at),
-            ..bike_core::test_support::new_activity()
-        }
-        .insert(db)
-        .await
-        .unwrap();
+        test_support::insert(
+            db,
+            activities::ActiveModel {
+                id: Set(id),
+                user_id: Set(owner),
+                title: Set(title.into()),
+                source: Set(source.into()),
+                sport: Set(sport.into()),
+                activity_type: Set("activity".into()),
+                activity_import_id: Set(import_id),
+                format: Set(Some("gpx".into())),
+                started_at: Set(started_at),
+                ..bike_core::test_support::new_activity()
+            },
+        )
+        .await;
     }
     fixture
 }

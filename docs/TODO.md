@@ -2,12 +2,26 @@
 
 ## Model boundaries and fixtures
 
+- [x] Declare SeaORM insert defaults for the existing
+  account, activity/import, analytics, segment, preference, flag, and task models.
+  Preserve explicit values and append the missing task defaults migration.
+- [x] Share the ordinary SeaORM update hook beside each owning model; remove the
+  central seed registry and keep queue claim identities explicit.
+- [x] Reuse shared task, preference, and feature-flag insert fixtures with typed
+  struct-update overrides and one generic insert helper. Keep migration files
+  focused on schema changes without the new migration unit-test block.
+- [x] Apply shared insert/update fixture helpers throughout Rust unit tests;
+  verify partial-update and explicit-clear behavior and affected test modules.
+- [x] Verify in Docker on 2026-10-15: 220 affected unit tests and required Rust
+  formatting/Clippy hooks pass; two existing large real-archive tests stay ignored.
+- [ ] Verify full workspace and changed-line coverage CI for the insert-defaults PR.
+
 - [x] Audit runtime query builders and repeated test-model construction; record
   scope, counts, and migration acceptance in [the spec](specs/model-boundaries.md).
 - [x] Share import/activity/account/connection fixtures through test-only core
   support; retain scenario overrides and generated-ID insert helpers.
-- [x] Require simple call sites, entity-owned queries, and fixture reuse in
-  `AGENTS.md`.
+- [x] Require simple call sites, entity-owned queries, fixture factories, and
+  shared test helpers in `AGENTS.md` and the model/fixture specification.
 - [x] Move the audited activity/import controller queries onto owning models;
   preserve owned pagination, import hydration, source selection, and list limits.
 - [x] Move segment access, dedupe, leaderboard reads, and deletion persistence

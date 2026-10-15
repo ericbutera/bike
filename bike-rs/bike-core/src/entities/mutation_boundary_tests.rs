@@ -1,7 +1,7 @@
 use super::*;
 use crate::background_jobs::entities::{pipeline_outputs, work_units};
 use crate::test_support;
-use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, EntityTrait, Schema};
+use sea_orm::{ConnectionTrait, DatabaseConnection, EntityTrait, Schema};
 use serde_json::json;
 async fn database() -> DatabaseConnection {
     let db = super::model_boundary_tests::segment_database().await;
@@ -23,7 +23,7 @@ async fn database() -> DatabaseConnection {
 
 async fn segment(db: &DatabaseConnection) -> segments::Model {
     let active: segments::ActiveModel = test_support::segment().into();
-    active.insert(db).await.unwrap()
+    test_support::insert(db, active).await
 }
 
 #[tokio::test]
@@ -67,7 +67,7 @@ async fn segment_rename_rolls_back_if_analytics_write_fails() {
     let db = database().await;
     let original = segment(&db).await;
     let active: segment_efforts::ActiveModel = test_support::segment_effort().into();
-    active.insert(&db).await.unwrap();
+    test_support::insert(&db, active).await;
     db.execute_unprepared("DROP TABLE activity_analytics")
         .await
         .unwrap();
@@ -102,7 +102,7 @@ async fn builder_source(db: &DatabaseConnection, title: &str) -> segments::Activ
         ..test_support::activity()
     }
     .into();
-    active.insert(db).await.unwrap();
+    test_support::insert(db, active).await;
     segments::ActivitySegmentSource::load(db, 7, 42, title, 0, 1)
         .await
         .unwrap()
@@ -152,7 +152,7 @@ async fn segment_replacement_rejects_another_segments_route_without_writing() {
         ..test_support::segment()
     }
     .into();
-    let other = active.insert(&db).await.unwrap();
+    let other = test_support::insert(&db, active).await;
     assert!(other
         .clone()
         .replace_from_activity(&db, &source)
@@ -234,10 +234,7 @@ async fn invalid_preferences_preserve_the_entire_previous_record() {
 #[tokio::test]
 async fn import_state_transitions_keep_linkage_attempts_and_completion_times() {
     let db = database().await;
-    let import = test_support::new_activity_import()
-        .insert(&db)
-        .await
-        .unwrap();
+    let import = test_support::insert(&db, test_support::new_activity_import()).await;
     let processing = import
         .mark_processing(&db, "activity_saved", Some(42), test_support::timestamp())
         .await
@@ -279,10 +276,7 @@ async fn import_state_transitions_keep_linkage_attempts_and_completion_times() {
 async fn ingestion_attempt_records_and_finishes_reused_stage_state() {
     use crate::activity_import_execution::{self as execution, StageRecord};
     let db = database().await;
-    let import = test_support::new_activity_import()
-        .insert(&db)
-        .await
-        .unwrap();
+    let import = test_support::insert(&db, test_support::new_activity_import()).await;
     let attempt = execution::create_attempt(
         &db,
         &import,
@@ -354,7 +348,7 @@ async fn ingestion_attempt_records_and_finishes_reused_stage_state() {
 async fn copied_artifacts_keep_source_metadata_and_receive_new_ids() {
     let db = database().await;
     let active: activity_import_artifacts::ActiveModel = test_support::import_artifact().into();
-    let original = active.insert(&db).await.unwrap();
+    let original = test_support::insert(&db, active).await;
     let resized = original.clone().copy_with_size(&db, 999).await.unwrap();
     assert_ne!(resized.id, original.id);
     assert_eq!(resized.size_bytes, 999);
@@ -363,7 +357,7 @@ async fn copied_artifacts_keep_source_metadata_and_receive_new_ids() {
     assert_eq!(copied.storage_path, original.storage_path);
     assert_eq!(copied.checksum_sha256, original.checksum_sha256);
     let active: activities::ActiveModel = test_support::activity().into();
-    let activity = active.insert(&db).await.unwrap();
+    let activity = test_support::insert(&db, active).await;
     let adopted = activity.adopt_source_metadata(&db, &copied).await.unwrap();
     assert_eq!(adopted.original_filename, Some(copied.original_filename));
     assert_eq!(adopted.format, Some(copied.format));
@@ -593,7 +587,7 @@ async fn adopting_builder_links_preserves_the_stored_route_and_import_metadata()
         ..test_support::segment()
     }
     .into();
-    let original = active.insert(&db).await.unwrap();
+    let original = test_support::insert(&db, active).await;
     let adopted = original
         .clone()
         .adopt_builder_source(&db, &source)
@@ -624,7 +618,7 @@ async fn native_completion_keeps_prior_processing_events_and_import_identity() {
         ..test_support::activity_import()
     }
     .into();
-    let original = active.insert(&db).await.unwrap();
+    let original = test_support::insert(&db, active).await;
     let completed = original.clone().mark_native_processed(&db).await.unwrap();
     assert!(completed.processed_at.is_some());
     assert_eq!(
@@ -650,7 +644,7 @@ async fn credential_refresh_applies_supplied_profile_and_scope_without_resetting
         ..test_support::connection()
     }
     .into();
-    let original = active.insert(&db).await.unwrap();
+    let original = test_support::insert(&db, active).await;
     let refresh: StravaRefreshTokenResponse = serde_json::from_value(json!({
         "access_token":"new-access","refresh_token":"new-refresh","expires_at":2100000000,
         "scope":"read","athlete":{"id":124,"firstname":"Updated"}
@@ -700,7 +694,7 @@ async fn archive_progress_updates_counts_without_finishing_and_restart_resets_th
     let db = database().await;
     let active: activity_archive_import_jobs::ActiveModel =
         test_support::archive_import_job().into();
-    let job = active.insert(&db).await.unwrap();
+    let job = test_support::insert(&db, active).await;
     let running = activity_archive_import_jobs::Model::mark_running(&db, &job)
         .await
         .unwrap();
@@ -793,10 +787,7 @@ async fn task_insert_defaults_keep_the_payload_schedule_and_retry_policy() {
 #[tokio::test]
 async fn attempt_insert_defaults_keep_the_requested_stages_and_import_link() {
     let db = database().await;
-    let import = test_support::new_activity_import()
-        .insert(&db)
-        .await
-        .unwrap();
+    let import = test_support::insert(&db, test_support::new_activity_import()).await;
     let source = json!({"source":"fixture"});
     let attempt = activity_import_attempts::Model::create_attempt(
         &db,

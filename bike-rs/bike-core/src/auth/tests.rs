@@ -2,10 +2,9 @@ use super::entities::{oauth_states, refresh_tokens, users};
 use super::services::oauth::OAuthUserInfo;
 use super::tokens::verify_access_token;
 use super::{OAuthService, SessionService};
+use crate::test_support;
 use chrono::{Duration, Utc};
-use sea_orm::{
-    ActiveModelTrait, ConnectionTrait, Database, DatabaseConnection, EntityTrait, Schema, Set,
-};
+use sea_orm::{ConnectionTrait, Database, DatabaseConnection, EntityTrait, Schema, Set};
 use std::sync::Once;
 use uuid::Uuid;
 
@@ -241,22 +240,23 @@ async fn database() -> DatabaseConnection {
 }
 
 async fn existing_user(db: &DatabaseConnection) -> users::Model {
-    users::ActiveModel {
-        pid: Set(Uuid::new_v4()),
-        email: Set("existing@example.test".into()),
-        password: Set(Some("retained-historical-password-data".into())),
-        api_key: Set(Uuid::new_v4().to_string()),
-        name: Set("Existing rider".into()),
-        is_admin: Set(Some(true)),
-        disabled: Set(false),
-        email_verified_at: Set(Some(Utc::now())),
-        created_at: Set(Utc::now()),
-        updated_at: Set(Utc::now()),
-        ..crate::test_support::new_customer()
-    }
-    .insert(db)
+    test_support::insert(
+        db,
+        users::ActiveModel {
+            pid: Set(Uuid::new_v4()),
+            email: Set("existing@example.test".into()),
+            password: Set(Some("retained-historical-password-data".into())),
+            api_key: Set(Uuid::new_v4().to_string()),
+            name: Set("Existing rider".into()),
+            is_admin: Set(Some(true)),
+            disabled: Set(false),
+            email_verified_at: Set(Some(Utc::now())),
+            created_at: Set(Utc::now()),
+            updated_at: Set(Utc::now()),
+            ..crate::test_support::new_customer()
+        },
+    )
     .await
-    .expect("existing rider")
 }
 
 fn provider_user() -> OAuthUserInfo {
@@ -463,7 +463,7 @@ async fn sessions_rotate_refresh_tokens_and_reject_replay_and_expiry() {
         .expect("persisted token");
     let mut expired: refresh_tokens::ActiveModel = stored.into();
     expired.expires_at = Set((Utc::now() - Duration::seconds(1)).timestamp());
-    expired.update(&db).await.expect("expire token");
+    test_support::update(&db, expired).await;
     assert!(service
         .refresh(&db, rotated.refresh_token.clone())
         .await

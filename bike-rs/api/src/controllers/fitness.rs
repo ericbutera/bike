@@ -228,10 +228,12 @@ fn round_metric(value: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use bike_core::entities::{activities, analytics_user_states, fitness_freshness_daily};
+    use bike_core::test_support;
     use chrono::DateTime;
-    use sea_orm::{ActiveModelTrait, ConnectionTrait, Database, DatabaseConnection, Schema, Set};
+    use sea_orm::{ConnectionTrait, Database, DatabaseConnection, Schema, Set};
 
     async fn test_db() -> DatabaseConnection {
         let db = Database::connect("sqlite::memory:")
@@ -242,9 +244,13 @@ mod tests {
         db.execute(&schema.create_table_from_entity(activities::Entity))
             .await
             .expect("create activities table");
-        db.execute(&schema.create_table_from_entity(analytics_user_states::Entity))
-            .await
-            .expect("create analytics user states table");
+        db.execute(&test_support::table_with_timestamp_defaults(
+            &db,
+            analytics_user_states::Entity,
+            &["created_at", "updated_at", "last_activity_change_at"],
+        ))
+        .await
+        .expect("create analytics user states table");
         db.execute(&schema.create_table_from_entity(fitness_freshness_daily::Entity))
             .await
             .expect("create fitness freshness table");
@@ -366,55 +372,58 @@ mod tests {
         let now = Utc::now();
         let day = NaiveDate::from_ymd_opt(2026, 5, 1).unwrap();
 
-        activities::ActiveModel {
-            user_id: Set(1),
-            title: Set("Lunch Ride".to_string()),
-            format: Set(Some("fit".to_string())),
-            started_at: Set(DateTime::parse_from_rfc3339("2026-05-01T12:00:00Z")
-                .unwrap()
-                .with_timezone(&Utc)),
-            distance_meters: Set(Some(25_000.0)),
-            moving_time_seconds: Set(Some(3600)),
-            total_time_seconds: Set(Some(3600)),
-            elevation_gain_meters: Set(Some(400.0)),
-            elevation_loss_meters: Set(Some(400.0)),
-            average_speed_mps: Set(Some(7.0)),
-            max_speed_mps: Set(Some(12.0)),
-            average_heart_rate_bpm: Set(Some(150)),
-            max_heart_rate_bpm: Set(Some(200)),
-            average_cadence_rpm: Set(Some(85)),
-            max_cadence_rpm: Set(Some(100)),
-            calories: Set(Some(700)),
-            ..bike_core::test_support::new_activity()
-        }
-        .insert(&db)
-        .await
-        .expect("insert activity");
+        test_support::insert(
+            &db,
+            activities::ActiveModel {
+                user_id: Set(1),
+                title: Set("Lunch Ride".to_string()),
+                format: Set(Some("fit".to_string())),
+                started_at: Set(DateTime::parse_from_rfc3339("2026-05-01T12:00:00Z")
+                    .unwrap()
+                    .with_timezone(&Utc)),
+                distance_meters: Set(Some(25_000.0)),
+                moving_time_seconds: Set(Some(3600)),
+                total_time_seconds: Set(Some(3600)),
+                elevation_gain_meters: Set(Some(400.0)),
+                elevation_loss_meters: Set(Some(400.0)),
+                average_speed_mps: Set(Some(7.0)),
+                max_speed_mps: Set(Some(12.0)),
+                average_heart_rate_bpm: Set(Some(150)),
+                max_heart_rate_bpm: Set(Some(200)),
+                average_cadence_rpm: Set(Some(85)),
+                max_cadence_rpm: Set(Some(100)),
+                calories: Set(Some(700)),
+                ..bike_core::test_support::new_activity()
+            },
+        )
+        .await;
 
-        fitness_freshness_daily::ActiveModel {
-            user_id: Set(1),
-            day: Set(day),
-            activity_count: Set(2),
-            training_load: Set(112.5),
-            fitness: Set(2.6785714285714284),
-            fatigue: Set(16.071428571428573),
-            form: Set(-13.392857142857144),
-            ..bike_core::test_support::new_fitness_day()
-        }
-        .insert(&db)
-        .await
-        .expect("insert stale cached row");
+        test_support::insert(
+            &db,
+            fitness_freshness_daily::ActiveModel {
+                user_id: Set(1),
+                day: Set(day),
+                activity_count: Set(2),
+                training_load: Set(112.5),
+                fitness: Set(2.6785714285714284),
+                fatigue: Set(16.071428571428573),
+                form: Set(-13.392857142857144),
+                ..bike_core::test_support::new_fitness_day()
+            },
+        )
+        .await;
 
-        analytics_user_states::ActiveModel {
-            user_id: Set(1),
-            last_activity_change_at: Set(now),
-            fitness_dirty_from_day: Set(Some(day)),
-            last_fitness_rebuild_at: Set(None),
-            ..Default::default()
-        }
-        .insert(&db)
-        .await
-        .expect("insert dirty analytics state");
+        test_support::insert(
+            &db,
+            analytics_user_states::ActiveModel {
+                user_id: Set(1),
+                last_activity_change_at: Set(now),
+                fitness_dirty_from_day: Set(Some(day)),
+                last_fitness_rebuild_at: Set(None),
+                ..Default::default()
+            },
+        )
+        .await;
 
         let rows = load_cached_rows_for_request(&db, 1, Some(day), day)
             .await
