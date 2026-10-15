@@ -1632,22 +1632,16 @@ mod tests {
     ) -> activity_imports::Model {
         activity_imports::ActiveModel {
             user_id: Set(1),
-            source: Set(MANUAL_UPLOAD_SOURCE.to_string()),
-            format: Set("gpx".to_string()),
             status: Set(ACTIVITY_IMPORT_STATUS_PROCESSING.to_string()),
             activity_id: Set(import_id_activity_id),
             processing_stage: Set(stage.to_string()),
-            processing_error: Set(None),
-            processing_attempts: Set(0),
-            processed_at: Set(None),
             last_processing_event_at: Set(Some(last_event_at)),
             original_filename: Set("stale.gpx".to_string()),
             storage_path: Set("activity-imports/test/stale.gpx".to_string()),
-            size_bytes: Set(123),
             mime_type: Set(None),
             created_at: Set(last_event_at),
             updated_at: Set(last_event_at),
-            ..Default::default()
+            ..crate::test_support::new_activity_import()
         }
         .insert(db)
         .await
@@ -2107,19 +2101,14 @@ mod tests {
             source: Set("strava_sync".to_string()),
             format: Set("tcx".to_string()),
             status: Set(ACTIVITY_IMPORT_STATUS_PROCESSING.to_string()),
-            activity_id: Set(None),
             processing_stage: Set(ACTIVITY_IMPORT_STAGE_RAW_STORED.to_string()),
-            processing_error: Set(None),
-            processing_attempts: Set(0),
-            processed_at: Set(None),
             last_processing_event_at: Set(Some(now)),
             original_filename: Set("generated.tcx".to_string()),
             storage_path: Set("activity-imports/test/generated.tcx".to_string()),
-            size_bytes: Set(123),
             mime_type: Set(None),
             created_at: Set(now),
             updated_at: Set(now),
-            ..Default::default()
+            ..crate::test_support::new_activity_import()
         }
         .insert(&db)
         .await
@@ -2177,19 +2166,14 @@ mod tests {
             source: Set("strava_sync".to_string()),
             format: Set("tcx".to_string()),
             status: Set(ACTIVITY_IMPORT_STATUS_PROCESSING.to_string()),
-            activity_id: Set(None),
             processing_stage: Set(ACTIVITY_IMPORT_STAGE_RAW_STORED.to_string()),
-            processing_error: Set(None),
-            processing_attempts: Set(0),
-            processed_at: Set(None),
             last_processing_event_at: Set(Some(now)),
             original_filename: Set("generated.tcx".to_string()),
             storage_path: Set("activity-imports/test/generated.tcx".to_string()),
-            size_bytes: Set(123),
             mime_type: Set(None),
             created_at: Set(now),
             updated_at: Set(now),
-            ..Default::default()
+            ..crate::test_support::new_activity_import()
         }
         .insert(&db)
         .await

@@ -173,9 +173,7 @@ async fn history_is_paginated_owner_scoped_and_includes_failed_unlinked_imports(
     for index in 0..27 {
         activity_imports::ActiveModel {
             user_id: Set(1),
-            import_version: Set(2),
             source: Set("archive_url_import".into()),
-            format: Set("gpx".into()),
             status: Set("failed".into()),
             processing_attempts: Set(1),
             processing_stage: Set("activity_parsed".into()),
@@ -183,7 +181,7 @@ async fn history_is_paginated_owner_scoped_and_includes_failed_unlinked_imports(
             original_filename: Set(format!("entry-{index}.gpx")),
             storage_path: Set(format!("entry-{index}.gpx")),
             size_bytes: Set(10),
-            ..Default::default()
+            ..bike_core::test_support::new_activity_import()
         }
         .insert(&db)
         .await

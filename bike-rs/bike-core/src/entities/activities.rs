@@ -269,6 +269,32 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
 
+impl Entity {
+    pub async fn delete_by_user(
+        db: &impl ConnectionTrait,
+        activity_id: i32,
+        user_id: i32,
+    ) -> Result<(), DbErr> {
+        Self::delete_by_id(activity_id)
+            .filter(Column::UserId.eq(user_id))
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn count_by_import_for_user(
+        db: &impl ConnectionTrait,
+        activity_import_id: i32,
+        user_id: i32,
+    ) -> Result<u64, DbErr> {
+        Self::find()
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::ActivityImportId.eq(activity_import_id))
+            .count(db)
+            .await
+    }
+}
+
 #[async_trait]
 impl ActiveModelBehavior for ActiveModel {
     async fn before_save<C>(mut self, _db: &C, insert: bool) -> Result<Self, DbErr>

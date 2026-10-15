@@ -893,14 +893,8 @@ mod tests {
             user_id: 12,
             activity_import_id: Some(7),
             title: "Ride".to_string(),
-            sport: "ride".to_string(),
-            source: "manual_upload".to_string(),
-            source_correlation_id: None,
             original_filename: Some("ride.gpx".to_string()),
             format: Some("gpx".to_string()),
-            activity_type: bike_core::activity_type::ActivityType::Training
-                .as_str()
-                .to_string(),
             started_at: now,
             ended_at: Some(now),
             distance_meters: Some(25000.0),
@@ -915,11 +909,10 @@ mod tests {
             average_cadence_rpm: Some(86),
             max_cadence_rpm: Some(102),
             calories: Some(650),
-            estimated_ftp_watts: None,
-            heart_rate_zones_json: None,
             derived_data_json: Some(activity_import_derived_data_json()),
             created_at: now,
             updated_at: now,
+            ..bike_core::test_support::activity()
         }
     }
 
@@ -946,25 +939,18 @@ mod tests {
 
     fn activity_import_fixture(now: DateTime<Utc>) -> activity_imports::Model {
         activity_imports::Model {
-            archive_job_id: None,
             id: 7,
             user_id: 12,
-            import_version: bike_core::entities::activity_imports::ACTIVITY_IMPORT_VERSION_CURRENT,
-            source: "manual_upload".to_string(),
-            format: "gpx".to_string(),
-            status: "uploaded".to_string(),
             activity_id: Some(99),
             processing_stage: "complete".to_string(),
-            processing_error: None,
-            processing_attempts: 0,
             processed_at: Some(now),
             last_processing_event_at: Some(now),
             original_filename: "ride.gpx".to_string(),
             storage_path: "activity-imports/user/ride.gpx".to_string(),
             size_bytes: 8192,
-            mime_type: Some("application/gpx+xml".to_string()),
             created_at: now,
             updated_at: now,
+            ..bike_core::test_support::activity_import()
         }
     }
 }

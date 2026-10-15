@@ -180,6 +180,18 @@ impl Entity {
             .await
     }
 
+    pub async fn delete_by_user(
+        db: &impl ConnectionTrait,
+        import_id: i32,
+        user_id: i32,
+    ) -> Result<(), DbErr> {
+        Self::delete_by_id(import_id)
+            .filter(Column::UserId.eq(user_id))
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+
     pub async fn generated_strava_page(
         db: &impl ConnectionTrait,
         user_id: i32,

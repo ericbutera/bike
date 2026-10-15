@@ -1150,14 +1150,8 @@ mod tests {
             user_id: 8,
             activity_import_id: Some(9),
             title: "Evening Ride".to_string(),
-            sport: "ride".to_string(),
-            source: "manual_upload".to_string(),
-            source_correlation_id: None,
             original_filename: Some("evening-ride.gpx".to_string()),
             format: Some("gpx".to_string()),
-            activity_type: bike_core::activity_type::ActivityType::Training
-                .as_str()
-                .to_string(),
             started_at: now,
             ended_at: Some(now),
             distance_meters: Some(32100.0),
@@ -1172,11 +1166,10 @@ mod tests {
             average_cadence_rpm: Some(86),
             max_cadence_rpm: Some(108),
             calories: Some(640),
-            estimated_ftp_watts: None,
-            heart_rate_zones_json: None,
             derived_data_json: Some(activity_response_derived_data_json()),
             created_at: now,
             updated_at: now,
+            ..bike_core::test_support::activity()
         }
     }
 

@@ -33,13 +33,12 @@ async fn seed_activity(db: &sea_orm::DatabaseConnection, id: i32) {
         source: Set("archive_url_import".into()),
         format: Set("fit".into()),
         status: Set("processed".into()),
-        import_version: Set(2),
         processing_stage: Set("completed".into()),
         processing_attempts: Set(1),
         original_filename: Set(format!("fixture-{id}.fit")),
         storage_path: Set(format!("fixture-{id}.fit")),
         size_bytes: Set(1),
-        ..Default::default()
+        ..bike_core::test_support::new_activity_import()
     }
     .insert(db)
     .await
@@ -49,11 +48,9 @@ async fn seed_activity(db: &sea_orm::DatabaseConnection, id: i32) {
         user_id: Set(7),
         activity_import_id: Set(Some(id)),
         title: Set(format!("Fixture {id}")),
-        sport: Set("ride".into()),
         source: Set("archive_url_import".into()),
-        activity_type: Set("training".into()),
         started_at: Set(Utc::now()),
-        ..Default::default()
+        ..bike_core::test_support::new_activity()
     }
     .insert(db)
     .await

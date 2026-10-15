@@ -190,6 +190,17 @@ replayed. Keep ownership, deduplication, promotion, retries, and deletion
 consistent. Update Rust/OpenAPI and shared UI vocabulary together. Keep
 SeaORM queries on owning models.
 
+Activity deletion keeps persistence operations on the owning entities:
+
+- Remove analytics and training analyses by activity ID, then delete the
+  activity with both its ID and owner ID.
+- Count remaining activities for the same import and owner. Retain shared
+  imports while any activity still references them.
+- Find and delete an unreferenced import with both its ID and owner ID.
+  A missing import does not prevent activity deletion.
+- Commit database changes before removing the returned source file. Preserve
+  affected segment IDs for downstream derived-state rebuilds.
+
 Verify these boundaries with synthetic fixtures and owning database tests:
 
 - Supported real rides still import and contribute to eligible cycling maps.

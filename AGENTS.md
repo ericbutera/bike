@@ -56,6 +56,14 @@ Git worktree for feature, test, and documentation branches, and perform edits,
 builds, tests, and commits there. Do not switch the primary checkout to a task
 branch unless the user explicitly requests it.
 
+Use the existing workspace-level `.worktrees/` directory inside the approved
+workspace, with a unique repository/task name such as `.worktrees/bike-<task>`.
+A multi-repository task uses one checkout per repository it edits. Unique
+checkout basenames also keep the existing Docker build-cache namespaces apart.
+Reuse an assigned worktree; do not create another worktree inside it. Do not
+create sibling project directories, additional clones, or worktrees outside the
+approved workspace. Keep each task's worktree path fixed until cleanup.
+
 Make PRs for work and update them continuously during review. Keep them
 open for review unless the user explicitly requests integration or a production
 fix. Do not leave authorized PR updates only in a local commit.
@@ -63,9 +71,10 @@ fix. Do not leave authorized PR updates only in a local commit.
 Check the primary checkout's branch and status before starting and before the
 final response. Preserve any existing task branch and its staged, unstaged,
 and untracked changes in a separate worktree before restoring `main`. Report
-where pending work is preserved. Remove only clean, finished agent worktrees
-whose work is safely integrated or explicitly discarded; never discard
-unreviewed work to clean up.
+where pending work is preserved. Once a task's changes are committed, pushed,
+and verified against the remote PR head, remove its clean local worktree.
+Keep branches needed by an open PR until integration. Preserve dirty or
+unpublished work; never discard unreviewed changes to clean up.
 
 Always use conventional commit format.
 
@@ -82,14 +91,14 @@ types:
 
 Keep a clean history. Do not make multiple commits for the same thing, use amend & force with lease instead.
 
-Permission to commit a task also authorizes pushing its completed commits,
-merging through the required PR workflow into remote and local `main`, and
-deleting its finished worktree and local and remote task branches. Complete
-these steps without asking for separate push, merge, or cleanup confirmation.
-Do not stop at a local commit or an open PR after commit permission is given.
-Run the relevant checks, freshly fetch the remote default branch, and verify
-the work is integrated into both default branches before removing the clean
-worktree. Leave the primary/editor checkout clean on `main`.
+Permission to commit a task also authorizes pushing its completed commits and
+cleaning up its finished local worktree after remote verification. Keep PRs open
+for review unless the user explicitly requests integration or a production fix.
+When integration is authorized, run the relevant checks, freshly fetch the
+remote default branch, merge through the required PR workflow, verify remote
+and local `main`, and delete finished local and remote task branches. Complete
+authorized push, integration, and cleanup without asking for separate approval.
+Leave the primary/editor checkout clean on `main`.
 
 Treat `.artifacts` as temporary generated output, not a code archive. Do not
 retain source snapshots, Git bundles, deployment clones, or copied worktrees
@@ -138,11 +147,40 @@ Do not start commits with the word add (eg: `feat: added architecture diagram`),
   aligned with mise tasks and CI. Update affected enforcement in the same
   change as quality tooling; validate and run hooks without bypassing them.
 
-For code changes, review, commits, and quality-tooling maintenance, read
-[the shared engineering quality skill](.agents/skills/bike-engineering-quality/SKILL.md)
-once per session and apply its workflow. This repository's instructions and
-skill define the team's shared standards; personal configuration is not
-required. Run `mise run hooks:install` after cloning to install local hooks.
+These repository instructions and the
+[model and fixture specification](docs/specs/model-boundaries.md) define the
+team's shared standards; personal configuration is not required. Run
+`mise run hooks:install` after cloning to install local hooks.
+
+## Simple call sites, model/domain ownership, and fixtures
+
+- Keep production call sites as named operations: extract inputs, call the
+  owning service/model method, and adapt the result. Push query details,
+  ownership predicates, state transitions, and domain decisions into the
+  owning model/domain layer.
+- Build and execute SeaORM queries inside the owning entity/model module.
+  Controllers, services, workers, and lifecycle orchestration must not chain
+  `Entity::find`, `filter`, `join`, `select`, `order_by`, `count`, `update_many`,
+  or `delete_many`. This includes one-off queries; reuse is not a prerequisite
+  for putting a query on its owner.
+- Search for an existing owning method first. Extend it or add a cohesive,
+  purpose-named operation when missing. Keep IDs and ownership scope explicit.
+  Return domain values/results, not a query builder for callers to finish.
+- Keep transactions, locks, compare-and-swap fences, pagination, and affected-row
+  checks intact when moving queries. Complex domain methods must still honor
+  the existing function-size, argument-count, and complexity limits.
+- Before constructing a test model, search `bike-core/src/test_support` and the
+  owning feature's fixtures. Reuse or extend the canonical fixture instead of
+  copying a complete `Model` or `ActiveModel` into another test module.
+- Shared cross-crate Rust fixtures live in `bike-core::test_support`, behind
+  `cfg(test)` or the existing `test-fixtures` feature. Enable that feature only
+  in consuming crates' dev-dependencies. Override scenario fields at the test
+  call site with struct updates; keep fixture time deterministic unless the
+  test explicitly exercises the current clock.
+- Use fixtures with an unset primary key for inserts that need generated IDs.
+  Partial ActiveModels that update specific stored fields are intentional
+  patches, not duplicate seed constructors. Tests may query stored state
+  directly to verify results; keep production policy in the owning model.
 
 ## mise package manager
 

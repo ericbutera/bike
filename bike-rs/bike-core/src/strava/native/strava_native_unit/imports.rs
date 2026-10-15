@@ -77,16 +77,10 @@ pub(super) fn import(fixture: &Fixture) -> activity_imports::Model {
     activity_imports::Model {
         id: 18,
         user_id: fixture.customer.id,
-        import_version: 2,
         source: "strava_sync".into(),
         format: "json".into(),
         status: "processing".into(),
-        activity_id: None,
-        archive_job_id: None,
         processing_stage: "persist_activity".into(),
-        processing_error: None,
-        processing_attempts: 0,
-        processed_at: None,
         last_processing_event_at: None,
         original_filename: "fixture-strava.json".into(),
         storage_path: "fixture/strava.json".into(),
@@ -94,6 +88,7 @@ pub(super) fn import(fixture: &Fixture) -> activity_imports::Model {
         mime_type: Some("application/json".into()),
         created_at: fixture.connection.created_at,
         updated_at: fixture.connection.created_at,
+        ..crate::test_support::activity_import()
     }
 }
 

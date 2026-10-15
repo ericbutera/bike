@@ -40,6 +40,9 @@ pub mod training_profile;
 pub mod workflow_error;
 pub mod xc_goal_backfill;
 
+#[cfg(any(test, feature = "test-fixtures"))]
+pub mod test_support;
+
 pub mod auth;
 pub mod background_jobs;
 pub mod platform;

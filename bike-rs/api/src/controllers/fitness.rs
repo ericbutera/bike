@@ -397,20 +397,11 @@ mod tests {
 
         activities::ActiveModel {
             user_id: Set(1),
-            activity_import_id: Set(None),
             title: Set("Lunch Ride".to_string()),
-            sport: Set("ride".to_string()),
-            source: Set("manual_upload".to_string()),
-            source_correlation_id: Set(None),
-            original_filename: Set(None),
             format: Set(Some("fit".to_string())),
-            activity_type: Set(bike_core::activity_type::ActivityType::Training
-                .as_str()
-                .to_string()),
             started_at: Set(DateTime::parse_from_rfc3339("2026-05-01T12:00:00Z")
                 .unwrap()
                 .with_timezone(&Utc)),
-            ended_at: Set(None),
             distance_meters: Set(Some(25_000.0)),
             moving_time_seconds: Set(Some(3600)),
             total_time_seconds: Set(Some(3600)),
@@ -423,10 +414,7 @@ mod tests {
             average_cadence_rpm: Set(Some(85)),
             max_cadence_rpm: Set(Some(100)),
             calories: Set(Some(700)),
-            estimated_ftp_watts: Set(None),
-            heart_rate_zones_json: Set(None),
-            derived_data_json: Set(None),
-            ..Default::default()
+            ..bike_core::test_support::new_activity()
         }
         .insert(&db)
         .await

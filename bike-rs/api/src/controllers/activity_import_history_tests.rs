@@ -153,7 +153,7 @@ async fn activity_fixture() -> Fixture {
             activity_import_id: Set(import_id),
             format: Set(Some("gpx".into())),
             started_at: Set(started_at),
-            ..Default::default()
+            ..bike_core::test_support::new_activity()
         }
         .insert(db)
         .await

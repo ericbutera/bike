@@ -27,13 +27,23 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
 
+impl Entity {
+    pub async fn delete_by_activity_id(
+        db: &impl ConnectionTrait,
+        activity_id: i32,
+    ) -> Result<(), DbErr> {
+        Self::delete_by_id(activity_id).exec(db).await?;
+        Ok(())
+    }
+}
+
 impl Model {
     pub async fn clear_for_non_cycling(
         db: &impl ConnectionTrait,
         activity: &super::activities::Model,
     ) -> Result<(), DbErr> {
         if !activity.is_bike_activity() {
-            Entity::delete_by_id(activity.id).exec(db).await?;
+            Entity::delete_by_activity_id(db, activity.id).await?;
         }
         Ok(())
     }
