@@ -17,6 +17,7 @@ pub struct Model {
     pub api_key: String,
     pub name: String,
     pub is_admin: Option<bool>,
+    #[sea_orm(default_value = false)]
     pub disabled: bool,
     pub reset_token: Option<String>,
     pub reset_sent_at: Option<DateTime<Utc>>,
@@ -196,16 +197,25 @@ impl Model {
         ActiveModel {
             pid: Set(Uuid::new_v4()),
             email: Set(provider_user.email.clone()),
-            password: Set(None),
             oauth_subject: Set(Some(provider_user.subject)),
             oauth_provider: Set(Some(provider.to_owned())),
             name: Set(display_name),
             email_verified_at: Set(Some(chrono::Utc::now())),
             api_key: Set(Uuid::new_v4().to_string()),
-            disabled: Set(false),
             ..Default::default()
         }
         .insert(db)
         .await
+    }
+}
+
+impl Model {
+    pub async fn ensure_admin(&self, db: &impl ConnectionTrait) -> Result<(), DbErr> {
+        if self.is_admin != Some(true) {
+            let mut active: ActiveModel = self.clone().into();
+            active.is_admin = Set(Some(true));
+            active.update(db).await?;
+        }
+        Ok(())
     }
 }

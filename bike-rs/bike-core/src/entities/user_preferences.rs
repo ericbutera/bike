@@ -54,3 +54,6 @@ impl Model {
             .await
     }
 }
+
+mod mutations;
+pub use mutations::{GoalBackfillChange, PreferencesUpdate, SavedPreferences};

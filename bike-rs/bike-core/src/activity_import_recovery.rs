@@ -1,12 +1,11 @@
 use crate::activity_import_lifecycle::{
     ACTIVITY_IMPORT_STAGE_RAW_STORED, ACTIVITY_IMPORT_STALE_PROCESSING_SECONDS,
-    ACTIVITY_IMPORT_STATUS_PROCESSING,
 };
 use crate::background_jobs::background_tasks;
 use crate::entities::activity_imports;
 use crate::jobs::{JobQueue, ProcessActivityImportTask};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
-use sea_orm::{ActiveModelTrait, DatabaseConnection, DbErr, Set};
+use sea_orm::{DatabaseConnection, DbErr};
 use std::fmt;
 
 const MANUAL_UPLOAD_SOURCE: &str = "manual_upload";
@@ -278,10 +277,8 @@ async fn mark_activity_import_requeued(
     now: DateTime<Utc>,
     stage: &str,
 ) -> Result<activity_imports::Model, ActivityImportRecoveryError> {
-    let mut active_model: activity_imports::ActiveModel = import.clone().into();
-    active_model.status = Set(ACTIVITY_IMPORT_STATUS_PROCESSING.to_string());
-    active_model.processing_stage = Set(stage.to_string());
-    active_model.processing_error = Set(None);
-    active_model.last_processing_event_at = Set(Some(now));
-    active_model.update(db).await.map_err(Into::into)
+    import
+        .mark_processing(db, stage, None, now)
+        .await
+        .map_err(Into::into)
 }

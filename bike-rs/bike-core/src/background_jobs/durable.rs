@@ -1,13 +1,9 @@
 //! Database-backed task storage. Enqueue and causal history commit together.
 use super::error::TaskError;
-use super::pipeline::PipelineContext;
 use super::storage::{TaskRecord, TaskStatus as RecordStatus, TaskStorage};
 use async_trait::async_trait;
 use chrono::Utc;
-use sea_orm::{
-    ActiveModelTrait, ConnectionTrait, DatabaseConnection, DbErr, NotSet, Set, TransactionSession,
-    TransactionTrait,
-};
+use sea_orm::{DatabaseConnection, DbErr};
 
 pub use super::entities::background_tasks::*;
 
@@ -19,57 +15,6 @@ pub struct DurableStorage {
 impl DurableStorage {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
-    }
-}
-
-impl Model {
-    pub async fn enqueue(
-        db: &(impl ConnectionTrait + TransactionTrait),
-        task_type: String,
-        mut payload: serde_json::Value,
-        scheduled_for: Option<chrono::DateTime<Utc>>,
-        max_attempts: i32,
-    ) -> Result<Self, DbErr> {
-        PipelineContext::attach(&mut payload).map_err(|error| DbErr::Custom(error.to_string()))?;
-        if let Some(batch_id) = super::batches::current() {
-            payload["_batch_id"] = batch_id.into();
-        }
-        let context = PipelineContext::from_payload(&payload)
-            .map_err(|error| DbErr::Custom(error.to_string()))?;
-        let transaction = db.begin().await?;
-        let now = Utc::now();
-        let task = ActiveModel {
-            id: NotSet,
-            task_type: Set(task_type),
-            payload: Set(payload),
-            status: Set(TaskStatus::Pending.as_str().into()),
-            attempts: Set(0),
-            max_attempts: Set(max_attempts),
-            error: Set(None),
-            result: Set(None),
-            scheduled_for: Set(scheduled_for),
-            created_at: Set(now),
-            updated_at: Set(now),
-            started_at: Set(None),
-            completed_at: Set(None),
-        }
-        .insert(&transaction)
-        .await?;
-        if let Some(context) = context {
-            super::entities::pipeline_runs::Model::record_task(&transaction, &context, task.id)
-                .await?;
-            super::entities::pipeline_subjects::Model::from_task(
-                &transaction,
-                &context.run_id,
-                &task.payload,
-            )
-            .await?;
-        }
-        if let Some(batch_id) = super::batches::current() {
-            super::batches::record_task(&transaction, batch_id, task.id).await?;
-        }
-        transaction.commit().await?;
-        Ok(task)
     }
 }
 

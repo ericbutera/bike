@@ -10,9 +10,13 @@ use crate::strava::provider_payload::{
     StoredStravaProviderPayload, StravaActivityStreams, StravaActivitySummary,
 };
 use crate::workflow_error::WorkflowError as AppError;
-use chrono::{DateTime, Duration, Utc};
+#[cfg(test)]
+use chrono::DateTime;
+use chrono::{Duration, Utc};
 use reqwest::Url;
-use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
+use sea_orm::DatabaseConnection;
+#[cfg(test)]
+use sea_orm::Set;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -296,63 +300,7 @@ async fn upsert_connection_from_token(
     user_id: i32,
     token_response: StravaAuthorizationTokenResponse,
 ) -> Result<strava_connections::Model, AppError> {
-    if let Some(existing_for_athlete) =
-        strava_connections::Model::for_athlete(db, token_response.athlete.id).await?
-    {
-        if existing_for_athlete.user_id != user_id {
-            return Err(AppError::bad_request(
-                "That Strava athlete is already connected to another Bike account",
-            ));
-        }
-    }
-
-    let expires_at = DateTime::<Utc>::from_timestamp(token_response.expires_at, 0)
-        .ok_or_else(|| AppError::internal("Strava returned an invalid token expiration"))?;
-
-    if let Some(existing) = load_connection(db, user_id).await? {
-        let mut active_model: strava_connections::ActiveModel = existing.into();
-        active_model.athlete_id = Set(token_response.athlete.id);
-        active_model.athlete_username = Set(token_response.athlete.username);
-        active_model.athlete_first_name = Set(token_response.athlete.firstname);
-        active_model.athlete_last_name = Set(token_response.athlete.lastname);
-        active_model.athlete_profile_medium_url = Set(token_response.athlete.profile_medium);
-        active_model.scopes = Set(token_response.scope);
-        active_model.access_token = Set(crate::strava::credentials::seal(
-            token_response.access_token.as_bytes(),
-        )?);
-        active_model.refresh_token = Set(crate::strava::credentials::seal(
-            token_response.refresh_token.as_bytes(),
-        )?);
-        active_model.created_at = Set(Utc::now());
-        active_model.disconnect_requested_at = Set(None);
-        active_model.expires_at = Set(expires_at);
-        active_model.update(db).await.map_err(AppError::from)
-    } else {
-        strava_connections::ActiveModel {
-            user_id: Set(user_id),
-            athlete_id: Set(token_response.athlete.id),
-            athlete_username: Set(token_response.athlete.username),
-            athlete_first_name: Set(token_response.athlete.firstname),
-            athlete_last_name: Set(token_response.athlete.lastname),
-            athlete_profile_medium_url: Set(token_response.athlete.profile_medium),
-            scopes: Set(token_response.scope),
-            access_token: Set(crate::strava::credentials::seal(
-                token_response.access_token.as_bytes(),
-            )?),
-            refresh_token: Set(crate::strava::credentials::seal(
-                token_response.refresh_token.as_bytes(),
-            )?),
-            expires_at: Set(expires_at),
-            last_sync_status: Set(STRAVA_SYNC_STATUS_NEVER.to_string()),
-            last_sync_imported_count: Set(0),
-            last_sync_duplicate_count: Set(0),
-            last_sync_failed_count: Set(0),
-            ..Default::default()
-        }
-        .insert(db)
-        .await
-        .map_err(AppError::from)
-    }
+    strava_connections::Model::connect_from_token(db, user_id, token_response).await
 }
 
 pub(crate) async fn ensure_fresh_access_token(
@@ -372,29 +320,7 @@ pub(crate) async fn ensure_fresh_access_token(
     let token_response = archive
         .scope(client.refresh_access_token(&refresh_token))
         .await?;
-    let expires_at = DateTime::<Utc>::from_timestamp(token_response.expires_at, 0)
-        .ok_or_else(|| AppError::internal("Strava returned an invalid token expiration"))?;
-    let mut active_model: strava_connections::ActiveModel = connection.clone().into();
-    active_model.scopes = Set(token_response
-        .scope
-        .unwrap_or_else(|| connection.scopes.clone()));
-    active_model.access_token = Set(crate::strava::credentials::seal(
-        token_response.access_token.as_bytes(),
-    )?);
-    active_model.refresh_token = Set(crate::strava::credentials::seal(
-        token_response.refresh_token.as_bytes(),
-    )?);
-    active_model.expires_at = Set(expires_at);
-
-    if let Some(athlete) = token_response.athlete {
-        active_model.athlete_id = Set(athlete.id);
-        active_model.athlete_username = Set(athlete.username);
-        active_model.athlete_first_name = Set(athlete.firstname);
-        active_model.athlete_last_name = Set(athlete.lastname);
-        active_model.athlete_profile_medium_url = Set(athlete.profile_medium);
-    }
-
-    active_model.update(db).await.map_err(AppError::from)
+    connection.refresh_credentials(db, token_response).await
 }
 
 pub(crate) fn build_activity_upload(

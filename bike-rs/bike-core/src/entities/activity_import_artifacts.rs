@@ -1,3 +1,7 @@
+use super::activity_imports;
+use crate::activity_import_pipeline::{checksum_sha256_hex, ActivityImportArtifactPayload};
+use crate::entities::activity_import_artifacts;
+use crate::workflow_error::WorkflowError as AppError;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
@@ -5,8 +9,6 @@ use sea_orm::{
     ColumnTrait, ConnectionTrait, DbErr, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
     QuerySelect, QueryTrait, Set, TryIntoModel,
 };
-
-use super::activity_imports;
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -210,5 +212,57 @@ impl ActiveModelBehavior for ActiveModel {
         }
         self.updated_at = Set(now);
         Ok(self)
+    }
+}
+
+impl Model {
+    pub async fn store_artifact(
+        db: &impl sea_orm::ConnectionTrait,
+        import: &activity_imports::Model,
+        artifact: ActivityImportArtifactPayload,
+        storage_path: String,
+        size_bytes: i64,
+    ) -> Result<activity_import_artifacts::Model, AppError> {
+        let checksum_sha256 = checksum_sha256_hex(&artifact.bytes);
+
+        activity_import_artifacts::ActiveModel {
+            activity_import_id: Set(import.id),
+            user_id: Set(import.user_id),
+            artifact_kind: Set(artifact.artifact_kind),
+            format: Set(artifact.format),
+            source_quality: Set(artifact.source_quality),
+            original_filename: Set(artifact.original_filename),
+            storage_path: Set(storage_path),
+            size_bytes: Set(size_bytes),
+            mime_type: Set(artifact.mime_type),
+            checksum_sha256: Set(checksum_sha256),
+            ..Default::default()
+        }
+        .insert(db)
+        .await
+        .map_err(AppError::from)
+    }
+}
+
+impl Model {
+    pub async fn copy_with_size(
+        self,
+        db: &impl ConnectionTrait,
+        size_bytes: i64,
+    ) -> Result<Self, DbErr> {
+        let mut model: ActiveModel = self.into();
+        model.id = sea_orm::ActiveValue::NotSet;
+        model.size_bytes = Set(size_bytes);
+        model.insert(db).await
+    }
+    pub async fn copy_to_import(
+        self,
+        db: &impl ConnectionTrait,
+        import_id: i32,
+    ) -> Result<Self, DbErr> {
+        let mut model: ActiveModel = self.into();
+        model.id = sea_orm::ActiveValue::NotSet;
+        model.activity_import_id = Set(import_id);
+        model.insert(db).await
     }
 }

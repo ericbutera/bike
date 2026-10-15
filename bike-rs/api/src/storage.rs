@@ -5,7 +5,7 @@ use bike_core::auth::{AuthRouteStorage, AuthStorage};
 use bike_core::background_jobs::admin::BackgroundTasksStorage;
 use bike_core::config::Config;
 use bike_core::platform::feature_flags::{FeatureFlagService, FeatureFlagStorage};
-use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
+use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -102,14 +102,9 @@ async fn ensure_local_admin(db: &DatabaseConnection) -> Uuid {
     .await
     .expect("failed to initialize the local development admin user");
 
-    if user.is_admin != Some(true) {
-        let mut active_user: bike_core::auth::entities::users::ActiveModel = user.clone().into();
-        active_user.is_admin = Set(Some(true));
-        active_user
-            .update(db)
-            .await
-            .expect("failed to grant local development admin access");
-    }
+    user.ensure_admin(db)
+        .await
+        .expect("failed to grant local development admin access");
 
     user.pid
 }
@@ -177,6 +172,26 @@ impl OAuthRouteStorage for AppStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sea_orm::{ConnectionTrait, Database, EntityTrait, Schema};
+
+    #[tokio::test]
+    async fn local_admin_bootstrap_grants_access_and_reuses_identity() {
+        use bike_core::auth::entities::users;
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute(&bike_core::test_support::table_with_timestamp_defaults(
+            &Schema::new(db.get_database_backend()),
+            users::Entity,
+            &["created_at", "updated_at"],
+        ))
+        .await
+        .unwrap();
+        let pid = ensure_local_admin(&db).await;
+        let user = users::Entity::find().one(&db).await.unwrap().unwrap();
+        assert_eq!(user.pid, pid);
+        assert_eq!(user.is_admin, Some(true));
+        assert_eq!(ensure_local_admin(&db).await, pid);
+        assert_eq!(users::Entity::find().all(&db).await.unwrap().len(), 1);
+    }
 
     #[tokio::test]
     async fn map_cache_is_optional_and_starts_with_existing_configuration() {

@@ -20,6 +20,9 @@
 - [x] Consolidate remaining repeated model families from the fixture audit,
   excluding intentional partial updates and scenario-specific overrides.
 
+- [x] Complete mutation boundaries for the 24 constructor sites and conversion-based
+  writes; preserve the baseline and acceptance evidence in the model-boundary spec.
+
 ## Strava
 
 - [x] Define the new Temporal design and correlation fields in [the spec](specs/strava-temporal.md).

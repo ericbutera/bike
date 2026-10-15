@@ -7,7 +7,7 @@ use crate::activity_import_lock::{
 use crate::entities::user_preferences;
 use crate::jobs::JobQueue;
 use chrono::{DateTime, Utc};
-use sea_orm::{ActiveModelTrait, DatabaseConnection, DbErr, Set};
+use sea_orm::{DatabaseConnection, DbErr};
 use std::error::Error;
 use std::fmt;
 
@@ -131,10 +131,7 @@ pub async fn set_user_xc_goal_backfill_state(
         return Ok(());
     };
 
-    let mut active_model: user_preferences::ActiveModel = model.into();
-    active_model.xc_goal_backfill_status = Set(status.map(str::to_string));
-    active_model.xc_goal_backfill_completed_at = Set(completed_at);
-    active_model.update(db).await?;
+    model.set_goal_backfill(db, status, completed_at).await?;
     Ok(())
 }
 

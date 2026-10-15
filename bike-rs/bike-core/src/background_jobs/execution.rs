@@ -1,7 +1,7 @@
 //! Shared inline-work evidence, kept separate from authoritative domain outputs.
 use super::{entities::work_units, worker::WorkerMetrics};
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ConnectionTrait, Set};
+use sea_orm::ConnectionTrait;
 use serde::Serialize;
 use std::{fmt::Display, future::Future, sync::Arc};
 use tracing::Instrument;
@@ -88,32 +88,17 @@ where
             tracing::Span::current().record("error", error.as_str());
         }
         if let Some(context) = context {
-            let trace = crate::observability::current_trace_ids();
-            let record = work_units::ActiveModel {
-                task_id: Set(context.task_id),
-                attempt: Set(context.attempt),
-                kind: Set(scope.kind.into()),
-                work_key: Set(scope.work_key),
-                revision: Set(scope.revision),
-                processing_version: Set(super::worker::catalog::ProcessorDefinition::for_type(
-                    &context.task_type,
-                )
-                .processing_version),
-                mode: Set(scope.mode.into()),
-                reason: Set(scope.reason.into()),
-                started_at: Set(started_at),
-                finished_at: Set(finished_at),
-                outcome: Set(counts
-                    .map(|counts| counts.outcome)
-                    .unwrap_or("failed")
-                    .into()),
-                counts: Set(counts.and_then(|counts| serde_json::to_value(counts).ok())),
-                error: Set(error),
-                trace_id: Set(trace.as_ref().map(|ids| ids.0.clone())),
-                span_id: Set(trace.map(|ids| ids.1)),
-                ..Default::default()
-            };
-            if let Err(error) = record.insert(db).await {
+            if let Err(error) = work_units::Model::record(
+                db,
+                &context,
+                &scope,
+                started_at,
+                finished_at,
+                counts,
+                error,
+            )
+            .await
+            {
                 tracing::error!(%error, "Failed to persist inline work evidence");
             }
             if let Some(metrics) = &context.metrics {

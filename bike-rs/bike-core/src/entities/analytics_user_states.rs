@@ -1,6 +1,8 @@
+use crate::entities::analytics_user_states;
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::entity::prelude::*;
+use sea_orm::QueryFilter;
 use sea_orm::{ConnectionTrait, DbErr, Set};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
@@ -39,7 +41,6 @@ impl Model {
     }
 }
 
-use sea_orm::QueryFilter;
 impl Model {
     pub async fn complete_rebuild<C>(
         db: &C,
@@ -75,10 +76,10 @@ impl Model {
         let inserted = Entity::insert(ActiveModel {
             user_id: Set(user_id),
             last_activity_change_at: Set(rebuilt_at),
-            fitness_dirty_from_day: Set(None),
             last_fitness_rebuild_at: Set(Some(rebuilt_at)),
             created_at: Set(rebuilt_at),
             updated_at: Set(rebuilt_at),
+            ..Default::default()
         })
         .on_conflict(
             sea_orm::sea_query::OnConflict::column(Column::UserId)
@@ -88,5 +89,57 @@ impl Model {
         .exec_without_returning(db)
         .await?;
         Ok(inserted > 0)
+    }
+}
+
+impl Model {
+    pub async fn mark_changed(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        changed_at: DateTime<Utc>,
+    ) -> Result<(), sea_orm::DbErr> {
+        if let Some(model) = analytics_user_states::Model::for_user(db, user_id).await? {
+            let mut active_model: analytics_user_states::ActiveModel = model.into();
+            active_model.last_activity_change_at = Set(changed_at);
+            active_model.update(db).await?;
+        } else {
+            analytics_user_states::ActiveModel {
+                user_id: Set(user_id),
+                last_activity_change_at: Set(changed_at),
+                ..Default::default()
+            }
+            .insert(db)
+            .await?;
+        }
+
+        Ok(())
+    }
+    pub async fn mark_dirty(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        dirty_from_day: NaiveDate,
+        changed_at: DateTime<Utc>,
+    ) -> Result<(), DbErr> {
+        if let Some(model) = analytics_user_states::Model::for_user(db, user_id).await? {
+            let next_dirty_from_day = model
+                .fitness_dirty_from_day
+                .map(|existing| existing.min(dirty_from_day))
+                .unwrap_or(dirty_from_day);
+            let mut active_model: analytics_user_states::ActiveModel = model.into();
+            active_model.last_activity_change_at = Set(changed_at);
+            active_model.fitness_dirty_from_day = Set(Some(next_dirty_from_day));
+            active_model.update(db).await?;
+        } else {
+            analytics_user_states::ActiveModel {
+                user_id: Set(user_id),
+                last_activity_change_at: Set(changed_at),
+                fitness_dirty_from_day: Set(Some(dirty_from_day)),
+                ..Default::default()
+            }
+            .insert(db)
+            .await?;
+        }
+
+        Ok(())
     }
 }

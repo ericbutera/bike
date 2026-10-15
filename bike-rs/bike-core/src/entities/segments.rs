@@ -17,10 +17,12 @@ pub struct Model {
     pub user_id: i32,
     pub title: String,
     pub source: String,
+    #[sea_orm(default_value = "xc")]
     pub mode: String,
     pub original_filename: Option<String>,
     pub format: Option<String>,
     pub distance_meters: Option<f64>,
+    #[sea_orm(default_value = false)]
     pub starred: bool,
     pub route_data_json: Option<StoredRoutePointSeries>,
     pub source_activity_id: Option<i32>,
@@ -226,3 +228,34 @@ impl Model {
             .await
     }
 }
+
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
+#[schema(example = "xc")]
+pub enum SegmentMode {
+    Xc,
+    Dh,
+}
+
+impl SegmentMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Xc => "xc",
+            Self::Dh => "dh",
+        }
+    }
+
+    pub fn from_stored(value: &str) -> Self {
+        match value {
+            "dh" => Self::Dh,
+            _ => Self::Xc,
+        }
+    }
+}
+
+mod mutations;
+pub use mutations::{
+    normalize_segment_title, slice_builder_route_points, ActivitySegmentSource, SegmentImport,
+};

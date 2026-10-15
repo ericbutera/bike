@@ -1,5 +1,11 @@
 //! Shared persistence of normalized activity data.
+
 use super::*;
+use crate::activity_import_pipeline::{
+    ActivityProcessingArtifact, ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL,
+};
+use crate::entities::{activities, activity_imports};
+use crate::workflow_error::WorkflowError as AppError;
 use crate::{
     activity_details::serialize_derived_activity_data,
     activity_parser::ParsedActivityData,
@@ -9,7 +15,6 @@ use crate::{
     },
     workflow_error::WorkflowError,
 };
-
 pub(crate) struct ActivitySaveData {
     pub activity_type: ActivityType,
     pub estimated_ftp_watts: Option<i32>,
@@ -117,6 +122,72 @@ fn build_strava_save_data(
         data.heart_rate_zones_json = None;
     }
     Ok(data)
+}
+
+impl Model {
+    pub(crate) async fn update_parsed(
+        self,
+        db: &DatabaseConnection,
+        parsing_artifact: &ActivityProcessingArtifact,
+        parsed: &ParsedActivityData,
+        save_data: ActivitySaveData,
+    ) -> Result<activities::Model, AppError> {
+        let activity_type = self.activity_type.clone();
+        let archive_title = (self.source == "strava_sync"
+            && parsing_artifact.artifact_kind == ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL)
+            .then(|| self.title.clone());
+        let mut active_model: activities::ActiveModel = self.into();
+        apply_fields(
+            &mut active_model,
+            &parsing_artifact.original_filename,
+            &parsing_artifact.format,
+            parsed,
+            save_data,
+        );
+        active_model.activity_type = Set(activity_type);
+        if let Some(title) = archive_title {
+            active_model.title = Set(title);
+        }
+        active_model.update(db).await.map_err(AppError::from)
+    }
+
+    pub(crate) async fn insert_parsed(
+        db: &DatabaseConnection,
+        import: &activity_imports::Model,
+        parsing_artifact: &ActivityProcessingArtifact,
+        parsed: &ParsedActivityData,
+        save_data: ActivitySaveData,
+        source_correlation_id: Option<String>,
+    ) -> Result<activities::Model, AppError> {
+        let mut active_model = activities::ActiveModel {
+            user_id: Set(import.user_id),
+            activity_import_id: Set(Some(import.id)),
+            source: Set(import.source.clone()),
+            source_correlation_id: Set(source_correlation_id),
+            ..Default::default()
+        };
+        apply_fields(
+            &mut active_model,
+            &parsing_artifact.original_filename,
+            &parsing_artifact.format,
+            parsed,
+            save_data,
+        );
+        active_model.insert(db).await.map_err(AppError::from)
+    }
+}
+
+impl Model {
+    pub async fn adopt_source_metadata(
+        self,
+        db: &impl ConnectionTrait,
+        artifact: &crate::entities::activity_import_artifacts::Model,
+    ) -> Result<Self, DbErr> {
+        let mut activity: ActiveModel = self.into();
+        activity.original_filename = Set(Some(artifact.original_filename.clone()));
+        activity.format = Set(Some(artifact.format.clone()));
+        activity.update(db).await
+    }
 }
 
 #[cfg(test)]
