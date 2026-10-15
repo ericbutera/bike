@@ -778,7 +778,6 @@ mod tests {
     use super::*;
     use crate::activity_data::{serialize_derived_activity_data, ActivityDerivedData};
     use crate::training_data::{serialize_activity_heart_rate_zones, ActivityHeartRateZoneSummary};
-    use chrono::Utc;
 
     fn build_route_point(
         elapsed_seconds: i32,
@@ -819,20 +818,15 @@ mod tests {
         route_points: Vec<ActivityRoutePoint>,
         z2_duration_seconds: i32,
     ) -> activities::Model {
-        let now = Utc::now();
+        let now = crate::test_support::timestamp();
         let total_elevation_gain_meters = total_elevation_gain_meters(&route_points);
 
         activities::Model {
             id: 7,
             user_id: 1,
-            activity_import_id: None,
             title: title.to_string(),
-            sport: "ride".to_string(),
-            source: "manual_upload".to_string(),
-            source_correlation_id: None,
             original_filename: Some("ride.fit".to_string()),
             format: Some("fit".to_string()),
-            activity_type: "training".to_string(),
             started_at: now,
             ended_at: Some(now),
             distance_meters: route_points.last().and_then(|point| point.distance_meters),
@@ -854,10 +848,6 @@ mod tests {
             max_speed_mps: Some(10.0),
             average_heart_rate_bpm: Some(136),
             max_heart_rate_bpm: Some(156),
-            average_cadence_rpm: None,
-            max_cadence_rpm: None,
-            calories: None,
-            estimated_ftp_watts: None,
             heart_rate_zones_json: serialize_activity_heart_rate_zones(&[
                 ActivityHeartRateZoneSummary {
                     zone: 1,
@@ -884,6 +874,7 @@ mod tests {
             })),
             created_at: now,
             updated_at: now,
+            ..crate::test_support::activity()
         }
     }
 

@@ -4342,37 +4342,12 @@ mod tests {
     use crate::training_data::{serialize_activity_heart_rate_zones, ActivityHeartRateZoneSummary};
 
     fn test_activity() -> activities::Model {
-        let now = Utc::now();
         activities::Model {
-            id: 42,
-            user_id: 7,
-            activity_import_id: None,
             title: "Benchmark climb".to_string(),
             sport: "Ride".to_string(),
             source: "test".to_string(),
-            source_correlation_id: None,
-            original_filename: None,
-            format: None,
             activity_type: "ride".to_string(),
-            started_at: now,
-            ended_at: None,
-            distance_meters: None,
-            moving_time_seconds: None,
-            total_time_seconds: None,
-            elevation_gain_meters: None,
-            elevation_loss_meters: None,
-            average_speed_mps: None,
-            max_speed_mps: None,
-            average_heart_rate_bpm: None,
-            max_heart_rate_bpm: None,
-            average_cadence_rpm: None,
-            max_cadence_rpm: None,
-            calories: None,
-            estimated_ftp_watts: None,
-            heart_rate_zones_json: None,
-            derived_data_json: None,
-            created_at: now,
-            updated_at: now,
+            ..crate::test_support::activity()
         }
     }
 

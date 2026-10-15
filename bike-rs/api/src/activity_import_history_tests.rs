@@ -74,27 +74,18 @@ async fn replay_previews_fallback_and_queues_only_the_reviewed_plan() {
 }
 
 pub(crate) fn imported(id: i32, user_id: i32) -> activity_imports::Model {
-    let now = Utc::now();
     activity_imports::Model {
         id,
         user_id,
-        import_version: 2,
-        source: "manual_upload".into(),
-        format: "gpx".into(),
         status: "failed".into(),
-        activity_id: None,
-        archive_job_id: None,
         processing_stage: "activity_parsed".into(),
         processing_error: Some("Invalid GPX".into()),
         processing_attempts: 1,
-        processed_at: None,
-        last_processing_event_at: Some(now),
         original_filename: "ride.gpx".into(),
         storage_path: "/private/ride.gpx".into(),
         size_bytes: 12,
         mime_type: None,
-        created_at: now,
-        updated_at: now,
+        ..bike_core::test_support::activity_import()
     }
 }
 

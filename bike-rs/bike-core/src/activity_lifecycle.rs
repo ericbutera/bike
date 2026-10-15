@@ -25,8 +25,8 @@ use crate::workflow_error::WorkflowError as AppError;
 use chrono::{NaiveDate, Utc};
 use sea_orm::TransactionSession;
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, TransactionTrait,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    TransactionTrait,
 };
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -214,44 +214,22 @@ pub async fn delete_activity_records(
 
     clear_segment_efforts_for_activity(db, user_id, activity.id).await?;
 
-    activity_analytics::Entity::delete_many()
-        .filter(activity_analytics::Column::ActivityId.eq(activity.id))
-        .exec(db)
-        .await?;
-
-    activity_training_analyses::Entity::delete_many()
-        .filter(activity_training_analyses::Column::ActivityId.eq(activity.id))
-        .exec(db)
-        .await?;
-
-    activities::Entity::delete_many()
-        .filter(activities::Column::UserId.eq(user_id))
-        .filter(activities::Column::Id.eq(activity.id))
-        .exec(db)
-        .await?;
+    activity_analytics::Entity::delete_by_activity_id(db, activity.id).await?;
+    activity_training_analyses::Entity::delete_by_activity_id(db, activity.id).await?;
+    activities::Entity::delete_by_user(db, activity.id, user_id).await?;
 
     if let Some(activity_import_id) = activity.activity_import_id {
-        let remaining_references = activities::Entity::find()
-            .filter(activities::Column::UserId.eq(user_id))
-            .filter(activities::Column::ActivityImportId.eq(Some(activity_import_id)))
-            .count(db)
-            .await?;
+        let remaining_references =
+            activities::Entity::count_by_import_for_user(db, activity_import_id, user_id).await?;
 
         if remaining_references == 0 {
-            let linked_import = activity_imports::Entity::find()
-                .filter(activity_imports::Column::Id.eq(activity_import_id))
-                .filter(activity_imports::Column::UserId.eq(user_id))
-                .one(db)
-                .await?;
+            let linked_import =
+                activity_imports::Entity::find_owned(db, user_id, activity_import_id).await?;
 
             if let Some(linked_import) = linked_import {
                 source = Some(linked_import.storage_path);
 
-                activity_imports::Entity::delete_many()
-                    .filter(activity_imports::Column::Id.eq(activity_import_id))
-                    .filter(activity_imports::Column::UserId.eq(user_id))
-                    .exec(db)
-                    .await?;
+                activity_imports::Entity::delete_by_user(db, activity_import_id, user_id).await?;
             }
         }
     }
@@ -870,12 +848,14 @@ async fn remove_upload_file(path: PathBuf) {
 
 #[cfg(test)]
 mod tests {
+    mod deletion;
+
     use super::*;
     use crate::activity_details::{serialize_derived_activity_data, ActivityDerivedData};
     use crate::activity_import_lifecycle::ACTIVITY_IMPORT_STATUS_CANCELED;
     use crate::entities::integration_events;
     use chrono::{DateTime, Duration};
-    use sea_orm::{ActiveModelTrait, Database, Set};
+    use sea_orm::{ActiveModelTrait, Database, PaginatorTrait, Set};
 
     #[tokio::test]
     async fn missing_activity_does_not_rewrite_or_recount_a_failed_import() {
@@ -948,11 +928,8 @@ mod tests {
     ) -> activity_imports::Model {
         activity_imports::ActiveModel {
             user_id: Set(42),
-            import_version: Set(activity_imports::ACTIVITY_IMPORT_VERSION_CURRENT),
             source: Set("archive_url_import".to_string()),
-            format: Set("gpx".to_string()),
             status: Set(status.to_string()),
-            activity_id: Set(None),
             processing_stage: Set("complete".to_string()),
             processing_error: Set(processing_error.map(str::to_string)),
             processing_attempts: Set(66),
@@ -960,11 +937,9 @@ mod tests {
             last_processing_event_at: Set(Some(now)),
             original_filename: Set("archive-ride.gpx".to_string()),
             storage_path: Set("activity-imports/archive-ride.gpx".to_string()),
-            size_bytes: Set(123),
-            mime_type: Set(Some("application/gpx+xml".to_string())),
             created_at: Set(now),
             updated_at: Set(now),
-            ..Default::default()
+            ..crate::test_support::new_activity_import()
         }
         .insert(db)
         .await
@@ -997,18 +972,11 @@ mod tests {
             user_id: 42,
             activity_import_id: Some(id + 1000),
             title: format!("Activity {id}"),
-            sport: "ride".to_string(),
-            source: "manual_upload".to_string(),
-            source_correlation_id: None,
             original_filename: original_filename.map(str::to_string),
             format: format.map(str::to_string),
-            activity_type: crate::activity_type::ActivityType::Training
-                .as_str()
-                .to_string(),
             started_at: DateTime::parse_from_rfc3339("2026-05-11T13:23:17Z")
                 .expect("started_at")
                 .with_timezone(&Utc),
-            ended_at: None,
             distance_meters: Some(122_768.0),
             moving_time_seconds: Some(27_011),
             total_time_seconds: Some(27_012),
@@ -1021,8 +989,6 @@ mod tests {
             average_cadence_rpm: Some(86),
             max_cadence_rpm: Some(102),
             calories: Some(900),
-            estimated_ftp_watts: None,
-            heart_rate_zones_json: None,
             derived_data_json: Some(
                 serialize_derived_activity_data(&ActivityDerivedData {
                     recording: Default::default(),
@@ -1034,6 +1000,7 @@ mod tests {
             ),
             created_at,
             updated_at: created_at,
+            ..crate::test_support::activity()
         }
     }
 

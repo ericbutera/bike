@@ -107,16 +107,8 @@ async fn insert_metric_activity(
 ) -> activities::Model {
     let activity = activities::ActiveModel {
         user_id: Set(1),
-        activity_import_id: Set(None),
         title: Set("Lunch Ride".to_string()),
-        sport: Set("ride".to_string()),
-        source: Set("manual_upload".to_string()),
-        source_correlation_id: Set(None),
-        original_filename: Set(None),
         format: Set(Some("gpx".to_string())),
-        activity_type: Set(bike_core::activity_type::ActivityType::Training
-            .as_str()
-            .to_string()),
         started_at: Set(created_at - Duration::hours(2)),
         ended_at: Set(Some(created_at - Duration::hours(1))),
         distance_meters: Set(Some(25_000.0)),
@@ -131,11 +123,8 @@ async fn insert_metric_activity(
         average_cadence_rpm: Set(Some(85)),
         max_cadence_rpm: Set(Some(102)),
         calories: Set(Some(700)),
-        estimated_ftp_watts: Set(None),
-        heart_rate_zones_json: Set(None),
-        derived_data_json: Set(None),
         created_at: Set(created_at),
-        ..Default::default()
+        ..bike_core::test_support::new_activity()
     }
     .insert(db)
     .await
@@ -157,21 +146,16 @@ async fn insert_metric_activity_import(
 ) {
     let import = activity_imports::ActiveModel {
         user_id: Set(1),
-        source: Set("manual_upload".to_string()),
-        format: Set("gpx".to_string()),
         status: Set("processed".to_string()),
         activity_id: Set(Some(activity_id)),
         processing_stage: Set("complete".to_string()),
-        processing_error: Set(None),
-        processing_attempts: Set(0),
         processed_at: Set(Some(created_at)),
         last_processing_event_at: Set(Some(created_at)),
         original_filename: Set("lunch-ride.gpx".to_string()),
         storage_path: Set("/tmp/lunch-ride.gpx".to_string()),
         size_bytes: Set(1_024),
-        mime_type: Set(Some("application/gpx+xml".to_string())),
         created_at: Set(created_at),
-        ..Default::default()
+        ..bike_core::test_support::new_activity_import()
     }
     .insert(db)
     .await

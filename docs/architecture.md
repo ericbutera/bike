@@ -57,8 +57,8 @@ bind dynamic values, and explain the unsupported primitive or atomic operation
 beside each one. The retained application SQL covers heatmap writable CTEs and
 the PostgreSQL box-overlap expression used by the GiST index. Migration and
 fixture DDL remain schema records. The
-[shared engineering quality skill](../.agents/skills/bike-engineering-quality/SKILL.md)
-defines the review and verification requirements.
+[model and fixture specification](specs/model-boundaries.md) defines query
+ownership, simple call sites, shared test setup, and the current migration audit.
 
 ## Activity data flow
 

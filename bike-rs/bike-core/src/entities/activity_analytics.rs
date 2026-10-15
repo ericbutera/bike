@@ -23,6 +23,16 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
 
+impl Entity {
+    pub async fn delete_by_activity_id(
+        db: &impl ConnectionTrait,
+        activity_id: i32,
+    ) -> Result<(), DbErr> {
+        Self::delete_by_id(activity_id).exec(db).await?;
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl ActiveModelBehavior for ActiveModel {
     async fn before_save<C>(mut self, _db: &C, insert: bool) -> Result<Self, DbErr>

@@ -1183,16 +1183,10 @@ mod tests {
         activities::Model {
             id,
             user_id: 1,
-            activity_import_id: None,
             title: "Lunch Ride".to_string(),
             sport: "Ride".to_string(),
-            source: "manual_upload".to_string(),
-            source_correlation_id: None,
-            original_filename: None,
             format: Some("fit".to_string()),
-            activity_type: "training".to_string(),
             started_at: timestamp,
-            ended_at: None,
             distance_meters: Some(40000.0),
             moving_time_seconds,
             total_time_seconds: moving_time_seconds,
@@ -1205,11 +1199,9 @@ mod tests {
             average_cadence_rpm: Some(85),
             max_cadence_rpm: Some(105),
             calories: Some(850),
-            estimated_ftp_watts: None,
-            heart_rate_zones_json: None,
-            derived_data_json: None,
             created_at: timestamp,
             updated_at: timestamp,
+            ..crate::test_support::activity()
         }
     }
 

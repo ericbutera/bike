@@ -13,49 +13,25 @@ impl Fixture {
     pub fn new() -> Self {
         let now = DateTime::<Utc>::from_timestamp(1790856000, 0).unwrap();
         let customer = users::Model {
-            id: 7,
             pid: Uuid::from_u128(7),
-            email: "fixture@example.test".into(),
-            password: None,
             api_key: "fixture".into(),
-            name: "Fixture customer".into(),
-            is_admin: Some(false),
-            disabled: false,
-            reset_token: None,
-            reset_sent_at: None,
-            email_verification_token: None,
-            email_verification_sent_at: None,
             email_verified_at: Some(now),
-            magic_link_token: None,
-            magic_link_expiration: None,
-            oauth_subject: None,
-            oauth_provider: None,
             created_at: now,
             updated_at: now,
+            ..crate::test_support::customer()
         };
         let connection = strava_connections::Model {
-            id: 9,
             user_id: customer.id,
-            athlete_id: 123,
-            disconnect_requested_at: None,
             athlete_username: None,
             athlete_first_name: None,
             athlete_last_name: None,
             athlete_profile_medium_url: None,
             scopes: "activity:read_all".into(),
-            access_token: "fixture-access".into(),
-            refresh_token: "fixture-refresh".into(),
             expires_at: now,
             last_synced_activity_started_at: None,
-            last_sync_status: "never".into(),
-            last_sync_message: None,
-            last_sync_started_at: None,
-            last_sync_finished_at: None,
-            last_sync_imported_count: 0,
-            last_sync_duplicate_count: 0,
-            last_sync_failed_count: 0,
             created_at: now,
             updated_at: now,
+            ..crate::test_support::connection()
         };
         let mut event = StravaEvent::new(
             &customer,
@@ -100,35 +76,14 @@ impl Fixture {
 
     pub fn activity(&self) -> activities::Model {
         activities::Model {
-            id: 42,
             user_id: self.customer.id,
-            activity_import_id: None,
-            title: "Fixture ride".into(),
-            sport: "ride".into(),
             source: "strava_sync".into(),
             source_correlation_id: self.event.strava_activity_id.map(|id| id.to_string()),
-            original_filename: None,
-            format: None,
             activity_type: "Ride".into(),
             started_at: self.connection.created_at,
-            ended_at: None,
-            distance_meters: None,
-            moving_time_seconds: None,
-            total_time_seconds: None,
-            elevation_gain_meters: None,
-            elevation_loss_meters: None,
-            average_speed_mps: None,
-            max_speed_mps: None,
-            average_heart_rate_bpm: None,
-            max_heart_rate_bpm: None,
-            average_cadence_rpm: None,
-            max_cadence_rpm: None,
-            calories: None,
-            estimated_ftp_watts: None,
-            heart_rate_zones_json: None,
-            derived_data_json: None,
             created_at: self.connection.created_at,
             updated_at: self.connection.created_at,
+            ..crate::test_support::activity()
         }
     }
 }
