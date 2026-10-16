@@ -22,8 +22,7 @@ mise run e2e 'auth-happy-path|heatmap-controls'
 PLAYWRIGHT_VISUAL=1 mise run e2e frontend-visual
 ```
 
-- The default selects all required specs, including connected, API-mocked, and
-  standalone diagram coverage. Screenshot comparisons run only when explicitly
+- The default selects all required connected and API-mocked specs. Screenshot comparisons run only when explicitly
   selected with `PLAYWRIGHT_VISUAL=1`; reviewed baselines remain in `snapshots/`.
 - Each run resolves its image inputs once and owns a unique Compose project,
   network, PostgreSQL volume, uploads, renderer styles, and cache. It exposes no
@@ -58,10 +57,10 @@ PLAYWRIGHT_VISUAL=1 mise run e2e frontend-visual
 
 ## Scenario and coverage inventory
 
-`mise run e2e import-replay` selects the API-mocked import history and replay
-checks. These verify rider-facing stages, summaries, and replay requests with
-synthetic data; Rust unit tests and opt-in database checks own execution and
-server-specific migration constraints.
+Import metadata and manual refresh use React Query fixtures. Workflow graphs,
+attempt inspection, and replay belong to Temporal UI. The connected
+`activity-actions` browser check verifies retained source downloads; Rust units
+and existing PostgreSQL checks own domain execution and migration constraints.
 
 All connected scenarios use PostgreSQL, the real API/UI/renderer, restored public
 GPX uploads, normal session authentication, and a freshly restored Playwright
@@ -87,7 +86,6 @@ models, rather than committed SQL datasets or database dumps.
 | `upload-result`     | `activity-import-result`                                                                                                                          | Seeded processed import linked to its visible activity                                                      |
 | `heatmap`           | `heatmap`                                                                                                                                         | Persisted projections seeded through the owning builder; real tile/filter/zoom checks                       |
 | `mocked`            | `auth-happy-path`, `activity-sync-fixture`, `map-rendering`, `heatmap-controls`, `frontend-auth-state`                                            | UI with explicit application API fakes; fresh browser contexts; no claim of database/provider behavior      |
-| `standalone`        | `diagram-rendering`                                                                                                                               | Bundled Mermaid/KaTeX assets in standalone HTML; no running Bike services                                   |
 | `visual` (optional) | `frontend-visual`                                                                                                                                 | Fresh baseline and explicit reviewed screenshot comparison                                                  |
 
 - Browser tiles use a shared external-provider fake. Renderer processes receive
@@ -136,7 +134,5 @@ models, rather than committed SQL datasets or database dumps.
   ephemeral checkout is not the only copy. Runs older than seven days are
   removed by the owning CI task. Docker TLS certificates are not copied there.
 
-For a standalone local diagram check, use
-`mise --cd bike-ui run test:e2e:diagrams`. Other direct UI Playwright tasks require
-an explicitly prepared external environment and scenario; prefer `mise run e2e`
-for disposable connected coverage.
+Direct UI Playwright tasks require an explicitly prepared external environment
+and scenario; prefer `mise run e2e` for disposable connected coverage.

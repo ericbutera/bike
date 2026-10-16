@@ -43,6 +43,24 @@
   No SQL scheduling bridge, custom queue, generic admission/receipt/result ledger,
   redundant attempt-stage lifecycle, contributor ledger, or per-request publication
   barrier is required. Every retained record must have a distinct domain purpose.
+- Temporal UI owns execution graphs, attempts, timers, retries, cancellation, and
+  child propagation. Remove Bike's custom activity/import/worker/integration DAG
+  screens, graph endpoints, Mermaid reconstruction, and stage replay controls.
+  Keep domain import metadata and activity/integration audit history in Bike.
+- Link an event to its recorded Temporal namespace and workflow ID. Never derive
+  a command workflow ID from a Bike activity ID, import ID, or correlation ID.
+  A page without a known job reference links to the namespace workflow list.
+  Runtime `TEMPORAL_UI_URL` supplies the externally reachable UI origin; omit
+  links when it is not configured. Do not send operators to a production localhost.
+- Keep remaining legacy import stages in an explicit source-before-derived
+  sequence. Do not introduce a graph engine for this fixed sequence. SQL retry,
+  checkpoint, and batch behavior remains until each owning task is converted.
+- Retirement tests retain admin authorization, missing-import errors, compact
+  domain metadata and task-attempt diagnostics. Legacy SQL replay may reuse a
+  checkpoint only with matching retained source and activity version; absent or
+  stale checkpoints restart from the source. Stage completion still records the
+  parsed source, affected scope, and activity version needed for that resume.
+  Reuse shared request/object fixtures and PostgreSQL mocks for these contracts.
 - Keep the SQL worker for unconverted tasks. Each converted mutation/output has
   one execution owner; drain or fence its legacy producers before activation.
 

@@ -18,6 +18,19 @@
   A failed gate keeps the task open. Do not rename registered tasks without user
   approval/explanation. Email retirement is independent of reprocessing.
 
+### Execution UI simplification
+
+- [x] Retire custom activity/import/task/integration DAG screens, graph APIs,
+      reconstruction models, and stage replay controls; use Temporal UI instead.
+- [x] Preserve simple source metadata, domain audit/event history, and the legacy
+      task list until its producers are converted. Replace the fixed import DAG
+      runner with an ordered stage list without changing its SQL retry behavior.
+- [x] Share Temporal links using the recorded namespace/workflow ID and runtime
+      `TEMPORAL_UI_URL`. Do not invent workflow identity from activity IDs.
+- [ ] Configure the public Temporal origin in deployment before enabling the links.
+- [ ] Verify retained metadata/errors/downloads and access controls with existing
+      mocks/fixtures and CI. Remove tests exclusive to the retired DAG controls.
+
 ### First deliverable: complete reprocessing
 
 - [x] Record the user's 2026-10-16 coverage exception for the initial production

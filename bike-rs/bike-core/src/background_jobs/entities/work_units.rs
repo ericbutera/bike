@@ -45,19 +45,6 @@ impl Model {
 }
 
 impl Model {
-    pub async fn page_for_task(db: &impl ConnectionTrait, id: i32, after: i32) -> Result<Vec<Self>, DbErr> {
-        use sea_orm::{QueryFilter, QueryOrder, QuerySelect};
-        Entity::find()
-            .filter(Column::TaskId.eq(id))
-            .filter(Column::Id.gt(after))
-            .order_by_asc(Column::Id)
-            .limit(26)
-            .all(db)
-            .await
-    }
-}
-
-impl Model {
     pub async fn record(
         db: &impl ConnectionTrait,
         context: &ExecutionContext,

@@ -12,6 +12,10 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
+#[cfg(test)]
+#[path = "admin_tests.rs"]
+mod tests;
+
 /// Storage trait for background tasks admin routes.
 pub trait BackgroundTasksStorage: Send + Sync + 'static {
     fn db(&self) -> &DatabaseConnection;
@@ -57,8 +61,6 @@ where
     Router::new()
         .route("/", get(list_tasks::<S, A>))
         .route("/processors", get(processors::<S, A>))
-        .route("/pipelines/:run_id", get(pipeline::<S, A>))
-        .route("/activities/:id/pipelines", get(activity_pipelines::<S, A>))
         .route("/:id", get(get_task::<S, A>))
         .route("/:id/rerun", post(rerun_task::<S, A>))
         .route("/:id/cancel", post(cancel_task::<S, A>))
@@ -147,44 +149,6 @@ where
     ))
 }
 
-pub use super::diagnostics::GraphCursor as GraphQuery;
-
-#[utoipa::path(get, path="/admin/tasks/pipelines/{run_id}", params(("run_id"=String, Path), GraphQuery), responses((status=200, body=super::diagnostics::PipelineGraph), (status=404)), tag="tasks", security(("cookie_auth"=[])))]
-pub async fn pipeline<S, A>(
-    _admin: A,
-    State(state): State<Arc<S>>,
-    Path(run_id): Path<String>,
-    Query(query): Query<GraphQuery>,
-) -> Result<Json<super::diagnostics::PipelineGraph>, AdminTaskError>
-where
-    S: BackgroundTasksStorage,
-    A: AdminVerified,
-{
-    if query.output_offset.is_some_and(|offset| offset > 100_000) {
-        return Err(AdminTaskError::bad_request("Output cursor exceeds retained history"));
-    }
-    super::diagnostics::PipelineGraph::load_page(state.db(), &run_id, &query)
-        .await?
-        .map(Json)
-        .ok_or_else(|| AdminTaskError::not_found("Pipeline run not found"))
-}
-
-#[utoipa::path(get, path="/admin/tasks/activities/{id}/pipelines", params(("id"=i32, Path), GraphQuery), responses((status=200, body=super::diagnostics::PipelinePage)), tag="tasks", security(("cookie_auth"=[])))]
-pub async fn activity_pipelines<S, A>(
-    _admin: A,
-    State(state): State<Arc<S>>,
-    Path(id): Path<i32>,
-    Query(query): Query<GraphQuery>,
-) -> Result<Json<super::diagnostics::PipelinePage>, AdminTaskError>
-where
-    S: BackgroundTasksStorage,
-    A: AdminVerified,
-{
-    Ok(Json(
-        super::diagnostics::PipelinePage::for_activity(state.db(), id, query.after_run).await?,
-    ))
-}
-
 pub use super::entities::background_tasks::TaskListQuery;
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -258,7 +222,6 @@ impl From<background_tasks::Model> for TaskResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct TaskDetailResponse {
     pub attempt_history: Vec<super::history::TaskAttemptResponse>,
-    pub pipelines: Vec<super::history::TaskPipelineResponse>,
     pub id: i32,
     pub task_type: String,
     pub status: String,
@@ -278,7 +241,6 @@ impl From<background_tasks::Model> for TaskDetailResponse {
     fn from(m: background_tasks::Model) -> Self {
         Self {
             attempt_history: Vec::new(),
-            pipelines: Vec::new(),
             id: m.id,
             task_type: m.task_type,
             status: m.status,
@@ -359,7 +321,7 @@ where
         .ok_or_else(|| AdminTaskError::not_found("Task not found"))?;
 
     let mut detail = TaskDetailResponse::from(task);
-    (detail.attempt_history, detail.pipelines) = super::history::load(db, id).await?;
+    detail.attempt_history = super::history::load(db, id).await?;
     Ok(Json(detail))
 }
 

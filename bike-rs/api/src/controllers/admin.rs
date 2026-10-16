@@ -6,16 +6,14 @@ use crate::activity_import_lock::{
 };
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::controllers::activity_import_history;
-use crate::controllers::activity_imports as activity_imports_controller;
 use crate::storage::AppStorage;
 use crate::xc_goal_backfill::queue_user_xc_goal_backfill;
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Query, State},
     http::StatusCode,
     routing::{get, post},
     Json, Router,
 };
-use bike_core::activity_import_pipeline::ACTIVITY_PROCESSING_PROVIDER;
 use bike_core::activity_lifecycle::cleanup_duplicate_activities_for_user;
 use bike_core::analytics::mark_user_activity_changes;
 use bike_core::archive_import::{
@@ -24,10 +22,8 @@ use bike_core::archive_import::{
 use bike_core::auth::entities::users;
 use bike_core::auth::AdminUserContext;
 use bike_core::entities::{activities, activity_imports, segments};
-use bike_core::integration_events_service as integration_event_service;
 use bike_core::platform::data::pagination::{PaginatedResponse, PaginationParams};
 use chrono::Utc;
-use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -59,13 +55,6 @@ pub struct AdminActivityResponse {
     pub import_processing_stage: Option<String>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
-#[schema(example = json!({"trace": null}))]
-pub struct AdminActivityImportTraceResponse {
-    #[schema(example = json!(null))]
-    pub trace: Option<activity_imports_controller::ActivityImportTraceResponse>,
-}
-
 impl AdminActivityResponse {
     fn from_list_row(activity: activities::AdminListRow, import: Option<&activity_imports::Model>) -> Self {
         Self {
@@ -87,21 +76,13 @@ impl AdminActivityResponse {
 pub fn routes() -> Router<Arc<AppStorage>> {
     Router::new()
         .route("/activity-imports/history", get(activity_import_history::history))
-        .route(
-            "/activity-imports/:id/replay",
-            get(activity_import_history::replay_plan).post(activity_import_history::replay),
-        )
+        .route("/activity-imports/:id", get(activity_import_history::detail))
         .route("/activities", get(list_admin_activities))
         .route("/analytics/backfill", post(backfill_analytics))
         .route("/training/xc-backfill", post(backfill_user_xc_training))
         .route("/segments/regenerate", post(regenerate_user_segments))
         .route("/segments/regenerate-efforts", post(regenerate_segment_efforts))
         .route("/activity-imports/reprocess", post(reprocess_user_activity_imports))
-        .route("/activity-imports/:id/trace", get(get_admin_activity_import_trace))
-        .route(
-            "/activities/:id/import-trace",
-            get(get_admin_activity_import_trace_for_activity),
-        )
         .route("/activity-imports/reprocess-activity", post(reprocess_activity_import))
         .route(
             "/activity-imports/cleanup-duplicates",
@@ -164,120 +145,6 @@ pub async fn list_admin_activities(
         per_page,
         total as i64,
     )))
-}
-
-#[utoipa::path(
-    get,
-    path = "/admin/activity-imports/{id}/trace",
-    operation_id = "admin_get_activity_import_trace",
-    params(
-        ("id" = i32, Path, description = "Activity import id", example = 17),
-    ),
-    responses(
-        (status = 200, description = "Activity import processing DAG and event trace for administrators", body = activity_imports_controller::ActivityImportTraceResponse, example = json!({"import": {"id": 17,"import_version": 1,"original_filename": "saturday-hills.fit","format": "fit","status": "processed","processing_stage": "complete","size_bytes": 184320,"created_at": "2026-09-26T14:20:00Z"},"graph": {"nodes": [{"id": "raw_stored","label": "Raw stored","stage": "raw_stored"}],"edges": [],"mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]"},"nodes": [{"id": "raw_stored","label": "Raw stored","stage": "raw_stored","status": "completed"}],"events": []})),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
-        (status = 404, description = "Activity import not found", body = ApiErrorResponse),
-        (status = 500, description = "Internal server error", body = ApiErrorResponse),
-    ),
-    security(("bearer_auth" = [])),
-    tag = "admin",
-)]
-pub async fn get_admin_activity_import_trace(
-    _admin: AdminUserContext<AppStorage>,
-    State(state): State<Arc<AppStorage>>,
-    Path(import_id): Path<i32>,
-) -> Result<Json<activity_imports_controller::ActivityImportTraceResponse>, AppError> {
-    let import = crate::activity_import_history::admin_import_for_inspection(&state.db, import_id).await?;
-    let trace = build_admin_activity_import_trace(&state.db, import, None).await?;
-
-    Ok(Json(trace))
-}
-
-#[utoipa::path(
-    get,
-    path = "/admin/activities/{id}/import-trace",
-    operation_id = "admin_get_activity_import_trace_for_activity",
-    params(
-        ("id" = i32, Path, description = "Activity id", example = 42),
-    ),
-    responses(
-        (status = 200, description = "Activity import processing DAG and event trace for administrators when the activity has a linked import", body = AdminActivityImportTraceResponse, example = json!({"trace": null})),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
-        (status = 404, description = "Activity not found", body = ApiErrorResponse),
-        (status = 500, description = "Internal server error", body = ApiErrorResponse),
-    ),
-    security(("bearer_auth" = [])),
-    tag = "admin",
-)]
-pub async fn get_admin_activity_import_trace_for_activity(
-    _admin: AdminUserContext<AppStorage>,
-    State(state): State<Arc<AppStorage>>,
-    Path(activity_id): Path<i32>,
-) -> Result<Json<AdminActivityImportTraceResponse>, AppError> {
-    let activity = activities::Model::find_by_id(&state.db, activity_id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Activity not found"))?;
-    let Some(import_id) = activity.activity_import_id else {
-        return Ok(Json(AdminActivityImportTraceResponse { trace: None }));
-    };
-    let import = activity_imports::Entity::find_for_administration(&state.db, import_id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Activity import not found"))?;
-    let trace = build_admin_activity_import_trace(&state.db, import, Some(activity)).await?;
-
-    Ok(Json(AdminActivityImportTraceResponse { trace: Some(trace) }))
-}
-
-async fn build_admin_activity_import_trace(
-    db: &DatabaseConnection,
-    import: activity_imports::Model,
-    activity: Option<activities::Model>,
-) -> Result<activity_imports_controller::ActivityImportTraceResponse, AppError> {
-    let activity = match activity {
-        Some(activity) => Some(activity),
-        None => load_activity_for_admin_import_trace(db, &import).await?,
-    };
-    let attempts = crate::activity_import_history::attempts(db, &import).await?;
-    let events = if attempts.is_empty() {
-        integration_event_service::list_recent_events(
-            db,
-            integration_event_service::IntegrationEventListOptions {
-                provider: Some(ACTIVITY_PROCESSING_PROVIDER.to_string()),
-                user_id: Some(import.user_id),
-                activity_id: None,
-                import_id: Some(import.id),
-                limit: 100,
-            },
-        )
-        .await?
-    } else {
-        Vec::new()
-    };
-    let trace_events = events
-        .into_iter()
-        .map(activity_imports_controller::ActivityImportTraceEventResponse::from_model)
-        .collect::<Vec<_>>();
-    let trace_nodes = attempts
-        .first()
-        .map(|attempt| attempt.nodes.clone())
-        .unwrap_or(activity_imports_controller::build_trace_nodes(&import, &trace_events)?);
-
-    Ok(activity_imports_controller::ActivityImportTraceResponse {
-        attempts,
-        import: activity_imports_controller::ActivityImportResponse::from_model(import, activity.as_ref()),
-        graph: activity_imports_controller::ActivityProcessingGraphResponse::from_graph(),
-        nodes: trace_nodes,
-        events: trace_events,
-    })
-}
-
-async fn load_activity_for_admin_import_trace(
-    db: &DatabaseConnection,
-    import: &activity_imports::Model,
-) -> Result<Option<activities::Model>, AppError> {
-    Ok(activities::Model::for_import_inspection(db, import).await?)
 }
 
 #[derive(Debug, Serialize, ToSchema)]

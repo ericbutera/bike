@@ -12,6 +12,7 @@ import Pagination from "../ui/Pagination";
 import { DataGrid, ListCard, type Column } from "../ui/DataGrid";
 import TaskProcessingHistory from "./TaskProcessingHistory";
 import ProcessorOverview from "./ProcessorOverview";
+import TemporalLink from "../ui/TemporalLink";
 import Modal from "../ui/Modal";
 import {
   formatTaskDate as formatDate,
@@ -188,6 +189,11 @@ export default function TasksPageContent({
 
   return (
     <>
+      <p>
+        Native workflow execution is available in Temporal. This page lists
+        remaining legacy SQL tasks.
+      </p>
+      <TemporalLink />
       <ProcessorOverview onSelectTask={setSelectedId} />
       <ListCard
         title={
@@ -335,10 +341,7 @@ export default function TasksPageContent({
                   value={formatDate(detail.updated_at)}
                 />
               </dl>
-              <TaskProcessingHistory
-                detail={detail}
-                onSelectTask={setSelectedId}
-              />
+              <TaskProcessingHistory detail={detail} />
               <div className="mt-4 text-sm">
                 <strong>Payload:</strong>
                 <pre className="mt-1 max-h-48 w-full max-w-full overflow-auto rounded bg-base-200 p-2 text-xs">

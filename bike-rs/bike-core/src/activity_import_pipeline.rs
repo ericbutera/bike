@@ -15,20 +15,17 @@ use crate::object_store::{ObjectOwner, ObjectRef, ObjectStore};
 use crate::training_profile::{load_training_profile, TrainingProfile};
 use crate::workflow_error::WorkflowError as AppError;
 use chrono::{DateTime, NaiveDate, Utc};
-use petgraph::algo::toposort;
-use petgraph::graphmap::DiGraphMap;
 use sea_orm::DatabaseConnection;
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
 use std::path::Path;
 use uuid::Uuid;
 mod replay;
 mod stage_execution;
+#[cfg(test)]
+#[path = "activity_import_pipeline/tests/fixture.rs"]
+mod test_fixture;
 use self::stage_execution::{begin_processing_attempt, complete_processing_node, start_processing_node};
-pub use replay::{
-    plan_activity_import_replay, queue_activity_import_replay, queue_expected_activity_import_replay,
-    ActivityImportReplayPlan,
-};
+pub use replay::{plan_activity_import_replay, queue_activity_import_replay, ActivityImportReplayPlan};
 
 #[derive(Debug, Clone)]
 pub struct ActivityUploadPayload {
@@ -116,7 +113,7 @@ pub const ACTIVITY_IMPORT_VERSION_LEGACY: i32 = activity_imports::ACTIVITY_IMPOR
 pub const ACTIVITY_IMPORT_VERSION_ARTIFACT_AWARE: i32 = activity_imports::ACTIVITY_IMPORT_VERSION_ARTIFACT_AWARE;
 pub const ACTIVITY_IMPORT_VERSION_CURRENT: i32 = activity_imports::ACTIVITY_IMPORT_VERSION_CURRENT;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum ActivityProcessingNode {
+pub enum ActivityProcessingStage {
     RawStored,
     ActivityParsed,
     ActivitySaved,
@@ -126,7 +123,7 @@ pub enum ActivityProcessingNode {
     TrainingAnalysisBuilt,
 }
 
-impl ActivityProcessingNode {
+impl ActivityProcessingStage {
     pub fn id(self) -> &'static str {
         match self {
             Self::RawStored => "raw_stored",
@@ -138,108 +135,20 @@ impl ActivityProcessingNode {
             Self::TrainingAnalysisBuilt => "training_analysis_built",
         }
     }
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::RawStored => "Raw stored",
-            Self::ActivityParsed => "Activity parsed",
-            Self::ActivitySaved => "Activity saved",
-            Self::SegmentsBuilt => "Segments built",
-            Self::SegmentAnalyticsBuilt => "Segment analytics built",
-            Self::ActivityAnalyticsBuilt => "Activity analytics built",
-            Self::TrainingAnalysisBuilt => "Training analysis built",
-        }
-    }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ActivityProcessingGraphNode {
-    pub node: ActivityProcessingNode,
-    pub stage: &'static str,
-    pub depends_on: &'static [ActivityProcessingNode],
-}
-
-const NO_DEPENDENCIES: &[ActivityProcessingNode] = &[];
-const PARSE_DEPENDENCIES: &[ActivityProcessingNode] = &[ActivityProcessingNode::RawStored];
-const ACTIVITY_SAVE_DEPENDENCIES: &[ActivityProcessingNode] = &[ActivityProcessingNode::ActivityParsed];
-const SEGMENT_DEPENDENCIES: &[ActivityProcessingNode] = &[ActivityProcessingNode::ActivitySaved];
-const SEGMENT_ANALYTICS_DEPENDENCIES: &[ActivityProcessingNode] = &[ActivityProcessingNode::SegmentsBuilt];
-const ACTIVITY_ANALYTICS_DEPENDENCIES: &[ActivityProcessingNode] = &[ActivityProcessingNode::SegmentAnalyticsBuilt];
-const TRAINING_ANALYSIS_DEPENDENCIES: &[ActivityProcessingNode] = &[ActivityProcessingNode::ActivityAnalyticsBuilt];
-
-const ACTIVITY_PROCESSING_GRAPH_NODES: &[ActivityProcessingGraphNode] = &[
-    ActivityProcessingGraphNode {
-        node: ActivityProcessingNode::RawStored,
-        stage: ACTIVITY_IMPORT_STAGE_RAW_STORED,
-        depends_on: NO_DEPENDENCIES,
-    },
-    ActivityProcessingGraphNode {
-        node: ActivityProcessingNode::ActivityParsed,
-        stage: ACTIVITY_IMPORT_STAGE_ACTIVITY_PARSED,
-        depends_on: PARSE_DEPENDENCIES,
-    },
-    ActivityProcessingGraphNode {
-        node: ActivityProcessingNode::ActivitySaved,
-        stage: ACTIVITY_IMPORT_STAGE_ACTIVITY_SAVED,
-        depends_on: ACTIVITY_SAVE_DEPENDENCIES,
-    },
-    ActivityProcessingGraphNode {
-        node: ActivityProcessingNode::SegmentsBuilt,
-        stage: ACTIVITY_IMPORT_STAGE_SEGMENTS_BUILT,
-        depends_on: SEGMENT_DEPENDENCIES,
-    },
-    ActivityProcessingGraphNode {
-        node: ActivityProcessingNode::SegmentAnalyticsBuilt,
-        stage: ACTIVITY_IMPORT_STAGE_SEGMENT_ANALYTICS_BUILT,
-        depends_on: SEGMENT_ANALYTICS_DEPENDENCIES,
-    },
-    ActivityProcessingGraphNode {
-        node: ActivityProcessingNode::ActivityAnalyticsBuilt,
-        stage: ACTIVITY_IMPORT_STAGE_ACTIVITY_ANALYTICS_BUILT,
-        depends_on: ACTIVITY_ANALYTICS_DEPENDENCIES,
-    },
-    ActivityProcessingGraphNode {
-        node: ActivityProcessingNode::TrainingAnalysisBuilt,
-        stage: ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT,
-        depends_on: TRAINING_ANALYSIS_DEPENDENCIES,
-    },
+const ACTIVITY_PROCESSING_STAGES: &[ActivityProcessingStage] = &[
+    ActivityProcessingStage::RawStored,
+    ActivityProcessingStage::ActivityParsed,
+    ActivityProcessingStage::ActivitySaved,
+    ActivityProcessingStage::SegmentsBuilt,
+    ActivityProcessingStage::SegmentAnalyticsBuilt,
+    ActivityProcessingStage::ActivityAnalyticsBuilt,
+    ActivityProcessingStage::TrainingAnalysisBuilt,
 ];
 
-pub fn activity_processing_graph_nodes() -> &'static [ActivityProcessingGraphNode] {
-    ACTIVITY_PROCESSING_GRAPH_NODES
-}
-
-pub fn activity_processing_graph_mermaid() -> String {
-    let mut lines = vec!["flowchart LR".to_string()];
-    for graph_node in ACTIVITY_PROCESSING_GRAPH_NODES {
-        lines.push(format!("  {}[\"{}\"]", graph_node.node.id(), graph_node.node.label()));
-    }
-    for graph_node in ACTIVITY_PROCESSING_GRAPH_NODES {
-        for dependency in graph_node.depends_on {
-            lines.push(format!("  {} --> {}", dependency.id(), graph_node.node.id()));
-        }
-    }
-    lines.join("\n")
-}
-
-pub fn activity_processing_graph() -> DiGraphMap<ActivityProcessingNode, ()> {
-    let mut graph = DiGraphMap::new();
-    for graph_node in ACTIVITY_PROCESSING_GRAPH_NODES {
-        graph.add_node(graph_node.node);
-        for dependency in graph_node.depends_on {
-            graph.add_edge(*dependency, graph_node.node, ());
-        }
-    }
-    graph
-}
-
-pub fn activity_processing_topological_order() -> Result<Vec<ActivityProcessingNode>, AppError> {
-    toposort(&activity_processing_graph(), None).map_err(|cycle| {
-        AppError::internal(format!(
-            "Activity processing graph contains a cycle at {:?}",
-            cycle.node_id()
-        ))
-    })
+pub fn activity_processing_stages() -> &'static [ActivityProcessingStage] {
+    ACTIVITY_PROCESSING_STAGES
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -392,12 +301,12 @@ async fn record_activity_processing_event(
         .await;
 }
 
-async fn run_activity_processing_graph(
+async fn run_activity_processing_stages(
     run: ActivityProcessingRun<'_>,
 ) -> Result<PersistActivityUploadOutcome, AppError> {
     run.import.require_sql_processing()?;
     let attempt = begin_processing_attempt(&run).await?;
-    let result = execute_activity_processing_graph(&run, attempt.clone()).await;
+    let result = execute_activity_processing_stages(&run, attempt.clone()).await;
     if let Err(error) = &result {
         let own_attempt = activity_import_attempts::Entity::find_for_execution(run.db, attempt.id).await?;
         if let Some(own_attempt) = own_attempt.filter(|attempt| attempt.status == "running") {
@@ -407,30 +316,22 @@ async fn run_activity_processing_graph(
     result
 }
 
-async fn execute_activity_processing_graph(
+async fn execute_activity_processing_stages(
     run: &ActivityProcessingRun<'_>,
     attempt: activity_import_attempts::Model,
 ) -> Result<PersistActivityUploadOutcome, AppError> {
-    let graph_nodes_by_node = activity_processing_graph_nodes()
-        .iter()
-        .map(|node| (node.node, *node))
-        .collect::<HashMap<_, _>>();
     let mut state = load_activity_processing_state(run, attempt).await?;
 
-    for node in activity_processing_topological_order()? {
-        let graph_node = graph_nodes_by_node
-            .get(&node)
-            .ok_or_else(|| AppError::internal(format!("Activity processing graph is missing metadata for {node:?}")))?;
-
+    for stage in activity_processing_stages() {
         if execution::stages(&state.attempt)?
             .iter()
-            .any(|stage| stage.stage == graph_node.stage && stage.status == "reused")
+            .any(|record| record.stage == stage.id() && record.status == "reused")
         {
             continue;
         }
-        start_processing_node(run, &mut state, graph_node.stage).await?;
-        let outcome = run_activity_processing_node(run, &mut state, *graph_node).await?;
-        complete_processing_node(run, &mut state, node).await?;
+        start_processing_node(run, &mut state, stage.id()).await?;
+        let outcome = run_activity_processing_node(run, &mut state, *stage).await?;
+        complete_processing_node(run, &mut state, *stage).await?;
         if let Some(outcome) = outcome {
             execution::finish_active(run.db, &state.import_model, "duplicate", None).await?;
             return Ok(outcome);
@@ -563,26 +464,26 @@ fn activity_artifact_parse_priority(artifact: &activity_import_artifacts::Model)
 async fn run_activity_processing_node(
     run: &ActivityProcessingRun<'_>,
     state: &mut ActivityProcessingState,
-    graph_node: ActivityProcessingGraphNode,
+    stage: ActivityProcessingStage,
 ) -> Result<Option<PersistActivityUploadOutcome>, AppError> {
-    match graph_node.node {
-        ActivityProcessingNode::RawStored => mark_raw_stored_node(run, state).await?,
-        ActivityProcessingNode::ActivityParsed => {
-            parse_activity_node(run, state, graph_node.stage).await?;
+    match stage {
+        ActivityProcessingStage::RawStored => mark_raw_stored_node(run, state).await?,
+        ActivityProcessingStage::ActivityParsed => {
+            parse_activity_node(run, state, stage.id()).await?;
             if let Some(outcome) = prevent_duplicate_activity(run, state).await? {
                 return Ok(Some(outcome));
             }
         }
-        ActivityProcessingNode::ActivitySaved => save_activity_node(run, state, graph_node.stage).await?,
-        ActivityProcessingNode::SegmentsBuilt => build_segments_node(run, state, graph_node.stage).await?,
-        ActivityProcessingNode::SegmentAnalyticsBuilt => {
-            build_segment_analytics_node(run, state, graph_node.stage).await?;
+        ActivityProcessingStage::ActivitySaved => save_activity_node(run, state, stage.id()).await?,
+        ActivityProcessingStage::SegmentsBuilt => build_segments_node(run, state, stage.id()).await?,
+        ActivityProcessingStage::SegmentAnalyticsBuilt => {
+            build_segment_analytics_node(run, state, stage.id()).await?;
         }
-        ActivityProcessingNode::ActivityAnalyticsBuilt => {
-            build_activity_analytics_node(run, state, graph_node.stage).await?;
+        ActivityProcessingStage::ActivityAnalyticsBuilt => {
+            build_activity_analytics_node(run, state, stage.id()).await?;
         }
-        ActivityProcessingNode::TrainingAnalysisBuilt => {
-            build_training_analysis_node(run, state, graph_node.stage).await?;
+        ActivityProcessingStage::TrainingAnalysisBuilt => {
+            build_training_analysis_node(run, state, stage.id()).await?;
         }
     }
 
@@ -592,10 +493,10 @@ async fn run_activity_processing_node(
 fn activity_processing_result(state: ActivityProcessingState) -> Result<PersistActivityUploadOutcome, AppError> {
     let parsed = state
         .parsed_activity
-        .ok_or_else(|| AppError::internal("Activity processing graph did not run the parser node"))?;
+        .ok_or_else(|| AppError::internal("Activity processing did not parse the source"))?;
     let activity = state
         .activity_model
-        .ok_or_else(|| AppError::internal("Activity processing graph did not save an activity"))?;
+        .ok_or_else(|| AppError::internal("Activity processing did not save an activity"))?;
 
     Ok(PersistActivityUploadOutcome::Imported(PersistedActivityImport {
         import: state.import_model,
@@ -938,7 +839,7 @@ pub async fn persist_activity_upload_with_artifacts(
     )
     .await?;
 
-    let result = run_activity_processing_graph(ActivityProcessingRun {
+    let result = run_activity_processing_stages(ActivityProcessingRun {
         db,
         uploads_dir: request.uploads_dir,
         user_id: request.user_id,
@@ -1149,7 +1050,7 @@ pub async fn process_stored_activity_import(
     deduplication: ActivityUploadDeduplication,
     training_profile: Option<&TrainingProfile>,
 ) -> Result<PersistActivityUploadOutcome, AppError> {
-    run_activity_processing_graph(ActivityProcessingRun {
+    run_activity_processing_stages(ActivityProcessingRun {
         db,
         uploads_dir,
         user_id,
@@ -1190,7 +1091,7 @@ pub async fn reprocess_activity_from_import(
     activity_import: activity_imports::Model,
     training_profile: Option<&TrainingProfile>,
 ) -> Result<ReprocessedActivityImport, AppError> {
-    let outcome = run_activity_processing_graph(ActivityProcessingRun {
+    let outcome = run_activity_processing_stages(ActivityProcessingRun {
         db,
         uploads_dir,
         user_id,
@@ -1291,6 +1192,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn completed_legacy_import_returns_preserved_identity_and_affected_scope() {
+        let state = test_fixture::state();
+        let expected_activity = state.activity_model.clone().unwrap();
+        let expected_import = state.import_model.clone();
+        let expected_segments = state.affected_segment_ids.clone();
+        let expected_dirty_day = state.parsed_activity.as_ref().unwrap().draft.started_at.date_naive();
+        let PersistActivityUploadOutcome::Imported(result) = activity_processing_result(state).unwrap() else {
+            panic!("Completed source must return its imported activity");
+        };
+        assert_eq!(result.activity.id, expected_activity.id);
+        assert_eq!(result.import.id, expected_import.id);
+        assert_eq!(result.affected_segment_ids, expected_segments);
+        assert_eq!(result.fitness_dirty_from_day, expected_dirty_day);
+    }
+
+    #[test]
     fn activity_import_storage_path_buckets_files_by_month() {
         let bucket_at = DateTime::parse_from_rfc3339("2026-07-13T12:00:00Z")
             .expect("parse date")
@@ -1319,32 +1236,26 @@ mod tests {
     }
 
     #[test]
-    fn activity_processing_graph_orders_required_dependencies() {
-        let order = activity_processing_topological_order().expect("activity graph is a DAG");
-        let position = order
-            .iter()
-            .enumerate()
-            .map(|(index, node)| (*node, index))
-            .collect::<std::collections::HashMap<_, _>>();
-
-        for node in activity_processing_graph_nodes() {
-            for dependency in node.depends_on {
-                assert!(
-                    position[dependency] < position[&node.node],
-                    "{dependency:?} should run before {:?}",
-                    node.node
-                );
-            }
+    fn legacy_resume_preserves_completed_source_stages_before_derived_work() {
+        let mut previous = crate::test_support::activity_import_attempt();
+        let mut records = execution::stages(&previous).unwrap();
+        for record in &mut records {
+            record.status = "completed".into();
         }
-    }
+        previous.stages_json = serde_json::to_value(records).unwrap();
 
-    #[test]
-    fn activity_processing_graph_mermaid_matches_graph_edges() {
-        let mermaid = activity_processing_graph_mermaid();
-
-        assert!(mermaid.starts_with("flowchart LR"));
-        assert!(mermaid.contains("raw_stored[\"Raw stored\"]"));
-        assert!(mermaid.contains("raw_stored --> activity_parsed"));
-        assert!(mermaid.contains("activity_analytics_built --> training_analysis_built"));
+        for (start, reused_count) in [("raw_stored", 0), ("segments_built", 3)] {
+            let stages = execution::initial_stages(start, Some(&previous)).unwrap();
+            assert_eq!(stages[0].stage, "raw_stored");
+            assert_eq!(stages[1].stage, "activity_parsed");
+            assert_eq!(stages[2].stage, "activity_saved");
+            assert_eq!(stages[reused_count].stage, start);
+            assert!(stages[..reused_count]
+                .iter()
+                .all(|record| { record.status == "reused" && record.reused_attempt_id == Some(previous.id) }));
+            assert!(stages[reused_count..]
+                .iter()
+                .all(|record| { record.status == "pending" && record.reused_attempt_id.is_none() }));
+        }
     }
 }
