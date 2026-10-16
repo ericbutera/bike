@@ -37,8 +37,7 @@ mise run coverage
 ```
 
 Use `mise exec -- cargo test -p bike-core <test_filter>` for a focused regression.
-See the [coverage guide](../docs/development.md#coverage-reports) for report paths
-and the suites included in coverage.
+See the [CI specification](../docs/specs/ci-checks.md) for suite and coverage policy.
 Run direct API/worker processes with `api:dev` and `worker:dev` after configuring
 the database and other values from [`.env.example`](.env.example).
 
@@ -47,9 +46,9 @@ the database and other values from [`.env.example`](.env.example).
 `mise run generate:openapi` generates the canonical HTTP contract directly in
 `../contracts/openapi/` when explicitly requested. `mise run generate:typescript` regenerates the frontend
 client. Root `mise run strava:sdk` generates the unmodified vendor SDK;
-`mise run strava:sdk:check` verifies freshness. Native Strava workflows run on
-the dedicated [Temporal worker](strava-temporal/), described in
-[the Strava spec](../docs/specs/strava-temporal.md).
+`mise run strava:sdk:check` verifies freshness. Native Strava workflows are owned by
+the [provider crate](strava-temporal/) and share the `temporal-worker` process
+with Bike task workflows. See [the execution specification](../docs/specs/background-work.md).
 
 [Product specifications](../docs/specs/README.md) describe intended behavior and
 should change with it. Track unfinished work in the root [backlog](../docs/TODO.md).

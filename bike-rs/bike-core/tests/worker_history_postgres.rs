@@ -111,7 +111,10 @@ async fn percentiles_cover_all_attempts_and_empty_registered_processors_stay_unk
     assert!(failed.iter().all(|p| p.attempt.samples == 0));
     let footprint=db.query_one_raw(sea_orm::Statement::from_string(db.get_database_backend(),
   "SELECT sum(pg_total_relation_size(quote_ident(schemaname)||'.'||quote_ident(tablename)))::bigint bytes FROM pg_tables WHERE schemaname=current_schema() AND (tablename LIKE 'processing_%' OR tablename IN ('background_task_attempts','worker_task_anomalies'))".to_owned())).await.unwrap().unwrap().try_get::<i64>("","bytes").unwrap();
-    println!("Synthetic diagnostic fixture: 60 runs; total table and index bytes={footprint}; bytes/run={}",footprint/60);
+    println!(
+        "Synthetic diagnostic fixture: 60 runs; total table and index bytes={footprint}; bytes/run={}",
+        footprint / 60
+    );
     assert!(
         footprint / 60 < 65536,
         "Diagnostic metadata unexpectedly copied large source payloads"

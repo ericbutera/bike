@@ -23,6 +23,7 @@ pub struct ObjectRef {
 pub enum ObjectOwner {
     Strava,
     BikeTasks,
+    ActivityImports,
 }
 
 impl ObjectOwner {
@@ -30,6 +31,7 @@ impl ObjectOwner {
         match self {
             Self::Strava => "strava",
             Self::BikeTasks => "bike/tasks",
+            Self::ActivityImports => "activity-imports",
         }
     }
 

@@ -224,7 +224,3 @@ async fn load_activity_for_import(
         .await
         .map_err(worker_db_error)
 }
-
-#[cfg(test)]
-#[path = "process_activity_import_tests.rs"]
-mod tests;

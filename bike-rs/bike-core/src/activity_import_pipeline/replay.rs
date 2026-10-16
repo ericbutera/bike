@@ -208,8 +208,14 @@ async fn queue_replay(
     import
         .mark_processing(&transaction, &plan.start_stage, None, Utc::now())
         .await?;
-    durable::Model::enqueue(&transaction, "process_activity_import".into(),
-        serde_json::json!({"data": {"user_id": import.user_id, "import_id": import.id, "attempt_id": attempt.id}}), None, 1).await?;
+    durable::Model::enqueue(
+        &transaction,
+        "process_activity_import".into(),
+        serde_json::json!({"data": {"user_id": import.user_id, "import_id": import.id, "attempt_id": attempt.id}}),
+        None,
+        1,
+    )
+    .await?;
     transaction.commit().await?;
     Ok((plan, attempt.id))
 }

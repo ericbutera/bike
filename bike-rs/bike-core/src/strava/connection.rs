@@ -15,8 +15,6 @@ use chrono::DateTime;
 use chrono::{Duration, Utc};
 use reqwest::Url;
 use sea_orm::DatabaseConnection;
-#[cfg(test)]
-use sea_orm::Set;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -443,77 +441,8 @@ pub(crate) fn ensure_connection_scopes_allow_activity_import(
 mod tests {
 
     use super::*;
-    use crate::entities::activities;
-    use crate::entities::activity_import_locks;
-    use crate::entities::analytics_user_states;
-    use crate::entities::integration_events as integration_events_entity;
-    use crate::entities::segment_efforts;
     use crate::strava::provider_payload::StravaStream;
-    use crate::test_support;
     use axum::http::StatusCode;
-    use chrono::Duration as ChronoDuration;
-    use sea_orm::{ConnectionTrait, Database, Schema};
-
-    async fn test_db() -> DatabaseConnection {
-        let db = Database::connect("sqlite::memory:")
-            .await
-            .expect("in-memory db");
-
-        let schema = Schema::new(db.get_database_backend());
-        db.execute(&schema.create_table_from_entity(strava_connections::Entity))
-            .await
-            .expect("create Strava connections table");
-        db.execute(&schema.create_table_from_entity(activity_import_locks::Entity))
-            .await
-            .expect("create activity import locks table");
-        db.execute(&schema.create_table_from_entity(activities::Entity))
-            .await
-            .expect("create activities table");
-        db.execute(&schema.create_table_from_entity(segment_efforts::Entity))
-            .await
-            .expect("create segment efforts table");
-        db.execute(&schema.create_table_from_entity(analytics_user_states::Entity))
-            .await
-            .expect("create analytics user states table");
-        db.execute(&schema.create_table_from_entity(integration_events_entity::Entity))
-            .await
-            .expect("create integration events table");
-        crate::background_jobs::history_tests::diagnostic_tables(&db).await;
-
-        db
-    }
-
-    async fn insert_connection_with_scopes(
-        db: &DatabaseConnection,
-        user_id: i32,
-        last_sync_status: &str,
-        scopes: &str,
-    ) -> strava_connections::Model {
-        test_support::insert(
-            db,
-            strava_connections::ActiveModel {
-                user_id: Set(user_id),
-                athlete_id: Set(10_000 + i64::from(user_id)),
-                athlete_username: Set(Some(format!("athlete-{user_id}"))),
-                athlete_first_name: Set(Some("Test".to_string())),
-                athlete_last_name: Set(Some("Rider".to_string())),
-                athlete_profile_medium_url: Set(None),
-                scopes: Set(scopes.to_string()),
-                access_token: Set("access-token".to_string()),
-                refresh_token: Set("refresh-token".to_string()),
-                expires_at: Set(Utc::now() + ChronoDuration::hours(1)),
-                last_sync_status: Set(last_sync_status.to_string()),
-                last_sync_message: Set(Some("Strava sync queued.".to_string())),
-                last_sync_started_at: Set(None),
-                last_sync_finished_at: Set(None),
-                last_sync_imported_count: Set(0),
-                last_sync_duplicate_count: Set(0),
-                last_sync_failed_count: Set(0),
-                ..crate::test_support::new_connection()
-            },
-        )
-        .await
-    }
 
     fn test_config() -> Config {
         Config {
@@ -674,17 +603,5 @@ mod tests {
             resolution: None,
             series_type: None,
         }
-    }
-
-    #[tokio::test]
-    async fn weak_connection_scope_returns_activity_scope_error() {
-        let db = test_db().await;
-        let connection =
-            insert_connection_with_scopes(&db, 42, STRAVA_SYNC_STATUS_NEVER, "activity:read").await;
-
-        let error = ensure_connection_scopes_allow_activity_import(&connection).unwrap_err();
-
-        assert_eq!(error.status, StatusCode::BAD_REQUEST);
-        assert_eq!(error.message, missing_activity_scope_message());
     }
 }

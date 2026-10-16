@@ -223,13 +223,18 @@ fn native_child_options_keep_stable_identity_priority_and_cancellation() {
         panic!("Expected native child workflow")
     };
     assert_eq!(child.workflow_type, "reprocess_activity_import");
+    assert!(child.retry_policy.is_none());
     assert_eq!(
         child.workflow_id,
-        "bike-task-reprocess_activity_import-fixture-batch:entry-0"
+        "bike-task-reprocess_activity_import-user-7-fixture-batch:entry-0"
     );
     assert_eq!(child.task_queue, crate::TASK_QUEUE);
     assert_eq!(child.priority.unwrap().priority_key, 5);
-    assert_eq!(child.cancellation_type, temporalio_common::protos::coresdk::child_workflow::ChildWorkflowCancellationType::WaitCancellationCompleted as i32);
+    assert_eq!(
+        child.cancellation_type,
+        temporalio_common::protos::coresdk::child_workflow::ChildWorkflowCancellationType::WaitCancellationCompleted
+            as i32
+    );
 }
 
 #[test]
@@ -300,8 +305,18 @@ fn archive_manifest_preparation_uses_native_streaming_timeouts_and_heartbeats() 
         panic!("Expected manifest preparation Activity")
     };
     assert_eq!(activity.activity_type, "prepare_archive_manifest");
-    assert_eq!(activity.start_to_close_timeout.unwrap().seconds, 3600);
-    assert_eq!(activity.heartbeat_timeout.unwrap().seconds, 30);
+    assert_eq!(
+        Duration::try_from(activity.start_to_close_timeout.unwrap()).unwrap(),
+        policy::MANIFEST_EXECUTION_TIMEOUT
+    );
+    assert_eq!(
+        Duration::try_from(activity.heartbeat_timeout.unwrap()).unwrap(),
+        policy::ACTIVITY_HEARTBEAT_TIMEOUT
+    );
+    assert_eq!(
+        activity.retry_policy.unwrap(),
+        policy::activity_retry_policy().into_raw()
+    );
     assert!(activity.do_not_eagerly_execute);
 }
 

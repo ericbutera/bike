@@ -1,7 +1,10 @@
 //! Native Bike coordination. No SQL queue, polling, or orchestration tables.
 pub mod activities;
 pub mod client;
+pub mod operations;
+pub mod runtime;
 pub mod scheduling;
+pub mod submission;
 pub mod workflows;
 
 pub const TASK_QUEUE: &str = "bike-tasks";

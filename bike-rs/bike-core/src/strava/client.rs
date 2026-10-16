@@ -202,7 +202,15 @@ impl StravaApiClient {
         activity_id: i64,
     ) -> Result<StravaActivityStreams, AppError> {
         self.send_json(
-            streams_api::get_activity_streams(&self.sdk(Some(access_token)), activity_id, "time,distance,latlng,altitude,velocity_smooth,heartrate,cadence,watts,temp,moving,grade_smooth".split(',').map(str::to_owned).collect(), true),
+            streams_api::get_activity_streams(
+                &self.sdk(Some(access_token)),
+                activity_id,
+                "time,distance,latlng,altitude,velocity_smooth,heartrate,cadence,watts,temp,moving,grade_smooth"
+                    .split(',')
+                    .map(str::to_owned)
+                    .collect(),
+                true,
+            ),
             StravaRequestClass::Read,
             "get_activity_streams",
             "fetch Strava activity streams",
@@ -412,7 +420,9 @@ impl StravaApiClient {
         }
 
         if !sdk_accepted {
-            return Err(AppError::internal(format!("Generated Strava SDK rejected the response while trying to {action}; inspect the retained exchange")));
+            return Err(AppError::internal(format!(
+                "Generated Strava SDK rejected the response while trying to {action}; inspect the retained exchange"
+            )));
         }
         decode_response(&bytes, action)
     }

@@ -1,5 +1,8 @@
 //! Shared persistence of normalized activity data.
 
+#[cfg(test)]
+mod activity_reprocessing_tests;
+
 use super::*;
 use crate::activity_import_pipeline::{
     ActivityProcessingArtifact, ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL,
@@ -127,11 +130,12 @@ fn build_strava_save_data(
 impl Model {
     pub(crate) async fn update_parsed(
         self,
-        db: &DatabaseConnection,
+        db: &impl ConnectionTrait,
         parsing_artifact: &ActivityProcessingArtifact,
         parsed: &ParsedActivityData,
         save_data: ActivitySaveData,
     ) -> Result<activities::Model, AppError> {
+        let expected_updated_at = self.updated_at;
         let activity_type = self.activity_type.clone();
         let archive_title = (self.source == "strava_sync"
             && parsing_artifact.artifact_kind == ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL)
@@ -148,7 +152,13 @@ impl Model {
         if let Some(title) = archive_title {
             active_model.title = Set(title);
         }
-        active_model.update(db).await.map_err(AppError::from)
+        let active_model = active_model.before_save(db, false).await?;
+        activities::Entity::update(active_model)
+            .validate()?
+            .filter(activities::Column::UpdatedAt.eq(expected_updated_at))
+            .exec(db)
+            .await
+            .map_err(AppError::from)
     }
 
     pub(crate) async fn insert_parsed(

@@ -10,6 +10,8 @@ pub struct Model {
     pub activity_import_id: i32,
     pub activity_id: Option<i32>,
     pub worker_task_id: Option<i32>,
+    pub command_id: Option<String>,
+    pub temporal_context: Option<Json>,
     pub status: String,
     pub requested_stage: String,
     pub start_stage: String,

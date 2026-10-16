@@ -2887,6 +2887,14 @@ export interface components {
        */
       user_id?: number | null;
     };
+    JobReference: {
+      /** @description Stable public job identity: the acknowledged Temporal Workflow ID. */
+      job_id: string;
+      namespace: string;
+      /** @description The acknowledged run; Continue-As-New may create subsequent runs. */
+      run_id: string;
+      workflow_type: string;
+    };
     MessageResponse: {
       message: string;
     };
@@ -3486,18 +3494,12 @@ export interface components {
        * @example 42
        */
       activity_id: number;
+      /**
+       * Format: uuid
+       * @description Reuse this UUID if submission fails or its response is lost.
+       */
+      command_id?: string | null;
     };
-    /**
-     * @example {
-     *       "activity_id": 42,
-     *       "activity_import_id": 17,
-     *       "message": "Activity reprocessing queued.",
-     *       "status": "queued",
-     *       "task_id": "42",
-     *       "task_status": "pending",
-     *       "user_id": 12
-     *     }
-     */
     ReprocessActivityImportResponse: {
       /**
        * Format: int32
@@ -3509,13 +3511,20 @@ export interface components {
        * @example 17
        */
       activity_import_id: number;
-      /** @example Activity reprocessing queued. */
+      job: components["schemas"]["JobReference"];
+      /** @example Activity reprocessing accepted. */
       message: string;
-      /** @example queued */
+      /** @example accepted */
       status: string;
-      /** @example 42 */
+      /**
+       * @description Compatibility alias for job.job_id; this is a Temporal Workflow ID.
+       * @example bike-task-reprocess_activity_import-user-12-command-uuid
+       */
       task_id: string;
-      /** @example pending */
+      /**
+       * @description Acceptance status, not the execution's current state.
+       * @example accepted
+       */
       task_status: string;
       /**
        * Format: int32
@@ -6630,24 +6639,22 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Queued stored-file activity reprocessing for one activity */
+      /** @description Temporal accepted stored-file activity reprocessing */
       202: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          /**
-           * @example {
-           *       "activity_id": 42,
-           *       "activity_import_id": 17,
-           *       "message": "Activity reprocessing queued.",
-           *       "status": "queued",
-           *       "task_id": "42",
-           *       "task_status": "pending",
-           *       "user_id": 12
-           *     }
-           */
           "application/json": components["schemas"]["ReprocessActivityImportResponse"];
+        };
+      };
+      /** @description No supported retained source for native reprocessing */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
         };
       };
       /** @description Unauthorized */
@@ -6673,7 +6680,7 @@ export interface operations {
           "application/json": components["schemas"]["ApiErrorResponse"];
         };
       };
-      /** @description Another activity import is already running or queued */
+      /** @description Activity and retained source do not match */
       409: {
         headers: {
           [name: string]: unknown;

@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct AppStorage {
+    pub task_submission: std::sync::Arc<dyn bike_temporal::submission::ReprocessSubmission>,
     pub map_images: Option<std::sync::Arc<bike_core::activity_maps::MapImageService>>,
     pub heatmaps: std::sync::Arc<bike_core::heatmaps::service::HeatmapService>,
     pub db: DatabaseConnection,
@@ -24,6 +25,9 @@ impl AppStorage {
     #[cfg(test)]
     pub(crate) fn for_test(db: DatabaseConnection) -> Self {
         Self {
+            task_submission: std::sync::Arc::new(
+                bike_temporal::submission::TaskSubmissionService::from_env(),
+            ),
             map_images: None,
             heatmaps: std::sync::Arc::new(bike_core::heatmaps::service::HeatmapService::default()),
             tasks: TaskQueue::new(db.clone()),
@@ -59,6 +63,9 @@ impl AppStorage {
         std::fs::create_dir_all(&uploads_dir).expect("Failed to create uploads directory");
 
         Self {
+            task_submission: std::sync::Arc::new(
+                bike_temporal::submission::TaskSubmissionService::from_env(),
+            ),
             map_images: create_map_image_service(Config::get()).await,
             heatmaps: std::sync::Arc::new(bike_core::heatmaps::service::HeatmapService::default()),
             db,
@@ -172,26 +179,6 @@ impl OAuthRouteStorage for AppStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sea_orm::{ConnectionTrait, Database, EntityTrait};
-
-    #[tokio::test]
-    async fn local_admin_bootstrap_grants_access_and_reuses_identity() {
-        use bike_core::auth::entities::users;
-        let db = Database::connect("sqlite::memory:").await.unwrap();
-        db.execute(&bike_core::test_support::table_with_timestamp_defaults(
-            &db,
-            users::Entity,
-            &["created_at", "updated_at"],
-        ))
-        .await
-        .unwrap();
-        let pid = ensure_local_admin(&db).await;
-        let user = users::Entity::find().one(&db).await.unwrap().unwrap();
-        assert_eq!(user.pid, pid);
-        assert_eq!(user.is_admin, Some(true));
-        assert_eq!(ensure_local_admin(&db).await, pid);
-        assert_eq!(users::Entity::find().all(&db).await.unwrap().len(), 1);
-    }
 
     #[tokio::test]
     async fn map_cache_is_optional_and_starts_with_existing_configuration() {

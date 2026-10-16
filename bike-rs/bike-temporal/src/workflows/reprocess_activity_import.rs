@@ -1,4 +1,7 @@
-use super::steps::{derived, imports};
+use super::{
+    options::CommitBoundary,
+    steps::{derived, imports},
+};
 use bike_core::bike_tasks::{ActivityImportResult, ReprocessInput};
 use temporalio_macros::{workflow, workflow_methods};
 use temporalio_sdk::{WorkflowContext, WorkflowResult};
@@ -14,8 +17,9 @@ impl ReprocessActivityImport {
         ctx: &mut WorkflowContext<Self>,
         input: ReprocessInput,
     ) -> WorkflowResult<ActivityImportResult> {
-        let imported = imports::activity_import(ctx, input.into_command()).await?;
-        derived::refresh_import_outputs(ctx, &imported).await?;
+        let boundary = CommitBoundary::begin(ctx)?;
+        let imported = imports::activity_import(&boundary, input.into_command()).await?;
+        derived::refresh_import_outputs(&boundary, &imported).await?;
         Ok(imported)
     }
 }

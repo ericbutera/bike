@@ -10,17 +10,11 @@ use bike_core::activity_import_pipeline::{
 use bike_core::entities::{activity_import_attempts, activity_imports};
 use chrono::{DateTime, Utc};
 use sea_orm::DatabaseConnection;
-use serde::{Deserialize, Serialize};
-use utoipa::{IntoParams, ToSchema};
+use serde::Serialize;
+use utoipa::ToSchema;
 
-#[cfg(test)]
-#[path = "activity_import_history_tests.rs"]
-pub(crate) mod tests;
-
-#[derive(Debug, Deserialize, IntoParams)]
-#[into_params(parameter_in = Query)]
-pub struct HistoryQuery {
-    pub user_id: Option<i32>,
+#[derive(Debug, Default)]
+pub struct HistoryFilter {
     pub page: Option<u64>,
     pub source: Option<String>,
     pub status: Option<String>,
@@ -35,9 +29,8 @@ pub struct ImportHistoryResponse {
     pub per_page: u64,
 }
 
-#[derive(Debug, Deserialize, ToSchema, IntoParams)]
-#[into_params(parameter_in = Query)]
-pub struct ReplayRequest {
+#[derive(Debug)]
+pub struct ReplayCommand {
     pub stage: String,
     pub expected_start_stage: Option<String>,
     pub expected_reused_attempt_id: Option<i32>,
@@ -70,17 +63,17 @@ pub struct ImportAttemptResponse {
 pub async fn history(
     db: &DatabaseConnection,
     user_id: i32,
-    query: HistoryQuery,
+    filter: HistoryFilter,
 ) -> Result<ImportHistoryResponse, AppError> {
     recover_owned_imports(db, user_id).await?;
-    let page = query.page.unwrap_or(1).max(1);
+    let page = filter.page.unwrap_or(1).max(1);
     let (items, total) = activity_imports::Entity::history(
         db,
         user_id,
         page,
-        query.source.as_deref().filter(|value| !value.is_empty()),
-        query.status.as_deref().filter(|value| !value.is_empty()),
-        query.archive_job_id,
+        filter.source.as_deref().filter(|value| !value.is_empty()),
+        filter.status.as_deref().filter(|value| !value.is_empty()),
+        filter.archive_job_id,
     )
     .await?;
     Ok(ImportHistoryResponse {
@@ -138,11 +131,11 @@ pub async fn admin_replay(
     db: &DatabaseConnection,
     uploads_dir: &str,
     import_id: i32,
-    request: ReplayRequest,
+    command: ReplayCommand,
     queue: bool,
 ) -> Result<ReplayResponse, AppError> {
     let import = admin_import(db, import_id).await?;
-    replay(db, uploads_dir, import.user_id, import_id, request, queue).await
+    replay(db, uploads_dir, import.user_id, import_id, command, queue).await
 }
 
 pub async fn replay(
@@ -150,7 +143,7 @@ pub async fn replay(
     uploads_dir: &str,
     user_id: i32,
     import_id: i32,
-    request: ReplayRequest,
+    command: ReplayCommand,
     queue: bool,
 ) -> Result<ReplayResponse, AppError> {
     let import = activity_imports::Entity::find_owned(db, user_id, import_id)
@@ -158,10 +151,10 @@ pub async fn replay(
         .ok_or_else(|| AppError::not_found("Activity import not found"))?;
     let (plan, attempt_id) = if queue {
         let expected =
-            plan_activity_import_replay(db, uploads_dir, &import, &request.stage).await?;
-        if request.expected_start_stage.as_ref().is_some_and(|stage| {
+            plan_activity_import_replay(db, uploads_dir, &import, &command.stage).await?;
+        if command.expected_start_stage.as_ref().is_some_and(|stage| {
             stage != &expected.start_stage
-                || request.expected_reused_attempt_id != expected.reused_attempt_id
+                || command.expected_reused_attempt_id != expected.reused_attempt_id
         }) {
             return Err(AppError::conflict(
                 "Replay prerequisites changed; review the updated start stage and try again",
@@ -172,7 +165,7 @@ pub async fn replay(
         (plan, Some(id))
     } else {
         (
-            plan_activity_import_replay(db, uploads_dir, &import, &request.stage).await?,
+            plan_activity_import_replay(db, uploads_dir, &import, &command.stage).await?,
             None,
         )
     };

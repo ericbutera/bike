@@ -139,9 +139,9 @@ impl<R: RebuildRequest> RebuildInput<R> {
             )
             .into());
         }
-        if request.revision() <= self.published {
-            return Ok(());
-        }
+        // A late notification can describe an independently committed activity.
+        // A numeric watermark cannot prove that its effect was included already.
+        // Coalesce pending requests; rebuilding current data again is harmless.
         let Some(pending) = &mut self.pending else {
             self.pending = Some(Pending {
                 deadline: self.policy.deadline(request.priority(), at, at)?,

@@ -11,6 +11,7 @@ pub mod activity_maps;
 pub mod activity_parser;
 pub mod activity_recording;
 pub mod activity_recording_recovery;
+pub mod activity_reprocessing;
 pub mod activity_source_recovery;
 pub mod activity_sport;
 pub mod activity_summary;

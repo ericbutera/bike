@@ -13,9 +13,21 @@ pub struct HandoffMetrics {
 impl HandoffMetrics {
     pub fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
         Ok(Self {
-            pending: gauge(registry, "bike_rust_strava_handoff_pending_events", "Strava events not yet submitted to Temporal.")?,
-            oldest: gauge(registry, "bike_rust_strava_handoff_oldest_accepted_timestamp_seconds", "Acceptance timestamp of the oldest pending Strava event; zero when empty.")?,
-            sampled_at: gauge(registry, "bike_rust_strava_handoff_last_sample_timestamp_seconds", "Timestamp of the last successful durable handoff backlog sample; zero before the first sample.")?,
+            pending: gauge(
+                registry,
+                "bike_rust_strava_handoff_pending_events",
+                "Strava events not yet submitted to Temporal.",
+            )?,
+            oldest: gauge(
+                registry,
+                "bike_rust_strava_handoff_oldest_accepted_timestamp_seconds",
+                "Acceptance timestamp of the oldest pending Strava event; zero when empty.",
+            )?,
+            sampled_at: gauge(
+                registry,
+                "bike_rust_strava_handoff_last_sample_timestamp_seconds",
+                "Timestamp of the last successful durable handoff backlog sample; zero before the first sample.",
+            )?,
         })
     }
 

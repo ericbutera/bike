@@ -95,7 +95,7 @@ fn upsert_mock(fixture: &HandlerFixture, update: bool) -> MockDatabase {
         .append_query_results([vec![imports::artifact(domain)]])
         .append_query_results([existing])
         .append_query_results([vec![activity]])
-        .append_query_results([vec![state(domain)]]);
+        .append_query_results([vec![domain.activity_state()]]);
     let mock = if crate::strava::provider_payload::strava_activity_is_bike(
         &fixture.provider.payload.activity,
     ) || update
@@ -106,19 +106,7 @@ fn upsert_mock(fixture: &HandlerFixture, update: bool) -> MockDatabase {
         mock
     };
     mock.append_query_results([vec![audit(domain)], vec![audit(domain)]])
-        .append_exec_results([executed(), executed()])
-}
-
-fn state(fixture: &Fixture) -> strava_activity_states::Model {
-    strava_activity_states::Model {
-        athlete_id: fixture.connection.athlete_id,
-        activity_id: fixture.event.strava_activity_id.unwrap(),
-        connection_generation: fixture.connection.created_at,
-        event_time: fixture.event.event_time,
-        applied_hash: None,
-        deleted: false,
-        applied_at: fixture.connection.created_at,
-    }
+        .append_exec_results([executed(), executed(), executed()])
 }
 
 fn fitness_state(fixture: &Fixture) -> analytics_user_states::Model {

@@ -1,5 +1,5 @@
 use super::{batches, steps::imports, ReprocessActivityImport};
-use crate::activities::ImportActivities;
+use crate::activities::ReprocessManifestActivities;
 use bike_core::bike_tasks::{BatchInput, BatchResult, ReprocessScope};
 use temporalio_macros::{workflow, workflow_methods};
 use temporalio_sdk::{WorkflowContext, WorkflowResult};
@@ -19,7 +19,7 @@ impl ReprocessArchiveFitActivityImports {
         let step = batches::run_children(
             ctx,
             &mut input,
-            ImportActivities::reprocess_import_page,
+            ReprocessManifestActivities::reprocess_import_page,
             || ReprocessActivityImport::run,
         )
         .await?;

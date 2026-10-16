@@ -254,7 +254,7 @@ export default function AdminTaskTools() {
         {activityReprocessResult ? (
           <div className="mt-5 rounded-2xl bg-base-200 p-5">
             <div className="text-sm text-base-content/60">
-              Queued activity reprocess
+              Activity reprocess accepted
             </div>
             <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
               <SummaryItem
@@ -270,8 +270,8 @@ export default function AdminTaskTools() {
                 value={activityReprocessResult.user_id}
               />
               <SummaryTextItem
-                label="Task id"
-                value={activityReprocessResult.task_id}
+                label="Job id"
+                value={activityReprocessResult.job.job_id}
               />
               <SummaryTextItem
                 label="Status"

@@ -152,20 +152,7 @@ async fn prepares_backfills_and_invalidates_activity_generations() {
     assert_eq!(status(&db, 1).await, "pending");
     prepare(&db, 1, 2).await;
     assert_eq!(status(&db, 1).await, "ready");
-    let chunk = db
-        .query_one_raw(Statement::from_string(
-            DbBackend::Postgres,
-            "SELECT points FROM heatmap_chunks LIMIT 1".to_owned(),
-        ))
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(
-        geometry::decode(&chunk.try_get::<Vec<u8>>("", "points").unwrap())
-            .unwrap()
-            .len(),
-        2
-    );
+    assert_prepared_route_length(&db, 2).await;
     // Source edits hide published chunks immediately; stale work cannot publish.
     db.execute_unprepared("UPDATE activities SET sport='run' WHERE id=1")
         .await
@@ -188,7 +175,13 @@ async fn prepares_backfills_and_invalidates_activity_generations() {
         .unwrap();
     assert_eq!(row.try_get::<i64>("", "count").unwrap(), 0);
     // Deleting an account must also allow activity cascade triggers to finish.
-    db.execute_raw(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO activities(id,user_id,sport,source,derived_data_json) VALUES(2,2,'VirtualRide','fixture',$1)",[route.clone().into()])).await.unwrap();
+    db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "INSERT INTO activities(id,user_id,sport,source,derived_data_json) VALUES(2,2,'VirtualRide','fixture',$1)",
+        [route.clone().into()],
+    ))
+    .await
+    .unwrap();
     prepare(&db, 2, 1).await;
     assert_eq!(status(&db, 2).await, "skipped");
     db.execute_raw(Statement::from_sql_and_values(
@@ -204,6 +197,23 @@ async fn prepares_backfills_and_invalidates_activity_generations() {
     db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
         .await
         .unwrap();
+}
+
+async fn assert_prepared_route_length(db: &sea_orm::DatabaseConnection, expected: usize) {
+    let chunk = db
+        .query_one_raw(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT points FROM heatmap_chunks LIMIT 1".to_owned(),
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        geometry::decode(&chunk.try_get::<Vec<u8>>("", "points").unwrap())
+            .unwrap()
+            .len(),
+        expected
+    );
 }
 
 #[tokio::test]

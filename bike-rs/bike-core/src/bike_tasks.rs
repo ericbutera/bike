@@ -5,9 +5,11 @@ use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 mod batch;
 mod segments;
+mod submission;
 mod training;
 pub use batch::*;
 pub use segments::*;
+pub use submission::*;
 pub use training::*;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -35,8 +37,7 @@ pub enum Priority {
     Background,
 }
 
-/// Exact retained input and retry-stable command identity. A domain adapter must
-/// return the original committed outcome after a lost Activity completion.
+/// Retained input and retry-stable command identity, independent of tracing.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ImportSource {
     pub command_id: String,
@@ -44,6 +45,17 @@ pub struct ImportSource {
     pub activity_import_id: i32,
     pub object: ObjectRef,
     pub priority: Priority,
+    /// Captured once by the producer and retained in domain audit history.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cause: Option<TaskCause>,
+}
+
+impl ImportSource {
+    pub fn with_cause(mut self, cause: TaskCause) -> Result<Self, WorkflowError> {
+        cause.validate(self.user_id)?;
+        self.cause = Some(cause);
+        Ok(self)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -62,16 +74,36 @@ pub struct ActivityImport {
 }
 
 impl ActivityImport {
-    pub fn refresh_priority(&self) -> Priority {
-        match self.target {
-            ImportTarget::NewActivity => Priority::NewActivity,
-            ImportTarget::ExistingActivity { .. } => self.source.priority,
+    pub fn validate_result(&self, result: &ActivityImportResult) -> Result<(), WorkflowError> {
+        if result.activity_import_id != self.source.activity_import_id {
+            return Err(WorkflowError::conflict(
+                "Result does not belong to the requested import",
+            ));
         }
+        if let ImportTarget::ExistingActivity { activity_id, .. } = self.target {
+            if result.activity_id != activity_id {
+                return Err(WorkflowError::conflict(
+                    "Reprocessing changed the activity identity",
+                ));
+            }
+        }
+        Ok(())
+    }
+    pub fn refresh_priority(&self) -> Priority {
+        self.source.priority
     }
 
     pub fn validate(&self) -> Result<(), WorkflowError> {
         if self.source.command_id.trim().is_empty() {
             return Err(WorkflowError::bad_request("Import requires a command ID"));
+        }
+        if self.source.user_id <= 0 || self.source.activity_import_id <= 0 {
+            return Err(WorkflowError::bad_request(
+                "Import requires an owner and import ID",
+            ));
+        }
+        if let Some(cause) = &self.source.cause {
+            cause.validate(self.source.user_id)?;
         }
         if let ImportTarget::ExistingActivity {
             expected_revision, ..
@@ -83,8 +115,8 @@ impl ActivityImport {
     }
 }
 
-/// The import Activity commits source/domain effects only. These per-output
-/// revisions come from that same commit; it never enqueues SQL or Temporal work.
+/// Source effects and refresh requests. Revisions help coalescing; each output
+/// rebuilds authoritative current data independently of source completion.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActivityImportResult {
     pub activity_id: i32,

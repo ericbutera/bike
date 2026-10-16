@@ -5,8 +5,11 @@ user workflows, background processing, service boundaries, and operational
 contracts. Code implements these specifications; tests verify that implementation.
 Update the owning spec in the same change as any intended behavior change.
 
-- [Strava integration](strava-temporal.md): supported webhooks, native processors, typed DAG steps, and job history.
-- [Background execution](project-overview.md#background-execution): filesystem references/TTLs, separate Strava/Bike workflows, native debounce/priority, and idempotency.
+- [Background work and Strava integration](background-work.md): worker migration,
+  source/command identity, idempotency, cancellation, eventual outputs, storage,
+  provider protocol, and verification scenarios.
+- [Worker backlog](../TODO.md#worker-conversion): the single task inventory,
+  outstanding findings, rollout gates, and conversion status.
 
 ## Spec Rules
 

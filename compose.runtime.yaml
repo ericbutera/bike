@@ -30,6 +30,8 @@ services:
     environment: &application_environment
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/bike
       UPLOADS_DIR: /app/uploads
+      TEMPORAL_ADDRESS: ${BIKE_TEMPORAL_ADDRESS:-http://temporal:7233}
+      TEMPORAL_NAMESPACE: bike
       RUST_LOG: info,sqlx=warn
       OTEL_TRACES_EXPORTER: ${OTEL_TRACES_EXPORTER:-none}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}

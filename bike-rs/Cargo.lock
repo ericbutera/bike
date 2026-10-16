@@ -161,6 +161,7 @@ dependencies = [
  "async-trait",
  "axum 0.7.9",
  "bike-core",
+ "bike-temporal",
  "chrono",
  "dotenvy",
  "fitparser",
@@ -168,7 +169,6 @@ dependencies = [
  "hex",
  "hmac",
  "log",
- "migration",
  "once_cell",
  "opentelemetry",
  "opentelemetry-otlp",
@@ -184,7 +184,6 @@ dependencies = [
  "sha2",
  "tempfile",
  "tokio",
- "tokio-stream",
  "tonic",
  "tower",
  "tower-http",
@@ -194,7 +193,6 @@ dependencies = [
  "utoipa",
  "utoipa-swagger-ui",
  "uuid",
- "worker",
  "zip 2.4.2",
 ]
 
@@ -646,6 +644,7 @@ dependencies = [
  "sha2",
  "strava-sdk",
  "tempfile",
+ "temporalio-common",
  "thiserror 2.0.18",
  "tokio",
  "tokio-stream",
@@ -671,6 +670,7 @@ dependencies = [
  "chrono",
  "futures",
  "prost",
+ "sea-orm",
  "serde",
  "serde_json",
  "temporalio-client",
@@ -2815,7 +2815,6 @@ version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2e99fb7a497b1e3339bc746195567ed8d3e24945ecd636e3619d20b9de9e9149"
 dependencies = [
- "cc",
  "pkg-config",
  "vcpkg",
 ]
@@ -7612,12 +7611,14 @@ dependencies = [
  "async-trait",
  "axum 0.7.9",
  "bike-core",
+ "bike-temporal",
  "chrono",
  "prometheus",
  "sea-orm",
  "serde",
  "serde_json",
  "strava-temporal",
+ "temporalio-common",
  "temporalio-sdk",
  "tokio",
  "tracing",

@@ -1,5 +1,22 @@
 # Bike worker fail-forward rollout, 2026-10-16
 
+## Approved first native reprocess release
+
+- On 2026-10-16 the user authorized staying below 80% changed-line coverage for
+  this feature to prioritize a working production deployment and real-data vetting.
+  CI 466 passed tests/lint/PostgreSQL checks but measured API 58.41%, worker 53.04%,
+  and core 62.29%; images and E2E did not run after that gate failed.
+- Temporarily measure CI coverage with a zero percentage minimum. Required
+  reports, collection/retention, tests, lint, image builds, and release checks remain
+  blocking. The ordinary `coverage:check` task retains its 80% minimum.
+- Restore the CI threshold and add focused mock/fixture coverage after real-data
+  vetting. Do not reintroduce SQLite tests, schema substitutes, timestamp massaging,
+  or persistence compatibility logic. Existing PostgreSQL/Docker suites own database
+  semantics. Keep new tests deferred until the working flow is verified.
+- Release scope is the reviewed single-activity admin reprocess path and its
+  eventual output handoffs in the combined worker. Other producer conversions,
+  cutover, recovery drills, and PR #67's atomic fitness follow-up remain separate.
+
 ## Recovery baseline captured before PR #61
 
 - Observed at 2026-10-16 12:20 UTC, before integration or production task runs.
@@ -104,4 +121,182 @@
   outcomes and write fences, producer routing, worker registration/deployment,
   shared request/trace/actor context across API and workflow handoffs, and live
   debounce/restart checks. Follow the task order in
-  [the conversion plan](worker-conversion-plan.md).
+  [the conversion backlog](TODO.md#worker-conversion).
+
+## Native Bike migration unit evidence, 2026-10-16
+
+- Historical review evidence below is distinct from the production SQL canaries
+  above. Current behavior belongs to [the background-work spec](specs/background-work.md)
+  and outstanding work to [the backlog](TODO.md#worker-conversion).
+- PR #61 groundwork passed 169 focused Docker tests, then 197 after completing
+  the twelve named workflow definitions: 58 Bike workflow/Activity/client checks
+  and 139 storage/TTL/Strava regressions. The synthetic 273-entry archive tested
+  continuation, not real streaming/disk/crash durability. The original cancellation
+  fixture did not prove the later apply/handoff cutoff; F4/U12–U14 retained that gap.
+- Storage follow-up passed 18 shared storage/TTL/Strava compatibility units.
+  Retention implementation supplied serializable lifetimes/candidate decisions,
+  without enabling automatic deletion. Required Docker hooks and Clippy passed.
+- The first concrete reprocess slice passed 92 Rust units (11 core, 71 Bike
+  workflows/Activities/submission, 3 API, 7 worker lifecycle/metrics) and two admin
+  UI units. It wired direct single-activity submission, concrete retained-source
+  replacement, minimal audit refresh scope, and derived handoffs in one combined
+  `temporal-worker`. This was local review evidence, not production activation.
+- Request-boundary refinement passed six focused API units covering submission,
+  command UUID preservation/defaulting, acceptance mapping, and replay preconditions.
+  OpenAPI regeneration left the public wire contract unchanged.
+- Shared-storage refinement passed 33 focused units: 14 reprocess, 16 shared
+  storage/retention, two Strava object compatibility, one transport. Sources used
+  the shared in-memory backend/SeaORM mocks; corrupt primary/supplemental bytes
+  failed before mutation and supplemental evidence preserved primary geometry.
+  The existing OIDC regression also passed after a formatter-related helper split.
+- The shared worker compiled with warnings denied; required formatting/Clippy
+  hooks passed with Rust's 120-column limit and default heuristics. PR #66 retained
+  one commit targeting `main`; #64 and #65 closed as superseded. No merge/deployment was
+  authorized. The default-stack browser assertion expects unavailable Temporal;
+  its edit is not live server evidence.
+- Scenario mapping for this review: U02–U04/U23 API/submission; U05–U09 domain
+  reprocessing; U12–U14 cancellation/replay; U16/U17/U26 debounce/priority/late
+  notifications. Cross-producer variants, P01–P04, user vetting, and cutover remain
+  open in the backlog rather than being implied by these unit counts.
+- Documentation/task consolidation then passed **283 native units** through the
+  composed `test:tasks:unit` task, **64 local documentation links**, scenario/task
+  preservation comparisons, and Markdown formatting. Required coverage-policy,
+  Rust compiler-cache, CI reuse, Rust formatting, and Clippy hooks passed.
+  This is local validation of the cleanup, not a new production exercise.
+
+## Strava observations, 2026-10-13 and 2026-10-14
+
+These observations were moved from the former Strava spec. Revisions, resources,
+coverage, and gaps describe those inspection dates, not a fresh production check.
+
+- 2026-10-14: observed a real Strava create for activity `20582557310` on
+  `POST /webhooks/strava-gateway` at `14:26:41 UTC`. Subscription `374570`;
+  event `89f2d159-4723-47d2-a3a4-ef2f525f24f7`; trace
+  `83126ef1c10370831a84c3d0cc816701`. Create run
+  `01a13ace-eea9-77db-9e34-607e551eaec5` and Upsert run
+  `01a13ace-eef6-7016-9076-665f1cfc28a7` completed. The deployed version excluded
+  its manual Walk summary (`already_absent`) before the summary fix was deployed.
+  A real delete webhook arrived at `14:40:21 UTC`, event
+  `9b4365ff-d180-4fdb-9f2c-b51b351cc5ad`; the deleted summary must remain absent.
+- 2026-10-14: a second real create for `20582644055` reached the same POST route
+  at `14:34:05 UTC`, event `507437e9-5cbd-4623-996e-1710b3129bdd`, trace
+  `43669f123df376c8c0965be1a2379fe5`. Its retained activity response contained a
+  manual MountainBikeRide, 10,718.2 m distance, 407.5 m elevation gain, description,
+  and gear ID/name. The deployed workflow failed on streams HTTP 404. The fix
+  skips that request for manual activities; successful recovery is recorded below.
+- 2026-10-14: [CI 403](https://ci.nibelheim.dev/repos/3/pipeline/403) deployed
+  revision `535cdf3e37d00fadd5609b41b7dfaf28e07f9b1e` after unit, integration,
+  lint, blocking changed-line coverage, and all 83 browser checks passed.
+  All five workloads were ready, the matching migration Job was `Complete`
+  with no pending migrations, and public `/api/health` returned healthy.
+  The live native worker image was
+  `bike-worker@sha256:58bd6161cdfb61eaaf6141b95377ca9cf8307d012b223f1cdad7beae4da36e80`.
+  The release log emitted a Pulumi warning for the migration container's
+  successful exit 0; retain this diagnostic as a release-tool gap, not a clean pass.
+- Reset the failed Create for `20582644055` at its first workflow task after
+  the updated worker was ready. New Create run
+  `af733b44-882a-4cda-ac9f-e134ea6f97f5` and its recreated Upsert run
+  `01a13ba7-94fd-79a7-bbdb-226a9a748ce0` completed at `18:23:21 UTC`.
+  Event `507437e9-5cbd-4623-996e-1710b3129bdd` is `applied`; Bike activity
+  `1679` stores MountainBikeRide, 10,718.2 m distance, 407.5 m elevation gain,
+  the supplied description, and gear ID/name. No independent child reset was needed.
+- A subsequent real delete for `20582644055` arrived at `19:31:24 UTC`, event
+  `8399473f-84e7-4a30-a803-817113c08dd0`; its terminal mutation is `deleted`.
+  Preserve that newer deletion rather than retrying its earlier create again.
+- Triggered the existing native schedule once after recovery. Scan
+  `bike-strava-scan-2026-10-14T18:23:48Z`, run
+  `01a13ba8-007b-7b35-b26c-6985e16536a4`, and its customer Sync completed
+  with two unchanged activities and no duplicate ride. The deleted Walk
+  remained absent; a live retained non-cycling summary still needs observation.
+- Live production samples over an inspected six-hour range showed native worker
+  memory peaking at 15.6 MiB of its 512 MiB limit and shared Temporal at 130.4 MiB
+  of 1 GiB. Maximum five-minute mean CPU was 2.7m and 38.3m respectively.
+  Shared PostgreSQL used 10,636,435 bytes for `temporal` and 11,685,011 bytes for
+  `temporal_visibility` at the storage observation. These are observed small-load
+  values; large-backfill capacity and shared database resource load remain unqualified.
+- 2026-10-14: verified a real native-worker stop/restart using retained ride
+  `20424619693`. With no other Strava workflows running, stopped the worker,
+  queued a reset of Upsert `strava-04182920-01d9-5566-a554-a69e09f43364` at
+  workflow-task event 28, and restored one worker replica. This retained the four
+  completed fetch/streams/normalize/persist activities and their object references.
+  Replacement pod `temporal-worker-b54fb764c-jmkrv` replayed those completions;
+  new run `4d1bf832-c9e5-453d-875c-5d8a615ff90f` completed from
+  `20:15:48.259 UTC` to `20:15:49.915 UTC` (1.66 seconds). Historical provider
+  completions kept their original timestamps; only the remaining publication
+  activities ran again. Bike activity `1676` stayed unique with identical sport,
+  distance, elevation, and source metadata. New worker diagnostics were clean.
+  This controlled stop/reset/restart does not establish recovery from killing
+  a process during an executing provider or persistence activity.
+- The real replayed fetch/streams/normalize activity results were 953, 1,193,
+  and 1,212 serialized JSON bytes. They carried object references; the corresponding
+  stored normalized source was 97,651 bytes. Oversized-source proof remains the
+  separate 3 MiB provider-body and 150,000-point stream fixtures, not this small
+  live activity. Live namespace retention was confirmed as `604800s` (seven days).
+- The new native SDK replay tool successfully replayed the real Walk Create
+  and Upsert histories, plus completed Sync `strava-ff834edc-cfbd-5f7a-bf2a-e910f1c26926`,
+  using fresh workers and current workflow code. It fetched history
+  read-only and executed no provider or database activities. This proves history
+  compatibility separately from a live process-interruption drill.
+- Read-only live SDK replay also passed the failed manual ride Create/Upsert
+  histories before reset. The example's file mode rejects Temporal CLI camelCase
+  JSON exports with `missing field event_id`; use its verified `--workflow`
+  history-fetch mode until export-format compatibility is addressed.
+- 2026-10-14: 127 focused Rust units and five UI units passed in Docker. These
+  include large stored provider bodies/streams, restart reconstruction, 5,100
+  activity scans, 60 customer scans with ten failures, summary metadata, and
+  non-cycling create/update/delete boundaries. UI lint, types, and formatting
+  passed. Old histories retain pre-patch continuation/start-failure/input-budget
+  decisions; a restarted patched scan retains its failed-start count. Full CI
+  and post-rollout verification are separate gates.
+
+- 2026-10-14: the release has an explicitly approved one-release exception to
+  the 80% changed-line coverage gate. Tests, lint, coverage report retention,
+  image builds, and existing release checks remained blocking. The follow-up
+  restores blocking coverage after rollout; isolated adapter/startup coverage
+  remains on the TODO.
+- 2026-10-13: read-only Strava API confirmed subscription `374570` uses
+  `https://bike.nibelheim.dev/webhooks/strava-gateway`. Live GET challenge passed;
+  OAuth rejection returned HTTP 303. Ingress routes both aliases to `api:3000`.
+- The current unit suite executes all eight workflows with mocked dependencies
+  and fixture responses. It requires no running services. The earlier database
+  workflow test and its CI setup have been removed from this PR.
+- The suite also covers connection validation, mutation status/counts, deletion
+  idempotency and rollback with SeaORM mocks, shared recovery configuration, and
+  stable queue payloads. No PostgreSQL or SQLite database is opened by these tests.
+- 2026-10-13: 92 isolated units passed: 38 domain/persistence, 14 OAuth, nine
+  webhook, 28 Temporal workflow/handler/logging, and three configuration/queue tests.
+- 2026-10-14: revision `1a7b33e6` deployed with all five Bike workloads ready
+  and all three new migrations applied. Both native worker exporters are
+  scraped successfully. All six correlation search attributes are registered.
+  Public GET verification passed on both webhook routes; both OAuth aliases
+  rejected invalid state with HTTP 303. The existing release suite passed
+  83 browser checks. A real scheduled sync fetched activity `20424619693` and
+  its streams with HTTP 200, upserted Bike activity `1676`, and completed all
+  three parent/child workflows with zero failures. Root correlation ID:
+  `01a13a17-43ff-7af6-999c-e5f409989648`.
+- The live job exposed a trace filter gap: new native crate targets were omitted.
+  Include them as application trace roots. An isolated in-memory tracer unit
+  verifies that a filtered scan produces a carrier and its child retains the
+  same trace ID. Revision `bd300cf8` passed the restored coverage gate and
+  deployed successfully. A repeated real sync returned one unchanged activity
+  and zero failures. Its customer and activity events retained the same carrier;
+  list, activity, and streams exchanges shared trace
+  `8d61988be672f15ffda11303fee1fe77`.
+- Both backup disks validated generation `20261014T110418Z` after pausing and
+  resuming API, SQL worker, and native Temporal worker.
+- Unit guarantees remain bounded; deployment readiness and callback checks do
+  not establish production behavior for every operation. Natural webhook POST,
+  create, and delete observations are recorded above; live backfill/disconnect
+  and interruption during an executing Activity still need evidence.
+- [TODO](TODO.md) tracks production worker/scrapes/UI, cutover, coordinated
+
+### Alert delivery and coverage observations
+
+- On 2026-10-14 the real manual-ride Create/Upsert failures triggered
+  `BikeStravaWorkflowFailed` at 16:13:18 UTC. Alertmanager routed both to ntfy;
+  notification `nELxsbEcvAda` arrived at 16:13:48 UTC. No synthetic workflow or
+  injected alert was used. Handoff alerts still awaited exporter rollout.
+- CI 394 on `1496503a` passed the 80% changed-line gate: API 89.74%, worker 94.44%,
+  Temporal 96.58%, core 100%. All 72 focused isolated units, formatting, and Clippy
+  passed. This does not establish whole-integration coverage or bootstrap/OS
+  signal/runtime behavior. Remaining coverage and deployment work stays in TODO.

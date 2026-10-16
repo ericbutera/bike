@@ -43,6 +43,7 @@ tower-http = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 bike-core = { path = "../bike-core" }
+bike-temporal = { path = "../bike-temporal" }
 async-trait = "0.1"
 utoipa = { workspace = true }
 utoipa-swagger-ui = { workspace = true }
@@ -59,11 +60,8 @@ petgraph = "0.8.3"
 
 [dev-dependencies]
 bike-core = { path = "../bike-core", features = ["test-fixtures"] }
-migration = { path = "../migration" }
 tonic = { version = "0.14.6", features = ["transport"] }
-tokio-stream = { version = "0.1", features = ["net"] }
 tempfile = "3.27.0"
-worker = { path = "../worker" }
-sea-orm = { workspace = true, features = ["sqlx-sqlite", "mock"] }
+sea-orm = { workspace = true, features = ["mock"] }
 opentelemetry_sdk = { workspace = true, features = ["testing"] }
 tower = { version = "0.5", features = ["util"] }

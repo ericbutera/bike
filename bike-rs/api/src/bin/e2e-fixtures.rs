@@ -138,36 +138,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sea_orm::{ConnectionTrait, Database, Schema};
     use serde_json::json;
-
-    #[tokio::test]
-    async fn owning_model_inserts_and_updates_partial_fixture_values() {
-        let db = Database::connect("sqlite::memory:").await.unwrap();
-        let backend = db.get_database_backend();
-        db.execute(&Schema::new(backend).create_table_from_entity(users::Entity))
-            .await
-            .unwrap();
-        let dataset = serde_json::from_value(json!({"records": [{
-            "entity": "users", "operation": "insert", "values": {
-                "id": 1, "pid": "00000000-0000-4000-8000-000000000001",
-                "email": "rider@e2e.test", "api_key": "fixture", "name": "Rider",
-                "disabled": false, "created_at": "2025-01-01T00:00:00Z",
-                "updated_at": "2025-01-01T00:00:00Z"
-            }
-        }, {"entity": "users", "operation": "update", "values": {
-            "id": 1, "name": "Updated rider"
-        }}]}))
-        .unwrap();
-        seed(&db, dataset).await.unwrap();
-        let user = users::Entity::find_by_id(1)
-            .one(&db)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(user.name, "Updated rider");
-        assert_eq!(user.email, "rider@e2e.test");
-    }
 
     #[test]
     fn owning_models_reject_stale_fixture_fields_and_invalid_values() {

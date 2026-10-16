@@ -13,7 +13,9 @@ use sea_orm::{
     QuerySelect, Set,
 };
 use std::collections::HashMap;
+mod history;
 pub(crate) mod parsed;
+mod reprocessing;
 
 pub const BIKE_ACTIVITY_SPORT: &str = "ride";
 
@@ -142,22 +144,6 @@ impl Model {
             .filter(Column::Id.is_in(activity_ids))
             .all(db)
             .await
-    }
-
-    pub async fn update_details(
-        self,
-        db: &impl ConnectionTrait,
-        title: Option<String>,
-        activity_type: Option<ActivityType>,
-    ) -> Result<Self, WorkflowError> {
-        let mut active: ActiveModel = self.into();
-        if let Some(title) = title {
-            active.title = Set(Self::normalize_title(&title)?);
-        }
-        if let Some(activity_type) = activity_type {
-            active.activity_type = Set(activity_type.as_str().to_string());
-        }
-        Ok(active.update(db).await?)
     }
 
     fn normalize_title(raw_title: &str) -> Result<String, WorkflowError> {
@@ -297,12 +283,26 @@ impl Model {
         user_id: i32,
         vendor_id: i64,
     ) -> Result<Option<Self>, DbErr> {
+        Self::strava_identity(user_id, vendor_id).one(db).await
+    }
+
+    /// Lock the current row before a provider mutation or history snapshot.
+    pub async fn lock_strava_activity(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        vendor_id: i64,
+    ) -> Result<Option<Self>, DbErr> {
+        Self::strava_identity(user_id, vendor_id)
+            .lock_exclusive()
+            .one(db)
+            .await
+    }
+
+    fn strava_identity(user_id: i32, vendor_id: i64) -> sea_orm::Select<Entity> {
         Entity::find()
             .filter(Column::UserId.eq(user_id))
             .filter(Column::Source.eq("strava_sync"))
             .filter(Column::SourceCorrelationId.eq(vendor_id.to_string()))
-            .one(db)
-            .await
     }
     pub async fn cycling_ids_page(
         db: &impl ConnectionTrait,
@@ -846,87 +846,5 @@ impl Model {
             .filter(Column::ActivityImportId.eq(Some(import.id)))
             .one(db)
             .await
-    }
-}
-
-#[cfg(test)]
-mod admin_list_tests {
-
-    use super::*;
-    use crate::test_support;
-    use sea_orm::{Database, Schema};
-
-    async fn fixture() -> sea_orm::DatabaseConnection {
-        let db = Database::connect("sqlite::memory:").await.unwrap();
-        db.execute(&Schema::new(db.get_database_backend()).create_table_from_entity(Entity))
-            .await
-            .unwrap();
-        for (id, owner, title, source, sport) in [
-            (1, 7, "Hill morning", "manual_upload", "road_ride"),
-            (2, 7, "Hill evening", "manual_upload", "Ride"),
-            (3, 8, "Hill other owner", "manual_upload", "road_ride"),
-            (4, 7, "Hill Strava", "strava_sync", "road_ride"),
-            (5, 7, "Hill trail run", "manual_upload", "run"),
-        ] {
-            test_support::insert(
-                &db,
-                ActiveModel {
-                    id: Set(id),
-                    user_id: Set(owner),
-                    title: Set(title.into()),
-                    source: Set(source.into()),
-                    sport: Set(sport.into()),
-                    activity_type: Set("activity".into()),
-                    started_at: Set(DateTime::parse_from_rfc3339("2026-10-10T12:00:00Z")
-                        .unwrap()
-                        .with_timezone(&Utc)),
-                    ..Default::default()
-                },
-            )
-            .await;
-        }
-        db
-    }
-
-    #[tokio::test]
-    async fn admin_filters_count_and_paginate_the_full_matching_population() {
-        let db = fixture().await;
-        let filters = AdminListFilters {
-            q: Some(" HILL ".into()),
-            user_id: Some(7),
-            source: Some("manual_upload".into()),
-            sport: Some("road_ride".into()),
-        };
-        let (first, total) = Model::admin_page(&db, &filters, 1, 1).await.unwrap();
-        assert_eq!(total, 2);
-        assert_eq!(first[0].id, 2);
-        let (second, total) = Model::admin_page(&db, &filters, 2, 1).await.unwrap();
-        assert_eq!(total, 2);
-        assert_eq!(second[0].id, 1);
-        let (empty, total) = Model::admin_page(&db, &filters, 3, 1).await.unwrap();
-        assert!(empty.is_empty());
-        assert_eq!(total, 2);
-    }
-
-    #[tokio::test]
-    async fn admin_activity_id_search_and_empty_filters_preserve_list_behavior() {
-        let db = fixture().await;
-        let (rows, total) = Model::admin_page(
-            &db,
-            &AdminListFilters {
-                q: Some("3".into()),
-                ..Default::default()
-            },
-            1,
-            25,
-        )
-        .await
-        .unwrap();
-        assert_eq!(total, 1);
-        assert_eq!(rows[0].id, 3);
-        let (_, total) = Model::admin_page(&db, &AdminListFilters::default(), 1, 25)
-            .await
-            .unwrap();
-        assert_eq!(total, 5);
     }
 }

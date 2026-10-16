@@ -37,9 +37,7 @@ fn statements(db: DatabaseConnection) -> Vec<Statement> {
 fn assert_owned_delete(statement: &Statement, table: &str, id: i32) {
     assert_eq!(
         statement.sql,
-        format!(
-            "DELETE FROM \"{table}\" WHERE \"{table}\".\"id\" = $1 AND \"{table}\".\"user_id\" = $2"
-        )
+        format!("DELETE FROM \"{table}\" WHERE \"{table}\".\"id\" = $1 AND \"{table}\".\"user_id\" = $2")
     );
     assert_eq!(statement.values, Some(Values(vec![id.into(), 42.into()])));
 }

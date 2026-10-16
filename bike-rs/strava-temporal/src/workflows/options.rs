@@ -1,8 +1,8 @@
 use super::logging::ChildLog;
+use bike_core::platform::temporal as policy;
 use bike_core::strava::events::StravaEvent;
-use std::time::Duration;
 use temporalio_common::data_converters::TemporalDeserializable;
-use temporalio_common::{error::ActivityExecutionError, RetryPolicy};
+use temporalio_common::error::ActivityExecutionError;
 use temporalio_sdk::{
     ActivityCancellationType, ActivityOptions, ChildWorkflowOptions, WorkflowContext,
     WorkflowResult,
@@ -98,15 +98,10 @@ pub(super) fn validate_input<W, T: serde::Serialize>(
 }
 
 pub(super) fn activity(summary: &str) -> ActivityOptions {
-    ActivityOptions::with_start_to_close_timeout(Duration::from_secs(120))
-        .heartbeat_timeout(Duration::from_secs(30))
+    ActivityOptions::with_start_to_close_timeout(policy::ACTIVITY_EXECUTION_TIMEOUT)
+        .heartbeat_timeout(policy::ACTIVITY_HEARTBEAT_TIMEOUT)
         .cancellation_type(ActivityCancellationType::WaitCancellationCompleted)
-        .retry_policy(
-            RetryPolicy::builder()
-                .maximum_attempts(12)
-                .maximum_interval(Duration::from_secs(60))
-                .build(),
-        )
+        .retry_policy(policy::activity_retry_policy())
         .summary(summary.to_owned())
         .build()
 }

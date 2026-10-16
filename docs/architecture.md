@@ -19,7 +19,7 @@ flowchart LR
     API --> Maps["map-renderer"]
     API --> HeatmapTiles["heatmap-tiles"]
     Strava[Strava] -->|OAuth and webhooks| API
-    TemporalWorker["Rust Temporal worker<br/>Strava workflows and activities"] --> DB
+    TemporalWorker["Rust Temporal worker<br/>Strava and Bike task queues"] --> DB
     TemporalWorker <--> Temporal["temporal"]
     Temporal --> TemporalDB[(Temporal PostgreSQL databases)]
     TemporalWorker -->|Generated SDK| Strava
@@ -34,15 +34,15 @@ flowchart LR
 
 Yellow nodes are third-party services.
 
-| Component        | Owns                                                                                                   |
-| ---------------- | ------------------------------------------------------------------------------------------------------ |
+| Component        | Owns                                                                                                    |
+| ---------------- | ------------------------------------------------------------------------------------------------------- |
 | Rust API         | HTTP adaptation, application services, activity access, authentication, admin operations, map PNG cache |
 | Rust core        | Domain models, database queries, import and segment behavior, analytics, platform modules               |
 | SQL job worker   | Activity/archive processing, derived-data rebuilds, queued maintenance                                  |
-| Temporal worker  | Durable Strava event handoff, native workflows and activities, provider calls, domain operations         |
-| Temporal service | Orchestration, retries, child workflows, cancellation, execution history                                 |
-| Next.js UI       | Rider/admin presentation, React Query state, generated API client, private map proxy                     |
-| map-renderer     | Go gRPC snapshots, Chromium lifecycle, serialized MapLibre rendering, loopback browser assets            |
+| Temporal worker  | Strava and converted Bike workflows on independent queues; provider calls and domain operations         |
+| Temporal service | Orchestration, retries, child workflows, cancellation, execution history                                |
+| Next.js UI       | Rider/admin presentation, React Query state, generated API client, private map proxy                    |
+| map-renderer     | Go gRPC snapshots, Chromium lifecycle, serialized MapLibre rendering, loopback browser assets           |
 | heatmap-tiles    | Rust API tile rendering from prepared activity geometry, through the Next.js authenticated proxy        |
 
 Controllers adapt HTTP requests and responses. Services compose workflows and
@@ -66,19 +66,21 @@ File uploads and archive imports retain their source data and enter the durable
 processing workflow. Parsing normalizes FIT, TCX, or GPX into an activity record.
 Processing then matches segments and rebuilds activity and training analytics.
 Derived data can be regenerated from retained sources when parsers or rules
-change. See the [ingestion specification](specs/activity-ingestion.md).
+change. See the [background-work specification](specs/background-work.md).
 
 - The Rust API handles Strava OAuth and acknowledges webhooks after storing a
   durable Strava event in Bike PostgreSQL.
-- The dedicated Rust Temporal worker retries event handoff using deterministic
-  workflow IDs, then polls Temporal to execute native workflows and activities.
+- One Rust `temporal-worker` runs independent Strava and Bike task pollers with
+  shared runtime, connection, database pool, and metrics. The existing Strava
+  inbox relay retries handoff using deterministic workflow IDs while that
+  optional intake adapter remains active.
 - Activities call Strava through the generated SDK and invoke Bike domain
   operations for persistence, deletion, analytics, and publication. They retain
   raw provider responses and transforms on the existing uploads volume.
 - Temporal owns retries, child workflows, cancellation, and execution history in
   separate PostgreSQL databases. The SQL job worker handles other background work.
 - The admin integration feed links accepted events to their native Temporal jobs.
-  See [the Strava Temporal specification](specs/strava-temporal.md) for workflow
+  See [the Strava Temporal specification](specs/background-work.md#strava-protocol-and-workflows) for workflow
   types, typed activities, correlation, retention, and recovery.
 
 ## Maps and privacy
@@ -118,5 +120,5 @@ deployment identities and do not depend on the repository's display name.
 
 OpenTelemetry supports tracing; internal metrics, dashboards, alerts, and
 protected failure captures support diagnosis. See the
-[Strava workflow specification](specs/strava-temporal.md) and
-[admin recovery procedures](specs/admin-operations.md#failed-import-recovery) for recovery procedures.
+[job diagnosis and alerts](specs/background-work.md#logs-job-visibility-and-alerts)
+and the [recovery contract](specs/background-work.md#cancellation-recovery-and-completion).

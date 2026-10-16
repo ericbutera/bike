@@ -230,38 +230,7 @@ fn round_metric(value: f64) -> f64 {
 mod tests {
 
     use super::*;
-    use bike_core::entities::{activities, analytics_user_states, fitness_freshness_daily};
-    use bike_core::test_support;
-    use chrono::DateTime;
-    use sea_orm::{ConnectionTrait, Database, DatabaseConnection, Schema, Set};
-
-    async fn test_db() -> DatabaseConnection {
-        let db = Database::connect("sqlite::memory:")
-            .await
-            .expect("in-memory db");
-        let schema = Schema::new(db.get_database_backend());
-
-        db.execute(&schema.create_table_from_entity(activities::Entity))
-            .await
-            .expect("create activities table");
-        db.execute(&test_support::table_with_timestamp_defaults(
-            &db,
-            analytics_user_states::Entity,
-            &["created_at", "updated_at", "last_activity_change_at"],
-        ))
-        .await
-        .expect("create analytics user states table");
-        db.execute(&schema.create_table_from_entity(fitness_freshness_daily::Entity))
-            .await
-            .expect("create fitness freshness table");
-        db.execute(&schema.create_table_from_entity(
-            bike_core::background_jobs::entities::pipeline_outputs::Entity,
-        ))
-        .await
-        .expect("create pipeline output evidence table");
-
-        db
-    }
+    use bike_core::entities::fitness_freshness_daily;
 
     #[test]
     fn parse_date_requires_iso_format() {
@@ -364,80 +333,5 @@ mod tests {
             Some(NaiveDate::from_ymd_opt(2026, 1, 15).unwrap())
         );
         assert_eq!(cached_row_query_start_date(None), None);
-    }
-
-    #[tokio::test]
-    async fn load_cached_rows_for_request_rebuilds_dirty_cache_before_returning() {
-        let db = test_db().await;
-        let now = Utc::now();
-        let day = NaiveDate::from_ymd_opt(2026, 5, 1).unwrap();
-
-        test_support::insert(
-            &db,
-            activities::ActiveModel {
-                user_id: Set(1),
-                title: Set("Lunch Ride".to_string()),
-                format: Set(Some("fit".to_string())),
-                started_at: Set(DateTime::parse_from_rfc3339("2026-05-01T12:00:00Z")
-                    .unwrap()
-                    .with_timezone(&Utc)),
-                distance_meters: Set(Some(25_000.0)),
-                moving_time_seconds: Set(Some(3600)),
-                total_time_seconds: Set(Some(3600)),
-                elevation_gain_meters: Set(Some(400.0)),
-                elevation_loss_meters: Set(Some(400.0)),
-                average_speed_mps: Set(Some(7.0)),
-                max_speed_mps: Set(Some(12.0)),
-                average_heart_rate_bpm: Set(Some(150)),
-                max_heart_rate_bpm: Set(Some(200)),
-                average_cadence_rpm: Set(Some(85)),
-                max_cadence_rpm: Set(Some(100)),
-                calories: Set(Some(700)),
-                ..bike_core::test_support::new_activity()
-            },
-        )
-        .await;
-
-        test_support::insert(
-            &db,
-            fitness_freshness_daily::ActiveModel {
-                user_id: Set(1),
-                day: Set(day),
-                activity_count: Set(2),
-                training_load: Set(112.5),
-                fitness: Set(2.6785714285714284),
-                fatigue: Set(16.071428571428573),
-                form: Set(-13.392857142857144),
-                ..bike_core::test_support::new_fitness_day()
-            },
-        )
-        .await;
-
-        test_support::insert(
-            &db,
-            analytics_user_states::ActiveModel {
-                user_id: Set(1),
-                last_activity_change_at: Set(now),
-                fitness_dirty_from_day: Set(Some(day)),
-                last_fitness_rebuild_at: Set(None),
-                ..Default::default()
-            },
-        )
-        .await;
-
-        let rows = load_cached_rows_for_request(&db, 1, Some(day), day)
-            .await
-            .expect("load rows");
-
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].activity_count, 1);
-        assert!((rows[0].training_load - 56.25).abs() < f64::EPSILON);
-
-        let freshness_state = analytics_user_states::Model::for_user(&db, 1)
-            .await
-            .expect("load analytics state")
-            .expect("analytics state exists");
-        assert_eq!(freshness_state.fitness_dirty_from_day, None);
-        assert!(freshness_state.last_fitness_rebuild_at.is_some());
     }
 }

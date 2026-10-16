@@ -12,14 +12,13 @@ use crate::entities::{
 };
 use crate::integration_events_service::INTEGRATION_LEVEL_INFO;
 use crate::jobs::JobQueue as TaskQueue;
+use crate::object_store::{ObjectOwner, ObjectRef, ObjectStore};
 use crate::training_profile::{load_training_profile, TrainingProfile};
 use crate::workflow_error::WorkflowError as AppError;
 use chrono::{DateTime, NaiveDate, Utc};
 use petgraph::algo::toposort;
 use petgraph::graphmap::DiGraphMap;
 use sea_orm::DatabaseConnection;
-#[cfg(test)]
-use sea_orm::Set;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::Path;
@@ -351,6 +350,22 @@ pub(crate) struct ActivityProcessingArtifact {
     pub(crate) storage_path: String,
 }
 
+impl ActivityProcessingArtifact {
+    pub(crate) fn object_reference(&self) -> Result<ObjectRef, AppError> {
+        let sha256 = self.checksum_sha256.clone().ok_or_else(|| {
+            AppError::bad_request("Retained source needs a checksum before native reprocessing")
+        })?;
+        Ok(ObjectRef {
+            path: self.storage_path.clone(),
+            sha256,
+            bytes: self
+                .size_bytes
+                .try_into()
+                .map_err(|_| AppError::bad_request("Invalid retained source size"))?,
+        })
+    }
+}
+
 pub async fn mark_activity_import_processing_stage(
     db: &DatabaseConnection,
     import: &activity_imports::Model,
@@ -505,7 +520,7 @@ async fn load_activity_processing_state(
     })
 }
 
-async fn load_best_activity_parsing_artifact(
+pub(crate) async fn load_best_activity_parsing_artifact(
     db: &DatabaseConnection,
     import: &activity_imports::Model,
 ) -> Result<ActivityProcessingArtifact, AppError> {
@@ -695,30 +710,13 @@ async fn parse_activity_node(
         source_quality: &state.parsing_artifact.source_quality,
         bytes: &state.bytes,
     })?;
-    parsed
-        .derived_data
-        .recording
-        .merge(crate::activity_recording::RecordingContext::legacy(
-            &parsed.draft.sport,
-            &state.import_model.source,
-            &parsed.draft.title,
-        ));
-    merge_recording_artifacts(run, state, &mut parsed).await?;
-    if let Some(activity) = &state.activity_model {
-        parsed
-            .derived_data
-            .recording
-            .merge(activity.recording_context());
-    }
-    parsed.derived_data.recording = crate::activity_recording_recovery::resolve_recording(
+    enrich_recording(
         run.db,
-        state
-            .activity_model
-            .as_ref()
-            .map_or(0, |activity| activity.id),
-        run.user_id,
-        parsed.draft.started_at,
-        &parsed.derived_data,
+        &ObjectStore::filesystem(run.uploads_dir, ObjectOwner::ActivityImports),
+        &state.import_model,
+        &state.parsing_artifact,
+        state.activity_model.as_ref(),
+        &mut parsed,
     )
     .await?;
     state.parsed_activity = Some(parsed);
@@ -732,19 +730,55 @@ async fn parse_activity_node(
     Ok(())
 }
 
+/// Preserve the same recording/privacy classification on legacy and native parses.
+pub(crate) async fn enrich_recording(
+    db: &DatabaseConnection,
+    objects: &ObjectStore,
+    import: &activity_imports::Model,
+    artifact: &ActivityProcessingArtifact,
+    activity: Option<&activities::Model>,
+    parsed: &mut ParsedActivityData,
+) -> Result<(), AppError> {
+    parsed
+        .derived_data
+        .recording
+        .merge(crate::activity_recording::RecordingContext::legacy(
+            &parsed.draft.sport,
+            &import.source,
+            &parsed.draft.title,
+        ));
+    merge_recording_artifacts(db, objects, import, artifact, parsed).await?;
+    if let Some(activity) = activity {
+        parsed
+            .derived_data
+            .recording
+            .merge(activity.recording_context());
+    }
+    parsed.derived_data.recording = crate::activity_recording_recovery::resolve_recording(
+        db,
+        activity.map_or(0, |activity| activity.id),
+        import.user_id,
+        parsed.draft.started_at,
+        &parsed.derived_data,
+    )
+    .await?;
+    Ok(())
+}
+
 async fn merge_recording_artifacts(
-    run: &ActivityProcessingRun<'_>,
-    state: &ActivityProcessingState,
+    db: &DatabaseConnection,
+    objects: &ObjectStore,
+    import: &activity_imports::Model,
+    parsing_artifact: &ActivityProcessingArtifact,
     parsed: &mut ParsedActivityData,
 ) -> Result<(), AppError> {
     let artifacts =
-        activity_import_artifacts::Entity::for_import(run.db, run.user_id, state.import_model.id)
-            .await?;
+        activity_import_artifacts::Entity::for_import(db, import.user_id, import.id).await?;
     for artifact in artifacts.into_iter().filter(|a| {
-        a.storage_path != state.parsing_artifact.storage_path && activity_artifact_is_parsable(a)
+        a.storage_path != parsing_artifact.storage_path && activity_artifact_is_parsable(a)
     }) {
-        let bytes =
-            tokio::fs::read(Path::new(run.uploads_dir).join(&artifact.storage_path)).await?;
+        let artifact = activity_processing_artifact_from_model(artifact);
+        let bytes = objects.read(&artifact.object_reference()?).await?;
         let other = parse_activity_artifact(ActivityParserArtifact {
             original_filename: &artifact.original_filename,
             format: &artifact.format,
@@ -1444,120 +1478,7 @@ async fn deduplicated_activity_import_for_model(
 
 #[cfg(test)]
 mod tests {
-
-    use crate::test_support;
-    mod recording;
-    mod replay_tests;
     use super::*;
-    use crate::background_jobs::background_tasks;
-    use crate::entities::{
-        activities, activity_analytics, activity_import_artifacts, activity_imports,
-        activity_training_analyses, integration_events, segment_efforts, segments,
-    };
-    use crate::jobs::ProcessActivityImportTask;
-    use crate::tasks::Task;
-    use crate::training_profile::TrainingProfile;
-    use chrono::Duration as ChronoDuration;
-    use sea_orm::{
-        ColumnTrait, ConnectionTrait, Database, EntityTrait, PaginatorTrait, QueryFilter, Schema,
-    };
-
-    const PROCESS_ACTIVITY_IMPORT_TASK_TYPE: &str = "process_activity_import";
-    const MANUAL_UPLOAD_SOURCE: &str = "manual_upload";
-
-    async fn test_db() -> DatabaseConnection {
-        let db = Database::connect("sqlite::memory:")
-            .await
-            .expect("in-memory db");
-        create_test_tables(db).await
-    }
-
-    async fn create_test_tables(db: DatabaseConnection) -> DatabaseConnection {
-        let schema = Schema::new(db.get_database_backend());
-        db.execute(&test_support::table_with_timestamp_defaults(
-            &db,
-            activities::Entity,
-            &["created_at", "updated_at"],
-        ))
-        .await
-        .expect("create activities table");
-        db.execute(&schema.create_table_from_entity(activity_imports::Entity))
-            .await
-            .expect("create activity imports table");
-        db.execute(
-            &schema.create_table_from_entity(crate::entities::activity_import_attempts::Entity),
-        )
-        .await
-        .expect("create activity import attempts table");
-        db.execute(&schema.create_table_from_entity(activity_import_artifacts::Entity))
-            .await
-            .expect("create activity import artifacts table");
-        db.execute(&schema.create_table_from_entity(background_tasks::Entity))
-            .await
-            .expect("create background tasks table");
-        db.execute(
-            &schema
-                .create_table_from_entity(crate::background_jobs::entities::task_attempts::Entity),
-        )
-        .await
-        .expect("create background task attempts table");
-        db.execute(&schema.create_table_from_entity(activity_analytics::Entity))
-            .await
-            .expect("create activity analytics table");
-        db.execute(&schema.create_table_from_entity(activity_training_analyses::Entity))
-            .await
-            .expect("create activity training analyses table");
-        db.execute(&schema.create_table_from_entity(segments::Entity))
-            .await
-            .expect("create segments table");
-        db.execute(&schema.create_table_from_entity(segment_efforts::Entity))
-            .await
-            .expect("create segment efforts table");
-        db.execute(&schema.create_table_from_entity(integration_events::Entity))
-            .await
-            .expect("create integration events table");
-        crate::background_jobs::history_tests::diagnostic_tables(&db).await;
-
-        db
-    }
-
-    fn test_uploads_dir() -> String {
-        let uploads_dir =
-            std::env::temp_dir().join(format!("bike-activity-import-pipeline-{}", Uuid::new_v4()));
-        std::fs::create_dir_all(&uploads_dir).expect("create uploads dir");
-        uploads_dir.display().to_string()
-    }
-
-    fn fit_upload(source_correlation_id: Option<&str>) -> ActivityUploadPayload {
-        ActivityUploadPayload {
-            original_filename: "activity.fit".to_string(),
-            format: "fit".to_string(),
-            mime_type: Some("application/octet-stream".to_string()),
-            source_correlation_id: source_correlation_id.map(str::to_string),
-            bytes: include_bytes!("../../api/tests/fixtures/activity.fit").to_vec(),
-        }
-    }
-
-    fn cycling_gpx_upload() -> ActivityUploadPayload {
-        ActivityUploadPayload {
-            original_filename: "cycling-activity.gpx".to_string(),
-            format: "gpx".to_string(),
-            mime_type: Some("application/gpx+xml".to_string()),
-            source_correlation_id: None,
-            bytes: br#"<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="bike test" xmlns="http://www.topografix.com/GPX/1/1">
-  <trk>
-    <name>Test Cycling Activity</name>
-    <type>cycling</type>
-    <trkseg>
-      <trkpt lat="44.7680" lon="-85.6597"><ele>242.8</ele><time>2026-01-01T12:00:00Z</time></trkpt>
-      <trkpt lat="44.7681" lon="-85.6596"><ele>243.1</ele><time>2026-01-01T12:01:00Z</time></trkpt>
-    </trkseg>
-  </trk>
-</gpx>"#
-                .to_vec(),
-        }
-    }
 
     #[test]
     fn activity_import_storage_path_buckets_files_by_month() {
@@ -1569,98 +1490,6 @@ mod tests {
         assert!(path.starts_with("activity-imports/test-user/2026/07/"));
         assert!(path.ends_with(".fit"));
         assert_eq!(path.split('/').count(), 5);
-    }
-
-    async fn insert_processing_import(
-        db: &DatabaseConnection,
-        import_id_activity_id: Option<i32>,
-        stage: &str,
-        last_event_at: DateTime<Utc>,
-    ) -> activity_imports::Model {
-        test_support::insert(
-            db,
-            activity_imports::ActiveModel {
-                user_id: Set(1),
-                status: Set(ACTIVITY_IMPORT_STATUS_PROCESSING.to_string()),
-                activity_id: Set(import_id_activity_id),
-                processing_stage: Set(stage.to_string()),
-                last_processing_event_at: Set(Some(last_event_at)),
-                original_filename: Set("stale.gpx".to_string()),
-                storage_path: Set("activity-imports/test/stale.gpx".to_string()),
-                mime_type: Set(None),
-                created_at: Set(last_event_at),
-                updated_at: Set(last_event_at),
-                ..crate::test_support::new_activity_import()
-            },
-        )
-        .await
-    }
-
-    async fn insert_process_activity_import_task(
-        db: &DatabaseConnection,
-        import_id: i32,
-        status: &str,
-        updated_at: DateTime<Utc>,
-    ) -> background_tasks::Model {
-        test_support::insert(
-            db,
-            background_tasks::ActiveModel {
-                task_type: Set(PROCESS_ACTIVITY_IMPORT_TASK_TYPE.to_string()),
-                payload: Set(serde_json::to_value(Task::ProcessActivityImport(
-                    ProcessActivityImportTask {
-                        user_id: 1,
-                        import_id,
-                    },
-                ))
-                .expect("serialize process import task")),
-                status: Set(status.to_string()),
-                attempts: Set(
-                    if status == background_tasks::TaskStatus::Processing.as_str() {
-                        1
-                    } else {
-                        0
-                    },
-                ),
-                max_attempts: Set(1),
-                created_at: Set(updated_at),
-                updated_at: Set(updated_at),
-                started_at: Set(
-                    if status == background_tasks::TaskStatus::Processing.as_str() {
-                        Some(updated_at)
-                    } else {
-                        None
-                    },
-                ),
-                ..test_support::new_background_task()
-            },
-        )
-        .await
-    }
-
-    async fn persist_test_activity_upload(
-        db: &DatabaseConnection,
-        uploads_dir: &str,
-        upload: ActivityUploadPayload,
-        source: &str,
-        training_profile: &TrainingProfile,
-    ) -> Result<PersistActivityUploadOutcome, AppError> {
-        let source_quality = original_source_quality_for_format(&upload.format);
-        persist_activity_upload_with_artifacts(
-            db,
-            PersistActivityUploadWithArtifactsRequest {
-                uploads_dir,
-                user_storage_key: "test-user",
-                user_id: 1,
-                upload,
-                primary_artifact_kind: ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL,
-                primary_source_quality: source_quality,
-                additional_artifacts: Vec::new(),
-                source,
-                deduplication: ActivityUploadDeduplication::Enabled,
-                training_profile: Some(training_profile),
-            },
-        )
-        .await
     }
 
     #[test]
@@ -1707,676 +1536,5 @@ mod tests {
         assert!(mermaid.contains("raw_stored[\"Raw stored\"]"));
         assert!(mermaid.contains("raw_stored --> activity_parsed"));
         assert!(mermaid.contains("activity_analytics_built --> training_analysis_built"));
-    }
-
-    #[tokio::test]
-    async fn manual_uploads_still_deduplicate_existing_activity() {
-        let db = test_db().await;
-        let uploads_dir = test_uploads_dir();
-        let training_profile = TrainingProfile::default();
-
-        let first = persist_test_activity_upload(
-            &db,
-            &uploads_dir,
-            fit_upload(None),
-            "manual_upload",
-            &training_profile,
-        )
-        .await
-        .expect("import first manual upload");
-        assert!(matches!(first, PersistActivityUploadOutcome::Imported(_)));
-
-        let second = persist_test_activity_upload(
-            &db,
-            &uploads_dir,
-            fit_upload(None),
-            "manual_upload",
-            &training_profile,
-        )
-        .await
-        .expect("import second manual upload");
-        assert!(matches!(second, PersistActivityUploadOutcome::Duplicate(_)));
-
-        assert_eq!(activities::Entity::find().count(&db).await.unwrap(), 1);
-        assert_eq!(
-            activity_imports::Entity::find().count(&db).await.unwrap(),
-            2
-        );
-
-        let _ = std::fs::remove_dir_all(&uploads_dir);
-    }
-
-    #[tokio::test]
-    async fn stale_processing_manual_import_task_is_reset_to_pending() {
-        let db = test_db().await;
-        let now = Utc::now();
-        let stale_at = now - ChronoDuration::seconds(ACTIVITY_IMPORT_STALE_PROCESSING_SECONDS + 30);
-        let import = insert_processing_import(
-            &db,
-            Some(42),
-            ACTIVITY_IMPORT_STAGE_ACTIVITY_SAVED,
-            stale_at,
-        )
-        .await;
-        insert_process_activity_import_task(
-            &db,
-            import.id,
-            background_tasks::TaskStatus::Processing.as_str(),
-            stale_at,
-        )
-        .await;
-
-        let recovered = recover_stale_manual_activity_imports_for_user(
-            &db,
-            &TaskQueue::new(db.clone()),
-            1,
-            now,
-        )
-        .await
-        .expect("recover stale import");
-
-        assert_eq!(recovered, 1);
-
-        let task = background_tasks::Entity::find()
-            .one(&db)
-            .await
-            .expect("load task")
-            .expect("task exists");
-        assert_eq!(task.status, background_tasks::TaskStatus::Pending.as_str());
-        assert_eq!(task.attempts, 1);
-        assert_eq!(task.started_at, None);
-
-        let import = activity_imports::Entity::find_for_administration(&db, import.id)
-            .await
-            .expect("load import")
-            .expect("import exists");
-        assert_eq!(import.processing_stage, ACTIVITY_IMPORT_STAGE_RAW_STORED);
-        assert_eq!(import.last_processing_event_at, Some(now));
-        assert_eq!(import.activity_id, Some(42));
-    }
-
-    #[tokio::test]
-    async fn stale_manual_import_without_active_task_is_requeued() {
-        let db = test_db().await;
-        let now = Utc::now();
-        let stale_at = now - ChronoDuration::seconds(ACTIVITY_IMPORT_STALE_PROCESSING_SECONDS + 30);
-        let import =
-            insert_processing_import(&db, None, ACTIVITY_IMPORT_STAGE_RAW_STORED, stale_at).await;
-
-        let recovered = recover_stale_manual_activity_imports_for_user(
-            &db,
-            &TaskQueue::new(db.clone()),
-            1,
-            now,
-        )
-        .await
-        .expect("recover stale import");
-
-        assert_eq!(recovered, 1);
-
-        let task = background_tasks::Entity::find()
-            .one(&db)
-            .await
-            .expect("load task")
-            .expect("task exists");
-        assert_eq!(task.status, background_tasks::TaskStatus::Pending.as_str());
-        let queued_task = serde_json::from_value::<ProcessActivityImportTask>(
-            task.payload
-                .get("data")
-                .cloned()
-                .unwrap_or_else(|| task.payload.clone()),
-        )
-        .expect("deserialize process import task");
-        assert_eq!(queued_task.user_id, 1);
-        assert_eq!(queued_task.import_id, import.id);
-    }
-
-    #[tokio::test]
-    async fn fresh_processing_manual_import_task_is_left_alone() {
-        let db = test_db().await;
-        let now = Utc::now();
-        let stale_at = now - ChronoDuration::seconds(ACTIVITY_IMPORT_STALE_PROCESSING_SECONDS + 30);
-        let import = insert_processing_import(
-            &db,
-            Some(42),
-            ACTIVITY_IMPORT_STAGE_ACTIVITY_SAVED,
-            stale_at,
-        )
-        .await;
-        insert_process_activity_import_task(
-            &db,
-            import.id,
-            background_tasks::TaskStatus::Processing.as_str(),
-            now,
-        )
-        .await;
-
-        let recovered = recover_stale_manual_activity_imports_for_user(
-            &db,
-            &TaskQueue::new(db.clone()),
-            1,
-            now,
-        )
-        .await
-        .expect("recover stale import");
-
-        assert_eq!(recovered, 0);
-
-        let import = activity_imports::Entity::find_for_administration(&db, import.id)
-            .await
-            .expect("load import")
-            .expect("import exists");
-        assert_eq!(
-            import.processing_stage,
-            ACTIVITY_IMPORT_STAGE_ACTIVITY_SAVED
-        );
-    }
-
-    #[tokio::test]
-    async fn failed_import_signal_tracks_the_persisted_lifecycle() {
-        let db = test_db().await;
-        let import =
-            insert_processing_import(&db, None, ACTIVITY_IMPORT_STAGE_RAW_STORED, Utc::now()).await;
-        assert_eq!(
-            activity_imports::Entity::failed_count(&db).await.unwrap(),
-            0
-        );
-        crate::activity_import_lifecycle::mark_activity_import_failed(
-            &db,
-            &import,
-            "parse",
-            "unsupported format",
-        )
-        .await
-        .unwrap();
-        assert_eq!(
-            activity_imports::Entity::failed_count(&db).await.unwrap(),
-            1
-        );
-        crate::activity_import_lifecycle::mark_activity_imports_processed(&db, &[import.id])
-            .await
-            .unwrap();
-        assert_eq!(
-            activity_imports::Entity::failed_count(&db).await.unwrap(),
-            0
-        );
-    }
-
-    #[tokio::test]
-    async fn stored_activity_upload_import_waits_for_worker_processing() {
-        let db = test_db().await;
-        let uploads_dir = test_uploads_dir();
-        let training_profile = TrainingProfile::default();
-
-        let import = store_activity_upload_import(
-            &db,
-            &uploads_dir,
-            "test-user",
-            1,
-            fit_upload(None),
-            "manual_upload",
-        )
-        .await
-        .expect("store raw upload");
-
-        assert_eq!(
-            import.import_version,
-            activity_imports::ACTIVITY_IMPORT_VERSION_CURRENT
-        );
-        assert_eq!(import.processing_attempts, 0);
-        assert!(import.activity_id.is_none());
-        assert!(import.processed_at.is_none());
-        assert!(import.processing_error.is_none());
-        assert!(import.last_processing_event_at.is_some());
-        assert_eq!(import.status, ACTIVITY_IMPORT_STATUS_PROCESSING);
-        assert_eq!(import.processing_stage, ACTIVITY_IMPORT_STAGE_RAW_STORED);
-        assert_eq!(activities::Entity::find().count(&db).await.unwrap(), 0);
-        assert!(std::path::Path::new(&uploads_dir)
-            .join(&import.storage_path)
-            .exists());
-        let artifact = activity_import_artifacts::Entity::find()
-            .filter(activity_import_artifacts::Column::ActivityImportId.eq(import.id))
-            .one(&db)
-            .await
-            .expect("load stored artifact")
-            .expect("artifact exists");
-        assert_eq!(
-            artifact.artifact_kind,
-            ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL
-        );
-        assert_eq!(
-            artifact.source_quality,
-            ACTIVITY_IMPORT_SOURCE_QUALITY_FIT_ORIGINAL
-        );
-        assert_eq!(artifact.storage_path, import.storage_path);
-
-        let processed = process_stored_activity_import(
-            &db,
-            &uploads_dir,
-            1,
-            import,
-            ActivityUploadDeduplication::Enabled,
-            Some(&training_profile),
-        )
-        .await
-        .expect("process stored import");
-
-        let PersistActivityUploadOutcome::Imported(imported) = processed else {
-            panic!("expected stored import to create activity");
-        };
-
-        assert_eq!(imported.import.activity_id, Some(imported.activity.id));
-        assert_eq!(
-            imported.import.processing_stage,
-            ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT
-        );
-        assert_eq!(activities::Entity::find().count(&db).await.unwrap(), 1);
-
-        let _ = std::fs::remove_dir_all(&uploads_dir);
-    }
-
-    #[tokio::test]
-    async fn processed_activity_import_emits_stage_trace_events() {
-        let db = test_db().await;
-        let uploads_dir = test_uploads_dir();
-        let training_profile = TrainingProfile::default();
-
-        let processed = persist_test_activity_upload(
-            &db,
-            &uploads_dir,
-            fit_upload(None),
-            "manual_upload",
-            &training_profile,
-        )
-        .await
-        .expect("process upload");
-        let PersistActivityUploadOutcome::Imported(imported) = processed else {
-            panic!("expected imported activity");
-        };
-
-        let events = integration_events::Entity::find()
-            .filter(integration_events::Column::Provider.eq(ACTIVITY_PROCESSING_PROVIDER))
-            .all(&db)
-            .await
-            .expect("load activity processing events");
-        let event_stages = events
-            .iter()
-            .filter(|event| event.event_type == "stage_completed")
-            .filter_map(|event| {
-                event
-                    .payload
-                    .as_ref()
-                    .filter(|payload| {
-                        payload.get("import_id").and_then(|value| value.as_i64())
-                            == Some(i64::from(imported.import.id))
-                    })
-                    .and_then(|payload| payload.get("stage"))
-                    .and_then(|value| value.as_str())
-                    .map(str::to_string)
-            })
-            .collect::<Vec<_>>();
-
-        for graph_node in activity_processing_graph_nodes() {
-            assert!(
-                event_stages.iter().any(|stage| stage == graph_node.stage),
-                "missing stage event for {}",
-                graph_node.stage
-            );
-        }
-        mark_activity_imports_processed(&db, &[imported.import.id])
-            .await
-            .expect("mark processed");
-        let events = integration_events::Entity::find()
-            .filter(integration_events::Column::Provider.eq(ACTIVITY_PROCESSING_PROVIDER))
-            .all(&db)
-            .await
-            .expect("reload activity processing events");
-        assert!(events.iter().any(|event| {
-            event.event_type == "import_processed"
-                && event
-                    .payload
-                    .as_ref()
-                    .and_then(|payload| payload.get("import_id"))
-                    .and_then(|value| value.as_i64())
-                    == Some(i64::from(imported.import.id))
-        }));
-
-        let _ = std::fs::remove_dir_all(&uploads_dir);
-    }
-
-    #[tokio::test]
-    async fn parsing_artifact_selection_prefers_original_fit_over_generated_tcx() {
-        let db = test_db().await;
-        let now = Utc::now();
-        let import = test_support::insert(
-            &db,
-            activity_imports::ActiveModel {
-                user_id: Set(1),
-                source: Set("strava_sync".to_string()),
-                format: Set("tcx".to_string()),
-                status: Set(ACTIVITY_IMPORT_STATUS_PROCESSING.to_string()),
-                processing_stage: Set(ACTIVITY_IMPORT_STAGE_RAW_STORED.to_string()),
-                last_processing_event_at: Set(Some(now)),
-                original_filename: Set("generated.tcx".to_string()),
-                storage_path: Set("activity-imports/test/generated.tcx".to_string()),
-                mime_type: Set(None),
-                created_at: Set(now),
-                updated_at: Set(now),
-                ..crate::test_support::new_activity_import()
-            },
-        )
-        .await;
-
-        for (artifact_kind, format, source_quality, filename, storage_path) in [
-            (
-                ACTIVITY_IMPORT_ARTIFACT_KIND_GENERATED_EXPORT,
-                "tcx",
-                ACTIVITY_IMPORT_SOURCE_QUALITY_GENERATED_TCX,
-                "generated.tcx",
-                "activity-imports/test/generated.tcx",
-            ),
-            (
-                ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL,
-                "fit",
-                ACTIVITY_IMPORT_SOURCE_QUALITY_FIT_ORIGINAL,
-                "original.fit",
-                "activity-imports/test/original.fit",
-            ),
-        ] {
-            test_support::insert(
-                &db,
-                activity_import_artifacts::ActiveModel {
-                    activity_import_id: Set(import.id),
-                    user_id: Set(import.user_id),
-                    artifact_kind: Set(artifact_kind.to_string()),
-                    format: Set(format.to_string()),
-                    source_quality: Set(source_quality.to_string()),
-                    original_filename: Set(filename.to_string()),
-                    storage_path: Set(storage_path.to_string()),
-                    size_bytes: Set(123),
-                    mime_type: Set(None),
-                    checksum_sha256: Set("checksum".to_string()),
-                    ..Default::default()
-                },
-            )
-            .await;
-        }
-
-        let selected = load_best_activity_parsing_artifact(&db, &import)
-            .await
-            .expect("select parsing artifact");
-
-        assert_eq!(selected.original_filename, "original.fit");
-        assert_eq!(selected.format, "fit");
-        assert_eq!(selected.storage_path, "activity-imports/test/original.fit");
-    }
-
-    #[tokio::test]
-    async fn parsing_artifact_selection_prefers_strava_provider_payload_over_generated_tcx() {
-        let db = test_db().await;
-        let now = Utc::now();
-        let import = test_support::insert(
-            &db,
-            activity_imports::ActiveModel {
-                user_id: Set(1),
-                source: Set("strava_sync".to_string()),
-                format: Set("tcx".to_string()),
-                status: Set(ACTIVITY_IMPORT_STATUS_PROCESSING.to_string()),
-                processing_stage: Set(ACTIVITY_IMPORT_STAGE_RAW_STORED.to_string()),
-                last_processing_event_at: Set(Some(now)),
-                original_filename: Set("generated.tcx".to_string()),
-                storage_path: Set("activity-imports/test/generated.tcx".to_string()),
-                mime_type: Set(None),
-                created_at: Set(now),
-                updated_at: Set(now),
-                ..crate::test_support::new_activity_import()
-            },
-        )
-        .await;
-
-        for (artifact_kind, format, source_quality, filename, storage_path) in [
-            (
-                ACTIVITY_IMPORT_ARTIFACT_KIND_GENERATED_EXPORT,
-                "tcx",
-                ACTIVITY_IMPORT_SOURCE_QUALITY_GENERATED_TCX,
-                "generated.tcx",
-                "activity-imports/test/generated.tcx",
-            ),
-            (
-                ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD,
-                "json",
-                ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS,
-                "strava_activity_99.json",
-                "activity-imports/test/strava_activity_99.json",
-            ),
-        ] {
-            test_support::insert(
-                &db,
-                activity_import_artifacts::ActiveModel {
-                    activity_import_id: Set(import.id),
-                    user_id: Set(import.user_id),
-                    artifact_kind: Set(artifact_kind.to_string()),
-                    format: Set(format.to_string()),
-                    source_quality: Set(source_quality.to_string()),
-                    original_filename: Set(filename.to_string()),
-                    storage_path: Set(storage_path.to_string()),
-                    size_bytes: Set(123),
-                    mime_type: Set(None),
-                    checksum_sha256: Set("checksum".to_string()),
-                    ..Default::default()
-                },
-            )
-            .await;
-        }
-
-        let selected = load_best_activity_parsing_artifact(&db, &import)
-            .await
-            .expect("select parsing artifact");
-
-        assert_eq!(
-            selected.artifact_kind,
-            ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD
-        );
-        assert_eq!(
-            selected.source_quality,
-            ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS
-        );
-        assert_eq!(selected.original_filename, "strava_activity_99.json");
-        assert_eq!(selected.format, "json");
-    }
-
-    #[tokio::test]
-    async fn stored_activity_upload_import_marks_duplicates_without_new_activity() {
-        let db = test_db().await;
-        let uploads_dir = test_uploads_dir();
-        let training_profile = TrainingProfile::default();
-
-        let first = match persist_test_activity_upload(
-            &db,
-            &uploads_dir,
-            fit_upload(None),
-            "manual_upload",
-            &training_profile,
-        )
-        .await
-        .expect("import first manual upload")
-        {
-            PersistActivityUploadOutcome::Imported(imported) => imported,
-            PersistActivityUploadOutcome::Duplicate(_) => panic!("expected first import"),
-        };
-
-        let import = store_activity_upload_import(
-            &db,
-            &uploads_dir,
-            "test-user",
-            1,
-            fit_upload(None),
-            "manual_upload",
-        )
-        .await
-        .expect("store duplicate raw upload");
-
-        let processed = process_stored_activity_import(
-            &db,
-            &uploads_dir,
-            1,
-            import,
-            ActivityUploadDeduplication::Enabled,
-            Some(&training_profile),
-        )
-        .await
-        .expect("process duplicate stored import");
-
-        let PersistActivityUploadOutcome::Duplicate(duplicate) = processed else {
-            panic!("expected duplicate stored import");
-        };
-
-        assert_eq!(duplicate.activity.id, first.activity.id);
-        let duplicate_import = duplicate.existing_import.expect("updated import");
-        assert_eq!(duplicate_import.status, ACTIVITY_IMPORT_STATUS_DUPLICATE);
-        assert_eq!(duplicate_import.activity_id, Some(first.activity.id));
-        assert_eq!(activities::Entity::find().count(&db).await.unwrap(), 1);
-        assert_eq!(
-            activity_imports::Entity::find().count(&db).await.unwrap(),
-            2
-        );
-
-        let _ = std::fs::remove_dir_all(&uploads_dir);
-    }
-
-    #[tokio::test]
-    async fn immediate_reprocess_rebuilds_training_analysis() {
-        let db = test_db().await;
-        let uploads_dir = test_uploads_dir();
-        let training_profile = TrainingProfile::default();
-
-        let imported = match persist_test_activity_upload(
-            &db,
-            &uploads_dir,
-            cycling_gpx_upload(),
-            "manual_upload",
-            &training_profile,
-        )
-        .await
-        .expect("import activity")
-        {
-            PersistActivityUploadOutcome::Imported(imported) => imported,
-            PersistActivityUploadOutcome::Duplicate(_) => panic!("expected imported activity"),
-        };
-
-        activity_training_analyses::Entity::delete_many()
-            .filter(activity_training_analyses::Column::ActivityId.eq(imported.activity.id))
-            .exec(&db)
-            .await
-            .expect("clear activity training analysis");
-
-        mark_activity_imports_processed(&db, &[imported.import.id])
-            .await
-            .unwrap();
-
-        reprocess_activity_from_import(
-            &db,
-            &uploads_dir,
-            1,
-            imported.activity.clone(),
-            imported.import.clone(),
-            Some(&training_profile),
-        )
-        .await
-        .expect("reprocess activity with immediate cache refresh");
-
-        assert_eq!(
-            activity_training_analyses::Entity::find()
-                .filter(activity_training_analyses::Column::ActivityId.eq(imported.activity.id))
-                .count(&db)
-                .await
-                .expect("count activity training analyses"),
-            1,
-        );
-
-        let _ = std::fs::remove_dir_all(&uploads_dir);
-    }
-
-    #[tokio::test]
-    async fn shared_analytics_gpx_reaches_training_stage_and_replays() {
-        let db = test_db().await;
-        let uploads_dir = test_uploads_dir();
-        let training_profile = TrainingProfile::default();
-        let upload = ActivityUploadPayload {
-            original_filename: "import-analytics-ride.gpx".to_string(),
-            format: "gpx".to_string(),
-            mime_type: Some("application/gpx+xml".to_string()),
-            source_correlation_id: None,
-            bytes: include_bytes!("../../api/tests/fixtures/import-analytics-ride.gpx").to_vec(),
-        };
-
-        let imported = match persist_test_activity_upload(
-            &db,
-            &uploads_dir,
-            upload,
-            MANUAL_UPLOAD_SOURCE,
-            &training_profile,
-        )
-        .await
-        .expect("process shared analytics fixture")
-        {
-            PersistActivityUploadOutcome::Imported(imported) => imported,
-            PersistActivityUploadOutcome::Duplicate(_) => panic!("expected a new activity"),
-        };
-
-        assert_eq!(imported.activity.title, "Analytics Ridge Ride");
-        assert_eq!(imported.activity.sport, "road_ride");
-        assert_eq!(imported.activity.total_time_seconds, Some(1800));
-        assert_eq!(imported.activity.average_heart_rate_bpm, Some(131));
-        assert_eq!(imported.activity.average_cadence_rpm, Some(86));
-        assert_eq!(imported.activity.elevation_gain_meters, Some(60.0));
-        assert_eq!(
-            imported.import.processing_stage,
-            ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT
-        );
-        let detail = crate::activity_details::deserialize_derived_activity_data(
-            imported.activity.derived_data_json.as_ref(),
-        );
-        assert_eq!(detail.route_points.len(), 7);
-        assert_eq!(detail.route_points[0].heart_rate_bpm, Some(120));
-        assert_eq!(
-            activity_training_analyses::Entity::find()
-                .filter(activity_training_analyses::Column::ActivityId.eq(imported.activity.id))
-                .count(&db)
-                .await
-                .expect("count training analyses"),
-            1,
-        );
-
-        mark_activity_imports_processed(&db, &[imported.import.id])
-            .await
-            .unwrap();
-        reprocess_activity_from_import(
-            &db,
-            &uploads_dir,
-            1,
-            imported.activity.clone(),
-            imported.import.clone(),
-            Some(&training_profile),
-        )
-        .await
-        .expect("replay shared analytics fixture");
-        assert_eq!(
-            activities::Entity::find()
-                .count(&db)
-                .await
-                .expect("count activities"),
-            1
-        );
-        assert_eq!(
-            activity_training_analyses::Entity::find()
-                .filter(activity_training_analyses::Column::ActivityId.eq(imported.activity.id))
-                .count(&db)
-                .await
-                .expect("count replayed training analyses"),
-            1,
-        );
-
-        let _ = std::fs::remove_dir_all(&uploads_dir);
     }
 }

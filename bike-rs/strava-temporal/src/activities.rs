@@ -1,5 +1,6 @@
 //! Each named Temporal activity calls one provider or Bike domain operation.
 use bike_core::{
+    platform::temporal as policy,
     strava::{
         events::StravaEvent,
         logging::{AttemptStatus, ExchangeContext, TemporalIds},
@@ -7,7 +8,7 @@ use bike_core::{
     },
     workflow_error::WorkflowError,
 };
-use std::{future::Future, sync::Arc, time::Duration};
+use std::{future::Future, sync::Arc};
 use temporalio_common::error::ApplicationFailure;
 use temporalio_macros::activities;
 use temporalio_sdk::activities::{ActivityContext, ActivityError};
@@ -334,7 +335,7 @@ async fn run<T: serde::Serialize>(
         .scope(&info.activity_type, async {
             logging.attempt(&info.activity_type, AttemptStatus::Started);
             tokio::pin!(future);
-            let mut heartbeat = tokio::time::interval(Duration::from_secs(5));
+            let mut heartbeat = tokio::time::interval(policy::ACTIVITY_HEARTBEAT_INTERVAL);
             let result = loop {
                 tokio::select! {
                     result = &mut future => break result.and_then(checked_output).map_err(activity_error),
@@ -344,9 +345,7 @@ async fn run<T: serde::Serialize>(
             };
             match &result {
                 Ok(_) => logging.attempt(&info.activity_type, AttemptStatus::Completed),
-                Err(ActivityError::Cancelled { .. }) => {
-                    logging.attempt(&info.activity_type, AttemptStatus::Cancelled)
-                }
+                Err(ActivityError::Cancelled { .. }) => logging.attempt(&info.activity_type, AttemptStatus::Cancelled),
                 Err(_) => logging.attempt(&info.activity_type, AttemptStatus::Failed),
             }
             result
@@ -363,8 +362,8 @@ fn activity_error(error: WorkflowError) -> ActivityError {
     let delay = error.retry_at.map(|at| {
         (at - chrono::Utc::now())
             .to_std()
-            .unwrap_or(Duration::from_secs(1))
-            .max(Duration::from_secs(1))
+            .unwrap_or(policy::RETRY_INITIAL_INTERVAL)
+            .max(policy::RETRY_INITIAL_INTERVAL)
     });
     let retryable = error.retry_at.is_some() || error.status.as_u16() == 429;
     let terminal = error.status.is_client_error() && !retryable;
@@ -379,6 +378,7 @@ fn activity_error(error: WorkflowError) -> ActivityError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn provider_rate_limits_retry_but_invalid_requests_are_terminal() {
@@ -404,7 +404,7 @@ mod tests {
             assert!(!failure.is_non_retryable());
             let delay = failure.next_retry_delay().unwrap();
             if seconds < 0 {
-                assert_eq!(delay, Duration::from_secs(1));
+                assert_eq!(delay, policy::RETRY_INITIAL_INTERVAL);
             } else {
                 assert!(delay > Duration::from_secs(100));
             }

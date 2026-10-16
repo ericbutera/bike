@@ -41,6 +41,34 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
 
+impl Model {
+    pub(crate) async fn complete_native_reprocess(
+        db: &impl ConnectionTrait,
+        execution: &crate::bike_tasks::ImportExecution,
+    ) -> Result<(), crate::workflow_error::WorkflowError> {
+        let source = &execution.command.source;
+        let changed = Entity::update_many()
+            .set(ActiveModel {
+                status: Set("processed".into()),
+                processing_stage: Set("complete".into()),
+                processing_error: Set(None),
+                processed_at: Set(Some(Utc::now())),
+                updated_at: Set(Utc::now()),
+                ..Default::default()
+            })
+            .filter(Column::Id.eq(source.activity_import_id))
+            .filter(Column::UserId.eq(source.user_id))
+            .exec(db)
+            .await?;
+        if changed.rows_affected != 1 {
+            return Err(crate::workflow_error::WorkflowError::conflict(
+                "Reprocessed import disappeared",
+            ));
+        }
+        Ok(())
+    }
+}
+
 impl Entity {
     pub async fn recent_manual_uploads(
         db: &impl ConnectionTrait,

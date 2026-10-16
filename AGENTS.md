@@ -143,6 +143,9 @@ Do not start commits with the word add (eg: `feat: added architecture diagram`),
   checks for observed bugs. Distinguish local, CI, and deployed evidence.
 - Pair bug fixes with small unit tests that reproduce the failure and verify
   the corrected behavior. Reuse existing mocks and fixtures.
+- Backend unit tests use PostgreSQL SeaORM mocks and shared fixtures. Do not
+  introduce SQLite databases, schema substitutes, timestamp massaging, or
+  compatibility logic to maintain a second persistence implementation for tests.
 - Keep prek commands, filters, tool/version pins, and required hook stages
   aligned with mise tasks and CI. Update affected enforcement in the same
   change as quality tooling; validate and run hooks without bypassing them.

@@ -148,7 +148,8 @@ mod tests {
     };
     use strava_sdk::apis::{activities_api, configuration::Configuration, strava_api};
 
-    const ACTIVITY: &[u8] = b" \n{\"id\":20424619693,\"name\":\"Ride\",\"unmodeled\":{\"precision\":123.456789012345}}\n";
+    const ACTIVITY: &[u8] =
+        b" \n{\"id\":20424619693,\"name\":\"Ride\",\"unmodeled\":{\"precision\":123.456789012345}}\n";
     const OAUTH: &[u8] = b" {\"access_token\":\"vendor-secret\",\"refresh_token\":\"rotated-secret\",\"expires_at\":1999999999,\"extra\":true}\n";
 
     async fn activity(request: Request<Body>) -> Response<Body> {

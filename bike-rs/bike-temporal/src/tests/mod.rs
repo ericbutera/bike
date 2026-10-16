@@ -4,6 +4,7 @@ use crate::workflows::{
 };
 use bike_core::{
     bike_tasks::{FitnessChange, Priority, Publication},
+    platform::temporal as policy,
     test_support::{fitness_change, heatmap_change, import_command, import_result, segment_change},
 };
 use serde::Serialize;
@@ -17,11 +18,13 @@ use workflow_test_support::payload;
 type WorkflowMock = workflow_test_support::WorkflowMock;
 mod adapters;
 mod batches;
-mod client;
-mod fixtures;
+pub(crate) mod client;
+pub(crate) mod fixtures;
 mod handlers;
+mod import_operations;
 mod imports;
 mod segments;
+mod submission;
 mod training;
 
 fn input() -> RebuildInput<FitnessChange> {
@@ -83,7 +86,14 @@ fn scheduled(
     assert_eq!(native.priority_key, priority);
     assert_eq!(native.fairness_key, fairness);
     assert!(activity.do_not_eagerly_execute);
-    assert_eq!(activity.retry_policy.unwrap().maximum_attempts, 12);
+    assert_eq!(
+        activity.retry_policy.unwrap(),
+        policy::activity_retry_policy().into_raw()
+    );
+    assert_eq!(
+        Duration::try_from(activity.start_to_close_timeout.unwrap()).unwrap(),
+        policy::ACTIVITY_EXECUTION_TIMEOUT
+    );
     activity.seq
 }
 fn complete(mock: &mut WorkflowMock, seq: u32, publication: Publication) {
@@ -125,7 +135,6 @@ fn five_quick_requests_for_the_same_user_rebuild_once_at_the_latest_revision() {
         "user-7",
     );
     complete(&mut mock, seq, Publication::Published);
-    signal(&mut mock, &change(5, Priority::Background), 65);
     mock.assert_no_commands();
 }
 
@@ -293,6 +302,33 @@ fn cancellation_while_debouncing_cancels_the_timer() {
     mock.cancel();
     canceled_timer(&mut mock, wait);
     mock.assert_cancelled();
+}
+
+#[test]
+fn late_notification_is_rebuilt_even_after_a_higher_revision_published() {
+    let mut mock = WorkflowMock::new::<RebuildFitnessFreshness>(input());
+    signal(&mut mock, &change(5, Priority::NewActivity), 0);
+    let wait = timer(&mut mock, 2);
+    fire(&mut mock, wait, 2);
+    let first = scheduled(
+        &mut mock,
+        "rebuild_fitness_freshness",
+        &change(5, Priority::NewActivity),
+        1,
+        "user-7",
+    );
+    complete(&mut mock, first, Publication::Published);
+    mock.assert_no_commands();
+    signal(&mut mock, &change(1, Priority::NewActivity), 3);
+    let wait = timer(&mut mock, 2);
+    fire(&mut mock, wait, 5);
+    scheduled(
+        &mut mock,
+        "rebuild_fitness_freshness",
+        &change(1, Priority::NewActivity),
+        1,
+        "user-7",
+    );
 }
 
 #[test]

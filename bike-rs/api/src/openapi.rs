@@ -203,7 +203,7 @@ use utoipa::OpenApi;
             activity_imports::ActivityImportTraceNodeResponse,
             activity_imports::ActivityImportTraceResponse,
             crate::activity_import_history::ImportHistoryResponse,
-            crate::activity_import_history::ReplayRequest,
+            activity_import_history::ReplayRequest,
             crate::activity_import_history::ReplayResponse,
             crate::activity_import_history::ImportAttemptResponse,
             activity_imports::ActivityProcessingGraphEdgeResponse,

@@ -1021,9 +1021,7 @@ fn normalized_analysis_split_count(value: Option<usize>) -> Result<usize, AppErr
     if !(MIN_ANALYSIS_SPLIT_COUNT..=MAX_ANALYSIS_SPLIT_COUNT).contains(&split_count) {
         return Err(AppError::validation_field(
             "split_count",
-            format!(
-                "Split count must be between {MIN_ANALYSIS_SPLIT_COUNT} and {MAX_ANALYSIS_SPLIT_COUNT}"
-            ),
+            format!("Split count must be between {MIN_ANALYSIS_SPLIT_COUNT} and {MAX_ANALYSIS_SPLIT_COUNT}"),
         ));
     }
 
