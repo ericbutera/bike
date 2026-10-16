@@ -580,6 +580,27 @@ impl Model {
             .await
     }
 
+    /// Serialize shared projections even when their output row does not exist yet.
+    /// Lock the authoritative activities in a consistent order before reading inputs.
+    pub(crate) async fn lock_for_analytics(
+        db: &impl ConnectionTrait,
+        activity_ids: &[i32],
+    ) -> Result<(), DbErr> {
+        if activity_ids.is_empty() {
+            return Ok(());
+        }
+        Entity::find()
+            .select_only()
+            .column(Column::Id)
+            .filter(Column::Id.is_in(activity_ids.iter().copied()))
+            .order_by_asc(Column::Id)
+            .lock_exclusive()
+            .into_tuple::<i32>()
+            .all(db)
+            .await?;
+        Ok(())
+    }
+
     pub fn heatmap_eligible() -> sea_orm::Condition {
         use sea_orm::{
             sea_query::{extension::postgres::PgExpr, Expr, Func},

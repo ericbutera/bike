@@ -78,6 +78,7 @@ impl Model {
         let activity_ids =
             super::segment_efforts::Model::activity_ids_for_segment(db, self.id).await?;
         let txn = db.begin().await?;
+        super::activities::Model::lock_for_analytics(&txn, &activity_ids).await?;
         super::segment_user_summaries::Entity::delete_for_segment(&txn, self.id).await?;
         super::segment_summaries::Entity::delete_for_segment(&txn, self.id).await?;
         super::segment_efforts::Entity::delete_for_segment(&txn, self.id).await?;

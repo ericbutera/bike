@@ -17,6 +17,103 @@
   eventual output handoffs in the combined worker. Other producer conversions,
   cutover, recovery drills, and PR #67's atomic fitness follow-up remain separate.
 
+## First native production reprocess, 21:58 UTC
+
+- PR #66 merged as `7fa4f45181e3235a5b62f309e2b09573ac4beba3` after
+  [CI 469](https://ci.nibelheim.dev/repos/3/pipeline/469) passed, including 83
+  browser checks. [Main CI 471](https://ci.nibelheim.dev/repos/3/pipeline/471)
+  passed its backend/build checks, another 83 browser checks, and deployment.
+- All five live deployments were ready with zero container restarts. API, SQL
+  worker, combined Temporal worker, and maps reported the new revision.
+  Migration Job `schema-migration-7fa4f45181e3235a5b62f309e2b09573ac4beba3`
+  completed both `native_import_correlation` and `activity_event_history`
+  migrations. Public health returned healthy. The completed migration Pod is
+  expected to be unready; the five application Pods were ready.
+- Configured immutable release images under `localhost:32500/`:
+  - API: `bike-api@sha256:111073abb2315f12d46fdefe6800a2c2d0facab0b1e2a6cc43f900f6649ecc9b`.
+  - Both workers: `bike-worker@sha256:cbdf2e683503fa7557767c5b42f82482609c3124a37a7d9f74ada3d2c39b5bab`.
+  - UI: `bike-ui@sha256:3868de5b4e21d53fdab45e235406ce2d37472fd89517e31c017d81dc185230c0`.
+  - Maps: `bike-maps@sha256:f1f605b3caab0da088483eda0b0511d5cedd352acae1542cc63918d6cd37f944`.
+    Its running platform digest remained
+    `sha256:1d4f73e3c70df60a8dde120d1f4d62ef05de12614b244325f92f35dc8b924b6a`;
+    record that separately from the configured image manifest.
+- Both workflow and Activity pollers were present on `bike-tasks`.
+  The existing SDK client identity is still named `bike-strava-temporal`;
+  the combined binary polls both queues.
+- Used an existing real FIT: user 1, activity/import 1588, artifact 1190,
+  352,993 bytes. Verified retained bytes against SHA-256
+  `f591a1a4845efdd5d7943eb1e7d51456506741ef415f628ddcee4746e9d8b42f`
+  and filled only that artifact's previously empty checksum metadata. No source
+  bytes or storage keys changed. Broader checksumless-import repair remains open.
+- Command `ec95cef9-f4cb-4ab2-b4c3-e0c1561c00cb` returned HTTP 202 in
+  **0.300533 seconds**. Its
+  [Temporal job](https://temporal.nibelheim.dev/namespaces/bike/workflows/bike-task-reprocess_activity_import-user-1-ec95cef9-f4cb-4ab2-b4c3-e0c1561c00cb)
+  completed in **2.719543358 seconds**, run
+  `01a146b8-dd67-7e1b-ae4e-c889467db6af`, with 29 history events and
+  6,860 history bytes. The recording stayed outside workflow history.
+- Activity/import IDs and the title were preserved. Sport changed from legacy
+  `ride` to `mountain_bike`. The source-derived hash changed from
+  `171b476db612a8c46f56b2aa289c481e` to
+  `1eabe440455f27f29e77448eb0a9b716`.
+- Fitness rebuilt at 21:58:07.130465 UTC and cleared the dirty day. Heatmap
+  generation 7 published ready at 21:58:07.785307 UTC. All eight segment summaries
+  published by 21:58:17.389013 UTC. Activity and fitness API reads returned 200.
+  The activity retained 47 efforts and exactly one linked activity.
+- Repeating the identical command returned HTTP 202 in **0.199813 seconds**,
+  with the same workflow and run IDs. Exactly one reprocess audit event remained;
+  no additional SQL task was queued. SQL task totals stayed 1,991 completed and
+  five pre-existing failed records.
+- **Concerning result:** segment Activities 8/17/21/22/28 needed 2/3/3/2/4
+  attempts respectively. Their transactions overlap on activity analytics even
+  when each segment workflow is independently serialized. PostgreSQL rejected
+  duplicate activity-analytics inserts; Temporal retries recovered all eight
+  publications. Root completion and eventual output recovery are proven, but
+  this is not an error-free concurrency pass.
+- PR #67 now addresses shared projection replacement with ordinary model-owned
+  transactions, ordered activity row locks, fresh reads after locking, and
+  segment commit before projection locking. Keep the fix open for review and
+  repeat this real concurrent case after integration. Also retire bound recording
+  payloads from SQL error spans; the observed diagnostics were unnecessarily large.
+- Formatting was removed from the worker baseline and moved to independent PR
+  #68. Custom DAG views/APIs and graph reconstruction are removed in PR #69.
+  Both remain separate reviews. This canary does not prove cancellation, worker
+  interruption, lost-completion recovery, or producer-wide conversion.
+
+## Review follow-up R01: atomic fitness invalidation
+
+- The consolidated [TODO](TODO.md#prioritized-review-follow-ups) preserves all
+  eleven review items in execution order. R01 is ready for review; rollout and
+  PostgreSQL isolation proof remain open.
+- `analytics_user_states::Model::mark_dirty` now merges the earliest dirty day
+  and greatest source timestamp in one upsert against the existing user row.
+  Every invalidation touches its existing write fence; rebuild completion retains
+  both source-time and write-time conditions. No new table, column, or ledger.
+- Four PostgreSQL SeaORM mock contracts exercise first/duplicate/out-of-order
+  invalidations, preservation of rebuild metadata, old source timestamps advancing
+  the write fence, stale completion rejection, and database failures. Three failed
+  against the original read/modify/write implementation; all four pass afterward.
+  Mock SQL assertions verify the generated contract, not database interleavings.
+- Focused Docker commands through owning mise configuration passed 83 cases:
+  `cargo test -p bike-core --locked --lib fitness` (15),
+  `cargo test -p bike-core --locked --lib activity_reprocessing` (14), and
+  `cargo test -p bike-core --locked --lib strava_native_unit` (54).
+- The combined run exposed a trace-fixture failure that did not occur in
+  isolation. Refresh tracing callsite interest after installing the scoped
+  subscriber; retain SQL-span assertions. Three focused runs with 16 test threads,
+  all 54 Strava domain cases, and six database-span cases pass after this change.
+- SQLite-backed suites, schema/timestamp helpers, unused SQL fixtures, and SQLite
+  dev-dependency features have been removed from the baseline as requested.
+  Pure tests, PostgreSQL mocks, shared synthetic browser uploads, and the existing
+  PostgreSQL/Docker suites remain. Historical test counts elsewhere predate this
+  removal. No new E2E suite or database substitute has been introduced.
+- CI 466 on baseline `7a920cbb` passed tests/lint but failed changed-line coverage:
+  API 58.41%, worker 53.04%, core 62.29% against 80% per project. Images and E2E
+  were skipped. The approved first-release exception above supersedes this block;
+  R01 remains a separate review in PR #67.
+- These checks do not prove real concurrent upserts, commit-before-lost-reply
+  recovery, or rider-visible convergence. P01–P04 and user vetting remain gates
+  before the broader worker conversion.
+
 ## Recovery baseline captured before PR #61
 
 - Observed at 2026-10-16 12:20 UTC, before integration or production task runs.

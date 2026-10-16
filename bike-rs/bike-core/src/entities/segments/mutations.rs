@@ -178,6 +178,7 @@ impl Model {
             Vec::new()
         };
         let txn = db.begin().await?;
+        activities::Model::lock_for_analytics(&txn, &activity_ids).await?;
         let mut active_segment = self.into_active_model();
         active_segment.title = Set(title);
         active_segment.mode = Set(mode.as_str().to_string());
@@ -211,6 +212,7 @@ impl Model {
             Vec::new()
         };
         let txn = db.begin().await?;
+        activities::Model::lock_for_analytics(&txn, &activity_ids).await?;
         let mut active_segment = self.into_active_model().with_builder_link(source);
         if should_update_title {
             active_segment.title = Set(source.title.clone());

@@ -1,8 +1,6 @@
 use super::*;
 use super::{fixture::audit, handlers_fixture::HandlerFixture, imports};
-use crate::entities::{
-    activity_import_artifacts, analytics_user_states, strava_activity_states, user_preferences,
-};
+use crate::entities::{activity_import_artifacts, strava_activity_states, user_preferences};
 use sea_orm::MockExecResult;
 
 #[tokio::test]
@@ -100,24 +98,12 @@ fn upsert_mock(fixture: &HandlerFixture, update: bool) -> MockDatabase {
         &fixture.provider.payload.activity,
     ) || update
     {
-        mock.append_query_results([Vec::<analytics_user_states::Model>::new()])
-            .append_query_results([vec![fitness_state(domain)]])
+        mock.append_exec_results([executed()])
     } else {
         mock
     };
     mock.append_query_results([vec![audit(domain)], vec![audit(domain)]])
         .append_exec_results([executed(), executed(), executed()])
-}
-
-fn fitness_state(fixture: &Fixture) -> analytics_user_states::Model {
-    analytics_user_states::Model {
-        user_id: fixture.customer.id,
-        last_activity_change_at: fixture.connection.created_at,
-        fitness_dirty_from_day: Some(fixture.connection.created_at.date_naive()),
-        last_fitness_rebuild_at: None,
-        created_at: fixture.connection.created_at,
-        updated_at: fixture.connection.created_at,
-    }
 }
 
 fn executed() -> MockExecResult {

@@ -17,7 +17,8 @@ pub use tasks::{
 mod analytics;
 mod defaults;
 pub use analytics::{
-    analytics_user_state, fitness_day, new_fitness_day, new_segment_effort, segment_effort,
+    activity_analytics, activity_id_row, analytics_user_state, fitness_day, new_fitness_day,
+    new_segment_effort, segment_effort,
 };
 pub use defaults::{new_background_task, new_feature_flag, new_user_preferences};
 mod heatmaps;
@@ -34,7 +35,7 @@ pub use persistence::{insert, update};
 mod segments;
 #[cfg(test)]
 pub(crate) mod trace;
-pub use segments::segment;
+pub use segments::{segment, segment_summary, segment_user_summary};
 
 pub use accounts::{connection, customer, new_connection, new_customer};
 pub use imports::{activity_import_attempt, archive_import_job, import_artifact};

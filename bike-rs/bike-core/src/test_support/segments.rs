@@ -20,3 +20,33 @@ pub fn segment() -> segments::Model {
         updated_at: at,
     }
 }
+
+pub fn segment_summary() -> crate::entities::segment_summaries::Model {
+    let effort = super::segment_effort();
+    crate::entities::segment_summaries::Model {
+        segment_id: effort.segment_id,
+        effort_count: 1,
+        leader_user_id: Some(effort.user_id),
+        leader_effort_id: Some(effort.id),
+        best_duration_seconds: Some(effort.duration_seconds),
+        latest_activity_started_at: Some(super::activity().started_at),
+        latest_activity_id: Some(effort.activity_id),
+        latest_effort_id: Some(effort.id),
+        created_at: super::timestamp(),
+        updated_at: super::timestamp(),
+    }
+}
+
+pub fn segment_user_summary() -> crate::entities::segment_user_summaries::Model {
+    let effort = super::segment_effort();
+    crate::entities::segment_user_summaries::Model {
+        id: 1,
+        segment_id: effort.segment_id,
+        user_id: effort.user_id,
+        effort_count: 1,
+        personal_best_effort_id: Some(effort.id),
+        personal_best_duration_seconds: Some(effort.duration_seconds),
+        created_at: super::timestamp(),
+        updated_at: super::timestamp(),
+    }
+}

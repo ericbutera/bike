@@ -3,11 +3,12 @@
 ## Worker conversion
 
 - [Background work and Strava integration](specs/background-work.md) owns behavior,
-  identities, storage, cancellation, priority, and U01–U26 / P01–P04 acceptance.
+  identities, storage, cancellation, priority, and U01–U27 / P01–P04 acceptance.
   This backlog is the single owner of task status, findings, and open work.
   Keep dated evidence in [the rollout record](worker-rollout-2026-10-16.md).
-- PR #61 supplied groundwork. PR #66 consolidates the concrete reprocess review
-  slice; #64 and #65 are superseded. Strava is already native. Single-endpoint
+- PR #61 supplied groundwork. PR #66 merged the reviewed reprocess baseline;
+  focused review follow-ups remain below. #64 and #65 are superseded.
+  Strava is already native. Single-endpoint
   wiring is not production cutover of all producers or shared outputs.
 - Convert one task at a time and stop for user review after each. Status advances
   `Pending` → `In progress` → `Ready to verify` → `Verified`; email becomes `Retired`.
@@ -47,7 +48,7 @@
       priority for archives/backfills/deletes and prompt new-ride refresh.
 - [ ] Close applicable F1–F6 findings below. Keep provider code/queue ownership,
       deletion/reconnection fences, shared activity history, and old-history replay.
-- [ ] Complete applicable U01–U17/U23/U26 and affected provider U18–U22/U25 cases;
+- [ ] Complete applicable U01–U17/U23/U26/U27 and affected provider U18–U22/U25 cases;
       record each test/command/commit/result and unimplemented variants. Pass the
       simplicity gate without SQL orchestration, redundant bookkeeping, or a new
       generic recovery service.
@@ -59,6 +60,126 @@
       through all producers, Activities, children, fan-in, retries, replay, and
       continuation. Verify native visibility and live API-to-workflow traces;
       shared output logs must not attribute merged work solely to the last caller.
+
+### Prioritized review follow-ups
+
+- **Live finding, P0:** the first native reprocess on 2026-10-16 exposed overlapping
+  segment refreshes replacing the same activity achievement rows. Five of eight
+  Activities retried after PostgreSQL duplicate-key errors; all eventually
+  published. PR #67 includes transactional projection replacement and consistent
+  activity-first locking alongside R01. Seven PostgreSQL mock cases in
+  `bike-core/src/analytics_projection_tests.rs` cover U27's transaction contract;
+  mocks do not establish concurrent database execution. Rerun the native case after
+  integration; do not treat recovery through retries as an error-free pass.
+- **Live finding, P1:** error spans can include bound recording JSON in SQL
+  statement diagnostics. Remove recording/provider bodies from application error
+  logs while retaining operation, parameterized SQL, and causal IDs. Keep
+  diagnostic inspection bounded; no source bytes belong in workflow payloads.
+- PR #66 merged as `7fa4f451`; main CI 471 deployed it after 83 browser checks.
+  The real FIT canary returned 202 in 0.30 seconds and preserved activity/import
+  IDs. The dated rollout record owns the observed outputs and retry limitation.
+  Formatting is isolated in #68, and custom DAG retirement is isolated in #69.
+
+- Review baseline: PR #66 at `c00ad6f9`, 2026-10-16. R01–R11 preserve the
+  numbering of the eleven review recommendations. Execute in the order below;
+  the existing task inventory and rollout gates remain in force.
+- P1 protects accepted work, source correctness, or the cutover boundary. P2
+  simplifies implementation or completes diagnosis before broader rollout.
+  Implement one bounded item per review. No new execution/admission ledgers,
+  SQL orchestration, SQLite-specific tests, or E2E framework.
+- Historical baseline check: 97 focused Docker units passed. CI 464/465 exposed
+  SQLite fixture failures. Remove those suites, their schema/timestamp helpers,
+  and SQLite dev-dependency features; retain pure tests and Postgres mocks.
+  The retained activity-update/audit mock and five core model cases pass locally;
+  all required hooks pass. CI 466 at `7a920cbb` passes tests/lint but fails the
+  80% changed-line coverage gate: API 58.41%, worker 53.04%, core 62.29%.
+  Images and E2E did not run after that gate. The user subsequently authorized
+  the initial-production exception above; defer new mock coverage until real-data
+  vetting, then restore the CI 80% gate. Do not restore SQLite tests or compatibility
+  logic. R01 is implemented in PR #67 and remains separate from the first release.
+
+| Order | Review | Priority | Work                                                    | Status          |
+| ----- | ------ | -------- | ------------------------------------------------------- | --------------- |
+| 1     | R01    | P1       | Atomic fitness invalidation                             | Ready to verify |
+| 2     | R05    | P1       | Stable command identity through UI/API retries          | Pending         |
+| 3     | R03    | P1       | Strava duplicate outcomes and removed segment scope     | Pending         |
+| 4     | R02    | P1       | Source ordering and reconciliation                      | Pending         |
+| 5     | R04    | P1       | Cancellation boundary across provider parents/children  | Pending         |
+| 6     | R06    | P1       | Bounded webhook acceptance                              | Pending         |
+| 7     | R09    | P2       | Separate legacy SQL bookkeeping from domain effects     | Pending         |
+| 8     | R08    | P2       | Simplify debounce state and return domain outcomes      | Pending         |
+| 9     | R11    | P2       | Permanent retained-input failures                       | Pending         |
+| 10    | R10    | P2       | Native job diagnosis and causal context                 | Pending         |
+| 11    | R07    | P1       | One owner for shared outputs and all selected producers | Pending         |
+
+- **R01 — atomic fitness invalidation** (U10/U15/P02).
+  Replace read/modify/write with one model-owned upsert that preserves the
+  earliest dirty day and a monotonic source timestamp. Touch the existing
+  publication fence on every invalidation, including an old timestamp arriving
+  during a rebuild. Use current stored dirty state for incremental rebuilding.
+  Mock cases: first invalidation, earlier/later dates, out-of-order source time,
+  duplicate requests, stale rebuild rejection, and database failure. Preserve
+  last rebuild/creation metadata. Implementation and four Postgres SeaORM mock
+  contract tests are complete; database isolation proof remains P02. Three new
+  tests failed against the original read/modify/write path, then all four passed.
+- **R05 — stable command identity** (U02–U04/U25).
+  Retain one typed UI command across uncertain retries; allocate a new UUID only
+  for intentional new work. A duplicate start returns its canonical target or
+  rejects changed work; never attach another activity's metadata to the old job.
+  Mock a lost response, retry, closed job, and same-key/different-target request.
+  Reuse Temporal's retained command information without an admission table.
+- **R03 — Strava retry outcomes and removed scope** (F1/F2; U07–U09/P01/P02).
+  Recheck the original outcome immediately after acquiring the existing lock,
+  before unchanged/superseded classification. Preserve minimal old/new refresh
+  dependencies with the domain mutation, or use a justified broader rebuild.
+  Mock a first lookup miss followed by another commit, and `{A,B}` → `{B,C}`
+  followed by lost completion: retain the original outcome and refresh A/B/C.
+- **R02 — source ordering** (F3; U18–U21/P03).
+  Separate provider event time from Bike sync/backfill/receive time. Route
+  owned source reconciliation, including fetching/applying, through per-source
+  Temporal serialization/coalescing with existing tombstone/generation fences.
+  Mock clock skew, distinct equal-second changes, delayed fetched content,
+  delete/upsert overlap, and reconnect; preserve canonical webhook deduplication.
+- **R04 — cancellation boundary** (F4; U12–U14/P04).
+  Keep provider preparation cancellable and close cancellation before mutation
+  and small durable handoffs, consistently through request-owned parents and
+  children. Accepted cancellation stops new work; a late request settles the
+  current item and reports the actual outcome. Shared outputs remain independent.
+  Mock before-apply, commit-before-handoff, partial handoff, and batch boundaries.
+- **R06 — bounded webhook acceptance** (U25/P03).
+  Bound the complete durable acceptance operation below Strava's two-second
+  callback budget. The existing inbox is acceptable; no additional inbox is
+  required. Return failure promptly on timeout/uncertain acceptance and preserve
+  deduplication after a lost reply. Use delayed/success/failure store mocks.
+- **R09 — legacy bookkeeping** (U05/U17; simplicity gate).
+  Move SQL pipeline compatibility recording into legacy callers so native domain
+  operations need no SQL execution/readiness records. Preserve old consumers
+  until their cutover and retire unused attempt-correlation fields only through
+  new migrations. Mock native effects without pipeline writes and legacy adapters
+  with their required recording; preserve historical migrations.
+- **R08 — debounce and domain outcomes** (U10/U15/U16).
+  Return actual publication outcomes from domain operations instead of inferring
+  them with surrounding reads. Remove unused `published` state and unsupported
+  blocked/superseded behavior; retain resource, merged pending work, priority,
+  timers, and compatible continuation input. Mock concrete domain adapters,
+  late lower revisions, active work plus one follow-up, and retained history.
+- **R11 — permanent retained-input failure** (U06).
+  Distinguish immutable checksum/size/parse failures from transient backend
+  failures with typed errors. Mock corrupt primary/supplemental bytes as terminal
+  and temporary storage faults as retryable; do not repeatedly parse corrupt input.
+- **R10 — native job diagnosis** (U14/U23/P04).
+  Link returned native jobs to authenticated history or a thin authorized status
+  endpoint. Display acceptance separately from completion/failure; preserve root
+  actor/owner/correlation/trace context through Activities, children and handoffs.
+  Mock failure before a domain audit exists, ownership, retry, and merged causes.
+  Reuse Temporal history and existing activity audit rather than a new job table.
+- **R07 — shared-output ownership and producer cutover** (F5/F6; U15–U17/U22/U26/P03/P04).
+  After the preceding corrections and user vetting, route Strava, legacy single/
+  bulk imports, edits/deletes, training, reads, and archive producers through
+  neutral keyed refresh handoffs. Drain/fence legacy writers at the selected
+  boundary; source completion waits only for handoff acceptance. Preserve deployed
+  Strava history compatibility. Mock mixed producer bursts, prompt/new versus
+  background/archive priority, pending projections, and replay before activation.
 
 ### Task inventory and conversion order
 

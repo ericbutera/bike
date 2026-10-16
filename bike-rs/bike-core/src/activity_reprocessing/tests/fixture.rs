@@ -62,7 +62,6 @@ pub fn source_reads(mock: MockDatabase) -> MockDatabase {
 
 /// Existing domain reads/writes for one ride with an old segment and no new matches.
 pub fn mutation(mock: MockDatabase, history_write: Result<u64, DbErr>) -> MockDatabase {
-    let state = fixtures::analytics_user_state();
     let mock = mock
         .append_query_results([vec![fixtures::reprocess_activity()]]) // row lock
         .append_query_results([Vec::<activity_event_history::Model>::new()])
@@ -73,17 +72,16 @@ pub fn mutation(mock: MockDatabase, history_write: Result<u64, DbErr>) -> MockDa
         )])]]) // single-column tuple read
         .append_query_results([Vec::<segments::Model>::new()]) // route candidates
         .append_query_results([Vec::<segment_efforts::Model>::new()]) // new membership
+        .append_query_results([vec![fixtures::activity_id_row()]]) // activity projection lock
         .append_query_results([Vec::<segment_efforts::Model>::new()]) // achievements
         .append_query_results([Vec::<segment_efforts::Model>::new()]) // training context
         .append_query_results([Vec::<activity_training_analyses::Model>::new()])
         .append_query_results([vec![saved_activity()]])
         .append_query_results([vec![fixtures::training_analysis()]])
-        .append_query_results([vec![state.clone()]]) // fitness dirty read
-        .append_query_results([vec![state]]) // fitness dirty write
         .append_query_results([vec![fixtures::heatmap_projection()]])
-        // efforts, old analytics, fitness requirement, segment change, segment requirement,
+        // efforts, old analytics, atomic fitness invalidation/requirement, segment change/requirement,
         // import status; nested transactions use savepoints rather than these exec results.
-        .append_exec_results((0..6).map(|_| success()));
+        .append_exec_results((0..7).map(|_| success()));
     match history_write {
         Err(error) => mock.append_exec_errors([error]),
         Ok(rows_affected) => mock.append_exec_results([MockExecResult {

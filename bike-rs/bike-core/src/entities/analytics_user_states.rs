@@ -4,6 +4,9 @@ use sea_orm::entity::prelude::*;
 use sea_orm::QueryFilter;
 use sea_orm::{ConnectionTrait, DbErr, Set};
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "analytics_user_states")]
 pub struct Model {
@@ -109,26 +112,41 @@ impl Model {
         dirty_from_day: NaiveDate,
         changed_at: DateTime<Utc>,
     ) -> Result<(), DbErr> {
-        if let Some(model) = analytics_user_states::Model::for_user(db, user_id).await? {
-            let next_dirty_from_day = model
-                .fitness_dirty_from_day
-                .map(|existing| existing.min(dirty_from_day))
-                .unwrap_or(dirty_from_day);
-            let mut active_model: analytics_user_states::ActiveModel = model.into();
-            active_model.last_activity_change_at = Set(changed_at);
-            active_model.fitness_dirty_from_day = Set(Some(next_dirty_from_day));
-            active_model.update(db).await?;
-        } else {
-            analytics_user_states::ActiveModel {
-                user_id: Set(user_id),
-                last_activity_change_at: Set(changed_at),
-                fitness_dirty_from_day: Set(Some(dirty_from_day)),
-                ..Default::default()
-            }
-            .insert(db)
-            .await?;
-        }
-
+        use sea_orm::sea_query::{Expr, Func, OnConflict};
+        // Merge against the row at write time, including concurrent first inserts.
+        // A fresh write timestamp fences rebuilds even if the source time is older.
+        Entity::insert(ActiveModel {
+            user_id: Set(user_id),
+            last_activity_change_at: Set(changed_at),
+            fitness_dirty_from_day: Set(Some(dirty_from_day)),
+            updated_at: Set(Utc::now()),
+            ..Default::default()
+        })
+        .on_conflict(
+            OnConflict::column(Column::UserId)
+                .value(
+                    Column::FitnessDirtyFromDay,
+                    Func::least([
+                        Func::coalesce([
+                            Expr::col((Entity, Column::FitnessDirtyFromDay)),
+                            Expr::value(dirty_from_day),
+                        ])
+                        .into(),
+                        Expr::value(dirty_from_day),
+                    ]),
+                )
+                .value(
+                    Column::LastActivityChangeAt,
+                    Func::greatest([
+                        Expr::col((Entity, Column::LastActivityChangeAt)),
+                        Expr::value(changed_at),
+                    ]),
+                )
+                .update_column(Column::UpdatedAt)
+                .to_owned(),
+        )
+        .exec_without_returning(db)
+        .await?;
         Ok(())
     }
 }
