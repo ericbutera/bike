@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 repo="$PWD"
 while IFS= read -r project; do
   id="$(jq -r .id <<<"$project")"
-  other_crates="$(jq -r --arg id "$id" '[.[] | select(.language == "Rust" and .id != $id) | .source | split("/")[-1]] + ["migration"] | join("|")' coverage-projects.json)"
+  other_crates="$(jq -r --arg id "$id" '[.[] | select(.language == "Rust" and .id != $id) | .source | split("/")[-1]] + ["migration", "workflow-test-support"] | join("|")' coverage-projects.json)"
   output="$repo/.artifacts/coverage/$id"
   rm -rf -- "$output"
   mkdir -p "$output"

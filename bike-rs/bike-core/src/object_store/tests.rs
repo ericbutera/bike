@@ -1,0 +1,173 @@
+use super::*;
+use crate::test_support;
+use ::object_store::{ObjectStoreExt, PutPayload};
+
+#[tokio::test]
+async fn repeated_and_concurrent_writes_return_one_immutable_reference() {
+    let (store, backend) = test_support::object_storage(ObjectOwner::BikeTasks);
+    let prefix = "bike/tasks/7/reprocess/42/source";
+    let bytes = b"exact original input\0\xff";
+    let (first, second) = tokio::join!(store.write(prefix, bytes), store.write(prefix, bytes));
+    let first = first.unwrap();
+    assert_eq!(first, second.unwrap());
+    assert_eq!(first, store.write(prefix, bytes).await.unwrap());
+    let restarted = ObjectStore::new(backend, ObjectOwner::BikeTasks);
+    assert_eq!(restarted.read(&first).await.unwrap(), bytes);
+}
+
+#[tokio::test]
+async fn corrupt_missing_or_misreported_objects_cannot_be_reused() {
+    let (store, backend) = test_support::object_storage(ObjectOwner::BikeTasks);
+    let object = store
+        .write("bike/tasks/7/source", b"original")
+        .await
+        .unwrap();
+    let wrong_size = ObjectRef {
+        bytes: object.bytes + 1,
+        ..object.clone()
+    };
+    assert!(store.read(&wrong_size).await.is_err());
+    let key = ObjectPath::parse(&object.path).unwrap();
+    backend
+        .put(&key, PutPayload::from_static(b"corrupt"))
+        .await
+        .unwrap();
+    assert!(store.read(&object).await.is_err());
+    assert!(store
+        .write("bike/tasks/7/source", b"original")
+        .await
+        .is_err());
+    backend.delete(&key).await.unwrap();
+    assert!(store.read(&object).await.is_err());
+}
+
+#[tokio::test]
+async fn owners_cannot_read_write_or_remove_each_others_keys() {
+    let (bike, backend) = test_support::object_storage(ObjectOwner::BikeTasks);
+    let strava = ObjectStore::new(backend, ObjectOwner::Strava);
+    let object = strava.write("strava/7/raw", b"provider").await.unwrap();
+    assert!(bike.read(&object).await.is_err());
+    assert!(bike.remove(&object.path).await.is_err());
+    let object = bike.write("bike/tasks/7/raw", b"upload").await.unwrap();
+    assert!(strava.read(&object).await.is_err());
+    for key in [
+        "",
+        "/bike/tasks/7",
+        "../bike/tasks/7",
+        "bike/tasks/../strava",
+        "bike/tasks-other/7",
+        "strava/7",
+    ] {
+        assert!(bike.write(key, b"blocked").await.is_err(), "{key}");
+    }
+}
+
+#[tokio::test]
+async fn references_keep_the_existing_wire_format_and_round_trip_json() {
+    let (store, _) = test_support::object_storage(ObjectOwner::Strava);
+    let value = serde_json::json!({"activity_id": 42});
+    let object = store.transform("strava/7/parsed", &value).await.unwrap();
+    assert_eq!(
+        store.read_json::<serde_json::Value>(&object).await.unwrap(),
+        value
+    );
+    let serialized =
+        serde_json::json!({ "path": object.path, "sha256": object.sha256, "bytes": object.bytes });
+    assert_eq!(serde_json::to_value(&object).unwrap(), serialized);
+    assert_eq!(
+        serde_json::from_value::<ObjectRef>(serialized).unwrap(),
+        object
+    );
+}
+
+#[tokio::test]
+async fn named_references_are_idempotent_and_cannot_change_the_retained_source() {
+    let (store, _) = test_support::object_storage(ObjectOwner::BikeTasks);
+    let key = "bike/tasks/7/import-18";
+    assert!(store.reference(key).await.unwrap().is_none());
+    let first = store.write(key, b"source one").await.unwrap();
+    store.save_reference(key, &first).await.unwrap();
+    store.save_reference(key, &first).await.unwrap();
+    let different = store.write(key, b"source two").await.unwrap();
+    assert!(store.save_reference(key, &different).await.is_err());
+    assert_eq!(store.reference(key).await.unwrap(), Some(first));
+}
+
+#[tokio::test]
+async fn concurrent_named_descriptors_return_the_winning_value() {
+    let (store, _) = test_support::object_storage(ObjectOwner::BikeTasks);
+    let key = "bike/tasks/7/import-18/manifest.json";
+    let first = serde_json::json!({"revision": 1});
+    let second = serde_json::json!({"revision": 2});
+    let (first, second) = tokio::join!(
+        store.create_json(key, &first),
+        store.create_json(key, &second)
+    );
+    assert_eq!(first.unwrap(), second.unwrap());
+}
+
+#[tokio::test]
+async fn explicit_domain_deletion_is_idempotent() {
+    let (store, _) = test_support::object_storage(ObjectOwner::BikeTasks);
+    let object = store
+        .write("bike/tasks/7/source", b"original")
+        .await
+        .unwrap();
+    store.remove(&object.path).await.unwrap();
+    store.remove(&object.path).await.unwrap();
+    assert!(store.read(&object).await.is_err());
+}
+
+#[test]
+fn storage_service_uses_its_own_owner_and_retention_configuration() {
+    use retention::{ObjectLifetime, RetentionRecord};
+    let (store, _) = test_support::object_storage(ObjectOwner::BikeTasks);
+    let hour = chrono::TimeDelta::hours(1);
+    let store =
+        store.with_retention_policy(RetentionPolicy::new(hour, hour * 2, hour * 3).unwrap());
+    let at = test_support::timestamp();
+    let record = RetentionRecord {
+        object: ObjectRef {
+            path: "bike/tasks/7/source/hash.json".into(),
+            sha256: "hash".into(),
+            bytes: 12,
+        },
+        owner: ObjectOwner::BikeTasks,
+        lifetime: ObjectLifetime::Unaccepted {
+            last_attempt_at: at,
+        },
+    };
+    let inventory = ReferenceInventory {
+        complete: true,
+        ..Default::default()
+    };
+    assert_eq!(
+        store.retention_decision(&record, at + hour, inventory),
+        RetentionDecision::Candidate
+    );
+    assert_eq!(
+        store.retention_decision(&record, at + hour, ReferenceInventory::default()),
+        RetentionDecision::InventoryUnavailable
+    );
+    let foreign = RetentionRecord {
+        owner: ObjectOwner::Strava,
+        ..record
+    };
+    assert_eq!(
+        store.retention_decision(&foreign, at + hour, inventory),
+        RetentionDecision::ForeignOwner
+    );
+}
+
+#[tokio::test]
+async fn filesystem_adapter_creates_its_root_and_survives_a_new_instance() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().join("objects");
+    let store = ObjectStore::filesystem(&root, ObjectOwner::BikeTasks);
+    let object = store
+        .write("bike/tasks/7/source", b"retained")
+        .await
+        .unwrap();
+    let restarted = ObjectStore::filesystem(root, ObjectOwner::BikeTasks);
+    assert_eq!(restarted.read(&object).await.unwrap(), b"retained");
+}

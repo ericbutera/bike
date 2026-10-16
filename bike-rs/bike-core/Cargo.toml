@@ -15,6 +15,7 @@ test-fixtures = []
 
 [dependencies]
 async-trait = { workspace = true }
+object_store = { version = "0.14.2", default-features = false, features = ["fs"] }
 cron = "0.12"
 handlebars = "5.1"
 jsonwebtoken = "9.3"

@@ -117,6 +117,18 @@ run = "bash scripts/strava-sdk.sh check"
 description = "Run isolated Strava workflow unit tests with mocked dependencies"
 run = "mise --cd bike-rs run test:strava:unit"
 
+[tasks."test:tasks:unit"]
+description = "Verify native Bike coordination and shared object storage with isolated fixtures"
+run = "mise --cd bike-rs run test:tasks:unit"
+
+[tasks."test:tasks:workflows"]
+description = "Test named Bike workflows, shared import Activity, and output debounce"
+run = "mise --cd bike-rs run test:tasks:workflows"
+
+[tasks."test:storage"]
+description = "Verify shared object storage, retention, and legacy Strava compatibility"
+run = "mise --cd bike-rs run test:storage"
+
 [tasks."pins:sync"]
 description = "Regenerate package metadata and the native CI database image from mise pins"
 run = ['npm --prefix bike-ui pkg set "packageManager=pnpm@${PNPM_VERSION?}"', "mise --cd bike-ui exec -- pnpm install --lockfile-only", "mise install aqua:mikefarah/yq", "mise exec aqua:mikefarah/yq -- yq --inplace '(.services[] | select(.name == \"postgres\").image) = strenv(BIKE_POSTGRES_IMAGE) | (.services[] | select(.name == \"docker\").image) = strenv(DOCKER_DIND_IMAGE)' .woodpecker/bike.yaml", "mise exec aqua:mikefarah/yq -- yq --inplace '(.services[] | select(.name == \"docker\").image) = strenv(DOCKER_DIND_IMAGE)' .woodpecker/e2e.yaml"]

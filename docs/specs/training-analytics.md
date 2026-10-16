@@ -25,6 +25,12 @@ The analysis cache stores:
 
 The cache is rebuilt when activity data changes. Import, reprocess, delete, and segment-regeneration paths must keep this derived state consistent with the source activity records.
 
+- Recalculation follows the shared [priority and debounce contract](project-overview.md#derived-work-priority-and-debounce).
+- Coalesce affected users/resources across uploads and provider sync; use incremental
+  dirty ranges. Track pending derived output separately from source ingestion.
+- Fitness/training reads show current cached results or visible refresh state;
+  they must not launch synchronous rebuilds that bypass coalescing.
+
 ## XC Analytics
 
 XC analysis is not segment-specific in the current product. The system should infer useful XC progress from rides automatically, especially long endurance rides and climbing-endurance rides.

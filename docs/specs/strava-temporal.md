@@ -204,7 +204,27 @@ All processors below are separate [native activity methods](../../bike-rs/strava
 Inputs/outputs are [typed domain values](../../bike-rs/bike-core/src/strava/native/types.rs).
 Object references point to retained source files; provider bodies are not carried in workflow history.
 
+### Derived-work conversion target
+
+- The [worker conversion plan](../worker-conversion-plan.md) replaces eager
+  per-activity aggregate rebuilds with the shared [priority/debounce contract](project-overview.md#derived-work-priority-and-debounce).
+- Strava retains provider orchestration and reports typed domain change intents;
+  Bike tasks own the derived-work coordinator through a neutral scheduling interface.
+- During bulk sync/backfill, child source ingestion does not await a full user
+  rebuild per item. Track derived target revisions separately; collection
+  completion/offset advancement waits for final required publication.
+- Preserve existing histories through compatible workflow evolution. The current
+  implementation still rebuilds fitness/segments per child until the corresponding
+  task conversion routes those producers; the table above describes the existing path.
+
 ## Event and source retention
+
+- After the Bike task conversions finish, adopt the
+  [shared object-storage service](project-overview.md#shared-object-storage) for
+  Strava storage composition, reference/pin inventory, and scheduled retention.
+  Keep existing keys, captures, encryption, and retained-history replay compatible;
+  provider workflows remain separately owned. The follow-up is tracked in
+  [the conversion backlog](../TODO.md#worker-conversion).
 
 - Temporal keeps closed workflow histories for seven days. Open executions,
   continue-as-new chains, and pending handoffs remain protected regardless of age.
