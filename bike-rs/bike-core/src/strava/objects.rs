@@ -1,16 +1,9 @@
 //! Immutable provider responses and transforms on Bike's existing upload volume.
+pub use crate::object_store::{checksum, ObjectRef};
+use crate::object_store::{ObjectOwner, ObjectStore as ByteStore};
 use crate::workflow_error::WorkflowError;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-use std::path::{Path, PathBuf};
-use tokio::fs;
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ObjectRef {
-    pub path: String,
-    pub sha256: String,
-    pub bytes: usize,
-}
+use std::path::Path;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ResponseObject {
@@ -34,66 +27,33 @@ struct Capture {
 
 #[derive(Clone)]
 pub struct ObjectStore {
-    root: PathBuf,
+    bytes: ByteStore,
 }
 
 impl ObjectStore {
     pub fn new(root: impl AsRef<Path>) -> Self {
         Self {
-            root: root.as_ref().to_owned(),
+            bytes: ByteStore::filesystem(root, ObjectOwner::Strava),
         }
     }
 
     pub async fn read(&self, object: &ObjectRef) -> Result<Vec<u8>, WorkflowError> {
-        let path = self.path(&object.path)?;
-        let bytes = fs::read(path).await.map_err(|error| {
-            WorkflowError::internal(format!(
-                "Saved Strava object {} is unavailable: {error}",
-                object.path
-            ))
-        })?;
-        if checksum(&bytes) != object.sha256 || bytes.len() != object.bytes {
-            return Err(WorkflowError::internal(format!(
-                "Saved Strava object {} failed checksum verification",
-                object.path
-            )));
-        }
-        Ok(bytes)
+        self.bytes.read(object).await
     }
 
     pub async fn read_json<T: serde::de::DeserializeOwned>(
         &self,
         object: &ObjectRef,
     ) -> Result<T, WorkflowError> {
-        serde_json::from_slice(&self.read(object).await?).map_err(json_error)
+        self.bytes.read_json(object).await
     }
 
     pub async fn write(&self, prefix: &str, bytes: &[u8]) -> Result<ObjectRef, WorkflowError> {
-        let hash = checksum(bytes);
-        let relative = format!("{prefix}/{hash}.json");
-        let path = self.path(&relative)?;
-        let object = ObjectRef {
-            path: relative,
-            sha256: hash,
-            bytes: bytes.len(),
-        };
-        if fs::try_exists(&path).await.map_err(io_error)? {
-            self.read(&object).await?;
-            return Ok(object);
-        }
-        publish(&path, bytes).await?;
-        Ok(object)
+        self.bytes.write(prefix, bytes).await
     }
 
     pub async fn reference(&self, key: &str) -> Result<Option<ObjectRef>, WorkflowError> {
-        let bytes = match fs::read(self.path(&format!("{key}/reference.json"))?).await {
-            Ok(bytes) => bytes,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(error) => return Err(io_error(error)),
-        };
-        let reference: ObjectRef = serde_json::from_slice(&bytes).map_err(json_error)?;
-        self.read(&reference).await?;
-        Ok(Some(reference))
+        self.bytes.reference(key).await
     }
 
     pub async fn save_reference(
@@ -101,41 +61,22 @@ impl ObjectStore {
         key: &str,
         reference: &ObjectRef,
     ) -> Result<(), WorkflowError> {
-        self.read(reference).await?;
-        publish(
-            &self.path(&format!("{key}/reference.json"))?,
-            &serde_json::to_vec(reference).map_err(json_error)?,
-        )
-        .await?;
-        let saved = self
-            .reference(key)
-            .await?
-            .ok_or_else(|| WorkflowError::internal("Strava reference was not retained"))?;
-        if saved.sha256 != reference.sha256 {
-            return Err(WorkflowError::conflict(
-                "Saved Strava source reference is immutable",
-            ));
-        }
-        Ok(())
+        self.bytes.save_reference(key, reference).await
     }
 
     pub async fn response(&self, key: &str) -> Result<Option<ResponseObject>, WorkflowError> {
-        let path = self.path(&format!("{key}/manifest.json"))?;
-        let bytes = match fs::read(path).await {
-            Ok(bytes) => bytes,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                let capture = match fs::read(self.path(&format!("{key}/capture.json"))?).await {
-                    Ok(bytes) => serde_json::from_slice(&bytes).map_err(json_error)?,
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-                    Err(error) => return Err(io_error(error)),
-                };
-                return self.materialize(key, capture).await.map(Some);
-            }
-            Err(error) => return Err(io_error(error)),
+        if let Some(response) = self
+            .bytes
+            .load_json::<ResponseObject>(&format!("{key}/manifest.json"))
+            .await?
+        {
+            self.read(&response.body).await?;
+            return Ok(Some(response));
+        }
+        let Some(capture) = self.bytes.load_json(&format!("{key}/capture.json")).await? else {
+            return Ok(None);
         };
-        let response: ResponseObject = serde_json::from_slice(&bytes).map_err(json_error)?;
-        self.read(&response.body).await?;
-        Ok(Some(response))
+        self.materialize(key, capture).await.map(Some)
     }
 
     pub async fn save_response(
@@ -179,11 +120,10 @@ impl ObjectStore {
             body_base64: base64::engine::general_purpose::STANDARD.encode(bytes),
             encrypted,
         };
-        publish(
-            &self.path(&format!("{key}/capture.json"))?,
-            &serde_json::to_vec(&capture).map_err(json_error)?,
-        )
-        .await?;
+        let capture = self
+            .bytes
+            .create_json(&format!("{key}/capture.json"), &capture)
+            .await?;
         self.materialize(key, capture).await
     }
 
@@ -217,11 +157,11 @@ impl ObjectStore {
             observed_at: capture.observed_at,
             encrypted: capture.encrypted,
         };
-        publish(
-            &self.path(&format!("{key}/manifest.json"))?,
-            &serde_json::to_vec(&response).map_err(json_error)?,
-        )
-        .await?;
+        let response: ResponseObject = self
+            .bytes
+            .create_json(&format!("{key}/manifest.json"), &response)
+            .await?;
+        self.read(&response.body).await?;
         Ok(response)
     }
 
@@ -230,72 +170,46 @@ impl ObjectStore {
         prefix: &str,
         value: &T,
     ) -> Result<ObjectRef, WorkflowError> {
-        self.write(prefix, &serde_json::to_vec(value).map_err(json_error)?)
-            .await
+        self.bytes.transform(prefix, value).await
     }
 
-    pub(crate) fn path(&self, relative: &str) -> Result<PathBuf, WorkflowError> {
-        if relative.is_empty()
-            || Path::new(relative)
-                .components()
-                .any(|part| !matches!(part, std::path::Component::Normal(_)))
-        {
-            return Err(WorkflowError::bad_request("Invalid Strava object path"));
-        }
-        Ok(self.root.join(relative))
+    pub(crate) async fn remove(&self, key: &str) -> Result<(), WorkflowError> {
+        self.bytes.remove(key).await
     }
-}
-
-pub fn checksum(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
-}
-
-async fn publish(path: &Path, bytes: &[u8]) -> Result<(), WorkflowError> {
-    fs::create_dir_all(
-        path.parent()
-            .ok_or_else(|| WorkflowError::internal("Missing object directory"))?,
-    )
-    .await
-    .map_err(io_error)?;
-    let temporary = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
-    let result = async {
-        use tokio::io::AsyncWriteExt;
-        let mut file = fs::File::create(&temporary).await.map_err(io_error)?;
-        file.write_all(bytes).await.map_err(io_error)?;
-        file.sync_all().await.map_err(io_error)?;
-        // Linking publishes a complete file without replacing an existing object.
-        match fs::hard_link(&temporary, path).await {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
-            Err(error) => Err(io_error(error)),
-        }
-    }
-    .await;
-    let cleanup = fs::remove_file(&temporary).await;
-    result?;
-    cleanup.map_err(io_error)?;
-    fs::File::open(
-        path.parent()
-            .ok_or_else(|| WorkflowError::internal("Missing object directory"))?,
-    )
-    .await
-    .map_err(io_error)?
-    .sync_all()
-    .await
-    .map_err(io_error)?;
-    Ok(())
-}
-
-fn io_error(error: std::io::Error) -> WorkflowError {
-    WorkflowError::internal(error.to_string())
-}
-fn json_error(error: serde_json::Error) -> WorkflowError {
-    WorkflowError::internal(error.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::fs;
+
+    #[tokio::test]
+    async fn concurrent_captures_return_the_same_retained_response() {
+        use ::object_store::throttle::{ThrottleConfig, ThrottledStore};
+        use std::{sync::Arc, time::Duration};
+        let (_, backend) = crate::test_support::object_storage(ObjectOwner::Strava);
+        // Yield on publication so both calls observe a missing capture first.
+        let backend = ThrottledStore::new(
+            backend,
+            ThrottleConfig {
+                wait_put_per_call: Duration::from_millis(1),
+                ..Default::default()
+            },
+        );
+        let bytes = ByteStore::new(Arc::new(backend), ObjectOwner::Strava);
+        let store = ObjectStore { bytes };
+        let key = "strava/7/raw/event-1/activity";
+        let (first, second) = tokio::join!(
+            store.save_response(key, 200, Default::default(), b"first response"),
+            store.save_response(key, 201, Default::default(), b"second response"),
+        );
+        let first = first.unwrap();
+        let second = second.unwrap();
+        assert_eq!(first.body, second.body);
+        assert_eq!(first.status, second.status);
+        assert_eq!(first.observed_at, second.observed_at);
+        assert_eq!(store.response(key).await.unwrap().unwrap().body, first.body);
+    }
     #[tokio::test]
     async fn retains_exact_bytes_and_blocks_corrupt_sources() {
         let dir = tempfile::tempdir().unwrap();

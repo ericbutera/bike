@@ -5,6 +5,8 @@ members = [
   "worker",
   "migration",
   "strava-temporal",
+  "bike-temporal",
+  "workflow-test-support",
 ]
 resolver = "2"
 exclude = ["strava-sdk"]

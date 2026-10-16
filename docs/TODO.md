@@ -1,41 +1,65 @@
 # Bike TODO
 
+## Worker conversion
+
+- Convert SQL worker tasks one at a time using the
+  [worker conversion plan](worker-conversion-plan.md). Its inventory owns
+  per-task status and verification; retire legacy email, address repeated
+  recalculation in the first conversion, and stop for user review after each task.
+- First conversion: `reprocess_activity_import`. PR #61 establishes native
+  coordination and shared object-retention policy. Complete its domain adapters,
+  producer/batch boundary, retention inventory/schedule, and deployed verification
+  before marking the conversion ready; do not introduce a SQL scheduling bridge.
+- Review the twelve named workflow graphs from
+  [the workflow index](../bike-rs/bike-temporal/src/workflows.rs) through shared
+  steps, typed child calls, and domain-specific Activity adapters. Keep this
+  graph review separate from each task's production cutover/verification gate.
+- [ ] After the named-workflow proof of concept, revisit debounce windows and
+      backlog aging with measured mixed new-activity/deletion bursts. Preserve
+      native high priority for new activities and lower priority for deletion;
+      do not build a separate priority scheduler.
+- [ ] After the Bike task conversions finish, migrate Strava's remaining storage
+      composition, source/reference pins, retention inventory, and scheduled
+      cleanup onto the shared object-storage service. Preserve retained workflow
+      references, raw captures, encryption, and separate worker/queue ownership;
+      reuse central storage/TTL tests and verify retained-history replay.
+
 ## Model boundaries and fixtures
 
 - [x] Declare SeaORM insert defaults for the existing
-  account, activity/import, analytics, segment, preference, flag, and task models.
-  Preserve explicit values and append the missing task defaults migration.
+      account, activity/import, analytics, segment, preference, flag, and task models.
+      Preserve explicit values and append the missing task defaults migration.
 - [x] Share the ordinary SeaORM update hook beside each owning model; remove the
-  central seed registry and keep queue claim identities explicit.
+      central seed registry and keep queue claim identities explicit.
 - [x] Reuse shared task, preference, and feature-flag insert fixtures with typed
-  struct-update overrides and one generic insert helper. Keep migration files
-  focused on schema changes without the new migration unit-test block.
+      struct-update overrides and one generic insert helper. Keep migration files
+      focused on schema changes without the new migration unit-test block.
 - [x] Apply shared insert/update fixture helpers throughout Rust unit tests;
-  verify partial-update and explicit-clear behavior and affected test modules.
+      verify partial-update and explicit-clear behavior and affected test modules.
 - [x] Verify in Docker on 2026-10-15: 220 affected unit tests and required Rust
-  formatting/Clippy hooks pass; two existing large real-archive tests stay ignored.
+      formatting/Clippy hooks pass; two existing large real-archive tests stay ignored.
 - [ ] Verify full workspace and changed-line coverage CI for the insert-defaults PR.
 
 - [x] Audit runtime query builders and repeated test-model construction; record
-  scope, counts, and migration acceptance in [the spec](specs/model-boundaries.md).
+      scope, counts, and migration acceptance in [the spec](specs/model-boundaries.md).
 - [x] Share import/activity/account/connection fixtures through test-only core
-  support; retain scenario overrides and generated-ID insert helpers.
+      support; retain scenario overrides and generated-ID insert helpers.
 - [x] Require simple call sites, entity-owned queries, fixture factories, and
-  shared test helpers in `AGENTS.md` and the model/fixture specification.
+      shared test helpers in `AGENTS.md` and the model/fixture specification.
 - [x] Move the audited activity/import controller queries onto owning models;
-  preserve owned pagination, import hydration, source selection, and list limits.
+      preserve owned pagination, import hydration, source selection, and list limits.
 - [x] Move segment access, dedupe, leaderboard reads, and deletion persistence
-  onto entities and cohesive domain operations.
+      onto entities and cohesive domain operations.
 - [x] Consolidate preferences, fitness, report, and goal queries on their owners.
 - [x] Move import recovery/lifecycle, batch, and worker persistence queries onto
-  owning entities; preserve cancellation, retry, locks, and revision fences.
+      owning entities; preserve cancellation, retry, locks, and revision fences.
 - [x] Move diagnostic/retention, heatmap, auth, feature-flag, and Strava query
-  construction behind owning methods; preserve transaction and privacy policy.
+      construction behind owning methods; preserve transaction and privacy policy.
 - [x] Consolidate remaining repeated model families from the fixture audit,
-  excluding intentional partial updates and scenario-specific overrides.
+      excluding intentional partial updates and scenario-specific overrides.
 
 - [x] Complete mutation boundaries for the 24 constructor sites and conversion-based
-  writes; preserve the baseline and acceptance evidence in the model-boundary spec.
+      writes; preserve the baseline and acceptance evidence in the model-boundary spec.
 
 ## Strava
 

@@ -5,10 +5,7 @@
     "language": "Rust",
     "source": "bike-rs/api",
     "include": "bike-rs/api/**/*.rs",
-    "exclude": [
-      "*/tests/*",
-      "*_tests.rs"
-    ]
+    "exclude": ["*/tests/*", "*_tests.rs"]
   },
   {
     "id": "worker",
@@ -16,10 +13,7 @@
     "language": "Rust",
     "source": "bike-rs/worker",
     "include": "bike-rs/worker/**/*.rs",
-    "exclude": [
-      "*/tests/*",
-      "*_tests.rs"
-    ]
+    "exclude": ["*/tests/*", "*_tests.rs"]
   },
   {
     "id": "strava-temporal",
@@ -35,10 +29,15 @@
     "language": "Rust",
     "source": "bike-rs/bike-core",
     "include": "bike-rs/bike-core/**/*.rs",
-    "exclude": [
-      "*/tests/*",
-      "*_tests.rs"
-    ]
+    "exclude": ["*/tests/*", "*_tests.rs"]
+  },
+  {
+    "id": "bike-temporal",
+    "name": "Bike Temporal workflows",
+    "language": "Rust",
+    "source": "bike-rs/bike-temporal",
+    "include": "bike-rs/bike-temporal/**/*.rs",
+    "exclude": ["*/tests/*", "*_tests.rs"]
   },
   {
     "id": "bike-ui",
@@ -62,10 +61,6 @@
     "language": "Go",
     "source": "map-renderer",
     "include": "map-renderer/**/*.go",
-    "exclude": [
-      "*_test.go",
-      "*.pb.go",
-      "*/gen/*"
-    ]
+    "exclude": ["*_test.go", "*.pb.go", "*/gen/*"]
   }
 ]

@@ -3,6 +3,15 @@
 //! Override scenario fields with struct update syntax. Use `new_activity_import`
 //! for database inserts so unrelated seeds never reuse the fixture primary key.
 mod accounts;
+mod storage;
+pub use storage::object_storage;
+mod tasks;
+pub use tasks::{
+    archive_input, batch_command, batch_input, batch_manifest, fitness_change, heatmap_change,
+    import_command, import_entry, import_result, page_request, prepared_batch, reprocess_entry,
+    segment_change, segment_efforts_input, segment_entry, segment_result, training_entry,
+    training_result,
+};
 mod analytics;
 mod defaults;
 pub use analytics::{

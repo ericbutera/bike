@@ -105,6 +105,28 @@ run = [
   "cargo test -p strava-temporal --locked --lib",
 ]
 
+[tasks."test:tasks:unit"]
+description = "Test native Bike timers, replay, priority, retention, and shared bytes"
+run = [
+  "cargo test -p bike-core --locked --lib object_store",
+  "cargo test -p bike-core --locked --lib strava::objects",
+  "cargo test -p bike-core --locked --lib strava_native_unit",
+  "mise run test:tasks:workflows",
+  "cargo test -p strava-temporal --locked --lib",
+]
+
+[tasks."test:tasks:workflows"]
+description = "Test named Bike workflows and native output handoffs with isolated mocks"
+run = "cargo test -p bike-temporal --locked --lib"
+
+[tasks."test:storage"]
+description = "Test shared storage and retention once, with legacy Strava compatibility"
+run = [
+  "cargo test -p bike-core --locked --lib object_store",
+  "cargo test -p bike-core --locked --lib strava::objects",
+  "cargo test -p bike-core --locked --lib strava::transport",
+]
+
 [tasks.coverage]
 description = "Run Rust tests once and generate HTML, LCOV, and JSON coverage reports"
 env = { RUSTFLAGS = "-D warnings", CARGO_LLVM_COV_DENY_WARNINGS = "1" }
@@ -137,7 +159,7 @@ run = ["mise install jq", "mise exec jq -- bash ../scripts/coverage-rust-report.
 
 [tasks.fmt]
 description = "Format the Rust workspace"
-run = "cargo fmt --package bike-core --package api --package worker --package migration --package strava-temporal"
+run = "cargo fmt --package bike-core --package api --package worker --package migration --package strava-temporal --package bike-temporal --package workflow-test-support"
 
 [tasks."test:heatmaps:postgres"]
 description = "Run heatmap regressions against a disposable PostgreSQL database"
@@ -149,7 +171,7 @@ cargo test -p bike-core --test heatmaps_postgres -- --ignored
 [tasks."fmt:check"]
 description = "Check Rust formatting without writing changes"
 run = [
-  "cargo fmt --package bike-core --package api --package worker --package migration --package strava-temporal --check",
+  "cargo fmt --package bike-core --package api --package worker --package migration --package strava-temporal --package bike-temporal --package workflow-test-support --check",
 ]
 
 [tasks.lint]

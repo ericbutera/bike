@@ -1,0 +1,28 @@
+use super::{batches, steps::imports, ReprocessActivityImport};
+use crate::activities::ImportActivities;
+use bike_core::bike_tasks::{BatchInput, BatchResult, ReprocessScope};
+use temporalio_macros::{workflow, workflow_methods};
+use temporalio_sdk::{WorkflowContext, WorkflowResult};
+
+#[workflow]
+#[derive(Default)]
+pub struct ReprocessUserActivityImports;
+
+#[workflow_methods]
+impl ReprocessUserActivityImports {
+    #[run(name = "reprocess_user_activity_imports")]
+    pub async fn run(
+        ctx: &mut WorkflowContext<Self>,
+        mut input: BatchInput,
+    ) -> WorkflowResult<BatchResult> {
+        imports::prepare_reprocessing(ctx, &mut input, ReprocessScope::UserImports).await?;
+        let step = batches::run_children(
+            ctx,
+            &mut input,
+            ImportActivities::reprocess_import_page,
+            || ReprocessActivityImport::run,
+        )
+        .await?;
+        batches::finish_or_continue(ctx, input, step)
+    }
+}

@@ -2,3 +2,9 @@ history.cacheSizeBasedLimit:
   - value: true
 history.hostLevelCacheMaxSizeBytes:
   - value: 134217728
+# Scope native task matching to Bike's dedicated queue.
+matching.enableFairness:
+  - value: true
+    constraints:
+      namespace: bike
+      taskQueueName: bike-tasks

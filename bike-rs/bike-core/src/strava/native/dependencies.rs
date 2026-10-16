@@ -39,11 +39,7 @@ impl ActivityStorage for ObjectStore {
     }
 
     async fn remove(&self, path: &str) -> Result<(), WorkflowError> {
-        match tokio::fs::remove_file(self.path(path)?).await {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(error) => Err(WorkflowError::internal(error.to_string())),
-        }
+        ObjectStore::remove(self, path).await
     }
 }
 

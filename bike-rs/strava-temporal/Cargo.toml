@@ -25,6 +25,7 @@ tonic = { workspace = true }
 prometheus = { workspace = true }
 
 [dev-dependencies]
+workflow-test-support = { path = "../workflow-test-support" }
 bike-core = { path = "../bike-core", features = ["test-fixtures"] }
 opentelemetry = { workspace = true }
 opentelemetry_sdk = { workspace = true }

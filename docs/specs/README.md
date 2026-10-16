@@ -6,6 +6,7 @@ contracts. Code implements these specifications; tests verify that implementatio
 Update the owning spec in the same change as any intended behavior change.
 
 - [Strava integration](strava-temporal.md): supported webhooks, native processors, typed DAG steps, and job history.
+- [Background execution](project-overview.md#background-execution): filesystem references/TTLs, separate Strava/Bike workflows, native debounce/priority, and idempotency.
 
 ## Spec Rules
 
