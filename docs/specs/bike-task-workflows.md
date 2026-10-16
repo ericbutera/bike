@@ -41,6 +41,10 @@
   original outcome. Concrete adapters must enforce this and reject stale writes.
 - Each workflow declares its steps explicitly. Any later workflow may call the
   same Activity or request these derived workflows in its own order.
+- Activity options use named constants and factories from the shared
+  [Temporal execution policy](temporal-execution-policy.md), including the
+  import-attempt recording and domain effects. Keep SDK policy construction out
+  of orchestration steps.
 
 ## Review from the workflows
 
@@ -117,8 +121,8 @@ flowchart LR
 - Continue-As-New only after a settled page, after 16 pages (at most 256 entries
   per run), or when the SDK suggests continuation. Carry the retained manifest
   and settled count; no live children cross the boundary.
-- Archive manifest preparation has a one-hour Activity execution timeout and a
-  30-second heartbeat timeout. Its domain implementation must stream through
+- Archive manifest preparation uses the shared manifest execution timeout and
+  heartbeat timeout. Its domain implementation must stream through
   shared storage and resume safely from older heartbeat details. References
   remain retained across worker loss and continuation; do not delete source bytes
   at parent completion. The shared storage lifetime/reference policy owns cleanup.
@@ -128,6 +132,59 @@ flowchart LR
 
 ## Handoff and completion
 
+- API submission uses the native client directly. Return a typed
+  `JobReference` after Temporal acknowledges acceptance; recording is owned by
+  the workflow's Activities, not the API request transaction.
+- [`TaskSubmissionService`](../../bike-rs/bike-temporal/src/submission.rs) exposes
+  named `process_activity_import` and `reprocess_activity_import` operations.
+  Callers pass the domain command and one captured `TaskCause`. The service has
+  no database dependency, receipt table, admission gate, or cancellation
+  compensation for failed recording.
+- Public job identity is Temporal's client-selected **Workflow ID**. Retain
+  namespace and the acknowledged **Run ID** for observability; a later reset or
+  Continue-As-New can change the run without changing the business command.
+- Root starts and shared child helpers derive IDs from task name, affected user,
+  and retry-stable command ID. A command ID identifies one immutable operation;
+  every legitimate update, delete, or new reprocessing request needs its own ID.
+- Root submission uses native `UseExisting` conflict and `RejectDuplicate` reuse
+  policies. A running duplicate returns the existing run; an already-started
+  response for retained closed history returns its native reference. Retrying
+  HTTP submission does not automatically restart a failed command. Recovery uses
+  Temporal's existing execution or an explicitly new domain command.
+- The original accepted workflow input wins on duplicate submission. Temporal
+  does not compare payloads or replace the original actor/context. Producers must
+  not reuse a command ID for changed work. Domain attempts validate stored command
+  identity on Activity retry and after workflow-history retention expires.
+- Both import workflows call the same `activity_import` Activity. Before parsing
+  or persistence, its repository records the command, owner/import, native
+  workflow/run reference, actor, request/correlation IDs, receive time, and W3C
+  carrier on `activity_import_attempts`. The unique owner/command key returns the
+  same attempt after a lost recording acknowledgement.
+- Native attempt history starts with the audit status `started`, outside the SQL
+  worker's `queued`/`running` claim set and partial indexes. Address it by attempt
+  ID; do not use legacy active-attempt queries or locks to coordinate native work.
+- The Activity passes that attempt ID and typed `ImportExecution` into its domain operation. The operation
+  owns conditional writes and returning the original committed result after lost
+  completion. On success, the same attempt records the resulting Bike activity
+  ID and source completion. A failed completion-record write retries the Activity;
+  the domain operation must return its previous committed outcome.
+- Concrete import operations also append the typed import/reprocess event to
+  [shared activity history](activity-event-history.md) in their domain-write
+  transaction. Include the command's native execution and causal context.
+- Recording failures use the shared native Activity retry policy. Exhausted retries
+  fail the workflow; they do not cancel a successfully accepted start or undo
+  already committed effects. PostgreSQL records domain history, while Temporal
+  owns scheduling, retries, cancellation, and execution status.
+- Temporal workflow-ID deduplication is bounded by retained history. Domain
+  idempotency must remain correct after that history expires. See
+  [Temporal workflow identity](https://docs.temporal.io/workflow-execution/workflowid-runid)
+  and the [money-transfer example](https://learn.temporal.io/getting_started/go/first_program_in_go/).
+- Derived Signal-With-Start handoffs retain their shared resource identities and
+  debounce behavior. Submission of other task types and propagation through
+  children/derived workflows remain producer-cutover work.
+- Unit tests use shared DTO fixtures, mocked repository outcomes, native SDK
+  Activity environments, workflow replay, and fake RPC transport. They do not open
+  SQLite or emulate PostgreSQL commit failures.
 - Review boundary: the API still constructs the SQL-backed `JobQueue` in
   `api/src/storage.rs`; for example, its reprocess endpoint calls
   `state.tasks.reprocess_activity_import`. The Temporal functions in
@@ -137,7 +194,7 @@ flowchart LR
   Capture causal context once at its boundary; controllers should not construct
   Temporal SDK options, transport headers, or repeated logging metadata.
 - Before activation, define shared durable causal metadata for API and non-HTTP
-  producers: command/correlation identity, receipt time, optional request ID,
+  producers: command/correlation identity, receive time, optional request ID,
   initiating actor, affected user, and W3C trace context. Keep authenticated actor
   identity distinct from the owner affected by an administrator's command.
 - Carry that context through workflow starts, Activities, child starts, derived
@@ -148,8 +205,9 @@ flowchart LR
   links in durable history or retained command records; do not replace all causes
   with whichever request arrived last. Keep in-memory workflow state and tracing
   links bounded while preserving the audit references needed for diagnosis.
-- The current Bike command types carry resource/user IDs but lack this causal
-  contract and shared propagation. Existing SQL `PipelineContext` and Strava's
+- Import submission now records this causal contract and carries it into the
+  root workflow and import-attempt record. Other command types and derived/child
+  handoffs still need shared propagation. Existing SQL `PipelineContext` and Strava's
   event/trace handling provide reference behavior, not proof that the Bike native
   handoff already retains it. Require focused propagation/fan-in tests and live
   API-to-workflow trace evidence before a task's producer cutover is verified.

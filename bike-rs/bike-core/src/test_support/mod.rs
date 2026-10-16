@@ -3,14 +3,16 @@
 //! Override scenario fields with struct update syntax. Use `new_activity_import`
 //! for database inserts so unrelated seeds never reuse the fixture primary key.
 mod accounts;
+mod activity_history;
+pub use activity_history::{activity_history, activity_history_event};
 mod storage;
 pub use storage::object_storage;
 mod tasks;
 pub use tasks::{
     archive_input, batch_command, batch_input, batch_manifest, fitness_change, heatmap_change,
-    import_command, import_entry, import_result, page_request, prepared_batch, reprocess_entry,
-    segment_change, segment_efforts_input, segment_entry, segment_result, training_entry,
-    training_result,
+    import_command, import_entry, import_execution, import_result, job_reference, page_request,
+    prepared_batch, reprocess_entry, segment_change, segment_efforts_input, segment_entry,
+    segment_result, task_cause, training_entry, training_result,
 };
 mod analytics;
 mod defaults;
@@ -31,7 +33,7 @@ pub use schema::table_with_timestamp_defaults;
 pub use segments::segment;
 
 pub use accounts::{connection, customer, new_connection, new_customer};
-pub use imports::{archive_import_job, import_artifact};
+pub use imports::{activity_import_attempt, archive_import_job, import_artifact};
 
 use crate::entities::{activities, activity_imports};
 use chrono::{DateTime, Utc};

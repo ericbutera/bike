@@ -12,6 +12,7 @@ async-trait = { workspace = true }
 futures = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true }
+sea-orm = { workspace = true }
 temporalio-client = { workspace = true }
 temporalio-common = { workspace = true }
 temporalio-macros = { workspace = true }
@@ -19,10 +20,10 @@ temporalio-sdk = { workspace = true }
 temporalio-workflow = { workspace = true }
 
 [dev-dependencies]
+serde_json = { workspace = true }
 bike-core = { path = "../bike-core", features = ["test-fixtures"] }
 prost = "0.14"
 tonic = { workspace = true }
 workflow-test-support = { path = "../workflow-test-support" }
-serde_json = { workspace = true }
 temporalio-sdk = { workspace = true, features = ["testing"] }
 tokio = { workspace = true }

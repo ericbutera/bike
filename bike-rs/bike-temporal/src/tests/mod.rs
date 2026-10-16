@@ -4,6 +4,7 @@ use crate::workflows::{
 };
 use bike_core::{
     bike_tasks::{FitnessChange, Priority, Publication},
+    platform::temporal as policy,
     test_support::{fitness_change, heatmap_change, import_command, import_result, segment_change},
 };
 use serde::Serialize;
@@ -17,11 +18,13 @@ use workflow_test_support::payload;
 type WorkflowMock = workflow_test_support::WorkflowMock;
 mod adapters;
 mod batches;
-mod client;
-mod fixtures;
+pub(crate) mod client;
+pub(crate) mod fixtures;
 mod handlers;
+mod import_attempts;
 mod imports;
 mod segments;
+mod submission;
 mod training;
 
 fn input() -> RebuildInput<FitnessChange> {
@@ -83,7 +86,14 @@ fn scheduled(
     assert_eq!(native.priority_key, priority);
     assert_eq!(native.fairness_key, fairness);
     assert!(activity.do_not_eagerly_execute);
-    assert_eq!(activity.retry_policy.unwrap().maximum_attempts, 12);
+    assert_eq!(
+        activity.retry_policy.unwrap(),
+        policy::activity_retry_policy().into_raw()
+    );
+    assert_eq!(
+        Duration::try_from(activity.start_to_close_timeout.unwrap()).unwrap(),
+        policy::ACTIVITY_EXECUTION_TIMEOUT
+    );
     activity.seq
 }
 fn complete(mock: &mut WorkflowMock, seq: u32, publication: Publication) {

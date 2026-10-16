@@ -14,6 +14,12 @@
   [the workflow index](../bike-rs/bike-temporal/src/workflows.rs) through shared
   steps, typed child calls, and domain-specific Activity adapters. Keep this
   graph review separate from each task's production cutover/verification gate.
+- [ ] Wire direct Temporal submission and the workflow-owned import-attempt
+      repository into the API/native worker with the first concrete import
+      adapter. Return native job references, capture authenticated actor/request
+      context once, and verify API-to-workflow tracing and idempotent crash recovery.
+      Extend the shared boundary at later task cutovers; do not introduce a SQL
+      enqueue bridge or generic receipt/admission protocol.
 - [ ] After the named-workflow proof of concept, revisit debounce windows and
       backlog aging with measured mixed new-activity/deletion bursts. Preserve
       native high priority for new activities and lower priority for deletion;
@@ -23,6 +29,9 @@
       cleanup onto the shared object-storage service. Preserve retained workflow
       references, raw captures, encryption, and separate worker/queue ownership;
       reuse central storage/TTL tests and verify retained-history replay.
+- [ ] During that Strava conversion, serialize/coalesce competing updates for
+      one remote owner/activity through Temporal and exercise equal-second events.
+      Preserve source timestamp/deletion fences and shared activity history.
 
 ## Model boundaries and fixtures
 

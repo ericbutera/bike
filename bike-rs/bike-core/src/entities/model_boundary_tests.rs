@@ -175,32 +175,65 @@ async fn empty_import_links_do_not_query_and_database_errors_propagate() {
     assert_eq!(error, DbErr::Custom("query unavailable".into()));
 }
 
+fn activity_edit_fixture(after: activities::Model) -> MockDatabase {
+    MockDatabase::new(DbBackend::Postgres)
+        .append_query_results([vec![test_support::activity()], vec![after]])
+}
+
 #[tokio::test]
-async fn updating_activity_details_preserves_untouched_fields_and_validates_before_write() {
-    let db = database().await;
-    let original = store_activity(&db, test_support::activity()).await;
-    let updated = original
-        .clone()
-        .update_details(&db, Some("  Lunch Loop  ".into()), Some(ActivityType::Race))
-        .await
-        .unwrap();
-    assert_eq!(updated.title, "Lunch Loop");
-    assert_eq!(updated.activity_type, "race");
-    assert_eq!(updated.user_id, original.user_id);
-    assert_eq!(updated.started_at, original.started_at);
-    assert_eq!(updated.source, original.source);
-    let title_only = updated
-        .update_details(&db, Some("Evening Loop".into()), None)
-        .await
-        .unwrap();
-    assert_eq!(title_only.activity_type, "race");
-    let type_only = title_only
-        .update_details(&db, None, Some(ActivityType::Training))
-        .await
-        .unwrap();
-    assert_eq!(type_only.title, "Evening Loop");
-    assert_eq!(type_only.activity_type, "training");
-    let error = type_only
+async fn updating_activity_details_preserves_untouched_fields_and_archives_the_change() {
+    let original = test_support::activity();
+    for (title, kind) in [
+        (Some("  Lunch Loop  "), Some(ActivityType::Race)),
+        (Some("  Lunch Loop  "), None),
+        (None, Some(ActivityType::Race)),
+    ] {
+        let updated = activities::Model {
+            title: title.map_or_else(|| original.title.clone(), |title| title.trim().into()),
+            activity_type: kind.map_or_else(
+                || original.activity_type.clone(),
+                |kind| kind.as_str().into(),
+            ),
+            ..original.clone()
+        };
+        let db = activity_edit_fixture(updated.clone())
+            .append_exec_results([sea_orm::MockExecResult {
+                last_insert_id: 0,
+                rows_affected: 1,
+            }])
+            .into_connection();
+        assert_eq!(
+            original
+                .clone()
+                .update_details(&db, title.map(str::to_owned), kind)
+                .await
+                .unwrap(),
+            updated,
+        );
+        let log = db.into_transaction_log();
+        assert_eq!(log.len(), 1);
+        assert!(log[0]
+            .statements()
+            .iter()
+            .any(|statement| statement.sql.contains("activity_event_history")));
+    }
+}
+
+#[tokio::test]
+async fn unchanged_or_invalid_manual_edits_never_archive_a_change() {
+    let original = test_support::activity();
+    let db = MockDatabase::new(DbBackend::Postgres)
+        .append_query_results([vec![original.clone()]])
+        .into_connection();
+    assert_eq!(
+        original
+            .clone()
+            .update_details(&db, None, None)
+            .await
+            .unwrap(),
+        original
+    );
+    let error = original
         .update_details(&db, Some("  ".into()), Some(ActivityType::Race))
         .await
         .unwrap_err();
@@ -209,12 +242,25 @@ async fn updating_activity_details_preserves_untouched_fields_and_validates_befo
         error.errors.unwrap()["title"],
         vec!["Activity title is required"]
     );
-    let stored = activities::Model::find_owned(&db, original.id, original.user_id)
+    assert_eq!(db.into_transaction_log().len(), 1);
+}
+
+#[tokio::test]
+async fn failed_manual_edit_history_rolls_back_the_activity_change() {
+    let before = test_support::activity();
+    let after = activities::Model {
+        title: "New title".into(),
+        ..before.clone()
+    };
+    let db = activity_edit_fixture(after)
+        .append_exec_errors([DbErr::Custom("fixture archive unavailable".into())])
+        .into_connection();
+    assert!(before
+        .update_details(&db, Some("New title".into()), None)
         .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(stored.title, "Evening Loop");
-    assert_eq!(stored.activity_type, "training");
+        .is_err());
+    let log = db.into_transaction_log();
+    assert_eq!(log[0].statements().last().unwrap().sql, "ROLLBACK");
 }
 
 #[tokio::test]

@@ -2,6 +2,7 @@
 pub mod activities;
 pub mod client;
 pub mod scheduling;
+pub mod submission;
 pub mod workflows;
 
 pub const TASK_QUEUE: &str = "bike-tasks";

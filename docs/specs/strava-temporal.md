@@ -170,11 +170,38 @@
 - Index events by customer, remote athlete, remote activity, and workflow ID.
   Support those searches in Temporal and the integration history view.
 
+## Activity identity
+
+- [Shared activity history](activity-event-history.md) archives each applied
+  state transition and manual edit. Keep it distinct from the latest-state fence.
+
+- Strava webhook `owner_id` identifies the athlete and `object_id` identifies
+  the activity. Keep their pair distinct from Bike's generated activity PK.
+- `strava_activity_states` owns the remote pair and retains its known
+  `bike_activity_id`. Persist that correlation in the same transaction as create,
+  update, unchanged-content recognition, or deletion. Retain the historical PK
+  on tombstones; it intentionally has no cascading foreign key.
+- Backfill known live mappings through the owning connection and its generation.
+  Existing event mutations retain historical IDs for older deleted activities.
+- Event identity identifies one operation; activity identity spans create,
+  updates, and deletion. Never suppress all future updates by deduplicating only
+  on the owner/activity pair.
+- Existing accepted Strava events and their stored mutations remain domain audit
+  and idempotency records. The Bike task conversion does not introduce a generic
+  receipt table into the provider workflow.
+- State `event_time` orders provider changes. `deleted_at` records the source
+  deletion time; `updated_at` records Bike's last write. Keep `applied_at`
+  synchronized for compatibility with the deployed worker.
+
 ## Workflows
 
 - Call steps as `run(ctx, RevokeConnection, event).await?` using the SDK's typed
   activity markers. The shared helper applies retry/cancellation policies and
   derives the display summary from the registered name; callers supply no strings.
+- Activity execution/heartbeat timeouts and retry factories come from the shared
+  [Temporal execution policy](temporal-execution-policy.md). Bike and Strava
+  domain Activities use the same finite-attempt policy. Do not duplicate SDK
+  retry builders per workflow.
 
 | Strava webhook | Native worker implementation |
 | --- | --- |

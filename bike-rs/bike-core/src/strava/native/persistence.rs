@@ -2,12 +2,14 @@
 use super::*;
 use crate::{
     activity_parser::ParsedActivityData,
-    entities::{activity_imports, strava_activity_states, strava_events},
+    entities::{activity_event_history, activity_imports, strava_activity_states, strava_events},
 };
-use sea_orm::TransactionTrait;
+use sea_orm::{DatabaseTransaction, TransactionTrait};
 
 #[cfg(test)]
 mod strava_native_unit_deletion;
+#[cfg(test)]
+mod strava_native_unit_history;
 
 impl StravaOperations {
     pub async fn persist_activity(
@@ -48,7 +50,7 @@ impl StravaOperations {
             txn.commit().await?;
             return Ok(change);
         }
-        let existing = activities::Model::strava_activity(
+        let existing = activities::Model::lock_strava_activity(
             &txn,
             input.event.bike_user_id,
             input.event.activity_id()?,
@@ -90,22 +92,30 @@ impl StravaOperations {
             &summary.activity,
         )
         .await?;
-        strava_activity_states::Model::apply_event(
-            &txn,
-            &input.event,
-            Some(input.source.sha256),
-            false,
-        )
-        .await?;
-        let dirty_from =
-            Self::mark_fitness_change(&txn, &input.event, &parsed.draft, existing.as_ref()).await?;
         let mut change = ActivityChange::applied(
             input.event,
             saved.id,
             import.id,
             parsed.draft.started_at.date_naive(),
         );
-        change.dirty_from = dirty_from;
+        let state = strava_activity_states::Model::apply_event(
+            &txn,
+            &change.event,
+            Some(input.source.sha256),
+            false,
+        )
+        .await?;
+        change.dirty_from =
+            Self::mark_fitness_change(&txn, &change.event, &parsed.draft, existing.as_ref())
+                .await?;
+        activity_event_history::Model::record_strava(
+            &txn,
+            &change,
+            &state,
+            existing.as_ref(),
+            Some(&saved),
+        )
+        .await?;
         strava_events::Model::record_mutation(&txn, &change).await?;
         txn.commit().await?;
         Ok(change)
@@ -137,7 +147,7 @@ impl StravaOperations {
     }
 
     async fn persist_unchanged(
-        db: &impl sea_orm::ConnectionTrait,
+        db: &DatabaseTransaction,
         input: &NormalizedActivity,
         activity: &activities::Model,
     ) -> Result<ActivityChange, WorkflowError> {
@@ -148,11 +158,19 @@ impl StravaOperations {
         change.dirty_from = activity
             .is_bike_activity()
             .then_some(activity.started_at.date_naive());
-        strava_activity_states::Model::apply_event(
+        let state = strava_activity_states::Model::apply_event(
             db,
-            &input.event,
+            &change.event,
             Some(input.source.sha256.clone()),
             false,
+        )
+        .await?;
+        activity_event_history::Model::record_strava(
+            db,
+            &change,
+            &state,
+            Some(activity),
+            Some(activity),
         )
         .await?;
         strava_events::Model::record_mutation(db, &change).await?;
@@ -205,7 +223,7 @@ impl StravaOperations {
 
     async fn delete_in_transaction(
         &self,
-        txn: &impl sea_orm::ConnectionTrait,
+        txn: &DatabaseTransaction,
         mut change: ActivityChange,
     ) -> Result<ActivityChange, WorkflowError> {
         let connection = strava_connections::Model::lock_event(txn, &change.event).await?;
@@ -217,8 +235,8 @@ impl StravaOperations {
             strava_events::Model::record_mutation(txn, &skipped).await?;
             return Ok(skipped);
         }
-        Self::delete_owned_activity(txn, &mut change).await?;
-        Self::record_deletion(txn, &change).await?;
+        let previous = Self::delete_owned_activity(txn, &mut change).await?;
+        Self::record_deletion(txn, &change, previous.as_ref()).await?;
         Ok(change)
     }
 
@@ -239,8 +257,8 @@ impl StravaOperations {
     async fn delete_owned_activity(
         db: &impl sea_orm::ConnectionTrait,
         change: &mut ActivityChange,
-    ) -> Result<(), WorkflowError> {
-        let Some(activity) = activities::Model::strava_activity(
+    ) -> Result<Option<activities::Model>, WorkflowError> {
+        let Some(activity) = activities::Model::lock_strava_activity(
             db,
             change.event.bike_user_id,
             change.event.activity_id()?,
@@ -248,7 +266,7 @@ impl StravaOperations {
         .await?
         else {
             change.status = ActivityStatus::AlreadyAbsent;
-            return Ok(());
+            return Ok(None);
         };
         let started_on = activity.started_at.date_naive();
         if activity.is_bike_activity() {
@@ -263,20 +281,22 @@ impl StravaOperations {
         let deleted = crate::activity_lifecycle::delete_activity_records(
             db,
             change.event.bike_user_id,
-            activity,
+            activity.clone(),
         )
         .await?;
         change.segment_ids = deleted.segment_ids;
         change.removed_source = deleted.source;
         change.status = ActivityStatus::Deleted;
-        Ok(())
+        Ok(Some(activity))
     }
 
     async fn record_deletion(
-        db: &impl sea_orm::ConnectionTrait,
+        db: &DatabaseTransaction,
         change: &ActivityChange,
+        previous: Option<&activities::Model>,
     ) -> Result<(), WorkflowError> {
-        strava_activity_states::Model::apply_event(db, &change.event, None, true).await?;
+        let state =
+            strava_activity_states::Model::apply_event(db, &change.event, None, true).await?;
         if let Some(day) = change.dirty_from {
             crate::analytics::mark_user_fitness_dirty(
                 db,
@@ -286,6 +306,7 @@ impl StravaOperations {
             )
             .await?;
         }
+        activity_event_history::Model::record_strava(db, change, &state, previous, None).await?;
         strava_events::Model::record_mutation(db, change).await?;
         Ok(())
     }

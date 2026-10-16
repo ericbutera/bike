@@ -60,7 +60,7 @@ async fn absent_activity_commits_a_deletion_marker_and_explicit_status() {
         .append_query_results([Vec::<strava_activity_states::Model>::new()])
         .append_query_results([Vec::<activities::Model>::new()])
         .append_query_results([vec![state(&fixture)]])
-        .append_exec_results([executed()])
+        .append_exec_results([executed(), executed()])
         .into_connection();
     let operations = StravaOperations::new(db);
     let change = operations
@@ -155,13 +155,9 @@ async fn deletion_storage_failure_rolls_back_without_recording_a_success() {
 
 fn state(fixture: &Fixture) -> strava_activity_states::Model {
     strava_activity_states::Model {
-        athlete_id: fixture.connection.athlete_id,
-        activity_id: fixture.event.strava_activity_id.unwrap(),
-        connection_generation: fixture.connection.created_at,
-        event_time: fixture.event.event_time,
-        applied_hash: None,
         deleted: true,
-        applied_at: fixture.connection.created_at,
+        deleted_at: Some(fixture.connection.created_at),
+        ..fixture.activity_state()
     }
 }
 

@@ -13,6 +13,7 @@ use sea_orm::{
     QuerySelect, Set,
 };
 use std::collections::HashMap;
+mod history;
 pub(crate) mod parsed;
 
 pub const BIKE_ACTIVITY_SPORT: &str = "ride";
@@ -142,22 +143,6 @@ impl Model {
             .filter(Column::Id.is_in(activity_ids))
             .all(db)
             .await
-    }
-
-    pub async fn update_details(
-        self,
-        db: &impl ConnectionTrait,
-        title: Option<String>,
-        activity_type: Option<ActivityType>,
-    ) -> Result<Self, WorkflowError> {
-        let mut active: ActiveModel = self.into();
-        if let Some(title) = title {
-            active.title = Set(Self::normalize_title(&title)?);
-        }
-        if let Some(activity_type) = activity_type {
-            active.activity_type = Set(activity_type.as_str().to_string());
-        }
-        Ok(active.update(db).await?)
     }
 
     fn normalize_title(raw_title: &str) -> Result<String, WorkflowError> {
@@ -297,12 +282,26 @@ impl Model {
         user_id: i32,
         vendor_id: i64,
     ) -> Result<Option<Self>, DbErr> {
+        Self::strava_identity(user_id, vendor_id).one(db).await
+    }
+
+    /// Lock the current row before a provider mutation or history snapshot.
+    pub async fn lock_strava_activity(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        vendor_id: i64,
+    ) -> Result<Option<Self>, DbErr> {
+        Self::strava_identity(user_id, vendor_id)
+            .lock_exclusive()
+            .one(db)
+            .await
+    }
+
+    fn strava_identity(user_id: i32, vendor_id: i64) -> sea_orm::Select<Entity> {
         Entity::find()
             .filter(Column::UserId.eq(user_id))
             .filter(Column::Source.eq("strava_sync"))
             .filter(Column::SourceCorrelationId.eq(vendor_id.to_string()))
-            .one(db)
-            .await
     }
     pub async fn cycling_ids_page(
         db: &impl ConnectionTrait,

@@ -145,6 +145,8 @@ async fn attempts_preserve_stage_summaries_without_exposing_private_source_or_ch
         activity_import_id: 1,
         activity_id: None,
         worker_task_id: None,
+        command_id: None,
+        temporal_context: None,
         status: "completed".into(),
         requested_stage: "activity_parsed".into(),
         start_stage: "activity_parsed".into(),

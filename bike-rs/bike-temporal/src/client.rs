@@ -7,11 +7,12 @@ use crate::{
     TASK_QUEUE,
 };
 use bike_core::bike_tasks::{
-    validate_revision, ActivityImport, FitnessChange, HeatmapChange, ImportSource, ImportTarget,
-    Priority, SegmentChange,
+    validate_revision, ActivityImport, BatchEntry, FitnessChange, HeatmapChange, ImportSource,
+    ImportTarget, JobReference, Priority, SegmentChange,
 };
 use temporalio_client::{
-    Client, WorkflowIdConflictPolicy, WorkflowIdReusePolicy, WorkflowStartOptions,
+    errors::WorkflowStartError, Client, NamespacedClient, WorkflowIdConflictPolicy,
+    WorkflowIdReusePolicy, WorkflowStartOptions,
 };
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -24,6 +25,10 @@ pub fn segment_workflow_id(segment_id: i32) -> String {
 }
 pub fn heatmap_workflow_id(activity_id: i32) -> String {
     format!("bike-task-prepare_heatmap-activity-{activity_id}")
+}
+
+pub(crate) fn command_workflow_id(workflow_type: &str, user_id: i32, command_id: &str) -> String {
+    format!("bike-task-{workflow_type}-user-{user_id}-{command_id}")
 }
 
 fn start_options(id: String, priority: Priority, fairness: String) -> WorkflowStartOptions {
@@ -103,27 +108,48 @@ pub async fn request_heatmap(
     Ok(())
 }
 
-pub async fn process_activity_import(client: &Client, source: ImportSource) -> Result<(), Error> {
+fn command_options(id: String, priority: Priority, user_id: i32) -> WorkflowStartOptions {
+    WorkflowStartOptions::new(TASK_QUEUE, id)
+        .id_conflict_policy(WorkflowIdConflictPolicy::UseExisting)
+        .id_reuse_policy(WorkflowIdReusePolicy::RejectDuplicate)
+        .priority(options::priority(priority, format!("user-{user_id}")))
+        .build()
+}
+
+fn job_reference(
+    client: &Client,
+    job_id: String,
+    workflow_type: &str,
+    result: Result<Option<String>, WorkflowStartError>,
+) -> Result<JobReference, Error> {
+    let run_id = match result {
+        Ok(run_id) | Err(WorkflowStartError::AlreadyStarted { run_id, .. }) => run_id,
+        Err(error) => return Err(error.into()),
+    };
+    Ok(JobReference {
+        job_id,
+        namespace: client.namespace(),
+        run_id: run_id.ok_or("Temporal did not return an execution run ID")?,
+        workflow_type: workflow_type.into(),
+    })
+}
+
+pub(crate) async fn process_activity_import(
+    client: &Client,
+    source: ImportSource,
+) -> Result<JobReference, Error> {
     ActivityImport {
         source: source.clone(),
         target: ImportTarget::NewActivity,
     }
     .validate()?;
-    let options = start_options(
-        format!("bike-task-process_activity_import-{}", source.command_id),
-        source.priority,
-        format!("user-{}", source.user_id),
-    );
-    client
-        .start_workflow(ProcessActivityImport::run, source, options)
-        .await?;
-    Ok(())
+    start_command(client, ProcessActivityImport::run, source).await
 }
 
-pub async fn reprocess_activity_import(
+pub(crate) async fn reprocess_activity_import(
     client: &Client,
     input: ReprocessInput,
-) -> Result<(), Error> {
+) -> Result<JobReference, Error> {
     ActivityImport {
         source: input.source.clone(),
         target: ImportTarget::ExistingActivity {
@@ -132,16 +158,24 @@ pub async fn reprocess_activity_import(
         },
     }
     .validate()?;
-    let options = start_options(
-        format!(
-            "bike-task-reprocess_activity_import-{}",
-            input.source.command_id
-        ),
-        input.source.priority,
-        format!("user-{}", input.source.user_id),
-    );
-    client
-        .start_workflow(ReprocessActivityImport::run, input, options)
-        .await?;
-    Ok(())
+    start_command(client, ReprocessActivityImport::run, input).await
+}
+
+async fn start_command<D>(
+    client: &Client,
+    definition: D,
+    input: D::Input,
+) -> Result<JobReference, Error>
+where
+    D: temporalio_common::HasWorkflowDefinition,
+    D::Input: BatchEntry + Send,
+{
+    let name = definition.name().to_owned();
+    let job_id = command_workflow_id(&name, input.user_id(), input.command_id());
+    let options = command_options(job_id.clone(), input.priority(), input.user_id());
+    let result = client
+        .start_workflow(definition, input, options)
+        .await
+        .map(|handle| handle.run_id().map(str::to_owned));
+    job_reference(client, job_id, &name, result)
 }

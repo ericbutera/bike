@@ -5,9 +5,11 @@ use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 mod batch;
 mod segments;
+mod submission;
 mod training;
 pub use batch::*;
 pub use segments::*;
+pub use submission::*;
 pub use training::*;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -44,6 +46,17 @@ pub struct ImportSource {
     pub activity_import_id: i32,
     pub object: ObjectRef,
     pub priority: Priority,
+    /// Captured once by the producer and retained on the domain import attempt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cause: Option<TaskCause>,
+}
+
+impl ImportSource {
+    pub fn with_cause(mut self, cause: TaskCause) -> Result<Self, WorkflowError> {
+        cause.validate(self.user_id)?;
+        self.cause = Some(cause);
+        Ok(self)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -62,6 +75,21 @@ pub struct ActivityImport {
 }
 
 impl ActivityImport {
+    pub fn validate_result(&self, result: &ActivityImportResult) -> Result<(), WorkflowError> {
+        if result.activity_import_id != self.source.activity_import_id {
+            return Err(WorkflowError::conflict(
+                "Result does not belong to the requested import",
+            ));
+        }
+        if let ImportTarget::ExistingActivity { activity_id, .. } = self.target {
+            if result.activity_id != activity_id {
+                return Err(WorkflowError::conflict(
+                    "Reprocessing changed the activity identity",
+                ));
+            }
+        }
+        Ok(())
+    }
     pub fn refresh_priority(&self) -> Priority {
         match self.target {
             ImportTarget::NewActivity => Priority::NewActivity,
@@ -72,6 +100,14 @@ impl ActivityImport {
     pub fn validate(&self) -> Result<(), WorkflowError> {
         if self.source.command_id.trim().is_empty() {
             return Err(WorkflowError::bad_request("Import requires a command ID"));
+        }
+        if self.source.user_id <= 0 || self.source.activity_import_id <= 0 {
+            return Err(WorkflowError::bad_request(
+                "Import requires an owner and import ID",
+            ));
+        }
+        if let Some(cause) = &self.source.cause {
+            cause.validate(self.source.user_id)?;
         }
         if let ImportTarget::ExistingActivity {
             expected_revision, ..

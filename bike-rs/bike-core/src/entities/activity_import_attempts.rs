@@ -1,6 +1,9 @@
 use sea_orm::entity::prelude::*;
 use sea_orm::{sea_query::Expr, ConnectionTrait, Iterable, QueryOrder, QuerySelect, Set};
 
+/// Native audit history must not enter the legacy SQL worker's active/claim set.
+pub const TEMPORAL_STARTED: &str = "started";
+
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "activity_import_attempts")]
 pub struct Model {
@@ -10,6 +13,8 @@ pub struct Model {
     pub activity_import_id: i32,
     pub activity_id: Option<i32>,
     pub worker_task_id: Option<i32>,
+    pub command_id: Option<String>,
+    pub temporal_context: Option<Json>,
     pub status: String,
     pub requested_stage: String,
     pub start_stage: String,
@@ -142,3 +147,4 @@ impl Entity {
 }
 
 mod mutations;
+mod temporal;

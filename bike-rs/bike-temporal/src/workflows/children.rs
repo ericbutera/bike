@@ -19,10 +19,10 @@ where
 {
     options::workflow_result(ctx, Ok(()))?;
     let child_options = ChildWorkflowOptions::builder()
-        .workflow_id(format!(
-            "bike-task-{}-{}",
+        .workflow_id(crate::client::command_workflow_id(
             definition.name(),
-            input.command_id()
+            input.user_id(),
+            input.command_id(),
         ))
         .task_queue(crate::TASK_QUEUE.to_owned())
         .priority(options::priority(

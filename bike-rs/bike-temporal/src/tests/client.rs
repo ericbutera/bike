@@ -15,12 +15,35 @@ use temporalio_common::protos::temporal::api::{
 };
 
 #[derive(Default)]
-pub(super) struct Requests {
+pub(crate) struct Requests {
     pub signals: Vec<SignalWithStartWorkflowExecutionRequest>,
     pub starts: Vec<StartWorkflowExecutionRequest>,
+    pub fail_start: bool,
+    pub already_started: bool,
 }
 
-pub(super) async fn client(requests: Arc<Mutex<Requests>>, fail: bool) -> Client {
+impl Requests {
+    fn start(&mut self, request: StartWorkflowExecutionRequest) -> Result<Vec<u8>, tonic::Status> {
+        self.starts.push(request);
+        if self.fail_start {
+            return Err(tonic::Status::permission_denied("fixture start refused"));
+        }
+        if self.already_started {
+            return Err(already_started());
+        }
+        Ok(StartWorkflowExecutionResponse {
+            run_id: if self.starts.len() == 1 {
+                "fixture-run".into()
+            } else {
+                format!("fixture-run-{}", self.starts.len())
+            },
+            ..Default::default()
+        }
+        .encode_to_vec())
+    }
+}
+
+pub(crate) async fn client(requests: Arc<Mutex<Requests>>, fail: bool) -> Client {
     let mut options = ConnectionOptions::new(
         "http://fixture.invalid:7233"
             .parse::<temporalio_client::Url>()
@@ -47,18 +70,10 @@ pub(super) async fn client(requests: Arc<Mutex<Requests>>, fail: bool) -> Client
                         }
                         .encode_to_vec()
                     }
-                    "StartWorkflowExecution" => {
-                        requests
-                            .lock()
-                            .unwrap()
-                            .starts
-                            .push(StartWorkflowExecutionRequest::decode(request.proto).unwrap());
-                        StartWorkflowExecutionResponse {
-                            run_id: "fixture-run".into(),
-                            ..Default::default()
-                        }
-                        .encode_to_vec()
-                    }
+                    "StartWorkflowExecution" => requests
+                        .lock()
+                        .unwrap()
+                        .start(StartWorkflowExecutionRequest::decode(request.proto).unwrap())?,
                     other => panic!("Unexpected RPC {other}"),
                 };
                 Ok(GrpcSuccessResponse {
@@ -113,6 +128,7 @@ async fn repeated_parent_handoffs_use_native_atomic_start_for_the_same_named_out
         ("prepare_heatmap", crate::client::heatmap_workflow_id(42)),
     ];
     for (request, (name, id)) in requests.signals.iter().zip(expected.iter().cycle()) {
+        assert!(request.retry_policy.is_none());
         assert_eq!(request.namespace, "bike");
         assert_eq!(request.workflow_id, *id);
         assert_eq!(request.workflow_type.as_ref().unwrap().name, *name);
@@ -174,6 +190,7 @@ async fn import_entry_points_preserve_task_names_and_retry_stable_command_ids() 
     let requests = requests.lock().unwrap();
     let starts = &requests.starts;
     assert_eq!(starts.len(), 3);
+    assert!(starts.iter().all(|request| request.retry_policy.is_none()));
     assert_eq!(
         starts[0].workflow_type.as_ref().unwrap().name,
         "process_activity_import"
@@ -184,4 +201,36 @@ async fn import_entry_points_preserve_task_names_and_retry_stable_command_ids() 
     );
     assert_eq!(starts[1].workflow_id, starts[2].workflow_id);
     assert_eq!(starts[1].priority.as_ref().unwrap().priority_key, 1);
+    assert_eq!(
+        starts[1].workflow_id_conflict_policy,
+        WorkflowIdConflictPolicy::UseExisting as i32
+    );
+    assert_eq!(
+        starts[1].workflow_id_reuse_policy,
+        WorkflowIdReusePolicy::RejectDuplicate as i32
+    );
+}
+
+fn already_started() -> tonic::Status {
+    use temporalio_common::protos::{
+        google::rpc::Status,
+        temporal::api::errordetails::v1::WorkflowExecutionAlreadyStartedFailure,
+        utilities::pack_any,
+    };
+    let details = Status {
+        code: tonic::Code::AlreadyExists as i32,
+        message: "fixture duplicate".into(),
+        details: vec![pack_any(
+            "type.googleapis.com/temporal.api.errordetails.v1.WorkflowExecutionAlreadyStartedFailure".into(),
+            &WorkflowExecutionAlreadyStartedFailure {
+                run_id: "fixture-run".into(),
+                ..Default::default()
+            },
+        ).unwrap()],
+    };
+    tonic::Status::with_details(
+        tonic::Code::AlreadyExists,
+        "fixture duplicate",
+        details.encode_to_vec().into(),
+    )
 }

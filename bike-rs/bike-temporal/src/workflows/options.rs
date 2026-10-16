@@ -1,7 +1,7 @@
 use bike_core::bike_tasks::Priority as WorkPriority;
+use bike_core::platform::temporal as policy;
 use serde::Serialize;
-use std::time::Duration;
-use temporalio_common::{data_converters::TemporalDeserializable, Priority, RetryPolicy};
+use temporalio_common::{data_converters::TemporalDeserializable, Priority};
 use temporalio_sdk::{ActivityCancellationType, ActivityOptions, WorkflowContext, WorkflowResult};
 use temporalio_workflow::common::ActivityDefinition;
 
@@ -17,25 +17,20 @@ pub(crate) fn priority(priority: WorkPriority, fairness: String) -> Priority {
 }
 
 pub(crate) fn activity(priority: WorkPriority, fairness: String) -> ActivityOptions {
-    ActivityOptions::with_start_to_close_timeout(Duration::from_secs(120))
+    ActivityOptions::with_start_to_close_timeout(policy::ACTIVITY_EXECUTION_TIMEOUT)
         .task_queue(crate::TASK_QUEUE)
         .priority(self::priority(priority, fairness))
         .do_not_eagerly_execute(true)
         .cancellation_type(ActivityCancellationType::WaitCancellationCompleted)
-        .retry_policy(
-            RetryPolicy::builder()
-                .maximum_attempts(12)
-                .maximum_interval(Duration::from_secs(60))
-                .build(),
-        )
+        .retry_policy(policy::activity_retry_policy())
         .build()
 }
 
 pub(super) fn manifest(priority: WorkPriority, fairness: String) -> ActivityOptions {
     let mut options = activity(priority, fairness);
     options.close_timeouts =
-        temporalio_common::ActivityCloseTimeouts::StartToClose(Duration::from_secs(3600));
-    options.heartbeat_timeout = Some(Duration::from_secs(30));
+        temporalio_common::ActivityCloseTimeouts::StartToClose(policy::MANIFEST_EXECUTION_TIMEOUT);
+    options.heartbeat_timeout = Some(policy::ACTIVITY_HEARTBEAT_TIMEOUT);
     options
 }
 

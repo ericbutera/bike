@@ -62,6 +62,12 @@
   If that boundary is incomplete, keep the conversion in progress.
 - Native Activities call domain operations directly. Do not wrap SQL task
   submission or use a SQL batch to coordinate native results.
+- API producers start Temporal directly and return its acknowledged workflow/run
+  reference. Workflow Activities record causal context on the existing domain
+  import/event record and retry failures natively. Do not create a generic
+  receipt/admission protocol or cancel an accepted workflow because recording
+  failed. Preserve stable command identity and idempotent domain writes through
+  the shared [handoff contract](specs/bike-task-workflows.md#handoff-and-completion).
 
 ## Task inventory and conversion order
 

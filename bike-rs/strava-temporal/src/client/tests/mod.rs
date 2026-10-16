@@ -120,6 +120,7 @@ async fn each_operation_starts_its_own_workflow_with_correlated_input_and_duplic
         let request =
             StartWorkflowExecutionRequest::decode(requests.last().unwrap().proto.clone()).unwrap();
         assert_eq!(request.workflow_type.unwrap().name, workflow);
+        assert!(request.retry_policy.is_none());
         assert_eq!(request.workflow_id, fixture.event.workflow_id());
         assert_eq!(request.task_queue.unwrap().name, config().task_queue);
         assert_eq!(request.namespace, config().namespace);

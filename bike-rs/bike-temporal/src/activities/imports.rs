@@ -2,14 +2,16 @@ use super::activity_error;
 use async_trait::async_trait;
 use bike_core::{
     bike_tasks::{
-        ActivityImport, ActivityImportResult, BatchManifest, PageRequest, ReprocessInput,
-        ReprocessSelection,
+        ActivityImport, ActivityImportResult, BatchManifest, ImportExecution, PageRequest,
+        ReprocessInput, ReprocessSelection,
     },
     workflow_error::WorkflowError,
 };
 use std::sync::Arc;
 use temporalio_macros::activities;
 use temporalio_sdk::activities::{ActivityContext, ActivityError};
+mod attempts;
+pub use attempts::{DatabaseImportAttempts, ImportAttemptRepository};
 
 /// Source effects and stable manifest reads only. Committed command outcomes
 /// must survive lost completion; preparation streams through shared storage.
@@ -17,7 +19,8 @@ use temporalio_sdk::activities::{ActivityContext, ActivityError};
 pub trait ImportOperations: Send + Sync {
     async fn activity_import(
         &self,
-        command: ActivityImport,
+        execution: ImportExecution,
+        attempt_id: i32,
         context: ActivityContext,
     ) -> Result<ActivityImportResult, WorkflowError>;
     async fn prepare_reprocess_imports(
@@ -34,10 +37,17 @@ pub trait ImportOperations: Send + Sync {
 
 pub struct ImportActivities {
     operations: Arc<dyn ImportOperations>,
+    attempts: Arc<dyn ImportAttemptRepository>,
 }
 impl ImportActivities {
-    pub fn new(operations: Arc<dyn ImportOperations>) -> Self {
-        Self { operations }
+    pub fn new(
+        operations: Arc<dyn ImportOperations>,
+        attempts: Arc<dyn ImportAttemptRepository>,
+    ) -> Self {
+        Self {
+            operations,
+            attempts,
+        }
     }
 }
 
@@ -51,11 +61,24 @@ impl ImportActivities {
     ) -> Result<ActivityImportResult, ActivityError> {
         command.validate().map_err(activity_error)?;
         let priority = command.refresh_priority();
-        self.operations
-            .activity_import(command, ctx)
+        let execution = attempts::execution(&ctx, command.clone()).map_err(activity_error)?;
+        let attempt_id = self
+            .attempts
+            .record(&execution)
+            .await
+            .map_err(activity_error)?;
+        let result = self
+            .operations
+            .activity_import(execution, attempt_id, ctx)
             .await
             .map(|result| result.with_priority(priority))
-            .map_err(activity_error)
+            .map_err(activity_error)?;
+        command.validate_result(&result).map_err(activity_error)?;
+        self.attempts
+            .complete(attempt_id, &result)
+            .await
+            .map_err(activity_error)?;
+        Ok(result)
     }
     #[activity(name = "prepare_reprocess_imports")]
     pub async fn prepare_reprocess_imports(

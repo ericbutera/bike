@@ -9,7 +9,7 @@ pub struct Fixture {
     pub event: StravaEvent,
 }
 
-pub(super) fn audit(fixture: &Fixture) -> crate::entities::integration_events::Model {
+pub(crate) fn audit(fixture: &Fixture) -> crate::entities::integration_events::Model {
     crate::entities::integration_events::Model {
         id: 1,
         user_id: Some(fixture.customer.id),
@@ -24,6 +24,36 @@ pub(super) fn audit(fixture: &Fixture) -> crate::entities::integration_events::M
 }
 
 impl Fixture {
+    pub fn normalized_activity(&self) -> NormalizedActivity {
+        let source = crate::strava::objects::ObjectRef {
+            path: "strava/fixture/normalized.json".into(),
+            sha256: "a".repeat(64),
+            bytes: 123,
+        };
+        NormalizedActivity {
+            event: self.event.clone(),
+            parsed: Some(crate::strava::objects::ObjectRef {
+                path: "strava/fixture/parsed.json".into(),
+                ..source.clone()
+            }),
+            source,
+        }
+    }
+    pub fn activity_state(&self) -> crate::entities::strava_activity_states::Model {
+        crate::entities::strava_activity_states::Model {
+            athlete_id: self.event.strava_athlete_id,
+            activity_id: self.event.strava_activity_id.unwrap(),
+            bike_activity_id: Some(self.activity().id),
+            connection_generation: self.event.connection_generation,
+            event_time: self.event.event_time,
+            applied_hash: None,
+            deleted: false,
+            deleted_at: None,
+            updated_at: self.connection.created_at,
+            applied_at: self.connection.created_at,
+        }
+    }
+
     pub fn new() -> Self {
         let now = DateTime::<Utc>::from_timestamp(1790856000, 0).unwrap();
         let customer = users::Model {
