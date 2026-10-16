@@ -151,6 +151,7 @@ async fn rebuild_queries_remain_named_when_no_output_is_needed() {
             rows_affected: 1,
             last_insert_id: 0,
         }])
+        .append_query_results([vec![crate::test_support::activity_id_row()]])
         .append_query_results([Vec::<crate::entities::segment_efforts::Model>::new()])
         .into_connection();
     let spans = capture(async {

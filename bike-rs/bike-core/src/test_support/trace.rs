@@ -48,6 +48,8 @@ pub(crate) async fn capture(future: impl Future<Output = ()>) -> CapturedTrace {
                 )),
         );
     async {
+        // Other tests may first register ORM callsites without a subscriber.
+        tracing::callsite::rebuild_interest_cache();
         future.instrument(tracing::info_span!("request")).await;
     }
     .with_subscriber(subscriber)
@@ -68,7 +70,11 @@ pub(crate) fn stage(trace: &CapturedTrace, name: &str) -> SpanData {
         .iter()
         .filter(|span| span.name.starts_with("sea_orm."))
         .collect();
-    assert!(!queries.is_empty(), "Expected database work below {name}");
+    assert!(
+        !queries.is_empty(),
+        "Expected database work below {name}; captured: {:?}",
+        spans.iter().map(|span| &span.name).collect::<Vec<_>>()
+    );
     for query in queries {
         assert!(query.start_time >= stage.start_time);
         assert!(query.end_time <= stage.end_time);

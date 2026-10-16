@@ -14,6 +14,10 @@ use chrono::{DateTime, Duration, NaiveDate, Utc};
 use sea_orm::{ConnectionTrait, DatabaseConnection, TransactionSession, TransactionTrait};
 use std::collections::{BTreeMap, HashMap};
 
+#[cfg(test)]
+#[path = "analytics_projection_tests.rs"]
+mod projection_tests;
+
 pub const FITNESS_WINDOW_DAYS: f64 = 42.0;
 pub const FATIGUE_WINDOW_DAYS: f64 = 7.0;
 const DEFAULT_HEART_RATE_RATIO: f64 = 0.6;
@@ -485,9 +489,11 @@ where
                 ));
             }
             let written = persist_segment_analytics_rebuild(&txn, &[id], rebuild).await?;
-            rebuild_activity_analytics_cache(&txn, &activity_ids).await?;
             pipeline_outputs::Model::publish(&txn, "segments", id, &revision, Utc::now()).await?;
             txn.commit().await?;
+            // Different segments share activity summaries. Release segment/rank
+            // locks before acquiring activity locks and reading their current ranks.
+            rebuild_activity_analytics_cache(db, &activity_ids).await?;
             Ok((
                 (),
                 WorkCounts {
@@ -694,21 +700,20 @@ pub async fn rebuild_activity_analytics_cache<C>(
     activity_ids: &[i32],
 ) -> Result<(), sea_orm::DbErr>
 where
-    C: ConnectionTrait,
+    C: ConnectionTrait + TransactionTrait,
 {
     let activity_ids = normalized_positive_ids(activity_ids);
     if activity_ids.is_empty() {
         return Ok(());
     }
 
-    activity_analytics::Model::delete_by_activity_ids(db, &activity_ids).await?;
-    let input = load_activity_analytics_input(db, &activity_ids).await?;
-    if input.efforts.is_empty() {
-        return Ok(());
-    }
-
+    let txn = db.begin().await?;
+    activities::Model::lock_for_analytics(&txn, &activity_ids).await?;
+    let input = load_activity_analytics_input(&txn, &activity_ids).await?;
     let analytics_by_activity_id = build_activity_analytics(input);
-    persist_activity_analytics(db, analytics_by_activity_id).await
+    activity_analytics::Model::delete_by_activity_ids(&txn, &activity_ids).await?;
+    persist_activity_analytics(&txn, analytics_by_activity_id).await?;
+    txn.commit().await
 }
 
 struct ActivityAnalyticsInput {

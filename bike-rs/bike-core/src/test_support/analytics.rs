@@ -55,3 +55,23 @@ pub fn new_segment_effort() -> segment_efforts::ActiveModel {
     active.id = sea_orm::ActiveValue::NotSet;
     active
 }
+
+pub fn activity_analytics() -> crate::entities::activity_analytics::Model {
+    let activity = super::activity();
+    crate::entities::activity_analytics::Model {
+        activity_id: activity.id,
+        user_id: activity.user_id,
+        segment_effort_count: 1,
+        achievement_count: 0,
+        kom_count: 0,
+        top_10_count: 0,
+        pr_count: 0,
+        achievement_highlights_json: None,
+        created_at: super::timestamp(),
+        updated_at: super::timestamp(),
+    }
+}
+
+pub fn activity_id_row() -> std::collections::BTreeMap<String, sea_orm::Value> {
+    [("id".into(), super::activity().id.into())].into()
+}

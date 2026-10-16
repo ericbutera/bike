@@ -331,7 +331,9 @@ impl StravaOperations {
             return Ok(change);
         }
         if let Some(id) = change.bike_activity_id {
-            if let Some(activity) = activities::Model::find_by_id(&txn, id).await? {
+            if let Some(activity) =
+                activities::Model::lock_owned(&txn, id, change.event.bike_user_id).await?
+            {
                 let derived = crate::activity_data::deserialize_derived_activity_data(
                     activity.derived_data_json.as_ref(),
                 );

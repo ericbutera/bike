@@ -129,6 +129,22 @@ flowchart LR
   transaction as publication; timed-out Activity attempts may still finish late.
   Deletion, privacy changes, and newer generations reject obsolete publication;
   a stale result must not recreate a deleted activity.
+- Fitness invalidation merges into the existing user-state row atomically:
+  retain the earliest dirty day and greatest source-change timestamp. Every
+  invalidation touches the publication fence, even when an older source timestamp
+  arrives. Preserve creation and previous-rebuild metadata. Incremental rebuilds
+  read the committed dirty day and clear it only if both observed source and
+  invalidation timestamps still match; competing writes leave work dirty.
+- A segment workflow owns its segment, while different segments can affect the
+  same activity achievement row. Serialize projection replacement on existing
+  activity rows in ID order, then read current committed ranks and replace the
+  affected outputs in one transaction. An empty result clears stale output in
+  that transaction; replacement failure preserves the prior committed output.
+- Commit segment ranks/summaries before acquiring activity projection locks.
+  Segment edits/deletion and Strava derivation take activity locks before changing
+  related segment data. Keep this lock order consistent; do not hold segment
+  locks while waiting for activity locks. These are domain transaction rules,
+  requiring no extra table, execution ledger, or SQL orchestration bridge.
 - Versioned replacement can publish one complete selected version and then reclaim
   older versions. Readers select the published version; outputs need not switch
   versions together.
@@ -713,6 +729,7 @@ flowchart LR
 | U24 `batch_resume_keeps_manifest_and_counts`     | Multiple pages, failures, replay, older heartbeat, continuation.                                | Stable entries/counts, no skips, visible failures, retained bytes; completion does not wait for all projections.                                                                                       |
 | U25 `intake_is_fast_and_failure_is_honest`       | Temporal accepts, times out, or loses a start reply during callback/user submission.            | Success only after durable acceptance; callback deadline stays below two seconds; failure returns promptly and retry reuses identity. Optional inbox variant must prove durable acceptance before 200. |
 | U26 `priority_matches_rider_expectations`        | Background archive/delete burst followed by a new ride.                                         | Fitness/segment/achievement refresh gets short wait/high priority; pending work promotes; background work still progresses; no publication SLA is asserted.                                            |
+| U27 `shared_activity_projection_is_atomic`       | Different segment refreshes affect one activity; replacement fails or clears all efforts.       | Ordered activity locks precede fresh reads and atomic replacement; failed writes roll back. Segment refresh commits ranks before taking activity locks; edits/deletes use the same lock order.         |
 
 ### Persistence and runtime evidence
 
