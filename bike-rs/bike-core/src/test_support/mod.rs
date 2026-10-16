@@ -20,10 +20,17 @@ pub use analytics::{
     activity_analytics, activity_id_row, analytics_user_state, fitness_day, new_fitness_day,
     new_segment_effort, segment_effort,
 };
-pub use defaults::{new_background_task, new_feature_flag, new_user_preferences};
+pub use defaults::user_preferences;
+pub use defaults::{
+    background_task, new_background_task, new_feature_flag, new_user_preferences, task_attempt,
+};
 mod heatmaps;
 pub use heatmaps::heatmap_projection;
 mod imports;
+mod integration_events;
+pub use integration_events::{integration_event, quota_bucket};
+mod mocks;
+pub use mocks::{count_row, postgres_mock, written};
 mod reprocessing;
 pub use reprocessing::{
     parsed_reprocess_activity, reprocess_activity, reprocess_artifact, reprocess_execution,

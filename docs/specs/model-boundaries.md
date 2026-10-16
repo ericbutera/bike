@@ -109,6 +109,12 @@ on `activities::Entity`, and deleting the import stays on `activity_imports::Ent
 - Unit tests use mocks configured for PostgreSQL and shared fixtures. Do not use
   SQLite-specific schemas, timestamp defaults, or database behavior as a substitute
   for PostgreSQL. Existing Docker/PostgreSQL suites own database semantics.
+- The `test-fixtures` feature enables SeaORM's mock support for cross-crate fixture
+  consumers. Only dev-dependencies enable it; production does not include a mock
+  database. `postgres_mock`, `written`, and `count_row` share ordinary mock setup.
+- `test:workers:mocks` runs restored import/history/metrics/task model contracts.
+  Assert the real statements/values and transaction outcomes; returning a model
+  supplied by the mock alone does not verify that a mutation preserved fields.
 - Insert fixtures provide required business inputs and deterministic timestamps.
   Leave database-owned defaults unset unless the test exercises an override;
   set timestamp fields to `NotSet` when testing database-generated timestamps.

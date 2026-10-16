@@ -145,6 +145,9 @@ flowchart LR
   related segment data. Keep this lock order consistent; do not hold segment
   locks while waiting for activity locks. These are domain transaction rules,
   requiring no extra table, execution ledger, or SQL orchestration bridge.
+- Write activity projections in bounded bulk inserts inside that transaction.
+  Avoid one insert/returning query per activity while holding shared locks. Keep
+  replacement rollback atomic and preserve count/highlight mapping and defaults.
 - Versioned replacement can publish one complete selected version and then reclaim
   older versions. Readers select the published version; outputs need not switch
   versions together.
@@ -700,6 +703,18 @@ flowchart LR
   executes no Activities. CLI camelCase export compatibility remains outstanding.
 
 ### Unit acceptance scenarios
+
+- `mise run checks:docker test:workers:mocks` runs the restored PostgreSQL mock
+  regressions for import identity/state, retained-artifact copying, archive
+  progress/failure, preference backfill decisions, execution claims/rollback/
+  cancellation fences, history ownership/filters, scrape failures, and the
+  remaining SQL processor registry/adapters. Shared fixtures own valid defaults;
+  mocks inspect actual statements and bound values, without maintaining a schema.
+- These units replace database-backed unit setup. They do not prove PostgreSQL
+  isolation or database-generated defaults; the existing PostgreSQL/CI suites
+  own those properties. Graph/replay UI tests retire with their removed product
+  behavior. Native workflow, storage, source parsing, and reprocessing units stay
+  in the existing owning suites; none require SQLite.
 
 | ID / suggested test                              | Given / action                                                                                  | Required assertion                                                                                                                                                                                     |
 | ------------------------------------------------ | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

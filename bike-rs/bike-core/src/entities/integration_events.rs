@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::sea_query::{extension::postgres::PgExpr, Alias, Expr, Func};
-use sea_orm::{ConnectionTrait, DatabaseBackend, DbErr, ExprTrait, QueryOrder, QuerySelect, Set};
+use sea_orm::sea_query::{extension::postgres::PgExpr, Expr};
+use sea_orm::{ConnectionTrait, DbErr, ExprTrait, QueryOrder, QuerySelect, Set};
 
 #[derive(Debug, Clone)]
 pub struct NewEvent {
@@ -33,10 +33,7 @@ impl Entity {
             .filter(Column::Provider.eq("strava"))
             .filter(Column::UserId.eq(event.bike_user_id))
             .filter(Column::EventType.eq("strava.event.accepted"))
-            .filter(
-                Self::payload_field(db.get_database_backend(), "strava_event_id")
-                    .eq(event.strava_event_id.to_string()),
-            )
+            .filter(Self::payload_field("strava_event_id").eq(event.strava_event_id.to_string()))
             .one(db)
             .await?
             .ok_or(DbErr::RecordNotFound(
@@ -60,7 +57,7 @@ impl Entity {
             .filter(Column::Provider.eq("strava"))
             .filter(Column::UserId.eq(user_id))
             .filter(Column::EventType.eq("strava.event.accepted"))
-            .filter(Self::payload_field(db.get_database_backend(), "parent_event_id").is_null())
+            .filter(Self::payload_field("parent_event_id").is_null())
             .order_by_desc(Column::CreatedAt)
             .order_by_desc(Column::Id)
             .limit(std::cmp::max(limit, 1))
@@ -68,20 +65,8 @@ impl Entity {
             .await
     }
 
-    fn payload_field(backend: DatabaseBackend, key: &str) -> Expr {
-        let payload = Column::Payload.into_expr();
-        match backend {
-            DatabaseBackend::Sqlite => Func::cust(Alias::new("json_extract"))
-                .args([payload, Expr::val(format!("$.{key}"))])
-                .into(),
-            DatabaseBackend::MySql => Func::cust(Alias::new("JSON_UNQUOTE"))
-                .arg(
-                    Func::cust(Alias::new("JSON_EXTRACT"))
-                        .args([payload, Expr::val(format!("$.{key}"))]),
-                )
-                .into(),
-            _ => PgExpr::cast_json_field(payload, key),
-        }
+    fn payload_field(key: &str) -> Expr {
+        PgExpr::cast_json_field(Column::Payload.into_expr(), key)
     }
 
     pub async fn record(db: &impl ConnectionTrait, event: NewEvent) -> Result<Model, DbErr> {
@@ -111,28 +96,12 @@ impl Entity {
             query = query.filter(Column::UserId.eq(user_id));
         }
         if let Some(activity_id) = options.activity_id {
-            query = query.filter(Self::payload_int_filter(
-                db.get_database_backend(),
-                "activity_id",
-                activity_id,
-            ));
+            query = query.filter(Self::payload_field("activity_id").eq(activity_id.to_string()));
         }
         if let Some(import_id) = options.import_id {
-            query = query.filter(Self::payload_int_filter(
-                db.get_database_backend(),
-                "import_id",
-                import_id,
-            ));
+            query = query.filter(Self::payload_field("import_id").eq(import_id.to_string()));
         }
         query.limit(std::cmp::max(options.limit, 1)).all(db).await
-    }
-
-    fn payload_int_filter(backend: DatabaseBackend, key: &str, value: i32) -> Expr {
-        let field = Self::payload_field(backend, key);
-        match backend {
-            DatabaseBackend::Sqlite => field.clone().eq(value).or(field.eq(value.to_string())),
-            _ => field.eq(value.to_string()),
-        }
     }
 }
 

@@ -17,6 +17,46 @@
   eventual output handoffs in the combined worker. Other producer conversions,
   cutover, recovery drills, and PR #67's atomic fitness follow-up remain separate.
 
+## Concurrent projection fix: production canary, 22:58 UTC
+
+- PR #67 merged as `97857523e69693f2e2880043448460ecc1465f70` after
+  CI 478 passed all 83 browser cases. Main CI 480 passed another 83 cases and
+  deployed the fix. All five application Pods were ready with zero restarts;
+  `schema-migration-97857523e69693f2e2880043448460ecc1465f70` completed.
+- Verified immutable images: API
+  `8d4c28744b40ae647e84e69f2949069a5ff3f420b85649e72f55bc816a258871`,
+  both workers `2a4f7663adb170c370b5257dd842acb48dadf21cfb0664c2f4ca184c8799f9d5`,
+  UI `ebcc21b88723b4aac4107a7ed208e7dbb899b93d1ce83edb38227efd2e96f620`,
+  and maps `9457a623de24c8b86093af52a2c9ca315e5345580adf12ceccf30abadaee8ede`.
+  API, workers, and maps reported the merged revision. UI identity uses its
+  immutable image rather than a missing `BIKE_VERSION` environment variable.
+- Reprocessed the same real retained activity/import 1588 using command
+  `4a787518-dc7b-43e3-8c5a-d66f273ee090`. HTTP 202 took **0.495768 seconds**;
+  run `01a146f0-7816-7a76-b5ae-b1e9f676ed2e` completed in **1.510499988 seconds**.
+- All eight segment Activities started between 22:58:50.266177 and
+  22:58:50.421450 UTC, before the first completed at 22:58:50.497501 UTC.
+  All eight therefore overlapped. Every Activity completed on attempt **1**,
+  with no failed/timed-out events; the last completed at 22:58:51.846219 UTC.
+  This repeats the previously failing real concurrency case with the row locks.
+- Fitness rebuilt at 22:58:50.225509 UTC and cleared the dirty day. The activity
+  retained 47 efforts, its IDs/title/sport, and the same derived-content hash.
+  The unchanged heatmap reused ready generation 7; a new generation was unnecessary.
+  The fitness API returned 200 with the same load/fitness/fatigue/form values.
+- Retrying the identical command took **0.246614 seconds** and returned the same
+  job/run. Exactly one command audit and one linked activity remained. SQL task
+  totals stayed 1,991 completed and five pre-existing failures.
+- Diagnostics exposed three row-lock waits of 288, 330, and 443 ms. The duplicate-key
+  defect is corrected, but this is not a warning-free performance pass. Projection
+  insertion still made one request per activity while retaining shared locks.
+  The follow-up uses model-owned 500-row bulk inserts and tests 501 rows as two
+  writes, retaining ordered locks, fresh reads, and atomic rollback.
+- CI 480 also emitted a Pulumi update notice after applying successfully. Update
+  the owning infrastructure CLI pin before the final release and inspect the
+  actual deployment diagnostics. Do not suppress notices or raise SQL thresholds.
+- Restore the ordinary CI 80% changed-line gate after this real-data vetting.
+  The follow-up restores 37 removed-test scenarios with PostgreSQL mocks/shared
+  fixtures and adds two projection batching regressions; no SQLite behavior returns.
+
 ## First native production reprocess, 21:58 UTC
 
 - PR #66 merged as `7fa4f45181e3235a5b62f309e2b09573ac4beba3` after

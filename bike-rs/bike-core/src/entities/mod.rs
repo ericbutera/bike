@@ -24,4 +24,12 @@ pub mod strava_events;
 pub mod user_preferences;
 
 #[cfg(test)]
+mod archive_mutation_tests;
+#[cfg(test)]
+mod import_mutation_tests;
+#[cfg(test)]
+mod import_read_tests;
+#[cfg(test)]
 mod model_boundary_tests;
+#[cfg(test)]
+mod preference_mutation_tests;

@@ -10,6 +10,8 @@ pub mod queue_observations;
 pub mod task_anomalies;
 pub mod task_attempts;
 mod task_lifecycle;
+#[cfg(test)]
+mod task_lifecycle_tests;
 mod task_recovery;
 pub mod work_units;
 pub mod worker_batches;

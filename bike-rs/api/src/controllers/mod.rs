@@ -14,6 +14,8 @@ pub mod training_goals;
 pub mod user_preferences;
 
 #[cfg(test)]
+mod integration_events_tests;
+#[cfg(test)]
 mod model_boundary_tests;
 
 use crate::storage::AppStorage;

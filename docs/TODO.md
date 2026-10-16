@@ -18,12 +18,23 @@
 ### First deliverable: complete reprocessing
 
 - [x] Record the user's 2026-10-16 coverage exception for the initial production
-      worker rollout. CI measures and retains coverage with no percentage minimum;
-      normal `coverage:check` remains 80%. Tests, lint, images, and release checks
-      remain blocking. Prioritize a working deployment and real retained data.
-- [ ] After real-data vetting, restore the CI 80% gate and fill meaningful unit
-      coverage using PostgreSQL mocks/shared fixtures. Do not restore SQLite tests,
-      database emulation, timestamp massaging, or compatibility behavior.
+      worker rollout. The exception covered the first production slice; reports,
+      tests, lint, images, and release checks remained required. Restore the normal
+      percentage gate after real-data vetting below.
+- [x] Replace removed database-backed unit setup with 39 focused PostgreSQL mock
+      regressions and shared fixtures: import reads/state/artifacts, archive
+      progress, preference decisions, task claim/retry/cancellation/recovery,
+      integration history, metrics, and SQL processor adapters. Existing native
+      reprocess/workflow/storage and timestamp units remain active. Retired DAG
+      controls do not need replacement tests. No SQLite schema or compatibility code.
+- [x] After the corrected real-data canary, restore the CI 80% gate. Keep ordinary
+      coverage reports and existing PostgreSQL/CI persistence checks required;
+      mock contracts do not prove isolation, database defaults, or crash recovery.
+- [ ] Finish the production follow-up from the 22:58 UTC canary: all eight
+      concurrent segment Activities completed in one attempt, but three activity
+      row-lock waits exceeded 250 ms. Replace per-row projection inserts with
+      bounded model-owned bulk writes, then repeat the real canary and worker
+      stop/start check with clean diagnostics. Keep the existing thresholds.
 - [x] Implement the concrete retained-source adapter with model-owned conditional
       writes, preserved activity/import IDs, minimal committed refresh scope,
       removed-segment handoff, audit rollback, and lost-completion retry handling.

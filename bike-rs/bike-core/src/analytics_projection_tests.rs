@@ -25,11 +25,7 @@ fn ranked_input() -> MockDatabase {
 #[tokio::test]
 async fn shared_activity_projection_locks_before_reading_ranks_and_replaces_atomically() {
     let db = ranked_input()
-        .append_query_results([vec![activity_analytics::Model {
-            achievement_count: 1,
-            kom_count: 1,
-            ..fixtures::activity_analytics()
-        }]])
+        .append_exec_results([written()])
         .into_connection();
     rebuild_activity_analytics_cache(&db, &[99, 42, 99, 0])
         .await
@@ -78,7 +74,7 @@ async fn shared_activity_projection_locks_before_reading_ranks_and_replaces_atom
 #[tokio::test]
 async fn projection_replacement_failure_rolls_back_instead_of_losing_the_previous_output() {
     let db = ranked_input()
-        .append_query_errors([DbErr::Custom("fixture replacement failure".into())])
+        .append_exec_errors([DbErr::Custom("fixture replacement failure".into())])
         .into_connection();
     let error = rebuild_activity_analytics_cache(&db, &[42])
         .await
@@ -194,13 +190,8 @@ async fn segment_refresh_commits_ranks_before_locking_shared_activity_projection
         .append_query_results([vec![ranked]])
         .append_query_results([vec![fixtures::segment()]])
         .append_query_results([vec![fixtures::segment_user_summary()]])
-        .append_query_results([vec![activity_analytics::Model {
-            achievement_count: 1,
-            kom_count: 1,
-            ..fixtures::activity_analytics()
-        }]])
-        // Clear both segment summaries, update effort ranks, clear activity output.
-        .append_exec_results((0..4).map(|_| written()))
+        // Clear both segment summaries, update effort ranks, replace activity output.
+        .append_exec_results((0..5).map(|_| written()))
         .into_connection();
     rebuild_segment_analytics_cache(&db, &[1]).await.unwrap();
     let log = db.into_transaction_log();

@@ -712,7 +712,7 @@ where
     let input = load_activity_analytics_input(&txn, &activity_ids).await?;
     let analytics_by_activity_id = build_activity_analytics(input);
     activity_analytics::Model::delete_by_activity_ids(&txn, &activity_ids).await?;
-    persist_activity_analytics(&txn, analytics_by_activity_id).await?;
+    activity_analytics::Model::store_summaries(&txn, analytics_by_activity_id).await?;
     txn.commit().await
 }
 
@@ -817,24 +817,6 @@ fn activity_achievement_highlight(
             .copied()
             .flatten(),
     }
-}
-
-async fn persist_activity_analytics<C>(
-    db: &C,
-    analytics_by_activity_id: HashMap<i32, ActivityAnalyticsAccumulator>,
-) -> Result<(), sea_orm::DbErr>
-where
-    C: ConnectionTrait,
-{
-    for (activity_id, analytics) in analytics_by_activity_id {
-        let Some(user_id) = analytics.user_id else {
-            continue;
-        };
-
-        activity_analytics::Model::store_summary(db, activity_id, user_id, analytics).await?;
-    }
-
-    Ok(())
 }
 
 async fn segment_titles_by_id<C>(
