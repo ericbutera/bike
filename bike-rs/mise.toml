@@ -71,6 +71,18 @@ description = "Run mocked native workflow, handoff, and worker metric regression
 depends = ["test:reprocess"]
 run = "cargo test -p bike-core --locked --lib background_jobs"
 
+[tasks."test:workers:mocks"]
+description = "Run PostgreSQL mock replacements for removed worker/import/history/metrics database units"
+run = [
+  "cargo test -p bike-core --locked --lib mutation_tests",
+  "cargo test -p bike-core --locked --lib import_read_tests",
+  "cargo test -p bike-core --locked --lib activity_analytics::tests",
+  "cargo test -p bike-core --locked --lib task_lifecycle_tests",
+  "cargo test -p api --locked --lib integration_events_tests",
+  "cargo test -p api --locked --lib metrics_scrape_tests",
+  "cargo test -p worker --locked --lib pipeline_tests",
+]
+
 [tasks."test:workers:postgres"]
 description = "Verify pipeline migration, concurrent claims, and retry history in disposable PostgreSQL"
 env = { RUSTFLAGS = "-D warnings" }

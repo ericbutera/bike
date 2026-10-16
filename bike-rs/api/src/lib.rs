@@ -7,6 +7,8 @@ pub mod controllers;
 mod database_metrics;
 pub mod feature_flags_keys;
 pub mod metrics;
+#[cfg(test)]
+mod metrics_scrape_tests;
 pub mod openapi;
 pub mod segment_support;
 pub mod storage;

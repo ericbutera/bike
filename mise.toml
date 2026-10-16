@@ -129,6 +129,10 @@ run = "mise --cd bike-rs run test:tasks:workflows"
 description = "Verify native reprocess domain effects, submission, workflows, and worker build"
 run = "mise --cd bike-rs run test:reprocess"
 
+[tasks."test:workers:mocks"]
+description = "Run isolated mock replacements for worker/import/history/metrics database units"
+run = "mise --cd bike-rs run test:workers:mocks"
+
 [tasks."test:storage"]
 description = "Verify shared object storage, retention, and legacy Strava compatibility"
 run = "mise --cd bike-rs run test:storage"
@@ -272,11 +276,8 @@ description = "Restore validated reports in the browser workflow before publicat
 run = "bash scripts/coverage-transfer.sh restore"
 
 [tasks."ci:coverage"]
-description = "Measure changed-line coverage during the approved initial worker rollout"
-depends = ["coverage:tools"]
-# Approved 2026-10-16 for the first real-data worker rollout; restore after vetting.
-# Keep report validation/retention and the ordinary 80% coverage:check task intact.
-run = "mise exec pipx:diff-cover jq -- env COVERAGE_MINIMUM=0 bash scripts/coverage-check.sh"
+description = "Require 80% changed-line coverage for each service in CI"
+run = "mise run coverage:check"
 
 [tasks."rust:coverage"]
 description = "Generate Rust workspace coverage reports"
