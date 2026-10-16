@@ -17,6 +17,9 @@ use chrono::Utc;
 use sea_orm::{DatabaseConnection, DbErr};
 use std::fmt;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Debug)]
 pub struct SegmentRegenerationError {
     pub message: String,
@@ -190,7 +193,7 @@ pub async fn process_activity_segment_regeneration(
         affected.sort_unstable();
         affected.dedup();
         mark_segment_activity_changes(db, &affected, Utc::now()).await?;
-        crate::background_jobs::batches::affected_segments(db, &affected).await?;
+        refresh_matched_activity_analytics(db, activity_id, &affected).await?;
         let count = segment_efforts::Model::count_for_activity(db, activity_id).await?;
         Ok::<_, SegmentRegenerationError>((
             (),
@@ -204,4 +207,20 @@ pub async fn process_activity_segment_regeneration(
         ))
     })
     .await
+}
+
+async fn refresh_matched_activity_analytics(
+    db: &DatabaseConnection,
+    activity_id: i32,
+    affected: &[i32],
+) -> Result<(), SegmentRegenerationError> {
+    if crate::background_jobs::batches::current().is_some() {
+        crate::background_jobs::batches::affected_segments(db, affected).await?;
+    } else {
+        rebuild_segment_analytics_cache(db, affected).await?;
+    }
+    // A removed last match is absent from the segment rebuild's remaining
+    // effort holders. Always clear/rebuild this activity's own cached counts.
+    rebuild_activity_analytics_cache(db, &[activity_id]).await?;
+    Ok(())
 }
