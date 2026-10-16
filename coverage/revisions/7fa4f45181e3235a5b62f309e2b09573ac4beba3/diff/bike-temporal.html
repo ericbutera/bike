@@ -1,0 +1,495 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+    <head>
+        <meta http-equiv='Content-Type' content='text/html; charset=utf-8'>
+        <title>Diff Coverage</title>
+        <style>
+            .src-snippet { margin-top: 2em; }
+            .src-name { font-weight: bold; }
+            .snippets {
+                border-top: 1px solid #bdbdbd;
+                border-bottom: 1px solid #bdbdbd;
+            }
+            pre { line-height: 125%; }
+td.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+span.linenos { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+td.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+.hll { background-color: #ffcccc }
+.c { color: #3D7B7B; font-style: italic } /* Comment */
+.err { border: 1px solid #F00 } /* Error */
+.k { color: #008000; font-weight: bold } /* Keyword */
+.o { color: #666 } /* Operator */
+.ch { color: #3D7B7B; font-style: italic } /* Comment.Hashbang */
+.cm { color: #3D7B7B; font-style: italic } /* Comment.Multiline */
+.cp { color: #9C6500 } /* Comment.Preproc */
+.cpf { color: #3D7B7B; font-style: italic } /* Comment.PreprocFile */
+.c1 { color: #3D7B7B; font-style: italic } /* Comment.Single */
+.cs { color: #3D7B7B; font-style: italic } /* Comment.Special */
+.gd { color: #A00000 } /* Generic.Deleted */
+.ge { font-style: italic } /* Generic.Emph */
+.ges { font-weight: bold; font-style: italic } /* Generic.EmphStrong */
+.gr { color: #E40000 } /* Generic.Error */
+.gh { color: #000080; font-weight: bold } /* Generic.Heading */
+.gi { color: #008400 } /* Generic.Inserted */
+.go { color: #717171 } /* Generic.Output */
+.gp { color: #000080; font-weight: bold } /* Generic.Prompt */
+.gs { font-weight: bold } /* Generic.Strong */
+.gu { color: #800080; font-weight: bold } /* Generic.Subheading */
+.gt { color: #04D } /* Generic.Traceback */
+.kc { color: #008000; font-weight: bold } /* Keyword.Constant */
+.kd { color: #008000; font-weight: bold } /* Keyword.Declaration */
+.kn { color: #008000; font-weight: bold } /* Keyword.Namespace */
+.kp { color: #008000 } /* Keyword.Pseudo */
+.kr { color: #008000; font-weight: bold } /* Keyword.Reserved */
+.kt { color: #B00040 } /* Keyword.Type */
+.m { color: #666 } /* Literal.Number */
+.s { color: #BA2121 } /* Literal.String */
+.na { color: #687822 } /* Name.Attribute */
+.nb { color: #008000 } /* Name.Builtin */
+.nc { color: #00F; font-weight: bold } /* Name.Class */
+.no { color: #800 } /* Name.Constant */
+.nd { color: #A2F } /* Name.Decorator */
+.ni { color: #717171; font-weight: bold } /* Name.Entity */
+.ne { color: #CB3F38; font-weight: bold } /* Name.Exception */
+.nf { color: #00F } /* Name.Function */
+.nl { color: #767600 } /* Name.Label */
+.nn { color: #00F; font-weight: bold } /* Name.Namespace */
+.nt { color: #008000; font-weight: bold } /* Name.Tag */
+.nv { color: #19177C } /* Name.Variable */
+.ow { color: #A2F; font-weight: bold } /* Operator.Word */
+.w { color: #BBB } /* Text.Whitespace */
+.mb { color: #666 } /* Literal.Number.Bin */
+.mf { color: #666 } /* Literal.Number.Float */
+.mh { color: #666 } /* Literal.Number.Hex */
+.mi { color: #666 } /* Literal.Number.Integer */
+.mo { color: #666 } /* Literal.Number.Oct */
+.sa { color: #BA2121 } /* Literal.String.Affix */
+.sb { color: #BA2121 } /* Literal.String.Backtick */
+.sc { color: #BA2121 } /* Literal.String.Char */
+.dl { color: #BA2121 } /* Literal.String.Delimiter */
+.sd { color: #BA2121; font-style: italic } /* Literal.String.Doc */
+.s2 { color: #BA2121 } /* Literal.String.Double */
+.se { color: #AA5D1F; font-weight: bold } /* Literal.String.Escape */
+.sh { color: #BA2121 } /* Literal.String.Heredoc */
+.si { color: #A45A77; font-weight: bold } /* Literal.String.Interpol */
+.sx { color: #008000 } /* Literal.String.Other */
+.sr { color: #A45A77 } /* Literal.String.Regex */
+.s1 { color: #BA2121 } /* Literal.String.Single */
+.ss { color: #19177C } /* Literal.String.Symbol */
+.bp { color: #008000 } /* Name.Builtin.Pseudo */
+.fm { color: #00F } /* Name.Function.Magic */
+.vc { color: #19177C } /* Name.Variable.Class */
+.vg { color: #19177C } /* Name.Variable.Global */
+.vi { color: #19177C } /* Name.Variable.Instance */
+.vm { color: #19177C } /* Name.Variable.Magic */
+.il { color: #666 } /* Literal.Number.Integer.Long */
+.diff-cover-covered-line { background-color: #ddffdd; }
+        </style>
+    </head>
+    <body>
+        <h1>Diff Coverage</h1>
+        <p>Diff: 7e43ab6d2d5b70d305a52e5f12bf704593c5fad7...HEAD, staged, unstaged and untracked changes</p>
+        <ul>
+            <li><b>Total</b>: 252 lines</li>
+            <li><b>Missing</b>: 52 lines</li>
+            <li><b>Coverage</b>: 79.37%</li>
+        </ul>
+        <table border="1">
+            <tr>
+                <th>Source File</th>
+                <th>Diff Coverage (%)</th>
+                <th>Missing Lines</th>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-temporal/src/activities.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-temporal/src/activities/imports.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-temporal/src/activities/imports/execution.rs</td>
+                <td>87.5%</td>
+                <td>14-15</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-temporal/src/client.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-temporal/src/operations.rs</td>
+                <td>0.0%</td>
+                <td>20-22,31,33,42,47,53,59,71,77,105,112</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-temporal/src/runtime.rs</td>
+                <td>0.0%</td>
+                <td>17-29,31-48,50-53</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-temporal/src/submission.rs</td>
+                <td>94.6%</td>
+                <td>73,75</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-temporal/src/workflows/children.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-temporal/src/workflows/options.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-temporal/src/workflows/process_activity_import.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-temporal/src/workflows/reprocess_activity_import.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-temporal/src/workflows/steps/derived.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-temporal/src/workflows/steps/imports.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+        </table>
+        <div class="src-snippet">
+            <div class="src-name">bike-rs/bike-temporal/src/activities/imports/execution.rs</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">10</span>
+<span class="normal">11</span>
+<span class="normal">12</span>
+<span class="normal">13</span>
+<span class="normal">14</span>
+<span class="normal">15</span>
+<span class="normal">16</span>
+<span class="normal">17</span>
+<span class="normal">18</span>
+<span class="normal">19</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/bike-temporal/src/activities/imports/execution.rs-10" name="bike-rs/bike-temporal/src/activities/imports/execution.rs-10"></a><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="n">ImportExecution</span><span class="p">,</span><span class="w"> </span><span class="n">WorkflowError</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/bike-temporal/src/activities/imports/execution.rs-11" name="bike-rs/bike-temporal/src/activities/imports/execution.rs-11"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">info</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">info</span><span class="p">();</span>
+<a id="bike-rs/bike-temporal/src/activities/imports/execution.rs-12" name="bike-rs/bike-temporal/src/activities/imports/execution.rs-12"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">required</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">|</span><span class="n">value</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="nb">Option</span><span class="o">&lt;</span><span class="nb">String</span><span class="o">&gt;|</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/bike-temporal/src/activities/imports/execution.rs-13" name="bike-rs/bike-temporal/src/activities/imports/execution.rs-13"></a><span class="w">        </span><span class="n">value</span><span class="p">.</span><span class="n">clone</span><span class="p">().</span><span class="n">ok_or_else</span><span class="p">(</span><span class="o">||</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/bike-temporal/src/activities/imports/execution.rs-14" name="bike-rs/bike-temporal/src/activities/imports/execution.rs-14"></a><span class="hll"><span class="w">            </span><span class="n">WorkflowError</span><span class="p">::</span><span class="n">bad_request</span><span class="p">(</span><span class="s">"Import requires a Temporal workflow execution"</span><span class="p">)</span>
+</span><a id="bike-rs/bike-temporal/src/activities/imports/execution.rs-15" name="bike-rs/bike-temporal/src/activities/imports/execution.rs-15"></a><span class="hll"><span class="w">        </span><span class="p">})</span>
+</span><a id="bike-rs/bike-temporal/src/activities/imports/execution.rs-16" name="bike-rs/bike-temporal/src/activities/imports/execution.rs-16"></a><span class="w">    </span><span class="p">};</span>
+<a id="bike-rs/bike-temporal/src/activities/imports/execution.rs-17" name="bike-rs/bike-temporal/src/activities/imports/execution.rs-17"></a><span class="w">    </span><span class="nb">Ok</span><span class="p">(</span><span class="n">ImportExecution</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/bike-temporal/src/activities/imports/execution.rs-18" name="bike-rs/bike-temporal/src/activities/imports/execution.rs-18"></a><span class="w">        </span><span class="n">command</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/activities/imports/execution.rs-19" name="bike-rs/bike-temporal/src/activities/imports/execution.rs-19"></a><span class="w">        </span><span class="n">workflow</span><span class="p">:</span><span class="w"> </span><span class="nc">JobReference</span><span class="w"> </span><span class="p">{</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+        <div class="src-snippet">
+            <div class="src-name">bike-rs/bike-temporal/src/operations.rs</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">16</span>
+<span class="normal">17</span>
+<span class="normal">18</span>
+<span class="normal">19</span>
+<span class="normal">20</span>
+<span class="normal">21</span>
+<span class="normal">22</span>
+<span class="normal">23</span>
+<span class="normal">24</span>
+<span class="normal">25</span>
+<span class="normal">26</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/bike-temporal/src/operations.rs-16" name="bike-rs/bike-temporal/src/operations.rs-16"></a><span class="w">    </span><span class="n">objects</span><span class="p">:</span><span class="w"> </span><span class="nc">ObjectStore</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-17" name="bike-rs/bike-temporal/src/operations.rs-17"></a><span class="p">}</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-18" name="bike-rs/bike-temporal/src/operations.rs-18"></a>
+<a id="bike-rs/bike-temporal/src/operations.rs-19" name="bike-rs/bike-temporal/src/operations.rs-19"></a><span class="k">impl</span><span class="w"> </span><span class="n">BikeOperations</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-20" name="bike-rs/bike-temporal/src/operations.rs-20"></a><span class="hll"><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">new</span><span class="p">(</span><span class="n">db</span><span class="p">:</span><span class="w"> </span><span class="nc">DatabaseConnection</span><span class="p">,</span><span class="w"> </span><span class="n">objects</span><span class="p">:</span><span class="w"> </span><span class="nc">ObjectStore</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">Self</span><span class="w"> </span><span class="p">{</span>
+</span><a id="bike-rs/bike-temporal/src/operations.rs-21" name="bike-rs/bike-temporal/src/operations.rs-21"></a><span class="hll"><span class="w">        </span><span class="bp">Self</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="n">objects</span><span class="w"> </span><span class="p">}</span>
+</span><a id="bike-rs/bike-temporal/src/operations.rs-22" name="bike-rs/bike-temporal/src/operations.rs-22"></a><span class="hll"><span class="w">    </span><span class="p">}</span>
+</span><a id="bike-rs/bike-temporal/src/operations.rs-23" name="bike-rs/bike-temporal/src/operations.rs-23"></a><span class="p">}</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-24" name="bike-rs/bike-temporal/src/operations.rs-24"></a>
+<a id="bike-rs/bike-temporal/src/operations.rs-25" name="bike-rs/bike-temporal/src/operations.rs-25"></a><span class="cp">#[async_trait::async_trait]</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-26" name="bike-rs/bike-temporal/src/operations.rs-26"></a><span class="k">impl</span><span class="w"> </span><span class="n">ImportOperations</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">BikeOperations</span><span class="w"> </span><span class="p">{</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">27</span>
+<span class="normal">28</span>
+<span class="normal">29</span>
+<span class="normal">30</span>
+<span class="normal">31</span>
+<span class="normal">32</span>
+<span class="normal">33</span>
+<span class="normal">34</span>
+<span class="normal">35</span>
+<span class="normal">36</span>
+<span class="normal">37</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/bike-temporal/src/operations.rs-27" name="bike-rs/bike-temporal/src/operations.rs-27"></a><span class="w">    </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">activity_import</span><span class="p">(</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-28" name="bike-rs/bike-temporal/src/operations.rs-28"></a><span class="w">        </span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-29" name="bike-rs/bike-temporal/src/operations.rs-29"></a><span class="w">        </span><span class="n">execution</span><span class="p">:</span><span class="w"> </span><span class="nc">ImportExecution</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-30" name="bike-rs/bike-temporal/src/operations.rs-30"></a><span class="w">        </span><span class="n">_context</span><span class="p">:</span><span class="w"> </span><span class="nc">ActivityContext</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-31" name="bike-rs/bike-temporal/src/operations.rs-31"></a><span class="hll"><span class="w">    </span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="n">ActivityImportResult</span><span class="p">,</span><span class="w"> </span><span class="n">WorkflowError</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+</span><a id="bike-rs/bike-temporal/src/operations.rs-32" name="bike-rs/bike-temporal/src/operations.rs-32"></a><span class="w">        </span><span class="n">bike_core</span><span class="p">::</span><span class="n">activity_reprocessing</span><span class="p">::</span><span class="n">reprocess</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">.</span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="bp">self</span><span class="p">.</span><span class="n">objects</span><span class="p">,</span><span class="w"> </span><span class="n">execution</span><span class="p">).</span><span class="k">await</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-33" name="bike-rs/bike-temporal/src/operations.rs-33"></a><span class="hll"><span class="w">    </span><span class="p">}</span>
+</span><a id="bike-rs/bike-temporal/src/operations.rs-34" name="bike-rs/bike-temporal/src/operations.rs-34"></a><span class="p">}</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-35" name="bike-rs/bike-temporal/src/operations.rs-35"></a>
+<a id="bike-rs/bike-temporal/src/operations.rs-36" name="bike-rs/bike-temporal/src/operations.rs-36"></a><span class="cp">#[async_trait::async_trait]</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-37" name="bike-rs/bike-temporal/src/operations.rs-37"></a><span class="k">impl</span><span class="w"> </span><span class="n">DerivedOperations</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">BikeOperations</span><span class="w"> </span><span class="p">{</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">38</span>
+<span class="normal">39</span>
+<span class="normal">40</span>
+<span class="normal">41</span>
+<span class="normal">42</span>
+<span class="normal">43</span>
+<span class="normal">44</span>
+<span class="normal">45</span>
+<span class="normal">46</span>
+<span class="normal">47</span>
+<span class="normal">48</span>
+<span class="normal">49</span>
+<span class="normal">50</span>
+<span class="normal">51</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/bike-temporal/src/operations.rs-38" name="bike-rs/bike-temporal/src/operations.rs-38"></a><span class="w">    </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">rebuild_fitness_freshness</span><span class="p">(</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-39" name="bike-rs/bike-temporal/src/operations.rs-39"></a><span class="w">        </span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-40" name="bike-rs/bike-temporal/src/operations.rs-40"></a><span class="w">        </span><span class="n">change</span><span class="p">:</span><span class="w"> </span><span class="nc">FitnessChange</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-41" name="bike-rs/bike-temporal/src/operations.rs-41"></a><span class="w">        </span><span class="n">_context</span><span class="p">:</span><span class="w"> </span><span class="nc">ActivityContext</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-42" name="bike-rs/bike-temporal/src/operations.rs-42"></a><span class="hll"><span class="w">    </span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="n">Publication</span><span class="p">,</span><span class="w"> </span><span class="n">WorkflowError</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+</span><a id="bike-rs/bike-temporal/src/operations.rs-43" name="bike-rs/bike-temporal/src/operations.rs-43"></a><span class="w">        </span><span class="n">bike_core</span><span class="p">::</span><span class="n">analytics</span><span class="p">::</span><span class="n">rebuild_fitness_freshness_cache</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">.</span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="n">change</span><span class="p">.</span><span class="n">user_id</span><span class="p">).</span><span class="k">await</span><span class="o">?</span><span class="p">;</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-44" name="bike-rs/bike-temporal/src/operations.rs-44"></a><span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="n">state</span><span class="w"> </span><span class="o">=</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-45" name="bike-rs/bike-temporal/src/operations.rs-45"></a><span class="w">            </span><span class="n">bike_core</span><span class="p">::</span><span class="n">entities</span><span class="p">::</span><span class="n">analytics_user_states</span><span class="p">::</span><span class="n">Model</span><span class="p">::</span><span class="n">for_user</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">.</span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="n">change</span><span class="p">.</span><span class="n">user_id</span><span class="p">)</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-46" name="bike-rs/bike-temporal/src/operations.rs-46"></a><span class="w">                </span><span class="p">.</span><span class="k">await</span><span class="o">?</span><span class="p">;</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-47" name="bike-rs/bike-temporal/src/operations.rs-47"></a><span class="hll"><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">state</span><span class="p">.</span><span class="n">is_some_and</span><span class="p">(</span><span class="o">|</span><span class="n">state</span><span class="o">|</span><span class="w"> </span><span class="n">state</span><span class="p">.</span><span class="n">fitness_dirty_from_day</span><span class="p">.</span><span class="n">is_some</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+</span><a id="bike-rs/bike-temporal/src/operations.rs-48" name="bike-rs/bike-temporal/src/operations.rs-48"></a><span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="nb">Err</span><span class="p">(</span><span class="n">WorkflowError</span><span class="p">::</span><span class="n">internal</span><span class="p">(</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-49" name="bike-rs/bike-temporal/src/operations.rs-49"></a><span class="w">                </span><span class="s">"Fitness changed during rebuild; retry current source"</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-50" name="bike-rs/bike-temporal/src/operations.rs-50"></a><span class="w">            </span><span class="p">));</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-51" name="bike-rs/bike-temporal/src/operations.rs-51"></a><span class="w">        </span><span class="p">}</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">49</span>
+<span class="normal">50</span>
+<span class="normal">51</span>
+<span class="normal">52</span>
+<span class="normal">53</span>
+<span class="normal">54</span>
+<span class="normal">55</span>
+<span class="normal">56</span>
+<span class="normal">57</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/bike-temporal/src/operations.rs-49" name="bike-rs/bike-temporal/src/operations.rs-49"></a><span class="w">                </span><span class="s">"Fitness changed during rebuild; retry current source"</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-50" name="bike-rs/bike-temporal/src/operations.rs-50"></a><span class="w">            </span><span class="p">));</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-51" name="bike-rs/bike-temporal/src/operations.rs-51"></a><span class="w">        </span><span class="p">}</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-52" name="bike-rs/bike-temporal/src/operations.rs-52"></a><span class="w">        </span><span class="nb">Ok</span><span class="p">(</span><span class="n">Publication</span><span class="p">::</span><span class="n">Published</span><span class="p">)</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-53" name="bike-rs/bike-temporal/src/operations.rs-53"></a><span class="hll"><span class="w">    </span><span class="p">}</span>
+</span><a id="bike-rs/bike-temporal/src/operations.rs-54" name="bike-rs/bike-temporal/src/operations.rs-54"></a>
+<a id="bike-rs/bike-temporal/src/operations.rs-55" name="bike-rs/bike-temporal/src/operations.rs-55"></a><span class="w">    </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">rebuild_segment_analytics</span><span class="p">(</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-56" name="bike-rs/bike-temporal/src/operations.rs-56"></a><span class="w">        </span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-57" name="bike-rs/bike-temporal/src/operations.rs-57"></a><span class="w">        </span><span class="n">change</span><span class="p">:</span><span class="w"> </span><span class="nc">SegmentChange</span><span class="p">,</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">55</span>
+<span class="normal">56</span>
+<span class="normal">57</span>
+<span class="normal">58</span>
+<span class="normal">59</span>
+<span class="normal">60</span>
+<span class="normal">61</span>
+<span class="normal">62</span>
+<span class="normal">63</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/bike-temporal/src/operations.rs-55" name="bike-rs/bike-temporal/src/operations.rs-55"></a><span class="w">    </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">rebuild_segment_analytics</span><span class="p">(</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-56" name="bike-rs/bike-temporal/src/operations.rs-56"></a><span class="w">        </span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-57" name="bike-rs/bike-temporal/src/operations.rs-57"></a><span class="w">        </span><span class="n">change</span><span class="p">:</span><span class="w"> </span><span class="nc">SegmentChange</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-58" name="bike-rs/bike-temporal/src/operations.rs-58"></a><span class="w">        </span><span class="n">_context</span><span class="p">:</span><span class="w"> </span><span class="nc">ActivityContext</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-59" name="bike-rs/bike-temporal/src/operations.rs-59"></a><span class="hll"><span class="w">    </span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="n">Publication</span><span class="p">,</span><span class="w"> </span><span class="n">WorkflowError</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+</span><a id="bike-rs/bike-temporal/src/operations.rs-60" name="bike-rs/bike-temporal/src/operations.rs-60"></a><span class="w">        </span><span class="k">use</span><span class="w"> </span><span class="n">bike_core</span><span class="p">::</span><span class="n">entities</span><span class="p">::</span><span class="n">segments</span><span class="p">;</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-61" name="bike-rs/bike-temporal/src/operations.rs-61"></a><span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="n">before</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">segments</span><span class="p">::</span><span class="n">Model</span><span class="p">::</span><span class="n">find_by_id</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">.</span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="n">change</span><span class="p">.</span><span class="n">segment_id</span><span class="p">).</span><span class="k">await</span><span class="o">?</span><span class="p">;</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-62" name="bike-rs/bike-temporal/src/operations.rs-62"></a><span class="w">        </span><span class="n">bike_core</span><span class="p">::</span><span class="n">analytics</span><span class="p">::</span><span class="n">rebuild_segment_analytics_cache</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">.</span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="p">[</span><span class="n">change</span><span class="p">.</span><span class="n">segment_id</span><span class="p">])</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-63" name="bike-rs/bike-temporal/src/operations.rs-63"></a><span class="w">            </span><span class="p">.</span><span class="k">await</span><span class="o">?</span><span class="p">;</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">67</span>
+<span class="normal">68</span>
+<span class="normal">69</span>
+<span class="normal">70</span>
+<span class="normal">71</span>
+<span class="normal">72</span>
+<span class="normal">73</span>
+<span class="normal">74</span>
+<span class="normal">75</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/bike-temporal/src/operations.rs-67" name="bike-rs/bike-temporal/src/operations.rs-67"></a><span class="w">                </span><span class="s">"Segment changed during rebuild; retry current source"</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-68" name="bike-rs/bike-temporal/src/operations.rs-68"></a><span class="w">            </span><span class="p">));</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-69" name="bike-rs/bike-temporal/src/operations.rs-69"></a><span class="w">        </span><span class="p">}</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-70" name="bike-rs/bike-temporal/src/operations.rs-70"></a><span class="w">        </span><span class="nb">Ok</span><span class="p">(</span><span class="n">Publication</span><span class="p">::</span><span class="n">Published</span><span class="p">)</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-71" name="bike-rs/bike-temporal/src/operations.rs-71"></a><span class="hll"><span class="w">    </span><span class="p">}</span>
+</span><a id="bike-rs/bike-temporal/src/operations.rs-72" name="bike-rs/bike-temporal/src/operations.rs-72"></a>
+<a id="bike-rs/bike-temporal/src/operations.rs-73" name="bike-rs/bike-temporal/src/operations.rs-73"></a><span class="w">    </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">prepare_heatmap</span><span class="p">(</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-74" name="bike-rs/bike-temporal/src/operations.rs-74"></a><span class="w">        </span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-75" name="bike-rs/bike-temporal/src/operations.rs-75"></a><span class="w">        </span><span class="n">change</span><span class="p">:</span><span class="w"> </span><span class="nc">HeatmapChange</span><span class="p">,</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">73</span>
+<span class="normal">74</span>
+<span class="normal">75</span>
+<span class="normal">76</span>
+<span class="normal">77</span>
+<span class="normal">78</span>
+<span class="normal">79</span>
+<span class="normal">80</span>
+<span class="normal">81</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/bike-temporal/src/operations.rs-73" name="bike-rs/bike-temporal/src/operations.rs-73"></a><span class="w">    </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">prepare_heatmap</span><span class="p">(</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-74" name="bike-rs/bike-temporal/src/operations.rs-74"></a><span class="w">        </span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-75" name="bike-rs/bike-temporal/src/operations.rs-75"></a><span class="w">        </span><span class="n">change</span><span class="p">:</span><span class="w"> </span><span class="nc">HeatmapChange</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-76" name="bike-rs/bike-temporal/src/operations.rs-76"></a><span class="w">        </span><span class="n">_context</span><span class="p">:</span><span class="w"> </span><span class="nc">ActivityContext</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-77" name="bike-rs/bike-temporal/src/operations.rs-77"></a><span class="hll"><span class="w">    </span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="n">Publication</span><span class="p">,</span><span class="w"> </span><span class="n">WorkflowError</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+</span><a id="bike-rs/bike-temporal/src/operations.rs-78" name="bike-rs/bike-temporal/src/operations.rs-78"></a><span class="w">        </span><span class="k">use</span><span class="w"> </span><span class="n">bike_core</span><span class="p">::{</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-79" name="bike-rs/bike-temporal/src/operations.rs-79"></a><span class="w">            </span><span class="n">entities</span><span class="p">::</span><span class="n">heatmap_projections</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-80" name="bike-rs/bike-temporal/src/operations.rs-80"></a><span class="w">            </span><span class="n">heatmaps</span><span class="p">::{</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-81" name="bike-rs/bike-temporal/src/operations.rs-81"></a><span class="w">                </span><span class="n">preparation</span><span class="p">,</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">101</span>
+<span class="normal">102</span>
+<span class="normal">103</span>
+<span class="normal">104</span>
+<span class="normal">105</span>
+<span class="normal">106</span>
+<span class="normal">107</span>
+<span class="normal">108</span>
+<span class="normal">109</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/bike-temporal/src/operations.rs-101" name="bike-rs/bike-temporal/src/operations.rs-101"></a><span class="w">        </span><span class="p">}</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-102" name="bike-rs/bike-temporal/src/operations.rs-102"></a><span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="n">current</span><span class="w"> </span><span class="o">=</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-103" name="bike-rs/bike-temporal/src/operations.rs-103"></a><span class="w">            </span><span class="n">heatmap_projections</span><span class="p">::</span><span class="n">Model</span><span class="p">::</span><span class="n">for_activity</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">.</span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="n">change</span><span class="p">.</span><span class="n">activity_id</span><span class="p">).</span><span class="k">await</span><span class="o">?</span><span class="p">;</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-104" name="bike-rs/bike-temporal/src/operations.rs-104"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">current</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-105" name="bike-rs/bike-temporal/src/operations.rs-105"></a><span class="hll"><span class="w">            </span><span class="p">.</span><span class="n">is_some_and</span><span class="p">(</span><span class="o">|</span><span class="n">projection</span><span class="o">|</span><span class="w"> </span><span class="fm">matches!</span><span class="p">(</span><span class="n">projection</span><span class="p">.</span><span class="n">status</span><span class="p">.</span><span class="n">as_str</span><span class="p">(),</span><span class="w"> </span><span class="s">"pending"</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="s">"failed"</span><span class="p">))</span>
+</span><a id="bike-rs/bike-temporal/src/operations.rs-106" name="bike-rs/bike-temporal/src/operations.rs-106"></a><span class="w">        </span><span class="p">{</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-107" name="bike-rs/bike-temporal/src/operations.rs-107"></a><span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="nb">Err</span><span class="p">(</span><span class="n">WorkflowError</span><span class="p">::</span><span class="n">internal</span><span class="p">(</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-108" name="bike-rs/bike-temporal/src/operations.rs-108"></a><span class="w">                </span><span class="s">"Heatmap changed during preparation; rebuild current source"</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-109" name="bike-rs/bike-temporal/src/operations.rs-109"></a><span class="w">            </span><span class="p">));</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">108</span>
+<span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span>
+<span class="normal">112</span>
+<span class="normal">113</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/bike-temporal/src/operations.rs-108" name="bike-rs/bike-temporal/src/operations.rs-108"></a><span class="w">                </span><span class="s">"Heatmap changed during preparation; rebuild current source"</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-109" name="bike-rs/bike-temporal/src/operations.rs-109"></a><span class="w">            </span><span class="p">));</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-110" name="bike-rs/bike-temporal/src/operations.rs-110"></a><span class="w">        </span><span class="p">}</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-111" name="bike-rs/bike-temporal/src/operations.rs-111"></a><span class="w">        </span><span class="nb">Ok</span><span class="p">(</span><span class="n">Publication</span><span class="p">::</span><span class="n">Published</span><span class="p">)</span>
+<a id="bike-rs/bike-temporal/src/operations.rs-112" name="bike-rs/bike-temporal/src/operations.rs-112"></a><span class="hll"><span class="w">    </span><span class="p">}</span>
+</span><a id="bike-rs/bike-temporal/src/operations.rs-113" name="bike-rs/bike-temporal/src/operations.rs-113"></a><span class="p">}</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+        <div class="src-snippet">
+            <div class="src-name">bike-rs/bike-temporal/src/runtime.rs</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">13</span>
+<span class="normal">14</span>
+<span class="normal">15</span>
+<span class="normal">16</span>
+<span class="normal">17</span>
+<span class="normal">18</span>
+<span class="normal">19</span>
+<span class="normal">20</span>
+<span class="normal">21</span>
+<span class="normal">22</span>
+<span class="normal">23</span>
+<span class="normal">24</span>
+<span class="normal">25</span>
+<span class="normal">26</span>
+<span class="normal">27</span>
+<span class="normal">28</span>
+<span class="normal">29</span>
+<span class="normal">30</span>
+<span class="normal">31</span>
+<span class="normal">32</span>
+<span class="normal">33</span>
+<span class="normal">34</span>
+<span class="normal">35</span>
+<span class="normal">36</span>
+<span class="normal">37</span>
+<span class="normal">38</span>
+<span class="normal">39</span>
+<span class="normal">40</span>
+<span class="normal">41</span>
+<span class="normal">42</span>
+<span class="normal">43</span>
+<span class="normal">44</span>
+<span class="normal">45</span>
+<span class="normal">46</span>
+<span class="normal">47</span>
+<span class="normal">48</span>
+<span class="normal">49</span>
+<span class="normal">50</span>
+<span class="normal">51</span>
+<span class="normal">52</span>
+<span class="normal">53</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/bike-temporal/src/runtime.rs-13" name="bike-rs/bike-temporal/src/runtime.rs-13"></a><span class="k">use</span><span class="w"> </span><span class="n">std</span><span class="p">::{</span><span class="n">sync</span><span class="p">::</span><span class="n">Arc</span><span class="p">,</span><span class="w"> </span><span class="n">time</span><span class="p">::</span><span class="n">Duration</span><span class="p">};</span>
+<a id="bike-rs/bike-temporal/src/runtime.rs-14" name="bike-rs/bike-temporal/src/runtime.rs-14"></a><span class="k">use</span><span class="w"> </span><span class="n">temporalio_client</span><span class="p">::{</span><span class="n">Client</span><span class="p">,</span><span class="w"> </span><span class="n">ClientOptions</span><span class="p">,</span><span class="w"> </span><span class="n">Connection</span><span class="p">,</span><span class="w"> </span><span class="n">ConnectionOptions</span><span class="p">};</span>
+<a id="bike-rs/bike-temporal/src/runtime.rs-15" name="bike-rs/bike-temporal/src/runtime.rs-15"></a><span class="k">use</span><span class="w"> </span><span class="n">temporalio_sdk</span><span class="p">::{</span><span class="n">Runtime</span><span class="p">,</span><span class="w"> </span><span class="n">Worker</span><span class="p">,</span><span class="w"> </span><span class="n">WorkerOptions</span><span class="p">};</span>
+<a id="bike-rs/bike-temporal/src/runtime.rs-16" name="bike-rs/bike-temporal/src/runtime.rs-16"></a>
+<a id="bike-rs/bike-temporal/src/runtime.rs-17" name="bike-rs/bike-temporal/src/runtime.rs-17"></a><span class="hll"><span class="k">pub</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">connect</span><span class="p">()</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="n">Client</span><span class="p">,</span><span class="w"> </span><span class="k">crate</span><span class="p">::</span><span class="n">client</span><span class="p">::</span><span class="n">Error</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-18" name="bike-rs/bike-temporal/src/runtime.rs-18"></a><span class="hll"><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">address</span><span class="w"> </span><span class="o">=</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-19" name="bike-rs/bike-temporal/src/runtime.rs-19"></a><span class="hll"><span class="w">        </span><span class="n">std</span><span class="p">::</span><span class="n">env</span><span class="p">::</span><span class="n">var</span><span class="p">(</span><span class="s">"TEMPORAL_ADDRESS"</span><span class="p">).</span><span class="n">unwrap_or_else</span><span class="p">(</span><span class="o">|</span><span class="n">_</span><span class="o">|</span><span class="w"> </span><span class="s">"http://temporal:7233"</span><span class="p">.</span><span class="n">into</span><span class="p">());</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-20" name="bike-rs/bike-temporal/src/runtime.rs-20"></a><span class="hll"><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">namespace</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">env</span><span class="p">::</span><span class="n">var</span><span class="p">(</span><span class="s">"TEMPORAL_NAMESPACE"</span><span class="p">).</span><span class="n">unwrap_or_else</span><span class="p">(</span><span class="o">|</span><span class="n">_</span><span class="o">|</span><span class="w"> </span><span class="s">"bike"</span><span class="p">.</span><span class="n">into</span><span class="p">());</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-21" name="bike-rs/bike-temporal/src/runtime.rs-21"></a><span class="hll"><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">options</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ConnectionOptions</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">address</span><span class="p">.</span><span class="n">parse</span><span class="p">::</span><span class="o">&lt;</span><span class="n">temporalio_client</span><span class="p">::</span><span class="n">Url</span><span class="o">&gt;</span><span class="p">()</span><span class="o">?</span><span class="p">)</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-22" name="bike-rs/bike-temporal/src/runtime.rs-22"></a><span class="hll"><span class="w">        </span><span class="p">.</span><span class="n">identity</span><span class="p">(</span><span class="s">"bike-tasks"</span><span class="p">)</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-23" name="bike-rs/bike-temporal/src/runtime.rs-23"></a><span class="hll"><span class="w">        </span><span class="p">.</span><span class="n">connect_timeout</span><span class="p">(</span><span class="n">Duration</span><span class="p">::</span><span class="n">from_secs</span><span class="p">(</span><span class="mi">5</span><span class="p">))</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-24" name="bike-rs/bike-temporal/src/runtime.rs-24"></a><span class="hll"><span class="w">        </span><span class="p">.</span><span class="n">build</span><span class="p">();</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-25" name="bike-rs/bike-temporal/src/runtime.rs-25"></a><span class="hll"><span class="w">    </span><span class="nb">Ok</span><span class="p">(</span><span class="n">Client</span><span class="p">::</span><span class="n">new</span><span class="p">(</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-26" name="bike-rs/bike-temporal/src/runtime.rs-26"></a><span class="hll"><span class="w">        </span><span class="n">Connection</span><span class="p">::</span><span class="n">connect</span><span class="p">(</span><span class="n">options</span><span class="p">).</span><span class="k">await</span><span class="o">?</span><span class="p">,</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-27" name="bike-rs/bike-temporal/src/runtime.rs-27"></a><span class="hll"><span class="w">        </span><span class="n">ClientOptions</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">namespace</span><span class="p">).</span><span class="n">build</span><span class="p">(),</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-28" name="bike-rs/bike-temporal/src/runtime.rs-28"></a><span class="hll"><span class="w">    </span><span class="p">)</span><span class="o">?</span><span class="p">)</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-29" name="bike-rs/bike-temporal/src/runtime.rs-29"></a><span class="hll"><span class="p">}</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-30" name="bike-rs/bike-temporal/src/runtime.rs-30"></a>
+<a id="bike-rs/bike-temporal/src/runtime.rs-31" name="bike-rs/bike-temporal/src/runtime.rs-31"></a><span class="hll"><span class="k">pub</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">worker</span><span class="p">(</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-32" name="bike-rs/bike-temporal/src/runtime.rs-32"></a><span class="hll"><span class="w">    </span><span class="n">runtime</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="nc">Runtime</span><span class="p">,</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-33" name="bike-rs/bike-temporal/src/runtime.rs-33"></a><span class="hll"><span class="w">    </span><span class="n">client</span><span class="p">:</span><span class="w"> </span><span class="nc">Client</span><span class="p">,</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-34" name="bike-rs/bike-temporal/src/runtime.rs-34"></a><span class="hll"><span class="w">    </span><span class="n">db</span><span class="p">:</span><span class="w"> </span><span class="nc">sea_orm</span><span class="p">::</span><span class="n">DatabaseConnection</span><span class="p">,</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-35" name="bike-rs/bike-temporal/src/runtime.rs-35"></a><span class="hll"><span class="w">    </span><span class="n">uploads_dir</span><span class="p">:</span><span class="w"> </span><span class="nb">String</span><span class="p">,</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-36" name="bike-rs/bike-temporal/src/runtime.rs-36"></a><span class="hll"><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="n">Worker</span><span class="p">,</span><span class="w"> </span><span class="k">crate</span><span class="p">::</span><span class="n">client</span><span class="p">::</span><span class="n">Error</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-37" name="bike-rs/bike-temporal/src/runtime.rs-37"></a><span class="hll"><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">objects</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ObjectStore</span><span class="p">::</span><span class="n">filesystem</span><span class="p">(</span><span class="n">uploads_dir</span><span class="p">,</span><span class="w"> </span><span class="n">ObjectOwner</span><span class="p">::</span><span class="n">ActivityImports</span><span class="p">);</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-38" name="bike-rs/bike-temporal/src/runtime.rs-38"></a><span class="hll"><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">operations</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Arc</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">BikeOperations</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="n">objects</span><span class="p">));</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-39" name="bike-rs/bike-temporal/src/runtime.rs-39"></a><span class="hll"><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">options</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">WorkerOptions</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">TASK_QUEUE</span><span class="p">)</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-40" name="bike-rs/bike-temporal/src/runtime.rs-40"></a><span class="hll"><span class="w">        </span><span class="p">.</span><span class="n">register_workflow</span><span class="p">::</span><span class="o">&lt;</span><span class="n">ReprocessActivityImport</span><span class="o">&gt;</span><span class="p">()</span><span class="o">?</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-41" name="bike-rs/bike-temporal/src/runtime.rs-41"></a><span class="hll"><span class="w">        </span><span class="p">.</span><span class="n">register_workflow</span><span class="p">::</span><span class="o">&lt;</span><span class="n">RebuildFitnessFreshness</span><span class="o">&gt;</span><span class="p">()</span><span class="o">?</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-42" name="bike-rs/bike-temporal/src/runtime.rs-42"></a><span class="hll"><span class="w">        </span><span class="p">.</span><span class="n">register_workflow</span><span class="p">::</span><span class="o">&lt;</span><span class="n">RebuildSegmentAnalytics</span><span class="o">&gt;</span><span class="p">()</span><span class="o">?</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-43" name="bike-rs/bike-temporal/src/runtime.rs-43"></a><span class="hll"><span class="w">        </span><span class="p">.</span><span class="n">register_workflow</span><span class="p">::</span><span class="o">&lt;</span><span class="n">PrepareHeatmap</span><span class="o">&gt;</span><span class="p">()</span><span class="o">?</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-44" name="bike-rs/bike-temporal/src/runtime.rs-44"></a><span class="hll"><span class="w">        </span><span class="p">.</span><span class="n">register_activities</span><span class="p">(</span><span class="n">ImportActivities</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">operations</span><span class="p">.</span><span class="n">clone</span><span class="p">()))</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-45" name="bike-rs/bike-temporal/src/runtime.rs-45"></a><span class="hll"><span class="w">        </span><span class="p">.</span><span class="n">register_activities</span><span class="p">(</span><span class="n">DerivedActivities</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">operations</span><span class="p">))</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-46" name="bike-rs/bike-temporal/src/runtime.rs-46"></a><span class="hll"><span class="w">        </span><span class="p">.</span><span class="n">register_activities</span><span class="p">(</span><span class="n">SchedulingActivities</span><span class="p">::</span><span class="n">new</span><span class="p">(</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-47" name="bike-rs/bike-temporal/src/runtime.rs-47"></a><span class="hll"><span class="w">            </span><span class="n">client</span><span class="p">.</span><span class="n">clone</span><span class="p">(),</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-48" name="bike-rs/bike-temporal/src/runtime.rs-48"></a><span class="hll"><span class="w">            </span><span class="n">DebouncePolicy</span><span class="p">::</span><span class="n">default</span><span class="p">(),</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-49" name="bike-rs/bike-temporal/src/runtime.rs-49"></a><span class="w">        </span><span class="p">))</span>
+<a id="bike-rs/bike-temporal/src/runtime.rs-50" name="bike-rs/bike-temporal/src/runtime.rs-50"></a><span class="hll"><span class="w">        </span><span class="p">.</span><span class="n">graceful_shutdown_period</span><span class="p">(</span><span class="n">Duration</span><span class="p">::</span><span class="n">from_secs</span><span class="p">(</span><span class="mi">10</span><span class="p">))</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-51" name="bike-rs/bike-temporal/src/runtime.rs-51"></a><span class="hll"><span class="w">        </span><span class="p">.</span><span class="n">build</span><span class="p">();</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-52" name="bike-rs/bike-temporal/src/runtime.rs-52"></a><span class="hll"><span class="w">    </span><span class="nb">Ok</span><span class="p">(</span><span class="n">Worker</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">runtime</span><span class="p">,</span><span class="w"> </span><span class="n">client</span><span class="p">,</span><span class="w"> </span><span class="n">options</span><span class="p">)</span><span class="o">?</span><span class="p">)</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-53" name="bike-rs/bike-temporal/src/runtime.rs-53"></a><span class="hll"><span class="p">}</span>
+</span></pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+        <div class="src-snippet">
+            <div class="src-name">bike-rs/bike-temporal/src/submission.rs</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">69</span>
+<span class="normal">70</span>
+<span class="normal">71</span>
+<span class="normal">72</span>
+<span class="normal">73</span>
+<span class="normal">74</span>
+<span class="normal">75</span>
+<span class="normal">76</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/bike-temporal/src/submission.rs-69" name="bike-rs/bike-temporal/src/submission.rs-69"></a><span class="w">    </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">reprocess_activity_import</span><span class="p">(</span>
+<a id="bike-rs/bike-temporal/src/submission.rs-70" name="bike-rs/bike-temporal/src/submission.rs-70"></a><span class="w">        </span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/submission.rs-71" name="bike-rs/bike-temporal/src/submission.rs-71"></a><span class="w">        </span><span class="n">input</span><span class="p">:</span><span class="w"> </span><span class="nc">ReprocessInput</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/submission.rs-72" name="bike-rs/bike-temporal/src/submission.rs-72"></a><span class="w">        </span><span class="n">cause</span><span class="p">:</span><span class="w"> </span><span class="nc">TaskCause</span><span class="p">,</span>
+<a id="bike-rs/bike-temporal/src/submission.rs-73" name="bike-rs/bike-temporal/src/submission.rs-73"></a><span class="hll"><span class="w">    </span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="n">JobReference</span><span class="p">,</span><span class="w"> </span><span class="n">Error</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+</span><a id="bike-rs/bike-temporal/src/submission.rs-74" name="bike-rs/bike-temporal/src/submission.rs-74"></a><span class="w">        </span><span class="n">TaskSubmissionService</span><span class="p">::</span><span class="n">reprocess_activity_import</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span><span class="w"> </span><span class="n">input</span><span class="p">,</span><span class="w"> </span><span class="n">cause</span><span class="p">).</span><span class="k">await</span>
+<a id="bike-rs/bike-temporal/src/submission.rs-75" name="bike-rs/bike-temporal/src/submission.rs-75"></a><span class="hll"><span class="w">    </span><span class="p">}</span>
+</span><a id="bike-rs/bike-temporal/src/submission.rs-76" name="bike-rs/bike-temporal/src/submission.rs-76"></a><span class="p">}</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+    </body>
+</html>

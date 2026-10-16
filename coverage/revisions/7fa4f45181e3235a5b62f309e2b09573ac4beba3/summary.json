@@ -1,0 +1,100 @@
+{
+  "commit": "7fa4f45181e3235a5b62f309e2b09573ac4beba3",
+  "created_at": "2026-10-16T21:53:43Z",
+  "base_revision": "7e43ab6d2d5b70d305a52e5f12bf704593c5fad7",
+  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/471",
+  "minimum_changed_line_percent": 80,
+  "projects": {
+    "api": {
+      "name": "Bike API",
+      "language": "Rust",
+      "source": "bike-rs/api",
+      "lines": 6397,
+      "covered": 3596,
+      "percent": 56.21385024230108,
+      "changed": {
+        "lines": 143,
+        "covered": 103,
+        "percent": 72.03
+      }
+    },
+    "worker": {
+      "name": "Bike worker",
+      "language": "Rust",
+      "source": "bike-rs/worker",
+      "lines": 923,
+      "covered": 299,
+      "percent": 32.3943661971831,
+      "changed": {
+        "lines": 75,
+        "covered": 55,
+        "percent": 73.33
+      }
+    },
+    "strava-temporal": {
+      "name": "Strava Temporal worker",
+      "language": "Rust",
+      "source": "bike-rs/strava-temporal",
+      "lines": 1322,
+      "covered": 1285,
+      "percent": 97.20121028744326,
+      "changed": {
+        "lines": 23,
+        "covered": 20,
+        "percent": 86.96
+      }
+    },
+    "bike-core": {
+      "name": "Shared Bike core",
+      "language": "Rust",
+      "source": "bike-rs/bike-core",
+      "lines": 38974,
+      "covered": 22056,
+      "percent": 56.59157386975933,
+      "changed": {
+        "lines": 985,
+        "covered": 861,
+        "percent": 87.41
+      }
+    },
+    "bike-temporal": {
+      "name": "Bike Temporal workflows",
+      "language": "Rust",
+      "source": "bike-rs/bike-temporal",
+      "lines": 1365,
+      "covered": 1292,
+      "percent": 94.65201465201464,
+      "changed": {
+        "lines": 252,
+        "covered": 200,
+        "percent": 79.37
+      }
+    },
+    "bike-ui": {
+      "name": "Bike UI",
+      "language": "Next.js",
+      "source": "bike-ui",
+      "lines": 5881,
+      "covered": 3791,
+      "percent": 64.46,
+      "changed": {
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
+      }
+    },
+    "map-renderer": {
+      "name": "Map renderer",
+      "language": "Go",
+      "source": "map-renderer",
+      "lines": 444,
+      "covered": 361,
+      "percent": 81.30630630630631,
+      "changed": {
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
+      }
+    }
+  }
+}
