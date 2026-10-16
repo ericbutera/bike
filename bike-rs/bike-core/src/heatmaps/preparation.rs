@@ -6,7 +6,7 @@ use crate::activity_data::deserialize_derived_activity_data;
 use crate::background_jobs::execution::{measured, WorkCounts, WorkScope};
 use sea_orm::{DatabaseConnection, DbErr};
 
-#[tracing::instrument(name = "heatmap.rebuild", skip_all, fields(activity_id = pending.activity_id, generation = pending.generation))]
+#[tracing::instrument(name = "heatmap.rebuild", skip_all, fields(bike.operation = "heatmap.rebuild", activity_id = pending.activity_id, generation = pending.generation))]
 pub async fn prepare_activity(
     db: &DatabaseConnection,
     pending: PendingProjection,
@@ -82,9 +82,11 @@ async fn prepare_measured(
         });
     }
     let points = derived.route_points.len() as u64;
-    let chunks = tokio::task::spawn_blocking(move || prepare_route(&derived))
-        .await
-        .map_err(|error| DbErr::Custom(error.to_string()))?;
+    let chunks = tokio::task::spawn_blocking(crate::observability::blocking_with_current_trace(
+        move || prepare_route(&derived),
+    ))
+    .await
+    .map_err(|error| DbErr::Custom(error.to_string()))?;
     let published = Projection::publish(db, &pending, &chunks).await?;
     Ok(WorkCounts {
         inputs_read: points,
@@ -95,6 +97,7 @@ async fn prepare_measured(
     })
 }
 
+#[tracing::instrument(name = "heatmap.geometry", skip_all, fields(bike.operation = "heatmap.geometry", route_point_count = derived.route_points.len() as i64))]
 pub(crate) fn prepare_route(
     derived: &crate::activity_data::ActivityDerivedData,
 ) -> Vec<geometry::Chunk> {

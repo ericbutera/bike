@@ -82,6 +82,7 @@ impl ExchangeContext {
         let activity_id = event.strava_activity_id.map(|id| id.to_string());
         let span = tracing::info_span!("strava.activity",
             otel.name = processor,
+            bike.operation = processor,
             processor,
             correlation_id = %event.correlation_id,
             strava_event_id = %event.strava_event_id,

@@ -1,69 +1,14 @@
 use super::{fixture::Fixture, *};
+use crate::test_support::trace::{attribute, capture, stage};
 use crate::{
     heatmaps::{preparation::prepare_activity, projection::PendingProjection},
     strava::logging::{ExchangeContext, TemporalIds},
 };
-use opentelemetry::trace::TracerProvider as _;
-use opentelemetry_sdk::trace::{InMemorySpanExporter, SdkTracerProvider, SpanData};
+use opentelemetry_sdk::trace::SpanData;
 use sea_orm::MockExecResult;
-use std::{collections::BTreeMap, future::Future};
-use tracing::{instrument::WithSubscriber, Instrument};
-use tracing_subscriber::{layer::SubscriberExt, EnvFilter};
+use std::collections::BTreeMap;
 
-struct CapturedTrace {
-    provider: SdkTracerProvider,
-    exporter: InMemorySpanExporter,
-}
-
-impl CapturedTrace {
-    fn spans(&self) -> Vec<SpanData> {
-        self.provider.force_flush().unwrap();
-        self.exporter.get_finished_spans().unwrap()
-    }
-}
-
-async fn capture(future: impl Future<Output = ()>) -> CapturedTrace {
-    let exporter = InMemorySpanExporter::default();
-    let provider = SdkTracerProvider::builder()
-        .with_simple_exporter(exporter.clone())
-        .build();
-    let subscriber = tracing_subscriber::registry()
-        .with(EnvFilter::new("info,sea_orm=trace,sqlx=warn"))
-        .with(tracing_opentelemetry::layer().with_tracer(provider.tracer("workflow-unit")));
-    async {
-        future.instrument(tracing::info_span!("request")).await;
-    }
-    .with_subscriber(subscriber)
-    .await;
-    CapturedTrace { provider, exporter }
-}
-
-fn stage(trace: &CapturedTrace, name: &str) -> SpanData {
-    let spans = trace.spans();
-    let request = spans.iter().find(|span| span.name == "request").unwrap();
-    let stage = spans.iter().find(|span| span.name == name).unwrap();
-    assert_eq!(stage.parent_span_id, request.span_context.span_id());
-    assert_eq!(
-        stage.span_context.trace_id(),
-        request.span_context.trace_id()
-    );
-    let queries: Vec<_> = spans
-        .iter()
-        .filter(|span| span.name.contains("query") || span.name.contains("execute"))
-        .collect();
-    assert!(!queries.is_empty(), "Expected database work below {name}");
-    for query in queries {
-        let mut parent = query.parent_span_id;
-        while parent != stage.span_context.span_id() {
-            parent = spans
-                .iter()
-                .find(|span| span.span_context.span_id() == parent)
-                .unwrap_or_else(|| panic!("{} is outside {name}", query.name))
-                .parent_span_id;
-        }
-    }
-    stage.clone()
-}
+mod sync;
 
 #[tokio::test]
 async fn webhook_connection_lookup_belongs_to_intake_even_when_no_owner_is_connected() {
@@ -141,7 +86,13 @@ async fn fitness_stage_includes_input_queries_and_published_rows() {
             .unwrap();
     })
     .await;
-    stage(&spans, "fitness.rebuild");
+    let fitness = stage(&spans, "fitness.rebuild");
+    assert_eq!(
+        attribute(&fitness, "bike.operation"),
+        &"fitness.rebuild".into()
+    );
+    assert_eq!(attribute(&fitness, "activity_count"), &0_i64.into());
+    assert_eq!(attribute(&fitness, "day_count"), &1_i64.into());
     let transactions = db.into_transaction_log();
     assert_eq!(transactions.len(), 3);
     let publication = transactions[2].statements();
@@ -193,7 +144,10 @@ async fn rebuild_queries_remain_named_when_no_output_is_needed() {
             .unwrap();
     })
     .await;
-    stage(&spans, "segments.rebuild");
+    assert_eq!(
+        attribute(&stage(&spans, "segments.rebuild"), "bike.operation"),
+        &"segments.rebuild".into()
+    );
     let activity = MockDatabase::new(DatabaseBackend::Postgres)
         .append_exec_results([MockExecResult {
             rows_affected: 1,
@@ -207,7 +161,10 @@ async fn rebuild_queries_remain_named_when_no_output_is_needed() {
             .unwrap();
     })
     .await;
-    stage(&spans, "activity.analytics.rebuild");
+    assert_eq!(
+        attribute(&stage(&spans, "achievements.rebuild"), "bike.operation"),
+        &"achievements.rebuild".into()
+    );
     let heatmap = MockDatabase::new(DatabaseBackend::Postgres)
         .append_query_results([Vec::<BTreeMap<String, sea_orm::Value>>::new()])
         .into_connection();
@@ -223,7 +180,10 @@ async fn rebuild_queries_remain_named_when_no_output_is_needed() {
         .unwrap();
     })
     .await;
-    stage(&spans, "heatmap.rebuild");
+    assert_eq!(
+        attribute(&stage(&spans, "heatmap.rebuild"), "bike.operation"),
+        &"heatmap.rebuild".into()
+    );
 }
 
 #[tokio::test]

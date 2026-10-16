@@ -52,6 +52,16 @@ impl StravaOperations {
         }
     }
 
+    #[tracing::instrument(
+        name = "strava.connection.validate",
+        skip_all,
+        fields(
+            otel.name = "Validate Strava connection and customer",
+            bike.operation = "strava.connection.validate",
+            connection_id = event.connection_id,
+            bike_user_id = event.bike_user_id,
+        )
+    )]
     pub(crate) async fn connection(
         &self,
         event: &StravaEvent,

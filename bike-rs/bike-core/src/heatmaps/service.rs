@@ -51,6 +51,7 @@ impl Default for HeatmapService {
 }
 
 impl HeatmapService {
+    #[tracing::instrument(name = "heatmap.metadata", skip_all, fields(bike.operation = "heatmap.metadata", user_id))]
     pub async fn metadata(
         &self,
         db: &DatabaseConnection,
@@ -85,6 +86,7 @@ impl HeatmapService {
         })
     }
 
+    #[tracing::instrument(name = "heatmap.zones", skip_all, fields(bike.operation = "heatmap.zones", user_id))]
     pub async fn zones(
         &self,
         db: &DatabaseConnection,
@@ -118,6 +120,7 @@ impl HeatmapService {
         })
     }
 
+    #[tracing::instrument(name = "heatmap.tile", skip_all, fields(bike.operation = "heatmap.tile", user_id, tile.z = tile.z, tile.x = tile.x, tile.y = tile.y, cache.hit = tracing::field::Empty))]
     pub async fn tile(
         &self,
         db: &DatabaseConnection,
@@ -173,6 +176,7 @@ impl HeatmapService {
         key: String,
     ) -> Result<TileImage, HeatmapError> {
         if let Some(image) = self.cached(&key).await {
+            tracing::Span::current().record("cache.hit", true);
             return Ok(image);
         }
         let lock = {
@@ -188,8 +192,10 @@ impl HeatmapService {
         };
         let _guard = lock.lock().await;
         if let Some(image) = self.cached(&key).await {
+            tracing::Span::current().record("cache.hit", true);
             return Ok(image);
         }
+        tracing::Span::current().record("cache.hit", false);
         let permit = self
             .permits
             .clone()
@@ -198,9 +204,11 @@ impl HeatmapService {
             .map_err(|_| HeatmapError::Busy)?;
         let db = db.clone();
         let runtime = tokio::runtime::Handle::current();
-        let image = tokio::task::spawn_blocking(move || render(&runtime, &db, request, permit))
-            .await
-            .map_err(|_| HeatmapError::Render)??;
+        let image = tokio::task::spawn_blocking(crate::observability::blocking_with_current_trace(
+            move || render(&runtime, &db, request, permit),
+        ))
+        .await
+        .map_err(|_| HeatmapError::Render)??;
         self.remember(key, image.clone()).await;
         Ok(image)
     }
@@ -256,6 +264,7 @@ struct RenderRequest {
     tile: Tile,
 }
 
+#[tracing::instrument(name = "heatmap.tile.render", skip_all, fields(bike.operation = "heatmap.tile.render", user_id = request.user_id, chunk_count = tracing::field::Empty))]
 fn render(
     runtime: &tokio::runtime::Handle,
     db: &DatabaseConnection,
@@ -266,6 +275,7 @@ fn render(
     let mut raster = Raster::new(request.tile);
     let mut cursor = (0, -1);
     let mut activity = None;
+    let mut chunks = 0_i64;
     loop {
         let remaining = deadline
             .checked_duration_since(Instant::now())
@@ -280,6 +290,7 @@ fn render(
             break;
         }
         for chunk in page {
+            chunks += 1;
             if Instant::now() >= deadline {
                 return Err(HeatmapError::Busy);
             }
@@ -293,6 +304,7 @@ fn render(
         }
     }
     raster.finish_activity();
+    tracing::Span::current().record("chunk_count", chunks);
     // A full final generation check is also made by tile() before responding.
     runtime.block_on(HeatmapService::check_revision(
         db,

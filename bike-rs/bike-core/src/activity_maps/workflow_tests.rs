@@ -1,5 +1,6 @@
 use super::{cache::Cache, types::RenderRequest};
 use super::{types::MapImageError, MapImageService, MapOptions, Theme, Variant};
+use crate::test_support::trace::{attribute, capture, stage};
 use std::{
     fs::{self, File, FileTimes},
     time::{Duration, SystemTime},
@@ -57,12 +58,22 @@ async fn image_workflow_reuses_cache_without_contacting_worker() {
         .write(request.cache_key(), b"\x89PNG\r\n\x1a\ncached-png".to_vec())
         .await
         .unwrap();
-    let image = service
-        .image(&database(Some(activity)), 1, 7, Variant::Full, "1", options)
-        .await
-        .unwrap();
-    assert!(image.cache_hit);
-    assert!(image.etag.starts_with('"'));
+    let trace = capture(async {
+        let image = service
+            .image(&database(Some(activity)), 1, 7, Variant::Full, "1", options)
+            .await
+            .unwrap();
+        assert!(image.cache_hit);
+        assert!(image.etag.starts_with('"'));
+    })
+    .await;
+    let image = stage(&trace, "map.image");
+    assert_eq!(attribute(&image, "bike.operation"), &"map.image".into());
+    assert_eq!(attribute(&image, "cache.hit"), &true.into());
+    assert!(!trace
+        .spans()
+        .iter()
+        .any(|span| span.name == "bike.maps.snapshot"));
     service.prune().await.unwrap();
     assert!(matches!(
         service
@@ -101,22 +112,34 @@ async fn image_workflow_calls_and_caches_authenticated_snapshot_worker() {
         .await
         .unwrap(),
     );
-    let image = service
-        .image(
-            &database(Some(activity_fixture())),
-            1,
-            7,
-            Variant::Full,
-            "1",
-            MapOptions {
-                theme: Theme::Light,
-                dpr: 1,
-            },
-        )
-        .await
+    let trace = capture(async {
+        let image = service
+            .image(
+                &database(Some(activity_fixture())),
+                1,
+                7,
+                Variant::Full,
+                "1",
+                MapOptions {
+                    theme: Theme::Light,
+                    dpr: 1,
+                },
+            )
+            .await
+            .unwrap();
+        assert!(!image.cache_hit);
+        assert_eq!(image.png, b"\x89PNG\r\n\x1a\nworker-png");
+    })
+    .await;
+    let image = stage(&trace, "map.image");
+    assert_eq!(attribute(&image, "cache.hit"), &false.into());
+    let spans = trace.spans();
+    let snapshot = spans
+        .iter()
+        .find(|span| span.name == "bike.maps.snapshot")
         .unwrap();
-    assert!(!image.cache_hit);
-    assert_eq!(image.png, b"\x89PNG\r\n\x1a\nworker-png");
+    assert_eq!(snapshot.parent_span_id, image.span_context.span_id());
+    assert_eq!(attribute(snapshot, "bike.operation"), &"map.render".into());
     service.maintain();
     tokio::task::yield_now().await;
     task.abort();

@@ -44,6 +44,7 @@ impl SnapshotClient {
 
     pub async fn snapshot(&self, input: &RenderRequest) -> Result<Vec<u8>, MapImageError> {
         let span = tracing::info_span!("bike.maps.snapshot",
+            bike.operation = "map.render",
             otel.kind = "client", rpc.system = "grpc", rpc.service = "bike.maps.v1.MapService",
             rpc.method = "Render", server.address = %self.address, server.port = self.port,
             rpc.grpc.status_code = tracing::field::Empty, otel.status_code = tracing::field::Empty,

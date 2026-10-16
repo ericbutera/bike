@@ -9,6 +9,20 @@ pub struct Fixture {
     pub event: StravaEvent,
 }
 
+pub(super) fn audit(fixture: &Fixture) -> crate::entities::integration_events::Model {
+    crate::entities::integration_events::Model {
+        id: 1,
+        user_id: Some(fixture.customer.id),
+        provider: "strava".into(),
+        event_type: "strava.event.accepted".into(),
+        level: "info".into(),
+        message: "Fixture acceptance".into(),
+        connection_id: Some(fixture.connection.id),
+        payload: Some(serde_json::json!({"strava_event_id": fixture.event.strava_event_id})),
+        created_at: fixture.connection.created_at,
+    }
+}
+
 impl Fixture {
     pub fn new() -> Self {
         let now = DateTime::<Utc>::from_timestamp(1790856000, 0).unwrap();

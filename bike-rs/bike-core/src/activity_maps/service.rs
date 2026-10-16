@@ -12,6 +12,7 @@ use std::{
     time::Duration,
 };
 use tokio::sync::Mutex;
+use tracing::Instrument;
 
 pub struct MapImageService {
     cache: Arc<Cache>,
@@ -33,7 +34,7 @@ impl MapImageService {
         })
     }
 
-    #[tracing::instrument(skip(self, db), fields(map.variant = ?variant, map.theme = ?options.theme))]
+    #[tracing::instrument(name = "map.image", skip_all, fields(bike.operation = "map.image", user_id, activity_id, map.variant = ?variant, map.theme = ?options.theme, cache.hit = tracing::field::Empty))]
     pub async fn image(
         &self,
         db: &DatabaseConnection,
@@ -59,12 +60,22 @@ impl MapImageService {
     async fn cached_image(&self, request: &RenderRequest) -> Result<MapImage, MapImageError> {
         let key = request.cache_key();
         if let Some(png) = self.cache.read(key.clone()).await? {
+            tracing::Span::current().record("cache.hit", true);
             return Ok(cached(png));
         }
-        let _guard = self.pending.lock().await;
+        let _guard = self
+            .pending
+            .lock()
+            .instrument(tracing::info_span!(
+                "map.render.wait",
+                bike.operation = "map.render.wait"
+            ))
+            .await;
         if let Some(png) = self.cache.read(key.clone()).await? {
+            tracing::Span::current().record("cache.hit", true);
             return Ok(cached(png));
         }
+        tracing::Span::current().record("cache.hit", false);
         METRICS.misses.inc();
         let timer = METRICS.duration.with_label_values(&["miss"]).start_timer();
         let png = self.client.snapshot(request).await?;

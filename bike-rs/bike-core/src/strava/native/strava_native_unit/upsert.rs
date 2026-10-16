@@ -1,5 +1,5 @@
 use super::*;
-use super::{handlers_fixture::HandlerFixture, imports};
+use super::{fixture::audit, handlers_fixture::HandlerFixture, imports};
 use crate::entities::{
     activity_import_artifacts, analytics_user_states, strava_activity_states, user_preferences,
 };
@@ -136,19 +136,5 @@ fn executed() -> MockExecResult {
     MockExecResult {
         rows_affected: 1,
         last_insert_id: 0,
-    }
-}
-
-fn audit(fixture: &Fixture) -> crate::entities::integration_events::Model {
-    crate::entities::integration_events::Model {
-        id: 1,
-        user_id: Some(fixture.customer.id),
-        provider: "strava".into(),
-        event_type: "strava.event.accepted".into(),
-        level: "info".into(),
-        message: "Fixture acceptance".into(),
-        connection_id: Some(fixture.connection.id),
-        payload: Some(serde_json::json!({"strava_event_id": fixture.event.strava_event_id})),
-        created_at: fixture.connection.created_at,
     }
 }

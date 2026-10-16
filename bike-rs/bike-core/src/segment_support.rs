@@ -153,6 +153,7 @@ where
     Ok(())
 }
 
+#[tracing::instrument(name = "segments.match.activity", skip_all, fields(bike.operation = "segments.match.activity", user_id, activity_id, route_point_count = activity_route_points.len() as i64))]
 pub async fn replace_segment_efforts_for_activity<C>(
     db: &C,
     user_id: i32,
@@ -187,6 +188,7 @@ where
     Ok(())
 }
 
+#[tracing::instrument(name = "segments.match.segment", skip_all, fields(bike.operation = "segments.match.segment", user_id, segment_id, route_point_count = segment_route_points.len() as i64))]
 pub async fn replace_segment_efforts_for_segment<C>(
     db: &C,
     user_id: i32,

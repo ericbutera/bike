@@ -1014,6 +1014,7 @@ fn activity_model_ref(state: &ActivityProcessingState) -> Result<&activities::Mo
     })
 }
 
+#[tracing::instrument(name = "activity.import", skip_all, fields(bike.operation = "activity.import", user_id = request.user_id, source = request.source))]
 pub async fn persist_activity_upload_with_artifacts(
     db: &DatabaseConnection,
     request: PersistActivityUploadWithArtifactsRequest<'_>,
@@ -1279,6 +1280,7 @@ pub(crate) fn checksum_sha256_hex(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
+#[tracing::instrument(name = "activity.import.process", skip_all, fields(bike.operation = "activity.import.process", user_id, import_id = import.id))]
 pub async fn process_stored_activity_import(
     db: &DatabaseConnection,
     uploads_dir: &str,
