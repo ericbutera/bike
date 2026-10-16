@@ -1,8 +1,8 @@
 {
-  "commit": "c389d83d3ec3222fc20768d61514f34f71eabeb9",
-  "created_at": "2026-10-16T00:46:01Z",
-  "base_revision": "2888231a198b4f25c1d95818ff2b35341e5dd1bf",
-  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/441",
+  "commit": "c68c3d3914290233d3f4148ebadee9801c7517cf",
+  "created_at": "2026-10-16T10:17:48Z",
+  "base_revision": "c389d83d3ec3222fc20768d61514f34f71eabeb9",
+  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/446",
   "minimum_changed_line_percent": 80,
   "projects": {
     "api": {
@@ -13,8 +13,8 @@
       "covered": 4945,
       "percent": 75.86683031604787,
       "changed": {
-        "lines": 58,
-        "covered": 58,
+        "lines": 0,
+        "covered": 0,
         "percent": 100.0
       }
     },
@@ -36,8 +36,8 @@
       "language": "Rust",
       "source": "bike-rs/strava-temporal",
       "lines": 1351,
-      "covered": 1293,
-      "percent": 95.70688378978534,
+      "covered": 1305,
+      "percent": 96.59511472982976,
       "changed": {
         "lines": 0,
         "covered": 0,
@@ -48,13 +48,13 @@
       "name": "Shared Bike core",
       "language": "Rust",
       "source": "bike-rs/bike-core",
-      "lines": 39312,
-      "covered": 31366,
-      "percent": 79.78734228734228,
+      "lines": 39468,
+      "covered": 31809,
+      "percent": 80.5944055944056,
       "changed": {
-        "lines": 387,
-        "covered": 384,
-        "percent": 99.22
+        "lines": 440,
+        "covered": 430,
+        "percent": 97.73
       }
     },
     "bike-ui": {
