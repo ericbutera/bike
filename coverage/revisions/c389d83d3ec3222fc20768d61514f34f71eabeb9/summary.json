@@ -1,0 +1,87 @@
+{
+  "commit": "c389d83d3ec3222fc20768d61514f34f71eabeb9",
+  "created_at": "2026-10-16T00:46:01Z",
+  "base_revision": "2888231a198b4f25c1d95818ff2b35341e5dd1bf",
+  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/441",
+  "minimum_changed_line_percent": 80,
+  "projects": {
+    "api": {
+      "name": "Bike API",
+      "language": "Rust",
+      "source": "bike-rs/api",
+      "lines": 6518,
+      "covered": 4945,
+      "percent": 75.86683031604787,
+      "changed": {
+        "lines": 58,
+        "covered": 58,
+        "percent": 100.0
+      }
+    },
+    "worker": {
+      "name": "Bike worker",
+      "language": "Rust",
+      "source": "bike-rs/worker",
+      "lines": 785,
+      "covered": 424,
+      "percent": 54.01273885350319,
+      "changed": {
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
+      }
+    },
+    "strava-temporal": {
+      "name": "Strava Temporal worker",
+      "language": "Rust",
+      "source": "bike-rs/strava-temporal",
+      "lines": 1351,
+      "covered": 1293,
+      "percent": 95.70688378978534,
+      "changed": {
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
+      }
+    },
+    "bike-core": {
+      "name": "Shared Bike core",
+      "language": "Rust",
+      "source": "bike-rs/bike-core",
+      "lines": 39312,
+      "covered": 31366,
+      "percent": 79.78734228734228,
+      "changed": {
+        "lines": 387,
+        "covered": 384,
+        "percent": 99.22
+      }
+    },
+    "bike-ui": {
+      "name": "Bike UI",
+      "language": "Next.js",
+      "source": "bike-ui",
+      "lines": 5881,
+      "covered": 3791,
+      "percent": 64.46,
+      "changed": {
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
+      }
+    },
+    "map-renderer": {
+      "name": "Map renderer",
+      "language": "Go",
+      "source": "map-renderer",
+      "lines": 444,
+      "covered": 361,
+      "percent": 81.30630630630631,
+      "changed": {
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
+      }
+    }
+  }
+}

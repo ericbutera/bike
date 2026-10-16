@@ -1,0 +1,238 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+    <head>
+        <meta http-equiv='Content-Type' content='text/html; charset=utf-8'>
+        <title>Diff Coverage</title>
+        <style>
+            .src-snippet { margin-top: 2em; }
+            .src-name { font-weight: bold; }
+            .snippets {
+                border-top: 1px solid #bdbdbd;
+                border-bottom: 1px solid #bdbdbd;
+            }
+            pre { line-height: 125%; }
+td.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+span.linenos { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+td.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+.hll { background-color: #ffcccc }
+.c { color: #3D7B7B; font-style: italic } /* Comment */
+.err { border: 1px solid #F00 } /* Error */
+.k { color: #008000; font-weight: bold } /* Keyword */
+.o { color: #666 } /* Operator */
+.ch { color: #3D7B7B; font-style: italic } /* Comment.Hashbang */
+.cm { color: #3D7B7B; font-style: italic } /* Comment.Multiline */
+.cp { color: #9C6500 } /* Comment.Preproc */
+.cpf { color: #3D7B7B; font-style: italic } /* Comment.PreprocFile */
+.c1 { color: #3D7B7B; font-style: italic } /* Comment.Single */
+.cs { color: #3D7B7B; font-style: italic } /* Comment.Special */
+.gd { color: #A00000 } /* Generic.Deleted */
+.ge { font-style: italic } /* Generic.Emph */
+.ges { font-weight: bold; font-style: italic } /* Generic.EmphStrong */
+.gr { color: #E40000 } /* Generic.Error */
+.gh { color: #000080; font-weight: bold } /* Generic.Heading */
+.gi { color: #008400 } /* Generic.Inserted */
+.go { color: #717171 } /* Generic.Output */
+.gp { color: #000080; font-weight: bold } /* Generic.Prompt */
+.gs { font-weight: bold } /* Generic.Strong */
+.gu { color: #800080; font-weight: bold } /* Generic.Subheading */
+.gt { color: #04D } /* Generic.Traceback */
+.kc { color: #008000; font-weight: bold } /* Keyword.Constant */
+.kd { color: #008000; font-weight: bold } /* Keyword.Declaration */
+.kn { color: #008000; font-weight: bold } /* Keyword.Namespace */
+.kp { color: #008000 } /* Keyword.Pseudo */
+.kr { color: #008000; font-weight: bold } /* Keyword.Reserved */
+.kt { color: #B00040 } /* Keyword.Type */
+.m { color: #666 } /* Literal.Number */
+.s { color: #BA2121 } /* Literal.String */
+.na { color: #687822 } /* Name.Attribute */
+.nb { color: #008000 } /* Name.Builtin */
+.nc { color: #00F; font-weight: bold } /* Name.Class */
+.no { color: #800 } /* Name.Constant */
+.nd { color: #A2F } /* Name.Decorator */
+.ni { color: #717171; font-weight: bold } /* Name.Entity */
+.ne { color: #CB3F38; font-weight: bold } /* Name.Exception */
+.nf { color: #00F } /* Name.Function */
+.nl { color: #767600 } /* Name.Label */
+.nn { color: #00F; font-weight: bold } /* Name.Namespace */
+.nt { color: #008000; font-weight: bold } /* Name.Tag */
+.nv { color: #19177C } /* Name.Variable */
+.ow { color: #A2F; font-weight: bold } /* Operator.Word */
+.w { color: #BBB } /* Text.Whitespace */
+.mb { color: #666 } /* Literal.Number.Bin */
+.mf { color: #666 } /* Literal.Number.Float */
+.mh { color: #666 } /* Literal.Number.Hex */
+.mi { color: #666 } /* Literal.Number.Integer */
+.mo { color: #666 } /* Literal.Number.Oct */
+.sa { color: #BA2121 } /* Literal.String.Affix */
+.sb { color: #BA2121 } /* Literal.String.Backtick */
+.sc { color: #BA2121 } /* Literal.String.Char */
+.dl { color: #BA2121 } /* Literal.String.Delimiter */
+.sd { color: #BA2121; font-style: italic } /* Literal.String.Doc */
+.s2 { color: #BA2121 } /* Literal.String.Double */
+.se { color: #AA5D1F; font-weight: bold } /* Literal.String.Escape */
+.sh { color: #BA2121 } /* Literal.String.Heredoc */
+.si { color: #A45A77; font-weight: bold } /* Literal.String.Interpol */
+.sx { color: #008000 } /* Literal.String.Other */
+.sr { color: #A45A77 } /* Literal.String.Regex */
+.s1 { color: #BA2121 } /* Literal.String.Single */
+.ss { color: #19177C } /* Literal.String.Symbol */
+.bp { color: #008000 } /* Name.Builtin.Pseudo */
+.fm { color: #00F } /* Name.Function.Magic */
+.vc { color: #19177C } /* Name.Variable.Class */
+.vg { color: #19177C } /* Name.Variable.Global */
+.vi { color: #19177C } /* Name.Variable.Instance */
+.vm { color: #19177C } /* Name.Variable.Magic */
+.il { color: #666 } /* Literal.Number.Integer.Long */
+.diff-cover-covered-line { background-color: #ddffdd; }
+        </style>
+    </head>
+    <body>
+        <h1>Diff Coverage</h1>
+        <p>Diff: 2888231a198b4f25c1d95818ff2b35341e5dd1bf...HEAD, staged, unstaged and untracked changes</p>
+        <ul>
+            <li><b>Total</b>: 387 lines</li>
+            <li><b>Missing</b>: 3 lines</li>
+            <li><b>Coverage</b>: 99.22%</li>
+        </ul>
+        <table border="1">
+            <tr>
+                <th>Source File</th>
+                <th>Diff Coverage (%)</th>
+                <th>Missing Lines</th>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-core/src/activity_import_pipeline.rs</td>
+                <td>98.2%</td>
+                <td>1619,1629</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-core/src/activity_lifecycle.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-core/src/analytics.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-core/src/archive_import.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-core/src/background_jobs/batches.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-core/src/entities/activities.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-core/src/entities/integration_events.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-core/src/strava/connection.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-core/src/test_support/defaults.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-core/src/test_support/mod.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-core/src/test_support/persistence.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-core/src/test_support/schema.rs</td>
+                <td>83.3%</td>
+                <td>15</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-core/src/timestamps.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+        </table>
+        <div class="src-snippet">
+            <div class="src-name">bike-rs/bike-core/src/activity_import_pipeline.rs</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">1615</span>
+<span class="normal">1616</span>
+<span class="normal">1617</span>
+<span class="normal">1618</span>
+<span class="normal">1619</span>
+<span class="normal">1620</span>
+<span class="normal">1621</span>
+<span class="normal">1622</span>
+<span class="normal">1623</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/bike-core/src/activity_import_pipeline.rs-1615" name="bike-rs/bike-core/src/activity_import_pipeline.rs-1615"></a><span class="s">                attempts: Set(</span>
+<a id="bike-rs/bike-core/src/activity_import_pipeline.rs-1616" name="bike-rs/bike-core/src/activity_import_pipeline.rs-1616"></a><span class="s">                    if status == background_tasks::TaskStatus::Processing.as_str() {</span>
+<a id="bike-rs/bike-core/src/activity_import_pipeline.rs-1617" name="bike-rs/bike-core/src/activity_import_pipeline.rs-1617"></a><span class="s">                        1</span>
+<a id="bike-rs/bike-core/src/activity_import_pipeline.rs-1618" name="bike-rs/bike-core/src/activity_import_pipeline.rs-1618"></a><span class="s">                    } else {</span>
+<a id="bike-rs/bike-core/src/activity_import_pipeline.rs-1619" name="bike-rs/bike-core/src/activity_import_pipeline.rs-1619"></a><span class="hll"><span class="s">                        0</span>
+</span><a id="bike-rs/bike-core/src/activity_import_pipeline.rs-1620" name="bike-rs/bike-core/src/activity_import_pipeline.rs-1620"></a><span class="s">                    },</span>
+<a id="bike-rs/bike-core/src/activity_import_pipeline.rs-1621" name="bike-rs/bike-core/src/activity_import_pipeline.rs-1621"></a><span class="s">                ),</span>
+<a id="bike-rs/bike-core/src/activity_import_pipeline.rs-1622" name="bike-rs/bike-core/src/activity_import_pipeline.rs-1622"></a><span class="s">                max_attempts: Set(1),</span>
+<a id="bike-rs/bike-core/src/activity_import_pipeline.rs-1623" name="bike-rs/bike-core/src/activity_import_pipeline.rs-1623"></a><span class="s">                created_at: Set(updated_at),</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">1625</span>
+<span class="normal">1626</span>
+<span class="normal">1627</span>
+<span class="normal">1628</span>
+<span class="normal">1629</span>
+<span class="normal">1630</span>
+<span class="normal">1631</span>
+<span class="normal">1632</span>
+<span class="normal">1633</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/bike-core/src/activity_import_pipeline.rs-1625" name="bike-rs/bike-core/src/activity_import_pipeline.rs-1625"></a><span class="s">                started_at: Set(</span>
+<a id="bike-rs/bike-core/src/activity_import_pipeline.rs-1626" name="bike-rs/bike-core/src/activity_import_pipeline.rs-1626"></a><span class="s">                    if status == background_tasks::TaskStatus::Processing.as_str() {</span>
+<a id="bike-rs/bike-core/src/activity_import_pipeline.rs-1627" name="bike-rs/bike-core/src/activity_import_pipeline.rs-1627"></a><span class="s">                        Some(updated_at)</span>
+<a id="bike-rs/bike-core/src/activity_import_pipeline.rs-1628" name="bike-rs/bike-core/src/activity_import_pipeline.rs-1628"></a><span class="s">                    } else {</span>
+<a id="bike-rs/bike-core/src/activity_import_pipeline.rs-1629" name="bike-rs/bike-core/src/activity_import_pipeline.rs-1629"></a><span class="hll"><span class="s">                        None</span>
+</span><a id="bike-rs/bike-core/src/activity_import_pipeline.rs-1630" name="bike-rs/bike-core/src/activity_import_pipeline.rs-1630"></a><span class="s">                    },</span>
+<a id="bike-rs/bike-core/src/activity_import_pipeline.rs-1631" name="bike-rs/bike-core/src/activity_import_pipeline.rs-1631"></a><span class="s">                ),</span>
+<a id="bike-rs/bike-core/src/activity_import_pipeline.rs-1632" name="bike-rs/bike-core/src/activity_import_pipeline.rs-1632"></a><span class="s">                ..test_support::new_background_task()</span>
+<a id="bike-rs/bike-core/src/activity_import_pipeline.rs-1633" name="bike-rs/bike-core/src/activity_import_pipeline.rs-1633"></a><span class="s">            },</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+        <div class="src-snippet">
+            <div class="src-name">bike-rs/bike-core/src/test_support/schema.rs</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">11</span>
+<span class="normal">12</span>
+<span class="normal">13</span>
+<span class="normal">14</span>
+<span class="normal">15</span>
+<span class="normal">16</span>
+<span class="normal">17</span>
+<span class="normal">18</span>
+<span class="normal">19</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/bike-core/src/test_support/schema.rs-11" name="bike-rs/bike-core/src/test_support/schema.rs-11"></a><span class="w">    </span><span class="c1">// SQLite compares timestamp text; SQLx binds UTC values as RFC 3339.</span>
+<a id="bike-rs/bike-core/src/test_support/schema.rs-12" name="bike-rs/bike-core/src/test_support/schema.rs-12"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">clock</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">db</span><span class="p">.</span><span class="n">get_database_backend</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">DbBackend</span><span class="p">::</span><span class="n">Sqlite</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/bike-core/src/test_support/schema.rs-13" name="bike-rs/bike-core/src/test_support/schema.rs-13"></a><span class="w">        </span><span class="n">Expr</span><span class="p">::</span><span class="n">cust</span><span class="p">(</span><span class="s">"strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')"</span><span class="p">)</span>
+<a id="bike-rs/bike-core/src/test_support/schema.rs-14" name="bike-rs/bike-core/src/test_support/schema.rs-14"></a><span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/bike-core/src/test_support/schema.rs-15" name="bike-rs/bike-core/src/test_support/schema.rs-15"></a><span class="hll"><span class="w">        </span><span class="n">Expr</span><span class="p">::</span><span class="n">current_timestamp</span><span class="p">()</span>
+</span><a id="bike-rs/bike-core/src/test_support/schema.rs-16" name="bike-rs/bike-core/src/test_support/schema.rs-16"></a><span class="w">    </span><span class="p">};</span>
+<a id="bike-rs/bike-core/src/test_support/schema.rs-17" name="bike-rs/bike-core/src/test_support/schema.rs-17"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">table</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Table</span><span class="p">::</span><span class="n">create</span><span class="p">();</span>
+<a id="bike-rs/bike-core/src/test_support/schema.rs-18" name="bike-rs/bike-core/src/test_support/schema.rs-18"></a><span class="w">    </span><span class="n">table</span><span class="p">.</span><span class="n">table</span><span class="p">(</span><span class="n">entity</span><span class="p">);</span>
+<a id="bike-rs/bike-core/src/test_support/schema.rs-19" name="bike-rs/bike-core/src/test_support/schema.rs-19"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="n">column</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="n">source</span><span class="p">.</span><span class="n">get_columns</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+    </body>
+</html>

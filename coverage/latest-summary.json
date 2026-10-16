@@ -1,20 +1,20 @@
 {
-  "commit": "2888231a198b4f25c1d95818ff2b35341e5dd1bf",
-  "created_at": "2026-10-15T19:46:32Z",
-  "base_revision": "220ecaaddf2cf996aca01a3d809b181ef9c3cd3f",
-  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/436",
+  "commit": "c389d83d3ec3222fc20768d61514f34f71eabeb9",
+  "created_at": "2026-10-16T00:46:01Z",
+  "base_revision": "2888231a198b4f25c1d95818ff2b35341e5dd1bf",
+  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/441",
   "minimum_changed_line_percent": 80,
   "projects": {
     "api": {
       "name": "Bike API",
       "language": "Rust",
       "source": "bike-rs/api",
-      "lines": 6511,
-      "covered": 4938,
-      "percent": 75.84088465673476,
+      "lines": 6518,
+      "covered": 4945,
+      "percent": 75.86683031604787,
       "changed": {
-        "lines": 65,
-        "covered": 65,
+        "lines": 58,
+        "covered": 58,
         "percent": 100.0
       }
     },
@@ -23,8 +23,8 @@
       "language": "Rust",
       "source": "bike-rs/worker",
       "lines": 785,
-      "covered": 423,
-      "percent": 53.88535031847134,
+      "covered": 424,
+      "percent": 54.01273885350319,
       "changed": {
         "lines": 0,
         "covered": 0,
@@ -36,8 +36,8 @@
       "language": "Rust",
       "source": "bike-rs/strava-temporal",
       "lines": 1351,
-      "covered": 1305,
-      "percent": 96.59511472982976,
+      "covered": 1293,
+      "percent": 95.70688378978534,
       "changed": {
         "lines": 0,
         "covered": 0,
@@ -48,13 +48,13 @@
       "name": "Shared Bike core",
       "language": "Rust",
       "source": "bike-rs/bike-core",
-      "lines": 39194,
-      "covered": 31230,
-      "percent": 79.6805633515334,
+      "lines": 39312,
+      "covered": 31366,
+      "percent": 79.78734228734228,
       "changed": {
-        "lines": 1673,
-        "covered": 1490,
-        "percent": 89.06
+        "lines": 387,
+        "covered": 384,
+        "percent": 99.22
       }
     },
     "bike-ui": {
