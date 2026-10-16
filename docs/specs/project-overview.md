@@ -60,6 +60,9 @@ migrations rather than modifying historical migrations.
 
 ## Background execution
 
+- The [durable-work contract](durable-work-contract.md) owns shared identities,
+  idempotent effects, cancellation/recovery, and acceptance scenarios. Provider
+  and Bike workflow specs refine their own behavior without duplicating these rules.
 - Converted tasks use native Temporal orchestration, retries, cancellation,
   and recovery. Activities reuse domain/model operations directly.
 - Bike delegates sign-in and account verification/recovery email to its SSO
@@ -82,9 +85,10 @@ migrations rather than modifying historical migrations.
 - Use separate `strava/` and `bike/tasks/` object prefixes and retention ownership.
   Both may use the same volume; cleanup must protect retained workflow/database
   references and cannot sweep the other concern's objects.
-- For new user submissions, start the workflow before application database
-  mutations. Confirm acceptance after Temporal acknowledges the start. A failed
-  or uncertain submission shows a retryable error; retry reuses the retained
+- For new user submissions, retain necessary input bytes/metadata, then start the
+  workflow before business mutations. Confirm acceptance after Temporal
+  acknowledges the start. A failed or uncertain submission shows a retryable
+  error; retry reuses the retained
   object and request key. This contract does not require a custom outbox.
 - A stable request key identifies one logical operation. Workflow ID policies
   and durable domain idempotency prevent repeated requests and Activity retries
@@ -93,8 +97,9 @@ migrations rather than modifying historical migrations.
   Strava, and remaining SQL tasks. Fence obsolete attempts, including timed-out
   Activities that finish late, so stale results cannot overwrite newer data.
 - Temporal owns execution state; domain status remains visible in Bike. Track
-  source ingestion separately from derived readiness. A collection reports fully
-  ready only after required derived revisions and children are complete.
+  source ingestion separately from eventual projection refresh. Collections can
+  complete after source children and refresh handoffs; no per-request readiness
+  receipt or aggregate publication barrier is required.
 - The [conversion plan](../worker-conversion-plan.md) owns task order, status,
   verification evidence, and retirement gates. Existing provider callback
   intake remains governed by the [Strava specification](strava-temporal.md).
@@ -107,11 +112,12 @@ migrations rather than modifying historical migrations.
   a SQL scheduling bridge, custom queue, task polling, lock table, or SQL batch
   barrier to make reprocessing appear converted. A native workflow must not
   enqueue `reprocess_activity_import` or its derived work into the SQL worker.
-- Use one stable resource workflow ID for competing activity mutations, and
-  separate IDs for user fitness, global segment analytics, and activity heatmaps.
-  Two requests for the same resource reach the same workflow through native
-  Signal-With-Start with `UseExisting`; never terminate a running workflow to
-  promote a request. Strava workflow code remains separately owned.
+- Give each logical command a stable task/user/command workflow ID. Use resource
+  coordinators where serialization or coalescing is needed: Strava source
+  reconciliation, user fitness, global segment analytics, and activity heatmaps.
+  Shared resource requests reach their owner through native Signal-With-Start
+  with `UseExisting`; simple independent tasks need no extra coordinator. Never
+  terminate a running workflow to promote a request. Strava remains separately owned.
 - A request key identifies a logical command and survives HTTP retries. A
   resource revision identifies the input snapshot; different request keys for
   unchanged inputs may share the result. Neither a random Activity attempt ID
@@ -124,48 +130,50 @@ migrations rather than modifying historical migrations.
 - Source replay, activity publication, and derived readiness are separate steps.
   An import/reprocess workflow completes after derived requests are durably
   accepted by their named native workflows. It does not wait for publication or
-  claim refreshed data is ready. Collections or callers needing ready outputs
-  observe/await the required published revisions separately.
-- Resource generations are monotonic committed domain revisions, not arrival
-  order or wall-clock timestamps. Signals can arrive out of order. Persist the
-  cumulative dirty range with source mutations; a rebuild reads that domain
-  snapshot, including all changes through its target revision. Signal metadata
-  is a batching hint, not the sole record of source changes.
+  claim refreshed data is ready. Collections follow the same completion rule.
+  Existing freshness information is sufficient to show pending/stale outputs.
+- Use existing model versions, uniqueness constraints, and transactions to make
+  retries safe. Add a version only where needed to reject stale publication;
+  reuse existing dirty ranges or a retained plan where a refresh needs old
+  dependencies. A full result ledger and revision receipt per output are not required.
 - Workflow state accumulates the earliest dirty date, affected-ID unions, highest
   urgency, and latest revision. Duplicates do not extend quiet windows. Keep one
   Activity in flight per resource and one pending batch. A superseded publication
   carries its dirty inputs into the next batch. Continue-As-New only between
   Activities, carrying pending deadlines and the published revision watermark.
 - Temporal serializes workflow commands, but timed-out Activity attempts can
-  still finish late. Check expected source/resource revision and an attempt fence
-  in the same transaction as domain publication. A deletion tombstone or privacy
-  change must reject an older publication; never recreate a deleted activity.
+  still finish late. Check expected source/resource revisions and any necessary
+  effect fence in the same transaction as domain publication. A deletion tombstone
+  or privacy change must reject an older publication; never recreate a deleted activity.
   These checks protect domain writes and do not schedule work.
-- A failed/canceled Activity retains input and pending work for explicit recovery.
-  Native retries reuse the command identity. Lost completion after a successful
-  write returns the committed result rather than applying the effect again.
+- Native retries reuse command identity and preserve safe effects/refresh scope
+  after lost completion. Accept cancellation before source apply/handoff or at
+  safe batch boundaries; no new request handoffs after accepted cancellation.
+  Downstream shared work completes independently. Failed work remains visible for
+  operator retry or existing reconciliation, without a new generic recovery service.
 - Cutover replaces every producer for this command and its shared mutation/output
   boundary together. The legacy user-wide import lock must not become the native
   coordinator. Batch parents must await native results instead of counting SQL
   child rows. Until that boundary is implemented and verified, groundwork is not
   a released task conversion.
 
-| Existing producer or competitor                               | Required native boundary                                                 |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Admin single-activity reprocess                               | Retry-stable command acknowledgement and native result/history           |
-| User and archive-FIT reprocess batches                        | Bounded native children; await source and derived outcomes               |
-| Upload, archive resume, training backfill                     | Same resource workflow for competing writes; preserve committed progress |
-| Activity edit, delete, privacy changes and Strava writes      | Shared domain generation fences; immediate restrictions and tombstones   |
-| Import completion, segment rematching, sync and fitness reads | Shared derived coordinators; no inline/SQL rebuild bypass                |
+| Existing producer or competitor                               | Required native boundary                                            |
+| ------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Admin single-activity reprocess                               | Retry-stable command acknowledgement and native result/history      |
+| User and archive-FIT reprocess batches                        | Bounded native children; await source and accepted refresh handoffs |
+| Upload, archive resume, training backfill                     | Shared conditional domain writes; preserve committed progress       |
+| Activity edit, delete, privacy changes and Strava writes      | Existing domain access/deletion rules and conditional writes        |
+| Import completion, segment rematching, sync and fitness reads | Shared derived coordinators; no inline/SQL rebuild bypass           |
 
 ```mermaid
 flowchart LR
     Request[Reprocess command and retained source] --> Activity[reprocess_activity_import]
-    Competing[Competing activity commands] --> Activity
     Activity --> Replay[Activity: activity_import]
-    Replay --> Fitness[rebuild_fitness_freshness]
-    Replay --> Segments[rebuild_segment_analytics]
-    Replay --> Heatmap[prepare_heatmap]
+    Replay --> Domain[Idempotent domain commit and refresh scope]
+    Competing[Competing activity commands] --> Domain
+    Domain --> Fitness[rebuild_fitness_freshness]
+    Domain --> Segments[rebuild_segment_analytics]
+    Domain --> Heatmap[prepare_heatmap]
     Fitness --> Accepted[Durably accepted handoffs]
     Segments --> Accepted
     Heatmap --> Accepted
@@ -174,8 +182,8 @@ flowchart LR
 ### Derived-work priority and debounce
 
 - Follow the [named workflow and shared import Activity contract](bike-task-workflows.md).
-  Import workflows finish after durable derived handoff; derived readiness is
-  observed separately. Other tasks reuse the same independently keyed outputs.
+  Import/batch workflows finish after durable derived handoff. Outputs converge
+  independently; reuse existing freshness state instead of per-request waiters.
 - Use Temporal's [Event Accumulator](https://docs.temporal.io/design-patterns/event-accumulator)
   and [Updatable / Debounced Timer](https://docs.temporal.io/design-patterns/updatable-timer)
   patterns with Signal-With-Start, stable change IDs, durable timers, and
@@ -184,10 +192,15 @@ flowchart LR
   Set priority on the processing Activity for each batch; a long-lived
   coordinator's initial Workflow priority must not fix every later batch's priority.
 
-| Trigger for derived recalculation     | Priority key | Quiet window | Debounce cap from first pending change |
-| ------------------------------------- | ------------ | ------------ | -------------------------------------- |
-| New activity from upload or sync      | 1 (high)     | 2 seconds    | 10 seconds                             |
-| Deletion or routine background repair | 5 (low)      | 60 seconds   | 5 minutes                              |
+| Trigger for derived recalculation                      | Priority key | Quiet window | Debounce cap from first pending change |
+| ------------------------------------------------------ | ------------ | ------------ | -------------------------------------- |
+| Newly finished activity from upload or sync            | 1 (high)     | 2 seconds    | 10 seconds                             |
+| Archive, historical backfill, deletion, routine repair | 5 (low)      | 60 seconds   | 5 minutes                              |
+
+- Preserve bulk priority through every entry's derived requests. A newly inserted
+  historical record does not become a high-priority ride. Prioritize fitness,
+  segments, and achievements for newly finished activities; all outputs remain
+  eventually consistent and may publish separately.
 
 - These are initial configurable defaults. Priority orders queued work within
   queue partitions; it does not preempt running Activities. Bound worker
@@ -214,10 +227,11 @@ flowchart LR
 - All producers, including Strava sync, uploads, deletes, reprocessing, and page
   reads, use this contract. Remove per-activity full-user rebuilds and synchronous
   read-triggered rebuilds. Sync children persist sources and submit change intents
-  without waiting for aggregate work per item; collections await final revisions.
-- Apply deletion/privacy restrictions immediately. Their expensive derived
-  recalculation is low priority. Show refreshing/pending state for stale or absent
-  outputs; repeated reads must not bypass debounce or report stale data as current.
+  without waiting for aggregate work; collection completion/offsets do not wait
+  for final projections either.
+- Deletes and their derived recalculation may settle slowly in the background.
+  Existing access/privacy rules remain domain concerns. Show refreshing state
+  when useful; repeated reads do not bypass debounce.
 
 ### Shared object storage
 

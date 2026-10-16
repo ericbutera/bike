@@ -1,5 +1,13 @@
 # Strava integration
 
+- Follow the [shared durable work contract](durable-work-contract.md) for identity,
+  idempotent effects, eventual refresh, cancellation, and the neutral Bike handoff.
+  Keep this specification as the owner of Strava protocol/domain behavior.
+- The [review findings](durable-work-contract.md#findings-requiring-closure) and
+  scenarios U18–U23/U25 define required provider corrections. They are not closed
+  by the existing native implementation or mocked happy-path tests. Complete
+  `reprocess_activity_import` first and verify affected Strava interoperability
+  before broader Bike rollout.
 - This is a new, forward-only implementation. Temporal owns orchestration,
   retries, step results, child workflows, cancellation, and execution history.
 - The Rust API owns callbacks and OAuth; Temporal owns execution.
@@ -11,8 +19,10 @@
   imports, including interrupted native publication. Historical source repair
   cannot enqueue Strava replay; request native sync or backfill instead.
 - Bike uses the shared Temporal service in production and Docker Compose locally.
-- API path: Strava → `/api/strava/webhook` → durable Strava event → Temporal
-  workflow → named activity → Strava or Bike domain operation.
+- Target API path: Strava → `/api/strava/webhook` → bounded durable Temporal start
+  → acknowledge within two seconds. The workflow performs provider/domain work.
+  The deployed event inbox is an optional buffering adapter; migration to direct
+  submission preserves useful event history without requiring pre-start recording.
 - Retain **all activity summaries**, including walks, hikes, runs, swims, workouts,
   and manual entries, in the activity feed with their normalized sport, title,
   distance, duration, elevation gain, description, and gear ID/name when supplied.
@@ -81,12 +91,14 @@
 - Connection checks load the owning connection, validate its generation, and
   validate the customer through separate functions. Preserve database failures
   as server errors and missing customers as not found.
-- `StravaEvent` owns required activity ID validation. The activity-state model
-  owns the composite key lookup and absence check; content and supersession
+- `StravaEvent` owns required remote activity object ID validation. The
+  activity-state model owns the composite key lookup and absence check; content and supersession
   methods name their predicate and return false for absent state.
-- Deletion checks the stored mutation, opens a transaction, checks supersession,
-  removes the owned remote activity, and records its status and dependencies.
-  Failed writes roll back; retries reuse the stored mutation.
+- Deletion opens a transaction, acquires the domain lock, and returns any existing
+  committed outcome before checking supersession or absence. Otherwise it removes
+  the owned activity and atomically records status, dependencies, and existing
+  freshness state.
+  Failed writes roll back; retries reuse that original outcome.
 - Scheduled sync reads as get request → get page → get children → complete children
   → continue or finish. Await every started child and carry the total failures
   across pages. Failed child starts count too; continue starting later customers.
@@ -175,8 +187,10 @@
 - [Shared activity history](activity-event-history.md) archives each applied
   state transition and manual edit. Keep it distinct from the latest-state fence.
 
-- Strava webhook `owner_id` identifies the athlete and `object_id` identifies
-  the activity. Keep their pair distinct from Bike's generated activity PK.
+- For activity webhooks, `owner_id` identifies the athlete and `object_id`
+  identifies the remote activity. Interpret `object_id` with `object_type`;
+  athlete/deauthorization events do not identify an activity. Keep remote IDs
+  distinct from Bike's generated activity PK.
 - `strava_activity_states` owns the remote pair and retains its known
   `bike_activity_id`. Persist that correlation in the same transaction as create,
   update, unchanged-content recognition, or deletion. Retain the historical PK
@@ -192,6 +206,14 @@
 - State `event_time` orders provider changes. `deleted_at` records the source
   deletion time; `updated_at` records Bike's last write. Keep `applied_at`
   synchronized for compatibility with the deployed worker.
+- Follow [source ordering and reconciliation](durable-work-contract.md#strava-ordering-and-reconciliation):
+  local sync/backfill request times must not advance a provider watermark.
+  Serialize/coalesce remote-object reconciliation through Temporal and fence
+  late fetches with domain generations. Same-second distinct events remain valid;
+  exact canonical duplicates share the accepted event identity.
+- Persist the original mutation/dependency outcome immutably, rechecking after
+  acquiring the domain lock and before unchanged/superseded branches. A rematching
+  retry must retain segments removed by its first committed attempt (F1/F2).
 
 ## Workflows
 
@@ -203,12 +225,12 @@
   domain Activities use the same finite-attempt policy. Do not duplicate SDK
   retry builders per workflow.
 
-| Strava webhook | Native worker implementation |
-| --- | --- |
-| Activity `create` | [CreateActivity](../../bike-rs/strava-temporal/src/workflows/activity_create.rs) |
-| Activity `update` (title, type, privacy) | [UpdateActivity](../../bike-rs/strava-temporal/src/workflows/activity_update.rs) |
-| Activity `delete` | [DeleteActivity](../../bike-rs/strava-temporal/src/workflows/activity_delete.rs) |
-| Athlete `update`, `authorized=false` | [DisconnectStrava](../../bike-rs/strava-temporal/src/workflows/disconnect.rs), without remote revoke |
+| Strava webhook                           | Native worker implementation                                                                         |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Activity `create`                        | [CreateActivity](../../bike-rs/strava-temporal/src/workflows/activity_create.rs)                     |
+| Activity `update` (title, type, privacy) | [UpdateActivity](../../bike-rs/strava-temporal/src/workflows/activity_update.rs)                     |
+| Activity `delete`                        | [DeleteActivity](../../bike-rs/strava-temporal/src/workflows/activity_delete.rs)                     |
+| Athlete `update`, `authorized=false`     | [DisconnectStrava](../../bike-rs/strava-temporal/src/workflows/disconnect.rs), without remote revoke |
 
 - GET verification uses the [Rust handler](../../bike-rs/api/src/controllers/strava.rs).
 - Other webhook combinations and unconnected athletes are acknowledged and ignored.
@@ -216,16 +238,16 @@
   operation to one typed event. [Registration](../../bike-rs/strava-temporal/src/client.rs)
   starts its dedicated workflow. There is no generic Strava processor.
 
-| Workflow | Input | Steps | Output |
-| --- | --- | --- | --- |
-| Create activity | Strava event | Upsert child workflow | Bike activity ID and status |
-| Update activity | Strava event | Upsert child workflow | Bike activity ID and status |
+| Workflow                                                                         | Input                             | Steps                                                                          | Output                                |
+| -------------------------------------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------- |
+| Create activity                                                                  | Strava event                      | Upsert child workflow                                                          | Bike activity ID and status           |
+| Update activity                                                                  | Strava event                      | Upsert child workflow                                                          | Bike activity ID and status           |
 | [UpsertActivity](../../bike-rs/strava-temporal/src/workflows/activity_upsert.rs) | Strava event + remote activity ID | Fetch activity → fetch streams → normalize → persist → publish derived results | Published Bike activity ID and status |
-| Delete activity | Strava event + remote activity ID | Capture dependencies → delete → rebuild affected results | Deleted/already absent |
-| [SyncActivities](../../bike-rs/strava-temporal/src/workflows/sync.rs) | Strava event + saved offset | List pages → upsert children → commit offset | Counts and new offset |
-| [BackfillActivities](../../bike-rs/strava-temporal/src/workflows/backfill.rs) | Strava event + start/end dates | List pages in range → upsert children | Counts; no incremental offset change |
-| Disconnect | Strava event + revoke flag | Delete children → optional provider revoke → remove connection | Disconnected |
-| [ScheduledSync](../../bike-rs/strava-temporal/src/workflows/scheduled_sync.rs) | Schedule context | List connections → sync children | Per-connection results |
+| Delete activity                                                                  | Strava event + remote activity ID | Capture dependencies → delete → rebuild affected results                       | Deleted/already absent                |
+| [SyncActivities](../../bike-rs/strava-temporal/src/workflows/sync.rs)            | Strava event + saved offset       | List pages → upsert children → commit offset                                   | Counts and new offset                 |
+| [BackfillActivities](../../bike-rs/strava-temporal/src/workflows/backfill.rs)    | Strava event + start/end dates    | List pages in range → upsert children                                          | Counts; no incremental offset change  |
+| Disconnect                                                                       | Strava event + revoke flag        | Delete children → optional provider revoke → remove connection                 | Disconnected                          |
+| [ScheduledSync](../../bike-rs/strava-temporal/src/workflows/scheduled_sync.rs)   | Schedule context                  | List connections → sync children                                               | Per-connection results                |
 
 All processors below are separate [native activity methods](../../bike-rs/strava-temporal/src/activities.rs).
 Inputs/outputs are [typed domain values](../../bike-rs/bike-core/src/strava/native/types.rs).
@@ -233,16 +255,26 @@ Object references point to retained source files; provider bodies are not carrie
 
 ### Derived-work conversion target
 
+- The shared [simplicity and ownership rules](durable-work-contract.md#simplicity-and-ownership)
+  govern this boundary. Do not import Bike workflow types into Strava workflows
+  or pass `StravaEvent` into generic Bike output computations.
 - The [worker conversion plan](../worker-conversion-plan.md) replaces eager
   per-activity aggregate rebuilds with the shared [priority/debounce contract](project-overview.md#derived-work-priority-and-debounce).
 - Strava retains provider orchestration and reports typed domain change intents;
   Bike tasks own the derived-work coordinator through a neutral scheduling interface.
 - During bulk sync/backfill, child source ingestion does not await a full user
-  rebuild per item. Track derived target revisions separately; collection
-  completion/offset advancement waits for final required publication.
+  rebuild per item. Collection completion/offset advancement requires successful
+  source children and accepted refreshes, not final aggregate publication.
+- New-ride fitness, segments, and achievements get prompt high-priority refresh.
+  Historical backfill and deletes may settle slowly at background priority. All
+  downstream outputs are eventually consistent; no per-caller readiness receipt.
 - Preserve existing histories through compatible workflow evolution. The current
   implementation still rebuilds fitness/segments per child until the corresponding
   task conversion routes those producers; the table above describes the existing path.
+- Keep provider fetch/normalize/persist steps with Strava. Replace direct derived
+  rebuilds with neutral typed output requests once the shared boundary is ready;
+  every provider uses the same user/segment/activity output identities. Verify
+  mixed-producer coalescing and old-history replay before activating the change.
 
 ## Event and source retention
 
@@ -302,28 +334,29 @@ Object references point to retained source files; provider bodies are not carrie
   re-list that partially completed page or count its completed children twice.
   Carry the original fixed window, next page, counts, latest start,
   event/correlation IDs, request ID, and trace carrier. Advance the sync cursor
-  only after the final page and publication; backfill never advances it.
+  only after the final source page and accepted refresh handoffs; projections may
+  publish later. Backfill never advances the sync cursor.
 - Scheduled scans continue as new after each 20-connection page. Await every
   started customer, carry failures and correlation ID into the next run, and fail
   the final run with the cumulative count when any customer failed.
 
-| Temporal activity | Input → output |
-| --- | --- |
-| `strava_fetch_activity` | StravaEvent → ActivitySource (activity object reference) |
-| `strava_fetch_streams` | ActivitySource → ActivitySources (activity + streams references) |
-| `strava_normalize_activity` | ActivitySources → NormalizedActivity (source + optional parsed reference) |
-| `strava_persist_activity` | NormalizedActivity → ActivityChange (Bike ID, status, affected dependencies) |
-| `strava_capture_deletion` | StravaEvent → ActivityChange |
-| `strava_delete_activity` | ActivityChange → ActivityChange |
-| `strava_delete_source` | ActivityChange → ActivityChange |
-| `strava_rebuild_activity`, `strava_rebuild_segments`, `strava_rebuild_fitness`, `strava_publish_heatmap`, `strava_complete_activity` | ActivityChange → ActivityChange; each method performs its named step |
-| `strava_resolve_collection_window` | StravaEvent → CollectionInput (fixed date range) |
-| `strava_list_activity_page` | PageInput → ActivityPage (IDs, next page, latest start) |
-| `strava_accept_child_event` | ChildEvent → canonical StravaEvent |
-| `strava_complete_sync`, `strava_complete_backfill` | CollectionResult → CollectionResult; only sync advances the offset |
-| `strava_begin_disconnect` | StravaEvent → up to 50 owned remote IDs; blocks new writes |
-| `strava_revoke_connection`, `strava_remove_connection` | StravaEvent → StravaEvent |
-| `strava_scan_connections` | ScanRequest → ScanPage (up to 20 customer sync events) |
+| Temporal activity                                                                                                                    | Input → output                                                               |
+| ------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| `strava_fetch_activity`                                                                                                              | StravaEvent → ActivitySource (activity object reference)                     |
+| `strava_fetch_streams`                                                                                                               | ActivitySource → ActivitySources (activity + streams references)             |
+| `strava_normalize_activity`                                                                                                          | ActivitySources → NormalizedActivity (source + optional parsed reference)    |
+| `strava_persist_activity`                                                                                                            | NormalizedActivity → ActivityChange (Bike ID, status, affected dependencies) |
+| `strava_capture_deletion`                                                                                                            | StravaEvent → ActivityChange                                                 |
+| `strava_delete_activity`                                                                                                             | ActivityChange → ActivityChange                                              |
+| `strava_delete_source`                                                                                                               | ActivityChange → ActivityChange                                              |
+| `strava_rebuild_activity`, `strava_rebuild_segments`, `strava_rebuild_fitness`, `strava_publish_heatmap`, `strava_complete_activity` | ActivityChange → ActivityChange; each method performs its named step         |
+| `strava_resolve_collection_window`                                                                                                   | StravaEvent → CollectionInput (fixed date range)                             |
+| `strava_list_activity_page`                                                                                                          | PageInput → ActivityPage (IDs, next page, latest start)                      |
+| `strava_accept_child_event`                                                                                                          | ChildEvent → canonical StravaEvent                                           |
+| `strava_complete_sync`, `strava_complete_backfill`                                                                                   | CollectionResult → CollectionResult; only sync advances the offset           |
+| `strava_begin_disconnect`                                                                                                            | StravaEvent → up to 50 owned remote IDs; blocks new writes                   |
+| `strava_revoke_connection`, `strava_remove_connection`                                                                               | StravaEvent → StravaEvent                                                    |
+| `strava_scan_connections`                                                                                                            | ScanRequest → ScanPage (up to 20 customer sync events)                       |
 
 ```mermaid
 flowchart LR
@@ -337,8 +370,12 @@ flowchart LR
 
 ## Rules
 
-- Acknowledge a webhook only after its event is stored. Handoff retries use a
-  deterministic workflow ID and cannot create duplicate executions.
+- Follow [fast durable acceptance](durable-work-contract.md#fast-durable-acceptance):
+  the baseline is a bounded Temporal start followed by HTTP 200 within two seconds.
+  Fail promptly on unavailable/uncertain acceptance and retry with stable identity.
+  Strava makes up to three delivery attempts; direct starts do not buffer a longer
+  outage. If retaining the existing inbox, acknowledge after its durable write.
+  The inbox is optional, not a required abstraction for other task producers.
 - Validate ownership and connection generation before any provider call or write.
 - Ignore athlete deauthorization older than the current OAuth connection.
   Strava timestamps have second precision; ordering within a second is unavailable.
@@ -349,10 +386,13 @@ flowchart LR
   dependencies. It stores no step execution status or workflow checkpoint.
 - Associate the Bike activity ID with its audit event in the same domain transaction,
   so the admin activity filter can find the native execution after create or delete.
-- Parent success and sync offset advancement require successful children and
-  completed publication. A failed or canceled child cannot produce success.
-- Cancellation reaches native child workflows and activities. It does not undo
-  committed domain changes.
+- Parent success and sync offset advancement require successful source children
+  and accepted refresh handoffs. Downstream publication may follow later.
+  A failed or canceled source child cannot produce successful source completion.
+- Accept cancellation before apply/handoff or at safe batch boundaries. Stop
+  request-owned children and new handoffs after accepting it. Shared downstream
+  maintenance has its own lifetime; already completed items remain committed.
+  Follow the shared cancellation contract and expose exhausted failures for retry.
 - Keep dedicated workflow types and explicit typed activity calls. No generic
   operation processor, SQL continuation task, or custom DAG/checkpoint engine.
 - Migrations retire obsolete tables and metadata. Do not import old jobs,
@@ -360,9 +400,13 @@ flowchart LR
 
 ## Verification
 
-- Current scope: isolated unit tests only. Mock external dependencies with the
-  checked-in fake Strava responses. No PostgreSQL, E2E tests, containers, or
-  live Temporal server in this unit suite.
+- Map the [unit acceptance scenarios](durable-work-contract.md#unit-acceptance-scenarios)
+  to existing Strava fixtures/harnesses, especially U07–U10, U13–U23, U25–U26.
+  Findings F1–F3/F6 also require the relevant P01–P04 engine/runtime evidence.
+- Unit tests mock external dependencies with checked-in fake Strava responses.
+  Run them in Docker through owning mise tasks; the tests do not require
+  PostgreSQL, E2E, a live Temporal server, or real provider calls. Keep the
+  separately required persistence/runtime drills explicit.
 - Execute actual workflow code with the pinned SDK's in-process runner;
   [the test adapter](../../bike-rs/strava-temporal/src/tests/runtime.rs) supplies
   mocked activity and child-workflow completions. It is test-only SDK glue.
@@ -397,8 +441,9 @@ flowchart LR
   complete body survives in object storage. This is a fixture-backed domain and
   serialization check; it does not send a large payload to the live server.
 - Keep a separate read-only native SDK replay tool for exported JSON or a live
-  workflow: `mise exec -- cargo run --locked -p strava-temporal --example replay --
-  --file history.json` (from `bike-rs`); use `--workflow workflow-id` with the owning
+  workflow. From `bike-rs`, run
+  `mise exec -- cargo run --locked -p strava-temporal --example replay -- --file history.json`;
+  use `--workflow workflow-id` with the owning
   Temporal environment to fetch history. It never registers or executes activities.
 
 ## Find a job
@@ -540,6 +585,8 @@ flowchart LR
 
 ## Alerts and isolated coverage
 
+- Inbox backlog metrics below describe the existing adapter. Keep them while
+  that adapter is active; they do not mandate an inbox for direct submission.
 - Sample all events with `submitted_at IS NULL` every 30 seconds, including
   delayed retries. This measures durable handoff, not running workflows.
 - Export pending count, oldest acceptance timestamp (zero when empty), and last

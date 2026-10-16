@@ -13,9 +13,14 @@
 | Strava domain effect | 2 minutes per attempt | 30 seconds        | `activity_retry_policy()` | 12             | 1 second         | 2×      | 1 minute         |
 | Manifest preparation | 1 hour per attempt    | 30 seconds        | `activity_retry_policy()` | 12             | 1 second         | 2×      | 1 minute         |
 
-- Domain effects retain their finite attempt budget. Non-retryable application
-  failures and cancellation keep their existing behavior; policy factories do
-  not reclassify failures or implement their own retry loops.
+- These are current finite attempt budgets, not a guarantee of eventual success
+  after every outage. Adapters distinguish permanent invalid input from transient
+  failure. Policy factories do not implement private retry loops.
+- Follow the [shared cancellation and recovery contract](durable-work-contract.md#cancellation-recovery-and-completion).
+  Accept cancellation before apply/handoff or at a safe batch boundary, stop owned
+  work, and do not launch handoffs after accepting cancellation. Downstream shared
+  refreshes complete independently. Exhaustion remains visible for native/operator
+  retry or existing reconciliation; no universal recovery ledger is required.
 - Provider-directed `next_retry_delay` intentionally overrides computed backoff
   when Strava supplies a retry time. Clamp expired waits to the shared initial
   retry interval. Provider heartbeats use `ACTIVITY_HEARTBEAT_INTERVAL` (5 seconds),

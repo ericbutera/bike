@@ -6,20 +6,31 @@
   [worker conversion plan](worker-conversion-plan.md). Its inventory owns
   per-task status and verification; retire legacy email, address repeated
   recalculation in the first conversion, and stop for user review after each task.
-- First conversion: `reprocess_activity_import`. PR #61 establishes native
-  coordination and shared object-retention policy. Complete its domain adapters,
-  producer/batch boundary, retention inventory/schedule, and deployed verification
-  before marking the conversion ready; do not introduce a SQL scheduling bridge.
+- First conversion: `reprocess_activity_import`. PRs #61 and #64 establish
+  groundwork. Finish the [first deliverable](worker-conversion-plan.md#first-deliverable-complete-reprocessing)
+  before broader rollout; use the [shared durable-work contract](specs/durable-work-contract.md)
+  for identity, simplicity, findings, and executable acceptance scenarios.
 - Review the twelve named workflow graphs from
   [the workflow index](../bike-rs/bike-temporal/src/workflows.rs) through shared
   steps, typed child calls, and domain-specific Activity adapters. Keep this
   graph review separate from each task's production cutover/verification gate.
-- [ ] Wire direct Temporal submission and the workflow-owned import-attempt
-      repository into the API/native worker with the first concrete import
-      adapter. Return native job references, capture authenticated actor/request
-      context once, and verify API-to-workflow tracing and idempotent crash recovery.
-      Extend the shared boundary at later task cutovers; do not introduce a SQL
-      enqueue bridge or generic receipt/admission protocol.
+- [ ] Finish the real reprocess adapter, API submission, worker registration,
+      and derived dependencies. Return native job references; use model keys,
+      versions, and transactions for safe effects and eventual refresh. Replace
+      native attempt stages without mandating a new result ledger or inbox.
+- [ ] Resolve F1–F6 at their affected conversion boundaries: existing result checks
+      under lock, complete rematch dependencies, provider clock/ordering rules,
+      cancellation before apply/handoff, the missing production reprocess slice,
+      and neutral shared derived-work routing. Correctness fixes are not deferred
+      to the later Strava storage refactor.
+- [ ] Implement applicable U01–U26 unit scenarios and P01–P04 database/runtime
+      proofs. Record evidence in the conversion plan; preserve separate mock,
+      database, deployed recovery, and eventual user-visible results.
+- [ ] Keep downstream projections eventually consistent: prompt new-ride fitness,
+      segment/achievement refresh; background archive/backfill/delete refresh.
+      Propagate bulk priority to each entry; remove collection publication waits
+      and per-request readiness requirements. Keep the Strava callback below two
+      seconds through bounded durable submission; an inbox remains optional.
 - [ ] After the named-workflow proof of concept, revisit debounce windows and
       backlog aging with measured mixed new-activity/deletion bursts. Preserve
       native high priority for new activities and lower priority for deletion;
@@ -29,9 +40,10 @@
       cleanup onto the shared object-storage service. Preserve retained workflow
       references, raw captures, encryption, and separate worker/queue ownership;
       reuse central storage/TTL tests and verify retained-history replay.
-- [ ] During that Strava conversion, serialize/coalesce competing updates for
-      one remote owner/activity through Temporal and exercise equal-second events.
-      Preserve source timestamp/deletion fences and shared activity history.
+- [ ] Before the shared mutation/output boundary is ready, serialize/coalesce
+      competing Strava updates for one remote owner/object/connection generation;
+      test equal-second events and keep local sync time out of provider watermarks.
+      Preserve deletion/reconnection fences and shared activity history.
 
 ## Model boundaries and fixtures
 

@@ -1,9 +1,24 @@
-# Bike task workflow proof of concept
+# Bike task workflows
+
+- The [durable work contract](durable-work-contract.md) owns shared identity,
+  idempotent effects, minimal persistence, cancellation, and provider boundaries.
+  Its [unit scenarios](durable-work-contract.md#unit-acceptance-scenarios) and
+  [findings](durable-work-contract.md#findings-requiring-closure) are acceptance
+  criteria for implementation, not claims that the current proof of concept
+  satisfies them.
+- Finish `reprocess_activity_import` and its real domain/API/worker/derived-output
+  path before broader rollout. Follow the
+  [first-milestone gate](durable-work-contract.md#delivery-order-and-completion-gate)
+  and stop for user review before the remaining conversions.
+- All downstream activity projections are eventually consistent. Prioritize
+  prompt fitness/segment/achievement refresh after a new ride; bulk imports and
+  deletes may settle slowly. Follow the shared
+  [responsiveness policy](durable-work-contract.md#responsiveness-and-eventual-consistency).
 
 - Keep the task names in [the conversion plan](../worker-conversion-plan.md#task-inventory-and-conversion-order).
   Renaming any task requires the user's approval and an explanation. Rust type
   names may follow Rust casing; registered Temporal names match the plan exactly.
-- This proof of concept establishes typed workflow composition and handoffs.
+- The current implementation establishes typed workflow composition and handoffs.
   Production domain adapters, write fences, producer cutover, worker deployment,
   and retained-history recovery remain conversion gates.
 
@@ -34,16 +49,17 @@
   retry-stable command ID, owner/import identity, and a shared-storage reference.
   It does not schedule derived work or submit SQL tasks.
 - A successful Activity returns the committed activity/import identity and typed
-  fitness, affected-segment, and optional heatmap requests. Each output carries
-  its own committed revision/generation; an activity revision must not be reused
-  as a user's fitness or a segment's revision.
-- A retry after a committed write and lost completion returns that command's
-  original outcome. Concrete adapters must enforce this and reject stale writes.
+  fitness, affected-segment, and optional heatmap requests. Reuse existing output
+  freshness/version fields where needed; an activity version does not describe a
+  whole user's fitness or a shared segment. Do not add a ledger per output.
+- A retry after commit must preserve one business effect and enough refresh scope
+  for eventual convergence. Use model keys/versions, a retained plan, or an existing
+  result as appropriate; persisting every complete Activity result is not required.
 - Each workflow declares its steps explicitly. Any later workflow may call the
   same Activity or request these derived workflows in its own order.
 - Activity options use named constants and factories from the shared
   [Temporal execution policy](temporal-execution-policy.md), including the
-  import-attempt recording and domain effects. Keep SDK policy construction out
+  domain effects and handoffs. Keep SDK policy construction out
   of orchestration steps.
 
 ## Review from the workflows
@@ -68,7 +84,7 @@
 flowchart LR
     Import[process_activity_import] --> Shared[Activity: activity_import]
     Reprocess[reprocess_activity_import] --> Shared
-    Shared --> Committed[Committed result and output revisions]
+    Shared --> Committed[Source persisted and refresh scope identified]
     Committed --> Fitness[rebuild_fitness_freshness]
     Committed --> Segments[rebuild_segment_analytics]
     Committed --> Heatmap[prepare_heatmap]
@@ -114,10 +130,11 @@ flowchart LR
 - Await one child/Activity at a time in this proof of concept. Advance the cursor
   and counts only after the page settles. Child-start and execution failures
   fail the parent; starting a duplicate child is not proof of successful work.
-- Shared execution helpers check cancellation before dispatch and after a
-  dependency settles. A late successful Activity or child must not turn a canceled
-  parent into success or cause another derived handoff. Use native cancellation
-  with completion acknowledgement; preserve that outcome at the workflow boundary.
+- Accepted cancellation stops new source work/handoffs and propagates to owned
+  children. A batch accepts it at a safe boundary between items; the current
+  apply/handoff step must settle before that boundary. Preserve completed items.
+  Follow the [cancellation contract](durable-work-contract.md#cancellation-recovery-and-completion).
+  Test both cancellation before apply and a request racing the cutoff (F4, U12–U14).
 - Continue-As-New only after a settled page, after 16 pages (at most 256 entries
   per run), or when the SDK suggests continuation. Carry the retained manifest
   and settled count; no live children cross the boundary.
@@ -127,11 +144,15 @@ flowchart LR
   remain retained across worker loss and continuation; do not delete source bytes
   at parent completion. The shared storage lifetime/reference policy owns cleanup.
 - Batch counts describe settled source/matching/training operations and accepted
-  handoffs. Final derived-readiness observation/barriers, persisted attempt fences,
-  and real archive crash drills remain production conversion gates.
+  handoffs. They do not wait for aggregate publication. Conditional domain writes
+  and real archive crash drills remain checks for their owning conversions.
 
 ## Handoff and completion
 
+- Apply the shared [identity contract](durable-work-contract.md#identity-contract)
+  and [fast durable acceptance](durable-work-contract.md#fast-durable-acceptance)
+  rules. Correlation and source identity exist before a Bike activity ID; no
+  import-attempt lifecycle is needed to create that link.
 - API submission uses the native client directly. Return a typed
   `JobReference` after Temporal acknowledges acceptance; recording is owned by
   the workflow's Activities, not the API request transaction.
@@ -153,28 +174,27 @@ flowchart LR
   Temporal's existing execution or an explicitly new domain command.
 - The original accepted workflow input wins on duplicate submission. Temporal
   does not compare payloads or replace the original actor/context. Producers must
-  not reuse a command ID for changed work. Domain attempts validate stored command
-  identity on Activity retry and after workflow-history retention expires.
-- Both import workflows call the same `activity_import` Activity. Before parsing
-  or persistence, its repository records the command, owner/import, native
-  workflow/run reference, actor, request/correlation IDs, receive time, and W3C
-  carrier on `activity_import_attempts`. The unique owner/command key returns the
-  same attempt after a lost recording acknowledgement.
-- Native attempt history starts with the audit status `started`, outside the SQL
-  worker's `queued`/`running` claim set and partial indexes. Address it by attempt
-  ID; do not use legacy active-attempt queries or locks to coordinate native work.
-- The Activity passes that attempt ID and typed `ImportExecution` into its domain operation. The operation
-  owns conditional writes and returning the original committed result after lost
-  completion. On success, the same attempt records the resulting Bike activity
-  ID and source completion. A failed completion-record write retries the Activity;
-  the domain operation must return its previous committed outcome.
+  not reuse a command ID for changed work. Domain uniqueness and safe replacement
+  protect repeated effects even after workflow-history retention expires.
+- Both import workflows call the same `activity_import` Activity. The target
+  operation uses existing source keys, model versions, and transactions for safe
+  repeated writes. Preserve sufficient refresh scope using a plan, version,
+  existing result, or broader rebuild. Follow
+  [minimal persistence](durable-work-contract.md#idempotent-effects-and-minimal-persistence);
+  no general outcome table or per-request derived-readiness record is required.
+- At reviewed head `93b93db9`, the wrapper instead records a `started` native
+  `activity_import_attempts` row, calls an unimplemented domain adapter, and marks
+  the row completed. That does not implement domain idempotency (F5).
+  Simplify native use to model-owned effects in the first conversion; do not
+  copy SQL stages/claims/checkpoints into the new worker. Preserve legacy history
+  and fields required by unconverted tasks until their consumers retire.
 - Concrete import operations also append the typed import/reprocess event to
   [shared activity history](activity-event-history.md) in their domain-write
   transaction. Include the command's native execution and causal context.
-- Recording failures use the shared native Activity retry policy. Exhausted retries
-  fail the workflow; they do not cancel a successfully accepted start or undo
-  already committed effects. PostgreSQL records domain history, while Temporal
-  owns scheduling, retries, cancellation, and execution status.
+- Transaction/recording failures use native Activity retries. Exhausted retries
+  remain visible for operator retry or existing reconciliation. Reuse domain
+  freshness fields where useful; no new recovery service is a prerequisite.
+  Temporal owns execution status; PostgreSQL owns business data/history.
 - Temporal workflow-ID deduplication is bounded by retained history. Domain
   idempotency must remain correct after that history expires. See
   [Temporal workflow identity](https://docs.temporal.io/workflow-execution/workflowid-runid)
@@ -201,20 +221,19 @@ flowchart LR
   Signal-With-Start handoffs, retries, replay, and Continue-As-New. Include native
   namespace/workflow/run/Activity/attempt identities in the corresponding logs
   and spans, and expose useful correlation fields through Temporal visibility.
-- Debounce combines multiple causes. Preserve the contributing command/request
-  links in durable history or retained command records; do not replace all causes
-  with whichever request arrived last. Keep in-memory workflow state and tracing
-  links bounded while preserving the audit references needed for diagnosis.
-- Import submission now records this causal contract and carries it into the
-  root workflow and import-attempt record. Other command types and derived/child
+- Debounce combines multiple causes. Keep useful bounded log/trace links without
+  attributing shared work exclusively to the last caller. A durable contributor
+  ledger is not required for eventual refreshes.
+- Current import submission carries this causal context into the root workflow
+  and transitional import-attempt record. Other command types and derived/child
   handoffs still need shared propagation. Existing SQL `PipelineContext` and Strava's
   event/trace handling provide reference behavior, not proof that the Bike native
   handoff already retains it. Require focused propagation/fan-in tests and live
   API-to-workflow trace evidence before a task's producer cutover is verified.
 
 - Import workflows finish after derived requests are durably accepted. They do
-  not await derived publication. Source completion and derived readiness are
-  separate; a successful import must not claim that all user data is refreshed.
+  not await derived publication; source batches follow the same rule. Existing
+  freshness information can show refreshing data without per-request receipts.
 - Use one stable Workflow ID per user for fitness, per segment for analytics,
   and per activity for heatmap. Shared segments must converge even when changes
   come from different users or parent workflows.
@@ -230,12 +249,12 @@ flowchart LR
 ## Debounce and priority
 
 - Priority is Temporal's native Workflow/Activity priority option. New activity
-  refreshes have high priority (1); deletion/background refreshes have lower
-  priority (5) and may wait longer. Immediate deletion/privacy restrictions stay
-  separate from expensive refreshing.
-- New archive/import entries request high-priority refreshes even if their
-  ingestion runs at background priority. Repair/reprocessing retains its selected
-  refresh priority; stored output revisions do not encode urgency.
+  fitness/segment/achievement refreshes have high priority (1); archive, historical
+  import, deletion, and background refreshes have lower priority (5) and may wait.
+  Existing domain privacy/access rules remain independent of computation priority.
+- An archive entry is not an urgent new ride merely because it is newly inserted.
+  Propagate its bulk/background priority through derived handoffs. Interactive
+  single-activity reprocessing retains its requested refresh priority.
 - Debounce is Temporal's [signal and resettable timer pattern](https://docs.temporal.io/design-patterns/updatable-timer),
   not a server debounce setting. Each named derived workflow owns its pending
   typed request, durable timer, and published revision. There is no generic
@@ -251,7 +270,8 @@ flowchart LR
   during a rebuild merge into one follow-up. Published revisions do no more work.
 - Temporal records signals, timers, Activities, retries, and cancellation.
   Continue-As-New carries pending requests, deadlines, and publication state
-  only after active work settles. A superseded result waits for newer input.
+  only after active work settles. Changes that supersede a rebuild must be covered
+  by its follow-up or the existing reconciliation path, not silently lost.
 - Give each processing Activity its current batch priority/fairness and disable
   eager dispatch so native matching applies. Priority does not preempt running
   Activities. Broader starvation/aging policy and deployed measurements remain
@@ -259,6 +279,11 @@ flowchart LR
 
 ## Validation and remaining work
 
+- The acceptance matrix is [U01–U26 and P01–P04](durable-work-contract.md#unit-acceptance-scenarios).
+  Link concrete tests/evidence to those IDs and the first-milestone gate. Existing
+  mocks cannot establish atomic domain writes, unique source identity, or live
+  crash recovery. Implementation simplicity is a review criterion as well as
+  behavioral correctness.
 - Unit proof uses the pinned SDK workflow runner, shared fixtures, and fake
   domain/RPC adapters. Assert actual Activity and timer commands, the exact task
   names, handoff ordering, duplicate bursts, priority changes, replay, continuation,
@@ -268,9 +293,11 @@ flowchart LR
   start/execution, empty snapshots, invalid pages, selection substitution, and
   global-segment work across users. Large-manifest fixtures are synthetic;
   they do not establish real archive streaming, disk usage, or crash durability.
-- Real database import effects, persisted idempotent command outcomes, generation
-  fences, derived-readiness observation/wait contracts, worker registration and
-  deployment, producer migration, and live crash drills remain required before
-  converting a production task. Unit proof does not establish those guarantees.
+- Real idempotent domain writes, worker registration/deployment, producer migration,
+  safe cancellation, and eventual output convergence remain required before a
+  production conversion. Prove only the persistence mechanism actually chosen;
+  an outcome ledger and derived-readiness wait contract are not prerequisites.
 - Shared storage/TTL behavior remains in the shared storage service. Complete
   the [Strava follow-up](../TODO.md#worker-conversion) after the Bike conversions.
+  Correctness fixes F1–F4 and affected shared-output routing must not be deferred
+  to that later storage cleanup.

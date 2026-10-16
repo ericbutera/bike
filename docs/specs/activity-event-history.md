@@ -7,6 +7,10 @@
   modifications. Strava changes and manual edits use the same model. Native
   import and reprocess adapters use its typed import-event constructor.
 - Model comments explain both roles and timestamp meanings at their definitions.
+- Follow the [durable work contract](durable-work-contract.md) for identity,
+  idempotent domain writes, source ordering, and eventual refresh. History supports
+  audit. Preserve old dependency scope through a plan/version/existing result or
+  broader rebuild where needed; a separate full-outcome ledger is not required.
 
 ## Atomic changes and correlation
 
@@ -47,18 +51,20 @@
 - Compare an incoming Strava `event_time` with the stored source timestamp for
   that same owner/object and connection generation. Never compare it with Bike's
   `updated_at` or an activity's start date.
-- Webhooks supply Strava's event timestamp. Existing sync/backfill commands use
-  their request event time because the activity API provides no equivalent event
-  sequence. That remains a best-effort ordering rule; it is not a global clock or
-  a strict version number.
+- Webhooks supply Strava's event timestamp. Sync/backfill request and receive
+  times are local diagnostics and must not advance that provider watermark.
+  The reviewed implementation mixes those clocks (F3); it must be corrected,
+  not treated as an accepted ordering guarantee. Preserve event provenance when
+  migrating existing mixed-clock state; do not relabel local times as provider time.
 - Reject older events. Deletion wins over an upsert at the same timestamp;
   a strictly newer upsert can restore the activity. Reconnection establishes a
   new generation, so an old connection cannot supersede the current one.
 - Equal-second updates do not have a provider sequence number. Do not discard
   all events that share a timestamp: Strava documents that one save can emit
-  multiple webhooks. Fetch current provider data for updates. Per-activity
-  serialization/coalescing and its race checks remain part of the later Strava
-  coordination conversion. See [Strava's webhook contract](https://developers.strava.com/docs/webhooks/).
+  multiple webhooks. Reconcile current provider data using per-object Temporal
+  serialization/coalescing and conditional model writes where needed. Cover
+  F3/U18–U21 when changing that boundary; keep untouched findings visible.
+  See [Strava's webhook contract](https://developers.strava.com/docs/webhooks/).
 
 ## Rollout and coverage
 
