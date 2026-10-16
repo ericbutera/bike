@@ -69,7 +69,7 @@ pub(super) async fn start_processing_node(
 pub(super) async fn complete_processing_node(
     run: &ActivityProcessingRun<'_>,
     state: &mut ActivityProcessingState,
-    node: ActivityProcessingNode,
+    node: ActivityProcessingStage,
 ) -> Result<(), AppError> {
     if let Some(activity) = &state.activity_model {
         state.activity_model = activities::Model::find_owned(run.db, activity.id, run.user_id).await?;
@@ -103,9 +103,9 @@ pub(super) async fn complete_processing_node(
     Ok(())
 }
 
-fn stage_summary(state: &ActivityProcessingState, node: ActivityProcessingNode) -> Vec<String> {
+fn stage_summary(state: &ActivityProcessingState, node: ActivityProcessingStage) -> Vec<String> {
     match node {
-        ActivityProcessingNode::RawStored => vec![
+        ActivityProcessingStage::RawStored => vec![
             format!(
                 "{} · {} bytes",
                 state.parsing_artifact.format.to_uppercase(),
@@ -118,7 +118,7 @@ fn stage_summary(state: &ActivityProcessingState, node: ActivityProcessingNode) 
                 "Retained source readable; no original checksum recorded".into()
             },
         ],
-        ActivityProcessingNode::ActivityParsed => state.parsed_activity.as_ref().map_or_else(Vec::new, |parsed| {
+        ActivityProcessingStage::ActivityParsed => state.parsed_activity.as_ref().map_or_else(Vec::new, |parsed| {
             vec![
                 format!("Parsed {} records", parsed.derived_data.route_points.len()),
                 format!(
@@ -129,21 +129,21 @@ fn stage_summary(state: &ActivityProcessingState, node: ActivityProcessingNode) 
                 format!("Sport: {}", parsed.draft.sport),
             ]
         }),
-        ActivityProcessingNode::ActivitySaved => state
+        ActivityProcessingStage::ActivitySaved => state
             .activity_model
             .as_ref()
             .map_or_else(Vec::new, |activity| vec![format!("Saved activity #{}", activity.id)]),
-        ActivityProcessingNode::SegmentsBuilt => {
+        ActivityProcessingStage::SegmentsBuilt => {
             vec![format!("{} affected segments", state.affected_segment_ids.len())]
         }
-        ActivityProcessingNode::SegmentAnalyticsBuilt => vec![format!(
+        ActivityProcessingStage::SegmentAnalyticsBuilt => vec![format!(
             "Rebuilt analytics for {} segments",
             state.affected_segment_ids.len()
         )],
-        ActivityProcessingNode::ActivityAnalyticsBuilt => {
+        ActivityProcessingStage::ActivityAnalyticsBuilt => {
             vec!["Rebuilt analytics for 1 activity".into()]
         }
-        ActivityProcessingNode::TrainingAnalysisBuilt => vec![if state
+        ActivityProcessingStage::TrainingAnalysisBuilt => vec![if state
             .activity_model
             .as_ref()
             .is_some_and(activities::Model::is_bike_activity)
@@ -152,5 +152,41 @@ fn stage_summary(state: &ActivityProcessingState, node: ActivityProcessingNode) 
         } else {
             "Training analysis skipped: activity is not cycling".into()
         }],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support as fixtures;
+
+    #[tokio::test]
+    async fn completed_legacy_stages_retain_source_checkpoint_and_domain_diagnostics() {
+        for stage in activity_processing_stages() {
+            let mut state = super::super::test_fixture::state();
+            let checkpoint = super::super::test_fixture::checkpoint(&state);
+            let db = fixtures::postgres_mock()
+                .append_query_results([vec![fixtures::reprocess_activity()]])
+                .append_query_results([vec![state.attempt.clone()]])
+                .into_connection();
+            let run = super::super::test_fixture::run(&db);
+            complete_processing_node(&run, &mut state, *stage).await.unwrap();
+            let transactions = db.into_transaction_log();
+            assert_eq!(transactions.len(), 2);
+            let values = &transactions[1].statements()[0].values.as_ref().unwrap().0;
+            assert!(values.contains(&serde_json::to_value(&checkpoint).unwrap().into()));
+            let records = values
+                .iter()
+                .find_map(|value| match value {
+                    sea_orm::Value::Json(Some(json)) if json.is_array() => {
+                        serde_json::from_value::<Vec<StageRecord>>((**json).clone()).ok()
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            let completed = records.iter().find(|record| record.stage == stage.id()).unwrap();
+            assert_eq!(completed.status, "completed");
+            assert!(!completed.summary.is_empty());
+        }
     }
 }

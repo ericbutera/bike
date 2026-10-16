@@ -1,5 +1,4 @@
 import { render, screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { components } from "../../lib/openapi/react-query/api";
 import TaskProcessingHistory from "../admin/TaskProcessingHistory";
@@ -39,60 +38,27 @@ function detail(overrides: Partial<Detail> = {}): Detail {
         span_id: "span-second",
       },
     ],
-    pipelines: [
-      {
-        run_id: "pipeline-123",
-        pipeline_started_at: "2026-10-10T12:00:00Z",
-        accepted_at: "2026-10-10T12:01:00Z",
-        entrypoint: "api",
-        request_id: "request-123",
-        parent_task_id: 7,
-        available_at: null,
-      },
-    ],
     ...overrides,
   };
 }
 
 describe("TaskProcessingHistory", () => {
-  it("keeps receipt-to-task timing separate from retries and unknown output readiness", async () => {
-    const select = vi.fn();
-    render(<TaskProcessingHistory detail={detail()} onSelectTask={select} />);
-    expect(
-      screen.getByText("Receipt to task start").nextElementSibling,
-    ).toHaveTextContent("2m 0s");
-    expect(
-      screen.getByText("Receipt to task finish").nextElementSibling,
-    ).toHaveTextContent("6m 0s");
-    expect(
-      screen.getByText("Receipt to available").nextElementSibling,
-    ).toHaveTextContent("Not recorded");
+  it("shows recorded execution attempts without a reconstructed pipeline", () => {
+    render(<TaskProcessingHistory detail={detail()} />);
     expect(screen.getAllByText("1m 0s")).toHaveLength(2);
     expect(screen.getByText("Provider timeout")).toBeVisible();
     expect(screen.getByText("Span: span-first")).toBeVisible();
     expect(screen.getByText("Span: span-second")).toBeVisible();
-    await userEvent
-      .setup()
-      .click(screen.getByRole("button", { name: "Parent task #7" }));
-    expect(select).toHaveBeenCalledWith(7);
+    expect(
+      screen.queryByText("View complete pipeline"),
+    ).not.toBeInTheDocument();
   });
 
-  it("shows missing historical evidence without fabricating a receipt timestamp", () => {
-    render(
-      <TaskProcessingHistory
-        detail={detail({ pipelines: [], attempt_history: [] })}
-        onSelectTask={vi.fn()}
-      />,
-    );
-    expect(
-      screen.getByText(
-        "Original receipt and task lineage were not recorded for this task.",
-      ),
-    ).toBeVisible();
+  it("shows when execution attempts are absent", () => {
+    render(<TaskProcessingHistory detail={detail({ attempt_history: [] })} />);
     expect(
       screen.getByText("No execution attempts have been recorded."),
     ).toBeVisible();
-    expect(screen.queryByText("Receipt to available")).not.toBeInTheDocument();
   });
 
   it("shows active runtime while trace and parent evidence are absent", () => {
@@ -108,32 +74,18 @@ describe("TaskProcessingHistory", () => {
         trace_id: null,
         span_id: null,
       };
-      const pipeline = {
-        ...source.pipelines[0],
-        request_id: null,
-        trace_id: "pipeline-trace",
-        parent_task_id: null,
-      };
       render(
         <TaskProcessingHistory
           detail={detail({
             status: "processing",
             completed_at: null,
             attempt_history: [attempt],
-            pipelines: [pipeline],
           })}
-          onSelectTask={vi.fn()}
         />,
       );
       const row = screen.getByText("running").closest("tr")!;
       expect(within(row).getByText("2m 0s")).toBeVisible();
-      expect(screen.getByText("Trace: pipeline-trace")).toBeVisible();
-      expect(
-        screen.getByText("Receipt to task finish").nextElementSibling,
-      ).toHaveTextContent("Not recorded");
-      expect(
-        screen.queryByRole("button", { name: /Parent task/ }),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/^Trace:/)).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }

@@ -3,6 +3,7 @@
 import { formatActivityTimestamp } from "@/lib/activityFormatting";
 import type { IntegrationEvent } from "@/lib/queries";
 import StravaEventHistory from "./StravaEventHistory";
+import TemporalLink from "./ui/TemporalLink";
 import { CenteredLoading, ErrorCard } from "./ui/QueryState";
 
 type IntegrationEventFeedProps = {
@@ -122,14 +123,10 @@ export default function IntegrationEventFeed({
                       {event.message}
                     </p>
                     {typeof payload?.temporal_workflow_id === "string" ? (
-                      <a
-                        className="link link-primary"
-                        target="_blank"
-                        rel="noreferrer"
-                        href={`${process.env.NEXT_PUBLIC_TEMPORAL_UI_URL ?? "http://localhost:8080"}/namespaces/${encodeURIComponent(String(payload.temporal_namespace ?? "bike"))}/workflows/${encodeURIComponent(payload.temporal_workflow_id)}`}
-                      >
-                        View job in Temporal
-                      </a>
+                      <TemporalLink
+                        workflowId={payload.temporal_workflow_id}
+                        namespace={String(payload.temporal_namespace ?? "bike")}
+                      />
                     ) : null}
                     {payloadMetrics.length > 0 ? (
                       <div className="flex flex-wrap gap-2">

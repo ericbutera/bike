@@ -1,8 +1,6 @@
 //! Bounded diagnostics over the shared durable queue. Domain source data is never copied here.
-mod graph;
 mod health;
 mod statistics;
-pub use graph::{GraphCursor, PipelineGraph, PipelinePage};
 pub use health::sample;
 pub use statistics::{Distribution, ProcessorSummary};
 

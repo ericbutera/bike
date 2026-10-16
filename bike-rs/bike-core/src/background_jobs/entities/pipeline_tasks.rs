@@ -30,21 +30,6 @@ impl Related<super::pipeline_runs::Entity> for Entity {
 impl ActiveModelBehavior for ActiveModel {}
 
 impl Model {
-    pub async fn origins(
-        db: &DatabaseConnection,
-        task_id: i32,
-    ) -> Result<Vec<(Self, Option<super::pipeline_runs::Model>)>, DbErr> {
-        use sea_orm::{QueryFilter, QueryOrder};
-        Entity::find()
-            .filter(Column::TaskId.eq(task_id))
-            .order_by_asc(Column::RunId)
-            .find_also_related(super::pipeline_runs::Entity)
-            .all(db)
-            .await
-    }
-}
-
-impl Model {
     pub async fn delete_for_runs(db: &impl ConnectionTrait, ids: &[String]) -> Result<(), DbErr> {
         use sea_orm::QueryFilter;
         Entity::delete_many()
@@ -73,16 +58,6 @@ impl Model {
             .select_only()
             .column(Column::RunId)
             .into_tuple()
-            .all(db)
-            .await
-    }
-    pub async fn page_for_run(db: &impl ConnectionTrait, id: &str, after: i32) -> Result<Vec<Self>, DbErr> {
-        use sea_orm::{QueryFilter, QueryOrder, QuerySelect};
-        Entity::find()
-            .filter(Column::RunId.eq(id))
-            .filter(Column::TaskId.gt(after))
-            .order_by_asc(Column::TaskId)
-            .limit(51)
             .all(db)
             .await
     }

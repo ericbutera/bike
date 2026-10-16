@@ -5,7 +5,7 @@
 `docs/specs/` is the source of truth for system behavior. `bike-rs` implements
 the backend's business rules and data handling. `bike-ui` is the shared Next.js
 and React Query frontend.
-`bike-rs` owns Strava callbacks, OAuth credentials, and provider workflow DAGs.
+`bike-rs` owns Strava callbacks, OAuth credentials, and provider workflows.
 The Rust API owns map image access and caching; the separate Go
 map worker owns Chromium snapshots over gRPC.
 

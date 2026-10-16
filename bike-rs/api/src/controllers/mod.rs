@@ -17,6 +17,9 @@ pub mod user_preferences;
 mod integration_events_tests;
 #[cfg(test)]
 mod model_boundary_tests;
+#[cfg(test)]
+#[path = "tests/fixture.rs"]
+mod test_support;
 
 use crate::storage::AppStorage;
 use axum::{extract::DefaultBodyLimit, routing::get, Json, Router};
@@ -104,10 +107,6 @@ fn activity_routes() -> Router<Arc<AppStorage>> {
         .route(
             "/api/activity-imports/processing-state",
             axum::routing::get(activity_imports::get_activity_processing_state),
-        )
-        .route(
-            "/api/activity-imports/processing-graph",
-            axum::routing::get(activity_imports::get_activity_processing_graph),
         )
         .route(
             "/api/activity-imports/archive-jobs/:id",

@@ -9,8 +9,7 @@ use axum::extract::{Multipart, Path, State};
 use axum::http::StatusCode;
 use axum::Json;
 use bike_core::activity_import_pipeline::{
-    activity_processing_graph_mermaid, activity_processing_graph_nodes, find_stored_activity_import,
-    mark_activity_import_failed, store_activity_upload_import, validate_activity_format, ActivityProcessingGraphNode,
+    find_stored_activity_import, mark_activity_import_failed, store_activity_upload_import, validate_activity_format,
     ActivityUploadPayload,
 };
 use bike_core::archive_import::{decode_error_samples, enqueue_activity_archive_import_job, normalize_archive_url};
@@ -104,67 +103,6 @@ pub struct ActivityArchiveImportJobResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-#[schema(example = json!({"nodes": [{"id": "raw_stored","label": "Raw stored","stage": "raw_stored"},{"id": "activity_parsed","label": "Activity parsed","stage": "activity_parsed"},{"id": "activity_saved","label": "Activity saved","stage": "activity_saved"},{"id": "segments_built","label": "Segments built","stage": "segments_built"},{"id": "segment_analytics_built","label": "Segment analytics built","stage": "segment_analytics_built"},{"id": "activity_analytics_built","label": "Activity analytics built","stage": "activity_analytics_built"},{"id": "training_analysis_built","label": "Training analysis built","stage": "training_analysis_built"}],"edges": [{"from": "raw_stored","to": "activity_parsed"},{"from": "activity_parsed","to": "activity_saved"},{"from": "activity_saved","to": "segments_built"},{"from": "segments_built","to": "segment_analytics_built"},{"from": "segment_analytics_built","to": "activity_analytics_built"},{"from": "activity_analytics_built","to": "training_analysis_built"}],"mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]\n  activity_parsed[\"Activity parsed\"]\n  activity_saved[\"Activity saved\"]\n  segments_built[\"Segments built\"]\n  segment_analytics_built[\"Segment analytics built\"]\n  activity_analytics_built[\"Activity analytics built\"]\n  training_analysis_built[\"Training analysis built\"]\n  raw_stored --> activity_parsed\n  activity_parsed --> activity_saved\n  activity_saved --> segments_built\n  segments_built --> segment_analytics_built\n  segment_analytics_built --> activity_analytics_built\n  activity_analytics_built --> training_analysis_built"}))]
-pub struct ActivityProcessingGraphResponse {
-    #[schema(example = json!([{"id": "raw_stored","label": "Raw stored","stage": "raw_stored"},{"id": "activity_parsed","label": "Activity parsed","stage": "activity_parsed"},{"id": "activity_saved","label": "Activity saved","stage": "activity_saved"},{"id": "segments_built","label": "Segments built","stage": "segments_built"},{"id": "segment_analytics_built","label": "Segment analytics built","stage": "segment_analytics_built"},{"id": "activity_analytics_built","label": "Activity analytics built","stage": "activity_analytics_built"},{"id": "training_analysis_built","label": "Training analysis built","stage": "training_analysis_built"}]))]
-    pub nodes: Vec<ActivityProcessingGraphNodeResponse>,
-    #[schema(example = json!([{"from": "raw_stored","to": "activity_parsed"},{"from": "activity_parsed","to": "activity_saved"},{"from": "activity_saved","to": "segments_built"},{"from": "segments_built","to": "segment_analytics_built"},{"from": "segment_analytics_built","to": "activity_analytics_built"},{"from": "activity_analytics_built","to": "training_analysis_built"}]))]
-    pub edges: Vec<ActivityProcessingGraphEdgeResponse>,
-    #[schema(
-        example = "flowchart LR\n  raw_stored[\"Raw stored\"]\n  activity_parsed[\"Activity parsed\"]\n  activity_saved[\"Activity saved\"]\n  segments_built[\"Segments built\"]\n  segment_analytics_built[\"Segment analytics built\"]\n  activity_analytics_built[\"Activity analytics built\"]\n  training_analysis_built[\"Training analysis built\"]\n  raw_stored --> activity_parsed\n  activity_parsed --> activity_saved\n  activity_saved --> segments_built\n  segments_built --> segment_analytics_built\n  segment_analytics_built --> activity_analytics_built\n  activity_analytics_built --> training_analysis_built"
-    )]
-    pub mermaid: String,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct ActivityProcessingGraphNodeResponse {
-    pub id: String,
-    pub label: String,
-    pub stage: String,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct ActivityProcessingGraphEdgeResponse {
-    pub from: String,
-    pub to: String,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-#[schema(example = json!({"import": {"id": 17,"import_version": 1,"original_filename": "saturday-hills.fit","format": "fit","status": "processed","processing_stage": "complete","size_bytes": 184320,"created_at": "2026-09-26T14:20:00Z"},"graph": {"nodes": [{"id": "raw_stored","label": "Raw stored","stage": "raw_stored"}],"edges": [],"mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]"},"nodes": [{"id": "raw_stored","label": "Raw stored","stage": "raw_stored","status": "completed"}],"events": []}))]
-pub struct ActivityImportTraceResponse {
-    pub attempts: Vec<crate::activity_import_history::ImportAttemptResponse>,
-    pub import: ActivityImportResponse,
-    pub graph: ActivityProcessingGraphResponse,
-    #[schema(example = json!([{"id": "raw_stored","label": "Raw stored","stage": "raw_stored","status": "completed"}]))]
-    pub nodes: Vec<ActivityImportTraceNodeResponse>,
-    #[schema(example = json!([]))]
-    pub events: Vec<ActivityImportTraceEventResponse>,
-}
-
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct ActivityImportTraceNodeResponse {
-    pub id: String,
-    pub label: String,
-    pub stage: String,
-    pub status: String,
-    pub started_at: Option<DateTime<Utc>>,
-    pub completed_at: Option<DateTime<Utc>>,
-    pub summary: Vec<String>,
-    pub error: Option<String>,
-    pub reused_attempt_id: Option<i32>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct ActivityImportTraceEventResponse {
-    pub id: i32,
-    pub event_type: String,
-    pub level: String,
-    pub message: String,
-    pub payload: Option<serde_json::Value>,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
 #[schema(example = json!({"is_active": true,"source": "manual_upload","source_label": "Manual upload","stage": "running","stage_label": "running","message": "Manual upload is currently running."}))]
 pub struct ActivityProcessingStateResponse {
     #[schema(example = true)]
@@ -203,97 +141,6 @@ impl ActivityImportResponse {
             activity_location: activity.and_then(|value| location_from_derived_json(value.derived_data_json.as_ref())),
         }
     }
-}
-
-impl ActivityProcessingGraphResponse {
-    pub(crate) fn from_graph() -> Self {
-        let nodes = activity_processing_graph_nodes()
-            .iter()
-            .map(ActivityProcessingGraphNodeResponse::from_graph_node)
-            .collect();
-        let edges = activity_processing_graph_nodes()
-            .iter()
-            .flat_map(|node| {
-                node.depends_on
-                    .iter()
-                    .map(|dependency| ActivityProcessingGraphEdgeResponse {
-                        from: dependency.id().to_string(),
-                        to: node.node.id().to_string(),
-                    })
-            })
-            .collect();
-
-        Self {
-            nodes,
-            edges,
-            mermaid: activity_processing_graph_mermaid(),
-        }
-    }
-}
-
-impl ActivityProcessingGraphNodeResponse {
-    fn from_graph_node(node: &ActivityProcessingGraphNode) -> Self {
-        Self {
-            id: node.node.id().to_string(),
-            label: node.node.label().to_string(),
-            stage: node.stage.to_string(),
-        }
-    }
-}
-
-impl ActivityImportTraceEventResponse {
-    pub(crate) fn from_model(model: bike_core::entities::integration_events::Model) -> Self {
-        Self {
-            id: model.id,
-            event_type: model.event_type,
-            level: model.level,
-            message: model.message,
-            payload: model.payload,
-            created_at: model.created_at,
-        }
-    }
-}
-
-pub(crate) fn build_trace_nodes(
-    import: &activity_imports::Model,
-    events: &[ActivityImportTraceEventResponse],
-) -> Result<Vec<ActivityImportTraceNodeResponse>, AppError> {
-    Ok(activity_processing_graph_nodes()
-        .iter()
-        .map(|node| ActivityImportTraceNodeResponse {
-            id: node.node.id().to_string(),
-            label: node.node.label().to_string(),
-            stage: node.stage.to_string(),
-            status: if import.status == "failed" && import.processing_stage == node.stage {
-                "failed"
-            } else {
-                "unknown"
-            }
-            .into(),
-            started_at: None,
-            completed_at: stage_completed_at(events, node.stage),
-            summary: vec!["Historical import: no durable stage summary was recorded".into()],
-            error: (import.status == "failed" && import.processing_stage == node.stage)
-                .then(|| import.processing_error.clone())
-                .flatten(),
-            reused_attempt_id: None,
-        })
-        .collect())
-}
-
-fn stage_completed_at(events: &[ActivityImportTraceEventResponse], stage: &str) -> Option<DateTime<Utc>> {
-    events
-        .iter()
-        .filter(|event| event.event_type == "stage_completed")
-        .find(|event| {
-            event
-                .payload
-                .as_ref()
-                .and_then(|payload| payload.get("stage"))
-                .and_then(|value| value.as_str())
-                == Some(stage)
-        })
-        .map(|event| event.created_at)
 }
 
 impl ActivityArchiveImportJobResponse {
@@ -361,25 +208,6 @@ pub async fn list_activity_imports(
             })
             .collect(),
     ))
-}
-
-#[utoipa::path(
-    get,
-    path = "/activity-imports/processing-graph",
-    responses(
-        (status = 200, description = "Activity import processing DAG", body = ActivityProcessingGraphResponse, example = json!({"nodes": [{"id": "raw_stored","label": "Raw stored","stage": "raw_stored"},{"id": "activity_parsed","label": "Activity parsed","stage": "activity_parsed"},{"id": "activity_saved","label": "Activity saved","stage": "activity_saved"},{"id": "segments_built","label": "Segments built","stage": "segments_built"},{"id": "segment_analytics_built","label": "Segment analytics built","stage": "segment_analytics_built"},{"id": "activity_analytics_built","label": "Activity analytics built","stage": "activity_analytics_built"},{"id": "training_analysis_built","label": "Training analysis built","stage": "training_analysis_built"}],"edges": [{"from": "raw_stored","to": "activity_parsed"},{"from": "activity_parsed","to": "activity_saved"},{"from": "activity_saved","to": "segments_built"},{"from": "segments_built","to": "segment_analytics_built"},{"from": "segment_analytics_built","to": "activity_analytics_built"},{"from": "activity_analytics_built","to": "training_analysis_built"}],"mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]\n  activity_parsed[\"Activity parsed\"]\n  activity_saved[\"Activity saved\"]\n  segments_built[\"Segments built\"]\n  segment_analytics_built[\"Segment analytics built\"]\n  activity_analytics_built[\"Activity analytics built\"]\n  training_analysis_built[\"Training analysis built\"]\n  raw_stored --> activity_parsed\n  activity_parsed --> activity_saved\n  activity_saved --> segments_built\n  segments_built --> segment_analytics_built\n  segment_analytics_built --> activity_analytics_built\n  activity_analytics_built --> training_analysis_built"})),
-        (status = 401, description = "Not authenticated"),
-        (status = 500, description = "Internal server error", body = ApiErrorResponse),
-    ),
-    tag = "activity-imports",
-    security(
-        ("bearer_auth" = [])
-    )
-)]
-pub async fn get_activity_processing_graph(
-    UserContext { .. }: UserContext<AppStorage>,
-) -> Result<Json<ActivityProcessingGraphResponse>, AppError> {
-    Ok(Json(ActivityProcessingGraphResponse::from_graph()))
 }
 
 #[utoipa::path(

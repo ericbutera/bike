@@ -17,11 +17,11 @@ pub async fn plan_activity_import_replay(
     requested_stage: &str,
 ) -> Result<ActivityImportReplayPlan, AppError> {
     import.require_sql_processing()?;
-    let nodes = activity_processing_topological_order()?;
+    let nodes = activity_processing_stages();
     let requested_index = nodes
         .iter()
         .position(|node| node.id() == requested_stage)
-        .ok_or_else(|| AppError::bad_request("Select a stage from the activity ingestion graph"))?;
+        .ok_or_else(|| AppError::bad_request("Select a stage from the activity ingestion stages"))?;
     let artifact = load_best_activity_parsing_artifact(db, import).await?;
     let bytes = tokio::fs::read(Path::new(uploads_dir).join(&artifact.storage_path))
         .await
@@ -63,7 +63,7 @@ async fn find_reusable_attempt(
     db: &DatabaseConnection,
     import: &activity_imports::Model,
     source: &serde_json::Value,
-    prerequisites: &[ActivityProcessingNode],
+    prerequisites: &[ActivityProcessingStage],
     activity: Option<&activities::Model>,
 ) -> Result<Option<activity_import_attempts::Model>, AppError> {
     if prerequisites.is_empty() {
@@ -86,7 +86,7 @@ async fn find_reusable_attempt(
 fn reusable_attempt(
     attempt: &activity_import_attempts::Model,
     source: &serde_json::Value,
-    prerequisites: &[ActivityProcessingNode],
+    prerequisites: &[ActivityProcessingStage],
     activity: Option<&activities::Model>,
 ) -> bool {
     if prerequisites.is_empty() || attempt.source_json != *source {
@@ -102,7 +102,7 @@ fn reusable_attempt(
     }) {
         return false;
     }
-    if prerequisites.contains(&ActivityProcessingNode::ActivityParsed) {
+    if prerequisites.contains(&ActivityProcessingStage::ActivityParsed) {
         let Some(checkpoint) = execution::checkpoint(attempt) else {
             return false;
         };
@@ -112,7 +112,7 @@ fn reusable_attempt(
             return false;
         }
     }
-    if prerequisites.contains(&ActivityProcessingNode::ActivitySaved) {
+    if prerequisites.contains(&ActivityProcessingStage::ActivitySaved) {
         return activity.is_some_and(|activity| {
             execution::checkpoint(attempt)
                 .is_some_and(|checkpoint| checkpoint.activity_updated_at == Some(activity.updated_at))
@@ -127,31 +127,7 @@ pub async fn queue_activity_import_replay(
     import: &activity_imports::Model,
     requested_stage: &str,
 ) -> Result<(ActivityImportReplayPlan, i32), AppError> {
-    queue_replay(db, uploads_dir, import, requested_stage, None).await
-}
-
-pub async fn queue_expected_activity_import_replay(
-    db: &DatabaseConnection,
-    uploads_dir: &str,
-    import: &activity_imports::Model,
-    expected: &ActivityImportReplayPlan,
-) -> Result<(ActivityImportReplayPlan, i32), AppError> {
-    queue_replay(db, uploads_dir, import, &expected.requested_stage, Some(expected)).await
-}
-
-async fn queue_replay(
-    db: &DatabaseConnection,
-    uploads_dir: &str,
-    import: &activity_imports::Model,
-    requested_stage: &str,
-    expected: Option<&ActivityImportReplayPlan>,
-) -> Result<(ActivityImportReplayPlan, i32), AppError> {
     let plan = plan_activity_import_replay(db, uploads_dir, import, requested_stage).await?;
-    if expected.is_some_and(|expected| expected != &plan) {
-        return Err(AppError::conflict(
-            "Replay prerequisites changed; review the updated start stage and try again",
-        ));
-    }
     let source = load_best_activity_parsing_artifact(db, import).await?;
     let transaction = db.begin().await?;
     if activity_import_attempts::Entity::active(&transaction, import.user_id, import.id)
@@ -188,4 +164,47 @@ async fn queue_replay(
     .await?;
     transaction.commit().await?;
     Ok((plan, attempt.id))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::test_fixture::RetainedSource;
+
+    #[tokio::test]
+    async fn legacy_replay_resumes_fresh_source_and_activity_checkpoint() {
+        let fixture = RetainedSource::new().await;
+        let db = fixture.database();
+        let plan = fixture.plan(&db, "segments_built").await;
+        assert_eq!(plan.start_stage, "segments_built");
+        assert_eq!(plan.reused_attempt_id, Some(fixture.attempt.id));
+        assert!(plan.reason.is_none());
+        assert_eq!(db.into_transaction_log().len(), 4);
+    }
+
+    #[tokio::test]
+    async fn missing_checkpoint_or_changed_activity_requires_replaying_source() {
+        for missing_checkpoint in [true, false] {
+            let mut fixture = RetainedSource::new().await;
+            if missing_checkpoint {
+                fixture.attempt.checkpoint_json = None;
+            } else {
+                fixture.activity.updated_at += chrono::Duration::seconds(1);
+            }
+            let db = fixture.database();
+            let plan = fixture.plan(&db, "segments_built").await;
+            assert_eq!(plan.start_stage, "raw_stored");
+            assert!(plan.reused_attempt_id.is_none());
+            assert!(plan.reason.is_some());
+        }
+    }
+
+    #[tokio::test]
+    async fn full_source_replay_does_not_load_old_attempt_payloads() {
+        let fixture = RetainedSource::new().await;
+        let db = fixture.database();
+        let plan = fixture.plan(&db, "raw_stored").await;
+        assert_eq!(plan.start_stage, "raw_stored");
+        assert!(plan.reused_attempt_id.is_none());
+        assert_eq!(db.into_transaction_log().len(), 2);
+    }
 }

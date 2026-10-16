@@ -7,11 +7,7 @@ import {
 import { act, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  useActivityImportTrace,
-  useAdminActivityImportTrace,
-  useActivityImportHistory,
-} from "./queries";
+import { useAdminActivityImport, useActivityImportHistory } from "./queries";
 
 let client: QueryClient;
 const fetchMock = vi.fn();
@@ -24,8 +20,7 @@ beforeEach(() => {
   });
   fetchMock.mockReset().mockImplementation(async () =>
     Response.json({
-      import: { id: 7 },
-      trace: { import: { id: 7 } },
+      id: 7,
       items: [],
     }),
   );
@@ -41,8 +36,7 @@ afterEach(() => {
 });
 describe("on-demand admin import queries", () => {
   it.each([
-    ["import trace", () => useActivityImportTrace(7)],
-    ["activity import trace", () => useAdminActivityImportTrace(7)],
+    ["import detail", () => useAdminActivityImport(7)],
     ["import history", () => useActivityImportHistory({ page: 1 })],
   ] as const)(
     "does not poll or automatically refresh %s",
@@ -71,11 +65,11 @@ describe("on-demand admin import queries", () => {
       expect(result.current.isSuccess).toBe(true);
     },
   );
-  it("does not request an unselected or disabled trace", async () => {
+  it("does not request an unselected or disabled import", async () => {
     renderHook(
       () => ({
-        missing: useActivityImportTrace(null),
-        disabled: useActivityImportTrace(7, { enabled: false }),
+        missing: useAdminActivityImport(null),
+        disabled: useAdminActivityImport(7, { enabled: false }),
       }),
       { wrapper },
     );

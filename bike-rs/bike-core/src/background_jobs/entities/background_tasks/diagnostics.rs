@@ -60,48 +60,8 @@ impl Model {
 }
 
 impl Model {
-    pub async fn ended_at(db: &DatabaseConnection, id: &str) -> Result<Option<String>, DbErr> {
-        let ids = crate::background_jobs::entities::pipeline_tasks::Entity::find()
-            .select_only()
-            .column(crate::background_jobs::entities::pipeline_tasks::Column::TaskId)
-            .filter(crate::background_jobs::entities::pipeline_tasks::Column::RunId.eq(id))
-            .into_query();
-        let active = Entity::find()
-            .select_only()
-            .column(Column::Id)
-            .filter(Column::Id.in_subquery(ids.clone()))
-            .filter(Column::Status.is_in(["pending", "processing"]))
-            .into_tuple::<i32>()
-            .one(db)
-            .await?;
-        if active.is_some() {
-            return Ok(None);
-        }
-        let end = Entity::find()
-            .filter(Column::Id.in_subquery(ids))
-            .select_only()
-            .expr(sea_orm::sea_query::Func::max(sea_orm::sea_query::Func::coalesce([
-                sea_orm::sea_query::Expr::col(Column::CompletedAt),
-                sea_orm::sea_query::Expr::col(Column::UpdatedAt),
-            ])))
-            .into_tuple::<Option<chrono::DateTime<chrono::Utc>>>()
-            .one(db)
-            .await?
-            .flatten();
-        Ok(end.map(|end| end.to_rfc3339()))
-    }
     pub async fn find_by_id(db: &impl ConnectionTrait, id: i32) -> Result<Option<Self>, DbErr> {
         Entity::find_by_id(id).one(db).await
-    }
-    pub async fn metadata_for_id(
-        db: &impl ConnectionTrait,
-        id: i32,
-    ) -> Result<Option<crate::background_jobs::entities::diagnostic_reads::TaskMetadata>, DbErr> {
-        Self::metadata_query()
-            .filter(Column::Id.eq(id))
-            .into_model()
-            .one(db)
-            .await
     }
     pub async fn metadata_for_batch(
         db: &impl ConnectionTrait,

@@ -21,6 +21,7 @@ import {
 import Link from "next/link";
 import { useState } from "react";
 import toast from "react-hot-toast";
+import TemporalLink from "../ui/TemporalLink";
 
 export default function AdminTaskTools() {
   const { backfillAsync, isPending } = useAdminBackfillAnalytics();
@@ -287,17 +288,18 @@ export default function AdminTaskTools() {
                 href={`/admin/integrations?provider=activity_processing&user_id=${activityReprocessResult.user_id}&activity_id=${activityReprocessResult.activity_id}`}
                 className="btn btn-sm btn-outline"
               >
-                Trace activity events
+                Activity events
               </Link>
               <Link
                 href={`/admin/integrations?provider=activity_processing&user_id=${activityReprocessResult.user_id}&import_id=${activityReprocessResult.activity_import_id}`}
                 className="btn btn-sm btn-outline"
               >
-                Trace import events
+                Import events
               </Link>
-              <Link href="/admin/tasks" className="btn btn-sm btn-ghost">
-                View task queue
-              </Link>
+              <TemporalLink
+                workflowId={activityReprocessResult.job.job_id}
+                namespace={activityReprocessResult.job.namespace}
+              />
             </div>
           </div>
         ) : null}

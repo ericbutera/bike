@@ -1,4 +1,4 @@
-use crate::activity_import_pipeline::activity_processing_graph_nodes;
+use crate::activity_import_pipeline::activity_processing_stages;
 use crate::activity_parser::ParsedActivityData;
 use crate::entities::{activity_import_attempts as attempts, activity_imports};
 use crate::workflow_error::WorkflowError;
@@ -56,14 +56,14 @@ pub(crate) fn initial_stages(
 ) -> Result<Vec<StageRecord>, WorkflowError> {
     let previous_records = previous.map(stages).transpose()?.unwrap_or_default();
     let mut reuse = true;
-    Ok(activity_processing_graph_nodes()
+    Ok(activity_processing_stages()
         .iter()
         .map(|node| {
-            if node.stage == start_stage {
+            if node.id() == start_stage {
                 reuse = false;
             }
             if reuse {
-                if let Some(record) = previous_records.iter().find(|record| record.stage == node.stage) {
+                if let Some(record) = previous_records.iter().find(|record| record.stage == node.id()) {
                     let mut record = record.clone();
                     record.status = "reused".into();
                     record.reused_attempt_id = previous.map(|attempt| attempt.id);
@@ -71,7 +71,7 @@ pub(crate) fn initial_stages(
                 }
             }
             StageRecord {
-                stage: node.stage.into(),
+                stage: node.id().into(),
                 status: "pending".into(),
                 started_at: None,
                 completed_at: None,

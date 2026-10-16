@@ -67,7 +67,7 @@ test("admin tasks expose the same filters, timing, and detail in Bike", async ({
       detail.getByRole("heading", { name: "Processing history" }),
     ).toBeVisible();
     await expect(detail).toContainText(
-      "Original receipt and task lineage were not recorded for this task.",
+      "No execution attempts have been recorded.",
     );
     await detail.getByRole("button", { name: "Close", exact: true }).click();
 

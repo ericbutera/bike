@@ -3,7 +3,7 @@ import { expect, it, vi } from "vitest";
 import { ActivityHeaderActions } from "../activity-detail/ActivityHeaderActions";
 import type { Activity } from "../../lib/queries";
 
-it("limits the import replay shortcut to the administrative trace permission", () => {
+it("limits import details to administrators", () => {
   const props = {
     activity: {
       id: 42,
@@ -18,10 +18,11 @@ it("limits the import replay shortcut to the administrative trace permission", (
   };
   const view = render(<ActivityHeaderActions {...props} />);
   expect(
-    screen.queryByRole("link", { name: "Processing stages and replay" }),
+    screen.queryByRole("link", { name: "Import details" }),
   ).not.toBeInTheDocument();
-  view.rerender(<ActivityHeaderActions {...props} canViewImportTrace />);
-  expect(
-    screen.getByRole("link", { name: "Processing stages and replay" }),
-  ).toHaveAttribute("href", "/admin/imports/17");
+  view.rerender(<ActivityHeaderActions {...props} isAdmin />);
+  expect(screen.getByRole("link", { name: "Import details" })).toHaveAttribute(
+    "href",
+    "/admin/imports/17",
+  );
 });

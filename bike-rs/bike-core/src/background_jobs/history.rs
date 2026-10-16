@@ -1,5 +1,5 @@
 //! Compact admin history. Source payloads and checkpoints stay in their owners.
-use super::entities::{pipeline_tasks, task_attempts};
+use super::entities::task_attempts;
 use sea_orm::{DatabaseConnection, DbErr};
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -40,43 +40,10 @@ impl From<task_attempts::Model> for TaskAttemptResponse {
     }
 }
 
-#[derive(Debug, Serialize, ToSchema)]
-pub struct TaskPipelineResponse {
-    pub run_id: String,
-    pub pipeline_started_at: String,
-    pub accepted_at: String,
-    pub entrypoint: String,
-    pub request_id: Option<String>,
-    pub trace_id: Option<String>,
-    pub parent_task_id: Option<i32>,
-    /// Output readiness is unknown until a publication barrier records it.
-    pub available_at: Option<String>,
-}
-
-pub async fn load(
-    db: &DatabaseConnection,
-    task_id: i32,
-) -> Result<(Vec<TaskAttemptResponse>, Vec<TaskPipelineResponse>), DbErr> {
-    let attempts = task_attempts::Model::for_task(db, task_id)
+pub async fn load(db: &DatabaseConnection, task_id: i32) -> Result<Vec<TaskAttemptResponse>, DbErr> {
+    Ok(task_attempts::Model::for_task(db, task_id)
         .await?
         .into_iter()
         .map(Into::into)
-        .collect();
-    let pipelines = pipeline_tasks::Model::origins(db, task_id)
-        .await?
-        .into_iter()
-        .filter_map(|(link, run)| {
-            run.map(|run| TaskPipelineResponse {
-                run_id: run.id,
-                pipeline_started_at: run.pipeline_started_at.to_rfc3339(),
-                accepted_at: run.accepted_at.to_rfc3339(),
-                entrypoint: run.entrypoint,
-                request_id: run.request_id,
-                trace_id: run.trace_id,
-                parent_task_id: link.parent_task_id,
-                available_at: run.available_at.map(|time| time.to_rfc3339()),
-            })
-        })
-        .collect();
-    Ok((attempts, pipelines))
+        .collect())
 }

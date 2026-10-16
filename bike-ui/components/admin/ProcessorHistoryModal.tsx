@@ -90,7 +90,7 @@ export default function ProcessorHistoryModal({
       <h4 className="mt-4 font-semibold">Last 10 runs</h4>
       <p className="mb-4 text-sm text-base-content/70">
         Newest queued tasks first, across all statuses and dates. Select a task
-        to inspect its attempts, payload, and complete pipeline.
+        to inspect its attempts, payload, and recorded errors.
       </p>
       <DataGrid
         rows={query.data ?? []}

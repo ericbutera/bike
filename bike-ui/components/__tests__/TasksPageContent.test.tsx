@@ -120,7 +120,6 @@ describe("TasksPageContent", () => {
         updated_at: "2026-01-02T12:00:01Z",
         payload: { user_id: 7 },
         attempt_history: [],
-        pipelines: [],
       },
     });
     const user = userEvent.setup();
