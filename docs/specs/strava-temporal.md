@@ -107,7 +107,7 @@
 - Group callback validation and durable event storage under `strava.webhook.accept`
   so the request's intake queries also have an application-level parent.
 - Group database work under a few shared domain spans: `activity.delete.records`,
-  `activity.analytics.rebuild`, `segments.rebuild`, `fitness.rebuild`, and
+  `achievements.rebuild`, `segments.rebuild`, `fitness.rebuild`, and
   `heatmap.rebuild`. Cover the whole call, including input reads and publication,
   whether invoked by the API, a SQL worker, or a native Temporal activity.
 - Label activity list, detail, and deletion calls as `activity.list`, `activity.get`,
@@ -118,6 +118,23 @@
   Use stable names and selected IDs/counts as fields; skip automatic argument
   recording so credentials, source paths, and activity/provider bodies stay out.
   Instrument workflow boundaries, not every helper, query, item, or idle poll.
+- Group scheduled scan setup under `strava.sync.prepare`, displayed in traces as
+  **Prepare scheduled Strava syncs**. Include connection listing, customer reads,
+  durable event acceptance, and submission updates for the whole page. Record
+  `connections_scanned` after listing and `sync_events_prepared` on successful
+  preparation. Keep failed reads and writes beneath the same action parent.
+- Group the shared connection and customer ownership reads under
+  `strava.connection.validate`, displayed as **Validate Strava connection and
+  customer**, with connection and Bike user IDs. Retain it beneath each calling
+  stage so repeated validation cost can be compared across workflow steps.
+- Use stage durations and descendant database calls to investigate hotspots.
+  Nested ORM spans can describe the same call; do not count every query-named
+  span as a separate database operation. A database span's duration can include
+  connection acquisition and waiting. Gaps between Temporal stages require
+  workflow history or runtime evidence before attributing them to application
+  work. These spans do not measure CPU time or claim to explain untraced gaps.
+- Shared operation fields, bounded database detail, totals, and TraceQL examples
+  follow the [operation tracing contract](observability.md).
 - Use **Strava event**, never receipt. A Strava event ID is assigned by Bike;
   [Strava's webhook payload](https://developers.strava.com/docs/webhooks/)
   contains no unique event ID.

@@ -153,6 +153,7 @@ pub fn build_activity_training_analysis(
     )
 }
 
+#[tracing::instrument(name = "training.compute", skip_all, fields(bike.operation = "training.compute", activity_id = activity.id))]
 fn build_activity_training_analysis_with_context(
     activity: &activities::Model,
     context: ActivityTrainingAnalysisContext,
@@ -204,6 +205,7 @@ fn build_activity_training_analysis_with_context(
     }
 }
 
+#[tracing::instrument(name = "training.rebuild", skip_all, fields(bike.operation = "training.rebuild", activity_count = activity_ids.len() as i64))]
 pub async fn rebuild_activity_training_analysis_cache<C>(
     db: &C,
     activity_ids: &[i32],
@@ -258,6 +260,7 @@ where
     Ok(())
 }
 
+#[tracing::instrument(name = "training.backfill", skip_all, fields(bike.operation = "training.backfill", user_id))]
 pub async fn backfill_user_activity_training_analysis_cache(
     db: &DatabaseConnection,
     user_id: i32,

@@ -17,6 +17,7 @@ pub struct ActivityParserArtifact<'a> {
     pub bytes: &'a [u8],
 }
 
+#[tracing::instrument(name = "activity.parse", skip_all, fields(bike.operation = "activity.parse", format = artifact.format, artifact_kind = artifact.artifact_kind, byte_count = artifact.bytes.len() as i64))]
 pub fn parse_activity_artifact(
     artifact: ActivityParserArtifact<'_>,
 ) -> Result<ParsedActivityData, AppError> {

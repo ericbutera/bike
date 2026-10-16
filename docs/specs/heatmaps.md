@@ -112,6 +112,10 @@ make it contribute. Outdoor-only choices belong to MAPS12.
 
 ## Preparation and updates
 
+- Preparation, geometry, tile rendering, metadata, and zones follow the
+  [operation tracing contract](observability.md). Keep database work beneath its
+  operation, including queries issued from blocking render threads.
+
 Imports and edits durably mark projections pending without waiting for
 preparation. While enabled, the worker reconciles up to **16 activity IDs every
 15 seconds** and prepares them sequentially. Backfill uses the same builder.

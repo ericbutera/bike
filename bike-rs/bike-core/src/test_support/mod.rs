@@ -16,6 +16,8 @@ mod persistence;
 pub use persistence::{insert, update};
 mod schema;
 mod segments;
+#[cfg(test)]
+pub(crate) mod trace;
 pub use schema::table_with_timestamp_defaults;
 pub use segments::segment;
 

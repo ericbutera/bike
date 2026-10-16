@@ -5,7 +5,9 @@ use opentelemetry::trace::{TraceContextExt, TracerProvider as _};
 use opentelemetry::{Context, KeyValue};
 use opentelemetry_otlp::{Protocol, WithExportConfig};
 use opentelemetry_sdk::propagation::TraceContextPropagator;
-use opentelemetry_sdk::trace::{Sampler, SdkTracerProvider, TracerProviderBuilder};
+use opentelemetry_sdk::trace::{
+    BatchSpanProcessor, Sampler, SdkTracerProvider, TracerProviderBuilder,
+};
 use opentelemetry_sdk::Resource;
 use std::collections::BTreeMap;
 use tracing::field;
@@ -15,6 +17,10 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::Layer as _;
+
+pub(crate) mod database_spans;
+#[cfg(test)]
+mod operation_tests;
 
 pub type TraceContextCarrier = BTreeMap<String, String>;
 
@@ -160,7 +166,9 @@ fn build_tracer_provider(
         .with_protocol(otel_protocol())
         .build()?;
     Ok(tracer_provider_builder(service_name)
-        .with_batch_exporter(exporter)
+        .with_span_processor(database_spans::DatabaseSpanProcessor::new(
+            BatchSpanProcessor::builder(exporter).build(),
+        ))
         .build())
 }
 
@@ -286,12 +294,27 @@ fn otel_protocol_label() -> &'static str {
     "http/protobuf"
 }
 
-fn should_export_otel_span(name: &str, target: &str, has_exported_parent: bool) -> bool {
+pub(crate) fn should_export_otel_span(name: &str, target: &str, has_exported_parent: bool) -> bool {
     if name == "background_task.poll" {
+        return false;
+    }
+    if target.starts_with("sea_orm") {
+        return has_exported_parent && name.starts_with("sea_orm.");
+    }
+    if target.starts_with("sqlx") {
         return false;
     }
 
     has_exported_parent || is_application_trace_target(target)
+}
+
+/// Carry both the parent span and scoped subscriber into a blocking worker.
+pub(crate) fn blocking_with_current_trace<T>(
+    work: impl FnOnce() -> T + Send,
+) -> impl FnOnce() -> T + Send {
+    let span = tracing::Span::current();
+    let dispatch = tracing::dispatcher::get_default(Clone::clone);
+    move || tracing::dispatcher::with_default(&dispatch, || span.in_scope(work))
 }
 
 fn is_application_trace_target(target: &str) -> bool {
@@ -533,18 +556,41 @@ mod tests {
 
     #[test]
     fn otel_filter_keeps_library_spans_under_exported_parent() {
-        assert!(should_export_otel_span("query", "sea_orm", true,));
         assert!(should_export_otel_span(
-            "query",
+            "sea_orm.query_one",
+            "sea_orm",
+            true,
+        ));
+        assert!(should_export_otel_span(
+            "sea_orm.query_all",
             "sea_orm::database::db_connection",
             true,
         ));
-        assert!(should_export_otel_span("query", "sqlx::query", true));
+        assert!(!should_export_otel_span("query", "sqlx::query", true));
         assert!(should_export_otel_span(
             "connection",
             "hyper::proto::h1",
             true,
         ));
+    }
+
+    #[test]
+    fn otel_filter_removes_duplicate_orm_wrappers() {
+        for name in [
+            "query_one_raw",
+            "query_all_raw",
+            "query_one",
+            "query_all",
+            "execute",
+            "begin",
+            "commit",
+        ] {
+            assert!(!should_export_otel_span(
+                name,
+                "sea_orm::database::db_connection",
+                true
+            ));
+        }
     }
 
     #[test]

@@ -204,6 +204,10 @@ HTTP is used only for loopback browser assets and internal Prometheus metrics.
 
 ## Network visibility
 
+- Image/cache work, renderer waits, and the snapshot RPC follow the
+  [operation tracing contract](observability.md), including searchable
+  `bike.operation` fields and cache hit/miss context.
+
 OpenTelemetry instrumentation is required from the first release of this
 boundary. Disabling export locally must not remove propagation/instrumentation.
 An explicit `OTEL_SDK_DISABLED=true` disables tracing independently of export.

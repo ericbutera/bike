@@ -274,13 +274,15 @@ where
     Ok(())
 }
 
-#[tracing::instrument(name = "fitness.rebuild", skip_all, fields(user_id))]
+#[tracing::instrument(name = "fitness.rebuild", skip_all, fields(bike.operation = "fitness.rebuild", user_id, activity_count = tracing::field::Empty, day_count = tracing::field::Empty))]
 pub async fn rebuild_fitness_freshness_cache(
     db: &DatabaseConnection,
     user_id: i32,
 ) -> Result<(), sea_orm::DbErr> {
     let end_date = Utc::now().date_naive();
     let input = load_fitness_freshness_rebuild_input(db, user_id, end_date).await?;
+    let span = tracing::Span::current();
+    span.record("activity_count", input.activity_rows.len() as i64);
     let revision = fitness_revision(
         input
             .state
@@ -303,6 +305,7 @@ pub async fn rebuild_fitness_freshness_cache(
     };
     measured(db, scope, async {
         let rows = build_fitness_freshness_rows_for_rebuild(&input);
+        span.record("day_count", rows.len() as i64);
         let inputs_read = input.activity_rows.len() as u64;
         let units_computed = rows.len() as u64;
         let rebuilt_at = Utc::now();
@@ -425,7 +428,7 @@ where
     Ok(true)
 }
 
-#[tracing::instrument(name = "segments.rebuild", skip_all, fields(segment_count = segment_ids.len()))]
+#[tracing::instrument(name = "segments.rebuild", skip_all, fields(bike.operation = "segments.rebuild", segment_count = segment_ids.len() as i64))]
 pub async fn rebuild_segment_analytics_cache<C>(
     db: &C,
     segment_ids: &[i32],
@@ -687,7 +690,7 @@ where
     Ok(())
 }
 
-#[tracing::instrument(name = "activity.analytics.rebuild", skip_all, fields(activity_count = activity_ids.len()))]
+#[tracing::instrument(name = "achievements.rebuild", skip_all, fields(bike.operation = "achievements.rebuild", activity_count = activity_ids.len() as i64))]
 pub async fn rebuild_activity_analytics_cache<C>(
     db: &C,
     activity_ids: &[i32],
