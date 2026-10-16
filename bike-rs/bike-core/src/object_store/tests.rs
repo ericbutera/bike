@@ -63,6 +63,53 @@ async fn owners_cannot_read_write_or_remove_each_others_keys() {
 }
 
 #[tokio::test]
+async fn retained_imports_keep_their_existing_keys_and_namespace() {
+    let (imports, backend) = test_support::object_storage(ObjectOwner::ActivityImports);
+    let artifact = test_support::reprocess_artifact();
+    let reference = test_support::reprocess_execution().command.source.object;
+    backend
+        .put(
+            &ObjectPath::parse(&artifact.storage_path).unwrap(),
+            test_support::REPROCESS_SOURCE.into(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        imports.read(&reference).await.unwrap(),
+        test_support::REPROCESS_SOURCE
+    );
+    for owner in [ObjectOwner::BikeTasks, ObjectOwner::Strava] {
+        let other = ObjectStore::new(backend.clone(), owner);
+        assert_eq!(
+            other.read(&reference).await.unwrap_err().status.as_u16(),
+            400
+        );
+        let foreign = other
+            .write(&format!("{}/7/source", owner.prefix()), b"foreign")
+            .await
+            .unwrap();
+        assert_eq!(
+            imports.read(&foreign).await.unwrap_err().status.as_u16(),
+            400
+        );
+    }
+    for key in [
+        "/activity-imports/source",
+        "activity-imports/../strava/source",
+        "activity-imports-other/source",
+    ] {
+        let invalid = ObjectRef {
+            path: key.into(),
+            ..reference.clone()
+        };
+        assert_eq!(
+            imports.read(&invalid).await.unwrap_err().status.as_u16(),
+            400
+        );
+    }
+}
+
+#[tokio::test]
 async fn references_keep_the_existing_wire_format_and_round_trip_json() {
     let (store, _) = test_support::object_storage(ObjectOwner::Strava);
     let value = serde_json::json!({"activity_id": 42});

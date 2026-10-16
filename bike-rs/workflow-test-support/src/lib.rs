@@ -66,6 +66,26 @@ impl<A: WorkflowAssertions> WorkflowMock<A> {
         Self::with_replay::<W>(input, false)
     }
 
+    /// A start and cancellation delivered together before a worker executes code.
+    pub fn cancelled_at_start<W>(input: <W::Run as WorkflowDefinition>::Input) -> Self
+    where
+        W: WorkflowImplementation + Default,
+        <W::Run as WorkflowDefinition>::Input: Send,
+    {
+        Self::with_patches::<W>(
+            input,
+            false,
+            vec![workflow_activation::WorkflowActivationJob {
+                variant: Some(Variant::CancelWorkflow(
+                    workflow_activation::CancelWorkflow {
+                        reason: "Canceled before processing".into(),
+                    },
+                )),
+            }],
+            std::time::UNIX_EPOCH,
+        )
+    }
+
     pub fn with_replay<W>(input: <W::Run as WorkflowDefinition>::Input, replaying: bool) -> Self
     where
         W: WorkflowImplementation + Default,

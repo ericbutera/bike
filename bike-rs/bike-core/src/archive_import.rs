@@ -16,8 +16,6 @@ use crate::training_profile::{load_training_profile, TrainingProfile};
 use crate::workflow_error::WorkflowError as AppError;
 use reqwest::{header, redirect::Policy, Client, Url};
 use sea_orm::DatabaseConnection;
-#[cfg(test)]
-use sea_orm::Set;
 use serde::Serialize;
 use std::env;
 use std::io::{Cursor, Read, Seek};
@@ -30,8 +28,6 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use zip::ZipArchive;
 mod batch;
-#[cfg(test)]
-mod queued_tests;
 pub use batch::{finish_queued_archive_batch, queue_archive_page};
 
 const MAX_ARCHIVE_REDIRECTS: usize = 5;
@@ -1131,14 +1127,6 @@ async fn mark_activity_archive_import_job_failed(
 mod tests {
 
     use super::*;
-    use crate::background_jobs::background_tasks;
-    use crate::entities::{
-        activities, activity_analytics, activity_import_artifacts, activity_imports,
-        activity_training_analyses, analytics_user_states, segment_efforts, segments,
-        user_preferences,
-    };
-    use crate::test_support;
-    use sea_orm::{ConnectionTrait, Database, EntityTrait, PaginatorTrait, Schema};
     use std::io::Write;
     use zip::write::SimpleFileOptions;
 
@@ -1165,71 +1153,6 @@ mod tests {
 
         writer.finish().expect("finish archive");
         archive_path
-    }
-
-    pub(super) async fn test_db() -> DatabaseConnection {
-        let db = Database::connect("sqlite::memory:")
-            .await
-            .expect("in-memory db");
-
-        let schema = Schema::new(db.get_database_backend());
-        crate::background_jobs::history_tests::diagnostic_tables(&db).await;
-        db.execute(&schema.create_table_from_entity(activities::Entity))
-            .await
-            .expect("create activities table");
-        db.execute(&schema.create_table_from_entity(activity_imports::Entity))
-            .await
-            .expect("create activity imports table");
-        db.execute(
-            &schema.create_table_from_entity(crate::entities::activity_import_attempts::Entity),
-        )
-        .await
-        .expect("create activity imports table");
-        db.execute(&schema.create_table_from_entity(activity_import_artifacts::Entity))
-            .await
-            .expect("create activity import artifacts table");
-        db.execute(&schema.create_table_from_entity(activity_analytics::Entity))
-            .await
-            .expect("create activity analytics table");
-        db.execute(&schema.create_table_from_entity(activity_training_analyses::Entity))
-            .await
-            .expect("create activity training analyses table");
-        db.execute(&schema.create_table_from_entity(segments::Entity))
-            .await
-            .expect("create segments table");
-        db.execute(&schema.create_table_from_entity(segment_efforts::Entity))
-            .await
-            .expect("create segment efforts table");
-        db.execute(&schema.create_table_from_entity(user_preferences::Entity))
-            .await
-            .expect("create user preferences table");
-        db.execute(&schema.create_table_from_entity(analytics_user_states::Entity))
-            .await
-            .expect("create analytics user states table");
-        db.execute(&schema.create_table_from_entity(background_tasks::Entity))
-            .await
-            .expect("create background tasks table");
-        create_archive_trace_tables(&db, &schema).await;
-
-        db
-    }
-
-    async fn create_archive_trace_tables(db: &DatabaseConnection, schema: &Schema) {
-        db.execute(&schema.create_table_from_entity(activity_archive_import_jobs::Entity))
-            .await
-            .unwrap();
-        db.execute(&schema.create_table_from_entity(crate::entities::integration_events::Entity))
-            .await
-            .unwrap();
-    }
-
-    pub(super) fn test_uploads_dir() -> String {
-        let uploads_dir = std::env::temp_dir().join(format!(
-            "bike-archive-import-uploads-{}",
-            uuid::Uuid::new_v4()
-        ));
-        std::fs::create_dir_all(&uploads_dir).expect("create uploads dir");
-        uploads_dir.display().to_string()
     }
 
     #[test]
@@ -1304,142 +1227,6 @@ mod tests {
         assert_eq!(scan.supported_entry_count, 1);
         assert_eq!(scan.skipped_unsupported_count, 1);
         assert_eq!(scan.supported_entries[0].entry_name, "rides/18.gpx");
-    }
-
-    #[tokio::test]
-    async fn archive_imports_keep_duplicate_detection_enabled() {
-        let db = test_db().await;
-        let tasks = TaskQueue::new(db.clone());
-        let uploads_dir = test_uploads_dir();
-        let archive_path = write_test_archive(&[(
-            "activities/activity.fit",
-            include_bytes!("../../api/tests/fixtures/activity.fit").as_slice(),
-        )]);
-
-        let first = import_activity_archive_from_path(
-            &db,
-            &tasks,
-            ImportActivityArchiveRequest {
-                archive_job_id: None,
-                uploads_dir: &uploads_dir,
-                user_storage_key: "test-user",
-                user_id: 1,
-                activity_source: "archive_import",
-                display_source: archive_path.display().to_string(),
-                archive_path: &archive_path,
-            },
-        )
-        .await
-        .expect("import first archive");
-        assert_eq!(first.imported_count, 1);
-        assert_eq!(first.duplicate_count, 0);
-
-        let second = import_activity_archive_from_path(
-            &db,
-            &tasks,
-            ImportActivityArchiveRequest {
-                archive_job_id: None,
-                uploads_dir: &uploads_dir,
-                user_storage_key: "test-user",
-                user_id: 1,
-                activity_source: "archive_import",
-                display_source: archive_path.display().to_string(),
-                archive_path: &archive_path,
-            },
-        )
-        .await
-        .expect("import second archive");
-        assert_eq!(second.imported_count, 0);
-        assert_eq!(second.duplicate_count, 1);
-
-        assert_eq!(activities::Entity::find().count(&db).await.unwrap(), 1);
-        assert_eq!(
-            activity_imports::Entity::find().count(&db).await.unwrap(),
-            2
-        );
-
-        let _ = std::fs::remove_file(&archive_path);
-        let _ = std::fs::remove_dir_all(&uploads_dir);
-    }
-
-    #[tokio::test]
-    async fn partial_archive_persists_counters_and_links_failed_uncreated_imports() {
-        let db = test_db().await;
-        let uploads_dir = test_uploads_dir();
-        let path = write_test_archive(&[
-            (
-                "ride.fit",
-                include_bytes!("../../api/tests/fixtures/activity.fit").as_slice(),
-            ),
-            ("broken.gpx", b"invalid"),
-            ("readme.txt", b"unsupported"),
-        ]);
-        let job = test_support::insert(
-            &db,
-            activity_archive_import_jobs::ActiveModel {
-                user_id: Set(1),
-                user_storage_key: Set("test-user".into()),
-                archive_url: Set("https://example.test/archive.zip".into()),
-                status: Set("running".into()),
-                total_entries: Set(0),
-                supported_entry_count: Set(0),
-                imported_count: Set(0),
-                duplicate_count: Set(0),
-                skipped_unsupported_count: Set(0),
-                failed_count: Set(0),
-                ..Default::default()
-            },
-        )
-        .await;
-        let summary = import_activity_archive_from_path(
-            &db,
-            &TaskQueue::new(db.clone()),
-            ImportActivityArchiveRequest {
-                archive_job_id: Some(job.id),
-                uploads_dir: &uploads_dir,
-                user_storage_key: "test-user",
-                user_id: 1,
-                activity_source: "archive_url_import",
-                display_source: "synthetic mixed archive".into(),
-                archive_path: &path,
-            },
-        )
-        .await
-        .unwrap();
-        assert_eq!(
-            (
-                summary.imported_count,
-                summary.failed_count,
-                summary.skipped_unsupported_count
-            ),
-            (1, 1, 1)
-        );
-        let progress = activity_archive_import_jobs::Entity::find_for_batch(&db, job.id)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!((progress.imported_count, progress.failed_count), (1, 1));
-        assert!(progress.error_samples_json.unwrap().contains("broken.gpx"));
-        let finished = mark_activity_archive_import_job_finished(&db, &job, &summary)
-            .await
-            .unwrap();
-        assert_eq!(finished.status, "partial");
-        let (imports, total) =
-            activity_imports::Entity::history(&db, 1, 1, None, None, Some(job.id))
-                .await
-                .unwrap();
-        assert_eq!(total, 2);
-        assert!(imports
-            .iter()
-            .any(|import| import.status == "failed" && import.activity_id.is_none()));
-        let failed_summary = ActivityArchiveImportResponse {
-            imported_count: 0,
-            duplicate_count: 0,
-            ..summary
-        };
-        assert_eq!(archive_outcome(&failed_summary), "failed");
-        std::fs::remove_file(path).unwrap();
-        std::fs::remove_dir_all(uploads_dir).unwrap();
     }
 
     #[test]

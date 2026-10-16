@@ -164,12 +164,8 @@ pub fn message_for_status(status: &str) -> &'static str {
         XC_GOAL_BACKFILL_STATUS_WAITING => {
             "XC training backfill is waiting for the current activity processing job to finish."
         }
-        XC_GOAL_BACKFILL_STATUS_RUNNING => {
-            "XC training backfill is rebuilding historical training metrics."
-        }
-        XC_GOAL_BACKFILL_STATUS_COMPLETED => {
-            "XC training backfill completed. Historical ride metrics are up to date."
-        }
+        XC_GOAL_BACKFILL_STATUS_RUNNING => "XC training backfill is rebuilding historical training metrics.",
+        XC_GOAL_BACKFILL_STATUS_COMPLETED => "XC training backfill completed. Historical ride metrics are up to date.",
         XC_GOAL_BACKFILL_STATUS_FAILED => {
             "XC training backfill failed. Try saving again or queue a user-id backfill from admin analytics."
         }

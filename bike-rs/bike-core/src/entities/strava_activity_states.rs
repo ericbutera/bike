@@ -2,17 +2,30 @@ use crate::strava::events::StravaEvent;
 use sea_orm::entity::prelude::*;
 use sea_orm::{sea_query::OnConflict, ConnectionTrait, Set};
 
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+/// Latest applied state for one remote (athlete/owner, activity/object) pair.
+/// This is the stale-event fence and remote-to-Bike identity mapping, not history.
+/// event_time retains the source timestamp (Strava's clock for webhooks).
+/// updated_at/applied_at use Bike's clock and do not decide event ordering.
+/// Historical changes belong to activity_event_history in the same transaction.
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, serde::Serialize, serde::Deserialize)]
 #[sea_orm(table_name = "strava_activity_states")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub athlete_id: i64,
     #[sea_orm(primary_key, auto_increment = false)]
     pub activity_id: i64,
+    /// Historical Bike PK; retain it when the activity is deleted.
+    pub bike_activity_id: Option<i32>,
     pub connection_generation: DateTimeUtc,
+    /// Last accepted event timestamp in seconds; deletion wins an equal-time tie.
     pub event_time: i64,
     pub applied_hash: Option<String>,
     pub deleted: bool,
+    /// Source event timestamp for the current deletion; cleared by a newer upsert.
+    pub deleted_at: Option<DateTimeUtc>,
+    /// Most recent local state write. Never use it to order Strava events.
+    pub updated_at: DateTimeUtc,
+    /// Compatibility with the deployed worker; ordering uses event_time.
     pub applied_at: DateTimeUtc,
 }
 
@@ -80,44 +93,66 @@ impl Model {
         event: &StravaEvent,
         hash: Option<String>,
         deleted: bool,
-    ) -> Result<(), DbErr> {
+    ) -> Result<Self, DbErr> {
+        Self::from_event(event, hash, deleted)?.save(db).await
+    }
+
+    fn from_event(event: &StravaEvent, hash: Option<String>, deleted: bool) -> Result<Self, DbErr> {
         let (athlete_id, activity_id) = Self::key_for_event(event)?;
-        Self {
+        let deleted_at = if deleted {
+            Some(
+                chrono::DateTime::from_timestamp(event.event_time, 0)
+                    .ok_or_else(|| DbErr::Custom("Invalid Strava deletion event time".into()))?,
+            )
+        } else {
+            None
+        };
+        let now = chrono::Utc::now();
+        Ok(Self {
             athlete_id,
             activity_id,
+            bike_activity_id: event.bike_activity_id,
             connection_generation: event.connection_generation,
             event_time: event.event_time,
             applied_hash: hash,
             deleted,
-            applied_at: chrono::Utc::now(),
-        }
-        .save(db)
-        .await
+            deleted_at,
+            updated_at: now,
+            applied_at: now,
+        })
     }
-    pub async fn save(self, db: &impl ConnectionTrait) -> Result<(), DbErr> {
+    async fn save(self, db: &impl ConnectionTrait) -> Result<Self, DbErr> {
+        let mut updates = vec![
+            Column::ConnectionGeneration,
+            Column::EventTime,
+            Column::AppliedHash,
+            Column::Deleted,
+            Column::DeletedAt,
+            Column::UpdatedAt,
+            Column::AppliedAt,
+        ];
+        if self.bike_activity_id.is_some() {
+            updates.push(Column::BikeActivityId);
+        }
         Entity::insert(ActiveModel {
             athlete_id: Set(self.athlete_id),
             activity_id: Set(self.activity_id),
+            bike_activity_id: Set(self.bike_activity_id),
             connection_generation: Set(self.connection_generation),
             event_time: Set(self.event_time),
             applied_hash: Set(self.applied_hash),
             deleted: Set(self.deleted),
+            deleted_at: Set(self.deleted_at),
+            updated_at: Set(self.updated_at),
             applied_at: Set(self.applied_at),
         })
         .on_conflict(
             OnConflict::columns([Column::AthleteId, Column::ActivityId])
-                .update_columns([
-                    Column::ConnectionGeneration,
-                    Column::EventTime,
-                    Column::AppliedHash,
-                    Column::Deleted,
-                    Column::AppliedAt,
-                ])
+                .update_columns(updates)
                 .to_owned(),
         )
-        .exec(db)
-        .await?;
-        Ok(())
+        .exec_with_returning(db)
+        .await
     }
 }
 
@@ -127,15 +162,31 @@ mod tests {
     use crate::strava::native::strava_native_unit::fixture::Fixture;
     use sea_orm::{DatabaseBackend, MockDatabase};
 
+    #[test]
+    fn applied_and_deleted_events_keep_bike_and_remote_activity_identity() {
+        let fixture = Fixture::new();
+        let event = StravaEvent {
+            bike_activity_id: Some(fixture.activity().id),
+            ..fixture.event.clone()
+        };
+        for deleted in [false, true] {
+            let state = Model::from_event(&event, None, deleted).unwrap();
+            assert_eq!(state.bike_activity_id, Some(fixture.activity().id));
+            assert_eq!(state.athlete_id, event.strava_athlete_id);
+            assert_eq!(state.activity_id, event.strava_activity_id.unwrap());
+            assert_eq!(state.deleted, deleted);
+            assert_eq!(
+                state.deleted_at.map(|at| at.timestamp()),
+                deleted.then_some(event.event_time)
+            );
+            assert_eq!(state.updated_at, state.applied_at);
+        }
+    }
+
     fn state(fixture: &Fixture) -> Model {
         Model {
-            athlete_id: fixture.event.strava_athlete_id,
-            activity_id: fixture.event.activity_id().unwrap(),
-            connection_generation: fixture.event.connection_generation,
-            event_time: fixture.event.event_time,
             applied_hash: Some("fixture-content".into()),
-            deleted: false,
-            applied_at: fixture.connection.created_at,
+            ..fixture.activity_state()
         }
     }
 

@@ -147,7 +147,12 @@ mod tests {
         let mut options = sea_orm_migration::sea_orm::ConnectOptions::new(url);
         options.set_schema_search_path(schema.clone());
         let isolated = Database::connect(options).await.unwrap();
-        isolated.execute_unprepared("CREATE TABLE activity_imports(id integer PRIMARY KEY); INSERT INTO activity_imports VALUES (1), (2)").await.unwrap();
+        isolated
+            .execute_unprepared(
+                "CREATE TABLE activity_imports(id integer PRIMARY KEY); INSERT INTO activity_imports VALUES (1), (2)",
+            )
+            .await
+            .unwrap();
         let manager = SchemaManager::new(&isolated);
         Migration.up(&manager).await.unwrap();
         insert_attempt(&isolated, 1, 42).await.unwrap();

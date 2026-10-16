@@ -429,25 +429,56 @@ pub struct ReprocessUserActivityImportsResponse {
 pub struct ReprocessActivityImportRequest {
     #[schema(example = 42)]
     pub activity_id: i32,
+    /// Reuse this UUID if submission fails or its response is lost.
+    #[schema(value_type = Option<String>, format = "uuid")]
+    pub command_id: Option<uuid::Uuid>,
+}
+
+impl From<ReprocessActivityImportRequest>
+    for crate::activity_reprocessing::ReprocessActivityCommand
+{
+    fn from(request: ReprocessActivityImportRequest) -> Self {
+        Self {
+            activity_id: request.activity_id,
+            command_id: request.command_id.unwrap_or_else(uuid::Uuid::new_v4),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-#[schema(example = json!({"activity_id": 42,"activity_import_id": 17,"user_id": 12,"status": "queued","message": "Activity reprocessing queued.","task_id": "42","task_status": "pending"}))]
 pub struct ReprocessActivityImportResponse {
+    pub job: bike_core::bike_tasks::JobReference,
     #[schema(example = 42)]
     pub activity_id: i32,
     #[schema(example = 17)]
     pub activity_import_id: i32,
     #[schema(example = 12)]
     pub user_id: i32,
-    #[schema(example = "queued")]
+    #[schema(example = "accepted")]
     pub status: String,
-    #[schema(example = "Activity reprocessing queued.")]
+    #[schema(example = "Activity reprocessing accepted.")]
     pub message: String,
-    #[schema(example = "42")]
+    /// Compatibility alias for job.job_id; this is a Temporal Workflow ID.
+    #[schema(example = "bike-task-reprocess_activity_import-user-12-command-uuid")]
     pub task_id: String,
-    #[schema(example = "pending")]
+    /// Acceptance status, not the execution's current state.
+    #[schema(example = "accepted")]
     pub task_status: String,
+}
+
+impl From<crate::activity_reprocessing::AcceptedReprocessing> for ReprocessActivityImportResponse {
+    fn from(result: crate::activity_reprocessing::AcceptedReprocessing) -> Self {
+        Self {
+            activity_id: result.activity_id,
+            activity_import_id: result.activity_import_id,
+            user_id: result.user_id,
+            status: "accepted".into(),
+            message: "Activity reprocessing accepted.".into(),
+            task_id: result.job.job_id.clone(),
+            task_status: "accepted".into(),
+            job: result.job,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -729,69 +760,30 @@ pub async fn reprocess_user_activity_imports(
     operation_id = "admin_reprocess_activity_import",
     request_body(content = ReprocessActivityImportRequest, example = json!({"activity_id": 42})),
     responses(
-        (status = 202, description = "Queued stored-file activity reprocessing for one activity", body = ReprocessActivityImportResponse, example = json!({"activity_id": 42,"activity_import_id": 17,"user_id": 12,"status": "queued","message": "Activity reprocessing queued.","task_id": "42","task_status": "pending"})),
+        (status = 202, description = "Temporal accepted stored-file activity reprocessing", body = ReprocessActivityImportResponse),
+        (status = 400, description = "No supported retained source for native reprocessing", body = ApiErrorResponse),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "Activity not found", body = ApiErrorResponse),
-        (status = 409, description = "Another activity import is already running or queued", body = ApiErrorResponse),
+        (status = 409, description = "Activity and retained source do not match", body = ApiErrorResponse),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     ),
     security(("bearer_auth" = [])),
     tag = "admin",
 )]
 pub async fn reprocess_activity_import(
-    _admin: AdminUserContext<AppStorage>,
+    AdminUserContext { user, .. }: AdminUserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
+    headers: axum::http::HeaderMap,
     Json(request): Json<ReprocessActivityImportRequest>,
 ) -> Result<(StatusCode, Json<ReprocessActivityImportResponse>), AppError> {
-    let activity = activities::Model::find_by_id(&state.db, request.activity_id)
-        .await?
-        .ok_or_else(|| {
-            AppError::not_found(format!("Activity {} was not found", request.activity_id))
-        })?;
-
-    let Some(activity_import_id) = activity.activity_import_id else {
-        return Err(AppError::bad_request(format!(
-            "Activity {} is not linked to a stored import",
-            request.activity_id
-        )));
-    };
-
-    acquire_user_activity_import_lock(
-        &state.db,
-        activity.user_id,
-        ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING,
-        ACTIVITY_IMPORT_LOCK_STAGE_QUEUED,
-    )
-    .await?;
-
-    let task = match state.tasks.reprocess_activity_import(activity.id).await {
-        Ok(task) => task,
-        Err(message) => {
-            release_user_activity_import_lock(
-                &state.db,
-                activity.user_id,
-                ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING,
-            )
-            .await?;
-            return Err(AppError::internal(format!(
-                "Failed to queue activity reprocessing: {message}"
-            )));
-        }
-    };
-
-    Ok((
-        StatusCode::ACCEPTED,
-        Json(ReprocessActivityImportResponse {
-            activity_id: activity.id,
-            activity_import_id,
-            user_id: activity.user_id,
-            status: "queued".to_string(),
-            message: "Activity reprocessing queued.".to_string(),
-            task_id: task.id,
-            task_status: task.status,
-        }),
-    ))
+    let request_id = headers
+        .get("x-request-id")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    let command = crate::activity_reprocessing::ReprocessActivityCommand::from(request);
+    let result = crate::activity_reprocessing::submit(&state, user.id, request_id, command).await?;
+    Ok((StatusCode::ACCEPTED, Json(result.into())))
 }
 
 #[utoipa::path(
@@ -977,11 +969,46 @@ async fn enqueue_segment_backfill_tasks(
 mod tests {
     use super::*;
 
+    #[test]
+    fn activity_reprocessing_request_keeps_supplied_identity_or_creates_a_fresh_command() {
+        use crate::activity_reprocessing::ReprocessActivityCommand;
+        let command_id = uuid::Uuid::from_u128(65);
+        let explicit = ReprocessActivityCommand::from(ReprocessActivityImportRequest {
+            activity_id: 42,
+            command_id: Some(command_id),
+        });
+        assert_eq!(explicit.activity_id, 42);
+        assert_eq!(explicit.command_id, command_id);
+        let fresh = || {
+            ReprocessActivityCommand::from(ReprocessActivityImportRequest {
+                activity_id: 42,
+                command_id: None,
+            })
+        };
+        assert_ne!(fresh().command_id, fresh().command_id);
+    }
+
+    #[test]
+    fn activity_reprocessing_acceptance_maps_native_job_to_the_http_contract() {
+        use bike_core::test_support as fixtures;
+        let result = crate::activity_reprocessing::AcceptedReprocessing {
+            activity_id: fixtures::activity().id,
+            activity_import_id: fixtures::activity_import().id,
+            user_id: fixtures::activity().user_id,
+            job: fixtures::job_reference(),
+        };
+        let response = ReprocessActivityImportResponse::from(result);
+        assert_eq!(response.status, "accepted");
+        assert_eq!(response.task_status, "accepted");
+        assert_eq!(response.task_id, response.job.job_id);
+        assert_eq!(response.activity_id, fixtures::activity().id);
+        assert_eq!(response.activity_import_id, fixtures::activity_import().id);
+        assert_eq!(response.user_id, fixtures::activity().user_id);
+    }
+
     #[tokio::test]
     async fn empty_segment_backfill_enqueues_no_tasks() {
-        let db = sea_orm::Database::connect("sqlite::memory:")
-            .await
-            .expect("in-memory db");
+        let db = sea_orm::MockDatabase::new(sea_orm::DbBackend::Postgres).into_connection();
         let state = Arc::new(AppStorage::for_test(db));
 
         assert_eq!(

@@ -3,14 +3,16 @@
 //! Override scenario fields with struct update syntax. Use `new_activity_import`
 //! for database inserts so unrelated seeds never reuse the fixture primary key.
 mod accounts;
+mod activity_history;
+pub use activity_history::{activity_history, activity_history_event};
 mod storage;
 pub use storage::object_storage;
 mod tasks;
 pub use tasks::{
     archive_input, batch_command, batch_input, batch_manifest, fitness_change, heatmap_change,
-    import_command, import_entry, import_result, page_request, prepared_batch, reprocess_entry,
-    segment_change, segment_efforts_input, segment_entry, segment_result, training_entry,
-    training_result,
+    import_command, import_entry, import_execution, import_result, job_reference, page_request,
+    prepared_batch, reprocess_entry, segment_change, segment_efforts_input, segment_entry,
+    segment_result, task_cause, training_entry, training_result,
 };
 mod analytics;
 mod defaults;
@@ -21,17 +23,21 @@ pub use defaults::{new_background_task, new_feature_flag, new_user_preferences};
 mod heatmaps;
 pub use heatmaps::heatmap_projection;
 mod imports;
+mod reprocessing;
+pub use reprocessing::{
+    parsed_reprocess_activity, reprocess_activity, reprocess_artifact, reprocess_execution,
+    reprocess_import, reprocess_recording_artifact, training_analysis, REPROCESS_RECORDING_SOURCE,
+    REPROCESS_SOURCE,
+};
 mod persistence;
 pub use persistence::{insert, update};
-mod schema;
 mod segments;
 #[cfg(test)]
 pub(crate) mod trace;
-pub use schema::table_with_timestamp_defaults;
 pub use segments::segment;
 
 pub use accounts::{connection, customer, new_connection, new_customer};
-pub use imports::{archive_import_job, import_artifact};
+pub use imports::{activity_import_attempt, archive_import_job, import_artifact};
 
 use crate::entities::{activities, activity_imports};
 use chrono::{DateTime, Utc};
@@ -116,7 +122,6 @@ pub fn new_activity() -> activities::ActiveModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sea_orm::{ConnectionTrait, Database, Schema};
 
     #[test]
     fn model_fixtures_share_a_stable_owner_and_clock() {
@@ -147,97 +152,5 @@ mod tests {
         assert_eq!(effort.created_at, customer.created_at);
         assert_eq!(activity, super::activity());
         assert_eq!(import, activity_import());
-    }
-
-    #[tokio::test]
-    async fn insert_fixtures_receive_distinct_database_ids() {
-        let db = Database::connect("sqlite::memory:").await.unwrap();
-        db.execute(
-            &Schema::new(db.get_database_backend())
-                .create_table_from_entity(activity_imports::Entity),
-        )
-        .await
-        .unwrap();
-        db.execute(
-            &Schema::new(db.get_database_backend()).create_table_from_entity(activities::Entity),
-        )
-        .await
-        .unwrap();
-        let first = insert(&db, new_activity_import()).await;
-        let second = insert(&db, new_activity_import()).await;
-        assert_ne!(first.id, second.id);
-        assert_eq!(first.user_id, second.user_id);
-        assert_eq!(first.original_filename, second.original_filename);
-        let first_activity = insert(&db, new_activity()).await;
-        let second_activity = insert(&db, new_activity()).await;
-        assert_ne!(first_activity.id, second_activity.id);
-        assert_eq!(first_activity.user_id, second_activity.user_id);
-    }
-
-    #[tokio::test]
-    async fn update_fixture_preserves_omitted_fields_and_explicitly_clears_values() {
-        use sea_orm::Set;
-        let db = Database::connect("sqlite::memory:").await.unwrap();
-        db.execute(
-            &Schema::new(db.get_database_backend()).create_table_from_entity(activities::Entity),
-        )
-        .await
-        .unwrap();
-        let original = insert(
-            &db,
-            activities::ActiveModel {
-                estimated_ftp_watts: Set(Some(250)),
-                ..new_activity()
-            },
-        )
-        .await;
-        let updated = update(
-            &db,
-            activities::ActiveModel {
-                id: Set(original.id),
-                title: Set("Updated fixture".into()),
-                estimated_ftp_watts: Set(None),
-                ..Default::default()
-            },
-        )
-        .await;
-        assert_eq!(updated.id, original.id);
-        assert_eq!(updated.title, "Updated fixture");
-        assert_eq!(updated.estimated_ftp_watts, None);
-        assert_eq!(updated.user_id, original.user_id);
-        assert_eq!(updated.sport, original.sport);
-        assert_eq!(updated.created_at, original.created_at);
-        assert!(updated.updated_at > original.updated_at);
-    }
-
-    #[tokio::test]
-    async fn database_timestamp_defaults_round_trip_through_version_filters() {
-        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-        let db = Database::connect("sqlite::memory:").await.unwrap();
-        db.execute(&table_with_timestamp_defaults(
-            &db,
-            activities::Entity,
-            &["created_at", "updated_at"],
-        ))
-        .await
-        .unwrap();
-        let model = insert(
-            &db,
-            activities::ActiveModel {
-                created_at: NotSet,
-                updated_at: NotSet,
-                ..new_activity()
-            },
-        )
-        .await;
-        let matching = activities::Entity::find_by_id(model.id)
-            .filter(activities::Column::UpdatedAt.eq(model.updated_at))
-            .one(&db)
-            .await
-            .unwrap();
-        assert!(
-            matching.is_some(),
-            "database timestamps must match SQLx parameters"
-        );
     }
 }

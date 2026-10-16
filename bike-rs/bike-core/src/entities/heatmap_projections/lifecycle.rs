@@ -129,7 +129,10 @@ impl Projection {
         if leased.is_empty() {
             return Ok(0);
         }
-        let activities: Vec<_> = leased.iter().map(|pending|serde_json::json!({"activity_id":pending.activity_id,"generation":pending.generation})).collect();
+        let activities: Vec<_> = leased
+            .iter()
+            .map(|pending| serde_json::json!({"activity_id":pending.activity_id,"generation":pending.generation}))
+            .collect();
         let task = crate::background_jobs::background_tasks::Model::enqueue(
             &txn,
             crate::jobs::JobType::PrepareHeatmap.as_str().into(),

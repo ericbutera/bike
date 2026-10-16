@@ -2,7 +2,6 @@
 pub mod activities;
 pub mod client;
 pub mod handoff_metrics;
-pub mod metrics;
 pub mod workflows;
 
 #[cfg(test)]

@@ -179,10 +179,6 @@ fn provider_api_request_counter_classes(request_class: &str) -> &'static [&'stat
 }
 
 #[cfg(test)]
-#[path = "provider_metrics_tests.rs"]
-mod snapshot_tests;
-
-#[cfg(test)]
 mod tests {
     use super::provider_api_request_counter_classes;
 

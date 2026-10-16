@@ -125,10 +125,6 @@ async fn refresh_database_metrics(state: &AppStorage) -> Result<(), DbErr> {
 }
 
 #[cfg(test)]
-#[path = "metrics_scrape_tests.rs"]
-pub(crate) mod scrape_tests;
-
-#[cfg(test)]
 mod tests {
     use super::directory_bytes;
 

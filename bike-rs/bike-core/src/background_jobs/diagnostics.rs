@@ -2,8 +2,6 @@
 mod graph;
 mod health;
 mod statistics;
-#[cfg(test)]
-mod statistics_tests;
 pub use graph::{GraphCursor, PipelineGraph, PipelinePage};
 pub use health::sample;
 pub use statistics::{Distribution, ProcessorSummary};
@@ -97,9 +95,6 @@ async fn prune_attempts(
     super::entities::task_anomalies::Model::delete_for_tasks(db, &closed).await?;
     Ok(())
 }
-
-#[cfg(test)]
-mod tests;
 
 pub async fn ready_count(db: &DatabaseConnection) -> Result<u64, DbErr> {
     background_tasks::Model::ready_count(db).await

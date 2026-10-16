@@ -3,6 +3,13 @@
 ## Required ownership
 
 - Controllers adapt HTTP input/output and call an application operation.
+- Convert controller-owned request/query DTOs into service/domain-owned commands
+  and filters before calling an application operation. Services must not accept
+  controller request types or depend on HTTP defaults. Keep transport optionality,
+  HTTP status/messages, and response DTO mapping at the controller boundary.
+- Service tests construct internal inputs directly. Verify boundary conversions
+  separately, including retry-stable command identity and replay preconditions;
+  use existing mocks/fixtures for application behavior.
 - Services and workers compose domain operations. Call sites expose intent,
   relevant IDs, and ownership scope; they do not assemble persistence policy.
 - Owning entity/model modules construct and execute queries, including filters,
@@ -99,9 +106,9 @@ on `activities::Entity`, and deleting the import stays on `activity_imports::Ent
   The helpers accept connections and transactions through `ConnectionTrait`.
   Direct bulk statements and expected-error operations remain explicit when
   their database behavior is the assertion being tested.
-- SQLite fixture timestamp defaults must round-trip through SQLx's RFC 3339
-  parameter format so timestamp equality and version fences match PostgreSQL's
-  typed timestamp behavior. Reuse `table_with_timestamp_defaults` for those tables.
+- Unit tests use mocks configured for PostgreSQL and shared fixtures. Do not use
+  SQLite-specific schemas, timestamp defaults, or database behavior as a substitute
+  for PostgreSQL. Existing Docker/PostgreSQL suites own database semantics.
 - Insert fixtures provide required business inputs and deterministic timestamps.
   Leave database-owned defaults unset unless the test exercises an override;
   set timestamp fields to `NotSet` when testing database-generated timestamps.
@@ -157,65 +164,65 @@ let import = activity_imports::Model {
 Counts include explicit scenario overrides and update-only patches. Do not
 replace an intentional patch with a full fixture.
 
-| Family | Construction/patch sites | Files |
-| --- | ---: | ---: |
-| activities | 20 | 12 |
-| activity_imports | 12 | 9 |
-| users | 9 | 8 |
-| analytics_user_states | 6 | 3 |
-| fitness_freshness_daily | 6 | 2 |
-| segment_efforts | 5 | 2 |
-| strava_connections | 3 | 3 |
+| Family                  | Construction/patch sites | Files |
+| ----------------------- | -----------------------: | ----: |
+| activities              |                       20 |    12 |
+| activity_imports        |                       12 |     9 |
+| users                   |                        9 |     8 |
+| analytics_user_states   |                        6 |     3 |
+| fitness_freshness_daily |                        6 |     2 |
+| segment_efforts         |                        5 |     2 |
+| strava_connections      |                        3 |     3 |
 
 ### Runtime query inventory
 
 Paths are relative to `bike-rs`. Counts exclude owning entity implementations.
 
-| Module | Query starts |
-| --- | ---: |
-| api/src/controllers/activities.rs | 0 (complete) |
-| api/src/controllers/activity_imports.rs | 0 (complete) |
-| api/src/controllers/admin.rs | 0 (complete) |
-| api/src/controllers/fitness.rs | 0 (complete) |
-| api/src/controllers/segments.rs | 0 (complete) |
-| api/src/controllers/user_preferences.rs | 0 (complete) |
-| api/src/metrics.rs | 0 (complete) |
-| bike-core/src/activity_import_execution.rs | 0 (complete) |
-| bike-core/src/activity_import_lifecycle.rs | 0 (complete) |
-| bike-core/src/activity_import_lock.rs | 0 (complete) |
-| bike-core/src/activity_import_pipeline.rs | 0 (complete) |
-| bike-core/src/activity_import_pipeline/replay.rs | 0 (complete) |
+| Module                                                    | Query starts |
+| --------------------------------------------------------- | -----------: |
+| api/src/controllers/activities.rs                         | 0 (complete) |
+| api/src/controllers/activity_imports.rs                   | 0 (complete) |
+| api/src/controllers/admin.rs                              | 0 (complete) |
+| api/src/controllers/fitness.rs                            | 0 (complete) |
+| api/src/controllers/segments.rs                           | 0 (complete) |
+| api/src/controllers/user_preferences.rs                   | 0 (complete) |
+| api/src/metrics.rs                                        | 0 (complete) |
+| bike-core/src/activity_import_execution.rs                | 0 (complete) |
+| bike-core/src/activity_import_lifecycle.rs                | 0 (complete) |
+| bike-core/src/activity_import_lock.rs                     | 0 (complete) |
+| bike-core/src/activity_import_pipeline.rs                 | 0 (complete) |
+| bike-core/src/activity_import_pipeline/replay.rs          | 0 (complete) |
 | bike-core/src/activity_import_pipeline/stage_execution.rs | 0 (complete) |
-| bike-core/src/activity_import_recovery.rs | 0 (complete) |
-| bike-core/src/activity_lifecycle.rs | 0 (complete) |
-| bike-core/src/activity_training_analysis.rs | 0 (complete) |
-| bike-core/src/analytics.rs | 0 (complete) |
-| bike-core/src/archive_import.rs | 0 (complete) |
-| bike-core/src/archive_import/batch.rs | 0 (complete) |
-| bike-core/src/auth/controllers/auth.rs | 0 (complete) |
-| bike-core/src/auth/extractors/auth_info.rs | 0 (complete) |
-| bike-core/src/auth/extractors/user_context.rs | 0 (complete) |
-| bike-core/src/background_jobs/admin.rs | 0 (complete) |
-| bike-core/src/background_jobs/batches.rs | 0 (complete) |
-| bike-core/src/background_jobs/batches/reprocessing.rs | 0 (complete) |
-| bike-core/src/background_jobs/batches/segments.rs | 0 (complete) |
-| bike-core/src/background_jobs/diagnostics.rs | 0 (complete) |
-| bike-core/src/background_jobs/diagnostics/graph.rs | 0 (complete) |
-| bike-core/src/background_jobs/diagnostics/health.rs | 0 (complete) |
-| bike-core/src/background_jobs/diagnostics/statistics.rs | 0 (complete) |
-| bike-core/src/heatmaps/data.rs | 0 (complete) |
-| bike-core/src/heatmaps/projection.rs | 0 (complete) |
-| bike-core/src/platform/feature_flags/service.rs | 0 (complete) |
-| bike-core/src/segment_regeneration.rs | 0 (complete) |
-| bike-core/src/segment_support.rs | 0 (complete) |
-| bike-core/src/services/reports.rs | 0 (complete) |
-| bike-core/src/services/training_goals.rs | 0 (complete) |
-| bike-core/src/strava/connection.rs | 0 (complete) |
-| bike-core/src/strava/native/persistence.rs | 0 (complete) |
-| bike-core/src/training_profile.rs | 0 (complete) |
-| bike-core/src/xc_goal_backfill.rs | 0 (complete) |
-| worker/src/tasks/processors/process_activity_import.rs | 0 (complete) |
-| **Total remaining** | **0** |
+| bike-core/src/activity_import_recovery.rs                 | 0 (complete) |
+| bike-core/src/activity_lifecycle.rs                       | 0 (complete) |
+| bike-core/src/activity_training_analysis.rs               | 0 (complete) |
+| bike-core/src/analytics.rs                                | 0 (complete) |
+| bike-core/src/archive_import.rs                           | 0 (complete) |
+| bike-core/src/archive_import/batch.rs                     | 0 (complete) |
+| bike-core/src/auth/controllers/auth.rs                    | 0 (complete) |
+| bike-core/src/auth/extractors/auth_info.rs                | 0 (complete) |
+| bike-core/src/auth/extractors/user_context.rs             | 0 (complete) |
+| bike-core/src/background_jobs/admin.rs                    | 0 (complete) |
+| bike-core/src/background_jobs/batches.rs                  | 0 (complete) |
+| bike-core/src/background_jobs/batches/reprocessing.rs     | 0 (complete) |
+| bike-core/src/background_jobs/batches/segments.rs         | 0 (complete) |
+| bike-core/src/background_jobs/diagnostics.rs              | 0 (complete) |
+| bike-core/src/background_jobs/diagnostics/graph.rs        | 0 (complete) |
+| bike-core/src/background_jobs/diagnostics/health.rs       | 0 (complete) |
+| bike-core/src/background_jobs/diagnostics/statistics.rs   | 0 (complete) |
+| bike-core/src/heatmaps/data.rs                            | 0 (complete) |
+| bike-core/src/heatmaps/projection.rs                      | 0 (complete) |
+| bike-core/src/platform/feature_flags/service.rs           | 0 (complete) |
+| bike-core/src/segment_regeneration.rs                     | 0 (complete) |
+| bike-core/src/segment_support.rs                          | 0 (complete) |
+| bike-core/src/services/reports.rs                         | 0 (complete) |
+| bike-core/src/services/training_goals.rs                  | 0 (complete) |
+| bike-core/src/strava/connection.rs                        | 0 (complete) |
+| bike-core/src/strava/native/persistence.rs                | 0 (complete) |
+| bike-core/src/training_profile.rs                         | 0 (complete) |
+| bike-core/src/xc_goal_backfill.rs                         | 0 (complete) |
+| worker/src/tasks/processors/process_activity_import.rs    | 0 (complete) |
+| **Total remaining**                                       |        **0** |
 
 ### Completed migration and acceptance
 
@@ -280,21 +287,21 @@ Paths are relative to `bike-rs`. Counts exclude owning entity implementations.
 
 ### Constructor inventory at the baseline
 
-| Caller | Constructors |
-| --- | ---: |
-| api/src/controllers/user_preferences.rs | 1 |
-| api/src/controllers/segments.rs | 2 |
-| bike-core/src/strava/connection.rs | 1 |
-| bike-core/src/analytics.rs | 6 |
-| bike-core/src/activity_import_execution.rs | 1 |
-| bike-core/src/archive_import.rs | 4 |
-| bike-core/src/activity_training_analysis.rs | 1 |
-| bike-core/src/activity_import_lock.rs | 1 |
-| bike-core/src/activity_import_pipeline.rs | 3 |
-| bike-core/src/activity_import_lifecycle.rs | 1 |
-| bike-core/src/provider_rate_limit.rs | 2 |
-| bike-core/src/background_jobs/execution.rs | 1 |
-| **Total** | **24** |
+| Caller                                      | Constructors |
+| ------------------------------------------- | -----------: |
+| api/src/controllers/user_preferences.rs     |            1 |
+| api/src/controllers/segments.rs             |            2 |
+| bike-core/src/strava/connection.rs          |            1 |
+| bike-core/src/analytics.rs                  |            6 |
+| bike-core/src/activity_import_execution.rs  |            1 |
+| bike-core/src/archive_import.rs             |            4 |
+| bike-core/src/activity_training_analysis.rs |            1 |
+| bike-core/src/activity_import_lock.rs       |            1 |
+| bike-core/src/activity_import_pipeline.rs   |            3 |
+| bike-core/src/activity_import_lifecycle.rs  |            1 |
+| bike-core/src/provider_rate_limit.rs        |            2 |
+| bike-core/src/background_jobs/execution.rs  |            1 |
+| **Total**                                   |       **24** |
 
 ### Mutation acceptance
 
@@ -357,8 +364,9 @@ Paths are relative to `bike-rs`. Counts exclude owning entity implementations.
   including the 18 new regressions.
 - Required workspace Clippy passed with all targets/features and warnings denied.
   Required formatting and hooks run again against the final staged commit.
-- Core and API reuse a shared SQLite table helper to reproduce the migration's
-  segment freshness and account timestamp defaults.
+- Historical local counts above preceded removal of the SQLite-backed suites.
+  Those suites, timestamp helpers, and SQLite dev-dependency features are retired.
+  Retain pure and PostgreSQL-mocked cases; current CI provides validation evidence.
   Production migration history and transaction behavior are unchanged.
 - Full changed-line coverage, PostgreSQL, integration, build, and browser gates
   remain the CI acceptance evidence for this PR.

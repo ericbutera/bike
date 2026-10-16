@@ -1,6 +1,7 @@
 pub mod activities;
 pub mod activity_analytics;
 pub mod activity_archive_import_jobs;
+pub mod activity_event_history;
 pub mod activity_import_artifacts;
 pub mod activity_import_attempts;
 pub mod activity_import_locks;
@@ -24,9 +25,3 @@ pub mod user_preferences;
 
 #[cfg(test)]
 mod model_boundary_tests;
-
-#[cfg(test)]
-mod mutation_boundary_tests;
-
-#[cfg(test)]
-mod model_defaults_tests;

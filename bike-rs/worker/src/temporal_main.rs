@@ -6,16 +6,17 @@ use temporalio_sdk::Runtime;
 
 #[tokio::main]
 async fn main() -> Result<(), strava_temporal::client::Error> {
-    let _observability = observability::init_observability("bike-strava-temporal");
+    let _observability = observability::init_observability("bike-temporal");
     let config = TemporalConfig::from_env();
-    let db = bike_core::db::connect_database(&Config::init_from_env().database_url).await?;
+    let app = Config::init_from_env();
+    let db = bike_core::db::connect_database(&app.database_url).await?;
     let client = connect(&config).await?;
     strava_temporal::client::ensure_schedule(&client, &config).await?;
     bike_core::provider_metrics::init_provider_metrics();
     let sdk_address = std::env::var("TEMPORAL_METRICS_ADDRESS")
         .unwrap_or_else(|_| "0.0.0.0:9092".into())
         .parse()?;
-    let (options, _metrics_server) = strava_temporal::metrics::start(sdk_address)?;
+    let (options, _metrics_server) = worker::temporal_metrics::start(sdk_address)?;
     let runtime = Runtime::from_current_tokio(options)?;
     let listener = tokio::net::TcpListener::bind("0.0.0.0:9091").await?;
     let metrics = axum::serve(
@@ -24,15 +25,55 @@ async fn main() -> Result<(), strava_temporal::client::Error> {
     )
     .into_future();
     let events = dispatch_events(client.clone(), config.clone(), db.clone());
-    let mut worker = worker(&runtime, client, &config, db)?;
-    let shutdown = worker.shutdown_handle();
+    let mut strava = worker(&runtime, client.clone(), &config, db.clone())?;
+    let mut bike = bike_temporal::runtime::worker(&runtime, client, db, app.uploads_dir.clone())?;
+    let stop_strava = strava.shutdown_handle();
+    let stop_bike = bike.shutdown_handle();
+    let shutdown = || {
+        stop_strava();
+        stop_bike();
+    };
     tracing::info!(
         temporal_namespace = config.namespace,
         task_queue = config.task_queue,
-        "Native Strava Temporal worker started"
+        bike_task_queue = bike_temporal::TASK_QUEUE,
+        "Temporal worker started for Strava and Bike"
     );
-    let run = async { worker.run().await.map_err(Into::into) };
+    let queue_stop_strava = strava.shutdown_handle();
+    let queue_stop_bike = bike.shutdown_handle();
+    let run = run_queues(
+        async { strava.run().await.map_err(Into::into) },
+        async { bike.run().await.map_err(Into::into) },
+        queue_stop_strava,
+        queue_stop_bike,
+    );
     supervise(run, events, metrics, shutdown_signal(), shutdown).await
+}
+
+/// Either queue ending stops/drains its sibling before the process exits.
+async fn run_queues(
+    strava: impl Future<Output = Result<(), Error>>,
+    bike: impl Future<Output = Result<(), Error>>,
+    stop_strava: impl FnOnce(),
+    stop_bike: impl FnOnce(),
+) -> Result<(), Error> {
+    tokio::pin!(strava);
+    tokio::pin!(bike);
+    tokio::select! {
+        result = &mut strava => {
+            stop_bike();
+            let drained = bike.await;
+            result?;
+            drained?;
+        }
+        result = &mut bike => {
+            stop_strava();
+            let drained = strava.await;
+            result?;
+            drained?;
+        }
+    }
+    Ok(())
 }
 
 async fn supervise(
@@ -79,6 +120,46 @@ async fn shutdown_signal() -> Result<(), std::io::Error> {
 mod tests {
     use super::*;
     use std::future::pending;
+
+    #[tokio::test]
+    async fn either_queue_completing_or_failing_drains_its_sibling() {
+        use std::sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        };
+        for strava_finishes in [true, false] {
+            for fail in [true, false] {
+                let (send, receive) = tokio::sync::oneshot::channel();
+                let drained = Arc::new(AtomicBool::new(false));
+                let finished = drained.clone();
+                let ending = async move {
+                    if fail {
+                        Err(std::io::Error::other("queue failed").into())
+                    } else {
+                        Ok(())
+                    }
+                };
+                let sibling = async move {
+                    receive.await.unwrap();
+                    finished.store(true, Ordering::SeqCst);
+                    Ok(())
+                };
+                let stop = || {
+                    send.send(()).unwrap();
+                };
+                let result = if strava_finishes {
+                    run_queues(ending, sibling, || panic!("queue already stopped"), stop).await
+                } else {
+                    run_queues(sibling, ending, stop, || panic!("queue already stopped")).await
+                };
+                assert_eq!(result.is_err(), fail);
+                assert!(drained.load(Ordering::SeqCst));
+                if fail {
+                    assert_eq!(result.unwrap_err().to_string(), "queue failed");
+                }
+            }
+        }
+    }
 
     #[tokio::test]
     async fn worker_completion_and_failure_end_the_process() {

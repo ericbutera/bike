@@ -107,7 +107,7 @@ async fn shared_import_activity_preserves_new_activity_and_background_refresh_pr
 }
 
 #[tokio::test]
-async fn bulk_new_imports_refresh_user_data_at_high_priority() {
+async fn bulk_new_imports_keep_background_refresh_priority() {
     let environment = environment(Arc::new(Operations::default()));
     let mut command = import_command();
     command.source.priority = Priority::Background;
@@ -115,7 +115,7 @@ async fn bulk_new_imports_refresh_user_data_at_high_priority() {
         .run(ImportActivities::activity_import, command)
         .await
         .unwrap();
-    assert_eq!(result, import_result().with_priority(Priority::NewActivity));
+    assert_eq!(result, import_result().with_priority(Priority::Background));
 }
 
 #[tokio::test]

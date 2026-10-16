@@ -132,15 +132,11 @@ fn invalid_reprocess_revision_fails_before_any_side_effects() {
 }
 
 #[test]
-fn late_successful_import_after_cancellation_does_not_handoff_derived_work() {
+fn cancellation_after_apply_starts_is_too_late_and_handoffs_finish() {
     let command = import_command();
     let mut mock = WorkflowMock::new::<ProcessActivityImport>(command.source.clone());
     let seq = scheduled(&mut mock, "activity_import", &command, 1, "user-7");
     mock.cancel();
-    assert!(matches!(
-        mock.next_command(),
-        workflow_command::Variant::RequestCancelActivity(_)
-    ));
     mock.activate(Variant::ResolveActivity(
         workflow_activation::ResolveActivity {
             seq,
@@ -154,5 +150,26 @@ fn late_successful_import_after_cancellation_does_not_handoff_derived_work() {
             ..Default::default()
         },
     ));
+    handoff(&mut mock, &import_result());
+    assert_eq!(mock.result::<ActivityImportResult>(), import_result());
+}
+
+#[test]
+fn cancellation_before_first_worker_activation_stops_owned_work() {
+    let mock = WorkflowMock::cancelled_at_start::<ProcessActivityImport>(import_command().source);
     mock.assert_cancelled();
+}
+
+#[test]
+fn partial_handoff_replay_does_not_repeat_import_or_completed_handoffs() {
+    let input = import_command().source;
+    let command = import_command();
+    let result = import_result();
+    let mut mock = WorkflowMock::new::<ProcessActivityImport>(input.clone());
+    mock.activity("activity_import", &command, &result);
+    mock.activity("schedule_fitness_freshness", &result.fitness, &());
+    let mut mock = mock.restart::<ProcessActivityImport>(input);
+    mock.activity("schedule_segment_analytics", &result.segments, &());
+    mock.activity("schedule_heatmap", result.heatmap.as_ref().unwrap(), &());
+    assert_eq!(mock.result::<ActivityImportResult>(), result);
 }

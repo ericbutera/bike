@@ -1,5 +1,7 @@
 //! Provider assertions on the neutral SDK workflow harness.
+use bike_core::platform::temporal as policy;
 use bike_core::strava::events::StravaEvent;
+use std::time::Duration;
 use temporalio_common::protos::coresdk::workflow_commands::{
     workflow_command, StartChildWorkflowExecution, WorkflowCommand,
 };
@@ -26,10 +28,22 @@ impl WorkflowAssertions for StravaAssertions {
         let Some(workflow_command::Variant::ScheduleActivity(activity)) = &command.variant else {
             panic!("Expected activity {name}")
         };
-        assert_eq!(activity.retry_policy.as_ref().unwrap().maximum_attempts, 12);
+        assert_eq!(
+            activity.retry_policy.as_ref().unwrap(),
+            &policy::activity_retry_policy().into_raw()
+        );
+        assert_eq!(
+            Duration::try_from(activity.start_to_close_timeout.unwrap()).unwrap(),
+            policy::ACTIVITY_EXECUTION_TIMEOUT
+        );
+        assert_eq!(
+            Duration::try_from(activity.heartbeat_timeout.unwrap()).unwrap(),
+            policy::ACTIVITY_HEARTBEAT_TIMEOUT
+        );
     }
 
     fn child(input: &serde_json::Value, command: &StartChildWorkflowExecution) {
+        assert!(command.retry_policy.is_none());
         let input: StravaEvent = serde_json::from_value(input.clone()).unwrap();
         let attributes = command.search_attributes.as_ref().unwrap();
         for (key, expected) in [

@@ -1367,7 +1367,8 @@ fn deficit_from_gate(
             key: XcTrainingDeficitKey::LongRide,
             priority,
             title: "Long-ride benchmark is short".to_string(),
-            detail: "Your biggest recent ride is still below the long endurance benchmark for this event distance.".to_string(),
+            detail: "Your biggest recent ride is still below the long endurance benchmark for this event distance."
+                .to_string(),
             gap_value: gate.gap_value,
             gap_unit: Some(gate.unit),
             suggested_ride: suggested_long_ride(goal, in_taper_window),
@@ -1385,7 +1386,8 @@ fn deficit_from_gate(
             key: XcTrainingDeficitKey::EventSpecificity,
             priority,
             title: "Training routes are not specific enough".to_string(),
-            detail: "Current rides are not matching the event's climbing per mile/kilometer closely enough.".to_string(),
+            detail: "Current rides are not matching the event's climbing per mile/kilometer closely enough."
+                .to_string(),
             gap_value: gate.gap_value,
             gap_unit: Some(gate.unit),
             suggested_ride: suggested_specificity_ride(goal, in_taper_window),

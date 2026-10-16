@@ -25,14 +25,14 @@ async fn reprocess_manifest_and_page_adapters_preserve_selection_inputs_and_fail
         let environment = environment(operations.clone());
         assert_activity(
             &environment,
-            ImportActivities::prepare_reprocess_imports,
+            ReprocessManifestActivities::prepare_reprocess_imports,
             selection.clone(),
             operations.expected(request.manifest.clone()),
         )
         .await;
         assert_activity(
             &environment,
-            ImportActivities::reprocess_import_page,
+            ReprocessManifestActivities::reprocess_import_page,
             request.clone(),
             operations.expected(vec![fixtures::reprocess_entry(&request, 0)]),
         )

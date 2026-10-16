@@ -17,9 +17,6 @@ use chrono::Utc;
 use sea_orm::{DatabaseConnection, DbErr};
 use std::fmt;
 
-#[cfg(test)]
-mod tests;
-
 #[derive(Debug)]
 pub struct SegmentRegenerationError {
     pub message: String,

@@ -47,6 +47,7 @@ pub fn import_command() -> ActivityImport {
                 bytes: 123,
             },
             priority: Priority::NewActivity,
+            cause: None,
         },
         target: ImportTarget::NewActivity,
     }
@@ -186,5 +187,37 @@ pub fn archive_input() -> ArchiveInput {
             bytes: 123,
         },
         batch: batch_input(),
+    }
+}
+pub fn task_cause() -> crate::bike_tasks::TaskCause {
+    use crate::bike_tasks::{TaskActor, TaskCause};
+    TaskCause {
+        correlation_id: "fixture-correlation".into(),
+        request_id: Some("fixture-request".into()),
+        actor: TaskActor::User(1),
+        user_id: 7,
+        received_at: super::timestamp(),
+        trace_context: std::collections::BTreeMap::from([(
+            "traceparent".into(),
+            "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01".into(),
+        )]),
+    }
+}
+
+pub fn job_reference() -> crate::bike_tasks::JobReference {
+    crate::bike_tasks::JobReference {
+        job_id: "unit-workflow".into(),
+        namespace: "bike".into(),
+        run_id: "00000000-0000-4000-8000-000000000099".into(),
+        workflow_type: "process_activity_import".into(),
+    }
+}
+
+pub fn import_execution() -> crate::bike_tasks::ImportExecution {
+    let mut command = import_command();
+    command.source.cause = Some(task_cause());
+    crate::bike_tasks::ImportExecution {
+        command,
+        workflow: job_reference(),
     }
 }

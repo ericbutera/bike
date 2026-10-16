@@ -69,8 +69,6 @@ async fn deletion_queries_belong_to_the_record_deletion_stage() {
 
 #[tokio::test]
 async fn fitness_stage_includes_input_queries_and_published_rows() {
-    // Keep SQL work on the scoped subscriber; SQLite's worker uses a different
-    // thread-local subscriber and can interpret these span IDs in another registry.
     let inserted: BTreeMap<String, sea_orm::Value> = [("id".into(), 1.into())].into();
     let db = MockDatabase::new(DatabaseBackend::Postgres)
         .append_query_results([Vec::<BTreeMap<String, sea_orm::Value>>::new(), Vec::new()])

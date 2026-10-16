@@ -421,10 +421,3 @@ fn record_superseded_execution() {
     tracing::Span::current().record("task.status", "superseded");
     info!("Discarded result from a superseded or canceled execution");
 }
-
-#[cfg(test)]
-#[path = "task_worker_tests.rs"]
-mod tests;
-
-#[cfg(test)]
-mod recovery_tests;

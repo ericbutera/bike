@@ -23,7 +23,9 @@ workspace = true
 axum = { workspace = true }
 strava-temporal = { path = "../strava-temporal" }
 temporalio-sdk = { workspace = true }
+temporalio-common = { workspace = true }
 bike-core = { path = "../bike-core" }
+bike-temporal = { path = "../bike-temporal" }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
@@ -37,4 +39,3 @@ chrono = { version = "0.4", features = ["serde"] }
 [dev-dependencies]
 bike-core = { path = "../bike-core", features = ["test-fixtures"] }
 tokio = { workspace = true, features = ["test-util"] }
-sea-orm = { workspace = true, features = ["sqlx-sqlite"] }

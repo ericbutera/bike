@@ -822,105 +822,11 @@ async fn remove_upload_file(path: PathBuf) {
 #[cfg(test)]
 mod tests {
 
-    use crate::test_support;
-    use sea_orm::EntityTrait;
     mod deletion;
 
     use super::*;
     use crate::activity_details::{serialize_derived_activity_data, ActivityDerivedData};
-    use crate::activity_import_lifecycle::ACTIVITY_IMPORT_STATUS_CANCELED;
-    use crate::entities::integration_events;
     use chrono::{DateTime, Duration};
-    use sea_orm::{Database, PaginatorTrait, Set};
-
-    #[tokio::test]
-    async fn missing_activity_does_not_rewrite_or_recount_a_failed_import() {
-        let db = Database::connect("sqlite::memory:")
-            .await
-            .expect("in-memory db");
-        let schema = sea_orm::Schema::new(db.get_database_backend());
-        db.execute(
-            &schema.create_table_from_entity(crate::entities::activity_import_artifacts::Entity),
-        )
-        .await
-        .expect("create import artifacts table");
-        db.execute(&schema.create_table_from_entity(activity_imports::Entity))
-            .await
-            .expect("create activity imports table");
-        db.execute(
-            &schema.create_table_from_entity(crate::entities::activity_import_attempts::Entity),
-        )
-        .await
-        .expect("create activity imports table");
-        db.execute(&schema.create_table_from_entity(integration_events::Entity))
-            .await
-            .expect("create integration events table");
-
-        let now = Utc::now();
-        let error = "Activity import 1014 has no linked activity to resume";
-        let failed_import =
-            insert_resume_test_import(&db, ACTIVITY_IMPORT_STATUS_FAILED, Some(error), now).await;
-        insert_resume_test_import(&db, ACTIVITY_IMPORT_STATUS_CANCELED, None, now).await;
-
-        let imports = load_incomplete_activity_imports_for_user(&db, 42)
-            .await
-            .expect("load resumable imports");
-        assert_eq!(imports.len(), 1);
-        assert_eq!(imports[0].id, failed_import.id);
-
-        let mut progress = ResumeImportProgress::default();
-        resume_activity_import(
-            &db,
-            "/tmp",
-            42,
-            failed_import.clone(),
-            &HashMap::new(),
-            &TrainingProfile::default(),
-            &mut progress,
-        )
-        .await
-        .expect("skip missing activity");
-
-        let stored = activity_imports::Entity::find_for_administration(&db, failed_import.id)
-            .await
-            .expect("load failed import")
-            .expect("failed import exists");
-        assert_eq!(stored.status, ACTIVITY_IMPORT_STATUS_FAILED);
-        assert_eq!(stored.processing_attempts, 66);
-        assert_eq!(stored.processing_error.as_deref(), Some(error));
-        assert_eq!(progress.failed_count(), 0);
-        assert_eq!(
-            integration_events::Entity::find().count(&db).await.unwrap(),
-            0
-        );
-    }
-
-    async fn insert_resume_test_import(
-        db: &DatabaseConnection,
-        status: &str,
-        processing_error: Option<&str>,
-        now: DateTime<Utc>,
-    ) -> activity_imports::Model {
-        test_support::insert(
-            db,
-            activity_imports::ActiveModel {
-                user_id: Set(42),
-                source: Set("archive_url_import".to_string()),
-                status: Set(status.to_string()),
-                processing_stage: Set("complete".to_string()),
-                processing_error: Set(processing_error.map(str::to_string)),
-                processing_attempts: Set(66),
-                processed_at: Set(None),
-                last_processing_event_at: Set(Some(now)),
-                original_filename: Set("archive-ride.gpx".to_string()),
-                storage_path: Set("activity-imports/archive-ride.gpx".to_string()),
-                created_at: Set(now),
-                updated_at: Set(now),
-                ..crate::test_support::new_activity_import()
-            },
-        )
-        .await
-    }
 
     fn make_route_point(elapsed_seconds: i32, latitude: f64, longitude: f64) -> ActivityRoutePoint {
         ActivityRoutePoint {

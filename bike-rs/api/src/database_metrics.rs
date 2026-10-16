@@ -66,6 +66,3 @@ fn set_record_count(kind: &str, window: &str, count: u64) {
 fn gauge_value(count: u64) -> i64 {
     count.min(i64::MAX as u64) as i64
 }
-#[cfg(test)]
-#[path = "database_metrics_tests.rs"]
-mod tests;

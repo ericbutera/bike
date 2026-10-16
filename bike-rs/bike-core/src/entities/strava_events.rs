@@ -158,22 +158,26 @@ impl Model {
             .await?
             .ok_or(DbErr::RecordNotFound("Strava event was not stored".into()))?;
         if inserted > 0 {
-            super::integration_events::Entity::record(&txn, super::integration_events::NewEvent {
-                user_id: Some(event.bike_user_id),
-                provider: "strava".into(),
-                event_type: "strava.event.accepted".into(),
-                level: "info".into(),
-                message: format!("Strava {:?} requested.", event.operation),
-                connection_id: Some(event.connection_id),
-                payload: Some(serde_json::json!({
-                    "operation":event.operation, "strava_event_id":row.id,
-                    "correlation_id":row.correlation_id, "parent_event_id":row.parent_event_id,
-                    "bike_customer_id":row.customer_id,"bike_user_id":row.user_id,
-                    "strava_athlete_id":row.athlete_id,"strava_activity_id":row.activity_id,
-                    "temporal_namespace":std::env::var("TEMPORAL_NAMESPACE").unwrap_or_else(|_| "bike".into()),
-                    "temporal_workflow_id":row.workflow_id,
-                })),
-            }).await?;
+            super::integration_events::Entity::record(
+                &txn,
+                super::integration_events::NewEvent {
+                    user_id: Some(event.bike_user_id),
+                    provider: "strava".into(),
+                    event_type: "strava.event.accepted".into(),
+                    level: "info".into(),
+                    message: format!("Strava {:?} requested.", event.operation),
+                    connection_id: Some(event.connection_id),
+                    payload: Some(serde_json::json!({
+                        "operation":event.operation, "strava_event_id":row.id,
+                        "correlation_id":row.correlation_id, "parent_event_id":row.parent_event_id,
+                        "bike_customer_id":row.customer_id,"bike_user_id":row.user_id,
+                        "strava_athlete_id":row.athlete_id,"strava_activity_id":row.activity_id,
+                        "temporal_namespace":std::env::var("TEMPORAL_NAMESPACE").unwrap_or_else(|_| "bike".into()),
+                        "temporal_workflow_id":row.workflow_id,
+                    })),
+                },
+            )
+            .await?;
         }
         txn.commit().await?;
         Ok(row)

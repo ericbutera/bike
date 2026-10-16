@@ -67,7 +67,9 @@ impl RecoveryRun {
                     || run.refresh_recent
                     || run.withhold_unrecovered))
         {
-            return Err("Require --user-id > 0, --after-id >= 0, --limit 1..32; --refresh-recent requires --apply".into());
+            return Err(
+                "Require --user-id > 0, --after-id >= 0, --limit 1..32; --refresh-recent requires --apply".into(),
+            );
         }
         Ok(run)
     }

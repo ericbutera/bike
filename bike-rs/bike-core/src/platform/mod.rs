@@ -8,6 +8,7 @@ pub mod error;
 pub mod feature_flags;
 pub mod openapi;
 pub mod system_metrics;
+pub mod temporal;
 
 pub use error::PlatformError;
 pub use openapi::SecurityAddon;

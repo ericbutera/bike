@@ -25,7 +25,7 @@ The analysis cache stores:
 
 The cache is rebuilt when activity data changes. Import, reprocess, delete, and segment-regeneration paths must keep this derived state consistent with the source activity records.
 
-- Recalculation follows the shared [priority and debounce contract](project-overview.md#derived-work-priority-and-debounce).
+- Recalculation follows the shared [priority and debounce contract](background-work.md#eventual-consistency-debounce-and-priority).
 - Coalesce affected users/resources across uploads and provider sync; use incremental
   dirty ranges. Track pending derived output separately from source ingestion.
 - Fitness/training reads show current cached results or visible refresh state;

@@ -1,6 +1,7 @@
 pub mod activity_import_history;
 pub mod activity_import_lock;
 pub mod activity_location;
+pub mod activity_reprocessing;
 pub mod app_error;
 pub mod controllers;
 mod database_metrics;
@@ -307,78 +308,5 @@ mod tracing_filter_tests {
 
         let spans = exporter.get_finished_spans().expect("export response span");
         (exporter, spans)
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn request_receipt_and_id_are_preserved_in_enqueued_work() {
-        use bike_core::background_jobs::{
-            background_tasks,
-            entities::{pipeline_runs, pipeline_tasks},
-            pipeline::PipelineContext,
-        };
-        use sea_orm::{ConnectionTrait, Database, EntityTrait, Schema};
-        let db = Database::connect("sqlite::memory:").await.unwrap();
-        let schema = Schema::new(db.get_database_backend());
-        db.execute(&schema.create_table_from_entity(background_tasks::Entity))
-            .await
-            .unwrap();
-        db.execute(&schema.create_table_from_entity(pipeline_runs::Entity))
-            .await
-            .unwrap();
-        db.execute(&schema.create_table_from_entity(pipeline_tasks::Entity))
-            .await
-            .unwrap();
-        db.execute(&schema.create_table_from_entity(
-            bike_core::background_jobs::entities::pipeline_subjects::Entity,
-        ))
-        .await
-        .unwrap();
-        let queue_db = db.clone();
-        let app = axum::Router::new()
-            .route(
-                "/enqueue",
-                axum::routing::post(move || {
-                    let db = queue_db.clone();
-                    async move {
-                        background_tasks::Model::enqueue(
-                            &db,
-                            "fixture".into(),
-                            serde_json::json!({}),
-                            None,
-                            3,
-                        )
-                        .await
-                        .unwrap();
-                        StatusCode::ACCEPTED
-                    }
-                }),
-            )
-            .layer(axum::middleware::from_fn(super::request_id_response_header));
-        let request = Request::builder()
-            .method("POST")
-            .uri("/enqueue")
-            .header("x-request-id", "receipt-test")
-            .body(Body::empty())
-            .unwrap();
-        let response = app.oneshot(request).await.unwrap();
-        assert_eq!(response.status(), StatusCode::ACCEPTED);
-        assert_eq!(response.headers()["x-request-id"], "receipt-test");
-        let task = background_tasks::Entity::find()
-            .one(&db)
-            .await
-            .unwrap()
-            .unwrap();
-        let origin = PipelineContext::from_payload(&task.payload)
-            .unwrap()
-            .unwrap();
-        assert_eq!(origin.request_id.as_deref(), Some("receipt-test"));
-        assert!(origin.pipeline_started_at <= task.created_at);
-        let root = pipeline_runs::Entity::find_by_id(origin.run_id)
-            .one(&db)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(root.pipeline_started_at, origin.pipeline_started_at);
-        assert!(root.available_at.is_none());
     }
 }

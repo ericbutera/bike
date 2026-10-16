@@ -4,6 +4,19 @@ use serde::Serialize;
 use std::sync::{Arc, Mutex};
 use temporalio_sdk::{activities::ActivityContext, testing::ActivityEnvironment};
 
+mod submission;
+pub(crate) use submission::{reprocess_input, SubmissionFixture};
+
+fn activity_info() -> temporalio_sdk::activities::ActivityInfo {
+    let job = fixtures::job_reference();
+    temporalio_sdk::testing::TestActivityInfoOptions::builder()
+        .namespace(job.namespace)
+        .workflow_id(Some(job.job_id))
+        .workflow_run_id(Some(job.run_id))
+        .workflow_type(Some(job.workflow_type))
+        .build()
+}
+
 #[derive(Default)]
 pub(super) struct Operations {
     pub received: Mutex<Vec<(&'static str, serde_json::Value)>>,
@@ -53,9 +66,19 @@ pub(super) async fn assert_activity<A>(
     }
 }
 
+pub(super) fn assert_retryable(error: &temporalio_sdk::testing::ActivityEnvironmentError) {
+    use temporalio_sdk::{activities::ActivityError, testing::ActivityEnvironmentError};
+    let ActivityEnvironmentError::Activity(ActivityError::Application(failure)) = error else {
+        panic!("Expected native application failure: {error:?}");
+    };
+    assert!(!failure.is_non_retryable());
+}
+
 pub(super) fn environment(operations: Arc<Operations>) -> ActivityEnvironment {
     ActivityEnvironment::builder_with_default()
+        .info(activity_info())
         .register_activities(ImportActivities::new(operations.clone()))
+        .register_activities(ReprocessManifestActivities::new(operations.clone()))
         .register_activities(DerivedActivities::new(operations.clone()))
         .register_activities(SegmentActivities::new(operations.clone()))
         .register_activities(TrainingActivities::new(operations.clone()))
@@ -67,12 +90,16 @@ pub(super) fn environment(operations: Arc<Operations>) -> ActivityEnvironment {
 impl ImportOperations for Operations {
     async fn activity_import(
         &self,
-        command: ActivityImport,
+        execution: ImportExecution,
         context: ActivityContext,
     ) -> Result<ActivityImportResult, WorkflowError> {
-        self.record("activity_import", &command, context)?;
+        self.record("activity_import", &execution.command, context)?;
         Ok(fixtures::import_result())
     }
+}
+
+#[async_trait::async_trait]
+impl ReprocessManifestOperations for Operations {
     async fn prepare_reprocess_imports(
         &self,
         selection: ReprocessSelection,

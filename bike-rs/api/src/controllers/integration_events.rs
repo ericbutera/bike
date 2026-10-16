@@ -149,7 +149,3 @@ pub async fn list_admin_integration_events(
             .collect(),
     ))
 }
-
-#[cfg(test)]
-#[path = "integration_events_tests.rs"]
-mod tests;

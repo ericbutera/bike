@@ -8,9 +8,12 @@ pub(super) async fn begin_processing_attempt(
     {
         Some(attempt) => attempt,
         None => {
-            let source = load_best_activity_parsing_artifact(run.db, &run.import).await
+            let source = load_best_activity_parsing_artifact(run.db, &run.import)
+                .await
                 .map(|artifact| artifact_metadata(&artifact))
-                .unwrap_or_else(|_| serde_json::json!({"filename": run.import.original_filename, "format": run.import.format}));
+                .unwrap_or_else(
+                    |_| serde_json::json!({"filename": run.import.original_filename, "format": run.import.format}),
+                );
             execution::create_attempt(
                 run.db,
                 &run.import,
@@ -156,10 +159,12 @@ fn stage_summary(state: &ActivityProcessingState, node: ActivityProcessingNode) 
             .map_or_else(Vec::new, |activity| {
                 vec![format!("Saved activity #{}", activity.id)]
             }),
-        ActivityProcessingNode::SegmentsBuilt => vec![format!(
-            "{} affected segments",
-            state.affected_segment_ids.len()
-        )],
+        ActivityProcessingNode::SegmentsBuilt => {
+            vec![format!(
+                "{} affected segments",
+                state.affected_segment_ids.len()
+            )]
+        }
         ActivityProcessingNode::SegmentAnalyticsBuilt => vec![format!(
             "Rebuilt analytics for {} segments",
             state.affected_segment_ids.len()

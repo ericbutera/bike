@@ -115,10 +115,14 @@ describe("AdminTaskTools", () => {
       activity_id: 1647,
       activity_import_id: 88,
       user_id: 1,
-      task_id: "302",
-      task_status: "pending",
-      status: "queued",
-      message: "Activity reprocessing queued.",
+      job: {
+        job_id: "bike-task-reprocess_activity_import-user-1-fixture-command",
+        namespace: "bike",
+        run_id: "fixture-run",
+        workflow_type: "reprocess_activity_import",
+      },
+      status: "accepted",
+      message: "Activity reprocessing accepted.",
     });
 
     const user = userEvent.setup();
@@ -132,8 +136,17 @@ describe("AdminTaskTools", () => {
     expect(mocks.reprocessActivityAsync).toHaveBeenCalledWith(1647);
 
     await waitFor(() => {
-      expect(screen.getByText("Queued activity reprocess")).toBeInTheDocument();
+      expect(
+        screen.getByText("Activity reprocess accepted"),
+      ).toBeInTheDocument();
     });
+
+    expect(screen.getByText("Job id")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "bike-task-reprocess_activity_import-user-1-fixture-command",
+      ),
+    ).toBeInTheDocument();
 
     expect(
       screen.getByRole("link", { name: /trace activity events/i }),

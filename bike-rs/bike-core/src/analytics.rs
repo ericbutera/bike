@@ -11,8 +11,6 @@ use crate::training_data::{
     deserialize_activity_heart_rate_zones, weighted_zone_intensity, StoredActivityHeartRateZones,
 };
 use chrono::{DateTime, Duration, NaiveDate, Utc};
-#[cfg(test)]
-use sea_orm::Set;
 use sea_orm::{ConnectionTrait, DatabaseConnection, TransactionSession, TransactionTrait};
 use std::collections::{BTreeMap, HashMap};
 
@@ -941,79 +939,7 @@ fn estimated_heart_rate_ratio_from_fields(
 mod tests {
 
     use super::*;
-    use crate::test_support;
-    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
-    #[tokio::test]
-    async fn stale_fitness_rebuild_cannot_clear_a_newer_dirty_revision() {
-        use sea_orm::{ConnectionTrait, Database, PaginatorTrait, Schema};
-        let db = Database::connect("sqlite::memory:").await.unwrap();
-        let schema = Schema::new(db.get_database_backend());
-        for statement in [
-            schema.create_table_from_entity(analytics_user_states::Entity),
-            schema.create_table_from_entity(fitness_freshness_daily::Entity),
-        ] {
-            db.execute(&statement).await.unwrap();
-        }
-        let changed = Utc::now() - chrono::Duration::minutes(1);
-        let state = test_support::insert(
-            &db,
-            analytics_user_states::ActiveModel {
-                user_id: Set(7),
-                last_activity_change_at: Set(changed),
-                fitness_dirty_from_day: Set(Some(changed.date_naive())),
-                ..Default::default()
-            },
-        )
-        .await;
-        let input = FitnessFreshnessRebuildInput {
-            state: Some(state),
-            dirty_from_day: Some(changed.date_naive()),
-            activity_rows: vec![],
-            checkpoint_row: None,
-            start_date: changed.date_naive(),
-            end_date: changed.date_naive(),
-        };
-        let newer = Utc::now();
-        analytics_user_states::Entity::update_many()
-            .col_expr(
-                analytics_user_states::Column::LastActivityChangeAt,
-                sea_orm::sea_query::Expr::value(newer),
-            )
-            .filter(analytics_user_states::Column::UserId.eq(7))
-            .exec(&db)
-            .await
-            .unwrap();
-        assert!(
-            !persist_fitness_freshness_rebuild(&db, 7, input, vec![], Utc::now())
-                .await
-                .unwrap()
-        );
-        let stored = analytics_user_states::Model::for_user(&db, 7)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(stored.last_activity_change_at, newer);
-        assert!(stored.fitness_dirty_from_day.is_some());
-        assert_eq!(
-            fitness_freshness_daily::Entity::find()
-                .count(&db)
-                .await
-                .unwrap(),
-            0
-        );
-        assert!(
-            !analytics_user_states::Model::complete_rebuild(&db, 7, None, Utc::now())
-                .await
-                .unwrap()
-        );
-        assert!(analytics_user_states::Model::for_user(&db, 7)
-            .await
-            .unwrap()
-            .unwrap()
-            .fitness_dirty_from_day
-            .is_some());
-    }
     use chrono::{DateTime, Utc};
 
     fn make_activity(

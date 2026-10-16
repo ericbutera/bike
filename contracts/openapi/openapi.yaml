@@ -1131,19 +1131,17 @@ paths:
         required: true
       responses:
         '202':
-          description: Queued stored-file activity reprocessing for one activity
+          description: Temporal accepted stored-file activity reprocessing
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ReprocessActivityImportResponse'
-              example:
-                activity_id: 42
-                activity_import_id: 17
-                message: Activity reprocessing queued.
-                status: queued
-                task_id: '42'
-                task_status: pending
-                user_id: 12
+        '400':
+          description: No supported retained source for native reprocessing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
         '401':
           description: Unauthorized
         '403':
@@ -1155,7 +1153,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiErrorResponse'
         '409':
-          description: Another activity import is already running or queued
+          description: Activity and retained source do not match
           content:
             application/json:
               schema:
@@ -6195,6 +6193,24 @@ components:
           imported_count: 3
         provider: strava
         user_id: 12
+    JobReference:
+      type: object
+      required:
+      - job_id
+      - namespace
+      - run_id
+      - workflow_type
+      properties:
+        job_id:
+          type: string
+          description: 'Stable public job identity: the acknowledged Temporal Workflow ID.'
+        namespace:
+          type: string
+        run_id:
+          type: string
+          description: The acknowledged run; Continue-As-New may create subsequent runs.
+        workflow_type:
+          type: string
     MessageResponse:
       type: object
       required:
@@ -7474,11 +7490,18 @@ components:
           type: integer
           format: int32
           example: 42
+        command_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+          description: Reuse this UUID if submission fails or its response is lost.
       example:
         activity_id: 42
     ReprocessActivityImportResponse:
       type: object
       required:
+      - job
       - activity_id
       - activity_import_id
       - user_id
@@ -7495,30 +7518,26 @@ components:
           type: integer
           format: int32
           example: 17
+        job:
+          $ref: '#/components/schemas/JobReference'
         message:
           type: string
-          example: Activity reprocessing queued.
+          example: Activity reprocessing accepted.
         status:
           type: string
-          example: queued
+          example: accepted
         task_id:
           type: string
-          example: '42'
+          description: Compatibility alias for job.job_id; this is a Temporal Workflow ID.
+          example: bike-task-reprocess_activity_import-user-12-command-uuid
         task_status:
           type: string
-          example: pending
+          description: Acceptance status, not the execution's current state.
+          example: accepted
         user_id:
           type: integer
           format: int32
           example: 12
-      example:
-        activity_id: 42
-        activity_import_id: 17
-        message: Activity reprocessing queued.
-        status: queued
-        task_id: '42'
-        task_status: pending
-        user_id: 12
     ReprocessUserActivityImportsRequest:
       type: object
       required:

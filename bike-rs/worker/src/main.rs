@@ -94,8 +94,3 @@ fn spawn_queue_depth_sampler(
         }
     })
 }
-
-#[cfg(test)]
-mod pipeline_fixture_tests;
-#[cfg(test)]
-mod sampler_tests;

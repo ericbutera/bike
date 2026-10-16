@@ -13,9 +13,12 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager.get_connection().execute_unprepared(
-            "ALTER TABLE strava_gateway_bindings DROP COLUMN active_delivery_id, DROP COLUMN lease_until",
-        ).await?;
+        manager
+            .get_connection()
+            .execute_unprepared(
+                "ALTER TABLE strava_gateway_bindings DROP COLUMN active_delivery_id, DROP COLUMN lease_until",
+            )
+            .await?;
         Ok(())
     }
 }

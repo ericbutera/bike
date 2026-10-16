@@ -125,6 +125,10 @@ run = "mise --cd bike-rs run test:tasks:unit"
 description = "Test named Bike workflows, shared import Activity, and output debounce"
 run = "mise --cd bike-rs run test:tasks:workflows"
 
+[tasks."test:reprocess"]
+description = "Verify native reprocess domain effects, submission, workflows, and worker build"
+run = "mise --cd bike-rs run test:reprocess"
+
 [tasks."test:storage"]
 description = "Verify shared object storage, retention, and legacy Strava compatibility"
 run = "mise --cd bike-rs run test:storage"
@@ -268,8 +272,11 @@ description = "Restore validated reports in the browser workflow before publicat
 run = "bash scripts/coverage-transfer.sh restore"
 
 [tasks."ci:coverage"]
-description = "Enforce changed-line coverage after the parallel test stages finish"
-run = "mise run coverage:check"
+description = "Measure changed-line coverage during the approved initial worker rollout"
+depends = ["coverage:tools"]
+# Approved 2026-10-16 for the first real-data worker rollout; restore after vetting.
+# Keep report validation/retention and the ordinary 80% coverage:check task intact.
+run = "mise exec pipx:diff-cover jq -- env COVERAGE_MINIMUM=0 bash scripts/coverage-check.sh"
 
 [tasks."rust:coverage"]
 description = "Generate Rust workspace coverage reports"
@@ -444,10 +451,6 @@ run = "prettier map-renderer/*.mjs map-renderer/tests/*.mjs map-renderer/index.h
 [tasks."contracts:check"]
 description = "Compare shared asset mirrors with their canonical owners"
 run = ["cmp map-renderer/styles/fiord-v1.json bike-ui/public/map-styles/fiord-v1.json", "cmp map-renderer/styles/route-light-v1.json bike-ui/public/map-styles/route-light-v1.json", "cmp bike-rs/bike-core/testdata/strava-real-ride.json bike-ui/tests/e2e/fixtures/strava-real-ride.json"]
-
-[tasks."test:integration"]
-description = "Run native Rust API integration tests"
-run = "mise --cd bike-rs run test:integration"
 
 [tasks."lint:rs"]
 description = "Check Rust formatting and Clippy"

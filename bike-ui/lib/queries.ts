@@ -1102,15 +1102,8 @@ export type ReprocessUserActivityImportsResponse = {
   message: string;
 };
 
-export type ReprocessActivityImportResponse = {
-  activity_id: number;
-  activity_import_id: number;
-  user_id: number;
-  status: string;
-  message: string;
-  task_id: string;
-  task_status: string;
-};
+export type ReprocessActivityImportResponse =
+  components["schemas"]["ReprocessActivityImportResponse"];
 
 export type RegenerateUserSegmentsResponse = {
   user_id: number;
@@ -1521,6 +1514,7 @@ export function useReprocessActivityImport() {
       const result = await mutation.mutateAsync({
         body: {
           activity_id: numericActivityId,
+          command_id: crypto.randomUUID(),
         },
       });
 
