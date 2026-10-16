@@ -128,6 +128,32 @@ flowchart LR
 
 ## Handoff and completion
 
+- Review boundary: the API still constructs the SQL-backed `JobQueue` in
+  `api/src/storage.rs`; for example, its reprocess endpoint calls
+  `state.tasks.reprocess_activity_import`. The Temporal functions in
+  `bike-temporal/src/client.rs` have no API callers or deployed Bike worker yet.
+  Workflow definitions and fake-adapter checks do not establish API cutover.
+- Preserve a small typed task submission interface at application call sites.
+  Capture causal context once at its boundary; controllers should not construct
+  Temporal SDK options, transport headers, or repeated logging metadata.
+- Before activation, define shared durable causal metadata for API and non-HTTP
+  producers: command/correlation identity, receipt time, optional request ID,
+  initiating actor, affected user, and W3C trace context. Keep authenticated actor
+  identity distinct from the owner affected by an administrator's command.
+- Carry that context through workflow starts, Activities, child starts, derived
+  Signal-With-Start handoffs, retries, replay, and Continue-As-New. Include native
+  namespace/workflow/run/Activity/attempt identities in the corresponding logs
+  and spans, and expose useful correlation fields through Temporal visibility.
+- Debounce combines multiple causes. Preserve the contributing command/request
+  links in durable history or retained command records; do not replace all causes
+  with whichever request arrived last. Keep in-memory workflow state and tracing
+  links bounded while preserving the audit references needed for diagnosis.
+- The current Bike command types carry resource/user IDs but lack this causal
+  contract and shared propagation. Existing SQL `PipelineContext` and Strava's
+  event/trace handling provide reference behavior, not proof that the Bike native
+  handoff already retains it. Require focused propagation/fan-in tests and live
+  API-to-workflow trace evidence before a task's producer cutover is verified.
+
 - Import workflows finish after derived requests are durably accepted. They do
   not await derived publication. Source completion and derived readiness are
   separate; a successful import must not claim that all user data is refreshed.

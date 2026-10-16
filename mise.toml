@@ -352,7 +352,7 @@ run = "bash scripts/ci-rust.sh sdk"
 
 [tasks."ci:rust:cache:test"]
 description = "Verify cross-PR Rust check reuse, invalidation, failures, and coverage transfer"
-run = ["mise install node", "mise exec node -- bash scripts/ci-rust-test.sh"]
+run = ["mise install node jq", "mise exec node jq -- bash scripts/ci-rust-test.sh"]
 
 [tasks."ci:ui:unit"]
 description = "Install UI tooling and run lint, type, unit, format, and audit checks"

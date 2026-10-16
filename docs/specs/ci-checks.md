@@ -23,6 +23,13 @@
   all branches. Woodpecker's `bike` workflow concurrency is one so different
   revisions cannot clean, replace, or report against the shared objects at once.
   Unit and PostgreSQL steps within that workflow continue in parallel.
+- Successful Rust verification archives every Rust project listed in
+  `coverage-projects.json`, including its HTML, LCOV, and JSON reports. Keep
+  that manifest as the project inventory instead of duplicating crate names
+  in the result cache. A clean checkout restoring PR results on main must
+  retain every report through coverage transfer and publication.
+- Cache regression fixtures must remove prior workspace reports before testing
+  reuse; leftover cold-run output must not mask an incomplete cache archive.
 - Expire the shared compiler cache after seven idle days, reports after two
   days, and successful verification receipts after seven idle days. Shared
   downloaded tool/package stores expire after seven idle days; prepare refreshes

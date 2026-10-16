@@ -48,6 +48,14 @@ The request path should not scan activities or call route matching inline. CPU-h
 
 When matching completes, the worker should rebuild segment analytics and refresh affected activity analytics so the rest of the app sees consistent derived data.
 
+- `regenerate_activity_segments` works as an individual task as well as a child
+  of user regeneration. Individual execution must not require a batch context.
+- Individual execution refreshes affected segment caches. A batch records those
+  segment IDs for its parent's shared rebuild after all matching children settle.
+- Both paths refresh the matched activity's own analytics, including clearing
+  stale counts when it loses its last match. A segment cache rebuild alone cannot
+  discover an activity removed from all of that segment's current efforts.
+
 Incomplete analytics should feel normal in the UI. A newly created segment may initially show queued or pending matching instead of efforts.
 
 The activity ingestion graph also rebuilds segment efforts after an activity is saved. That pipeline owns import orchestration and trace events; this spec owns the segment route-matching behavior used by that graph stage.

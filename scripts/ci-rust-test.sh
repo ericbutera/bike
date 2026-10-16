@@ -9,6 +9,7 @@ mkdir -p "$fixture/repo/scripts" "$fixture/bin" "$fixture/docker-bin"
 cp scripts/ci-rust.sh scripts/coverage-transfer.sh "$fixture/repo/scripts/"
 cp scripts/test-worker-postgres.sh "$fixture/repo/scripts/"
 cp scripts/ci-engine-stop.sh "$fixture/repo/scripts/"
+cp coverage-projects.json "$fixture/repo/"
 cat >"$fixture/bin/mise" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -40,12 +41,12 @@ case "$*" in
   '--cd bike-rs run coverage:report')
     test -s .artifacts/coverage/unit-measured
     test -s .artifacts/coverage/postgres-measured
-    for project in api worker bike-core strava-temporal; do
+    while IFS= read -r project; do
       mkdir -p ".artifacts/coverage/$project/html"
       for file in html/index.html lcov.info coverage-summary.json; do
         cat .artifacts/coverage/unit-measured .artifacts/coverage/postgres-measured >".artifacts/coverage/$project/$file"
       done
-    done
+    done < <(jq -r '.[] | select(.language == "Rust") | .id' coverage-projects.json)
     ;;
 esac
 SH
@@ -56,6 +57,7 @@ cat >"$fixture/docker-bin/docker" <<'SH'
 SH
 chmod +x "$fixture/docker-bin/docker"
 ln -s "$(command -v node)" "$fixture/bin/node"
+ln -s "$(command -v jq)" "$fixture/bin/jq"
 export PATH="$fixture/bin:/usr/bin:/bin" FIXTURE_COMMANDS="$fixture/commands" FIXTURE_DOCKER_BIN="$fixture/docker-bin"
 # Docker is unavailable until the owning mise execution selects its tool path.
 if command -v docker >/dev/null; then exit 1; fi
@@ -134,12 +136,19 @@ CI_PIPELINE_NUMBER=2 CI_COMMIT_REF=refs/pull/2/merge
 printf 'new UI\n' >>bike-ui/app/page.tsx
 git add bike-ui
 git commit --quiet -m 'test: UI-only revision'
+rm -rf -- .artifacts/coverage
 : >"$FIXTURE_COMMANDS"
 full_run
 assert_no_commands
 grep -q 'cache HIT' "$fixture/unit.log"
 grep -Fxq 'unit measurement' .artifacts/coverage/api/lcov.info
 grep -Fxq 'postgres measurement' .artifacts/coverage/api/lcov.info
+while IFS= read -r project; do
+  for artifact in html/index.html lcov.info coverage-summary.json; do
+    grep -Fxq 'unit measurement' ".artifacts/coverage/$project/$artifact"
+    grep -Fxq 'postgres measurement' ".artifacts/coverage/$project/$artifact"
+  done
+done < <(jq -r '.[] | select(.language == "Rust") | .id' coverage-projects.json)
 
 # Every relevant input type invalidates the result, including deletion/rename.
 for file in bike-rs/api/src/lib.rs bike-rs/Cargo.lock mise.toml contracts/openapi/openapi.json proto/maps.proto .woodpecker/bike.yaml scripts/check.sh; do
