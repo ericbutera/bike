@@ -29,10 +29,7 @@ struct CustomerChildren {
 #[workflow_methods]
 impl ScheduledSync {
     #[run]
-    pub async fn run(
-        ctx: &mut WorkflowContext<Self>,
-        request: Option<ScanRequest>,
-    ) -> WorkflowResult<()> {
+    pub async fn run(ctx: &mut WorkflowContext<Self>, request: Option<ScanRequest>) -> WorkflowResult<()> {
         let request = Self::get_request(request, ctx.run_id())?;
         logging::scan_started(ctx, &request);
         let result = Self::scan(ctx, request.clone()).await;
@@ -53,18 +50,14 @@ impl ScheduledSync {
         match request {
             Some(request) => Ok(request),
             None => Ok(ScanRequest {
-                correlation_id: uuid::Uuid::parse_str(run_id)
-                    .map_err(|error| options::failure(error.to_string()))?,
+                correlation_id: uuid::Uuid::parse_str(run_id).map_err(|error| options::failure(error.to_string()))?,
                 after_connection_id: 0,
                 failed_customers: 0,
             }),
         }
     }
 
-    async fn get_page(
-        ctx: &mut WorkflowContext<Self>,
-        request: &ScanRequest,
-    ) -> WorkflowResult<ScanPage> {
+    async fn get_page(ctx: &mut WorkflowContext<Self>, request: &ScanRequest) -> WorkflowResult<ScanPage> {
         run(ctx, ScanConnections, request.clone()).await
     }
 

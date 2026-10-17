@@ -85,11 +85,9 @@ async fn archive_errors_propagate_to_the_mutation_transaction() {
         .append_exec_errors([DbErr::Custom("fixture archive unavailable".into())])
         .into_connection();
     let transaction = db.begin().await.unwrap();
-    assert!(
-        Model::append(&transaction, fixtures::activity_history_event())
-            .await
-            .is_err()
-    );
+    assert!(Model::append(&transaction, fixtures::activity_history_event())
+        .await
+        .is_err());
     transaction.rollback().await.unwrap();
 }
 

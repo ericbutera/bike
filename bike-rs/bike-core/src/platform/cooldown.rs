@@ -7,10 +7,7 @@ use std::fmt;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BackoffStrategy {
     Simple,
-    Exponential {
-        base_seconds: i64,
-        max_attempts: i32,
-    },
+    Exponential { base_seconds: i64, max_attempts: i32 },
 }
 
 #[derive(Debug)]
@@ -55,11 +52,7 @@ impl From<sea_orm::DbErr> for CooldownError {
 pub struct CooldownService;
 
 impl CooldownService {
-    pub fn calculate_exponential_backoff(
-        base_seconds: i64,
-        attempts: i32,
-        max_attempts: i32,
-    ) -> i64 {
+    pub fn calculate_exponential_backoff(base_seconds: i64, attempts: i32, max_attempts: i32) -> i64 {
         if attempts >= max_attempts {
             2_i64.pow(max_attempts as u32) * base_seconds
         } else {
@@ -87,11 +80,7 @@ impl CooldownService {
                     BackoffStrategy::Exponential {
                         base_seconds,
                         max_attempts,
-                    } => Self::calculate_exponential_backoff(
-                        base_seconds,
-                        rec.attempt_count,
-                        max_attempts,
-                    ),
+                    } => Self::calculate_exponential_backoff(base_seconds, rec.attempt_count, max_attempts),
                 };
 
                 if elapsed < cooldown_secs {
@@ -115,9 +104,7 @@ impl CooldownService {
     ) -> Result<(), CooldownError> {
         cooldowns::Model::increment_attempts(db, subject_type, subject_id, action)
             .await
-            .map_err(|e| {
-                CooldownError::internal_error(format!("Failed to record cooldown failure: {}", e))
-            })?;
+            .map_err(|e| CooldownError::internal_error(format!("Failed to record cooldown failure: {}", e)))?;
         Ok(())
     }
 
@@ -129,9 +116,7 @@ impl CooldownService {
     ) -> Result<(), CooldownError> {
         cooldowns::Model::reset_attempts(db, subject_type, subject_id, action)
             .await
-            .map_err(|e| {
-                CooldownError::internal_error(format!("Failed to reset cooldown: {}", e))
-            })?;
+            .map_err(|e| CooldownError::internal_error(format!("Failed to reset cooldown: {}", e)))?;
         Ok(())
     }
 
@@ -143,9 +128,7 @@ impl CooldownService {
     ) -> Result<(), CooldownError> {
         cooldowns::Model::upsert_last_run(db, subject_type, subject_id, action, Utc::now())
             .await
-            .map_err(|e| {
-                CooldownError::internal_error(format!("Failed to update cooldown: {}", e))
-            })?;
+            .map_err(|e| CooldownError::internal_error(format!("Failed to update cooldown: {}", e)))?;
         Ok(())
     }
 

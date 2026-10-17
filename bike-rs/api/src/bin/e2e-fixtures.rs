@@ -3,15 +3,11 @@
 use bike_core::auth::entities::{refresh_tokens, users};
 use bike_core::background_jobs::entities::background_tasks;
 use bike_core::entities::{
-    activities, activity_archive_import_jobs, activity_import_artifacts, activity_imports,
-    heatmap_projections, segment_efforts, segment_summaries, segment_user_summaries, segments,
-    user_preferences,
+    activities, activity_archive_import_jobs, activity_import_artifacts, activity_imports, heatmap_projections,
+    segment_efforts, segment_summaries, segment_user_summaries, segments, user_preferences,
 };
 use bike_core::heatmaps::{preparation::prepare_activity, projection::PendingProjection};
-use sea_orm::{
-    ActiveModelTrait, DatabaseTransaction, EntityTrait, IntoActiveModel, TransactionTrait,
-    TryIntoModel,
-};
+use sea_orm::{ActiveModelTrait, DatabaseTransaction, EntityTrait, IntoActiveModel, TransactionTrait, TryIntoModel};
 use serde::{Deserialize, Serialize};
 use std::io::Read;
 
@@ -52,13 +48,9 @@ async fn store_record(tx: &DatabaseTransaction, record: Record) -> Result<(), se
         "segment_summaries" => store::<segment_summaries::Entity>(tx, record).await,
         "segment_user_summaries" => store::<segment_user_summaries::Entity>(tx, record).await,
         "background_tasks" => store::<background_tasks::Entity>(tx, record).await,
-        "activity_archive_import_jobs" => {
-            store::<activity_archive_import_jobs::Entity>(tx, record).await
-        }
+        "activity_archive_import_jobs" => store::<activity_archive_import_jobs::Entity>(tx, record).await,
         "refresh_tokens" => store::<refresh_tokens::Entity>(tx, record).await,
-        entity => Err(sea_orm::DbErr::Custom(format!(
-            "Unsupported fixture entity: {entity}"
-        ))),
+        entity => Err(sea_orm::DbErr::Custom(format!("Unsupported fixture entity: {entity}"))),
     }
 }
 
@@ -97,10 +89,7 @@ async fn seed(db: &sea_orm::DatabaseConnection, dataset: Dataset) -> Result<(), 
 async fn prepare_heatmaps(db: &sea_orm::DatabaseConnection) -> Result<(), sea_orm::DbErr> {
     for _ in 0..3 {
         let projections = heatmap_projections::Entity::find().all(db).await?;
-        if projections
-            .iter()
-            .all(|projection| projection.status == "ready")
-        {
+        if projections.iter().all(|projection| projection.status == "ready") {
             return Ok(());
         }
         for projection in projections {

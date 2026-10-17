@@ -44,47 +44,15 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(StravaConnections::UserId)
-                            .integer()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(StravaConnections::AthleteId)
-                            .big_integer()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(StravaConnections::AthleteUsername)
-                            .string()
-                            .null(),
-                    )
-                    .col(
-                        ColumnDef::new(StravaConnections::AthleteFirstName)
-                            .string()
-                            .null(),
-                    )
-                    .col(
-                        ColumnDef::new(StravaConnections::AthleteLastName)
-                            .string()
-                            .null(),
-                    )
-                    .col(
-                        ColumnDef::new(StravaConnections::AthleteProfileMediumUrl)
-                            .text()
-                            .null(),
-                    )
+                    .col(ColumnDef::new(StravaConnections::UserId).integer().not_null())
+                    .col(ColumnDef::new(StravaConnections::AthleteId).big_integer().not_null())
+                    .col(ColumnDef::new(StravaConnections::AthleteUsername).string().null())
+                    .col(ColumnDef::new(StravaConnections::AthleteFirstName).string().null())
+                    .col(ColumnDef::new(StravaConnections::AthleteLastName).string().null())
+                    .col(ColumnDef::new(StravaConnections::AthleteProfileMediumUrl).text().null())
                     .col(ColumnDef::new(StravaConnections::Scopes).text().not_null())
-                    .col(
-                        ColumnDef::new(StravaConnections::AccessToken)
-                            .text()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(StravaConnections::RefreshToken)
-                            .text()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(StravaConnections::AccessToken).text().not_null())
+                    .col(ColumnDef::new(StravaConnections::RefreshToken).text().not_null())
                     .col(
                         ColumnDef::new(StravaConnections::ExpiresAt)
                             .timestamp_with_time_zone()
@@ -101,11 +69,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default("never"),
                     )
-                    .col(
-                        ColumnDef::new(StravaConnections::LastSyncMessage)
-                            .text()
-                            .null(),
-                    )
+                    .col(ColumnDef::new(StravaConnections::LastSyncMessage).text().null())
                     .col(
                         ColumnDef::new(StravaConnections::LastSyncStartedAt)
                             .timestamp_with_time_zone()

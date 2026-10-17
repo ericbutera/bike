@@ -80,12 +80,10 @@ impl Model {
         let end = Entity::find()
             .filter(Column::Id.in_subquery(ids))
             .select_only()
-            .expr(sea_orm::sea_query::Func::max(
-                sea_orm::sea_query::Func::coalesce([
-                    sea_orm::sea_query::Expr::col(Column::CompletedAt),
-                    sea_orm::sea_query::Expr::col(Column::UpdatedAt),
-                ]),
-            ))
+            .expr(sea_orm::sea_query::Func::max(sea_orm::sea_query::Func::coalesce([
+                sea_orm::sea_query::Expr::col(Column::CompletedAt),
+                sea_orm::sea_query::Expr::col(Column::UpdatedAt),
+            ])))
             .into_tuple::<Option<chrono::DateTime<chrono::Utc>>>()
             .one(db)
             .await?
@@ -98,8 +96,7 @@ impl Model {
     pub async fn metadata_for_id(
         db: &impl ConnectionTrait,
         id: i32,
-    ) -> Result<Option<crate::background_jobs::entities::diagnostic_reads::TaskMetadata>, DbErr>
-    {
+    ) -> Result<Option<crate::background_jobs::entities::diagnostic_reads::TaskMetadata>, DbErr> {
         Self::metadata_query()
             .filter(Column::Id.eq(id))
             .into_model()

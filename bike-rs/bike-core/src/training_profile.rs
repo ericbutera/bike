@@ -36,9 +36,7 @@ where
     Ok(training_profile_from_preferences(model.as_ref()))
 }
 
-pub fn training_profile_from_preferences(
-    model: Option<&user_preferences::Model>,
-) -> TrainingProfile {
+pub fn training_profile_from_preferences(model: Option<&user_preferences::Model>) -> TrainingProfile {
     TrainingProfile {
         estimated_ftp_watts: model.and_then(|preferences| preferences.estimated_ftp_watts),
         heart_rate_zone_bounds_bpm: model.and_then(|preferences| {
@@ -49,19 +47,14 @@ pub fn training_profile_from_preferences(
 
 pub fn validate_estimated_ftp_watts(value: Option<i32>) -> Result<Option<i32>, AppError> {
     match value {
-        Some(ftp) if !(MIN_ESTIMATED_FTP_WATTS..=MAX_ESTIMATED_FTP_WATTS).contains(&ftp) => {
-            Err(AppError::validation_field(
-                "estimated_ftp_watts",
-                "Estimated FTP must be between 80 and 600 watts",
-            ))
-        }
+        Some(ftp) if !(MIN_ESTIMATED_FTP_WATTS..=MAX_ESTIMATED_FTP_WATTS).contains(&ftp) => Err(
+            AppError::validation_field("estimated_ftp_watts", "Estimated FTP must be between 80 and 600 watts"),
+        ),
         _ => Ok(value),
     }
 }
 
-pub fn validate_heart_rate_zone_bounds_bpm(
-    value: Option<Vec<i32>>,
-) -> Result<Option<Vec<i32>>, AppError> {
+pub fn validate_heart_rate_zone_bounds_bpm(value: Option<Vec<i32>>) -> Result<Option<Vec<i32>>, AppError> {
     let Some(bounds) = value else {
         return Ok(None);
     };
@@ -101,20 +94,15 @@ pub fn validate_heart_rate_zone_bounds_bpm(
     Ok(Some(bounds))
 }
 
-pub fn serialize_heart_rate_zone_bounds(
-    bounds: Option<&[i32]>,
-) -> Result<Option<StoredHeartRateZoneBounds>, AppError> {
+pub fn serialize_heart_rate_zone_bounds(bounds: Option<&[i32]>) -> Result<Option<StoredHeartRateZoneBounds>, AppError> {
     match bounds {
         Some(values) if !values.is_empty() => Ok(Some(StoredHeartRateZoneBounds(values.to_vec()))),
         _ => Ok(None),
     }
 }
 
-pub fn deserialize_heart_rate_zone_bounds(
-    raw: Option<&StoredHeartRateZoneBounds>,
-) -> Option<Vec<i32>> {
-    raw.map(|value| value.0.clone())
-        .filter(|value| !value.is_empty())
+pub fn deserialize_heart_rate_zone_bounds(raw: Option<&StoredHeartRateZoneBounds>) -> Option<Vec<i32>> {
+    raw.map(|value| value.0.clone()).filter(|value| !value.is_empty())
 }
 
 pub fn serialize_activity_heart_rate_zones(
@@ -125,10 +113,7 @@ pub fn serialize_activity_heart_rate_zones(
     }
 
     Ok(Some(StoredActivityHeartRateZones(
-        zones
-            .iter()
-            .map(StoredActivityHeartRateZoneSummary::from)
-            .collect(),
+        zones.iter().map(StoredActivityHeartRateZoneSummary::from).collect(),
     )))
 }
 
@@ -192,11 +177,7 @@ pub fn summarize_heart_rate_zones(
         .iter()
         .enumerate()
         .map(|(index, label)| {
-            let min_bpm = if index == 0 {
-                None
-            } else {
-                Some(bounds[index - 1] + 1)
-            };
+            let min_bpm = if index == 0 { None } else { Some(bounds[index - 1] + 1) };
             let max_bpm = if index < bounds.len() {
                 Some(bounds[index])
             } else {
@@ -303,13 +284,9 @@ mod tests {
 
     #[test]
     fn validate_heart_rate_zone_bounds_rejects_invalid_shape() {
-        let error =
-            validate_heart_rate_zone_bounds_bpm(Some(vec![120, 120, 155, 170])).unwrap_err();
+        let error = validate_heart_rate_zone_bounds_bpm(Some(vec![120, 120, 155, 170])).unwrap_err();
 
-        assert_eq!(
-            error.message,
-            "Heart rate zone ceilings must be strictly increasing"
-        );
+        assert_eq!(error.message, "Heart rate zone ceilings must be strictly increasing");
     }
 
     #[test]
@@ -413,9 +390,6 @@ mod tests {
             .expect("stored bounds")
             .expect("bounds payload");
 
-        assert_eq!(
-            serde_json::to_value(stored).unwrap(),
-            json!([120, 140, 155, 170])
-        );
+        assert_eq!(serde_json::to_value(stored).unwrap(), json!([120, 140, 155, 170]));
     }
 }

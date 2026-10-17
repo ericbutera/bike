@@ -25,10 +25,8 @@ impl Model {
             .map(|task_type| {
                 Ok(ActiveModel {
                     task_type: Set(task_type.clone()),
-                    definition: Set(
-                        serde_json::to_value(ProcessorDefinition::for_type(task_type))
-                            .map_err(|error| DbErr::Custom(error.to_string()))?,
-                    ),
+                    definition: Set(serde_json::to_value(ProcessorDefinition::for_type(task_type))
+                        .map_err(|error| DbErr::Custom(error.to_string()))?),
                     observed_at: Set(Utc::now()),
                 })
             })

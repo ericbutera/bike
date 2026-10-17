@@ -12,10 +12,7 @@ pub(super) type StartedSync = temporalio_sdk::StartedChildWorkflow<sync_activiti
 #[workflow_methods]
 impl SyncActivities {
     #[run]
-    pub async fn run(
-        ctx: &mut WorkflowContext<Self>,
-        event: StravaEvent,
-    ) -> WorkflowResult<CollectionResult> {
+    pub async fn run(ctx: &mut WorkflowContext<Self>, event: StravaEvent) -> WorkflowResult<CollectionResult> {
         logging::started(ctx, &event);
         let result = Self::sync(ctx, event.clone()).await;
         let result = options::workflow_result(ctx, result);
@@ -23,10 +20,7 @@ impl SyncActivities {
         logging::finished(ctx, log_event, &result);
         result
     }
-    async fn sync(
-        ctx: &mut WorkflowContext<Self>,
-        event: StravaEvent,
-    ) -> WorkflowResult<CollectionResult> {
+    async fn sync(ctx: &mut WorkflowContext<Self>, event: StravaEvent) -> WorkflowResult<CollectionResult> {
         let input = run(ctx, CollectionWindow, event).await?;
         let result = match collection::upsert_pages(ctx, input).await? {
             collection::CollectionStep::Completed(result) => result,

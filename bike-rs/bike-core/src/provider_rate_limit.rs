@@ -66,10 +66,7 @@ fn validate_quota_specs(specs: &[ProviderQuotaBucketSpec]) -> Result<&'static st
         ));
     }
 
-    if specs
-        .iter()
-        .any(|spec| spec.limit_count <= 0 || spec.units <= 0)
-    {
+    if specs.iter().any(|spec| spec.limit_count <= 0 || spec.units <= 0) {
         return Err(AppError::internal(
             "Provider quota reservation must use positive limits and units",
         ));
@@ -102,10 +99,7 @@ where
     C: ConnectionTrait,
 {
     let bucket_names = specs.iter().map(|spec| spec.bucket).collect::<Vec<_>>();
-    Ok(
-        provider_rate_limit_buckets::Model::list_for_reservation(db, provider, &bucket_names)
-            .await?,
-    )
+    Ok(provider_rate_limit_buckets::Model::list_for_reservation(db, provider, &bucket_names).await?)
 }
 
 fn quota_reservation_pause(
@@ -125,9 +119,7 @@ fn quota_reservation_pause(
         let row = quota_bucket_row(provider, spec, &row_by_bucket)?;
         let used_count = row.effective_used_count(now);
 
-        if used_count + spec.units > spec.limit_count
-            && retry_at.is_none_or(|current| row.reset_at > current)
-        {
+        if used_count + spec.units > spec.limit_count && retry_at.is_none_or(|current| row.reset_at > current) {
             retry_at = Some(row.reset_at);
             retry_bucket = Some(spec.bucket.to_string());
         }
@@ -179,15 +171,12 @@ fn quota_spec_for_row<'a>(
     specs: &'a [ProviderQuotaBucketSpec],
     row: &provider_rate_limit_buckets::Model,
 ) -> Result<&'a ProviderQuotaBucketSpec, AppError> {
-    specs
-        .iter()
-        .find(|spec| spec.bucket == row.bucket)
-        .ok_or_else(|| {
-            AppError::internal(format!(
-                "Provider quota bucket {}:{} did not match reservation specs",
-                provider, row.bucket
-            ))
-        })
+    specs.iter().find(|spec| spec.bucket == row.bucket).ok_or_else(|| {
+        AppError::internal(format!(
+            "Provider quota bucket {}:{} did not match reservation specs",
+            provider, row.bucket
+        ))
+    })
 }
 
 async fn reserve_quota_bucket_row<C>(
@@ -210,15 +199,9 @@ pub async fn reconcile_provider_quota_usage(
     used_count: i32,
     reset_at: DateTime<Utc>,
 ) -> Result<(), AppError> {
-    if let Some(row) = provider_rate_limit_buckets::Model::reconcile_usage(
-        db,
-        provider,
-        bucket,
-        limit_count,
-        used_count,
-        reset_at,
-    )
-    .await?
+    if let Some(row) =
+        provider_rate_limit_buckets::Model::reconcile_usage(db, provider, bucket, limit_count, used_count, reset_at)
+            .await?
     {
         record_provider_rate_limit_bucket_metrics(&row);
     }
@@ -235,16 +218,11 @@ fn record_provider_rate_limit_bucket_metrics(row: &provider_rate_limit_buckets::
     );
 }
 
-async fn ensure_bucket_row<C>(
-    db: &C,
-    spec: &ProviderQuotaBucketSpec,
-    now: DateTime<Utc>,
-) -> Result<(), AppError>
+async fn ensure_bucket_row<C>(db: &C, spec: &ProviderQuotaBucketSpec, now: DateTime<Utc>) -> Result<(), AppError>
 where
     C: ConnectionTrait,
 {
-    let existing =
-        provider_rate_limit_buckets::Model::find_bucket(db, spec.provider, spec.bucket).await?;
+    let existing = provider_rate_limit_buckets::Model::find_bucket(db, spec.provider, spec.bucket).await?;
 
     if existing.is_some() {
         return Ok(());

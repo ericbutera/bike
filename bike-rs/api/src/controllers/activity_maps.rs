@@ -97,13 +97,12 @@ mod tests {
     #[tokio::test]
     async fn unconfigured_map_service_returns_the_api_not_found_contract() {
         let pid = uuid::Uuid::new_v4();
-        let user: bike_core::auth::entities::users::Model =
-            serde_json::from_value(serde_json::json!({
-                "id": 1, "pid": pid, "email": "map-test@example.invalid", "api_key": "fixture",
-                "name": "Map test", "disabled": false,
-                "created_at": "2026-10-09T00:00:00Z", "updated_at": "2026-10-09T00:00:00Z"
-            }))
-            .unwrap();
+        let user: bike_core::auth::entities::users::Model = serde_json::from_value(serde_json::json!({
+            "id": 1, "pid": pid, "email": "map-test@example.invalid", "api_key": "fixture",
+            "name": "Map test", "disabled": false,
+            "created_at": "2026-10-09T00:00:00Z", "updated_at": "2026-10-09T00:00:00Z"
+        }))
+        .unwrap();
         let db = sea_orm::MockDatabase::new(sea_orm::DatabaseBackend::Postgres)
             .append_query_results([vec![user]])
             .into_connection();
@@ -116,9 +115,7 @@ mod tests {
             .unwrap();
         let response = app.oneshot(request).await.unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
-        let body = axum::body::to_bytes(response.into_body(), 4096)
-            .await
-            .unwrap();
+        let body = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
         assert!(std::str::from_utf8(&body)
             .unwrap()
             .contains("Activity maps are not configured"));
@@ -142,15 +139,10 @@ mod tests {
             }
             let response = image_response(image, &headers);
             assert_eq!(response.status(), expected);
-            assert_eq!(
-                response.headers()[header::CACHE_CONTROL],
-                "private, no-cache"
-            );
+            assert_eq!(response.headers()[header::CACHE_CONTROL], "private, no-cache");
             assert_eq!(response.headers()[header::VARY], "Cookie, Authorization");
             assert_eq!(response.headers()[header::ETAG], "\"current\"");
-            let body = axum::body::to_bytes(response.into_body(), 1024)
-                .await
-                .unwrap();
+            let body = axum::body::to_bytes(response.into_body(), 1024).await.unwrap();
             assert_eq!(body.is_empty(), expected == StatusCode::NOT_MODIFIED);
         }
     }

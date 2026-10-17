@@ -27,11 +27,7 @@ pub struct ProcessorSummary {
     pub outcome: String,
 }
 impl ProcessorSummary {
-    pub async fn list(
-        db: &DatabaseConnection,
-        window_hours: i64,
-        outcome: &str,
-    ) -> Result<Vec<Self>, DbErr> {
+    pub async fn list(db: &DatabaseConnection, window_hours: i64, outcome: &str) -> Result<Vec<Self>, DbErr> {
         let counts = background_tasks::Model::state_counts(db).await?;
         let mut attempts = distributions(db, window_hours, outcome, "attempt").await?;
         let mut waits = distributions(db, window_hours, outcome, "wait").await?;
@@ -73,10 +69,8 @@ async fn distributions(
     outcome: &str,
     signal: &str,
 ) -> Result<HashMap<String, Distribution>, DbErr> {
-    let rows = super::super::entities::task_attempts::Model::processor_distributions(
-        db, hours, outcome, signal,
-    )
-    .await?;
+    let rows =
+        super::super::entities::task_attempts::Model::processor_distributions(db, hours, outcome, signal).await?;
     Ok(rows
         .into_iter()
         .map(|row| {

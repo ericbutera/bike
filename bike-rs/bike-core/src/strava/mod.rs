@@ -21,15 +21,13 @@ pub mod test_fixtures;
 pub(crate) mod fixtures;
 
 pub use connection::{
-    athlete_display_name, build_authorization_url, build_frontend_account_redirect,
-    build_redirect_uri, create_authorization_url_for_user, exchange_code_for_connection,
-    forget_local_connection, load_connection, parse_scope_list, resolve_connection_sync_state,
-    scopes_allow_activity_import, verify_webhook_subscription, ResolvedStravaConnectionSyncState,
-    StravaWebhookChallengeResponse, StravaWebhookEvent, StravaWebhookSubscriptionQuery,
-    STRAVA_AUTHORIZE_URL, STRAVA_SYNC_STATUS_FAILED, STRAVA_SYNC_STATUS_NEVER,
+    athlete_display_name, build_authorization_url, build_frontend_account_redirect, build_redirect_uri,
+    create_authorization_url_for_user, exchange_code_for_connection, forget_local_connection, load_connection,
+    parse_scope_list, resolve_connection_sync_state, scopes_allow_activity_import, verify_webhook_subscription,
+    ResolvedStravaConnectionSyncState, StravaWebhookChallengeResponse, StravaWebhookEvent,
+    StravaWebhookSubscriptionQuery, STRAVA_AUTHORIZE_URL, STRAVA_SYNC_STATUS_FAILED, STRAVA_SYNC_STATUS_NEVER,
     STRAVA_SYNC_STATUS_QUEUED, STRAVA_SYNC_STATUS_RUNNING,
 };
 pub(crate) use connection::{
-    build_activity_upload, ensure_connection_scopes_allow_activity_import,
-    ensure_fresh_access_token,
+    build_activity_upload, ensure_connection_scopes_allow_activity_import, ensure_fresh_access_token,
 };

@@ -16,22 +16,12 @@ pub struct RebuildSegmentAnalytics {
 #[workflow_methods]
 impl RebuildSegmentAnalytics {
     #[run(name = "rebuild_segment_analytics")]
-    pub async fn run(
-        ctx: &mut WorkflowContext<Self>,
-        mut input: RebuildInput<SegmentChange>,
-    ) -> WorkflowResult<()> {
+    pub async fn run(ctx: &mut WorkflowContext<Self>, mut input: RebuildInput<SegmentChange>) -> WorkflowResult<()> {
         loop {
             let batch = debounce::next(ctx, &mut input, |s| &s.changes, |s| &mut s.changes).await?;
             let request = batch.request.clone();
-            let options =
-                options::activity(request.priority, format!("segment-{}", request.segment_id));
-            let publication = options::run(
-                ctx,
-                DerivedActivities::rebuild_segment_analytics,
-                request,
-                options,
-            )
-            .await?;
+            let options = options::activity(request.priority, format!("segment-{}", request.segment_id));
+            let publication = options::run(ctx, DerivedActivities::rebuild_segment_analytics, request, options).await?;
             input.complete(batch, publication);
         }
     }

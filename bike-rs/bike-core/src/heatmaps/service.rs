@@ -108,10 +108,7 @@ impl HeatmapService {
             .into_iter()
             .map(|point| {
                 let [longitude, latitude] = geometry::unproject([point.x, point.y]);
-                HeatmapZonePoint {
-                    longitude,
-                    latitude,
-                }
+                HeatmapZonePoint { longitude, latitude }
             })
             .collect();
         Ok(HeatmapZones {
@@ -204,9 +201,9 @@ impl HeatmapService {
             .map_err(|_| HeatmapError::Busy)?;
         let db = db.clone();
         let runtime = tokio::runtime::Handle::current();
-        let image = tokio::task::spawn_blocking(crate::observability::blocking_with_current_trace(
-            move || render(&runtime, &db, request, permit),
-        ))
+        let image = tokio::task::spawn_blocking(crate::observability::blocking_with_current_trace(move || {
+            render(&runtime, &db, request, permit)
+        }))
         .await
         .map_err(|_| HeatmapError::Render)??;
         self.remember(key, image.clone()).await;
@@ -222,9 +219,7 @@ impl HeatmapService {
         if image.png.len() > CACHE_BYTES {
             return;
         }
-        while cache.bytes + image.png.len() > CACHE_BYTES
-            || cache.tiles.len() == cache.tiles.cap().get()
-        {
+        while cache.bytes + image.png.len() > CACHE_BYTES || cache.tiles.len() == cache.tiles.cap().get() {
             if let Some((_, old)) = cache.tiles.pop_lru() {
                 cache.bytes -= old.png.len();
             } else {
@@ -244,11 +239,7 @@ impl HeatmapService {
             Err(HeatmapError::Disabled)
         }
     }
-    async fn check_revision(
-        db: &DatabaseConnection,
-        user_id: i32,
-        revision: i64,
-    ) -> Result<(), HeatmapError> {
+    async fn check_revision(db: &DatabaseConnection, user_id: i32, revision: i64) -> Result<(), HeatmapError> {
         if HeatmapData::revision(db, user_id).await? == revision {
             Ok(())
         } else {
@@ -306,15 +297,8 @@ fn render(
     raster.finish_activity();
     tracing::Span::current().record("chunk_count", chunks);
     // A full final generation check is also made by tile() before responding.
-    runtime.block_on(HeatmapService::check_revision(
-        db,
-        request.user_id,
-        request.revision,
-    ))?;
+    runtime.block_on(HeatmapService::check_revision(db, request.user_id, request.revision))?;
     let png = raster.png().map_err(|_| HeatmapError::Render)?;
     let etag = format!("\"{:x}\"", Sha256::digest(&png));
-    Ok(TileImage {
-        png: png.into(),
-        etag,
-    })
+    Ok(TileImage { png: png.into(), etag })
 }

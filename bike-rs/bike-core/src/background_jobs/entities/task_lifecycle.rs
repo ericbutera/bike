@@ -4,8 +4,8 @@ use super::{
 };
 use chrono::Utc;
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, DbErr,
-    EntityTrait, ExprTrait, QueryFilter, Set, TransactionTrait,
+    sea_query::Expr, ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, ExprTrait,
+    QueryFilter, Set, TransactionTrait,
 };
 
 impl Model {
@@ -21,10 +21,7 @@ impl Model {
             .col_expr(Column::Status, Expr::value("processing"))
             .col_expr(Column::StartedAt, Expr::value(now))
             .col_expr(Column::UpdatedAt, Expr::value(now))
-            .col_expr(
-                Column::CompletedAt,
-                Expr::value(None::<chrono::DateTime<Utc>>),
-            )
+            .col_expr(Column::CompletedAt, Expr::value(None::<chrono::DateTime<Utc>>))
             .col_expr(Column::Attempts, Expr::value(self.attempts + 1))
             .filter(Column::Id.eq(self.id))
             .filter(Column::Status.eq("pending"))
@@ -54,12 +51,9 @@ impl Model {
             span_id: Set(None),
             eligible_at: Set(Some(self.eligible_at())),
             processing_version: Set(Some(
-                super::super::worker::catalog::ProcessorDefinition::for_type(&self.task_type)
-                    .processing_version,
+                super::super::worker::catalog::ProcessorDefinition::for_type(&self.task_type).processing_version,
             )),
-            workload_cohort: Set(Some(super::super::worker::catalog::workload_cohort(
-                &self.payload,
-            ))),
+            workload_cohort: Set(Some(super::super::worker::catalog::workload_cohort(&self.payload))),
         }
         .insert(&transaction)
         .await?;
@@ -113,11 +107,7 @@ impl Model {
     }
 
     /// Recovery keeps attempt numbers monotonic and cannot race a fresh heartbeat.
-    pub async fn recover(
-        &self,
-        db: &DatabaseConnection,
-        payload: serde_json::Value,
-    ) -> Result<bool, DbErr> {
+    pub async fn recover(&self, db: &DatabaseConnection, payload: serde_json::Value) -> Result<bool, DbErr> {
         let transaction = db.begin().await?;
         let now = Utc::now();
         let changed = self
@@ -132,18 +122,9 @@ impl Model {
             )
             .col_expr(Column::Error, Expr::value(None::<String>))
             .col_expr(Column::Result, Expr::value(None::<String>))
-            .col_expr(
-                Column::ScheduledFor,
-                Expr::value(None::<chrono::DateTime<Utc>>),
-            )
-            .col_expr(
-                Column::StartedAt,
-                Expr::value(None::<chrono::DateTime<Utc>>),
-            )
-            .col_expr(
-                Column::CompletedAt,
-                Expr::value(None::<chrono::DateTime<Utc>>),
-            )
+            .col_expr(Column::ScheduledFor, Expr::value(None::<chrono::DateTime<Utc>>))
+            .col_expr(Column::StartedAt, Expr::value(None::<chrono::DateTime<Utc>>))
+            .col_expr(Column::CompletedAt, Expr::value(None::<chrono::DateTime<Utc>>))
             .col_expr(Column::UpdatedAt, Expr::value(now))
             .exec(&transaction)
             .await?;
@@ -151,10 +132,7 @@ impl Model {
             task_attempts::Entity::update_many()
                 .col_expr(task_attempts::Column::FinishedAt, Expr::value(now))
                 .col_expr(task_attempts::Column::Outcome, Expr::value("interrupted"))
-                .col_expr(
-                    task_attempts::Column::Error,
-                    Expr::value("Recovered stale execution"),
-                )
+                .col_expr(task_attempts::Column::Error, Expr::value("Recovered stale execution"))
                 .filter(task_attempts::Column::TaskId.eq(self.id))
                 .filter(task_attempts::Column::Attempt.eq(self.attempts))
                 .filter(task_attempts::Column::Outcome.eq("running"))
@@ -186,14 +164,9 @@ impl Model {
     }
 
     pub async fn cancel(&self, db: &DatabaseConnection) -> Result<Self, DbErr> {
-        self.finish(
-            db,
-            TaskStatus::Canceled,
-            Some("Canceled by admin".into()),
-            None,
-        )
-        .await
-        .map(|(task, _)| task)
+        self.finish(db, TaskStatus::Canceled, Some("Canceled by admin".into()), None)
+            .await
+            .map(|(task, _)| task)
     }
 
     fn failure_status(&self) -> TaskStatus {
@@ -212,10 +185,7 @@ impl Model {
     ) -> Result<Option<Self>, DbErr> {
         let (task, changed) = match result {
             Ok(()) => self.finish(db, TaskStatus::Completed, None, None).await?,
-            Err(error) => {
-                self.finish(db, self.failure_status(), Some(error), None)
-                    .await?
-            }
+            Err(error) => self.finish(db, self.failure_status(), Some(error), None).await?,
         };
         Ok(changed.then_some(task))
     }
@@ -245,11 +215,7 @@ impl Model {
                 .col_expr(task_attempts::Column::FinishedAt, Expr::value(now))
                 .col_expr(
                     task_attempts::Column::Outcome,
-                    Expr::value(if terminal {
-                        status.as_str()
-                    } else {
-                        "retrying"
-                    }),
+                    Expr::value(if terminal { status.as_str() } else { "retrying" }),
                 )
                 .col_expr(task_attempts::Column::Error, Expr::value(error))
                 .filter(task_attempts::Column::TaskId.eq(self.id))

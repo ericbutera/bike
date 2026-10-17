@@ -36,9 +36,7 @@ impl Entity {
             .filter(Self::payload_field("strava_event_id").eq(event.strava_event_id.to_string()))
             .one(db)
             .await?
-            .ok_or(DbErr::RecordNotFound(
-                "Strava audit event was not found".into(),
-            ))?;
+            .ok_or(DbErr::RecordNotFound("Strava audit event was not found".into()))?;
         let mut payload = row.payload.clone().unwrap_or_default();
         payload["activity_id"] = activity_id.into();
         payload["bike_activity_id"] = activity_id.into();
@@ -84,10 +82,7 @@ impl Entity {
         .await
     }
 
-    pub async fn recent(
-        db: &impl ConnectionTrait,
-        options: ListOptions,
-    ) -> Result<Vec<Model>, DbErr> {
+    pub async fn recent(db: &impl ConnectionTrait, options: ListOptions) -> Result<Vec<Model>, DbErr> {
         let mut query = Self::find().order_by_desc(Column::CreatedAt);
         if let Some(provider) = options.provider {
             query = query.filter(Column::Provider.eq(provider));

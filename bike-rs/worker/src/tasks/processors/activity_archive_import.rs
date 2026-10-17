@@ -27,11 +27,7 @@ impl TaskProcessor for ActivityArchiveImport {
         JobType::ActivityArchiveImport.as_str()
     }
 
-    async fn process(
-        &self,
-        task_id: i32,
-        payload: serde_json::Value,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+    async fn process(&self, task_id: i32, payload: serde_json::Value) -> Result<(), Box<dyn Error + Send + Sync>> {
         let data = payload.get("data").unwrap_or(&payload);
         let task: ActivityArchiveImportTask = serde_json::from_value(data.clone())?;
 
@@ -40,9 +36,7 @@ impl TaskProcessor for ActivityArchiveImport {
             &self.uploads_dir,
             task_id,
             task.job_id,
-            data["batch_id"]
-                .as_i64()
-                .and_then(|id| i32::try_from(id).ok()),
+            data["batch_id"].as_i64().and_then(|id| i32::try_from(id).ok()),
         )
         .await
         .map_err(|error| std::io::Error::other(error.message))?;

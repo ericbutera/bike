@@ -8,18 +8,14 @@ use std::collections::BTreeMap;
 async fn incremental_window_includes_the_cursor_second_and_has_a_fixed_end() {
     let mut fixture = HandlerFixture::new();
     fixture.domain.event.operation = StravaOperation::Sync;
-    fixture.domain.connection.last_synced_activity_started_at =
-        Some(fixture.domain.connection.created_at);
+    fixture.domain.connection.last_synced_activity_started_at = Some(fixture.domain.connection.created_at);
     let window = fixture
         .operations(fixture.connection_mock())
         .collection_window(fixture.domain.event.clone())
         .await
         .unwrap()
         .window;
-    assert_eq!(
-        window.after,
-        fixture.domain.connection.created_at.timestamp() - 1
-    );
+    assert_eq!(window.after, fixture.domain.connection.created_at.timestamp() - 1);
     assert_eq!(window.before, Some(fixture.domain.event.event_time + 1));
 }
 
@@ -94,8 +90,7 @@ async fn completion_recounts_persisted_children_and_only_sync_changes_the_cursor
 }
 
 fn completion_mock(fixture: &HandlerFixture) -> MockDatabase {
-    let counts: BTreeMap<String, Value> =
-        [("applied".into(), 2.into()), ("other".into(), 3.into())].into();
+    let counts: BTreeMap<String, Value> = [("applied".into(), 2.into()), ("other".into(), 3.into())].into();
     fixture
         .connection_mock()
         .append_query_results([vec![counts]])
@@ -121,18 +116,13 @@ async fn removing_a_connection_is_idempotent_and_generation_fenced() {
     let log = format!("{:?}", operations.db.into_transaction_log());
     assert!(log.contains("DELETE FROM"));
     assert!(log.contains("created_at"));
-    let db = MockDatabase::new(DatabaseBackend::Postgres)
-        .append_query_results([Vec::<strava_connections::Model>::new()]);
-    fixture
-        .operations(db)
-        .remove_connection(event.clone())
-        .await
-        .unwrap();
+    let db =
+        MockDatabase::new(DatabaseBackend::Postgres).append_query_results([Vec::<strava_connections::Model>::new()]);
+    fixture.operations(db).remove_connection(event.clone()).await.unwrap();
     let mut reconnected = fixture.domain.connection.clone();
     reconnected.created_at += chrono::Duration::seconds(1);
-    let operations = fixture.operations(
-        MockDatabase::new(DatabaseBackend::Postgres).append_query_results([vec![reconnected]]),
-    );
+    let operations =
+        fixture.operations(MockDatabase::new(DatabaseBackend::Postgres).append_query_results([vec![reconnected]]));
     assert!(operations.remove_connection(event).await.is_err());
     assert!(!format!("{:?}", operations.db.into_transaction_log()).contains("DELETE"));
 }

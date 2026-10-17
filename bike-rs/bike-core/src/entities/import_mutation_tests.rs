@@ -31,15 +31,8 @@ async fn retrying_processing_clears_the_error_without_resetting_identity_or_atte
     ] {
         assert!(!update.contains(untouched), "{write:?}");
     }
-    for value in [
-        Value::from("processing"),
-        "activity_parsed".into(),
-        Value::String(None),
-    ] {
-        assert!(
-            write.values.as_ref().unwrap().0.contains(&value),
-            "{write:?}"
-        );
+    for value in [Value::from("processing"), "activity_parsed".into(), Value::String(None)] {
+        assert!(write.values.as_ref().unwrap().0.contains(&value), "{write:?}");
     }
 }
 
@@ -92,12 +85,7 @@ async fn native_completion_keeps_legacy_processing_history_and_import_identity()
         assert!(!update.contains(untouched), "{write:?}");
     }
     assert!(update.contains("\"processed_at\" ="));
-    assert!(write
-        .values
-        .as_ref()
-        .unwrap()
-        .0
-        .contains(&"processed".into()));
+    assert!(write.values.as_ref().unwrap().0.contains(&"processed".into()));
 }
 
 #[tokio::test]
@@ -109,10 +97,7 @@ async fn duplicate_import_links_the_canonical_activity_and_finishes_processing()
     import.mark_duplicate(&db, 99).await.unwrap();
     let write = last_write(db);
     for value in ["duplicate".into(), "complete".into(), 99.into()] {
-        assert!(
-            write.values.as_ref().unwrap().0.contains(&value),
-            "{write:?}"
-        );
+        assert!(write.values.as_ref().unwrap().0.contains(&value), "{write:?}");
     }
     assert!(write.sql.contains("\"processed_at\" ="));
 }
@@ -147,10 +132,7 @@ async fn import_mutation_propagates_storage_failure() {
         .append_query_errors([expected.clone()])
         .into_connection();
     assert_eq!(
-        fixtures::activity_import()
-            .mark_processed(&db)
-            .await
-            .unwrap_err(),
+        fixtures::activity_import().mark_processed(&db).await.unwrap_err(),
         expected
     );
 }
@@ -175,10 +157,7 @@ async fn copied_artifacts_allocate_a_new_key_and_keep_the_retained_source_metada
             original.checksum_sha256.into(),
             if resize { 999_i64.into() } else { 77.into() },
         ] {
-            assert!(
-                write.values.as_ref().unwrap().0.contains(&value),
-                "{write:?}"
-            );
+            assert!(write.values.as_ref().unwrap().0.contains(&value), "{write:?}");
         }
     }
 }

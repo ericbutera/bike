@@ -1,8 +1,7 @@
 use super::super::{batches, options};
 use crate::activities::{ImportActivities, ReprocessManifestActivities};
 use bike_core::bike_tasks::{
-    ActivityImport, ActivityImportResult, BatchInput, ManifestScope, ReprocessScope,
-    ReprocessSelection,
+    ActivityImport, ActivityImportResult, BatchInput, ManifestScope, ReprocessScope, ReprocessSelection,
 };
 use temporalio_sdk::{ApplicationFailure, WorkflowContext, WorkflowResult};
 
@@ -11,13 +10,8 @@ pub(crate) async fn activity_import<W>(
     command: ActivityImport,
 ) -> WorkflowResult<ActivityImportResult> {
     command.validate().map_err(ApplicationFailure::new)?;
-    let options = options::activity(
-        command.source.priority,
-        format!("user-{}", command.source.user_id),
-    );
-    boundary
-        .run(ImportActivities::activity_import, command, options)
-        .await
+    let options = options::activity(command.source.priority, format!("user-{}", command.source.user_id));
+    boundary.run(ImportActivities::activity_import, command, options).await
 }
 
 pub(crate) async fn prepare_reprocessing<W>(

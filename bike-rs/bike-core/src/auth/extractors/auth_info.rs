@@ -98,10 +98,7 @@ where
         let mut cookie_error: Option<AuthError> = None;
 
         if let Some(user_pid) = storage.local_admin_user_pid() {
-            return Ok(AuthInfo::new(
-                Some(AuthIdentity::User(UserIdentity { user_pid })),
-                None,
-            ));
+            return Ok(AuthInfo::new(Some(AuthIdentity::User(UserIdentity { user_pid })), None));
         }
 
         if let Ok(token) = extract_cookie(headers, REFRESH_COOKIE_NAME) {
@@ -126,28 +123,21 @@ where
                         TokenType::User => {
                             let user_pid = Uuid::parse_str(&td.claims.sub)
                                 .map_err(|_| AuthError::unauthorized("Invalid token"))?;
-                            return Ok(AuthInfo::new(
-                                Some(AuthIdentity::User(UserIdentity { user_pid })),
-                                None,
-                            ));
+                            return Ok(AuthInfo::new(Some(AuthIdentity::User(UserIdentity { user_pid })), None));
                         }
                         TokenType::ApiClient => {
                             let client_id = Uuid::parse_str(&td.claims.sub)
                                 .map_err(|_| AuthError::unauthorized("Invalid token"))?;
 
                             // Verify client exists and get scopes
-                            let (scopes, revoked) =
-                                verify_api_client(storage.db(), &client_id).await?;
+                            let (scopes, revoked) = verify_api_client(storage.db(), &client_id).await?;
 
                             if revoked {
                                 return Err(AuthError::unauthorized("API client revoked"));
                             }
 
                             return Ok(AuthInfo::new(
-                                Some(AuthIdentity::ApiClient(ApiClientIdentity {
-                                    client_id,
-                                    scopes,
-                                })),
+                                Some(AuthIdentity::ApiClient(ApiClientIdentity { client_id, scopes })),
                                 None,
                             ));
                         }
@@ -173,10 +163,7 @@ async fn verify_refresh_token(db: &DatabaseConnection, token: &str) -> Result<Uu
     Ok(rt.user_pid)
 }
 
-async fn verify_api_client(
-    db: &DatabaseConnection,
-    client_id: &Uuid,
-) -> Result<(Vec<String>, bool), AuthError> {
+async fn verify_api_client(db: &DatabaseConnection, client_id: &Uuid) -> Result<(Vec<String>, bool), AuthError> {
     let client = api_clients::Model::find_by_client_id(db, client_id)
         .await?
         .ok_or_else(|| AuthError::entity_not_found("api client not found"))?;

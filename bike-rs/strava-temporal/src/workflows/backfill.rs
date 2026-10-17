@@ -11,10 +11,7 @@ pub struct BackfillActivities;
 #[workflow_methods]
 impl BackfillActivities {
     #[run]
-    pub async fn run(
-        ctx: &mut WorkflowContext<Self>,
-        event: StravaEvent,
-    ) -> WorkflowResult<CollectionResult> {
+    pub async fn run(ctx: &mut WorkflowContext<Self>, event: StravaEvent) -> WorkflowResult<CollectionResult> {
         logging::started(ctx, &event);
         let result = Self::backfill(ctx, event.clone()).await;
         let result = options::workflow_result(ctx, result);
@@ -22,10 +19,7 @@ impl BackfillActivities {
         logging::finished(ctx, log_event, &result);
         result
     }
-    async fn backfill(
-        ctx: &mut WorkflowContext<Self>,
-        event: StravaEvent,
-    ) -> WorkflowResult<CollectionResult> {
+    async fn backfill(ctx: &mut WorkflowContext<Self>, event: StravaEvent) -> WorkflowResult<CollectionResult> {
         let input = run(ctx, CollectionWindow, event).await?;
         let result = match collection::upsert_pages(ctx, input).await? {
             collection::CollectionStep::Completed(result) => result,

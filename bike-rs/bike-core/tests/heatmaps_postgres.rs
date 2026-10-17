@@ -24,25 +24,14 @@ async fn typed_publication_preserves_batch_pagination_seams_and_generation_guard
     assert_eq!((empty.revision, empty.ready, empty.pending), (0, 0, 0));
     let pending = Projection::backfill_page(&db, 1, 0).await.unwrap();
     assert_eq!(pending.len(), 1);
-    assert!(Projection::backfill_page(&db, 2, 0)
-        .await
-        .unwrap()
-        .is_empty());
-    assert!(Projection::backfill_page(&db, 1, 1)
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(Projection::backfill_page(&db, 2, 0).await.unwrap().is_empty());
+    assert!(Projection::backfill_page(&db, 1, 1).await.unwrap().is_empty());
     let chunks: Vec<_> = (0..65).map(seam_chunk).collect();
-    assert!(Projection::publish(&db, &pending[0], &chunks)
-        .await
-        .unwrap());
+    assert!(Projection::publish(&db, &pending[0], &chunks).await.unwrap());
     assert!(!Projection::pending(&db, 1, 1).await.unwrap());
     assert!(!Projection::publish(&db, &pending[0], &[]).await.unwrap());
     let progress = HeatmapData::progress(&db, 1, &query).await.unwrap();
-    assert_eq!(
-        (progress.revision, progress.ready, progress.pending),
-        (2, 1, 0)
-    );
+    assert_eq!((progress.revision, progress.ready, progress.pending), (2, 1, 0));
     let centers = HeatmapData::activity_centers(&db, 1, &query).await.unwrap();
     assert_eq!(centers.len(), 1);
     assert!(centers[0].x.abs() < 0.000001);
@@ -68,36 +57,23 @@ async fn typed_publication_preserves_batch_pagination_seams_and_generation_guard
     .await
     .unwrap());
     let skipped = HeatmapData::progress(&db, 1, &query).await.unwrap();
-    assert_eq!(
-        (skipped.revision, skipped.ready, skipped.skipped),
-        (3, 0, 1)
-    );
+    assert_eq!((skipped.revision, skipped.ready, skipped.skipped), (3, 0, 1));
     assert_eq!(skipped.min_x, None);
-    assert!(HeatmapData::activity_centers(&db, 1, &query)
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(HeatmapData::activity_centers(&db, 1, &query).await.unwrap().is_empty());
     db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
         .await
         .unwrap();
 }
 
-async fn assert_seam_pages(
-    db: &sea_orm::DatabaseConnection,
-    query: &bike_core::heatmaps::types::HeatmapQuery,
-) {
+async fn assert_seam_pages(db: &sea_orm::DatabaseConnection, query: &bike_core::heatmaps::types::HeatmapQuery) {
     use bike_core::heatmaps::{data::HeatmapData, raster::Tile};
     for x in [0, 16383] {
         let tile = Tile { z: 14, x, y: 8192 };
-        let first = HeatmapData::tile_page(db, 1, query, tile, (0, -1))
-            .await
-            .unwrap();
+        let first = HeatmapData::tile_page(db, 1, query, tile, (0, -1)).await.unwrap();
         assert_eq!(first.len(), 64);
         assert_eq!(first.first().unwrap().chunk_index, 0);
         assert_eq!(first.last().unwrap().chunk_index, 63);
-        let last = HeatmapData::tile_page(db, 1, query, tile, (1, 63))
-            .await
-            .unwrap();
+        let last = HeatmapData::tile_page(db, 1, query, tile, (1, 63)).await.unwrap();
         assert_eq!(last.len(), 1);
         assert_eq!(last[0].chunk_index, 64);
         assert!(HeatmapData::tile_page(db, 1, query, tile, (1, 64))
@@ -108,11 +84,7 @@ async fn assert_seam_pages(
 }
 
 fn seam_chunk(index: usize) -> geometry::Chunk {
-    let x = if index.is_multiple_of(2) {
-        0.000001
-    } else {
-        0.999999
-    };
+    let x = if index.is_multiple_of(2) { 0.000001 } else { 0.999999 };
     geometry::Chunk {
         band: 2,
         bounds: [x, 0.500001, x + 0.0000001, 0.5000011],
@@ -129,11 +101,9 @@ async fn prepares_backfills_and_invalidates_activity_generations() {
         .await
         .unwrap();
     assert!(Projection::enabled(&db).await.unwrap());
-    db.execute_unprepared(
-        "INSERT INTO activities(id,user_id,sport,source) VALUES (4,2,'ride','fixture')",
-    )
-    .await
-    .unwrap();
+    db.execute_unprepared("INSERT INTO activities(id,user_id,sport,source) VALUES (4,2,'ride','fixture')")
+        .await
+        .unwrap();
     assert_eq!(Projection::enqueue_pending(&db).await.unwrap(), 1);
     assert_eq!(Projection::enqueue_pending(&db).await.unwrap(), 0);
     assert_batched_prepare_task(&db).await;
@@ -191,9 +161,7 @@ async fn prepares_backfills_and_invalidates_activity_generations() {
     )).await.unwrap();
     prepare(&db, 5, 1).await;
     assert_eq!(status(&db, 5).await, "skipped");
-    db.execute_unprepared("DELETE FROM users WHERE id=2")
-        .await
-        .unwrap();
+    db.execute_unprepared("DELETE FROM users WHERE id=2").await.unwrap();
     db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
         .await
         .unwrap();
@@ -228,11 +196,9 @@ async fn upgrades_existing_heatmap_projections_for_speed_filter() {
     .await
     .unwrap();
 
-    db.execute_unprepared(include_str!(
-        "../../migration/src/heatmap_projection_speed_filter.sql"
-    ))
-    .await
-    .unwrap();
+    db.execute_unprepared(include_str!("../../migration/src/heatmap_projection_speed_filter.sql"))
+        .await
+        .unwrap();
 
     let projection = db
         .query_one_raw(Statement::from_string(
@@ -244,18 +210,9 @@ async fn upgrades_existing_heatmap_projections_for_speed_filter() {
         .unwrap()
         .unwrap();
     assert_eq!(projection.try_get::<i64>("", "generation").unwrap(), 2);
-    assert_eq!(
-        projection.try_get::<i32>("", "projection_version").unwrap(),
-        2
-    );
-    assert_eq!(
-        projection.try_get::<String>("", "status").unwrap(),
-        "pending"
-    );
-    assert_eq!(
-        projection.try_get::<Option<f64>>("", "min_x").unwrap(),
-        None
-    );
+    assert_eq!(projection.try_get::<i32>("", "projection_version").unwrap(), 2);
+    assert_eq!(projection.try_get::<String>("", "status").unwrap(), "pending");
+    assert_eq!(projection.try_get::<Option<f64>>("", "min_x").unwrap(), None);
 
     let counts = db
         .query_one_raw(Statement::from_string(
@@ -268,10 +225,7 @@ async fn upgrades_existing_heatmap_projections_for_speed_filter() {
         .unwrap();
     assert_eq!(counts.try_get::<i64>("", "chunks").unwrap(), 0);
     assert_eq!(counts.try_get::<i64>("", "revision").unwrap(), 2);
-    assert_eq!(
-        counts.try_get::<String>("", "version_default").unwrap(),
-        "2"
-    );
+    assert_eq!(counts.try_get::<String>("", "version_default").unwrap(), "2");
 
     db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
         .await
@@ -282,11 +236,9 @@ async fn upgrades_existing_heatmap_projections_for_speed_filter() {
 #[ignore = "Set BIKE_HEATMAP_TEST_DATABASE_URL to a disposable PostgreSQL database"]
 async fn upgrades_existing_heatmap_projections_for_virtual_ride_filter() {
     let (db, schema) = legacy_fixture().await;
-    db.execute_unprepared(include_str!(
-        "../../migration/src/heatmap_projection_speed_filter.sql"
-    ))
-    .await
-    .unwrap();
+    db.execute_unprepared(include_str!("../../migration/src/heatmap_projection_speed_filter.sql"))
+        .await
+        .unwrap();
     db.execute_unprepared(
         "UPDATE heatmap_projections SET status='ready', min_x=0.1, min_y=0.1, max_x=0.2, max_y=0.2 WHERE activity_id=1;
          INSERT INTO heatmap_chunks(activity_id,band,chunk_index,min_x,min_y,max_x,max_y,points)
@@ -311,18 +263,9 @@ async fn upgrades_existing_heatmap_projections_for_virtual_ride_filter() {
         .unwrap()
         .unwrap();
     assert_eq!(projection.try_get::<i64>("", "generation").unwrap(), 3);
-    assert_eq!(
-        projection.try_get::<i32>("", "projection_version").unwrap(),
-        3
-    );
-    assert_eq!(
-        projection.try_get::<String>("", "status").unwrap(),
-        "pending"
-    );
-    assert_eq!(
-        projection.try_get::<Option<f64>>("", "min_x").unwrap(),
-        None
-    );
+    assert_eq!(projection.try_get::<i32>("", "projection_version").unwrap(), 3);
+    assert_eq!(projection.try_get::<String>("", "status").unwrap(), "pending");
+    assert_eq!(projection.try_get::<Option<f64>>("", "min_x").unwrap(), None);
 
     let counts = db
         .query_one_raw(Statement::from_string(
@@ -335,10 +278,7 @@ async fn upgrades_existing_heatmap_projections_for_virtual_ride_filter() {
         .unwrap();
     assert_eq!(counts.try_get::<i64>("", "chunks").unwrap(), 0);
     assert_eq!(counts.try_get::<i64>("", "revision").unwrap(), 3);
-    assert_eq!(
-        counts.try_get::<String>("", "version_default").unwrap(),
-        "3"
-    );
+    assert_eq!(counts.try_get::<String>("", "version_default").unwrap(), "3");
 
     db.execute_unprepared(
         "UPDATE heatmap_projections SET status='ready' WHERE activity_id=1;
@@ -363,24 +303,12 @@ async fn assert_batched_prepare_task(db: &sea_orm::DatabaseConnection) {
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(
-        task.try_get::<String>("", "task_type").unwrap(),
-        "PrepareHeatmap"
-    );
+    assert_eq!(task.try_get::<String>("", "task_type").unwrap(), "PrepareHeatmap");
     assert_eq!(task.try_get::<i32>("", "activity_count").unwrap(), 2);
-    assert_eq!(
-        task.try_get::<String>("", "first_activity_id").unwrap(),
-        "1"
-    );
+    assert_eq!(task.try_get::<String>("", "first_activity_id").unwrap(), "1");
     assert_eq!(task.try_get::<String>("", "first_generation").unwrap(), "1");
-    assert_eq!(
-        task.try_get::<String>("", "second_activity_id").unwrap(),
-        "4"
-    );
-    assert_eq!(
-        task.try_get::<String>("", "second_generation").unwrap(),
-        "1"
-    );
+    assert_eq!(task.try_get::<String>("", "second_activity_id").unwrap(), "4");
+    assert_eq!(task.try_get::<String>("", "second_generation").unwrap(), "1");
 }
 
 #[tokio::test]
@@ -401,28 +329,14 @@ async fn scopes_tiles_and_metadata_and_invalidates_cached_images() {
     let image = service.tile(&db, 1, query.clone(), tile).await.unwrap();
     let cached = service.tile(&db, 1, query.clone(), tile).await.unwrap();
     assert!(std::sync::Arc::ptr_eq(&image.png, &cached.png));
-    let other = service
-        .metadata(&db, 2, HeatmapQuery::default())
-        .await
-        .unwrap();
+    let other = service.metadata(&db, 2, HeatmapQuery::default()).await.unwrap();
     assert_eq!(other.ready, 1);
     let other_query = HeatmapQuery {
         revision: Some(other.revision),
         ..Default::default()
     };
-    assert_eq!(
-        service
-            .zones(&db, 2, other_query.clone())
-            .await
-            .unwrap()
-            .zones
-            .len(),
-        1
-    );
-    let other_image = service
-        .tile(&db, 2, other_query.clone(), tile)
-        .await
-        .unwrap();
+    assert_eq!(service.zones(&db, 2, other_query.clone()).await.unwrap().zones.len(), 1);
+    let other_image = service.tile(&db, 2, other_query.clone(), tile).await.unwrap();
     assert_ne!(image.png, other_image.png);
     let rows = HeatmapData::tile_page(&db, 2, &other_query, tile, (0, -1))
         .await
@@ -475,10 +389,7 @@ async fn ready_tile_query(
         .await
         .unwrap();
     seed_routes(db).await;
-    let metadata = service
-        .metadata(db, 1, HeatmapQuery::default())
-        .await
-        .unwrap();
+    let metadata = service.metadata(db, 1, HeatmapQuery::default()).await.unwrap();
     assert_eq!(metadata.ready, 2);
     let query = HeatmapQuery {
         revision: Some(metadata.revision.clone()),
@@ -523,22 +434,16 @@ async fn fixture() -> (sea_orm::DatabaseConnection, String) {
     ))
     .await
     .unwrap();
-    db.execute_unprepared(include_str!(
-        "../../migration/src/heatmap_cycling_sources.sql"
-    ))
-    .await
-    .unwrap();
-    db.execute_unprepared(include_str!(
-        "../../migration/src/activity_recording_environment.sql"
-    ))
-    .await
-    .unwrap();
+    db.execute_unprepared(include_str!("../../migration/src/heatmap_cycling_sources.sql"))
+        .await
+        .unwrap();
+    db.execute_unprepared(include_str!("../../migration/src/activity_recording_environment.sql"))
+        .await
+        .unwrap();
     // The baseline tests start with one new activity at generation/revision 1.
-    db.execute_unprepared(
-        "UPDATE heatmap_projections SET generation=1; UPDATE heatmap_user_states SET revision=1",
-    )
-    .await
-    .unwrap();
+    db.execute_unprepared("UPDATE heatmap_projections SET generation=1; UPDATE heatmap_user_states SET revision=1")
+        .await
+        .unwrap();
     (db, schema)
 }
 
@@ -546,11 +451,9 @@ async fn legacy_fixture() -> (sea_orm::DatabaseConnection, String) {
     let url = std::env::var("BIKE_HEATMAP_TEST_DATABASE_URL").expect("disposable database URL");
     let db = disposable_database(url).await;
     let schema = format!("heatmap_test_{}", uuid::Uuid::new_v4().simple());
-    db.execute_unprepared(&format!(
-        "CREATE SCHEMA {schema}; SET search_path TO {schema}"
-    ))
-    .await
-    .unwrap();
+    db.execute_unprepared(&format!("CREATE SCHEMA {schema}; SET search_path TO {schema}"))
+        .await
+        .unwrap();
     db.execute_unprepared(r#"
         CREATE TABLE users(id integer PRIMARY KEY);
         CREATE TABLE activities(id integer PRIMARY KEY, user_id integer REFERENCES users(id) ON DELETE CASCADE, title text NOT NULL DEFAULT '', sport text NOT NULL, source text NOT NULL, format text, started_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), derived_data_json jsonb);
@@ -616,35 +519,13 @@ async fn assert_filter_scope(
 ) {
     use bike_core::heatmaps::types::HeatmapError;
     query.sport = Some(bike_core::activity_sport::ActivitySport::RoadRide);
-    assert_eq!(
-        service.metadata(db, 1, query.clone()).await.unwrap().ready,
-        1
-    );
-    assert_eq!(
-        service
-            .zones(db, 1, query.clone())
-            .await
-            .unwrap()
-            .zones
-            .len(),
-        1
-    );
+    assert_eq!(service.metadata(db, 1, query.clone()).await.unwrap().ready, 1);
+    assert_eq!(service.zones(db, 1, query.clone()).await.unwrap().zones.len(), 1);
     query.sport = None;
     query.from = Some("2025-01-01T00:00:00Z".parse().unwrap());
     query.to = Some("2025-01-02T00:00:00Z".parse().unwrap());
-    assert_eq!(
-        service.metadata(db, 1, query.clone()).await.unwrap().ready,
-        1
-    );
-    assert_eq!(
-        service
-            .zones(db, 1, query.clone())
-            .await
-            .unwrap()
-            .zones
-            .len(),
-        1
-    );
+    assert_eq!(service.metadata(db, 1, query.clone()).await.unwrap().ready, 1);
+    assert_eq!(service.zones(db, 1, query.clone()).await.unwrap().zones.len(), 1);
     query.from = query.to;
     assert!(matches!(
         service.metadata(db, 1, query).await,

@@ -22,8 +22,6 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, _: &SchemaManager) -> Result<(), DbErr> {
-        Err(DbErr::Custom(
-            "Strava event status migration is forward-only".into(),
-        ))
+        Err(DbErr::Custom("Strava event status migration is forward-only".into()))
     }
 }

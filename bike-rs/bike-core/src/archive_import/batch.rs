@@ -34,12 +34,7 @@ pub async fn queue_archive_page(
         .ok_or_else(|| AppError::not_found("Archive job disappeared"))?;
     let mut jobs = Vec::new();
     let mut errors = Vec::new();
-    for entry in scan
-        .supported_entries
-        .iter()
-        .skip(batch.cursor as usize)
-        .take(16)
-    {
+    for entry in scan.supported_entries.iter().skip(batch.cursor as usize).take(16) {
         match read_entry_source(&archive, entry) {
             Ok(bytes) => {
                 let import = store_entry(&txn, uploads_dir, &job, entry, bytes).await?;
@@ -80,14 +75,8 @@ async fn load_or_start(
     let downloaded = match download_archive_from_url(uploads_dir, &job.archive_url).await {
         Ok(downloaded) => downloaded,
         Err(error) => {
-            mark_activity_archive_import_job_failed(db, &running, None, error.message.clone())
-                .await?;
-            release_user_activity_import_lock(
-                db,
-                job.user_id,
-                ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT,
-            )
-            .await?;
+            mark_activity_archive_import_job_failed(db, &running, None, error.message.clone()).await?;
+            release_user_activity_import_lock(db, job.user_id, ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT).await?;
             return Err(error);
         }
     };
@@ -115,28 +104,18 @@ async fn store_entry(
             },
             source: "archive_url_import",
             primary_artifact_kind: "original",
-            primary_source_quality:
-                crate::activity_import_pipeline::original_source_quality_for_format(
-                    &entry.activity_entry.format,
-                ),
+            primary_source_quality: crate::activity_import_pipeline::original_source_quality_for_format(
+                &entry.activity_entry.format,
+            ),
             additional_artifacts: Vec::new(),
         },
     )
     .await?;
-    crate::entities::activity_imports::Entity::attach_archive_job(
-        db,
-        job.user_id,
-        import.id,
-        job.id,
-    )
-    .await?;
+    crate::entities::activity_imports::Entity::attach_archive_job(db, job.user_id, import.id, job.id).await?;
     Ok(import)
 }
 
-fn read_entry_source(
-    archive: &Path,
-    entry: &IndexedArchiveActivityEntry,
-) -> Result<Vec<u8>, AppError> {
+fn read_entry_source(archive: &Path, entry: &IndexedArchiveActivityEntry) -> Result<Vec<u8>, AppError> {
     let bytes = read_archive_entry_bytes(archive, &entry.source)?;
     maybe_decode_archive_entry(&entry.activity_entry, bytes).map_err(AppError::bad_request)
 }
@@ -164,8 +143,7 @@ impl activity_archive_import_jobs::Model {
             failed_count: self.failed_count + failed,
             error_samples: samples,
         };
-        activity_archive_import_jobs::Entity::store_progress(db, self.user_id, self.id, &progress)
-            .await?;
+        activity_archive_import_jobs::Entity::store_progress(db, self.user_id, self.id, &progress).await?;
         Ok(())
     }
 }

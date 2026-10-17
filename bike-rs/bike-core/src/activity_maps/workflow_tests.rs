@@ -19,8 +19,7 @@ fn activity_fixture() -> crate::entities::activities::Model {
         .unwrap(),
         ..Default::default()
     };
-    activity.derived_data_json =
-        Some(crate::activity_details::serialize_derived_activity_data(&data).unwrap());
+    activity.derived_data_json = Some(crate::activity_details::serialize_derived_activity_data(&data).unwrap());
     activity
 }
 
@@ -42,10 +41,8 @@ async fn image_workflow_reuses_cache_without_contacting_worker() {
     .await
     .unwrap();
     let activity = activity_fixture();
-    let route = crate::activity_details::deserialize_derived_activity_data(
-        activity.derived_data_json.as_ref(),
-    )
-    .route_points;
+    let route =
+        crate::activity_details::deserialize_derived_activity_data(activity.derived_data_json.as_ref()).route_points;
     let options = MapOptions {
         theme: Theme::Light,
         dpr: 1,
@@ -70,21 +67,14 @@ async fn image_workflow_reuses_cache_without_contacting_worker() {
     let image = stage(&trace, "map.image");
     assert_eq!(attribute(&image, "bike.operation"), &"map.image".into());
     assert_eq!(attribute(&image, "cache.hit"), &true.into());
-    assert!(!trace
-        .spans()
-        .iter()
-        .any(|span| span.name == "bike.maps.snapshot"));
+    assert!(!trace.spans().iter().any(|span| span.name == "bike.maps.snapshot"));
     service.prune().await.unwrap();
     assert!(matches!(
-        service
-            .image(&database(None), 1, 7, Variant::Full, "1", options)
-            .await,
+        service.image(&database(None), 1, 7, Variant::Full, "1", options).await,
         Err(MapImageError::NotFound)
     ));
     assert!(matches!(
-        service
-            .image(&database(None), 1, 0, Variant::Full, "1", options)
-            .await,
+        service.image(&database(None), 1, 0, Variant::Full, "1", options).await,
         Err(MapImageError::Invalid)
     ));
 }
@@ -134,10 +124,7 @@ async fn image_workflow_calls_and_caches_authenticated_snapshot_worker() {
     let image = stage(&trace, "map.image");
     assert_eq!(attribute(&image, "cache.hit"), &false.into());
     let spans = trace.spans();
-    let snapshot = spans
-        .iter()
-        .find(|span| span.name == "bike.maps.snapshot")
-        .unwrap();
+    let snapshot = spans.iter().find(|span| span.name == "bike.maps.snapshot").unwrap();
     assert_eq!(snapshot.parent_span_id, image.span_context.span_id());
     assert_eq!(attribute(snapshot, "bike.operation"), &"map.render".into());
     service.maintain();
@@ -153,10 +140,7 @@ impl super::proto::map_service_server::MapService for FixtureWorker {
         &self,
         request: tonic::Request<super::proto::RenderMapRequest>,
     ) -> Result<tonic::Response<super::proto::RenderMapResponse>, tonic::Status> {
-        assert_eq!(
-            request.metadata().get("authorization").unwrap(),
-            "Bearer worker-secret"
-        );
+        assert_eq!(request.metadata().get("authorization").unwrap(), "Bearer worker-secret");
         assert_eq!(request.into_inner().points.len(), 2);
         Ok(tonic::Response::new(super::proto::RenderMapResponse {
             png: b"\x89PNG\r\n\x1a\nworker-png".to_vec(),
@@ -172,10 +156,8 @@ fn legacy_cache_keys_are_retained() {
         normalized: RenderRequest,
         key: String,
     }
-    let fixtures: Vec<Fixture> = serde_json::from_str(include_str!(
-        "../../../../map-renderer/testdata/legacy-requests.json"
-    ))
-    .unwrap();
+    let fixtures: Vec<Fixture> =
+        serde_json::from_str(include_str!("../../../../map-renderer/testdata/legacy-requests.json")).unwrap();
     for fixture in fixtures {
         assert_eq!(fixture.normalized.cache_key(), fixture.key);
     }
@@ -189,29 +171,17 @@ async fn cache_reuses_files_and_renews_idle_expiry() {
         .unwrap();
     let key = "a".repeat(64);
     assert!(cache.read(key.clone()).await.unwrap().is_none());
-    cache
-        .write(key.clone(), b"first png".to_vec())
-        .await
-        .unwrap();
+    cache.write(key.clone(), b"first png".to_vec()).await.unwrap();
     let path = directory.path().join(format!("{key}.png"));
     let previous = SystemTime::now() - Duration::from_secs(30);
     File::open(&path)
         .unwrap()
         .set_times(FileTimes::new().set_modified(previous))
         .unwrap();
-    assert_eq!(
-        cache.read(key.clone()).await.unwrap().unwrap(),
-        b"first png"
-    );
+    assert_eq!(cache.read(key.clone()).await.unwrap().unwrap(), b"first png");
     assert!(fs::metadata(&path).unwrap().modified().unwrap() > previous);
-    cache
-        .write(key.clone(), b"replacement png".to_vec())
-        .await
-        .unwrap();
-    assert_eq!(
-        cache.read(key.clone()).await.unwrap().unwrap(),
-        b"replacement png"
-    );
+    cache.write(key.clone(), b"replacement png".to_vec()).await.unwrap();
+    assert_eq!(cache.read(key.clone()).await.unwrap().unwrap(), b"replacement png");
     File::open(&path)
         .unwrap()
         .set_times(FileTimes::new().set_modified(SystemTime::now() - Duration::from_secs(61)))
@@ -238,10 +208,7 @@ async fn pruning_removes_only_idle_renderer_files() {
             .set_times(FileTimes::new().set_modified(SystemTime::now() - Duration::from_secs(61)))
             .unwrap();
     }
-    cache
-        .write("c".repeat(64), b"fresh".to_vec())
-        .await
-        .unwrap();
+    cache.write("c".repeat(64), b"fresh".to_vec()).await.unwrap();
     fs::create_dir(directory.path().join("unrelated-directory")).unwrap();
     let stats = cache.prune().await.unwrap();
     assert_eq!(stats.pruned, 2);
@@ -249,9 +216,7 @@ async fn pruning_removes_only_idle_renderer_files() {
     assert_eq!(stats.bytes, 8);
     assert!(directory.path().join("notes.png").exists());
     assert!(directory.path().join("unrelated-directory").exists());
-    assert!(Cache::new(directory.path().into(), Duration::ZERO)
-        .await
-        .is_err());
+    assert!(Cache::new(directory.path().into(), Duration::ZERO).await.is_err());
 }
 
 #[tokio::test]

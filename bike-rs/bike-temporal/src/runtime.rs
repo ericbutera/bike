@@ -4,8 +4,7 @@ use crate::{
     operations::BikeOperations,
     scheduling::SchedulingActivities,
     workflows::{
-        DebouncePolicy, PrepareHeatmap, RebuildFitnessFreshness, RebuildSegmentAnalytics,
-        ReprocessActivityImport,
+        DebouncePolicy, PrepareHeatmap, RebuildFitnessFreshness, RebuildSegmentAnalytics, ReprocessActivityImport,
     },
     TASK_QUEUE,
 };
@@ -15,8 +14,7 @@ use temporalio_client::{Client, ClientOptions, Connection, ConnectionOptions};
 use temporalio_sdk::{Runtime, Worker, WorkerOptions};
 
 pub async fn connect() -> Result<Client, crate::client::Error> {
-    let address =
-        std::env::var("TEMPORAL_ADDRESS").unwrap_or_else(|_| "http://temporal:7233".into());
+    let address = std::env::var("TEMPORAL_ADDRESS").unwrap_or_else(|_| "http://temporal:7233".into());
     let namespace = std::env::var("TEMPORAL_NAMESPACE").unwrap_or_else(|_| "bike".into());
     let options = ConnectionOptions::new(address.parse::<temporalio_client::Url>()?)
         .identity("bike-tasks")
@@ -43,10 +41,7 @@ pub fn worker(
         .register_workflow::<PrepareHeatmap>()?
         .register_activities(ImportActivities::new(operations.clone()))
         .register_activities(DerivedActivities::new(operations))
-        .register_activities(SchedulingActivities::new(
-            client.clone(),
-            DebouncePolicy::default(),
-        ))
+        .register_activities(SchedulingActivities::new(client.clone(), DebouncePolicy::default()))
         .graceful_shutdown_period(Duration::from_secs(10))
         .build();
     Ok(Worker::new(runtime, client, options)?)

@@ -11,10 +11,7 @@ pub struct ReprocessUserActivityImports;
 #[workflow_methods]
 impl ReprocessUserActivityImports {
     #[run(name = "reprocess_user_activity_imports")]
-    pub async fn run(
-        ctx: &mut WorkflowContext<Self>,
-        mut input: BatchInput,
-    ) -> WorkflowResult<BatchResult> {
+    pub async fn run(ctx: &mut WorkflowContext<Self>, mut input: BatchInput) -> WorkflowResult<BatchResult> {
         imports::prepare_reprocessing(ctx, &mut input, ReprocessScope::UserImports).await?;
         let step = batches::run_children(
             ctx,

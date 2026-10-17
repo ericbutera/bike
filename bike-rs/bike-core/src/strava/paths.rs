@@ -5,10 +5,7 @@ use crate::entities::strava_connections;
 pub const ROOT: &str = "strava";
 
 pub(crate) fn authorization(code: &str) -> String {
-    format!(
-        "{ROOT}/credentials/authorization/{}",
-        checksum(code.as_bytes())
-    )
+    format!("{ROOT}/credentials/authorization/{}", checksum(code.as_bytes()))
 }
 
 pub(crate) fn refresh(connection: &strava_connections::Model, token: &str) -> String {
@@ -35,10 +32,7 @@ mod tests {
     #[test]
     fn credential_and_exchange_keys_are_stable() {
         assert_eq!(exchange(None, "request"), "strava/exchanges/request");
-        assert_eq!(
-            exchange(Some("retained"), "request"),
-            "retained/exchanges/request"
-        );
+        assert_eq!(exchange(Some("retained"), "request"), "retained/exchanges/request");
         assert_eq!(
             authorization("code"),
             format!("strava/credentials/authorization/{}", checksum(b"code"))

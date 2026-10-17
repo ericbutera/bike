@@ -28,11 +28,7 @@ pub enum Relation {}
 crate::timestamps::impl_timestamps!(ActiveModel);
 
 impl Model {
-    pub async fn list_by_user_segment_ids<C>(
-        db: &C,
-        user_id: i32,
-        segment_ids: &[i32],
-    ) -> Result<Vec<Model>, DbErr>
+    pub async fn list_by_user_segment_ids<C>(db: &C, user_id: i32, segment_ids: &[i32]) -> Result<Vec<Model>, DbErr>
     where
         C: ConnectionTrait,
     {
@@ -68,10 +64,7 @@ impl Model {
 }
 
 impl Entity {
-    pub async fn delete_for_segment(
-        db: &impl ConnectionTrait,
-        segment_id: i32,
-    ) -> Result<(), DbErr> {
+    pub async fn delete_for_segment(db: &impl ConnectionTrait, segment_id: i32) -> Result<(), DbErr> {
         Self::delete_many()
             .filter(Column::SegmentId.eq(segment_id))
             .exec(db)
@@ -81,10 +74,7 @@ impl Entity {
 }
 
 impl Entity {
-    pub async fn clear_segments(
-        db: &impl ConnectionTrait,
-        ids: &[i32],
-    ) -> Result<sea_orm::DeleteResult, DbErr> {
+    pub async fn clear_segments(db: &impl ConnectionTrait, ids: &[i32]) -> Result<sea_orm::DeleteResult, DbErr> {
         use sea_orm::QueryFilter;
         Self::delete_many()
             .filter(Column::SegmentId.is_in(ids.iter().copied()))

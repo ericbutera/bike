@@ -10,31 +10,15 @@ impl MigrationTrait for Migration {
         manager.create_table(tasks()).await?;
         manager.create_table(attempts()).await?;
         for (name, table, columns) in [
-            (
-                "pipeline_runs_trace",
-                "processing_pipeline_runs",
-                vec!["trace_id"],
-            ),
-            (
-                "task_attempts_trace",
-                "background_task_attempts",
-                vec!["trace_id"],
-            ),
+            ("pipeline_runs_trace", "processing_pipeline_runs", vec!["trace_id"]),
+            ("task_attempts_trace", "background_task_attempts", vec!["trace_id"]),
             (
                 "pipeline_runs_received",
                 "processing_pipeline_runs",
                 vec!["pipeline_started_at"],
             ),
-            (
-                "pipeline_runs_request",
-                "processing_pipeline_runs",
-                vec!["request_id"],
-            ),
-            (
-                "pipeline_tasks_task",
-                "processing_pipeline_tasks",
-                vec!["task_id"],
-            ),
+            ("pipeline_runs_request", "processing_pipeline_runs", vec!["request_id"]),
+            ("pipeline_tasks_task", "processing_pipeline_tasks", vec!["task_id"]),
             (
                 "task_attempts_running",
                 "background_task_attempts",
@@ -68,12 +52,7 @@ impl MigrationTrait for Migration {
 fn runs() -> TableCreateStatement {
     Table::create()
         .table(Alias::new("processing_pipeline_runs"))
-        .col(
-            ColumnDef::new(Alias::new("id"))
-                .string_len(36)
-                .not_null()
-                .primary_key(),
-        )
+        .col(ColumnDef::new(Alias::new("id")).string_len(36).not_null().primary_key())
         .col(
             ColumnDef::new(Alias::new("pipeline_started_at"))
                 .timestamp_with_time_zone()
@@ -94,24 +73,13 @@ fn runs() -> TableCreateStatement {
 fn tasks() -> TableCreateStatement {
     Table::create()
         .table(Alias::new("processing_pipeline_tasks"))
-        .col(
-            ColumnDef::new(Alias::new("run_id"))
-                .string_len(36)
-                .not_null(),
-        )
+        .col(ColumnDef::new(Alias::new("run_id")).string_len(36).not_null())
         .col(ColumnDef::new(Alias::new("task_id")).integer().not_null())
         .col(ColumnDef::new(Alias::new("parent_task_id")).integer())
-        .primary_key(
-            Index::create()
-                .col(Alias::new("run_id"))
-                .col(Alias::new("task_id")),
-        )
+        .primary_key(Index::create().col(Alias::new("run_id")).col(Alias::new("task_id")))
         .foreign_key(
             ForeignKey::create()
-                .from(
-                    Alias::new("processing_pipeline_tasks"),
-                    Alias::new("run_id"),
-                )
+                .from(Alias::new("processing_pipeline_tasks"), Alias::new("run_id"))
                 .to(Alias::new("processing_pipeline_runs"), Alias::new("id"))
                 .on_delete(ForeignKeyAction::Cascade),
         )
@@ -144,11 +112,7 @@ fn attempts() -> TableCreateStatement {
         .col(ColumnDef::new(Alias::new("error")).text())
         .col(ColumnDef::new(Alias::new("trace_id")).string_len(32))
         .col(ColumnDef::new(Alias::new("span_id")).string_len(16))
-        .primary_key(
-            Index::create()
-                .col(Alias::new("task_id"))
-                .col(Alias::new("attempt")),
-        )
+        .primary_key(Index::create().col(Alias::new("task_id")).col(Alias::new("attempt")))
         .foreign_key(&mut task_reference("background_task_attempts", "task_id"))
         .to_owned()
 }

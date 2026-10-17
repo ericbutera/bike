@@ -18,9 +18,8 @@ struct Series {
 }
 
 pub fn parse(bytes: &[u8]) -> Result<ParsedActivityData, AppError> {
-    let recording: PhoneRecording = serde_json::from_slice(bytes).map_err(|error| {
-        AppError::bad_request(format!("Invalid Strava archive recording: {error}"))
-    })?;
+    let recording: PhoneRecording = serde_json::from_slice(bytes)
+        .map_err(|error| AppError::bad_request(format!("Invalid Strava archive recording: {error}")))?;
     let mut summary = recording.metadata;
     summary.insert(
         "id".into(),
@@ -48,14 +47,10 @@ pub fn parse(bytes: &[u8]) -> Result<ParsedActivityData, AppError> {
     let streams = phone_streams(track, started_at.timestamp() as f64)?;
     let payload: StoredStravaProviderPayload =
         serde_json::from_value(json!({"provider":"strava", "activity":summary, "streams":streams}))
-            .map_err(|error| {
-                AppError::bad_request(format!("Invalid Strava archive metadata: {error}"))
-            })?;
+            .map_err(|error| AppError::bad_request(format!("Invalid Strava archive metadata: {error}")))?;
     // Reuse the native summary/stream normalizer. Only the authentic input bytes
     // are retained; this adapter creates no export or replacement source file.
-    parse_strava_provider_payload(
-        &serde_json::to_vec(&payload).map_err(|error| AppError::internal(error.to_string()))?,
-    )
+    parse_strava_provider_payload(&serde_json::to_vec(&payload).map_err(|error| AppError::internal(error.to_string()))?)
 }
 
 fn phone_streams(series: &Series, start_epoch: f64) -> Result<Value, AppError> {
@@ -100,9 +95,7 @@ fn phone_streams(series: &Series, start_epoch: f64) -> Result<Value, AppError> {
         streams.insert(target.into(), json!({"data":values}));
     }
     if !streams.contains_key("time") {
-        return Err(AppError::bad_request(
-            "Strava archive recording has no elapsed times",
-        ));
+        return Err(AppError::bad_request("Strava archive recording has no elapsed times"));
     }
     Ok(Value::Object(streams))
 }

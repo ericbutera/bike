@@ -21,10 +21,7 @@ fn restarted_upsert_replays_persisted_steps_and_resumes_publication() {
     ] {
         workflow.activity(activity, &change, &change);
     }
-    assert_eq!(
-        workflow.result::<ActivityChange>().bike_activity_id,
-        Some(42)
-    );
+    assert_eq!(workflow.result::<ActivityChange>().bike_activity_id, Some(42));
 }
 
 #[test]
@@ -33,10 +30,7 @@ fn create_uses_an_upsert_child_and_returns_its_bike_activity_id() {
     let mut workflow = WorkflowMock::new::<CreateActivity>(fixture.event.clone());
     let child = workflow.start_child(UpsertActivity::run.name(), &fixture.event);
     workflow.complete_child(child, &fixture.change(ActivityStatus::Applied));
-    assert_eq!(
-        workflow.result::<ActivityChange>().bike_activity_id,
-        Some(42)
-    );
+    assert_eq!(workflow.result::<ActivityChange>().bike_activity_id, Some(42));
 }
 
 #[test]
@@ -54,11 +48,7 @@ fn update_uses_an_upsert_child_and_preserves_customer_and_activity_context() {
 fn upsert_completes_only_after_activity_and_customer_results_are_published() {
     let fixture = Fixture::new(StravaOperation::Upsert);
     let mut workflow = WorkflowMock::new::<UpsertActivity>(fixture.event.clone());
-    persist(
-        &mut workflow,
-        &fixture,
-        &fixture.change(ActivityStatus::Applied),
-    );
+    persist(&mut workflow, &fixture, &fixture.change(ActivityStatus::Applied));
     let change = fixture.change(ActivityStatus::Applied);
     for activity in [
         StravaActivities::rebuild_activity.name(),
@@ -69,25 +59,15 @@ fn upsert_completes_only_after_activity_and_customer_results_are_published() {
     ] {
         workflow.activity(activity, &change, &change);
     }
-    assert_eq!(
-        workflow.result::<ActivityChange>().status,
-        ActivityStatus::Applied
-    );
+    assert_eq!(workflow.result::<ActivityChange>().status, ActivityStatus::Applied);
 }
 
 #[test]
 fn superseded_upsert_does_not_publish_or_complete_an_import() {
     let fixture = Fixture::new(StravaOperation::Upsert);
     let mut workflow = WorkflowMock::new::<UpsertActivity>(fixture.event.clone());
-    persist(
-        &mut workflow,
-        &fixture,
-        &fixture.change(ActivityStatus::Superseded),
-    );
-    assert_eq!(
-        workflow.result::<ActivityChange>().status,
-        ActivityStatus::Superseded
-    );
+    persist(&mut workflow, &fixture, &fixture.change(ActivityStatus::Superseded));
+    assert_eq!(workflow.result::<ActivityChange>().status, ActivityStatus::Superseded);
 }
 
 #[test]
@@ -104,20 +84,14 @@ fn excluded_activity_cleans_up_and_rebuilds_without_publishing_a_heatmap() {
     ] {
         workflow.activity(activity, &change, &change);
     }
-    assert_eq!(
-        workflow.result::<ActivityChange>().status,
-        ActivityStatus::Deleted
-    );
+    assert_eq!(workflow.result::<ActivityChange>().status, ActivityStatus::Deleted);
 }
 
 #[test]
 fn provider_failure_stops_before_persistence_and_publication() {
     let fixture = Fixture::new(StravaOperation::Upsert);
     let mut workflow = WorkflowMock::new::<UpsertActivity>(fixture.event);
-    workflow.fail_activity(
-        StravaActivities::fetch_activity.name(),
-        "Fixture Strava failure",
-    );
+    workflow.fail_activity(StravaActivities::fetch_activity.name(), "Fixture Strava failure");
     workflow.assert_failed();
 }
 
@@ -131,10 +105,7 @@ fn cancellation_cannot_be_reported_as_success() {
         workflow.assert_cancelled();
     });
     assert_eq!(logs.workflow("unit-workflow", "cancelled")["level"], "INFO");
-    assert!(logs
-        .rows()
-        .iter()
-        .all(|row| row["fields"]["status"] != "completed"));
+    assert!(logs.rows().iter().all(|row| row["fields"]["status"] != "completed"));
 }
 
 #[test]
@@ -142,11 +113,7 @@ fn delete_captures_dependencies_and_rebuilds_before_completion() {
     let fixture = Fixture::new(StravaOperation::Delete);
     let change = fixture.change(ActivityStatus::Deleted);
     let mut workflow = WorkflowMock::new::<DeleteActivity>(fixture.event.clone());
-    workflow.activity(
-        StravaActivities::capture_deletion.name(),
-        &fixture.event,
-        &change,
-    );
+    workflow.activity(StravaActivities::capture_deletion.name(), &fixture.event, &change);
     for activity in [
         StravaActivities::delete_activity.name(),
         StravaActivities::delete_source.name(),
@@ -156,10 +123,7 @@ fn delete_captures_dependencies_and_rebuilds_before_completion() {
     ] {
         workflow.activity(activity, &change, &change);
     }
-    assert_eq!(
-        workflow.result::<ActivityChange>().status,
-        ActivityStatus::Deleted
-    );
+    assert_eq!(workflow.result::<ActivityChange>().status, ActivityStatus::Deleted);
 }
 
 #[test]
@@ -176,10 +140,7 @@ fn superseded_delete_does_not_remove_sources_or_rebuild_results() {
         &fixture.change(ActivityStatus::Deleted),
         &fixture.change(ActivityStatus::Superseded),
     );
-    assert_eq!(
-        workflow.result::<ActivityChange>().status,
-        ActivityStatus::Superseded
-    );
+    assert_eq!(workflow.result::<ActivityChange>().status, ActivityStatus::Superseded);
 }
 
 fn persist(workflow: &mut WorkflowMock, fixture: &Fixture, change: &ActivityChange) {
@@ -198,9 +159,5 @@ fn persist(workflow: &mut WorkflowMock, fixture: &Fixture, change: &ActivityChan
         &fixture.sources(),
         &fixture.normalized(),
     );
-    workflow.activity(
-        StravaActivities::persist_activity.name(),
-        &fixture.normalized(),
-        change,
-    );
+    workflow.activity(StravaActivities::persist_activity.name(), &fixture.normalized(), change);
 }

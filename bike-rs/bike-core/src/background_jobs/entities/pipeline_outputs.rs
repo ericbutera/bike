@@ -29,12 +29,7 @@ pub enum Relation {}
 impl ActiveModelBehavior for ActiveModel {}
 
 impl Model {
-    pub async fn advance(
-        db: &impl ConnectionTrait,
-        kind: &str,
-        target_id: i32,
-        revision: &str,
-    ) -> Result<(), DbErr> {
+    pub async fn advance(db: &impl ConnectionTrait, kind: &str, target_id: i32, revision: &str) -> Result<(), DbErr> {
         Entity::update_many()
             .col_expr(Column::Revision, Expr::value(revision))
             .filter(Column::Kind.eq(kind))
@@ -46,12 +41,7 @@ impl Model {
     }
     /// Requirements and source changes share the caller's transaction. Updating a
     /// requirement invalidates prior readiness; publication must match its revision.
-    pub async fn require(
-        db: &impl ConnectionTrait,
-        kind: &str,
-        target_id: i32,
-        revision: String,
-    ) -> Result<(), DbErr> {
+    pub async fn require(db: &impl ConnectionTrait, kind: &str, target_id: i32, revision: String) -> Result<(), DbErr> {
         let Some(context) = crate::background_jobs::pipeline::PipelineContext::current() else {
             return Ok(());
         };
@@ -168,11 +158,7 @@ impl Model {
     pub async fn for_run(db: &impl ConnectionTrait, id: &str) -> Result<Vec<Self>, DbErr> {
         Entity::find().filter(Column::RunId.eq(id)).all(db).await
     }
-    pub async fn page_for_run(
-        db: &impl ConnectionTrait,
-        id: &str,
-        offset: u64,
-    ) -> Result<Vec<Self>, DbErr> {
+    pub async fn page_for_run(db: &impl ConnectionTrait, id: &str, offset: u64) -> Result<Vec<Self>, DbErr> {
         use sea_orm::{QueryOrder, QuerySelect};
         Entity::find()
             .filter(Column::RunId.eq(id))

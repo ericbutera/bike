@@ -22,11 +22,7 @@ impl TaskProcessor for RegenerateUserSegments {
         JobType::RegenerateUserSegments.as_str()
     }
 
-    async fn process(
-        &self,
-        task_id: i32,
-        payload: serde_json::Value,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+    async fn process(&self, task_id: i32, payload: serde_json::Value) -> Result<(), Box<dyn Error + Send + Sync>> {
         let data = payload.get("data").unwrap_or(&payload);
         let task: RegenerateUserSegmentsTask = serde_json::from_value(data.clone())?;
 
@@ -34,9 +30,7 @@ impl TaskProcessor for RegenerateUserSegments {
             &self.db,
             task_id,
             task.user_id,
-            data["batch_id"]
-                .as_i64()
-                .and_then(|id| i32::try_from(id).ok()),
+            data["batch_id"].as_i64().and_then(|id| i32::try_from(id).ok()),
         )
         .await
         .map_err(|error| std::io::Error::other(error.message))?;

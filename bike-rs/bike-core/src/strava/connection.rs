@@ -2,13 +2,10 @@ use crate::activity_import_pipeline::ActivityUploadPayload;
 use crate::config::Config;
 use crate::entities::strava_connections;
 use crate::integration_events_service::{
-    self, NewIntegrationEvent, INTEGRATION_LEVEL_ERROR, INTEGRATION_LEVEL_SUCCESS,
-    INTEGRATION_PROVIDER_STRAVA,
+    self, NewIntegrationEvent, INTEGRATION_LEVEL_ERROR, INTEGRATION_LEVEL_SUCCESS, INTEGRATION_PROVIDER_STRAVA,
 };
 use crate::strava::client::{StravaApiClient, StravaAuthorizationTokenResponse};
-use crate::strava::provider_payload::{
-    StoredStravaProviderPayload, StravaActivityStreams, StravaActivitySummary,
-};
+use crate::strava::provider_payload::{StoredStravaProviderPayload, StravaActivityStreams, StravaActivitySummary};
 use crate::workflow_error::WorkflowError as AppError;
 #[cfg(test)]
 use chrono::DateTime;
@@ -71,15 +68,11 @@ pub struct StravaWebhookEvent {
 }
 
 pub fn build_redirect_uri(config: &Config) -> String {
-    format!(
-        "{}/api/strava/callback",
-        config.api_url.trim_end_matches('/')
-    )
+    format!("{}/api/strava/callback", config.api_url.trim_end_matches('/'))
 }
 
 pub fn build_authorization_url(config: &Config, state: &str) -> Result<Url, String> {
-    let mut url = Url::parse(STRAVA_AUTHORIZE_URL)
-        .map_err(|error| format!("Invalid Strava authorize URL: {error}"))?;
+    let mut url = Url::parse(STRAVA_AUTHORIZE_URL).map_err(|error| format!("Invalid Strava authorize URL: {error}"))?;
     let scopes = requested_oauth_scopes(config);
 
     url.query_pairs_mut()
@@ -146,11 +139,7 @@ pub fn athlete_display_name(connection: &strava_connections::Model) -> Option<St
     }
 }
 
-pub fn build_frontend_account_redirect(
-    config: &Config,
-    status: &str,
-    message: Option<&str>,
-) -> String {
+pub fn build_frontend_account_redirect(config: &Config, status: &str, message: Option<&str>) -> String {
     let fallback = format!("{}/account", config.frontend_url.trim_end_matches('/'));
     let mut url = match Url::parse(&fallback) {
         Ok(value) => value,
@@ -190,8 +179,7 @@ pub async fn exchange_code_for_connection(
             return Err(AppError::bad_request(missing_activity_scope_message()));
         }
 
-        let connection =
-            upsert_connection_from_token(db, verified_state.user_id, token_response).await?;
+        let connection = upsert_connection_from_token(db, verified_state.user_id, token_response).await?;
 
         crate::strava::events::request_sync(db, connection.user_id).await?;
         load_connection(db, connection.user_id)
@@ -262,10 +250,7 @@ pub fn verify_webhook_subscription(
     })
 }
 
-pub async fn forget_local_connection(
-    db: &DatabaseConnection,
-    user_id: i32,
-) -> Result<(), AppError> {
+pub async fn forget_local_connection(db: &DatabaseConnection, user_id: i32) -> Result<(), AppError> {
     let Some(connection) = load_connection(db, user_id).await? else {
         return Ok(());
     };
@@ -315,9 +300,7 @@ pub(crate) async fn ensure_fresh_access_token(
         store: crate::strava::objects::ObjectStore::new(&Config::get().uploads_dir),
         key: super::paths::refresh(&connection, &refresh_token),
     };
-    let token_response = archive
-        .scope(client.refresh_access_token(&refresh_token))
-        .await?;
+    let token_response = archive.scope(client.refresh_access_token(&refresh_token)).await?;
     connection.refresh_credentials(db, token_response).await
 }
 
@@ -325,16 +308,8 @@ pub(crate) fn build_activity_upload(
     activity: &StravaActivitySummary,
     streams: &StravaActivityStreams,
 ) -> Result<ActivityUploadPayload, AppError> {
-    let bytes = serde_json::to_vec(&StoredStravaProviderPayload::new(
-        activity.clone(),
-        streams.clone(),
-    ))
-    .map_err(|error| {
-        AppError::internal(format!(
-            "Failed to serialize Strava activity {}: {error}",
-            activity.id
-        ))
-    })?;
+    let bytes = serde_json::to_vec(&StoredStravaProviderPayload::new(activity.clone(), streams.clone()))
+        .map_err(|error| AppError::internal(format!("Failed to serialize Strava activity {}: {error}", activity.id)))?;
     Ok(ActivityUploadPayload {
         original_filename: format!("strava_activity_{}.json", activity.id),
         format: "json".into(),
@@ -412,10 +387,7 @@ async fn record_strava_event_best_effort(
 
 fn requested_oauth_scopes(config: &Config) -> Vec<String> {
     let mut scopes = config.strava_oauth_scope_list();
-    if !scopes
-        .iter()
-        .any(|scope| scope == STRAVA_REQUIRED_ACTIVITY_SCOPE)
-    {
+    if !scopes.iter().any(|scope| scope == STRAVA_REQUIRED_ACTIVITY_SCOPE) {
         scopes.push(STRAVA_REQUIRED_ACTIVITY_SCOPE.to_string());
     }
     scopes
@@ -482,15 +454,10 @@ mod tests {
         let config = test_config();
         let url = build_authorization_url(&config, "signed-state").unwrap();
 
-        assert_eq!(
-            url.origin().unicode_serialization(),
-            "https://www.strava.com"
-        );
+        assert_eq!(url.origin().unicode_serialization(), "https://www.strava.com");
         assert_eq!(url.path(), "/oauth/authorize");
         assert!(url.as_str().contains("client_id=12345"));
-        assert!(url
-            .as_str()
-            .contains("scope=activity%3Aread_all%2Cprofile%3Aread_all"));
+        assert!(url.as_str().contains("scope=activity%3Aread_all%2Cprofile%3Aread_all"));
         assert!(url.as_str().contains("state=signed-state"));
     }
 
@@ -585,8 +552,7 @@ mod tests {
         assert_eq!(payload.format, "json");
         assert_eq!(payload.original_filename, "strava_activity_99.json");
         assert_eq!(payload.source_correlation_id.as_deref(), Some("99"));
-        let raw_json: serde_json::Value =
-            serde_json::from_slice(&payload.bytes).expect("provider payload json");
+        let raw_json: serde_json::Value = serde_json::from_slice(&payload.bytes).expect("provider payload json");
         assert_eq!(raw_json["v"], 1);
         assert_eq!(raw_json["provider"], "strava");
         assert_eq!(raw_json["provider_activity_id"], 99);

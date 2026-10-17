@@ -42,10 +42,7 @@ pub(crate) async fn refresh_import_outputs<W>(
     Ok(())
 }
 
-pub(crate) async fn fitness<W>(
-    ctx: &WorkflowContext<W>,
-    request: &FitnessChange,
-) -> WorkflowResult<()> {
+pub(crate) async fn fitness<W>(ctx: &WorkflowContext<W>, request: &FitnessChange) -> WorkflowResult<()> {
     let options = options::activity(request.priority, format!("user-{}", request.user_id));
     options::run(
         ctx,
@@ -56,10 +53,7 @@ pub(crate) async fn fitness<W>(
     .await
 }
 
-pub(crate) async fn segments<W>(
-    ctx: &WorkflowContext<W>,
-    requests: &[SegmentChange],
-) -> WorkflowResult<()> {
+pub(crate) async fn segments<W>(ctx: &WorkflowContext<W>, requests: &[SegmentChange]) -> WorkflowResult<()> {
     if requests.is_empty() {
         return Ok(());
     }

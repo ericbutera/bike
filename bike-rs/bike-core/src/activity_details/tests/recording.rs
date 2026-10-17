@@ -37,12 +37,10 @@ fn gpx_recorder_and_tcx_creator_are_independent_of_generic_ride_type() {
         let derived = derive_activity_detail_data("route", format, xml.as_bytes()).unwrap();
         assert_eq!(derived.recording.environment, RecordingEnvironment::Virtual);
         let real = xml.replace("Zwift", "Garmin");
-        assert!(
-            !derive_activity_detail_data("route", format, real.as_bytes())
-                .unwrap()
-                .recording
-                .excluded()
-        );
+        assert!(!derive_activity_detail_data("route", format, real.as_bytes())
+            .unwrap()
+            .recording
+            .excluded());
     }
 }
 
@@ -61,7 +59,5 @@ fn imported_fit_with_exact_two_minute_gap_keeps_real_segments_without_joining_th
     );
     let chunks = geometry::prepare(&derived.route_points);
     assert_eq!(chunks.len(), 8);
-    assert!(chunks
-        .iter()
-        .all(|chunk| chunk.bounds[3] - chunk.bounds[1] < 0.000001));
+    assert!(chunks.iter().all(|chunk| chunk.bounds[3] - chunk.bounds[1] < 0.000001));
 }

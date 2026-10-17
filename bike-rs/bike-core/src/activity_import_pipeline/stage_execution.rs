@@ -3,9 +3,7 @@ use super::*;
 pub(super) async fn begin_processing_attempt(
     run: &ActivityProcessingRun<'_>,
 ) -> Result<activity_import_attempts::Model, AppError> {
-    let attempt = match activity_import_attempts::Entity::active(run.db, run.user_id, run.import.id)
-        .await?
-    {
+    let attempt = match activity_import_attempts::Entity::active(run.db, run.user_id, run.import.id).await? {
         Some(attempt) => attempt,
         None => {
             let source = load_best_activity_parsing_artifact(run.db, &run.import)
@@ -14,21 +12,11 @@ pub(super) async fn begin_processing_attempt(
                 .unwrap_or_else(
                     |_| serde_json::json!({"filename": run.import.original_filename, "format": run.import.format}),
                 );
-            execution::create_attempt(
-                run.db,
-                &run.import,
-                source,
-                "raw_stored",
-                "raw_stored",
-                None,
-            )
-            .await?
+            execution::create_attempt(run.db, &run.import, source, "raw_stored", "raw_stored", None).await?
         }
     };
     if !activity_import_attempts::Entity::claim(run.db, attempt.id).await? {
-        return Err(AppError::conflict(
-            "This import already has a running attempt",
-        ));
+        return Err(AppError::conflict("This import already has a running attempt"));
     }
     crate::background_jobs::entities::pipeline_outputs::Model::require(
         run.db,
@@ -84,25 +72,18 @@ pub(super) async fn complete_processing_node(
     node: ActivityProcessingNode,
 ) -> Result<(), AppError> {
     if let Some(activity) = &state.activity_model {
-        state.activity_model =
-            activities::Model::find_owned(run.db, activity.id, run.user_id).await?;
+        state.activity_model = activities::Model::find_owned(run.db, activity.id, run.user_id).await?;
     }
     let started_at = execution::stages(&state.attempt)?
         .into_iter()
         .find(|stage| stage.stage == node.id())
         .and_then(|stage| stage.started_at);
-    let checkpoint = state
-        .parsed_activity
-        .as_ref()
-        .map(|parsed| ProcessingCheckpoint {
-            version: 1,
-            parsed: parsed.clone(),
-            affected_segment_ids: state.affected_segment_ids.clone(),
-            activity_updated_at: state
-                .activity_model
-                .as_ref()
-                .map(|activity| activity.updated_at),
-        });
+    let checkpoint = state.parsed_activity.as_ref().map(|parsed| ProcessingCheckpoint {
+        version: 1,
+        parsed: parsed.clone(),
+        affected_segment_ids: state.affected_segment_ids.clone(),
+        activity_updated_at: state.activity_model.as_ref().map(|activity| activity.updated_at),
+    });
     state.attempt = execution::record_stage(
         run.db,
         state.attempt.clone(),
@@ -137,33 +118,23 @@ fn stage_summary(state: &ActivityProcessingState, node: ActivityProcessingNode) 
                 "Retained source readable; no original checksum recorded".into()
             },
         ],
-        ActivityProcessingNode::ActivityParsed => {
-            state
-                .parsed_activity
-                .as_ref()
-                .map_or_else(Vec::new, |parsed| {
-                    vec![
-                        format!("Parsed {} records", parsed.derived_data.route_points.len()),
-                        format!(
-                            "{} chart samples · {} laps",
-                            parsed.derived_data.chart_points.len(),
-                            parsed.derived_data.laps.len()
-                        ),
-                        format!("Sport: {}", parsed.draft.sport),
-                    ]
-                })
-        }
+        ActivityProcessingNode::ActivityParsed => state.parsed_activity.as_ref().map_or_else(Vec::new, |parsed| {
+            vec![
+                format!("Parsed {} records", parsed.derived_data.route_points.len()),
+                format!(
+                    "{} chart samples · {} laps",
+                    parsed.derived_data.chart_points.len(),
+                    parsed.derived_data.laps.len()
+                ),
+                format!("Sport: {}", parsed.draft.sport),
+            ]
+        }),
         ActivityProcessingNode::ActivitySaved => state
             .activity_model
             .as_ref()
-            .map_or_else(Vec::new, |activity| {
-                vec![format!("Saved activity #{}", activity.id)]
-            }),
+            .map_or_else(Vec::new, |activity| vec![format!("Saved activity #{}", activity.id)]),
         ActivityProcessingNode::SegmentsBuilt => {
-            vec![format!(
-                "{} affected segments",
-                state.affected_segment_ids.len()
-            )]
+            vec![format!("{} affected segments", state.affected_segment_ids.len())]
         }
         ActivityProcessingNode::SegmentAnalyticsBuilt => vec![format!(
             "Rebuilt analytics for {} segments",

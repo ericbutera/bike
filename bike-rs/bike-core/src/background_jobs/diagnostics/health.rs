@@ -5,17 +5,11 @@ use super::super::{
 use chrono::{DateTime, Utc};
 use sea_orm::{DatabaseConnection, DbErr};
 
-pub async fn sample(
-    db: &DatabaseConnection,
-    metrics: &WorkerMetrics,
-    task_types: &[String],
-) -> Result<(), DbErr> {
+pub async fn sample(db: &DatabaseConnection, metrics: &WorkerMetrics, task_types: &[String]) -> Result<(), DbErr> {
     sample_snapshots(db, metrics, task_types).await?;
     super::super::batches::reconcile(db).await?;
     super::reconcile_available(db, metrics).await?;
-    for kind in [
-        "activity", "fitness", "heatmap", "segments", "import", "batch",
-    ] {
+    for kind in ["activity", "fitness", "heatmap", "segments", "import", "batch"] {
         let count = pipeline_outputs::Model::pending_count(db, kind).await?;
         metrics.set_pending_outputs(kind, count as i64);
     }
@@ -35,9 +29,7 @@ pub async fn sample(
 }
 
 fn age(timestamp: Option<DateTime<Utc>>, now: DateTime<Utc>) -> i64 {
-    timestamp
-        .map(|time| (now - time).num_seconds().max(0))
-        .unwrap_or(0)
+    timestamp.map(|time| (now - time).num_seconds().max(0)).unwrap_or(0)
 }
 
 async fn sample_snapshots(
@@ -47,14 +39,7 @@ async fn sample_snapshots(
 ) -> Result<(), DbErr> {
     let now = Utc::now();
     for task_type in task_types {
-        for state in [
-            "queued",
-            "scheduled",
-            "retrying",
-            "running",
-            "failed",
-            "completed",
-        ] {
+        for state in ["queued", "scheduled", "retrying", "running", "failed", "completed"] {
             metrics.set_state(task_type, state, 0);
         }
         for signal in ["eligible", "runtime", "heartbeat", "progress"] {

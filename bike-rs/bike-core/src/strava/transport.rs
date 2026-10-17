@@ -52,9 +52,7 @@ impl Middleware for ExchangeRecorder {
             "body_base64":request.body().and_then(reqwest::Body::as_bytes).map(|body| STANDARD.encode(body)),
             "observed_at":chrono::Utc::now()
         });
-        let request_object = self
-            .encrypted(&format!("{prefix}/request"), &request_evidence)
-            .await?;
+        let request_object = self.encrypted(&format!("{prefix}/request"), &request_evidence).await?;
         if let Some(context) = &context {
             context.exchange(&id.to_string(), &method, &path, None, None);
         }
@@ -80,17 +78,8 @@ impl Middleware for ExchangeRecorder {
             bytes: bytes.clone(),
         };
         if let Some(context) = &context {
-            let request_id = raw
-                .headers
-                .get("x-request-id")
-                .and_then(|value| value.to_str().ok());
-            context.exchange(
-                &id.to_string(),
-                &method,
-                &path,
-                Some(raw.status.as_u16()),
-                request_id,
-            );
+            let request_id = raw.headers.get("x-request-id").and_then(|value| value.to_str().ok());
+            context.exchange(&id.to_string(), &method, &path, Some(raw.status.as_u16()), request_id);
         }
         self.encrypted(&format!("{prefix}/result"), &serde_json::json!({
             "request":request_object,"status":raw.status.as_u16(),"version":format!("{:?}",parts.version),
@@ -99,13 +88,9 @@ impl Middleware for ExchangeRecorder {
         retain_response(&self.store, &prefix, &raw, confidential)
             .await
             .map_err(storage_error)?;
-        RESPONSE
-            .try_with(|slot| *slot.borrow_mut() = Some(raw))
-            .map_err(|_| {
-                reqwest_middleware::Error::Middleware(anyhow::anyhow!(
-                    "Strava SDK call has no capture context"
-                ))
-            })?;
+        RESPONSE.try_with(|slot| *slot.borrow_mut() = Some(raw)).map_err(|_| {
+            reqwest_middleware::Error::Middleware(anyhow::anyhow!("Strava SDK call has no capture context"))
+        })?;
         Ok(http::Response::from_parts(parts, reqwest::Body::from(bytes)).into())
     }
 }
@@ -116,8 +101,7 @@ impl ExchangeRecorder {
         prefix: &str,
         value: &serde_json::Value,
     ) -> reqwest_middleware::Result<crate::strava::objects::ObjectRef> {
-        let bytes = serde_json::to_vec(value)
-            .map_err(|error| reqwest_middleware::Error::Middleware(error.into()))?;
+        let bytes = serde_json::to_vec(value).map_err(|error| reqwest_middleware::Error::Middleware(error.into()))?;
         let encrypted = credentials::seal(&bytes).map_err(storage_error)?;
         self.store
             .write(prefix, encrypted.as_bytes())
@@ -163,13 +147,9 @@ mod tests {
     }
 
     async fn oauth(request: Request<Body>) -> Response<Body> {
-        assert_eq!(
-            request.headers()["content-type"],
-            "application/x-www-form-urlencoded"
-        );
+        assert_eq!(request.headers()["content-type"], "application/x-www-form-urlencoded");
         let body = to_bytes(request.into_body(), 4096).await.unwrap();
-        let fields: std::collections::BTreeMap<_, _> =
-            url::form_urlencoded::parse(&body).into_owned().collect();
+        let fields: std::collections::BTreeMap<_, _> = url::form_urlencoded::parse(&body).into_owned().collect();
         assert_eq!(fields["client_id"], "fixture-client");
         assert_eq!(fields["client_secret"], "fixture-secret");
         assert_eq!(fields["grant_type"], "refresh_token");
@@ -186,9 +166,7 @@ mod tests {
         let files = tempfile::tempdir().unwrap();
         let store = ObjectStore::new(files.path());
         let client = reqwest_middleware::ClientBuilder::new(reqwest::Client::new())
-            .with(ExchangeRecorder {
-                store: store.clone(),
-            })
+            .with(ExchangeRecorder { store: store.clone() })
             .build();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let origin = format!("http://{}", listener.local_addr().unwrap());
@@ -204,12 +182,7 @@ mod tests {
             oauth_access_token: Some("fixture-access".into()),
             ..Configuration::default()
         };
-        let (decoded, original) = capture(activities_api::get_activity_by_id(
-            &config,
-            20424619693,
-            Some(false),
-        ))
-        .await;
+        let (decoded, original) = capture(activities_api::get_activity_by_id(&config, 20424619693, Some(false))).await;
         assert_eq!(decoded.unwrap().id, Some(20424619693));
         let original = original.unwrap();
         assert_eq!(original.bytes.as_ref(), ACTIVITY);
@@ -235,16 +208,12 @@ mod tests {
     }
 
     async fn assert_saved_exchanges(root: &std::path::Path, store: &ObjectStore) {
-        let mut exchanges = tokio::fs::read_dir(root.join("strava/exchanges"))
-            .await
-            .unwrap();
+        let mut exchanges = tokio::fs::read_dir(root.join("strava/exchanges")).await.unwrap();
         let mut count = 0;
         while let Some(exchange) = exchanges.next_entry().await.unwrap() {
             let path = exchange.path();
             let result = read_encrypted_result(&path).await;
-            let body = STANDARD
-                .decode(result["body_base64"].as_str().unwrap())
-                .unwrap();
+            let body = STANDARD.decode(result["body_base64"].as_str().unwrap()).unwrap();
             assert!(body == ACTIVITY || body == OAUTH);
             if body == ACTIVITY {
                 let saved = store

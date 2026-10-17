@@ -9,21 +9,12 @@ pub trait ActivityStorage: Send + Sync {
 }
 
 impl dyn ActivityStorage {
-    pub async fn read_json<T: DeserializeOwned>(
-        &self,
-        object: &ObjectRef,
-    ) -> Result<T, WorkflowError> {
-        serde_json::from_slice(&self.read(object).await?)
-            .map_err(|error| WorkflowError::bad_request(error.to_string()))
+    pub async fn read_json<T: DeserializeOwned>(&self, object: &ObjectRef) -> Result<T, WorkflowError> {
+        serde_json::from_slice(&self.read(object).await?).map_err(|error| WorkflowError::bad_request(error.to_string()))
     }
 
-    pub async fn transform<T: Serialize>(
-        &self,
-        key: &str,
-        value: &T,
-    ) -> Result<ObjectRef, WorkflowError> {
-        let bytes = serde_json::to_vec(value)
-            .map_err(|error| WorkflowError::internal(error.to_string()))?;
+    pub async fn transform<T: Serialize>(&self, key: &str, value: &T) -> Result<ObjectRef, WorkflowError> {
+        let bytes = serde_json::to_vec(value).map_err(|error| WorkflowError::internal(error.to_string()))?;
         self.write(key, &bytes).await
     }
 }
@@ -57,18 +48,11 @@ pub(super) struct ProviderClient {
 }
 
 impl ProviderClient {
-    async fn access(
-        &self,
-        event: &StravaEvent,
-    ) -> Result<(StravaApiClient, String), WorkflowError> {
+    async fn access(&self, event: &StravaEvent) -> Result<(StravaApiClient, String), WorkflowError> {
         let connection = strava_connections::Model::for_event(&self.db, event).await?;
         let client = StravaApiClient::new(&self.db, Config::get())?;
-        let connection =
-            super::super::ensure_fresh_access_token(&self.db, &client, connection).await?;
-        Ok((
-            client,
-            super::super::credentials::open(&connection.access_token)?,
-        ))
+        let connection = super::super::ensure_fresh_access_token(&self.db, &client, connection).await?;
+        Ok((client, super::super::credentials::open(&connection.access_token)?))
     }
 
     fn archive(&self, event: &StravaEvent, resource: &str) -> RequestArchive {

@@ -13,10 +13,7 @@ pub struct ProcessActivityImport;
 #[workflow_methods]
 impl ProcessActivityImport {
     #[run(name = "process_activity_import")]
-    pub async fn run(
-        ctx: &mut WorkflowContext<Self>,
-        source: ImportSource,
-    ) -> WorkflowResult<ActivityImportResult> {
+    pub async fn run(ctx: &mut WorkflowContext<Self>, source: ImportSource) -> WorkflowResult<ActivityImportResult> {
         let boundary = CommitBoundary::begin(ctx)?;
         let imported = imports::activity_import(
             &boundary,

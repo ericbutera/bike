@@ -48,8 +48,7 @@ impl TaskWorker {
     }
 
     pub fn register_processor(mut self, processor: Arc<dyn TaskProcessor>) -> Self {
-        self.processors
-            .insert(processor.task_type().to_string(), processor);
+        self.processors.insert(processor.task_type().to_string(), processor);
         self
     }
 
@@ -102,27 +101,14 @@ impl TaskWorker {
         if let Some(metrics) = &self.metrics {
             metrics.record_idle(started.elapsed().as_secs_f64());
         }
-        Duration::from_secs(
-            interval
-                .as_secs()
-                .saturating_mul(2)
-                .min(maximum.as_secs())
-                .max(1),
-        )
+        Duration::from_secs(interval.as_secs().saturating_mul(2).min(maximum.as_secs()).max(1))
     }
 
     async fn recover_abandoned_tasks(&self) -> Result<(), WorkerError> {
-        let recovered = background_tasks::Model::recover_stale_executions(
-            &self.db,
-            chrono::Utc::now(),
-            self.batch_size,
-        )
-        .await?;
+        let recovered =
+            background_tasks::Model::recover_stale_executions(&self.db, chrono::Utc::now(), self.batch_size).await?;
         if recovered > 0 {
-            info!(
-                recovered,
-                "Recovered background tasks with expired heartbeat leases"
-            );
+            info!(recovered, "Recovered background tasks with expired heartbeat leases");
         }
         Ok(())
     }
@@ -178,9 +164,7 @@ impl TaskWorker {
                 metrics: self.metrics.clone(),
             }
             .scope(crate::background_jobs::batches::scope(
-                task.payload["_batch_id"]
-                    .as_i64()
-                    .and_then(|id| i32::try_from(id).ok()),
+                task.payload["_batch_id"].as_i64().and_then(|id| i32::try_from(id).ok()),
                 self.execute_claimed(&task, context.err()),
             )),
         )
@@ -204,14 +188,12 @@ impl TaskWorker {
                 metrics.record_receipt_to_current(
                     &task.task_type,
                     &context.entrypoint,
-                    (chrono::Utc::now() - context.pipeline_started_at).num_milliseconds() as f64
-                        / 1000.0,
+                    (chrono::Utc::now() - context.pipeline_started_at).num_milliseconds() as f64 / 1000.0,
                 );
             }
         }
         let started_at = std::time::Instant::now();
-        let heartbeat =
-            spawn_processing_heartbeat(self.db.clone(), task.clone(), Duration::from_secs(30));
+        let heartbeat = spawn_processing_heartbeat(self.db.clone(), task.clone(), Duration::from_secs(30));
         let result = match context_error {
             Some(error) => Err(error.into()),
             None => self.invoke_with_capacity(task).await,
@@ -228,23 +210,17 @@ impl TaskWorker {
     async fn invoke_processor(&self, task: &background_tasks::Model) -> Result<(), WorkerError> {
         match self.processors.get(&task.task_type) {
             Some(processor) => processor.process(task.id, task.payload.clone()).await,
-            None => {
-                Err(format!("No processor registered for task type: {}", task.task_type).into())
-            }
+            None => Err(format!("No processor registered for task type: {}", task.task_type).into()),
         }
     }
 
-    async fn invoke_with_capacity(
-        &self,
-        task: &background_tasks::Model,
-    ) -> Result<(), WorkerError> {
+    async fn invoke_with_capacity(&self, task: &background_tasks::Model) -> Result<(), WorkerError> {
         let future = self.invoke_processor(task);
         tokio::pin!(future);
         let mut ticker = tokio::time::interval(Duration::from_secs(1));
         let mut recorded = std::time::Instant::now();
         loop {
-            let result =
-                tokio::select! { result=&mut future => Some(result), _=ticker.tick()=>None };
+            let result = tokio::select! { result=&mut future => Some(result), _=ticker.tick()=>None };
             if let Some(metrics) = &self.metrics {
                 metrics.record_busy(recorded.elapsed().as_secs_f64());
             }
@@ -300,11 +276,7 @@ impl TaskWorker {
     }
 
     async fn record_attempt_wait(&self, task: &background_tasks::Model, metrics: &WorkerMetrics) {
-        let history = match crate::background_jobs::entities::task_attempts::Model::for_task(
-            &self.db, task.id,
-        )
-        .await
-        {
+        let history = match crate::background_jobs::entities::task_attempts::Model::for_task(&self.db, task.id).await {
             Ok(history) => history,
             Err(error) => {
                 error!(%error,"Failed to read attempt eligibility");
@@ -344,9 +316,7 @@ impl TaskWorker {
                 attempt = updated.attempts,
                 status = updated.status,
                 error = updated.error,
-                request_id = origin
-                    .as_ref()
-                    .and_then(|context| context.request_id.as_deref()),
+                request_id = origin.as_ref().and_then(|context| context.request_id.as_deref()),
                 trace_id = trace.as_ref().map(|(trace_id, _)| trace_id.as_str()),
                 span_id = trace.as_ref().map(|(_, span_id)| span_id.as_str()),
                 pipeline_run_id = origin.as_ref().map(|context| context.run_id.as_str()),

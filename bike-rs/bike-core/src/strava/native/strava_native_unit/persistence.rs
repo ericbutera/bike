@@ -8,10 +8,7 @@ fn activity_statuses_have_matching_wire_and_database_values() {
     for status in ActivityStatus::iter() {
         let wire = serde_json::to_value(status).unwrap();
         assert_eq!(wire, status.to_value());
-        assert_eq!(
-            serde_json::from_value::<ActivityStatus>(wire).unwrap(),
-            status
-        );
+        assert_eq!(serde_json::from_value::<ActivityStatus>(wire).unwrap(), status);
     }
     assert!(serde_json::from_str::<ActivityStatus>("\"not_a_status\"").is_err());
 }
@@ -19,8 +16,7 @@ fn activity_statuses_have_matching_wire_and_database_values() {
 #[tokio::test]
 async fn child_counts_filter_the_status_column_using_a_bound_enum() {
     let fixture = Fixture::new();
-    let counts: BTreeMap<String, Value> =
-        [("applied".into(), 2.into()), ("other".into(), 3.into())].into();
+    let counts: BTreeMap<String, Value> = [("applied".into(), 2.into()), ("other".into(), 3.into())].into();
     let db = MockDatabase::new(DatabaseBackend::Postgres)
         .append_query_results([vec![counts]])
         .into_connection();

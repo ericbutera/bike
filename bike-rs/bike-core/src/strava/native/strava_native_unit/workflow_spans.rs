@@ -48,13 +48,9 @@ async fn deletion_queries_belong_to_the_record_deletion_stage() {
         }))
         .into_connection();
     let spans = capture(async {
-        let deleted = crate::activity_lifecycle::delete_activity_records(
-            &db,
-            fixture.customer.id,
-            fixture.activity(),
-        )
-        .await
-        .unwrap();
+        let deleted = crate::activity_lifecycle::delete_activity_records(&db, fixture.customer.id, fixture.activity())
+            .await
+            .unwrap();
         assert_eq!(deleted.segment_ids, [3]);
         assert_eq!(deleted.source, None);
     })
@@ -79,16 +75,11 @@ async fn fitness_stage_includes_input_queries_and_published_rows() {
         }))
         .into_connection();
     let spans = capture(async {
-        crate::analytics::rebuild_fitness_freshness_cache(&db, 7)
-            .await
-            .unwrap();
+        crate::analytics::rebuild_fitness_freshness_cache(&db, 7).await.unwrap();
     })
     .await;
     let fitness = stage(&spans, "fitness.rebuild");
-    assert_eq!(
-        attribute(&fitness, "bike.operation"),
-        &"fitness.rebuild".into()
-    );
+    assert_eq!(attribute(&fitness, "bike.operation"), &"fitness.rebuild".into());
     assert_eq!(attribute(&fitness, "activity_count"), &0_i64.into());
     assert_eq!(attribute(&fitness, "day_count"), &1_i64.into());
     let transactions = db.into_transaction_log();
@@ -96,11 +87,7 @@ async fn fitness_stage_includes_input_queries_and_published_rows() {
     let publication = transactions[2].statements();
     let row = publication
         .iter()
-        .find(|statement| {
-            statement
-                .sql
-                .starts_with("INSERT INTO \"fitness_freshness_daily\"")
-        })
+        .find(|statement| statement.sql.starts_with("INSERT INTO \"fitness_freshness_daily\""))
         .unwrap();
     assert_eq!(
         &row.values.as_ref().unwrap().0[..7],
@@ -116,18 +103,9 @@ async fn fitness_stage_includes_input_queries_and_published_rows() {
     );
     let output = publication
         .iter()
-        .find(|statement| {
-            statement
-                .sql
-                .starts_with("UPDATE \"processing_pipeline_outputs\"")
-        })
+        .find(|statement| statement.sql.starts_with("UPDATE \"processing_pipeline_outputs\""))
         .unwrap();
-    assert!(output
-        .values
-        .as_ref()
-        .unwrap()
-        .0
-        .contains(&"available".into()));
+    assert!(output.values.as_ref().unwrap().0.contains(&"available".into()));
     assert_eq!(publication.last().unwrap().sql, "COMMIT");
 }
 
@@ -191,9 +169,7 @@ async fn failed_input_read_stays_under_the_fitness_stage() {
         .append_query_errors([sea_orm::DbErr::Custom("fixture read failed".into())])
         .into_connection();
     let spans = capture(async {
-        assert!(crate::analytics::rebuild_fitness_freshness_cache(&db, 7)
-            .await
-            .is_err());
+        assert!(crate::analytics::rebuild_fitness_freshness_cache(&db, 7).await.is_err());
     })
     .await;
     stage(&spans, "fitness.rebuild");
@@ -214,12 +190,10 @@ async fn temporal_attempt_name_identifies_the_step_without_an_extra_span() {
     let spans = spans.spans();
     assert_eq!(spans.len(), 2);
     let request = spans.iter().find(|span| span.name == "request").unwrap();
-    let attempt = spans
-        .iter()
-        .find(|span| span.name == "strava_rebuild_fitness")
-        .unwrap();
+    let attempt = spans.iter().find(|span| span.name == "strava_rebuild_fitness").unwrap();
     assert_eq!(attempt.parent_span_id, request.span_context.span_id());
-    assert!(attempt.attributes.iter().any(|field| {
-        field.key.as_str() == "processor" && field.value == "strava_rebuild_fitness".into()
-    }));
+    assert!(attempt
+        .attributes
+        .iter()
+        .any(|field| { field.key.as_str() == "processor" && field.value == "strava_rebuild_fitness".into() }));
 }

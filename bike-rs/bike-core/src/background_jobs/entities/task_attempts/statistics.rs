@@ -43,13 +43,10 @@ impl Model {
         if signal != "logical" {
             values.push(outcome.into());
         }
-        let rows = ProcessorDistribution::find_by_statement(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            sql,
-            values,
-        ))
-        .all(db)
-        .await?;
+        let rows =
+            ProcessorDistribution::find_by_statement(Statement::from_sql_and_values(DbBackend::Postgres, sql, values))
+                .all(db)
+                .await?;
         Ok(rows)
     }
 }

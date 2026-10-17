@@ -18,20 +18,14 @@ async fn an_explicit_owned_activity_link_takes_precedence_over_a_reverse_link() 
     let db = fixtures::postgres_mock()
         .append_query_results([vec![reverse], vec![explicit.clone()]])
         .into_connection();
-    let found =
-        activities::Model::linked_to_imports(&db, import.user_id, std::slice::from_ref(&import))
-            .await
-            .unwrap();
+    let found = activities::Model::linked_to_imports(&db, import.user_id, std::slice::from_ref(&import))
+        .await
+        .unwrap();
     assert_eq!(found[&import.id], explicit);
     for txn in db.into_transaction_log() {
         let query = &txn.statements()[0];
         assert!(query.sql.contains("\"user_id\" ="));
-        assert!(query
-            .values
-            .as_ref()
-            .unwrap()
-            .0
-            .contains(&import.user_id.into()));
+        assert!(query.values.as_ref().unwrap().0.contains(&import.user_id.into()));
     }
 }
 
@@ -48,10 +42,9 @@ async fn a_missing_explicit_link_preserves_the_owned_reverse_link() {
     let db = fixtures::postgres_mock()
         .append_query_results([vec![reverse.clone()], vec![]])
         .into_connection();
-    let found =
-        activities::Model::linked_to_imports(&db, import.user_id, std::slice::from_ref(&import))
-            .await
-            .unwrap();
+    let found = activities::Model::linked_to_imports(&db, import.user_id, std::slice::from_ref(&import))
+        .await
+        .unwrap();
     assert_eq!(found[&import.id], reverse);
 }
 
@@ -61,22 +54,14 @@ async fn import_history_applies_ownership_filters_and_stable_pagination() {
         .append_query_results([vec![fixtures::count_row(1)]])
         .append_query_results([vec![fixtures::activity_import()]])
         .into_connection();
-    let (items, total) = activity_imports::Entity::history(
-        &db,
-        7,
-        2,
-        Some("manual_upload"),
-        Some("processed"),
-        Some(20),
-    )
-    .await
-    .unwrap();
+    let (items, total) =
+        activity_imports::Entity::history(&db, 7, 2, Some("manual_upload"), Some("processed"), Some(20))
+            .await
+            .unwrap();
     assert_eq!((items.len(), total), (1, 1));
     let log = db.into_transaction_log();
     let query = &log.last().unwrap().statements()[0];
-    assert!(query
-        .sql
-        .contains("ORDER BY \"activity_imports\".\"id\" DESC"));
+    assert!(query.sql.contains("ORDER BY \"activity_imports\".\"id\" DESC"));
     assert_eq!(
         query.values.as_ref().unwrap().0,
         vec![
@@ -127,7 +112,5 @@ async fn retained_download_prefers_the_best_original_and_newest_equal_quality() 
     let log = db.into_transaction_log();
     let query = &log[0].statements()[0];
     assert!(query.sql.contains("\"user_id\" =") && query.sql.contains("\"activity_import_id\" ="));
-    assert!(query
-        .sql
-        .contains("ORDER BY \"activity_import_artifacts\".\"id\" ASC"));
+    assert!(query.sql.contains("ORDER BY \"activity_import_artifacts\".\"id\" ASC"));
 }

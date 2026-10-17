@@ -27,10 +27,7 @@ crate::timestamps::impl_timestamps!(ActiveModel);
 impl Model {
     pub async fn for_user(db: &impl ConnectionTrait, user_id: i32) -> Result<Option<Self>, DbErr> {
         use sea_orm::QueryFilter;
-        Entity::find()
-            .filter(Column::UserId.eq(user_id))
-            .one(db)
-            .await
+        Entity::find().filter(Column::UserId.eq(user_id)).one(db).await
     }
     pub async fn release(self, db: &impl ConnectionTrait) -> Result<(), DbErr> {
         Entity::delete_by_id(self.id).exec(db).await?;
@@ -114,10 +111,7 @@ impl Model {
 
         let mut active_model: activity_import_locks::ActiveModel = lock.into();
         active_model.stage = Set(stage.to_string());
-        active_model
-            .update(db)
-            .await
-            .map_err(ActivityImportLockError::from)
+        active_model.update(db).await.map_err(ActivityImportLockError::from)
     }
 }
 
@@ -149,9 +143,6 @@ impl Model {
 
         let mut active_model: activity_import_locks::ActiveModel = lock.into();
         active_model.stage = Set(stage.to_string());
-        active_model
-            .update(db)
-            .await
-            .map_err(ActivityImportLockError::from)
+        active_model.update(db).await.map_err(ActivityImportLockError::from)
     }
 }

@@ -39,11 +39,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(ActivityAnalytics::UserId)
-                            .integer()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(ActivityAnalytics::UserId).integer().not_null())
                     .col(
                         ColumnDef::new(ActivityAnalytics::SegmentEffortCount)
                             .integer()
@@ -109,11 +105,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(AnalyticsUserStates::Table)
-                    .add_column(
-                        ColumnDef::new(AnalyticsUserStates::FitnessDirtyFromDay)
-                            .date()
-                            .null(),
-                    )
+                    .add_column(ColumnDef::new(AnalyticsUserStates::FitnessDirtyFromDay).date().null())
                     .add_column(
                         ColumnDef::new(AnalyticsUserStates::LastFitnessRebuildAt)
                             .timestamp_with_time_zone()

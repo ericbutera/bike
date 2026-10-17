@@ -48,11 +48,7 @@ impl MigrationTrait for Migration {
                 true.into(),
                 "Enable API client authentication".into(),
             ])
-            .values_panic([
-                "registration".into(),
-                true.into(),
-                "Enable user registration".into(),
-            ])
+            .values_panic(["registration".into(), true.into(), "Enable user registration".into()])
             .to_owned();
 
         manager.exec_stmt(insert).await?;

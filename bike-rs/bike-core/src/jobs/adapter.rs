@@ -104,9 +104,7 @@ impl Job {
             Self::RegenerateSegmentEfforts(_) => super::JobType::RegenerateSegmentEfforts,
             Self::ProcessActivityImport(_) => super::JobType::ProcessActivityImport,
             Self::ReprocessUserActivityImports(_) => super::JobType::ReprocessUserActivityImports,
-            Self::ReprocessArchiveFitActivityImports(_) => {
-                super::JobType::ReprocessArchiveFitActivityImports
-            }
+            Self::ReprocessArchiveFitActivityImports(_) => super::JobType::ReprocessArchiveFitActivityImports,
             Self::ReprocessActivityImport(_) => super::JobType::ReprocessActivityImport,
             Self::BackfillUserXcTraining(_) => super::JobType::BackfillUserXcTraining,
             Self::RegenerateUserSegments(_) => super::JobType::RegenerateUserSegments,
@@ -146,20 +144,12 @@ impl JobQueue {
         enqueue_email_notification(&self.queue, to, subject, message).await
     }
 
-    pub async fn rebuild_fitness_freshness(
-        &self,
-        user_id: i32,
-    ) -> Result<(), crate::background_jobs::TaskError> {
-        self.enqueue_job(Job::RebuildFitnessFreshness(RebuildFitnessFreshnessTask {
-            user_id,
-        }))
-        .await
+    pub async fn rebuild_fitness_freshness(&self, user_id: i32) -> Result<(), crate::background_jobs::TaskError> {
+        self.enqueue_job(Job::RebuildFitnessFreshness(RebuildFitnessFreshnessTask { user_id }))
+            .await
     }
 
-    pub async fn queue_fitness_freshness(
-        &self,
-        user_id: i32,
-    ) -> Result<(), crate::background_jobs::TaskError> {
+    pub async fn queue_fitness_freshness(&self, user_id: i32) -> Result<(), crate::background_jobs::TaskError> {
         let job = Job::RebuildFitnessFreshness(RebuildFitnessFreshnessTask { user_id });
         self.enqueue_job(job).await
     }
@@ -185,10 +175,7 @@ impl JobQueue {
         .await
     }
 
-    pub async fn regenerate_segment_efforts(
-        &self,
-        segment_id: i32,
-    ) -> Result<QueuedJobReference, String> {
+    pub async fn regenerate_segment_efforts(&self, segment_id: i32) -> Result<QueuedJobReference, String> {
         if segment_id <= 0 {
             return Err("segment id must be positive".to_string());
         }
@@ -206,11 +193,7 @@ impl JobQueue {
             .map_err(|error| error.to_string())
     }
 
-    pub async fn process_activity_import(
-        &self,
-        user_id: i32,
-        import_id: i32,
-    ) -> Result<(), String> {
+    pub async fn process_activity_import(&self, user_id: i32, import_id: i32) -> Result<(), String> {
         if user_id <= 0 || import_id <= 0 {
             return Ok(());
         }
@@ -253,9 +236,9 @@ impl JobQueue {
     }
 
     pub async fn reprocess_user_activity_imports(&self, user_id: i32) -> Result<(), String> {
-        self.enqueue_user_import_reprocessing(Job::ReprocessUserActivityImports(
-            ReprocessUserActivityImportsTask { user_id },
-        ))
+        self.enqueue_user_import_reprocessing(Job::ReprocessUserActivityImports(ReprocessUserActivityImportsTask {
+            user_id,
+        }))
         .await
     }
 
@@ -276,10 +259,7 @@ impl JobQueue {
             .map_err(|error| error.to_string())
     }
 
-    pub async fn reprocess_activity_import(
-        &self,
-        activity_id: i32,
-    ) -> Result<QueuedJobReference, String> {
+    pub async fn reprocess_activity_import(&self, activity_id: i32) -> Result<QueuedJobReference, String> {
         let job = Job::ReprocessActivityImport(ReprocessActivityImportTask { activity_id });
         let task_type = job.task_type().to_string();
 
@@ -294,8 +274,7 @@ impl JobQueue {
     }
 
     pub async fn backfill_user_xc_training(&self, user_id: i32) -> Result<(), String> {
-        self.backfill_user_xc_training_with_options(user_id, None, 3)
-            .await
+        self.backfill_user_xc_training_with_options(user_id, None, 3).await
     }
 
     pub async fn backfill_user_xc_training_with_options(
@@ -388,10 +367,7 @@ mod tests {
 
         for (job, task_type, expected_payload) in jobs.into_iter().chain(additional_job_cases()) {
             assert_eq!(job.task_type(), task_type);
-            assert_eq!(
-                serde_json::to_value(job).expect("serialize job"),
-                expected_payload
-            );
+            assert_eq!(serde_json::to_value(job).expect("serialize job"), expected_payload);
         }
     }
 
@@ -412,9 +388,7 @@ mod tests {
                 json!({"type": "EmailNotification", "data": {"to": "fixture@example.test", "subject": "Fixture", "message": "Fixture message"}}),
             ),
             (
-                Job::ReprocessArchiveFitActivityImports(ReprocessArchiveFitActivityImportsTask {
-                    user_id: 12,
-                }),
+                Job::ReprocessArchiveFitActivityImports(ReprocessArchiveFitActivityImportsTask { user_id: 12 }),
                 "reprocess_archive_fit_activity_imports",
                 json!({"type": "ReprocessArchiveFitActivityImports", "data": {"user_id": 12}}),
             ),

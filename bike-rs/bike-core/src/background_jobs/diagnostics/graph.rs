@@ -1,7 +1,7 @@
 use super::super::{
     entities::{
-        background_tasks, pipeline_outputs, pipeline_runs, pipeline_subjects, pipeline_tasks,
-        task_anomalies, work_units,
+        background_tasks, pipeline_outputs, pipeline_runs, pipeline_subjects, pipeline_tasks, task_anomalies,
+        work_units,
     },
     history::TaskAttemptResponse,
 };
@@ -61,32 +61,20 @@ pub struct PipelineGraph {
 }
 
 impl PipelinePage {
-    pub async fn for_activity(
-        db: &DatabaseConnection,
-        activity_id: i32,
-        after: Option<String>,
-    ) -> Result<Self, DbErr> {
-        let mut run_ids =
-            pipeline_subjects::Model::activity_run_page(db, activity_id, after).await?;
+    pub async fn for_activity(db: &DatabaseConnection, activity_id: i32, after: Option<String>) -> Result<Self, DbErr> {
+        let mut run_ids = pipeline_subjects::Model::activity_run_page(db, activity_id, after).await?;
         let next_cursor = if run_ids.len() > 20 {
             run_ids.truncate(20);
             run_ids.last().cloned()
         } else {
             None
         };
-        Ok(Self {
-            run_ids,
-            next_cursor,
-        })
+        Ok(Self { run_ids, next_cursor })
     }
 }
 
 impl PipelineGraph {
-    pub async fn load(
-        db: &DatabaseConnection,
-        id: &str,
-        after_task: i32,
-    ) -> Result<Option<Self>, DbErr> {
+    pub async fn load(db: &DatabaseConnection, id: &str, after_task: i32) -> Result<Option<Self>, DbErr> {
         Self::load_page(
             db,
             id,
@@ -97,16 +85,11 @@ impl PipelineGraph {
         )
         .await
     }
-    pub async fn load_page(
-        db: &DatabaseConnection,
-        id: &str,
-        cursor: &GraphCursor,
-    ) -> Result<Option<Self>, DbErr> {
+    pub async fn load_page(db: &DatabaseConnection, id: &str, cursor: &GraphCursor) -> Result<Option<Self>, DbErr> {
         let Some(run) = pipeline_runs::Model::find_by_id(db, id).await? else {
             return Ok(None);
         };
-        let mut links =
-            pipeline_tasks::Model::page_for_run(db, id, cursor.after_task.unwrap_or(0)).await?;
+        let mut links = pipeline_tasks::Model::page_for_run(db, id, cursor.after_task.unwrap_or(0)).await?;
         let next_task_cursor = if links.len() > 50 {
             links.truncate(50);
             links.last().map(|link| link.task_id)
@@ -115,8 +98,7 @@ impl PipelineGraph {
         };
         let mut tasks = Vec::new();
         for link in links {
-            let Some(task) = background_tasks::Model::metadata_for_id(db, link.task_id).await?
-            else {
+            let Some(task) = background_tasks::Model::metadata_for_id(db, link.task_id).await? else {
                 continue;
             };
             let work_after = if cursor.work_task == Some(task.id) {
@@ -126,8 +108,7 @@ impl PipelineGraph {
             };
             tasks.push(PipelineTask::load(db, task, link.parent_task_id, work_after).await?);
         }
-        let (outputs, next_output_offset) =
-            output_page(db, id, cursor.output_offset.unwrap_or(0)).await?;
+        let (outputs, next_output_offset) = output_page(db, id, cursor.output_offset.unwrap_or(0)).await?;
         let ended_at = ended_at(db, id).await?;
         Ok(Some(Self {
             run_id: run.id,
@@ -157,35 +138,32 @@ impl PipelineTask {
         let mut work = work_units::Model::page_for_task(db, task.id, work_after).await?;
         let work_has_more = work.len() > 25;
         work.truncate(25);
-        let next_work_cursor = work_has_more
-            .then(|| work.last().map(|work| work.id))
-            .flatten();
+        let next_work_cursor = work_has_more.then(|| work.last().map(|work| work.id)).flatten();
         let anomalies = task_anomalies::Model::for_task(db, task.id).await?;
-        let imports =
-            crate::entities::activity_import_attempts::Entity::for_worker_metadata(db, task.id)
-                .await?
-                .into_iter()
-                .map(|attempt| {
-                    let stages = crate::activity_import_execution::stages(&attempt)
-                        .map_err(|error| DbErr::Custom(error.message))?;
-                    Ok(PipelineImport {
-                        attempt_id: attempt.id,
-                        import_id: attempt.activity_import_id,
-                        activity_id: attempt.activity_id,
-                        status: attempt.status,
-                        stages,
-                        edges: crate::activity_import_pipeline::activity_processing_graph_nodes()
-                            .iter()
-                            .flat_map(|node| {
-                                node.depends_on.iter().map(|dependency| PipelineStageEdge {
-                                    from: dependency.id().into(),
-                                    to: node.node.id().into(),
-                                })
+        let imports = crate::entities::activity_import_attempts::Entity::for_worker_metadata(db, task.id)
+            .await?
+            .into_iter()
+            .map(|attempt| {
+                let stages =
+                    crate::activity_import_execution::stages(&attempt).map_err(|error| DbErr::Custom(error.message))?;
+                Ok(PipelineImport {
+                    attempt_id: attempt.id,
+                    import_id: attempt.activity_import_id,
+                    activity_id: attempt.activity_id,
+                    status: attempt.status,
+                    stages,
+                    edges: crate::activity_import_pipeline::activity_processing_graph_nodes()
+                        .iter()
+                        .flat_map(|node| {
+                            node.depends_on.iter().map(|dependency| PipelineStageEdge {
+                                from: dependency.id().into(),
+                                to: node.node.id().into(),
                             })
-                            .collect(),
-                    })
+                        })
+                        .collect(),
                 })
-                .collect::<Result<Vec<_>, DbErr>>()?;
+            })
+            .collect::<Result<Vec<_>, DbErr>>()?;
         Ok(Self {
             id: task.id,
             task_type: task.task_type,

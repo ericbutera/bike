@@ -35,11 +35,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(Alias::new("content_hash"))
-                            .string()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Alias::new("content_hash")).string().not_null())
                     .col(ColumnDef::new(Alias::new("source")).json_binary())
                     .col(
                         ColumnDef::new(Alias::new("accepted_at"))
@@ -54,9 +50,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(Alias::new("heatmap_projections"))
-                    .add_column(
-                        ColumnDef::new(Alias::new("published_at")).timestamp_with_time_zone(),
-                    )
+                    .add_column(ColumnDef::new(Alias::new("published_at")).timestamp_with_time_zone())
                     .to_owned(),
             )
             .await?;
@@ -64,9 +58,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(Alias::new("background_task_attempts"))
-                    .add_column(
-                        ColumnDef::new(Alias::new("eligible_at")).timestamp_with_time_zone(),
-                    )
+                    .add_column(ColumnDef::new(Alias::new("eligible_at")).timestamp_with_time_zone())
                     .add_column(ColumnDef::new(Alias::new("processing_version")).string())
                     .add_column(ColumnDef::new(Alias::new("workload_cohort")).string())
                     .to_owned(),
@@ -89,18 +81,9 @@ impl MigrationTrait for Migration {
             (
                 "pipeline_attempt_baseline",
                 "background_task_attempts",
-                vec![
-                    "processing_version",
-                    "workload_cohort",
-                    "outcome",
-                    "started_at",
-                ],
+                vec!["processing_version", "workload_cohort", "outcome", "started_at"],
             ),
-            (
-                "pipeline_batch_status",
-                "worker_batches",
-                vec!["status", "updated_at"],
-            ),
+            ("pipeline_batch_status", "worker_batches", vec!["status", "updated_at"]),
             (
                 "pipeline_subject_lookup",
                 "processing_pipeline_subjects",
@@ -121,11 +104,7 @@ impl MigrationTrait for Migration {
                 "processing_work_units",
                 vec!["kind", "work_key", "revision", "started_at"],
             ),
-            (
-                "pipeline_anomaly_recent",
-                "worker_task_anomalies",
-                vec!["evaluated_at"],
-            ),
+            ("pipeline_anomaly_recent", "worker_task_anomalies", vec!["evaluated_at"]),
         ] {
             let mut index = Index::create();
             index.name(name).table(Alias::new(table));
@@ -147,11 +126,7 @@ impl MigrationTrait for Migration {
             )
             .await?;
         manager
-            .drop_table(
-                Table::drop()
-                    .table(Alias::new("strava_delivery_intents"))
-                    .to_owned(),
-            )
+            .drop_table(Table::drop().table(Alias::new("strava_delivery_intents")).to_owned())
             .await?;
         manager
             .alter_table(
@@ -198,19 +173,10 @@ impl MigrationTrait for Migration {
 fn batches() -> TableCreateStatement {
     Table::create()
         .table(Alias::new("worker_batches"))
-        .col(
-            ColumnDef::new(Alias::new("id"))
-                .integer()
-                .not_null()
-                .primary_key(),
-        )
+        .col(ColumnDef::new(Alias::new("id")).integer().not_null().primary_key())
         .col(ColumnDef::new(Alias::new("user_id")).integer().not_null())
         .col(ColumnDef::new(Alias::new("kind")).string().not_null())
-        .col(
-            ColumnDef::new(Alias::new("source"))
-                .json_binary()
-                .not_null(),
-        )
+        .col(ColumnDef::new(Alias::new("source")).json_binary().not_null())
         .col(ColumnDef::new(Alias::new("cursor")).integer().not_null())
         .col(ColumnDef::new(Alias::new("sealed")).boolean().not_null())
         .col(ColumnDef::new(Alias::new("status")).string().not_null())
@@ -226,11 +192,7 @@ fn batch_tasks() -> TableCreateStatement {
         .table(Alias::new("worker_batch_tasks"))
         .col(ColumnDef::new(Alias::new("batch_id")).integer().not_null())
         .col(ColumnDef::new(Alias::new("task_id")).integer().not_null())
-        .primary_key(
-            Index::create()
-                .col(Alias::new("batch_id"))
-                .col(Alias::new("task_id")),
-        )
+        .primary_key(Index::create().col(Alias::new("batch_id")).col(Alias::new("task_id")))
         .foreign_key(
             ForeignKey::create()
                 .from(Alias::new("worker_batch_tasks"), Alias::new("batch_id"))
@@ -255,11 +217,7 @@ fn registry() -> TableCreateStatement {
                 .not_null()
                 .primary_key(),
         )
-        .col(
-            ColumnDef::new(Alias::new("definition"))
-                .json_binary()
-                .not_null(),
-        )
+        .col(ColumnDef::new(Alias::new("definition")).json_binary().not_null())
         .col(
             ColumnDef::new(Alias::new("observed_at"))
                 .timestamp_with_time_zone()
@@ -271,17 +229,9 @@ fn registry() -> TableCreateStatement {
 fn subjects() -> TableCreateStatement {
     Table::create()
         .table(Alias::new("processing_pipeline_subjects"))
-        .col(
-            ColumnDef::new(Alias::new("run_id"))
-                .string_len(36)
-                .not_null(),
-        )
+        .col(ColumnDef::new(Alias::new("run_id")).string_len(36).not_null())
         .col(ColumnDef::new(Alias::new("kind")).string().not_null())
-        .col(
-            ColumnDef::new(Alias::new("subject_id"))
-                .integer()
-                .not_null(),
-        )
+        .col(ColumnDef::new(Alias::new("subject_id")).integer().not_null())
         .primary_key(
             Index::create()
                 .col(Alias::new("run_id"))
@@ -295,11 +245,7 @@ fn subjects() -> TableCreateStatement {
 fn outputs() -> TableCreateStatement {
     Table::create()
         .table(Alias::new("processing_pipeline_outputs"))
-        .col(
-            ColumnDef::new(Alias::new("run_id"))
-                .string_len(36)
-                .not_null(),
-        )
+        .col(ColumnDef::new(Alias::new("run_id")).string_len(36).not_null())
         .col(ColumnDef::new(Alias::new("kind")).string().not_null())
         .col(ColumnDef::new(Alias::new("target_id")).integer().not_null())
         .col(ColumnDef::new(Alias::new("revision")).string().not_null())
@@ -337,11 +283,7 @@ fn work_units() -> TableCreateStatement {
         .col(ColumnDef::new(Alias::new("kind")).string().not_null())
         .col(ColumnDef::new(Alias::new("work_key")).string().not_null())
         .col(ColumnDef::new(Alias::new("revision")).string().not_null())
-        .col(
-            ColumnDef::new(Alias::new("processing_version"))
-                .string()
-                .not_null(),
-        )
+        .col(ColumnDef::new(Alias::new("processing_version")).string().not_null())
         .col(ColumnDef::new(Alias::new("mode")).string().not_null())
         .col(ColumnDef::new(Alias::new("reason")).string().not_null())
         .col(
@@ -374,18 +316,10 @@ fn anomalies() -> TableCreateStatement {
         .col(ColumnDef::new(Alias::new("task_id")).integer().not_null())
         .col(ColumnDef::new(Alias::new("attempt")).integer().not_null())
         .col(ColumnDef::new(Alias::new("reason")).string().not_null())
-        .col(
-            ColumnDef::new(Alias::new("policy_version"))
-                .integer()
-                .not_null(),
-        )
+        .col(ColumnDef::new(Alias::new("policy_version")).integer().not_null())
         .col(ColumnDef::new(Alias::new("observed")).double().not_null())
         .col(ColumnDef::new(Alias::new("expected")).double().not_null())
-        .col(
-            ColumnDef::new(Alias::new("baseline_samples"))
-                .big_integer()
-                .not_null(),
-        )
+        .col(ColumnDef::new(Alias::new("baseline_samples")).big_integer().not_null())
         .col(
             ColumnDef::new(Alias::new("evaluated_at"))
                 .timestamp_with_time_zone()

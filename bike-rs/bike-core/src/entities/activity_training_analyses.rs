@@ -35,10 +35,7 @@ pub struct Model {
 pub enum Relation {}
 
 impl Entity {
-    pub async fn delete_by_activity_id(
-        db: &impl ConnectionTrait,
-        activity_id: i32,
-    ) -> Result<(), DbErr> {
+    pub async fn delete_by_activity_id(db: &impl ConnectionTrait, activity_id: i32) -> Result<(), DbErr> {
         Self::delete_by_id(activity_id).exec(db).await?;
         Ok(())
     }
@@ -59,16 +56,10 @@ impl Model {
 crate::timestamps::impl_timestamps!(ActiveModel);
 
 impl Model {
-    pub async fn for_activity(
-        db: &impl ConnectionTrait,
-        activity_id: i32,
-    ) -> Result<Option<Self>, DbErr> {
+    pub async fn for_activity(db: &impl ConnectionTrait, activity_id: i32) -> Result<Option<Self>, DbErr> {
         Entity::find_by_id(activity_id).one(db).await
     }
-    pub async fn for_activity_ids(
-        db: &impl ConnectionTrait,
-        activity_ids: &[i32],
-    ) -> Result<Vec<Self>, DbErr> {
+    pub async fn for_activity_ids(db: &impl ConnectionTrait, activity_ids: &[i32]) -> Result<Vec<Self>, DbErr> {
         use sea_orm::QueryFilter;
         Entity::find()
             .filter(Column::ActivityId.is_in(activity_ids.iter().copied()))
@@ -77,10 +68,7 @@ impl Model {
     }
     pub async fn for_user(db: &impl ConnectionTrait, user_id: i32) -> Result<Vec<Self>, DbErr> {
         use sea_orm::QueryFilter;
-        Entity::find()
-            .filter(Column::UserId.eq(user_id))
-            .all(db)
-            .await
+        Entity::find().filter(Column::UserId.eq(user_id)).all(db).await
     }
     pub async fn for_owned_activity_ids(
         db: &impl ConnectionTrait,
@@ -116,10 +104,8 @@ impl Model {
         active_model.user_id = Set(activity.user_id);
         active_model.ride_focus = Set(analysis.ride_focus.as_str().to_string());
         active_model.route_family_key = Set(analysis.route_family_key.clone());
-        active_model.comparable_distance_bucket_meters =
-            Set(analysis.comparable_distance_bucket_meters);
-        active_model.comparable_elevation_gain_bucket_meters =
-            Set(analysis.comparable_elevation_gain_bucket_meters);
+        active_model.comparable_distance_bucket_meters = Set(analysis.comparable_distance_bucket_meters);
+        active_model.comparable_elevation_gain_bucket_meters = Set(analysis.comparable_elevation_gain_bucket_meters);
         active_model.aerobic_decoupling_percent = Set(analysis.aerobic_decoupling_percent);
         active_model.z2_time_seconds = Set(analysis.z2_time_seconds);
         active_model.z2_distance_meters = Set(analysis.z2_distance_meters);

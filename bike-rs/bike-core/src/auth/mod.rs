@@ -13,8 +13,7 @@ pub use controllers::oauth::routes as oauth_routes;
 pub use error::AuthError;
 pub use extractors::{AdminUserContext, AuthStorage, UserContext};
 pub use services::{
-    oauth::OAuthService, oauth_provider_service::OAuthProviderService,
-    provider_settings::PROVIDER_DEV, SessionService,
+    oauth::OAuthService, oauth_provider_service::OAuthProviderService, provider_settings::PROVIDER_DEV, SessionService,
 };
 
 #[cfg(test)]

@@ -1,5 +1,9 @@
 # Model boundaries and test fixtures
 
+- Rust formatting uses a 120-column maximum and default small-expression
+  heuristics from `bike-rs/.rustfmt.toml`. Apply the owning `fmt`/`fmt:check`
+  tasks consistently across the Rust workspace; avoid manual wrapping exceptions.
+
 ## Required ownership
 
 - Controllers adapt HTTP input/output and call an application operation.

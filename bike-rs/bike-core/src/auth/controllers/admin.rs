@@ -104,14 +104,8 @@ where
 {
     let page = params.page.max(1);
     let per_page = params.per_page.clamp(1, 100);
-    let (items, total) = users::Model::admin_page(
-        state.db(),
-        params.q.as_deref(),
-        params.disabled,
-        page,
-        per_page,
-    )
-    .await?;
+    let (items, total) =
+        users::Model::admin_page(state.db(), params.q.as_deref(), params.disabled, page, per_page).await?;
     let data = items.into_iter().map(AdminUserResponse::from).collect();
 
     Ok(Json(AdminUsersListResponse {
@@ -170,9 +164,7 @@ where
     S: AuthStorage + 'static,
 {
     let user = users::Model::find_by_id(state.db(), id).await?;
-    let updated = user
-        .update_admin(state.db(), payload.name, payload.is_admin)
-        .await?;
+    let updated = user.update_admin(state.db(), payload.name, payload.is_admin).await?;
     Ok(Json(AdminUserResponse::from(updated)))
 }
 

@@ -53,24 +53,19 @@ async fn verify_source_save(update: bool) {
     let statement = transactions
         .iter()
         .flat_map(|transaction| transaction.statements())
-        .find(|statement| {
-            statement.sql.contains("activity_imports") && !statement.sql.starts_with("SELECT")
-        })
+        .find(|statement| statement.sql.contains("activity_imports") && !statement.sql.starts_with("SELECT"))
         .unwrap();
     let expected = if update { "UPDATE" } else { "INSERT" };
     assert!(statement.sql.starts_with(expected));
     let values = &statement.values.as_ref().unwrap().0;
     assert!(values.contains(&"strava_sync".into()));
     assert!(values.contains(&"processing".into()));
-    assert!(values
-        .contains(&crate::activity_import_lifecycle::ACTIVITY_IMPORT_STAGE_ACTIVITY_SAVED.into()));
+    assert!(values.contains(&crate::activity_import_lifecycle::ACTIVITY_IMPORT_STAGE_ACTIVITY_SAVED.into()));
     assert!(values.contains(&object.path.clone().into()));
     assert!(transactions
         .iter()
         .flat_map(|transaction| transaction.statements())
-        .any(|statement| statement
-            .sql
-            .starts_with("INSERT INTO \"activity_import_artifacts\"")));
+        .any(|statement| statement.sql.starts_with("INSERT INTO \"activity_import_artifacts\"")));
 }
 
 pub(super) fn import(fixture: &Fixture) -> activity_imports::Model {

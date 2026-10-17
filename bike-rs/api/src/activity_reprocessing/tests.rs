@@ -101,10 +101,7 @@ async fn native_acceptance_returns_job_without_source_bytes_or_a_worker() {
 #[tokio::test]
 async fn retry_preserves_command_identity_and_returns_the_same_job() {
     let fixture = Fixture::new(false);
-    assert_eq!(
-        fixture.submit().await.unwrap().job,
-        fixture.submit().await.unwrap().job
-    );
+    assert_eq!(fixture.submit().await.unwrap().job, fixture.submit().await.unwrap().job);
     let received = fixture.submission.received.lock().unwrap();
     assert_eq!(received[0].0, received[1].0);
 }

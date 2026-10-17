@@ -19,16 +19,8 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(Segments::Table)
                     .add_column(ColumnDef::new(Segments::SourceActivityId).integer().null())
-                    .add_column(
-                        ColumnDef::new(Segments::SourceStartRoutePointIndex)
-                            .integer()
-                            .null(),
-                    )
-                    .add_column(
-                        ColumnDef::new(Segments::SourceEndRoutePointIndex)
-                            .integer()
-                            .null(),
-                    )
+                    .add_column(ColumnDef::new(Segments::SourceStartRoutePointIndex).integer().null())
+                    .add_column(ColumnDef::new(Segments::SourceEndRoutePointIndex).integer().null())
                     .to_owned(),
             )
             .await

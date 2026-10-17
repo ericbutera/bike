@@ -24,11 +24,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(Activities::Table)
-                    .add_column(
-                        ColumnDef::new(Activities::SourceCorrelationId)
-                            .string()
-                            .null(),
-                    )
+                    .add_column(ColumnDef::new(Activities::SourceCorrelationId).string().null())
                     .to_owned(),
             )
             .await?;
@@ -84,8 +80,7 @@ async fn backfill_strava_source_correlation_ids(manager: &SchemaManager<'_>) -> 
     for row in rows {
         let id: i32 = row.try_get("", "id")?;
         let original_filename: String = row.try_get("", "original_filename")?;
-        let Some(source_correlation_id) = strava_activity_id_from_filename(&original_filename)
-        else {
+        let Some(source_correlation_id) = strava_activity_id_from_filename(&original_filename) else {
             continue;
         };
 
@@ -102,16 +97,10 @@ async fn backfill_strava_source_correlation_ids(manager: &SchemaManager<'_>) -> 
 }
 
 fn strava_activity_id_from_filename(filename: &str) -> Option<String> {
-    let stem = filename
-        .rsplit_once('.')
-        .map(|(value, _)| value)
-        .unwrap_or(filename);
+    let stem = filename.rsplit_once('.').map(|(value, _)| value).unwrap_or(filename);
     let candidate = stem.rsplit_once('_')?.1;
 
-    if candidate
-        .chars()
-        .all(|character| character.is_ascii_digit())
-    {
+    if candidate.chars().all(|character| character.is_ascii_digit()) {
         Some(candidate.to_string())
     } else {
         None

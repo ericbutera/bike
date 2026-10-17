@@ -38,8 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     )?;
     worker::tasks::spawn_heatmap_reconciliation(db.clone());
     let task_types = worker.registered_task_types();
-    let _queue_sampler =
-        start_queue_diagnostics(db.clone(), queue_depth, metrics.clone(), task_types).await?;
+    let _queue_sampler = start_queue_diagnostics(db.clone(), queue_depth, metrics.clone(), task_types).await?;
     spawn_metrics_server(worker_config.metrics_port, metrics.clone());
     let worker = worker.with_metrics(metrics);
 
@@ -57,14 +56,8 @@ async fn start_queue_diagnostics(
 ) -> Result<tokio::task::JoinHandle<()>, sea_orm::DbErr> {
     let task_type_refs: Vec<&str> = task_types.iter().map(String::as_str).collect();
     metrics.warmup_task_types(&task_type_refs);
-    bike_core::background_jobs::entities::processor_registry::Model::register(&db, &task_types)
-        .await?;
-    Ok(spawn_queue_depth_sampler(
-        db,
-        queue_depth,
-        metrics,
-        task_types,
-    ))
+    bike_core::background_jobs::entities::processor_registry::Model::register(&db, &task_types).await?;
+    Ok(spawn_queue_depth_sampler(db, queue_depth, metrics, task_types))
 }
 
 fn spawn_queue_depth_sampler(

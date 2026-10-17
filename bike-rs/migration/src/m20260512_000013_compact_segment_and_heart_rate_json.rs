@@ -92,11 +92,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(Activities::Table)
-                    .add_column(
-                        ColumnDef::new(Activities::HeartRateZonesJsonCompact)
-                            .json()
-                            .null(),
-                    )
+                    .add_column(ColumnDef::new(Activities::HeartRateZonesJsonCompact).json().null())
                     .to_owned(),
             )
             .await?;
@@ -158,10 +154,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(Activities::Table)
-                    .rename_column(
-                        Activities::HeartRateZonesJsonCompact,
-                        Activities::HeartRateZonesJson,
-                    )
+                    .rename_column(Activities::HeartRateZonesJsonCompact, Activities::HeartRateZonesJson)
                     .to_owned(),
             )
             .await?;
@@ -193,11 +186,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(Activities::Table)
-                    .add_column(
-                        ColumnDef::new(Activities::HeartRateZonesJsonLegacy)
-                            .text()
-                            .null(),
-                    )
+                    .add_column(ColumnDef::new(Activities::HeartRateZonesJsonLegacy).text().null())
                     .to_owned(),
             )
             .await?;
@@ -259,10 +248,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(Activities::Table)
-                    .rename_column(
-                        Activities::HeartRateZonesJsonLegacy,
-                        Activities::HeartRateZonesJson,
-                    )
+                    .rename_column(Activities::HeartRateZonesJsonLegacy, Activities::HeartRateZonesJson)
                     .to_owned(),
             )
             .await?;
@@ -353,9 +339,7 @@ async fn rewrite_segment_route_rows_to_legacy(manager: &SchemaManager<'_>) -> Re
     Ok(())
 }
 
-async fn rewrite_activity_heart_rate_zone_rows_to_compact(
-    manager: &SchemaManager<'_>,
-) -> Result<(), DbErr> {
+async fn rewrite_activity_heart_rate_zone_rows_to_compact(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     let select = Query::select()
         .column(Activities::Id)
@@ -393,9 +377,7 @@ async fn rewrite_activity_heart_rate_zone_rows_to_compact(
     Ok(())
 }
 
-async fn rewrite_activity_heart_rate_zone_rows_to_legacy(
-    manager: &SchemaManager<'_>,
-) -> Result<(), DbErr> {
+async fn rewrite_activity_heart_rate_zone_rows_to_legacy(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     let select = Query::select()
         .column(Activities::Id)
@@ -429,9 +411,7 @@ async fn rewrite_activity_heart_rate_zone_rows_to_legacy(
     Ok(())
 }
 
-async fn rewrite_heart_rate_bound_rows_to_compact(
-    manager: &SchemaManager<'_>,
-) -> Result<(), DbErr> {
+async fn rewrite_heart_rate_bound_rows_to_compact(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     let select = Query::select()
         .column(UserPreferences::Id)
@@ -456,10 +436,7 @@ async fn rewrite_heart_rate_bound_rows_to_compact(
 
         let update = Query::update()
             .table(UserPreferences::Table)
-            .value(
-                UserPreferences::HeartRateZoneBoundsJsonCompact,
-                compact_json,
-            )
+            .value(UserPreferences::HeartRateZoneBoundsJsonCompact, compact_json)
             .and_where(Expr::col(UserPreferences::Id).eq(id))
             .to_owned();
 

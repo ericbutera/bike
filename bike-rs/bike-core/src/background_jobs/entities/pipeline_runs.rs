@@ -29,10 +29,7 @@ impl Model {
         use sea_orm::{sea_query::OnConflict, Set};
         Self::record_origin(db, context).await?;
         use sea_orm::QuerySelect;
-        Entity::find_by_id(&context.run_id)
-            .lock_exclusive()
-            .one(db)
-            .await?;
+        Entity::find_by_id(&context.run_id).lock_exclusive().one(db).await?;
         super::pipeline_tasks::Entity::insert(super::pipeline_tasks::ActiveModel {
             run_id: Set(context.run_id.clone()),
             task_id: Set(task_id),

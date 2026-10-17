@@ -9,9 +9,7 @@ impl Model {
         title: Option<String>,
         activity_type: Option<ActivityType>,
     ) -> Result<Self, WorkflowError> {
-        let title = title
-            .map(|title| Self::normalize_title(&title))
-            .transpose()?;
+        let title = title.map(|title| Self::normalize_title(&title)).transpose()?;
         let transaction = db.begin().await?;
         let before = Self::lock_owned(&transaction, self.id, self.user_id)
             .await?
@@ -30,11 +28,8 @@ impl Model {
             active.activity_type = Set(activity_type.as_str().to_string());
         }
         let after = active.update(&transaction).await?;
-        activity_event_history::Model::append(
-            &transaction,
-            activity_event_history::Event::manual(&before, &after)?,
-        )
-        .await?;
+        activity_event_history::Model::append(&transaction, activity_event_history::Event::manual(&before, &after)?)
+            .await?;
         transaction.commit().await?;
         Ok(after)
     }

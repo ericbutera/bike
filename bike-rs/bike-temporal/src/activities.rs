@@ -6,9 +6,7 @@ mod segments;
 mod training;
 pub use archive::{ArchiveActivities, ArchiveOperations};
 pub use derived::{DerivedActivities, DerivedOperations};
-pub use imports::{
-    ImportActivities, ImportOperations, ReprocessManifestActivities, ReprocessManifestOperations,
-};
+pub use imports::{ImportActivities, ImportOperations, ReprocessManifestActivities, ReprocessManifestOperations};
 pub use segments::{SegmentActivities, SegmentOperations};
 pub use training::{TrainingActivities, TrainingOperations};
 

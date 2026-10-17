@@ -25,20 +25,14 @@ async fn each_named_activity_calls_its_domain_operation_and_preserves_failure() 
         }
         assert_eq!(
             environment
-                .run(
-                    DerivedActivities::rebuild_fitness_freshness,
-                    fitness_change()
-                )
+                .run(DerivedActivities::rebuild_fitness_freshness, fitness_change())
                 .await
                 .is_err(),
             fail
         );
         assert_eq!(
             environment
-                .run(
-                    DerivedActivities::rebuild_segment_analytics,
-                    segment_change()
-                )
+                .run(DerivedActivities::rebuild_segment_analytics, segment_change())
                 .await
                 .is_err(),
             fail
@@ -53,10 +47,7 @@ async fn each_named_activity_calls_its_domain_operation_and_preserves_failure() 
         assert_eq!(
             *operations.received.lock().unwrap(),
             vec![
-                (
-                    "activity_import",
-                    serde_json::to_value(import_command()).unwrap()
-                ),
+                ("activity_import", serde_json::to_value(import_command()).unwrap()),
                 (
                     "rebuild_fitness_freshness",
                     serde_json::to_value(fitness_change()).unwrap()
@@ -65,10 +56,7 @@ async fn each_named_activity_calls_its_domain_operation_and_preserves_failure() 
                     "rebuild_segment_analytics",
                     serde_json::to_value(segment_change()).unwrap()
                 ),
-                (
-                    "prepare_heatmap",
-                    serde_json::to_value(heatmap_change()).unwrap()
-                ),
+                ("prepare_heatmap", serde_json::to_value(heatmap_change()).unwrap()),
             ]
         );
     }
@@ -126,18 +114,12 @@ async fn scheduling_activities_handoff_each_output_and_allow_retried_fanout() {
         .register_activities(SchedulingActivities::new(client, DebouncePolicy::default()))
         .build();
     environment
-        .run(
-            SchedulingActivities::schedule_fitness_freshness,
-            fitness_change(),
-        )
+        .run(SchedulingActivities::schedule_fitness_freshness, fitness_change())
         .await
         .unwrap();
     for _ in 0..2 {
         environment
-            .run(
-                SchedulingActivities::schedule_segment_analytics,
-                vec![segment_change()],
-            )
+            .run(SchedulingActivities::schedule_segment_analytics, vec![segment_change()])
             .await
             .unwrap();
     }
@@ -182,10 +164,7 @@ async fn rejected_native_handoff_is_an_activity_failure() {
         .register_activities(SchedulingActivities::new(client, DebouncePolicy::default()))
         .build();
     assert!(environment
-        .run(
-            SchedulingActivities::schedule_fitness_freshness,
-            fitness_change()
-        )
+        .run(SchedulingActivities::schedule_fitness_freshness, fitness_change())
         .await
         .is_err());
 }

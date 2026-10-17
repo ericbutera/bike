@@ -21,13 +21,9 @@ async fn unchanged_content_still_archives_its_provider_state_transition() {
         }))
         .into_connection();
     let transaction = db.begin().await.unwrap();
-    let change = StravaOperations::persist_unchanged(
-        &transaction,
-        &fixture.normalized_activity(),
-        &fixture.activity(),
-    )
-    .await
-    .unwrap();
+    let change = StravaOperations::persist_unchanged(&transaction, &fixture.normalized_activity(), &fixture.activity())
+        .await
+        .unwrap();
     assert_eq!(change.status, ActivityStatus::Unchanged);
     assert_eq!(change.bike_activity_id, Some(fixture.activity().id));
     transaction.commit().await.unwrap();
@@ -47,13 +43,11 @@ async fn failed_archive_does_not_acknowledge_an_unchanged_event() {
         .append_exec_errors([sea_orm::DbErr::Custom("fixture archive unavailable".into())])
         .into_connection();
     let transaction = db.begin().await.unwrap();
-    assert!(StravaOperations::persist_unchanged(
-        &transaction,
-        &fixture.normalized_activity(),
-        &fixture.activity(),
-    )
-    .await
-    .is_err());
+    assert!(
+        StravaOperations::persist_unchanged(&transaction, &fixture.normalized_activity(), &fixture.activity(),)
+            .await
+            .is_err()
+    );
     transaction.rollback().await.unwrap();
     let log = db.into_transaction_log();
     assert_eq!(log[0].statements().last().unwrap().sql, "ROLLBACK");

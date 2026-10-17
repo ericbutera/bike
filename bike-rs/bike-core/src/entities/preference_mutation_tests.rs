@@ -6,7 +6,8 @@ fn goal_update() -> PreferencesUpdate {
     serde_json::from_value(serde_json::json!({
         "unit_system":"metric", "xc_goal_start_date":"2026-09-01", "xc_goal_target_date":"2026-10-01",
         "xc_goal_target_distance_meters":100_000.0, "xc_goal_target_elevation_gain_meters":1_000.0
-    })).unwrap()
+    }))
+    .unwrap()
 }
 
 #[tokio::test]
@@ -16,11 +17,7 @@ async fn a_new_goal_queues_backfill_and_an_unchanged_goal_does_not() {
             xc_goal_start_date: Some(fixtures::timestamp().date_naive()),
             ..fixtures::user_preferences()
         };
-        let prior = if existing {
-            vec![saved.clone()]
-        } else {
-            vec![]
-        };
+        let prior = if existing { vec![saved.clone()] } else { vec![] };
         let db = fixtures::postgres_mock()
             .append_query_results([prior, vec![saved]])
             .into_connection();
@@ -78,11 +75,9 @@ async fn invalid_preferences_fail_before_any_database_read_or_write() {
     let db = fixtures::postgres_mock().into_connection();
     let mut update = goal_update();
     update.estimated_ftp_watts = Some(-1);
-    assert!(
-        Model::save_preferences(&db, fixtures::customer().id, update)
-            .await
-            .is_err()
-    );
+    assert!(Model::save_preferences(&db, fixtures::customer().id, update)
+        .await
+        .is_err());
     assert!(db.into_transaction_log().is_empty());
 }
 

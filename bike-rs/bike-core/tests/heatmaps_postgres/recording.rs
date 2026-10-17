@@ -5,9 +5,7 @@ use bike_core::{
     activity_details::derive_activity_detail_data,
     heatmaps::{data::HeatmapData, raster::Tile, types::HeatmapQuery},
 };
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect, Set,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect, Set};
 
 fn outdoor_route() -> serde_json::Value {
     serde_json::to_value(serialize_derived_activity_data(
@@ -54,10 +52,7 @@ async fn assert_recording_summary(db: &sea_orm::DatabaseConnection, expected: &s
     use sea_orm::sea_query::{Alias, Expr};
     let value = activities::Entity::find_by_id(1)
         .select_only()
-        .expr(Expr::col((
-            activities::Entity,
-            Alias::new("recording_environment"),
-        )))
+        .expr(Expr::col((activities::Entity, Alias::new("recording_environment"))))
         .into_tuple::<String>()
         .one(db)
         .await
@@ -85,10 +80,7 @@ async fn retained_context_blocks_tiles_zones_bounds_and_ready_counts_even_with_s
     set_route(&db, 1, outdoor_route()).await;
     prepare(&db, 1, 2).await;
     let query = HeatmapQuery::default();
-    assert_eq!(
-        HeatmapData::progress(&db, 1, &query).await.unwrap().ready,
-        1
-    );
+    assert_eq!(HeatmapData::progress(&db, 1, &query).await.unwrap().ready, 1);
     let center = geometry::project(-119.999, 45.0);
     let tile = Tile {
         z: 14,
@@ -109,10 +101,7 @@ async fn retained_context_blocks_tiles_zones_bounds_and_ready_counts_even_with_s
     let progress = HeatmapData::progress(&db, 1, &query).await.unwrap();
     assert_eq!(progress.ready, 0);
     assert_eq!(progress.min_x, None);
-    assert!(HeatmapData::activity_centers(&db, 1, &query)
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(HeatmapData::activity_centers(&db, 1, &query).await.unwrap().is_empty());
     assert!(HeatmapData::tile_page(&db, 1, &query, tile, (0, -1))
         .await
         .unwrap()
@@ -167,26 +156,15 @@ async fn backfill_recovers_legacy_virtual_copy_and_preserves_real_activity() {
         .unwrap()
         .unwrap()
         .unwrap();
-    assert!(deserialize_derived_activity_data(Some(&stored))
-        .recording
-        .excluded());
+    assert!(deserialize_derived_activity_data(Some(&stored)).recording.excluded());
     prepare(&db, 1, 3).await;
     prepare(&db, 2, 1).await;
     assert_eq!(status(&db, 1).await, "skipped");
     assert_eq!(status(&db, 2).await, "skipped");
-    insert_route(
-        &db,
-        3,
-        "ride",
-        "2020-01-01T00:00:00Z".parse().unwrap(),
-        outdoor_route(),
-    )
-    .await;
+    insert_route(&db, 3, "ride", "2020-01-01T00:00:00Z".parse().unwrap(), outdoor_route()).await;
     prepare(&db, 3, 1).await;
     assert_eq!(status(&db, 3).await, "ready");
-    let progress = HeatmapData::progress(&db, 1, &HeatmapQuery::default())
-        .await
-        .unwrap();
+    let progress = HeatmapData::progress(&db, 1, &HeatmapQuery::default()).await.unwrap();
     assert_eq!((progress.ready, progress.skipped), (1, 2));
     assert_eq!(
         HeatmapData::activity_centers(&db, 1, &HeatmapQuery::default())
@@ -223,11 +201,9 @@ async fn policy_upgrade_requeues_chunks_and_rejects_old_worker_publication() {
     ))
     .await
     .unwrap();
-    db.execute_unprepared(include_str!(
-        "../../../migration/src/heatmap_cycling_sources.sql"
-    ))
-    .await
-    .unwrap();
+    db.execute_unprepared(include_str!("../../../migration/src/heatmap_cycling_sources.sql"))
+        .await
+        .unwrap();
     assert_eq!(status(&db, 1).await, "pending");
     assert_eq!(heatmap_chunks::Entity::find().count(&db).await.unwrap(), 0);
     assert!(!Projection::pending(&db, 1, 1).await.unwrap());
@@ -365,10 +341,7 @@ async fn assert_source_policy(sport: &str, format: &str, visible: bool) {
     assert_eq!(progress.ready > 0, visible);
     assert_eq!(progress.min_x.is_some(), visible);
     assert_eq!(
-        !HeatmapData::activity_centers(&db, 1, &query)
-            .await
-            .unwrap()
-            .is_empty(),
+        !HeatmapData::activity_centers(&db, 1, &query).await.unwrap().is_empty(),
         visible
     );
     let center = geometry::project(-119.999, 45.0);
@@ -384,10 +357,7 @@ async fn assert_source_policy(sport: &str, format: &str, visible: bool) {
             .is_empty(),
         visible
     );
-    assert_eq!(
-        status(&db, 1).await,
-        if visible { "ready" } else { "skipped" }
-    );
+    assert_eq!(status(&db, 1).await, if visible { "ready" } else { "skipped" });
     db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
         .await
         .unwrap();

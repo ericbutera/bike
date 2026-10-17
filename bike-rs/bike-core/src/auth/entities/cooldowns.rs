@@ -23,8 +23,7 @@ pub struct Model {
 pub enum Relation {}
 
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, IntoActiveModel,
-    QueryFilter, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, IntoActiveModel, QueryFilter, Set,
 };
 
 crate::timestamps::impl_timestamps!(ActiveModel);

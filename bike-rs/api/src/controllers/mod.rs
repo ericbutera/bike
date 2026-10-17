@@ -59,10 +59,7 @@ fn platform_routes() -> Router<Arc<AppStorage>> {
         .nest("/api", auth::session_routes())
         .nest("/api/oauth", auth::oauth_routes())
         .nest("/api/admin", admin::routes())
-        .nest(
-            "/api/admin/integration-events",
-            integration_events::admin_routes(),
-        )
+        .nest("/api/admin/integration-events", integration_events::admin_routes())
         .nest("/api/admin/feature-flags", feature_flags::admin_routes())
         .nest("/api/feature-flags", feature_flags::public_routes())
         .nest(
@@ -74,10 +71,7 @@ fn platform_routes() -> Router<Arc<AppStorage>> {
 
 fn activity_routes() -> Router<Arc<AppStorage>> {
     Router::new()
-        .route(
-            "/api/activities",
-            axum::routing::get(activities::list_activities),
-        )
+        .route("/api/activities", axum::routing::get(activities::list_activities))
         .route(
             "/api/activities/:id",
             axum::routing::get(activities::get_activity)
@@ -92,10 +86,7 @@ fn activity_routes() -> Router<Arc<AppStorage>> {
             "/api/activities/:id/source-file",
             axum::routing::get(activities::download_activity_source_file),
         )
-        .route(
-            "/api/fitness",
-            axum::routing::get(fitness::get_fitness_freshness),
-        )
+        .route("/api/fitness", axum::routing::get(fitness::get_fitness_freshness))
         .route(
             "/api/activity-imports",
             axum::routing::get(activity_imports::list_activity_imports)
@@ -183,8 +174,7 @@ fn segment_routes() -> Router<Arc<AppStorage>> {
 fn preference_routes() -> Router<Arc<AppStorage>> {
     Router::new().route(
         "/api/preferences",
-        axum::routing::get(user_preferences::get_preferences)
-            .put(user_preferences::update_preferences),
+        axum::routing::get(user_preferences::get_preferences).put(user_preferences::update_preferences),
     )
 }
 

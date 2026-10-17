@@ -33,10 +33,7 @@ pub enum Relation {
 impl ActiveModelBehavior for ActiveModel {}
 
 impl Model {
-    pub async fn for_activity(
-        db: &impl ConnectionTrait,
-        activity_id: i32,
-    ) -> Result<Option<Self>, DbErr> {
+    pub async fn for_activity(db: &impl ConnectionTrait, activity_id: i32) -> Result<Option<Self>, DbErr> {
         Entity::find_by_id(activity_id).one(db).await
     }
 }

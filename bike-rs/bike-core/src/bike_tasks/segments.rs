@@ -4,10 +4,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SegmentSelection {
     All,
-    One {
-        segment_id: i32,
-        expected_revision: u64,
-    },
+    One { segment_id: i32, expected_revision: u64 },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

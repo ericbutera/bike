@@ -60,13 +60,8 @@ async fn committed_retry_uses_original_scope_without_reading_source_or_current_t
         .append_query_results([vec![fixture::history()]])
         .into_connection();
     let (objects, _) = fixtures::object_storage(ObjectOwner::ActivityImports);
-    let result = reprocess(&db, &objects, fixtures::reprocess_execution())
-        .await
-        .unwrap();
-    assert_eq!(
-        result.segments[0].segment_id,
-        fixtures::segment_effort().segment_id
-    );
+    let result = reprocess(&db, &objects, fixtures::reprocess_execution()).await.unwrap();
+    assert_eq!(result.segments[0].segment_id, fixtures::segment_effort().segment_id);
     assert_eq!(db.into_transaction_log().len(), 1);
 }
 
@@ -203,11 +198,9 @@ async fn corrupt_supplemental_recording_is_rejected_before_mutation() {
         )
         .await
         .unwrap();
-    let db = fixture::metadata(
-        fixture::mock().append_query_results([Vec::<activity_event_history::Model>::new()]),
-    )
-    .append_query_results([vec![fixtures::reprocess_artifact(), artifact]])
-    .into_connection();
+    let db = fixture::metadata(fixture::mock().append_query_results([Vec::<activity_event_history::Model>::new()]))
+        .append_query_results([vec![fixtures::reprocess_artifact(), artifact]])
+        .into_connection();
     let error = reprocess(&db, &objects, fixtures::reprocess_execution())
         .await
         .unwrap_err();

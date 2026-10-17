@@ -1,13 +1,12 @@
 //! Ownership, time, sport, zoom and spatial predicates run before materializing coordinates.
 use crate::entities::{
-    activities, heatmap_chunks as chunks, heatmap_projections as projections,
-    heatmap_user_states as user_states,
+    activities, heatmap_chunks as chunks, heatmap_projections as projections, heatmap_user_states as user_states,
 };
 use crate::heatmaps::{geometry::zoom_band, raster::Tile, types::HeatmapQuery, PROJECTION_VERSION};
 use sea_orm::sea_query::{Expr, Func, Query};
 use sea_orm::{
-    ColumnTrait, Condition, ConnectionTrait, DbErr, EntityTrait, ExprTrait, FromQueryResult,
-    JoinType, QueryFilter, QueryOrder, QuerySelect, RelationTrait, Select,
+    ColumnTrait, Condition, ConnectionTrait, DbErr, EntityTrait, ExprTrait, FromQueryResult, JoinType, QueryFilter,
+    QueryOrder, QuerySelect, RelationTrait, Select,
 };
 
 #[derive(Debug, FromQueryResult)]
@@ -43,21 +42,14 @@ impl HeatmapData {
         user_states::Model::revision(db, user_id).await
     }
 
-    pub async fn progress(
-        db: &impl ConnectionTrait,
-        user_id: i32,
-        filters: &HeatmapQuery,
-    ) -> Result<Progress, DbErr> {
+    pub async fn progress(db: &impl ConnectionTrait, user_id: i32, filters: &HeatmapQuery) -> Result<Progress, DbErr> {
         let revision = Query::select()
             .column(user_states::Column::Revision)
             .from(user_states::Entity)
             .and_where(user_states::Column::UserId.eq(user_id))
             .to_owned();
         Self::scoped_projections(user_id, filters)
-            .expr_as(
-                Func::coalesce([revision.into(), Expr::val(0_i64)]),
-                "revision",
-            )
+            .expr_as(Func::coalesce([revision.into(), Expr::val(0_i64)]), "revision")
             .expr_as(Self::status_count("ready"), "ready")
             .expr_as(Self::status_count("pending"), "pending")
             .expr_as(Self::status_count("failed"), "failed")
@@ -102,10 +94,7 @@ impl HeatmapData {
             .div(2.0)
             .sub(Expr::case(x_sum.clone().gte(1.0), 1.0).finally(0.0));
         Self::scoped_projections(user_id, filters)
-            .expr_as(
-                Expr::case(wraps_dateline, wrapped_x).finally(x_sum.div(2.0)),
-                "x",
-            )
+            .expr_as(Expr::case(wraps_dateline, wrapped_x).finally(x_sum.div(2.0)), "x")
             .expr_as(
                 projections::Column::MinY
                     .into_expr()
@@ -184,8 +173,7 @@ impl HeatmapData {
             .filter(activities::Column::UserId.eq(user_id))
             .filter(projections::Column::UserId.eq(user_id));
         if let Some(sport) = filters.sport {
-            query = query
-                .filter(activities::Column::Sport.is_in(sport.stored_values().iter().copied()));
+            query = query.filter(activities::Column::Sport.is_in(sport.stored_values().iter().copied()));
         }
         if let Some(from) = filters.from {
             query = query.filter(activities::Column::StartedAt.gte(from));

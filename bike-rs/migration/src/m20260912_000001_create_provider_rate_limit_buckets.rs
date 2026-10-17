@@ -31,16 +31,8 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(ProviderRateLimitBuckets::Provider)
-                            .string()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(ProviderRateLimitBuckets::Bucket)
-                            .string()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(ProviderRateLimitBuckets::Provider).string().not_null())
+                    .col(ColumnDef::new(ProviderRateLimitBuckets::Bucket).string().not_null())
                     .col(
                         ColumnDef::new(ProviderRateLimitBuckets::LimitCount)
                             .integer()
@@ -90,11 +82,7 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(
-                Table::drop()
-                    .table(ProviderRateLimitBuckets::Table)
-                    .to_owned(),
-            )
+            .drop_table(Table::drop().table(ProviderRateLimitBuckets::Table).to_owned())
             .await
     }
 }

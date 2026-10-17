@@ -4,20 +4,14 @@ use sea_orm::DatabaseConnection;
 
 #[async_trait::async_trait]
 trait WebhookStore: Send + Sync {
-    async fn connection(
-        &self,
-        athlete_id: i64,
-    ) -> Result<Option<strava_connections::Model>, WorkflowError>;
+    async fn connection(&self, athlete_id: i64) -> Result<Option<strava_connections::Model>, WorkflowError>;
     async fn customer(&self, user_id: i32) -> Result<users::Model, WorkflowError>;
     async fn accept(&self, event: StravaEvent) -> Result<strava_events::Model, WorkflowError>;
 }
 
 #[async_trait::async_trait]
 impl WebhookStore for DatabaseConnection {
-    async fn connection(
-        &self,
-        athlete_id: i64,
-    ) -> Result<Option<strava_connections::Model>, WorkflowError> {
+    async fn connection(&self, athlete_id: i64) -> Result<Option<strava_connections::Model>, WorkflowError> {
         Ok(strava_connections::Model::for_athlete(self, athlete_id).await?)
     }
 
@@ -80,14 +74,10 @@ impl WebhookIntake {
             .subscription_id
             .is_some_and(|expected| expected != webhook.subscription_id)
         {
-            return Err(WorkflowError::bad_request(
-                "Strava subscription ID does not match",
-            ));
+            return Err(WorkflowError::bad_request("Strava subscription ID does not match"));
         }
         if webhook.owner_id <= 0 || webhook.object_id <= 0 {
-            return Err(WorkflowError::bad_request(
-                "Invalid Strava athlete or object ID",
-            ));
+            return Err(WorkflowError::bad_request("Invalid Strava athlete or object ID"));
         }
         if webhook.event_time <= 0 || DateTime::from_timestamp(webhook.event_time, 0).is_none() {
             return Err(WorkflowError::bad_request("Invalid Strava event timestamp"));
@@ -106,8 +96,7 @@ fn is_old_deauthorization(
     webhook: &StravaWebhookEvent,
     connection: &strava_connections::Model,
 ) -> bool {
-    operation == StravaOperation::Disconnect
-        && webhook.event_time < connection.created_at.timestamp()
+    operation == StravaOperation::Disconnect && webhook.event_time < connection.created_at.timestamp()
 }
 
 #[tracing::instrument(name = "strava.webhook.accept", skip_all, fields(strava_athlete_id = webhook.owner_id, object_type = webhook.object_type, aspect_type = webhook.aspect_type))]
@@ -122,18 +111,13 @@ pub async fn accept_webhook(
         .map(|value| value.parse::<i64>())
         .transpose()
         .map_err(|_| WorkflowError::internal("Invalid Strava subscription ID"))?;
-    WebhookIntake { subscription_id }
-        .accept(db, webhook, request_id)
-        .await
+    WebhookIntake { subscription_id }.accept(db, webhook, request_id).await
 }
 
 #[cfg(test)]
 mod strava_webhook_unit;
 
-pub async fn request_sync(
-    db: &DatabaseConnection,
-    user_id: i32,
-) -> Result<strava_events::Model, WorkflowError> {
+pub async fn request_sync(db: &DatabaseConnection, user_id: i32) -> Result<strava_events::Model, WorkflowError> {
     accept(db, user_event(db, user_id, StravaOperation::Sync).await?).await
 }
 
@@ -144,9 +128,7 @@ pub async fn request_backfill(
     before: DateTime<Utc>,
 ) -> Result<strava_events::Model, WorkflowError> {
     if before <= after {
-        return Err(WorkflowError::bad_request(
-            "Backfill must end after it starts",
-        ));
+        return Err(WorkflowError::bad_request("Backfill must end after it starts"));
     }
     let mut event = user_event(db, user_id, StravaOperation::Backfill).await?;
     event.window = Some(super::super::native::ActivityWindow {
@@ -156,10 +138,7 @@ pub async fn request_backfill(
     accept(db, event).await
 }
 
-pub async fn request_disconnect(
-    db: &DatabaseConnection,
-    user_id: i32,
-) -> Result<strava_events::Model, WorkflowError> {
+pub async fn request_disconnect(db: &DatabaseConnection, user_id: i32) -> Result<strava_events::Model, WorkflowError> {
     let mut event = user_event(db, user_id, StravaOperation::Disconnect).await?;
     event.revoke_remote = true;
     accept(db, event).await
@@ -182,10 +161,7 @@ async fn user_event(
     Ok(event)
 }
 
-async fn accept(
-    db: &DatabaseConnection,
-    event: StravaEvent,
-) -> Result<strava_events::Model, WorkflowError> {
+async fn accept(db: &DatabaseConnection, event: StravaEvent) -> Result<strava_events::Model, WorkflowError> {
     super::super::payload::validate_temporal(&event)?;
     let row = strava_events::Model::accept(db, &event).await?;
     tracing::info!(correlation_id = row.correlation_id, strava_event_id = row.id,

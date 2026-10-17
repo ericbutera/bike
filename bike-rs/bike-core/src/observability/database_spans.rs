@@ -32,10 +32,7 @@ struct DatabaseWork {
 
 impl DatabaseWork {
     fn observe(&mut self, span: &SpanData) -> bool {
-        let duration = span
-            .end_time
-            .duration_since(span.start_time)
-            .unwrap_or_default();
+        let duration = span.end_time.duration_since(span.start_time).unwrap_or_default();
         let duration_ms = duration.as_secs_f64() * 1000.0;
         let failed = matches!(span.status, Status::Error { .. });
         self.calls += 1;
@@ -128,24 +125,16 @@ impl<P: SpanProcessor> DatabaseSpanProcessor<P> {
 
     fn summarize(&self, span: &mut SpanData) {
         let key = (span.span_context.trace_id(), span.span_context.span_id());
-        let mut pending = self
-            .pending
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut pending = self.pending.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let Some(work) = pending.remove(&key) else {
             return;
         };
         work.annotate(span);
         // Remote parents belong to another execution, and may already be closed.
-        if span.parent_span_is_remote
-            || span.parent_span_id == opentelemetry::trace::SpanId::INVALID
-        {
+        if span.parent_span_is_remote || span.parent_span_id == opentelemetry::trace::SpanId::INVALID {
             return;
         }
-        pending
-            .entry((key.0, span.parent_span_id))
-            .or_default()
-            .merge(&work);
+        pending.entry((key.0, span.parent_span_id)).or_default().merge(&work);
     }
 }
 

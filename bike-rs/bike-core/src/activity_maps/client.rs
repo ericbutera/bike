@@ -56,12 +56,9 @@ impl SnapshotClient {
         let mut request = Request::new(input.to_proto());
         request.set_timeout(Duration::from_secs(60));
         if let Some(value) = &self.authorization {
-            request
-                .metadata_mut()
-                .insert("authorization", value.clone());
+            request.metadata_mut().insert("authorization", value.clone());
         }
-        for (key, value) in crate::observability::inject_current_trace_context().unwrap_or_default()
-        {
+        for (key, value) in crate::observability::inject_current_trace_context().unwrap_or_default() {
             if let (Ok(key), Ok(value)) = (
                 key.parse::<tonic::metadata::MetadataKey<tonic::metadata::Ascii>>(),
                 value.parse(),

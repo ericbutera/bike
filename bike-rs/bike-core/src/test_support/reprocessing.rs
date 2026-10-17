@@ -1,14 +1,11 @@
 use crate::{
     activity_parser::{parse_activity_data, ParsedActivityData},
     bike_tasks::{ImportExecution, ImportTarget},
-    entities::{
-        activities, activity_import_artifacts, activity_imports, activity_training_analyses,
-    },
+    entities::{activities, activity_import_artifacts, activity_imports, activity_training_analyses},
 };
 
 pub const REPROCESS_SOURCE: &[u8] = include_bytes!("../../tests/fixtures/recording/outdoor.tcx");
-pub const REPROCESS_RECORDING_SOURCE: &[u8] =
-    include_bytes!("../../tests/fixtures/recording/virtual-generic.fit");
+pub const REPROCESS_RECORDING_SOURCE: &[u8] = include_bytes!("../../tests/fixtures/recording/virtual-generic.fit");
 
 pub fn reprocess_activity() -> activities::Model {
     activities::Model {
@@ -64,8 +61,7 @@ pub fn reprocess_execution() -> ImportExecution {
     };
     execution.command.target = ImportTarget::ExistingActivity {
         activity_id: activity.id,
-        expected_revision: crate::activity_reprocessing::revision(activity.updated_at)
-            .expect("fixture timestamp"),
+        expected_revision: crate::activity_reprocessing::revision(activity.updated_at).expect("fixture timestamp"),
     };
     execution.workflow.workflow_type = "reprocess_activity_import".into();
     execution.workflow.job_id = format!(

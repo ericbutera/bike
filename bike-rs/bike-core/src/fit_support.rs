@@ -46,8 +46,7 @@ pub struct ParsedFitActivity {
 
 pub fn parse_fit_activity(filename: &str, bytes: &[u8]) -> Result<ParsedFitActivity, String> {
     let mut cursor = Cursor::new(bytes);
-    let records = fitparser::from_reader(&mut cursor)
-        .map_err(|error| format!("Failed to parse FIT file: {error}"))?;
+    let records = fitparser::from_reader(&mut cursor).map_err(|error| format!("Failed to parse FIT file: {error}"))?;
 
     let track_points = records
         .iter()
@@ -59,10 +58,7 @@ pub fn parse_fit_activity(filename: &str, bytes: &[u8]) -> Result<ParsedFitActiv
         .filter(|record| record.kind() == MesgNum::Lap)
         .map(parse_fit_lap)
         .collect::<Vec<_>>();
-    let session = records
-        .iter()
-        .rev()
-        .find(|record| record.kind() == MesgNum::Session);
+    let session = records.iter().rev().find(|record| record.kind() == MesgNum::Session);
 
     let started_at = field_datetime(session, "start_time")
         .or_else(|| track_points.first().map(|point| point.timestamp))
@@ -82,10 +78,7 @@ pub fn parse_fit_activity(filename: &str, bytes: &[u8]) -> Result<ParsedFitActiv
         .iter()
         .filter_map(|point| point.cadence_rpm)
         .collect::<Vec<_>>();
-    let max_speed_from_records = track_points
-        .iter()
-        .filter_map(|point| point.speed_mps)
-        .reduce(f64::max);
+    let max_speed_from_records = track_points.iter().filter_map(|point| point.speed_mps).reduce(f64::max);
     let distance_from_records = track_points
         .iter()
         .filter_map(|point| point.distance_meters)
@@ -106,17 +99,13 @@ pub fn parse_fit_activity(filename: &str, bytes: &[u8]) -> Result<ParsedFitActiv
             total_time_seconds,
             elevation_gain_meters: field_f64(session, "total_ascent"),
             elevation_loss_meters: field_f64(session, "total_descent"),
-            average_speed_mps: field_f64(session, "enhanced_avg_speed")
-                .or_else(|| field_f64(session, "avg_speed")),
+            average_speed_mps: field_f64(session, "enhanced_avg_speed").or_else(|| field_f64(session, "avg_speed")),
             max_speed_mps: field_f64(session, "enhanced_max_speed")
                 .or_else(|| field_f64(session, "max_speed"))
                 .or(max_speed_from_records),
-            average_heart_rate_bpm: field_i32(session, "avg_heart_rate")
-                .or_else(|| average_metric(&heart_rates)),
-            max_heart_rate_bpm: field_i32(session, "max_heart_rate")
-                .or_else(|| max_metric(&heart_rates)),
-            average_cadence_rpm: field_i32(session, "avg_cadence")
-                .or_else(|| average_metric(&cadences)),
+            average_heart_rate_bpm: field_i32(session, "avg_heart_rate").or_else(|| average_metric(&heart_rates)),
+            max_heart_rate_bpm: field_i32(session, "max_heart_rate").or_else(|| max_metric(&heart_rates)),
+            average_cadence_rpm: field_i32(session, "avg_cadence").or_else(|| average_metric(&cadences)),
             max_cadence_rpm: field_i32(session, "max_cadence").or_else(|| max_metric(&cadences)),
             calories: field_i32(session, "total_calories"),
         },
@@ -133,10 +122,8 @@ fn parse_fit_track_point(record: &FitDataRecord) -> Option<FitTrackPoint> {
         latitude: field_f64(Some(record), "position_lat").map(semicircles_to_degrees),
         longitude: field_f64(Some(record), "position_long").map(semicircles_to_degrees),
         distance_meters: field_f64(Some(record), "distance"),
-        elevation_meters: field_f64(Some(record), "enhanced_altitude")
-            .or_else(|| field_f64(Some(record), "altitude")),
-        speed_mps: field_f64(Some(record), "enhanced_speed")
-            .or_else(|| field_f64(Some(record), "speed")),
+        elevation_meters: field_f64(Some(record), "enhanced_altitude").or_else(|| field_f64(Some(record), "altitude")),
+        speed_mps: field_f64(Some(record), "enhanced_speed").or_else(|| field_f64(Some(record), "speed")),
         heart_rate_bpm: field_i32(Some(record), "heart_rate"),
         cadence_rpm: field_i32(Some(record), "cadence"),
         power_watts: field_i32(Some(record), "power"),
@@ -154,8 +141,7 @@ fn parse_fit_lap(record: &FitDataRecord) -> FitLapSummary {
         elevation_loss_meters: field_f64(Some(record), "total_descent"),
         average_speed_mps: field_f64(Some(record), "enhanced_avg_speed")
             .or_else(|| field_f64(Some(record), "avg_speed")),
-        max_speed_mps: field_f64(Some(record), "enhanced_max_speed")
-            .or_else(|| field_f64(Some(record), "max_speed")),
+        max_speed_mps: field_f64(Some(record), "enhanced_max_speed").or_else(|| field_f64(Some(record), "max_speed")),
         average_heart_rate_bpm: field_i32(Some(record), "avg_heart_rate"),
         max_heart_rate_bpm: field_i32(Some(record), "max_heart_rate"),
         average_cadence_rpm: field_i32(Some(record), "avg_cadence"),
@@ -266,9 +252,7 @@ fn title_case_words(value: &str) -> String {
         .map(|word| {
             let mut chars = word.chars();
             match chars.next() {
-                Some(first) => {
-                    first.to_uppercase().collect::<String>() + &chars.as_str().to_ascii_lowercase()
-                }
+                Some(first) => first.to_uppercase().collect::<String>() + &chars.as_str().to_ascii_lowercase(),
                 None => String::new(),
             }
         })
@@ -350,11 +334,8 @@ mod tests {
             assert_eq!(parsed.recording.platform.as_deref(), Some("zwift"));
             assert_eq!(parsed.track_points.len(), 16);
         }
-        let indoor = parse_fit_activity(
-            "indoor.fit",
-            include_bytes!("../tests/fixtures/recording/indoor.fit"),
-        )
-        .unwrap();
+        let indoor =
+            parse_fit_activity("indoor.fit", include_bytes!("../tests/fixtures/recording/indoor.fit")).unwrap();
         assert_eq!(indoor.recording.environment, RecordingEnvironment::Indoor);
     }
 

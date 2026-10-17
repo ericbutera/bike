@@ -14,10 +14,7 @@ pub struct BackfillUserXcTraining;
 #[workflow_methods]
 impl BackfillUserXcTraining {
     #[run(name = "backfill_user_xc_training")]
-    pub async fn run(
-        ctx: &mut WorkflowContext<Self>,
-        mut input: BatchInput,
-    ) -> WorkflowResult<BatchResult> {
+    pub async fn run(ctx: &mut WorkflowContext<Self>, mut input: BatchInput) -> WorkflowResult<BatchResult> {
         training::prepare(ctx, &mut input).await?;
         let step = batches::run_pages(
             ctx,

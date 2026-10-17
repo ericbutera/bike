@@ -50,8 +50,7 @@ impl Config {
             environment,
             database_url: env::var("DATABASE_URL")
                 .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/app".to_string()),
-            frontend_url: env::var("FRONTEND_URL")
-                .unwrap_or_else(|_| "http://localhost:5173".to_string()),
+            frontend_url: env::var("FRONTEND_URL").unwrap_or_else(|_| "http://localhost:5173".to_string()),
             cors_allowed_origins: env::var("CORS_ALLOWED_ORIGINS")
                 .unwrap_or_else(|_| "http://localhost:5173,http://localhost:3001".to_string())
                 .split(',')
@@ -59,15 +58,13 @@ impl Config {
                 .filter(|s| !s.is_empty())
                 .collect(),
             api_url: env::var("API_URL").unwrap_or_else(|_| "http://localhost:3000".to_string()),
-            grafana_url: env::var("GRAFANA_URL").ok().filter(|value| {
-                url::Url::parse(value).is_ok_and(|url| ["https", "http"].contains(&url.scheme()))
-            }),
+            grafana_url: env::var("GRAFANA_URL")
+                .ok()
+                .filter(|value| url::Url::parse(value).is_ok_and(|url| ["https", "http"].contains(&url.scheme()))),
             strava_client_id: env::var("STRAVA_CLIENT_ID").unwrap_or_default(),
             strava_client_secret: env::var("STRAVA_CLIENT_SECRET").unwrap_or_default(),
-            strava_oauth_scopes: env::var("STRAVA_OAUTH_SCOPES")
-                .unwrap_or_else(|_| "activity:read_all".to_string()),
-            strava_webhook_verify_token: env::var("STRAVA_WEBHOOK_VERIFY_TOKEN")
-                .unwrap_or_default(),
+            strava_oauth_scopes: env::var("STRAVA_OAUTH_SCOPES").unwrap_or_else(|_| "activity:read_all".to_string()),
+            strava_webhook_verify_token: env::var("STRAVA_WEBHOOK_VERIFY_TOKEN").unwrap_or_default(),
             worker_recovery_timeout_seconds: worker_recovery_timeout(
                 env::var("WORKER_RECOVERY_TIMEOUT_SECONDS")
                     .ok()
@@ -77,8 +74,7 @@ impl Config {
             uploads_dir: env::var("UPLOADS_DIR").unwrap_or_else(|_| "./uploads".to_string()),
             map_renderer_grpc_address: env_endpoint("MAP_RENDERER_GRPC_ADDRESS"),
             map_service_token: env::var("MAP_SERVICE_TOKEN").unwrap_or_default(),
-            map_image_cache_dir: env::var("MAP_IMAGE_CACHE_DIR")
-                .unwrap_or_else(|_| "./map-image-cache".into()),
+            map_image_cache_dir: env::var("MAP_IMAGE_CACHE_DIR").unwrap_or_else(|_| "./map-image-cache".into()),
             map_image_cache_ttl_seconds: env::var("MAP_IMAGE_CACHE_TTL_SECONDS")
                 .unwrap_or_else(|_| "604800".into())
                 .parse()
@@ -99,14 +95,10 @@ impl Config {
             local_admin_enabled,
             app_name: env::var("APP_NAME").unwrap_or_else(|_| "App".to_string()),
             smtp_host: env::var("SMTP_HOST").unwrap_or_else(|_| "localhost".to_string()),
-            smtp_port: env::var("SMTP_PORT")
-                .ok()
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(1025),
+            smtp_port: env::var("SMTP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(1025),
             smtp_username: env::var("SMTP_USER").ok(),
             smtp_password: env::var("SMTP_PASS").ok(),
-            smtp_from_email: env::var("MAIL_FROM")
-                .unwrap_or_else(|_| "noreply@app.local".to_string()),
+            smtp_from_email: env::var("MAIL_FROM").unwrap_or_else(|_| "noreply@app.local".to_string()),
             smtp_from_name: env::var("SMTP_FROM_NAME").unwrap_or_else(|_| "App".to_string()),
         };
 
@@ -166,10 +158,7 @@ fn env_bool(name: &str, default: bool) -> bool {
 }
 
 fn is_production(environment: &str) -> bool {
-    matches!(
-        environment.trim().to_ascii_lowercase().as_str(),
-        "production" | "prod"
-    )
+    matches!(environment.trim().to_ascii_lowercase().as_str(), "production" | "prod")
 }
 
 #[cfg(test)]

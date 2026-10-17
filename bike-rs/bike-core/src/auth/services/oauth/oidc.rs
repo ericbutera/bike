@@ -2,15 +2,10 @@ use super::{provider_settings::ProviderConfig, OAuthUserInfo};
 use crate::auth::error::AuthError;
 use openidconnect::core::{CoreClient, CoreProviderMetadata};
 use openidconnect::{
-    AuthType, AuthorizationCode, ClientId, ClientSecret, IssuerUrl, Nonce, RedirectUrl,
-    TokenResponse,
+    AuthType, AuthorizationCode, ClientId, ClientSecret, IssuerUrl, Nonce, RedirectUrl, TokenResponse,
 };
 
-pub async fn exchange(
-    cfg: &ProviderConfig,
-    code: String,
-    nonce: String,
-) -> Result<OAuthUserInfo, AuthError> {
+pub async fn exchange(cfg: &ProviderConfig, code: String, nonce: String) -> Result<OAuthUserInfo, AuthError> {
     let http = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()
@@ -26,8 +21,7 @@ pub async fn exchange(
         Some(ClientSecret::new(cfg.client_secret.clone())),
     )
     .set_redirect_uri(
-        RedirectUrl::new(cfg.redirect_url.clone())
-            .map_err(|_| AuthError::internal_error("Invalid redirect URL"))?,
+        RedirectUrl::new(cfg.redirect_url.clone()).map_err(|_| AuthError::internal_error("Invalid redirect URL"))?,
     )
     .set_auth_type(AuthType::RequestBody);
     let tokens = client
@@ -57,9 +51,7 @@ pub async fn exchange(
             .name()
             .and_then(|name| name.get(None))
             .map(|name| name.as_str().to_owned()),
-        preferred_username: claims
-            .preferred_username()
-            .map(|name| name.as_str().to_owned()),
+        preferred_username: claims.preferred_username().map(|name| name.as_str().to_owned()),
         verified_email: claims.email_verified(),
     })
 }

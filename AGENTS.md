@@ -131,6 +131,8 @@ Do not start commits with the word add (eg: `feat: added architecture diagram`),
   diagnostics, weakening rules, or raising thresholds to pass.
 - Use Clippy and rustfmt for Rust; golangci-lint, go vet, and Go formatting
   for Go; ESLint, Prettier, and applicable type checks for JavaScript/TypeScript.
+- Rust uses a 120-column maximum in `bike-rs/.rustfmt.toml`, with rustfmt's
+  default small-expression heuristics. Let the formatter decide wrapping.
 - Search for and reuse existing components, hooks, services, and supported
   framework/library features before repeating behavior on individual pages.
 - Honor cyclomatic/cognitive complexity, function-size, and argument-count

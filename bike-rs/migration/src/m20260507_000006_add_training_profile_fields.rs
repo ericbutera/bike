@@ -24,16 +24,8 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(UserPreferences::Table)
-                    .add_column(
-                        ColumnDef::new(UserPreferences::EstimatedFtpWatts)
-                            .integer()
-                            .null(),
-                    )
-                    .add_column(
-                        ColumnDef::new(UserPreferences::HeartRateZoneBoundsJson)
-                            .text()
-                            .null(),
-                    )
+                    .add_column(ColumnDef::new(UserPreferences::EstimatedFtpWatts).integer().null())
+                    .add_column(ColumnDef::new(UserPreferences::HeartRateZoneBoundsJson).text().null())
                     .to_owned(),
             )
             .await?;
@@ -42,11 +34,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(Activities::Table)
-                    .add_column(
-                        ColumnDef::new(Activities::EstimatedFtpWatts)
-                            .integer()
-                            .null(),
-                    )
+                    .add_column(ColumnDef::new(Activities::EstimatedFtpWatts).integer().null())
                     .add_column(ColumnDef::new(Activities::HeartRateZonesJson).text().null())
                     .to_owned(),
             )

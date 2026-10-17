@@ -31,13 +31,8 @@ impl Model {
             ..Default::default()
         };
         let attempt = attempt.insert(db).await.map_err(|error| {
-            if matches!(
-                error.sql_err(),
-                Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
-            ) {
-                WorkflowError::conflict(
-                    "This import or its activity already has a queued or running attempt",
-                )
+            if matches!(error.sql_err(), Some(sea_orm::SqlErr::UniqueConstraintViolation(_))) {
+                WorkflowError::conflict("This import or its activity already has a queued or running attempt")
             } else {
                 WorkflowError::from(error)
             }
@@ -72,12 +67,8 @@ impl Model {
         active.updated_at = Set(Utc::now());
         if let Some(context) = crate::background_jobs::execution::ExecutionContext::current() {
             active.worker_task_id = Set(Some(context.task_id));
-            crate::background_jobs::entities::task_attempts::Model::progress(
-                db,
-                context.task_id,
-                context.attempt,
-            )
-            .await?;
+            crate::background_jobs::entities::task_attempts::Model::progress(db, context.task_id, context.attempt)
+                .await?;
         }
         if let Some(id) = activity_id {
             active.activity_id = Set(Some(id));
@@ -115,8 +106,7 @@ impl Model {
             for record in &mut records {
                 if record.status == "pending" {
                     record.status = "skipped".into();
-                    record.summary =
-                        vec!["Matched an existing activity; downstream work was skipped".into()];
+                    record.summary = vec!["Matched an existing activity; downstream work was skipped".into()];
                 }
             }
         }

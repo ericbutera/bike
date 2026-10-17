@@ -75,11 +75,7 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(FitnessFreshnessDaily::UserId)
-                            .integer()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(FitnessFreshnessDaily::UserId).integer().not_null())
                     .col(ColumnDef::new(FitnessFreshnessDaily::Day).date().not_null())
                     .col(
                         ColumnDef::new(FitnessFreshnessDaily::ActivityCount)
@@ -156,21 +152,9 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(0),
                     )
-                    .col(
-                        ColumnDef::new(SegmentSummaries::LeaderUserId)
-                            .integer()
-                            .null(),
-                    )
-                    .col(
-                        ColumnDef::new(SegmentSummaries::LeaderEffortId)
-                            .integer()
-                            .null(),
-                    )
-                    .col(
-                        ColumnDef::new(SegmentSummaries::BestDurationSeconds)
-                            .integer()
-                            .null(),
-                    )
+                    .col(ColumnDef::new(SegmentSummaries::LeaderUserId).integer().null())
+                    .col(ColumnDef::new(SegmentSummaries::LeaderEffortId).integer().null())
+                    .col(ColumnDef::new(SegmentSummaries::BestDurationSeconds).integer().null())
                     .col(
                         ColumnDef::new(SegmentSummaries::CreatedAt)
                             .timestamp_with_time_zone()
@@ -199,16 +183,8 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(SegmentUserSummaries::SegmentId)
-                            .integer()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(SegmentUserSummaries::UserId)
-                            .integer()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(SegmentUserSummaries::SegmentId).integer().not_null())
+                    .col(ColumnDef::new(SegmentUserSummaries::UserId).integer().not_null())
                     .col(
                         ColumnDef::new(SegmentUserSummaries::EffortCount)
                             .integer()

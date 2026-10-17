@@ -12,10 +12,7 @@ pub struct ActivitySummaryRow {
     pub heart_rate_zones_json: Option<StoredActivityHeartRateZones>,
 }
 impl Model {
-    pub async fn race_summaries(
-        db: &impl ConnectionTrait,
-        user_id: i32,
-    ) -> Result<Vec<ActivitySummaryRow>, DbErr> {
+    pub async fn race_summaries(db: &impl ConnectionTrait, user_id: i32) -> Result<Vec<ActivitySummaryRow>, DbErr> {
         Entity::find()
             .select_only()
             .column(Column::Id)

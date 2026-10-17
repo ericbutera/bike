@@ -10,14 +10,10 @@ pub struct CreateActivity;
 #[workflow_methods]
 impl CreateActivity {
     #[run]
-    pub async fn run(
-        ctx: &mut WorkflowContext<Self>,
-        event: StravaEvent,
-    ) -> WorkflowResult<ActivityChange> {
+    pub async fn run(ctx: &mut WorkflowContext<Self>, event: StravaEvent) -> WorkflowResult<ActivityChange> {
         logging::started(ctx, &event);
         let options = options::upsert_child(&event);
-        let result =
-            options::execute_child_workflow(ctx, UpsertActivity::run, event.clone(), options).await;
+        let result = options::execute_child_workflow(ctx, UpsertActivity::run, event.clone(), options).await;
         let result = options::workflow_result(ctx, result);
         let log_event = result.as_ref().map_or(&event, |value| &value.event);
         logging::finished(ctx, log_event, &result);

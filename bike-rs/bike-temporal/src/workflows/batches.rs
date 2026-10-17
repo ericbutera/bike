@@ -1,8 +1,6 @@
 //! Bounded manifest pages, awaited work, and continuation at settled boundaries.
 use super::{children, options};
-use bike_core::bike_tasks::{
-    BatchEntry, BatchInput, BatchManifest, BatchResult, ManifestScope, PageRequest,
-};
+use bike_core::bike_tasks::{BatchEntry, BatchInput, BatchManifest, BatchResult, ManifestScope, PageRequest};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::BTreeSet, future::Future};
 use temporalio_common::data_converters::TemporalDeserializable;
@@ -35,18 +33,13 @@ where
                 ctx,
                 definition,
                 input,
-                options::manifest(
-                    batch.command.priority,
-                    format!("user-{}", batch.command.user_id),
-                ),
+                options::manifest(batch.command.priority, format!("user-{}", batch.command.user_id)),
             )
             .await?
         }
     };
     if manifest.command_id != batch.command.command_id || manifest.scope != scope {
-        return Err(
-            ApplicationFailure::new("Manifest does not match the command and selection").into(),
-        );
+        return Err(ApplicationFailure::new("Manifest does not match the command and selection").into());
     }
     batch.progress.manifest = Some(manifest);
     batch.page_request().map_err(ApplicationFailure::new)?;
@@ -89,10 +82,7 @@ where
         if request.expected_entries() == 0 {
             return Ok(BatchStep::Complete(batch.result()));
         }
-        let activity_options = options::activity(
-            batch.command.priority,
-            format!("user-{}", batch.command.user_id),
-        );
+        let activity_options = options::activity(batch.command.priority, format!("user-{}", batch.command.user_id));
         let entries = options::run(ctx, A::definition(), request.clone(), activity_options).await?;
         validate_page(&request, &entries)?;
         for entry in entries {
@@ -113,18 +103,13 @@ where
 
 fn validate_page<I: BatchEntry>(request: &PageRequest, entries: &[I]) -> WorkflowResult<()> {
     if entries.len() != request.expected_entries() {
-        return Err(
-            ApplicationFailure::new("Manifest page is truncated or exceeds its bound").into(),
-        );
+        return Err(ApplicationFailure::new("Manifest page is truncated or exceeds its bound").into());
     }
     let prefix = format!("{}:", request.command.command_id);
     let mut seen = BTreeSet::new();
     for entry in entries {
         if !entry.command_id().starts_with(&prefix) || !entry.belongs_to(&request.manifest.scope) {
-            return Err(ApplicationFailure::new(
-                "Manifest entry belongs to another command or resource",
-            )
-            .into());
+            return Err(ApplicationFailure::new("Manifest entry belongs to another command or resource").into());
         }
         if !seen.insert(entry.command_id()) {
             return Err(ApplicationFailure::new("Duplicate manifest entry command").into());

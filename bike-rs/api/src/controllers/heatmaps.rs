@@ -73,10 +73,7 @@ pub async fn tile(
         .strip_suffix(".png")
         .and_then(|v| v.parse().ok())
         .ok_or_else(|| AppError::bad_request("Invalid tile filename"))?;
-    let image = state
-        .heatmaps
-        .tile(&state.db, user.id, query, Tile { z, x, y })
-        .await?;
+    let image = state.heatmaps.tile(&state.db, user.id, query, Tile { z, x, y }).await?;
     let unchanged = headers
         .get(header::IF_NONE_MATCH)
         .and_then(|v| v.to_str().ok())

@@ -1,8 +1,6 @@
 use super::batches::{children, page};
 use super::*;
-use crate::workflows::{
-    RegenerateActivitySegments, RegenerateSegmentEfforts, RegenerateUserSegments,
-};
+use crate::workflows::{RegenerateActivitySegments, RegenerateSegmentEfforts, RegenerateUserSegments};
 use bike_core::{bike_tasks::*, test_support as fixtures};
 
 #[test]
@@ -19,8 +17,7 @@ fn activity_matching_hands_off_to_the_existing_segment_analytics_workflow() {
 #[test]
 fn matching_failure_never_requests_segment_analytics() {
     let request = fixtures::page_request(ManifestScope::UserSegments { user_id: 7 }, 1, 0);
-    let mut mock =
-        WorkflowMock::new::<RegenerateActivitySegments>(fixtures::segment_entry(&request, 0));
+    let mut mock = WorkflowMock::new::<RegenerateActivitySegments>(fixtures::segment_entry(&request, 0));
     mock.fail_activity("match_activity_segments", "matching failed");
     mock.assert_failure_message("matching failed");
 }

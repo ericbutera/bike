@@ -101,12 +101,7 @@ pub struct ReferenceInventory {
 
 impl ReferenceInventory {
     fn referenced(self) -> bool {
-        [
-            self.workflow_reference,
-            self.database_reference,
-            self.retry_pin,
-        ]
-        .contains(&true)
+        [self.workflow_reference, self.database_reference, self.retry_pin].contains(&true)
     }
 }
 

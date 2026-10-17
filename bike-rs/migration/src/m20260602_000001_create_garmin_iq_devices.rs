@@ -39,22 +39,10 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(GarminIqDevices::InstallId)
-                            .string_len(128)
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(GarminIqDevices::InstallId).string_len(128).not_null())
                     .col(ColumnDef::new(GarminIqDevices::UserId).integer().null())
-                    .col(
-                        ColumnDef::new(GarminIqDevices::DeviceName)
-                            .string_len(128)
-                            .null(),
-                    )
-                    .col(
-                        ColumnDef::new(GarminIqDevices::PairingCode)
-                            .string_len(16)
-                            .null(),
-                    )
+                    .col(ColumnDef::new(GarminIqDevices::DeviceName).string_len(128).null())
+                    .col(ColumnDef::new(GarminIqDevices::PairingCode).string_len(16).null())
                     .col(
                         ColumnDef::new(GarminIqDevices::PairingCodeExpiresAt)
                             .timestamp_with_time_zone()
@@ -65,21 +53,13 @@ impl MigrationTrait for Migration {
                             .timestamp_with_time_zone()
                             .null(),
                     )
-                    .col(
-                        ColumnDef::new(GarminIqDevices::RefreshTokenHash)
-                            .string_len(128)
-                            .null(),
-                    )
+                    .col(ColumnDef::new(GarminIqDevices::RefreshTokenHash).string_len(128).null())
                     .col(
                         ColumnDef::new(GarminIqDevices::RefreshTokenExpiresAt)
                             .timestamp_with_time_zone()
                             .null(),
                     )
-                    .col(
-                        ColumnDef::new(GarminIqDevices::AccessTokenHash)
-                            .string_len(128)
-                            .null(),
-                    )
+                    .col(ColumnDef::new(GarminIqDevices::AccessTokenHash).string_len(128).null())
                     .col(
                         ColumnDef::new(GarminIqDevices::AccessTokenExpiresAt)
                             .timestamp_with_time_zone()

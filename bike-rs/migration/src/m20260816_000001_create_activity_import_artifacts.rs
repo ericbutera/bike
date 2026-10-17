@@ -56,21 +56,13 @@ impl MigrationTrait for Migration {
                             .integer()
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(ActivityImportArtifacts::UserId)
-                            .integer()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(ActivityImportArtifacts::UserId).integer().not_null())
                     .col(
                         ColumnDef::new(ActivityImportArtifacts::ArtifactKind)
                             .string()
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(ActivityImportArtifacts::Format)
-                            .string()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(ActivityImportArtifacts::Format).string().not_null())
                     .col(
                         ColumnDef::new(ActivityImportArtifacts::SourceQuality)
                             .string()
@@ -81,21 +73,13 @@ impl MigrationTrait for Migration {
                             .string()
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(ActivityImportArtifacts::StoragePath)
-                            .string()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(ActivityImportArtifacts::StoragePath).string().not_null())
                     .col(
                         ColumnDef::new(ActivityImportArtifacts::SizeBytes)
                             .big_integer()
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(ActivityImportArtifacts::MimeType)
-                            .string()
-                            .null(),
-                    )
+                    .col(ColumnDef::new(ActivityImportArtifacts::MimeType).string().null())
                     .col(
                         ColumnDef::new(ActivityImportArtifacts::ChecksumSha256)
                             .string()
@@ -154,11 +138,7 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(
-                Table::drop()
-                    .table(ActivityImportArtifacts::Table)
-                    .to_owned(),
-            )
+            .drop_table(Table::drop().table(ActivityImportArtifacts::Table).to_owned())
             .await
     }
 }

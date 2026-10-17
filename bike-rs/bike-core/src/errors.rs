@@ -38,13 +38,9 @@ impl BikeCoreError {
     pub fn retry_at(&self, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
         match self {
             Self::Cooldown {
-                retry_after_seconds,
-                ..
+                retry_after_seconds, ..
             } => retry_after_seconds.map(|seconds| now + chrono::Duration::seconds(seconds)),
-            Self::BadRequest(_)
-            | Self::ValidationField { .. }
-            | Self::Internal(_)
-            | Self::Database(_) => None,
+            Self::BadRequest(_) | Self::ValidationField { .. } | Self::Internal(_) | Self::Database(_) => None,
         }
     }
 }
@@ -65,10 +61,7 @@ impl Error for BikeCoreError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Database(error) => Some(error),
-            Self::BadRequest(_)
-            | Self::ValidationField { .. }
-            | Self::Internal(_)
-            | Self::Cooldown { .. } => None,
+            Self::BadRequest(_) | Self::ValidationField { .. } | Self::Internal(_) | Self::Cooldown { .. } => None,
         }
     }
 }

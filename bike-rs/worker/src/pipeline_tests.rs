@@ -39,9 +39,7 @@ async fn missing_upload_source_fails_without_starting_an_attempt_or_reading_file
         .append_query_results([Vec::<activity_imports::Model>::new()])
         .into_connection();
     let processor = ProcessActivityImport::new(db.clone());
-    let result = processor
-        .process(5, json!({"data":{"user_id":7,"import_id":18}}))
-        .await;
+    let result = processor.process(5, json!({"data":{"user_id":7,"import_id":18}})).await;
     assert!(result.unwrap_err().to_string().contains("not found"));
     assert_eq!(db.into_transaction_log().len(), 1);
 }

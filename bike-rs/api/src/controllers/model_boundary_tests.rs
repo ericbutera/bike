@@ -20,11 +20,7 @@ impl Fixture {
     fn with_database(db: DatabaseConnection) -> Self {
         let uploads = tempfile::tempdir().unwrap();
         std::fs::create_dir(uploads.path().join("activity-imports")).unwrap();
-        std::fs::write(
-            uploads.path().join("activity-imports/fixture.gpx"),
-            "<gpx/>",
-        )
-        .unwrap();
+        std::fs::write(uploads.path().join("activity-imports/fixture.gpx"), "<gpx/>").unwrap();
         let mut state = AppStorage::for_test(db.clone());
         state.local_admin_user_pid = Some(test_support::customer().pid);
         state.uploads_dir = uploads.path().to_str().unwrap().into();

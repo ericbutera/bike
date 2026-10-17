@@ -89,12 +89,7 @@ pub fn prepare(route: &[ActivityRoutePoint]) -> Vec<Chunk> {
 
 fn bounds(points: &[Point]) -> [f64; 4] {
     points.iter().fold([1.0, 1.0, 0.0, 0.0], |b, p| {
-        [
-            b[0].min(p[0]),
-            b[1].min(p[1]),
-            b[2].max(p[0]),
-            b[3].max(p[1]),
-        ]
+        [b[0].min(p[0]), b[1].min(p[1]), b[2].max(p[0]), b[3].max(p[1])]
     })
 }
 
@@ -121,8 +116,7 @@ fn continuous_paths(route: &[ActivityRoutePoint]) -> Vec<Vec<Point>> {
             let a = project(prev.longitude, prev.latitude);
             let mut dx = next[0] - a[0];
             dx -= dx.round();
-            let meters =
-                dx.hypot(next[1] - a[1]) * WORLD_METERS * p.latitude.to_radians().cos().abs();
+            let meters = dx.hypot(next[1] - a[1]) * WORLD_METERS * p.latitude.to_radians().cos().abs();
             let dt = p.elapsed_seconds - prev.elapsed_seconds;
             if dt < 0 {
                 finish(&mut path, &mut paths);
@@ -248,9 +242,7 @@ mod tests {
 
     #[test]
     fn binary_projection_roundtrips_and_simplifies_straight_routes() {
-        let route: Vec<_> = (0..1000)
-            .map(|i| point(-85.0 + f64::from(i) / 100_000.0, i))
-            .collect();
+        let route: Vec<_> = (0..1000).map(|i| point(-85.0 + f64::from(i) / 100_000.0, i)).collect();
         let chunks = prepare(&route);
         assert_eq!(chunks.len(), 4);
         assert!(chunks.iter().all(|c| decode(&c.points).unwrap().len() == 2));
@@ -281,9 +273,7 @@ mod tests {
 
     #[test]
     fn real_continuously_recorded_long_road_is_not_removed() {
-        let route: Vec<_> = (0..1500)
-            .map(|i| point(-120.0 + f64::from(i) * 0.00003, i))
-            .collect();
+        let route: Vec<_> = (0..1500).map(|i| point(-120.0 + f64::from(i) * 0.00003, i)).collect();
         assert_eq!(continuous_paths(&route).len(), 1);
         let chunks = prepare(&route);
         assert_eq!(chunks.len(), 4);

@@ -53,10 +53,7 @@ impl Model {
                     Column::LastFitnessRebuildAt,
                     sea_orm::sea_query::Expr::value(rebuilt_at),
                 )
-                .col_expr(
-                    Column::UpdatedAt,
-                    sea_orm::sea_query::Expr::value(rebuilt_at),
-                )
+                .col_expr(Column::UpdatedAt, sea_orm::sea_query::Expr::value(rebuilt_at))
                 .filter(Column::UserId.eq(user_id))
                 .filter(Column::LastActivityChangeAt.eq(model.last_activity_change_at))
                 .filter(Column::UpdatedAt.eq(model.updated_at))

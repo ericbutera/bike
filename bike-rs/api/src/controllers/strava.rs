@@ -10,8 +10,8 @@ use bike_core::auth::UserContext;
 use bike_core::config::Config;
 use bike_core::entities::strava_connections;
 use bike_core::integration_events_service::{
-    self as integration_events, NewIntegrationEvent, INTEGRATION_LEVEL_ERROR,
-    INTEGRATION_LEVEL_INFO, INTEGRATION_PROVIDER_STRAVA,
+    self as integration_events, NewIntegrationEvent, INTEGRATION_LEVEL_ERROR, INTEGRATION_LEVEL_INFO,
+    INTEGRATION_PROVIDER_STRAVA,
 };
 use bike_core::strava;
 use sea_orm::DatabaseConnection;
@@ -22,9 +22,7 @@ use utoipa::ToSchema;
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(example = json!({"authorization_url": "https://www.strava.com/oauth/authorize?client_id=12345&response_type=code"}))]
 pub struct StravaAuthorizeResponse {
-    #[schema(
-        example = "https://www.strava.com/oauth/authorize?client_id=12345&response_type=code"
-    )]
+    #[schema(example = "https://www.strava.com/oauth/authorize?client_id=12345&response_type=code")]
     pub authorization_url: String,
 }
 
@@ -64,17 +62,11 @@ pub use bike_core::strava::oauth_state::AuthorizationCallback as StravaCallbackQ
 pub fn routes() -> Router<Arc<AppStorage>> {
     Router::new()
         .route("/connect", post(begin_connect))
-        .route(
-            "/connection",
-            get(get_connection).delete(disconnect_connection),
-        )
+        .route("/connection", get(get_connection).delete(disconnect_connection))
         .route("/sync", post(queue_sync))
         .route("/backfill", post(queue_backfill))
         .route("/callback", get(handle_callback))
-        .route(
-            "/webhook",
-            get(handle_webhook_verification).post(handle_webhook_event),
-        )
+        .route("/webhook", get(handle_webhook_verification).post(handle_webhook_event))
 }
 
 #[utoipa::path(
@@ -98,11 +90,7 @@ pub async fn begin_connect(
     authorize_response(&state.db, Config::get(), user.id).await
 }
 
-async fn authorize_response(
-    db: &DatabaseConnection,
-    config: &Config,
-    user_id: i32,
-) -> Result<Response, AppError> {
+async fn authorize_response(db: &DatabaseConnection, config: &Config, user_id: i32) -> Result<Response, AppError> {
     let authorization = strava::create_authorization_url_for_user(db, config, user_id).await;
     let authorization = match authorization {
         Ok(url) => {
@@ -133,8 +121,7 @@ async fn authorize_response(
         }
     };
 
-    let cookie =
-        strava::oauth_state::session_cookie(&authorization.browser_session, &config.api_url);
+    let cookie = strava::oauth_state::session_cookie(&authorization.browser_session, &config.api_url);
     Ok((
         [(header::SET_COOKIE, cookie)],
         Json(StravaAuthorizeResponse {
@@ -163,9 +150,7 @@ pub async fn get_connection(
 ) -> Result<Json<StravaConnectionResponse>, AppError> {
     let connection = strava::load_connection(&state.db, user.id).await?;
 
-    Ok(Json(
-        response_from_model(&state.db, connection.as_ref()).await?,
-    ))
+    Ok(Json(response_from_model(&state.db, connection.as_ref()).await?))
 }
 
 #[utoipa::path(
@@ -193,9 +178,7 @@ pub async fn queue_sync(
         .await?
         .ok_or_else(|| AppError::not_found("Strava connection was removed"))?;
 
-    Ok(Json(
-        response_from_model(&state.db, Some(&connection)).await?,
-    ))
+    Ok(Json(response_from_model(&state.db, Some(&connection)).await?))
 }
 
 #[utoipa::path(
@@ -216,19 +199,11 @@ pub async fn queue_backfill(
     State(state): State<Arc<AppStorage>>,
     Json(input): Json<StravaBackfillRequest>,
 ) -> Result<Json<StravaConnectionResponse>, AppError> {
-    bike_core::strava::events::request_backfill(
-        &state.db,
-        user.id,
-        input.start_date,
-        input.end_date,
-    )
-    .await?;
+    bike_core::strava::events::request_backfill(&state.db, user.id, input.start_date, input.end_date).await?;
     let connection = strava::load_connection(&state.db, user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Strava connection was removed"))?;
-    Ok(Json(
-        response_from_model(&state.db, Some(&connection)).await?,
-    ))
+    Ok(Json(response_from_model(&state.db, Some(&connection)).await?))
 }
 
 #[derive(serde::Deserialize, utoipa::ToSchema)]
@@ -404,8 +379,8 @@ pub async fn handle_webhook_event(
     headers: axum::http::HeaderMap,
     body: axum::body::Bytes,
 ) -> Result<Json<auth_openapi::schemas::MessageResponse>, AppError> {
-    let event: strava::StravaWebhookEvent = serde_json::from_slice(&body)
-        .map_err(|_| AppError::bad_request("Invalid Strava webhook body"))?;
+    let event: strava::StravaWebhookEvent =
+        serde_json::from_slice(&body).map_err(|_| AppError::bad_request("Invalid Strava webhook body"))?;
     let request_id = headers
         .get("x-request-id")
         .and_then(|value| value.to_str().ok())
@@ -434,8 +409,7 @@ async fn response_from_model(
         athlete_id: connection.map(|connection| connection.athlete_id),
         athlete_name: connection.and_then(strava::athlete_display_name),
         athlete_username: connection.and_then(|connection| connection.athlete_username.clone()),
-        athlete_profile_medium_url: connection
-            .and_then(|connection| connection.athlete_profile_medium_url.clone()),
+        athlete_profile_medium_url: connection.and_then(|connection| connection.athlete_profile_medium_url.clone()),
         scopes: connection
             .map(|connection| strava::parse_scope_list(&connection.scopes))
             .unwrap_or_default(),
@@ -445,8 +419,7 @@ async fn response_from_model(
         last_sync_message: connection.and_then(|connection| connection.last_sync_message.clone()),
         last_sync_started_at: connection.and_then(|connection| connection.last_sync_started_at),
         last_sync_finished_at: connection.and_then(|connection| connection.last_sync_finished_at),
-        last_synced_activity_started_at: connection
-            .and_then(|connection| connection.last_synced_activity_started_at),
+        last_synced_activity_started_at: connection.and_then(|connection| connection.last_synced_activity_started_at),
         last_sync_imported_count: connection
             .map(|connection| connection.last_sync_imported_count)
             .unwrap_or_default(),

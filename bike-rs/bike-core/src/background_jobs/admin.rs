@@ -136,8 +136,7 @@ where
 {
     let hours = query.window_hours.unwrap_or(24);
     let outcome = query.outcome.as_deref().unwrap_or("completed");
-    if !(1..=168).contains(&hours)
-        || !["completed", "failed", "retrying", "interrupted", "canceled"].contains(&outcome)
+    if !(1..=168).contains(&hours) || !["completed", "failed", "retrying", "interrupted", "canceled"].contains(&outcome)
     {
         return Err(AdminTaskError::bad_request(
             "Use a 1-168 hour window and a recorded terminal attempt outcome",
@@ -162,9 +161,7 @@ where
     A: AdminVerified,
 {
     if query.output_offset.is_some_and(|offset| offset > 100_000) {
-        return Err(AdminTaskError::bad_request(
-            "Output cursor exceeds retained history",
-        ));
+        return Err(AdminTaskError::bad_request("Output cursor exceeds retained history"));
     }
     super::diagnostics::PipelineGraph::load_page(state.db(), &run_id, &query)
         .await?
@@ -328,12 +325,7 @@ where
     let (items, total) = background_tasks::Model::admin_page(db, &params).await?;
     let data: Vec<TaskResponse> = items.into_iter().map(TaskResponse::from).collect();
 
-    Ok(Json(PaginatedResponse::new(
-        data,
-        page as i64,
-        per_page as i64,
-        total,
-    )))
+    Ok(Json(PaginatedResponse::new(data, page as i64, per_page as i64, total)))
 }
 
 #[utoipa::path(
@@ -405,17 +397,11 @@ where
     if let Some(object) = payload.as_object_mut() {
         object.remove("_batch_id");
     }
-    if let Some(data) = payload
-        .get_mut("data")
-        .and_then(serde_json::Value::as_object_mut)
-    {
+    if let Some(data) = payload.get_mut("data").and_then(serde_json::Value::as_object_mut) {
         data.remove("batch_id");
     }
     if task.task_type == "process_activity_import" {
-        if let Some(data) = payload
-            .get_mut("data")
-            .and_then(serde_json::Value::as_object_mut)
-        {
+        if let Some(data) = payload.get_mut("data").and_then(serde_json::Value::as_object_mut) {
             data.remove("attempt_id");
         }
     }
@@ -464,9 +450,7 @@ where
         .ok_or_else(|| AdminTaskError::not_found("Task not found"))?;
 
     if task.status != "processing" {
-        return Err(AdminTaskError::bad_request(
-            "Only processing tasks can be canceled",
-        ));
+        return Err(AdminTaskError::bad_request("Only processing tasks can be canceled"));
     }
 
     let updated = task.cancel(db).await?;

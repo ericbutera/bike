@@ -9,34 +9,13 @@ impl MigrationTrait for Migration {
             .create_table(
                 Table::create()
                     .table(Alias::new("strava_workflows"))
-                    .col(
-                        ColumnDef::new(Alias::new("id"))
-                            .string()
-                            .not_null()
-                            .primary_key(),
-                    )
-                    .col(
-                        ColumnDef::new(Alias::new("connection_id"))
-                            .integer()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(Alias::new("athlete_id"))
-                            .big_integer()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Alias::new("id")).string().not_null().primary_key())
+                    .col(ColumnDef::new(Alias::new("connection_id")).integer().not_null())
+                    .col(ColumnDef::new(Alias::new("athlete_id")).big_integer().not_null())
                     .col(ColumnDef::new(Alias::new("activity_id")).big_integer())
                     .col(ColumnDef::new(Alias::new("action")).string().not_null())
-                    .col(
-                        ColumnDef::new(Alias::new("source"))
-                            .json_binary()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(Alias::new("checkpoint"))
-                            .json_binary()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Alias::new("source")).json_binary().not_null())
+                    .col(ColumnDef::new(Alias::new("checkpoint")).json_binary().not_null())
                     .col(ColumnDef::new(Alias::new("status")).string().not_null())
                     .col(ColumnDef::new(Alias::new("error")).text())
                     .col(
@@ -62,26 +41,14 @@ impl MigrationTrait for Migration {
             .create_table(
                 Table::create()
                     .table(Alias::new("strava_activity_states"))
-                    .col(
-                        ColumnDef::new(Alias::new("athlete_id"))
-                            .big_integer()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(Alias::new("activity_id"))
-                            .big_integer()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Alias::new("athlete_id")).big_integer().not_null())
+                    .col(ColumnDef::new(Alias::new("activity_id")).big_integer().not_null())
                     .col(
                         ColumnDef::new(Alias::new("connection_generation"))
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(Alias::new("event_time"))
-                            .big_integer()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Alias::new("event_time")).big_integer().not_null())
                     .col(ColumnDef::new(Alias::new("applied_hash")).string())
                     .col(ColumnDef::new(Alias::new("deleted")).boolean().not_null())
                     .col(

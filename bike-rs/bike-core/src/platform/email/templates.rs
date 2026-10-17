@@ -22,11 +22,7 @@ impl TemplateRegistry {
         Ok(())
     }
 
-    pub fn render<T: Serialize>(
-        &self,
-        template_name: &str,
-        data: &T,
-    ) -> Result<String, Box<dyn Error + Send + Sync>> {
+    pub fn render<T: Serialize>(&self, template_name: &str, data: &T) -> Result<String, Box<dyn Error + Send + Sync>> {
         Ok(self.handlebars.render(template_name, data)?)
     }
 }

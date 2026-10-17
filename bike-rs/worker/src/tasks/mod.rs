@@ -9,10 +9,7 @@ use std::sync::Arc;
 pub use processors::*;
 use startup::RecoverActivityImportsOnStartup;
 
-pub fn register_email_processors(
-    worker: TaskWorker,
-    cfg: &Config,
-) -> Result<TaskWorker, WorkerError> {
+pub fn register_email_processors(worker: TaskWorker, cfg: &Config) -> Result<TaskWorker, WorkerError> {
     let email_notification = Arc::new(EmailNotification::new(cfg)?);
     Ok(worker.register_processor(email_notification))
 }
@@ -28,8 +25,7 @@ pub async fn register_default_processors(
     let process_activity_import = Arc::new(ProcessActivityImport::new(db.clone()));
     let reprocess_activity_import = Arc::new(ReprocessActivityImport::new(db.clone()));
     let reprocess_user_activity_imports = Arc::new(ReprocessUserActivityImports::new(db.clone()));
-    let reprocess_archive_fit_activity_imports =
-        Arc::new(ReprocessUserActivityImports::archive_fits_only(db.clone()));
+    let reprocess_archive_fit_activity_imports = Arc::new(ReprocessUserActivityImports::archive_fits_only(db.clone()));
     let regenerate_user_segments = Arc::new(RegenerateUserSegments::new(db.clone()));
     let regenerate_activity_segments = Arc::new(RegenerateActivitySegments::new(db.clone()));
     let activity_archive_import = Arc::new(ActivityArchiveImport::new(db.clone()));

@@ -53,17 +53,10 @@ impl ActiveModelBehavior for ActiveModel {
 }
 
 impl Entity {
-    pub async fn for_worker_metadata(
-        db: &impl ConnectionTrait,
-        task_id: i32,
-    ) -> Result<Vec<Model>, DbErr> {
+    pub async fn for_worker_metadata(db: &impl ConnectionTrait, task_id: i32) -> Result<Vec<Model>, DbErr> {
         Self::find()
             .select_only()
-            .columns(
-                Column::iter().filter(|column| {
-                    !matches!(column, Column::CheckpointJson | Column::SourceJson)
-                }),
-            )
+            .columns(Column::iter().filter(|column| !matches!(column, Column::CheckpointJson | Column::SourceJson)))
             .expr_as(Expr::value(None::<Json>), Column::CheckpointJson)
             .expr_as(Expr::value(serde_json::json!({})), Column::SourceJson)
             .filter(Column::WorkerTaskId.eq(task_id))
@@ -72,11 +65,7 @@ impl Entity {
             .all(db)
             .await
     }
-    pub async fn recent_metadata(
-        db: &impl ConnectionTrait,
-        user_id: i32,
-        import_id: i32,
-    ) -> Result<Vec<Model>, DbErr> {
+    pub async fn recent_metadata(db: &impl ConnectionTrait, user_id: i32, import_id: i32) -> Result<Vec<Model>, DbErr> {
         Self::find()
             .select_only()
             .columns(Column::iter().filter(|column| !matches!(column, Column::CheckpointJson)))
@@ -89,11 +78,7 @@ impl Entity {
             .await
     }
 
-    pub async fn recent(
-        db: &impl ConnectionTrait,
-        user_id: i32,
-        import_id: i32,
-    ) -> Result<Vec<Model>, DbErr> {
+    pub async fn recent(db: &impl ConnectionTrait, user_id: i32, import_id: i32) -> Result<Vec<Model>, DbErr> {
         Self::find()
             .filter(Column::UserId.eq(user_id))
             .filter(Column::ActivityImportId.eq(import_id))
@@ -103,11 +88,7 @@ impl Entity {
             .await
     }
 
-    pub async fn active(
-        db: &impl ConnectionTrait,
-        user_id: i32,
-        import_id: i32,
-    ) -> Result<Option<Model>, DbErr> {
+    pub async fn active(db: &impl ConnectionTrait, user_id: i32, import_id: i32) -> Result<Option<Model>, DbErr> {
         Self::find()
             .filter(Column::UserId.eq(user_id))
             .filter(Column::ActivityImportId.eq(import_id))
@@ -135,10 +116,7 @@ impl Entity {
 }
 
 impl Entity {
-    pub async fn find_for_execution(
-        db: &impl ConnectionTrait,
-        attempt_id: i32,
-    ) -> Result<Option<Model>, DbErr> {
+    pub async fn find_for_execution(db: &impl ConnectionTrait, attempt_id: i32) -> Result<Option<Model>, DbErr> {
         Self::find_by_id(attempt_id).one(db).await
     }
 }

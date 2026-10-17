@@ -8,23 +8,11 @@ fn training_backfill_reuses_fitness_handoff_and_completes_after_all_activity_wor
     let input = fixtures::batch_input();
     let request = fixtures::page_request(ManifestScope::Training { user_id: 7 }, 2, 0);
     let mut mock = WorkflowMock::new::<BackfillUserXcTraining>(input.clone());
-    mock.activity(
-        "prepare_training_backfill",
-        &input.command,
-        &request.manifest,
-    );
+    mock.activity("prepare_training_backfill", &input.command, &request.manifest);
     let entries = page(&request, fixtures::training_entry);
     mock.activity("training_activity_page", &request, &entries);
-    mock.activity(
-        "rebuild_activity_training",
-        &entries[0],
-        &fixtures::training_result(),
-    );
-    mock.activity(
-        "schedule_fitness_freshness",
-        &fixtures::fitness_change(),
-        &(),
-    );
+    mock.activity("rebuild_activity_training", &entries[0], &fixtures::training_result());
+    mock.activity("schedule_fitness_freshness", &fixtures::fitness_change(), &());
     mock.activity(
         "rebuild_activity_training",
         &entries[1],

@@ -1,6 +1,4 @@
-use crate::activity_data::{
-    deserialize_derived_activity_data, ActivityChartPoint, ActivityRoutePoint,
-};
+use crate::activity_data::{deserialize_derived_activity_data, ActivityChartPoint, ActivityRoutePoint};
 use crate::entities::{activities, activity_training_analyses, segment_efforts, segments};
 use crate::training_data::deserialize_activity_heart_rate_zones;
 use sea_orm::{ConnectionTrait, DatabaseConnection};
@@ -144,13 +142,8 @@ struct ClimbMetrics {
     sustained_climb_count: i32,
 }
 
-pub fn build_activity_training_analysis(
-    activity: &activities::Model,
-) -> ActivityTrainingAnalysisResponse {
-    build_activity_training_analysis_with_context(
-        activity,
-        ActivityTrainingAnalysisContext::default(),
-    )
+pub fn build_activity_training_analysis(activity: &activities::Model) -> ActivityTrainingAnalysisResponse {
+    build_activity_training_analysis_with_context(activity, ActivityTrainingAnalysisContext::default())
 }
 
 #[tracing::instrument(name = "training.compute", skip_all, fields(bike.operation = "training.compute", activity_id = activity.id))]
@@ -159,12 +152,10 @@ fn build_activity_training_analysis_with_context(
     context: ActivityTrainingAnalysisContext,
 ) -> ActivityTrainingAnalysisResponse {
     let derived_data = deserialize_derived_activity_data(activity.derived_data_json.as_ref());
-    let samples =
-        preferred_analysis_samples(&derived_data.route_points, &derived_data.chart_points);
+    let samples = preferred_analysis_samples(&derived_data.route_points, &derived_data.chart_points);
     let z2_bounds = z2_bounds(activity);
     let z2_time_seconds = z2_time_seconds(activity);
-    let z2_distance_meters =
-        z2_bounds.and_then(|(min_bpm, max_bpm)| z2_distance_meters(&samples, min_bpm, max_bpm));
+    let z2_distance_meters = z2_bounds.and_then(|(min_bpm, max_bpm)| z2_distance_meters(&samples, min_bpm, max_bpm));
     let z2_average_speed_mps = z2_distance_meters.and_then(|distance_meters| {
         if z2_time_seconds > 0 {
             Some(distance_meters / f64::from(z2_time_seconds))
@@ -175,8 +166,7 @@ fn build_activity_training_analysis_with_context(
     let climb_metrics = climb_metrics(&samples);
     let ride_focus = classify_ride_focus(activity, z2_time_seconds, climb_metrics, context);
     let route_family_key = route_family_key(&activity.title);
-    let comparable_distance_bucket_meters =
-        distance_bucket_for_comparison(activity.distance_meters);
+    let comparable_distance_bucket_meters = distance_bucket_for_comparison(activity.distance_meters);
     let comparable_elevation_gain_bucket_meters = elevation_gain_bucket_for_comparison(
         activity
             .elevation_gain_meters
@@ -206,10 +196,7 @@ fn build_activity_training_analysis_with_context(
 }
 
 #[tracing::instrument(name = "training.rebuild", skip_all, fields(bike.operation = "training.rebuild", activity_count = activity_ids.len() as i64))]
-pub async fn rebuild_activity_training_analysis_cache<C>(
-    db: &C,
-    activity_ids: &[i32],
-) -> Result<(), sea_orm::DbErr>
+pub async fn rebuild_activity_training_analysis_cache<C>(db: &C, activity_ids: &[i32]) -> Result<(), sea_orm::DbErr>
 where
     C: ConnectionTrait,
 {
@@ -225,27 +212,21 @@ where
         return Ok(());
     }
 
-    let contexts_by_activity_id =
-        load_activity_training_analysis_contexts(db, &activity_ids).await?;
+    let contexts_by_activity_id = load_activity_training_analysis_contexts(db, &activity_ids).await?;
 
-    let existing_models_by_activity_id =
-        activity_training_analyses::Model::for_activity_ids(db, &activity_ids)
-            .await?
-            .into_iter()
-            .map(|model| (model.activity_id, model))
-            .collect::<HashMap<_, _>>();
+    let existing_models_by_activity_id = activity_training_analyses::Model::for_activity_ids(db, &activity_ids)
+        .await?
+        .into_iter()
+        .map(|model| (model.activity_id, model))
+        .collect::<HashMap<_, _>>();
 
     for activity_id in activity_ids {
-        let Some(activity) = activities::Model::bike_for_training_analysis(db, activity_id).await?
-        else {
+        let Some(activity) = activities::Model::bike_for_training_analysis(db, activity_id).await? else {
             continue;
         };
         let analysis = build_activity_training_analysis_with_context(
             &activity,
-            contexts_by_activity_id
-                .get(&activity.id)
-                .copied()
-                .unwrap_or_default(),
+            contexts_by_activity_id.get(&activity.id).copied().unwrap_or_default(),
         );
 
         activity_training_analyses::Model::save_analysis(
@@ -281,16 +262,12 @@ pub async fn load_activity_training_analysis_by_activity_id<C>(
 where
     C: ConnectionTrait,
 {
-    Ok(
-        activity_training_analyses::Model::for_activity(db, activity_id)
-            .await?
-            .map(response_from_model),
-    )
+    Ok(activity_training_analyses::Model::for_activity(db, activity_id)
+        .await?
+        .map(response_from_model))
 }
 
-fn response_from_model(
-    model: activity_training_analyses::Model,
-) -> ActivityTrainingAnalysisResponse {
+fn response_from_model(model: activity_training_analyses::Model) -> ActivityTrainingAnalysisResponse {
     ActivityTrainingAnalysisResponse {
         ride_focus: ActivityRideFocus::from_stored(&model.ride_focus),
         route_family_key: model.route_family_key,
@@ -318,10 +295,7 @@ where
         return Ok(HashMap::new());
     }
 
-    let mut segment_ids = effort_models
-        .iter()
-        .map(|effort| effort.segment_id)
-        .collect::<Vec<_>>();
+    let mut segment_ids = effort_models.iter().map(|effort| effort.segment_id).collect::<Vec<_>>();
     segment_ids.sort_unstable();
     segment_ids.dedup();
 
@@ -341,9 +315,7 @@ where
             continue;
         }
 
-        let context = contexts_by_activity_id
-            .entry(effort.activity_id)
-            .or_default();
+        let context = contexts_by_activity_id.entry(effort.activity_id).or_default();
         context.dh_segment_effort_count += 1;
         context.dh_segment_time_seconds += effort.duration_seconds.max(0);
     }
@@ -393,19 +365,14 @@ fn z2_time_seconds(activity: &activities::Model) -> i32 {
         .unwrap_or_default()
 }
 
-fn z2_distance_meters(
-    samples: &[AnalysisSample],
-    min_bpm: i32,
-    max_bpm: Option<i32>,
-) -> Option<f64> {
+fn z2_distance_meters(samples: &[AnalysisSample], min_bpm: i32, max_bpm: Option<i32>) -> Option<f64> {
     let mut total_distance_meters = 0.0;
     let mut found = false;
 
     for window in samples.windows(2) {
         let previous = window[0];
         let current = window[1];
-        let (Some(previous_distance), Some(current_distance)) =
-            (previous.distance_meters, current.distance_meters)
+        let (Some(previous_distance), Some(current_distance)) = (previous.distance_meters, current.distance_meters)
         else {
             continue;
         };
@@ -428,9 +395,8 @@ fn z2_distance_meters(
 }
 
 pub fn plausible_aerobic_decoupling_percent(value: f64) -> Option<f64> {
-    (value.is_finite()
-        && (DECOUPLING_MIN_PLAUSIBLE_PERCENT..=DECOUPLING_MAX_PLAUSIBLE_PERCENT).contains(&value))
-    .then_some(value)
+    (value.is_finite() && (DECOUPLING_MIN_PLAUSIBLE_PERCENT..=DECOUPLING_MAX_PLAUSIBLE_PERCENT).contains(&value))
+        .then_some(value)
 }
 
 fn averaged_heart_rate(previous: Option<i32>, current: Option<i32>) -> Option<i32> {
@@ -560,9 +526,7 @@ impl WeightedMetricHalf {
     }
 
     fn efficiency_factor(self) -> Option<f64> {
-        if self.duration_seconds <= 0.0
-            || self.weighted_speed_seconds <= 0.0
-            || self.weighted_heart_rate_seconds <= 0.0
+        if self.duration_seconds <= 0.0 || self.weighted_speed_seconds <= 0.0 || self.weighted_heart_rate_seconds <= 0.0
         {
             return None;
         }
@@ -589,10 +553,7 @@ fn aerobic_decoupling_percent(
         return None;
     }
 
-    let total_duration_seconds = intervals
-        .iter()
-        .map(|interval| interval.duration_seconds)
-        .sum::<f64>();
+    let total_duration_seconds = intervals.iter().map(|interval| interval.duration_seconds).sum::<f64>();
     if total_duration_seconds < DECOUPLING_MIN_QUALIFYING_TIME_SECONDS {
         return None;
     }
@@ -604,16 +565,10 @@ fn aerobic_decoupling_percent(
 
     for interval in intervals {
         let interval_end_seconds = elapsed_seconds + interval.duration_seconds;
-        let first_half_duration_seconds =
-            (midpoint_seconds.min(interval_end_seconds) - elapsed_seconds).max(0.0);
-        let second_half_duration_seconds =
-            (interval.duration_seconds - first_half_duration_seconds).max(0.0);
+        let first_half_duration_seconds = (midpoint_seconds.min(interval_end_seconds) - elapsed_seconds).max(0.0);
+        let second_half_duration_seconds = (interval.duration_seconds - first_half_duration_seconds).max(0.0);
 
-        first_half.add(
-            first_half_duration_seconds,
-            interval.speed_mps,
-            interval.heart_rate_bpm,
-        );
+        first_half.add(first_half_duration_seconds, interval.speed_mps, interval.heart_rate_bpm);
         second_half.add(
             second_half_duration_seconds,
             interval.speed_mps,
@@ -625,16 +580,10 @@ fn aerobic_decoupling_percent(
     let first_efficiency = first_half.efficiency_factor()?;
     let second_efficiency = second_half.efficiency_factor()?;
 
-    plausible_aerobic_decoupling_percent(
-        ((first_efficiency - second_efficiency) / first_efficiency) * 100.0,
-    )
+    plausible_aerobic_decoupling_percent(((first_efficiency - second_efficiency) / first_efficiency) * 100.0)
 }
 
-fn aerobic_intervals(
-    samples: &[AnalysisSample],
-    min_bpm: i32,
-    max_bpm: Option<i32>,
-) -> Vec<AerobicInterval> {
+fn aerobic_intervals(samples: &[AnalysisSample], min_bpm: i32, max_bpm: Option<i32>) -> Vec<AerobicInterval> {
     samples
         .windows(2)
         .filter_map(|window| {
@@ -642,8 +591,7 @@ fn aerobic_intervals(
             let current = window[1];
             let delta_time_seconds = current.elapsed_seconds - previous.elapsed_seconds;
             let delta_distance_meters = current.distance_meters? - previous.distance_meters?;
-            let heart_rate_bpm =
-                averaged_heart_rate(previous.heart_rate_bpm, current.heart_rate_bpm)?;
+            let heart_rate_bpm = averaged_heart_rate(previous.heart_rate_bpm, current.heart_rate_bpm)?;
 
             if delta_time_seconds <= 0
                 || delta_distance_meters <= 0.0
@@ -693,10 +641,7 @@ fn climb_metrics(samples: &[AnalysisSample]) -> ClimbMetrics {
     totals
 }
 
-fn qualifying_climb_delta(
-    previous: AnalysisSample,
-    current: AnalysisSample,
-) -> Option<(i32, f64, f64)> {
+fn qualifying_climb_delta(previous: AnalysisSample, current: AnalysisSample) -> Option<(i32, f64, f64)> {
     let delta_time_seconds = current.elapsed_seconds - previous.elapsed_seconds;
     let delta_distance_meters = current.distance_meters? - previous.distance_meters?;
     let delta_elevation_meters = current.elevation_meters? - previous.elevation_meters?;
@@ -711,11 +656,7 @@ fn qualifying_climb_delta(
         return None;
     }
 
-    Some((
-        delta_time_seconds,
-        delta_distance_meters,
-        delta_elevation_meters,
-    ))
+    Some((delta_time_seconds, delta_distance_meters, delta_elevation_meters))
 }
 
 fn finalize_climb_block(totals: &mut ClimbMetrics, block: &mut ClimbAccumulator) {
@@ -725,9 +666,8 @@ fn finalize_climb_block(totals: &mut ClimbMetrics, block: &mut ClimbAccumulator)
 
     if qualifies {
         totals.climbing_time_seconds += block.duration_seconds;
-        totals.climbing_elevation_gain_meters = Some(
-            totals.climbing_elevation_gain_meters.unwrap_or(0.0) + block.elevation_gain_meters,
-        );
+        totals.climbing_elevation_gain_meters =
+            Some(totals.climbing_elevation_gain_meters.unwrap_or(0.0) + block.elevation_gain_meters);
         totals.sustained_climb_count += 1;
     }
 
@@ -882,15 +822,9 @@ mod tests {
         let analysis = build_activity_training_analysis(&activity);
 
         assert_eq!(analysis.ride_focus, ActivityRideFocus::XcEndurance);
-        assert_eq!(
-            analysis.route_family_key.as_deref(),
-            Some("post-canyon-endurance")
-        );
+        assert_eq!(analysis.route_family_key.as_deref(), Some("post-canyon-endurance"));
         assert_eq!(analysis.comparable_distance_bucket_meters, Some(20_000));
-        assert_eq!(
-            analysis.comparable_elevation_gain_bucket_meters,
-            Some(1_300)
-        );
+        assert_eq!(analysis.comparable_elevation_gain_bucket_meters, Some(1_300));
         assert!(analysis.aerobic_decoupling_percent.is_some());
         assert_eq!(analysis.sustained_climb_count, 2);
         assert_eq!(analysis.climbing_time_seconds, 5_400);
@@ -943,15 +877,9 @@ mod tests {
         let analysis = build_activity_training_analysis(&activity);
 
         assert_eq!(analysis.ride_focus, ActivityRideFocus::XcEndurance);
-        assert_eq!(
-            analysis.route_family_key.as_deref(),
-            Some("post-canyon-endurance")
-        );
+        assert_eq!(analysis.route_family_key.as_deref(), Some("post-canyon-endurance"));
         assert_eq!(analysis.comparable_distance_bucket_meters, Some(70_000));
-        assert_eq!(
-            analysis.comparable_elevation_gain_bucket_meters,
-            Some(1_200)
-        );
+        assert_eq!(analysis.comparable_elevation_gain_bucket_meters, Some(1_200));
         assert!(analysis.aerobic_decoupling_percent.is_some());
         assert!((analysis.aerobic_decoupling_percent.unwrap_or_default() - 15.68).abs() < 0.2);
     }

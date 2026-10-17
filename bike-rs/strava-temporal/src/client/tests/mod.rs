@@ -5,9 +5,7 @@ use futures::FutureExt;
 use prost::Message;
 use sea_orm::{DatabaseBackend, MockDatabase};
 use std::sync::{Arc, Mutex};
-use temporalio_client::callback_based::{
-    CallbackBasedGrpcService, GrpcRequest, GrpcSuccessResponse,
-};
+use temporalio_client::callback_based::{CallbackBasedGrpcService, GrpcRequest, GrpcSuccessResponse};
 use temporalio_common::protos::temporal::api::workflowservice::v1::{
     CreateScheduleRequest, StartWorkflowExecutionRequest, StartWorkflowExecutionResponse,
 };
@@ -30,9 +28,7 @@ impl MockTemporal {
                 async move { mock.reply(request) }.boxed()
             }),
         });
-        connect_with_options(options, &config().namespace)
-            .await
-            .unwrap()
+        connect_with_options(options, &config().namespace).await.unwrap()
     }
 
     fn reply(&self, request: GrpcRequest) -> Result<GrpcSuccessResponse, tonic::Status> {
@@ -117,8 +113,7 @@ async fn each_operation_starts_its_own_workflow_with_correlated_input_and_duplic
             Some("fixture-native-run")
         );
         let requests = mock.requests.lock().unwrap();
-        let request =
-            StartWorkflowExecutionRequest::decode(requests.last().unwrap().proto.clone()).unwrap();
+        let request = StartWorkflowExecutionRequest::decode(requests.last().unwrap().proto.clone()).unwrap();
         assert_eq!(request.workflow_type.unwrap().name, workflow);
         assert!(request.retry_policy.is_none());
         assert_eq!(request.workflow_id, fixture.event.workflow_id());
@@ -128,8 +123,7 @@ async fn each_operation_starts_its_own_workflow_with_correlated_input_and_duplic
             request.workflow_id_reuse_policy,
             temporalio_common::protos::temporal::api::enums::v1::WorkflowIdReusePolicy::RejectDuplicate as i32
         );
-        let input: StravaEvent =
-            serde_json::from_slice(&request.input.unwrap().payloads[0].data).unwrap();
+        let input: StravaEvent = serde_json::from_slice(&request.input.unwrap().payloads[0].data).unwrap();
         assert_eq!(input.strava_event_id, fixture.event.strava_event_id);
         assert_eq!(input.correlation_id, fixture.event.correlation_id);
         let attributes = request.search_attributes.unwrap().indexed_fields;
@@ -171,27 +165,19 @@ async fn duplicate_start_is_successful_but_other_start_failures_retry() {
 #[tokio::test]
 async fn schedule_uses_native_scan_every_six_hours_and_skips_overlap() {
     let mock = Arc::new(MockTemporal::default());
-    ensure_schedule(&mock.client().await, &config())
-        .await
-        .unwrap();
+    ensure_schedule(&mock.client().await, &config()).await.unwrap();
     let requests = mock.requests.lock().unwrap();
     let request = CreateScheduleRequest::decode(requests.last().unwrap().proto.clone()).unwrap();
     assert_eq!(request.schedule_id, "bike-strava-sync");
     let schedule = request.schedule.unwrap();
-    assert_eq!(
-        schedule.spec.unwrap().interval[0].interval.unwrap().seconds,
-        6 * 3600
-    );
+    assert_eq!(schedule.spec.unwrap().interval[0].interval.unwrap().seconds, 6 * 3600);
     assert_eq!(
         schedule.policies.unwrap().overlap_policy,
         temporalio_common::protos::temporal::api::enums::v1::ScheduleOverlapPolicy::Skip as i32
     );
     let action = schedule.action.unwrap().action.unwrap();
     let temporalio_common::protos::temporal::api::schedule::v1::schedule_action::Action::StartWorkflow(action) = action;
-    assert_eq!(
-        action.workflow_type.unwrap().name,
-        ScheduledSync::run.name()
-    );
+    assert_eq!(action.workflow_type.unwrap().name, ScheduledSync::run.name());
     assert_eq!(action.task_queue.unwrap().name, config().task_queue);
 }
 
@@ -205,12 +191,7 @@ async fn existing_schedule_is_kept_and_other_creation_errors_are_reported() {
             failure: Some(("CreateSchedule", code)),
             ..Default::default()
         });
-        assert_eq!(
-            ensure_schedule(&mock.client().await, &config())
-                .await
-                .is_ok(),
-            success
-        );
+        assert_eq!(ensure_schedule(&mock.client().await, &config()).await.is_ok(), success);
     }
 }
 
@@ -230,9 +211,7 @@ async fn handoff_marks_success_and_duplicate_submitted_and_keeps_failures_durabl
         let db = MockDatabase::new(DatabaseBackend::Postgres)
             .append_query_results([vec![row.clone()], vec![row]])
             .into_connection();
-        dispatch_pending(&mock.client().await, &config(), &db)
-            .await
-            .unwrap();
+        dispatch_pending(&mock.client().await, &config(), &db).await.unwrap();
         let log = format!("{:?}", db.into_transaction_log());
         if code == Some(tonic::Code::PermissionDenied) {
             assert!(log.contains("handoff_error"));

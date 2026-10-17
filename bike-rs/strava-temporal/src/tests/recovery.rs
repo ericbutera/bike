@@ -35,10 +35,7 @@ fn server_history_suggestion_preserves_unprocessed_ids_inside_a_populated_page()
     fixture.event = workflow.continued_input::<bike_core::strava::events::StravaEvent>();
     let progress = fixture.event.progress.as_ref().unwrap();
     assert_eq!(progress.imported, 1);
-    assert_eq!(
-        progress.pending_page.as_ref().unwrap().activity_ids,
-        vec![ids[1]]
-    );
+    assert_eq!(progress.pending_page.as_ref().unwrap().activity_ids, vec![ids[1]]);
     let mut workflow = collection_workflow(&fixture);
     let input = open_collection(&mut workflow, &fixture);
     // The remaining ID comes from history; do not re-list a potentially changed page.
@@ -116,10 +113,7 @@ fn large_collection(operation: StravaOperation) {
             assert_eq!(progress.unchanged, progress.imported);
             assert_eq!(progress.last_started_at, Some(latest));
             assert_eq!(continued.window.as_ref().unwrap().after, input.window.after);
-            assert_eq!(
-                continued.window.as_ref().unwrap().before,
-                input.window.before
-            );
+            assert_eq!(continued.window.as_ref().unwrap().before, input.window.before);
             assert_eq!(continued.strava_event_id, original.strava_event_id);
             assert_eq!(continued.correlation_id, original.correlation_id);
             assert_eq!(continued.request_id, original.request_id);

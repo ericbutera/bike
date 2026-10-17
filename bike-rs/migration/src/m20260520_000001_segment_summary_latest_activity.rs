@@ -31,16 +31,8 @@ impl MigrationTrait for Migration {
                             .timestamp_with_time_zone()
                             .null(),
                     )
-                    .add_column(
-                        ColumnDef::new(SegmentSummaries::LatestActivityId)
-                            .integer()
-                            .null(),
-                    )
-                    .add_column(
-                        ColumnDef::new(SegmentSummaries::LatestEffortId)
-                            .integer()
-                            .null(),
-                    )
+                    .add_column(ColumnDef::new(SegmentSummaries::LatestActivityId).integer().null())
+                    .add_column(ColumnDef::new(SegmentSummaries::LatestEffortId).integer().null())
                     .to_owned(),
             )
             .await?;

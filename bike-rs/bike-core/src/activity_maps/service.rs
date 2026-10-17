@@ -51,8 +51,7 @@ impl MapImageService {
         let activity = activities::Model::find_owned(db, activity_id, user_id)
             .await?
             .ok_or(MapImageError::NotFound)?;
-        let route =
-            deserialize_derived_activity_data(activity.derived_data_json.as_ref()).route_points;
+        let route = deserialize_derived_activity_data(activity.derived_data_json.as_ref()).route_points;
         let request = RenderRequest::from_route(route, variant, options)?;
         self.cached_image(&request).await
     }

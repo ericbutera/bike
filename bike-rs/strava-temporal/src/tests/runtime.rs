@@ -12,18 +12,10 @@ pub type WorkflowMock = workflow_test_support::WorkflowMock<StravaAssertions>;
 
 impl WorkflowAssertions for StravaAssertions {
     fn activity(name: &str, command: &WorkflowCommand) {
-        let summary = command
-            .user_metadata
-            .as_ref()
-            .unwrap()
-            .summary
-            .as_ref()
-            .unwrap();
+        let summary = command.user_metadata.as_ref().unwrap().summary.as_ref().unwrap();
         assert_eq!(
             serde_json::from_slice::<String>(&summary.data).unwrap(),
-            name.strip_prefix("strava_")
-                .unwrap_or(name)
-                .replace('_', " ")
+            name.strip_prefix("strava_").unwrap_or(name).replace('_', " ")
         );
         let Some(workflow_command::Variant::ScheduleActivity(activity)) = &command.variant else {
             panic!("Expected activity {name}")
@@ -60,10 +52,7 @@ impl WorkflowAssertions for StravaAssertions {
         }
         if let Some(id) = input.strava_activity_id {
             assert_eq!(
-                serde_json::from_slice::<String>(
-                    &attributes.indexed_fields["StravaActivityId"].data
-                )
-                .unwrap(),
+                serde_json::from_slice::<String>(&attributes.indexed_fields["StravaActivityId"].data).unwrap(),
                 id.to_string()
             );
         }

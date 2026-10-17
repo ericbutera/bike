@@ -8,10 +8,8 @@ fn sync_fixture() -> Fixture {
     let mut fixture = Fixture::new();
     fixture.event.operation = StravaOperation::Sync;
     fixture.event.strava_activity_id = None;
-    fixture.event.strava_event_id = uuid::Uuid::new_v5(
-        &fixture.event.correlation_id,
-        &fixture.connection.id.to_be_bytes(),
-    );
+    fixture.event.strava_event_id =
+        uuid::Uuid::new_v5(&fixture.event.correlation_id, &fixture.connection.id.to_be_bytes());
     fixture
 }
 
@@ -39,19 +37,9 @@ fn scan_mock(fixture: &Fixture, connections: Vec<strava_connections::Model>) -> 
 }
 
 fn assert_progress(span: &SpanData, scanned: i64, prepared: i64) {
-    for (key, value) in [
-        ("connections_scanned", scanned),
-        ("sync_events_prepared", prepared),
-    ] {
-        let field = span
-            .attributes
-            .iter()
-            .find(|field| field.key.as_str() == key);
-        assert_eq!(
-            field.map(|field| &field.value),
-            Some(&value.into()),
-            "{key}"
-        );
+    for (key, value) in [("connections_scanned", scanned), ("sync_events_prepared", prepared)] {
+        let field = span.attributes.iter().find(|field| field.key.as_str() == key);
+        assert_eq!(field.map(|field| &field.value), Some(&value.into()), "{key}");
     }
 }
 
@@ -63,40 +51,26 @@ async fn scheduled_sync_setup_groups_reads_acceptance_and_submission_under_one_a
         scopes: "read".into(),
         ..fixture.connection.clone()
     };
-    let operations = StravaOperations::new(
-        scan_mock(&fixture, vec![fixture.connection.clone(), skipped]).into_connection(),
-    );
+    let operations =
+        StravaOperations::new(scan_mock(&fixture, vec![fixture.connection.clone(), skipped]).into_connection());
     let trace = capture(async {
-        let page = operations
-            .scan_connections(request(&fixture))
-            .await
-            .unwrap();
+        let page = operations.scan_connections(request(&fixture)).await.unwrap();
         assert_eq!(page.events.len(), 1);
         assert_eq!(page.events[0].operation, StravaOperation::Sync);
-        assert_eq!(
-            page.events[0].strava_event_id,
-            fixture.event.strava_event_id
-        );
+        assert_eq!(page.events[0].strava_event_id, fixture.event.strava_event_id);
         assert_eq!(page.next_connection_id, None);
     })
     .await;
     let preparation = stage(&trace, PREPARE);
     assert_progress(&preparation, 2, 1);
-    let validation = trace
-        .spans()
-        .into_iter()
-        .find(|span| span.name == VALIDATE)
-        .unwrap();
-    assert_eq!(
-        validation.parent_span_id,
-        preparation.span_context.span_id()
-    );
+    let validation = trace.spans().into_iter().find(|span| span.name == VALIDATE).unwrap();
+    assert_eq!(validation.parent_span_id, preparation.span_context.span_id());
     let transactions = operations.db.into_transaction_log();
     assert_eq!(transactions.len(), 6);
     let acceptance = transactions[4].statements();
-    assert!(acceptance.iter().any(|statement| statement
-        .sql
-        .starts_with("INSERT INTO \"integration_events\"")));
+    assert!(acceptance
+        .iter()
+        .any(|statement| statement.sql.starts_with("INSERT INTO \"integration_events\"")));
     assert_eq!(acceptance.last().unwrap().sql, "COMMIT");
     assert!(transactions[5].statements()[0]
         .sql
@@ -131,22 +105,18 @@ async fn failed_scan_keeps_its_query_parent_without_reporting_successful_prepara
         ..fixture.connection.clone()
     };
     let db = scan_mock(&fixture, vec![fixture.connection.clone(), next])
-        .append_query_errors([sea_orm::DbErr::Custom(
-            "fixture customer read failed".into(),
-        )])
+        .append_query_errors([sea_orm::DbErr::Custom("fixture customer read failed".into())])
         .into_connection();
     let operations = StravaOperations::new(db);
     let trace = capture(async {
-        assert!(operations
-            .scan_connections(request(&fixture))
-            .await
-            .is_err());
+        assert!(operations.scan_connections(request(&fixture)).await.is_err());
     })
     .await;
     let preparation = stage(&trace, PREPARE);
-    assert!(preparation.attributes.iter().any(|field| {
-        field.key.as_str() == "connections_scanned" && field.value == 2_i64.into()
-    }));
+    assert!(preparation
+        .attributes
+        .iter()
+        .any(|field| { field.key.as_str() == "connections_scanned" && field.value == 2_i64.into() }));
     assert!(!preparation
         .attributes
         .iter()
@@ -168,8 +138,7 @@ async fn connection_validation_groups_both_ownership_reads_and_their_duration() 
     .await;
     let validation = stage(&trace, VALIDATE);
     assert!(validation.attributes.iter().any(|field| {
-        field.key.as_str() == "connection_id"
-            && field.value == i64::from(fixture.connection.id).into()
+        field.key.as_str() == "connection_id" && field.value == i64::from(fixture.connection.id).into()
     }));
     assert_eq!(operations.db.into_transaction_log().len(), 2);
 }
@@ -179,9 +148,7 @@ async fn failed_customer_validation_retains_its_action_parent() {
     let fixture = Fixture::new();
     let db = MockDatabase::new(DatabaseBackend::Postgres)
         .append_query_results([vec![fixture.connection.clone()]])
-        .append_query_errors([sea_orm::DbErr::Custom(
-            "fixture customer read failed".into(),
-        )])
+        .append_query_errors([sea_orm::DbErr::Custom("fixture customer read failed".into())])
         .into_connection();
     let operations = StravaOperations::new(db);
     let trace = capture(async {

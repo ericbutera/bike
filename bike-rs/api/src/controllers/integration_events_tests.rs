@@ -85,7 +85,12 @@ async fn admin_history_applies_provider_owner_activity_import_and_limit_filters(
         }]])
         .append_query_results([vec![fixtures::integration_event()]])
         .into_connection();
-    let rows = history(db.clone(), "/api/admin/integration-events?provider=strava&user_id=7&activity_id=42&import_id=18&limit=999", 200).await;
+    let rows = history(
+        db.clone(),
+        "/api/admin/integration-events?provider=strava&user_id=7&activity_id=42&import_id=18&limit=999",
+        200,
+    )
+    .await;
     assert_eq!(rows.as_array().unwrap().len(), 1);
     let log = db.into_transaction_log();
     let query = &log.last().unwrap().statements()[0];

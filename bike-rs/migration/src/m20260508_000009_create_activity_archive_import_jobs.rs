@@ -41,36 +41,16 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(ActivityArchiveImportJobs::UserId)
-                            .integer()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(ActivityArchiveImportJobs::UserId).integer().not_null())
                     .col(
                         ColumnDef::new(ActivityArchiveImportJobs::UserStorageKey)
                             .string()
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(ActivityArchiveImportJobs::ArchiveUrl)
-                            .text()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(ActivityArchiveImportJobs::ResolvedUrl)
-                            .text()
-                            .null(),
-                    )
-                    .col(
-                        ColumnDef::new(ActivityArchiveImportJobs::Status)
-                            .string()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(ActivityArchiveImportJobs::FailureMessage)
-                            .text()
-                            .null(),
-                    )
+                    .col(ColumnDef::new(ActivityArchiveImportJobs::ArchiveUrl).text().not_null())
+                    .col(ColumnDef::new(ActivityArchiveImportJobs::ResolvedUrl).text().null())
+                    .col(ColumnDef::new(ActivityArchiveImportJobs::Status).string().not_null())
+                    .col(ColumnDef::new(ActivityArchiveImportJobs::FailureMessage).text().null())
                     .col(
                         ColumnDef::new(ActivityArchiveImportJobs::ErrorSamplesJson)
                             .text()
@@ -163,11 +143,7 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(
-                Table::drop()
-                    .table(ActivityArchiveImportJobs::Table)
-                    .to_owned(),
-            )
+            .drop_table(Table::drop().table(ActivityArchiveImportJobs::Table).to_owned())
             .await
     }
 }

@@ -32,10 +32,7 @@ impl ActivityStorage for Storage {
         self.check()?;
         let sha256 = checksum(bytes);
         let path = format!("{key}/{sha256}.json");
-        self.objects
-            .lock()
-            .unwrap()
-            .insert(path.clone(), bytes.to_vec());
+        self.objects.lock().unwrap().insert(path.clone(), bytes.to_vec());
         Ok(ObjectRef {
             path,
             sha256,
@@ -52,11 +49,7 @@ impl ActivityStorage for Storage {
 }
 
 impl Storage {
-    async fn write_json<T: serde::Serialize>(
-        &self,
-        key: &str,
-        value: &T,
-    ) -> Result<ObjectRef, WorkflowError> {
+    async fn write_json<T: serde::Serialize>(&self, key: &str, value: &T) -> Result<ObjectRef, WorkflowError> {
         let storage: &dyn ActivityStorage = self;
         storage.transform(key, value).await
     }
@@ -131,8 +124,7 @@ impl StravaProvider for Provider {
     }
 
     async fn streams(&self, event: &StravaEvent) -> Result<ObjectRef, WorkflowError> {
-        self.response(event, ProviderCall::Streams, &self.payload.streams)
-            .await
+        self.response(event, ProviderCall::Streams, &self.payload.streams).await
     }
 
     async fn page(&self, input: &PageInput) -> Result<Vec<StravaActivitySummary>, WorkflowError> {
@@ -160,8 +152,7 @@ pub(super) struct HandlerFixture {
 
 impl HandlerFixture {
     pub fn new() -> Self {
-        let payload: StoredStravaProviderPayload =
-            serde_json::from_slice(crate::strava::fixtures::REAL_RIDE).unwrap();
+        let payload: StoredStravaProviderPayload = serde_json::from_slice(crate::strava::fixtures::REAL_RIDE).unwrap();
         let mut domain = Fixture::new();
         domain.event.strava_activity_id = Some(payload.activity.id);
         let storage = Arc::new(Storage::default());
@@ -186,11 +177,7 @@ impl HandlerFixture {
     }
 
     pub fn operations(&self, db: MockDatabase) -> StravaOperations {
-        StravaOperations::with_dependencies(
-            db.into_connection(),
-            self.provider.clone(),
-            self.storage.clone(),
-        )
+        StravaOperations::with_dependencies(db.into_connection(), self.provider.clone(), self.storage.clone())
     }
 
     pub async fn sources(&self) -> ActivitySources {

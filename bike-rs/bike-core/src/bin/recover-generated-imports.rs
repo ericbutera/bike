@@ -1,7 +1,6 @@
 use bike_core::activity_source_recovery::{
-    apply_recovery, plan_recovery, refresh_retained_recording, register_archive_source,
-    retire_generated_artifact, withhold_unrecovered_source, ArchivedActivitySource,
-    RecoveryOutcome,
+    apply_recovery, plan_recovery, refresh_retained_recording, register_archive_source, retire_generated_artifact,
+    withhold_unrecovered_source, ArchivedActivitySource, RecoveryOutcome,
 };
 use bike_core::config::Config;
 use bike_core::entities::{activity_import_artifacts, activity_imports};
@@ -47,8 +46,7 @@ impl RecoveryRun {
                 "--withhold-unrecovered" => run.withhold_unrecovered = true,
                 "--refresh-recording" => run.refresh_recording = true,
                 "--register-manifest" => {
-                    run.register_manifest =
-                        Some(args.next().ok_or("Missing archive manifest path")?)
+                    run.register_manifest = Some(args.next().ok_or("Missing archive manifest path")?)
                 }
                 _ => return Err(format!("Unknown recovery option: {arg}").into()),
             }
@@ -59,13 +57,9 @@ impl RecoveryRun {
             || (run.refresh_recent && !run.apply)
             || (run.cleanup && run.refresh_recent)
             || (run.register_manifest.is_some() && (run.cleanup || run.refresh_recent))
-            || (run.withhold_unrecovered
-                && (!run.apply || run.cleanup || run.register_manifest.is_some()))
+            || (run.withhold_unrecovered && (!run.apply || run.cleanup || run.register_manifest.is_some()))
             || (run.refresh_recording
-                && (run.cleanup
-                    || run.register_manifest.is_some()
-                    || run.refresh_recent
-                    || run.withhold_unrecovered))
+                && (run.cleanup || run.register_manifest.is_some() || run.refresh_recent || run.withhold_unrecovered))
         {
             return Err(
                 "Require --user-id > 0, --after-id >= 0, --limit 1..32; --refresh-recent requires --apply".into(),
@@ -79,8 +73,7 @@ impl RecoveryRun {
 async fn main() -> Result<(), Box<dyn Error>> {
     let run = RecoveryRun::parse(std::env::args().skip(1))?;
     dotenvy::dotenv().ok();
-    std::env::var("DATABASE_URL")
-        .map_err(|_| "Set DATABASE_URL for the intended recovery database")?;
+    std::env::var("DATABASE_URL").map_err(|_| "Set DATABASE_URL for the intended recovery database")?;
     let config = Config::init_from_env();
     let db = Database::connect(&config.database_url).await?;
     if run.refresh_recording {
@@ -93,9 +86,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         return cleanup(&run, &db, &config.uploads_dir).await;
     }
     let now = Utc::now();
-    let imports =
-        activity_imports::Entity::generated_strava_page(&db, run.user_id, run.after_id, run.limit)
-            .await?;
+    let imports = activity_imports::Entity::generated_strava_page(&db, run.user_id, run.after_id, run.limit).await?;
     let mut recent_gaps = false;
     let mut last_id = run.after_id;
     let mut failed = 0;
@@ -152,14 +143,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn cleanup(
-    run: &RecoveryRun,
-    db: &sea_orm::DatabaseConnection,
-    uploads_dir: &str,
-) -> Result<(), Box<dyn Error>> {
-    let artifacts =
-        activity_import_artifacts::Entity::generated_page(db, run.user_id, run.after_id, run.limit)
-            .await?;
+async fn cleanup(run: &RecoveryRun, db: &sea_orm::DatabaseConnection, uploads_dir: &str) -> Result<(), Box<dyn Error>> {
+    let artifacts = activity_import_artifacts::Entity::generated_page(db, run.user_id, run.after_id, run.limit).await?;
     let mut last_id = run.after_id;
     let mut failed = 0;
     for artifact in artifacts {
@@ -221,13 +206,8 @@ async fn refresh_recording(
     db: &sea_orm::DatabaseConnection,
     uploads_dir: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let activities = bike_core::entities::activities::Model::recording_page(
-        db,
-        run.user_id,
-        run.after_id,
-        run.limit,
-    )
-    .await?;
+    let activities =
+        bike_core::entities::activities::Model::recording_page(db, run.user_id, run.after_id, run.limit).await?;
     let mut last_id = run.after_id;
     let mut failed = 0;
     for activity in activities {

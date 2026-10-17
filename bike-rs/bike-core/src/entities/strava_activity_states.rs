@@ -33,18 +33,10 @@ pub struct Model {
 pub enum Relation {}
 impl ActiveModelBehavior for ActiveModel {}
 impl Model {
-    pub async fn matches_content(
-        db: &impl ConnectionTrait,
-        event: &StravaEvent,
-        hash: &str,
-    ) -> Result<bool, DbErr> {
+    pub async fn matches_content(db: &impl ConnectionTrait, event: &StravaEvent, hash: &str) -> Result<bool, DbErr> {
         Self::matches_by_id(db, event, |state| state.matches_event_content(event, hash)).await
     }
-    pub async fn supersedes(
-        db: &impl ConnectionTrait,
-        event: &StravaEvent,
-        deletion: bool,
-    ) -> Result<bool, DbErr> {
+    pub async fn supersedes(db: &impl ConnectionTrait, event: &StravaEvent, deletion: bool) -> Result<bool, DbErr> {
         Self::matches_by_id(db, event, |state| state.supersedes_event(event, deletion)).await
     }
 
@@ -60,9 +52,7 @@ impl Model {
     }
 
     fn key_for_event(event: &StravaEvent) -> Result<(i64, i64), DbErr> {
-        let id = event
-            .activity_id()
-            .map_err(|error| DbErr::Custom(error.message))?;
+        let id = event.activity_id().map_err(|error| DbErr::Custom(error.message))?;
         Ok((event.strava_athlete_id, id))
     }
 
@@ -209,9 +199,7 @@ mod tests {
                 .append_query_results([stored.into_iter().collect::<Vec<_>>()])
                 .into_connection();
             assert_eq!(
-                Model::matches_content(&db, &fixture.event, hash)
-                    .await
-                    .unwrap(),
+                Model::matches_content(&db, &fixture.event, hash).await.unwrap(),
                 expected
             );
             let transactions = db.into_transaction_log();
@@ -247,9 +235,7 @@ mod tests {
                 .append_query_results([stored.into_iter().collect::<Vec<_>>()])
                 .into_connection();
             assert_eq!(
-                Model::supersedes(&db, &fixture.event, deletion)
-                    .await
-                    .unwrap(),
+                Model::supersedes(&db, &fixture.event, deletion).await.unwrap(),
                 expected
             );
         }
@@ -265,9 +251,7 @@ mod tests {
             event.activity_id().unwrap_err().status,
             axum::http::StatusCode::BAD_REQUEST
         );
-        assert!(Model::matches_content(&db, &event, "fixture-content")
-            .await
-            .is_err());
+        assert!(Model::matches_content(&db, &event, "fixture-content").await.is_err());
         assert!(Model::supersedes(&db, &event, false).await.is_err());
         assert!(Model::apply_event(&db, &event, None, false).await.is_err());
         assert!(db.into_transaction_log().is_empty());
@@ -279,11 +263,9 @@ mod tests {
         let db = MockDatabase::new(DatabaseBackend::Postgres)
             .append_query_errors((0..2).map(|_| DbErr::Custom("Fixture query failure".into())))
             .into_connection();
-        assert!(
-            Model::matches_content(&db, &fixture.event, "fixture-content")
-                .await
-                .is_err()
-        );
+        assert!(Model::matches_content(&db, &fixture.event, "fixture-content")
+            .await
+            .is_err());
         assert!(Model::supersedes(&db, &fixture.event, false).await.is_err());
     }
 }

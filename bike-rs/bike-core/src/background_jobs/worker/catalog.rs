@@ -26,11 +26,7 @@ pub fn workload_cohort(payload: &serde_json::Value) -> String {
     let data = payload.get("data").unwrap_or(payload);
     let count = ["activities", "segment_ids", "activity_ids"]
         .iter()
-        .find_map(|key| {
-            data.get(key)
-                .and_then(serde_json::Value::as_array)
-                .map(Vec::len)
-        });
+        .find_map(|key| data.get(key).and_then(serde_json::Value::as_array).map(Vec::len));
     match count {
         Some(0) => "empty".into(),
         Some(1) => "single".into(),

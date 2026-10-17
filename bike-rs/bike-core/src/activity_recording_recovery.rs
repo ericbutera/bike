@@ -1,32 +1,21 @@
 //! Recover metadata stripped by legacy exports without deleting provider identities.
-use crate::activity_data::{
-    deserialize_derived_activity_data, ActivityDerivedData, ActivityRoutePoint,
-};
+use crate::activity_data::{deserialize_derived_activity_data, ActivityDerivedData, ActivityRoutePoint};
 use crate::activity_recording::{RecordingContext, RecordingEvidence};
 use crate::entities::activities;
 use chrono::{DateTime, Utc};
 use sea_orm::{ConnectionTrait, DbErr};
 
-pub async fn propagate_recording(
-    db: &impl ConnectionTrait,
-    activity: &activities::Model,
-) -> Result<(), DbErr> {
+pub async fn propagate_recording(db: &impl ConnectionTrait, activity: &activities::Model) -> Result<(), DbErr> {
     let context = activity.recording_context();
     if !context.excluded() {
         return Ok(());
     }
     let original = deserialize_derived_activity_data(activity.derived_data_json.as_ref());
-    for candidate in activities::Model::recording_counterparts(
-        db,
-        activity.user_id,
-        activity.id,
-        activity.started_at,
-    )
-    .await?
+    for candidate in
+        activities::Model::recording_counterparts(db, activity.user_id, activity.id, activity.started_at).await?
     {
         let mut derived = deserialize_derived_activity_data(candidate.derived_data_json.as_ref());
-        let legacy =
-            RecordingContext::legacy(&candidate.sport, &candidate.source, &candidate.title);
+        let legacy = RecordingContext::legacy(&candidate.sport, &candidate.source, &candidate.title);
         if derived.recording.excluded() || legacy.excluded() {
             continue;
         }
@@ -41,14 +30,8 @@ pub async fn propagate_recording(
                 field: "verified_activity_counterpart".into(),
                 value: activity.id.to_string(),
             });
-            activities::Model::store_recording(
-                db,
-                candidate.id,
-                activity.user_id,
-                candidate.updated_at,
-                &derived,
-            )
-            .await?;
+            activities::Model::store_recording(db, candidate.id, activity.user_id, candidate.updated_at, &derived)
+                .await?;
         }
     }
     Ok(())
@@ -65,9 +48,7 @@ pub async fn resolve_recording(
     if context.excluded() || derived.route_points.len() < 8 {
         return Ok(context);
     }
-    for candidate in
-        activities::Model::recording_counterparts(db, user_id, activity_id, started_at).await?
-    {
+    for candidate in activities::Model::recording_counterparts(db, user_id, activity_id, started_at).await? {
         let original = deserialize_derived_activity_data(candidate.derived_data_json.as_ref());
         let mut evidence = original.recording;
         evidence.merge(RecordingContext::legacy(
@@ -101,22 +82,13 @@ pub fn routes_match(
 ) -> bool {
     if route.len() < 8
         || original.len() < 8
-        || route
-            .windows(2)
-            .any(|p| p[0].elapsed_seconds > p[1].elapsed_seconds)
-        || original
-            .windows(2)
-            .any(|p| p[0].elapsed_seconds > p[1].elapsed_seconds)
+        || route.windows(2).any(|p| p[0].elapsed_seconds > p[1].elapsed_seconds)
+        || original.windows(2).any(|p| p[0].elapsed_seconds > p[1].elapsed_seconds)
     {
         return false;
     }
     if !route.iter().any(|p| {
-        crate::dedupe::haversine_distance_meters(
-            route[0].latitude,
-            route[0].longitude,
-            p.latitude,
-            p.longitude,
-        ) > 100.0
+        crate::dedupe::haversine_distance_meters(route[0].latitude, route[0].longitude, p.latitude, p.longitude) > 100.0
     }) {
         return false;
     }
@@ -124,8 +96,7 @@ pub fn routes_match(
     let matches = (0..samples)
         .filter(|index| {
             let point = &route[index * (route.len() - 1) / (samples - 1)];
-            let elapsed =
-                start.timestamp() + i64::from(point.elapsed_seconds) - original_start.timestamp();
+            let elapsed = start.timestamp() + i64::from(point.elapsed_seconds) - original_start.timestamp();
             let Ok(elapsed) = i32::try_from(elapsed) else {
                 return false;
             };

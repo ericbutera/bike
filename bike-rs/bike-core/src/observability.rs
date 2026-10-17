@@ -5,9 +5,7 @@ use opentelemetry::trace::{TraceContextExt, TracerProvider as _};
 use opentelemetry::{Context, KeyValue};
 use opentelemetry_otlp::{Protocol, WithExportConfig};
 use opentelemetry_sdk::propagation::TraceContextPropagator;
-use opentelemetry_sdk::trace::{
-    BatchSpanProcessor, Sampler, SdkTracerProvider, TracerProviderBuilder,
-};
+use opentelemetry_sdk::trace::{BatchSpanProcessor, Sampler, SdkTracerProvider, TracerProviderBuilder};
 use opentelemetry_sdk::Resource;
 use std::collections::BTreeMap;
 use tracing::field;
@@ -50,39 +48,24 @@ pub fn init_observability(service_name: &'static str) -> ObservabilityGuard {
     match trace_exporter_config() {
         TraceExporterConfig::SdkDisabled => init_logs_only(service_name, "OTEL_SDK_DISABLED=true"),
         TraceExporterConfig::Disabled { reason } => init_without_exporter(service_name, reason),
-        TraceExporterConfig::Otlp { traces_endpoint } => {
-            init_otel_or_log_fallback(service_name, &traces_endpoint)
-        }
+        TraceExporterConfig::Otlp { traces_endpoint } => init_otel_or_log_fallback(service_name, &traces_endpoint),
     }
 }
 
 fn init_without_exporter(service_name: &'static str, reason: &'static str) -> ObservabilityGuard {
     let provider = tracer_provider_builder(service_name).build();
     let guard = install_tracer_subscriber(service_name, provider);
-    tracing::info!(
-        service_name,
-        reason,
-        "OpenTelemetry propagation enabled without export"
-    );
+    tracing::info!(service_name, reason, "OpenTelemetry propagation enabled without export");
     guard
 }
 
 fn init_logs_only(service_name: &'static str, reason: &'static str) -> ObservabilityGuard {
     let _ = init_log_subscriber();
-    tracing::info!(
-        service_name,
-        reason,
-        "OpenTelemetry OTLP tracing exporter disabled"
-    );
-    ObservabilityGuard {
-        tracer_provider: None,
-    }
+    tracing::info!(service_name, reason, "OpenTelemetry OTLP tracing exporter disabled");
+    ObservabilityGuard { tracer_provider: None }
 }
 
-fn init_otel_or_log_fallback(
-    service_name: &'static str,
-    traces_endpoint: &str,
-) -> ObservabilityGuard {
+fn init_otel_or_log_fallback(service_name: &'static str, traces_endpoint: &str) -> ObservabilityGuard {
     match init_otel_subscriber(service_name, traces_endpoint) {
         Ok(guard) => guard,
         Err(error) => {
@@ -92,9 +75,7 @@ fn init_otel_or_log_fallback(
                 service_name,
                 "OpenTelemetry OTLP tracing exporter disabled"
             );
-            ObservabilityGuard {
-                tracer_provider: None,
-            }
+            ObservabilityGuard { tracer_provider: None }
         }
     }
 }
@@ -126,10 +107,7 @@ fn init_otel_subscriber(
     Ok(guard)
 }
 
-fn install_tracer_subscriber(
-    service_name: &'static str,
-    provider: SdkTracerProvider,
-) -> ObservabilityGuard {
+fn install_tracer_subscriber(service_name: &'static str, provider: SdkTracerProvider) -> ObservabilityGuard {
     let tracer = provider.tracer(service_name);
     global::set_tracer_provider(provider.clone());
 
@@ -140,11 +118,7 @@ fn install_tracer_subscriber(
     let otel_layer = tracing_opentelemetry::layer()
         .with_tracer(tracer)
         .with_filter(dynamic_filter_fn(|metadata, ctx| {
-            should_export_otel_span(
-                metadata.name(),
-                metadata.target(),
-                ctx.lookup_current().is_some(),
-            )
+            should_export_otel_span(metadata.name(), metadata.target(), ctx.lookup_current().is_some())
         }));
     let _ = tracing_subscriber::registry()
         .with(EnvFilter::from_default_env())
@@ -200,9 +174,7 @@ fn trace_exporter_config() -> TraceExporterConfig {
     trace_exporter_config_from_values(
         std::env::var("OTEL_SDK_DISABLED").ok().as_deref(),
         std::env::var("OTEL_TRACES_EXPORTER").ok().as_deref(),
-        std::env::var("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
-            .ok()
-            .as_deref(),
+        std::env::var("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT").ok().as_deref(),
         std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok().as_deref(),
     )
 }
@@ -242,8 +214,7 @@ fn trace_exporter_config_from_values(
         };
     }
 
-    let Some(traces_endpoint) = configured_otel_traces_endpoint(traces_endpoint, otlp_endpoint)
-    else {
+    let Some(traces_endpoint) = configured_otel_traces_endpoint(traces_endpoint, otlp_endpoint) else {
         return TraceExporterConfig::Disabled {
             reason: "no OTLP endpoint configured",
         };
@@ -252,17 +223,12 @@ fn trace_exporter_config_from_values(
     TraceExporterConfig::Otlp { traces_endpoint }
 }
 
-fn configured_otel_traces_endpoint(
-    traces_endpoint: Option<&str>,
-    otlp_endpoint: Option<&str>,
-) -> Option<String> {
+fn configured_otel_traces_endpoint(traces_endpoint: Option<&str>, otlp_endpoint: Option<&str>) -> Option<String> {
     if let Some(endpoint) = traces_endpoint.and_then(non_empty_env_value) {
         return Some(append_otel_traces_path(endpoint));
     }
 
-    otlp_endpoint
-        .and_then(non_empty_env_value)
-        .map(append_otel_traces_path)
+    otlp_endpoint.and_then(non_empty_env_value).map(append_otel_traces_path)
 }
 
 fn non_empty_env_value(value: &str) -> Option<&str> {
@@ -309,9 +275,7 @@ pub(crate) fn should_export_otel_span(name: &str, target: &str, has_exported_par
 }
 
 /// Carry both the parent span and scoped subscriber into a blocking worker.
-pub(crate) fn blocking_with_current_trace<T>(
-    work: impl FnOnce() -> T + Send,
-) -> impl FnOnce() -> T + Send {
+pub(crate) fn blocking_with_current_trace<T>(work: impl FnOnce() -> T + Send) -> impl FnOnce() -> T + Send {
     let span = tracing::Span::current();
     let dispatch = tracing::dispatcher::get_default(Clone::clone);
     move || tracing::dispatcher::with_default(&dispatch, || span.in_scope(work))
@@ -343,26 +307,22 @@ pub fn set_span_parent_from_carrier(span: &tracing::Span, carrier: Option<&Trace
         return;
     };
 
-    let parent_context = global::get_text_map_propagator(|propagator| {
-        propagator.extract(&TraceContextExtractor(carrier))
-    });
+    let parent_context =
+        global::get_text_map_propagator(|propagator| propagator.extract(&TraceContextExtractor(carrier)));
     let _ = span.set_parent(parent_context);
 }
 
 pub fn trace_id_from_carrier(carrier: Option<&TraceContextCarrier>) -> Option<String> {
     let carrier = carrier?;
-    let context = global::get_text_map_propagator(|propagator| {
-        propagator.extract(&TraceContextExtractor(carrier))
-    });
+    let context = global::get_text_map_propagator(|propagator| propagator.extract(&TraceContextExtractor(carrier)));
     let span = context.span();
     let ids = span.span_context();
     ids.is_valid().then(|| ids.trace_id().to_string())
 }
 
 pub fn set_span_parent_from_headers(span: &tracing::Span, headers: &HeaderMap) {
-    let parent_context = global::get_text_map_propagator(|propagator| {
-        propagator.extract(&TraceHeaderExtractor(headers))
-    });
+    let parent_context =
+        global::get_text_map_propagator(|propagator| propagator.extract(&TraceHeaderExtractor(headers)));
     let _ = span.set_parent(parent_context);
 }
 
@@ -430,9 +390,7 @@ impl Extractor for TraceHeaderExtractor<'_> {
 #[cfg(test)]
 mod tests {
     use super::TraceExporterConfig;
-    use super::{
-        append_otel_traces_path, should_export_otel_span, trace_exporter_config_from_values,
-    };
+    use super::{append_otel_traces_path, should_export_otel_span, trace_exporter_config_from_values};
 
     #[test]
     fn propagation_without_export_preserves_remote_parent_and_child_identity() {
@@ -495,9 +453,7 @@ mod tests {
         use opentelemetry::trace::TracerProvider as _;
         use tracing_subscriber::{layer::SubscriberExt, Layer};
 
-        opentelemetry::global::set_text_map_propagator(
-            opentelemetry_sdk::propagation::TraceContextPropagator::new(),
-        );
+        opentelemetry::global::set_text_map_propagator(opentelemetry_sdk::propagation::TraceContextPropagator::new());
         let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder().build();
         let subscriber = tracing_subscriber::registry().with(
             tracing_opentelemetry::layer()
@@ -512,8 +468,7 @@ mod tests {
                 let _scan = scan.enter();
                 super::inject_current_trace_context().expect("Native scan must have trace context")
             };
-            let child =
-                tracing::info_span!(target: "bike_core::strava::logging", "strava.activity");
+            let child = tracing::info_span!(target: "bike_core::strava::logging", "strava.activity");
             super::set_span_parent_from_carrier(&child, Some(&carrier));
             let _child = child.enter();
             let child_carrier = super::inject_current_trace_context().unwrap();
@@ -533,11 +488,7 @@ mod tests {
             false,
         ));
         assert!(!should_export_otel_span("query", "sqlx::query", false));
-        assert!(!should_export_otel_span(
-            "connection",
-            "hyper::proto::h1",
-            false,
-        ));
+        assert!(!should_export_otel_span("connection", "hyper::proto::h1", false,));
     }
 
     #[test]
@@ -556,22 +507,14 @@ mod tests {
 
     #[test]
     fn otel_filter_keeps_library_spans_under_exported_parent() {
-        assert!(should_export_otel_span(
-            "sea_orm.query_one",
-            "sea_orm",
-            true,
-        ));
+        assert!(should_export_otel_span("sea_orm.query_one", "sea_orm", true,));
         assert!(should_export_otel_span(
             "sea_orm.query_all",
             "sea_orm::database::db_connection",
             true,
         ));
         assert!(!should_export_otel_span("query", "sqlx::query", true));
-        assert!(should_export_otel_span(
-            "connection",
-            "hyper::proto::h1",
-            true,
-        ));
+        assert!(should_export_otel_span("connection", "hyper::proto::h1", true,));
     }
 
     #[test]
@@ -585,11 +528,7 @@ mod tests {
             "begin",
             "commit",
         ] {
-            assert!(!should_export_otel_span(
-                name,
-                "sea_orm::database::db_connection",
-                true
-            ));
+            assert!(!should_export_otel_span(name, "sea_orm::database::db_connection", true));
         }
     }
 

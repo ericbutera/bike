@@ -1,7 +1,5 @@
 use crate::background_jobs::execution::WorkCounts;
-use prometheus::{
-    Counter, HistogramOpts, HistogramVec, IntCounterVec, IntGauge, IntGaugeVec, Opts, Registry,
-};
+use prometheus::{Counter, HistogramOpts, HistogramVec, IntCounterVec, IntGauge, IntGaugeVec, Opts, Registry};
 
 pub(super) struct DiagnosticMetrics {
     timings: TimingMetrics,
@@ -20,12 +18,7 @@ struct TimingMetrics {
 impl TimingMetrics {
     fn new(registry: &Registry) -> Self {
         Self {
-            retries: counter(
-                registry,
-                "task_retries_total",
-                "Attempts returned for retry",
-                &["type"],
-            ),
+            retries: counter(registry, "task_retries_total", "Attempts returned for retry", &["type"]),
             attempts: histogram(
                 registry,
                 "attempt_duration_seconds",
@@ -138,19 +131,12 @@ struct CapacityMetrics {
 }
 impl CapacityMetrics {
     fn new(registry: &Registry) -> Self {
-        let busy = IntGauge::new(
-            "busy",
-            "Whether this sequential worker is executing a processor",
-        )
-        .expect("busy gauge");
-        let busy_seconds = Counter::new("busy_seconds_total", "Executed worker wall seconds")
-            .expect("busy counter");
+        let busy =
+            IntGauge::new("busy", "Whether this sequential worker is executing a processor").expect("busy gauge");
+        let busy_seconds = Counter::new("busy_seconds_total", "Executed worker wall seconds").expect("busy counter");
         let idle_seconds =
-            Counter::new("idle_seconds_total", "Worker polling/backoff wall seconds")
-                .expect("idle counter");
-        registry
-            .register(Box::new(busy.clone()))
-            .expect("busy registration");
+            Counter::new("idle_seconds_total", "Worker polling/backoff wall seconds").expect("idle counter");
+        registry.register(Box::new(busy.clone())).expect("busy registration");
         registry
             .register(Box::new(busy_seconds.clone()))
             .expect("busy counter registration");
@@ -175,33 +161,14 @@ impl DiagnosticMetrics {
     }
     pub(super) fn warmup(&self, task_types: &[&str]) {
         for task_type in task_types {
-            self.health
-                .registered
-                .with_label_values(&[task_type])
-                .set(1);
-            self.timings
-                .retries
-                .with_label_values(&[task_type])
-                .inc_by(0);
+            self.health.registered.with_label_values(&[task_type]).set(1);
+            self.timings.retries.with_label_values(&[task_type]).inc_by(0);
             self.timings.logical.with_label_values(&[task_type]);
             for signal in ["eligible", "runtime", "heartbeat", "progress"] {
-                self.health
-                    .ages
-                    .with_label_values(&[task_type, signal])
-                    .set(0);
+                self.health.ages.with_label_values(&[task_type, signal]).set(0);
             }
-            for state in [
-                "queued",
-                "scheduled",
-                "retrying",
-                "running",
-                "failed",
-                "completed",
-            ] {
-                self.health
-                    .states
-                    .with_label_values(&[task_type, state])
-                    .set(0);
+            for state in ["queued", "scheduled", "retrying", "running", "failed", "completed"] {
+                self.health.states.with_label_values(&[task_type, state]).set(0);
             }
         }
     }
@@ -218,11 +185,7 @@ impl super::WorkerMetrics {
         }
     }
     pub fn record_retry(&self, task_type: &str) {
-        self.diagnostics
-            .timings
-            .retries
-            .with_label_values(&[task_type])
-            .inc();
+        self.diagnostics.timings.retries.with_label_values(&[task_type]).inc();
     }
     pub fn record_attempt_duration(&self, task_type: &str, outcome: &str, seconds: f64) {
         self.diagnostics
@@ -280,11 +243,7 @@ impl super::WorkerMetrics {
             .set(seconds);
     }
     pub fn set_pending_outputs(&self, kind: &str, count: i64) {
-        self.diagnostics
-            .health
-            .outputs
-            .with_label_values(&[kind])
-            .set(count);
+        self.diagnostics.health.outputs.with_label_values(&[kind]).set(count);
     }
     pub fn set_unready_age(&self, entrypoint: &str, seconds: i64) {
         self.diagnostics
@@ -350,8 +309,6 @@ fn histogram(registry: &Registry, name: &str, help: &str, labels: &[&str]) -> Hi
 }
 fn gauge(registry: &Registry, name: &str, help: &str, labels: &[&str]) -> IntGaugeVec {
     let metric = IntGaugeVec::new(Opts::new(name, help), labels).expect("worker gauge");
-    registry
-        .register(Box::new(metric.clone()))
-        .expect("gauge registration");
+    registry.register(Box::new(metric.clone())).expect("gauge registration");
     metric
 }

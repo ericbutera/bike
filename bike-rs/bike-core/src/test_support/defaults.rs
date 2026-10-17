@@ -1,8 +1,7 @@
 //! Insert fixtures with deterministic timestamps and database-owned defaults.
 use super::timestamp;
 use crate::{
-    background_jobs::background_tasks, entities::user_preferences,
-    platform::feature_flags::entities as feature_flags,
+    background_jobs::background_tasks, entities::user_preferences, platform::feature_flags::entities as feature_flags,
 };
 use sea_orm::Set;
 

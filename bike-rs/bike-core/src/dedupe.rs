@@ -53,12 +53,7 @@ pub fn activity_dedupe_matches_model(
     draft: &ActivityDraft,
     route_points: &[ActivityRoutePoint],
 ) -> bool {
-    if !activity_started_at_and_sport_match(
-        activity.started_at,
-        &activity.sport,
-        draft.started_at,
-        &draft.sport,
-    ) {
+    if !activity_started_at_and_sport_match(activity.started_at, &activity.sport, draft.started_at, &draft.sport) {
         return false;
     }
 
@@ -73,8 +68,7 @@ pub fn activity_dedupe_matches_model(
         return false;
     }
 
-    let existing_route_points =
-        deserialize_derived_activity_data(activity.derived_data_json.as_ref()).route_points;
+    let existing_route_points = deserialize_derived_activity_data(activity.derived_data_json.as_ref()).route_points;
     activity_routes_match(&existing_route_points, route_points)
         || activity_location_and_distance_match(
             &existing_route_points,
@@ -84,16 +78,8 @@ pub fn activity_dedupe_matches_model(
         )
 }
 
-pub fn activity_models_match_for_dedupe(
-    left: &activities::Model,
-    right: &activities::Model,
-) -> bool {
-    if !activity_started_at_and_sport_match(
-        left.started_at,
-        &left.sport,
-        right.started_at,
-        &right.sport,
-    ) {
+pub fn activity_models_match_for_dedupe(left: &activities::Model, right: &activities::Model) -> bool {
+    if !activity_started_at_and_sport_match(left.started_at, &left.sport, right.started_at, &right.sport) {
         return false;
     }
 
@@ -108,10 +94,8 @@ pub fn activity_models_match_for_dedupe(
         return false;
     }
 
-    let left_route_points =
-        deserialize_derived_activity_data(left.derived_data_json.as_ref()).route_points;
-    let right_route_points =
-        deserialize_derived_activity_data(right.derived_data_json.as_ref()).route_points;
+    let left_route_points = deserialize_derived_activity_data(left.derived_data_json.as_ref()).route_points;
+    let right_route_points = deserialize_derived_activity_data(right.derived_data_json.as_ref()).route_points;
     activity_routes_match(&left_route_points, &right_route_points)
         || activity_location_and_distance_match(
             &left_route_points,
@@ -121,10 +105,7 @@ pub fn activity_models_match_for_dedupe(
         )
 }
 
-fn dedupe_duration_seconds(
-    total_time_seconds: Option<i32>,
-    moving_time_seconds: Option<i32>,
-) -> Option<i32> {
+fn dedupe_duration_seconds(total_time_seconds: Option<i32>, moving_time_seconds: Option<i32>) -> Option<i32> {
     total_time_seconds.or(moving_time_seconds)
 }
 
@@ -134,8 +115,7 @@ fn activity_started_at_and_sport_match(
     right_started_at: DateTime<Utc>,
     right_sport: &str,
 ) -> bool {
-    left_started_at == right_started_at
-        && normalize_sport_token(left_sport) == normalize_sport_token(right_sport)
+    left_started_at == right_started_at && normalize_sport_token(left_sport) == normalize_sport_token(right_sport)
 }
 
 fn activity_metrics_match(
@@ -177,10 +157,7 @@ fn duration_difference_seconds(
     differences.into_iter().next()
 }
 
-fn distance_difference_meters(
-    left_distance_meters: Option<f64>,
-    right_distance_meters: Option<f64>,
-) -> Option<f64> {
+fn distance_difference_meters(left_distance_meters: Option<f64>, right_distance_meters: Option<f64>) -> Option<f64> {
     match (
         left_distance_meters.filter(|value| value.is_finite()),
         right_distance_meters.filter(|value| value.is_finite()),
@@ -197,10 +174,7 @@ fn option_difference_i32(left: Option<i32>, right: Option<i32>) -> Option<i32> {
     }
 }
 
-pub fn segment_dedupe_key(
-    distance_meters: Option<f64>,
-    route_points: &[ActivityRoutePoint],
-) -> Option<String> {
+pub fn segment_dedupe_key(distance_meters: Option<f64>, route_points: &[ActivityRoutePoint]) -> Option<String> {
     if route_points.len() < 2 {
         return None;
     }
@@ -240,12 +214,10 @@ fn activity_routes_match(left: &[ActivityRoutePoint], right: &[ActivityRoutePoin
         (false, false) => {}
     }
 
-    let left_samples =
-        interpolated_route_samples(left, MAX_ROUTE_SAMPLE_POINTS, ACTIVITY_ROUTE_EDGE_FRACTION)
-            .unwrap_or_else(|| sampled_route_coordinates(left, MAX_ROUTE_SAMPLE_POINTS));
-    let right_samples =
-        interpolated_route_samples(right, MAX_ROUTE_SAMPLE_POINTS, ACTIVITY_ROUTE_EDGE_FRACTION)
-            .unwrap_or_else(|| sampled_route_coordinates(right, MAX_ROUTE_SAMPLE_POINTS));
+    let left_samples = interpolated_route_samples(left, MAX_ROUTE_SAMPLE_POINTS, ACTIVITY_ROUTE_EDGE_FRACTION)
+        .unwrap_or_else(|| sampled_route_coordinates(left, MAX_ROUTE_SAMPLE_POINTS));
+    let right_samples = interpolated_route_samples(right, MAX_ROUTE_SAMPLE_POINTS, ACTIVITY_ROUTE_EDGE_FRACTION)
+        .unwrap_or_else(|| sampled_route_coordinates(right, MAX_ROUTE_SAMPLE_POINTS));
 
     let sample_count = left_samples.len().min(right_samples.len());
     if sample_count == 0 {
@@ -304,16 +276,14 @@ fn sampled_routes_overlap(left_samples: &[(f64, f64)], right_samples: &[(f64, f6
     let matching_samples = smaller_samples
         .iter()
         .filter(|(sample_latitude, sample_longitude)| {
-            larger_samples
-                .iter()
-                .any(|(candidate_latitude, candidate_longitude)| {
-                    haversine_distance_meters(
-                        *sample_latitude,
-                        *sample_longitude,
-                        *candidate_latitude,
-                        *candidate_longitude,
-                    ) <= ACTIVITY_ROUTE_MATCH_TOLERANCE_METERS
-                })
+            larger_samples.iter().any(|(candidate_latitude, candidate_longitude)| {
+                haversine_distance_meters(
+                    *sample_latitude,
+                    *sample_longitude,
+                    *candidate_latitude,
+                    *candidate_longitude,
+                ) <= ACTIVITY_ROUTE_MATCH_TOLERANCE_METERS
+            })
         })
         .count();
 
@@ -327,18 +297,14 @@ fn normalize_sport_token(value: &str) -> String {
 
 fn bucket_duration(value: Option<i32>) -> String {
     match value.filter(|seconds| *seconds > 0) {
-        Some(seconds) => {
-            ((seconds / DURATION_BUCKET_SECONDS) * DURATION_BUCKET_SECONDS).to_string()
-        }
+        Some(seconds) => ((seconds / DURATION_BUCKET_SECONDS) * DURATION_BUCKET_SECONDS).to_string(),
         None => "na".to_string(),
     }
 }
 
 fn bucket_distance(value: Option<f64>, bucket_meters: f64) -> String {
     match value.filter(|meters| *meters > 0.0) {
-        Some(meters) => ((meters / bucket_meters).floor() * bucket_meters)
-            .round()
-            .to_string(),
+        Some(meters) => ((meters / bucket_meters).floor() * bucket_meters).round().to_string(),
         None => "na".to_string(),
     }
 }
@@ -366,10 +332,7 @@ fn format_route_signature(route_points: Vec<&ActivityRoutePoint>) -> String {
         .join("|")
 }
 
-fn sample_route_points(
-    route_points: &[ActivityRoutePoint],
-    max_points: usize,
-) -> Vec<&ActivityRoutePoint> {
+fn sample_route_points(route_points: &[ActivityRoutePoint], max_points: usize) -> Vec<&ActivityRoutePoint> {
     if route_points.len() <= max_points {
         return route_points.iter().collect();
     }
@@ -383,9 +346,7 @@ fn sample_route_points(
             sample_index * (route_points.len() - 1) / (max_points - 1)
         };
 
-        if samples
-            .last()
-            .map(|point: &&ActivityRoutePoint| point.elapsed_seconds)
+        if samples.last().map(|point: &&ActivityRoutePoint| point.elapsed_seconds)
             == Some(route_points[index].elapsed_seconds)
         {
             continue;
@@ -397,10 +358,7 @@ fn sample_route_points(
     samples
 }
 
-fn sampled_route_coordinates(
-    route_points: &[ActivityRoutePoint],
-    max_points: usize,
-) -> Vec<(f64, f64)> {
+fn sampled_route_coordinates(route_points: &[ActivityRoutePoint], max_points: usize) -> Vec<(f64, f64)> {
     sample_route_points(route_points, max_points)
         .into_iter()
         .map(|point| (point.latitude, point.longitude))
@@ -443,8 +401,7 @@ fn interpolated_route_samples(
             0.5
         } else {
             clamped_edge_fraction
-                + (1.0 - (clamped_edge_fraction * 2.0))
-                    * (sample_index as f64 / (max_points - 1) as f64)
+                + (1.0 - (clamped_edge_fraction * 2.0)) * (sample_index as f64 / (max_points - 1) as f64)
         };
         let target_progress = start_progress + (progress_span * sample_fraction);
 
@@ -452,8 +409,7 @@ fn interpolated_route_samples(
             cursor += 1;
         }
 
-        let (latitude, longitude) =
-            interpolated_coordinate(route_points, &progress_values, cursor, target_progress);
+        let (latitude, longitude) = interpolated_coordinate(route_points, &progress_values, cursor, target_progress);
 
         samples.push((latitude, longitude));
     }
@@ -476,23 +432,17 @@ fn interpolated_coordinate(
     let current_progress = progress_values[cursor];
 
     if current_progress <= previous_progress {
-        return (
-            route_points[cursor].latitude,
-            route_points[cursor].longitude,
-        );
+        return (route_points[cursor].latitude, route_points[cursor].longitude);
     }
 
-    let interpolation = ((target_progress - previous_progress)
-        / (current_progress - previous_progress))
-        .clamp(0.0, 1.0);
+    let interpolation =
+        ((target_progress - previous_progress) / (current_progress - previous_progress)).clamp(0.0, 1.0);
     let previous_point = &route_points[previous_index];
     let current_point = &route_points[cursor];
 
     (
-        previous_point.latitude
-            + ((current_point.latitude - previous_point.latitude) * interpolation),
-        previous_point.longitude
-            + ((current_point.longitude - previous_point.longitude) * interpolation),
+        previous_point.latitude + ((current_point.latitude - previous_point.latitude) * interpolation),
+        previous_point.longitude + ((current_point.longitude - previous_point.longitude) * interpolation),
     )
 }
 
@@ -524,19 +474,13 @@ fn route_progress_values(route_points: &[ActivityRoutePoint]) -> Option<Vec<f64>
     Some(progress_values)
 }
 
-pub(crate) fn haversine_distance_meters(
-    latitude_a: f64,
-    longitude_a: f64,
-    latitude_b: f64,
-    longitude_b: f64,
-) -> f64 {
+pub(crate) fn haversine_distance_meters(latitude_a: f64, longitude_a: f64, latitude_b: f64, longitude_b: f64) -> f64 {
     let latitude_a = latitude_a.to_radians();
     let latitude_b = latitude_b.to_radians();
     let delta_latitude = (latitude_b - latitude_a) / 2.0;
     let delta_longitude = (longitude_b.to_radians() - longitude_a.to_radians()) / 2.0;
 
-    let haversine = delta_latitude.sin().powi(2)
-        + latitude_a.cos() * latitude_b.cos() * delta_longitude.sin().powi(2);
+    let haversine = delta_latitude.sin().powi(2) + latitude_a.cos() * latitude_b.cos() * delta_longitude.sin().powi(2);
     let angular_distance = 2.0 * haversine.sqrt().asin();
 
     6_371_000.0 * angular_distance
@@ -638,31 +582,17 @@ mod tests {
         ];
 
         let dense_route = build_route(&anchors, 120, None, None);
-        let sparse_route = build_route(
-            &anchors,
-            90,
-            Some((45.4920, -122.5880)),
-            Some((45.6970, -122.6110)),
-        );
+        let sparse_route = build_route(&anchors, 90, Some((45.4920, -122.5880)), Some((45.6970, -122.6110)));
 
         assert!(activity_routes_match(&dense_route, &sparse_route));
     }
 
     #[test]
     fn activity_routes_match_when_one_source_trims_start_and_end() {
-        let anchors = [
-            (44.7539, -85.6290),
-            (44.7600, -85.6000),
-            (44.7420, -85.5109),
-        ];
+        let anchors = [(44.7539, -85.6290), (44.7600, -85.6000), (44.7420, -85.5109)];
 
         let full_route = build_route(&anchors, 240, None, None);
-        let trimmed_route = build_route(
-            &anchors,
-            180,
-            Some((44.7552, -85.6176)),
-            Some((44.7414, -85.5091)),
-        );
+        let trimmed_route = build_route(&anchors, 180, Some((44.7552, -85.6176)), Some((44.7414, -85.5091)));
 
         assert!(activity_routes_match(&full_route, &trimmed_route));
     }

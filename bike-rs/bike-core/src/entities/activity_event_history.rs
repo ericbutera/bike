@@ -6,9 +6,7 @@ use crate::{
     bike_tasks::{ImportExecution, ImportTarget},
     strava::native::ActivityChange,
 };
-use sea_orm::{
-    entity::prelude::*, sea_query::OnConflict, DatabaseTransaction, QueryOrder, QuerySelect, Set,
-};
+use sea_orm::{entity::prelude::*, sea_query::OnConflict, DatabaseTransaction, QueryOrder, QuerySelect, Set};
 #[cfg(test)]
 mod tests;
 
@@ -147,18 +145,11 @@ impl Model {
     pub async fn import_refresh(
         db: &impl ConnectionTrait,
         execution: &ImportExecution,
-    ) -> Result<
-        Option<crate::activity_reprocessing::RefreshScope>,
-        crate::workflow_error::WorkflowError,
-    > {
-        let Some(event) = Entity::find_by_id(import_event_id(execution))
-            .one(db)
-            .await?
-        else {
+    ) -> Result<Option<crate::activity_reprocessing::RefreshScope>, crate::workflow_error::WorkflowError> {
+        let Some(event) = Entity::find_by_id(import_event_id(execution)).one(db).await? else {
             return Ok(None);
         };
-        let original: ImportExecution =
-            serde_json::from_value(event.context_json.clone()).map_err(json_error)?;
+        let original: ImportExecution = serde_json::from_value(event.context_json.clone()).map_err(json_error)?;
         if !original.matches_request(execution) {
             return Err(crate::workflow_error::WorkflowError::conflict(
                 "Import command already identifies different work",
@@ -216,11 +207,7 @@ impl Model {
         .await
     }
 
-    pub async fn recent(
-        db: &impl ConnectionTrait,
-        user_id: i32,
-        activity_id: i32,
-    ) -> Result<Vec<Self>, DbErr> {
+    pub async fn recent(db: &impl ConnectionTrait, user_id: i32, activity_id: i32) -> Result<Vec<Self>, DbErr> {
         Entity::find()
             .filter(Column::UserId.eq(user_id))
             .filter(Column::ActivityId.eq(activity_id))

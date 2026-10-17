@@ -48,11 +48,7 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(Activities::UserId).integer().not_null())
-                    .col(
-                        ColumnDef::new(Activities::ActivityImportId)
-                            .integer()
-                            .null(),
-                    )
+                    .col(ColumnDef::new(Activities::ActivityImportId).integer().null())
                     .col(ColumnDef::new(Activities::Title).string().not_null())
                     .col(ColumnDef::new(Activities::Sport).string().not_null())
                     .col(ColumnDef::new(Activities::Source).string().not_null())
@@ -63,45 +59,17 @@ impl MigrationTrait for Migration {
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(Activities::EndedAt)
-                            .timestamp_with_time_zone()
-                            .null(),
-                    )
+                    .col(ColumnDef::new(Activities::EndedAt).timestamp_with_time_zone().null())
                     .col(ColumnDef::new(Activities::DistanceMeters).double().null())
-                    .col(
-                        ColumnDef::new(Activities::MovingTimeSeconds)
-                            .integer()
-                            .null(),
-                    )
-                    .col(
-                        ColumnDef::new(Activities::TotalTimeSeconds)
-                            .integer()
-                            .null(),
-                    )
-                    .col(
-                        ColumnDef::new(Activities::ElevationGainMeters)
-                            .double()
-                            .null(),
-                    )
-                    .col(
-                        ColumnDef::new(Activities::ElevationLossMeters)
-                            .double()
-                            .null(),
-                    )
+                    .col(ColumnDef::new(Activities::MovingTimeSeconds).integer().null())
+                    .col(ColumnDef::new(Activities::TotalTimeSeconds).integer().null())
+                    .col(ColumnDef::new(Activities::ElevationGainMeters).double().null())
+                    .col(ColumnDef::new(Activities::ElevationLossMeters).double().null())
                     .col(ColumnDef::new(Activities::AverageSpeedMps).double().null())
                     .col(ColumnDef::new(Activities::MaxSpeedMps).double().null())
-                    .col(
-                        ColumnDef::new(Activities::AverageHeartRateBpm)
-                            .integer()
-                            .null(),
-                    )
+                    .col(ColumnDef::new(Activities::AverageHeartRateBpm).integer().null())
                     .col(ColumnDef::new(Activities::MaxHeartRateBpm).integer().null())
-                    .col(
-                        ColumnDef::new(Activities::AverageCadenceRpm)
-                            .integer()
-                            .null(),
-                    )
+                    .col(ColumnDef::new(Activities::AverageCadenceRpm).integer().null())
                     .col(ColumnDef::new(Activities::MaxCadenceRpm).integer().null())
                     .col(ColumnDef::new(Activities::Calories).integer().null())
                     .col(

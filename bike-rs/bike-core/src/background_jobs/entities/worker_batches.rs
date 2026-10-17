@@ -19,11 +19,7 @@ impl ActiveModelBehavior for ActiveModel {}
 impl Model {
     /// Keyset pages visit every running batch, including those behind batches
     /// whose descendants are still active. IDs are stable across reconciliation.
-    pub async fn running_page(
-        db: &DatabaseConnection,
-        after_id: i32,
-        limit: u64,
-    ) -> Result<Vec<Self>, DbErr> {
+    pub async fn running_page(db: &DatabaseConnection, after_id: i32, limit: u64) -> Result<Vec<Self>, DbErr> {
         use sea_orm::{QueryOrder, QuerySelect};
         Entity::find()
             .filter(Column::Status.eq("running"))
@@ -69,12 +65,7 @@ impl Model {
         .await?;
         Ok(())
     }
-    pub async fn advance_page(
-        &self,
-        db: &impl ConnectionTrait,
-        next: i32,
-        sealed: bool,
-    ) -> Result<(), DbErr> {
+    pub async fn advance_page(&self, db: &impl ConnectionTrait, next: i32, sealed: bool) -> Result<(), DbErr> {
         use sea_orm::{sea_query::Expr, QueryFilter};
         Entity::update_many()
             .col_expr(Column::Cursor, Expr::value(next))

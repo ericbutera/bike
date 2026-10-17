@@ -143,21 +143,14 @@ impl RecordingContext {
         for node in document.descendants().filter(roxmltree::Node::is_element) {
             let name = node.tag_name().name();
             match name {
-                "gpx" => {
-                    context.observe_recorder("gpx.creator", node.attribute("creator").unwrap_or(""))
-                }
+                "gpx" => context.observe_recorder("gpx.creator", node.attribute("creator").unwrap_or("")),
                 "Activity" => context.observe("tcx.Sport", node.attribute("Sport").unwrap_or("")),
                 "Creator" | "Author" => {
                     for value in node.descendants().filter_map(|child| child.text()) {
                         context.observe_recorder(name, value);
                     }
                 }
-                "type"
-                | "SubSport"
-                | "RecordingEnvironment"
-                | "RecordingPlatform"
-                | "tag"
-                | "Tag" => {
+                "type" | "SubSport" | "RecordingEnvironment" | "RecordingPlatform" | "tag" | "Tag" => {
                     context.observe(name, node.text().unwrap_or(""));
                 }
                 "Trainer" | "Indoor" => context.trainer(
@@ -200,11 +193,7 @@ mod tests {
     fn generic_exports_and_false_trainer_flags_cannot_clear_virtual_evidence() {
         let mut context = RecordingContext::default();
         context.observe("file_id.manufacturer", "zwift");
-        context.merge(RecordingContext::legacy(
-            "Ride",
-            "garmin_archive",
-            "Outdoor ride",
-        ));
+        context.merge(RecordingContext::legacy("Ride", "garmin_archive", "Outdoor ride"));
         context.trainer("strava.trainer", false);
         assert_eq!(context.environment, RecordingEnvironment::Virtual);
         assert_eq!(context.platform.as_deref(), Some("zwift"));
@@ -212,13 +201,10 @@ mod tests {
 
     #[test]
     fn real_activity_and_sensor_metadata_do_not_imply_virtual() {
-        let context =
-            RecordingContext::legacy("mountain_bike", "archive_url_import", "Workout outdoors");
+        let context = RecordingContext::legacy("mountain_bike", "archive_url_import", "Workout outdoors");
         assert!(!context.excluded());
-        let document = roxmltree::Document::parse(
-            "<gpx creator='Garmin'><trk><type>cycling</type></trk></gpx>",
-        )
-        .unwrap();
+        let document =
+            roxmltree::Document::parse("<gpx creator='Garmin'><trk><type>cycling</type></trk></gpx>").unwrap();
         assert!(!RecordingContext::from_xml(&document).excluded());
     }
 

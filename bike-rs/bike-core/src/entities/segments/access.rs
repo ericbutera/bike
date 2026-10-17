@@ -43,9 +43,7 @@ impl Model {
             .column(Column::RouteDataJson)
             .filter(Column::UserId.eq(user_id));
 
-        if let Some((minimum_distance, maximum_distance)) =
-            segment_dedupe_distance_bucket(distance_meters)
-        {
+        if let Some((minimum_distance, maximum_distance)) = segment_dedupe_distance_bucket(distance_meters) {
             candidate_query = candidate_query
                 .filter(Column::DistanceMeters.gte(minimum_distance))
                 .filter(Column::DistanceMeters.lt(maximum_distance));
@@ -59,8 +57,7 @@ impl Model {
             .await?;
 
         for segment in candidates {
-            let candidate_route_points =
-                deserialize_segment_route_points(segment.route_data_json.as_ref());
+            let candidate_route_points = deserialize_segment_route_points(segment.route_data_json.as_ref());
             if segment_dedupe_key(segment.distance_meters, &candidate_route_points).as_deref()
                 == Some(target_key.as_str())
             {
@@ -70,10 +67,7 @@ impl Model {
 
         Ok(None)
     }
-    pub async fn list_for_user(
-        db: &impl ConnectionTrait,
-        user_id: i32,
-    ) -> Result<Vec<SegmentListRow>, DbErr> {
+    pub async fn list_for_user(db: &impl ConnectionTrait, user_id: i32) -> Result<Vec<SegmentListRow>, DbErr> {
         Entity::find()
             .select_only()
             .column(Column::Id)
@@ -97,8 +91,8 @@ impl Model {
 }
 fn segment_dedupe_distance_bucket(distance_meters: Option<f64>) -> Option<(f64, f64)> {
     let distance_meters = distance_meters.filter(|value| value.is_finite() && *value > 0.0)?;
-    let minimum = (distance_meters / SEGMENT_DEDUPE_DISTANCE_BUCKET_METERS).floor()
-        * SEGMENT_DEDUPE_DISTANCE_BUCKET_METERS;
+    let minimum =
+        (distance_meters / SEGMENT_DEDUPE_DISTANCE_BUCKET_METERS).floor() * SEGMENT_DEDUPE_DISTANCE_BUCKET_METERS;
 
     Some((minimum, minimum + SEGMENT_DEDUPE_DISTANCE_BUCKET_METERS))
 }

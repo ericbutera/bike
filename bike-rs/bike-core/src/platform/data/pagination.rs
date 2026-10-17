@@ -7,16 +7,10 @@ use utoipa::{IntoParams, ToSchema};
 pub struct PaginationParams {
     /// Page number (1-based)
     #[into_params(parameter(inline))]
-    #[serde(
-        default = "default_page",
-        deserialize_with = "deserialize_number_from_string"
-    )]
+    #[serde(default = "default_page", deserialize_with = "deserialize_number_from_string")]
     pub page: i64,
     /// Number of items per page
-    #[serde(
-        default = "default_per_page",
-        deserialize_with = "deserialize_number_from_string"
-    )]
+    #[serde(default = "default_per_page", deserialize_with = "deserialize_number_from_string")]
     pub per_page: i64,
 }
 
@@ -47,10 +41,7 @@ where
 
 impl Default for PaginationParams {
     fn default() -> Self {
-        Self {
-            page: 1,
-            per_page: 20,
-        }
+        Self { page: 1, per_page: 20 }
     }
 }
 

@@ -3,8 +3,8 @@ use super::background_tasks::{self, Column, Entity, Model};
 use chrono::{DateTime, Utc};
 use sea_orm::{
     sea_query::{Alias, Expr, Func},
-    ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, ExprTrait, FromQueryResult,
-    QueryFilter, QuerySelect,
+    ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, ExprTrait, FromQueryResult, QueryFilter,
+    QuerySelect,
 };
 
 #[derive(FromQueryResult)]
@@ -24,15 +24,10 @@ impl Model {
         let now = Utc::now();
         let state = Expr::case(Column::Status.eq("processing"), "running")
             .case(
-                Column::Status
-                    .eq("pending")
-                    .and(Column::ScheduledFor.gt(now)),
+                Column::Status.eq("pending").and(Column::ScheduledFor.gt(now)),
                 "scheduled",
             )
-            .case(
-                Column::Status.eq("pending").and(Column::Attempts.gt(0)),
-                "retrying",
-            )
+            .case(Column::Status.eq("pending").and(Column::Attempts.gt(0)), "retrying")
             .case(Column::Status.eq("pending"), "queued")
             .finally(Expr::col(Column::Status));
         Entity::find()
@@ -62,10 +57,7 @@ impl Model {
         Entity::find()
             .select_only()
             .column(Column::TaskType)
-            .column_as(
-                sea_orm::sea_query::SimpleExpr::from(Func::min(eligible)),
-                "eligible_at",
-            )
+            .column_as(sea_orm::sea_query::SimpleExpr::from(Func::min(eligible)), "eligible_at")
             .filter(Column::Status.eq("pending"))
             .filter(Expr::col(Column::Attempts).lt(Expr::col(Column::MaxAttempts)))
             .filter(

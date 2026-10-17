@@ -4,8 +4,8 @@ use crate::background_jobs::{
     execution::{measured, WorkCounts, WorkScope},
 };
 use crate::entities::{
-    activities, activity_analytics, analytics_user_states, fitness_freshness_daily,
-    segment_efforts, segment_summaries, segment_user_summaries, segments,
+    activities, activity_analytics, analytics_user_states, fitness_freshness_daily, segment_efforts, segment_summaries,
+    segment_user_summaries, segments,
 };
 use crate::training_data::{
     deserialize_activity_heart_rate_zones, weighted_zone_intensity, StoredActivityHeartRateZones,
@@ -85,10 +85,7 @@ impl ActivityTrainingLoadRowExt for activities::ActivityTrainingLoadRow {
     }
 }
 
-pub fn default_fitness_rebuild_start_date(
-    activities: &[activities::Model],
-    end_date: NaiveDate,
-) -> NaiveDate {
+pub fn default_fitness_rebuild_start_date(activities: &[activities::Model], end_date: NaiveDate) -> NaiveDate {
     activities
         .first()
         .map(|activity| activity.started_at.date_naive())
@@ -112,8 +109,7 @@ pub fn build_fitness_freshness_rows_with_seed(
 ) -> Vec<FitnessFreshnessDay> {
     build_fitness_freshness_rows_from_loads(
         activities.iter().filter_map(|activity| {
-            estimated_training_load(activity)
-                .map(|training_load| (activity.started_at.date_naive(), training_load))
+            estimated_training_load(activity).map(|training_load| (activity.started_at.date_naive(), training_load))
         }),
         start_date,
         end_date,
@@ -143,10 +139,7 @@ fn build_fitness_freshness_rows_from_loads(
     let mut rows = Vec::new();
 
     while current_date <= end_date {
-        let (activity_count, training_load) = daily_load_by_date
-            .get(&current_date)
-            .copied()
-            .unwrap_or((0, 0.0));
+        let (activity_count, training_load) = daily_load_by_date.get(&current_date).copied().unwrap_or((0, 0.0));
         fitness += (training_load - fitness) / FITNESS_WINDOW_DAYS;
         fatigue += (training_load - fatigue) / FATIGUE_WINDOW_DAYS;
         let form = fitness - fatigue;
@@ -186,25 +179,15 @@ fn estimated_training_load_from_fields(
     max_heart_rate_bpm: Option<i32>,
     heart_rate_zones_json: Option<&StoredActivityHeartRateZones>,
 ) -> Option<f64> {
-    let duration_seconds = moving_time_seconds
-        .or(total_time_seconds)
-        .filter(|value| *value > 0)?;
+    let duration_seconds = moving_time_seconds.or(total_time_seconds).filter(|value| *value > 0)?;
     let duration_hours = f64::from(duration_seconds) / 3600.0;
-    let heart_rate_ratio = weighted_zone_intensity(&deserialize_activity_heart_rate_zones(
-        heart_rate_zones_json,
-    ))
-    .unwrap_or_else(|| {
-        estimated_heart_rate_ratio_from_fields(average_heart_rate_bpm, max_heart_rate_bpm)
-    });
+    let heart_rate_ratio = weighted_zone_intensity(&deserialize_activity_heart_rate_zones(heart_rate_zones_json))
+        .unwrap_or_else(|| estimated_heart_rate_ratio_from_fields(average_heart_rate_bpm, max_heart_rate_bpm));
 
     Some(duration_hours * 100.0 * heart_rate_ratio.powi(2))
 }
 
-pub async fn mark_user_activity_change<C>(
-    db: &C,
-    user_id: i32,
-    changed_at: DateTime<Utc>,
-) -> Result<(), sea_orm::DbErr>
+pub async fn mark_user_activity_change<C>(db: &C, user_id: i32, changed_at: DateTime<Utc>) -> Result<(), sea_orm::DbErr>
 where
     C: ConnectionTrait,
 {
@@ -277,10 +260,7 @@ where
 }
 
 #[tracing::instrument(name = "fitness.rebuild", skip_all, fields(bike.operation = "fitness.rebuild", user_id, activity_count = tracing::field::Empty, day_count = tracing::field::Empty))]
-pub async fn rebuild_fitness_freshness_cache(
-    db: &DatabaseConnection,
-    user_id: i32,
-) -> Result<(), sea_orm::DbErr> {
+pub async fn rebuild_fitness_freshness_cache(db: &DatabaseConnection, user_id: i32) -> Result<(), sea_orm::DbErr> {
     let end_date = Utc::now().date_naive();
     let input = load_fitness_freshness_rebuild_input(db, user_id, end_date).await?;
     let span = tracing::Span::current();
@@ -312,11 +292,9 @@ pub async fn rebuild_fitness_freshness_cache(
         let units_computed = rows.len() as u64;
         let rebuilt_at = Utc::now();
         let txn = db.begin().await?;
-        let published =
-            persist_fitness_freshness_rebuild(&txn, user_id, input, rows, rebuilt_at).await?;
+        let published = persist_fitness_freshness_rebuild(&txn, user_id, input, rows, rebuilt_at).await?;
         if published {
-            pipeline_outputs::Model::publish(&txn, "fitness", user_id, &revision, rebuilt_at)
-                .await?;
+            pipeline_outputs::Model::publish(&txn, "fitness", user_id, &revision, rebuilt_at).await?;
         }
         txn.commit().await?;
         Ok((
@@ -352,12 +330,8 @@ async fn load_fitness_freshness_rebuild_input(
     end_date: NaiveDate,
 ) -> Result<FitnessFreshnessRebuildInput, sea_orm::DbErr> {
     let state = analytics_user_states::Model::for_user(db, user_id).await?;
-    let dirty_from_day = state
-        .as_ref()
-        .and_then(|state| state.fitness_dirty_from_day);
-    let activity_rows =
-        activities::Model::list_training_loads_for_fitness_rebuild(db, user_id, dirty_from_day)
-            .await?;
+    let dirty_from_day = state.as_ref().and_then(|state| state.fitness_dirty_from_day);
+    let activity_rows = activities::Model::list_training_loads_for_fitness_rebuild(db, user_id, dirty_from_day).await?;
     let checkpoint_row = match dirty_from_day {
         Some(rebuild_from_day) => {
             fitness_freshness_daily::Model::latest_before_day(db, user_id, rebuild_from_day).await?
@@ -381,9 +355,7 @@ async fn load_fitness_freshness_rebuild_input(
     })
 }
 
-fn build_fitness_freshness_rows_for_rebuild(
-    input: &FitnessFreshnessRebuildInput,
-) -> Vec<FitnessFreshnessDay> {
+fn build_fitness_freshness_rows_for_rebuild(input: &FitnessFreshnessRebuildInput) -> Vec<FitnessFreshnessDay> {
     build_fitness_freshness_rows_from_loads(
         input.activity_rows.iter().filter_map(|activity| {
             activity
@@ -392,16 +364,8 @@ fn build_fitness_freshness_rows_for_rebuild(
         }),
         input.start_date,
         input.end_date,
-        input
-            .checkpoint_row
-            .as_ref()
-            .map(|row| row.fitness)
-            .unwrap_or(0.0),
-        input
-            .checkpoint_row
-            .as_ref()
-            .map(|row| row.fatigue)
-            .unwrap_or(0.0),
+        input.checkpoint_row.as_ref().map(|row| row.fitness).unwrap_or(0.0),
+        input.checkpoint_row.as_ref().map(|row| row.fatigue).unwrap_or(0.0),
     )
 }
 
@@ -415,26 +379,15 @@ async fn persist_fitness_freshness_rebuild<C>(
 where
     C: ConnectionTrait,
 {
-    if !analytics_user_states::Model::complete_rebuild(db, user_id, input.state, rebuilt_at).await?
-    {
+    if !analytics_user_states::Model::complete_rebuild(db, user_id, input.state, rebuilt_at).await? {
         return Ok(false);
     }
-    fitness_freshness_daily::Model::replace_days(
-        db,
-        user_id,
-        input.dirty_from_day,
-        rows,
-        rebuilt_at,
-    )
-    .await?;
+    fitness_freshness_daily::Model::replace_days(db, user_id, input.dirty_from_day, rows, rebuilt_at).await?;
     Ok(true)
 }
 
 #[tracing::instrument(name = "segments.rebuild", skip_all, fields(bike.operation = "segments.rebuild", segment_count = segment_ids.len() as i64))]
-pub async fn rebuild_segment_analytics_cache<C>(
-    db: &C,
-    segment_ids: &[i32],
-) -> Result<(), sea_orm::DbErr>
+pub async fn rebuild_segment_analytics_cache<C>(db: &C, segment_ids: &[i32]) -> Result<(), sea_orm::DbErr>
 where
     C: ConnectionTrait + TransactionTrait,
 {
@@ -451,10 +404,7 @@ where
     let Some(segment) = segments::Model::find_by_id(db, id).await? else {
         return Ok(());
     };
-    let revision = segment
-        .last_activity_change_at
-        .timestamp_micros()
-        .to_string();
+    let revision = segment.last_activity_change_at.timestamp_micros().to_string();
     pipeline_outputs::Model::require(db, "segments", id, revision.clone()).await?;
     measured(
         db,
@@ -468,8 +418,7 @@ where
         async {
             let input = load_segment_analytics_input(db, &[id]).await?;
             let activity_ids = input.activity_ids.clone();
-            let read =
-                1 + input.efforts.len() as u64 + input.activity_started_at_by_id.len() as u64;
+            let read = 1 + input.efforts.len() as u64 + input.activity_started_at_by_id.len() as u64;
             let computed = input.efforts.len() as u64;
             let rebuild = build_segment_analytics(input);
             let txn = db.begin().await?;
@@ -527,10 +476,7 @@ struct SegmentAnalyticsRebuild {
     effort_updates: Vec<SegmentEffortRankUpdate>,
 }
 
-async fn load_segment_analytics_input<C>(
-    db: &C,
-    segment_ids: &[i32],
-) -> Result<SegmentAnalyticsInput, sea_orm::DbErr>
+async fn load_segment_analytics_input<C>(db: &C, segment_ids: &[i32]) -> Result<SegmentAnalyticsInput, sea_orm::DbErr>
 where
     C: ConnectionTrait,
 {
@@ -584,10 +530,7 @@ fn apply_segment_effort_to_rebuild(
     user_rank: i32,
 ) {
     update_segment_summary(
-        rebuild
-            .segment_summary_by_id
-            .entry(effort.segment_id)
-            .or_default(),
+        rebuild.segment_summary_by_id.entry(effort.segment_id).or_default(),
         &effort,
         activity_started_at_by_id.get(&effort.activity_id).copied(),
     );
@@ -632,10 +575,7 @@ fn update_segment_summary(
     summary.latest_effort_id = Some(effort.id);
 }
 
-fn update_segment_user_summary(
-    summary: &mut SegmentUserSummaryAccumulator,
-    effort: &segment_efforts::Model,
-) {
+fn update_segment_user_summary(summary: &mut SegmentUserSummaryAccumulator, effort: &segment_efforts::Model) {
     summary.effort_count += 1;
     if summary.personal_best_duration_seconds.is_none() {
         summary.personal_best_duration_seconds = Some(effort.duration_seconds);
@@ -665,10 +605,7 @@ where
     }
 
     for segment_id in segment_ids.iter().copied() {
-        let summary = rebuild
-            .segment_summary_by_id
-            .remove(&segment_id)
-            .unwrap_or_default();
+        let summary = rebuild.segment_summary_by_id.remove(&segment_id).unwrap_or_default();
 
         segment_summaries::Model::store_summary(db, segment_id, summary).await?;
     }
@@ -680,10 +617,7 @@ where
     Ok(written)
 }
 
-async fn update_segment_effort_ranks<C>(
-    db: &C,
-    update: SegmentEffortRankUpdate,
-) -> Result<(), sea_orm::DbErr>
+async fn update_segment_effort_ranks<C>(db: &C, update: SegmentEffortRankUpdate) -> Result<(), sea_orm::DbErr>
 where
     C: ConnectionTrait,
 {
@@ -695,10 +629,7 @@ where
 }
 
 #[tracing::instrument(name = "achievements.rebuild", skip_all, fields(bike.operation = "achievements.rebuild", activity_count = activity_ids.len() as i64))]
-pub async fn rebuild_activity_analytics_cache<C>(
-    db: &C,
-    activity_ids: &[i32],
-) -> Result<(), sea_orm::DbErr>
+pub async fn rebuild_activity_analytics_cache<C>(db: &C, activity_ids: &[i32]) -> Result<(), sea_orm::DbErr>
 where
     C: ConnectionTrait + TransactionTrait,
 {
@@ -742,9 +673,7 @@ where
     })
 }
 
-fn build_activity_analytics(
-    input: ActivityAnalyticsInput,
-) -> HashMap<i32, ActivityAnalyticsAccumulator> {
+fn build_activity_analytics(input: ActivityAnalyticsInput) -> HashMap<i32, ActivityAnalyticsAccumulator> {
     let mut analytics_by_activity_id = HashMap::<i32, ActivityAnalyticsAccumulator>::new();
 
     for effort in input.efforts {
@@ -765,9 +694,7 @@ fn apply_effort_to_activity_analytics(
     personal_best_by_key: &HashMap<(i32, i32), Option<i32>>,
     effort: segment_efforts::Model,
 ) {
-    let analytics = analytics_by_activity_id
-        .entry(effort.activity_id)
-        .or_default();
+    let analytics = analytics_by_activity_id.entry(effort.activity_id).or_default();
     analytics.user_id = Some(effort.user_id);
     analytics.segment_effort_count += 1;
 
@@ -777,19 +704,14 @@ fn apply_effort_to_activity_analytics(
 
     analytics.achievement_count += 1;
     apply_achievement_count(analytics, kind);
-    analytics
-        .achievement_highlights
-        .push(activity_achievement_highlight(
-            &effort,
-            segment_title_by_id,
-            personal_best_by_key,
-        ));
+    analytics.achievement_highlights.push(activity_achievement_highlight(
+        &effort,
+        segment_title_by_id,
+        personal_best_by_key,
+    ));
 }
 
-fn apply_achievement_count(
-    analytics: &mut ActivityAnalyticsAccumulator,
-    kind: ActivityAchievementKind,
-) {
+fn apply_achievement_count(analytics: &mut ActivityAnalyticsAccumulator, kind: ActivityAchievementKind) {
     match kind {
         ActivityAchievementKind::Kom => analytics.kom_count += 1,
         ActivityAchievementKind::Top10 => analytics.top_10_count += 1,
@@ -819,10 +741,7 @@ fn activity_achievement_highlight(
     }
 }
 
-async fn segment_titles_by_id<C>(
-    db: &C,
-    segment_ids: &[i32],
-) -> Result<HashMap<i32, String>, sea_orm::DbErr>
+async fn segment_titles_by_id<C>(db: &C, segment_ids: &[i32]) -> Result<HashMap<i32, String>, sea_orm::DbErr>
 where
     C: ConnectionTrait,
 {
@@ -863,33 +782,21 @@ fn normalized_positive_ids(ids: &[i32]) -> Vec<i32> {
 }
 
 fn unique_effort_activity_ids(efforts: &[segment_efforts::Model]) -> Vec<i32> {
-    let ids = efforts
-        .iter()
-        .map(|effort| effort.activity_id)
-        .collect::<Vec<_>>();
+    let ids = efforts.iter().map(|effort| effort.activity_id).collect::<Vec<_>>();
     normalized_positive_ids(&ids)
 }
 
 fn unique_effort_segment_ids(efforts: &[segment_efforts::Model]) -> Vec<i32> {
-    let ids = efforts
-        .iter()
-        .map(|effort| effort.segment_id)
-        .collect::<Vec<_>>();
+    let ids = efforts.iter().map(|effort| effort.segment_id).collect::<Vec<_>>();
     normalized_positive_ids(&ids)
 }
 
 fn unique_effort_user_ids(efforts: &[segment_efforts::Model]) -> Vec<i32> {
-    let ids = efforts
-        .iter()
-        .map(|effort| effort.user_id)
-        .collect::<Vec<_>>();
+    let ids = efforts.iter().map(|effort| effort.user_id).collect::<Vec<_>>();
     normalized_positive_ids(&ids)
 }
 
-fn activity_achievement_kind(
-    overall_rank: Option<i32>,
-    personal_rank: Option<i32>,
-) -> Option<ActivityAchievementKind> {
+fn activity_achievement_kind(overall_rank: Option<i32>, personal_rank: Option<i32>) -> Option<ActivityAchievementKind> {
     if overall_rank == Some(1) {
         return Some(ActivityAchievementKind::Kom);
     }
@@ -909,14 +816,9 @@ fn activity_achievement_kind(
     None
 }
 
-fn estimated_heart_rate_ratio_from_fields(
-    average_heart_rate_bpm: Option<i32>,
-    max_heart_rate_bpm: Option<i32>,
-) -> f64 {
+fn estimated_heart_rate_ratio_from_fields(average_heart_rate_bpm: Option<i32>, max_heart_rate_bpm: Option<i32>) -> f64 {
     match (average_heart_rate_bpm, max_heart_rate_bpm) {
-        (Some(average), Some(maximum)) if maximum > 0 => {
-            (f64::from(average) / f64::from(maximum)).clamp(0.35, 1.0)
-        }
+        (Some(average), Some(maximum)) if maximum > 0 => (f64::from(average) / f64::from(maximum)).clamp(0.35, 1.0),
         (Some(average), _) => (f64::from(average) / 190.0).clamp(0.35, 1.0),
         _ => DEFAULT_HEART_RATE_RATIO,
     }
@@ -936,9 +838,7 @@ mod tests {
         average_heart_rate_bpm: Option<i32>,
         max_heart_rate_bpm: Option<i32>,
     ) -> activities::Model {
-        let timestamp = DateTime::parse_from_rfc3339(started_at)
-            .unwrap()
-            .with_timezone(&Utc);
+        let timestamp = DateTime::parse_from_rfc3339(started_at).unwrap().with_timezone(&Utc);
 
         activities::Model {
             id,

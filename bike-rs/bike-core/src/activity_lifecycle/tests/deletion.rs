@@ -79,9 +79,7 @@ async fn deletion_retains_shared_imports_and_counts_only_the_owners_references()
     let log = statements(db);
     assert_eq!(log.len(), 6);
     assert!(log[5].sql.contains("\"activities\".\"user_id\" = $1"));
-    assert!(log[5]
-        .sql
-        .contains("\"activities\".\"activity_import_id\" = $2"));
+    assert!(log[5].sql.contains("\"activities\".\"activity_import_id\" = $2"));
     assert_eq!(log[5].values, Some(Values(vec![42.into(), 1042.into()])));
 }
 

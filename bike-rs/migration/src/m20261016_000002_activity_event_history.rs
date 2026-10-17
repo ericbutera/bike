@@ -10,12 +10,7 @@ impl MigrationTrait for Migration {
             .create_table(
                 Table::create()
                     .table(Alias::new("activity_event_history"))
-                    .col(
-                        ColumnDef::new(Alias::new("id"))
-                            .text()
-                            .not_null()
-                            .primary_key(),
-                    )
+                    .col(ColumnDef::new(Alias::new("id")).text().not_null().primary_key())
                     .col(ColumnDef::new(Alias::new("activity_id")).integer())
                     .col(ColumnDef::new(Alias::new("user_id")).integer().not_null())
                     .col(ColumnDef::new(Alias::new("source")).string().not_null())
@@ -31,11 +26,7 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(Alias::new("before_json")).json_binary())
                     .col(ColumnDef::new(Alias::new("after_json")).json_binary())
-                    .col(
-                        ColumnDef::new(Alias::new("context_json"))
-                            .json_binary()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Alias::new("context_json")).json_binary().not_null())
                     .to_owned(),
             )
             .await?;
@@ -54,11 +45,7 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(
-                Table::drop()
-                    .table(Alias::new("activity_event_history"))
-                    .to_owned(),
-            )
+            .drop_table(Table::drop().table(Alias::new("activity_event_history")).to_owned())
             .await
     }
 }

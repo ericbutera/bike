@@ -39,17 +39,8 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(ApiClients::ClientId)
-                            .uuid()
-                            .not_null()
-                            .unique_key(),
-                    )
-                    .col(
-                        ColumnDef::new(ApiClients::ClientSecretHash)
-                            .string()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(ApiClients::ClientId).uuid().not_null().unique_key())
+                    .col(ColumnDef::new(ApiClients::ClientSecretHash).string().not_null())
                     .col(ColumnDef::new(ApiClients::Name).string().not_null())
                     .col(ColumnDef::new(ApiClients::Description).text().null())
                     .col(ColumnDef::new(ApiClients::Scopes).json_binary().not_null())
@@ -60,16 +51,8 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(Expr::cust("CURRENT_TIMESTAMP")),
                     )
-                    .col(
-                        ColumnDef::new(ApiClients::LastUsedAt)
-                            .timestamp_with_time_zone()
-                            .null(),
-                    )
-                    .col(
-                        ColumnDef::new(ApiClients::RevokedAt)
-                            .timestamp_with_time_zone()
-                            .null(),
-                    )
+                    .col(ColumnDef::new(ApiClients::LastUsedAt).timestamp_with_time_zone().null())
+                    .col(ColumnDef::new(ApiClients::RevokedAt).timestamp_with_time_zone().null())
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_api_clients_owner_user")

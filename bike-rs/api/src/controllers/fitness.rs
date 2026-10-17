@@ -2,9 +2,7 @@ use crate::app_error::{ApiErrorResponse, AppError};
 use crate::storage::AppStorage;
 use axum::extract::{Query, State};
 use axum::Json;
-use bike_core::analytics::{
-    rebuild_fitness_freshness_cache, FATIGUE_WINDOW_DAYS, FITNESS_WINDOW_DAYS,
-};
+use bike_core::analytics::{rebuild_fitness_freshness_cache, FATIGUE_WINDOW_DAYS, FITNESS_WINDOW_DAYS};
 use bike_core::auth::UserContext;
 use bike_core::entities::{analytics_user_states, fitness_freshness_daily};
 use chrono::{Duration, NaiveDate, Utc};
@@ -87,8 +85,7 @@ pub async fn get_fitness_freshness(
         ));
     }
 
-    let cached_rows =
-        load_cached_rows_for_request(&state.db, user.id, requested_start_date, end_date).await?;
+    let cached_rows = load_cached_rows_for_request(&state.db, user.id, requested_start_date, end_date).await?;
 
     let start_date = requested_start_date
         .or_else(|| cached_rows.first().map(|row| row.day))
@@ -113,12 +110,7 @@ async fn load_cached_rows_for_request(
     let cached_rows = load_cached_rows(db, user_id, requested_start_date, end_date).await?;
     let freshness_state = analytics_user_states::Model::for_user(db, user_id).await?;
 
-    if cache_is_usable(
-        &cached_rows,
-        freshness_state.as_ref(),
-        requested_start_date,
-        end_date,
-    ) {
+    if cache_is_usable(&cached_rows, freshness_state.as_ref(), requested_start_date, end_date) {
         return Ok(cached_rows);
     }
 

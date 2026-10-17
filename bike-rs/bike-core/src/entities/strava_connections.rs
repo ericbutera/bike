@@ -22,8 +22,7 @@ impl Model {
         let cursor = connection.last_synced_activity_started_at;
         let mut active: ActiveModel = connection.into();
         if result.event.operation == crate::strava::events::StravaOperation::Sync {
-            active.last_synced_activity_started_at =
-                Set(cursor.into_iter().chain(result.last_started_at).max());
+            active.last_synced_activity_started_at = Set(cursor.into_iter().chain(result.last_started_at).max());
         }
         active.last_sync_status = Set("succeeded".into());
         active.last_sync_finished_at = Set(Some(Utc::now()));
@@ -60,9 +59,9 @@ impl Model {
         db: &impl ConnectionTrait,
         event: &crate::strava::events::StravaEvent,
     ) -> Result<Self, crate::workflow_error::WorkflowError> {
-        let connection = Self::load(db, event.connection_id).await?.ok_or_else(|| {
-            crate::workflow_error::WorkflowError::not_found("Strava connection no longer exists")
-        })?;
+        let connection = Self::load(db, event.connection_id)
+            .await?
+            .ok_or_else(|| crate::workflow_error::WorkflowError::not_found("Strava connection no longer exists"))?;
         event.validate_connection(&connection)?;
         Ok(connection)
     }
@@ -76,23 +75,15 @@ impl Model {
             .lock_exclusive()
             .one(db)
             .await?
-            .ok_or(DbErr::RecordNotFound(
-                "Strava connection was removed".into(),
-            ))?;
+            .ok_or(DbErr::RecordNotFound("Strava connection was removed".into()))?;
         event
             .validate_connection(&connection)
             .map_err(|error| DbErr::Custom(error.to_string()))?;
         Ok(connection)
     }
 
-    pub async fn for_athlete(
-        db: &impl ConnectionTrait,
-        athlete_id: i64,
-    ) -> Result<Option<Self>, DbErr> {
-        Entity::find()
-            .filter(Column::AthleteId.eq(athlete_id))
-            .one(db)
-            .await
+    pub async fn for_athlete(db: &impl ConnectionTrait, athlete_id: i64) -> Result<Option<Self>, DbErr> {
+        Entity::find().filter(Column::AthleteId.eq(athlete_id)).one(db).await
     }
     pub async fn all_connected(db: &impl ConnectionTrait) -> Result<Vec<Self>, DbErr> {
         Entity::find().all(db).await
@@ -157,16 +148,10 @@ impl Model {
 
 impl Model {
     pub async fn for_user(db: &impl ConnectionTrait, user_id: i32) -> Result<Option<Self>, DbErr> {
-        Entity::find()
-            .filter(Column::UserId.eq(user_id))
-            .one(db)
-            .await
+        Entity::find().filter(Column::UserId.eq(user_id)).one(db).await
     }
     pub async fn remove(&self, db: &impl ConnectionTrait) -> Result<(), DbErr> {
-        Entity::delete_many()
-            .filter(Column::Id.eq(self.id))
-            .exec(db)
-            .await?;
+        Entity::delete_many().filter(Column::Id.eq(self.id)).exec(db).await?;
         Ok(())
     }
 }

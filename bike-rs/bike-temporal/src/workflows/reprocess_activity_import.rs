@@ -13,10 +13,7 @@ pub struct ReprocessActivityImport;
 #[workflow_methods]
 impl ReprocessActivityImport {
     #[run(name = "reprocess_activity_import")]
-    pub async fn run(
-        ctx: &mut WorkflowContext<Self>,
-        input: ReprocessInput,
-    ) -> WorkflowResult<ActivityImportResult> {
+    pub async fn run(ctx: &mut WorkflowContext<Self>, input: ReprocessInput) -> WorkflowResult<ActivityImportResult> {
         let boundary = CommitBoundary::begin(ctx)?;
         let imported = imports::activity_import(&boundary, input.into_command()).await?;
         derived::refresh_import_outputs(&boundary, &imported).await?;

@@ -13,10 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let begin = Instant::now();
     let chunks = geometry::prepare(&route);
     let projection_ms = begin.elapsed().as_secs_f64() * 1000.0;
-    let center = geometry::project(
-        route[route.len() / 2].longitude,
-        route[route.len() / 2].latitude,
-    );
+    let center = geometry::project(route[route.len() / 2].longitude, route[route.len() / 2].latitude);
     for zoom in [7, 14] {
         let tile = Tile {
             z: zoom,
@@ -26,10 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let begin = Instant::now();
         let mut raster = Raster::new(tile);
         for _ in 0..25 {
-            for chunk in chunks
-                .iter()
-                .filter(|c| c.band == geometry::zoom_band(zoom))
-            {
+            for chunk in chunks.iter().filter(|c| c.band == geometry::zoom_band(zoom)) {
                 raster.add_chunk(&geometry::decode(&chunk.points).unwrap());
             }
             raster.finish_activity();

@@ -40,11 +40,7 @@ impl TaskProcessor for EmailNotification {
         JobType::EmailNotification.as_str()
     }
 
-    async fn process(
-        &self,
-        task_id: i32,
-        payload: serde_json::Value,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+    async fn process(&self, task_id: i32, payload: serde_json::Value) -> Result<(), Box<dyn Error + Send + Sync>> {
         let data = payload.get("data").unwrap_or(&payload);
         let task: EmailNotificationTask = serde_json::from_value(data.clone())?;
 

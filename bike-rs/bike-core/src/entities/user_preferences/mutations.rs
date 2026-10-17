@@ -1,7 +1,6 @@
 use super::{ActiveModel, Model};
 use crate::training_profile::{
-    serialize_heart_rate_zone_bounds, validate_estimated_ftp_watts,
-    validate_heart_rate_zone_bounds_bpm,
+    serialize_heart_rate_zone_bounds, validate_estimated_ftp_watts, validate_heart_rate_zone_bounds_bpm,
 };
 use crate::workflow_error::WorkflowError;
 use chrono::{DateTime, NaiveDate, Utc};
@@ -131,10 +130,7 @@ impl Model {
         } else {
             active.insert(db).await?
         };
-        Ok(SavedPreferences {
-            model,
-            goal_backfill,
-        })
+        Ok(SavedPreferences { model, goal_backfill })
     }
 
     pub async fn set_goal_backfill(
@@ -206,8 +202,7 @@ fn validate_xc_goal(
         "XC goal climbing target must be 25,000 feet or less",
     )?;
     let event_name = validate_optional_event_name(event_name)?;
-    let target_finish_time_seconds =
-        validate_target_finish_time_seconds(target_finish_time_seconds)?;
+    let target_finish_time_seconds = validate_target_finish_time_seconds(target_finish_time_seconds)?;
     let event_profile = validate_event_profile(event_profile)?;
 
     let field_count = [
@@ -315,9 +310,8 @@ fn validate_metric_range(
 }
 
 fn parse_goal_date(field: &str, label: &str, value: &str) -> Result<NaiveDate, WorkflowError> {
-    NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|_| {
-        WorkflowError::validation_field(field, format!("{label} must use YYYY-MM-DD format"))
-    })
+    NaiveDate::parse_from_str(value, "%Y-%m-%d")
+        .map_err(|_| WorkflowError::validation_field(field, format!("{label} must use YYYY-MM-DD format")))
 }
 
 #[cfg(test)]
@@ -335,10 +329,7 @@ mod tests {
         let error = validate_unit_system("nautical").unwrap_err();
 
         assert_eq!(error.status, StatusCode::BAD_REQUEST);
-        assert_eq!(
-            error.message,
-            "Unit system must be metric, imperial, or mixed"
-        );
+        assert_eq!(error.message, "Unit system must be metric, imperial, or mixed");
     }
     #[test]
     fn validate_xc_goal_requires_complete_payload() {
@@ -373,10 +364,7 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(error.status, StatusCode::BAD_REQUEST);
-        assert_eq!(
-            error.message,
-            "XC goal target date must use YYYY-MM-DD format"
-        );
+        assert_eq!(error.message, "XC goal target date must use YYYY-MM-DD format");
     }
     #[test]
     fn validate_xc_goal_rejects_start_date_after_target_date() {
@@ -392,10 +380,7 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(error.status, StatusCode::BAD_REQUEST);
-        assert_eq!(
-            error.message,
-            "XC goal start date must be on or before the target date"
-        );
+        assert_eq!(error.message, "XC goal start date must be on or before the target date");
     }
     #[test]
     fn validate_xc_goal_rejects_target_distance_above_guardrail() {
@@ -411,10 +396,7 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(error.status, StatusCode::BAD_REQUEST);
-        assert_eq!(
-            error.message,
-            "XC goal target distance must be 500 miles or less"
-        );
+        assert_eq!(error.message, "XC goal target distance must be 500 miles or less");
     }
     #[test]
     fn validate_xc_goal_rejects_target_climbing_above_guardrail() {
@@ -430,10 +412,7 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(error.status, StatusCode::BAD_REQUEST);
-        assert_eq!(
-            error.message,
-            "XC goal climbing target must be 25,000 feet or less"
-        );
+        assert_eq!(error.message, "XC goal climbing target must be 25,000 feet or less");
     }
     #[test]
     fn validate_xc_goal_accepts_optional_event_details() {
@@ -454,21 +433,9 @@ mod tests {
     }
     #[test]
     fn validate_xc_goal_rejects_event_details_without_complete_target() {
-        let error = validate_xc_goal(
-            None,
-            None,
-            None,
-            None,
-            Some("Lumberjack 100"),
-            Some(36_000),
-            None,
-        )
-        .unwrap_err();
+        let error = validate_xc_goal(None, None, None, None, Some("Lumberjack 100"), Some(36_000), None).unwrap_err();
 
         assert_eq!(error.status, StatusCode::BAD_REQUEST);
-        assert_eq!(
-            error.message,
-            "XC goal event details require a complete event target"
-        );
+        assert_eq!(error.message, "XC goal event details require a complete event target");
     }
 }

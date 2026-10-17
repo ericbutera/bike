@@ -1,17 +1,11 @@
 use super::options;
 use bike_core::bike_tasks::BatchEntry;
 use temporalio_common::data_converters::TemporalDeserializable;
-use temporalio_sdk::{
-    ChildWorkflowCancellationType, ChildWorkflowOptions, WorkflowContext, WorkflowResult,
-};
+use temporalio_sdk::{ChildWorkflowCancellationType, ChildWorkflowOptions, WorkflowContext, WorkflowResult};
 use temporalio_workflow::common::WorkflowDefinition;
 
 /// One typed child call owns identity, matching options and error adaptation.
-pub(super) async fn run<W, D>(
-    ctx: &WorkflowContext<W>,
-    definition: D,
-    input: D::Input,
-) -> WorkflowResult<D::Output>
+pub(super) async fn run<W, D>(ctx: &WorkflowContext<W>, definition: D, input: D::Input) -> WorkflowResult<D::Output>
 where
     D: WorkflowDefinition + 'static,
     D::Input: BatchEntry,
@@ -25,10 +19,7 @@ where
             input.command_id(),
         ))
         .task_queue(crate::TASK_QUEUE.to_owned())
-        .priority(options::priority(
-            input.priority(),
-            format!("user-{}", input.user_id()),
-        ))
+        .priority(options::priority(input.priority(), format!("user-{}", input.user_id())))
         .cancel_type(ChildWorkflowCancellationType::WaitCancellationCompleted)
         .build();
     let child = ctx

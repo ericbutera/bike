@@ -21,10 +21,7 @@ impl ReprocessUserActivityImports {
     }
 
     fn with_scope(db: DatabaseConnection, archive_fits_only: bool) -> Self {
-        Self {
-            db,
-            archive_fits_only,
-        }
+        Self { db, archive_fits_only }
     }
 }
 
@@ -38,11 +35,7 @@ impl TaskProcessor for ReprocessUserActivityImports {
         }
     }
 
-    async fn process(
-        &self,
-        task_id: i32,
-        payload: serde_json::Value,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+    async fn process(&self, task_id: i32, payload: serde_json::Value) -> Result<(), Box<dyn Error + Send + Sync>> {
         let data = payload.get("data").unwrap_or(&payload);
         let task: ReprocessUserActivityImportsTask = serde_json::from_value(data.clone())?;
 
@@ -51,9 +44,7 @@ impl TaskProcessor for ReprocessUserActivityImports {
             task_id,
             task.user_id,
             self.archive_fits_only,
-            data["batch_id"]
-                .as_i64()
-                .and_then(|id| i32::try_from(id).ok()),
+            data["batch_id"].as_i64().and_then(|id| i32::try_from(id).ok()),
         )
         .await
         .map_err(|error| std::io::Error::other(error.message))?;

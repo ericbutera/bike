@@ -1,7 +1,6 @@
 use crate::activity_import_lock::{
-    acquire_user_activity_import_lock, load_user_activity_import_lock,
-    release_user_activity_import_lock, ActivityImportLockError,
-    ACTIVITY_IMPORT_LOCK_SOURCE_XC_TRAINING_BACKFILL, ACTIVITY_IMPORT_LOCK_STAGE_QUEUED,
+    acquire_user_activity_import_lock, load_user_activity_import_lock, release_user_activity_import_lock,
+    ActivityImportLockError, ACTIVITY_IMPORT_LOCK_SOURCE_XC_TRAINING_BACKFILL, ACTIVITY_IMPORT_LOCK_STAGE_QUEUED,
     ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
 };
 use crate::entities::user_preferences;
@@ -84,8 +83,7 @@ pub async fn queue_user_xc_goal_backfill(
             .backfill_user_xc_training(user_id)
             .await
             .map_err(XcGoalBackfillError::queue)?;
-        set_user_xc_goal_backfill_state(db, user_id, Some(XC_GOAL_BACKFILL_STATUS_WAITING), None)
-            .await?;
+        set_user_xc_goal_backfill_state(db, user_id, Some(XC_GOAL_BACKFILL_STATUS_WAITING), None).await?;
         return Ok((
             XC_GOAL_BACKFILL_STATUS_WAITING.to_string(),
             message_for_status(XC_GOAL_BACKFILL_STATUS_WAITING).to_string(),
@@ -101,19 +99,12 @@ pub async fn queue_user_xc_goal_backfill(
     .await?;
 
     if let Err(message) = tasks.backfill_user_xc_training(user_id).await {
-        release_user_activity_import_lock(
-            db,
-            user_id,
-            ACTIVITY_IMPORT_LOCK_SOURCE_XC_TRAINING_BACKFILL,
-        )
-        .await?;
-        set_user_xc_goal_backfill_state(db, user_id, Some(XC_GOAL_BACKFILL_STATUS_FAILED), None)
-            .await?;
+        release_user_activity_import_lock(db, user_id, ACTIVITY_IMPORT_LOCK_SOURCE_XC_TRAINING_BACKFILL).await?;
+        set_user_xc_goal_backfill_state(db, user_id, Some(XC_GOAL_BACKFILL_STATUS_FAILED), None).await?;
         return Err(XcGoalBackfillError::queue(message));
     }
 
-    set_user_xc_goal_backfill_state(db, user_id, Some(XC_GOAL_BACKFILL_STATUS_QUEUED), None)
-        .await?;
+    set_user_xc_goal_backfill_state(db, user_id, Some(XC_GOAL_BACKFILL_STATUS_QUEUED), None).await?;
 
     Ok((
         XC_GOAL_BACKFILL_STATUS_QUEUED.to_string(),
@@ -147,13 +138,7 @@ pub async fn mark_user_xc_goal_backfill_completed(
     user_id: i32,
     completed_at: DateTime<Utc>,
 ) -> Result<(), XcGoalBackfillError> {
-    set_user_xc_goal_backfill_state(
-        db,
-        user_id,
-        Some(XC_GOAL_BACKFILL_STATUS_COMPLETED),
-        Some(completed_at),
-    )
-    .await
+    set_user_xc_goal_backfill_state(db, user_id, Some(XC_GOAL_BACKFILL_STATUS_COMPLETED), Some(completed_at)).await
 }
 
 pub fn message_for_status(status: &str) -> &'static str {

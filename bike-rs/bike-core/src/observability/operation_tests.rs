@@ -126,10 +126,7 @@ async fn training_rebuild_and_backfill_have_queryable_operation_parents() {
     })
     .await;
     let training = stage(&trace, "training.rebuild");
-    assert_eq!(
-        attribute(&training, "bike.operation"),
-        &"training.rebuild".into()
-    );
+    assert_eq!(attribute(&training, "bike.operation"), &"training.rebuild".into());
     assert_eq!(attribute(&training, "activity_count"), &1_i64.into());
     assert_eq!(attribute(&training, "bike.db.calls"), &3_i64.into());
     let backfill = MockDatabase::new(DatabaseBackend::Postgres)
@@ -137,11 +134,9 @@ async fn training_rebuild_and_backfill_have_queryable_operation_parents() {
         .into_connection();
     let trace = capture(async {
         assert_eq!(
-            crate::activity_training_analysis::backfill_user_activity_training_analysis_cache(
-                &backfill, 7
-            )
-            .await
-            .unwrap(),
+            crate::activity_training_analysis::backfill_user_activity_training_analysis_cache(&backfill, 7)
+                .await
+                .unwrap(),
             0
         );
     })
@@ -162,15 +157,13 @@ async fn cpu_work_has_named_spans_without_logging_activity_bodies() {
         }))
         .await
         .unwrap();
-        crate::activity_parser::parse_activity_artifact(
-            crate::activity_parser::ActivityParserArtifact {
-                original_filename: "private-name.fit",
-                format: "fit",
-                artifact_kind: "original",
-                source_quality: "original",
-                bytes: include_bytes!("../../tests/fixtures/recording/outdoor.fit"),
-            },
-        )
+        crate::activity_parser::parse_activity_artifact(crate::activity_parser::ActivityParserArtifact {
+            original_filename: "private-name.fit",
+            format: "fit",
+            artifact_kind: "original",
+            source_quality: "original",
+            bytes: include_bytes!("../../tests/fixtures/recording/outdoor.fit"),
+        })
         .unwrap();
     })
     .await;

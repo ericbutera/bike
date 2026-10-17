@@ -20,18 +20,9 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(RefreshTokens::Table)
                     .if_not_exists()
-                    .col(
-                        ColumnDef::new(RefreshTokens::Token)
-                            .string()
-                            .not_null()
-                            .primary_key(),
-                    )
+                    .col(ColumnDef::new(RefreshTokens::Token).string().not_null().primary_key())
                     .col(ColumnDef::new(RefreshTokens::UserPid).uuid().not_null())
-                    .col(
-                        ColumnDef::new(RefreshTokens::ExpiresAt)
-                            .big_integer()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(RefreshTokens::ExpiresAt).big_integer().not_null())
                     .col(
                         ColumnDef::new(RefreshTokens::CreatedAt)
                             .timestamp_with_time_zone()

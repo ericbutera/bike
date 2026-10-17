@@ -33,13 +33,8 @@ async fn progress_maps_counts_and_requires_both_owner_scopes_and_ready_eligibili
             ("max_y", Some(0.4).into()),
         ])]])
         .into_connection();
-    let progress = HeatmapData::progress(&db, 7, &filtered_query())
-        .await
-        .unwrap();
-    assert_eq!(
-        (progress.revision, progress.ready, progress.pending),
-        (9, 2, 1)
-    );
+    let progress = HeatmapData::progress(&db, 7, &filtered_query()).await.unwrap();
+    assert_eq!((progress.revision, progress.ready, progress.pending), (9, 2, 1));
     assert_eq!((progress.failed, progress.skipped), (0, 3));
     assert_eq!((progress.min_x, progress.max_y), (Some(0.1), Some(0.4)));
     let log = format!("{:?}", db.into_transaction_log());
@@ -85,23 +80,11 @@ async fn centers_and_tiles_keep_filters_cursor_order_and_wrapped_spatial_bounds(
             ])],
         ])
         .into_connection();
-    let centers = HeatmapData::activity_centers(&db, 7, &filtered_query())
+    let centers = HeatmapData::activity_centers(&db, 7, &filtered_query()).await.unwrap();
+    assert_eq!((centers[0].x, centers[0].y), (0.0, 0.5));
+    let rows = HeatmapData::tile_page(&db, 7, &filtered_query(), Tile { z: 14, x: 0, y: 8192 }, (42, 63))
         .await
         .unwrap();
-    assert_eq!((centers[0].x, centers[0].y), (0.0, 0.5));
-    let rows = HeatmapData::tile_page(
-        &db,
-        7,
-        &filtered_query(),
-        Tile {
-            z: 14,
-            x: 0,
-            y: 8192,
-        },
-        (42, 63),
-    )
-    .await
-    .unwrap();
     assert_eq!((rows[0].activity_id, rows[0].chunk_index), (42, 64));
     assert_eq!(rows[0].points, points);
     let log = format!("{:?}", db.into_transaction_log());
@@ -117,25 +100,13 @@ async fn centers_and_tiles_keep_filters_cursor_order_and_wrapped_spatial_bounds(
     ] {
         assert!(log.contains(predicate), "missing {predicate}: {log}");
     }
-    assert_eq!(
-        Tile {
-            z: 14,
-            x: 0,
-            y: 8192
-        }
-        .query_bounds()
-        .len(),
-        2
-    );
+    assert_eq!(Tile { z: 14, x: 0, y: 8192 }.query_bounds().len(), 2);
 }
 
 #[tokio::test]
 async fn backfill_and_source_reads_keep_generation_and_owner_boundaries() {
     let db = MockDatabase::new(DbBackend::Postgres)
-        .append_query_results([vec![row([
-            ("activity_id", 42.into()),
-            ("generation", 3_i64.into()),
-        ])]])
+        .append_query_results([vec![row([("activity_id", 42.into()), ("generation", 3_i64.into())])]])
         .append_query_results([vec![test_support::activity()]])
         .append_query_results([vec![row([("activity_id", 42.into())])]])
         .into_connection();
@@ -205,9 +176,7 @@ async fn obsolete_publication_rolls_back_without_replacing_chunks() {
     let db = MockDatabase::new(DbBackend::Postgres)
         .append_query_results([Vec::<BTreeMap<&str, Value>>::new()])
         .into_connection();
-    assert!(!Projection::publish(&db, &pending(), &[chunk(0)])
-        .await
-        .unwrap());
+    assert!(!Projection::publish(&db, &pending(), &[chunk(0)]).await.unwrap());
     let log = format!("{:?}", db.into_transaction_log());
     assert!(log.contains("ROLLBACK"));
     assert!(!log.contains("DELETE"));
@@ -237,9 +206,7 @@ async fn empty_publication_marks_skipped_and_chunk_failure_rolls_back() {
         }])
         .append_exec_errors([DbErr::Custom("fixture chunk write failure".into())])
         .into_connection();
-    assert!(Projection::publish(&db, &pending(), &[chunk(0)])
-        .await
-        .is_err());
+    assert!(Projection::publish(&db, &pending(), &[chunk(0)]).await.is_err());
     let log = format!("{:?}", db.into_transaction_log());
     assert!(log.contains("ROLLBACK"));
     assert!(!log.contains("COMMIT"));

@@ -95,9 +95,7 @@ impl AuthError {
 
 impl IntoResponse for AuthError {
     fn into_response(self) -> Response {
-        let body = Json(ErrorResponse {
-            error: self.message,
-        });
+        let body = Json(ErrorResponse { error: self.message });
         if let Some(secs) = self.retry_after_seconds {
             let mut res = (self.code, body).into_response();
             if let Ok(hv) = header::HeaderValue::from_str(&secs.to_string()) {

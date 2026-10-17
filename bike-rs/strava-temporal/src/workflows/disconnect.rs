@@ -14,10 +14,7 @@ pub struct DisconnectStrava;
 #[workflow_methods]
 impl DisconnectStrava {
     #[run]
-    pub async fn run(
-        ctx: &mut WorkflowContext<Self>,
-        event: StravaEvent,
-    ) -> WorkflowResult<StravaEvent> {
+    pub async fn run(ctx: &mut WorkflowContext<Self>, event: StravaEvent) -> WorkflowResult<StravaEvent> {
         logging::started(ctx, &event);
         let result = Self::disconnect(ctx, event.clone()).await;
         let result = options::workflow_result(ctx, result);
@@ -25,10 +22,7 @@ impl DisconnectStrava {
         logging::finished(ctx, log_event, &result);
         result
     }
-    async fn disconnect(
-        ctx: &mut WorkflowContext<Self>,
-        event: StravaEvent,
-    ) -> WorkflowResult<StravaEvent> {
+    async fn disconnect(ctx: &mut WorkflowContext<Self>, event: StravaEvent) -> WorkflowResult<StravaEvent> {
         let ids = run(ctx, BeginDisconnect, event.clone()).await?;
         let more = ids.len() == 50;
         for id in ids {

@@ -45,11 +45,7 @@ impl Model {
 }
 
 impl Model {
-    pub async fn page_for_task(
-        db: &impl ConnectionTrait,
-        id: i32,
-        after: i32,
-    ) -> Result<Vec<Self>, DbErr> {
+    pub async fn page_for_task(db: &impl ConnectionTrait, id: i32, after: i32) -> Result<Vec<Self>, DbErr> {
         use sea_orm::{QueryFilter, QueryOrder, QuerySelect};
         Entity::find()
             .filter(Column::TaskId.eq(id))
@@ -78,20 +74,15 @@ impl Model {
             kind: Set(scope.kind.into()),
             work_key: Set(scope.work_key.clone()),
             revision: Set(scope.revision.clone()),
-            processing_version: Set(
-                crate::background_jobs::worker::catalog::ProcessorDefinition::for_type(
-                    &context.task_type,
-                )
-                .processing_version,
-            ),
+            processing_version: Set(crate::background_jobs::worker::catalog::ProcessorDefinition::for_type(
+                &context.task_type,
+            )
+            .processing_version),
             mode: Set(scope.mode.into()),
             reason: Set(scope.reason.into()),
             started_at: Set(started_at),
             finished_at: Set(finished_at),
-            outcome: Set(counts
-                .map(|counts| counts.outcome)
-                .unwrap_or("failed")
-                .into()),
+            outcome: Set(counts.map(|counts| counts.outcome).unwrap_or("failed").into()),
             counts: Set(counts.and_then(|counts| serde_json::to_value(counts).ok())),
             error: Set(error),
             trace_id: Set(trace.as_ref().map(|ids| ids.0.clone())),

@@ -21,7 +21,6 @@ fn unit_happy_highlights_preserve_personal_best_in_storage() {
 
 #[test]
 fn unit_happy_unversioned_highlights_load_with_current_format() {
-    let stored: StoredActivityAchievementHighlights =
-        serde_json::from_value(serde_json::json!({"items": []})).unwrap();
+    let stored: StoredActivityAchievementHighlights = serde_json::from_value(serde_json::json!({"items": []})).unwrap();
     assert_eq!(stored, StoredActivityAchievementHighlights::default());
 }

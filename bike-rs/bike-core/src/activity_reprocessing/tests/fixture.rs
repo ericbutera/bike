@@ -1,8 +1,7 @@
 use super::*;
 use crate::activity_import_pipeline::ActivityProcessingArtifact;
 use crate::entities::{
-    activity_import_artifacts, activity_training_analyses, segment_efforts, segments,
-    user_preferences,
+    activity_import_artifacts, activity_training_analyses, segment_efforts, segments, user_preferences,
 };
 use crate::object_store::ObjectOwner;
 use ::object_store::{memory::InMemory, path::Path, ObjectStoreExt};

@@ -1,11 +1,11 @@
 use crate::bike_tasks::{
-    ActivityImport, ActivityImportResult, FitnessChange, HeatmapChange, ImportSource, ImportTarget,
-    Priority, SegmentChange,
+    ActivityImport, ActivityImportResult, FitnessChange, HeatmapChange, ImportSource, ImportTarget, Priority,
+    SegmentChange,
 };
 use crate::bike_tasks::{
-    ActivitySegmentsInput, ActivitySegmentsResult, ArchiveInput, BatchCommand, BatchInput,
-    BatchManifest, BatchProgress, ManifestScope, PageRequest, ReprocessInput, SegmentEffortsInput,
-    SegmentSelection, TrainingActivityInput, TrainingActivityResult,
+    ActivitySegmentsInput, ActivitySegmentsResult, ArchiveInput, BatchCommand, BatchInput, BatchManifest,
+    BatchProgress, ManifestScope, PageRequest, ReprocessInput, SegmentEffortsInput, SegmentSelection,
+    TrainingActivityInput, TrainingActivityResult,
 };
 use crate::object_store::ObjectRef;
 

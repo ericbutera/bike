@@ -36,10 +36,7 @@ impl Store {
         }
     }
 
-    async fn accept(
-        &self,
-        webhook: &StravaWebhookEvent,
-    ) -> Result<Option<strava_events::Model>, WorkflowError> {
+    async fn accept(&self, webhook: &StravaWebhookEvent) -> Result<Option<strava_events::Model>, WorkflowError> {
         WebhookIntake {
             subscription_id: Some(12345),
         }
@@ -50,10 +47,7 @@ impl Store {
 
 #[async_trait::async_trait]
 impl WebhookStore for Store {
-    async fn connection(
-        &self,
-        athlete_id: i64,
-    ) -> Result<Option<strava_connections::Model>, WorkflowError> {
+    async fn connection(&self, athlete_id: i64) -> Result<Option<strava_connections::Model>, WorkflowError> {
         self.calls.lock().unwrap().push("connection");
         assert_eq!(athlete_id, self.fixture.connection.athlete_id);
         Ok(self.connected.then(|| self.fixture.connection.clone()))
@@ -101,11 +95,7 @@ async fn supported_unsigned_events_keep_customer_activity_and_request_identity()
         ("update", StravaOperation::Update),
         ("delete", StravaOperation::Delete),
     ] {
-        let row = store
-            .accept(&store.webhook("activity", aspect))
-            .await
-            .unwrap()
-            .unwrap();
+        let row = store.accept(&store.webhook("activity", aspect)).await.unwrap().unwrap();
         let event: StravaEvent = serde_json::from_value(row.event).unwrap();
         assert_eq!(event.operation, expected);
         assert_eq!(event.bike_customer_id, store.fixture.customer.pid);
@@ -186,10 +176,7 @@ async fn old_deauthorization_is_ignored_and_owner_mismatch_is_rejected() {
 async fn disconnecting_connection_rejects_creates_but_accepts_deletes() {
     let mut store = Store::new();
     store.fixture.connection.disconnect_requested_at = Some(store.fixture.connection.created_at);
-    assert!(store
-        .accept(&store.webhook("activity", "create"))
-        .await
-        .is_err());
+    assert!(store.accept(&store.webhook("activity", "create")).await.is_err());
     assert!(store.events.lock().unwrap().is_empty());
     assert!(store
         .accept(&store.webhook("activity", "delete"))
@@ -266,9 +253,7 @@ async fn persistence_failure_is_returned_without_accepting_an_event() {
     let store = Store::new();
     let db = MockDatabase::new(DatabaseBackend::Postgres)
         .append_query_results([vec![store.fixture.connection.clone()]])
-        .append_query_errors([sea_orm::DbErr::Custom(
-            "Fixture customer lookup failed".into(),
-        )])
+        .append_query_errors([sea_orm::DbErr::Custom("Fixture customer lookup failed".into())])
         .into_connection();
     let error = WebhookIntake {
         subscription_id: Some(12345),

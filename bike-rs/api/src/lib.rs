@@ -139,14 +139,7 @@ fn record_http_response(response: &Response<Body>, _latency: Duration, span: &tr
 fn should_trace_http_path(path: &str) -> bool {
     !matches!(
         path,
-        "/metrics"
-            | "/api/health"
-            | "/api/ready"
-            | "/health"
-            | "/healthz"
-            | "/ready"
-            | "/readyz"
-            | "/openapi.json"
+        "/metrics" | "/api/health" | "/api/ready" | "/health" | "/healthz" | "/ready" | "/readyz" | "/openapi.json"
     ) && !path.starts_with("/swagger-ui/")
 }
 
@@ -159,16 +152,11 @@ async fn request_id_response_header(request: Request<Body>, next: Next) -> Respo
             .and_then(|value| value.to_str().ok())
             .map(str::to_owned),
     );
-    let mut response = bike_core::background_jobs::pipeline::PipelineContext::scope(
-        Some(context),
-        next.run(request),
-    )
-    .await;
+    let mut response =
+        bike_core::background_jobs::pipeline::PipelineContext::scope(Some(context), next.run(request)).await;
 
     if let Some(request_id) = request_id {
-        response
-            .headers_mut()
-            .insert(&REQUEST_ID_HEADER, request_id);
+        response.headers_mut().insert(&REQUEST_ID_HEADER, request_id);
     }
 
     response
@@ -220,8 +208,7 @@ mod tracing_filter_tests {
         assert_eq!(spans.len(), 1);
         assert_eq!(spans[0].status, Status::error("Internal Server Error"));
         assert!(spans[0].attributes.iter().any(|attribute| {
-            attribute.key.as_str() == "http.response.status_code"
-                && attribute.value == 500_i64.into()
+            attribute.key.as_str() == "http.response.status_code" && attribute.value == 500_i64.into()
         }));
         drop(exporter);
     }
@@ -233,8 +220,7 @@ mod tracing_filter_tests {
         assert_eq!(spans.len(), 1);
         assert_eq!(spans[0].status, Status::Unset);
         assert!(spans[0].attributes.iter().any(|attribute| {
-            attribute.key.as_str() == "http.response.status_code"
-                && attribute.value == 401_i64.into()
+            attribute.key.as_str() == "http.response.status_code" && attribute.value == 401_i64.into()
         }));
     }
 
@@ -270,8 +256,7 @@ mod tracing_filter_tests {
         let spans = exporter.get_finished_spans().expect("export route span");
         assert_eq!(spans.len(), 1);
         assert!(spans[0].attributes.iter().any(|attribute| {
-            attribute.key.as_str() == "http.route"
-                && attribute.value == "/api/segments/:id/effort-analysis".into()
+            attribute.key.as_str() == "http.route" && attribute.value == "/api/segments/:id/effort-analysis".into()
         }));
         assert!(!spans[0]
             .attributes
@@ -279,12 +264,7 @@ mod tracing_filter_tests {
             .any(|attribute| attribute.key.as_str() == "url.path"));
     }
 
-    fn export_response_span(
-        status: StatusCode,
-    ) -> (
-        InMemorySpanExporter,
-        Vec<opentelemetry_sdk::trace::SpanData>,
-    ) {
+    fn export_response_span(status: StatusCode) -> (InMemorySpanExporter, Vec<opentelemetry_sdk::trace::SpanData>) {
         let exporter = InMemorySpanExporter::default();
         let provider = SdkTracerProvider::builder()
             .with_simple_exporter(exporter.clone())

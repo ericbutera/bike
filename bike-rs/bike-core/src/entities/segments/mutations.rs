@@ -1,15 +1,11 @@
 use super::{ActiveModel, Model, SegmentMode};
-use crate::activity_details::{
-    derive_activity_detail_data, deserialize_derived_activity_data, ActivityRoutePoint,
-};
+use crate::activity_details::{derive_activity_detail_data, deserialize_derived_activity_data, ActivityRoutePoint};
 use crate::activity_summary::summarize_activity_upload;
 use crate::analytics::rebuild_activity_analytics_cache;
 use crate::entities::{activities, segment_efforts, segments};
 use crate::segment_support::{serialize_segment_route_points, slice_effort_route_points};
 use crate::workflow_error::WorkflowError as AppError;
-use sea_orm::{
-    ActiveModelTrait, ConnectionTrait, IntoActiveModel, Set, TransactionSession, TransactionTrait,
-};
+use sea_orm::{ActiveModelTrait, ConnectionTrait, IntoActiveModel, Set, TransactionSession, TransactionTrait};
 
 #[derive(Debug, Clone)]
 pub struct ActivitySegmentSource {
@@ -53,13 +49,9 @@ impl ActivitySegmentSource {
             .await?
             .ok_or_else(|| AppError::not_found("Activity not found"))?;
         let title = normalize_segment_title(title)?;
-        let activity_route_points =
-            deserialize_derived_activity_data(activity.derived_data_json.as_ref()).route_points;
-        let route_points = slice_builder_route_points(
-            &activity_route_points,
-            start_route_point_index,
-            end_route_point_index,
-        )?;
+        let activity_route_points = deserialize_derived_activity_data(activity.derived_data_json.as_ref()).route_points;
+        let route_points =
+            slice_builder_route_points(&activity_route_points, start_route_point_index, end_route_point_index)?;
         let distance_meters = route_points.last().and_then(|point| point.distance_meters);
 
         Ok(Self {
@@ -76,10 +68,7 @@ impl ActivitySegmentSource {
         let range_matches = (
             segment.source_start_route_point_index,
             segment.source_end_route_point_index,
-        ) == (
-            Some(self.start_route_point_index),
-            Some(self.end_route_point_index),
-        );
+        ) == (Some(self.start_route_point_index), Some(self.end_route_point_index));
         activity_matches && range_matches
     }
 }
@@ -88,10 +77,7 @@ pub fn normalize_segment_title(raw_title: &str) -> Result<String, AppError> {
     let title = raw_title.trim();
 
     if title.is_empty() {
-        return Err(AppError::validation_field(
-            "title",
-            "Segment name is required",
-        ));
+        return Err(AppError::validation_field("title", "Segment name is required"));
     }
 
     Ok(title.to_string())
@@ -246,13 +232,8 @@ impl Model {
         source: &ActivitySegmentSource,
     ) -> Result<Self, AppError> {
         source.require_owner(self.user_id)?;
-        if let Some(existing) = Self::find_duplicate(
-            db,
-            self.user_id,
-            source.distance_meters,
-            &source.route_points,
-        )
-        .await?
+        if let Some(existing) =
+            Self::find_duplicate(db, self.user_id, source.distance_meters, &source.route_points).await?
         {
             if existing.id != self.id {
                 return Err(AppError::validation_field(
@@ -306,10 +287,7 @@ impl Model {
             user_id: Set(user_id),
             ..Default::default()
         }
-        .with_route(
-            segment_summary.distance_meters,
-            &segment_detail.route_points,
-        )
+        .with_route(segment_summary.distance_meters, &segment_detail.route_points)
         .insert(db)
         .await?;
 

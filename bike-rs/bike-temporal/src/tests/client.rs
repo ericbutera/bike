@@ -44,12 +44,8 @@ impl Requests {
 }
 
 pub(crate) async fn client(requests: Arc<Mutex<Requests>>, fail: bool) -> Client {
-    let mut options = ConnectionOptions::new(
-        "http://fixture.invalid:7233"
-            .parse::<temporalio_client::Url>()
-            .unwrap(),
-    )
-    .build();
+    let mut options =
+        ConnectionOptions::new("http://fixture.invalid:7233".parse::<temporalio_client::Url>().unwrap()).build();
     options.dns_load_balancing = None;
     options.service_override = Some(CallbackBasedGrpcService {
         callback: Arc::new(move |request| {
@@ -58,9 +54,11 @@ pub(crate) async fn client(requests: Arc<Mutex<Requests>>, fail: bool) -> Client
                 let proto = match request.rpc.as_str() {
                     "GetSystemInfo" => vec![],
                     "SignalWithStartWorkflowExecution" => {
-                        requests.lock().unwrap().signals.push(
-                            SignalWithStartWorkflowExecutionRequest::decode(request.proto).unwrap(),
-                        );
+                        requests
+                            .lock()
+                            .unwrap()
+                            .signals
+                            .push(SignalWithStartWorkflowExecutionRequest::decode(request.proto).unwrap());
                         if fail {
                             return Err(tonic::Status::permission_denied("fixture refused"));
                         }
@@ -96,20 +94,12 @@ async fn repeated_parent_handoffs_use_native_atomic_start_for_the_same_named_out
     let requests = Arc::new(Mutex::new(Requests::default()));
     let client = client(requests.clone(), false).await;
     for _ in 0..5 {
-        crate::client::request_fitness_freshness(
-            &client,
-            fitness_change(),
-            DebouncePolicy::default(),
-        )
-        .await
-        .unwrap();
-        crate::client::request_segment_analytics(
-            &client,
-            segment_change(),
-            DebouncePolicy::default(),
-        )
-        .await
-        .unwrap();
+        crate::client::request_fitness_freshness(&client, fitness_change(), DebouncePolicy::default())
+            .await
+            .unwrap();
+        crate::client::request_segment_analytics(&client, segment_change(), DebouncePolicy::default())
+            .await
+            .unwrap();
         crate::client::request_heatmap(&client, heatmap_change(), DebouncePolicy::default())
             .await
             .unwrap();
@@ -117,14 +107,8 @@ async fn repeated_parent_handoffs_use_native_atomic_start_for_the_same_named_out
     let requests = requests.lock().unwrap();
     assert_eq!(requests.signals.len(), 15);
     let expected = [
-        (
-            "rebuild_fitness_freshness",
-            crate::client::fitness_workflow_id(7),
-        ),
-        (
-            "rebuild_segment_analytics",
-            crate::client::segment_workflow_id(18),
-        ),
+        ("rebuild_fitness_freshness", crate::client::fitness_workflow_id(7)),
+        ("rebuild_segment_analytics", crate::client::segment_workflow_id(18)),
         ("prepare_heatmap", crate::client::heatmap_workflow_id(42)),
     ];
     for (request, (name, id)) in requests.signals.iter().zip(expected.iter().cycle()) {
@@ -158,13 +142,11 @@ async fn zero_revision_is_rejected_before_rpc_and_native_rejection_is_returned()
     .await
     .is_err());
     assert!(requests.lock().unwrap().signals.is_empty());
-    assert!(crate::client::request_fitness_freshness(
-        &client,
-        fitness_change(),
-        DebouncePolicy::default()
-    )
-    .await
-    .is_err());
+    assert!(
+        crate::client::request_fitness_freshness(&client, fitness_change(), DebouncePolicy::default())
+            .await
+            .is_err()
+    );
     assert_eq!(requests.lock().unwrap().signals.len(), 1);
 }
 
@@ -184,9 +166,7 @@ async fn import_entry_points_preserve_task_names_and_retry_stable_command_ids() 
     crate::client::reprocess_activity_import(&client, input.clone())
         .await
         .unwrap();
-    crate::client::reprocess_activity_import(&client, input)
-        .await
-        .unwrap();
+    crate::client::reprocess_activity_import(&client, input).await.unwrap();
     let requests = requests.lock().unwrap();
     let starts = &requests.starts;
     assert_eq!(starts.len(), 3);
@@ -213,8 +193,7 @@ async fn import_entry_points_preserve_task_names_and_retry_stable_command_ids() 
 
 fn already_started() -> tonic::Status {
     use temporalio_common::protos::{
-        google::rpc::Status,
-        temporal::api::errordetails::v1::WorkflowExecutionAlreadyStartedFailure,
+        google::rpc::Status, temporal::api::errordetails::v1::WorkflowExecutionAlreadyStartedFailure,
         utilities::pack_any,
     };
     let details = Status {

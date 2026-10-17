@@ -15,10 +15,9 @@ impl WorkerStartupHook for RecoverActivityImportsOnStartup {
 
     async fn run(&self, db: &DatabaseConnection) -> Result<(), WorkerError> {
         let task_queue = JobQueue::new(db.clone());
-        let recovered_count =
-            recover_abandoned_activity_imports_after_worker_start(db, &task_queue, Utc::now())
-                .await
-                .map_err(|error| std::io::Error::other(error.message))?;
+        let recovered_count = recover_abandoned_activity_imports_after_worker_start(db, &task_queue, Utc::now())
+            .await
+            .map_err(|error| std::io::Error::other(error.message))?;
 
         if recovered_count > 0 {
             tracing::warn!(

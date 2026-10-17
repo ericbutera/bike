@@ -28,8 +28,5 @@ fn parse_env<T>(key: &str, default: T) -> T
 where
     T: std::str::FromStr + Copy,
 {
-    env::var(key)
-        .ok()
-        .and_then(|v| v.parse::<T>().ok())
-        .unwrap_or(default)
+    env::var(key).ok().and_then(|v| v.parse::<T>().ok()).unwrap_or(default)
 }

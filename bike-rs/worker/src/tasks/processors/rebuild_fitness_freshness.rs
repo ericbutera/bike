@@ -22,11 +22,7 @@ impl TaskProcessor for RebuildFitnessFreshness {
         JobType::RebuildFitnessFreshness.as_str()
     }
 
-    async fn process(
-        &self,
-        _task_id: i32,
-        payload: serde_json::Value,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+    async fn process(&self, _task_id: i32, payload: serde_json::Value) -> Result<(), Box<dyn Error + Send + Sync>> {
         let data = payload.get("data").unwrap_or(&payload);
         let task: RebuildFitnessFreshnessTask = serde_json::from_value(data.clone())?;
 

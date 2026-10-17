@@ -84,16 +84,11 @@ async fn deletion_removes_only_the_owned_remote_activity_and_retains_dependencie
         .append_exec_results((0..4).map(|_| executed()))
         .into_connection();
     let mut change = fixture.change(ActivityStatus::Captured);
-    StravaOperations::delete_owned_activity(&db, &mut change)
-        .await
-        .unwrap();
+    StravaOperations::delete_owned_activity(&db, &mut change).await.unwrap();
     assert_eq!(change.status, ActivityStatus::Deleted);
     assert_eq!(change.bike_activity_id, Some(42));
     assert_eq!(change.segment_ids, vec![3]);
-    assert_eq!(
-        change.dirty_from,
-        Some(fixture.activity().started_at.date_naive())
-    );
+    assert_eq!(change.dirty_from, Some(fixture.activity().started_at.date_naive()));
     let log = format!("{:?}", db.into_transaction_log());
     assert!(log.contains("source_correlation_id"));
     assert!(log.contains("user_id"));
@@ -115,10 +110,7 @@ async fn non_cycling_capture_and_deletion_do_not_invalidate_fitness() {
         .append_exec_results((0..4).map(|_| executed()))
         .into_connection();
     let operations = StravaOperations::new(db);
-    let mut change = operations
-        .capture_deletion(fixture.event.clone())
-        .await
-        .unwrap();
+    let mut change = operations.capture_deletion(fixture.event.clone()).await.unwrap();
     assert_eq!(change.dirty_from, None);
     StravaOperations::delete_owned_activity(&operations.db, &mut change)
         .await

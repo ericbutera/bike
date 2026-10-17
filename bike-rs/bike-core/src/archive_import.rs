@@ -1,12 +1,10 @@
 use crate::activity_import_lock::{
-    acquire_user_activity_import_lock, mark_user_activity_import_lock_stage,
-    release_user_activity_import_lock, ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT,
-    ACTIVITY_IMPORT_LOCK_STAGE_QUEUED, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
+    acquire_user_activity_import_lock, mark_user_activity_import_lock_stage, release_user_activity_import_lock,
+    ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT, ACTIVITY_IMPORT_LOCK_STAGE_QUEUED, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
 };
 use crate::activity_import_pipeline::{
-    process_stored_activity_import, store_activity_upload_import_with_artifacts,
-    ActivityUploadDeduplication, ActivityUploadPayload, PersistActivityUploadOutcome,
-    StoreActivityUploadImportRequest,
+    process_stored_activity_import, store_activity_upload_import_with_artifacts, ActivityUploadDeduplication,
+    ActivityUploadPayload, PersistActivityUploadOutcome, StoreActivityUploadImportRequest,
 };
 use crate::activity_lifecycle::resume_incomplete_activity_imports_for_user;
 use crate::config::Config;
@@ -93,26 +91,18 @@ pub async fn enqueue_activity_archive_import_job(
     )
     .await?;
 
-    let job =
-        activity_archive_import_jobs::Model::queue(db, user_id, user_storage_key, archive_url)
-            .await;
+    let job = activity_archive_import_jobs::Model::queue(db, user_id, user_storage_key, archive_url).await;
 
     let job = match job {
         Ok(job) => job,
         Err(error) => {
-            release_user_activity_import_lock(
-                db,
-                user_id,
-                ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT,
-            )
-            .await?;
+            release_user_activity_import_lock(db, user_id, ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT).await?;
             return Err(AppError::from(error));
         }
     };
 
     if let Err(message) = tasks.archive_activity_import(job.id).await {
-        release_user_activity_import_lock(db, user_id, ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT)
-            .await?;
+        release_user_activity_import_lock(db, user_id, ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT).await?;
         let failed_job = mark_activity_archive_import_job_failed(
             db,
             &job,
@@ -150,14 +140,9 @@ pub async fn process_activity_archive_import_job(
     let downloaded = match download_archive_from_url(uploads_dir, &running_job.archive_url).await {
         Ok(downloaded) => downloaded,
         Err(error) => {
-            mark_activity_archive_import_job_failed(db, &running_job, None, error.message.clone())
+            mark_activity_archive_import_job_failed(db, &running_job, None, error.message.clone()).await?;
+            release_user_activity_import_lock(db, running_job.user_id, ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT)
                 .await?;
-            release_user_activity_import_lock(
-                db,
-                running_job.user_id,
-                ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT,
-            )
-            .await?;
             return Err(error);
         }
     };
@@ -182,12 +167,8 @@ pub async fn process_activity_archive_import_job(
     match result {
         Ok(summary) => {
             mark_activity_archive_import_job_finished(db, &running_job, &summary).await?;
-            release_user_activity_import_lock(
-                db,
-                running_job.user_id,
-                ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT,
-            )
-            .await?;
+            release_user_activity_import_lock(db, running_job.user_id, ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT)
+                .await?;
             if summary.failed_count > 0 {
                 Err(AppError::internal(format!(
                     "Archive finished with {} failed entries; inspect import history",
@@ -205,12 +186,8 @@ pub async fn process_activity_archive_import_job(
                 error.message.clone(),
             )
             .await?;
-            release_user_activity_import_lock(
-                db,
-                running_job.user_id,
-                ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT,
-            )
-            .await?;
+            release_user_activity_import_lock(db, running_job.user_id, ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT)
+                .await?;
             Err(error)
         }
     }
@@ -220,16 +197,10 @@ pub fn normalize_archive_url(raw: &str) -> Result<String, AppError> {
     parse_archive_url(raw).map(|url| url.to_string())
 }
 
-pub fn resolve_local_archive_import_path(
-    uploads_dir: &str,
-    archive_path: &str,
-) -> Result<PathBuf, AppError> {
+pub fn resolve_local_archive_import_path(uploads_dir: &str, archive_path: &str) -> Result<PathBuf, AppError> {
     let trimmed = archive_path.trim();
     if trimmed.is_empty() {
-        return Err(AppError::validation_field(
-            "archive_path",
-            "Archive path is required",
-        ));
+        return Err(AppError::validation_field("archive_path", "Archive path is required"));
     }
 
     let requested = PathBuf::from(trimmed);
@@ -334,8 +305,7 @@ impl ActivityArchiveImportRun<'_> {
         indexed_entry: &IndexedArchiveActivityEntry,
     ) -> Result<PersistActivityUploadOutcome, AppError> {
         let bytes = read_archive_entry_bytes(archive_path, &indexed_entry.source)?;
-        let bytes = maybe_decode_archive_entry(&indexed_entry.activity_entry, bytes)
-            .map_err(AppError::bad_request)?;
+        let bytes = maybe_decode_archive_entry(&indexed_entry.activity_entry, bytes).map_err(AppError::bad_request)?;
         let upload = ActivityUploadPayload {
             original_filename: indexed_entry.activity_entry.original_filename.clone(),
             format: indexed_entry.activity_entry.format.clone(),
@@ -353,22 +323,16 @@ impl ActivityArchiveImportRun<'_> {
                 upload,
                 source: self.activity_source,
                 primary_artifact_kind: "original",
-                primary_source_quality:
-                    crate::activity_import_pipeline::original_source_quality_for_format(
-                        &indexed_entry.activity_entry.format,
-                    ),
+                primary_source_quality: crate::activity_import_pipeline::original_source_quality_for_format(
+                    &indexed_entry.activity_entry.format,
+                ),
                 additional_artifacts: Vec::new(),
             },
         )
         .await?;
         if let Some(job_id) = self.archive_job_id {
-            crate::entities::activity_imports::Entity::attach_archive_job(
-                self.db,
-                self.user_id,
-                import.id,
-                job_id,
-            )
-            .await?;
+            crate::entities::activity_imports::Entity::attach_archive_job(self.db, self.user_id, import.id, job_id)
+                .await?;
         }
         process_stored_activity_import(
             self.db,
@@ -393,14 +357,10 @@ struct ActivityArchiveImportProgress {
 }
 
 impl ActivityArchiveImportProgress {
-    fn record_imported(
-        &mut self,
-        persisted: crate::activity_import_pipeline::PersistedActivityImport,
-    ) {
+    fn record_imported(&mut self, persisted: crate::activity_import_pipeline::PersistedActivityImport) {
         self.imported_count += 1;
         self.imported_import_ids.push(persisted.import.id);
-        self.affected_segment_ids
-            .extend(persisted.affected_segment_ids);
+        self.affected_segment_ids.extend(persisted.affected_segment_ids);
         self.fitness_dirty_from_day = Some(match self.fitness_dirty_from_day {
             Some(current) => current.min(persisted.fitness_dirty_from_day),
             None => persisted.fitness_dirty_from_day,
@@ -412,8 +372,7 @@ impl ActivityArchiveImportProgress {
     }
 
     fn record_error(&mut self, entry_name: &str, message: impl Into<String>) {
-        self.error_samples
-            .push(format!("{}: {}", entry_name, message.into()));
+        self.error_samples.push(format!("{}: {}", entry_name, message.into()));
     }
 }
 
@@ -553,8 +512,7 @@ fn sorted_supported_archive_entries(scan: &ArchiveScanResult) -> Vec<IndexedArch
     // TODO: Very large archives can still put many files in one monthly bucket; add
     // finer-grained sharding if that becomes an operational problem.
     let mut supported_entries = scan.supported_entries.clone();
-    supported_entries
-        .sort_by_key(|entry| archive_activity_entry_fidelity_rank(&entry.activity_entry));
+    supported_entries.sort_by_key(|entry| archive_activity_entry_fidelity_rank(&entry.activity_entry));
     supported_entries.reverse();
     supported_entries
 }
@@ -568,17 +526,12 @@ fn archive_activity_entry_fidelity_rank(entry: &ArchiveActivityEntry) -> i32 {
     }
 }
 
-pub async fn download_archive_from_url(
-    uploads_dir: &str,
-    archive_url: &str,
-) -> Result<DownloadedArchive, AppError> {
+pub async fn download_archive_from_url(uploads_dir: &str, archive_url: &str) -> Result<DownloadedArchive, AppError> {
     let cfg = Config::get();
     let client = build_archive_fetch_client(cfg)?;
     let (final_url, response) = fetch_archive_response(&client, archive_url).await?;
     ensure_archive_response_size(&response, cfg.max_archive_fetch_bytes)?;
-    let archive_path =
-        write_archive_response_to_temp_file(uploads_dir, response, cfg.max_archive_fetch_bytes)
-            .await?;
+    let archive_path = write_archive_response_to_temp_file(uploads_dir, response, cfg.max_archive_fetch_bytes).await?;
 
     Ok(DownloadedArchive {
         archive_path,
@@ -591,17 +544,12 @@ fn build_archive_fetch_client(cfg: &Config) -> Result<Client, AppError> {
         .redirect(Policy::none())
         .timeout(Duration::from_secs(cfg.archive_fetch_timeout_seconds))
         .build()
-        .map_err(|error| {
-            AppError::internal(format!("Failed to build archive fetch client: {error}"))
-        })?;
+        .map_err(|error| AppError::internal(format!("Failed to build archive fetch client: {error}")))?;
 
     Ok(client)
 }
 
-async fn fetch_archive_response(
-    client: &Client,
-    archive_url: &str,
-) -> Result<(Url, reqwest::Response), AppError> {
+async fn fetch_archive_response(client: &Client, archive_url: &str) -> Result<(Url, reqwest::Response), AppError> {
     let mut current_url = parse_archive_url(archive_url)?;
 
     for _ in 0..=MAX_ARCHIVE_REDIRECTS {
@@ -611,9 +559,7 @@ async fn fetch_archive_response(
             .get(current_url.clone())
             .send()
             .await
-            .map_err(|error| {
-                AppError::bad_request(format!("Failed to fetch archive URL: {error}"))
-            })?;
+            .map_err(|error| AppError::bad_request(format!("Failed to fetch archive URL: {error}")))?;
 
         if response.status().is_redirection() {
             current_url = archive_redirect_url(&current_url, &response)?;
@@ -630,9 +576,7 @@ async fn fetch_archive_response(
         return Ok((current_url, response));
     }
 
-    Err(AppError::bad_request(
-        "Archive URL redirected too many times",
-    ))
+    Err(AppError::bad_request("Archive URL redirected too many times"))
 }
 
 fn archive_redirect_url(current_url: &Url, response: &reqwest::Response) -> Result<Url, AppError> {
@@ -640,19 +584,14 @@ fn archive_redirect_url(current_url: &Url, response: &reqwest::Response) -> Resu
         .headers()
         .get(header::LOCATION)
         .and_then(|value| value.to_str().ok())
-        .ok_or_else(|| {
-            AppError::bad_request("Archive URL redirected without a valid Location header")
-        })?;
+        .ok_or_else(|| AppError::bad_request("Archive URL redirected without a valid Location header"))?;
 
-    current_url.join(location).map_err(|error| {
-        AppError::bad_request(format!("Archive URL redirect was invalid: {error}"))
-    })
+    current_url
+        .join(location)
+        .map_err(|error| AppError::bad_request(format!("Archive URL redirect was invalid: {error}")))
 }
 
-fn ensure_archive_response_size(
-    response: &reqwest::Response,
-    max_archive_fetch_bytes: usize,
-) -> Result<(), AppError> {
+fn ensure_archive_response_size(response: &reqwest::Response, max_archive_fetch_bytes: usize) -> Result<(), AppError> {
     if response
         .content_length()
         .is_some_and(|length| length as usize > max_archive_fetch_bytes)
@@ -675,13 +614,8 @@ async fn write_archive_response_to_temp_file(
     }
 
     let mut file = tokio::fs::File::create(&temp_path).await?;
-    let total_bytes = write_archive_response_chunks(
-        &mut response,
-        &mut file,
-        &temp_path,
-        max_archive_fetch_bytes,
-    )
-    .await?;
+    let total_bytes =
+        write_archive_response_chunks(&mut response, &mut file, &temp_path, max_archive_fetch_bytes).await?;
     file.flush().await?;
 
     if total_bytes == 0 {
@@ -709,9 +643,11 @@ async fn write_archive_response_chunks(
 ) -> Result<usize, AppError> {
     let mut total_bytes = 0usize;
 
-    while let Some(chunk) = response.chunk().await.map_err(|error| {
-        AppError::bad_request(format!("Failed to download archive URL: {error}"))
-    })? {
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|error| AppError::bad_request(format!("Failed to download archive URL: {error}")))?
+    {
         total_bytes += chunk.len();
         if total_bytes > max_archive_fetch_bytes {
             let _ = tokio::fs::remove_file(temp_path).await;
@@ -733,15 +669,11 @@ fn archive_payload_too_large(max_archive_fetch_bytes: usize) -> AppError {
 fn parse_archive_url(raw: &str) -> Result<Url, AppError> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
-        return Err(AppError::validation_field(
-            "archive_url",
-            "Archive URL is required",
-        ));
+        return Err(AppError::validation_field("archive_url", "Archive URL is required"));
     }
 
-    let url = Url::parse(trimmed).map_err(|error| {
-        AppError::validation_field("archive_url", format!("Archive URL is invalid: {error}"))
-    })?;
+    let url = Url::parse(trimmed)
+        .map_err(|error| AppError::validation_field("archive_url", format!("Archive URL is invalid: {error}")))?;
 
     // Allow http URLs for local development/self-hosted file servers when
     // the operator explicitly enables it via the `ALLOW_LOCAL_ARCHIVE_IMPORTS`
@@ -751,10 +683,7 @@ fn parse_archive_url(raw: &str) -> Result<Url, AppError> {
         // If the operator enabled local imports, accept http URLs. This
         // permits pointing at LAN or localhost file servers during development.
         if !(allow_local && url.scheme() == "http") {
-            return Err(AppError::validation_field(
-                "archive_url",
-                "Archive URL must use https",
-            ));
+            return Err(AppError::validation_field("archive_url", "Archive URL must use https"));
         }
     }
 
@@ -776,12 +705,12 @@ fn parse_archive_url(raw: &str) -> Result<Url, AppError> {
 }
 
 async fn validate_remote_archive_url(url: &Url) -> Result<(), AppError> {
-    let host = url.host_str().ok_or_else(|| {
-        AppError::validation_field("archive_url", "Archive URL must include a host")
-    })?;
-    let port = url.port_or_known_default().ok_or_else(|| {
-        AppError::validation_field("archive_url", "Archive URL must include a valid port")
-    })?;
+    let host = url
+        .host_str()
+        .ok_or_else(|| AppError::validation_field("archive_url", "Archive URL must include a host"))?;
+    let port = url
+        .port_or_known_default()
+        .ok_or_else(|| AppError::validation_field("archive_url", "Archive URL must include a valid port"))?;
     // If local archive imports are allowed via env, skip the public IP check
     // so developers can point the importer at a local Caddy or other file
     // server during development. Otherwise enforce that the host resolves to
@@ -793,9 +722,10 @@ async fn validate_remote_archive_url(url: &Url) -> Result<(), AppError> {
 
     let mut saw_address = false;
 
-    for address in lookup_host((host, port)).await.map_err(|error| {
-        AppError::bad_request(format!("Failed to resolve archive URL host: {error}"))
-    })? {
+    for address in lookup_host((host, port))
+        .await
+        .map_err(|error| AppError::bad_request(format!("Failed to resolve archive URL host: {error}")))?
+    {
         saw_address = true;
         if !is_public_ip(address.ip()) {
             return Err(AppError::validation_field(
@@ -841,8 +771,8 @@ fn is_public_ip(ip: IpAddr) -> bool {
 
 fn scan_archive_entries(archive_path: &Path) -> Result<ArchiveScanResult, AppError> {
     let file = std::fs::File::open(archive_path)?;
-    let mut archive = ZipArchive::new(file)
-        .map_err(|error| AppError::bad_request(format!("Failed to open zip archive: {error}")))?;
+    let mut archive =
+        ZipArchive::new(file).map_err(|error| AppError::bad_request(format!("Failed to open zip archive: {error}")))?;
     let mut scan = ArchiveScanResult {
         total_entries: 0,
         supported_entry_count: 0,
@@ -867,9 +797,9 @@ where
     let scan_mode = detect_archive_scan_mode(archive)?;
 
     for index in 0..archive.len() {
-        let mut entry = archive.by_index(index).map_err(|error| {
-            AppError::bad_request(format!("Failed to read zip archive entry: {error}"))
-        })?;
+        let mut entry = archive
+            .by_index(index)
+            .map_err(|error| AppError::bad_request(format!("Failed to read zip archive entry: {error}")))?;
 
         if entry.is_dir() {
             continue;
@@ -907,20 +837,11 @@ where
             }
         }
 
-        if outer.is_none()
-            && scan_mode == ArchiveScanMode::Generic
-            && is_nested_zip_entry(&entry_name)
-        {
+        if outer.is_none() && scan_mode == ArchiveScanMode::Generic && is_nested_zip_entry(&entry_name) {
             let nested_bytes = read_bounded_archive_member(&mut entry)?;
-            let mut nested_archive =
-                ZipArchive::new(Cursor::new(nested_bytes)).map_err(|error| {
-                    AppError::bad_request(format!("Failed to open nested zip archive: {error}"))
-                })?;
-            scan_zip_archive(
-                &mut nested_archive,
-                scan,
-                Some((index, entry_name.as_str())),
-            )?;
+            let mut nested_archive = ZipArchive::new(Cursor::new(nested_bytes))
+                .map_err(|error| AppError::bad_request(format!("Failed to open nested zip archive: {error}")))?;
+            scan_zip_archive(&mut nested_archive, scan, Some((index, entry_name.as_str())))?;
             continue;
         }
 
@@ -939,9 +860,9 @@ where
     let mut has_activities_directory = false;
 
     for index in 0..archive.len() {
-        let entry = archive.by_index(index).map_err(|error| {
-            AppError::bad_request(format!("Failed to read zip archive entry: {error}"))
-        })?;
+        let entry = archive
+            .by_index(index)
+            .map_err(|error| AppError::bad_request(format!("Failed to read zip archive entry: {error}")))?;
 
         if entry.is_dir() {
             continue;
@@ -980,19 +901,15 @@ fn has_top_level_archive_directory(name: &str, directory: &str) -> bool {
     matches!((components.next(), components.next()), (Some(component), Some(_)) if component.eq_ignore_ascii_case(directory))
 }
 
-fn read_archive_entry_bytes(
-    archive_path: &Path,
-    source: &ArchiveEntrySource,
-) -> Result<Vec<u8>, AppError> {
+fn read_archive_entry_bytes(archive_path: &Path, source: &ArchiveEntrySource) -> Result<Vec<u8>, AppError> {
     match source {
         ArchiveEntrySource::Root { index } => {
             let file = std::fs::File::open(archive_path)?;
-            let mut archive = ZipArchive::new(file).map_err(|error| {
-                AppError::bad_request(format!("Failed to open zip archive: {error}"))
-            })?;
-            let mut entry = archive.by_index(*index).map_err(|error| {
-                AppError::bad_request(format!("Failed to read zip archive entry: {error}"))
-            })?;
+            let mut archive = ZipArchive::new(file)
+                .map_err(|error| AppError::bad_request(format!("Failed to open zip archive: {error}")))?;
+            let mut entry = archive
+                .by_index(*index)
+                .map_err(|error| AppError::bad_request(format!("Failed to read zip archive entry: {error}")))?;
             read_bounded_archive_member(&mut entry)
         }
         ArchiveEntrySource::NestedZip {
@@ -1002,20 +919,16 @@ fn read_archive_entry_bytes(
             inner_name,
         } => {
             let file = std::fs::File::open(archive_path)?;
-            let mut archive = ZipArchive::new(file).map_err(|error| {
-                AppError::bad_request(format!("Failed to open zip archive: {error}"))
-            })?;
-            let mut outer_entry = archive.by_index(*outer_index).map_err(|error| {
-                AppError::bad_request(format!("Failed to read zip archive entry: {error}"))
-            })?;
+            let mut archive = ZipArchive::new(file)
+                .map_err(|error| AppError::bad_request(format!("Failed to open zip archive: {error}")))?;
+            let mut outer_entry = archive
+                .by_index(*outer_index)
+                .map_err(|error| AppError::bad_request(format!("Failed to read zip archive entry: {error}")))?;
             let outer_bytes = read_bounded_archive_member(&mut outer_entry)?;
 
-            let mut nested_archive =
-                ZipArchive::new(Cursor::new(outer_bytes)).map_err(|error| {
-                    AppError::bad_request(format!(
-                        "Failed to open nested zip archive {outer_name}: {error}"
-                    ))
-                })?;
+            let mut nested_archive = ZipArchive::new(Cursor::new(outer_bytes)).map_err(|error| {
+                AppError::bad_request(format!("Failed to open nested zip archive {outer_name}: {error}"))
+            })?;
             let mut inner_entry = nested_archive.by_index(*inner_index).map_err(|error| {
                 AppError::bad_request(format!(
                     "Failed to read nested zip archive entry {outer_name}::{inner_name}: {error}"
@@ -1028,9 +941,7 @@ fn read_archive_entry_bytes(
 
 fn read_bounded_archive_member(reader: impl Read) -> Result<Vec<u8>, AppError> {
     let mut bytes = Vec::new();
-    reader
-        .take(MAX_ARCHIVE_ENTRY_BYTES + 1)
-        .read_to_end(&mut bytes)?;
+    reader.take(MAX_ARCHIVE_ENTRY_BYTES + 1).read_to_end(&mut bytes)?;
     if bytes.len() as u64 > MAX_ARCHIVE_ENTRY_BYTES {
         return Err(AppError::bad_request(format!(
             "Expanded archive entry exceeds the {MAX_ARCHIVE_ENTRY_BYTES} byte limit"
@@ -1076,17 +987,13 @@ fn resolve_archive_activity_entry(name: &str) -> Option<ArchiveActivityEntry> {
     None
 }
 
-fn maybe_decode_archive_entry(
-    entry: &ArchiveActivityEntry,
-    bytes: Vec<u8>,
-) -> Result<Vec<u8>, String> {
+fn maybe_decode_archive_entry(entry: &ArchiveActivityEntry, bytes: Vec<u8>) -> Result<Vec<u8>, String> {
     if !entry.gzip_wrapped {
         return Ok(bytes);
     }
 
     let decoder = flate2::read::GzDecoder::new(bytes.as_slice());
-    read_bounded_archive_member(decoder)
-        .map_err(|error| format!("failed to decode gzip-compressed activity: {error}"))
+    read_bounded_archive_member(decoder).map_err(|error| format!("failed to decode gzip-compressed activity: {error}"))
 }
 
 async fn mark_activity_archive_import_job_running(
@@ -1138,16 +1045,13 @@ mod tests {
     }
 
     pub(super) fn write_test_archive(entries: &[(&str, &[u8])]) -> std::path::PathBuf {
-        let archive_path =
-            std::env::temp_dir().join(format!("bike-archive-import-{}.zip", uuid::Uuid::new_v4()));
+        let archive_path = std::env::temp_dir().join(format!("bike-archive-import-{}.zip", uuid::Uuid::new_v4()));
         let file = std::fs::File::create(&archive_path).expect("create archive file");
         let mut writer = zip::ZipWriter::new(file);
         let options = SimpleFileOptions::default();
 
         for (name, bytes) in entries {
-            writer
-                .start_file(name, options)
-                .expect("start archive file");
+            writer.start_file(name, options).expect("start archive file");
             writer.write_all(bytes).expect("write archive bytes");
         }
 
@@ -1207,18 +1111,12 @@ mod tests {
         assert_eq!(scan.skipped_unsupported_count, 3);
         assert_eq!(scan.supported_entries.len(), 1);
         assert_eq!(scan.supported_entries[0].entry_name, "activities/1062.gpx");
-        assert_eq!(
-            scan.supported_entries[0].activity_entry.original_filename,
-            "1062.gpx"
-        );
+        assert_eq!(scan.supported_entries[0].activity_entry.original_filename, "1062.gpx");
     }
 
     #[test]
     fn scan_archive_entries_keeps_generic_archives_path_agnostic() {
-        let archive_path = write_test_archive(&[
-            ("rides/18.gpx", b"gpx"),
-            ("metadata/readme.txt", b"ignored"),
-        ]);
+        let archive_path = write_test_archive(&[("rides/18.gpx", b"gpx"), ("metadata/readme.txt", b"ignored")]);
 
         let scan = scan_archive_entries(&archive_path).expect("scan archive");
         let _ = std::fs::remove_file(&archive_path);
@@ -1232,10 +1130,7 @@ mod tests {
     #[test]
     #[ignore = "large real-archive verification"]
     fn imports_real_export_archives_from_repo_data() {
-        let archives = [
-            "2026 05 01 strava export_35999641.zip",
-            "2026-05-01 Garmin Export.zip",
-        ];
+        let archives = ["2026 05 01 strava export_35999641.zip", "2026-05-01 Garmin Export.zip"];
 
         for archive_name in archives {
             let archive_path = repo_data_archive_path(archive_name);
@@ -1252,10 +1147,7 @@ mod tests {
                 let bytes = match read_archive_entry_bytes(&archive_path, &indexed_entry.source) {
                     Ok(value) => value,
                     Err(error) => {
-                        error_samples.push(format!(
-                            "{}: read failed: {}",
-                            indexed_entry.entry_name, error.message
-                        ));
+                        error_samples.push(format!("{}: read failed: {}", indexed_entry.entry_name, error.message));
                         continue;
                     }
                 };
@@ -1263,10 +1155,7 @@ mod tests {
                 let bytes = match maybe_decode_archive_entry(&indexed_entry.activity_entry, bytes) {
                     Ok(value) => value,
                     Err(error) => {
-                        error_samples.push(format!(
-                            "{}: gzip decode failed: {}",
-                            indexed_entry.entry_name, error
-                        ));
+                        error_samples.push(format!("{}: gzip decode failed: {}", indexed_entry.entry_name, error));
                         continue;
                     }
                 };
@@ -1277,16 +1166,12 @@ mod tests {
                     &bytes,
                 ) {
                     Ok(parsed) => {
-                        let _ = crate::dedupe::activity_dedupe_key(
-                            &parsed.draft,
-                            &parsed.derived_data.route_points,
-                        );
+                        let _ = crate::dedupe::activity_dedupe_key(&parsed.draft, &parsed.derived_data.route_points);
                         parsed_count += 1;
                     }
-                    Err(error) => error_samples.push(format!(
-                        "{}: parse failed: {}",
-                        indexed_entry.entry_name, error.message
-                    )),
+                    Err(error) => {
+                        error_samples.push(format!("{}: parse failed: {}", indexed_entry.entry_name, error.message))
+                    }
                 }
             }
 
@@ -1320,8 +1205,8 @@ mod tests {
     #[test]
     #[ignore = "large real-archive verification"]
     fn scans_garmin_export_nested_uploaded_files() {
-        let scan = scan_archive_entries(&repo_data_archive_path("2026-05-01 Garmin Export.zip"))
-            .expect("scan garmin export");
+        let scan =
+            scan_archive_entries(&repo_data_archive_path("2026-05-01 Garmin Export.zip")).expect("scan garmin export");
 
         println!(
             "garmin total={} supported={} skipped={}",

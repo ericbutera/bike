@@ -1,8 +1,6 @@
 //! Exercise registered SDK handlers with the real domain facade and mocked I/O.
 use super::*;
-use bike_core::entities::{
-    activities, integration_events, strava_activity_states, strava_connections,
-};
+use bike_core::entities::{activities, integration_events, strava_activity_states, strava_connections};
 use sea_orm::{MockExecResult, Value};
 use std::collections::BTreeMap;
 
@@ -14,10 +12,7 @@ fn connection_mock() -> MockDatabase {
         .append_query_results([vec![customer_fixture::customer()]])
 }
 
-fn mutation(
-    fixture: &Fixture,
-    status: ActivityStatus,
-) -> bike_core::entities::strava_events::Model {
+fn mutation(fixture: &Fixture, status: ActivityStatus) -> bike_core::entities::strava_events::Model {
     let mut row = fixture.row(status);
     row.mutation = Some(serde_json::to_value(fixture.change(status)).unwrap());
     row
@@ -55,8 +50,7 @@ async fn registered_fetch_handlers_return_provider_sources_for_the_owned_activit
         .unwrap();
     assert_eq!(sources.event.correlation_id, fixture.event.correlation_id);
     let data = storage.objects.lock().unwrap();
-    let activity: serde_json::Value =
-        serde_json::from_slice(&data[&sources.activity.path]).unwrap();
+    let activity: serde_json::Value = serde_json::from_slice(&data[&sources.activity.path]).unwrap();
     assert_eq!(activity["id"], fixture.activity_id);
     assert_eq!(*provider.calls.lock().unwrap(), ["activity", "streams"]);
 }
@@ -64,10 +58,8 @@ async fn registered_fetch_handlers_return_provider_sources_for_the_owned_activit
 #[tokio::test]
 async fn registered_persist_and_delete_retries_return_the_committed_mutation() {
     let fixture = Fixture::new(StravaOperation::Upsert);
-    let db =
-        connection_mock().append_query_results([vec![mutation(&fixture, ActivityStatus::Applied)]]);
-    let (environment, _) =
-        environment_with_database(&fixture.event, Arc::new(Storage::default()), db);
+    let db = connection_mock().append_query_results([vec![mutation(&fixture, ActivityStatus::Applied)]]);
+    let (environment, _) = environment_with_database(&fixture.event, Arc::new(Storage::default()), db);
     let change = environment
         .run(StravaActivities::persist_activity, fixture.normalized())
         .await
@@ -77,8 +69,7 @@ async fn registered_persist_and_delete_retries_return_the_committed_mutation() {
     let fixture = Fixture::new(StravaOperation::Delete);
     let db = MockDatabase::new(DatabaseBackend::Postgres)
         .append_query_results([vec![mutation(&fixture, ActivityStatus::Deleted)]]);
-    let (environment, _) =
-        environment_with_database(&fixture.event, Arc::new(Storage::default()), db);
+    let (environment, _) = environment_with_database(&fixture.event, Arc::new(Storage::default()), db);
     assert_eq!(
         environment
             .run(
@@ -96,8 +87,7 @@ async fn registered_persist_and_delete_retries_return_the_committed_mutation() {
 async fn registered_capture_acknowledges_an_already_deleted_activity() {
     let fixture = Fixture::new(StravaOperation::Delete);
     let db = connection_mock().append_query_results([Vec::<activities::Model>::new()]);
-    let (environment, _) =
-        environment_with_database(&fixture.event, Arc::new(Storage::default()), db);
+    let (environment, _) = environment_with_database(&fixture.event, Arc::new(Storage::default()), db);
     let change = environment
         .run(StravaActivities::capture_deletion, fixture.event.clone())
         .await
@@ -117,10 +107,7 @@ async fn registered_source_deletion_removes_only_the_captured_path() {
         .run(StravaActivities::delete_source, change.clone())
         .await
         .unwrap();
-    assert_eq!(
-        *storage.removed.lock().unwrap(),
-        [change.removed_source.unwrap()]
-    );
+    assert_eq!(*storage.removed.lock().unwrap(), [change.removed_source.unwrap()]);
     assert!(storage
         .objects
         .lock()
@@ -134,8 +121,7 @@ async fn registered_publication_handlers_preserve_an_unchanged_activity() {
     let db = MockDatabase::new(DatabaseBackend::Postgres)
         .append_query_results([vec![customer_fixture::connection()]])
         .append_query_results([Vec::<strava_activity_states::Model>::new()]);
-    let (environment, _) =
-        environment_with_database(&fixture.event, Arc::new(Storage::default()), db);
+    let (environment, _) = environment_with_database(&fixture.event, Arc::new(Storage::default()), db);
     let change = ActivityChange::unchanged(fixture.event.clone(), ActivityStatus::Unchanged);
     let change = environment
         .run(StravaActivities::rebuild_activity, change)
@@ -167,8 +153,7 @@ async fn registered_collection_window_and_page_keep_the_offset_and_provider_acti
     let db = connection_mock()
         .append_query_results([vec![customer_fixture::connection()]])
         .append_query_results([vec![customer_fixture::customer()]]);
-    let (environment, provider) =
-        environment_with_database(&fixture.event, Arc::new(Storage::default()), db);
+    let (environment, provider) = environment_with_database(&fixture.event, Arc::new(Storage::default()), db);
     let collection = environment
         .run(StravaActivities::collection_window, fixture.event.clone())
         .await
@@ -182,13 +167,7 @@ async fn registered_collection_window_and_page_keep_the_offset_and_provider_acti
             - 1
     );
     let page = environment
-        .run(
-            StravaActivities::list_activity_page,
-            PageInput {
-                collection,
-                page: 1,
-            },
-        )
+        .run(StravaActivities::list_activity_page, PageInput { collection, page: 1 })
         .await
         .unwrap();
     assert_eq!(page.activity_ids, [fixture.activity_id]);
@@ -200,9 +179,7 @@ async fn registered_collection_window_and_page_keep_the_offset_and_provider_acti
 async fn registered_child_acceptance_preserves_root_ids_and_marks_child_submitted() {
     let parent = Fixture::new(StravaOperation::Sync);
     let mut child = Fixture::new(StravaOperation::Upsert);
-    child.event = parent
-        .event
-        .for_activity(child.activity_id, StravaOperation::Upsert);
+    child.event = parent.event.for_activity(child.activity_id, StravaOperation::Upsert);
     let db = connection_mock()
         .append_query_results([vec![child.row(ActivityStatus::Pending)]])
         .append_query_results([vec![audit()]])
@@ -211,8 +188,7 @@ async fn registered_child_acceptance_preserves_root_ids_and_marks_child_submitte
             rows_affected: 1,
             last_insert_id: 0,
         }]);
-    let (environment, _) =
-        environment_with_database(&parent.event, Arc::new(Storage::default()), db);
+    let (environment, _) = environment_with_database(&parent.event, Arc::new(Storage::default()), db);
     let accepted = environment
         .run(
             StravaActivities::accept_child,
@@ -229,8 +205,7 @@ async fn registered_child_acceptance_preserves_root_ids_and_marks_child_submitte
 }
 
 fn completion_mock() -> MockDatabase {
-    let counts: BTreeMap<String, Value> =
-        [("applied".into(), 2.into()), ("other".into(), 3.into())].into();
+    let counts: BTreeMap<String, Value> = [("applied".into(), 2.into()), ("other".into(), 3.into())].into();
     connection_mock()
         .append_query_results([vec![counts]])
         .append_query_results([
@@ -248,15 +223,8 @@ async fn registered_sync_and_backfill_completion_return_persisted_counts() {
         unchanged: 99,
         last_started_at: None,
     };
-    let (environment, _) = environment_with_database(
-        &fixture.event,
-        Arc::new(Storage::default()),
-        completion_mock(),
-    );
-    let result = environment
-        .run(StravaActivities::complete_sync, input)
-        .await
-        .unwrap();
+    let (environment, _) = environment_with_database(&fixture.event, Arc::new(Storage::default()), completion_mock());
+    let result = environment.run(StravaActivities::complete_sync, input).await.unwrap();
     assert_eq!((result.imported, result.unchanged), (2, 3));
     let fixture = Fixture::new(StravaOperation::Backfill);
     let input = CollectionResult {
@@ -265,11 +233,7 @@ async fn registered_sync_and_backfill_completion_return_persisted_counts() {
         unchanged: 99,
         last_started_at: None,
     };
-    let (environment, _) = environment_with_database(
-        &fixture.event,
-        Arc::new(Storage::default()),
-        completion_mock(),
-    );
+    let (environment, _) = environment_with_database(&fixture.event, Arc::new(Storage::default()), completion_mock());
     let result = environment
         .run(StravaActivities::complete_backfill, input)
         .await
@@ -281,11 +245,8 @@ async fn registered_sync_and_backfill_completion_return_persisted_counts() {
 async fn registered_disconnect_blocks_writes_revokes_and_removes_the_owned_connection() {
     let mut fixture = Fixture::new(StravaOperation::Disconnect);
     fixture.event.revoke_remote = true;
-    let ids: BTreeMap<String, Value> = [(
-        "source_correlation_id".into(),
-        fixture.activity_id.to_string().into(),
-    )]
-    .into();
+    let ids: BTreeMap<String, Value> =
+        [("source_correlation_id".into(), fixture.activity_id.to_string().into())].into();
     let db = connection_mock()
         .append_query_results([
             vec![customer_fixture::connection()],
@@ -299,8 +260,7 @@ async fn registered_disconnect_blocks_writes_revokes_and_removes_the_owned_conne
             rows_affected: 1,
             last_insert_id: 0,
         }]);
-    let (environment, provider) =
-        environment_with_database(&fixture.event, Arc::new(Storage::default()), db);
+    let (environment, provider) = environment_with_database(&fixture.event, Arc::new(Storage::default()), db);
     let ids = environment
         .run(StravaActivities::begin_disconnect, fixture.event.clone())
         .await
@@ -321,10 +281,9 @@ async fn registered_disconnect_blocks_writes_revokes_and_removes_the_owned_conne
 #[tokio::test]
 async fn registered_scan_returns_an_empty_page_when_no_customers_are_connected() {
     let fixture = Fixture::new(StravaOperation::Sync);
-    let db = MockDatabase::new(DatabaseBackend::Postgres)
-        .append_query_results([Vec::<strava_connections::Model>::new()]);
-    let (environment, _) =
-        environment_with_database(&fixture.event, Arc::new(Storage::default()), db);
+    let db =
+        MockDatabase::new(DatabaseBackend::Postgres).append_query_results([Vec::<strava_connections::Model>::new()]);
+    let (environment, _) = environment_with_database(&fixture.event, Arc::new(Storage::default()), db);
     let page = environment
         .run(
             StravaActivities::scan_connections,
