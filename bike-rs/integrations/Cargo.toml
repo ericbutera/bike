@@ -19,6 +19,8 @@ tracing = { workspace = true }
 tracing-opentelemetry = { workspace = true }
 utoipa = { workspace = true }
 uuid = { workspace = true }
+temporalio-client = { workspace = true }
+temporalio-common = { workspace = true }
 base64 = "0.22.1"
 dotenvy = { workspace = true }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }

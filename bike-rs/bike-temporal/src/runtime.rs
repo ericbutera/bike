@@ -20,31 +20,6 @@ pub async fn connect() -> Result<Client, crate::client::Error> {
     bike_core::jobs::native::connect().await
 }
 
-pub async fn ensure_schedule(client: &Client) -> Result<(), crate::client::Error> {
-    use temporalio_client::schedules::{
-        CreateScheduleOptions, ScheduleAction, ScheduleError, ScheduleIntervalSpec, ScheduleOverlapPolicy, ScheduleSpec,
-    };
-    let options = CreateScheduleOptions::builder()
-        .action(ScheduleAction::start_workflow(
-            ReconcileHeatmaps::run,
-            0,
-            TASK_QUEUE,
-            "bike-heatmap-reconciliation",
-        ))
-        .spec(
-            ScheduleSpec::builder()
-                .intervals(vec![ScheduleIntervalSpec::from(Duration::from_secs(15))])
-                .build(),
-        )
-        .overlap_policy(ScheduleOverlapPolicy::Skip)
-        .build();
-    match client.create_schedule("bike-heatmap-reconciliation", options).await {
-        Ok(_) => Ok(()),
-        Err(ScheduleError::Rpc(status)) if status.code() == tonic::Code::AlreadyExists => Ok(()),
-        Err(error) => Err(error.into()),
-    }
-}
-
 pub fn worker(
     runtime: &Runtime,
     client: Client,
@@ -52,7 +27,7 @@ pub fn worker(
     uploads_dir: String,
 ) -> Result<Worker, crate::client::Error> {
     let objects = ObjectStore::filesystem(&uploads_dir, ObjectOwner::ActivityImports);
-    let operations = Arc::new(BikeOperations::new(db, objects, uploads_dir));
+    let operations = Arc::new(BikeOperations::new(db, objects));
     let options = WorkerOptions::new(TASK_QUEUE)
         .tuner(
             TunerHolder::builder()

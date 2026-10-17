@@ -25,4 +25,6 @@ for attempt in {1..60}; do
   fi
   sleep 1
 done
+mise install jq
+mise run strava:sdk:check
 mise run e2e

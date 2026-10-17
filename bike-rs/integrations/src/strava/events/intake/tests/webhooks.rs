@@ -343,7 +343,11 @@ async fn persistence_failure_is_returned_without_accepting_an_event() {
     let error = WebhookIntake {
         subscription_id: Some(12345),
     }
-    .accept(&db, &store.webhook("activity", "create"), None)
+    .accept(
+        &StravaIntake::new(db.clone()),
+        &store.webhook("activity", "create"),
+        None,
+    )
     .await
     .unwrap_err();
     assert_eq!(error.status, axum::http::StatusCode::INTERNAL_SERVER_ERROR);

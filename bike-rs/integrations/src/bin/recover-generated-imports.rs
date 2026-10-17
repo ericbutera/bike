@@ -135,7 +135,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let connection = strava::load_connection(&db, run.user_id)
             .await?
             .ok_or("Connect Strava first")?;
-        strava::events::request_sync(&db, &user, &connection).await?;
+        strava::events::request_sync(&strava::events::StravaIntake::new(db.clone()), &user, &connection).await?;
     }
     println!(
         "{}",

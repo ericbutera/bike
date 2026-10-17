@@ -116,12 +116,16 @@ make it contribute. Outdoor-only choices belong to MAPS12.
   [operation tracing contract](observability.md). Keep database work beneath its
   operation, including queries issued from blocking render threads.
 
-Imports and edits durably mark projections pending without waiting for
-preparation. While enabled, a native Temporal schedule starts reconciliation every
-15 seconds, skipping overlap. It pages **16 activity IDs**, awaits preparation
-children, and continues by ID. Backfill uses the same builder. Native retries and
-history resume interrupted work; repeated computation is acceptable. Publication
-still checks the current activity generation and privacy state.
+- Imports and edits durably mark projections pending without waiting for preparation.
+- Upload/reprocess workflows call preparation as a child. Manual edits submit it
+  directly after commit. There is no periodic reconciliation schedule.
+- Explicit repairs page **16 activity IDs**, await preparation children, and
+  continue by ID. Backfill uses the same builder.
+- Recording-evidence recovery can invalidate a generation during preparation.
+  Return a retryable Activity failure so native retry reloads the new generation;
+  do not rely on a later database sweep.
+- Native retries and history resume interrupted work; repeated computation is
+  acceptable. Publication checks the current generation and privacy state.
 
 | Stored record         | Purpose                                                  |
 | --------------------- | -------------------------------------------------------- |

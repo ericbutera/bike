@@ -3,6 +3,14 @@ use crate::activities::DerivedActivities;
 use bike_core::bike_tasks::{ActivityImportResult, ActivityTask, FitnessChange, SegmentChange};
 use temporalio_sdk::{WorkflowContext, WorkflowResult};
 
+/// Imports and reprocessing await the same analytics and report work after save.
+pub(crate) async fn rebuild<W>(ctx: &WorkflowContext<W>, imported: &ActivityImportResult) -> WorkflowResult<()> {
+    segments(ctx, imported).await?;
+    achievements(ctx, imported).await?;
+    heatmap(ctx, imported).await?;
+    training_and_fitness(ctx, imported).await
+}
+
 pub(crate) async fn segments<W>(ctx: &WorkflowContext<W>, imported: &ActivityImportResult) -> WorkflowResult<()> {
     activity_segments(ctx, imported.activity()).await
 }

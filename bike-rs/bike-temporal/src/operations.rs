@@ -17,16 +17,11 @@ mod batches;
 pub struct BikeOperations {
     db: DatabaseConnection,
     objects: ObjectStore,
-    uploads_dir: String,
 }
 
 impl BikeOperations {
-    pub fn new(db: DatabaseConnection, objects: ObjectStore, uploads_dir: String) -> Self {
-        Self {
-            db,
-            objects,
-            uploads_dir,
-        }
+    pub fn new(db: DatabaseConnection, objects: ObjectStore) -> Self {
+        Self { db, objects }
     }
 
     async fn activity(&self, task: &ActivityTask) -> Result<activities::Model, WorkflowError> {

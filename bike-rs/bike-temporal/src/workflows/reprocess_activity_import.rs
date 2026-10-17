@@ -12,10 +12,7 @@ impl ReprocessActivityImport {
     #[run(name = "reprocess_activity_import")]
     pub async fn run(ctx: &mut WorkflowContext<Self>, input: ReprocessInput) -> WorkflowResult<ActivityImportResult> {
         let imported = imports::activity_import(ctx, input.into_command()).await?;
-        derived::segments(ctx, &imported).await?;
-        derived::achievements(ctx, &imported).await?;
-        derived::heatmap(ctx, &imported).await?;
-        derived::training_and_fitness(ctx, &imported).await?;
+        derived::rebuild(ctx, &imported).await?;
         Ok(imported)
     }
 }

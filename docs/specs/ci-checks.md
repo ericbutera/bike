@@ -13,6 +13,14 @@
 - The disposable browser stack uses a native Temporal development server for
   submission acknowledgment. It runs no ingestion worker; fixtures supply derived
   results, and unit tests exercise workflow execution with mocked Activities/children.
+  Submission checks assert HTTP 202 and native workflow references and acceptance
+  state, without waiting for derived results to change.
+- Fixture preparation explicitly starts PostgreSQL and Temporal and waits for
+  both health checks before starting the API. Warm resets preserve both services;
+  runtime identity checks require Temporal to remain running across attempts.
+- Only the E2E workflow starts a disposable Docker daemon. It verifies generated
+  Strava SDK freshness before browser tests using that same daemon. Unit tests
+  and their reusable verification receipts do not depend on a Docker engine.
 - The internal synthetics monitor is retired: scenario discovery, startup
   provisioning, special authentication, UI credential forwarding, dedicated
   tests, and monitor tasks are removed. The API exposes no synthetics routes.
@@ -25,7 +33,7 @@
 - Keep one native Rust compiler workspace at `/cache/bike/target/shared` for
   all branches. Woodpecker's `bike` workflow concurrency is one so different
   revisions cannot clean, replace, or report against the shared objects at once.
-  Unit and provider SDK checks within that workflow continue in parallel.
+  Rust, UI, and renderer checks within that workflow continue in parallel.
 - Successful Rust verification archives every Rust project listed in
   `coverage-projects.json`, including its HTML, LCOV, and JSON reports. Keep
   that manifest as the project inventory instead of duplicating crate names
@@ -71,8 +79,8 @@
 - Preflight the resolved publication plan, then verify every planned registry
   tag against its exported manifest digest. Missing tags, metadata, or mismatched
   digests fail the image step before E2E can try to pull an unpublished image.
-- Both native-test and E2E Docker daemons use the immutable Docker-in-Docker
-  image pin from mise. `pins:sync` refreshes both workflow services and
+- The E2E Docker daemon uses the immutable Docker-in-Docker
+  image pin from mise. `pins:sync` refreshes its workflow service and
   `ci:check` rejects drift. Do not rebuild or republish a Bike engine image
   that is identical to its upstream base; it adds no application behavior,
   cannot produce useful build-cache layers, and can trigger missing local

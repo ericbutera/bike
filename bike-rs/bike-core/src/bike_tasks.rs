@@ -153,6 +153,7 @@ pub struct ActivityPage {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArchiveCursor {
     pub job_id: i32,
+    /// Logical object key; never a path on the worker host.
     pub archive_path: String,
     pub offset: usize,
 }

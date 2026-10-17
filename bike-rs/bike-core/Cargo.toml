@@ -15,6 +15,8 @@ test-fixtures = ["sea-orm/mock", "opentelemetry_sdk/testing"]
 
 [dependencies]
 async-trait = { workspace = true }
+futures = { workspace = true }
+tempfile = "3.27.0"
 temporalio-common = { workspace = true }
 temporalio-client = { workspace = true }
 object_store = { version = "0.14.2", default-features = false, features = ["fs"] }
@@ -68,5 +70,4 @@ tokio = { workspace = true, features = ["test-util"] }
 migration = { path = "../migration" }
 opentelemetry_sdk = { workspace = true, features = ["testing"] }
 tokio-stream = { version = "0.1", features = ["net"] }
-tempfile = "3.27.0"
 sea-orm = { workspace = true, features = ["mock"] }

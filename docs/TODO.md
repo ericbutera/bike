@@ -22,7 +22,14 @@
 - [x] `reprocess_archive_fit_activity_imports`: use the same loop with archive FIT selection.
 - [x] `regenerate_user_segments`: page cycling activities and await regeneration children.
 - [x] `activity_archive_import`: retain ZIP bytes, extract a page, await imports, continue by offset.
-- [x] Reconcile pending heatmaps through a 15-second native schedule.
+- [x] Share one import/reprocess sequence for analytics and report children.
+- [x] Route retained archives, uploads, and supplemental files through the shared
+      object-store backend; use logical archive keys and disposable ZIP scratch.
+- [x] Remove automatic heatmap/Strava scans and the SQL inbox dispatcher; start
+      workflows from requests and activity changes. See the
+      [polling audit](worker-polling-audit-2026-10-17.md) for deployment adjustments.
+- [x] Delete both production schedules and all 828 `reconcile_heatmaps` executions
+      on 2026-10-17. Native deletion completed with zero failures; no inbox drain.
 - [x] Move upload, admin, bulk, archive, training, and edit/delete producers off SQL.
 - [x] Remove the SQL worker executable, queue, batch/stage/recovery/ledger code,
       SQL task APIs/UI, unused SMTP, retention-inventory prototypes, and obsolete checks.
@@ -53,7 +60,7 @@
 - [x] Complete native segment regeneration, fitness/segment analytics, training,
       heatmap reconciliation, and bounded tail pages of both import batch types
       and user-segment regeneration.
-- [x] Keep polling/health responsive during CPU-heavy domain work using Tokio's
+- [x] Keep native SDK task handling/health responsive during CPU-heavy domain work using Tokio's
       blocking pool and two native Activity slots. Give Bike work a separate
       30-minute Activity timeout; preserve native retries and ordinary domain writes.
 

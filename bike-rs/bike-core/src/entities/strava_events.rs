@@ -40,10 +40,7 @@ impl ActivityMutation {
         }
     }
 }
-use sea_orm::{
-    entity::prelude::*, sea_query::OnConflict, FromQueryResult, QueryOrder, QuerySelect, Set, Statement,
-    TransactionTrait,
-};
+use sea_orm::{entity::prelude::*, sea_query::OnConflict, Set, TransactionTrait};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "strava_events")]
@@ -69,25 +66,6 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
 impl ActiveModelBehavior for ActiveModel {}
-
-#[derive(Debug, PartialEq, FromQueryResult)]
-pub struct HandoffBacklog {
-    pub pending: i64,
-    pub oldest_accepted_at: Option<DateTimeUtc>,
-}
-
-impl HandoffBacklog {
-    pub async fn load(db: &impl ConnectionTrait) -> Result<Self, DbErr> {
-        Self::find_by_statement(Statement::from_string(
-            db.get_database_backend(),
-            "SELECT COUNT(*)::bigint AS pending, MIN(accepted_at) AS oldest_accepted_at
-             FROM strava_events WHERE submitted_at IS NULL",
-        ))
-        .one(db)
-        .await?
-        .ok_or_else(|| DbErr::RecordNotFound("Strava handoff backlog was not returned".into()))
-    }
-}
 
 impl Model {
     pub async fn collection_counts(db: &impl ConnectionTrait, event: &StravaEvent) -> Result<(i32, i32), DbErr> {
@@ -175,28 +153,10 @@ impl Model {
         Ok(row)
     }
 
-    pub async fn pending(db: &impl ConnectionTrait) -> Result<Vec<Self>, DbErr> {
-        Entity::find()
-            .filter(Column::SubmittedAt.is_null())
-            .filter(Column::NextAttemptAt.lte(chrono::Utc::now()))
-            .order_by_asc(Column::NextAttemptAt)
-            .limit(100)
-            .all(db)
-            .await
-    }
-
     pub async fn submitted(self, db: &impl ConnectionTrait) -> Result<(), DbErr> {
         let mut active: ActiveModel = self.into();
         active.submitted_at = Set(Some(chrono::Utc::now()));
         active.handoff_error = Set(None);
-        active.update(db).await?;
-        Ok(())
-    }
-
-    pub async fn retry_handoff(self, db: &impl ConnectionTrait, error: String) -> Result<(), DbErr> {
-        let mut active: ActiveModel = self.into();
-        active.next_attempt_at = Set(chrono::Utc::now() + chrono::Duration::seconds(30));
-        active.handoff_error = Set(Some(error));
         active.update(db).await?;
         Ok(())
     }

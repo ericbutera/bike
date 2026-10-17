@@ -116,7 +116,7 @@ fn training_backfill_calculates_each_activity_then_marks_domain_status() {
 fn archive_cursor() -> ArchiveCursor {
     ArchiveCursor {
         job_id: 7,
-        archive_path: "/uploads/archives/7.zip".into(),
+        archive_path: "archives/7.zip".into(),
         offset: 0,
     }
 }

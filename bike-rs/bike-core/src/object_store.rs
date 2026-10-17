@@ -1,5 +1,6 @@
 //! Retained objects and immutable references with ownership and integrity checks.
 mod backend;
+mod files;
 
 use crate::workflow_error::WorkflowError;
 use ::object_store::{path::Path as ObjectPath, ObjectStore as Storage, ObjectStoreExt, PutMode};
@@ -21,6 +22,7 @@ pub enum ObjectOwner {
     Strava,
     BikeTasks,
     ActivityImports,
+    Archives,
 }
 
 impl ObjectOwner {
@@ -29,6 +31,7 @@ impl ObjectOwner {
             Self::Strava => "strava",
             Self::BikeTasks => "bike/tasks",
             Self::ActivityImports => "activity-imports",
+            Self::Archives => "archives",
         }
     }
 
@@ -47,6 +50,14 @@ pub struct ObjectStore {
 }
 
 impl ObjectStore {
+    /// Share the injected backend while selecting another domain's key namespace.
+    pub(crate) fn for_owner(&self, owner: ObjectOwner) -> Self {
+        Self {
+            backend: self.backend.clone(),
+            owner,
+        }
+    }
+
     /// Composition roots inject a backend. Business code sees logical keys only.
     pub fn new(backend: Arc<dyn Storage>, owner: ObjectOwner) -> Self {
         Self::with_backend(Backend::Ready(backend), owner)
@@ -90,6 +101,18 @@ impl ObjectStore {
             bytes: bytes.len(),
         };
         self.create(&object.path, bytes).await?;
+        self.read(&object).await?;
+        Ok(object)
+    }
+
+    /// Retain bytes under an existing domain key without changing its format.
+    pub async fn write_key(&self, key: &str, bytes: &[u8]) -> Result<ObjectRef, WorkflowError> {
+        let object = ObjectRef {
+            path: key.to_owned(),
+            sha256: checksum(bytes),
+            bytes: bytes.len(),
+        };
+        self.create(key, bytes).await?;
         self.read(&object).await?;
         Ok(object)
     }

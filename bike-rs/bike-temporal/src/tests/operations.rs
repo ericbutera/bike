@@ -8,7 +8,7 @@ use sea_orm::MockDatabase;
 
 fn operations(mock: MockDatabase) -> BikeOperations {
     let (objects, _) = fixtures::object_storage(ObjectOwner::ActivityImports);
-    BikeOperations::new(mock.into_connection(), objects, "/tmp".into())
+    BikeOperations::new(mock.into_connection(), objects)
 }
 
 #[tokio::test]

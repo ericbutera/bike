@@ -779,9 +779,14 @@ pub async fn update_activity(
     let activity = activities::Model::find_owned(&state.db, id, user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Activity not found"))?;
-    let updated = activity
-        .update_details(&state.db, request.title, request.activity_type)
-        .await?;
+    let updated = bike_core::activity_lifecycle::update_activity_details(
+        &state.db,
+        &state.tasks,
+        activity,
+        request.title,
+        request.activity_type,
+    )
+    .await?;
     let segment_efforts = load_activity_segment_efforts(&state.db, user.id, updated.id).await?;
     let training_analysis = load_activity_training_analysis_by_activity_id(&state.db, updated.id).await?;
     let mut response = ActivityResponse::from_detail(updated, segment_efforts);

@@ -115,33 +115,6 @@ async fn direct_producer_reports_a_rejected_native_start() {
 }
 
 #[tokio::test]
-async fn heatmap_schedule_uses_native_overlap_and_accepts_an_existing_schedule() {
-    for schedule_exists in [false, true] {
-        let requests = Arc::new(Mutex::new(Requests {
-            schedule_exists,
-            ..Default::default()
-        }));
-        crate::runtime::ensure_schedule(&client(requests.clone()).await)
-            .await
-            .unwrap();
-        let requests = requests.lock().unwrap();
-        let request = &requests.schedules[0];
-        assert_eq!(request.schedule_id, "bike-heatmap-reconciliation");
-        let schedule = request.schedule.as_ref().unwrap();
-        assert_eq!(
-            schedule.spec.as_ref().unwrap().interval[0]
-                .interval
-                .as_ref()
-                .unwrap()
-                .seconds,
-            15
-        );
-        assert_eq!(schedule.policies.as_ref().unwrap().overlap_policy, 1);
-        assert!(requests.starts.is_empty());
-    }
-}
-
-#[tokio::test]
 async fn training_submission_records_queued_state_before_start_and_reports_rejection() {
     for fail_start in [false, true] {
         let requests = Arc::new(Mutex::new(Requests {

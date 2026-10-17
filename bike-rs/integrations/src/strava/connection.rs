@@ -155,7 +155,12 @@ pub async fn exchange_code_for_connection(
         let connection = upsert_connection_from_token(db, verified_state.user_id, token_response).await?;
 
         let user = bike_core::auth::entities::users::Model::find_by_id(db, connection.user_id).await?;
-        crate::strava::events::request_sync(db, &user, &connection).await?;
+        crate::strava::events::request_sync(
+            &crate::strava::events::StravaIntake::new(db.clone()),
+            &user,
+            &connection,
+        )
+        .await?;
         Ok::<_, AppError>(connection)
     }
     .await;

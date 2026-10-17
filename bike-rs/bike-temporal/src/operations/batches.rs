@@ -47,11 +47,11 @@ impl BatchOperations for BikeOperations {
     }
 
     async fn prepare_archive(&self, job_id: i32) -> Result<ArchiveCursor, WorkflowError> {
-        bike_core::archive_import::native::prepare(&self.db, &self.uploads_dir, job_id).await
+        bike_core::archive_import::native::prepare(&self.db, &self.objects, job_id).await
     }
 
     async fn archive_page(&self, cursor: ArchiveCursor) -> Result<ArchivePage, WorkflowError> {
-        bike_core::archive_import::native::page(&self.db, &self.uploads_dir, cursor).await
+        bike_core::archive_import::native::page(&self.db, &self.objects, cursor).await
     }
 
     async fn finish_archive(&self, job_id: i32) -> Result<(), WorkflowError> {

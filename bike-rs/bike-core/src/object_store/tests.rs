@@ -173,3 +173,66 @@ async fn filesystem_adapter_creates_its_root_and_survives_a_new_instance() {
     let restarted = ObjectStore::filesystem(root, ObjectOwner::BikeTasks);
     assert_eq!(restarted.read(&object).await.unwrap(), b"retained");
 }
+
+#[tokio::test]
+async fn filesystem_scratch_uses_the_writable_storage_root_and_is_removed_on_drop() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().join("objects");
+    let store = ObjectStore::filesystem(&root, ObjectOwner::Archives);
+    let key = "archives/20.zip";
+    store.write_key(key, b"retained archive").await.unwrap();
+    let temporary = store.materialize(key).await.unwrap();
+    let path = temporary.path().to_owned();
+    assert!(path.starts_with(root.join(".scratch")));
+    assert_eq!(tokio::fs::read(&path).await.unwrap(), b"retained archive");
+    drop(temporary);
+    assert!(!path.exists());
+    assert!(store.contains(key).await.unwrap());
+}
+
+#[tokio::test]
+async fn named_import_keys_preserve_bytes_and_reject_conflicting_rewrites() {
+    let (store, _) = test_support::object_storage(ObjectOwner::ActivityImports);
+    let key = "activity-imports/user/2026/10/source.gpx";
+    let first = store.write_key(key, b"source bytes").await.unwrap();
+    assert_eq!(first.path, key);
+    assert_eq!(store.write_key(key, b"source bytes").await.unwrap(), first);
+    assert!(store.write_key(key, b"different bytes").await.is_err());
+    assert_eq!(store.read(&first).await.unwrap(), b"source bytes");
+}
+
+#[tokio::test]
+async fn large_archives_round_trip_through_an_injected_backend_and_disposable_scratch() {
+    let (imports, backend) = test_support::object_storage(ObjectOwner::ActivityImports);
+    let archives = imports.for_owner(ObjectOwner::Archives);
+    let source = tempfile::NamedTempFile::new().unwrap();
+    let bytes = vec![42; 11 * 1024 * 1024];
+    tokio::fs::write(source.path(), &bytes).await.unwrap();
+    let key = "archives/20.zip";
+    assert!(!archives.contains(key).await.unwrap());
+    archives.retain_file(key, source.path()).await.unwrap();
+    drop(source);
+    let restarted = ObjectStore::new(backend, ObjectOwner::Archives);
+    assert!(restarted.contains(key).await.unwrap());
+    let scratch = restarted.materialize(key).await.unwrap();
+    let path = scratch.path().to_owned();
+    assert_eq!(tokio::fs::read(&path).await.unwrap(), bytes);
+    drop(scratch);
+    assert!(!path.exists());
+    assert!(imports.materialize(key).await.is_err());
+    assert!(imports.contains(key).await.is_err());
+    assert!(archives.materialize("archives/missing.zip").await.is_err());
+}
+
+#[tokio::test]
+async fn file_retention_rejects_foreign_keys_and_aborts_failed_reads() {
+    let (store, _) = test_support::object_storage(ObjectOwner::Archives);
+    let directory = tempfile::tempdir().unwrap();
+    let missing = directory.path().join("missing.zip");
+    assert!(store.retain_file("strava/source.zip", &missing).await.is_err());
+    assert!(store.retain_file("archives/20.zip", &missing).await.is_err());
+    // Opening a directory succeeds on Linux, but reading fails after the
+    // multipart upload starts. No partial object may be published.
+    assert!(store.retain_file("archives/20.zip", directory.path()).await.is_err());
+    assert!(!store.contains("archives/20.zip").await.unwrap());
+}

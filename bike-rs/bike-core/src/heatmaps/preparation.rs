@@ -33,8 +33,8 @@ pub async fn prepare_activity(db: &DatabaseConnection, pending: PendingProjectio
     .await?;
     if recovered != derived.recording {
         derived.recording = recovered;
-        // Persist evidence with a source-version guard. The activity trigger queues a
-        // fresh generation, so the original lease must not publish stale geometry.
+        // Persist evidence with a source-version guard. Native Activity retry reloads
+        // the new generation; the old generation must not publish stale geometry.
         crate::entities::activities::Model::store_recording(
             db,
             pending.activity_id,
@@ -43,7 +43,9 @@ pub async fn prepare_activity(db: &DatabaseConnection, pending: PendingProjectio
             &derived,
         )
         .await?;
-        return Ok(());
+        return Err(DbErr::Custom(
+            "Heatmap recording evidence changed; retry the current generation".into(),
+        ));
     }
     let chunks = tokio::task::spawn_blocking(crate::observability::blocking_with_current_trace(move || {
         prepare_route(&derived)
@@ -67,6 +69,76 @@ pub(crate) fn prepare_route(derived: &crate::activity_data::ActivityDerivedData)
 mod tests {
     use super::*;
     use crate::{activity_details::derive_activity_detail_data, activity_recording::RecordingContext};
+
+    #[tokio::test]
+    async fn recovered_evidence_requires_native_retry_and_the_fresh_generation_can_publish() {
+        use crate::{entities::activities, test_support as fixtures};
+        use sea_orm::{DbBackend, MockDatabase, MockExecResult, Value};
+        use std::collections::BTreeMap;
+        let mut derived = derive_activity_detail_data(
+            "outdoor.fit",
+            "fit",
+            include_bytes!("../../tests/fixtures/recording/outdoor.fit"),
+        )
+        .unwrap();
+        assert!(derived.route_points.len() >= 8);
+        let source = activities::Model {
+            derived_data_json: Some(crate::activity_data::serialize_derived_activity_data(&derived)),
+            ..fixtures::activity()
+        };
+        let counterpart = activities::Model {
+            id: 43,
+            title: "Zwift ride".into(),
+            ..source.clone()
+        };
+        let db = MockDatabase::new(DbBackend::Postgres)
+            .append_query_results([vec![source.clone()], vec![counterpart]])
+            .append_exec_results([MockExecResult {
+                rows_affected: 1,
+                last_insert_id: 0,
+            }])
+            .into_connection();
+        let error = prepare_activity(
+            &db,
+            PendingProjection {
+                activity_id: source.id,
+                generation: 3,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(error.to_string().contains("retry the current generation"));
+        let log = format!("{:?}", db.into_transaction_log());
+        assert!(log.contains("UPDATE"));
+        assert!(!log.contains("heatmap_chunks"));
+
+        derived.recording.observe("fit.creator.manufacturer", "zwift");
+        let fresh_source = activities::Model {
+            derived_data_json: Some(crate::activity_data::serialize_derived_activity_data(&derived)),
+            ..source
+        };
+        let owner = BTreeMap::from([("user_id", Value::from(fresh_source.user_id))]);
+        let db = MockDatabase::new(DbBackend::Postgres)
+            .append_query_results([vec![fresh_source]])
+            .append_query_results([vec![owner]])
+            .append_exec_results((0..3).map(|_| MockExecResult {
+                rows_affected: 1,
+                last_insert_id: 0,
+            }))
+            .into_connection();
+        prepare_activity(
+            &db,
+            PendingProjection {
+                activity_id: 42,
+                generation: 4,
+            },
+        )
+        .await
+        .unwrap();
+        let log = format!("{:?}", db.into_transaction_log());
+        assert!(log.contains("skipped"));
+        assert!(log.contains("COMMIT"));
+    }
 
     #[test]
     fn legacy_virtual_and_zwift_flags_remove_chunks_while_real_rides_keep_them() {

@@ -119,7 +119,7 @@ run = "mise --cd bike-rs run test"
 
 [tasks."pins:sync"]
 description = "Regenerate package metadata and CI images from mise pins"
-run = ['npm --prefix bike-ui pkg set "packageManager=pnpm@${PNPM_VERSION?}"', "mise --cd bike-ui exec -- pnpm install --lockfile-only", "mise install aqua:mikefarah/yq", "mise exec aqua:mikefarah/yq -- yq --inplace '(.services[] | select(.name == \"docker\").image) = strenv(DOCKER_DIND_IMAGE)' .woodpecker/bike.yaml", "mise exec aqua:mikefarah/yq -- yq --inplace '(.services[] | select(.name == \"docker\").image) = strenv(DOCKER_DIND_IMAGE)' .woodpecker/e2e.yaml"]
+run = ['npm --prefix bike-ui pkg set "packageManager=pnpm@${PNPM_VERSION?}"', "mise --cd bike-ui exec -- pnpm install --lockfile-only", "mise install aqua:mikefarah/yq", "mise exec aqua:mikefarah/yq -- yq --inplace '(.services[] | select(.name == \"docker\").image) = strenv(DOCKER_DIND_IMAGE)' .woodpecker/e2e.yaml"]
 
 [tasks."pins:check"]
 description = "Verify generated package-manager metadata agrees with mise"
@@ -333,10 +333,6 @@ run = ["mise run lint:rs", "mise --cd bike-rs run test:ci"]
 [tasks."ci:rust:report"]
 description = "Join parallel Rust measurements and publish completed verification"
 run = "bash scripts/ci-rust.sh report"
-
-[tasks."ci:rust:sdk"]
-description = "Validate generated SDK bindings using the disposable check engine"
-run = "bash scripts/ci-rust.sh sdk"
 
 [tasks."ci:rust:cache:test"]
 description = "Verify cross-PR Rust check reuse, invalidation, failures, and coverage transfer"

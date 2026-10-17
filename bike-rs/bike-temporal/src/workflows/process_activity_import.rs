@@ -19,10 +19,7 @@ impl ProcessActivityImport {
             },
         )
         .await?;
-        derived::segments(ctx, &imported).await?;
-        derived::achievements(ctx, &imported).await?;
-        derived::heatmap(ctx, &imported).await?;
-        derived::training_and_fitness(ctx, &imported).await?;
+        derived::rebuild(ctx, &imported).await?;
         Ok(imported)
     }
 }

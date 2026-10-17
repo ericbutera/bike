@@ -1,4 +1,4 @@
-use crate::bike_tasks::{ArchiveInput, FitnessChange, Priority, SegmentChange, UserPage};
+use crate::bike_tasks::{ActivityTask, ArchiveInput, FitnessChange, Priority, SegmentChange, UserPage};
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -60,6 +60,20 @@ impl JobQueue {
 
     pub async fn queue_fitness_freshness(&self, user_id: i32) -> Result<(), super::TaskError> {
         self.rebuild_fitness_freshness(user_id).await
+    }
+
+    pub async fn prepare_heatmap(&self, user_id: i32, activity_id: i32) -> Result<(), super::TaskError> {
+        self.submit(
+            "prepare_heatmap",
+            &ActivityTask {
+                user_id,
+                activity_id,
+                priority: Priority::NewActivity,
+            },
+        )
+        .await
+        .map(|_| ())
+        .map_err(super::TaskError::Storage)
     }
 
     pub async fn rebuild_segment_analytics(&self, mut segment_ids: Vec<i32>) -> Result<(), super::TaskError> {

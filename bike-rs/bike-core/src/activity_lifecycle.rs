@@ -12,6 +12,18 @@ use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
+pub async fn update_activity_details(
+    db: &DatabaseConnection,
+    tasks: &TaskQueue,
+    activity: activities::Model,
+    title: Option<String>,
+    activity_type: Option<crate::activity_type::ActivityType>,
+) -> Result<activities::Model, AppError> {
+    let updated = activity.update_details(db, title, activity_type).await?;
+    tasks.prepare_heatmap(updated.user_id, updated.id).await?;
+    Ok(updated)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DuplicateActivityCleanupSummary {
     pub duplicate_group_count: usize,
