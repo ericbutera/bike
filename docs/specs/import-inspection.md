@@ -10,9 +10,9 @@
 - Temporal UI owns workflow execution, children, retries, and cancellation, as
   specified in [background work](background-work.md#ownership-and-runtime).
   Retire the custom import trace, processing graph, and stage replay endpoints.
-- Existing retained import/attempt data and historical migrations remain intact.
-  Keep SQL execution behavior for unconverted producers while displaying only
-  domain metadata. Native single-activity reprocessing remains an admin task.
+- Preserve retained import metadata, source files, and historical migrations.
+  SQL execution and attempt tables are retired; all producers submit to Temporal.
+  Native single-activity reprocessing remains an admin task.
 - Verify details and missing imports with PostgreSQL mocks/shared fixtures.
   Verify on-demand loading, manual refresh, failure details, and the activity link
   with mocked React Query responses; do not add SQLite compatibility machinery.
