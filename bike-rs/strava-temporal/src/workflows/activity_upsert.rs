@@ -26,7 +26,7 @@ impl UpsertActivity {
         } else {
             upsert(ctx, event.clone()).await
         };
-        let result = options::workflow_result(ctx, result);
+        let result = options::command_result(ctx, result);
         let log_event = result.as_ref().map_or(&event, |value| &value.event);
         logging::finished(ctx, log_event, &result);
         result
@@ -41,7 +41,8 @@ async fn sources<W>(ctx: &mut WorkflowContext<W>, event: StravaEvent) -> Workflo
 
 pub(super) async fn upsert<W>(ctx: &mut WorkflowContext<W>, event: StravaEvent) -> WorkflowResult<ActivityChange> {
     let normalized = sources(ctx, event).await?;
-    let change = run(ctx, PersistActivity, normalized).await?;
+    let boundary = options::CommitBoundary::begin(ctx)?;
+    let change = boundary.run(PersistActivity, normalized).await?;
     if matches!(
         change.status,
         ActivityStatus::Superseded | ActivityStatus::SourceChanged
@@ -49,21 +50,27 @@ pub(super) async fn upsert<W>(ctx: &mut WorkflowContext<W>, event: StravaEvent) 
         return Ok(change);
     }
     if change.removed_source.is_some() {
-        return publish_exclusion(ctx, change).await;
+        return publish_exclusion(&boundary, change).await;
     }
-    publish_activity(ctx, change).await
+    publish_activity(&boundary, change).await
 }
 
-async fn publish_exclusion<W>(ctx: &mut WorkflowContext<W>, change: ActivityChange) -> WorkflowResult<ActivityChange> {
-    let change = run(ctx, DeleteSource, change).await?;
-    let change = run(ctx, RebuildSegments, change).await?;
-    run(ctx, RebuildFitness, change).await
+async fn publish_exclusion<W>(
+    boundary: &options::CommitBoundary<'_, W>,
+    change: ActivityChange,
+) -> WorkflowResult<ActivityChange> {
+    let change = boundary.run(DeleteSource, change).await?;
+    let change = boundary.run(RebuildSegments, change).await?;
+    boundary.run(RebuildFitness, change).await
 }
 
-async fn publish_activity<W>(ctx: &mut WorkflowContext<W>, change: ActivityChange) -> WorkflowResult<ActivityChange> {
-    let change = run(ctx, RebuildActivity, change).await?;
-    let change = run(ctx, RebuildSegments, change).await?;
-    let change = run(ctx, RebuildFitness, change).await?;
-    let change = run(ctx, PublishHeatmap, change).await?;
-    run(ctx, CompleteActivity, change).await
+async fn publish_activity<W>(
+    boundary: &options::CommitBoundary<'_, W>,
+    change: ActivityChange,
+) -> WorkflowResult<ActivityChange> {
+    let change = boundary.run(RebuildActivity, change).await?;
+    let change = boundary.run(RebuildSegments, change).await?;
+    let change = boundary.run(RebuildFitness, change).await?;
+    let change = boundary.run(PublishHeatmap, change).await?;
+    boundary.run(CompleteActivity, change).await
 }

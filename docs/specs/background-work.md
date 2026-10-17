@@ -144,6 +144,9 @@ flowchart TD
   visible for retry from the retained source.
 - Completion means the workflow's own steps finished. It does not certify that
   every shared projection across Bike is simultaneously current.
+- Strava's provider-specific cancellation behavior is described below. Its
+  native cancellation tokens do not change Bike task cancellation or add a
+  database handshake, result ledger, or shared-output coordinator.
 
 ## Reprocessing implementation
 
@@ -276,6 +279,16 @@ flowchart TD
 - The workflow table describes the existing provider sequence. Keep its explicit
   fetch/normalize/persist/refresh shape when reusing Bike domain tasks. Per-item
   rebuilds are acceptable; shared-output coordination is not a conversion gate.
+- Provider single-event parents await request-owned children and preserve the
+  child's result: canceled preparation reports cancellation; a started mutation
+  reports its actual completion or failure. Collections settle the current child,
+  then stop before the next item or cursor update. Parent close requests child
+  cancellation and waits for the child to settle.
+- Native patch `strava-commit-boundary-v1` preserves retained histories. New
+  provider runs check cancellation before preparation and shield a started
+  mutation and its downstream steps with independent native cancellation tokens.
+  Disconnect shields its initial state write and final revoke/removal separately;
+  item boundaries remain cancellable. This does not promise atomic publication.
 - SQL import recovery, bulk replay, and historical source repair must exclude
   `strava_sync`, including interrupted native publication. Use native sync/backfill;
   do not call legacy processors or create SQL continuation/checkpoint tasks.

@@ -54,6 +54,9 @@ where
     W: temporalio_sdk::workflows::WorkflowImplementation,
     W::Run: WorkflowDefinition<Input = StravaEvent>,
 {
+    // Record the parent decision before any child/timer commands, including a
+    // canceled timer. Completion must not introduce a new patch marker.
+    ctx.patched("strava-commit-boundary-v1");
     options::workflow_result(ctx, Ok(()))?;
     options::validate_input(ctx, &event)?;
     let workflow_id = event

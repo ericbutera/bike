@@ -1,4 +1,5 @@
 mod activity;
+mod cancellation;
 mod collection;
 mod disconnect;
 pub(crate) mod fixture;

@@ -62,6 +62,9 @@
 - [x] Correct provider event time versus local sync time and stale fetched writes
       in PR #80. Preserve ownership/deletion/connection checks; cover source
       contention, continuation, and the data repair with focused fixtures.
+- [x] Settle a started Strava mutation with native cancellation tokens in PR #81;
+      await its child result and stop collections before the next item. Keep
+      Bike's cooperative cancellation and partial-result behavior unchanged.
 - [ ] Repair checksumless legacy import metadata without replacing retained files.
 - [ ] Remove recording/provider bodies from SQL error diagnostics; retain useful
       operation names and IDs.
