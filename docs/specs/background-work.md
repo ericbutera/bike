@@ -578,6 +578,14 @@ flowchart LR
 
 ## Temporal execution policy
 
+- Immutable retained-input integrity and JSON decoding failures use the existing
+  typed domain error (`422 Unprocessable Entity`); pure file parser failures are
+  also terminal client errors. Missing immutable input is terminal. Native
+  Activity error adaptation classifies these without matching message text.
+  Backend I/O/timeouts remain server errors and retryable. Repair or recover the
+  retained source before intentionally submitting new work; retries cannot fix
+  the same checksum, size, or malformed bytes. Primary and supplemental sources
+  obey the same rule before any mutation.
 - [Shared platform policy](../../bike-rs/bike-core/src/platform/temporal.rs) owns
   named timeout constants and native retry-policy factories. Bike and Strava
   workflow options use these factories; workflow steps do not build policies.

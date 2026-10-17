@@ -13,9 +13,13 @@ pub fn mock() -> MockDatabase {
 }
 
 pub fn metadata(mock: MockDatabase) -> MockDatabase {
+    source_metadata(mock, fixtures::reprocess_artifact())
+}
+
+pub fn source_metadata(mock: MockDatabase, artifact: activity_import_artifacts::Model) -> MockDatabase {
     mock.append_query_results([vec![fixtures::reprocess_activity()]])
         .append_query_results([vec![fixtures::reprocess_import()]])
-        .append_query_results([vec![fixtures::reprocess_artifact()]])
+        .append_query_results([vec![artifact]])
 }
 
 pub fn saved_activity() -> activities::Model {

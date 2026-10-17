@@ -137,7 +137,7 @@ async fn retained_bytes_must_match_submitted_identity() {
             .unwrap_err()
             .status
             .as_u16(),
-        500
+        422
     );
     assert_eq!(db.into_transaction_log().len(), 4); // rejected before profile or mutation
 }
@@ -204,6 +204,56 @@ async fn corrupt_supplemental_recording_is_rejected_before_mutation() {
     let error = reprocess(&db, &objects, fixtures::reprocess_execution())
         .await
         .unwrap_err();
-    assert_eq!(error.status.as_u16(), 500);
+    assert_eq!(error.status.as_u16(), 422);
+    assert_eq!(db.into_transaction_log().len(), 5);
+}
+
+#[tokio::test]
+async fn malformed_primary_source_with_valid_integrity_is_terminal_before_mutation() {
+    let bytes = b"malformed tcx";
+    let (objects, _) = fixture::retain_source(bytes).await;
+    let artifact = crate::entities::activity_import_artifacts::Model {
+        size_bytes: bytes.len() as i64,
+        checksum_sha256: crate::object_store::checksum(bytes),
+        ..fixtures::reprocess_artifact()
+    };
+    let mut execution = fixtures::reprocess_execution();
+    execution.command.source.object.bytes = bytes.len();
+    execution
+        .command
+        .source
+        .object
+        .sha256
+        .clone_from(&artifact.checksum_sha256);
+    let db = fixture::source_metadata(
+        fixture::mock().append_query_results([Vec::<activity_event_history::Model>::new()]),
+        artifact,
+    )
+    .into_connection();
+    let error = reprocess(&db, &objects, execution).await.unwrap_err();
+    assert!(error.status.is_client_error());
+    assert_eq!(db.into_transaction_log().len(), 4);
+}
+
+#[tokio::test]
+async fn malformed_supplemental_source_with_valid_integrity_is_terminal_before_mutation() {
+    let bytes = b"malformed fit";
+    let (objects, backend) = fixture::retain_source(fixtures::REPROCESS_SOURCE).await;
+    let artifact = crate::entities::activity_import_artifacts::Model {
+        size_bytes: bytes.len() as i64,
+        checksum_sha256: crate::object_store::checksum(bytes),
+        ..fixtures::reprocess_recording_artifact()
+    };
+    backend
+        .put(&Path::parse(&artifact.storage_path).unwrap(), bytes.as_slice().into())
+        .await
+        .unwrap();
+    let db = fixture::metadata(fixture::mock().append_query_results([Vec::<activity_event_history::Model>::new()]))
+        .append_query_results([vec![fixtures::reprocess_artifact(), artifact]])
+        .into_connection();
+    let error = reprocess(&db, &objects, fixtures::reprocess_execution())
+        .await
+        .unwrap_err();
+    assert!(error.status.is_client_error());
     assert_eq!(db.into_transaction_log().len(), 5);
 }
