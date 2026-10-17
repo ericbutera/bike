@@ -412,6 +412,11 @@ impl<A: WorkflowAssertions> WorkflowMock<A> {
         assert!(self.commands.0.borrow().is_empty(), "Unexpected activity or child");
     }
 
+    pub fn assert_pending(&self) {
+        self.assert_no_commands();
+        assert!(self.completion.is_none(), "Workflow finished before its dependency");
+    }
+
     pub fn next_command(&mut self) -> workflow_command::Variant {
         self.pop_command().variant.unwrap()
     }
