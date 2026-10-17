@@ -151,7 +151,7 @@
 | 3     | R03    | P1       | Strava duplicate outcomes and removed segment scope     | Ready to verify |
 | 4     | R02    | P1       | Source ordering and reconciliation                      | Pending         |
 | 5     | R04    | P1       | Cancellation boundary across provider parents/children  | Pending         |
-| 6     | R06    | P1       | Bounded webhook acceptance                              | Pending         |
+| 6     | R06    | P1       | Bounded webhook acceptance                              | In progress     |
 | 7     | R09    | P2       | Separate legacy SQL bookkeeping from domain effects     | Pending         |
 | 8     | R08    | P2       | Simplify debounce state and return domain outcomes      | In progress     |
 | 9     | R11    | P2       | Permanent retained-input failures                       | Pending         |
@@ -215,6 +215,12 @@
   callback budget. The existing inbox is acceptable; no additional inbox is
   required. Return failure promptly on timeout/uncertain acceptance and preserve
   deduplication after a lost reply. Use delayed/success/failure store mocks.
+  The existing intake store seam now has one 1.5-second deadline around the
+  complete acceptance operation. Controlled Tokio clock/store fixtures cover
+  per-stage delays, the cumulative budget, prompt success/failure, and commit
+  before a timed-out reply followed by canonical retry. All 15 intake units pass;
+  the cumulative-budget regression fails without the deadline. Required hooks,
+  CI, and deployed callback verification remain open.
 - **R09 — legacy bookkeeping** (U05/U17; simplicity gate).
   Move SQL pipeline compatibility recording into legacy callers so native domain
   operations need no SQL execution/readiness records. Preserve old consumers

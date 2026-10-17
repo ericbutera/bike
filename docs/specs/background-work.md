@@ -104,6 +104,12 @@ flowchart LR
 - Strava callback: validate the supported event and use a bounded durable start.
   Return HTTP 200 within **two seconds**, with the start timeout below the total
   callback budget. Provider fetches and derived work belong in the worker.
+- The existing Strava inbox acceptance has one 1.5-second deadline covering
+  connection/customer reads, validation, and the durable event transaction.
+  It leaves 0.5 seconds for HTTP handling/transport. A timeout returns non-2xx:
+  a commit may have succeeded without its reply, so the next delivery reuses
+  canonical payload/generation deduplication and the original event/job identity.
+  Do not reset the deadline for each database call or wait for a worker.
 - On unavailable/uncertain acceptance, return non-2xx promptly. Strava makes up to
   **three total deliveries**; direct submission cannot buffer a longer outage.
   Sync/backfill can recover live activities but cannot guarantee missed deletions.
