@@ -1,5 +1,8 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { initializeClientConfig } from "../../lib/config";
+
+afterEach(() => initializeClientConfig({}));
 import type { IntegrationEvent } from "@/lib/queries";
 import IntegrationEventFeed from "../IntegrationEventFeed";
 
@@ -23,6 +26,9 @@ const accepted: IntegrationEvent = {
 
 describe("IntegrationEventFeed", () => {
   it("links an accepted event to its native Temporal execution", () => {
+    initializeClientConfig({
+      TEMPORAL_UI_URL: "https://temporal.example.com/",
+    });
     render(
       <IntegrationEventFeed
         audience="admin"
@@ -39,7 +45,7 @@ describe("IntegrationEventFeed", () => {
       screen.getByRole("link", { name: "View job in Temporal" }),
     ).toHaveAttribute(
       "href",
-      "http://localhost:8080/namespaces/bike/workflows/strava-event%2Fwith%20space",
+      "https://temporal.example.com/namespaces/bike/workflows/strava-event%2Fwith%20space",
     );
   });
 

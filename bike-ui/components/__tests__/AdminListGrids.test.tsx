@@ -27,7 +27,6 @@ vi.mock("../../lib/queries", () => ({
 vi.mock("../admin/LocalAdminLayout", () => ({
   LocalAdminLayout: ({ children }: { children: ReactNode }) => children,
 }));
-vi.mock("../admin/ActivityPipelines", () => ({ default: () => null }));
 
 beforeEach(() => {
   vi.clearAllMocks();

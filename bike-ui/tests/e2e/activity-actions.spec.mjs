@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { activityId, targets } from "./helpers/targets.mjs";
 import { openActivityDetail } from "./helpers/ui.mjs";
 
-test("activity source download and admin import trace work in Bike", async ({
+test("activity original source downloads work in Bike", async ({
   createContext,
 }) => {
   test.setTimeout(90_000);
@@ -14,19 +14,6 @@ test("activity source download and admin import trace work in Bike", async ({
     const context = await createContext({ acceptDownloads: true });
     const page = await context.newPage();
     await openActivityDetail(page, target, activityId);
-
-    await page.getByRole("button", { name: "Open activity actions" }).click();
-    await page.getByRole("button", { name: "View import trace" }).click();
-    const trace = page.getByRole("dialog");
-    await expect(
-      trace.getByRole("heading", { name: "Import trace" }),
-    ).toBeVisible();
-    await expect(trace.getByText(/Import #\d+/)).toBeVisible();
-    await expect(
-      trace.getByRole("heading", { name: "Import stages" }),
-    ).toBeVisible();
-    await trace.getByRole("button", { name: "Close", exact: true }).click();
-    await expect(trace).toHaveCount(0);
 
     await page.getByRole("button", { name: "Open activity actions" }).click();
     const downloadPromise = page.waitForEvent("download");

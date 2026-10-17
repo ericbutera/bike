@@ -12,7 +12,7 @@ use sea_orm::{DatabaseBackend, MockDatabase};
 use tracing::Instrument;
 
 #[tokio::test]
-async fn repeated_queries_keep_full_counts_and_one_statement_sample() {
+async fn repeated_queries_keep_full_counts_and_bounded_samples() {
     let db = MockDatabase::new(DatabaseBackend::Postgres)
         .append_query_results((1..=100).map(|id| {
             vec![users::Model {
@@ -36,13 +36,53 @@ async fn repeated_queries_keep_full_counts_and_one_statement_sample() {
     .await;
     let operation = stage(&trace, "expensive_operation");
     assert_eq!(attribute(&operation, "bike.db.calls"), &100_i64.into());
-    assert_eq!(attribute(&operation, "bike.db.spans_kept"), &1_i64.into());
-    assert_eq!(attribute(&operation, "bike.db.spans_dropped"), &99_i64.into());
     let spans = trace.spans();
-    assert_eq!(spans.iter().filter(|span| span.name.starts_with("sea_orm.")).count(), 1);
+    let queries: Vec<_> = spans.iter().filter(|span| span.name.starts_with("sea_orm.")).collect();
+    // CPU throttling can make an in-memory query slow. Its separate sampling
+    // budget still applies; elapsed time is not a mock-database contract.
+    let slow = queries.iter().filter(|span| is_slow(span)).count();
+    assert!(queries.len() - slow <= 1, "Repeated fast SQL needs at most one sample");
+    assert!(slow <= 2, "Slow SQL has an independent two-sample budget");
+    assert!(!queries.is_empty());
+    let kept = i64::try_from(queries.len()).unwrap();
+    assert_eq!(attribute(&operation, "bike.db.spans_kept"), &kept.into());
+    assert_eq!(attribute(&operation, "bike.db.spans_dropped"), &(100 - kept).into());
     let request = spans.iter().find(|span| span.name == "request").unwrap();
     assert_eq!(attribute(request, "bike.db.calls"), &100_i64.into());
     assert_eq!(db.into_transaction_log().len(), 100);
+}
+
+#[test]
+fn repeated_fast_queries_keep_exactly_one_sample_and_full_totals() {
+    let (query, parent) = span_fixtures();
+    let exporter = InMemorySpanExporter::default();
+    let processor = DatabaseSpanProcessor::new(SimpleSpanProcessor::new(exporter.clone()));
+    for index in 0..100 {
+        processor.on_end(query_attempt(&query, index, Duration::from_millis(1)));
+    }
+    processor.on_end(parent);
+    processor.force_flush().unwrap();
+    let spans = exporter.get_finished_spans().unwrap();
+    assert_eq!(spans.len(), 2);
+    let parent = spans.iter().find(|span| span.name == "operation").unwrap();
+    assert_eq!(attribute(parent, "bike.db.calls"), &100_i64.into());
+    assert_eq!(attribute(parent, "bike.db.duration_ms"), &100_f64.into());
+    assert_eq!(attribute(parent, "bike.db.spans_kept"), &1_i64.into());
+    assert_eq!(attribute(parent, "bike.db.spans_dropped"), &99_i64.into());
+}
+
+#[test]
+fn slow_sampling_starts_at_100_ms_and_preserves_its_separate_budget() {
+    let (query, _) = span_fixtures();
+    let mut work = DatabaseWork::default();
+    let durations = [1, 99, 100, 100, 100];
+    let expected = [true, false, true, true, false];
+    for (index, (milliseconds, keep)) in durations.into_iter().zip(expected).enumerate() {
+        let span = query_attempt(&query, index as u64, Duration::from_millis(milliseconds));
+        assert_eq!(work.observe(&span), keep);
+    }
+    assert_eq!((work.calls, work.kept, work.dropped), (5, 3, 2));
+    assert_eq!(work.duration_ms, 400.0);
 }
 
 #[test]
@@ -51,15 +91,7 @@ fn slow_and_failed_queries_have_separate_bounded_samples_and_exact_totals() {
     let exporter = InMemorySpanExporter::default();
     let processor = DatabaseSpanProcessor::new(SimpleSpanProcessor::new(exporter.clone()));
     for index in 0..100_u64 {
-        let mut span = query.clone();
-        span.span_context = opentelemetry::trace::SpanContext::new(
-            query.span_context.trace_id(),
-            opentelemetry::trace::SpanId::from_bytes((index + 1).to_be_bytes()),
-            query.span_context.trace_flags(),
-            false,
-            query.span_context.trace_state().clone(),
-        );
-        span.end_time = span.start_time + Duration::from_millis(200);
+        let mut span = query_attempt(&query, index, Duration::from_millis(200));
         if index >= 50 {
             span.status = Status::error("fixture database error");
         }
@@ -165,4 +197,21 @@ fn span_fixtures() -> (SpanData, SpanData) {
     let mut parent = spans[1].clone();
     parent.end_time = query.end_time + Duration::from_secs(1);
     (query, parent)
+}
+
+fn query_attempt(query: &SpanData, index: u64, duration: Duration) -> SpanData {
+    let mut span = query.clone();
+    span.span_context = opentelemetry::trace::SpanContext::new(
+        query.span_context.trace_id(),
+        opentelemetry::trace::SpanId::from_bytes((index + 1).to_be_bytes()),
+        query.span_context.trace_flags(),
+        false,
+        query.span_context.trace_state().clone(),
+    );
+    span.end_time = span.start_time + duration;
+    span
+}
+
+fn is_slow(span: &SpanData) -> bool {
+    span.end_time.duration_since(span.start_time).unwrap() >= Duration::from_millis(100)
 }

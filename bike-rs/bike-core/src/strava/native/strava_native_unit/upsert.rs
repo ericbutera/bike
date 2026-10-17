@@ -1,7 +1,7 @@
 use super::*;
 use super::{fixture::audit, handlers_fixture::HandlerFixture, imports};
 use crate::entities::{activity_import_artifacts, strava_activity_states, user_preferences};
-use sea_orm::MockExecResult;
+use sea_orm::{MockExecResult, Value};
 
 #[tokio::test]
 async fn persist_creates_a_bike_activity_import_and_provider_artifact_atomically() {
@@ -46,6 +46,18 @@ async fn verify_upsert(update: bool, sport: &str) {
     assert_eq!(change.status, ActivityStatus::Applied);
     assert_eq!(change.bike_activity_id, Some(42));
     assert_eq!(change.import_id, Some(18));
+    assert_eq!(change.segment_ids, if update { vec![1, 2] } else { vec![] });
+    let stored_scope = transactions
+        .iter()
+        .flat_map(|txn| txn.statements())
+        .filter(|statement| statement.sql.starts_with("UPDATE \"strava_events\""))
+        .flat_map(|statement| &statement.values.as_ref().unwrap().0)
+        .find_map(|value| match value {
+            Value::Json(Some(value)) => value.get("segment_ids"),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(*stored_scope, serde_json::json!(change.segment_ids));
     assert_eq!(change.dirty_from.is_some(), sport == "Ride" || update);
     assert_eq!(change.event.strava_activity_id, fixture.domain.event.strava_activity_id);
     let operation = if update { "UPDATE" } else { "INSERT INTO" };
@@ -68,14 +80,16 @@ fn upsert_mock(fixture: &HandlerFixture, update: bool) -> MockDatabase {
         .append_query_results([vec![domain.row(ActivityStatus::Pending)]])
         .append_query_results([Vec::<user_preferences::Model>::new()])
         .append_query_results([vec![domain.connection.clone()]])
+        .append_query_results([vec![domain.row(ActivityStatus::Pending)]])
         .append_query_results([Vec::<strava_activity_states::Model>::new()])
         .append_query_results([existing.clone()]);
     if update {
         mock = mock.append_query_results([Vec::<strava_activity_states::Model>::new()]);
     }
-    mock = mock.append_query_results([vec![domain.row(ActivityStatus::Pending)]]);
     if update {
-        mock = mock.append_query_results([vec![imports::import(domain)]]);
+        mock = mock
+            .append_query_results([crate::test_support::segment_id_rows(&[1, 2])])
+            .append_query_results([vec![imports::import(domain)]]);
     }
     let mock = mock
         .append_query_results([vec![imports::import(domain)]])

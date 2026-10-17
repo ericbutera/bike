@@ -1,12 +1,9 @@
-//! Backend-independent objects, immutable references, and retention policy.
+//! Retained objects and immutable references with ownership and integrity checks.
 mod backend;
-pub mod retention;
 
 use crate::workflow_error::WorkflowError;
 use ::object_store::{path::Path as ObjectPath, ObjectStore as Storage, ObjectStoreExt, PutMode};
 use backend::Backend;
-use chrono::{DateTime, Utc};
-use retention::{ReferenceInventory, RetentionDecision, RetentionPolicy, RetentionRecord};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
@@ -47,7 +44,6 @@ impl ObjectOwner {
 pub struct ObjectStore {
     backend: Arc<Backend>,
     owner: ObjectOwner,
-    retention: RetentionPolicy,
 }
 
 impl ObjectStore {
@@ -64,22 +60,7 @@ impl ObjectStore {
         Self {
             backend: Arc::new(backend),
             owner,
-            retention: RetentionPolicy::default(),
         }
-    }
-
-    pub fn with_retention_policy(mut self, policy: RetentionPolicy) -> Self {
-        self.retention = policy;
-        self
-    }
-
-    pub fn retention_decision(
-        &self,
-        record: &RetentionRecord,
-        now: DateTime<Utc>,
-        inventory: ReferenceInventory,
-    ) -> RetentionDecision {
-        record.decision(self.owner, now, &self.retention, inventory)
     }
 
     pub async fn read(&self, object: &ObjectRef) -> Result<Vec<u8>, WorkflowError> {
@@ -88,7 +69,7 @@ impl ObjectStore {
             .await?
             .ok_or_else(|| WorkflowError::not_found(format!("Saved object {} is unavailable", object.path)))?;
         if checksum(&bytes) != object.sha256 || bytes.len() != object.bytes {
-            return Err(WorkflowError::internal(format!(
+            return Err(WorkflowError::invalid_data(format!(
                 "Saved object {} failed checksum verification",
                 object.path
             )));
@@ -97,7 +78,7 @@ impl ObjectStore {
     }
 
     pub async fn read_json<T: DeserializeOwned>(&self, object: &ObjectRef) -> Result<T, WorkflowError> {
-        serde_json::from_slice(&self.read(object).await?).map_err(json_error)
+        serde_json::from_slice(&self.read(object).await?).map_err(invalid_json)
     }
 
     pub async fn write(&self, prefix: &str, bytes: &[u8]) -> Result<ObjectRef, WorkflowError> {
@@ -122,7 +103,7 @@ impl ObjectStore {
     pub async fn load_json<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>, WorkflowError> {
         self.read_bytes(key)
             .await?
-            .map(|bytes| serde_json::from_slice(&bytes).map_err(json_error))
+            .map(|bytes| serde_json::from_slice(&bytes).map_err(invalid_json))
             .transpose()
     }
 
@@ -162,7 +143,7 @@ impl ObjectStore {
         }
     }
 
-    async fn read_bytes(&self, key: &str) -> Result<Option<Vec<u8>>, WorkflowError> {
+    pub(crate) async fn read_bytes(&self, key: &str) -> Result<Option<Vec<u8>>, WorkflowError> {
         let key = self.key(key)?;
         let result = match self.backend.storage().await?.get(&key).await {
             Ok(result) => result,
@@ -204,6 +185,10 @@ fn storage_error(error: ::object_store::Error) -> WorkflowError {
 
 fn json_error(error: serde_json::Error) -> WorkflowError {
     WorkflowError::internal(error.to_string())
+}
+
+fn invalid_json(error: serde_json::Error) -> WorkflowError {
+    WorkflowError::invalid_data(error.to_string())
 }
 
 #[cfg(test)]

@@ -428,7 +428,6 @@ mod tests {
             strava_client_secret: "secret".to_string(),
             strava_oauth_scopes: "activity:read_all profile:read_all".to_string(),
             strava_webhook_verify_token: "verify-token".to_string(),
-            worker_recovery_timeout_seconds: 300,
             uploads_dir: "./uploads".to_string(),
             map_renderer_grpc_address: None,
             map_service_token: String::new(),
@@ -440,12 +439,6 @@ mod tests {
             jwt_secret: "test-secret".to_string(),
             local_admin_enabled: false,
             app_name: "Bike".to_string(),
-            smtp_host: "localhost".to_string(),
-            smtp_port: 1025,
-            smtp_username: None,
-            smtp_password: None,
-            smtp_from_email: "noreply@example.com".to_string(),
-            smtp_from_name: "Bike".to_string(),
         }
     }
 

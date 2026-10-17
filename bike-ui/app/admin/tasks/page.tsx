@@ -1,27 +1,20 @@
 "use client";
 
-import { Suspense } from "react";
-import { useSearchParams } from "next/navigation";
 import { LocalAdminLayout } from "../../../components/admin/LocalAdminLayout";
-import TasksPageContent from "../../../components/admin/TasksPageContent";
+import { AppCard } from "../../../components/ui/Card";
+import TemporalLink from "../../../components/ui/TemporalLink";
 
 export default function AdminTasksPage() {
   return (
-    <Suspense>
-      <LocalAdminLayout title="Tasks">
-        <LinkedTasksPage />
-      </LocalAdminLayout>
-    </Suspense>
-  );
-}
-
-function LinkedTasksPage() {
-  const params = useSearchParams();
-  return (
-    <div className="grid gap-6">
-      <TasksPageContent
-        initialCorrelationId={params.get("correlation_id") ?? ""}
-      />
-    </div>
+    <LocalAdminLayout title="Tasks">
+      <AppCard>
+        <h2 className="card-title">Background tasks</h2>
+        <p>
+          Inspect running tasks, failures, retries, and cancellations in
+          Temporal.
+        </p>
+        <TemporalLink />
+      </AppCard>
+    </LocalAdminLayout>
   );
 }

@@ -132,38 +132,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/activity-imports/processing-graph": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get: operations["get_activity_processing_graph"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/activity-imports/processing-state": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get: operations["get_activity_processing_state"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/activity-map-images/{variant}/{style_version}": {
     parameters: {
       query?: never;
@@ -188,22 +156,6 @@ export interface paths {
       cookie?: never;
     };
     get: operations["admin_list_activities"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/admin/activities/{id}/import-trace": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get: operations["admin_get_activity_import_trace_for_activity"];
     put?: never;
     post?: never;
     delete?: never;
@@ -292,30 +244,14 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/admin/activity-imports/{id}/replay": {
+  "/admin/activity-imports/{id}": {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    get: operations["replay_plan"];
-    put?: never;
-    post: operations["replay"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/admin/activity-imports/{id}/trace": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get: operations["admin_get_activity_import_trace"];
+    get: operations["detail"];
     put?: never;
     post?: never;
     delete?: never;
@@ -416,118 +352,6 @@ export interface paths {
     get?: never;
     put?: never;
     post: operations["admin_regenerate_segment_efforts"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/admin/tasks": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get: operations["admin_list_tasks"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/admin/tasks/activities/{id}/pipelines": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get: operations["activity_pipelines"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/admin/tasks/pipelines/{run_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get: operations["pipeline"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/admin/tasks/processors": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get: operations["processors"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/admin/tasks/{id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get: operations["admin_get_task"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/admin/tasks/{id}/cancel": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    post: operations["admin_cancel_task"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/admin/tasks/{id}/rerun": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    post: operations["admin_rerun_task"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1423,82 +1247,6 @@ export interface components {
       /** @example processed */
       status: string;
     };
-    ActivityImportTraceEventResponse: {
-      /** Format: date-time */
-      created_at: string;
-      event_type: string;
-      /** Format: int32 */
-      id: number;
-      level: string;
-      message: string;
-      payload?: unknown;
-    };
-    ActivityImportTraceNodeResponse: {
-      /** Format: date-time */
-      completed_at?: string | null;
-      error?: string | null;
-      id: string;
-      label: string;
-      /** Format: int32 */
-      reused_attempt_id?: number | null;
-      stage: string;
-      /** Format: date-time */
-      started_at?: string | null;
-      status: string;
-      summary: string[];
-    };
-    /**
-     * @example {
-     *       "events": [],
-     *       "graph": {
-     *         "edges": [],
-     *         "mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]",
-     *         "nodes": [
-     *           {
-     *             "id": "raw_stored",
-     *             "label": "Raw stored",
-     *             "stage": "raw_stored"
-     *           }
-     *         ]
-     *       },
-     *       "import": {
-     *         "created_at": "2026-09-26T14:20:00Z",
-     *         "format": "fit",
-     *         "id": 17,
-     *         "import_version": 1,
-     *         "original_filename": "saturday-hills.fit",
-     *         "processing_stage": "complete",
-     *         "size_bytes": 184320,
-     *         "status": "processed"
-     *       },
-     *       "nodes": [
-     *         {
-     *           "id": "raw_stored",
-     *           "label": "Raw stored",
-     *           "stage": "raw_stored",
-     *           "status": "completed"
-     *         }
-     *       ]
-     *     }
-     */
-    ActivityImportTraceResponse: {
-      attempts: components["schemas"]["ImportAttemptResponse"][];
-      /** @example [] */
-      events: components["schemas"]["ActivityImportTraceEventResponse"][];
-      graph: components["schemas"]["ActivityProcessingGraphResponse"];
-      import: components["schemas"]["ActivityImportResponse"];
-      /**
-       * @example [
-       *       {
-       *         "id": "raw_stored",
-       *         "label": "Raw stored",
-       *         "stage": "raw_stored",
-       *         "status": "completed"
-       *       }
-       *     ]
-       */
-      nodes: components["schemas"]["ActivityImportTraceNodeResponse"][];
-    };
     /**
      * @example {
      *       "average_heart_rate_bpm": 132,
@@ -1557,195 +1305,6 @@ export interface components {
       start_offset_seconds?: number | null;
       /** @example Warmup */
       title: string;
-    };
-    ActivityProcessingGraphEdgeResponse: {
-      from: string;
-      to: string;
-    };
-    ActivityProcessingGraphNodeResponse: {
-      id: string;
-      label: string;
-      stage: string;
-    };
-    /**
-     * @example {
-     *       "edges": [
-     *         {
-     *           "from": "raw_stored",
-     *           "to": "activity_parsed"
-     *         },
-     *         {
-     *           "from": "activity_parsed",
-     *           "to": "activity_saved"
-     *         },
-     *         {
-     *           "from": "activity_saved",
-     *           "to": "segments_built"
-     *         },
-     *         {
-     *           "from": "segments_built",
-     *           "to": "segment_analytics_built"
-     *         },
-     *         {
-     *           "from": "segment_analytics_built",
-     *           "to": "activity_analytics_built"
-     *         },
-     *         {
-     *           "from": "activity_analytics_built",
-     *           "to": "training_analysis_built"
-     *         }
-     *       ],
-     *       "mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]\n  activity_parsed[\"Activity parsed\"]\n  activity_saved[\"Activity saved\"]\n  segments_built[\"Segments built\"]\n  segment_analytics_built[\"Segment analytics built\"]\n  activity_analytics_built[\"Activity analytics built\"]\n  training_analysis_built[\"Training analysis built\"]\n  raw_stored --> activity_parsed\n  activity_parsed --> activity_saved\n  activity_saved --> segments_built\n  segments_built --> segment_analytics_built\n  segment_analytics_built --> activity_analytics_built\n  activity_analytics_built --> training_analysis_built",
-     *       "nodes": [
-     *         {
-     *           "id": "raw_stored",
-     *           "label": "Raw stored",
-     *           "stage": "raw_stored"
-     *         },
-     *         {
-     *           "id": "activity_parsed",
-     *           "label": "Activity parsed",
-     *           "stage": "activity_parsed"
-     *         },
-     *         {
-     *           "id": "activity_saved",
-     *           "label": "Activity saved",
-     *           "stage": "activity_saved"
-     *         },
-     *         {
-     *           "id": "segments_built",
-     *           "label": "Segments built",
-     *           "stage": "segments_built"
-     *         },
-     *         {
-     *           "id": "segment_analytics_built",
-     *           "label": "Segment analytics built",
-     *           "stage": "segment_analytics_built"
-     *         },
-     *         {
-     *           "id": "activity_analytics_built",
-     *           "label": "Activity analytics built",
-     *           "stage": "activity_analytics_built"
-     *         },
-     *         {
-     *           "id": "training_analysis_built",
-     *           "label": "Training analysis built",
-     *           "stage": "training_analysis_built"
-     *         }
-     *       ]
-     *     }
-     */
-    ActivityProcessingGraphResponse: {
-      /**
-       * @example [
-       *       {
-       *         "from": "raw_stored",
-       *         "to": "activity_parsed"
-       *       },
-       *       {
-       *         "from": "activity_parsed",
-       *         "to": "activity_saved"
-       *       },
-       *       {
-       *         "from": "activity_saved",
-       *         "to": "segments_built"
-       *       },
-       *       {
-       *         "from": "segments_built",
-       *         "to": "segment_analytics_built"
-       *       },
-       *       {
-       *         "from": "segment_analytics_built",
-       *         "to": "activity_analytics_built"
-       *       },
-       *       {
-       *         "from": "activity_analytics_built",
-       *         "to": "training_analysis_built"
-       *       }
-       *     ]
-       */
-      edges: components["schemas"]["ActivityProcessingGraphEdgeResponse"][];
-      /**
-       * @example flowchart LR
-       *       raw_stored["Raw stored"]
-       *       activity_parsed["Activity parsed"]
-       *       activity_saved["Activity saved"]
-       *       segments_built["Segments built"]
-       *       segment_analytics_built["Segment analytics built"]
-       *       activity_analytics_built["Activity analytics built"]
-       *       training_analysis_built["Training analysis built"]
-       *       raw_stored --> activity_parsed
-       *       activity_parsed --> activity_saved
-       *       activity_saved --> segments_built
-       *       segments_built --> segment_analytics_built
-       *       segment_analytics_built --> activity_analytics_built
-       *       activity_analytics_built --> training_analysis_built
-       */
-      mermaid: string;
-      /**
-       * @example [
-       *       {
-       *         "id": "raw_stored",
-       *         "label": "Raw stored",
-       *         "stage": "raw_stored"
-       *       },
-       *       {
-       *         "id": "activity_parsed",
-       *         "label": "Activity parsed",
-       *         "stage": "activity_parsed"
-       *       },
-       *       {
-       *         "id": "activity_saved",
-       *         "label": "Activity saved",
-       *         "stage": "activity_saved"
-       *       },
-       *       {
-       *         "id": "segments_built",
-       *         "label": "Segments built",
-       *         "stage": "segments_built"
-       *       },
-       *       {
-       *         "id": "segment_analytics_built",
-       *         "label": "Segment analytics built",
-       *         "stage": "segment_analytics_built"
-       *       },
-       *       {
-       *         "id": "activity_analytics_built",
-       *         "label": "Activity analytics built",
-       *         "stage": "activity_analytics_built"
-       *       },
-       *       {
-       *         "id": "training_analysis_built",
-       *         "label": "Training analysis built",
-       *         "stage": "training_analysis_built"
-       *       }
-       *     ]
-       */
-      nodes: components["schemas"]["ActivityProcessingGraphNodeResponse"][];
-    };
-    /**
-     * @example {
-     *       "is_active": true,
-     *       "message": "Manual upload is currently running.",
-     *       "source": "manual_upload",
-     *       "source_label": "Manual upload",
-     *       "stage": "running",
-     *       "stage_label": "running"
-     *     }
-     */
-    ActivityProcessingStateResponse: {
-      /** @example true */
-      is_active: boolean;
-      /** @example Manual upload is currently running. */
-      message?: string | null;
-      /** @example manual_upload */
-      source?: string | null;
-      /** @example Manual upload */
-      source_label?: string | null;
-      /** @example running */
-      stage?: string | null;
-      /** @example running */
-      stage_label?: string | null;
     };
     /**
      * @example {
@@ -2057,14 +1616,6 @@ export interface components {
     };
     /**
      * @example {
-     *       "trace": null
-     *     }
-     */
-    AdminActivityImportTraceResponse: {
-      trace?: null | components["schemas"]["ActivityImportTraceResponse"];
-    };
-    /**
-     * @example {
      *       "activity_import_id": 17,
      *       "id": 42,
      *       "import_processing_stage": "complete",
@@ -2200,62 +1751,8 @@ export interface components {
       /** Format: date-time */
       retry_at?: string | null;
     };
-    /**
-     * @example {
-     *       "archive_path": "/data/imports/activities.zip"
-     *     }
-     */
     ArchiveImportRequest: {
-      /** @example /data/imports/activities.zip */
       archive_path: string;
-    };
-    /**
-     * @example {
-     *       "archive_path": "/data/imports/activities.zip",
-     *       "duplicate_count": 6,
-     *       "error_samples": [],
-     *       "failed_count": 0,
-     *       "imported_count": 110,
-     *       "skipped_unsupported_count": 4,
-     *       "supported_entry_count": 116,
-     *       "total_entries": 120
-     *     }
-     */
-    ArchiveImportResponse: {
-      /** @example /data/imports/activities.zip */
-      archive_path: string;
-      /**
-       * Format: int32
-       * @example 6
-       */
-      duplicate_count: number;
-      /** @example [] */
-      error_samples?: string[];
-      /**
-       * Format: int32
-       * @example 0
-       */
-      failed_count: number;
-      /**
-       * Format: int32
-       * @example 110
-       */
-      imported_count: number;
-      /**
-       * Format: int32
-       * @example 4
-       */
-      skipped_unsupported_count: number;
-      /**
-       * Format: int32
-       * @example 116
-       */
-      supported_entry_count: number;
-      /**
-       * Format: int32
-       * @example 120
-       */
-      total_entries: number;
     };
     /**
      * @example {
@@ -2583,14 +2080,6 @@ export interface components {
     DisableUserRequest: {
       disabled?: boolean | null;
     };
-    Distribution: {
-      /** Format: double */
-      p50_seconds?: number | null;
-      /** Format: double */
-      p90_seconds?: number | null;
-      /** Format: int64 */
-      samples: number;
-    };
     EnduranceReportResponse: {
       /** Format: int32 */
       activity_count: number;
@@ -2813,24 +2302,6 @@ export interface components {
       stop_frequency_per_hour: number;
       /** Format: int32 */
       stopped_seconds: number;
-    };
-    ImportAttemptResponse: {
-      /** Format: date-time */
-      created_at: string;
-      error?: string | null;
-      /** Format: date-time */
-      finished_at?: string | null;
-      /** Format: int32 */
-      id: number;
-      nodes: components["schemas"]["ActivityImportTraceNodeResponse"][];
-      requested_stage: string;
-      /** Format: int32 */
-      reused_attempt_id?: number | null;
-      source: unknown;
-      start_stage: string;
-      /** Format: date-time */
-      started_at?: string | null;
-      status: string;
     };
     ImportHistoryResponse: {
       items: components["schemas"]["ActivityImportResponse"][];
@@ -3079,34 +2550,27 @@ export interface components {
       /** @description Pagination metadata */
       metadata: components["schemas"]["PaginationMetadata"];
     };
-    PaginatedResponse_TaskResponse: {
-      data: {
-        /** Format: int32 */
-        attempts: number;
-        completed_at?: string | null;
-        created_at: string;
-        error?: string | null;
-        /** Format: int32 */
-        id: number;
-        /** Format: int32 */
-        max_attempts: number;
-        result?: string | null;
-        scheduled_for?: string | null;
-        started_at?: string | null;
-        status: string;
-        task_type: string;
-        updated_at: string;
-      }[];
-      metadata: components["schemas"]["PaginationMetadata"];
-    };
+    /** @description Metadata about the pagination state */
     PaginationMetadata: {
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Current page number
+       */
       page: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Number of items per page
+       */
       per_page: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Total number of items available
+       */
       total: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Total number of pages available
+       */
       total_pages: number;
     };
     /** @description Standard pagination query parameters */
@@ -3122,83 +2586,13 @@ export interface components {
        */
       per_page?: number;
     };
-    PipelineGraph: {
-      accepted_at: string;
-      available_at?: string | null;
-      ended_at?: string | null;
-      entrypoint: string;
-      grafana_url?: string | null;
-      /** Format: int64 */
-      next_output_offset?: number | null;
-      /** Format: int32 */
-      next_task_cursor?: number | null;
-      outputs: components["schemas"]["WorkerOutputEvidence"][];
-      received_at: string;
-      request_id?: string | null;
-      run_id: string;
-      tasks: components["schemas"]["PipelineTask"][];
-      trace_id?: string | null;
-    };
-    PipelineImport: {
-      /** Format: int32 */
-      activity_id?: number | null;
-      /** Format: int32 */
-      attempt_id: number;
-      edges: components["schemas"]["PipelineStageEdge"][];
-      /** Format: int32 */
-      import_id: number;
-      stages: components["schemas"]["StageRecord"][];
-      status: string;
-    };
-    PipelinePage: {
-      next_cursor?: string | null;
-      run_ids: string[];
-    };
-    PipelineStageEdge: {
-      from: string;
-      to: string;
-    };
-    PipelineTask: {
-      anomalies: components["schemas"]["WorkerAnomalyEvidence"][];
-      attempts: components["schemas"]["TaskAttemptResponse"][];
-      created_at: string;
-      /** Format: int32 */
-      id: number;
-      imports: components["schemas"]["PipelineImport"][];
-      /** Format: int32 */
-      next_work_cursor?: number | null;
-      /** Format: int32 */
-      parent_task_id?: number | null;
-      scheduled_for?: string | null;
-      status: string;
-      task_type: string;
-      work: components["schemas"]["WorkerWorkEvidence"][];
-      work_has_more: boolean;
-    };
-    ProcessorSummary: {
-      attempt: components["schemas"]["Distribution"];
-      eligible_wait: components["schemas"]["Distribution"];
-      /** Format: int64 */
-      failed: number;
-      logical_completion: components["schemas"]["Distribution"];
-      outcome: string;
-      /** Format: int64 */
-      queued: number;
-      /** Format: date-time */
-      registered_at: string;
-      /** Format: int64 */
-      retrying: number;
-      /** Format: int64 */
-      running: number;
-      /** Format: int64 */
-      scheduled: number;
-      task_type: string;
-      /** Format: int64 */
-      window_hours: number;
-    };
     PublicFlagResponse: {
       enabled: boolean;
       feature_key: string;
+    };
+    QueuedJobReference: {
+      id: string;
+      status: string;
     };
     ReassessmentAbilityEstimateResponse: {
       /** Format: int32 */
@@ -3436,21 +2830,6 @@ export interface components {
        * @example 12
        */
       user_id: number;
-    };
-    ReplayRequest: {
-      /** Format: int32 */
-      expected_reused_attempt_id?: number | null;
-      expected_start_stage?: string | null;
-      stage: string;
-    };
-    ReplayResponse: {
-      /** Format: int32 */
-      attempt_id?: number | null;
-      reason?: string | null;
-      requested_stage: string;
-      /** Format: int32 */
-      reused_attempt_id?: number | null;
-      start_stage: string;
     };
     /**
      * @example week
@@ -4073,18 +3452,6 @@ export interface components {
        */
       years?: components["schemas"]["SegmentYearlyBestResponse"][];
     };
-    StageRecord: {
-      /** Format: date-time */
-      completed_at?: string | null;
-      error?: string | null;
-      /** Format: int32 */
-      reused_attempt_id?: number | null;
-      stage: string;
-      /** Format: date-time */
-      started_at?: string | null;
-      status: string;
-      summary: string[];
-    };
     /**
      * @example {
      *       "authorization_url": "https://www.strava.com/oauth/authorize?client_id=12345&response_type=code"
@@ -4216,71 +3583,6 @@ export interface components {
       updates?: unknown;
     } & {
       [key: string]: unknown;
-    };
-    TaskAttemptResponse: {
-      /** Format: int32 */
-      attempt: number;
-      eligible_at?: string | null;
-      error?: string | null;
-      finished_at?: string | null;
-      heartbeat_at: string;
-      outcome: string;
-      processing_version?: string | null;
-      /** @description Last recorded checkpoint; heartbeats do not update this value. */
-      progress_at: string;
-      span_id?: string | null;
-      started_at: string;
-      trace_id?: string | null;
-      workload_cohort?: string | null;
-    };
-    TaskDetailResponse: {
-      attempt_history: components["schemas"]["TaskAttemptResponse"][];
-      /** Format: int32 */
-      attempts: number;
-      completed_at?: string | null;
-      created_at: string;
-      error?: string | null;
-      /** Format: int32 */
-      id: number;
-      /** Format: int32 */
-      max_attempts: number;
-      payload?: null | components["schemas"]["Value"];
-      pipelines: components["schemas"]["TaskPipelineResponse"][];
-      result?: string | null;
-      scheduled_for?: string | null;
-      started_at?: string | null;
-      status: string;
-      task_type: string;
-      updated_at: string;
-    };
-    TaskPipelineResponse: {
-      accepted_at: string;
-      /** @description Output readiness is unknown until a publication barrier records it. */
-      available_at?: string | null;
-      entrypoint: string;
-      /** Format: int32 */
-      parent_task_id?: number | null;
-      pipeline_started_at: string;
-      request_id?: string | null;
-      run_id: string;
-      trace_id?: string | null;
-    };
-    TaskResponse: {
-      /** Format: int32 */
-      attempts: number;
-      completed_at?: string | null;
-      created_at: string;
-      error?: string | null;
-      /** Format: int32 */
-      id: number;
-      /** Format: int32 */
-      max_attempts: number;
-      result?: string | null;
-      scheduled_for?: string | null;
-      started_at?: string | null;
-      status: string;
-      task_type: string;
-      updated_at: string;
     };
     /** @enum {string} */
     Theme: "light" | "dark";
@@ -4774,66 +4076,8 @@ export interface components {
       pid: string;
       verified: boolean;
     };
-    Value: unknown;
     /** @enum {string} */
     Variant: "thumbnail" | "full";
-    WorkerAnomalyEvidence: {
-      /** Format: int32 */
-      attempt: number;
-      /** Format: int64 */
-      baseline_samples: number;
-      /** Format: date-time */
-      evaluated_at: string;
-      /** Format: double */
-      expected: number;
-      /** Format: double */
-      observed: number;
-      /** Format: int32 */
-      policy_version: number;
-      reason: string;
-      /** Format: date-time */
-      resolved_at?: string | null;
-      severity: string;
-      /** Format: int32 */
-      task_id: number;
-    };
-    WorkerOutputEvidence: {
-      /** Format: date-time */
-      available_at?: string | null;
-      kind: string;
-      reason?: string | null;
-      required: boolean;
-      /** Format: date-time */
-      required_at: string;
-      revision: string;
-      run_id: string;
-      status: string;
-      /** Format: int32 */
-      target_id: number;
-    };
-    WorkerWorkEvidence: {
-      /** Format: int32 */
-      attempt: number;
-      counts?: null | components["schemas"]["Value"];
-      error?: string | null;
-      /** Format: date-time */
-      finished_at: string;
-      /** Format: int32 */
-      id: number;
-      kind: string;
-      mode: string;
-      outcome: string;
-      processing_version: string;
-      reason: string;
-      revision: string;
-      span_id?: string | null;
-      /** Format: date-time */
-      started_at: string;
-      /** Format: int32 */
-      task_id: number;
-      trace_id?: string | null;
-      work_key: string;
-    };
     XcEventGoalResponse: {
       /** Format: double */
       counted_distance_meters: number;
@@ -5475,45 +4719,13 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Regenerated activity detail */
-      200: {
+      /** @description Activity reprocessing started */
+      202: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          /**
-           * @example {
-           *       "activity_type": "training",
-           *       "average_heart_rate_bpm": 148,
-           *       "average_speed_mps": 6.05,
-           *       "can_download_source_file": true,
-           *       "can_regenerate": true,
-           *       "distance_meters": 25430.5,
-           *       "elevation_gain_meters": 312.4,
-           *       "ended_at": "2026-09-26T14:12:00Z",
-           *       "estimated_ftp_watts": 245,
-           *       "format": "fit",
-           *       "id": 42,
-           *       "location": "Detroit, Michigan",
-           *       "moving_time_seconds": 4200,
-           *       "original_filename": "saturday-hills.fit",
-           *       "route_points": [
-           *         {
-           *           "distance_meters": 4200.5,
-           *           "elapsed_seconds": 900,
-           *           "elevation_meters": 183.2,
-           *           "latitude": 42.3314,
-           *           "longitude": -83.0458
-           *         }
-           *       ],
-           *       "source": "manual_upload",
-           *       "sport": "ride",
-           *       "started_at": "2026-09-26T13:00:00Z",
-           *       "title": "Saturday hill repeats",
-           *       "total_time_seconds": 4320
-           *     }
-           */
-          "application/json": components["schemas"]["ActivityResponse"];
+          "application/json": components["schemas"]["QueuedJobReference"];
         };
       };
       /** @description Activity cannot be regenerated */
@@ -5953,156 +5165,6 @@ export interface operations {
       };
     };
   };
-  get_activity_processing_graph: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Activity import processing DAG */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          /**
-           * @example {
-           *       "edges": [
-           *         {
-           *           "from": "raw_stored",
-           *           "to": "activity_parsed"
-           *         },
-           *         {
-           *           "from": "activity_parsed",
-           *           "to": "activity_saved"
-           *         },
-           *         {
-           *           "from": "activity_saved",
-           *           "to": "segments_built"
-           *         },
-           *         {
-           *           "from": "segments_built",
-           *           "to": "segment_analytics_built"
-           *         },
-           *         {
-           *           "from": "segment_analytics_built",
-           *           "to": "activity_analytics_built"
-           *         },
-           *         {
-           *           "from": "activity_analytics_built",
-           *           "to": "training_analysis_built"
-           *         }
-           *       ],
-           *       "mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]\n  activity_parsed[\"Activity parsed\"]\n  activity_saved[\"Activity saved\"]\n  segments_built[\"Segments built\"]\n  segment_analytics_built[\"Segment analytics built\"]\n  activity_analytics_built[\"Activity analytics built\"]\n  training_analysis_built[\"Training analysis built\"]\n  raw_stored --> activity_parsed\n  activity_parsed --> activity_saved\n  activity_saved --> segments_built\n  segments_built --> segment_analytics_built\n  segment_analytics_built --> activity_analytics_built\n  activity_analytics_built --> training_analysis_built",
-           *       "nodes": [
-           *         {
-           *           "id": "raw_stored",
-           *           "label": "Raw stored",
-           *           "stage": "raw_stored"
-           *         },
-           *         {
-           *           "id": "activity_parsed",
-           *           "label": "Activity parsed",
-           *           "stage": "activity_parsed"
-           *         },
-           *         {
-           *           "id": "activity_saved",
-           *           "label": "Activity saved",
-           *           "stage": "activity_saved"
-           *         },
-           *         {
-           *           "id": "segments_built",
-           *           "label": "Segments built",
-           *           "stage": "segments_built"
-           *         },
-           *         {
-           *           "id": "segment_analytics_built",
-           *           "label": "Segment analytics built",
-           *           "stage": "segment_analytics_built"
-           *         },
-           *         {
-           *           "id": "activity_analytics_built",
-           *           "label": "Activity analytics built",
-           *           "stage": "activity_analytics_built"
-           *         },
-           *         {
-           *           "id": "training_analysis_built",
-           *           "label": "Training analysis built",
-           *           "stage": "training_analysis_built"
-           *         }
-           *       ]
-           *     }
-           */
-          "application/json": components["schemas"]["ActivityProcessingGraphResponse"];
-        };
-      };
-      /** @description Not authenticated */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ApiErrorResponse"];
-        };
-      };
-    };
-  };
-  get_activity_processing_state: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Current activity processing state for the authenticated user */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          /**
-           * @example {
-           *       "is_active": true,
-           *       "message": "Manual upload is currently running.",
-           *       "source": "manual_upload",
-           *       "source_label": "Manual upload",
-           *       "stage": "running",
-           *       "stage_label": "running"
-           *     }
-           */
-          "application/json": components["schemas"]["ActivityProcessingStateResponse"];
-        };
-      };
-      /** @description Not authenticated */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ApiErrorResponse"];
-        };
-      };
-    };
-  };
   image: {
     parameters: {
       query: {
@@ -6256,69 +5318,6 @@ export interface operations {
       };
     };
   };
-  admin_get_activity_import_trace_for_activity: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /**
-         * @description Activity id
-         * @example 42
-         */
-        id: number;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Activity import processing DAG and event trace for administrators when the activity has a linked import */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          /**
-           * @example {
-           *       "trace": null
-           *     }
-           */
-          "application/json": components["schemas"]["AdminActivityImportTraceResponse"];
-        };
-      };
-      /** @description Unauthorized */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Activity not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ApiErrorResponse"];
-        };
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ApiErrorResponse"];
-        };
-      };
-    };
-  };
   admin_import_activity_archive: {
     parameters: {
       query?: never;
@@ -6337,25 +5336,13 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Imported activities from an archive on the server */
-      200: {
+      /** @description Archive processing started */
+      202: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          /**
-           * @example {
-           *       "archive_path": "/data/imports/activities.zip",
-           *       "duplicate_count": 6,
-           *       "error_samples": [],
-           *       "failed_count": 0,
-           *       "imported_count": 110,
-           *       "skipped_unsupported_count": 4,
-           *       "supported_entry_count": 116,
-           *       "total_entries": 120
-           *     }
-           */
-          "application/json": components["schemas"]["ArchiveImportResponse"];
+          "application/json": components["schemas"]["ActivityArchiveImportJobResponse"];
         };
       };
       /** @description Invalid archive request */
@@ -6700,13 +5687,9 @@ export interface operations {
       };
     };
   };
-  replay_plan: {
+  detail: {
     parameters: {
-      query: {
-        stage: string;
-        expected_start_stage?: string;
-        expected_reused_attempt_id?: number;
-      };
+      query?: never;
       header?: never;
       path: {
         id: number;
@@ -6720,15 +5703,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ReplayResponse"];
-        };
-      };
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ApiErrorResponse"];
+          "application/json": components["schemas"]["ActivityImportResponse"];
         };
       };
       401: {
@@ -6751,151 +5726,6 @@ export interface operations {
           "application/json": components["schemas"]["ApiErrorResponse"];
         };
       };
-    };
-  };
-  replay: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        id: number;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["ReplayRequest"];
-      };
-    };
-    responses: {
-      202: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ReplayResponse"];
-        };
-      };
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ApiErrorResponse"];
-        };
-      };
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ApiErrorResponse"];
-        };
-      };
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ApiErrorResponse"];
-        };
-      };
-    };
-  };
-  admin_get_activity_import_trace: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /**
-         * @description Activity import id
-         * @example 17
-         */
-        id: number;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Activity import processing DAG and event trace for administrators */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          /**
-           * @example {
-           *       "events": [],
-           *       "graph": {
-           *         "edges": [],
-           *         "mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]",
-           *         "nodes": [
-           *           {
-           *             "id": "raw_stored",
-           *             "label": "Raw stored",
-           *             "stage": "raw_stored"
-           *           }
-           *         ]
-           *       },
-           *       "import": {
-           *         "created_at": "2026-09-26T14:20:00Z",
-           *         "format": "fit",
-           *         "id": 17,
-           *         "import_version": 1,
-           *         "original_filename": "saturday-hills.fit",
-           *         "processing_stage": "complete",
-           *         "size_bytes": 184320,
-           *         "status": "processed"
-           *       },
-           *       "nodes": [
-           *         {
-           *           "id": "raw_stored",
-           *           "label": "Raw stored",
-           *           "stage": "raw_stored",
-           *           "status": "completed"
-           *         }
-           *       ]
-           *     }
-           */
-          "application/json": components["schemas"]["ActivityImportTraceResponse"];
-        };
-      };
-      /** @description Unauthorized */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Activity import not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ApiErrorResponse"];
-        };
-      };
-      /** @description Internal server error */
       500: {
         headers: {
           [name: string]: unknown;
@@ -7236,271 +6066,6 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ApiErrorResponse"];
         };
-      };
-    };
-  };
-  admin_list_tasks: {
-    parameters: {
-      query?: {
-        /** @description Exact request, trace, or pipeline run ID. */
-        correlation_id?: string;
-        task_type?: string;
-        status?: string;
-        error?: string;
-        from_date?: string;
-        to_date?: string;
-        page?: number;
-        per_page?: number;
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Admin list of background tasks */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["PaginatedResponse_TaskResponse"];
-        };
-      };
-      /** @description Unauthorized */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  activity_pipelines: {
-    parameters: {
-      query?: {
-        after_task?: number;
-        after_run?: string;
-        work_task?: number;
-        after_work?: number;
-        output_offset?: number;
-      };
-      header?: never;
-      path: {
-        id: number;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["PipelinePage"];
-        };
-      };
-    };
-  };
-  pipeline: {
-    parameters: {
-      query?: {
-        after_task?: number;
-        after_run?: string;
-        work_task?: number;
-        after_work?: number;
-        output_offset?: number;
-      };
-      header?: never;
-      path: {
-        run_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["PipelineGraph"];
-        };
-      };
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  processors: {
-    parameters: {
-      query?: {
-        window_hours?: number;
-        outcome?: string;
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ProcessorSummary"][];
-        };
-      };
-    };
-  };
-  admin_get_task: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Task ID */
-        id: number;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Background task detail */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["TaskDetailResponse"];
-        };
-      };
-      /** @description Unauthorized */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Task not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  admin_cancel_task: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Task ID */
-        id: number;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Task canceled */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["TaskResponse"];
-        };
-      };
-      /** @description Task is not processing */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Unauthorized */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Task not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  admin_rerun_task: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Task ID */
-        id: number;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Task queued again */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["TaskResponse"];
-        };
-      };
-      /** @description Unauthorized */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Task not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
       };
     };
   };

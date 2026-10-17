@@ -1,7 +1,11 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AdminTaskTools from "../admin/AdminTaskTools";
+import { acceptedReprocessing } from "@/tests/fixtures/reprocessing";
+import { initializeClientConfig } from "../../lib/config";
+
+afterEach(() => initializeClientConfig({}));
 
 const mocks = vi.hoisted(() => ({
   useActivityArchiveImportJobs: vi.fn(),
@@ -110,20 +114,9 @@ describe("AdminTaskTools", () => {
     ).toBeInTheDocument();
   });
 
-  it("links targeted activity reprocess results to event traces", async () => {
-    mocks.reprocessActivityAsync.mockResolvedValue({
-      activity_id: 1647,
-      activity_import_id: 88,
-      user_id: 1,
-      job: {
-        job_id: "bike-task-reprocess_activity_import-user-1-fixture-command",
-        namespace: "bike",
-        run_id: "fixture-run",
-        workflow_type: "reprocess_activity_import",
-      },
-      status: "accepted",
-      message: "Activity reprocessing accepted.",
-    });
+  it("links targeted reprocessing to its Temporal job and domain events", async () => {
+    initializeClientConfig({ TEMPORAL_UI_URL: "https://temporal.example.com" });
+    mocks.reprocessActivityAsync.mockResolvedValue(acceptedReprocessing());
 
     const user = userEvent.setup();
     render(<AdminTaskTools />);
@@ -149,16 +142,20 @@ describe("AdminTaskTools", () => {
     ).toBeInTheDocument();
 
     expect(
-      screen.getByRole("link", { name: /trace activity events/i }),
+      screen.getByRole("link", { name: "Activity events" }),
     ).toHaveAttribute(
       "href",
       "/admin/integrations?provider=activity_processing&user_id=1&activity_id=1647",
     );
-    expect(
-      screen.getByRole("link", { name: /trace import events/i }),
-    ).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Import events" })).toHaveAttribute(
       "href",
       "/admin/integrations?provider=activity_processing&user_id=1&import_id=88",
+    );
+    expect(
+      screen.getByRole("link", { name: "View job in Temporal" }),
+    ).toHaveAttribute(
+      "href",
+      "https://temporal.example.com/namespaces/bike/workflows/bike-task-reprocess_activity_import-user-1-fixture-command",
     );
   });
 });

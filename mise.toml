@@ -134,12 +134,12 @@ description = "Run isolated mock replacements for worker/import/history/metrics 
 run = "mise --cd bike-rs run test:workers:mocks"
 
 [tasks."test:storage"]
-description = "Verify shared object storage, retention, and legacy Strava compatibility"
+description = "Verify shared object storage and legacy Strava compatibility"
 run = "mise --cd bike-rs run test:storage"
 
 [tasks."pins:sync"]
-description = "Regenerate package metadata and the native CI database image from mise pins"
-run = ['npm --prefix bike-ui pkg set "packageManager=pnpm@${PNPM_VERSION?}"', "mise --cd bike-ui exec -- pnpm install --lockfile-only", "mise install aqua:mikefarah/yq", "mise exec aqua:mikefarah/yq -- yq --inplace '(.services[] | select(.name == \"postgres\").image) = strenv(BIKE_POSTGRES_IMAGE) | (.services[] | select(.name == \"docker\").image) = strenv(DOCKER_DIND_IMAGE)' .woodpecker/bike.yaml", "mise exec aqua:mikefarah/yq -- yq --inplace '(.services[] | select(.name == \"docker\").image) = strenv(DOCKER_DIND_IMAGE)' .woodpecker/e2e.yaml"]
+description = "Regenerate package metadata and CI images from mise pins"
+run = ['npm --prefix bike-ui pkg set "packageManager=pnpm@${PNPM_VERSION?}"', "mise --cd bike-ui exec -- pnpm install --lockfile-only", "mise install aqua:mikefarah/yq", "mise exec aqua:mikefarah/yq -- yq --inplace '(.services[] | select(.name == \"docker\").image) = strenv(DOCKER_DIND_IMAGE)' .woodpecker/bike.yaml", "mise exec aqua:mikefarah/yq -- yq --inplace '(.services[] | select(.name == \"docker\").image) = strenv(DOCKER_DIND_IMAGE)' .woodpecker/e2e.yaml"]
 
 [tasks."pins:check"]
 description = "Verify generated package-manager metadata agrees with mise"
@@ -414,24 +414,6 @@ run = "mise --cd map-renderer run test"
 [tasks."test:workers"]
 description = "Run focused worker pipeline and admin history regressions"
 run = ["mise --cd bike-rs run test:workers", "mise --cd bike-ui run test:workers"]
-
-[tasks."test:workers:postgres:docker"]
-description = "Exercise migrations, publication fences and worker statistics in disposable PostgreSQL"
-run = "bash scripts/test-worker-postgres.sh"
-
-[tasks."ci:workers:postgres"]
-description = "Run worker persistence regressions against the job-local disposable database"
-run = "bash scripts/ci-rust.sh postgres"
-
-[tasks."rust:workers:postgres"]
-description = "Run existing SQL worker persistence regressions"
-run = ["mise install rust protoc", "mise run test:workers:postgres:docker"]
-
-[tasks."rust:workers:postgres:collect"]
-description = "Check existing SQL worker persistence while SDK freshness runs separately"
-run = ["mise install rust protoc", "mise run test:workers:postgres:docker"]
-
-
 
 [tasks."generate:protobuf"]
 description = "Generate or check map protobuf bindings"

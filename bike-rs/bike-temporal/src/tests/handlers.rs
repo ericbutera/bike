@@ -1,170 +1,110 @@
-use super::fixtures::{environment, Operations};
-use super::*;
-use crate::{
-    activities::{DerivedActivities, ImportActivities},
-    scheduling::SchedulingActivities,
-};
-use bike_core::bike_tasks::SegmentChange;
-use std::sync::{Arc, Mutex};
-use temporalio_sdk::testing::ActivityEnvironment;
+use super::fixtures::{assert_retryable, environment, Operations};
+use crate::activities::DerivedActivities;
+use bike_core::test_support as fixtures;
+use std::sync::Arc;
 
 #[tokio::test]
-async fn each_named_activity_calls_its_domain_operation_and_preserves_failure() {
-    for fail in [false, true] {
-        let operations = Arc::new(Operations {
-            fail,
-            ..Default::default()
-        });
-        let environment = environment(operations.clone());
-        let imported = environment
-            .run(ImportActivities::activity_import, import_command())
-            .await;
-        assert_eq!(imported.is_err(), fail);
-        if !fail {
-            assert_eq!(imported.unwrap(), import_result());
-        }
-        assert_eq!(
-            environment
-                .run(DerivedActivities::rebuild_fitness_freshness, fitness_change())
-                .await
-                .is_err(),
-            fail
-        );
-        assert_eq!(
-            environment
-                .run(DerivedActivities::rebuild_segment_analytics, segment_change())
-                .await
-                .is_err(),
-            fail
-        );
-        assert_eq!(
-            environment
-                .run(DerivedActivities::prepare_heatmap, heatmap_change())
-                .await
-                .is_err(),
-            fail
-        );
-        assert_eq!(
-            *operations.received.lock().unwrap(),
-            vec![
-                ("activity_import", serde_json::to_value(import_command()).unwrap()),
-                (
-                    "rebuild_fitness_freshness",
-                    serde_json::to_value(fitness_change()).unwrap()
-                ),
-                (
-                    "rebuild_segment_analytics",
-                    serde_json::to_value(segment_change()).unwrap()
-                ),
-                ("prepare_heatmap", serde_json::to_value(heatmap_change()).unwrap()),
-            ]
-        );
-    }
-}
-
-#[tokio::test]
-async fn invalid_import_command_never_calls_the_domain_adapter() {
+async fn named_derived_handlers_call_the_domain_with_the_owned_target() {
     let operations = Arc::new(Operations::default());
     let environment = environment(operations.clone());
-    let mut command = import_command();
-    command.source.command_id.clear();
-    assert!(environment
-        .run(ImportActivities::activity_import, command)
-        .await
-        .is_err());
-    assert!(operations.received.lock().unwrap().is_empty());
-}
-
-#[tokio::test]
-async fn shared_import_activity_preserves_new_activity_and_background_refresh_priorities() {
-    let operations = Arc::new(Operations::default());
-    let environment = environment(operations);
-    for priority in [Priority::NewActivity, Priority::Background] {
-        let mut command = import_command();
-        command.source.priority = priority;
-        command.target = bike_core::bike_tasks::ImportTarget::ExistingActivity {
-            activity_id: 42,
-            expected_revision: 3,
-        };
-        let result = environment
-            .run(ImportActivities::activity_import, command)
-            .await
-            .unwrap();
-        assert_eq!(result, import_result().with_priority(priority));
-    }
-}
-
-#[tokio::test]
-async fn bulk_new_imports_keep_background_refresh_priority() {
-    let environment = environment(Arc::new(Operations::default()));
-    let mut command = import_command();
-    command.source.priority = Priority::Background;
-    let result = environment
-        .run(ImportActivities::activity_import, command)
-        .await
-        .unwrap();
-    assert_eq!(result, import_result().with_priority(Priority::Background));
-}
-
-#[tokio::test]
-async fn scheduling_activities_handoff_each_output_and_allow_retried_fanout() {
-    let requests = Arc::new(Mutex::new(client::Requests::default()));
-    let client = client::client(requests.clone(), false).await;
-    let environment = ActivityEnvironment::builder_with_default()
-        .register_activities(SchedulingActivities::new(client, DebouncePolicy::default()))
-        .build();
-    environment
-        .run(SchedulingActivities::schedule_fitness_freshness, fitness_change())
-        .await
-        .unwrap();
-    for _ in 0..2 {
+    let activity = fixtures::activity_task();
+    assert_eq!(
         environment
-            .run(SchedulingActivities::schedule_segment_analytics, vec![segment_change()])
+            .run(DerivedActivities::rebuild_activity_segments, activity.clone())
             .await
-            .unwrap();
+            .unwrap(),
+        vec![18]
+    );
+    environment
+        .run(DerivedActivities::rebuild_activity_achievements, activity.clone())
+        .await
+        .unwrap();
+    environment
+        .run(DerivedActivities::prepare_heatmap, activity.clone())
+        .await
+        .unwrap();
+    environment
+        .run(DerivedActivities::rebuild_activity_training, activity.clone())
+        .await
+        .unwrap();
+    environment
+        .run(DerivedActivities::rebuild_fitness_freshness, fixtures::fitness_change())
+        .await
+        .unwrap();
+    environment
+        .run(DerivedActivities::rebuild_segment_analytics, fixtures::segment_change())
+        .await
+        .unwrap();
+    let calls = operations.received.lock().unwrap();
+    assert_eq!(calls.len(), 6);
+    for (_, input) in &calls[..4] {
+        assert_eq!(*input, serde_json::to_value(&activity).unwrap());
     }
-    environment
-        .run(SchedulingActivities::schedule_heatmap, heatmap_change())
-        .await
-        .unwrap();
-    assert_eq!(requests.lock().unwrap().signals.len(), 4);
-    environment
-        .run(SchedulingActivities::schedule_segment_analytics, vec![])
-        .await
-        .unwrap();
-    assert_eq!(requests.lock().unwrap().signals.len(), 4);
 }
 
 #[tokio::test]
-async fn scheduling_validates_segment_fanout_before_partial_submission() {
-    let requests = Arc::new(Mutex::new(client::Requests::default()));
-    let client = client::client(requests.clone(), false).await;
-    let environment = ActivityEnvironment::builder_with_default()
-        .register_activities(SchedulingActivities::new(client, DebouncePolicy::default()))
-        .build();
-    let invalid = SegmentChange {
-        revision: 0,
-        ..segment_change()
+async fn transient_derived_failures_remain_native_activity_failures() {
+    let environment = environment(Arc::new(Operations {
+        fail: true,
+        ..Default::default()
+    }));
+    let error = environment
+        .run(DerivedActivities::rebuild_activity_segments, fixtures::activity_task())
+        .await
+        .unwrap_err();
+    assert_retryable(&error);
+}
+
+#[tokio::test]
+async fn batch_handlers_forward_owned_inputs_to_the_domain() {
+    use crate::activities::BatchActivities;
+    use bike_core::bike_tasks::*;
+    let operations = Arc::new(Operations::default());
+    let environment = environment(operations.clone());
+    let page = ActivityPage {
+        page: UserPage {
+            user_id: 7,
+            after_id: 42,
+        },
+        selection: ActivitySelection::Cycling,
     };
-    assert!(environment
-        .run(
-            SchedulingActivities::schedule_segment_analytics,
-            vec![segment_change(), invalid]
-        )
+    assert_eq!(
+        environment.run(BatchActivities::activity_page, page).await.unwrap(),
+        vec![fixtures::activity_task()]
+    );
+    assert_eq!(
+        environment
+            .run(BatchActivities::reprocess_input, fixtures::activity_task())
+            .await
+            .unwrap(),
+        fixtures::reprocess_input()
+    );
+    environment
+        .run(BatchActivities::regenerate_segment_efforts, 18)
         .await
-        .is_err());
-    assert!(requests.lock().unwrap().signals.is_empty());
+        .unwrap();
+    environment
+        .run(BatchActivities::finish_training_backfill, 7)
+        .await
+        .unwrap();
+    let cursor = environment.run(BatchActivities::prepare_archive, 7).await.unwrap();
+    assert_eq!(cursor.job_id, 7);
+    let page = environment.run(BatchActivities::archive_page, cursor).await.unwrap();
+    assert_eq!(page.sources, vec![fixtures::import_command().source]);
+    environment.run(BatchActivities::finish_archive, 7).await.unwrap();
+    assert_eq!(
+        environment.run(BatchActivities::pending_heatmaps, 42).await.unwrap(),
+        vec![fixtures::activity_task()]
+    );
+    assert_eq!(operations.received.lock().unwrap().len(), 8);
 }
 
 #[tokio::test]
-async fn rejected_native_handoff_is_an_activity_failure() {
-    let requests = Arc::new(Mutex::new(client::Requests::default()));
-    let client = client::client(requests, true).await;
-    let environment = ActivityEnvironment::builder_with_default()
-        .register_activities(SchedulingActivities::new(client, DebouncePolicy::default()))
-        .build();
-    assert!(environment
-        .run(SchedulingActivities::schedule_fitness_freshness, fitness_change())
-        .await
-        .is_err());
+async fn batch_handler_storage_failure_is_retryable() {
+    use crate::activities::BatchActivities;
+    let environment = environment(Arc::new(Operations {
+        fail: true,
+        ..Default::default()
+    }));
+    assert_retryable(&environment.run(BatchActivities::prepare_archive, 7).await.unwrap_err());
 }

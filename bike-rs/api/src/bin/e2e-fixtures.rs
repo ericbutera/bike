@@ -1,7 +1,6 @@
 //! A command-line fixture boundary, never an application HTTP endpoint.
 //! Playwright owns scenario values; SeaORM validates and persists owning models.
 use bike_core::auth::entities::{refresh_tokens, users};
-use bike_core::background_jobs::entities::background_tasks;
 use bike_core::entities::{
     activities, activity_archive_import_jobs, activity_import_artifacts, activity_imports, heatmap_projections,
     segment_efforts, segment_summaries, segment_user_summaries, segments, user_preferences,
@@ -47,7 +46,6 @@ async fn store_record(tx: &DatabaseTransaction, record: Record) -> Result<(), se
         "segment_efforts" => store::<segment_efforts::Entity>(tx, record).await,
         "segment_summaries" => store::<segment_summaries::Entity>(tx, record).await,
         "segment_user_summaries" => store::<segment_user_summaries::Entity>(tx, record).await,
-        "background_tasks" => store::<background_tasks::Entity>(tx, record).await,
         "activity_archive_import_jobs" => store::<activity_archive_import_jobs::Entity>(tx, record).await,
         "refresh_tokens" => store::<refresh_tokens::Entity>(tx, record).await,
         entity => Err(sea_orm::DbErr::Custom(format!("Unsupported fixture entity: {entity}"))),

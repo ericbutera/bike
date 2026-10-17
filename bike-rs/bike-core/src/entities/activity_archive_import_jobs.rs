@@ -1,9 +1,7 @@
-use crate::archive_import::decode_error_samples;
 use crate::archive_import::{
     archive_outcome, ActivityArchiveImportResponse, ACTIVITY_ARCHIVE_IMPORT_STATUS_FAILED,
     ACTIVITY_ARCHIVE_IMPORT_STATUS_QUEUED, ACTIVITY_ARCHIVE_IMPORT_STATUS_RUNNING,
 };
-use crate::background_jobs::entities::worker_batches;
 use crate::entities::activity_archive_import_jobs;
 use crate::workflow_error::WorkflowError as AppError;
 use chrono::{DateTime, Utc};
@@ -96,63 +94,6 @@ crate::timestamps::impl_timestamps!(ActiveModel);
 impl Entity {
     pub async fn find_for_batch(db: &impl ConnectionTrait, job_id: i32) -> Result<Option<Model>, DbErr> {
         Self::find_by_id(job_id).one(db).await
-    }
-}
-
-impl Model {
-    pub async fn finish_batch(
-        db: &impl ConnectionTrait,
-        batch: &worker_batches::Model,
-        tasks: &[crate::background_jobs::entities::diagnostic_reads::TaskMetadata],
-    ) -> Result<bool, sea_orm::DbErr> {
-        if batch.kind != "archive" {
-            return Ok(false);
-        }
-        let id = batch.source["job_id"]
-            .as_i64()
-            .and_then(|id| i32::try_from(id).ok())
-            .ok_or_else(|| sea_orm::DbErr::Custom("Archive job ID missing".into()))?;
-        let job = Entity::find_for_batch(db, id)
-            .await?
-            .ok_or_else(|| sea_orm::DbErr::RecordNotFound("Archive job missing".into()))?;
-        let imports = crate::entities::activity_imports::Entity::archive_statuses(db, id).await?;
-        let imported = imports.iter().filter(|status| status.as_str() == "processed").count() as i32;
-        let duplicate = imports.iter().filter(|status| status.as_str() == "duplicate").count() as i32;
-        let failed = (job.supported_entry_count - imported - duplicate).max(0);
-        let task_failed = tasks.iter().any(|task| task.status != "completed");
-        let has_failure = task_failed || failed > 0 || job.supported_entry_count == 0;
-        let mut errors = decode_error_samples(job.error_samples_json.as_deref());
-        errors.extend(tasks.iter().filter_map(|task| task.error.clone()));
-        if job.supported_entry_count == 0 && errors.is_empty() {
-            errors.push("Archive contained no supported activity files".into());
-        }
-        errors.truncate(10);
-        Entity::update_many()
-            .set(ActiveModel {
-                imported_count: Set(imported),
-                duplicate_count: Set(duplicate),
-                failed_count: Set(failed),
-                status: Set(if !has_failure {
-                    "succeeded"
-                } else if imported + duplicate > 0 {
-                    "partial"
-                } else {
-                    "failed"
-                }
-                .into()),
-                failure_message: Set(errors.first().cloned()),
-                error_samples_json: Set(Some(
-                    serde_json::to_string(&errors).map_err(|error| sea_orm::DbErr::Custom(error.to_string()))?,
-                )),
-                resolved_url: Set(batch.source["resolved_url"].as_str().map(str::to_owned)),
-                finished_at: Set(Some(Utc::now())),
-                updated_at: Set(Utc::now()),
-                ..Default::default()
-            })
-            .filter(Column::Id.eq(id))
-            .exec(db)
-            .await?;
-        Ok(has_failure)
     }
 }
 

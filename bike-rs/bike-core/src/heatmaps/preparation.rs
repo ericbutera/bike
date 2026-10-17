@@ -3,40 +3,17 @@ use super::{
     projection::{PendingProjection, Projection},
 };
 use crate::activity_data::deserialize_derived_activity_data;
-use crate::background_jobs::execution::{measured, WorkCounts, WorkScope};
 use sea_orm::{DatabaseConnection, DbErr};
 
 #[tracing::instrument(name = "heatmap.rebuild", skip_all, fields(bike.operation = "heatmap.rebuild", activity_id = pending.activity_id, generation = pending.generation))]
 pub async fn prepare_activity(db: &DatabaseConnection, pending: PendingProjection) -> Result<(), DbErr> {
-    let scope = WorkScope {
-        kind: "heatmap",
-        work_key: format!("activity:{}", pending.activity_id),
-        revision: Projection::revision(pending.generation),
-        mode: "full",
-        reason: "projection_dirty",
-    };
-    measured(db, scope, async {
-        prepare_measured(db, pending).await.map(|counts| ((), counts))
-    })
-    .await
-}
-
-async fn prepare_measured(db: &DatabaseConnection, pending: PendingProjection) -> Result<WorkCounts, DbErr> {
     let Some(source) = Projection::source(db, &pending).await? else {
-        return Ok(WorkCounts {
-            outcome: "already_current",
-            ..Default::default()
-        });
+        return Ok(());
     };
     if !crate::activity_sport::is_bike_activity_sport(&source.sport) || source.format.as_deref() == Some("unavailable")
     {
-        let published = Projection::publish(db, &pending, &[]).await?;
-        return Ok(WorkCounts {
-            inputs_read: 1,
-            outputs_published: u64::from(published),
-            outcome: if published { "skipped" } else { "superseded" },
-            ..Default::default()
-        });
+        Projection::publish(db, &pending, &[]).await?;
+        return Ok(());
     }
     let mut derived = deserialize_derived_activity_data(source.derived_data_json.as_ref());
     derived
@@ -66,26 +43,15 @@ async fn prepare_measured(db: &DatabaseConnection, pending: PendingProjection) -
             &derived,
         )
         .await?;
-        return Ok(WorkCounts {
-            inputs_read: 1,
-            outcome: "source_recovered",
-            ..Default::default()
-        });
+        return Ok(());
     }
-    let points = derived.route_points.len() as u64;
     let chunks = tokio::task::spawn_blocking(crate::observability::blocking_with_current_trace(move || {
         prepare_route(&derived)
     }))
     .await
     .map_err(|error| DbErr::Custom(error.to_string()))?;
-    let published = Projection::publish(db, &pending, &chunks).await?;
-    Ok(WorkCounts {
-        inputs_read: points,
-        units_computed: points,
-        rows_written: if published { chunks.len() as u64 } else { 0 },
-        outputs_published: u64::from(published),
-        outcome: if published { "published" } else { "superseded" },
-    })
+    Projection::publish(db, &pending, &chunks).await?;
+    Ok(())
 }
 
 #[tracing::instrument(name = "heatmap.geometry", skip_all, fields(bike.operation = "heatmap.geometry", route_point_count = derived.route_points.len() as i64))]

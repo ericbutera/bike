@@ -3,12 +3,17 @@ use crate::test_support as fixtures;
 use sea_orm::{DatabaseBackend, MockDatabase};
 
 #[tokio::test]
-async fn conditional_source_write_includes_the_version_it_read() {
-    let activity = fixtures::reprocess_activity();
+async fn reprocessing_preserves_saved_details_and_checks_the_source_version() {
+    let activity = activities::Model {
+        title: "My saved ride title".into(),
+        activity_type: "race".into(),
+        ..fixtures::reprocess_activity()
+    };
     let db = MockDatabase::new(DatabaseBackend::Postgres)
         .append_query_results([vec![activity.clone()]])
         .into_connection();
-    let parsed = fixtures::parsed_reprocess_activity();
+    let mut parsed = fixtures::parsed_reprocess_activity();
+    parsed.draft.title = "Embedded source title".into();
     let profile = TrainingProfile::default();
     let artifact = crate::activity_import_pipeline::load_best_activity_parsing_artifact(
         &MockDatabase::new(DatabaseBackend::Postgres)
@@ -28,7 +33,17 @@ async fn conditional_source_write_includes_the_version_it_read() {
         )
         .await
         .unwrap();
-    let log = format!("{:?}", db.into_transaction_log());
+    let transactions = db.into_transaction_log();
+    let write = transactions
+        .iter()
+        .flat_map(|transaction| transaction.statements())
+        .find(|statement| statement.sql.starts_with("UPDATE \"activities\""))
+        .unwrap();
+    let values = &write.values.as_ref().unwrap().0;
+    assert!(values.contains(&sea_orm::Value::from("My saved ride title")));
+    assert!(values.contains(&sea_orm::Value::from("race")));
+    assert!(!values.contains(&sea_orm::Value::from("Embedded source title")));
+    let log = format!("{transactions:?}");
     assert!(log.contains("WHERE"));
     assert!(log.contains("updated_at\\\" ="));
     let expected = format!("{:?}", sea_orm::Value::from(activity.updated_at));

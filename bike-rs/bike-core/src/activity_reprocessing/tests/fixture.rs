@@ -1,9 +1,8 @@
 use super::*;
-use crate::activity_import_pipeline::ActivityProcessingArtifact;
-use crate::entities::{
-    activity_import_artifacts, activity_training_analyses, segment_efforts, segments, user_preferences,
+use crate::{
+    activity_import_pipeline::ActivityProcessingArtifact,
+    entities::{activity_import_artifacts, user_preferences},
 };
-use crate::object_store::ObjectOwner;
 use ::object_store::{memory::InMemory, path::Path, ObjectStoreExt};
 use sea_orm::{DatabaseBackend, DbErr, MockDatabase, MockExecResult};
 use std::sync::Arc;
@@ -12,10 +11,20 @@ pub fn mock() -> MockDatabase {
     MockDatabase::new(DatabaseBackend::Postgres)
 }
 
-pub fn metadata(mock: MockDatabase) -> MockDatabase {
+pub fn source_metadata(mock: MockDatabase, artifact: activity_import_artifacts::Model) -> MockDatabase {
     mock.append_query_results([vec![fixtures::reprocess_activity()]])
         .append_query_results([vec![fixtures::reprocess_import()]])
+        .append_query_results([vec![artifact]])
+}
+
+pub fn metadata(mock: MockDatabase) -> MockDatabase {
+    source_metadata(mock, fixtures::reprocess_artifact())
+}
+
+pub fn source_reads(mock: MockDatabase) -> MockDatabase {
+    metadata(mock)
         .append_query_results([vec![fixtures::reprocess_artifact()]])
+        .append_query_results([Vec::<user_preferences::Model>::new()])
 }
 
 pub fn saved_activity() -> activities::Model {
@@ -28,72 +37,18 @@ pub fn saved_activity() -> activities::Model {
     }
 }
 
-pub fn scope() -> RefreshScope {
-    RefreshScope {
-        revision: revision(saved_activity().updated_at).unwrap(),
-        dirty_from: saved_activity().started_at.date_naive(),
-        segment_ids: vec![fixtures::segment_effort().segment_id],
-        heatmap_generation: Some(fixtures::heatmap_projection().generation as u64),
-    }
-}
-
-pub fn history() -> activity_event_history::Model {
-    let mut event = activity_event_history::Event::import(
-        &fixtures::reprocess_execution(),
-        Some(&fixtures::reprocess_activity()),
-        &saved_activity(),
-    )
-    .unwrap();
-    event.context["refresh_scope"] = serde_json::to_value(scope()).unwrap();
-    activity_event_history::Model {
-        id: event.id,
-        source: event.source,
-        context_json: event.context,
-        ..fixtures::activity_history()
-    }
-}
-
-pub fn source_reads(mock: MockDatabase) -> MockDatabase {
-    metadata(mock.append_query_results([Vec::<activity_event_history::Model>::new()]))
-        .append_query_results([vec![fixtures::reprocess_artifact()]]) // recording enrichment
-        .append_query_results([Vec::<user_preferences::Model>::new()])
-}
-
-/// Existing domain reads/writes for one ride with an old segment and no new matches.
 pub fn mutation(mock: MockDatabase, history_write: Result<u64, DbErr>) -> MockDatabase {
     let mock = mock
-        .append_query_results([vec![fixtures::reprocess_activity()]]) // row lock
-        .append_query_results([Vec::<activity_event_history::Model>::new()])
-        .append_query_results([vec![saved_activity()]]) // conditional source write
-        .append_query_results([vec![std::collections::BTreeMap::from([(
-            "segment_id",
-            sea_orm::Value::from(fixtures::segment_effort().segment_id),
-        )])]]) // single-column tuple read
-        .append_query_results([Vec::<segments::Model>::new()]) // route candidates
-        .append_query_results([Vec::<segment_efforts::Model>::new()]) // new membership
-        .append_query_results([vec![fixtures::activity_id_row()]]) // activity projection lock
-        .append_query_results([Vec::<segment_efforts::Model>::new()]) // achievements
-        .append_query_results([Vec::<segment_efforts::Model>::new()]) // training context
-        .append_query_results([Vec::<activity_training_analyses::Model>::new()])
+        .append_query_results([vec![fixtures::reprocess_import()]])
+        .append_query_results([vec![fixtures::reprocess_activity()]])
         .append_query_results([vec![saved_activity()]])
-        .append_query_results([vec![fixtures::training_analysis()]])
-        .append_query_results([vec![fixtures::heatmap_projection()]])
-        // efforts, old analytics, atomic fitness invalidation/requirement, segment change/requirement,
-        // import status; nested transactions use savepoints rather than these exec results.
-        .append_exec_results((0..7).map(|_| success()));
+        .append_exec_results([fixtures::written(), fixtures::written()]);
     match history_write {
         Err(error) => mock.append_exec_errors([error]),
         Ok(rows_affected) => mock.append_exec_results([MockExecResult {
             rows_affected,
-            ..success()
+            ..fixtures::written()
         }]),
-    }
-}
-
-fn success() -> MockExecResult {
-    MockExecResult {
-        last_insert_id: 0,
-        rows_affected: 1,
     }
 }
 
@@ -110,7 +65,7 @@ pub async fn retain_source(bytes: &'static [u8]) -> (ObjectStore, Arc<InMemory>)
 }
 
 pub fn artifact() -> ActivityProcessingArtifact {
-    let source: activity_import_artifacts::Model = fixtures::reprocess_artifact();
+    let source = fixtures::reprocess_artifact();
     ActivityProcessingArtifact {
         size_bytes: source.size_bytes,
         checksum_sha256: Some(source.checksum_sha256),
@@ -122,14 +77,13 @@ pub fn artifact() -> ActivityProcessingArtifact {
     }
 }
 
-pub async fn apply(db: &DatabaseConnection) -> Result<RefreshScope, WorkflowError> {
-    fixtures::reprocess_activity()
-        .apply_reprocessing(
-            db,
-            &fixtures::reprocess_execution(),
-            &artifact(),
-            &fixtures::parsed_reprocess_activity(),
-            &crate::training_profile::TrainingProfile::default(),
-        )
-        .await
+pub async fn apply(db: &DatabaseConnection) -> Result<activities::Model, WorkflowError> {
+    activities::Model::apply_import(
+        db,
+        &fixtures::reprocess_execution(),
+        &artifact(),
+        &fixtures::parsed_reprocess_activity(),
+        &crate::training_profile::TrainingProfile::default(),
+    )
+    .await
 }

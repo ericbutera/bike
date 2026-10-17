@@ -3,7 +3,6 @@ pub mod api_metrics;
 pub mod auth_metrics;
 pub mod cooldown;
 pub mod data;
-pub mod email;
 pub mod error;
 pub mod feature_flags;
 pub mod openapi;

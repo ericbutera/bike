@@ -42,14 +42,16 @@ pub struct Model {
 pub enum Relation {}
 
 impl Model {
-    pub(crate) async fn complete_native_reprocess(
+    pub(crate) async fn complete_native_import(
         db: &impl ConnectionTrait,
         execution: &crate::bike_tasks::ImportExecution,
+        activity_id: i32,
     ) -> Result<(), crate::workflow_error::WorkflowError> {
         let source = &execution.command.source;
         let changed = Entity::update_many()
             .set(ActiveModel {
                 status: Set("processed".into()),
+                activity_id: Set(Some(activity_id)),
                 processing_stage: Set("complete".into()),
                 processing_error: Set(None),
                 processed_at: Set(Some(Utc::now())),
@@ -73,7 +75,7 @@ impl Entity {
     pub async fn recent_manual_uploads(db: &impl ConnectionTrait, user_id: i32) -> Result<Vec<Model>, DbErr> {
         Self::find()
             .filter(Column::UserId.eq(user_id))
-            .filter(Column::Source.eq(crate::activity_import_lock::ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD))
+            .filter(Column::Source.eq("manual_upload"))
             .order_by_desc(Column::CreatedAt)
             .limit(25)
             .all(db)
@@ -192,6 +194,18 @@ impl Entity {
     pub async fn references_path(db: &impl ConnectionTrait, path: &str) -> Result<bool, DbErr> {
         Ok(Self::find().filter(Column::StoragePath.eq(path)).count(db).await? > 0)
     }
+    pub(crate) async fn lock_owned(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        import_id: i32,
+    ) -> Result<Option<Model>, DbErr> {
+        Self::find_by_id(import_id)
+            .filter(Column::UserId.eq(user_id))
+            .lock_exclusive()
+            .one(db)
+            .await
+    }
+
     pub async fn find_owned(db: &impl ConnectionTrait, user_id: i32, import_id: i32) -> Result<Option<Model>, DbErr> {
         Self::find_by_id(import_id)
             .filter(Column::UserId.eq(user_id))
@@ -245,7 +259,7 @@ impl Entity {
 }
 
 impl Model {
-    pub fn require_sql_processing(&self) -> Result<(), crate::workflow_error::WorkflowError> {
+    pub fn require_retained_file_processing(&self) -> Result<(), crate::workflow_error::WorkflowError> {
         if self.source == STRAVA_SOURCE {
             return Err(crate::workflow_error::WorkflowError::bad_request(
                 "Use Strava sync or backfill for Strava imports",

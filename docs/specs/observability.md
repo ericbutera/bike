@@ -102,6 +102,9 @@
 ## Verification
 
 - Use the production exporter policy with an in-memory exporter and SeaORM mocks.
+- Use deterministic span fixtures for exact fast/slow sampling counts and the
+  inclusive 100 ms boundary. ORM wiring tests retain real elapsed time and must
+  honor separate fast/slow budgets when scheduling or CPU limits delay a query.
 - Verify repeated-query suppression retains full counts and duration/error totals,
   independent normal/slow/error budgets, local ancestor aggregation, and cleanup
   at remote boundaries and shutdown.

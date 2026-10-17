@@ -1,11 +1,10 @@
 "use client";
 
-import ActivityPipelines from "@/components/admin/ActivityPipelines";
 import { type AdminActivity, useAdminActivities } from "@/lib/queries";
 import GenericList, { type Column } from "@/components/ui/GenericList";
 import { faGear } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useMemo } from "react";
 import Link from "next/link";
 import { ACTIVITY_SPORT_OPTIONS } from "@/lib/activitySports";
 import { LocalAdminLayout } from "../../../components/admin/LocalAdminLayout";
@@ -33,8 +32,6 @@ export default function AdminActivitiesPage() {
 }
 
 function AdminActivitiesContent() {
-  const [selectedActivity, setSelectedActivity] =
-    useState<AdminActivity | null>(null);
   const columns = useMemo<Column<AdminActivity, AdminActivitiesGridParams>[]>(
     () => [
       { key: "id", header: "ID", render: (activity) => activity.id },
@@ -122,24 +119,12 @@ function AdminActivitiesContent() {
             <Link
               className="btn btn-ghost btn-square btn-sm"
               href={`/admin/imports/${activity.activity_import_id}`}
-              aria-label={`View processing pipeline for ${activity.title}`}
-              title="Activity processing and replay"
+              aria-label={`View import details for ${activity.title}`}
+              title="Import details"
             >
               <FontAwesomeIcon icon={faGear} className="h-4 w-4" />
             </Link>
-          ) : (
-            <button
-              type="button"
-              className="btn btn-ghost btn-square btn-sm"
-              aria-label={`View processing pipeline for ${activity.title}`}
-              title="View processing pipeline, timings and import history"
-              onClick={() => {
-                setSelectedActivity(activity);
-              }}
-            >
-              <FontAwesomeIcon icon={faGear} className="h-4 w-4" />
-            </button>
-          ),
+          ) : null,
       },
     ],
     [],
@@ -231,63 +216,7 @@ function AdminActivitiesContent() {
         )}
         emptyMessage="No activities found matching criteria."
       />
-
-      <ActivityProcessingModal
-        activity={selectedActivity}
-        onClose={() => {
-          setSelectedActivity(null);
-        }}
-      />
     </div>
-  );
-}
-
-function ActivityProcessingModal({
-  activity,
-  onClose,
-}: {
-  activity: AdminActivity | null;
-  onClose: () => void;
-}) {
-  const isOpen = !!activity;
-
-  if (!isOpen) {
-    return null;
-  }
-
-  return (
-    <dialog
-      open
-      aria-label={`Activity processing for ${activity.title}`}
-      className="modal modal-open"
-    >
-      <div className="modal-box max-w-5xl">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold">Activity processing</h2>
-            <p className="mt-1 text-sm text-base-content/65">
-              {activity.title} · Activity #{activity.id}
-            </p>
-          </div>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={onClose}
-          >
-            Close
-          </button>
-        </div>
-
-        <div className="mt-6">
-          {activity ? <ActivityPipelines activityId={activity.id} /> : null}
-        </div>
-      </div>
-      <form method="dialog" className="modal-backdrop">
-        <button type="button" onClick={onClose}>
-          close
-        </button>
-      </form>
-    </dialog>
   );
 }
 

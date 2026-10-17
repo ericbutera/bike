@@ -474,7 +474,7 @@ pub async fn apply_recovery(
         return Ok(false);
     };
     if plan.reprocessing_required {
-        plan.import.require_sql_processing()?;
+        plan.import.require_retained_file_processing()?;
     }
     let mut artifact = source.artifact;
     let mut copied_path = None;

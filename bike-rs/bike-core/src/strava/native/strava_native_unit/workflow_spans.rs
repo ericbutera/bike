@@ -101,11 +101,9 @@ async fn fitness_stage_includes_input_queries_and_published_rows() {
             0.0.into(),
         ]
     );
-    let output = publication
+    assert!(!publication
         .iter()
-        .find(|statement| statement.sql.starts_with("UPDATE \"processing_pipeline_outputs\""))
-        .unwrap();
-    assert!(output.values.as_ref().unwrap().0.contains(&"available".into()));
+        .any(|statement| statement.sql.contains("processing_pipeline_outputs")));
     assert_eq!(publication.last().unwrap().sql, "COMMIT");
 }
 

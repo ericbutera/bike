@@ -14,7 +14,6 @@ use crate::controllers::strava;
 use crate::controllers::training_goals;
 use crate::controllers::user_preferences;
 use bike_core::auth::openapi as auth_openapi;
-use bike_core::background_jobs::openapi as background_jobs_openapi;
 use bike_core::platform::openapi as platform_openapi;
 use bike_core::platform::SecurityAddon;
 use utoipa::OpenApi;
@@ -34,8 +33,6 @@ use utoipa::OpenApi;
         auth_openapi::paths::disable_user,
         controllers::health,
         admin::list_admin_activities,
-        admin::get_admin_activity_import_trace,
-        admin::get_admin_activity_import_trace_for_activity,
         admin::backfill_analytics,
         admin::backfill_user_xc_training,
         admin::regenerate_segment_efforts,
@@ -61,10 +58,7 @@ use utoipa::OpenApi;
         reports::get_training_reports,
         activity_imports::list_activity_imports,
         activity_import_history::history,
-        activity_import_history::replay_plan,
-        activity_import_history::replay,
-        activity_imports::get_activity_processing_graph,
-        activity_imports::get_activity_processing_state,
+        activity_import_history::detail,
         activity_imports::list_activity_archive_import_jobs,
         activity_imports::get_activity_archive_import_job,
         activity_imports::upload_activity_import,
@@ -94,13 +88,6 @@ use utoipa::OpenApi;
         platform_openapi::paths::public_flags,
         platform_openapi::paths::list_flags,
         platform_openapi::paths::update_flag,
-        background_jobs_openapi::paths::list_tasks,
-        background_jobs_openapi::paths::processors,
-        background_jobs_openapi::paths::pipeline,
-        background_jobs_openapi::paths::activity_pipelines,
-        background_jobs_openapi::paths::get_task,
-        background_jobs_openapi::paths::rerun_task,
-        background_jobs_openapi::paths::cancel_task,
     ),
     components(
         schemas(
@@ -118,7 +105,6 @@ use utoipa::OpenApi;
             admin::BackfillUserXcTrainingRequest,
             admin::ReprocessUserActivityImportsResponse,
             admin::ArchiveImportRequest,
-            admin::ArchiveImportResponse,
             admin::CleanupUserDuplicateActivitiesRequest,
             admin::CleanupUserDuplicateActivitiesResponse,
             bike_core::activity_sport::ActivitySport,
@@ -199,17 +185,7 @@ use utoipa::OpenApi;
             bike_core::activity_details::ActivityChartPoint,
             bike_core::activity_details::ActivityRoutePoint,
             activity_imports::ActivityImportResponse,
-            activity_imports::ActivityImportTraceEventResponse,
-            activity_imports::ActivityImportTraceNodeResponse,
-            activity_imports::ActivityImportTraceResponse,
             crate::activity_import_history::ImportHistoryResponse,
-            activity_import_history::ReplayRequest,
-            crate::activity_import_history::ReplayResponse,
-            crate::activity_import_history::ImportAttemptResponse,
-            activity_imports::ActivityProcessingGraphEdgeResponse,
-            activity_imports::ActivityProcessingGraphNodeResponse,
-            activity_imports::ActivityProcessingGraphResponse,
-            activity_imports::ActivityProcessingStateResponse,
             activity_imports::ArchiveUrlImportRequest,
             activity_imports::ActivityArchiveImportJobResponse,
             integration_events::IntegrationEventResponse,
@@ -249,16 +225,6 @@ use utoipa::OpenApi;
             platform_openapi::schemas::PaginatedResponse<platform_openapi::schemas::FeatureFlagResponse>,
             platform_openapi::schemas::PaginatedResponse<platform_openapi::schemas::PublicFlagResponse>,
             bike_core::platform::data::pagination::PaginationParams,
-            background_jobs_openapi::schemas::PaginatedResponse<background_jobs_openapi::schemas::TaskResponse>,
-            background_jobs_openapi::schemas::PaginationMetadata,
-            background_jobs_openapi::schemas::TaskResponse,
-            background_jobs_openapi::schemas::ProcessorSummary,
-            background_jobs_openapi::schemas::Distribution,
-            background_jobs_openapi::schemas::PipelineGraph,
-            background_jobs_openapi::schemas::PipelinePage,
-            background_jobs_openapi::schemas::TaskDetailResponse,
-            background_jobs_openapi::schemas::TaskAttemptResponse,
-            background_jobs_openapi::schemas::TaskPipelineResponse,
         )
     ),
     tags(

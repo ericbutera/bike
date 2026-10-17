@@ -1,21 +1,9 @@
-use crate::activities::*;
+use crate::activities::{
+    BatchActivities, BatchOperations, DerivedActivities, DerivedOperations, ImportActivities, ImportOperations,
+};
 use bike_core::{bike_tasks::*, test_support as fixtures, workflow_error::WorkflowError};
-use serde::Serialize;
 use std::sync::{Arc, Mutex};
 use temporalio_sdk::{activities::ActivityContext, testing::ActivityEnvironment};
-
-mod submission;
-pub(crate) use submission::{reprocess_input, SubmissionFixture};
-
-fn activity_info() -> temporalio_sdk::activities::ActivityInfo {
-    let job = fixtures::job_reference();
-    temporalio_sdk::testing::TestActivityInfoOptions::builder()
-        .namespace(job.namespace)
-        .workflow_id(Some(job.job_id))
-        .workflow_run_id(Some(job.run_id))
-        .workflow_type(Some(job.workflow_type))
-        .build()
-}
 
 #[derive(Default)]
 pub(super) struct Operations {
@@ -24,20 +12,7 @@ pub(super) struct Operations {
 }
 
 impl Operations {
-    pub fn expected<T>(&self, value: T) -> Result<T, ()> {
-        if self.fail {
-            Err(())
-        } else {
-            Ok(value)
-        }
-    }
-    fn record(
-        &self,
-        name: &'static str,
-        input: &impl Serialize,
-        context: ActivityContext,
-    ) -> Result<(), WorkflowError> {
-        assert!(context.info().attempt > 0);
+    fn record(&self, name: &'static str, input: &impl serde::Serialize) -> Result<(), WorkflowError> {
         self.received
             .lock()
             .unwrap()
@@ -50,19 +25,96 @@ impl Operations {
     }
 }
 
-pub(super) async fn assert_activity<A>(
-    environment: &ActivityEnvironment,
-    definition: A,
-    input: A::Input,
-    expected: Result<A::Output, ()>,
-) where
-    A: temporalio_sdk::activities::ExecutableActivity,
-    A::Output: PartialEq + std::fmt::Debug,
-{
-    let actual = environment.run(definition, input).await;
-    match expected {
-        Ok(value) => assert_eq!(actual.unwrap(), value),
-        Err(()) => assert!(actual.is_err()),
+pub(super) fn environment(operations: Arc<Operations>) -> ActivityEnvironment {
+    let job = fixtures::job_reference();
+    ActivityEnvironment::builder_with_default()
+        .info(
+            temporalio_sdk::testing::TestActivityInfoOptions::builder()
+                .namespace(job.namespace)
+                .workflow_id(Some(job.job_id))
+                .workflow_run_id(Some(job.run_id))
+                .workflow_type(Some(job.workflow_type))
+                .build(),
+        )
+        .register_activities(ImportActivities::new(operations.clone()))
+        .register_activities(BatchActivities::new(operations.clone()))
+        .register_activities(DerivedActivities::new(operations))
+        .build()
+}
+
+#[async_trait::async_trait]
+impl BatchOperations for Operations {
+    async fn activity_page(&self, input: ActivityPage) -> Result<Vec<ActivityTask>, WorkflowError> {
+        self.record("activity_page", &input)?;
+        Ok(vec![fixtures::activity_task()])
+    }
+    async fn reprocess_input(&self, input: ActivityTask) -> Result<ReprocessInput, WorkflowError> {
+        self.record("reprocess_input", &input)?;
+        Ok(fixtures::reprocess_input())
+    }
+    async fn regenerate_segment_efforts(&self, segment_id: i32) -> Result<(), WorkflowError> {
+        self.record("regenerate_segment_efforts", &segment_id)
+    }
+    async fn finish_training_backfill(&self, user_id: i32) -> Result<(), WorkflowError> {
+        self.record("finish_training_backfill", &user_id)
+    }
+    async fn prepare_archive(&self, job_id: i32) -> Result<ArchiveCursor, WorkflowError> {
+        self.record("prepare_archive", &job_id)?;
+        Ok(ArchiveCursor {
+            job_id,
+            archive_path: "/uploads/archives/7.zip".into(),
+            offset: 0,
+        })
+    }
+    async fn archive_page(&self, cursor: ArchiveCursor) -> Result<ArchivePage, WorkflowError> {
+        self.record("archive_page", &cursor)?;
+        Ok(ArchivePage {
+            sources: vec![fixtures::import_command().source],
+            next_offset: 1,
+            done: true,
+        })
+    }
+    async fn finish_archive(&self, job_id: i32) -> Result<(), WorkflowError> {
+        self.record("finish_archive", &job_id)
+    }
+    async fn pending_heatmaps(&self, after_id: i32) -> Result<Vec<ActivityTask>, WorkflowError> {
+        self.record("pending_heatmaps", &after_id)?;
+        Ok(vec![fixtures::activity_task()])
+    }
+}
+
+#[async_trait::async_trait]
+impl ImportOperations for Operations {
+    async fn activity_import(
+        &self,
+        execution: ImportExecution,
+        _context: ActivityContext,
+    ) -> Result<ActivityImportResult, WorkflowError> {
+        self.record("activity_import", &execution.command)?;
+        Ok(fixtures::import_result())
+    }
+}
+
+#[async_trait::async_trait]
+impl DerivedOperations for Operations {
+    async fn rebuild_activity_segments(&self, task: ActivityTask) -> Result<Vec<i32>, WorkflowError> {
+        self.record("rebuild_activity_segments", &task)?;
+        Ok(vec![18])
+    }
+    async fn rebuild_activity_achievements(&self, task: ActivityTask) -> Result<(), WorkflowError> {
+        self.record("rebuild_activity_achievements", &task)
+    }
+    async fn rebuild_fitness_freshness(&self, task: FitnessChange) -> Result<(), WorkflowError> {
+        self.record("rebuild_fitness_freshness", &task)
+    }
+    async fn rebuild_activity_training(&self, task: ActivityTask) -> Result<(), WorkflowError> {
+        self.record("rebuild_activity_training", &task)
+    }
+    async fn rebuild_segment_analytics(&self, task: SegmentChange) -> Result<(), WorkflowError> {
+        self.record("rebuild_segment_analytics", &task)
+    }
+    async fn prepare_heatmap(&self, task: ActivityTask) -> Result<(), WorkflowError> {
+        self.record("prepare_heatmap", &task)
     }
 }
 
@@ -72,211 +124,4 @@ pub(super) fn assert_retryable(error: &temporalio_sdk::testing::ActivityEnvironm
         panic!("Expected native application failure: {error:?}");
     };
     assert!(!failure.is_non_retryable());
-}
-
-pub(super) fn environment(operations: Arc<Operations>) -> ActivityEnvironment {
-    ActivityEnvironment::builder_with_default()
-        .info(activity_info())
-        .register_activities(ImportActivities::new(operations.clone()))
-        .register_activities(ReprocessManifestActivities::new(operations.clone()))
-        .register_activities(DerivedActivities::new(operations.clone()))
-        .register_activities(SegmentActivities::new(operations.clone()))
-        .register_activities(TrainingActivities::new(operations.clone()))
-        .register_activities(ArchiveActivities::new(operations))
-        .build()
-}
-
-#[async_trait::async_trait]
-impl ImportOperations for Operations {
-    async fn activity_import(
-        &self,
-        execution: ImportExecution,
-        context: ActivityContext,
-    ) -> Result<ActivityImportResult, WorkflowError> {
-        self.record("activity_import", &execution.command, context)?;
-        Ok(fixtures::import_result())
-    }
-}
-
-#[async_trait::async_trait]
-impl ReprocessManifestOperations for Operations {
-    async fn prepare_reprocess_imports(
-        &self,
-        selection: ReprocessSelection,
-        context: ActivityContext,
-    ) -> Result<BatchManifest, WorkflowError> {
-        self.record("prepare_reprocess_imports", &selection, context)?;
-        Ok(fixtures::batch_manifest(
-            &selection.command,
-            ManifestScope::Reprocessing {
-                user_id: selection.command.user_id,
-                selection: selection.scope,
-            },
-            1,
-        ))
-    }
-    async fn reprocess_import_page(
-        &self,
-        page: PageRequest,
-        context: ActivityContext,
-    ) -> Result<Vec<ReprocessInput>, WorkflowError> {
-        self.record("reprocess_import_page", &page, context)?;
-        Ok((page.offset..page.offset + page.expected_entries() as u64)
-            .map(|index| fixtures::reprocess_entry(&page, index))
-            .collect())
-    }
-}
-
-#[async_trait::async_trait]
-impl DerivedOperations for Operations {
-    async fn rebuild_fitness_freshness(
-        &self,
-        change: FitnessChange,
-        context: ActivityContext,
-    ) -> Result<Publication, WorkflowError> {
-        self.record("rebuild_fitness_freshness", &change, context)?;
-        Ok(Publication::Published)
-    }
-    async fn rebuild_segment_analytics(
-        &self,
-        change: SegmentChange,
-        context: ActivityContext,
-    ) -> Result<Publication, WorkflowError> {
-        self.record("rebuild_segment_analytics", &change, context)?;
-        Ok(Publication::Published)
-    }
-    async fn prepare_heatmap(
-        &self,
-        change: HeatmapChange,
-        context: ActivityContext,
-    ) -> Result<Publication, WorkflowError> {
-        self.record("prepare_heatmap", &change, context)?;
-        Ok(Publication::Published)
-    }
-}
-
-#[async_trait::async_trait]
-impl SegmentOperations for Operations {
-    async fn match_activity_segments(
-        &self,
-        command: ActivitySegmentsInput,
-        context: ActivityContext,
-    ) -> Result<ActivitySegmentsResult, WorkflowError> {
-        self.record("match_activity_segments", &command, context)?;
-        Ok(ActivitySegmentsResult {
-            activity_id: command.activity_id,
-            ..fixtures::segment_result()
-        })
-    }
-    async fn prepare_user_segments(
-        &self,
-        command: BatchCommand,
-        context: ActivityContext,
-    ) -> Result<BatchManifest, WorkflowError> {
-        self.record("prepare_user_segments", &command, context)?;
-        Ok(fixtures::batch_manifest(
-            &command,
-            ManifestScope::UserSegments {
-                user_id: command.user_id,
-            },
-            1,
-        ))
-    }
-    async fn prepare_segment_efforts(
-        &self,
-        selection: SegmentEffortsSelection,
-        context: ActivityContext,
-    ) -> Result<BatchManifest, WorkflowError> {
-        self.record("prepare_segment_efforts", &selection, context)?;
-        Ok(fixtures::batch_manifest(
-            &selection.command,
-            ManifestScope::Segment {
-                segment_id: selection.segment_id,
-                expected_revision: selection.expected_revision,
-            },
-            1,
-        ))
-    }
-    async fn segment_activity_page(
-        &self,
-        page: PageRequest,
-        context: ActivityContext,
-    ) -> Result<Vec<ActivitySegmentsInput>, WorkflowError> {
-        self.record("segment_activity_page", &page, context)?;
-        Ok((page.offset..page.offset + page.expected_entries() as u64)
-            .map(|index| fixtures::segment_entry(&page, index))
-            .collect())
-    }
-}
-
-#[async_trait::async_trait]
-impl TrainingOperations for Operations {
-    async fn prepare_training_backfill(
-        &self,
-        command: BatchCommand,
-        context: ActivityContext,
-    ) -> Result<BatchManifest, WorkflowError> {
-        self.record("prepare_training_backfill", &command, context)?;
-        Ok(fixtures::batch_manifest(
-            &command,
-            ManifestScope::Training {
-                user_id: command.user_id,
-            },
-            1,
-        ))
-    }
-    async fn training_activity_page(
-        &self,
-        page: PageRequest,
-        context: ActivityContext,
-    ) -> Result<Vec<TrainingActivityInput>, WorkflowError> {
-        self.record("training_activity_page", &page, context)?;
-        Ok((page.offset..page.offset + page.expected_entries() as u64)
-            .map(|index| fixtures::training_entry(&page, index))
-            .collect())
-    }
-    async fn rebuild_activity_training(
-        &self,
-        command: TrainingActivityInput,
-        context: ActivityContext,
-    ) -> Result<TrainingActivityResult, WorkflowError> {
-        self.record("rebuild_activity_training", &command, context)?;
-        Ok(fixtures::training_result())
-    }
-    async fn complete_training_backfill(
-        &self,
-        completion: TrainingCompletion,
-        context: ActivityContext,
-    ) -> Result<(), WorkflowError> {
-        self.record("complete_training_backfill", &completion, context)
-    }
-}
-
-#[async_trait::async_trait]
-impl ArchiveOperations for Operations {
-    async fn prepare_archive_manifest(
-        &self,
-        command: ArchiveCommand,
-        context: ActivityContext,
-    ) -> Result<BatchManifest, WorkflowError> {
-        self.record("prepare_archive_manifest", &command, context)?;
-        Ok(fixtures::batch_manifest(
-            &command.batch,
-            ManifestScope::Archive {
-                user_id: command.batch.user_id,
-                archive_job_id: command.archive_job_id,
-            },
-            1,
-        ))
-    }
-    async fn archive_import_page(
-        &self,
-        page: PageRequest,
-        context: ActivityContext,
-    ) -> Result<Vec<ImportSource>, WorkflowError> {
-        self.record("archive_import_page", &page, context)?;
-        Ok((page.offset..page.offset + page.expected_entries() as u64)
-            .map(|index| fixtures::import_entry(&page, index))
-            .collect())
-    }
 }

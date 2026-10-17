@@ -8,19 +8,19 @@ pub use activity_history::{activity_history, activity_history_event};
 mod storage;
 pub use storage::object_storage;
 mod tasks;
+pub mod temporal_client;
 pub use tasks::{
-    archive_input, batch_command, batch_input, batch_manifest, fitness_change, heatmap_change, import_command,
-    import_entry, import_execution, import_result, job_reference, page_request, prepared_batch, reprocess_entry,
-    segment_change, segment_efforts_input, segment_entry, segment_result, task_cause, training_entry, training_result,
+    activity_task, fitness_change, import_command, import_execution, import_result, job_reference, reprocess_input,
+    segment_change, task_cause,
 };
 mod analytics;
 mod defaults;
 pub use analytics::{
     activity_analytics, activity_id_row, analytics_user_state, fitness_day, new_fitness_day, new_segment_effort,
-    segment_effort,
+    segment_effort, segment_id_rows,
 };
 pub use defaults::user_preferences;
-pub use defaults::{background_task, new_background_task, new_feature_flag, new_user_preferences, task_attempt};
+pub use defaults::{new_feature_flag, new_user_preferences};
 mod heatmaps;
 pub use heatmaps::heatmap_projection;
 mod imports;
@@ -41,7 +41,7 @@ pub(crate) mod trace;
 pub use segments::{segment, segment_summary, segment_user_summary};
 
 pub use accounts::{connection, customer, new_connection, new_customer};
-pub use imports::{activity_import_attempt, archive_import_job, import_artifact};
+pub use imports::{archive_import_job, import_artifact};
 
 use crate::entities::{activities, activity_imports};
 use chrono::{DateTime, Utc};

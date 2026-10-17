@@ -7,6 +7,9 @@ struct Store {
     connected: bool,
     calls: Mutex<Vec<&'static str>>,
     events: Mutex<HashMap<String, strava_events::Model>>,
+    delays: HashMap<&'static str, Duration>,
+    reply_delay: Duration,
+    fail_accept: bool,
 }
 
 impl Store {
@@ -16,6 +19,9 @@ impl Store {
             connected: true,
             calls: Mutex::new(vec![]),
             events: Mutex::new(HashMap::new()),
+            delays: HashMap::new(),
+            reply_delay: Duration::ZERO,
+            fail_accept: false,
         }
     }
 
@@ -43,26 +49,35 @@ impl Store {
         .accept(self, webhook, Some("fixture-request".into()))
         .await
     }
+
+    async fn called(&self, operation: &'static str) {
+        self.calls.lock().unwrap().push(operation);
+        if let Some(delay) = self.delays.get(operation) {
+            tokio::time::sleep(*delay).await;
+        }
+    }
 }
 
 #[async_trait::async_trait]
 impl WebhookStore for Store {
     async fn connection(&self, athlete_id: i64) -> Result<Option<strava_connections::Model>, WorkflowError> {
-        self.calls.lock().unwrap().push("connection");
+        self.called("connection").await;
         assert_eq!(athlete_id, self.fixture.connection.athlete_id);
         Ok(self.connected.then(|| self.fixture.connection.clone()))
     }
 
     async fn customer(&self, user_id: i32) -> Result<users::Model, WorkflowError> {
-        self.calls.lock().unwrap().push("customer");
+        self.called("customer").await;
         assert_eq!(user_id, self.fixture.customer.id);
         Ok(self.fixture.customer.clone())
     }
 
     async fn accept(&self, event: StravaEvent) -> Result<strava_events::Model, WorkflowError> {
-        self.calls.lock().unwrap().push("accept");
+        self.called("accept").await;
+        if self.fail_accept {
+            return Err(WorkflowError::internal("Fixture persistence unavailable"));
+        }
         let key = event.webhook_key()?;
-        let mut events = self.events.lock().unwrap();
         let mut row = self.fixture.row(ActivityStatus::Pending);
         row.id = event.strava_event_id.to_string();
         row.correlation_id = event.correlation_id.to_string();
@@ -70,8 +85,77 @@ impl WebhookStore for Store {
         row.activity_id = event.strava_activity_id;
         row.event_key = key.clone();
         row.event = serde_json::to_value(event).unwrap();
-        Ok(events.entry(key).or_insert(row).clone())
+        let accepted = self.events.lock().unwrap().entry(key).or_insert(row).clone();
+        tokio::time::sleep(self.reply_delay).await;
+        Ok(accepted)
     }
+}
+
+#[tokio::test(start_paused = true)]
+async fn each_acceptance_stage_is_inside_the_callback_deadline() {
+    for stage in ["connection", "customer", "accept"] {
+        let mut store = Store::new();
+        store.delays.insert(stage, Duration::from_secs(10));
+        let started = tokio::time::Instant::now();
+        let error = store.accept(&store.webhook("activity", "create")).await.unwrap_err();
+        assert!(error.status.is_server_error());
+        assert_eq!(started.elapsed(), WEBHOOK_ACCEPTANCE_TIMEOUT);
+        assert!(store.events.lock().unwrap().is_empty());
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn callback_deadline_is_shared_across_all_acceptance_stages() {
+    let mut store = Store::new();
+    for stage in ["connection", "customer", "accept"] {
+        store.delays.insert(stage, Duration::from_millis(600));
+    }
+    let started = tokio::time::Instant::now();
+    assert!(store.accept(&store.webhook("activity", "create")).await.is_err());
+    assert_eq!(started.elapsed(), WEBHOOK_ACCEPTANCE_TIMEOUT);
+    assert_eq!(*store.calls.lock().unwrap(), ["connection", "customer", "accept"]);
+    assert!(store.events.lock().unwrap().is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn healthy_durable_acceptance_returns_without_waiting_for_worker_execution() {
+    let mut store = Store::new();
+    store.delays.insert("accept", Duration::from_millis(250));
+    let started = tokio::time::Instant::now();
+    let row = store
+        .accept(&store.webhook("activity", "create"))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(started.elapsed(), Duration::from_millis(250));
+    assert_eq!(row.status, ActivityStatus::Pending);
+    assert!(row.submitted_at.is_none());
+    assert_eq!(store.events.lock().unwrap().len(), 1);
+}
+
+#[tokio::test(start_paused = true)]
+async fn timed_out_reply_after_commit_reuses_the_durable_event_on_retry() {
+    let mut store = Store::new();
+    store.reply_delay = Duration::from_secs(10);
+    let webhook = store.webhook("activity", "update");
+    assert!(store.accept(&webhook).await.is_err());
+    let committed = store.events.lock().unwrap().values().next().unwrap().clone();
+    store.reply_delay = Duration::ZERO;
+    let retry = store.accept(&webhook).await.unwrap().unwrap();
+    assert_eq!(retry.id, committed.id);
+    assert_eq!(retry.workflow_id, committed.workflow_id);
+    assert_eq!(retry.correlation_id, committed.correlation_id);
+    assert_eq!(store.events.lock().unwrap().len(), 1);
+}
+
+#[tokio::test(start_paused = true)]
+async fn unavailable_persistence_fails_promptly_without_a_successful_acknowledgement() {
+    let mut store = Store::new();
+    store.fail_accept = true;
+    let started = tokio::time::Instant::now();
+    assert!(store.accept(&store.webhook("activity", "create")).await.is_err());
+    assert_eq!(started.elapsed(), Duration::ZERO);
+    assert!(store.events.lock().unwrap().is_empty());
 }
 
 #[tokio::test]

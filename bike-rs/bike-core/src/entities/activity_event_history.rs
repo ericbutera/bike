@@ -100,7 +100,7 @@ impl Event {
             ImportTarget::ExistingActivity { .. } => "reprocess",
         };
         Ok(Self {
-            id: import_event_id(execution),
+            id: format!("{source}:{}", uuid::Uuid::new_v4()),
             activity_id: Some(after.id),
             user_id: execution.command.source.user_id,
             source: source.into(),
@@ -141,25 +141,6 @@ fn json_error(error: serde_json::Error) -> DbErr {
 }
 
 impl Model {
-    /// The audit event is also the natural command key for a committed import.
-    pub async fn import_refresh(
-        db: &impl ConnectionTrait,
-        execution: &ImportExecution,
-    ) -> Result<Option<crate::activity_reprocessing::RefreshScope>, crate::workflow_error::WorkflowError> {
-        let Some(event) = Entity::find_by_id(import_event_id(execution)).one(db).await? else {
-            return Ok(None);
-        };
-        let original: ImportExecution = serde_json::from_value(event.context_json.clone()).map_err(json_error)?;
-        if !original.matches_request(execution) {
-            return Err(crate::workflow_error::WorkflowError::conflict(
-                "Import command already identifies different work",
-            ));
-        }
-        serde_json::from_value(event.context_json["refresh_scope"].clone())
-            .map(Some)
-            .map_err(|error| json_error(error).into())
-    }
-
     pub async fn record_strava(
         db: &DatabaseTransaction,
         change: &ActivityChange,
@@ -173,20 +154,6 @@ impl Model {
     /// The caller supplies the same transaction used for the domain mutation.
     pub async fn append(db: &DatabaseTransaction, event: Event) -> Result<(), DbErr> {
         Self::append_once(db, event).await?;
-        Ok(())
-    }
-
-    /// A command reused concurrently for a different target must roll back that
-    /// target's mutation when the audit key is already taken.
-    pub async fn append_import(
-        db: &DatabaseTransaction,
-        event: Event,
-    ) -> Result<(), crate::workflow_error::WorkflowError> {
-        if Self::append_once(db, event).await? == 0 {
-            return Err(crate::workflow_error::WorkflowError::conflict(
-                "Import command was committed by another request",
-            ));
-        }
         Ok(())
     }
 
@@ -217,15 +184,4 @@ impl Model {
             .all(db)
             .await
     }
-}
-
-fn import_event_id(execution: &ImportExecution) -> String {
-    let source = match execution.command.target {
-        ImportTarget::NewActivity => "import",
-        ImportTarget::ExistingActivity { .. } => "reprocess",
-    };
-    format!(
-        "{source}:user-{}:{}",
-        execution.command.source.user_id, execution.command.source.command_id
-    )
 }

@@ -37,9 +37,9 @@ COPY . .
 RUN --mount=type=cache,id=bike-cargo-registry,target=/usr/local/cargo/registry \
     --mount=type=cache,id=bike-cargo-git,target=/usr/local/cargo/git \
     --mount=type=cache,id=bike-rust-target-${TARGETPLATFORM},target=/app/target,sharing=locked \
-    cargo build --locked --release --bin api --bin worker --bin temporal-worker --bin migration --bin recover-generated-imports --bin e2e-fixtures \
+    cargo build --locked --release --bin api --bin temporal-worker --bin migration --bin recover-generated-imports --bin e2e-fixtures \
     && mkdir /out \
-    && cp target/release/api target/release/worker target/release/temporal-worker target/release/migration target/release/recover-generated-imports target/release/e2e-fixtures /out/
+    && cp target/release/api target/release/temporal-worker target/release/migration target/release/recover-generated-imports target/release/e2e-fixtures /out/
 
 FROM ${RUNTIME_IMAGE:-scratch} AS runtime
 WORKDIR /app
@@ -48,9 +48,8 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 USER nobody
 
 FROM runtime AS worker
-COPY --from=builder /out/worker /app/worker
 COPY --from=builder /out/temporal-worker /app/temporal-worker
-CMD ["/app/worker"]
+CMD ["/app/temporal-worker"]
 
 FROM runtime AS api
 COPY --from=builder /out/api /app/api
