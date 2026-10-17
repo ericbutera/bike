@@ -144,6 +144,10 @@
   The eight-core node's load was 35.06 without memory/disk/PID pressure. Diagnose
   the queries and contention before marking the runtime clean; preserve warning
   thresholds and the operator's CI settings. Domain completion is already verified.
+  Deployment also lacked the shared Go cache setting: Pulumi dependencies were
+  repeatedly downloaded/compiled in the temporary checkout. Wire the deploy
+  workflow to the existing Go cache, verify native configuration checks and a
+  later warm deployment, and retain the broader contention/disk investigation.
 - PR #66 merged as `7fa4f451`; main CI 471 deployed it after 83 browser checks.
   The real FIT canary returned 202 in 0.30 seconds and preserved activity/import
   IDs. The dated rollout record owns the observed outputs and retry limitation.

@@ -36,6 +36,14 @@
   their `.last-used` markers so read-only reuse counts as activity. Cleanup
   coordinates with the maintenance Lease and scheduler pause. Do not terminate
   builds or evict current cache data based on byte counts.
+- Backend and E2E/deploy workflows share `BIKE_GO_CACHE` on the existing cache
+  volume. Root mise resolves both Go build/module caches there and the deployment
+  child process inherits those paths. Do not let release tooling compile Pulumi
+  dependencies in each temporary checkout. Native workflow checks reject a
+  missing or different deploy cache. Preserve CI concurrency/resource settings.
+  Resolve inherited environment values with yq's
+  [standard merge-anchor mode](https://mikefarah.gitbook.io/yq/operators/traverse-read#note-yaml-fix-merge-anchor-to-spec-flag),
+  using `--yaml-fix-merge-anchor-to-spec` rather than its legacy override behavior.
 - The persistent BuildKit volume owns build layers and compiler/package cache
   mounts. Do not export a second build cache to the image registry. The registry
   stores immutable release images; unprotected Bike images expire after seven

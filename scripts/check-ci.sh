@@ -18,3 +18,6 @@ yq --exit-status '.steps[] | select(.name == "build-images").depends_on | any_c(
 yq --exit-status '.steps[] | select(.name == "build-images").depends_on | any_c(. == "retain-unit-coverage")' .woodpecker/bike.yaml >/dev/null
 test "$(yq '.depends_on | join(",")' .woodpecker/e2e.yaml)" = bike
 test "$(yq '.steps[] | select(.name == "test-ui-e2e").depends_on | join(",")' .woodpecker/e2e.yaml)" = prepare
+go_cache="$(yq --yaml-fix-merge-anchor-to-spec '.steps[] | select(.name == "prepare-tests").environment.BIKE_GO_CACHE' .woodpecker/bike.yaml)"
+test "$go_cache" != null
+test "$(yq --yaml-fix-merge-anchor-to-spec '.steps[] | select(.name == "deploy").environment.BIKE_GO_CACHE' .woodpecker/e2e.yaml)" = "$go_cache"

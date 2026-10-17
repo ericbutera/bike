@@ -50,6 +50,7 @@ steps:
       PATH: /woodpecker/src/.artifacts/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       MISE_DATA_DIR: /cache/bike/mise
       MISE_CACHE_DIR: /cache/bike/mise-cache
+      BIKE_GO_CACHE: /cache/bike/go
       MISE_TASK_RUN_AUTO_INSTALL: "false"
       MISE_TRUSTED_CONFIG_PATHS: /woodpecker/src
       MISE_YES: "1"
