@@ -29,6 +29,7 @@ async fn main() -> Result<(), Error> {
         .register_workflow::<CreateActivity>()?
         .register_workflow::<UpdateActivity>()?
         .register_workflow::<UpsertActivity>()?
+        .register_workflow::<ReconcileActivity>()?
         .register_workflow::<DeleteActivity>()?
         .register_workflow::<SyncActivities>()?
         .register_workflow::<BackfillActivities>()?

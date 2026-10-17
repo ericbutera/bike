@@ -19,6 +19,13 @@ pub enum StravaOperation {
     Disconnect,
 }
 
+/// The domain row observed before fetching provider data. This is a conditional
+/// write token, not provider time or a separate execution record.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SourceVersion {
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StravaEvent {
     pub strava_event_id: Uuid,
@@ -43,9 +50,26 @@ pub struct StravaEvent {
     pub revoke_remote: bool,
     #[serde(default)]
     pub progress: Option<super::native::CollectionProgress>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_version: Option<SourceVersion>,
 }
 
 impl StravaEvent {
+    pub fn provider_event_time(&self) -> Option<i64> {
+        self.webhook.as_ref().map(|webhook| webhook.event_time)
+    }
+
+    pub fn source_workflow_id(&self) -> Result<String, WorkflowError> {
+        Ok(format!(
+            "strava-source-user-{}-connection-{}-{}-athlete-{}-activity-{}",
+            self.bike_user_id,
+            self.connection_id,
+            self.connection_generation.timestamp_micros(),
+            self.strava_athlete_id,
+            self.activity_id()?,
+        ))
+    }
+
     pub fn trace_id(&self) -> Option<String> {
         crate::observability::trace_id_from_carrier(self.trace_context.as_ref())
     }
@@ -77,6 +101,7 @@ impl StravaEvent {
             window: None,
             revoke_remote: false,
             progress: None,
+            source_version: None,
         }
     }
 
@@ -94,6 +119,7 @@ impl StravaEvent {
         event.operation = operation;
         event.webhook = None;
         event.progress = None;
+        event.source_version = None;
         event
     }
 
@@ -207,6 +233,27 @@ mod tests {
         assert_eq!(child.bike_customer_id, parent.bike_customer_id);
         assert_eq!(child.request_id, parent.request_id);
         assert_eq!(child.strava_activity_id, Some(42));
+    }
+
+    #[test]
+    fn source_identity_spans_events_operations_and_unknown_bike_activity_ids() {
+        let original = event();
+        let identity = original.source_workflow_id().unwrap();
+        let mut changed = original.clone();
+        changed.strava_event_id = Uuid::new_v4();
+        changed.correlation_id = Uuid::new_v4();
+        changed.operation = StravaOperation::Delete;
+        changed.event_time += 1;
+        changed.bike_activity_id = Some(123);
+        assert_eq!(changed.source_workflow_id().unwrap(), identity);
+        changed.connection_generation += chrono::Duration::microseconds(1);
+        assert_ne!(changed.source_workflow_id().unwrap(), identity);
+        changed = original.clone();
+        changed.bike_user_id += 1;
+        assert_ne!(changed.source_workflow_id().unwrap(), identity);
+        changed = original;
+        changed.strava_activity_id = None;
+        assert!(changed.source_workflow_id().is_err());
     }
     #[test]
     fn webhook_operations_are_explicit() {

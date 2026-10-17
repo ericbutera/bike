@@ -56,6 +56,26 @@ async fn registered_fetch_handlers_return_provider_sources_for_the_owned_activit
 }
 
 #[tokio::test]
+async fn registered_reconciliation_fetch_captures_the_source_version_before_provider_io() {
+    let fixture = Fixture::reconciling(StravaOperation::Upsert);
+    let state = strava_activity_states::Model {
+        activity_id: fixture.activity_id,
+        ..bike_core::test_support::strava_activity_state()
+    };
+    let db = connection_mock().append_query_results([vec![state.clone()]]);
+    let (environment, provider) = environment_with_database(&fixture.event, storage(&fixture), db);
+    let activity = environment
+        .run(StravaActivities::fetch_activity, fixture.event)
+        .await
+        .unwrap();
+    assert_eq!(
+        activity.event.source_version.unwrap().updated_at,
+        Some(state.updated_at)
+    );
+    assert_eq!(*provider.calls.lock().unwrap(), ["activity"]);
+}
+
+#[tokio::test]
 async fn registered_persist_and_delete_retries_return_the_committed_mutation() {
     let fixture = Fixture::new(StravaOperation::Upsert);
     let db = connection_mock().append_query_results([vec![mutation(&fixture, ActivityStatus::Applied)]]);

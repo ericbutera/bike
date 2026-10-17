@@ -261,14 +261,14 @@ flowchart TD
 | Workflow                        | Input                      | Source steps and result                                                    |
 | ------------------------------- | -------------------------- | -------------------------------------------------------------------------- |
 | CreateActivity / UpdateActivity | Strava event               | Await Upsert child; return Bike ID/status                                  |
-| UpsertActivity                  | Event + remote activity ID | Fetch activity → streams → normalize → persist → refresh; return ID/status |
-| DeleteActivity                  | Event + remote activity ID | Capture dependencies → delete → refresh; deleted/already absent            |
+| UpsertActivity / DeleteActivity | Event + remote activity ID | Await source-keyed ReconcileActivity; return ID/status                     |
+| ReconcileActivity              | Event + remote activity ID | Fetch → normalize → persist → refresh, or capture → delete → refresh       |
 | SyncActivities                  | Event + saved offset       | List pages → await upsert children → commit offset; counts/new offset      |
 | BackfillActivities              | Event + fixed range        | List range → await upsert children; counts without offset change           |
 | DisconnectStrava                | Event + revoke flag        | Delete children → optional revoke → remove connection                      |
 | ScheduledSync                   | Schedule context           | List connections → await sync children; per-connection results             |
 
-- These are the eight workflows (Create and Update are separate). Review
+- These are the nine workflows (Create and Update are separate). Review
   [their explicit implementations](../../bike-rs/strava-temporal/src/workflows.rs)
   and [typed Activities](../../bike-rs/strava-temporal/src/activities.rs).
   Call steps as `run(ctx, RevokeConnection, event).await?`; shared helpers adapt
@@ -343,13 +343,28 @@ flowchart TD
 | ----------------------------------------------- | ------------------------------------------------------------ |
 | State `event_time`                              | Last accepted provider event, epoch seconds                  |
 | State `deleted_at`                              | Provider time of current deletion; cleared by a newer upsert |
-| State `updated_at` / compatibility `applied_at` | Bike write time; new writes keep them synchronized           |
+| State `updated_at` / compatibility `applied_at` | Synchronized local write version, advanced on every write    |
 | History `occurred_at`                           | Source event/manual change time                              |
 | History `recorded_at`                           | Bike archive time                                            |
 
 - Never compare local sync/backfill request/receive time with a provider watermark,
-  or use activity start time as event order. Correct the existing mixed-clock bug
-  with a focused regression and the smallest domain fix.
+  or use activity start time as event order. Derive provider time only from the
+  retained webhook; zero means unknown. Sync/backfill preserves the watermark,
+  and a new connection generation resets it. Repair old mixed values from
+  committed provider mutations, never from receipt or sync time.
+- Upsert/Delete await a request-owned `ReconcileActivity` child keyed by owner,
+  connection generation, athlete, and remote activity. A busy source retries
+  after a native timer; distinct events each fetch and apply rather than attaching
+  to another request's result. Continue a waiting parent after 128 attempts or
+  Temporal's history suggestion, preserving its original event and job identity.
+- Capture the source row version before provider I/O. Under the existing
+  connection lock, return any committed retry result, then check that version.
+  If the source changed, refetch using a response key containing the new version.
+  Atomically advance the existing timestamp token on writes; no new table or
+  execution ledger is required. A generation change clears an absent Bike mapping.
+- The native `strava-source-reconciliation-v1` patch preserves retained inline
+  histories. Drain started provider runs before the data repair and worker
+  transition; keep callback acceptance available during deployment.
 - Reject clearly older events within the same owner/object/generation. Deletion
   wins an equal-time upsert; only a strictly newer upsert restores it. Ignore
   deauthorization older than the connection; delayed old generations cannot write.
