@@ -5,11 +5,10 @@ user workflows, background processing, service boundaries, and operational
 contracts. Code implements these specifications; tests verify that implementation.
 Update the owning spec in the same change as any intended behavior change.
 
-- [Background work and Strava integration](background-work.md): worker migration,
-  source/command identity, idempotency, cancellation, eventual outputs, storage,
-  provider protocol, and verification scenarios.
-- [Worker backlog](../TODO.md#worker-conversion): the single task inventory,
-  outstanding findings, rollout gates, and conversion status.
+- [Durable worker and Strava integration](background-work.md): the single worker
+  specification, including the complete task inventory, client submission,
+  domain behavior, native durability, storage, and provider protocol.
+- [TODO](../TODO.md): outstanding work only; it does not duplicate the worker spec.
 
 ## Spec Rules
 

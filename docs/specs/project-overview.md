@@ -58,11 +58,12 @@ migrations rather than modifying historical migrations.
 
 ## Background execution
 
-- [Background work and Strava integration](background-work.md) owns native
+- [Durable worker and Strava integration](background-work.md) owns task coverage, native
   execution, identity/idempotency, cancellation, eventual consistency, shared
   storage/retention, archives, provider behavior, and verification contracts.
-- [The backlog](../TODO.md#worker-conversion) owns conversion order and status;
-  [the rollout record](../worker-rollout-2026-10-16.md) preserves dated evidence.
+- [The backlog](../TODO.md#worker) owns outstanding work;
+  [the worker specification](background-work.md#cutover-evidence) preserves
+  completed cutover evidence.
 
 ## Integrations Strategy
 

@@ -13,14 +13,14 @@ mise run compose:up
 | Native SDK metrics      | http://localhost:9092/metrics                   |
 | Strava provider metrics | http://localhost:9093/metrics                   |
 
-- The API accepts durable Strava events and converted Bike commands. One
-  `temporal-worker` polls `bike-strava` and `bike-tasks`; the SQL `worker` retains
-  unconverted jobs. The backlog records which conversions are ready for rollout.
+- The API submits Strava and Bike commands directly to Temporal and acknowledges
+  work only after native acceptance. One `temporal-worker` polls `bike-strava`
+  and `bike-tasks`. See the [worker spec](specs/background-work.md).
 - Setup containers create Temporal's databases, schema, namespace, and six
   search attributes, then exit successfully.
 - Temporal uses the `bike` namespace and seven days of closed-history retention.
   Its databases share PostgreSQL's persistent Docker volume.
-- API and both workers share uploads. `BIKE_UPLOADS_DIR` selects the directory.
+- API and Temporal worker share uploads. `BIKE_UPLOADS_DIR` selects the directory.
 - Rust caches live in Docker volumes. Restart `temporal-worker` after code changes.
 - Set `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`,
   `STRAVA_WEBHOOK_VERIFY_TOKEN`, and `STRAVA_SUBSCRIPTION_ID` for real Strava.

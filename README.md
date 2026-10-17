@@ -25,8 +25,8 @@ Strava, then explore the data behind your rides.
 - **Explore personal heatmaps.** Filter riding history by sport and date on an
   interactive map. Heatmaps are controlled by a feature flag and require prepared
   activity projections; see the [heatmap specification](docs/specs/heatmaps.md).
-- **Inspect background work.** Admin views expose import progress, queued tasks,
-  integration events, and failures with tools for recovery.
+- **Inspect background work.** Admin views expose retained imports and integration
+  events; Temporal shows workflow progress, failures, and retries.
 
 ## Quickstart
 
@@ -45,9 +45,10 @@ Open **[localhost:3001](http://localhost:3001)**. The local environment enables 
 development account, so no Strava credentials or external identity provider are
 needed. The first build downloads dependencies and compiles the Rust services.
 
-The stack starts PostgreSQL, the Rust API and worker, the Next.js UI, and the map
-renderer. API and worker services reload Rust source changes; the UI reloads
-frontend changes. Database migrations finish before the API and worker start.
+The stack starts PostgreSQL, Temporal, the Rust API and Temporal worker, the
+Next.js UI, and the map renderer. The API and UI reload source changes; restart
+`temporal-worker` after worker changes. Database migrations finish before the API
+and worker start.
 Activity data persists across restarts.
 
 | Service    | Local address                           |
@@ -63,7 +64,7 @@ Those files contain synthetic test data. Importing a ride does not require Strav
 
 ```sh
 # Follow startup and import processing.
-mise exec -- docker compose logs -f bike-rs worker ui
+mise exec -- docker compose logs -f bike-rs temporal-worker ui
 
 # Stop the stack; keep the database and uploaded activities.
 mise run compose:down
@@ -86,8 +87,7 @@ flowchart LR
 
     subgraph Backend["Rust"]
         API
-        Worker["SQL job worker"]
-        TemporalWorker["Temporal worker<br/>Strava workflows and activities"]
+        TemporalWorker["Temporal worker<br/>Bike and Strava tasks"]
     end
 
     subgraph Storage
@@ -103,9 +103,9 @@ flowchart LR
     API -->|Snapshot gRPC| Maps["map-renderer"]
     API --> HeatmapTiles["heatmap-tiles"]
     API --> DB
-    Worker --> DB
     API --> Files
-    Worker --> Files
+    API -->|Start workflow| Temporal
+    TemporalWorker --> Files
     Strava -->|OAuth and webhooks| API
     TemporalWorker --> DB
     TemporalWorker <--> Temporal["temporal"]
@@ -124,15 +124,15 @@ Yellow nodes are third-party services.
 
 ## Built with
 
-| Layer                | Technology                                                       |
-| -------------------- | ---------------------------------------------------------------- |
-| Application backend  | Rust, Axum, SeaORM                                                |
-| Frontend             | Next.js, React, TypeScript, React Query                           |
-| Persistence          | PostgreSQL and stored activity files                             |
-| Strava orchestration | Temporal with a dedicated Rust workflow and activity worker      |
-| Maps                 | MapLibre GL, a separate PNG renderer, Rust heatmap tiles           |
-| Strava integration   | Generated vendor SDK, Rust OAuth/webhook API, Temporal activities |
-| Operations           | Docker Compose, Woodpecker CI, Pulumi, Kubernetes, OpenTelemetry  |
+| Layer               | Technology                                                        |
+| ------------------- | ----------------------------------------------------------------- |
+| Application backend | Rust, Axum, SeaORM                                                |
+| Frontend            | Next.js, React, TypeScript, React Query                           |
+| Persistence         | PostgreSQL and stored activity files                              |
+| Background work     | Temporal with one Rust worker for Bike and Strava task queues     |
+| Maps                | MapLibre GL, a separate PNG renderer, Rust heatmap tiles          |
+| Strava integration  | Generated vendor SDK, Rust OAuth/webhook API, Temporal activities |
+| Operations          | Docker Compose, Woodpecker CI, Pulumi, Kubernetes, OpenTelemetry  |
 
 The [specifications](docs/specs/README.md) define system behavior. The Rust
 backend implements application workflows and owns data access. The frontend uses a
@@ -142,11 +142,11 @@ rendering have separate service boundaries; the
 
 ## Repository layout
 
-| Directory                                                   | Responsibility                                                               |
-| ----------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| [`bike-rs/`](bike-rs/README.md)                               | Rust API, core models and services, SQL and Temporal workers, schema migrations |
-| [`bike-ui/`](bike-ui/README.md)                               | Rider and admin UI, generated API client                                      |
-| [`map-renderer/`](map-renderer/README.md)                     | Internal Go gRPC Chromium snapshots                                          |
-| [`contracts/`](contracts/openapi/README.md), [`proto/`](proto) | HTTP and gRPC contracts                                                      |
-| [`bike-rs/api/tests/`](bike-rs/api/tests/README.md)            | Native HTTP integration tests and deterministic fixtures                     |
-| [`docs/`](docs/)                                            | Development guides, design specifications, operations, backlog                |
+| Directory                                                      | Responsibility                                                         |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| [`bike-rs/`](bike-rs/README.md)                                | Rust API, core models and services, Temporal worker, schema migrations |
+| [`bike-ui/`](bike-ui/README.md)                                | Rider and admin UI, generated API client                               |
+| [`map-renderer/`](map-renderer/README.md)                      | Internal Go gRPC Chromium snapshots                                    |
+| [`contracts/`](contracts/openapi/README.md), [`proto/`](proto) | HTTP and gRPC contracts                                                |
+| [`bike-rs/api/tests/`](bike-rs/api/tests/README.md)            | Native HTTP integration tests and deterministic fixtures               |
+| [`docs/`](docs/)                                               | Development guides, design specifications, operations, backlog         |

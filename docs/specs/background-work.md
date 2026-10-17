@@ -1,14 +1,15 @@
-# Background work and Strava integration
+# Durable worker and Strava integration
 
-- This specification owns background processing, Strava integration, and retained
-  activity sources. [The TODO](../TODO.md#worker-conversion) owns outstanding work;
-  [the rollout record](../worker-rollout-2026-10-16.md) owns dated evidence.
+- This is the single worker specification. It owns client submission, background
+  processing, Strava integration, and retained activity sources.
+  [The TODO](../TODO.md#worker) owns outstanding work;
+  [cutover evidence](#cutover-evidence) records completed verification.
 - **Design decision, 2026-10-17:** treat ingestion as repeatable, low-consequence
   work. Read the activity file, process it, and call the downstream tasks.
   A developer should be able to follow that sequence in one workflow.
 - This replaces the earlier execution-accounting, shared-output coordination,
   cancellation-handshake, and exact batch-result requirements. The Bike task
-  code implements this sequence. The [2026-10-17 cutover](../worker-rollout-2026-10-16.md#2026-10-17-simple-worker-cutover)
+  code implements this sequence. The [2026-10-17 cutover](#cutover-evidence)
   records production verification.
 
 ## Ownership and runtime
@@ -42,6 +43,82 @@
   activity ID. Without a recorded job, link the configured namespace list.
 - All Bike producers submit to Temporal. The SQL worker, queue, batch tracking,
   stage executor, recovery loops, and task administration API are retired.
+
+## Task inventory and behavior parity
+
+- The baseline is the 12 default processors registered in
+  [`tasks/mod.rs` before SQL retirement](https://github.com/ericbutera/bike/blob/e401699a/bike-rs/worker/src/tasks/mod.rs).
+  All 12 have registered workflows on `bike-tasks` in
+  [the current worker](../../bike-rs/bike-temporal/src/runtime.rs).
+  The separately registered `email_notification` is intentionally retired.
+- Preserve each task's inputs, owned activity selection, parsing, calculations,
+  and downstream effects. Reuse the existing domain operations. Temporal replaces
+  execution machinery; reproducing SQL locks, audit receipts, queue rows, and
+  exact batch accounting is not behavior parity.
+
+| Former task / current workflow name      | Required domain behavior                                                                                                                                                 | Implementation                                                                                                                                                                                                                                  |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `process_activity_import`                | Read the retained source and supplemental recording, parse/enrich, deduplicate/save, then await segments, segment results, achievements, heatmap, training, and fitness. | [Import](../../bike-rs/bike-temporal/src/workflows/process_activity_import.rs), [shared source operation](../../bike-rs/bike-core/src/activity_reprocessing.rs), [derived sequence](../../bike-rs/bike-temporal/src/workflows/steps/derived.rs) |
+| `reprocess_activity_import`              | Run the same sequence against the owned import/activity; preserve identity and user-edited title/Training/Race selection.                                                | [Reprocess](../../bike-rs/bike-temporal/src/workflows/reprocess_activity_import.rs)                                                                                                                                                             |
+| `rebuild_fitness_freshness`              | Rebuild the user's stored fitness/fatigue/form from current activities using `rebuild_fitness_freshness_cache`.                                                          | [Fitness](../../bike-rs/bike-temporal/src/workflows/rebuild_fitness_freshness.rs)                                                                                                                                                               |
+| `rebuild_segment_analytics`              | Rebuild current segment and user summaries/achievements using `rebuild_segment_analytics_cache`; client lists become one workflow per distinct valid segment.            | [Segment analytics](../../bike-rs/bike-temporal/src/workflows/rebuild_segment_analytics.rs)                                                                                                                                                     |
+| `prepare_heatmap`                        | Load the owned activity's current pending projection and prepare it through the existing privacy/source rules.                                                           | [Heatmap](../../bike-rs/bike-temporal/src/workflows/prepare_heatmap.rs)                                                                                                                                                                         |
+| `regenerate_activity_segments`           | Replace matches for one owned activity, refresh affected old/new segment results, then activity achievements. A broader rebuild on retry is acceptable.                  | [Activity segments](../../bike-rs/bike-temporal/src/workflows/regenerate_activity_segments.rs)                                                                                                                                                  |
+| `regenerate_segment_efforts`             | Run the existing segment-wide matching operation, including segment analytics and affected activity achievements.                                                        | [Segment efforts](../../bike-rs/bike-temporal/src/workflows/regenerate_segment_efforts.rs), [domain operation](../../bike-rs/bike-core/src/segment_regeneration.rs)                                                                             |
+| `backfill_user_xc_training`              | Page the user's cycling activities, rebuild each training analysis, then mark the existing preference complete.                                                          | [User batches](../../bike-rs/bike-temporal/src/workflows/activity_pages.rs)                                                                                                                                                                     |
+| `reprocess_user_activity_imports`        | Page owned activities linked to retained imports, exclude native Strava sources, and await reprocessing for every item.                                                  | [User batches](../../bike-rs/bike-temporal/src/workflows/activity_pages.rs)                                                                                                                                                                     |
+| `reprocess_archive_fit_activity_imports` | Use the same reprocessing loop restricted to `archive_url_import` imports with format `fit`.                                                                             | [User batches](../../bike-rs/bike-temporal/src/workflows/activity_pages.rs)                                                                                                                                                                     |
+| `regenerate_user_segments`               | Page the user's cycling activities and await activity segment regeneration, including its downstream results.                                                            | [User batches](../../bike-rs/bike-temporal/src/workflows/activity_pages.rs)                                                                                                                                                                     |
+| `activity_archive_import`                | Retain ZIP bytes, find supported entries, retain/deduplicate their files, await ordinary import workflows, and finish after the last page.                               | [Archive](../../bike-rs/bike-temporal/src/workflows/activity_archive_import.rs), [extraction](../../bike-rs/bike-core/src/archive_import/native.rs)                                                                                             |
+
+- [Domain producers](../../bike-rs/bike-core/src/jobs/adapter.rs) and the
+  [import submission service](../../bike-rs/bike-temporal/src/submission.rs) start
+  Temporal directly. Uploads, admin/bulk requests, archives, segment changes,
+  training settings, and activity edits/deletes use these clients. Per-activity
+  segment regeneration also runs as an awaited child of user regeneration.
+- Startup recovery, expired-job scans, SQL retry timers, and batch barriers are
+  replaced by native retries, replay, and awaited children. Heatmap preparation
+  runs from activity changes; automatic heatmap/Strava scans are retired.
+  `reconcile_heatmaps` and Strava's scan workflow remain explicit operator tools.
+- SQL task/admin progress and exact archive outcome counts are intentionally
+  retired. Temporal is authoritative for running, failed, and canceled execution.
+  Existing archive/training domain completion fields remain summaries, not a
+  second execution state machine. A stopped workflow can leave those summaries
+  pending; inspect or rerun the native job.
+- Aggregate work may repeat after each item instead of once at a SQL batch
+  barrier. Successful effects survive later failures. These are explicit
+  orchestration changes; parsing and domain calculations remain shared.
+- The existing [workflow tests](../../bike-rs/bike-temporal/src/tests/imports.rs),
+  [batch tests](../../bike-rs/bike-temporal/src/tests/batches.rs),
+  [composition tests](../../bike-rs/bike-temporal/src/tests/composition.rs), and
+  [producer tests](../../bike-rs/bike-temporal/src/tests/client.rs) cover these paths.
+  Domain suites cover retained bytes, selection, writes, and actual calculations.
+
+### Earlier Strava processors
+
+- Before the separate Strava cutover, the SQL worker also
+  [registered ten provider processors](https://github.com/ericbutera/bike/blob/7d811e85cc1f1992a99002b0d609e7cbd9d9bdef/bike-rs/worker/src/tasks/strava/mod.rs).
+  Include these in the inventory so the later 12-task baseline does not hide
+  them. The seven provider operations are native; the three infrastructure
+  processors below have explicit retirement decisions.
+
+| Former processor         | Current disposition                                                                                                                                                                                      |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `strava_activity_create` | `CreateActivity` accepts a create and awaits its upsert.                                                                                                                                                 |
+| `strava_activity_update` | `UpdateActivity` accepts an update and awaits its upsert.                                                                                                                                                |
+| `strava_activity_upsert` | `UpsertActivity` fetches, normalizes, saves, and refreshes through its source child.                                                                                                                     |
+| `strava_activity_delete` | `DeleteActivity` captures affected data, deletes, and refreshes through its source child.                                                                                                                |
+| `strava_sync`            | `SyncActivities` pages provider activities, awaits upserts, and advances the connection offset.                                                                                                          |
+| `strava_backfill`        | `BackfillActivities` processes a fixed range without advancing the normal sync offset.                                                                                                                   |
+| `strava_disconnect`      | `DisconnectStrava` deletes owned provider data, optionally revokes access, and removes the connection.                                                                                                   |
+| `strava_reconcile`       | Automatic polling is retired. Explicit `ScheduledSync` operator runs can still scan connections and await sync children.                                                                                 |
+| `strava_retention`       | The hourly/startup SQL cleanup processor is retired. Retained provider/source bytes remain available; disposable local scratch still cleans up. No automatic replacement sweeper is part of this worker. |
+| `strava_workflow`        | The historical SQL dispatcher is retired; clients start the specific native provider workflow directly.                                                                                                  |
+
+- [Provider workflow registration](../../bike-rs/strava-temporal/src/client.rs)
+  and [the provider contract](#strava-protocol-and-workflows) own the current
+  implementation and details. Retired infrastructure behavior is not claimed
+  as a 1:1 conversion or silently counted as another native task.
 
 ## Processing flow
 
@@ -169,11 +246,9 @@ flowchart TD
   the job. Keep the existing UI command reuse for transport retries where useful.
 - Read primary/supplemental files through the shared `ObjectStore`, verify their
   integrity, and reuse the parser and enrichment code.
-- Source processing reparses the retained file in
+- Source processing reparses the retained file through
   [source processing](../../bike-rs/bike-core/src/activity_reprocessing.rs) and
-  the audit-result coupling in
-  [the model operation](../../bike-rs/bike-core/src/entities/activities/reprocessing.rs)
-  with straightforward repeated parsing/saving.
+  saves through [the owning model](../../bike-rs/bike-core/src/entities/activities/reprocessing.rs).
 - The [workflow](../../bike-rs/bike-temporal/src/workflows/reprocess_activity_import.rs)
   and `process_activity_import` save through the same import Activity, then call one
   [shared derived sequence](../../bike-rs/bike-temporal/src/workflows/steps/derived.rs):
@@ -196,7 +271,7 @@ flowchart TD
 
 ## Bike workflow composition and bounded batches
 
-- Keep the [task inventory](../TODO.md#converted-tasks).
+- Keep the [task inventory](#task-inventory-and-behavior-parity).
   Import and reprocess reuse source processing and downstream domain tasks.
   Collection workflows loop over items and call the individual task.
 - Use ordinary paging or an archive-entry iterator and bounded child concurrency.
@@ -444,16 +519,17 @@ flowchart TD
   the same checksum, size, or malformed bytes. Primary and supplemental sources
   obey the same rule before any mutation.
 - [Shared platform policy](../../bike-rs/bike-core/src/platform/temporal.rs) owns
-  named timeout constants and native retry-policy factories. Bike and Strava
-  workflow options use these factories; workflow steps do not build policies.
+  native retry-policy factories and provider timeouts. Bike's
+  [Activity options](../../bike-rs/bike-temporal/src/workflows/options.rs) own its
+  longer execution timeout; workflow steps do not build policies.
 - Keep retry settings explicit: initial interval, backoff coefficient, maximum
   interval, and maximum attempts. Attempts include the initial execution.
 - Preserve current execution budgets:
 
-| Activity role        | Execution timeout     | Heartbeat timeout | Retry factory             | Total attempts | Initial interval | Backoff | Maximum interval |
-| -------------------- | --------------------- | ----------------- | ------------------------- | -------------- | ---------------- | ------- | ---------------- |
-| Bike domain effect   | 2 minutes per attempt | None by default   | `activity_retry_policy()` | 12             | 1 second         | 2×      | 1 minute         |
-| Strava domain effect | 2 minutes per attempt | 30 seconds        | `activity_retry_policy()` | 12             | 1 second         | 2×      | 1 minute         |
+| Activity role        | Execution timeout      | Heartbeat timeout | Retry factory             | Total attempts | Initial interval | Backoff | Maximum interval |
+| -------------------- | ---------------------- | ----------------- | ------------------------- | -------------- | ---------------- | ------- | ---------------- |
+| Bike domain effect   | 30 minutes per attempt | None by default   | `activity_retry_policy()` | 12             | 1 second         | 2×      | 1 minute         |
+| Strava domain effect | 2 minutes per attempt  | 30 seconds        | `activity_retry_policy()` | 12             | 1 second         | 2×      | 1 minute         |
 
 - These are current finite attempt budgets, not a guarantee of eventual success
   after every outage. Adapters distinguish permanent invalid input from transient
@@ -461,6 +537,14 @@ flowchart TD
 - Workflow/child executions have no automatic execution retry policy. Activities
   own effect retries; Workflow Task retry/replay stays native. A deliberate whole
   workflow retry creates another run and still needs domain idempotency.
+- Workflow code performs deterministic orchestration only. Keep database, files,
+  network calls, random IDs, and wall-clock reads inside Activities or clients;
+  use native workflow APIs for timers, cancellation, children, and continuation.
+- Await every page's children before Continue-As-New; carry only the next cursor
+  and retained input reference. Never continue with unfinished children.
+- Bike Activities do not checkpoint with heartbeats. A lost worker can delay
+  retry until the 30-minute attempt timeout and repeat that Activity's work;
+  durable execution does not imply instant recovery or exactly-once effects.
 - Provider `next_retry_delay` overrides computed backoff. Clamp expired waits to
   the shared initial interval. Heartbeat every **5 seconds**, below the shared
   **30-second** heartbeat timeout.
@@ -555,12 +639,25 @@ flowchart TD
   requests and native Temporal execution metrics. Retire inbox backlog alerts with
   the dispatcher; do not alert on intentionally absent retired metrics.
 
-| Alert                      | Condition / response                                                                                                                                                                                                                                |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BikeStravaWorkflowFailed` | Terminal workflow failure in last six hours for one minute, including first series/reset. Warn through Alertmanager/ntfy; Activity retries do not page. Root/child can both alert. Inspect the failed step and partial effects before native retry. |
+| Alert                       | Condition / response                                                                                                                                                                                                                                |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BikeWorkerFailures`        | Terminal `bike-tasks` workflow failure in the last hour for one minute, including first series/reset. Inspect native history and failed children before retrying; Activity retries alone do not page.                                               |
+| `BikeStravaWorkflowFailed`  | Terminal workflow failure in last six hours for one minute, including first series/reset. Warn through Alertmanager/ntfy; Activity retries do not page. Root/child can both alert. Inspect the failed step and partial effects before native retry. |
+| `BikeStravaWebhookRejected` | Rejected callback in the last hour. Inspect the request logs, correct acceptance or provider configuration, then redeliver or explicitly sync the missed activity. SQL event persistence alone does not mean Temporal accepted the workflow.        |
 
-The [polling audit](../worker-polling-audit-2026-10-17.md) records removed dispatch
-loops and the production adjustments required before deploying this change.
+- Grafana's **Bike Worker** dashboard owns native execution visibility for both
+  `bike-tasks` and `bike-strava`; Overview and System Health summarize it.
+  Show terminal workflow outcomes separately from failed Activity attempts,
+  native pollers/slots and Activity execution/schedule-to-start latency.
+  Slots do not represent queue backlog. Both provider and SDK scrape endpoints
+  must be reachable for worker health.
+- Strava panels use the combined `temporal-worker` provider metrics. Logs and
+  traces follow the combined process identity and link to native jobs; retire
+  SQL queue, anomaly, processor, stage, and handoff-sampler panels and alerts.
+- Selected-range counts are scrape-based estimates and count parent/child runs
+  separately, not unique imported activities. Missing series remain unknown/N/A;
+  Temporal history owns exact job state. Shared Temporal remains a server-health
+  dashboard. Dashboard definitions belong to the deployment repository.
 
 ## Verification and acceptance scenarios
 
@@ -585,21 +682,79 @@ loops and the production adjustments required before deploying this change.
   converted path, verify one real file's downstream results and a worker restart.
   Mock success alone is not deployed evidence.
 
-## Conversion and retirement gates
+## Deployment and compatibility
 
-- The conversion includes every task in [the TODO](../TODO.md#converted-tasks),
-  their producers, and removal of SQL queue/batch/stage/recovery/UI/build code.
-- Preserve historical migrations. The new forward-only retirement drops execution
-  and lock tables while preserving activities, imports, source files, and activity
-  event history. Stop submissions and drain the old workers before applying it.
-- Keep the combined `temporal-worker`. Prepare and validate the conversion locally;
-  remote publication and deployment require the user's instruction.
-- Record the focused checks, CI, and actual user-visible results for a deployment
-  in the rollout record. Keep those evidence scopes distinct.
+- The SQL worker and its queue/batch/stage/recovery/UI/build code are retired.
+  Preserve historical migrations and the append-only retirement migration;
+  activities, imports, source files, and activity history remain domain data.
+- Keep the combined `temporal-worker`. Changes to deployed workflow commands must
+  replay existing histories, use native patching, or explicitly drain the old
+  executions before rollout. Do not restore retired coordinators to replay them.
+- Record completed checks and user-visible verification below; keep remaining
+  acceptance work in TODO. Keep local, CI, and deployed evidence distinct.
+- For direct-submission rollout, update the API before removing the old worker
+  relay. Stable workflow IDs tolerate overlap. A worker without a relay must not
+  serve an old API that only records SQL events. Confirm the API can reach the
+  configured Temporal namespace/queue. A failed start needs request retry or
+  explicit resubmission; retained event rows are not an automatic retry queue.
+- Source-repair writes, projection upgrades, or feature re-enablement must request
+  heatmap preparation or an explicit `reconcile_heatmaps` repair. Pending database
+  rows alone do not dispatch work.
+
+## Cutover evidence
+
+- This section consolidates the completed portions of the former worker rollout
+  and polling audit. Git retains their detailed chronology. Superseded accounting,
+  coordinator, SQL queue, and scheduler requirements are closed; unfinished live
+  verification is tracked once in [TODO](../TODO.md#worker).
+- **2026-10-17 SQL retirement:** intake and both old workers were paused after
+  running work drained. Coordinated database/source backup
+  `20261017T140351Z` validated on both disks. The append-only retirement migration
+  removed all 13 execution tables, plus SQL worker deployment/service/scrapes and
+  unused SMTP configuration. Domain records and retained files remain. The four
+  application deployments and public health passed the owning release check.
+- **Real task parity:** retained activity/import `1653` reprocessed through
+  save, segments, achievements, heatmap, training, and fitness while preserving
+  its title. Verified 13 efforts across seven segments, achievement/training
+  caches, 32 user segment-summary rows, a ready version-5 heatmap, and cleared
+  fitness dirty state. Batch imports, activity/user-segment regeneration, and
+  training backfill completed on bounded tail pages; full segment-effort
+  regeneration completed in 114.67 seconds.
+- **Recovery and continuation:** a worker replacement completed the same real
+  reprocess run across a scheduled-Activity boundary. A 17-entry archive of one
+  retained GPX continued as new and awaited every file child, producing one
+  duplicate import without adding activities. These prove a small canary, not
+  interruption during every effect or multi-gigabyte capacity. Domain work uses
+  the blocking pool, two Bike Activity slots, and 30-minute attempt timeouts.
+- **Polling removal:** on 2026-10-17 both automatic schedules were paused and
+  then deleted. The 828 completed `reconcile_heatmaps` executions were deleted
+  with zero failures; no activity/source data was removed. The former 15-second
+  heatmap dispatch, one-second SQL inbox relay, 30-second inbox sampler, and
+  six-hour Strava scan are removed from source. Native long polls, active-request
+  heartbeats/timers, and explicit paged repair workflows remain.
+- **Evidence boundary:** the polling audit verified schedule/history deletion,
+  not deployment of the new direct request path. The user waived inbox draining.
+  Live webhook/upload/edit/redelivery/idle acceptance and dashboard deployment
+  remain open in TODO until separately observed.
+- **Local validation:** the cutover passed 589 Rust and 39 focused UI tests plus
+  formatting/Clippy, shell/workflow, and infrastructure fixtures. The subsequent
+  direct-submission/shared-source correction passed the full Rust workspace:
+  638 tests, 17 explicitly ignored, zero failures/filtered tests, with formatting
+  and Clippy warnings denied. Its extra UI coverage run emitted a pnpm update
+  notice and is not a clean cross-project pass. CI and production observations
+  do not substitute for that distinction.
+- **Earlier provider evidence:** real sync/upsert and natural create/delete
+  webhooks completed; a repeated sync retained one unchanged activity and shared
+  provider trace context. Real terminal Create/Upsert failures reached
+  Alertmanager and ntfy on 2026-10-14. Live backfill/disconnect, interruption
+  during executing provider effects, fresh authenticated UI access, and capacity
+  qualification remain provider operational follow-ups in TODO.
 
 ## References
 
 - [Temporal Activity idempotency](https://docs.temporal.io/activity-definition#idempotency)
+- [Deterministic workflow definitions](https://docs.temporal.io/workflow-definition)
+- [Child workflows and continuation](https://docs.temporal.io/child-workflows)
 - [Workflow/run identity](https://docs.temporal.io/workflow-execution/workflowid-runid)
 - [Rust SDK history patching](https://github.com/temporalio/sdk-rust/blob/main/crates/sdk/README.md#patching)
 - [Retry policies](https://docs.temporal.io/encyclopedia/retry-policies)

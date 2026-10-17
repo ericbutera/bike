@@ -28,7 +28,11 @@ An XC event target is stored on user preferences for the current product. It inc
 - optional target elapsed finish time;
 - optional event profile: XC marathon, technical singletrack, endurance MTB, ultra MTB, or custom.
 
-Changing the training start date queues a historical XC backfill. The backfill rebuilds activity training analyses in batches and exposes queued, running, and completed state so the UI can explain why readiness may still be catching up.
+Changing the training start date queues a historical XC backfill. It rebuilds
+activity training analyses in bounded batches and records completion in the
+existing training preference. The preference's queued/completed value is a
+summary; running, failed, and canceled execution belongs to Temporal under the
+[worker contract](background-work.md#task-inventory-and-behavior-parity).
 
 Future event-target history may move this data out of preferences and into a dedicated table. Until that product decision changes, the single active preference record is canonical.
 

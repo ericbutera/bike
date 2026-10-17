@@ -4,13 +4,15 @@ The Rust application backend for [Bike](../README.md), built with Axum, SeaORM,
 and PostgreSQL. It owns activity ingestion, segment matching, training analytics,
 accounts, admin operations, and durable background processing.
 
-| Workspace member | Responsibility                                                |
-| ---------------- | ------------------------------------------------------------- |
-| `api`            | HTTP API, authentication integration, rider/admin endpoints   |
-| `bike-core`      | Domain models, queries, services, parsers, platform modules   |
-| `integrations`   | Strava provider calls, OAuth, request acceptance, domain operations |
-| `worker`         | Import processing, analytics rebuilds, background maintenance |
-| `migration`      | Append-only SeaORM schema migrations                          |
+| Workspace member  | Responsibility                                                      |
+| ----------------- | ------------------------------------------------------------------- |
+| `api`             | HTTP API, authentication integration, rider/admin endpoints         |
+| `bike-core`       | Domain models, queries, services, parsers, platform modules         |
+| `integrations`    | Strava provider calls, OAuth, request acceptance, domain operations |
+| `worker`          | Combined `temporal-worker` process, lifecycle, and metrics          |
+| `bike-temporal`   | Bike import, archive, derived-data, and batch workflows             |
+| `strava-temporal` | Provider workflows and Activities on the Strava queue               |
+| `migration`       | Append-only SeaORM schema migrations                                |
 
 ## Run locally
 
