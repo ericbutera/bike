@@ -40,8 +40,8 @@ description = "Run Next.js unit tests with coverage"
 run = "mise run coverage"
 
 [tasks."test:workers"]
-description = "Run focused admin worker history, search, and polling tests"
-run = "pnpm exec vitest run components/__tests__/TasksPageContent.test.tsx components/__tests__/TaskProcessingHistory.test.tsx components/__tests__/ProcessorOverview.test.tsx components/__tests__/PipelinePanel.test.tsx components/__tests__/ActivityPipelines.test.tsx components/__tests__/ActivityImportTracePanel.test.tsx lib/pipelineGraph.test.ts lib/taskQueries.test.tsx"
+description = "Run task tools and retained import unit tests"
+run = "pnpm exec vitest run components/__tests__/AdminTaskTools.test.tsx components/__tests__/ActivityImportsPanel.test.tsx"
 
 [tasks.coverage]
 description = "Run Next.js unit tests and generate HTML, LCOV, and JSON coverage reports"
@@ -66,11 +66,6 @@ prettier lib/openapi/react-query/api.ts --config .prettierrc.json --write
 description = "Run browser regressions against the configured Bike UI"
 run = "pnpm run test:e2e:all"
 
-[tasks."test:e2e:diagrams"]
-description = "Verify diagram and math rendering in a standalone browser fixture"
-depends = ["test:e2e:install"]
-run = "pnpm exec playwright test tests/e2e/diagram-rendering.spec.mjs"
-
 [tasks."test:e2e:heatmaps"]
 description = "Verify personal heatmap tiles, filters, and controls"
 run = "pnpm exec playwright test tests/e2e/heatmap.spec.mjs tests/e2e/heatmap-controls.spec.mjs"
@@ -81,5 +76,5 @@ depends = ["deps"]
 run = "pnpm exec playwright install chromium"
 
 [tasks."test:e2e:imports"]
-description = "Verify import summaries and replay with synthetic API fixtures"
-run = "mise --cd .. run e2e import-replay"
+description = "Verify retained activity source downloads in the existing browser stack"
+run = "mise --cd .. run e2e activity-actions"

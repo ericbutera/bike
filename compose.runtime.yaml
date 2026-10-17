@@ -44,12 +44,7 @@ services:
       STRAVA_WEBHOOK_VERIFY_TOKEN: ${STRAVA_WEBHOOK_VERIFY_TOKEN:-}
       STRAVA_SUBSCRIPTION_ID: ${STRAVA_SUBSCRIPTION_ID:-}
       STRAVA_OAUTH_SCOPES: activity:read_all
-      WORKER_RECOVERY_TIMEOUT_SECONDS: ${WORKER_RECOVERY_TIMEOUT_SECONDS:-}
       APP_NAME: Bike
-      SMTP_HOST: localhost
-      SMTP_PORT: 1025
-      MAIL_FROM: noreply@bike.local
-      SMTP_FROM_NAME: Bike
       MAP_RENDERER_GRPC_ADDRESS: http://bike-maps:50051
       MAP_SERVICE_TOKEN: ${MAP_SERVICE_TOKEN:-}
       MAP_IMAGE_CACHE_DIR: /cache
@@ -60,17 +55,11 @@ services:
       migration:
         condition: service_completed_successfully
 
-  worker:
-    image: ${BIKE_WORKER_IMAGE:-bike-worker:review}
-    environment: *application_environment
-    depends_on:
-      migration:
-        condition: service_completed_successfully
-
   ui:
     image: ${BIKE_UI_IMAGE:-bike-ui:review}
     environment:
       API_URL: ${BIKE_BROWSER_API_URL:-http://localhost:3000/api}
+      TEMPORAL_UI_URL: ${BIKE_TEMPORAL_UI_URL:-http://localhost:8080}
       CDN_URL: ${BIKE_BROWSER_CDN_URL:-http://localhost:3000/uploads}
       INTERNAL_API_URL: http://bike-rs:3000/api
     depends_on:

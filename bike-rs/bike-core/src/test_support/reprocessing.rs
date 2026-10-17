@@ -61,7 +61,6 @@ pub fn reprocess_execution() -> ImportExecution {
     };
     execution.command.target = ImportTarget::ExistingActivity {
         activity_id: activity.id,
-        expected_revision: crate::activity_reprocessing::revision(activity.updated_at).expect("fixture timestamp"),
     };
     execution.workflow.workflow_type = "reprocess_activity_import".into();
     execution.workflow.job_id = format!(

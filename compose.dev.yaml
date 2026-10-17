@@ -35,19 +35,6 @@ services:
       - "${BIKE_RUST_API_PORT:-3000}:3000"
     volumes:
       - ./bike-rs:/app
-  worker:
-    image: bike-dev-worker
-    build:
-      context: ./bike-rs
-      dockerfile: Dockerfile.dev
-      target: worker
-      args:
-        RUST_IMAGE: ${RUST_IMAGE:?Run Compose through mise}
-        WATCHEXEC_VERSION: ${WATCHEXEC_VERSION:?Run Compose through mise}
-        MISE_IMAGE: ${MISE_IMAGE:?Run Compose through mise}
-        PROTOC_VERSION: ${PROTOC_VERSION:?Run Compose through mise}
-    volumes:
-      - ./bike-rs:/app
   ui:
     image: bike-dev-ui
     build:

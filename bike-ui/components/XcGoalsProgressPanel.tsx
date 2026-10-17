@@ -26,7 +26,6 @@ import {
   type UnitSystem,
 } from "../lib/activityFormatting";
 import {
-  useActivityProcessingState,
   useUpdateUserPreferences,
   useUserPreferences,
   useXcGoalProgress,
@@ -538,23 +537,14 @@ function isXcBackfillPendingStatus(status: string | null | undefined) {
   return status === "queued" || status === "waiting" || status === "running";
 }
 
-function describeXcBackfillMessage(
-  status: string | null | undefined,
-  processingMessage: string | null | undefined,
-  processingSource: string | null | undefined,
-  processingSourceLabel: string | null | undefined,
-) {
+function describeXcBackfillMessage(status: string | null | undefined) {
   switch (status) {
     case "queued":
       return "Historical XC rides are queued for backfill now. Charts will populate as soon as the training analysis rebuild runs.";
     case "waiting":
-      return processingMessage
-        ? `Historical XC backfill is waiting for the current activity processing job to finish. ${processingMessage}`
-        : "Historical XC backfill is waiting for the current activity processing job to finish.";
+      return "Historical XC rides are queued for backfill.";
     case "running":
-      return processingSource && processingSource !== "xc_training_backfill"
-        ? `Historical XC backfill is still marked running, but the active processing lock belongs to ${processingSourceLabel ?? "another activity job"}. This usually means the earlier processing state needs to clear before XC status will settle.`
-        : "Historical XC backfill is rebuilding historical training metrics.";
+      return "Historical XC backfill is rebuilding historical training metrics.";
     case "failed":
       return "Historical XC backfill failed. Save the goal again or queue the user-id XC backfill from admin analytics.";
     default:
@@ -1752,9 +1742,6 @@ export default function XcGoalsProgressPanel() {
     refetchIntervalMs: 5000,
   });
   const progressQuery = useXcGoalProgress();
-  const processingStateQuery = useActivityProcessingState({
-    refetchIntervalMs: 5000,
-  });
   const updatePreferencesMutation = useUpdateUserPreferences();
   const unitSystem = normalizeUnitSystem(preferencesQuery.data?.unit_system);
   const heartRateZonesConfigured = hasConfiguredHeartRateZoneBounds(
@@ -1837,9 +1824,6 @@ export default function XcGoalsProgressPanel() {
         queryClient.invalidateQueries({ queryKey: ["get", "/preferences"] }),
         queryClient.invalidateQueries({
           queryKey: ["get", "/training/xc-progress"],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["get", "/activity-imports/processing-state"],
         }),
       ]);
     }
@@ -2135,12 +2119,7 @@ export default function XcGoalsProgressPanel() {
 
   const progress = progressQuery.data;
   const eventGoal = progress.event_goal ?? null;
-  const backfillMessage = describeXcBackfillMessage(
-    backfillStatus,
-    processingStateQuery.data?.message,
-    processingStateQuery.data?.source,
-    processingStateQuery.data?.source_label,
-  );
+  const backfillMessage = describeXcBackfillMessage(backfillStatus);
   const hasPaceTrendData = weeklyChartData.some(
     (point) =>
       point.averageZ2SpeedIndex != null ||

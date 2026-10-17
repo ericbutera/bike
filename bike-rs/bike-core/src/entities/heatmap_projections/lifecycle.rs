@@ -20,6 +20,30 @@ pub struct PendingProjection {
 pub struct Projection;
 
 impl Projection {
+    pub async fn pending_tasks(
+        db: &impl ConnectionTrait,
+        after_id: i32,
+    ) -> Result<Vec<crate::bike_tasks::ActivityTask>, DbErr> {
+        if !Self::enabled(db).await? {
+            return Ok(Vec::new());
+        }
+        let rows = projections::Entity::find()
+            .filter(projections::Column::ActivityId.gt(after_id))
+            .filter(projections::Column::Status.is_in(["pending", "failed"]))
+            .filter(projections::Column::ProjectionVersion.eq(PROJECTION_VERSION))
+            .order_by_asc(projections::Column::ActivityId)
+            .limit(16)
+            .all(db)
+            .await?;
+        Ok(rows
+            .into_iter()
+            .map(|row| crate::bike_tasks::ActivityTask {
+                activity_id: row.activity_id,
+                user_id: row.user_id,
+                priority: crate::bike_tasks::Priority::Background,
+            })
+            .collect())
+    }
     /// Invalidate an owned route within the caller's source-change transaction.
     pub async fn invalidate_owned(db: &impl ConnectionTrait, activity_id: i32, user_id: i32) -> Result<(), DbErr> {
         let changed = projections::Entity::update_many()
@@ -44,15 +68,6 @@ impl Projection {
             .exec(db)
             .await?;
         if changed.rows_affected > 0 {
-            if let Some(projection) = projections::Model::for_activity(db, activity_id).await? {
-                crate::background_jobs::entities::pipeline_outputs::Model::advance(
-                    db,
-                    "heatmap",
-                    activity_id,
-                    &format!("{}:{PROJECTION_VERSION}", projection.generation),
-                )
-                .await?;
-            }
             chunks_entity::Model::clear_activity(db, activity_id).await?;
             user_states::Model::bump_revision(db, user_id).await?;
         }
@@ -80,70 +95,6 @@ impl Projection {
 
     pub async fn enabled(db: &impl ConnectionTrait) -> Result<bool, DbErr> {
         feature_flags::Model::enabled(db, "heatmaps").await
-    }
-
-    /// Queue and lease rows in the same transaction. Worker crashes and enqueue
-    /// failures cannot strand durable dirty state. Projection and heartbeat leases
-    /// share WORKER_RECOVERY_TIMEOUT_SECONDS.
-    pub async fn enqueue_pending(db: &DatabaseConnection) -> Result<u64, DbErr> {
-        let context = crate::background_jobs::pipeline::PipelineContext::current().unwrap_or_else(|| {
-            crate::background_jobs::pipeline::PipelineContext::received("heatmap_reconciliation", None)
-        });
-        crate::background_jobs::pipeline::PipelineContext::scope(Some(context), Self::lease_and_enqueue(db)).await
-    }
-
-    async fn lease_and_enqueue(db: &DatabaseConnection) -> Result<u64, DbErr> {
-        let txn = db.begin().await?;
-        // Native locking is necessary for concurrent outbox consumers. Submission
-        // then uses the shared queue API in this same transaction, including lineage.
-        let leased = PendingProjection::find_by_statement(Statement::from_sql_and_values(DbBackend::Postgres, r#"
-            WITH candidates AS (
-                SELECT p.activity_id FROM heatmap_projections p
-                WHERE p.status='pending' AND p.projection_version=$1 AND (p.queued_at IS NULL OR p.queued_at < now() - make_interval(secs => $2::double precision))
-                AND EXISTS (SELECT 1 FROM activities a WHERE a.id=p.activity_id AND a.source <> 'strava_sync')
-                AND NOT EXISTS (SELECT 1 FROM background_tasks t WHERE t.task_type=$3
-                    AND t.status IN ('pending','processing') AND (t.status='processing' OR t.attempts<t.max_attempts)
-                    AND (t.payload->'data'->'activities') @> jsonb_build_array(jsonb_build_object('activity_id',p.activity_id,'generation',p.generation)))
-                ORDER BY p.activity_id LIMIT 16 FOR UPDATE SKIP LOCKED
-            )
-            UPDATE heatmap_projections p SET queued_at=now() FROM candidates c WHERE p.activity_id=c.activity_id
-            RETURNING p.activity_id, p.generation
-        "#,[PROJECTION_VERSION.into(), crate::config::Config::get().worker_recovery_timeout_seconds.into(), crate::jobs::JobType::PrepareHeatmap.as_str().into()])).all(&txn).await?;
-        if leased.is_empty() {
-            return Ok(0);
-        }
-        let activities: Vec<_> = leased
-            .iter()
-            .map(|pending| serde_json::json!({"activity_id":pending.activity_id,"generation":pending.generation}))
-            .collect();
-        let task = crate::background_jobs::background_tasks::Model::enqueue(
-            &txn,
-            crate::jobs::JobType::PrepareHeatmap.as_str().into(),
-            serde_json::json!({"type":"PrepareHeatmap","data":{"activities":activities}}),
-            None,
-            3,
-        )
-        .await?;
-        for pending in leased {
-            let revision = Self::revision(pending.generation);
-            crate::background_jobs::entities::pipeline_outputs::Model::advance(
-                &txn,
-                "heatmap",
-                pending.activity_id,
-                &revision,
-            )
-            .await?;
-            crate::background_jobs::entities::pipeline_outputs::Model::attach_waiting_tasks(
-                &txn,
-                "heatmap",
-                pending.activity_id,
-                &revision,
-                task.id,
-            )
-            .await?;
-        }
-        txn.commit().await?;
-        Ok(1)
     }
 
     pub fn revision(generation: i64) -> String {
@@ -214,14 +165,6 @@ impl Projection {
             .exec(&txn)
             .await?;
         user_states::Model::bump_revision(&txn, user_id).await?;
-        crate::background_jobs::entities::pipeline_outputs::Model::publish(
-            &txn,
-            "heatmap",
-            pending.activity_id,
-            &Self::revision(pending.generation),
-            published_at,
-        )
-        .await?;
         txn.commit().await?;
         Ok(true)
     }

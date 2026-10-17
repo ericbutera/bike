@@ -1,24 +1,7 @@
-use crate::storage::AppStorage;
-use axum::body::{to_bytes, Body};
-use axum::http::Request;
+use super::test_support::local_user_json as history;
 use bike_core::entities::integration_events;
 use bike_core::test_support as fixtures;
-use sea_orm::{DatabaseConnection, DbErr};
-use serde_json::Value;
-use std::sync::Arc;
-use tower::ServiceExt;
-
-async fn history(db: DatabaseConnection, path: &str, status: u16) -> Value {
-    let mut state = AppStorage::for_test(db);
-    state.local_admin_user_pid = Some(fixtures::customer().pid);
-    let response = super::routes()
-        .with_state(Arc::new(state))
-        .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
-        .await
-        .unwrap();
-    assert_eq!(response.status(), status);
-    serde_json::from_slice(&to_bytes(response.into_body(), 1_000_000).await.unwrap()).unwrap()
-}
+use sea_orm::DbErr;
 
 #[tokio::test]
 async fn account_history_scopes_roots_and_preserves_temporal_context() {

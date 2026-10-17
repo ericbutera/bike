@@ -1,5 +1,6 @@
 export type AppConfig = {
   API_URL: string;
+  TEMPORAL_UI_URL?: string;
   MAP_STYLE_URL: string;
   LOCAL_ADMIN_AUTO_LOGIN: boolean;
 };
@@ -12,6 +13,7 @@ declare global {
 
 const DEFAULT_CONFIG: AppConfig = {
   API_URL: "http://localhost:3000/api",
+  TEMPORAL_UI_URL: "",
   MAP_STYLE_URL: "opentopomap",
   LOCAL_ADMIN_AUTO_LOGIN: false,
 };
@@ -50,6 +52,7 @@ function normalizeBoolean(
 export function parseAppConfig(raw?: Partial<AppConfig>): AppConfig {
   return {
     API_URL: normalizeUrl(raw?.API_URL, DEFAULT_CONFIG.API_URL),
+    TEMPORAL_UI_URL: normalizeUrl(raw?.TEMPORAL_UI_URL, ""),
     MAP_STYLE_URL: normalizeUrl(
       raw?.MAP_STYLE_URL,
       DEFAULT_CONFIG.MAP_STYLE_URL,
@@ -64,6 +67,7 @@ export function parseAppConfig(raw?: Partial<AppConfig>): AppConfig {
 export function getServerConfig(): AppConfig {
   return {
     API_URL: normalizeUrl(process.env.API_URL, DEFAULT_CONFIG.API_URL),
+    TEMPORAL_UI_URL: normalizeUrl(process.env.TEMPORAL_UI_URL, ""),
     MAP_STYLE_URL: normalizeUrl(
       process.env.MAP_STYLE_URL,
       DEFAULT_CONFIG.MAP_STYLE_URL,
@@ -76,11 +80,8 @@ export function getServerConfig(): AppConfig {
 }
 
 function configChanged(current: AppConfig, next: AppConfig): boolean {
-  return (
-    current.API_URL !== next.API_URL ||
-    current.MAP_STYLE_URL !== next.MAP_STYLE_URL ||
-    current.LOCAL_ADMIN_AUTO_LOGIN !== next.LOCAL_ADMIN_AUTO_LOGIN
-  );
+  const keys = Object.keys(DEFAULT_CONFIG) as (keyof AppConfig)[];
+  return keys.some((key) => current[key] !== next[key]);
 }
 
 export function initializeClientConfig(

@@ -29,17 +29,15 @@ Bike follows the repo shape used by the surrounding workspace:
 - `api`: Rust Axum API for auth integration, preferences, Strava connections,
   activity import endpoints, activity/segment/training read APIs, private map
   images and their cache, heatmap tiles, and admin operations.
-- SQL `worker`: background processors for activity/archive import, reprocessing,
-  segment regeneration, analytics rebuilds, XC backfills, heatmaps, and legacy email.
 - `temporal-worker`: one process with separately registered provider workflows
-  in `strava-temporal` and converted application workflows in `bike-temporal`.
-  The SQL worker retains unconverted task types.
+  in `strava-temporal` and all application workflows in `bike-temporal`:
+  file/archive import, reprocessing, segments, analytics, training, and heatmaps.
 - `migration`: SeaORM migrations for Bike-owned schema.
 - `bike-ui`: shared Next.js frontend for rider and admin workflows.
 - `map-renderer`: internal Go service running Chromium snapshots over gRPC.
   It owns browser lifecycle and rendering, with no activity database or PNG cache.
 
-Bike owns auth, database wiring, feature flags, metrics, Strava callbacks, credentials, and provider requests in `bike-core`. PostgreSQL stores normalized data. Temporal runs Strava workflows.
+Bike owns auth, database wiring, feature flags, metrics, Strava callbacks, credentials, and provider requests in `bike-core`. PostgreSQL stores normalized data. Temporal runs provider and application workflows.
 
 The [maps specification](maps.md) owns image permissions, compatibility,
 caching, the snapshot boundary, and its OpenTelemetry contract. The
@@ -95,7 +93,7 @@ Segment correctness should favor transparent user-owned matching and personal co
 ## Code Anchors
 
 - App wiring: `bike-rs/api/src/lib.rs`, `bike-rs/api/src/controllers/mod.rs`
-- Worker entry points: `bike-rs/worker/src/tasks/processors`
+- Worker entry points: `bike-rs/bike-temporal/src/workflows`
 - Migrations: `migration/src`
 - Frontend routes: `bike-ui/app`
 - Local tasks: `mise.toml` (`mise tasks`)

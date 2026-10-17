@@ -57,7 +57,8 @@ fn native_import_history_keeps_the_command_and_full_causal_context() {
         serde_json::to_value(fixtures::task_cause()).unwrap()
     );
     let repeated = Event::import(&execution, None, &fixtures::activity()).unwrap();
-    assert_eq!(event.id, repeated.id);
+    assert_ne!(event.id, repeated.id);
+    assert!(event.context.get("refresh_scope").is_none());
 }
 
 #[tokio::test]

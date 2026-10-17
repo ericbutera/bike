@@ -1,5 +1,4 @@
 pub mod activity_import_history;
-pub mod activity_import_lock;
 pub mod activity_location;
 pub mod activity_reprocessing;
 pub mod app_error;
@@ -145,15 +144,7 @@ fn should_trace_http_path(path: &str) -> bool {
 
 async fn request_id_response_header(request: Request<Body>, next: Next) -> Response {
     let request_id = request.headers().get(&REQUEST_ID_HEADER).cloned();
-    let context = bike_core::background_jobs::pipeline::PipelineContext::received(
-        "api",
-        request_id
-            .as_ref()
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_owned),
-    );
-    let mut response =
-        bike_core::background_jobs::pipeline::PipelineContext::scope(Some(context), next.run(request)).await;
+    let mut response = next.run(request).await;
 
     if let Some(request_id) = request_id {
         response.headers_mut().insert(&REQUEST_ID_HEADER, request_id);

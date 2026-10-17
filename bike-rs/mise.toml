@@ -26,7 +26,7 @@ run = "cargo build --release --bin api"
 
 [tasks."worker:dev"]
 description = "Start the bike worker"
-run = "cargo run --bin worker"
+run = "cargo run --bin temporal-worker"
 
 [tasks."tracing:dev"]
 description = "Start lightweight local tracing with Jaeger"
@@ -69,7 +69,10 @@ run = ["mise run coverage:unit:collect", "mise run test:non-unit"]
 [tasks."test:workers"]
 description = "Run mocked native workflow, handoff, and worker metric regressions"
 depends = ["test:reprocess"]
-run = "cargo test -p bike-core --locked --lib background_jobs"
+run = [
+  "cargo test -p bike-core --locked --lib archive_import::native",
+  "cargo test -p migration --locked --lib retirement_drops_execution_tables_and_preserves_domain_data",
+]
 
 [tasks."test:workers:mocks"]
 description = "Run PostgreSQL mock replacements for removed worker/import/history/metrics database units"
@@ -77,19 +80,9 @@ run = [
   "cargo test -p bike-core --locked --lib mutation_tests",
   "cargo test -p bike-core --locked --lib import_read_tests",
   "cargo test -p bike-core --locked --lib activity_analytics::tests",
-  "cargo test -p bike-core --locked --lib task_lifecycle_tests",
   "cargo test -p api --locked --lib integration_events_tests",
   "cargo test -p api --locked --lib metrics_scrape_tests",
-  "cargo test -p worker --locked --lib pipeline_tests",
 ]
-
-[tasks."test:workers:postgres"]
-description = "Verify pipeline migration, concurrent claims, and retry history in disposable PostgreSQL"
-env = { RUSTFLAGS = "-D warnings" }
-run = '''
-: "${BIKE_WORKER_TEST_DATABASE_URL:?Set this to a disposable PostgreSQL database}"
-cargo test -p bike-core --test worker_history_postgres -- --ignored --nocapture
-'''
 
 [tasks."test:strava:unit"]
 description = "Test Strava workflows, domain handlers, and shared configuration with isolated mocks"
@@ -103,17 +96,15 @@ run = [
   "cargo test -p bike-core --locked --lib entities::strava_activity_states::tests",
   "cargo test -p bike-core --locked --lib strava_oauth_unit",
   "cargo test -p bike-core --locked --lib strava_webhook_unit",
-  "cargo test -p bike-core --locked --lib recovery_timeout_tests",
-  "cargo test -p bike-core --locked --lib bike_jobs_serialize_for_worker_payload_contract",
   "cargo test -p strava-temporal --locked --lib",
 ]
 
 [tasks."test:tasks:unit"]
-description = "Run native reprocess, storage, and Strava unit suites once"
-depends = ["test:reprocess", "test:storage", "test:strava:unit"]
+description = "Run native processing, archive, storage, and Strava unit suites"
+depends = ["test:workers", "test:storage", "test:strava:unit"]
 
 [tasks."test:tasks:workflows"]
-description = "Test named Bike workflows and native output handoffs with isolated mocks"
+description = "Test explicit Bike workflow steps and awaited children with isolated mocks"
 run = "cargo test -p bike-temporal --locked --lib"
 
 [tasks."test:reprocess"]
@@ -121,13 +112,16 @@ description = "Verify native reprocessing with retained-source fixtures and mock
 depends = ["test:tasks:workflows"]
 run = [
   "cargo test -p bike-core --locked --lib activity_reprocessing",
+  "cargo test -p bike-core --locked --lib segment_regeneration",
+  "cargo test -p bike-core --locked --lib entities::activity_event_history",
+  "cargo test -p bike-core --locked --lib native_reprocess_completion",
   "cargo test -p api --locked --lib activity_reprocessing",
   "cargo test -p worker --locked --lib temporal_metrics",
   "cargo test -p worker --locked --bin temporal-worker",
 ]
 
 [tasks."test:storage"]
-description = "Test shared storage and retention once, with legacy Strava compatibility"
+description = "Test shared retained storage, with legacy Strava compatibility"
 run = [
   "cargo test -p bike-core --locked --lib object_store",
   "cargo test -p bike-core --locked --lib strava::objects",

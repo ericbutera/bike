@@ -45,6 +45,12 @@ pub fn segment_effort() -> segment_efforts::Model {
         updated_at: at,
     }
 }
+
+pub fn segment_id_rows(ids: &[i32]) -> Vec<std::collections::BTreeMap<String, sea_orm::Value>> {
+    ids.iter()
+        .map(|id| [("segment_id".into(), (*id).into())].into())
+        .collect()
+}
 pub fn new_fitness_day() -> fitness_freshness_daily::ActiveModel {
     let mut active: fitness_freshness_daily::ActiveModel = fitness_day().into();
     active.id = sea_orm::ActiveValue::NotSet;

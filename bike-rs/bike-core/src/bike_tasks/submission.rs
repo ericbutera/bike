@@ -54,23 +54,3 @@ pub struct ImportExecution {
     pub command: super::ActivityImport,
     pub workflow: JobReference,
 }
-
-impl ImportExecution {
-    /// Run IDs and delivery context can change; the business command cannot.
-    pub fn matches_request(&self, other: &Self) -> bool {
-        let same_workflow = (
-            &self.workflow.job_id,
-            &self.workflow.namespace,
-            &self.workflow.workflow_type,
-        ) == (
-            &other.workflow.job_id,
-            &other.workflow.namespace,
-            &other.workflow.workflow_type,
-        );
-        let mut command = self.command.clone();
-        let mut other_command = other.command.clone();
-        command.source.cause = None;
-        other_command.source.cause = None;
-        same_workflow && command == other_command
-    }
-}

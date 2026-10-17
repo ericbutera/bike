@@ -10,9 +10,6 @@ use bike_core::activity_achievements::ActivityAchievementHighlight;
 use bike_core::activity_details::{
     deserialize_derived_activity_data, ActivityChartPoint, ActivityDerivedData, ActivityLap, ActivityRoutePoint,
 };
-use bike_core::activity_import_pipeline::{
-    finalize_activity_import_batch, mark_activity_imports_processed, reprocess_activity_from_import,
-};
 use bike_core::activity_lifecycle::delete_activity_with_derived_state;
 use bike_core::activity_sport::ActivitySport;
 use bike_core::activity_training_analysis::{
@@ -22,8 +19,7 @@ use bike_core::activity_type::ActivityType;
 use bike_core::analytics::{estimated_training_load, mark_segment_activity_changes, mark_user_fitness_dirty};
 use bike_core::auth::UserContext;
 use bike_core::entities::{
-    activities, activity_analytics, activity_import_artifacts, activity_imports, segment_efforts,
-    segment_user_summaries, segments,
+    activities, activity_analytics, activity_import_artifacts, segment_efforts, segment_user_summaries, segments,
 };
 use bike_core::platform::data::pagination::{PaginatedResponse, PaginationParams};
 use bike_core::training_profile::{deserialize_activity_heart_rate_zones, ActivityHeartRateZoneSummary};
@@ -840,7 +836,7 @@ pub async fn delete_activity(
         ("id" = i32, Path, description = "Activity ID", example = 42)
     ),
     responses(
-        (status = 200, description = "Regenerated activity detail", body = ActivityResponse, example = json!({"id": 42,"title": "Saturday hill repeats","sport": "ride","source": "manual_upload","activity_type": "training","original_filename": "saturday-hills.fit","format": "fit","started_at": "2026-09-26T13:00:00Z","ended_at": "2026-09-26T14:12:00Z","location": "Detroit, Michigan","distance_meters": 25430.5,"moving_time_seconds": 4200,"total_time_seconds": 4320,"elevation_gain_meters": 312.4,"average_speed_mps": 6.05,"average_heart_rate_bpm": 148,"estimated_ftp_watts": 245,"route_points": [{"elapsed_seconds": 900,"latitude": 42.3314,"longitude": -83.0458,"distance_meters": 4200.5,"elevation_meters": 183.2}],"can_regenerate": true,"can_download_source_file": true})),
+        (status = 202, description = "Activity reprocessing started", body = bike_core::jobs::QueuedJobReference),
         (status = 400, description = "Activity cannot be regenerated", body = ApiErrorResponse),
         (status = 401, description = "Not authenticated"),
         (status = 404, description = "Activity not found", body = ApiErrorResponse),
@@ -855,32 +851,19 @@ pub async fn regenerate_activity(
     Path(id): Path<i32>,
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
-) -> Result<Json<ActivityResponse>, AppError> {
+) -> Result<(StatusCode, Json<bike_core::jobs::QueuedJobReference>), AppError> {
     let activity = activities::Model::find_owned(&state.db, id, user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Activity not found"))?;
-    let activity_import_id = activity
-        .activity_import_id
-        .ok_or_else(|| AppError::bad_request("Only uploaded activities can be regenerated"))?;
-    let activity_import = activity_imports::Entity::find_owned(&state.db, user.id, activity_import_id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Activity import not found"))?;
-    let reprocessed =
-        reprocess_activity_from_import(&state.db, &state.uploads_dir, user.id, activity, activity_import, None).await?;
-    finalize_activity_import_batch(
-        &state.db,
-        &state.tasks,
-        user.id,
-        reprocessed.affected_segment_ids,
-        Some(reprocessed.fitness_dirty_from_day),
-        Utc::now(),
-    )
-    .await?;
-    mark_activity_imports_processed(&state.db, &[activity_import_id]).await?;
-    let updated = reprocessed.activity;
-    let segment_efforts = load_activity_segment_efforts(&state.db, user.id, updated.id).await?;
-
-    Ok(Json(ActivityResponse::from_detail(updated, segment_efforts)))
+    if activity.activity_import_id.is_none() {
+        return Err(AppError::bad_request("Only uploaded activities can be regenerated"));
+    }
+    let job = state
+        .tasks
+        .reprocess_activity_import(activity.id)
+        .await
+        .map_err(AppError::internal)?;
+    Ok((StatusCode::ACCEPTED, Json(job)))
 }
 
 fn activity_source_content_type(format: &str) -> &'static str {
@@ -943,6 +926,41 @@ mod tests {
     use bike_core::activity_details::{serialize_derived_activity_data, StoredActivityDerivedData};
     use bike_core::activity_training_analysis::ActivityTrainingAnalysisResponse;
     use bike_core::platform::data::pagination::PaginatedResponse;
+
+    #[tokio::test]
+    async fn regeneration_accepts_an_owned_retained_file_as_a_native_job() {
+        use crate::controllers::test_support as http;
+        use bike_core::test_support as fixtures;
+        use std::sync::{Arc, Mutex};
+        let db = fixtures::postgres_mock()
+            .append_query_results([vec![fixtures::customer()]])
+            .append_query_results([
+                vec![fixtures::reprocess_activity()],
+                vec![fixtures::reprocess_activity()],
+            ])
+            .append_query_results([vec![fixtures::reprocess_import()]])
+            .append_query_results([vec![fixtures::reprocess_artifact()]])
+            .into_connection();
+        let requests = Arc::new(Mutex::new(fixtures::temporal_client::Requests::default()));
+        let state = http::temporal_state(db.clone(), requests.clone()).await;
+        let response = http::local_user_request(
+            state,
+            http::json_request("POST", "/api/activities/42/regenerate", serde_json::json!({})),
+            202,
+        )
+        .await;
+        let requests = requests.lock().unwrap();
+        assert_eq!(requests.starts.len(), 1);
+        assert_eq!(response["id"], requests.starts[0].workflow_id);
+        assert_eq!(response["status"], "running");
+        assert_eq!(
+            requests.starts[0].workflow_type.as_ref().unwrap().name,
+            "reprocess_activity_import"
+        );
+        let log = format!("{:?}", db.into_transaction_log());
+        assert!(!log.contains("INSERT"));
+        assert!(!log.contains("background_tasks"));
+    }
 
     #[test]
     fn feed_and_detail_keep_source_description_and_gear() {

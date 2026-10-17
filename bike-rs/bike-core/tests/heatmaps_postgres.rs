@@ -104,9 +104,6 @@ async fn prepares_backfills_and_invalidates_activity_generations() {
     db.execute_unprepared("INSERT INTO activities(id,user_id,sport,source) VALUES (4,2,'ride','fixture')")
         .await
         .unwrap();
-    assert_eq!(Projection::enqueue_pending(&db).await.unwrap(), 1);
-    assert_eq!(Projection::enqueue_pending(&db).await.unwrap(), 0);
-    assert_batched_prepare_task(&db).await;
     prepare(&db, 1, 1).await;
     assert_eq!(status(&db, 1).await, "skipped");
     let route = serde_json::json!({"v":2,"route_points":[{"elapsed_seconds":0,"longitude":-85.0,"latitude":45.0},{"elapsed_seconds":10,"longitude":-85.001,"latitude":45.001}]});
@@ -293,24 +290,6 @@ async fn upgrades_existing_heatmap_projections_for_virtual_ride_filter() {
         .unwrap();
 }
 
-async fn assert_batched_prepare_task(db: &sea_orm::DatabaseConnection) {
-    let task = db
-        .query_one_raw(Statement::from_string(
-            DbBackend::Postgres,
-            "SELECT payload->>'type' AS task_type, jsonb_array_length(payload->'data'->'activities') AS activity_count, payload->'data'->'activities'->0->>'activity_id' AS first_activity_id, payload->'data'->'activities'->0->>'generation' AS first_generation, payload->'data'->'activities'->1->>'activity_id' AS second_activity_id, payload->'data'->'activities'->1->>'generation' AS second_generation FROM background_tasks"
-                .to_owned(),
-        ))
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(task.try_get::<String>("", "task_type").unwrap(), "PrepareHeatmap");
-    assert_eq!(task.try_get::<i32>("", "activity_count").unwrap(), 2);
-    assert_eq!(task.try_get::<String>("", "first_activity_id").unwrap(), "1");
-    assert_eq!(task.try_get::<String>("", "first_generation").unwrap(), "1");
-    assert_eq!(task.try_get::<String>("", "second_activity_id").unwrap(), "4");
-    assert_eq!(task.try_get::<String>("", "second_generation").unwrap(), "1");
-}
-
 #[tokio::test]
 #[ignore = "Set BIKE_HEATMAP_TEST_DATABASE_URL to a disposable PostgreSQL database"]
 async fn scopes_tiles_and_metadata_and_invalidates_cached_images() {
@@ -458,7 +437,6 @@ async fn legacy_fixture() -> (sea_orm::DatabaseConnection, String) {
         CREATE TABLE users(id integer PRIMARY KEY);
         CREATE TABLE activities(id integer PRIMARY KEY, user_id integer REFERENCES users(id) ON DELETE CASCADE, title text NOT NULL DEFAULT '', sport text NOT NULL, source text NOT NULL, format text, started_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), derived_data_json jsonb);
         CREATE TABLE feature_flags(feature_key text PRIMARY KEY, enabled boolean NOT NULL);
-        CREATE TABLE background_tasks(id serial PRIMARY KEY,task_type text,payload jsonb,status text,attempts integer,max_attempts integer,created_at timestamptz,updated_at timestamptz);
         INSERT INTO users VALUES (1),(2);
         INSERT INTO feature_flags VALUES ('heatmaps',false);
         INSERT INTO activities(id,user_id,sport,source) VALUES (1,1,'ride','fixture');

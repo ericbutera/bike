@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useRef } from "react";
 import type { ActivityType } from "./activityTypes";
 import type { ActivitySport } from "./activitySports";
 import { $api, $typedApi } from "./api";
@@ -164,81 +165,6 @@ export type AdminActivity = {
   import_processing_stage?: string | null;
 };
 
-export type ActivityProcessingGraphNode = {
-  id: string;
-  label: string;
-  stage: string;
-};
-
-export type ActivityProcessingGraphEdge = {
-  from: string;
-  to: string;
-};
-
-export type ActivityProcessingGraph = {
-  nodes: ActivityProcessingGraphNode[];
-  edges: ActivityProcessingGraphEdge[];
-  mermaid: string;
-};
-
-export type ActivityImportTraceNode = ActivityProcessingGraphNode & {
-  status: "completed" | "failed" | "pending" | string;
-  completed_at?: string | null;
-  started_at?: string | null;
-  summary?: string[];
-  error?: string | null;
-  reused_attempt_id?: number | null;
-};
-
-export type ActivityImportAttempt = {
-  id: number;
-  status: string;
-  requested_stage: string;
-  start_stage: string;
-  reused_attempt_id?: number | null;
-  source: {
-    filename?: string;
-    format?: string;
-    quality?: string;
-    checksum?: string;
-    size_bytes?: number;
-  };
-  created_at: string;
-  started_at?: string | null;
-  finished_at?: string | null;
-  error?: string | null;
-  nodes: ActivityImportTraceNode[];
-};
-
-export type ActivityImportReplayPlan = {
-  requested_stage: string;
-  start_stage: string;
-  reused_attempt_id?: number | null;
-  reason?: string | null;
-  attempt_id?: number | null;
-};
-
-export type ActivityImportTraceEvent = {
-  id: number;
-  event_type: string;
-  level: string;
-  message: string;
-  payload?: unknown;
-  created_at: string;
-};
-
-export type ActivityImportTrace = {
-  attempts?: ActivityImportAttempt[];
-  import: ActivityImport;
-  graph: ActivityProcessingGraph;
-  nodes: ActivityImportTraceNode[];
-  events: ActivityImportTraceEvent[];
-};
-
-export type AdminActivityImportTraceResponse = {
-  trace?: ActivityImportTrace | null;
-};
-
 export type UpdateActivityInput = {
   title?: string | null;
   activity_type?: ActivityType | null;
@@ -372,15 +298,6 @@ export type UserPreferences = {
   xc_goal_event_profile?: XcEventProfile | null;
   xc_goal_backfill_status?: string | null;
   xc_goal_backfill_completed_at?: string | null;
-};
-
-export type ActivityProcessingState = {
-  is_active: boolean;
-  source?: string | null;
-  source_label?: string | null;
-  stage?: string | null;
-  stage_label?: string | null;
-  message?: string | null;
 };
 
 export type StravaConnection = {
@@ -1325,129 +1242,6 @@ export function useUpdateFeatureFlag() {
   };
 }
 
-export type AdminTask = {
-  id: number;
-  task_type: string;
-  status: string;
-  attempts: number;
-  max_attempts: number;
-  error?: string | null;
-  scheduled_for?: string | null;
-  started_at?: string | null;
-  completed_at?: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-export function useAdminTasks(opts?: {
-  correlationId?: string;
-  enabled?: boolean;
-  page?: number;
-  perPage?: number;
-  taskType?: string;
-  status?: string;
-  error?: string;
-  fromDate?: string;
-  toDate?: string;
-}) {
-  const page = Math.max(1, opts?.page ?? 1);
-  const perPage = Math.max(1, opts?.perPage ?? 20);
-  const response = $typedApi.useQuery(
-    "get",
-    "/admin/tasks",
-    {
-      params: {
-        query: {
-          correlation_id: opts?.correlationId || undefined,
-          page,
-          per_page: perPage,
-          task_type: opts?.taskType || undefined,
-          status: opts?.status || undefined,
-          error: opts?.error || undefined,
-          from_date: opts?.fromDate || undefined,
-          to_date: opts?.toDate || undefined,
-        },
-      },
-    },
-    { enabled: opts?.enabled ?? true },
-  );
-  const pageData = response.data as PaginatedResponse<AdminTask> | undefined;
-
-  return {
-    ...response,
-    data: pageData?.data,
-    metadata: pageData?.metadata,
-  };
-}
-
-export function useAdminTask(id: number | null) {
-  return $typedApi.useQuery(
-    "get",
-    "/admin/tasks/{id}",
-    {
-      params: { path: { id: id ?? 0 } },
-    },
-    {
-      enabled: id !== null,
-      refetchInterval: (query) =>
-        ["pending", "processing"].includes(query.state.data?.status ?? "")
-          ? 5000
-          : false,
-    },
-  );
-}
-
-export function useAdminTaskCancel() {
-  return $typedApi.useMutation("post", "/admin/tasks/{id}/cancel");
-}
-
-export function useWorkerProcessors(windowHours = 24, outcome = "completed") {
-  return $typedApi.useQuery(
-    "get",
-    "/admin/tasks/processors",
-    {
-      params: { query: { window_hours: windowHours, outcome } },
-    },
-    { refetchInterval: 15000 },
-  );
-}
-
-export function usePipelineGraph(
-  runId: string | null,
-  afterTask = 0,
-  evidence?: {
-    work_task?: number;
-    after_work?: number;
-    output_offset?: number;
-  },
-) {
-  return $typedApi.useQuery(
-    "get",
-    "/admin/tasks/pipelines/{run_id}",
-    {
-      params: {
-        path: { run_id: runId ?? "" },
-        query: { after_task: afterTask, ...evidence },
-      },
-    },
-    {
-      enabled: runId !== null,
-      refetchInterval: (query) =>
-        query.state.data && query.state.data.ended_at == null ? 5000 : false,
-    },
-  );
-}
-
-export function useActivityPipelines(activityId: number, afterRun?: string) {
-  return $typedApi.useQuery("get", "/admin/tasks/activities/{id}/pipelines", {
-    params: { path: { id: activityId }, query: { after_run: afterRun } },
-  });
-}
-
-export function useAdminTaskRerun() {
-  return $typedApi.useMutation("post", "/admin/tasks/{id}/rerun");
-}
-
 export function useAdminBackfillAnalytics() {
   const mutation = $api.useMutation("post", "/admin/analytics/backfill");
 
@@ -1500,8 +1294,14 @@ export function useReprocessUserActivityImports() {
   };
 }
 
+type ReprocessActivityCommand = {
+  activity_id: number;
+  command_id: string;
+};
+
 export function useReprocessActivityImport() {
   const queryClient = useQueryClient();
+  const commands = useRef(new Map<number, ReprocessActivityCommand>());
   const mutation = $api.useMutation(
     "post",
     "/admin/activity-imports/reprocess-activity",
@@ -1511,12 +1311,21 @@ export function useReprocessActivityImport() {
     ...mutation,
     reprocessAsync: async (activityId: number | string) => {
       const numericActivityId = Number(activityId);
-      const result = await mutation.mutateAsync({
-        body: {
+      let command = commands.current.get(numericActivityId);
+      if (!command) {
+        command = {
           activity_id: numericActivityId,
           command_id: crypto.randomUUID(),
-        },
+        };
+        commands.current.set(numericActivityId, command);
+      }
+      const result = await mutation.mutateAsync({
+        body: command,
       });
+      // Only acknowledgement settles this intent. A failed response keeps its key.
+      if (commands.current.get(numericActivityId) === command) {
+        commands.current.delete(numericActivityId);
+      }
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["get", "/activities"] }),
@@ -1720,21 +1529,7 @@ export function useAdminActivities(opts?: {
   };
 }
 
-export function useActivityProcessingGraph(opts?: { enabled?: boolean }) {
-  const response = $api.useQuery(
-    "get",
-    "/activity-imports/processing-graph",
-    {},
-    { enabled: opts?.enabled ?? true },
-  );
-
-  return {
-    ...response,
-    data: (response.data ?? null) as ActivityProcessingGraph | null,
-  };
-}
-
-export function useActivityImportTrace(
+export function useAdminActivityImport(
   importId: number | string | null | undefined,
   opts?: { enabled?: boolean },
 ) {
@@ -1743,45 +1538,12 @@ export function useActivityImportTrace(
     (opts?.enabled ?? true) &&
     Number.isFinite(numericImportId) &&
     numericImportId > 0;
-  const path = "/admin/activity-imports/{id}/trace";
-  const response = $api.useQuery(
+  return $typedApi.useQuery(
     "get",
-    path,
-    {
-      params: { path: { id: enabled ? numericImportId : 0 } },
-    },
+    "/admin/activity-imports/{id}",
+    { params: { path: { id: enabled ? numericImportId : 0 } } },
     { ...ADMIN_IMPORT_QUERY_OPTIONS, enabled },
   );
-
-  return {
-    ...response,
-    data: (response.data ?? null) as ActivityImportTrace | null,
-  };
-}
-
-export function useAdminActivityImportTrace(
-  activityId: number | string | null | undefined,
-  opts?: { enabled?: boolean },
-) {
-  const numericActivityId = Number(activityId);
-  const enabled =
-    (opts?.enabled ?? true) &&
-    Number.isFinite(numericActivityId) &&
-    numericActivityId > 0;
-  const response = $api.useQuery(
-    "get",
-    "/admin/activities/{id}/import-trace",
-    {
-      params: { path: { id: enabled ? numericActivityId : 0 } },
-    },
-    { ...ADMIN_IMPORT_QUERY_OPTIONS, enabled },
-  );
-  const data = response.data as AdminActivityImportTraceResponse | undefined;
-
-  return {
-    ...response,
-    data: data?.trace ?? null,
-  };
 }
 
 export function useActivity(id: number | string | null | undefined) {
@@ -1826,7 +1588,7 @@ export function useRegenerateActivity() {
         }),
       ]);
 
-      return result as Activity;
+      return result;
     },
   };
 }
@@ -2219,60 +1981,6 @@ export function useActivityImportHistory(
   return response;
 }
 
-export function useActivityImportReplayPlan(
-  importId: number,
-  stage: string,
-  enabled: boolean,
-) {
-  return $typedApi.useQuery(
-    "get",
-    "/admin/activity-imports/{id}/replay",
-    {
-      params: { path: { id: importId }, query: { stage } },
-    },
-    { enabled },
-  );
-}
-
-export function useReplayActivityImport() {
-  const queryClient = useQueryClient();
-  const mutation = $typedApi.useMutation(
-    "post",
-    "/admin/activity-imports/{id}/replay",
-  );
-  return {
-    ...mutation,
-    async replay(
-      importId: number,
-      stage: string,
-      plan?: ActivityImportReplayPlan,
-    ) {
-      try {
-        return await mutation.mutateAsync({
-          params: { path: { id: importId } },
-          body: {
-            stage,
-            expected_start_stage: plan?.start_stage,
-            expected_reused_attempt_id: plan?.reused_attempt_id,
-          },
-        });
-      } finally {
-        await Promise.all([
-          queryClient.invalidateQueries({
-            queryKey: ["get", "/admin/activity-imports/{id}/trace"],
-          }),
-          queryClient.invalidateQueries({
-            queryKey: ["get", "/admin/activity-imports/history"],
-          }),
-          queryClient.invalidateQueries({
-            queryKey: ["get", "/admin/activity-imports/{id}/replay"],
-          }),
-        ]);
-      }
-    },
-  };
-}
-
 export function useActivityImports(opts?: {
   enabled?: boolean;
   refetchIntervalMs?: number | false;
@@ -2313,33 +2021,6 @@ export function useActivityArchiveImportJobs(opts?: {
   };
 }
 
-export function useActivityProcessingState(opts?: {
-  enabled?: boolean;
-  refetchIntervalMs?: number | false;
-}) {
-  const response = $api.useQuery(
-    "get",
-    "/activity-imports/processing-state",
-    {},
-    {
-      enabled: opts?.enabled ?? true,
-      refetchInterval: opts?.refetchIntervalMs ?? false,
-    },
-  );
-
-  return {
-    ...response,
-    data: (response.data ?? {
-      is_active: false,
-      source: null,
-      source_label: null,
-      stage: null,
-      stage_label: null,
-      message: null,
-    }) as ActivityProcessingState,
-  };
-}
-
 export function useUploadActivityImport() {
   const queryClient = useQueryClient();
   const mutation = $api.useMutation("post", "/activity-imports");
@@ -2358,9 +2039,6 @@ export function useUploadActivityImport() {
           queryClient.invalidateQueries({
             queryKey: ["get", "/activity-imports"],
           }),
-          queryClient.invalidateQueries({
-            queryKey: ["get", "/activity-imports/processing-state"],
-          }),
         ]);
 
         return result as ActivityImport;
@@ -2368,9 +2046,6 @@ export function useUploadActivityImport() {
         await Promise.all([
           queryClient.invalidateQueries({
             queryKey: ["get", "/activity-imports"],
-          }),
-          queryClient.invalidateQueries({
-            queryKey: ["get", "/activity-imports/processing-state"],
           }),
         ]);
 
@@ -2734,9 +2409,6 @@ export function useUpdateUserPreferences() {
       });
       await queryClient.invalidateQueries({
         queryKey: ["get", "/training/xc-progress"],
-      });
-      await queryClient.invalidateQueries({
-        queryKey: ["get", "/activity-imports/processing-state"],
       });
 
       return result as UserPreferences;

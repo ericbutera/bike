@@ -5,10 +5,6 @@ edition = "2021"
 autobins = false
 
 [[bin]]
-name = "worker"
-path = "src/main.rs"
-
-[[bin]]
 name = "temporal-worker"
 path = "src/temporal_main.rs"
 
@@ -24,17 +20,12 @@ axum = { workspace = true }
 strava-temporal = { path = "../strava-temporal" }
 temporalio-sdk = { workspace = true }
 temporalio-common = { workspace = true }
+temporalio-client = { workspace = true }
 bike-core = { path = "../bike-core" }
 bike-temporal = { path = "../bike-temporal" }
 tokio = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-sea-orm = { workspace = true }
 prometheus = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-async-trait = "0.1"
-chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]
 bike-core = { path = "../bike-core", features = ["test-fixtures"] }

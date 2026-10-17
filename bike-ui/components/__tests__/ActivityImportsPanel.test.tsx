@@ -7,7 +7,6 @@ import RequireAuth from "../RequireAuth";
 const mocks = vi.hoisted(() => ({
   useCurrentUser: vi.fn(),
   useActivityArchiveImportJobs: vi.fn(),
-  useActivityProcessingState: vi.fn(),
   useActivityImports: vi.fn(),
   useImportActivityArchiveUrl: vi.fn(),
   useRetryActivityImport: vi.fn(),
@@ -28,7 +27,6 @@ vi.mock("../../lib/auth", () => ({
 
 vi.mock("../../lib/queries", () => ({
   useActivityArchiveImportJobs: mocks.useActivityArchiveImportJobs,
-  useActivityProcessingState: mocks.useActivityProcessingState,
   useActivityImports: mocks.useActivityImports,
   useImportActivityArchiveUrl: mocks.useImportActivityArchiveUrl,
   useRetryActivityImport: mocks.useRetryActivityImport,
@@ -166,19 +164,6 @@ describe("ActivityImportsPanel", () => {
     });
     mocks.useActivityArchiveImportJobs.mockReturnValue({
       data: [],
-      isError: false,
-      isFetching: false,
-      error: null,
-    });
-    mocks.useActivityProcessingState.mockReturnValue({
-      data: {
-        is_active: false,
-        source: null,
-        source_label: null,
-        stage: null,
-        stage_label: null,
-        message: null,
-      },
       isError: false,
       isFetching: false,
       error: null,
@@ -421,19 +406,6 @@ describe("ActivityImportsPanel", () => {
 
   it("keeps manual uploads available while another activity job is active", async () => {
     const user = userEvent.setup();
-    mocks.useActivityProcessingState.mockReturnValue({
-      data: {
-        is_active: true,
-        source: "activity_reprocessing",
-        source_label: "activity reprocessing",
-        stage: "running",
-        stage_label: "running",
-        message: "activity reprocessing is currently running.",
-      },
-      isError: false,
-      isFetching: false,
-      error: null,
-    });
 
     render(<ActivityImportsPanel />);
 

@@ -1,7 +1,3 @@
-use crate::activity_import_lock::{
-    describe_source, describe_stage, load_user_activity_import_lock, release_user_activity_import_lock,
-    ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD,
-};
 use crate::activity_location::location_from_derived_json;
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::storage::AppStorage;
@@ -9,8 +5,7 @@ use axum::extract::{Multipart, Path, State};
 use axum::http::StatusCode;
 use axum::Json;
 use bike_core::activity_import_pipeline::{
-    activity_processing_graph_mermaid, activity_processing_graph_nodes, find_stored_activity_import,
-    mark_activity_import_failed, store_activity_upload_import, validate_activity_format, ActivityProcessingGraphNode,
+    find_stored_activity_import, mark_activity_import_failed, store_activity_upload_import, validate_activity_format,
     ActivityUploadPayload,
 };
 use bike_core::archive_import::{decode_error_samples, enqueue_activity_archive_import_job, normalize_archive_url};
@@ -103,84 +98,6 @@ pub struct ActivityArchiveImportJobResponse {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
-#[schema(example = json!({"nodes": [{"id": "raw_stored","label": "Raw stored","stage": "raw_stored"},{"id": "activity_parsed","label": "Activity parsed","stage": "activity_parsed"},{"id": "activity_saved","label": "Activity saved","stage": "activity_saved"},{"id": "segments_built","label": "Segments built","stage": "segments_built"},{"id": "segment_analytics_built","label": "Segment analytics built","stage": "segment_analytics_built"},{"id": "activity_analytics_built","label": "Activity analytics built","stage": "activity_analytics_built"},{"id": "training_analysis_built","label": "Training analysis built","stage": "training_analysis_built"}],"edges": [{"from": "raw_stored","to": "activity_parsed"},{"from": "activity_parsed","to": "activity_saved"},{"from": "activity_saved","to": "segments_built"},{"from": "segments_built","to": "segment_analytics_built"},{"from": "segment_analytics_built","to": "activity_analytics_built"},{"from": "activity_analytics_built","to": "training_analysis_built"}],"mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]\n  activity_parsed[\"Activity parsed\"]\n  activity_saved[\"Activity saved\"]\n  segments_built[\"Segments built\"]\n  segment_analytics_built[\"Segment analytics built\"]\n  activity_analytics_built[\"Activity analytics built\"]\n  training_analysis_built[\"Training analysis built\"]\n  raw_stored --> activity_parsed\n  activity_parsed --> activity_saved\n  activity_saved --> segments_built\n  segments_built --> segment_analytics_built\n  segment_analytics_built --> activity_analytics_built\n  activity_analytics_built --> training_analysis_built"}))]
-pub struct ActivityProcessingGraphResponse {
-    #[schema(example = json!([{"id": "raw_stored","label": "Raw stored","stage": "raw_stored"},{"id": "activity_parsed","label": "Activity parsed","stage": "activity_parsed"},{"id": "activity_saved","label": "Activity saved","stage": "activity_saved"},{"id": "segments_built","label": "Segments built","stage": "segments_built"},{"id": "segment_analytics_built","label": "Segment analytics built","stage": "segment_analytics_built"},{"id": "activity_analytics_built","label": "Activity analytics built","stage": "activity_analytics_built"},{"id": "training_analysis_built","label": "Training analysis built","stage": "training_analysis_built"}]))]
-    pub nodes: Vec<ActivityProcessingGraphNodeResponse>,
-    #[schema(example = json!([{"from": "raw_stored","to": "activity_parsed"},{"from": "activity_parsed","to": "activity_saved"},{"from": "activity_saved","to": "segments_built"},{"from": "segments_built","to": "segment_analytics_built"},{"from": "segment_analytics_built","to": "activity_analytics_built"},{"from": "activity_analytics_built","to": "training_analysis_built"}]))]
-    pub edges: Vec<ActivityProcessingGraphEdgeResponse>,
-    #[schema(
-        example = "flowchart LR\n  raw_stored[\"Raw stored\"]\n  activity_parsed[\"Activity parsed\"]\n  activity_saved[\"Activity saved\"]\n  segments_built[\"Segments built\"]\n  segment_analytics_built[\"Segment analytics built\"]\n  activity_analytics_built[\"Activity analytics built\"]\n  training_analysis_built[\"Training analysis built\"]\n  raw_stored --> activity_parsed\n  activity_parsed --> activity_saved\n  activity_saved --> segments_built\n  segments_built --> segment_analytics_built\n  segment_analytics_built --> activity_analytics_built\n  activity_analytics_built --> training_analysis_built"
-    )]
-    pub mermaid: String,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct ActivityProcessingGraphNodeResponse {
-    pub id: String,
-    pub label: String,
-    pub stage: String,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct ActivityProcessingGraphEdgeResponse {
-    pub from: String,
-    pub to: String,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-#[schema(example = json!({"import": {"id": 17,"import_version": 1,"original_filename": "saturday-hills.fit","format": "fit","status": "processed","processing_stage": "complete","size_bytes": 184320,"created_at": "2026-09-26T14:20:00Z"},"graph": {"nodes": [{"id": "raw_stored","label": "Raw stored","stage": "raw_stored"}],"edges": [],"mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]"},"nodes": [{"id": "raw_stored","label": "Raw stored","stage": "raw_stored","status": "completed"}],"events": []}))]
-pub struct ActivityImportTraceResponse {
-    pub attempts: Vec<crate::activity_import_history::ImportAttemptResponse>,
-    pub import: ActivityImportResponse,
-    pub graph: ActivityProcessingGraphResponse,
-    #[schema(example = json!([{"id": "raw_stored","label": "Raw stored","stage": "raw_stored","status": "completed"}]))]
-    pub nodes: Vec<ActivityImportTraceNodeResponse>,
-    #[schema(example = json!([]))]
-    pub events: Vec<ActivityImportTraceEventResponse>,
-}
-
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct ActivityImportTraceNodeResponse {
-    pub id: String,
-    pub label: String,
-    pub stage: String,
-    pub status: String,
-    pub started_at: Option<DateTime<Utc>>,
-    pub completed_at: Option<DateTime<Utc>>,
-    pub summary: Vec<String>,
-    pub error: Option<String>,
-    pub reused_attempt_id: Option<i32>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct ActivityImportTraceEventResponse {
-    pub id: i32,
-    pub event_type: String,
-    pub level: String,
-    pub message: String,
-    pub payload: Option<serde_json::Value>,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-#[schema(example = json!({"is_active": true,"source": "manual_upload","source_label": "Manual upload","stage": "running","stage_label": "running","message": "Manual upload is currently running."}))]
-pub struct ActivityProcessingStateResponse {
-    #[schema(example = true)]
-    pub is_active: bool,
-    #[schema(example = "manual_upload")]
-    pub source: Option<String>,
-    #[schema(example = "Manual upload")]
-    pub source_label: Option<String>,
-    #[schema(example = "running")]
-    pub stage: Option<String>,
-    #[schema(example = "running")]
-    pub stage_label: Option<String>,
-    #[schema(example = "Manual upload is currently running.")]
-    pub message: Option<String>,
-}
-
 impl ActivityImportResponse {
     pub(crate) fn from_model(model: activity_imports::Model, activity: Option<&activities::Model>) -> Self {
         Self {
@@ -205,99 +122,8 @@ impl ActivityImportResponse {
     }
 }
 
-impl ActivityProcessingGraphResponse {
-    pub(crate) fn from_graph() -> Self {
-        let nodes = activity_processing_graph_nodes()
-            .iter()
-            .map(ActivityProcessingGraphNodeResponse::from_graph_node)
-            .collect();
-        let edges = activity_processing_graph_nodes()
-            .iter()
-            .flat_map(|node| {
-                node.depends_on
-                    .iter()
-                    .map(|dependency| ActivityProcessingGraphEdgeResponse {
-                        from: dependency.id().to_string(),
-                        to: node.node.id().to_string(),
-                    })
-            })
-            .collect();
-
-        Self {
-            nodes,
-            edges,
-            mermaid: activity_processing_graph_mermaid(),
-        }
-    }
-}
-
-impl ActivityProcessingGraphNodeResponse {
-    fn from_graph_node(node: &ActivityProcessingGraphNode) -> Self {
-        Self {
-            id: node.node.id().to_string(),
-            label: node.node.label().to_string(),
-            stage: node.stage.to_string(),
-        }
-    }
-}
-
-impl ActivityImportTraceEventResponse {
-    pub(crate) fn from_model(model: bike_core::entities::integration_events::Model) -> Self {
-        Self {
-            id: model.id,
-            event_type: model.event_type,
-            level: model.level,
-            message: model.message,
-            payload: model.payload,
-            created_at: model.created_at,
-        }
-    }
-}
-
-pub(crate) fn build_trace_nodes(
-    import: &activity_imports::Model,
-    events: &[ActivityImportTraceEventResponse],
-) -> Result<Vec<ActivityImportTraceNodeResponse>, AppError> {
-    Ok(activity_processing_graph_nodes()
-        .iter()
-        .map(|node| ActivityImportTraceNodeResponse {
-            id: node.node.id().to_string(),
-            label: node.node.label().to_string(),
-            stage: node.stage.to_string(),
-            status: if import.status == "failed" && import.processing_stage == node.stage {
-                "failed"
-            } else {
-                "unknown"
-            }
-            .into(),
-            started_at: None,
-            completed_at: stage_completed_at(events, node.stage),
-            summary: vec!["Historical import: no durable stage summary was recorded".into()],
-            error: (import.status == "failed" && import.processing_stage == node.stage)
-                .then(|| import.processing_error.clone())
-                .flatten(),
-            reused_attempt_id: None,
-        })
-        .collect())
-}
-
-fn stage_completed_at(events: &[ActivityImportTraceEventResponse], stage: &str) -> Option<DateTime<Utc>> {
-    events
-        .iter()
-        .filter(|event| event.event_type == "stage_completed")
-        .find(|event| {
-            event
-                .payload
-                .as_ref()
-                .and_then(|payload| payload.get("stage"))
-                .and_then(|value| value.as_str())
-                == Some(stage)
-        })
-        .map(|event| event.created_at)
-}
-
 impl ActivityArchiveImportJobResponse {
-    fn from_model(model: activity_archive_import_jobs::Model) -> Self {
+    pub(crate) fn from_model(model: activity_archive_import_jobs::Model) -> Self {
         Self {
             id: model.id,
             archive_url: model.archive_url,
@@ -315,19 +141,6 @@ impl ActivityArchiveImportJobResponse {
             started_at: model.started_at,
             finished_at: model.finished_at,
             updated_at: model.updated_at,
-        }
-    }
-}
-
-impl ActivityProcessingStateResponse {
-    fn inactive() -> Self {
-        Self {
-            is_active: false,
-            source: None,
-            source_label: None,
-            stage: None,
-            stage_label: None,
-            message: None,
         }
     }
 }
@@ -365,25 +178,6 @@ pub async fn list_activity_imports(
 
 #[utoipa::path(
     get,
-    path = "/activity-imports/processing-graph",
-    responses(
-        (status = 200, description = "Activity import processing DAG", body = ActivityProcessingGraphResponse, example = json!({"nodes": [{"id": "raw_stored","label": "Raw stored","stage": "raw_stored"},{"id": "activity_parsed","label": "Activity parsed","stage": "activity_parsed"},{"id": "activity_saved","label": "Activity saved","stage": "activity_saved"},{"id": "segments_built","label": "Segments built","stage": "segments_built"},{"id": "segment_analytics_built","label": "Segment analytics built","stage": "segment_analytics_built"},{"id": "activity_analytics_built","label": "Activity analytics built","stage": "activity_analytics_built"},{"id": "training_analysis_built","label": "Training analysis built","stage": "training_analysis_built"}],"edges": [{"from": "raw_stored","to": "activity_parsed"},{"from": "activity_parsed","to": "activity_saved"},{"from": "activity_saved","to": "segments_built"},{"from": "segments_built","to": "segment_analytics_built"},{"from": "segment_analytics_built","to": "activity_analytics_built"},{"from": "activity_analytics_built","to": "training_analysis_built"}],"mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]\n  activity_parsed[\"Activity parsed\"]\n  activity_saved[\"Activity saved\"]\n  segments_built[\"Segments built\"]\n  segment_analytics_built[\"Segment analytics built\"]\n  activity_analytics_built[\"Activity analytics built\"]\n  training_analysis_built[\"Training analysis built\"]\n  raw_stored --> activity_parsed\n  activity_parsed --> activity_saved\n  activity_saved --> segments_built\n  segments_built --> segment_analytics_built\n  segment_analytics_built --> activity_analytics_built\n  activity_analytics_built --> training_analysis_built"})),
-        (status = 401, description = "Not authenticated"),
-        (status = 500, description = "Internal server error", body = ApiErrorResponse),
-    ),
-    tag = "activity-imports",
-    security(
-        ("bearer_auth" = [])
-    )
-)]
-pub async fn get_activity_processing_graph(
-    UserContext { .. }: UserContext<AppStorage>,
-) -> Result<Json<ActivityProcessingGraphResponse>, AppError> {
-    Ok(Json(ActivityProcessingGraphResponse::from_graph()))
-}
-
-#[utoipa::path(
-    get,
     path = "/activity-imports/archive-jobs",
     responses(
         (status = 200, description = "Recent archive import jobs for the authenticated user", body = [ActivityArchiveImportJobResponse], example = json!([{"id": 18,"archive_url": "https://example.com/exports/activities.zip","status": "queued","total_entries": 0,"supported_entry_count": 0,"imported_count": 0,"duplicate_count": 0,"skipped_unsupported_count": 0,"failed_count": 0,"created_at": "2026-09-27T12:00:00Z","updated_at": "2026-09-27T12:00:00Z","error_samples": []}])),
@@ -406,46 +200,6 @@ pub async fn list_activity_archive_import_jobs(
             .map(ActivityArchiveImportJobResponse::from_model)
             .collect(),
     ))
-}
-
-#[utoipa::path(
-    get,
-    path = "/activity-imports/processing-state",
-    responses(
-        (status = 200, description = "Current activity processing state for the authenticated user", body = ActivityProcessingStateResponse, example = json!({"is_active": true,"source": "manual_upload","source_label": "Manual upload","stage": "running","stage_label": "running","message": "Manual upload is currently running."})),
-        (status = 401, description = "Not authenticated"),
-        (status = 500, description = "Internal server error", body = ApiErrorResponse),
-    ),
-    tag = "activity-imports",
-    security(
-        ("bearer_auth" = [])
-    )
-)]
-pub async fn get_activity_processing_state(
-    UserContext { user, .. }: UserContext<AppStorage>,
-    State(state): State<Arc<AppStorage>>,
-) -> Result<Json<ActivityProcessingStateResponse>, AppError> {
-    let Some(lock) = load_user_activity_import_lock(&state.db, user.id).await? else {
-        return Ok(Json(ActivityProcessingStateResponse::inactive()));
-    };
-
-    if lock.source == ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD {
-        release_user_activity_import_lock(&state.db, user.id, &lock.source).await?;
-        return Ok(Json(ActivityProcessingStateResponse::inactive()));
-    }
-
-    Ok(Json(ActivityProcessingStateResponse {
-        is_active: true,
-        source: Some(lock.source.clone()),
-        source_label: Some(describe_source(&lock.source).to_string()),
-        stage: Some(lock.stage.clone()),
-        stage_label: Some(describe_stage(&lock.stage).to_string()),
-        message: Some(format!(
-            "{} is currently {}.",
-            describe_source(&lock.source),
-            describe_stage(&lock.stage)
-        )),
-    }))
 }
 
 #[utoipa::path(
@@ -498,35 +252,31 @@ pub async fn upload_activity_import(
     multipart: Multipart,
 ) -> Result<(StatusCode, Json<ActivityImportResponse>), AppError> {
     let upload = read_uploaded_activity_file(multipart).await?;
-    if let Some(existing) = find_stored_activity_import(&state.db, user.id, &upload.bytes).await? {
-        return Ok((StatusCode::OK, Json(ActivityImportResponse::from_model(existing, None))));
-    }
-
     let user_storage_key = user.pid.to_string();
-
-    let import = match store_activity_upload_import(
-        &state.db,
-        &state.uploads_dir,
-        &user_storage_key,
-        user.id,
-        upload,
-        ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD,
-    )
-    .await
-    {
-        Ok(import) => import,
-        Err(error) => return Err(error.into()),
+    let import = match find_stored_activity_import(&state.db, user.id, &upload.bytes).await? {
+        Some(existing) if existing.activity_id.is_some() => {
+            return Ok((StatusCode::OK, Json(ActivityImportResponse::from_model(existing, None))));
+        }
+        Some(existing) => {
+            existing
+                .mark_processing(&state.db, "raw_stored", None, Utc::now())
+                .await?
+        }
+        None => {
+            store_activity_upload_import(
+                &state.db,
+                &state.uploads_dir,
+                &user_storage_key,
+                user.id,
+                upload,
+                "manual_upload",
+            )
+            .await?
+        }
     };
 
-    if let Err(failure) = bike_core::activity_import_pipeline::queue_activity_import_replay(
-        &state.db,
-        &state.uploads_dir,
-        &import,
-        "raw_stored",
-    )
-    .await
-    {
-        let error = AppError::internal(format!("Failed to queue activity import: {}", failure.message));
+    if let Err(failure) = state.tasks.process_activity_import(user.id, import.id).await {
+        let error = AppError::internal(format!("Failed to queue activity import: {failure}"));
         let workflow_error = bike_core::workflow_error::WorkflowError::internal(error.message.clone());
         mark_activity_import_failed(&state.db, &import, &import.processing_stage, &workflow_error)
             .await
@@ -652,6 +402,58 @@ mod tests {
     use super::*;
     use bike_core::activity_details::{serialize_derived_activity_data, ActivityDerivedData, ActivityRoutePoint};
     use chrono::Utc;
+
+    #[tokio::test]
+    async fn uploading_a_retained_unprocessed_file_retries_while_completed_imports_stay_duplicates() {
+        use bike_core::test_support as fixtures;
+        use std::sync::{Arc, Mutex};
+        for retry in [false, true] {
+            let import = activity_imports::Model {
+                activity_id: (!retry).then_some(42),
+                status: if retry { "failed" } else { "processed" }.into(),
+                ..fixtures::reprocess_import()
+            };
+            let processing = activity_imports::Model {
+                status: "processing".into(),
+                ..import.clone()
+            };
+            let mut mock = fixtures::postgres_mock()
+                .append_query_results([vec![fixtures::customer()]])
+                .append_query_results([vec![fixtures::reprocess_artifact()]])
+                .append_query_results([vec![import]]);
+            if retry {
+                mock = mock
+                    .append_query_results([vec![processing.clone()], vec![processing]])
+                    .append_query_results([vec![fixtures::reprocess_artifact()]]);
+            }
+            let requests = Arc::new(Mutex::new(fixtures::temporal_client::Requests::default()));
+            let db = mock.into_connection();
+            let mut state = AppStorage::for_test(db.clone());
+            state.tasks = bike_core::jobs::JobQueue::with_client(
+                db.clone(),
+                fixtures::temporal_client::client(requests.clone()).await,
+            );
+            let result = crate::controllers::test_support::local_user_request(
+                state,
+                crate::controllers::test_support::activity_upload_request(),
+                if retry { 202 } else { 200 },
+            )
+            .await;
+            assert_eq!(result["id"], 18);
+            assert_eq!(result["status"], if retry { "processing" } else { "processed" });
+            let requests = requests.lock().unwrap();
+            assert_eq!(requests.starts.len(), usize::from(retry));
+            if retry {
+                assert_eq!(
+                    requests.starts[0].workflow_type.as_ref().unwrap().name,
+                    "process_activity_import"
+                );
+            }
+            let log = format!("{:?}", db.into_transaction_log());
+            assert!(!log.contains("INSERT INTO"));
+            assert!(!log.contains("background_tasks"));
+        }
+    }
 
     #[test]
     fn validate_activity_format_accepts_supported_extensions() {

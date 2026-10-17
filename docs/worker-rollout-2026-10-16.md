@@ -1,5 +1,131 @@
 # Bike worker fail-forward rollout, 2026-10-16
 
+## Native workflow simplification under review, 2026-10-17
+
+- Import/reprocess now saves the retained source, then explicitly calls segment
+  matching/results, achievements, heatmap, training, and fitness work. Output
+  workflows execute a named Activity and finish; parents await their children.
+- Removed the signal accumulator, scheduling RPC Activities, custom commit/
+  cancellation boundary, audit refresh receipts, command-history acceptance
+  reads, and unregistered native manifest/batch prototypes. Legacy SQL processors
+  remain for tasks whose producers have not been converted.
+- Repeated source processing reads the file again and preserves import/activity
+  identity. Existing owned writes, transactions, projection guards, and useful
+  domain history remain. Native calls skip legacy SQL pipeline-output recording.
+- The owning Docker/mise reprocess suite passes 67 focused tests: 30 native
+  workflow/handler/domain-adapter checks, 13 source checks, two segment retry/
+  deletion checks, two SQL-context checks, six activity-history checks, one import
+  completion check, six API checks, and seven worker lifecycle/metrics checks.
+  Inputs/providers are fixtures and PostgreSQL mocks; no live database, provider,
+  browser, deployment, or old-history replay is established by this result.
+- Deployment remains pending. Stop new Bike submissions and drain old Bike
+  executions under the old worker before installing the new sequence. Retired
+  coordinator histories cannot be reset with the new worker. Verify actual admin
+  reprocessing and rider-visible outputs after an authorized rollout.
+
+## Output lifecycle deployed and verified, 2026-10-17 02:57 UTC
+
+- PR #75 merged as `8fb5d9ff9a4254804fd73f31acf53ac40f6f6e6e`.
+  Main CI 505 passed tests, lint, PostgreSQL checks, the normal 80% coverage gate,
+  image builds, and all **83 browser cases**, then deployed. Deployment diagnostics
+  contained no warnings/notices. The matching migration Job was `Complete`.
+- Verified all five deployment rollouts and healthy public `/api/health` using
+  the new owning release check. Both worker templates report revision `8fb5d9ff`.
+  Immutable image hashes are API `8e2e2c240b230451cab86bbca152917a332114ee21cd4689360a0f3c9370fa5c`,
+  both workers `3d148919c289226883691304c7e7a1c3db4765b994556a3f9dc6d0fe25e03ecb`,
+  UI `a090c2e5f16fdc3c5bbd3b32b7cb6283b28c64d44f38718676358ed925098714`,
+  and maps `2fc551cc71370c4d7bb7d845f17cc99a24a03e108d3abcebb16af14773d562ef`.
+- After checking the live worker revision/readiness, sent native `drain` to the
+  ten original runs from **17:58 EDT**: fitness user 1, heatmap activity 1588, and
+  segments 8/9/13/17/21/22/26/28. Queried each original Run ID independently;
+  all ten are **Completed**. No cancellation, termination, or reset was used.
+- Started a new native reprocess through the Temporal CLI using the real retained
+  FIT for activity/import 1588: artifact 1190, 352,993 bytes. This checks worker
+  execution; it is not a fresh HTTP/admin UI acceptance test. Command
+  `6f7fd399-1252-4149-81af-0f15674a2f49` carries system actor
+  `worker-rollout-verification` and has exactly one domain audit.
+  [Native job](https://temporal.nibelheim.dev/namespaces/bike/workflows/bike-task-reprocess_activity_import-user-1-6f7fd399-1252-4149-81af-0f15674a2f49)
+  run `01a147cb-4fd5-7c71-9376-c07e9ac61b43` completed in **1.85 seconds**.
+- All ten stable output Workflow IDs started new Run IDs and **Completed** in
+  approximately **2–3 seconds**. Each performed one Activity, returned `Published`,
+  and completed on attempt 1. All eleven histories have no failed/timed-out events.
+  A subsequent visibility query found **zero Running Bike task workflows**.
+- Verified stored outputs: one activity linked to the same import, unchanged
+  title/sport/derived-data hash and **47 efforts**, unchanged fitness-day values,
+  cleared fitness dirty day, and a new rebuild timestamp. All eight segment
+  summaries have newer publication timestamps and effort counts equal their
+  stored efforts. The unchanged heatmap correctly reuses ready generation **7**.
+  SQL task count remains **1,996**. Full producer cutover and the rest of R08 remain.
+- The UI Deployment now receives the public Temporal UI origin. The owning CI
+  and manual deployment tasks have a native five-rollout/public-health gate;
+  focused shell mocks cover unready, HTTP 503, unhealthy-body, and healthy cases.
+  The check also passed read-only against this live release. Custom DAG retirement
+  remains PR #69; these configuration/readiness changes do not establish its rollout.
+- Runtime qualification remains open: subsequent SQLx warnings came from metrics
+  COUNT queries, a feature-flag lookup, and a handoff poll (about 0.27–1.2 seconds,
+  unchanged 250 ms threshold). The eight-core node's load was **35.06** with no
+  memory/disk/PID pressure. This is a contention observation, not a proven root
+  cause. The domain results above passed; do not describe the runtime as warning-free
+  or change the operator's CI limits to hide the issue.
+
+## Output lifecycle verification before deployment, 2026-10-17 02:04 UTC
+
+- The lifecycle correction passes **78 native workflow/client/Activity units**.
+  Six new regressions failed against the old implementation before the fix.
+  Coverage includes all three output types completing, a later lower revision in
+  a new run, same-activation completion/signal orderings, pending/active graceful
+  drain, continuation, and replay of old multi-publication histories.
+- Read and replayed all ten real running coordinator histories with the pinned
+  SDK's native `WorkflowReplayer`: heatmap activity 1588, fitness user 1, and
+  segments 8/9/13/17/21/22/26/28. All replayed successfully with the new code.
+  The replayer fetches history directly through the SDK; it executes no domain
+  Activities and makes no application writes.
+- This is local and retained-history evidence. Deployment, graceful drain of
+  those ten runs, and new-run publication/reuse are still pending.
+
+## Live rename and running-workflow inspection, 2026-10-17 01:17 UTC
+
+- A user-initiated title change for real Strava activity `20608722796` reached
+  Bike at 01:17:05.599 UTC and was submitted to Temporal at 01:17:06.159 UTC.
+  [UpdateActivity](https://temporal.nibelheim.dev/namespaces/bike/workflows/strava-52e5b689-1d46-479f-aff5-7d085ef8219c)
+  completed in **1.560244050 seconds**; Bike activity `1683` stored the new title.
+- Its Upsert child completed all nine Activities with zero failed/timed-out
+  events. Fitness rebuilt at 01:17:07.505 UTC and cleared its dirty day. All five
+  application deployments were ready; the worker's inspected 20-minute log window
+  contained 33 JSON records and zero warnings/errors.
+- Inspected all ten running `bike-task-*` executions: one fitness, one heatmap,
+  and eight segment coordinators from the retained-input canaries. Each had three
+  completed Activities, latest result `Published`, zero failures/timeouts, zero
+  pending Activities/Workflow Tasks, and zero open timers. Their last publications
+  were at 00:50:23–24 UTC. They wait indefinitely for another signal, so `Running`
+  does not mean work is outstanding. R08 now explicitly tracks drained completion
+  and safe native reuse of the stable resource Workflow ID.
+- The UI's five failed executions are retained October 14 runs: one scheduled
+  scan, its customer sync and Upsert child, plus an earlier Create/Upsert pair.
+  Their failure histories report `Resource Not Found` or the enclosing child
+  failure. None belongs to the October 16 rename. This was a read-only history
+  check; do not replay historical creation work over a newer deletion.
+- Strava still publishes derived outputs through its provider path. R07 owns
+  moving those producers to neutral shared handoffs; these ten coordinators were
+  not awaiting the renamed activity. This inspection changed no application data
+  and canceled no executions.
+
+## Read-only Strava confirmation, 2026-10-17 01:15 UTC
+
+- Inspected production SQL identity records and native Temporal descriptions;
+  submitted no new work and changed no application data.
+- The scheduled 00:00 UTC sync (October 16, 8:00 PM EDT),
+  `strava-d62bec3f-6e51-5997-a3ea-be225558c974`, completed in **3.270873047 seconds**
+  with zero imports and one unchanged activity. Its native status was `Completed`.
+- Child `strava-24124b0d-6276-50af-98bf-f2158014c975` completed in
+  **1.679757269 seconds**. Real Strava activity `20608722796` retained Bike activity
+  `1683` / import `1682`, sport `indoor_trainer_ride`. The provider create/update
+  records from October 16 were `Applied`; the scheduled repeat was `Unchanged`.
+- The SQL collection row still said `pending` although the native sync completed.
+  Temporal is authoritative for execution status; R09/R10 track retiring or
+  separating ambiguous legacy execution bookkeeping. This inspection confirms
+  recent base sync behavior, not R03's new race/retry fixes or another crash drill.
+
 ## Verified batching release and worker restart, 2026-10-17 00:50 UTC
 
 - PR #70 merged as `16ed60188310c69b3d90f72f30b66fa39f03c2fa` after
@@ -211,7 +337,7 @@
 
 ## Review follow-up R01: atomic fitness invalidation
 
-- The consolidated [TODO](TODO.md#prioritized-review-follow-ups) preserves all
+- The consolidated [archived checklist](#superseded-worker-conversion-checklist) preserves all
   eleven review items in execution order. R01 is ready for review; rollout and
   PostgreSQL isolation proof remain open.
 - `analytics_user_states::Model::mark_dirty` now merges the earliest dirty day
@@ -527,3 +653,491 @@ coverage, and gaps describe those inspection dates, not a fresh production check
   Temporal 96.58%, core 100%. All 72 focused isolated units, formatting, and Clippy
   passed. This does not establish whole-integration coverage or bootstrap/OS
   signal/runtime behavior. Remaining coverage and deployment work stays in TODO.
+
+## Superseded worker conversion checklist
+
+- Archived on 2026-10-17 after the user rejected the migration's accounting and
+  coordination complexity. This section preserves prior findings and reported
+  evidence; unchecked items, acceptance IDs, and rollout instructions below are
+  historical, not current requirements or authorization.
+- The [current TODO](TODO.md#worker-conversion) and
+  [background-work specification](specs/background-work.md) own the replacement
+  file → processing → child-task design.
+
+<details>
+<summary>Previous checklist and implementation evidence</summary>
+
+## Worker conversion
+
+- [Background work and Strava integration](specs/background-work.md) owns behavior,
+  identities, storage, cancellation, priority, and U01–U27 / P01–P04 acceptance.
+  This backlog is the single owner of task status, findings, and open work.
+  Keep dated evidence in [the rollout record](worker-rollout-2026-10-16.md).
+- PR #61 supplied groundwork. PR #66 merged the reviewed reprocess baseline;
+  focused review follow-ups remain below. #64 and #65 are superseded.
+  Strava is already native. Single-endpoint
+  wiring is not production cutover of all producers or shared outputs.
+- Convert one bounded task at a time. The user authorized merging and deploying
+  completed PRs continuously until this backlog is complete, with each task and
+  its downstream outputs verified. Keep PRs and checks as the review record;
+  do not pause after each delivery. Status advances
+  `Pending` → `In progress` → `Ready to verify` → `Verified`; email becomes `Retired`.
+  A failed gate keeps the task open. Do not rename registered tasks without user
+  approval/explanation. Email retirement is independent of reprocessing.
+
+### Execution UI simplification
+
+- [x] Retire custom activity/import/task/integration DAG screens, graph APIs,
+      reconstruction models, and stage replay controls; use Temporal UI instead.
+- [x] Preserve simple source metadata, domain audit/event history, and the legacy
+      task list until its producers are converted. Replace the fixed import DAG
+      runner with an ordered stage list without changing its SQL retry behavior.
+- [x] Share Temporal links using the recorded namespace/workflow ID and runtime
+      `TEMPORAL_UI_URL`. Do not invent workflow identity from activity IDs.
+- [ ] Configure the public Temporal origin in deployment before enabling the links.
+- [ ] Verify retained metadata/errors/downloads and access controls with existing
+      mocks/fixtures and CI. Remove tests exclusive to the retired DAG controls.
+
+### First deliverable: complete reprocessing
+
+- [x] Record the user's 2026-10-16 coverage exception for the initial production
+      worker rollout. The exception covered the first production slice; reports,
+      tests, lint, images, and release checks remained required. Restore the normal
+      percentage gate after real-data vetting below.
+- [x] Replace removed database-backed unit setup with 39 focused PostgreSQL mock
+      regressions and shared fixtures: import reads/state/artifacts, archive
+      progress, preference decisions, task claim/retry/cancellation/recovery,
+      integration history, metrics, and SQL processor adapters. Existing native
+      reprocess/workflow/storage and timestamp units remain active. Retired DAG
+      controls do not need replacement tests. No SQLite schema or compatibility code.
+- [x] After the corrected real-data canary, restore the CI 80% gate. Keep ordinary
+      coverage reports and existing PostgreSQL/CI persistence checks required;
+      mock contracts do not prove isolation, database defaults, or crash recovery.
+- [x] Finish the production follow-up from the 22:58 UTC canary. PR #70 merged as
+      `16ed6018` with model-owned 500-row bulk writes. The 00:50 UTC production
+      stop/start canary accepted work in 0.30 seconds while the worker was down;
+      all ten output Activities published on attempt one, with six segment
+      Activities overlapping at peak. API and both worker logs had no warnings
+      or errors. Thresholds and the operator's CI limits remained unchanged.
+- [x] Verify real retained-input reprocessing and eventual outputs in production:
+      stable job/run on retry, one audit, preserved activity/import identity and
+      business data, no SQL enqueue, fresh fitness, ready heatmap, and all eight
+      segment publications. This does not replace the admin UI vetting below.
+- [x] Implement the concrete retained-source adapter with model-owned conditional
+      writes, preserved activity/import IDs, minimal committed refresh scope,
+      removed-segment handoff, audit rollback, and lost-completion retry handling.
+- [x] Wire direct single-activity admin submission with stable command identity,
+      HTTP-to-domain input mappings, native job references, and lazy Temporal
+      connection. Run Bike/Strava queue pollers in one existing `temporal-worker`.
+- [x] Supply concrete fitness/segment/heatmap adapters and durable handoffs for
+      this review slice; remove native attempt stages; use shared object storage
+      and in-memory/SeaORM fixtures for primary and supplemental source reads.
+- [ ] Vet the actual admin reprocess flow and eventual rider-visible outputs in
+      the existing Docker stack and production. Continue the authorized rollout;
+      extend the existing CI E2E suite after the working flow is verified.
+- [ ] Repair checksumless legacy source metadata before accepting those imports;
+      preserve retained keys/bytes and keep native Strava on sync/backfill.
+- [ ] Route every legacy single/bulk producer and batch completion contract at
+      the chosen boundary. Drain or fence competing SQL writers and retire its
+      user-wide lock dependency; never enable two execution owners for one effect.
+- [ ] Move all shared-output producers onto neutral keyed handoffs, including
+      Strava, uploads, edits/deletes, training, reads, and archive entries. Remove
+      eager per-child/full-user rebuilds, inline fitness-read bypasses, collection
+      publication waits, and per-request readiness requirements. Preserve background
+      priority for archives/backfills/deletes and prompt new-ride refresh.
+- [ ] Close applicable F1–F6 findings below. Keep provider code/queue ownership,
+      deletion/reconnection fences, shared activity history, and old-history replay.
+- [ ] Complete applicable U01–U17/U23/U26/U27 and affected provider U18–U22/U25 cases;
+      record each test/command/commit/result and unimplemented variants. Pass the
+      simplicity gate without SQL orchestration, redundant bookkeeping, or a new
+      generic recovery service.
+- [ ] Prove P01/P02/P04 in the existing stack/CI suite and P03
+      where provider routing/history changes. Include acceptance while the worker
+      is stopped, commit-before-lost-reply, partial handoff, cancellation races,
+      and real eventual outputs. Keep mock, DB, runtime, and deployed evidence distinct.
+- [ ] Finish shared command/actor/owner/request/correlation/trace propagation
+      through all producers, Activities, children, fan-in, retries, replay, and
+      continuation. Verify native visibility and live API-to-workflow traces;
+      shared output logs must not attribute merged work solely to the last caller.
+
+### Prioritized review follow-ups
+
+- **Resolved live finding, P0:** the first native reprocess on 2026-10-16 exposed overlapping
+  segment refreshes replacing the same activity achievement rows. Five of eight
+  Activities retried after PostgreSQL duplicate-key errors; all eventually
+  published. PR #67 includes transactional projection replacement and consistent
+  activity-first locking alongside R01. Seven PostgreSQL mock cases in
+  `bike-core/src/analytics_projection_tests.rs` cover U27's transaction contract;
+  mocks do not establish concurrent database execution. After #67, all eight
+  overlapping segment Activities completed on attempt one; three slow lock waits
+  motivated #70's bulk writes. The final deployed canary published all eight on
+  attempt one, with six overlapping at peak and no application warnings/errors.
+- **Live finding, P1:** error spans can include bound recording JSON in SQL
+  statement diagnostics. Remove recording/provider bodies from application error
+  logs while retaining operation, parameterized SQL, and causal IDs. Keep
+  diagnostic inspection bounded; no source bytes belong in workflow payloads.
+- **Operational follow-up, P1:** investigate the transient root-filesystem growth
+  that caused node DiskPressure during CI 481. Application, PostgreSQL, Temporal,
+  and CI recovered with retained volumes intact. Reclaiming old Rust executables
+  on the separate CI-cache disk does not establish the root-disk cause. Preserve
+  the operator's reduced CI resource limits during further validation.
+- **CI reliability:** formatting CI 487 failed because the ORM tracing test
+  expected one sample but recorded two. The sampler intentionally retains extra
+  slow queries at 100 ms; that wiring test uses wall-clock durations under CPU
+  limits. [PR #74](https://github.com/ericbutera/bike/pull/74) uses deterministic
+  span fixtures for exact fast/slow counts and the inclusive threshold, and keeps
+  ORM wiring assertions valid under scheduling delays. All eight focused tracing
+  tests and required Rust hooks pass locally. PR #74 merged as `1eef1aa9` after
+  CI 503 passed checks and all 83 browser cases. Production sampling caps and
+  CI resource limits are unchanged.
+- **Formatting integration:** PR #68 merged as `e401699a` with the user's
+  explicit one-time coverage exception. CI 489 passed tests/lint/PostgreSQL
+  checks, but counted rewrapped existing code below 80%: API 54.3%, worker 25%,
+  core 55.54%. Images/E2E were skipped; this is not a new deployment verification.
+  The normal threshold remains unchanged. PR #74 owns the tracing test correction.
+- **Release readiness, P1:** CI 486 reported deployment success before the API
+  rollout finished; an initial public health request returned 503 before recovery.
+  Review API rollout availability, and make the owning release gate wait for all
+  five deployments and healthy public HTTP before declaring success. Use shell
+  mocks/fixtures to prove that an unready workload or HTTP 503 blocks success,
+  and that ready workloads plus healthy HTTP pass. Keep this separate from
+  Temporal's durable job acceptance and eventual output completion.
+  The owning CI/manual deployment tasks now run this native rollout/public-health
+  gate; all four shell fixture cases pass. It passed against live revision
+  `8fb5d9ff`, with the matching migration complete and all tested images ready.
+- **Runtime qualification, P1:** the 02:57 UTC lifecycle canary published all
+  outputs on attempt one, but later logs contain 250 ms slow-statement warnings
+  from metrics COUNTs, feature flags, and the handoff poll (0.27–1.2 seconds).
+  The eight-core node's load was 35.06 without memory/disk/PID pressure. Diagnose
+  the queries and contention before marking the runtime clean; preserve warning
+  thresholds and the operator's CI settings. Domain completion is already verified.
+  Deployment also lacked the shared Go cache setting: Pulumi dependencies were
+  repeatedly downloaded/compiled in the temporary checkout. Wire the deploy
+  workflow to the existing Go cache, verify native configuration checks and a
+  later warm deployment, and retain the broader contention/disk investigation.
+- PR #66 merged as `7fa4f451`; main CI 471 deployed it after 83 browser checks.
+  The real FIT canary returned 202 in 0.30 seconds and preserved activity/import
+  IDs. The dated rollout record owns the observed outputs and retry limitation.
+  Formatting is isolated in #68, and custom DAG retirement is isolated in #69.
+
+- Review baseline: PR #66 at `c00ad6f9`, 2026-10-16. R01–R11 preserve the
+  numbering of the eleven review recommendations. Execute in the order below;
+  the existing task inventory and rollout gates remain in force.
+- P1 protects accepted work, source correctness, or the cutover boundary. P2
+  simplifies implementation or completes diagnosis before broader rollout.
+  Implement one bounded item per review. No new execution/admission ledgers,
+  SQL orchestration, SQLite-specific tests, or E2E framework.
+- Historical baseline check: 97 focused Docker units passed. CI 464/465 exposed
+  SQLite fixture failures. Remove those suites, their schema/timestamp helpers,
+  and SQLite dev-dependency features; retain pure tests and Postgres mocks.
+  The retained activity-update/audit mock and five core model cases pass locally;
+  all required hooks pass. CI 466 at `7a920cbb` passes tests/lint but fails the
+  80% changed-line coverage gate: API 58.41%, worker 53.04%, core 62.29%.
+  Images and E2E did not run after that gate. The user subsequently authorized
+  the initial-production exception above; defer new mock coverage until real-data
+  vetting, then restore the CI 80% gate. Do not restore SQLite tests or compatibility
+  logic. R01 is implemented in PR #67 and remains separate from the first release.
+
+| Order | Review | Priority | Work                                                    | Status          |
+| ----- | ------ | -------- | ------------------------------------------------------- | --------------- |
+| 1     | R01    | P1       | Atomic fitness invalidation                             | Ready to verify |
+| 2     | R05    | P1       | Stable command identity through UI/API retries          | Ready to verify |
+| 3     | R03    | P1       | Strava duplicate outcomes and removed segment scope     | Ready to verify |
+| 4     | R02    | P1       | Source ordering and reconciliation                      | Pending         |
+| 5     | R04    | P1       | Cancellation boundary across provider parents/children  | Pending         |
+| 6     | R06    | P1       | Bounded webhook acceptance                              | In progress     |
+| 7     | R09    | P2       | Separate legacy SQL bookkeeping from domain effects     | Pending         |
+| 8     | R08    | P2       | Simplify debounce state and return domain outcomes      | In progress     |
+| 9     | R11    | P2       | Permanent retained-input failures                       | In progress     |
+| 10    | R10    | P2       | Native job diagnosis and causal context                 | Pending         |
+| 11    | R07    | P1       | One owner for shared outputs and all selected producers | Pending         |
+
+- **R01 — atomic fitness invalidation** (U10/U15/P02).
+  Replace read/modify/write with one model-owned upsert that preserves the
+  earliest dirty day and a monotonic source timestamp. Touch the existing
+  publication fence on every invalidation, including an old timestamp arriving
+  during a rebuild. Use current stored dirty state for incremental rebuilding.
+  Mock cases: first invalidation, earlier/later dates, out-of-order source time,
+  duplicate requests, stale rebuild rejection, and database failure. Preserve
+  last rebuild/creation metadata. Implementation and four Postgres SeaORM mock
+  contract tests are complete; database isolation proof remains P02. Three new
+  tests failed against the original read/modify/write path, then all four passed.
+- **R05 — stable command identity** (U02–U04/U25).
+  Retain one typed UI command across uncertain retries; allocate a new UUID only
+  for intentional new work. A duplicate start returns its canonical target or
+  rejects changed work; never attach another activity's metadata to the old job.
+  Mock a lost response, retry, closed job, and same-key/different-target request.
+  Reuse Temporal's retained command information without an admission table.
+  Implementation retains per-activity typed UI commands until acknowledgement
+  and verifies immutable work against the exact native job/run's first history
+  event. Changed work returns HTTP 409; revision/context changes on retry retain
+  the original execution. No new persistence or orchestration layer. Focused
+  Docker checks cover 76 native workflow/client tests, six API reprocessing tests,
+  and seven UI hook/component tests. Two UI regressions, the changed-target
+  native regression, and API conflict mapping failed against the old behavior.
+  Review before rollout: exercise the actual admin flow and lost-response retry.
+  UI state survives rerenders/target switches, not page reload; broader producer
+  cutover and live retention/crash behavior remain separate work.
+- **R03 — Strava retry outcomes and removed scope** (F1/F2; U07–U09/P01/P02).
+  Recheck the original outcome immediately after acquiring the existing lock,
+  before unchanged/superseded classification. Preserve minimal old/new refresh
+  dependencies with the domain mutation, or use a justified broader rebuild.
+  Mock a first lookup miss followed by another commit, and `{A,B}` → `{B,C}`
+  followed by lost completion: retain the original outcome and refresh A/B/C.
+  Implemented the locked outcome recheck before classification. Existing Strava
+  mutation results now capture old memberships under the activity lock, including
+  unchanged sources; rematching unions them with current dependencies. No new
+  table, stage marker, or execution version. All 56 Strava domain tests pass in
+  Docker, including source-scope persistence and lost-rematch-completion scope.
+  The query-order contract and two source-update scope cases failed against the
+  original implementation. PostgreSQL isolation and live lost-reply drills remain
+  P01/P02; other legacy producer conversions remain R07.
+- **R02 — source ordering** (F3; U18–U21/P03).
+  Separate provider event time from Bike sync/backfill/receive time. Route
+  owned source reconciliation, including fetching/applying, through per-source
+  Temporal serialization/coalescing with existing tombstone/generation fences.
+  Mock clock skew, distinct equal-second changes, delayed fetched content,
+  delete/upsert overlap, and reconnect; preserve canonical webhook deduplication.
+- **R04 — cancellation boundary** (F4; U12–U14/P04).
+  Keep provider preparation cancellable and close cancellation before mutation
+  and small durable handoffs, consistently through request-owned parents and
+  children. Accepted cancellation stops new work; a late request settles the
+  current item and reports the actual outcome. Shared outputs remain independent.
+  Mock before-apply, commit-before-handoff, partial handoff, and batch boundaries.
+- **R06 — bounded webhook acceptance** (U25/P03).
+  Bound the complete durable acceptance operation below Strava's two-second
+  callback budget. The existing inbox is acceptable; no additional inbox is
+  required. Return failure promptly on timeout/uncertain acceptance and preserve
+  deduplication after a lost reply. Use delayed/success/failure store mocks.
+  The existing intake store seam now has one 1.5-second deadline around the
+  complete acceptance operation. Controlled Tokio clock/store fixtures cover
+  per-stage delays, the cumulative budget, prompt success/failure, and commit
+  before a timed-out reply followed by canonical retry. All 15 intake units pass;
+  the cumulative-budget regression fails without the deadline. Required hooks,
+  CI, and deployed callback verification remain open.
+- **R09 — legacy bookkeeping** (U05/U17; simplicity gate).
+  Move SQL pipeline compatibility recording into legacy callers so native domain
+  operations need no SQL execution/readiness records. Preserve old consumers
+  until their cutover and retire unused attempt-correlation fields only through
+  new migrations. Mock native effects without pipeline writes and legacy adapters
+  with their required recording; preserve historical migrations.
+- **R08 — debounce and domain outcomes** (U10/U15/U16).
+  Live inspection found ten idle output coordinators remaining `Running` after
+  successful publication, with no pending Activities, Workflow Tasks, timers, or
+  failures. Finish a drained coordinator and let native Signal-With-Start create
+  the next run for its stable resource key. Keep completion/reuse atomic across
+  a racing notification; mock drain, completion/signal race, and a later new run.
+  The user prioritizes this correction before resuming source ordering. Lifecycle
+  implementation passes 78 native units and SDK replay of all ten real histories;
+  PR #75 deployed as `8fb5d9ff`. All ten original runs gracefully completed, then
+  a real retained-source reprocess started fresh runs on the same resource IDs.
+  All ten published once and completed on attempt one; no Bike tasks remain
+  Running. Stored fitness, eight segment summaries, activity identity/efforts,
+  and the ready heatmap were verified. The remaining simplification below stays open.
+  Return actual publication outcomes from domain operations instead of inferring
+  them with surrounding reads. Remove unused `published` state and unsupported
+  blocked/superseded behavior; retain resource, merged pending work, priority,
+  timers, and compatible continuation input. Mock concrete domain adapters,
+  late lower revisions, active work plus one follow-up, and retained history.
+- **R11 — permanent retained-input failure** (U06).
+  Distinguish immutable checksum/size/parse failures from transient backend
+  failures with typed errors. Mock corrupt primary/supplemental bytes as terminal
+  and temporary storage faults as retryable; do not repeatedly parse corrupt input.
+  Implementation uses the existing typed domain status and native error adapter:
+  integrity/retained JSON errors are terminal 422s, parser/missing-input client
+  errors remain terminal, and temporary backend failures remain retryable.
+  All 35 focused mock/fixture checks pass, including malformed primary/supplemental
+  sources with valid integrity, corrupt bytes/size, malformed retained JSON, and
+  native terminal/retry adaptation. The checksum regression fails with the old
+  server-error classification. Required hooks, CI, and live rollout remain open.
+- **R10 — native job diagnosis** (U14/U23/P04).
+  Link returned native jobs to authenticated history or a thin authorized status
+  endpoint. Display acceptance separately from completion/failure; preserve root
+  actor/owner/correlation/trace context through Activities, children and handoffs.
+  Mock failure before a domain audit exists, ownership, retry, and merged causes.
+  Reuse Temporal history and existing activity audit rather than a new job table.
+- **R07 — shared-output ownership and producer cutover** (F5/F6; U15–U17/U22/U26/P03/P04).
+  After the preceding corrections and verification, route Strava, legacy single/
+  bulk imports, edits/deletes, training, reads, and archive producers through
+  neutral keyed refresh handoffs. Drain/fence legacy writers at the selected
+  boundary; source completion waits only for handoff acceptance. Preserve deployed
+  Strava history compatibility. Mock mixed producer bursts, prompt/new versus
+  background/archive priority, pending projections, and replay before activation.
+
+### Task inventory and conversion order
+
+Sources: [registered processors](../bike-rs/worker/src/tasks/mod.rs),
+[task names and payloads](../bike-rs/bike-core/src/jobs/adapter.rs), and
+[processor implementations](../bike-rs/worker/src/tasks/processors/).
+Dependencies below describe the intended conversion order.
+
+| #   | Task                                     | Work / dependencies                                                                    | Task-specific verification                                                                                                                  | Status      |
+| --- | ---------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| 0   | `email_notification`                     | Retire the unused legacy-auth task; do not convert it.                                 | SSO works without Bike SMTP; no pending legacy mail remains.                                                                                | Pending     |
+| 1   | `reprocess_activity_import`              | Establish native resource/output coordination and replay one retained source.          | Activity identity survives replay; duplicates, competing writes, and late attempts cannot publish stale results.                            | In progress |
+| 2   | `rebuild_fitness_freshness`              | Move every fitness producer onto its independently keyed workflow established with #1. | A mixed sync/upload burst triggers one rebuild per window, with correct data, priority promotion, and bounded waits.                        | Pending     |
+| 3   | `rebuild_segment_analytics`              | Rebuild affected segments through independently keyed analytics workflows.             | Results match fixture efforts; an older rebuild cannot overwrite newer data.                                                                | Pending     |
+| 4   | `prepare_heatmap`                        | Prepare activity generations; move the reconciliation loop with this task.             | Only the current generation publishes; privacy changes and deletion reject stale output.                                                    | Pending     |
+| 5   | `regenerate_activity_segments`           | Rematch one activity; refresh affected segment/activity analytics. Reuse #3.           | Repeated matching creates no duplicate efforts; affected caches are current.                                                                | Pending     |
+| 6   | `regenerate_segment_efforts`             | Rematch one segment across activities; refresh affected caches. Reuse #3.              | One current effort set remains after overlap with #5 or a segment edit.                                                                     | Pending     |
+| 7   | `backfill_user_xc_training`              | Rebuild a user's activity training analysis and goal-backfill status.                  | A competing import does not strand the backfill; retry/cancel leaves accurate status and releases coordination.                             | Pending     |
+| 8   | `process_activity_import`                | Parse a retained file, persist an activity, and publish derived results. Reuse #2–4.   | FIT/TCX/GPX imports finish; duplicate submission/restart leaves one activity and current derived outputs.                                   | Pending     |
+| 9   | `reprocess_user_activity_imports`        | Page through one user's eligible imports; run #1 children.                             | More than 16 activities resume without skips; child failures prevent a successful parent result.                                            | Pending     |
+| 10  | `reprocess_archive_fit_activity_imports` | Run #1 for a user's archive FIT sources only.                                          | Selection excludes other sources; final counts remain correct after page retry.                                                             | Pending     |
+| 11  | `regenerate_user_segments`               | Page through a user's cycling activities; run #5, then #3.                             | More than 16 activities finish matching and handoff; analytics converge afterward.                                                          | Pending     |
+| 12  | `activity_archive_import`                | Retain archive/manifest; process bounded entry batches through #8.                     | Resume a multi-gigabyte, thousand-entry archive after mid-Activity crashes and Continue-As-New, without skips, duplicates, or reset counts. | Pending     |
+
+- Batch conversions use bounded children, await their results, and carry progress/failures through continuation. Keep sources available until dependent work finishes.
+
+### Findings requiring closure
+
+Reviewed on 2026-10-16 at PR #64 head `93b93db9`. Findings describe required
+behavior, not a new table design. Partial coverage in the reprocess review does
+not close other paths; 68 Bike/168 focused Strava mock passes at review were not
+database race or live recovery proof.
+
+| ID  | Finding / current scope                                                                                                                                                                      | Remaining correction and acceptance                                                                                                                    |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| F1  | [Strava persistence](../bike-rs/bike-core/src/strava/native/persistence.rs) now rechecks stored outcome immediately after the existing lock. R03 implementation ready for verification.      | Preserve original `Applied` outcome on overlapping retry. U07/U08 mocks pass; P01 remains. No new ledger.                                              |
+| F2  | [Rematching](../bike-rs/bike-core/src/activity_lifecycle.rs): native reprocess retains audit scope; Strava now retains source mutation scope before rematching. Legacy producers remain R07. | Union captured and current dependencies so removed segments survive retry. U09 units pass; P02 remains.                                                |
+| F3  | [Sync event construction](../bike-rs/bike-core/src/strava/events.rs) mixes Bike time with [provider state ordering](../bike-rs/bike-core/src/entities/strava_activity_states.rs). Open.      | Separate clocks/provenance; serialize/coalesce remote-object updates; reconcile equal-second and out-of-order fetches. U18–U21/P03.                    |
+| F4  | Original cancellation fixture suppressed handoffs after a late source commit without a safe cutoff. Reprocess now tests before-apply vs too-late cancellation.                               | Verify other converted paths accept cancellation only before apply/handoff or at safe batch boundaries; stop owned work after acceptance. U12–U14/P04. |
+| F5  | Original attempt wrapper lacked concrete source/API/worker adapters. The concrete review slice replaces it.                                                                                  | Finish producer-wide cutover, deployment, recovery, and user acceptance before declaring conversion complete.                                          |
+| F6  | [Strava upsert](../bike-rs/strava-temporal/src/workflows/activity_upsert.rs) rebuilds per item. Open.                                                                                        | Neutral asynchronous shared outputs, coalescing/priority, source-only collection completion, and compatible history evolution. U15–U17/U22/P03.        |
+
+### Coordination, storage, and archive follow-ups
+
+- [ ] Measure mixed new-activity/deletion/archive bursts after the proof of concept.
+      Tune quiet windows/caps, bounded concurrency, fairness across users, and
+      low-priority backlog aging. Preserve native priority 1/5 and verify deployed
+      `matching.enableFairness`; investigate native Schedule-To-Start promotion
+      if needed rather than building a separate scheduler.
+- [ ] Implement native reference-aware scheduled cleanup for owned namespaces:
+      persist lifetime/reference/pin state independently of history retention,
+      collect complete paginated Temporal/DB/storage inventories, coordinate
+      deletion with writers, and dry-run protected/candidate/reclaimed bytes.
+      Missing inventory retains inputs; canonical sources have no scratch TTL.
+      Cover active/resettable history, shared refs, pins, inventory errors, and races.
+- [ ] After Bike conversions, finish Strava's remaining storage composition,
+      source/reference pins, retention inventory, and cleanup on the shared service.
+      Preserve raw captures, encryption, logical keys, serialized refs, separate
+      queues, and retained-history replay. Do not defer F1–F4/F6 to that cleanup.
+- [ ] For task 12, implement real streamed download/extraction, retained immutable
+      archives/manifests, stable entry IDs/counts, bounded batches/continuation,
+      and safe resume from older heartbeat checkpoints. Prove multi-gigabyte,
+      thousand-entry recovery during download/extraction, after entry commit,
+      between batches, across continuation, after missed heartbeats, and during
+      paused-import TTL sweeps. Measure bounded memory/offsets/counts/rebuilds.
+- [ ] Retire legacy email processor/templates/mail dependencies/UI descriptions/
+      SMTP wiring. SSO owns account verification/recovery mail; source audit found
+      no application enqueue caller. Verify live SSO login/session and resolve
+      pending legacy email; the audit did not prove provider email delivery.
+- [ ] Verify the forward image and retry the standalone segment-regeneration
+      failure recorded in the existing SQL canary ledger. Preserve its three
+      focused regression checks; do not describe SQL canaries as native proof.
+
+### Worker loops and final retirement
+
+- [ ] Move 15-second heatmap reconciliation with task 4 using native scheduling
+      and generation-aware operations.
+- [ ] Replace import startup/expired-task recovery with native retry/timeouts and
+      idempotent import effects as their conversions are verified.
+- [ ] Replace SQL batch reconciliation, child barriers, and archive scratch
+      cleanup with awaited bounded children in tasks 9–12 and shared retention.
+- [ ] After all 12 tasks are user-verified and email retired, resolve every
+      pending/running/failed SQL task, open batch, and stranded import lock.
+- [ ] Remove the SQL worker executable/deployment/Compose/build targets,
+      processor registry, queue sampling, attempt/diagnostic retention, recovery
+      loops, scrapes/dashboards, and task-management paths. Keep useful domain
+      status/audit and native metrics/history in the combined `temporal-worker`.
+- [ ] Preserve historical migrations and retained input/audit records. Retire
+      schema through new migrations. Verify image identity, migrations/readiness,
+      metrics, retained Strava histories, and representative user results.
+- [ ] For each conversion, record focused checks/hooks/CI, owning queue/prefix,
+      status/history, retry/cancel behavior, actual outputs, same-request retry,
+      and interruption during an executing Activity. Mark `Ready to verify` only
+      after its gate; mark `Verified` only after observed downstream results. Rollback drains
+      or fences dispatch before switching ownership.
+
+</details>
+
+## 2026-10-17: local worker simplification
+
+- The current implementation processes retained files and explicitly calls derived
+  tasks. All Bike producers submit to Temporal; SQL execution, batch, stage,
+  recovery, ledger, task administration, and unused SMTP code are retired.
+- Collection workflows page 16 activities or archive entries, await children, and
+  continue by cursor. Source files remain available; repeated computation is accepted.
+- Local Docker validation: 584 Rust unit tests across the workspace and Temporal
+  worker binary, plus 39 focused UI unit tests. Three existing large-archive or
+  PostgreSQL checks remain ignored; these results are unit and mock evidence.
+- Workspace all-target compilation, all-feature Clippy with warnings denied,
+  UI ESLint/TypeScript/Prettier, ShellCheck, workflow lint, CI cache fixtures, and
+  development/E2E Compose configuration passed locally.
+- History consolidation is local, preserving `e401699a` and combining the later
+  changes into one commit. Nothing was pushed or deployed. Drain the old SQL and
+  Bike workflow runs before a later deployment; retired histories cannot replay
+  against the replacement sequence.
+
+## 2026-10-17: simple worker cutover
+
+- Paused API intake, both old workers, and scheduled Strava sync after verifying
+  no queued/running SQL tasks and no running native workflows. The coordinated
+  backup validated database and retained files on both disks as `20261017T140351Z`.
+- Applied `m20261017_000001_retire_sql_worker`. All 13 execution tables are absent;
+  historical migrations, activities, imports, artifacts, and domain history remain.
+  The SQL worker Deployment, Service, ServiceMonitor, dashboard, and unused SMTP
+  environment/configuration are retired. The combined worker polls both queues.
+- All four deployments and public health passed the owning release check.
+  Registry digests were verified before deployment. Native schedules for heatmap
+  reconciliation and Strava sync are present; Strava sync was resumed.
+- Reprocessing retained activity/import `1653` completes through source save,
+  segments, achievements, heatmap, training, and fitness. Its saved title remains
+  intact. It has 13 efforts across seven segments, one achievement cache, one
+  training cache, 32 user segment-summary rows, a ready version-5 heatmap, and a
+  cleared fitness dirty day with a new rebuild timestamp.
+- Fixed the observed title overwrite with a PostgreSQL mock regression that
+  fails before the fix. Reprocessing preserves the saved title and Training/Race
+  selection. Restored the title changed by the initial verification run.
+- A controlled replacement while an Activity was reported executing completed
+  the earlier real-file run. On the corrected image, replacement during a running
+  workflow with five recorded events also completed the same run after the new
+  pod started: [native history](https://temporal.nibelheim.dev/namespaces/bike/workflows/bike-task-reprocess_activity_import-user-1-activity-1653-import-1653-c73058c0-cd6a-4615-a9cf-be7270e0fc99).
+  This second drill covers the scheduled-Activity boundary; it does not claim
+  a lost-write crash at every stage. Unit fixtures cover retries after saved effects.
+- Archive job `3` processed 17 copies of the same real retained GPX across two
+  native runs (Continue-As-New, then Completed). All file children were awaited.
+  It retained one duplicate import; activities stayed at 1,193, while imports and
+  artifacts each increased from 1,211 to 1,212. This proves continuation and dedupe
+  for a small real-data canary, not multi-gigabyte archive capacity.
+- Native activity-segment regeneration, both import batch types, user-segment
+  regeneration, and XC training backfill completed on bounded tail pages. Full
+  segment-effort regeneration completed on attempt one in 114.67 seconds under
+  the corrected image. Source children exercised fitness, segment analytics,
+  achievements, training, and heatmaps; the native reconciliation schedule runs.
+- Overlapping canaries exposed async-thread starvation and two-minute Activity
+  timeouts during heavy segment work. Domain Activities now use Tokio's blocking
+  pool, the Bike worker has two native Activity slots, and Bike Activities have
+  a 30-minute Start-To-Close timeout. The responsiveness regression and all 589
+  Rust units pass locally. The obsolete two-minute verification run was terminated
+  and rerun successfully. The corrected worker stayed ready during the long run;
+  its inspected logs had no warnings or errors. SQL thresholds and resource caps
+  were preserved.
+- Authenticated retained-file download succeeds; anonymous access returns 401.
+  The public native job URL returns HTTP 200. These checks do not establish a
+  new SSO login or authenticated Temporal UI policy.
+- Validation: 589 Rust and 39 focused UI unit tests, required commit hooks,
+  workspace Clippy with denied warnings, UI checks, shell/workflow checks, and
+  infrastructure Go/Promtool/release fixtures passed locally in Docker. Three
+  pre-existing large-archive/PostgreSQL checks remain ignored.
+- CI 523 passed its unit/lint and 80% changed-line coverage gates on the preceding
+  source revision (API 92.13%, worker 96.55%, core 89.17%, Bike Temporal 91.68%,
+  UI 88.89%). Its redundant image build was stopped when it competed with live
+  verification; release images were built and verified through the owning tasks.
+  The final responsiveness changes were verified by local units and production.
+- History preserves `e401699a` separately and combines the later work into one
+  conversion commit. The remaining unrelated backlog is outside this conversion.
+- The automatic browser run exposed a missing `BIKE_TEMPORAL_TOOLS_IMAGE` in
+  the browser container's forwarded environment. Forward the existing mise pin;
+  validate the actual runner's Compose environment locally, without starting
+  fixture services. Application images and worker behavior are unchanged.

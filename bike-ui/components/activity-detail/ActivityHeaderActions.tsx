@@ -3,6 +3,7 @@
 import { faBars } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
+import TemporalLink from "../ui/TemporalLink";
 import { activitySourceFileUrl } from "../../lib/activitySourceFiles";
 import { formatActivityTypeLabel } from "../../lib/activityTypes";
 import { formatSport } from "../../lib/activityFormatting";
@@ -13,18 +14,16 @@ export function ActivityHeaderActions({
   activity,
   isRegenerating,
   isDeleting,
-  canViewImportTrace,
+  isAdmin,
   onOpenEditDialog,
-  onViewImportTrace,
   onRegenerate,
   onDelete,
 }: {
   activity: Activity;
   isRegenerating: boolean;
   isDeleting: boolean;
-  canViewImportTrace?: boolean;
+  isAdmin?: boolean;
   onOpenEditDialog: () => void;
-  onViewImportTrace?: () => void;
   onRegenerate: () => void;
   onDelete: () => void;
 }) {
@@ -64,21 +63,19 @@ export function ActivityHeaderActions({
                 Edit activity
               </button>
             </li>
-            {canViewImportTrace ? (
-              <li>
-                <button type="button" onClick={onViewImportTrace}>
-                  View import trace
-                </button>
-              </li>
-            ) : null}
-            {canViewImportTrace && activity.activity_import_id ? (
+            {isAdmin && activity.activity_import_id ? (
               <li>
                 <Link href={`/admin/imports/${activity.activity_import_id}`}>
-                  Processing stages and replay
+                  Import details
                 </Link>
               </li>
             ) : null}
 
+            {isAdmin ? (
+              <li>
+                <TemporalLink />
+              </li>
+            ) : null}
             {activity.can_regenerate ? (
               <li>
                 <button

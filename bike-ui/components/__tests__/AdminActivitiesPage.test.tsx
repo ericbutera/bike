@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import AdminActivitiesPage from "../../app/admin/activities/page";
@@ -7,11 +7,6 @@ import type { AdminActivity } from "../../lib/queries";
 vi.mock("../../lib/queries", () => ({ useAdminActivities: vi.fn() }));
 vi.mock("../admin/LocalAdminLayout", () => ({
   LocalAdminLayout: ({ children }: { children: ReactNode }) => children,
-}));
-vi.mock("../admin/ActivityPipelines", () => ({
-  default: ({ activityId }: { activityId: number }) => (
-    <p>Worker runs for #{activityId}</p>
-  ),
 }));
 vi.mock("../ui/GenericList", () => ({
   default: ({
@@ -35,20 +30,16 @@ vi.mock("../ui/GenericList", () => ({
 }));
 
 describe("admin activity processing", () => {
-  it("opens the combined import page for linked activities and preserves legacy worker inspection", () => {
+  it("links retained import details without reconstructing task graphs", () => {
     render(<AdminActivitiesPage />);
     expect(
       screen.getByRole("link", {
-        name: "View processing pipeline for Linked ride",
+        name: "View import details for Linked ride",
       }),
     ).toHaveAttribute("href", "/admin/imports/1676");
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "View processing pipeline for Legacy ride",
-      }),
-    );
-    expect(screen.getByText("Worker runs for #43")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(
+      screen.queryByRole("button", { name: /Legacy ride/ }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

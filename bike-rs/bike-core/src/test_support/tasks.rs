@@ -1,19 +1,12 @@
 use crate::bike_tasks::{
-    ActivityImport, ActivityImportResult, FitnessChange, HeatmapChange, ImportSource, ImportTarget, Priority,
+    ActivityImport, ActivityImportResult, ActivityTask, FitnessChange, ImportSource, ImportTarget, Priority,
     SegmentChange,
-};
-use crate::bike_tasks::{
-    ActivitySegmentsInput, ActivitySegmentsResult, ArchiveInput, BatchCommand, BatchInput, BatchManifest,
-    BatchProgress, ManifestScope, PageRequest, ReprocessInput, SegmentEffortsInput, SegmentSelection,
-    TrainingActivityInput, TrainingActivityResult,
 };
 use crate::object_store::ObjectRef;
 
 pub fn fitness_change() -> FitnessChange {
     FitnessChange {
         user_id: 7,
-        revision: 1,
-        dirty_from: super::timestamp().date_naive(),
         priority: Priority::Background,
     }
 }
@@ -21,17 +14,15 @@ pub fn fitness_change() -> FitnessChange {
 pub fn segment_change() -> SegmentChange {
     SegmentChange {
         segment_id: 18,
-        revision: 1,
         priority: Priority::Background,
     }
 }
 
-pub fn heatmap_change() -> HeatmapChange {
-    HeatmapChange {
+pub fn activity_task() -> ActivityTask {
+    ActivityTask {
         user_id: 7,
         activity_id: 42,
-        generation: 1,
-        priority: Priority::Background,
+        priority: Priority::NewActivity,
     }
 }
 
@@ -42,7 +33,7 @@ pub fn import_command() -> ActivityImport {
             user_id: 7,
             activity_import_id: 18,
             object: ObjectRef {
-                path: "bike/tasks/sources/fixture.gpx".into(),
+                path: "activity-imports/fixture.gpx".into(),
                 sha256: "a".repeat(64),
                 bytes: 123,
             },
@@ -57,138 +48,18 @@ pub fn import_result() -> ActivityImportResult {
     ActivityImportResult {
         activity_id: 42,
         activity_import_id: 18,
-        fitness: fitness_change(),
-        segments: vec![segment_change()],
-        heatmap: Some(heatmap_change()),
-    }
-    .with_priority(Priority::NewActivity)
-}
-
-pub fn batch_command() -> BatchCommand {
-    BatchCommand {
-        command_id: "fixture-batch".into(),
         user_id: 7,
-        priority: Priority::Background,
+        priority: Priority::NewActivity,
     }
 }
 
-pub fn batch_input() -> BatchInput {
-    BatchInput::new(batch_command())
-}
-
-pub fn batch_manifest(command: &BatchCommand, scope: ManifestScope, entries: u64) -> BatchManifest {
-    BatchManifest {
-        command_id: command.command_id.clone(),
-        scope,
-        entries,
-        object: ObjectRef {
-            path: "bike/tasks/manifests/fixture.json".into(),
-            sha256: "b".repeat(64),
-            bytes: 123,
-        },
-    }
-}
-
-pub fn page_request(scope: ManifestScope, entries: u64, offset: u64) -> PageRequest {
-    let command = batch_command();
-    PageRequest {
-        manifest: batch_manifest(&command, scope, entries),
-        command,
-        offset,
-    }
-}
-
-pub fn prepared_batch(page: &PageRequest) -> BatchInput {
-    BatchInput {
-        command: page.command.clone(),
-        progress: BatchProgress {
-            manifest: Some(page.manifest.clone()),
-            settled: page.offset,
-        },
-    }
-}
-
-pub fn import_entry(page: &PageRequest, index: u64) -> ImportSource {
-    ImportSource {
-        command_id: format!("{}:entry-{index}", page.command.command_id),
-        user_id: page.command.user_id,
-        activity_import_id: 18 + i32::try_from(index).expect("fixture index fits i32"),
-        priority: page.command.priority,
-        ..import_command().source
-    }
-}
-
-pub fn reprocess_entry(page: &PageRequest, index: u64) -> ReprocessInput {
-    ReprocessInput {
-        source: import_entry(page, index),
-        activity_id: 42 + i32::try_from(index).expect("fixture index fits i32"),
-        expected_revision: 1,
-    }
-}
-
-pub fn segment_entry(page: &PageRequest, index: u64) -> ActivitySegmentsInput {
-    let selection = match page.manifest.scope {
-        ManifestScope::Segment {
-            segment_id,
-            expected_revision,
-        } => SegmentSelection::One {
-            segment_id,
-            expected_revision,
-        },
-        _ => SegmentSelection::All,
-    };
-    ActivitySegmentsInput {
-        command: BatchCommand {
-            command_id: format!("{}:entry-{index}", page.command.command_id),
-            ..page.command.clone()
-        },
-        activity_id: 42 + i32::try_from(index).expect("fixture index fits i32"),
-        expected_revision: 1,
-        selection,
-    }
-}
-
-pub fn segment_result() -> ActivitySegmentsResult {
-    ActivitySegmentsResult {
+pub fn reprocess_input() -> crate::bike_tasks::ReprocessInput {
+    crate::bike_tasks::ReprocessInput {
+        source: import_command().source,
         activity_id: 42,
-        segments: vec![segment_change()],
     }
 }
 
-pub fn segment_efforts_input() -> SegmentEffortsInput {
-    SegmentEffortsInput {
-        segment_id: 18,
-        expected_revision: 1,
-        batch: batch_input(),
-    }
-}
-
-pub fn training_entry(page: &PageRequest, index: u64) -> TrainingActivityInput {
-    let segment = segment_entry(page, index);
-    TrainingActivityInput {
-        command: segment.command,
-        activity_id: segment.activity_id,
-        expected_revision: 1,
-    }
-}
-
-pub fn training_result() -> TrainingActivityResult {
-    TrainingActivityResult {
-        fitness: Some(fitness_change()),
-    }
-}
-
-pub fn archive_input() -> ArchiveInput {
-    ArchiveInput {
-        archive_job_id: 9,
-        source: ObjectRef {
-            path: "bike/tasks/archives/fixture.zip".into(),
-            sha256: "c".repeat(64),
-            bytes: 123,
-        },
-        batch: batch_input(),
-    }
-}
 pub fn task_cause() -> crate::bike_tasks::TaskCause {
     use crate::bike_tasks::{TaskActor, TaskCause};
     TaskCause {

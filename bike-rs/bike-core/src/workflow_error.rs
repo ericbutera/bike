@@ -11,6 +11,16 @@ pub struct WorkflowError {
 }
 
 impl WorkflowError {
+    /// Immutable input cannot succeed on retry without repairing its source.
+    pub fn invalid_data(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::UNPROCESSABLE_ENTITY,
+            message: message.into(),
+            errors: None,
+            retry_at: None,
+        }
+    }
+
     pub fn bad_request(message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::BAD_REQUEST,
@@ -115,8 +125,8 @@ impl From<sea_orm::DbErr> for WorkflowError {
     }
 }
 
-impl From<crate::background_jobs::TaskError> for WorkflowError {
-    fn from(error: crate::background_jobs::TaskError) -> Self {
+impl From<crate::jobs::TaskError> for WorkflowError {
+    fn from(error: crate::jobs::TaskError) -> Self {
         Self::internal(error.to_string())
     }
 }
@@ -125,16 +135,6 @@ impl From<std::io::Error> for WorkflowError {
     fn from(error: std::io::Error) -> Self {
         tracing::error!(error = ?error, "file storage request failed");
         Self::internal("File storage request failed")
-    }
-}
-
-impl From<crate::activity_import_lock::ActivityImportLockError> for WorkflowError {
-    fn from(error: crate::activity_import_lock::ActivityImportLockError) -> Self {
-        match error {
-            crate::activity_import_lock::ActivityImportLockError::Conflict(message) => Self::conflict(message),
-            crate::activity_import_lock::ActivityImportLockError::Internal(message) => Self::internal(message),
-            crate::activity_import_lock::ActivityImportLockError::Database(error) => Self::from(error),
-        }
     }
 }
 
@@ -160,7 +160,6 @@ impl From<crate::xc_goal_backfill::XcGoalBackfillError> for WorkflowError {
     fn from(error: crate::xc_goal_backfill::XcGoalBackfillError) -> Self {
         use crate::xc_goal_backfill::XcGoalBackfillError;
         match error {
-            XcGoalBackfillError::ActivityImportLock(error) => error.into(),
             XcGoalBackfillError::Database(error) => error.into(),
             XcGoalBackfillError::Queue(message) => {
                 Self::internal(format!("Failed to queue XC training backfill: {message}"))

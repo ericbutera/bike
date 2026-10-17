@@ -2,7 +2,6 @@ use crate::tasks::TaskQueue;
 use crate::tasks::{create_session_service, AppSessionService};
 use bike_core::auth::controllers::oauth::OAuthRouteStorage;
 use bike_core::auth::{AuthRouteStorage, AuthStorage};
-use bike_core::background_jobs::admin::BackgroundTasksStorage;
 use bike_core::config::Config;
 use bike_core::platform::feature_flags::{FeatureFlagService, FeatureFlagStorage};
 use sea_orm::DatabaseConnection;
@@ -119,12 +118,6 @@ impl FeatureFlagStorage for AppStorage {
 
     fn feature_flag_service(&self) -> &FeatureFlagService {
         &self.feature_flags
-    }
-}
-
-impl BackgroundTasksStorage for AppStorage {
-    fn db(&self) -> &DatabaseConnection {
-        &self.db
     }
 }
 

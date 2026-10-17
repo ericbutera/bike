@@ -4,7 +4,7 @@
 mod activity_reprocessing_tests;
 
 use super::*;
-use crate::activity_import_pipeline::{ActivityProcessingArtifact, ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL};
+use crate::activity_import_pipeline::ActivityProcessingArtifact;
 use crate::entities::{activities, activity_imports};
 use crate::workflow_error::WorkflowError as AppError;
 use crate::{
@@ -128,9 +128,7 @@ impl Model {
     ) -> Result<activities::Model, AppError> {
         let expected_updated_at = self.updated_at;
         let activity_type = self.activity_type.clone();
-        let archive_title = (self.source == "strava_sync"
-            && parsing_artifact.artifact_kind == ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL)
-            .then(|| self.title.clone());
+        let title = self.title.clone();
         let mut active_model: activities::ActiveModel = self.into();
         apply_fields(
             &mut active_model,
@@ -140,9 +138,7 @@ impl Model {
             save_data,
         );
         active_model.activity_type = Set(activity_type);
-        if let Some(title) = archive_title {
-            active_model.title = Set(title);
-        }
+        active_model.title = Set(title);
         let active_model = active_model.before_save(db, false).await?;
         activities::Entity::update(active_model)
             .validate()?
@@ -153,7 +149,7 @@ impl Model {
     }
 
     pub(crate) async fn insert_parsed(
-        db: &DatabaseConnection,
+        db: &impl ConnectionTrait,
         import: &activity_imports::Model,
         parsing_artifact: &ActivityProcessingArtifact,
         parsed: &ParsedActivityData,

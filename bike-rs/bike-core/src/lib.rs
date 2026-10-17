@@ -1,11 +1,8 @@
 pub mod activity_achievements;
 pub mod activity_data;
 pub mod activity_details;
-pub mod activity_import_execution;
 pub mod activity_import_lifecycle;
-pub mod activity_import_lock;
 pub mod activity_import_pipeline;
-pub mod activity_import_recovery;
 pub mod activity_lifecycle;
 pub mod activity_maps;
 pub mod activity_parser;
@@ -37,7 +34,6 @@ pub mod segment_regeneration;
 pub mod segment_support;
 pub mod services;
 pub mod strava;
-pub mod tasks;
 mod timestamps;
 pub mod training_data;
 pub mod training_profile;
@@ -48,5 +44,4 @@ pub mod xc_goal_backfill;
 pub mod test_support;
 
 pub mod auth;
-pub mod background_jobs;
 pub mod platform;

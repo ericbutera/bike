@@ -1,6 +1,10 @@
 use super::*;
 use crate::entities::strava_events;
 use sea_orm::DatabaseConnection;
+use std::time::Duration;
+
+/// Leaves half a second of Strava's callback budget for HTTP handling/transport.
+const WEBHOOK_ACCEPTANCE_TIMEOUT: Duration = Duration::from_millis(1500);
 
 #[async_trait::async_trait]
 trait WebhookStore: Send + Sync {
@@ -30,6 +34,17 @@ struct WebhookIntake {
 
 impl WebhookIntake {
     async fn accept(
+        &self,
+        store: &impl WebhookStore,
+        webhook: &StravaWebhookEvent,
+        request_id: Option<String>,
+    ) -> Result<Option<strava_events::Model>, WorkflowError> {
+        tokio::time::timeout(WEBHOOK_ACCEPTANCE_TIMEOUT, self.store_event(store, webhook, request_id))
+            .await
+            .map_err(|_| WorkflowError::internal("Strava webhook durable acceptance timed out"))?
+    }
+
+    async fn store_event(
         &self,
         store: &impl WebhookStore,
         webhook: &StravaWebhookEvent,

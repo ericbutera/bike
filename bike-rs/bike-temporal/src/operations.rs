@@ -1,21 +1,38 @@
-//! Concrete Bike domain adapters. No SQL task queue or execution-stage records.
+//! Activities call domain operations directly; Temporal owns their execution state.
 use crate::activities::{DerivedOperations, ImportOperations};
 use bike_core::{
-    bike_tasks::{ActivityImportResult, FitnessChange, HeatmapChange, ImportExecution, Publication, SegmentChange},
+    bike_tasks::{ActivityImportResult, ActivityTask, FitnessChange, ImportExecution, SegmentChange},
+    entities::{activities, heatmap_projections},
+    heatmaps::{
+        preparation,
+        projection::{PendingProjection, Projection},
+    },
     object_store::ObjectStore,
     workflow_error::WorkflowError,
 };
 use sea_orm::DatabaseConnection;
 use temporalio_sdk::activities::ActivityContext;
+mod batches;
 
 pub struct BikeOperations {
     db: DatabaseConnection,
     objects: ObjectStore,
+    uploads_dir: String,
 }
 
 impl BikeOperations {
-    pub fn new(db: DatabaseConnection, objects: ObjectStore) -> Self {
-        Self { db, objects }
+    pub fn new(db: DatabaseConnection, objects: ObjectStore, uploads_dir: String) -> Self {
+        Self {
+            db,
+            objects,
+            uploads_dir,
+        }
+    }
+
+    async fn activity(&self, task: &ActivityTask) -> Result<activities::Model, WorkflowError> {
+        activities::Model::find_owned(&self.db, task.activity_id, task.user_id)
+            .await?
+            .ok_or_else(|| WorkflowError::not_found("Activity not found"))
     }
 }
 
@@ -32,69 +49,53 @@ impl ImportOperations for BikeOperations {
 
 #[async_trait::async_trait]
 impl DerivedOperations for BikeOperations {
-    async fn rebuild_fitness_freshness(
-        &self,
-        change: FitnessChange,
-        _context: ActivityContext,
-    ) -> Result<Publication, WorkflowError> {
-        bike_core::analytics::rebuild_fitness_freshness_cache(&self.db, change.user_id).await?;
-        let state = bike_core::entities::analytics_user_states::Model::for_user(&self.db, change.user_id).await?;
-        if state.is_some_and(|state| state.fitness_dirty_from_day.is_some()) {
-            return Err(WorkflowError::internal(
-                "Fitness changed during rebuild; retry current source",
-            ));
-        }
-        Ok(Publication::Published)
+    async fn rebuild_activity_segments(&self, task: ActivityTask) -> Result<Vec<i32>, WorkflowError> {
+        let activity = self.activity(&task).await?;
+        bike_core::segment_regeneration::match_activity(&self.db, &activity).await
     }
 
-    async fn rebuild_segment_analytics(
-        &self,
-        change: SegmentChange,
-        _context: ActivityContext,
-    ) -> Result<Publication, WorkflowError> {
-        use bike_core::entities::segments;
-        let before = segments::Model::find_by_id(&self.db, change.segment_id).await?;
-        bike_core::analytics::rebuild_segment_analytics_cache(&self.db, &[change.segment_id]).await?;
-        let after = segments::Model::find_by_id(&self.db, change.segment_id).await?;
-        if before != after {
-            return Err(WorkflowError::internal(
-                "Segment changed during rebuild; retry current source",
-            ));
-        }
-        Ok(Publication::Published)
+    async fn rebuild_activity_achievements(&self, task: ActivityTask) -> Result<(), WorkflowError> {
+        let activity = self.activity(&task).await?;
+        bike_core::analytics::rebuild_activity_analytics_cache(&self.db, &[activity.id]).await?;
+        Ok(())
     }
 
-    async fn prepare_heatmap(
-        &self,
-        change: HeatmapChange,
-        _context: ActivityContext,
-    ) -> Result<Publication, WorkflowError> {
-        use bike_core::{
-            entities::heatmap_projections,
-            heatmaps::{
-                preparation,
-                projection::{PendingProjection, Projection},
-            },
+    async fn rebuild_activity_training(&self, task: ActivityTask) -> Result<(), WorkflowError> {
+        let activity = self.activity(&task).await?;
+        if activity.is_bike_activity() {
+            bike_core::activity_training_analysis::rebuild_activity_training_analysis_cache(&self.db, &[activity.id])
+                .await?;
+        } else {
+            bike_core::entities::activity_training_analyses::Model::clear_activity(&self.db, activity.id).await?;
+        }
+        Ok(())
+    }
+
+    async fn rebuild_fitness_freshness(&self, task: FitnessChange) -> Result<(), WorkflowError> {
+        bike_core::analytics::rebuild_fitness_freshness_cache(&self.db, task.user_id).await?;
+        Ok(())
+    }
+
+    async fn rebuild_segment_analytics(&self, task: SegmentChange) -> Result<(), WorkflowError> {
+        bike_core::analytics::rebuild_segment_analytics_cache(&self.db, &[task.segment_id]).await?;
+        Ok(())
+    }
+
+    async fn prepare_heatmap(&self, task: ActivityTask) -> Result<(), WorkflowError> {
+        self.activity(&task).await?;
+        let Some(projection) = heatmap_projections::Model::for_activity(&self.db, task.activity_id).await? else {
+            return Ok(());
         };
-        let Some(projection) = heatmap_projections::Model::for_activity(&self.db, change.activity_id).await? else {
-            return Ok(Publication::Published);
-        };
-        if projection.user_id != change.user_id {
+        if projection.user_id != task.user_id {
             return Err(WorkflowError::forbidden("Heatmap does not belong to this user"));
         }
         let pending = PendingProjection {
-            activity_id: change.activity_id,
+            activity_id: task.activity_id,
             generation: projection.generation,
         };
         if Projection::pending(&self.db, pending.activity_id, pending.generation).await? {
             preparation::prepare_activity(&self.db, pending).await?;
         }
-        let current = heatmap_projections::Model::for_activity(&self.db, change.activity_id).await?;
-        if current.is_some_and(|projection| matches!(projection.status.as_str(), "pending" | "failed")) {
-            return Err(WorkflowError::internal(
-                "Heatmap changed during preparation; rebuild current source",
-            ));
-        }
-        Ok(Publication::Published)
+        Ok(())
     }
 }

@@ -5,7 +5,7 @@ const disposable = Boolean(process.env.BIKE_E2E_PROJECT);
 const mesaRendering =
   process.platform === "linux" && Boolean(process.env.DISPLAY);
 const mockedSpecs =
-  /(?:auth-happy-path|activity-sync-fixture|map-rendering|heatmap-controls|frontend-auth-state|import-replay)\.spec\.mjs$/;
+  /(?:auth-happy-path|activity-sync-fixture|map-rendering|heatmap-controls|frontend-auth-state)\.spec\.mjs$/;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -29,14 +29,10 @@ export default defineConfig({
         {
           name: "connected",
           testMatch: "**/*.spec.mjs",
-          testIgnore: [
-            mockedSpecs,
-            /(?:diagram-rendering|frontend-visual)\.spec\.mjs$/,
-          ],
+          testIgnore: [mockedSpecs, /frontend-visual\.spec\.mjs$/],
           dependencies: ["setup"],
         },
         { name: "mocked", testMatch: mockedSpecs, dependencies: ["setup"] },
-        { name: "standalone", testMatch: "diagram-rendering.spec.mjs" },
         ...(process.env.PLAYWRIGHT_VISUAL === "1"
           ? [
               {

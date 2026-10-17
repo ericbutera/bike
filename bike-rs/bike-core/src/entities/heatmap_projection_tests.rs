@@ -1,6 +1,6 @@
 use super::{data::HeatmapData, lifecycle::PendingProjection, lifecycle::Projection};
 use crate::activity_sport::ActivitySport;
-use crate::heatmaps::{geometry, raster::Tile, types::HeatmapQuery, PROJECTION_VERSION};
+use crate::heatmaps::{geometry, raster::Tile, types::HeatmapQuery};
 use crate::test_support;
 use sea_orm::{DbBackend, DbErr, MockDatabase, MockExecResult, Value};
 use std::collections::BTreeMap;
@@ -159,16 +159,10 @@ async fn publication_batches_chunks_and_atomically_publishes_revision_and_bounds
     assert!(log.contains("COMMIT"));
     assert!(!log.contains("ROLLBACK"));
     assert_eq!(log.matches("INSERT INTO").count(), 2);
-    for evidence in [
-        "heatmap_chunks",
-        "heatmap_user_states",
-        "processing_pipeline_outputs",
-        "ready",
-        &format!("3:{PROJECTION_VERSION}"),
-        "Double(Some(0.1))",
-    ] {
+    for evidence in ["heatmap_chunks", "heatmap_user_states", "ready", "Double(Some(0.1))"] {
         assert!(log.contains(evidence), "missing {evidence}: {log}");
     }
+    assert!(!log.contains("processing_pipeline_outputs"));
 }
 
 #[tokio::test]

@@ -51,6 +51,14 @@ pub struct ActivityChange {
     pub removed_source: Option<String>,
 }
 impl ActivityChange {
+    /// Keep dependencies captured with the source mutation, including memberships
+    /// removed by an earlier attempt whose completion reply was lost.
+    pub fn include_segments(&mut self, segment_ids: impl IntoIterator<Item = i32>) {
+        self.segment_ids.extend(segment_ids);
+        self.segment_ids.sort_unstable();
+        self.segment_ids.dedup();
+    }
+
     pub fn applied(mut event: StravaEvent, activity_id: i32, import_id: i32, dirty_from: chrono::NaiveDate) -> Self {
         event.bike_activity_id = Some(activity_id);
         Self {
