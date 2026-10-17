@@ -1,8 +1,8 @@
 {
-  "commit": "d735974a060cdf4c6881d1fb38fed1411166fcc8",
-  "created_at": "2026-10-17T23:16:15Z",
-  "base_revision": "3b8291e82ba259a28a05e4b3dc13ddb9dd759efb",
-  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/556",
+  "commit": "2521d9620041aaa1bd33d34a5851ac39cffb182d",
+  "created_at": "2026-10-17T23:47:53Z",
+  "base_revision": "d735974a060cdf4c6881d1fb38fed1411166fcc8",
+  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/560",
   "minimum_changed_line_percent": 80,
   "projects": {
     "api": {
@@ -13,9 +13,9 @@
       "covered": 3756,
       "percent": 67.6147614761476,
       "changed": {
-        "lines": 21,
-        "covered": 20,
-        "percent": 95.24
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
       }
     },
     "worker": {
@@ -23,25 +23,25 @@
       "language": "Rust",
       "source": "bike-rs/worker",
       "lines": 303,
-      "covered": 227,
-      "percent": 74.91749174917491,
+      "covered": 226,
+      "percent": 74.58745874587459,
       "changed": {
-        "lines": 12,
-        "covered": 11,
-        "percent": 91.67
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
       }
     },
     "integrations": {
       "name": "Provider integrations",
       "language": "Rust",
       "source": "bike-rs/integrations",
-      "lines": 2613,
-      "covered": 1732,
-      "percent": 66.28396479142748,
+      "lines": 2638,
+      "covered": 1760,
+      "percent": 66.71721000758151,
       "changed": {
-        "lines": 135,
-        "covered": 127,
-        "percent": 94.07
+        "lines": 30,
+        "covered": 30,
+        "percent": 100.0
       }
     },
     "strava-temporal": {
@@ -61,13 +61,13 @@
       "name": "Shared Bike core",
       "language": "Rust",
       "source": "bike-rs/bike-core",
-      "lines": 24999,
-      "covered": 18374,
-      "percent": 73.49893995759831,
+      "lines": 25053,
+      "covered": 18429,
+      "percent": 73.5600526883008,
       "changed": {
-        "lines": 395,
-        "covered": 382,
-        "percent": 96.71
+        "lines": 30,
+        "covered": 30,
+        "percent": 100.0
       }
     },
     "bike-temporal": {
@@ -78,9 +78,9 @@
       "covered": 726,
       "percent": 92.36641221374046,
       "changed": {
-        "lines": 11,
-        "covered": 10,
-        "percent": 90.91
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
       }
     },
     "bike-ui": {
