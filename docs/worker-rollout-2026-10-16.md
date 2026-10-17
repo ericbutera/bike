@@ -1,5 +1,50 @@
 # Bike worker fail-forward rollout, 2026-10-16
 
+## Output lifecycle deployed and verified, 2026-10-17 02:57 UTC
+
+- PR #75 merged as `8fb5d9ff9a4254804fd73f31acf53ac40f6f6e6e`.
+  Main CI 505 passed tests, lint, PostgreSQL checks, the normal 80% coverage gate,
+  image builds, and all **83 browser cases**, then deployed. Deployment diagnostics
+  contained no warnings/notices. The matching migration Job was `Complete`.
+- Verified all five deployment rollouts and healthy public `/api/health` using
+  the new owning release check. Both worker templates report revision `8fb5d9ff`.
+  Immutable image hashes are API `8e2e2c240b230451cab86bbca152917a332114ee21cd4689360a0f3c9370fa5c`,
+  both workers `3d148919c289226883691304c7e7a1c3db4765b994556a3f9dc6d0fe25e03ecb`,
+  UI `a090c2e5f16fdc3c5bbd3b32b7cb6283b28c64d44f38718676358ed925098714`,
+  and maps `2fc551cc71370c4d7bb7d845f17cc99a24a03e108d3abcebb16af14773d562ef`.
+- After checking the live worker revision/readiness, sent native `drain` to the
+  ten original runs from **17:58 EDT**: fitness user 1, heatmap activity 1588, and
+  segments 8/9/13/17/21/22/26/28. Queried each original Run ID independently;
+  all ten are **Completed**. No cancellation, termination, or reset was used.
+- Started a new native reprocess through the Temporal CLI using the real retained
+  FIT for activity/import 1588: artifact 1190, 352,993 bytes. This checks worker
+  execution; it is not a fresh HTTP/admin UI acceptance test. Command
+  `6f7fd399-1252-4149-81af-0f15674a2f49` carries system actor
+  `worker-rollout-verification` and has exactly one domain audit.
+  [Native job](https://temporal.nibelheim.dev/namespaces/bike/workflows/bike-task-reprocess_activity_import-user-1-6f7fd399-1252-4149-81af-0f15674a2f49)
+  run `01a147cb-4fd5-7c71-9376-c07e9ac61b43` completed in **1.85 seconds**.
+- All ten stable output Workflow IDs started new Run IDs and **Completed** in
+  approximately **2–3 seconds**. Each performed one Activity, returned `Published`,
+  and completed on attempt 1. All eleven histories have no failed/timed-out events.
+  A subsequent visibility query found **zero Running Bike task workflows**.
+- Verified stored outputs: one activity linked to the same import, unchanged
+  title/sport/derived-data hash and **47 efforts**, unchanged fitness-day values,
+  cleared fitness dirty day, and a new rebuild timestamp. All eight segment
+  summaries have newer publication timestamps and effort counts equal their
+  stored efforts. The unchanged heatmap correctly reuses ready generation **7**.
+  SQL task count remains **1,996**. Full producer cutover and the rest of R08 remain.
+- The UI Deployment now receives the public Temporal UI origin. The owning CI
+  and manual deployment tasks have a native five-rollout/public-health gate;
+  focused shell mocks cover unready, HTTP 503, unhealthy-body, and healthy cases.
+  The check also passed read-only against this live release. Custom DAG retirement
+  remains PR #69; these configuration/readiness changes do not establish its rollout.
+- Runtime qualification remains open: subsequent SQLx warnings came from metrics
+  COUNT queries, a feature-flag lookup, and a handoff poll (about 0.27–1.2 seconds,
+  unchanged 250 ms threshold). The eight-core node's load was **35.06** with no
+  memory/disk/PID pressure. This is a contention observation, not a proven root
+  cause. The domain results above passed; do not describe the runtime as warning-free
+  or change the operator's CI limits to hide the issue.
+
 ## Output lifecycle verification before deployment, 2026-10-17 02:04 UTC
 
 - The lifecycle correction passes **78 native workflow/client/Activity units**.
