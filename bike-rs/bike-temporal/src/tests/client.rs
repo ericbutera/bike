@@ -8,7 +8,9 @@ use temporalio_client::{
 };
 use temporalio_common::protos::temporal::api::{
     enums::v1::{WorkflowIdConflictPolicy, WorkflowIdReusePolicy},
+    history::v1::{history_event::Attributes, History, HistoryEvent, WorkflowExecutionStartedEventAttributes},
     workflowservice::v1::{
+        GetWorkflowExecutionHistoryRequest, GetWorkflowExecutionHistoryResponse,
         SignalWithStartWorkflowExecutionRequest, SignalWithStartWorkflowExecutionResponse,
         StartWorkflowExecutionRequest, StartWorkflowExecutionResponse,
     },
@@ -20,23 +22,56 @@ pub(crate) struct Requests {
     pub starts: Vec<StartWorkflowExecutionRequest>,
     pub fail_start: bool,
     pub already_started: bool,
+    pub histories: Vec<GetWorkflowExecutionHistoryRequest>,
+    pub fail_history: bool,
+    pub missing_history: bool,
 }
 
 impl Requests {
+    fn history(&mut self, request: GetWorkflowExecutionHistoryRequest) -> Result<Vec<u8>, tonic::Status> {
+        let execution = request.execution.as_ref().unwrap();
+        assert_eq!(execution.run_id, "fixture-run");
+        assert_eq!(request.maximum_page_size, 1);
+        assert!(!request.wait_new_event);
+        let start = self
+            .starts
+            .iter()
+            .find(|start| start.workflow_id == execution.workflow_id)
+            .unwrap();
+        let event = HistoryEvent {
+            attributes: Some(Attributes::WorkflowExecutionStartedEventAttributes(
+                WorkflowExecutionStartedEventAttributes {
+                    input: start.input.clone(),
+                    workflow_type: start.workflow_type.clone(),
+                    ..Default::default()
+                },
+            )),
+            ..Default::default()
+        };
+        self.histories.push(request);
+        if self.fail_history {
+            return Err(tonic::Status::permission_denied("fixture history unavailable"));
+        }
+        Ok(GetWorkflowExecutionHistoryResponse {
+            history: Some(History {
+                events: if self.missing_history { vec![] } else { vec![event] },
+            }),
+            ..Default::default()
+        }
+        .encode_to_vec())
+    }
+
     fn start(&mut self, request: StartWorkflowExecutionRequest) -> Result<Vec<u8>, tonic::Status> {
+        let duplicate = self.starts.iter().any(|start| start.workflow_id == request.workflow_id);
         self.starts.push(request);
         if self.fail_start {
             return Err(tonic::Status::permission_denied("fixture start refused"));
         }
-        if self.already_started {
+        if self.already_started || duplicate {
             return Err(already_started());
         }
         Ok(StartWorkflowExecutionResponse {
-            run_id: if self.starts.len() == 1 {
-                "fixture-run".into()
-            } else {
-                format!("fixture-run-{}", self.starts.len())
-            },
+            run_id: "fixture-run".into(),
             ..Default::default()
         }
         .encode_to_vec())
@@ -72,6 +107,10 @@ pub(crate) async fn client(requests: Arc<Mutex<Requests>>, fail: bool) -> Client
                         .lock()
                         .unwrap()
                         .start(StartWorkflowExecutionRequest::decode(request.proto).unwrap())?,
+                    "GetWorkflowExecutionHistory" => requests
+                        .lock()
+                        .unwrap()
+                        .history(GetWorkflowExecutionHistoryRequest::decode(request.proto).unwrap())?,
                     other => panic!("Unexpected RPC {other}"),
                 };
                 Ok(GrpcSuccessResponse {

@@ -20,6 +20,25 @@ pub struct ReprocessInput {
 }
 
 impl ReprocessInput {
+    /// Retry recognition compares immutable work, not the original revision or
+    /// delivery context. A successful execution advances the activity revision.
+    pub fn validate_retry(&self, original: &Self) -> Result<(), WorkflowError> {
+        let target_matches = (self.activity_id, self.source.user_id, self.source.activity_import_id)
+            == (
+                original.activity_id,
+                original.source.user_id,
+                original.source.activity_import_id,
+            );
+        let source_matches =
+            self.source.command_id == original.source.command_id && self.source.object == original.source.object;
+        if !target_matches || !source_matches {
+            return Err(WorkflowError::conflict(
+                "command_id already belongs to different reprocessing input",
+            ));
+        }
+        Ok(())
+    }
+
     pub fn into_command(self) -> ActivityImport {
         ActivityImport {
             source: self.source,

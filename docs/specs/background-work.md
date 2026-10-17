@@ -222,6 +222,22 @@ flowchart LR
 - `POST /admin/activity-imports/reprocess-activity` accepts `activity_id` and an
   optional UUID `command_id`. The UI creates and reuses the UUID across transport
   retries; omission asks the server to create a fresh operation.
+- The mounted reprocessing hook retains a typed command per activity until the
+  API acknowledges it. Rerenders, failed responses, and switching targets keep
+  uncertain commands intact. After acknowledgement, another submission creates
+  a new command. This is local UI state, not an inbox or persisted job registry;
+  a page reload does not preserve an uncertain command.
+- Before reporting acceptance, read the first retained Temporal history event
+  for the exact returned job/run and decode its original input through the SDK's
+  data converter. Compare command, owner, activity/import, and retained object
+  identity. A reused key with different work returns HTTP 409, without claiming
+  the new target was accepted or replacing the original workflow input.
+- Expected activity revision, priority, and delivery context are snapshots of
+  the original execution. Do not compare them when recognizing a retry: a
+  completed reprocess changes the activity revision. The original workflow
+  keeps its original values. Missing/unreadable retained input fails acceptance
+  honestly; the caller retries the same command. This metadata read requires
+  no worker, source bytes, extra SQL table, or custom orchestration.
 - The controller maps HTTP input into required `ReprocessActivityCommand` and
   maps internal `AcceptedReprocessing` to the response. Compatibility `task_id`
   and `task_status` mean native job ID and acceptance status. Import history and
@@ -712,6 +728,16 @@ flowchart LR
 
 ### Unit acceptance scenarios
 
+- R05's focused mocks live in `bike-ui/lib/importQueries.test.tsx`,
+  `bike-temporal/src/tests/command_identity.rs`, and
+  `api/src/activity_reprocessing/tests.rs`. Cover lost acknowledgement followed
+  by rerender/manual retry, target switches, a new intent after acknowledgement,
+  owner scoping, retained closed jobs, changed target/import/object rejection,
+  changed revision/request context after completion, and missing/unavailable
+  native history. Assert exact job/run lookup and a single bounded history page.
+  Use existing `test:tasks:workflows` / `test:reprocess` tasks for Rust and focused
+  Vitest runs for the UI. These mocks do not prove network timing or live history
+  retention; the existing production canary proves only identical-command retry.
 - `mise run checks:docker test:workers:mocks` runs the restored PostgreSQL mock
   regressions for import identity/state, retained-artifact copying, archive
   progress/failure, preference backfill decisions, execution claims/rollback/

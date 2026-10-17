@@ -1,4 +1,5 @@
 use crate::workflows::options;
+mod reprocessing;
 use crate::{
     workflows::{
         DebouncePolicy, PrepareHeatmap, ProcessActivityImport, RebuildFitnessFreshness, RebuildInput,
@@ -148,7 +149,9 @@ pub(crate) async fn reprocess_activity_import(client: &Client, input: ReprocessI
         },
     }
     .validate()?;
-    start_command(client, ReprocessActivityImport::run, input).await
+    let job = start_command(client, ReprocessActivityImport::run, input.clone()).await?;
+    reprocessing::validate_accepted_input(client, &job, &input).await?;
+    Ok(job)
 }
 
 async fn start_command<D>(client: &Client, definition: D, input: D::Input) -> Result<JobReference, Error>
