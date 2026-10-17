@@ -317,6 +317,21 @@ flowchart LR
   highest urgency. Identical pending requests do not extend the quiet deadline.
   High-priority arrivals advance a pending low-priority flush; background arrivals
   cannot postpone a high-priority flush.
+- Finish an output workflow after publication when both buffered and pending
+  changes are empty. A later Signal-With-Start reuses the resource Workflow ID
+  in a new run (`AllowDuplicate`); immutable command roots retain `RejectDuplicate`.
+  Drain signals delivered during an Activity before deciding completion. Temporal
+  resolves a signal racing completion by processing it or starting the next run.
+- Preserve older indefinitely waiting histories through a native patch. Their
+  administrative `drain` signal requests completion only after all accepted work
+  settles; it neither cancels active publication nor drops buffered changes.
+  Use it to retire existing idle coordinators after deploying the new worker.
+- Before deploying a lifecycle change, run
+  `cargo run -p bike-temporal --example replay -- --workflow <workflow-id>` through
+  the existing Docker/mise toolchain and configured Temporal connection. This
+  reads retained history directly; the native SDK replayer performs no domain
+  Activities or writes. Offline `--file` accepts SDK-exported history JSON.
+  Record replay separately from live drain/publication proof.
 - Keep one publisher in flight per resource and one merged follow-up. Five quick
   requests produce one rebuild; changes during it produce one follow-up. A late
   signal below a published timestamp/revision watermark may describe a different
@@ -776,7 +791,9 @@ flowchart LR
 
 - Follow the single [task inventory and status](../TODO.md#task-inventory-and-conversion-order):
   `Pending` → `In progress` → `Ready to verify` → `Verified`; email becomes `Retired`.
-  Finish reprocessing first; stop for user review after each task before proceeding.
+  Finish reprocessing first; continue through bounded tasks under the user's
+  authorization to merge and deploy. Keep each PR and verification as the review
+  record rather than pausing between tasks.
 - Converting queue dispatch alone is insufficient. Inventory every producer,
   including SQL inserts, child/batch completion, startup recovery, reads, Strava,
   and scheduled loops. Move each selected mutation/output boundary together;
@@ -791,7 +808,8 @@ flowchart LR
   heartbeat checkpoints; task 12 also satisfies its archive crash gate.
 - Record task, PR, commit/image/environment, workflow/run/source reference,
   unit/engine/deployed evidence, applicable IDs, unresolved issues, and user
-  acceptance in the rollout record. Mark verified only after user acceptance.
+  acceptance in the rollout record. The user authorized continued rollout;
+  mark verified only after observing the task and its downstream outputs work.
 - At retirement, resolve pending/running/failed SQL work, batches, and import locks.
   Remove SQL executable/deployment/Compose/build targets, queue/recovery/batch
   machinery, scrapes/dashboards/management paths, and obsolete diagnostics.
@@ -808,6 +826,8 @@ flowchart LR
   and [money-transfer example](https://learn.temporal.io/getting_started/go/first_program_in_go/):
   durable orchestration still needs an idempotent called service/model.
 - [Workflow/run identity](https://docs.temporal.io/workflow-execution/workflowid-runid),
+  [atomic Signal-With-Start](https://github.com/temporalio/documentation/blob/main/docs/design-patterns/signal-with-start.mdx),
+  [Rust SDK history patching](https://github.com/temporalio/sdk-rust/blob/main/crates/sdk/README.md#patching),
   [message passing](https://docs.temporal.io/encyclopedia/workflow-message-passing),
   [event accumulator](https://docs.temporal.io/design-patterns/event-accumulator),
   [resettable timers](https://docs.temporal.io/design-patterns/updatable-timer),

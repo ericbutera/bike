@@ -17,13 +17,21 @@ pub struct PrepareHeatmap {
 impl PrepareHeatmap {
     #[run(name = "prepare_heatmap")]
     pub async fn run(ctx: &mut WorkflowContext<Self>, mut input: RebuildInput<HeatmapChange>) -> WorkflowResult<()> {
-        loop {
-            let batch = debounce::next(ctx, &mut input, |s| &s.changes, |s| &mut s.changes).await?;
+        while let Some(batch) = debounce::next(ctx, &mut input, |s| &s.changes, |s| &mut s.changes).await? {
             let request = batch.request.clone();
             let options = options::activity(request.priority, format!("user-{}", request.user_id));
             let publication = options::run(ctx, DerivedActivities::prepare_heatmap, request, options).await?;
             input.complete(batch, publication);
+            if debounce::should_finish(ctx, &input, |s| &s.changes) {
+                break;
+            }
         }
+        Ok(())
+    }
+
+    #[signal]
+    pub fn drain(&mut self, _ctx: &mut SyncWorkflowContext<Self>) {
+        self.changes.drain();
     }
 
     #[signal]

@@ -174,6 +174,7 @@ impl<R: RebuildRequest> RebuildInput<R> {
 pub(super) struct Signals<R> {
     received: Vec<(R, DateTime<Utc>)>,
     version: u64,
+    draining: bool,
 }
 
 impl<R> Default for Signals<R> {
@@ -181,11 +182,17 @@ impl<R> Default for Signals<R> {
         Self {
             received: vec![],
             version: 0,
+            draining: false,
         }
     }
 }
 
 impl<R> Signals<R> {
+    pub fn drain(&mut self) {
+        self.draining = true;
+        self.version += 1;
+    }
+
     pub fn push<W>(&mut self, ctx: &SyncWorkflowContext<W>, request: R) {
         let at = ctx.workflow_time().expect("Temporal activation has workflow time");
         self.received.push((request, at.into()));
@@ -193,12 +200,24 @@ impl<R> Signals<R> {
     }
 }
 
+pub(super) fn should_finish<W, R>(
+    ctx: &WorkflowContext<W>,
+    input: &RebuildInput<R>,
+    read: fn(&W) -> &Signals<R>,
+) -> bool {
+    // Existing histories may contain another timer after publication. Keep
+    // replaying those commands until an explicit drain retires that old run.
+    let finite = ctx.patched("bike-output-drain-v1");
+    let drained = input.pending.is_none() && ctx.state(|state| read(state).received.is_empty());
+    finite && drained
+}
+
 pub(super) async fn next<W: temporalio_sdk::workflows::WorkflowImplementation + 'static, R: RebuildRequest>(
     ctx: &mut WorkflowContext<W>,
     input: &mut RebuildInput<R>,
     read: fn(&W) -> &Signals<R>,
     write: fn(&mut W) -> &mut Signals<R>,
-) -> WorkflowResult<Pending<R>>
+) -> WorkflowResult<Option<Pending<R>>>
 where
     W::Run: temporalio_workflow::common::WorkflowDefinition<Input = RebuildInput<R>>,
 {
@@ -209,6 +228,9 @@ where
         let received = ctx.state_mut(|state| std::mem::take(&mut write(state).received));
         for (request, at) in received {
             input.accept(request, at)?;
+        }
+        if input.pending.is_none() && ctx.state(|state| read(state).draining) {
+            return Ok(None);
         }
         if ctx.continue_as_new_suggested() {
             ctx.continue_as_new(input.clone(), ContinueAsNewOptions::default())?;
@@ -227,7 +249,7 @@ where
         };
         let now = DateTime::<Utc>::from(ctx.workflow_time().expect("Temporal activation has workflow time"));
         if deadline <= now {
-            return Ok(input.pending.take().expect("pending deadline checked"));
+            return Ok(input.pending.take());
         }
         let mut timer = std::pin::pin!(ctx.timer((deadline - now).to_std().unwrap_or(Duration::ZERO)));
         temporalio_sdk::workflows::select! {
