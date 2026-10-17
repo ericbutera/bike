@@ -1,5 +1,70 @@
 # Bike worker fail-forward rollout, 2026-10-16
 
+## Verified batching release and worker restart, 2026-10-17 00:50 UTC
+
+- PR #70 merged as `16ed60188310c69b3d90f72f30b66fa39f03c2fa` after
+  [CI 484](https://ci.nibelheim.dev/repos/3/pipeline/484) passed all checks,
+  verified release images, and passed 83 browser cases in 6.3 minutes.
+  [Main CI 486](https://ci.nibelheim.dev/repos/3/pipeline/486) passed another
+  83 browser cases in 6.4 minutes and deployed the release.
+- The normal CI 80% changed-line gate is restored. All 160 changed covered core
+  lines passed at 100%. Focused Docker validation passed 39 replacement/batching
+  cases, seven projection transaction cases, 14 native reprocessing cases, and
+  54 Strava domain cases. Unit databases and SQLite compatibility logic did not
+  return; the replacements use PostgreSQL SeaORM mocks and shared fixtures.
+- Projection persistence now inserts at most 500 summaries per statement inside
+  the existing transaction. Ordered activity locks, fresh reads, rollback, field
+  mappings, and database-owned insert timestamps remain intact. Production
+  `activity_analytics` has `CURRENT_TIMESTAMP` defaults for both timestamps.
+- All five application Pods were ready with zero restarts. API, both workers,
+  and maps reported the merged revision. Migration Job
+  `schema-migration-16ed60188310c69b3d90f72f30b66fa39f03c2fa` completed with
+  `No pending migrations`. Verified configured image digests:
+  - API: `f2e462dd2fc6bae91344d49ac549d7d0f0d08ea573baf89641a1e964af6eeca6`.
+  - Both workers: `58bbe53aaf4dc27bfec8acbb920cee981ea2a6e5c390910159a6dcc33d697ddb`.
+  - UI: `1eee0cb68d25a693c43cca3b50c24a1c793916ab4d65d1a9a63fd1ab0b4bcd4f`.
+  - Maps: `543f34e66f85ce15d081cbc9563dce090f11d3790557bf448d22b6dfd66b4451`.
+    Its unchanged running platform digest remains
+    `1d4f73e3c70df60a8dde120d1f4d62ef05de12614b244325f92f35dc8b924b6a`.
+- The infrastructure CLI update removed the earlier deployment update notice;
+  the actual deployment output contained no warnings/errors. Existing CI limits
+  were preserved, including the deployment step's 0.5-CPU limit. The cold Go SDK
+  build advanced under that cap without OOM events.
+- **Readiness gap:** CI reported success before the API rollout finished. The
+  first public health request returned 503; after rollout, public health was
+  healthy and all five deployments were ready. This is an explicit release-gate
+  follow-up in the TODO, not evidence of uninterrupted API availability.
+- With no other active source workflows, stopped only the combined Temporal
+  worker and submitted activity/import 1588 using command
+  `2b341217-b03f-4ef4-956a-91f9cd9e149e`. HTTP 202 returned in **0.297617 seconds**.
+  Its waiting history contained only workflow-start and workflow-task-scheduled
+  events. Activity/import timestamps, business data, and SQL queue counts remained
+  unchanged while the worker was stopped.
+- Restarting the worker completed the
+  [native job](https://temporal.nibelheim.dev/namespaces/bike/workflows/bike-task-reprocess_activity_import-user-1-2b341217-b03f-4ef4-956a-91f9cd9e149e),
+  run `01a14756-8f1b-7d48-8907-1c75d3e3be49`, in **4.368158272 seconds** including
+  its queued wait. Root history had 29 events. The worker returned to one ready
+  replica.
+- Fitness, heatmap, and all eight segment Activities returned `Published` on
+  attempt **1**, with zero failed/timed-out Activity events. Segment execution
+  overlapped at a peak of **six**, with the last completing at
+  00:50:24.480525459 UTC. Faster completions meant all eight did not overlap at once.
+- Fitness rebuilt at 00:50:23.428736 UTC and cleared the dirty day before the
+  fitness API was read. That read returned 200 in **0.176439 seconds**, preserving
+  training load 122.3, fitness 62.6, fatigue 76.5, and form -13.9. The unchanged
+  heatmap reused ready generation 7. Activity reads returned 200; activity/import
+  IDs, title, sport, 47 efforts, one linked activity, and derived-content hash
+  `1eabe440455f27f29e77448eb0a9b716` were preserved.
+- Retrying the identical command returned 202 in **0.277101 seconds** with the
+  same job/run and exactly one audit. SQL task counts stayed 1,991 completed and
+  five pre-existing failures. API, SQL-worker, and replacement Temporal-worker
+  logs captured since the canary started contained zero warnings/errors.
+- This verifies the deployed single-activity reprocess slice, stopped-worker
+  acceptance, restart completion, stable retry identity, and eventual outputs.
+  It does not prove cancellation, a crash during an executing Activity,
+  commit-before-lost-reply recovery, every legacy producer, checksumless-import
+  repair, or the actual admin UI interaction. Those remain explicit TODOs.
+
 ## Approved first native reprocess release
 
 - On 2026-10-16 the user authorized staying below 80% changed-line coverage for
@@ -16,6 +81,31 @@
 - Release scope is the reviewed single-activity admin reprocess path and its
   eventual output handoffs in the combined worker. Other producer conversions,
   cutover, recovery drills, and PR #67's atomic fitness follow-up remain separate.
+
+## Storage incident during validation, 23:07 UTC
+
+- On 2026-10-16 the node's 98 GiB root filesystem filled during CI 481.
+  Kubernetes evicted application, PostgreSQL, Temporal, ingress, and CI Pods;
+  Bike and CI were temporarily unavailable. This was not an application or
+  workflow acceptance pass.
+- Emergency recovery paused CI replicas while its API was unavailable, then
+  restored the normal replicas and released the recovery operation's maintenance
+  Lease. This emergency action does not replace the normal scheduler-pause
+  protocol for cache maintenance. Both temporary recovery Pods were removed.
+- Old unreferenced Rust executables reclaimed about 9 GiB on the separate
+  CI-cache filesystem. The root filesystem later returned to approximately
+  34 GiB used and 60 GiB available. These are different filesystems: the root
+  exhaustion cause remains unconfirmed and is an explicit operational follow-up.
+- PostgreSQL, all five Bike deployments, Temporal, ingress, and CI recovered.
+  Retained application volumes and all ten existing resource workflows survived.
+  Activity 1588 still had 47 efforts, one linked activity, and the same derived
+  content hash. Activity and fitness API reads returned 200 after recovery.
+- CI 482 passed backend checks and the restored 80% gate with all 160 changed
+  core lines covered, then was canceled during image compilation. CI 483 was
+  canceled while scheduling was paused. The operator reduced CI resource limits
+  for concurrent Plex use and explicitly authorized resuming under those limits.
+  CI 484 reused the identical backend results, verified release images, and
+  passed all 83 browser cases in 6.3 minutes. Resource limits were preserved.
 
 ## Concurrent projection fix: production canary, 22:58 UTC
 
