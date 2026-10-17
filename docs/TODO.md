@@ -144,7 +144,7 @@
 | Order | Review | Priority | Work                                                    | Status          |
 | ----- | ------ | -------- | ------------------------------------------------------- | --------------- |
 | 1     | R01    | P1       | Atomic fitness invalidation                             | Ready to verify |
-| 2     | R05    | P1       | Stable command identity through UI/API retries          | Pending         |
+| 2     | R05    | P1       | Stable command identity through UI/API retries          | Ready to verify |
 | 3     | R03    | P1       | Strava duplicate outcomes and removed segment scope     | Ready to verify |
 | 4     | R02    | P1       | Source ordering and reconciliation                      | Pending         |
 | 5     | R04    | P1       | Cancellation boundary across provider parents/children  | Pending         |
@@ -171,6 +171,16 @@
   rejects changed work; never attach another activity's metadata to the old job.
   Mock a lost response, retry, closed job, and same-key/different-target request.
   Reuse Temporal's retained command information without an admission table.
+  Implementation retains per-activity typed UI commands until acknowledgement
+  and verifies immutable work against the exact native job/run's first history
+  event. Changed work returns HTTP 409; revision/context changes on retry retain
+  the original execution. No new persistence or orchestration layer. Focused
+  Docker checks cover 76 native workflow/client tests, six API reprocessing tests,
+  and seven UI hook/component tests. Two UI regressions, the changed-target
+  native regression, and API conflict mapping failed against the old behavior.
+  Review before rollout: exercise the actual admin flow and lost-response retry.
+  UI state survives rerenders/target switches, not page reload; broader producer
+  cutover and live retention/crash behavior remain separate work.
 - **R03 — Strava retry outcomes and removed scope** (F1/F2; U07–U09/P01/P02).
   Recheck the original outcome immediately after acquiring the existing lock,
   before unchanged/superseded classification. Preserve minimal old/new refresh

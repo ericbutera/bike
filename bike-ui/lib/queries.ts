@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useRef } from "react";
 import type { ActivityType } from "./activityTypes";
 import type { ActivitySport } from "./activitySports";
 import { $api, $typedApi } from "./api";
@@ -1500,8 +1501,14 @@ export function useReprocessUserActivityImports() {
   };
 }
 
+type ReprocessActivityCommand = {
+  activity_id: number;
+  command_id: string;
+};
+
 export function useReprocessActivityImport() {
   const queryClient = useQueryClient();
+  const commands = useRef(new Map<number, ReprocessActivityCommand>());
   const mutation = $api.useMutation(
     "post",
     "/admin/activity-imports/reprocess-activity",
@@ -1511,12 +1518,21 @@ export function useReprocessActivityImport() {
     ...mutation,
     reprocessAsync: async (activityId: number | string) => {
       const numericActivityId = Number(activityId);
-      const result = await mutation.mutateAsync({
-        body: {
+      let command = commands.current.get(numericActivityId);
+      if (!command) {
+        command = {
           activity_id: numericActivityId,
           command_id: crypto.randomUUID(),
-        },
+        };
+        commands.current.set(numericActivityId, command);
+      }
+      const result = await mutation.mutateAsync({
+        body: command,
       });
+      // Only acknowledgement settles this intent. A failed response keeps its key.
+      if (commands.current.get(numericActivityId) === command) {
+        commands.current.delete(numericActivityId);
+      }
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["get", "/activities"] }),

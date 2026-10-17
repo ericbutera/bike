@@ -19,6 +19,7 @@ type WorkflowMock = workflow_test_support::WorkflowMock;
 mod adapters;
 mod batches;
 pub(crate) mod client;
+mod command_identity;
 pub(crate) mod fixtures;
 mod handlers;
 mod import_operations;

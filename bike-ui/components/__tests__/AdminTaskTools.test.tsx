@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import AdminTaskTools from "../admin/AdminTaskTools";
+import { acceptedReprocessing } from "@/tests/fixtures/reprocessing";
 
 const mocks = vi.hoisted(() => ({
   useActivityArchiveImportJobs: vi.fn(),
@@ -111,19 +112,7 @@ describe("AdminTaskTools", () => {
   });
 
   it("links targeted activity reprocess results to event traces", async () => {
-    mocks.reprocessActivityAsync.mockResolvedValue({
-      activity_id: 1647,
-      activity_import_id: 88,
-      user_id: 1,
-      job: {
-        job_id: "bike-task-reprocess_activity_import-user-1-fixture-command",
-        namespace: "bike",
-        run_id: "fixture-run",
-        workflow_type: "reprocess_activity_import",
-      },
-      status: "accepted",
-      message: "Activity reprocessing accepted.",
-    });
+    mocks.reprocessActivityAsync.mockResolvedValue(acceptedReprocessing());
 
     const user = userEvent.setup();
     render(<AdminTaskTools />);
