@@ -610,6 +610,9 @@ mod tests {
             let parsed = parse_strava_provider_payload(&serde_json::to_vec(&payload).unwrap()).unwrap();
             assert_eq!(parsed.draft.sport, expected);
             assert_eq!(parsed.draft.title, payload.activity.name);
+            assert_eq!(parsed.derived_data.route_points.len(), 3);
+            assert_eq!(parsed.derived_data.route_points[0].latitude, 35.0);
+            assert_eq!(parsed.derived_data.route_points[0].longitude, -82.0);
         }
     }
 

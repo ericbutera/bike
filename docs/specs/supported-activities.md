@@ -8,8 +8,9 @@ This specification owns support tiers and the activity inventory. The
 the [heatmap specification](heatmaps.md) owns geographic
 contribution. Task status stays in [the Bike backlog](../TODO.md).
 The original inventory reflects inspected code on 2026-10-06. Summary retention
-and central vocabulary were updated on 2026-10-14 and await rollout. Expansion
-work below remains proposed; it is separate from retaining activity summaries.
+and central vocabulary were updated on 2026-10-14; the GPS-map contract was updated
+on 2026-10-17. Release verification lives in the backlog. Sport-specific expansion
+below remains proposed and is separate from retaining summaries and map routes.
 
 ## Support tiers
 
@@ -47,6 +48,9 @@ heatmap geometry.
 - Retain every incoming activity summary regardless of filter membership. Preserve
   unrecognized sport labels and the complete provider source; an unknown sport
   must never be guessed to be cycling or rejected by an enum deserializer.
+- Retain supplied GPS for every recorded sport. The shared
+  [activity-map contract](maps.md#rider-experience) displays those routes in the
+  feed and activity detail, independently of heatmap or cycling-analysis eligibility.
 - Only cycling contributes to cycling training, fitness, segments, and reports.
   Creating, updating, or deleting a non-cycling summary cannot invalidate cycling
   fitness. Changing a ride into a non-cycling summary removes its previous cycling
@@ -54,18 +58,18 @@ heatmap geometry.
 
 ## Supported cycling
 
-| Activity                            | Current normalized sport                                                                        | Source support and limitations                                                                                                                                                         |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Ride / generic cycling              | `road_ride`; legacy rows may contain `ride`                                                     | FIT/TCX/GPX and Strava `Ride`. Generic `ride` is included by the Road ride filter; it does not prove road terrain or outdoor recording.                                                |
-| Road ride                           | `road_ride`                                                                                     | Shared ride imports, list/detail, and cycling workflows. No separate road-training product is implied.                                                                                 |
+| Activity                            | Current normalized sport                                                                        | Source support and limitations                                                                                                                                                        |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ride / generic cycling              | `road_ride`; legacy rows may contain `ride`                                                     | FIT/TCX/GPX and Strava `Ride`. Generic `ride` is included by the Road ride filter; it does not prove road terrain or outdoor recording.                                               |
+| Road ride                           | `road_ride`                                                                                     | Shared ride imports, list/detail, and cycling workflows. No separate road-training product is implied.                                                                                |
 | Mountain bike                       | `mountain_bike`                                                                                 | Strava `MountainBikeRide`; normalized FIT cycling sub-sport tokens `mountain`, `downhill`, `ebikemountain`, and `ebikedownhill` map here. Recognized file labels also normalize here. |
-| Indoor trainer / stationary cycling | `indoor_trainer_ride`                                                                           | Recognized indoor labels, FIT indoor cycling/spin, and Strava cycling with `trainer = true`. Cycling telemetry and training can be retained without GPS.                               |
+| Indoor trainer / stationary cycling | `indoor_trainer_ride`                                                                           | Recognized indoor labels, FIT indoor cycling/spin, and Strava cycling with `trainer = true`. Cycling telemetry and training can be retained without GPS.                              |
 | Virtual cycling, including Zwift    | `indoor_trainer_ride` when explicit virtual sport/normalization signals exist                   | Strava `VirtualRide`, FIT virtual cycling, and virtual recorder evidence. Recording context must still reject virtual geometry when the stored sport remains generic.                 |
 | Gravel ride                         | `ride` for `GravelRide`                                                                         | Strava delivery and shared cycling workflows; no dedicated gravel filter or analytics. Preserve raw subtype metadata.                                                                 |
 | E-bike ride                         | `ride` for `EBikeRide`                                                                          | Strava delivery and shared cycling workflows; assisted rides have no separate filter or comparison cohort.                                                                            |
-| E-mountain-bike ride                | `ride` for Strava `EMountainBikeRide`; supported FIT mountain sub-sports map to `mountain_bike` | Source-dependent normalization; no separate assistance classification. Consistent e-bike subtype preservation is not implemented.                                                      |
-| Handcycle                           | `ride` for recognized `handcycle`                                                               | Bike's cycling predicate and provider parser recognize it. Native Strava and compatible retained file inputs can use shared workflows, without dedicated metrics/filter.               |
-| Velomobile                          | `ride` for recognized `velomobile`                                                              | Same native Strava recognition as handcycle; no dedicated metrics/filter.                                                                                                              |
+| E-mountain-bike ride                | `ride` for Strava `EMountainBikeRide`; supported FIT mountain sub-sports map to `mountain_bike` | Source-dependent normalization; no separate assistance classification. Consistent e-bike subtype preservation is not implemented.                                                     |
+| Handcycle                           | `ride` for recognized `handcycle`                                                               | Bike's cycling predicate and provider parser recognize it. Native Strava and compatible retained file inputs can use shared workflows, without dedicated metrics/filter.              |
+| Velomobile                          | `ride` for recognized `velomobile`                                                              | Same native Strava recognition as handcycle; no dedicated metrics/filter.                                                                                                             |
 
 The UI offers Mountain bike, Indoor trainer ride, and Road ride as distinct
 cycling filters. Other recognized cycling forms group into generic `ride`,
@@ -73,8 +77,9 @@ which the Road ride filter includes. That compatibility grouping does not make
 gravel, assisted cycling, handcycling, and velomobiles all road rides.
 
 Native Rust Strava workflows accept cycling labels recognized by Bike, including
-handcycle and velomobile. Non-cycling responses retain source metadata and skip
-recording streams and cycling-derived work. See [Strava integration](strava-integration.md).
+handcycle and velomobile. Non-cycling responses retain source metadata and available
+recording streams for maps while skipping cycling-derived work. See
+[background work](background-work.md#strava-protocol-and-workflows).
 
 Zwift, Garmin Connect, TrainerRoad, and TrainerDay are sources or recording
 platforms, not sport tiers. File/archive compatibility does not imply a
@@ -90,12 +95,12 @@ every XC metric for each subtype.
 
 ## Semi-supported and recognized non-cycling activities
 
-| Activity                                    | Current behavior                                                                                                                                                                         | Missing for full support                                                                                                                                                            |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Hike | `hike`/`hiking` normalize to `hike`; Hike filter exists. Strava summaries appear in the feed; compatible files can retain GPS for generic detail display. | No hiking segments, training, reports, or documented live hiking import coverage. |
-| Walk | `walk`/`walking` normalize to `walk`; Walk filter exists. Strava summaries appear in the feed with description and gear when supplied. | No walking-specific metrics or analytics; the 2026-10-14 summary change awaits rollout. |
-| Run, including trail and virtual run labels | Labels normalize to `run`; Run filter exists. Strava summaries appear in the feed. Compatible files can expose generic telemetry, laps, and routes. | No running pace/cadence presentation, segments, training, or reports. Trail/virtual distinctions are not separate list sports. |
-| Swim | `swim`/`swimming` normalize to `swim`; Swim filter exists. Strava summaries appear in the feed; generic FIT session/lap fields may survive parsing. | No dedicated pool lengths, stroke/rest model, swim pace, or analytics. |
+| Activity                                    | Current behavior                                                                                                                                    | Missing for full support                                                                                                       |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Hike                                        | `hike`/`hiking` normalize to `hike`; Hike filter exists. Strava and compatible files retain available GPS for feed/detail maps.                     | No hiking segments, training, or reports.                                                                                      |
+| Walk                                        | `walk`/`walking` normalize to `walk`; Walk filter exists. Strava retains available GPS for maps, plus description and gear when supplied.           | No walking-specific metrics or analytics.                                                                                      |
+| Run, including trail and virtual run labels | Labels normalize to `run`; Run filter exists. Strava and compatible files retain available GPS for maps and generic telemetry.                      | No running pace/cadence presentation, segments, training, or reports. Trail/virtual distinctions are not separate list sports. |
+| Swim                                        | `swim`/`swimming` normalize to `swim`; Swim filter exists. Strava summaries appear in the feed; generic FIT session/lap fields may survive parsing. | No dedicated pool lengths, stroke/rest model, swim pace, or analytics.                                                         |
 
 Hike is semi-supported, alongside walk and run. None is supported in cycling
 analytics. Non-cycling file imports currently still parse detail and execute
@@ -113,10 +118,10 @@ rules.
 
 Native Rust Strava promotes all summaries into the activity feed, including
 walks, hikes, runs, swims, and other sports. Preserve distance, duration, elevation,
-description, and gear ID/name when provided. Non-cycling and manual activities skip
-provider streams and retain no invented GPS or sensors. Cycling calculations remain
-limited to cycling sports. Archives/uploads remain the original-file path for
-non-cycling recordings; sport-specific analytics are still outside this contract.
+description, and gear ID/name when provided. Recorded activities of every sport
+retain available provider GPS for maps. Manual entries and unavailable recordings
+retain no invented GPS or sensors. Cycling calculations remain limited to cycling
+sports; sport-specific non-cycling analytics remain outside this contract.
 
 ## Proposed expansion and implementation lift
 
@@ -151,11 +156,11 @@ cloud delivery are additional scope.
 
 ### Running
 
-| Scope                                 | Relative lift                                  | Required work                                                                                                                                                                                                                                                                                                                                                   |
-| ------------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| File-based running history/detail     | Moderate after the shared foundation           | Promote retained runs; preserve road/trail/treadmill/virtual claims where available; add pace with proper units and zero/missing-value handling; clarify moving/elapsed time; define running cadence semantics instead of relabeling cycling RPM. Reuse maps, charts, and laps with appropriate labels/actions. Update API/UI contracts and synthetic coverage. |
-| Running segments, trends, or training | Substantial separate feature                   | Define sport-owned segments, comparison cohorts, metrics, thresholds/zones, load interpretation, and reports/readiness. Do not broaden cycling predicates or mix runs into XC/DH reports and freshness without an explicit model decision.                                                                                                                      |
-| Live Strava running sync              | Activity promotion in addition to Bike support | Requires provider fixtures, retained-summary promotion, quota/checkpoint handling and Bike boundary tests. Running recording streams remain outside the cycling workflow.                                                                                                                                                                                       |
+| Scope                                 | Relative lift                        | Required work                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| File-based running history/detail     | Moderate after the shared foundation | Promote retained runs; preserve road/trail/treadmill/virtual claims where available; add pace with proper units and zero/missing-value handling; clarify moving/elapsed time; define running cadence semantics instead of relabeling cycling RPM. Reuse maps, charts, and laps with appropriate labels/actions. Update API/UI contracts and synthetic coverage. |
+| Running segments, trends, or training | Substantial separate feature         | Define sport-owned segments, comparison cohorts, metrics, thresholds/zones, load interpretation, and reports/readiness. Do not broaden cycling predicates or mix runs into XC/DH reports and freshness without an explicit model decision.                                                                                                                      |
+| Sport-specific live running support   | Beyond shared summary/GPS retention  | Shared Strava workflows retain summaries and available GPS. Dedicated running presentation and analytics still require their own product contract and provider/recording fixtures.                                                                                                                                                                              |
 
 Acceptance requires outdoor, trail, treadmill/GPS-free, and virtual run
 fixtures; correct pace/laps, preserved subtype/source, idempotent promotion and

@@ -295,11 +295,15 @@ flowchart TD
   with normalized sport, title, distance, duration, reported elevation gain,
   description, and gear ID/name when supplied. Missing gear name preserves its
   ID without another call. Store complete provider responses in object storage.
-- Fetch streams only for recorded cycling activities. Manual/non-cycling summaries
-  use empty streams; missing manual streams do not fail import. Invent no GPS or
-  sensor data. Prefer reported elevation gain over samples. Apply the
+- Fetch streams for recorded activities of every sport so supplied GPS can feed
+  [activity maps](maps.md#rider-experience). Keep the provider payload, parsed data,
+  and stream bytes behind the existing object-storage wrapper.
+- Manual entries skip stream fetching. A stream endpoint's 404 means unavailable
+  recording data: retain the summary with empty streams. Other failures, including
+  permission errors and rate limits, retain their normal failure/retry behavior.
+  Invent no GPS or sensor data. Prefer reported elevation gain over samples. Apply the
   [central sport policy](supported-activities.md#central-activity-vocabulary-and-retention)
-  to exclude non-cycling summaries from cycling calculations while keeping them
+  to exclude non-cycling activities from cycling calculations while keeping them
   visible in the feed; preserve unknown provider sports.
 
 | Workflow                        | Input                      | Source steps and result                                               |

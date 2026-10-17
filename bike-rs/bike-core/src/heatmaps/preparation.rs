@@ -140,6 +140,38 @@ mod tests {
         assert!(log.contains("COMMIT"));
     }
 
+    #[tokio::test]
+    async fn non_cycling_gps_routes_are_skipped_and_never_publish_heatmap_chunks() {
+        use crate::{entities::activities, test_support as fixtures};
+        use sea_orm::Value;
+        use std::collections::BTreeMap;
+        let derived = fixtures::parsed_reprocess_activity().derived_data;
+        assert!(!geometry::prepare(&derived.route_points).is_empty());
+        for sport in ["hike", "walk", "run", "swim", "workout", "pickleball"] {
+            let activity = activities::Model {
+                sport: sport.into(),
+                derived_data_json: Some(crate::activity_data::serialize_derived_activity_data(&derived)),
+                ..fixtures::activity()
+            };
+            let owner = BTreeMap::from([("user_id", Value::from(activity.user_id))]);
+            let pending = PendingProjection {
+                activity_id: activity.id,
+                generation: fixtures::heatmap_projection().generation,
+            };
+            let db = fixtures::postgres_mock()
+                .append_query_results([vec![activity]])
+                .append_query_results([vec![owner]])
+                .append_exec_results((0..4).map(|_| fixtures::written()))
+                .into_connection();
+            prepare_activity(&db, pending).await.unwrap();
+            let log = format!("{:?}", db.into_transaction_log());
+            assert!(log.contains("skipped"), "{sport}: {log}");
+            assert!(log.contains("DELETE"));
+            assert!(log.contains("COMMIT"));
+            assert!(!log.contains("INSERT"));
+        }
+    }
+
     #[test]
     fn legacy_virtual_and_zwift_flags_remove_chunks_while_real_rides_keep_them() {
         for (sport, source, title, excluded) in [

@@ -167,29 +167,103 @@ async fn normalizes_a_fixture_ride_without_provider_or_persistence_calls() {
 }
 
 #[tokio::test]
-async fn non_cycling_activity_keeps_a_normalized_summary_without_provider_streams() {
+async fn recorded_activities_of_every_sport_keep_provider_gps_for_maps() {
+    for (provider_sport, sport) in [
+        ("Hike", "hike"),
+        ("Walk", "walk"),
+        ("Run", "run"),
+        ("Swim", "swim"),
+        ("Workout", "workout"),
+        ("Pickleball", "pickleball"),
+    ] {
+        let mut fixture = HandlerFixture::new();
+        let provider = Arc::get_mut(&mut fixture.provider).unwrap();
+        provider.payload.activity.sport_type = Some(provider_sport.into());
+        provider.payload.activity.legacy_type = Some(provider_sport.into());
+        let expected = provider.payload.streams.latlng.as_ref().unwrap().data.clone();
+        let sources = fixture.sources().await;
+        let operations = fixture.operations(fixture.connection_mock());
+        let sources = operations
+            .fetch_streams(ActivitySource {
+                event: sources.event,
+                activity: sources.activity,
+            })
+            .await
+            .unwrap();
+        let normalized = operations.normalize_activity(sources).await.unwrap();
+        let parsed: ParsedActivityData = operations
+            .store
+            .read_json(normalized.parsed.as_ref().unwrap())
+            .await
+            .unwrap();
+        assert_eq!(parsed.draft.sport, sport);
+        let actual: Vec<_> = parsed
+            .derived_data
+            .route_points
+            .iter()
+            .map(|point| [point.latitude, point.longitude])
+            .collect();
+        assert_eq!(actual, expected);
+        assert_eq!(*fixture.provider.calls.lock().unwrap(), [ProviderCall::Streams]);
+    }
+}
+
+#[tokio::test]
+async fn gps_free_recordings_keep_the_summary_without_inventing_a_route() {
     let mut fixture = HandlerFixture::new();
     let provider = Arc::get_mut(&mut fixture.provider).unwrap();
-    provider.payload.activity.sport_type = Some("Run".into());
-    provider.payload.activity.legacy_type = Some("Run".into());
+    provider.payload.activity.sport_type = Some("Workout".into());
+    provider.payload.streams = StravaActivityStreams::default();
     let sources = fixture.sources().await;
     let operations = fixture.operations(fixture.connection_mock());
-    let source = ActivitySource {
-        event: sources.event,
-        activity: sources.activity,
-    };
-    let sources = operations.fetch_streams(source).await.unwrap();
-    let empty: StravaActivityStreams = operations.store.read_json(&sources.streams).await.unwrap();
-    assert!(empty.time.is_none());
+    let sources = operations
+        .fetch_streams(ActivitySource {
+            event: sources.event,
+            activity: sources.activity,
+        })
+        .await
+        .unwrap();
     let normalized = operations.normalize_activity(sources).await.unwrap();
     let parsed: ParsedActivityData = operations
         .store
         .read_json(normalized.parsed.as_ref().unwrap())
         .await
         .unwrap();
-    assert_eq!(parsed.draft.sport, "run");
+    assert_eq!(parsed.draft.sport, "workout");
     assert!(parsed.derived_data.route_points.is_empty());
-    assert!(fixture.provider.calls.lock().unwrap().is_empty());
+    assert_eq!(*fixture.provider.calls.lock().unwrap(), [ProviderCall::Streams]);
+}
+
+#[tokio::test]
+async fn unavailable_streams_keep_the_summary_but_other_failures_propagate() {
+    for status in [
+        StatusCode::NOT_FOUND,
+        StatusCode::BAD_REQUEST,
+        StatusCode::UNAUTHORIZED,
+        StatusCode::TOO_MANY_REQUESTS,
+        StatusCode::INTERNAL_SERVER_ERROR,
+    ] {
+        let fixture = HandlerFixture::new();
+        let source = fixture.sources().await;
+        *fixture.provider.failure.lock().unwrap() = Some(status);
+        let operations = fixture.operations(fixture.connection_mock());
+        let result = operations
+            .fetch_streams(ActivitySource {
+                event: source.event,
+                activity: source.activity,
+            })
+            .await;
+        if status == StatusCode::NOT_FOUND {
+            let source = result.unwrap();
+            let streams: StravaActivityStreams = operations.store.read_json(&source.streams).await.unwrap();
+            assert!(streams.latlng.is_none());
+            assert!(streams.time.is_none());
+        } else {
+            let error = result.unwrap_err();
+            assert_eq!(error.status, status);
+            assert_eq!(error.retry_at.is_some(), status == StatusCode::TOO_MANY_REQUESTS);
+        }
+    }
 }
 
 #[tokio::test]
