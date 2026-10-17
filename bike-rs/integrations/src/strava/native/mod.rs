@@ -15,7 +15,7 @@ use super::{
     client::{RequestArchive, StravaApiClient},
     events::StravaEvent,
     objects::{ObjectRef, ObjectStore},
-    provider_payload::{strava_activity_is_bike, StravaActivityStreams, StravaActivitySummary},
+    provider_payload::{StravaActivityStreams, StravaActivitySummary},
 };
 use bike_core::{
     config::Config,
@@ -97,12 +97,22 @@ impl StravaOperations {
             .get("manual")
             .and_then(serde_json::Value::as_bool)
             == Some(true);
-        let streams = if strava_activity_is_bike(&activity) && !manual {
-            self.provider.streams(&input.event).await?
+        let fetched = if manual {
+            None
         } else {
-            self.store
-                .transform(&self.key(&input.event, "streams"), &StravaActivityStreams::default())
-                .await?
+            match self.provider.streams(&input.event).await {
+                Ok(streams) => Some(streams),
+                Err(error) if error.status == axum::http::StatusCode::NOT_FOUND => None,
+                Err(error) => return Err(error),
+            }
+        };
+        let streams = match fetched {
+            Some(streams) => streams,
+            None => {
+                self.store
+                    .transform(&self.key(&input.event, "streams"), &StravaActivityStreams::default())
+                    .await?
+            }
         };
         Ok(ActivitySources {
             event: input.event,

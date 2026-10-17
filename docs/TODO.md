@@ -168,6 +168,11 @@
 - [x] Verify shared trace continuity after enabling the native Temporal crate targets. A repeated real sync returned one unchanged activity and zero failures; list, activity, and streams exchanges shared trace `8d61988be672f15ffda11303fee1fe77`.
 - [x] Observe Strava-originated POSTs on the registered route. Real creates `20582557310` and `20582644055` reached `/webhooks/strava-gateway` on 2026-10-14; the dated rollout record preserves their outcomes.
 - [x] Retain all Strava summaries, descriptions, and gear in the feed; skip streams for manual rides and non-cycling summaries. Fixture checks and the live manual ride recovery passed on 2026-10-14.
+- [x] Preserve available Strava GPS for maps across all recorded sports, superseding
+      the non-cycling stream skip. Keep heatmap and cycling-analysis admission
+      independent; cover GPS-free/manual entries and unavailable streams.
+- [ ] Release the GPS-map update and resync activity `1684`; verify its feed map
+      appears while the hike remains excluded from heatmap and cycling outputs.
 - [x] Centralize sport/cycling policy and Training/Race in backend enums; generate frontend types and runtime options through OpenAPI. Preserve unknown provider sports without admitting them to cycling calculations.
 - [x] Bound Strava Temporal JSON to 256 KiB, keeping large provider bodies and parsed data in object storage. Cover oversized callbacks/results, a 3 MiB provider body, and 150,000-point streams with isolated units.
 - [x] Record the former 14-day/90-day scratch-retention proposal. The 2026-10-17 simplification supersedes its reference/pin inventory requirements; keep canonical sources under the current background-work specification.

@@ -7,10 +7,6 @@ use std::{
 };
 
 fn activity_fixture() -> crate::entities::activities::Model {
-    let mut activity: crate::entities::activities::Model = serde_json::from_value(serde_json::json!({
-        "id": 7, "user_id": 1, "title": "Map fixture", "sport": "ride", "source": "manual_upload", "activity_type": "training",
-        "started_at": "2026-10-09T12:00:00Z", "created_at": "2026-10-09T12:00:00Z", "updated_at": "2026-10-09T12:00:00Z",
-    })).unwrap();
     let data = crate::activity_details::ActivityDerivedData {
         route_points: serde_json::from_value(serde_json::json!([
             {"elapsed_seconds":0,"latitude":45.0,"longitude":-85.0},
@@ -19,8 +15,13 @@ fn activity_fixture() -> crate::entities::activities::Model {
         .unwrap(),
         ..Default::default()
     };
-    activity.derived_data_json = Some(crate::activity_details::serialize_derived_activity_data(&data).unwrap());
-    activity
+    crate::entities::activities::Model {
+        id: 7,
+        user_id: 1,
+        title: "Map fixture".into(),
+        derived_data_json: Some(crate::activity_details::serialize_derived_activity_data(&data).unwrap()),
+        ..crate::test_support::activity()
+    }
 }
 
 fn database(activity: Option<crate::entities::activities::Model>) -> sea_orm::DatabaseConnection {
@@ -80,7 +81,7 @@ async fn image_workflow_reuses_cache_without_contacting_worker() {
 }
 
 #[tokio::test]
-async fn image_workflow_calls_and_caches_authenticated_snapshot_worker() {
+async fn hiking_feed_map_calls_and_caches_authenticated_snapshot_worker() {
     let worker = super::proto::map_service_server::MapServiceServer::new(FixtureWorker);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -105,10 +106,13 @@ async fn image_workflow_calls_and_caches_authenticated_snapshot_worker() {
     let trace = capture(async {
         let image = service
             .image(
-                &database(Some(activity_fixture())),
+                &database(Some(crate::entities::activities::Model {
+                    sport: "hike".into(),
+                    ..activity_fixture()
+                })),
                 1,
                 7,
-                Variant::Full,
+                Variant::Thumbnail,
                 "1",
                 MapOptions {
                     theme: Theme::Light,

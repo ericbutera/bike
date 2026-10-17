@@ -83,6 +83,10 @@ tile edges prevent seams between neighboring tiles.
 
 ## Eligible routes and filters
 
+- Activity-feed and detail maps may display any sport with usable GPS. That
+  display contract does not change heatmap admission; the rules below still
+  decide which activities contribute.
+
 Current projection policy **v5** excludes non-cycling activities, known
 indoor/virtual recordings, unavailable authentic sources, and unusable GPS.
 **Unknown recording provenance can still contribute today.** The stricter

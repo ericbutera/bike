@@ -48,6 +48,14 @@ Snapshot review and release status live in
 
 ## Rider experience
 
+- Activity feed previews and detail maps display every activity with at least two
+  usable stored GPS points, including hikes, walks, runs, swims, and unknown
+  sports. Map availability depends on route data and access, not cycling-family
+  membership. Do not fabricate a route for GPS-free activities.
+- Displaying an activity map does not admit it to the personal heatmap or cycling
+  calculations. [Heatmap eligibility](heatmaps.md#eligible-routes-and-filters) and
+  the [sport policy](supported-activities.md#central-activity-vocabulary-and-retention)
+  own those independent decisions.
 - With `enhanced_maps` enabled, activity cards display a private route PNG in
   the rider's light or dark theme. With it disabled, cards retain the existing
   simplified SVG route preview, with a blue route, and do not call the snapshot
