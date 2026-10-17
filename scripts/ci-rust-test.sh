@@ -5,18 +5,15 @@ while IFS= read -r variable; do unset "$variable"; done < <(git rev-parse --loca
 cd "$(dirname "$0")/.."
 fixture="$(mktemp -d "${TMPDIR:-/tmp}/bike-ci-rust-test.XXXXXX")"
 trap 'rm -rf -- "$fixture"' EXIT
-mkdir -p "$fixture/repo/scripts" "$fixture/bin" "$fixture/docker-bin"
+mkdir -p "$fixture/repo/scripts" "$fixture/bin"
 cp scripts/ci-rust.sh scripts/coverage-transfer.sh "$fixture/repo/scripts/"
-cp scripts/ci-engine-stop.sh "$fixture/repo/scripts/"
 cp coverage-projects.json "$fixture/repo/"
 cat >"$fixture/bin/mise" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ "${1:-}" == exec ]]; then
-  tools="$*"
   while [[ "$1" != -- ]]; do shift; done
   shift
-  if [[ "$tools" == *aqua:docker/cli* ]]; then PATH="$FIXTURE_DOCKER_BIN:$PATH"; fi
   exec "$@"
 fi
 printf '%s\n' "$*" >>"$FIXTURE_COMMANDS"
@@ -42,20 +39,14 @@ case "$*" in
 esac
 SH
 chmod +x "$fixture/bin/mise"
-cat >"$fixture/docker-bin/docker" <<'SH'
-#!/usr/bin/env bash
-[[ "${FIXTURE_ALLOW_DOCKER_INFO:-true}" == true && "${1:-}" == info ]]
-SH
-chmod +x "$fixture/docker-bin/docker"
 ln -s "$(command -v node)" "$fixture/bin/node"
 ln -s "$(command -v jq)" "$fixture/bin/jq"
-export PATH="$fixture/bin:/usr/bin:/bin" FIXTURE_COMMANDS="$fixture/commands" FIXTURE_DOCKER_BIN="$fixture/docker-bin"
-# Docker is unavailable until the owning mise execution selects its tool path.
+export PATH="$fixture/bin:/usr/bin:/bin" FIXTURE_COMMANDS="$fixture/commands"
+# Rust verification must succeed without a Docker client or daemon.
 if command -v docker >/dev/null; then exit 1; fi
 export BIKE_RUST_CHECK_CACHE="$fixture/cache" BIKE_COVERAGE_TRANSFER_ROOT="$fixture/transfer"
 export CI_PIPELINE_NUMBER=1 CI_PIPELINE_EVENT=pull_request CI_COMMIT_REF=refs/pull/1/merge
 export CARGO_LLVM_COV_TARGET_DIR=/cache/bike/target/shared/llvm-cov-target
-export BIKE_E2E_ENGINE_STATE_DIR=.artifacts/sdk-engine
 cd "$fixture/repo"
 git init --quiet --initial-branch=main
 git config user.name 'CI fixture'
@@ -70,8 +61,6 @@ printf 'protocol\n' >proto/maps.proto
 printf 'runner\n' >.woodpecker/bike.yaml
 git add .
 git commit --quiet -m 'test: initial backend inputs'
-mkdir -p "$BIKE_E2E_ENGINE_STATE_DIR"
-printf '0\n' >"$BIKE_E2E_ENGINE_STATE_DIR/stopped"
 
 run_stage() {
   bash scripts/ci-rust.sh "$1" >"$fixture/$1.log" 2>&1 || {
@@ -87,32 +76,19 @@ transfer() {
   bash scripts/coverage-transfer.sh save
   rm -rf -- .artifacts/coverage
 }
-parallel_suites() {
-  export FIXTURE_REQUIRE_PARALLEL=true
-  run_stage unit &
-  local unit_pid=$!
-  run_stage sdk &
-  local sdk_pid=$!
-  wait "$unit_pid"
-  wait "$sdk_pid"
-  unset FIXTURE_REQUIRE_PARALLEL
-}
-full_run() { run_stage prepare; parallel_suites; run_stage report; transfer; bash scripts/coverage-transfer.sh restore; }
+full_run() { run_stage prepare; run_stage unit; run_stage report; transfer; bash scripts/coverage-transfer.sh restore; }
 assert_no_commands() {
   if [[ -s "$FIXTURE_COMMANDS" ]]; then cat "$FIXTURE_COMMANDS" >&2; exit 1; fi
 }
 
-# A cold backend only becomes reusable after BOTH suites and reporting succeed.
+# A cold backend only becomes reusable after tests and reporting succeed.
 run_stage prepare
+test -z "$(find "$BIKE_RUST_CHECK_CACHE" -name reports.sha256 -print -quit)"
+if bash scripts/ci-rust.sh report >"$fixture/incomplete.log" 2>&1; then exit 1; fi
+test -z "$(find "$BIKE_RUST_CHECK_CACHE" -name reports.sha256 -print -quit)"
 run_stage unit
-test -z "$(find "$BIKE_RUST_CHECK_CACHE" -name reports.sha256 -print -quit)"
-if bash scripts/ci-rust.sh report >"$fixture/incomplete.log" 2>&1; then exit 1; fi
-test -z "$(find "$BIKE_RUST_CHECK_CACHE" -name reports.sha256 -print -quit)"
-if bash scripts/ci-rust.sh report >"$fixture/incomplete.log" 2>&1; then exit 1; fi
-run_stage sdk
 run_stage report
 grep -Fxq 'run rust:ci:unit' "$FIXTURE_COMMANDS"
-grep -Fxq 'run strava:sdk:check' "$FIXTURE_COMMANDS"
 grep -Fxq -- '--cd bike-rs run coverage:report' "$FIXTURE_COMMANDS"
 test -n "$(find "$BIKE_RUST_CHECK_CACHE" -name reports.sha256 -print -quit)"
 
@@ -155,37 +131,29 @@ run_stage prepare
 export FIXTURE_FAIL='run rust:ci:unit'
 if bash scripts/ci-rust.sh unit >"$fixture/failed.log" 2>&1; then exit 1; fi
 test ! -f .artifacts/coverage/rust-unit-passed
-unset FIXTURE_FAIL
-run_stage unit
-export FIXTURE_FAIL='run strava:sdk:check'
-if bash scripts/ci-rust.sh sdk >"$fixture/failed.log" 2>&1; then exit 1; fi
 if bash scripts/ci-rust.sh report >"$fixture/incomplete.log" 2>&1; then exit 1; fi
 unset FIXTURE_FAIL
-printf '1\n' >"$BIKE_E2E_ENGINE_STATE_DIR/stopped"
-if bash scripts/ci-rust.sh sdk >"$fixture/failed-engine.log" 2>&1; then exit 1; fi
-test ! -f .artifacts/coverage/rust-sdk-passed
-printf '0\n' >"$BIKE_E2E_ENGINE_STATE_DIR/stopped"
-run_stage sdk
+run_stage unit
 run_stage report
 
-# A manual run forces both suites, even when matching evidence exists.
+# A manual run forces tests, even when matching evidence exists.
 CI_PIPELINE_EVENT=manual
 : >"$FIXTURE_COMMANDS"
 full_run
 grep -Fxq 'run rust:ci:unit' "$FIXTURE_COMMANDS"
 CI_PIPELINE_EVENT=pull_request
 
-# A restored snapshot survives result-cache eviction during parallel checks.
+# A restored snapshot survives result-cache eviction during verification.
 run_stage prepare
 key="$(cat .artifacts/coverage/rust-unit-inputs)"
 rm -rf -- "${BIKE_RUST_CHECK_CACHE:?}/${key:?}"
 : >"$FIXTURE_COMMANDS"
-parallel_suites
+run_stage unit
 run_stage report
 assert_no_commands
 full_run
 
-# Corruption before preparation forces both suites and combined reporting.
+# Corruption before preparation forces tests and reporting.
 key="$(cat .artifacts/coverage/rust-unit-inputs)"
 printf 'corrupt\n' >"$BIKE_RUST_CHECK_CACHE/$key/reports.tar.gz"
 : >"$FIXTURE_COMMANDS"

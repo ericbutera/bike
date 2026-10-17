@@ -15,7 +15,7 @@ sql() {
 }
 
 prepare() {
-  compose up --detach --wait postgres
+  compose up --detach --wait postgres temporal
   compose run --rm migration
   sql --dbname bike <<'SQL'
 CREATE ROLE bike_application LOGIN PASSWORD 'e2e-application';

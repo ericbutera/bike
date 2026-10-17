@@ -72,7 +72,8 @@ test("shared admin tools queue matching import and training work in Bike", async
       segment_id: 5,
       status: "queued",
       message: "Segment effort regeneration queued.",
-      task_status: "pending",
+      task_id: expect.stringMatching(/^bike-regenerate_segment_efforts-/),
+      task_status: "running",
     });
     await expect(effortSection).toContainText(
       "Segment effort regeneration queued.",
@@ -147,14 +148,29 @@ test("shared admin tools queue matching import and training work in Bike", async
     await activitySection
       .getByRole("spinbutton", { name: /Activity id/ })
       .fill("1109");
-    // This stack has no Temporal server. API/workflow mocks verify acceptance
-    // and unavailable handoff; submitting here would deliberately emit a 5xx.
+    const activityResponse = waitForMutation(
+      page,
+      "/api/admin/activity-imports/reprocess-activity",
+    );
     await expect(
       activitySection.getByRole("button", { name: "Queue activity reprocess" }),
     ).toBeEnabled();
+    await activitySection
+      .getByRole("button", { name: "Queue activity reprocess" })
+      .click();
+    const activity = await activityResponse;
+    expect(activity.status(), target.name + " activity reprocess").toBe(202);
+    expect(await activity.json()).toMatchObject({
+      activity_id: 1109,
+      status: "accepted",
+      task_status: "accepted",
+      job: {
+        job_id: expect.stringMatching(/^bike-task-reprocess_activity_import-/),
+      },
+    });
     await expect(
       activitySection.getByText("Activity reprocess accepted"),
-    ).toHaveCount(0);
+    ).toBeVisible();
 
     const cleanupSection = sectionWithHeading(
       page,

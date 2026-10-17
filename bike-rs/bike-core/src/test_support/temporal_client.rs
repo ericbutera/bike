@@ -5,7 +5,7 @@ use temporalio_client::{
     Client, ClientOptions, Connection, ConnectionOptions,
 };
 use temporalio_common::protos::temporal::api::workflowservice::v1::{
-    CreateScheduleRequest, CreateScheduleResponse, StartWorkflowExecutionRequest, StartWorkflowExecutionResponse,
+    StartWorkflowExecutionRequest, StartWorkflowExecutionResponse,
 };
 
 #[derive(Default)]
@@ -13,8 +13,6 @@ pub struct Requests {
     pub starts: Vec<StartWorkflowExecutionRequest>,
     pub fail_start: bool,
     pub already_started: bool,
-    pub schedules: Vec<CreateScheduleRequest>,
-    pub schedule_exists: bool,
 }
 
 pub async fn client(requests: Arc<Mutex<Requests>>) -> Client {
@@ -27,15 +25,6 @@ pub async fn client(requests: Arc<Mutex<Requests>>) -> Client {
             Box::pin(async move {
                 let proto = match request.rpc.as_str() {
                     "GetSystemInfo" => vec![],
-                    "CreateSchedule" => {
-                        let schedule = CreateScheduleRequest::decode(request.proto).unwrap();
-                        let mut requests = requests.lock().unwrap();
-                        requests.schedules.push(schedule);
-                        if requests.schedule_exists {
-                            return Err(tonic::Status::already_exists("existing schedule"));
-                        }
-                        CreateScheduleResponse::default().encode_to_vec()
-                    }
                     "StartWorkflowExecution" => {
                         let start = StartWorkflowExecutionRequest::decode(request.proto).unwrap();
                         let mut requests = requests.lock().unwrap();

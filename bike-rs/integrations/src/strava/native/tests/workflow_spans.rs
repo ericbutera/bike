@@ -24,10 +24,14 @@ async fn webhook_connection_lookup_belongs_to_intake_even_when_no_owner_is_conne
         additional_fields: Default::default(),
     };
     let spans = capture(async {
-        assert!(crate::strava::events::accept_webhook(&db, &webhook, None)
-            .await
-            .unwrap()
-            .is_none());
+        assert!(crate::strava::events::accept_webhook(
+            &crate::strava::events::StravaIntake::new(db.clone()),
+            &webhook,
+            None
+        )
+        .await
+        .unwrap()
+        .is_none());
     })
     .await;
     stage(&spans, "strava.webhook.accept");

@@ -13,7 +13,7 @@ fn archive_calls_processing_which_awaits_its_derived_subtasks() {
     };
     let cursor = ArchiveCursor {
         job_id: 7,
-        archive_path: "/uploads/archives/7.zip".into(),
+        archive_path: "archives/7.zip".into(),
         offset: 0,
     };
     let mut archive = WorkflowMock::new::<ActivityArchiveImport>(ArchiveInput {

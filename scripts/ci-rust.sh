@@ -6,15 +6,8 @@ cd "$(dirname "$0")/.."
 : "${CI_PIPELINE_NUMBER:?This task requires a CI pipeline identity}"
 # Keep CI artifacts small without changing LLVM coverage instrumentation.
 export CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=1 CARGO_PROFILE_TEST_DEBUG=1
-stage="${1:?Use prepare, unit, sdk, or report}"
-case "$stage" in prepare|unit|sdk|report) ;; *) exit 1 ;; esac
-if [[ "$stage" == sdk ]]; then
-  : "${BIKE_E2E_ENGINE_STATE_DIR:?CI must select the disposable SDK engine directory}"
-  source scripts/ci-engine-stop.sh
-  trap stop_ci_engine EXIT
-  trap 'exit 130' INT
-  trap 'exit 143' TERM
-fi
+stage="${1:?Use prepare, unit, or report}"
+case "$stage" in prepare|unit|report) ;; *) exit 1 ;; esac
 
 # Include source, fixtures, vendored dependencies, contracts, tool/image pins,
 # and all orchestration. UI and documentation alone cannot change Rust results.
@@ -85,7 +78,7 @@ save_verified() {
 }
 
 if [[ "$stage" == prepare ]]; then
-  rm -f -- "$receipt" "$reports/rust-unit-reused" "$reports/rust-unit-passed" "$reports/rust-sdk-passed"
+  rm -f -- "$receipt" "$reports/rust-unit-reused" "$reports/rust-unit-passed"
   # Restore once, before parallel stages write measurements or reports.
   if (flock --shared 9; restore_verified) 9>"$cache/$key.lock"; then
     touch "$reports/rust-unit-reused"
@@ -100,11 +93,10 @@ if [[ "$stage" == prepare ]]; then
 fi
 
 test "$(cat "$receipt")" = "$key"
-if [[ "$stage" == unit || "$stage" == sdk ]]; then
+if [[ "$stage" == unit ]]; then
   rm -f -- "$reports/rust-$stage-passed"
   if [[ -f "$reports/rust-unit-reused" ]]; then
     printf 'Rust verification cache HIT %s; %s checks restored at preparation\n' "$key" "$stage"
-    if [[ "$stage" == sdk ]]; then finish_ci_engine; trap - EXIT; fi
     printf '%s\n' "$key" >"$reports/rust-$stage-passed"
     exit 0
   fi
@@ -116,26 +108,9 @@ case "$stage" in
     mise exec rust protoc -- mise run rust:ci:unit
     printf '%s\n' "$key" >"$reports/rust-unit-passed"
     ;;
-  sdk)
-    mise install aqua:docker/cli jq
-    for attempt in {1..60}; do
-      if mise exec aqua:docker/cli -- docker info >/dev/null 2>&1; then break; fi
-      if [[ "$attempt" == 60 ]]; then
-        printf 'Disposable SDK engine did not become ready\n' >&2
-        mise exec aqua:docker/cli -- docker info >&2
-        exit 1
-      fi
-      sleep 1
-    done
-    mise run strava:sdk:check
-    finish_ci_engine
-    trap - EXIT
-    printf '%s\n' "$key" >"$reports/rust-sdk-passed"
-    ;;
   report)
-    # A failed or interrupted parallel stage cannot publish passing evidence.
+    # A failed or interrupted test stage cannot publish passing evidence.
     test "$(cat "$reports/rust-unit-passed")" = "$key"
-    test "$(cat "$reports/rust-sdk-passed")" = "$key"
     if [[ -f "$reports/rust-unit-reused" ]]; then exit 0; fi
     case "${CARGO_LLVM_COV_TARGET_DIR:?Shared coverage objects are required}" in
       /cache/bike/target/shared/llvm-cov-target) ;;

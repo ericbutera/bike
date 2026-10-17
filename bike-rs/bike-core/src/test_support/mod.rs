@@ -46,7 +46,7 @@ pub mod trace;
 pub use segments::{segment, segment_summary, segment_user_summary};
 
 pub use accounts::{connection, customer, new_connection, new_customer};
-pub use imports::{archive_import_job, import_artifact};
+pub use imports::{activity_upload, archive_import_job, artifact_payload, import_artifact};
 
 use crate::entities::{activities, activity_imports};
 use chrono::{DateTime, Utc};

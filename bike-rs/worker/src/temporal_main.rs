@@ -1,7 +1,7 @@
 use bike_core::{config::Config, observability};
 use std::future::{Future, IntoFuture};
 use strava_temporal::client::Error;
-use strava_temporal::client::{connect, dispatch_events, worker, TemporalConfig};
+use strava_temporal::client::{connect, worker, TemporalConfig};
 use temporalio_sdk::Runtime;
 
 #[tokio::main]
@@ -11,7 +11,6 @@ async fn main() -> Result<(), strava_temporal::client::Error> {
     let app = Config::init_from_env();
     let db = bike_core::db::connect_database(&app.database_url).await?;
     let client = connect(&config).await?;
-    ensure_schedules(&client, &config).await?;
     bike_core::provider_metrics::init_provider_metrics();
     let sdk_address = std::env::var("TEMPORAL_METRICS_ADDRESS")
         .unwrap_or_else(|_| "0.0.0.0:9092".into())
@@ -24,7 +23,6 @@ async fn main() -> Result<(), strava_temporal::client::Error> {
         axum::Router::new().route("/metrics", axum::routing::get(provider_metrics)),
     )
     .into_future();
-    let events = dispatch_events(client.clone(), config.clone(), db.clone());
     let mut strava = worker(&runtime, client.clone(), &config, db.clone())?;
     let mut bike = bike_temporal::runtime::worker(&runtime, client, db, app.uploads_dir.clone())?;
     let stop_strava = strava.shutdown_handle();
@@ -47,17 +45,7 @@ async fn main() -> Result<(), strava_temporal::client::Error> {
         queue_stop_strava,
         queue_stop_bike,
     );
-    supervise(run, events, metrics, shutdown_signal(), shutdown).await
-}
-
-async fn ensure_schedules(client: &temporalio_client::Client, config: &TemporalConfig) -> Result<(), Error> {
-    strava_temporal::client::ensure_schedule(client, config).await?;
-    bike_temporal::runtime::ensure_schedule(client).await?;
-    tracing::info!(
-        namespace = config.namespace,
-        "Temporal schedules ready for Strava and Bike"
-    );
-    Ok(())
+    supervise(run, metrics, shutdown_signal(), shutdown).await
 }
 
 /// Either queue ending stops/drains its sibling before the process exits.
@@ -88,18 +76,15 @@ async fn run_queues(
 
 async fn supervise(
     run: impl Future<Output = Result<(), Error>>,
-    events: impl Future<Output = Result<(), Error>>,
     metrics: impl Future<Output = Result<(), std::io::Error>>,
     signal: impl Future<Output = Result<(), std::io::Error>>,
     shutdown: impl FnOnce(),
 ) -> Result<(), Error> {
     tokio::pin!(run);
-    tokio::pin!(events);
     tokio::pin!(metrics);
     tokio::pin!(signal);
     tokio::select! {
         result = &mut run => result?,
-        result = &mut events => { shutdown(); run.await?; result?; }
         result = &mut signal => { shutdown(); run.await?; result?; }
         result = &mut metrics => { shutdown(); run.await?; result?; }
     }
@@ -123,32 +108,6 @@ async fn shutdown_signal() -> Result<(), std::io::Error> {
 mod tests {
     use super::*;
     use std::future::pending;
-
-    #[tokio::test]
-    async fn startup_ensures_both_schedules_and_accepts_them_after_restart() {
-        use bike_core::test_support::temporal_client::{client, Requests};
-        use std::sync::{Arc, Mutex};
-        for schedule_exists in [false, true] {
-            let requests = Arc::new(Mutex::new(Requests {
-                schedule_exists,
-                ..Default::default()
-            }));
-            let client = client(requests.clone()).await;
-            let config = TemporalConfig {
-                address: "http://fixture.invalid:7233".into(),
-                namespace: "bike".into(),
-                task_queue: "bike-strava".into(),
-            };
-            ensure_schedules(&client, &config).await.unwrap();
-            let requests = requests.lock().unwrap();
-            let ids: Vec<_> = requests
-                .schedules
-                .iter()
-                .map(|request| request.schedule_id.as_str())
-                .collect();
-            assert_eq!(ids, ["bike-strava-sync", "bike-heatmap-reconciliation"]);
-        }
-    }
 
     #[tokio::test]
     async fn either_queue_completing_or_failing_drains_its_sibling() {
@@ -192,7 +151,7 @@ mod tests {
 
     #[tokio::test]
     async fn worker_completion_and_failure_end_the_process() {
-        supervise(async { Ok(()) }, pending(), pending(), pending(), || {
+        supervise(async { Ok(()) }, pending(), pending(), || {
             panic!("Worker already stopped")
         })
         .await
@@ -201,34 +160,11 @@ mod tests {
             async { Err(std::io::Error::other("worker failed").into()) },
             pending(),
             pending(),
-            pending(),
             || panic!("Worker already stopped"),
         )
         .await
         .unwrap_err();
         assert_eq!(error.to_string(), "worker failed");
-    }
-
-    #[tokio::test]
-    async fn handoff_termination_drains_worker_and_preserves_error() {
-        for result in [Ok(()), Err(std::io::Error::other("handoff failed").into())] {
-            let failed = result.is_err();
-            let (send, receive) = tokio::sync::oneshot::channel();
-            let finished = supervise(
-                async {
-                    receive.await.unwrap();
-                    Ok(())
-                },
-                async { result },
-                pending(),
-                pending(),
-                || {
-                    send.send(()).unwrap();
-                },
-            )
-            .await;
-            assert_eq!(finished.is_err(), failed);
-        }
     }
 
     #[tokio::test]
@@ -254,7 +190,6 @@ mod tests {
                     receive.await.unwrap();
                     Ok(())
                 },
-                pending(),
                 metrics,
                 signal,
                 || {
@@ -269,20 +204,26 @@ mod tests {
     #[tokio::test]
     async fn normal_shutdown_waits_for_worker_to_finish() {
         let (send, receive) = tokio::sync::oneshot::channel();
-        supervise(
+        let (drain, drained) = tokio::sync::oneshot::channel();
+        let (stopped, mut stop_received) = tokio::sync::oneshot::channel();
+        let mut running = std::pin::pin!(supervise(
             async {
                 receive.await.unwrap();
+                stopped.send(()).unwrap();
+                drained.await.unwrap();
                 Ok(())
             },
-            pending(),
             pending(),
             async { Ok(()) },
             || {
                 send.send(()).unwrap();
             },
-        )
-        .await
-        .unwrap();
+        ));
+        let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+        assert!(running.as_mut().poll(&mut context).is_pending());
+        stop_received.try_recv().unwrap();
+        drain.send(()).unwrap();
+        running.await.unwrap();
     }
 
     #[tokio::test]

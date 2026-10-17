@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct AppStorage {
+    pub strava_intake: integrations::strava::events::StravaIntake,
     pub task_submission: std::sync::Arc<dyn bike_temporal::submission::ReprocessSubmission>,
     pub map_images: Option<std::sync::Arc<bike_core::activity_maps::MapImageService>>,
     pub heatmaps: std::sync::Arc<bike_core::heatmaps::service::HeatmapService>,
@@ -24,6 +25,7 @@ impl AppStorage {
     #[cfg(test)]
     pub(crate) fn for_test(db: DatabaseConnection) -> Self {
         Self {
+            strava_intake: integrations::strava::events::StravaIntake::new(db.clone()),
             task_submission: std::sync::Arc::new(bike_temporal::submission::TaskSubmissionService::from_env()),
             map_images: None,
             heatmaps: std::sync::Arc::new(bike_core::heatmaps::service::HeatmapService::default()),
@@ -58,6 +60,7 @@ impl AppStorage {
         std::fs::create_dir_all(&uploads_dir).expect("Failed to create uploads directory");
 
         Self {
+            strava_intake: integrations::strava::events::StravaIntake::new(db.clone()),
             task_submission: std::sync::Arc::new(bike_temporal::submission::TaskSubmissionService::from_env()),
             map_images: create_map_image_service(Config::get()).await,
             heatmaps: std::sync::Arc::new(bike_core::heatmaps::service::HeatmapService::default()),

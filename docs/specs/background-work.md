@@ -20,7 +20,7 @@
 | Workflow ID prefix             | `strava-`         | `bike-`                                      |
 | Object keys                    | `strava/`         | `activity-imports/` and retained `archives/` |
 
-- Keep both pollers in the existing `temporal-worker`, sharing the SDK connection,
+- Keep both SDK task-queue workers in the existing `temporal-worker`, sharing the SDK connection,
   database pool, object store, and metrics. Preserve coordinated process shutdown.
 - Run domain Activities on Tokio's blocking pool so parsing and segment matching
   cannot starve Temporal polling, timers, or health requests. The Bike queue uses
@@ -94,12 +94,14 @@ flowchart TD
   Do not acknowledge work held only in API memory.
 - Uploading the same retained file again starts processing when it has no saved
   activity yet. Completed imports return their existing activity as duplicates.
-- Preserve the existing Strava inbox and its bounded callback acceptance.
-  Its current 1.5-second deadline covers lookup, validation, and the durable event
-  transaction within the two-second callback budget. Timeouts return non-2xx;
-  canonical event deduplication handles another delivery.
-- The inbox is an existing provider adapter, not a model to reproduce for every
-  Bike task. Keep the registered callback aliases and native relay.
+- Preserve Strava request history and bounded callback acceptance. The 1.5-second
+  deadline covers lookup, validation, persistence, and Temporal start acknowledgment
+  within the two-second callback budget. Timeouts and uncertain starts return
+  non-2xx; canonical event identity handles another delivery.
+- Requests start their native workflow directly. There is no SQL inbox scanner
+  or background retry dispatcher. Keep registered callback aliases. Worker downtime
+  is acceptable once Temporal has acknowledged the start; Temporal unavailability
+  returns an error to the caller.
 - The Strava connection extractors authenticate once and load the owned
   connection once. Sync, backfill, and disconnect require that connection;
   connection GET allows absence while retaining authentication failures.
@@ -107,7 +109,7 @@ flowchart TD
   Core owns stored models, their event contracts, retained activity-file parsing,
   and shared activity persistence; it does not depend on the integrations crate.
 - User-requested Strava work accepts the extracted user and connection, validates
-  them, and commits the durable event without reloading either record. Sync and
+  them, commits the request, and starts Temporal without reloading either record. Sync and
   backfill return that connection snapshot. OAuth completion reuses its newly
   saved connection. Later deletion or a failed read cannot undo acceptance.
 - Connection response formatting is a pure mapping of the available connection
@@ -173,18 +175,21 @@ flowchart TD
   [the model operation](../../bike-rs/bike-core/src/entities/activities/reprocessing.rs)
   with straightforward repeated parsing/saving.
 - The [workflow](../../bike-rs/bike-temporal/src/workflows/reprocess_activity_import.rs)
-  shows source save → segments → achievements → heatmap → fitness.
+  and `process_activity_import` save through the same import Activity, then call one
+  [shared derived sequence](../../bike-rs/bike-temporal/src/workflows/steps/derived.rs):
+  source save → segments → achievements → heatmap → training → fitness.
+  Both await the same `rebuild_segment_analytics`, `prepare_heatmap`, and
+  `rebuild_fitness_freshness` children, with the same activity-level analytics
+  and training operations. Keep the priority and saved identity throughout.
   [Named derived steps](../../bike-rs/bike-temporal/src/workflows/steps/derived.rs)
   use awaited child workflows and Activities without scheduling RPCs or signals.
 - Segment matching also refreshes the user's existing segment-summary scope.
   This broader rebuild covers a removed membership after a repeated matching
   attempt without retaining the earlier execution's result.
 - Domain calls write their domain outputs only. No pipeline-output ledger remains.
-- This changes the Bike workflow sequence and output inputs. Before deployment,
-  stop new Bike submissions and drain open Bike workflows using the old worker.
-  Start the new worker only after there are no open Bike task executions.
-  Retired coordinator histories cannot be reset/replayed with the new worker.
-  The native replay example applies to histories produced by this implementation.
+- Retired coordinator histories from before the completed simplification cutover
+  cannot be reset/replayed with the current worker. Sharing the import sequence
+  preserves its Temporal commands and ordering; it does not require inbox draining.
 - Preserve canonical source keys, activity/import identity, and valid user data.
   Native Strava sources stay on provider sync/backfill. Legacy files without a
   recorded checksum remain readable; verify their stored size and parse the file.
@@ -208,8 +213,15 @@ flowchart TD
   the ID cursor with Continue-As-New. Training backfills calculate each activity
   in the same page loop. Archive workflows retain the ZIP in `archives/{job_id}.zip`,
   extract at most 16 files, await their imports, and continue with the next offset.
-- A native schedule runs heatmap reconciliation every 15 seconds with overlap
-  skipped. It pages pending projections and calls the ordinary heatmap child.
+- Upload and reprocess workflows call the ordinary heatmap child. Manual activity
+  edits submit heatmap preparation after committing the edit. A request retry may
+  repeat that submission; native/domain idempotency handles repeated computation.
+- Do not create periodic heatmap reconciliation or all-connection Strava sync
+  schedules. Existing reconciliation/scan workflows remain available for explicit
+  operator repairs and retained-history replay. They are never started on a timer.
+- If heatmap preparation discovers stronger recording evidence, persist it and
+  return a retryable Activity failure. Native retry reloads the new projection
+  generation and completes preparation within the same requested workflow.
 - Unit fixtures execute the parent and child workflow code for archive processing
   and user reprocessing, including their segment, heatmap, and fitness children.
   Assert that parents remain pending until children finish, child failures stop
@@ -234,6 +246,18 @@ flowchart TD
 - Reuse `ObjectStore` and compact `ObjectRef { path, sha256, bytes }` values.
   Keep existing logical keys, namespace ownership, and integrity verification.
   Source bytes belong in the retained store, not Temporal payloads.
+- Uploads, supplemental artifacts, archive ZIPs, and extracted activity files
+  read/write retained bytes through this wrapper. The worker injects one backend;
+  archive and import operations select `archives/` and `activity-imports/` namespaces
+  on that backend. Worker domain code must not recreate a filesystem backend or join
+  retained keys to a worker-local upload directory.
+- Preserve existing import keys/extensions and `archives/{job_id}.zip`. Archive
+  continuation carries that logical key, never an absolute worker-host path.
+  Seekable ZIP parsing uses streamed disposable local scratch, removed on return
+  or failure. The filesystem adapter uses `.scratch/` on the writable storage
+  mount, keeping the production root filesystem read-only. Bound multipart upload
+  concurrency and memory; do not load a whole large ZIP into a Temporal payload
+  or an in-memory byte buffer.
 - Keep canonical activity/import files available for reprocessing, including
   after failed or canceled work. Deleting native execution history must not
   delete the activity's retained source.
@@ -278,15 +302,15 @@ flowchart TD
   to exclude non-cycling summaries from cycling calculations while keeping them
   visible in the feed; preserve unknown provider sports.
 
-| Workflow                        | Input                      | Source steps and result                                                    |
-| ------------------------------- | -------------------------- | -------------------------------------------------------------------------- |
-| CreateActivity / UpdateActivity | Strava event               | Await Upsert child; return Bike ID/status                                  |
-| UpsertActivity / DeleteActivity | Event + remote activity ID | Await source-keyed ReconcileActivity; return ID/status                     |
-| ReconcileActivity              | Event + remote activity ID | Fetch → normalize → persist → refresh, or capture → delete → refresh       |
-| SyncActivities                  | Event + saved offset       | List pages → await upsert children → commit offset; counts/new offset      |
-| BackfillActivities              | Event + fixed range        | List range → await upsert children; counts without offset change           |
-| DisconnectStrava                | Event + revoke flag        | Delete children → optional revoke → remove connection                      |
-| ScheduledSync                   | Schedule context           | List connections → await sync children; per-connection results             |
+| Workflow                        | Input                      | Source steps and result                                               |
+| ------------------------------- | -------------------------- | --------------------------------------------------------------------- |
+| CreateActivity / UpdateActivity | Strava event               | Await Upsert child; return Bike ID/status                             |
+| UpsertActivity / DeleteActivity | Event + remote activity ID | Await source-keyed ReconcileActivity; return ID/status                |
+| ReconcileActivity               | Event + remote activity ID | Fetch → normalize → persist → refresh, or capture → delete → refresh  |
+| SyncActivities                  | Event + saved offset       | List pages → await upsert children → commit offset; counts/new offset |
+| BackfillActivities              | Event + fixed range        | List range → await upsert children; counts without offset change      |
+| DisconnectStrava                | Event + revoke flag        | Delete children → optional revoke → remove connection                 |
+| ScheduledSync                   | Schedule context           | List connections → await sync children; per-connection results        |
 
 - These are the nine workflows (Create and Update are separate). Review
   [their explicit implementations](../../bike-rs/strava-temporal/src/workflows.rs)
@@ -317,7 +341,7 @@ flowchart TD
   is split into named operations; DB failures remain server errors and missing
   customers are not found. Required remote IDs live on `StravaEvent`; source-state
   lookup/absence/content/supersession predicates live on the owning model.
-- Scheduled scans continue starting later customers after a child-start failure,
+- Explicit operator scans continue starting later customers after a child-start failure,
   await every started child, and carry total failures through continuation.
   Cancellation remains cancellation; a nonzero final failure count fails the scan.
 - Use primary-key-aware SeaORM save for import/artifact create/update; separate
@@ -468,7 +492,7 @@ flowchart TD
   event/correlation IDs, request ID, and trace carrier. Advance the sync cursor
   only after the workflow's children finish. Backfill never advances it.
   Existing provider counts may remain; no extra result accounting is required.
-- Scheduled scans continue as new after each 20-connection page. Await every
+- Explicit operator scans continue as new after each 20-connection page. Await every
   started customer, carry failures and correlation ID into the next run, and fail
   the final run with the cumulative count when any customer failed.
 
@@ -522,17 +546,17 @@ flowchart TD
   the same IDs. Temporal owns execution status; accepted-event history records
   requests. Account sync status reflects connection state. Do not reconstruct
   retired SQL stages or fabricate completion events.
-- While the inbox adapter is active, sample all `submitted_at IS NULL` events
-  every **30 seconds**, including delayed retries. Export pending count, oldest
-  acceptance time (zero when empty), and last successful sample time on the
-  provider endpoint. Failed samples retain old values/time; IDs belong in logs
-  and search attributes, not backlog labels. Monitor provider and SDK scrapes.
+- Submission failures return to the initiating request and are logged with its
+  correlation context. There is no periodic inbox/backlog sample. Monitor provider
+  requests and native Temporal execution metrics. Retire inbox backlog alerts with
+  the dispatcher; do not alert on intentionally absent retired metrics.
 
-| Alert                             | Condition / response                                                                                                                                                                                                                                     |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BikeStravaWorkflowFailed`        | Terminal workflow failure in last six hours for one minute, including first series/reset. Warn through Alertmanager/ntfy; Activity retries do not page. Root/child can both alert. Inspect the failed step and partial effects before native retry.      |
-| `BikeStravaHandoffStalled`        | Oldest accepted event over five minutes for five more minutes, with samples newer than 90 seconds. Check `strava.handoff`, `handoff_error`, Temporal/search attributes/DB; relay retries automatically. Never delete pending events or create SQL tasks. |
-| `BikeStravaHandoffTelemetryStale` | Samples absent/older than 90 seconds for two minutes. Backlog health is unknown and backlog alert is suppressed. Check worker startup, provider endpoint, DB, and `Strava handoff backlog sample failed` logs.                                           |
+| Alert                      | Condition / response                                                                                                                                                                                                                                |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BikeStravaWorkflowFailed` | Terminal workflow failure in last six hours for one minute, including first series/reset. Warn through Alertmanager/ntfy; Activity retries do not page. Root/child can both alert. Inspect the failed step and partial effects before native retry. |
+
+The [polling audit](../worker-polling-audit-2026-10-17.md) records removed dispatch
+loops and the production adjustments required before deploying this change.
 
 ## Verification and acceptance scenarios
 

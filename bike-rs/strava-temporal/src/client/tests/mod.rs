@@ -2,12 +2,13 @@
 use super::*;
 use crate::tests::fixture::Fixture;
 use futures::FutureExt;
+use integrations::strava::events::{StravaEvent, StravaOperation};
 use prost::Message;
 use sea_orm::{DatabaseBackend, MockDatabase};
 use std::sync::{Arc, Mutex};
 use temporalio_client::callback_based::{CallbackBasedGrpcService, GrpcRequest, GrpcSuccessResponse};
 use temporalio_common::protos::temporal::api::workflowservice::v1::{
-    CreateScheduleRequest, StartWorkflowExecutionRequest, StartWorkflowExecutionResponse,
+    StartWorkflowExecutionRequest, StartWorkflowExecutionResponse,
 };
 use temporalio_workflow::common::WorkflowDefinition;
 
@@ -40,7 +41,7 @@ impl MockTemporal {
             }
         }
         let proto = match rpc.as_str() {
-            "GetSystemInfo" | "CreateSchedule" => vec![],
+            "GetSystemInfo" => vec![],
             "StartWorkflowExecution" => StartWorkflowExecutionResponse {
                 run_id: "fixture-native-run".into(),
                 ..Default::default()
@@ -163,40 +164,7 @@ async fn duplicate_start_is_successful_but_other_start_failures_retry() {
 }
 
 #[tokio::test]
-async fn schedule_uses_native_scan_every_six_hours_and_skips_overlap() {
-    let mock = Arc::new(MockTemporal::default());
-    ensure_schedule(&mock.client().await, &config()).await.unwrap();
-    let requests = mock.requests.lock().unwrap();
-    let request = CreateScheduleRequest::decode(requests.last().unwrap().proto.clone()).unwrap();
-    assert_eq!(request.schedule_id, "bike-strava-sync");
-    let schedule = request.schedule.unwrap();
-    assert_eq!(schedule.spec.unwrap().interval[0].interval.unwrap().seconds, 6 * 3600);
-    assert_eq!(
-        schedule.policies.unwrap().overlap_policy,
-        temporalio_common::protos::temporal::api::enums::v1::ScheduleOverlapPolicy::Skip as i32
-    );
-    let action = schedule.action.unwrap().action.unwrap();
-    let temporalio_common::protos::temporal::api::schedule::v1::schedule_action::Action::StartWorkflow(action) = action;
-    assert_eq!(action.workflow_type.unwrap().name, ScheduledSync::run.name());
-    assert_eq!(action.task_queue.unwrap().name, config().task_queue);
-}
-
-#[tokio::test]
-async fn existing_schedule_is_kept_and_other_creation_errors_are_reported() {
-    for (code, success) in [
-        (tonic::Code::AlreadyExists, true),
-        (tonic::Code::PermissionDenied, false),
-    ] {
-        let mock = Arc::new(MockTemporal {
-            failure: Some(("CreateSchedule", code)),
-            ..Default::default()
-        });
-        assert_eq!(ensure_schedule(&mock.client().await, &config()).await.is_ok(), success);
-    }
-}
-
-#[tokio::test]
-async fn handoff_marks_success_and_duplicate_submitted_and_keeps_failures_durable() {
+async fn direct_submission_acknowledges_success_and_duplicates_but_returns_start_failures() {
     for code in [
         None,
         Some(tonic::Code::AlreadyExists),
@@ -209,21 +177,24 @@ async fn handoff_marks_success_and_duplicate_submitted_and_keeps_failures_durabl
         let event = Fixture::new(StravaOperation::Upsert).event;
         let row = row(&event);
         let db = MockDatabase::new(DatabaseBackend::Postgres)
-            .append_query_results([vec![row.clone()], vec![row]])
+            .append_query_results([vec![row.clone()]])
             .into_connection();
-        dispatch_pending(&mock.client().await, &config(), &db).await.unwrap();
+        let result =
+            integrations::strava::events::submission::submit_accepted(&mock.client().await, &config(), &db, row).await;
         let log = format!("{:?}", db.into_transaction_log());
         if code == Some(tonic::Code::PermissionDenied) {
-            assert!(log.contains("handoff_error"));
-            assert!(log.contains("next_attempt_at"));
+            assert!(result.is_err());
+            assert!(!log.contains("UPDATE"));
         } else {
+            result.unwrap();
             assert!(log.contains("submitted_at"));
         }
+        assert!(!log.contains("SELECT"));
     }
 }
 
 #[tokio::test]
-async fn malformed_stored_event_retries_without_contacting_temporal() {
+async fn malformed_stored_event_is_rejected_without_contacting_temporal() {
     let mock = Arc::new(MockTemporal::default());
     let client = mock.client().await;
     let mut row = row(&Fixture::new(StravaOperation::Upsert).event);
@@ -231,19 +202,32 @@ async fn malformed_stored_event_retries_without_contacting_temporal() {
     let db = MockDatabase::new(DatabaseBackend::Postgres)
         .append_query_results([vec![row.clone()]])
         .into_connection();
-    dispatch_event(&client, &config(), &db, row).await.unwrap();
+    assert!(
+        integrations::strava::events::submission::submit_accepted(&client, &config(), &db, row)
+            .await
+            .is_err()
+    );
     assert_eq!(mock.requests.lock().unwrap().len(), 1);
-    assert!(format!("{:?}", db.into_transaction_log()).contains("handoff_error"));
+    assert!(db.into_transaction_log().is_empty());
 }
 
 #[tokio::test]
-async fn database_handoff_failure_is_reported_for_safe_worker_restart() {
+async fn submission_record_failure_is_returned_after_a_successful_start() {
     let mock = Arc::new(MockTemporal::default());
     let client = mock.client().await;
     let db = MockDatabase::new(DatabaseBackend::Postgres)
         .append_query_errors([sea_orm::DbErr::Custom("fixture database failed".into())])
         .into_connection();
-    assert!(dispatch_pending(&client, &config(), &db).await.is_err());
+    let row = row(&Fixture::new(StravaOperation::Upsert).event);
+    assert!(
+        integrations::strava::events::submission::submit_accepted(&client, &config(), &db, row)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        mock.requests.lock().unwrap().last().unwrap().rpc,
+        "StartWorkflowExecution"
+    );
 }
 
 #[tokio::test]
@@ -255,35 +239,4 @@ async fn native_worker_registers_without_contacting_a_real_service() {
     let worker = worker(&runtime, client, &config(), db).unwrap();
     worker.shutdown_handle()();
     assert_eq!(mock.requests.lock().unwrap().len(), 1);
-}
-
-#[tokio::test]
-async fn dispatcher_samples_backlog_hands_off_an_event_and_reports_database_loss() {
-    use sea_orm::Value;
-    use std::collections::BTreeMap;
-    let mock = Arc::new(MockTemporal::default());
-    let client = mock.client().await;
-    let row = row(&Fixture::new(StravaOperation::Upsert).event);
-    let counts: BTreeMap<String, Value> = [
-        ("pending".into(), 1_i64.into()),
-        ("oldest_accepted_at".into(), Some(row.accepted_at).into()),
-    ]
-    .into();
-    let db = MockDatabase::new(DatabaseBackend::Postgres)
-        .append_query_results([vec![counts]])
-        .append_query_results([vec![row.clone()], vec![row]])
-        .append_query_errors([sea_orm::DbErr::Custom("fixture database lost".into())])
-        .into_connection();
-    let error = dispatch_events(client, config(), db).await.unwrap_err();
-    assert!(error.to_string().contains("fixture database lost"));
-    assert_eq!(
-        mock.requests.lock().unwrap().last().unwrap().rpc,
-        "StartWorkflowExecution"
-    );
-    let metrics = prometheus::gather();
-    let pending = metrics
-        .iter()
-        .find(|family| family.name() == "bike_rust_strava_handoff_pending_events")
-        .unwrap();
-    assert_eq!(pending.get_metric()[0].get_gauge().value(), 1.0);
 }

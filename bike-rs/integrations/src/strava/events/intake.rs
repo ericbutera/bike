@@ -12,6 +12,42 @@ use std::time::Duration;
 /// Leaves half a second of Strava's callback budget for HTTP handling/transport.
 const WEBHOOK_ACCEPTANCE_TIMEOUT: Duration = Duration::from_millis(1500);
 
+#[derive(Clone)]
+pub struct StravaIntake {
+    db: DatabaseConnection,
+    client: std::sync::Arc<tokio::sync::OnceCell<temporalio_client::Client>>,
+    config: super::submission::TemporalConfig,
+}
+
+impl StravaIntake {
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self {
+            db,
+            client: Default::default(),
+            config: super::submission::TemporalConfig::from_env(),
+        }
+    }
+
+    pub fn with_client(db: DatabaseConnection, client: temporalio_client::Client) -> Self {
+        Self {
+            db,
+            client: std::sync::Arc::new(tokio::sync::OnceCell::new_with(Some(client))),
+            config: super::submission::TemporalConfig::from_lookup(|_| None),
+        }
+    }
+}
+
+impl StravaIntake {
+    async fn accept_event(&self, event: StravaEvent) -> Result<strava_events::Model, WorkflowError> {
+        let client = self
+            .client
+            .get_or_try_init(|| super::submission::connect(&self.config))
+            .await
+            .map_err(|error| WorkflowError::internal(format!("Strava workflow connection failed: {error}")))?;
+        super::submission::accept_with_client(client, &self.config, &self.db, event).await
+    }
+}
+
 #[async_trait::async_trait]
 trait WebhookStore: Send + Sync {
     async fn connection(&self, athlete_id: i64) -> Result<Option<strava_connections::Model>, WorkflowError>;
@@ -20,13 +56,13 @@ trait WebhookStore: Send + Sync {
 }
 
 #[async_trait::async_trait]
-impl WebhookStore for DatabaseConnection {
+impl WebhookStore for StravaIntake {
     async fn connection(&self, athlete_id: i64) -> Result<Option<strava_connections::Model>, WorkflowError> {
-        Ok(strava_connections::Model::for_athlete(self, athlete_id).await?)
+        Ok(strava_connections::Model::for_athlete(&self.db, athlete_id).await?)
     }
 
     async fn customer(&self, user_id: i32) -> Result<users::Model, WorkflowError> {
-        Ok(users::Model::find_by_id(self, user_id).await?)
+        Ok(users::Model::find_by_id(&self.db, user_id).await?)
     }
 
     async fn accept(&self, event: StravaEvent) -> Result<strava_events::Model, WorkflowError> {
@@ -122,7 +158,7 @@ fn is_old_deauthorization(
 
 #[tracing::instrument(name = "strava.webhook.accept", skip_all, fields(strava_athlete_id = webhook.owner_id, object_type = webhook.object_type, aspect_type = webhook.aspect_type))]
 pub async fn accept_webhook(
-    db: &DatabaseConnection,
+    db: &StravaIntake,
     webhook: &StravaWebhookEvent,
     request_id: Option<String>,
 ) -> Result<Option<strava_events::Model>, WorkflowError> {
@@ -139,7 +175,7 @@ pub async fn accept_webhook(
 mod tests;
 
 pub async fn request_sync(
-    db: &DatabaseConnection,
+    db: &StravaIntake,
     user: &users::Model,
     connection: &strava_connections::Model,
 ) -> Result<strava_events::Model, WorkflowError> {
@@ -147,7 +183,7 @@ pub async fn request_sync(
 }
 
 pub async fn request_backfill(
-    db: &DatabaseConnection,
+    db: &StravaIntake,
     user: &users::Model,
     connection: &strava_connections::Model,
     after: DateTime<Utc>,
@@ -165,7 +201,7 @@ pub async fn request_backfill(
 }
 
 pub async fn request_disconnect(
-    db: &DatabaseConnection,
+    db: &StravaIntake,
     user: &users::Model,
     connection: &strava_connections::Model,
 ) -> Result<strava_events::Model, WorkflowError> {
@@ -187,9 +223,9 @@ fn user_event(
     Ok(event)
 }
 
-async fn accept(db: &DatabaseConnection, event: StravaEvent) -> Result<strava_events::Model, WorkflowError> {
+async fn accept(db: &StravaIntake, event: StravaEvent) -> Result<strava_events::Model, WorkflowError> {
     super::super::payload::validate_temporal(&event)?;
-    let row = strava_events::Model::accept(db, &event).await?;
+    let row = db.accept_event(event).await?;
     tracing::info!(correlation_id = row.correlation_id, strava_event_id = row.id,
         bike_customer_id = %row.customer_id, bike_user_id = row.user_id,
         strava_athlete_id = row.athlete_id, strava_activity_id = row.activity_id,

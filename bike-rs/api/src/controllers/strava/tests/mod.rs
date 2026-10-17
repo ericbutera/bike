@@ -33,8 +33,10 @@ fn audit() -> audit::Model {
     fixture::integration_event()
 }
 
-fn state(db: sea_orm::DatabaseConnection) -> Arc<AppStorage> {
-    let mut state = AppStorage::for_test(db);
+async fn state(db: sea_orm::DatabaseConnection) -> Arc<AppStorage> {
+    let client = fixture::temporal_client::client(Default::default()).await;
+    let mut state = AppStorage::for_test(db.clone());
+    state.strava_intake = strava::events::StravaIntake::with_client(db, client);
     state.local_admin_user_pid = Some(fixture::customer().pid);
     Arc::new(state)
 }
@@ -50,6 +52,7 @@ fn acceptance_mock(operation: StravaOperation) -> MockDatabase {
         .append_query_results([vec![fixture::connection()]])
         .append_query_results([vec![acceptance(operation)]])
         .append_query_results([vec![audit()]])
+        .append_query_results([vec![acceptance(operation)]])
         .append_exec_results([MockExecResult {
             rows_affected: 1,
             last_insert_id: 0,
@@ -57,7 +60,7 @@ fn acceptance_mock(operation: StravaOperation) -> MockDatabase {
 }
 
 async fn request(db: MockDatabase, method: &str, path: &str, body: Value) -> Response {
-    request_with_state(state(db.into_connection()), method, path, body).await
+    request_with_state(state(db.into_connection()).await, method, path, body).await
 }
 
 async fn request_with_state(state: Arc<AppStorage>, method: &str, path: &str, body: Value) -> Response {
@@ -101,7 +104,7 @@ async fn connection_response_exposes_saved_customer_sync_details_and_disconnecte
 #[tokio::test]
 async fn sync_and_backfill_accept_durable_events_and_return_the_connection() {
     for (operation, path, body) in collection_requests() {
-        let state = state(acceptance_mock(operation).into_connection());
+        let state = state(acceptance_mock(operation).into_connection()).await;
         let response = request_with_state(state.clone(), "POST", path, body).await;
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(
@@ -167,7 +170,8 @@ async fn connection_extractor_rejects_missing_connections_before_accepting_comma
                 .append_query_results([vec![fixture::customer()]])
                 .append_query_results([Vec::<strava_connections::Model>::new()])
                 .into_connection(),
-        );
+        )
+        .await;
         let response = request_with_state(storage.clone(), method, path, body).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         assert!(!format!("{:?}", storage.db.clone().into_transaction_log()).contains("INSERT INTO"));
@@ -185,6 +189,29 @@ async fn disconnect_accepts_an_event_without_calling_a_remote_provider() {
     .await;
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(json_body(response).await["message"], "Strava disconnect queued.");
+}
+
+#[tokio::test]
+async fn a_rejected_temporal_start_is_an_http_error_instead_of_a_queued_response() {
+    for (operation, path, body) in collection_requests() {
+        let db = acceptance_mock(operation).into_connection();
+        let requests = Arc::new(std::sync::Mutex::new(fixture::temporal_client::Requests {
+            fail_start: true,
+            ..Default::default()
+        }));
+        let mut state = AppStorage::for_test(db.clone());
+        state.local_admin_user_pid = Some(fixture::customer().pid);
+        state.strava_intake = strava::events::StravaIntake::with_client(
+            db.clone(),
+            fixture::temporal_client::client(requests.clone()).await,
+        );
+        let response = request_with_state(Arc::new(state), "POST", path, body).await;
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(requests.lock().unwrap().starts.len(), 1);
+        let log = format!("{:?}", db.into_transaction_log());
+        assert!(log.contains("COMMIT"));
+        assert!(!log.contains("UPDATE \"strava_events\""));
+    }
 }
 
 #[tokio::test]
@@ -221,12 +248,13 @@ async fn webhook_persists_the_request_id_before_acknowledgement() {
         .append_query_results([vec![fixture::customer()]])
         .append_query_results([vec![acceptance(StravaOperation::Create)]])
         .append_query_results([vec![audit()]])
+        .append_query_results([vec![acceptance(StravaOperation::Create)]])
         .append_exec_results([MockExecResult {
             rows_affected: 1,
             last_insert_id: 0,
         }])
         .into_connection();
-    let state = state(db);
+    let state = state(db).await;
     let webhook = json!({"aspect_type":"create","object_type":"activity","object_id":42,"owner_id":123,"event_time":1790856000,"subscription_id":1,"updates":{}});
     let response = routes()
         .with_state(state.clone())
@@ -292,7 +320,7 @@ async fn public_aliases_reach_native_handlers_with_no_running_services() {
     for path in ["/api/strava/webhook", "/webhooks/strava-gateway"] {
         let db = MockDatabase::new(DatabaseBackend::Postgres).into_connection();
         let response = crate::controllers::routes()
-            .with_state(state(db))
+            .with_state(state(db).await)
             .oneshot(
                 Request::builder()
                     .method("POST")
@@ -309,7 +337,7 @@ async fn public_aliases_reach_native_handlers_with_no_running_services() {
             .append_query_results([vec![audit()]])
             .into_connection();
         let response = crate::controllers::routes()
-            .with_state(state(db))
+            .with_state(state(db).await)
             .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
             .await
             .unwrap();

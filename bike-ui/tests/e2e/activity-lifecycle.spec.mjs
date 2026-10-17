@@ -9,7 +9,7 @@ const apiUrls = {
   ),
 };
 
-test("activity regeneration and deletion work through the shared actions", async ({
+test("activity regeneration is accepted and deletion removes the activity", async ({
   createContext,
 }) => {
   test.setTimeout(120_000);
@@ -17,15 +17,23 @@ test("activity regeneration and deletion work through the shared actions", async
     const context = await createContext();
     const page = await context.newPage();
     await openActivityDetail(page, target, activityId);
+    const original = await page.request.get(
+      `${apiUrls[target.name]}/api/activities/${activityId}`,
+    );
+    expect(original.status()).toBe(200);
+    const savedActivity = await original.json();
 
     await page.getByRole("button", { name: "Open activity actions" }).click();
     const regenerated = page.waitForResponse((response) =>
       response.url().endsWith(`/api/activities/${activityId}/regenerate`),
     );
     await page.getByRole("button", { name: "Regenerate derived data" }).click();
-    expect((await regenerated).status(), `${target.name} regeneration`).toBe(
-      200,
-    );
+    const regeneration = await regenerated;
+    expect(regeneration.status(), `${target.name} regeneration`).toBe(202);
+    expect(await regeneration.json()).toMatchObject({
+      id: expect.stringMatching(/^bike-reprocess_activity_import-/),
+      status: "running",
+    });
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(
       page.locator('[aria-label="Activity route map"]'),
@@ -36,8 +44,8 @@ test("activity regeneration and deletion work through the shared actions", async
     );
     expect(detail.status()).toBe(200);
     const activity = await detail.json();
-    expect(activity.distance_meters).toBeGreaterThan(1_100);
-    expect(activity.training_analysis?.ride_focus).toBe("other");
+    expect(activity.distance_meters).toBe(savedActivity.distance_meters);
+    expect(activity.training_analysis).toEqual(savedActivity.training_analysis);
 
     page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Open activity actions" }).click();

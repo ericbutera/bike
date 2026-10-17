@@ -62,7 +62,7 @@ impl BatchOperations for Operations {
         self.record("prepare_archive", &job_id)?;
         Ok(ArchiveCursor {
             job_id,
-            archive_path: "/uploads/archives/7.zip".into(),
+            archive_path: "archives/7.zip".into(),
             offset: 0,
         })
     }

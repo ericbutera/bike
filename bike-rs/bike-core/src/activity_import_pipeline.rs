@@ -3,7 +3,7 @@ use crate::activity_parser::{parse_activity_artifact, ActivityParserArtifact, Pa
 use crate::activity_type::ActivityType;
 use crate::entities::{activities, activity_import_artifacts, activity_imports};
 use crate::integration_events_service::INTEGRATION_LEVEL_INFO;
-use crate::object_store::{ObjectRef, ObjectStore};
+use crate::object_store::{ObjectOwner, ObjectRef, ObjectStore};
 use crate::workflow_error::WorkflowError as AppError;
 use chrono::{DateTime, Utc};
 use sea_orm::DatabaseConnection;
@@ -31,7 +31,7 @@ pub struct ActivityImportArtifactPayload {
 }
 
 pub struct StoreActivityUploadImportRequest<'a> {
-    pub uploads_dir: &'a str,
+    pub objects: &'a ObjectStore,
     pub user_storage_key: &'a str,
     pub user_id: i32,
     pub upload: ActivityUploadPayload,
@@ -298,10 +298,11 @@ pub async fn store_activity_upload_import(
     source: &str,
 ) -> Result<activity_imports::Model, AppError> {
     let source_quality = original_source_quality_for_format(&upload.format);
+    let objects = ObjectStore::filesystem(uploads_dir, ObjectOwner::ActivityImports);
     store_activity_upload_import_with_artifacts(
         db,
         StoreActivityUploadImportRequest {
-            uploads_dir,
+            objects: &objects,
             user_storage_key,
             user_id,
             upload,
@@ -320,7 +321,7 @@ pub async fn store_activity_upload_import_with_artifacts(
 ) -> Result<activity_imports::Model, AppError> {
     let relative_path = store_activity_upload_source(&request).await?;
     let StoreActivityUploadImportRequest {
-        uploads_dir,
+        objects,
         user_storage_key,
         user_id,
         upload,
@@ -351,7 +352,7 @@ pub async fn store_activity_upload_import_with_artifacts(
     .await?;
 
     for artifact in additional_artifacts {
-        store_additional_activity_import_artifact(db, uploads_dir, user_storage_key, &import_model, artifact).await?;
+        store_additional_activity_import_artifact(db, objects, user_storage_key, &import_model, artifact).await?;
     }
 
     record_activity_processing_event(
@@ -375,20 +376,15 @@ async fn store_activity_upload_source(request: &StoreActivityUploadImportRequest
     if request.source == "strava_sync"
         && request.primary_artifact_kind == ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD
     {
-        return Ok(crate::object_store::ObjectStore::filesystem(
-            request.uploads_dir,
-            crate::object_store::ObjectOwner::Strava,
-        )
-        .write(&format!("strava/sources/{}", request.user_id), &request.upload.bytes)
-        .await?
-        .path);
+        return Ok(request
+            .objects
+            .for_owner(ObjectOwner::Strava)
+            .write(&format!("strava/sources/{}", request.user_id), &request.upload.bytes)
+            .await?
+            .path);
     }
     let relative = activity_import_storage_path(request.user_storage_key, &request.upload.format, Utc::now());
-    let full_path = Path::new(request.uploads_dir).join(&relative);
-    if let Some(parent) = full_path.parent() {
-        tokio::fs::create_dir_all(parent).await?;
-    }
-    tokio::fs::write(full_path, &request.upload.bytes).await?;
+    request.objects.write_key(&relative, &request.upload.bytes).await?;
     Ok(relative)
 }
 
@@ -403,19 +399,13 @@ pub fn original_source_quality_for_format(format: &str) -> &'static str {
 
 async fn store_additional_activity_import_artifact(
     db: &impl sea_orm::ConnectionTrait,
-    uploads_dir: &str,
+    objects: &ObjectStore,
     user_storage_key: &str,
     import: &activity_imports::Model,
     artifact: ActivityImportArtifactPayload,
 ) -> Result<activity_import_artifacts::Model, AppError> {
     let relative_path = activity_import_storage_path(user_storage_key, &artifact.format, Utc::now());
-    let full_path = Path::new(uploads_dir).join(&relative_path);
-
-    if let Some(parent) = full_path.parent() {
-        tokio::fs::create_dir_all(parent).await?;
-    }
-
-    tokio::fs::write(&full_path, &artifact.bytes).await?;
+    objects.write_key(&relative_path, &artifact.bytes).await?;
     let size_bytes = artifact.bytes.len() as i64;
     insert_activity_import_artifact(db, import, artifact, relative_path, size_bytes).await
 }
@@ -449,5 +439,77 @@ pub fn validate_activity_format(filename: &str) -> Result<String, AppError> {
             "file",
             "Only .fit, .tcx, and .gpx uploads are supported",
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support as fixtures;
+    use ::object_store::ObjectStore as _;
+    use futures::TryStreamExt;
+
+    fn request(objects: &ObjectStore) -> StoreActivityUploadImportRequest<'_> {
+        StoreActivityUploadImportRequest {
+            objects,
+            user_storage_key: "fixture-user",
+            user_id: fixtures::activity_import().user_id,
+            upload: fixtures::activity_upload(),
+            primary_artifact_kind: "original",
+            primary_source_quality: "gpx_original",
+            additional_artifacts: Vec::new(),
+            source: "manual_upload",
+        }
+    }
+
+    #[tokio::test]
+    async fn uploads_and_provider_sources_use_the_injected_object_backend() {
+        let (objects, _) = fixtures::object_storage(ObjectOwner::ActivityImports);
+        let request = request(&objects);
+        let key = store_activity_upload_source(&request).await.unwrap();
+        assert!(key.starts_with("activity-imports/fixture-user/"));
+        assert!(key.ends_with(".gpx"));
+        assert_eq!(objects.read_bytes(&key).await.unwrap().unwrap(), request.upload.bytes);
+
+        let provider = StoreActivityUploadImportRequest {
+            source: "strava_sync",
+            primary_artifact_kind: ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD,
+            ..request
+        };
+        let key = store_activity_upload_source(&provider).await.unwrap();
+        assert!(key.starts_with("strava/sources/7/"));
+        assert_eq!(
+            objects
+                .for_owner(ObjectOwner::Strava)
+                .read_bytes(&key)
+                .await
+                .unwrap()
+                .unwrap(),
+            provider.upload.bytes
+        );
+    }
+
+    #[tokio::test]
+    async fn supplemental_artifacts_store_their_bytes_and_metadata_through_the_same_backend() {
+        let (objects, backend) = fixtures::object_storage(ObjectOwner::ActivityImports);
+        let db = fixtures::postgres_mock()
+            .append_query_results([vec![fixtures::import_artifact()]])
+            .into_connection();
+        let artifact = fixtures::artifact_payload();
+        store_additional_activity_import_artifact(
+            &db,
+            &objects,
+            "fixture-user",
+            &fixtures::activity_import(),
+            artifact.clone(),
+        )
+        .await
+        .unwrap();
+        let keys: Vec<_> = backend.list(None).try_collect().await.unwrap();
+        assert_eq!(keys.len(), 1);
+        let key = keys[0].location.as_ref();
+        assert!(key.starts_with("activity-imports/fixture-user/"));
+        assert_eq!(objects.read_bytes(key).await.unwrap().unwrap(), artifact.bytes);
+        assert!(format!("{:?}", db.into_transaction_log()).contains(key));
     }
 }

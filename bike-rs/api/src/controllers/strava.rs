@@ -171,7 +171,7 @@ pub async fn queue_sync(
     StravaConnection { user, connection }: StravaConnection,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<StravaConnectionResponse>, AppError> {
-    strava::events::request_sync(&state.db, &user, &connection).await?;
+    strava::events::request_sync(&state.strava_intake, &user, &connection).await?;
 
     Ok(Json(response_from_model(Some(&connection))))
 }
@@ -194,7 +194,14 @@ pub async fn queue_backfill(
     State(state): State<Arc<AppStorage>>,
     Json(input): Json<StravaBackfillRequest>,
 ) -> Result<Json<StravaConnectionResponse>, AppError> {
-    strava::events::request_backfill(&state.db, &user, &connection, input.start_date, input.end_date).await?;
+    strava::events::request_backfill(
+        &state.strava_intake,
+        &user,
+        &connection,
+        input.start_date,
+        input.end_date,
+    )
+    .await?;
     Ok(Json(response_from_model(Some(&connection))))
 }
 
@@ -222,7 +229,7 @@ pub async fn disconnect_connection(
     StravaConnection { user, connection }: StravaConnection,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<auth_openapi::schemas::MessageResponse>, AppError> {
-    strava::events::request_disconnect(&state.db, &user, &connection).await?;
+    strava::events::request_disconnect(&state.strava_intake, &user, &connection).await?;
     Ok(Json(auth_openapi::schemas::MessageResponse {
         message: "Strava disconnect queued.".to_string(),
     }))
@@ -377,7 +384,7 @@ pub async fn handle_webhook_event(
         .get("x-request-id")
         .and_then(|value| value.to_str().ok())
         .map(str::to_owned);
-    strava::events::accept_webhook(&state.db, &event, request_id).await?;
+    strava::events::accept_webhook(&state.strava_intake, &event, request_id).await?;
 
     Ok(Json(auth_openapi::schemas::MessageResponse {
         message: "ok".to_string(),

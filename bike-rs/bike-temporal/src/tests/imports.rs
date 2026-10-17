@@ -55,6 +55,33 @@ fn reprocessing_resumes_after_source_save_and_awaits_real_derived_children() {
 }
 
 #[test]
+fn new_imports_and_reprocessing_await_the_same_analytics_and_report_children() {
+    for priority in [Priority::NewActivity, Priority::Background] {
+        let mut input = fixtures::reprocess_input();
+        input.source.priority = priority;
+        let result = ActivityImportResult {
+            priority,
+            ..fixtures::import_result()
+        };
+        let mut process = WorkflowMock::new::<ProcessActivityImport>(input.source.clone());
+        process.activity(
+            "activity_import",
+            &ActivityImport {
+                source: input.source.clone(),
+                target: ImportTarget::NewActivity,
+            },
+            &result,
+        );
+        let mut reprocess = WorkflowMock::new::<ReprocessActivityImport>(input.clone());
+        reprocess.activity("activity_import", &input.into_command(), &result);
+        for mock in [&mut process, &mut reprocess] {
+            complete_derived_tasks(mock, &result);
+            assert_eq!(mock.result::<ActivityImportResult>(), result);
+        }
+    }
+}
+
+#[test]
 fn source_failure_stops_the_workflow_before_derived_steps() {
     let mut mock = WorkflowMock::new::<ProcessActivityImport>(fixtures::import_command().source);
     mock.fail_activity("activity_import", "source failed");

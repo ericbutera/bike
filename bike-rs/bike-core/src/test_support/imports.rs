@@ -1,5 +1,28 @@
 use crate::entities::{activity_archive_import_jobs, activity_import_artifacts};
 
+pub fn activity_upload() -> crate::activity_import_pipeline::ActivityUploadPayload {
+    let import = super::activity_import();
+    crate::activity_import_pipeline::ActivityUploadPayload {
+        original_filename: import.original_filename,
+        format: import.format,
+        mime_type: import.mime_type,
+        source_correlation_id: None,
+        bytes: super::REPROCESS_SOURCE.to_vec(),
+    }
+}
+
+pub fn artifact_payload() -> crate::activity_import_pipeline::ActivityImportArtifactPayload {
+    let upload = activity_upload();
+    crate::activity_import_pipeline::ActivityImportArtifactPayload {
+        artifact_kind: "original".into(),
+        format: upload.format,
+        source_quality: "gpx_original".into(),
+        original_filename: upload.original_filename,
+        mime_type: upload.mime_type,
+        bytes: upload.bytes,
+    }
+}
+
 pub fn import_artifact() -> activity_import_artifacts::Model {
     let import = super::activity_import();
     activity_import_artifacts::Model {

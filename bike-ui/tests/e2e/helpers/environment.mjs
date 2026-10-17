@@ -66,7 +66,7 @@ async function runtimeIdentity() {
   expect(containers.map((container) => container.service)).not.toContain(
     "worker",
   );
-  for (const service of ["postgres", "bike-rs", "ui", "bike-maps"])
+  for (const service of ["postgres", "temporal", "bike-rs", "ui", "bike-maps"])
     expect(
       containers.find((container) => container.service === service)?.running,
       `${service} remains running`,

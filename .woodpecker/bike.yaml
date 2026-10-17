@@ -38,16 +38,6 @@ clone:
       partial: false
       depth: 0
 
-services:
-  - name: docker
-    # Generated from mise's docker_dind_image by mise run pins:sync.
-    image: docker:29.4.0-dind@sha256:a6dd5322747a95cd8e3207bd8d415a8fd20ec34e9c00f06dc019cbd912013489
-    privileged: true
-    environment:
-      BIKE_E2E_ENGINE_STATE_DIR: /woodpecker/src/.artifacts/sdk-engine
-    commands:
-      - sh scripts/ci-e2e-engine.sh
-
 steps:
   # Preparation shares tooling and image pins; it does not run product tests.
   - name: prepare
@@ -107,18 +97,6 @@ steps:
     commands:
       - mise run ci:runtime
 
-  - name: test-strava-sdk
-    failure: fail
-    image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
-    depends_on: [prepare-tests]
-    environment:
-      <<: *mise_environment
-      DOCKER_HOST: unix:///woodpecker/src/.artifacts/sdk-engine/docker.sock
-      BIKE_E2E_ENGINE_STATE_DIR: /woodpecker/src/.artifacts/sdk-engine
-    volumes: *mise_cache
-    commands:
-      - mise run ci:rust:sdk
-
   - name: test-rust-cache
     failure: fail
     image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
@@ -162,7 +140,6 @@ steps:
     failure: fail
     depends_on:
       - test-rust
-      - test-strava-sdk
       - test-ui-unit
       - test-map-renderer
       - test-runtime-tooling
@@ -185,7 +162,7 @@ steps:
   - name: collect-rust-coverage
     failure: fail
     image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
-    depends_on: [test-rust, test-strava-sdk]
+    depends_on: [test-rust]
     environment: *mise_environment
     volumes: *mise_cache
     commands:

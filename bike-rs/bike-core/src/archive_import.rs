@@ -16,7 +16,6 @@ use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::net::lookup_host;
 use utoipa::ToSchema;
-use uuid::Uuid;
 use zip::ZipArchive;
 pub mod native;
 
@@ -54,7 +53,7 @@ pub struct ActivityArchiveImportResponse {
 }
 
 pub struct DownloadedArchive {
-    pub archive_path: PathBuf,
+    pub archive_path: tempfile::NamedTempFile,
     pub final_url: String,
 }
 
@@ -220,12 +219,15 @@ fn archive_activity_entry_fidelity_rank(entry: &ArchiveActivityEntry) -> i32 {
     }
 }
 
-pub async fn download_archive_from_url(uploads_dir: &str, archive_url: &str) -> Result<DownloadedArchive, AppError> {
+pub async fn download_archive_from_url(
+    objects: &crate::object_store::ObjectStore,
+    archive_url: &str,
+) -> Result<DownloadedArchive, AppError> {
     let cfg = Config::get();
     let client = build_archive_fetch_client(cfg)?;
     let (final_url, response) = fetch_archive_response(&client, archive_url).await?;
     ensure_archive_response_size(&response, cfg.max_archive_fetch_bytes)?;
-    let archive_path = write_archive_response_to_temp_file(uploads_dir, response, cfg.max_archive_fetch_bytes).await?;
+    let archive_path = write_archive_response_to_temp_file(objects, response, cfg.max_archive_fetch_bytes).await?;
 
     Ok(DownloadedArchive {
         archive_path,
@@ -297,42 +299,28 @@ fn ensure_archive_response_size(response: &reqwest::Response, max_archive_fetch_
 }
 
 async fn write_archive_response_to_temp_file(
-    uploads_dir: &str,
+    objects: &crate::object_store::ObjectStore,
     mut response: reqwest::Response,
     max_archive_fetch_bytes: usize,
-) -> Result<PathBuf, AppError> {
-    let temp_path = archive_fetch_temp_path(uploads_dir);
-
-    if let Some(parent) = temp_path.parent() {
-        tokio::fs::create_dir_all(parent).await?;
-    }
-
-    let mut file = tokio::fs::File::create(&temp_path).await?;
-    let total_bytes =
-        write_archive_response_chunks(&mut response, &mut file, &temp_path, max_archive_fetch_bytes).await?;
+) -> Result<tempfile::NamedTempFile, AppError> {
+    let temporary = objects.temporary_file().await?;
+    let mut file = tokio::fs::File::from_std(temporary.reopen()?);
+    let total_bytes = write_archive_response_chunks(&mut response, &mut file, max_archive_fetch_bytes).await?;
     file.flush().await?;
 
     if total_bytes == 0 {
-        let _ = tokio::fs::remove_file(&temp_path).await;
         return Err(AppError::validation_field(
             "archive_url",
             "Archive URL returned an empty response",
         ));
     }
 
-    Ok(temp_path)
-}
-
-fn archive_fetch_temp_path(uploads_dir: &str) -> PathBuf {
-    Path::new(uploads_dir)
-        .join("archive-fetches")
-        .join(format!("{}.zip", Uuid::new_v4()))
+    Ok(temporary)
 }
 
 async fn write_archive_response_chunks(
     response: &mut reqwest::Response,
     file: &mut tokio::fs::File,
-    temp_path: &Path,
     max_archive_fetch_bytes: usize,
 ) -> Result<usize, AppError> {
     let mut total_bytes = 0usize;
@@ -344,7 +332,6 @@ async fn write_archive_response_chunks(
     {
         total_bytes += chunk.len();
         if total_bytes > max_archive_fetch_bytes {
-            let _ = tokio::fs::remove_file(temp_path).await;
             return Err(archive_payload_too_large(max_archive_fetch_bytes));
         }
         file.write_all(&chunk).await?;
@@ -758,6 +745,34 @@ mod tests {
         let error = parse_archive_url("http://example.com/export.zip").unwrap_err();
 
         assert_eq!(error.message, "Archive URL must use https");
+    }
+
+    #[tokio::test]
+    async fn downloaded_archive_scratch_is_bounded_and_cleaned_for_success_and_failure() {
+        use crate::object_store::{ObjectOwner, ObjectStore};
+        let root = tempfile::tempdir().unwrap();
+        let objects = ObjectStore::filesystem(root.path(), ObjectOwner::Archives);
+        let response = |bytes: &[u8]| reqwest::Response::from(axum::http::Response::new(bytes.to_vec()));
+        let downloaded = write_archive_response_to_temp_file(&objects, response(b"zip bytes"), 10)
+            .await
+            .unwrap();
+        let path = downloaded.path().to_owned();
+        assert!(path.starts_with(root.path().join(".scratch")));
+        assert_eq!(tokio::fs::read(&path).await.unwrap(), b"zip bytes");
+        drop(downloaded);
+        assert!(!path.exists());
+        for bytes in [b"".as_slice(), b"too large for the limit"] {
+            assert!(write_archive_response_to_temp_file(&objects, response(bytes), 10)
+                .await
+                .is_err());
+            assert!(tokio::fs::read_dir(root.path().join(".scratch"))
+                .await
+                .unwrap()
+                .next_entry()
+                .await
+                .unwrap()
+                .is_none());
+        }
     }
 
     #[test]
